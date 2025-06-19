@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"syscall"
 )
 
@@ -26,6 +27,7 @@ func New(name string) *Engine {
 	}
 	if err := client.bootstrap(); err != nil {
 		cancel() // Clean up context if bootstrap fails
+		fmt.Println("Failed to bootstrap SimConnect client:", err)
 		return nil
 	}
 	return client

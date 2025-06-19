@@ -70,7 +70,7 @@ func main() {
 				return
 			}
 			// Check if we should exit after handling this message
-			if shouldExit := handleMessage(msg); shouldExit {
+			if shouldExit := handleMessage(msg, simClient); shouldExit {
 				fmt.Println("Received quit message, shutting down gracefully...")
 				if err := simClient.Shutdown(); err != nil {
 					log.Printf("Error during shutdown: %v", err)
@@ -97,7 +97,7 @@ func main() {
 
 // handleMessage demonstrates how to handle different types of parsed messages
 // Returns true if the application should exit (e.g., on quit message)
-func handleMessage(msg client.ParsedMessage) bool {
+func handleMessage(msg client.ParsedMessage, simClient *client.Engine) bool {
 	// Check for parsing errors first
 	if msg.Error != nil {
 		log.Printf("Message parsing error: %v", msg.Error)
@@ -134,6 +134,10 @@ func handleMessage(msg client.ParsedMessage) bool {
 			fmt.Printf("      Reserved1: %d, Reserved2: %d\n",
 				openData.DwReserved1, openData.DwReserved2)
 		}
+
+		// Request all system states for testing
+		fmt.Println("   🔍 Requesting system states...")
+		requestSystemStates(simClient)
 	case msg.IsQuit():
 		fmt.Println("❌ SimConnect connection closed")
 
@@ -182,8 +186,7 @@ func handleMessage(msg client.ParsedMessage) bool {
 
 		case types.SIMCONNECT_RECV_ID_SYSTEM_STATE:
 			if sysState, ok := msg.Data.(*types.SIMCONNECT_RECV_SYSTEM_STATE); ok {
-				fmt.Printf("🖥️  System State: RequestID=%d, Integer=%d, Float=%d\n",
-					sysState.DwRequestID, sysState.DwInteger, sysState.DwFloat)
+				handleSystemStateResponse(sysState)
 			}
 		default:
 			fmt.Printf("📦 Unhandled message type: %v\n", msg.MessageType)
@@ -235,4 +238,96 @@ func handleSimObjectData(simData *types.SIMCONNECT_RECV_SIMOBJECT_DATA, rawData 
 	//         fmt.Printf("   Data element %d: %f\n", i, value)
 	//     }
 	// }
+}
+
+// handleSystemStateResponse processes and displays system state responses
+func handleSystemStateResponse(sysState *types.SIMCONNECT_RECV_SYSTEM_STATE) {
+	// Extract string value (find null terminator)
+	stringValue := ""
+	if nullIndex := findNullTerminator(sysState.SzString[:]); nullIndex >= 0 {
+		stringValue = string(sysState.SzString[:nullIndex])
+	}
+
+	// Convert float value from uint32 representation
+	floatValue := *(*float32)(unsafe.Pointer(&sysState.DwFloat))
+
+	fmt.Printf("🖥️  System State Response:\n")
+	fmt.Printf("      Request ID: %d\n", sysState.DwRequestID)
+	fmt.Printf("      Integer Value: %d\n", sysState.DwInteger)
+	fmt.Printf("      Float Value: %f\n", floatValue)
+	fmt.Printf("      String Value: \"%s\"\n", stringValue)
+
+	// Map request IDs to their respective state names for better output
+	var stateName string
+	switch sysState.DwRequestID {
+	case 100:
+		stateName = "Aircraft Loaded"
+	case 101:
+		stateName = "Dialog Mode"
+	case 102:
+		stateName = "Flight Loaded"
+	case 103:
+		stateName = "Flight Plan"
+	case 104:
+		stateName = "Sim State"
+	default:
+		stateName = "Unknown"
+	}
+
+	fmt.Printf("      State Type: %s\n", stateName)
+
+	// Provide context-specific interpretation
+	switch sysState.DwRequestID {
+	case 100, 102, 103: // File path states
+		if stringValue != "" {
+			fmt.Printf("      📁 File Path: %s\n", stringValue)
+		} else {
+			fmt.Printf("      📁 No file currently loaded\n")
+		}
+	case 101: // Dialog mode
+		if sysState.DwInteger == 1 {
+			fmt.Printf("      💬 Simulation is in Dialog Mode\n")
+		} else {
+			fmt.Printf("      🎮 Simulation is not in Dialog Mode\n")
+		}
+	case 104: // Sim state
+		if sysState.DwInteger == 1 {
+			fmt.Printf("      🎮 User is in control of simulation\n")
+		} else {
+			fmt.Printf("      🖱️  User is navigating UI\n")
+		}
+	}
+	fmt.Println()
+}
+
+// requestSystemStates requests all available system states for testing
+func requestSystemStates(client *client.Engine) {
+	fmt.Println("      🔍 Requesting Aircraft Loaded state...")
+	if err := client.RequestSystemStateAircraftLoaded(100); err != nil {
+		fmt.Printf("      ❌ Failed to request aircraft loaded state: %v\n", err)
+	}
+	time.Sleep(10 * time.Millisecond) // Small delay between requests
+
+	fmt.Println("      🔍 Requesting Dialog Mode state...")
+	if err := client.RequestSystemStateDialogMode(101); err != nil {
+		fmt.Printf("      ❌ Failed to request dialog mode state: %v\n", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	fmt.Println("      🔍 Requesting Flight Loaded state...")
+	if err := client.RequestSystemStateFlightLoaded(102); err != nil {
+		fmt.Printf("      ❌ Failed to request flight loaded state: %v\n", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	fmt.Println("      🔍 Requesting Flight Plan state...")
+	if err := client.RequestSystemStateFlightPlan(103); err != nil {
+		fmt.Printf("      ❌ Failed to request flight plan state: %v\n", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	fmt.Println("      🔍 Requesting Sim state...")
+	if err := client.RequestSystemStateSim(104); err != nil {
+		fmt.Printf("      ❌ Failed to request sim state: %v\n", err)
+	}
 }
