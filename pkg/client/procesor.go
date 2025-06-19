@@ -11,7 +11,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/helpers"
 )
 
-func (e *Engine) Listen() <-chan Message {
+func (e *Engine) Stream() <-chan Message {
 	go e.dispatch()
 
 	return e.queue // Return the channel for receiving messages

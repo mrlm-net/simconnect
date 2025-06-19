@@ -7,14 +7,14 @@ import (
 )
 
 func main() {
-	cli := client.New("TEST Clinet")
+	cli := client.New("TEST Client")
 
 	// Connect to the SimConnect service
 	if err := cli.Connect(); err != nil {
 		panic(err)
 	}
 
-	for event := range cli.Listen() {
+	for event := range cli.Stream() {
 		// Process the event
 		fmt.Println("Received event:", event)
 	}
