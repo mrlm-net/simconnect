@@ -90,6 +90,15 @@ func handleMessage(msg client.ParsedMessage) {
 	case msg.IsQuit():
 		fmt.Println("❌ SimConnect connection closed")
 
+		// Extract and display detailed quit message information
+		if quitData, ok := msg.GetQuit(); ok {
+			fmt.Printf("   📋 Disconnection Details:\n")
+			fmt.Printf("      Message Size: %d bytes\n", quitData.DwSize)
+			fmt.Printf("      Message Version: %d\n", quitData.DwVersion)
+			fmt.Printf("      Message ID: %d (SIMCONNECT_RECV_ID_QUIT)\n", quitData.DwID)
+			fmt.Printf("      Note: This indicates SimConnect is shutting down or the connection was terminated\n")
+		}
+
 	case msg.IsException():
 		if exception, ok := msg.GetException(); ok {
 			fmt.Printf("⚠️  SimConnect Exception: Code=%d, SendID=%d, Index=%d\n",

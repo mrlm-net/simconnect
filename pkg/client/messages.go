@@ -78,3 +78,11 @@ func (msg *ParsedMessage) GetOpen() (*types.SIMCONNECT_RECV_OPEN, bool) {
 	}
 	return nil, false
 }
+
+// GetQuit safely casts the data to SIMCONNECT_RECV_QUIT
+func (msg *ParsedMessage) GetQuit() (*types.SIMCONNECT_RECV_QUIT, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_QUIT); ok {
+		return data, true
+	}
+	return nil, false
+}

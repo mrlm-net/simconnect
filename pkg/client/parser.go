@@ -111,8 +111,11 @@ func (e *Engine) parseOpen(ppData uintptr, pcbData uint32) *types.SIMCONNECT_REC
 }
 
 // parseQuit parses SIMCONNECT_RECV_QUIT messages (connection closed)
-func (e *Engine) parseQuit(ppData uintptr, pcbData uint32) *types.SIMCONNECT_RECV {
-	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(ppData))
+func (e *Engine) parseQuit(ppData uintptr, pcbData uint32) *types.SIMCONNECT_RECV_QUIT {
+	if pcbData < uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_QUIT{})) {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_QUIT)(unsafe.Pointer(ppData))
 }
 
 // parseAssignedObjectID parses SIMCONNECT_RECV_ASSIGNED_OBJECT_ID messages
