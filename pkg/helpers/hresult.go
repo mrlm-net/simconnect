@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package helpers
 
 import "github.com/mrlm-net/simconnect/pkg/types"
