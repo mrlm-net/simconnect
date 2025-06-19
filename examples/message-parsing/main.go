@@ -242,61 +242,78 @@ func handleSimObjectData(simData *types.SIMCONNECT_RECV_SIMOBJECT_DATA, rawData 
 
 // handleSystemStateResponse processes and displays system state responses
 func handleSystemStateResponse(sysState *types.SIMCONNECT_RECV_SYSTEM_STATE) {
-	// Extract string value (find null terminator)
-	stringValue := ""
-	if nullIndex := findNullTerminator(sysState.SzString[:]); nullIndex >= 0 {
-		stringValue = string(sysState.SzString[:nullIndex])
+	// Validate request ID range
+	if sysState.DwRequestID < 100 || sysState.DwRequestID > 104 {
+		fmt.Printf("🖥️  System State Response (Invalid Request ID):\n")
+		fmt.Printf("      Request ID: %d (CORRUPTED - Expected 100-104)\n", sysState.DwRequestID)
+		fmt.Printf("      Raw Integer: %d\n", sysState.DwInteger)
+		fmt.Printf("      Raw Float bytes: 0x%08X\n", sysState.DwFloat)
+		return
 	}
 
-	// Convert float value from uint32 representation
-	floatValue := *(*float32)(unsafe.Pointer(&sysState.DwFloat))
-
-	fmt.Printf("🖥️  System State Response:\n")
-	fmt.Printf("      Request ID: %d\n", sysState.DwRequestID)
-	fmt.Printf("      Integer Value: %d\n", sysState.DwInteger)
-	fmt.Printf("      Float Value: %f\n", floatValue)
-	fmt.Printf("      String Value: \"%s\"\n", stringValue)
-
-	// Map request IDs to their respective state names for better output
+	// Map request IDs to their respective state names
 	var stateName string
+	var isStringState bool
+	var isIntegerState bool
+
 	switch sysState.DwRequestID {
 	case 100:
 		stateName = "Aircraft Loaded"
+		isStringState = true
 	case 101:
 		stateName = "Dialog Mode"
+		isIntegerState = true
 	case 102:
 		stateName = "Flight Loaded"
+		isStringState = true
 	case 103:
 		stateName = "Flight Plan"
+		isStringState = true
 	case 104:
 		stateName = "Sim State"
-	default:
-		stateName = "Unknown"
+		isIntegerState = true
 	}
 
+	fmt.Printf("🖥️  System State Response:\n")
+	fmt.Printf("      Request ID: %d\n", sysState.DwRequestID)
 	fmt.Printf("      State Type: %s\n", stateName)
 
-	// Provide context-specific interpretation
-	switch sysState.DwRequestID {
-	case 100, 102, 103: // File path states
+	// Handle string-based states (file paths)
+	if isStringState {
+		stringValue := ""
+		if nullIndex := findNullTerminator(sysState.SzString[:]); nullIndex >= 0 {
+			stringValue = string(sysState.SzString[:nullIndex])
+		}
+
+		fmt.Printf("      String Value: \"%s\"\n", stringValue)
+
 		if stringValue != "" {
 			fmt.Printf("      📁 File Path: %s\n", stringValue)
 		} else {
 			fmt.Printf("      📁 No file currently loaded\n")
 		}
-	case 101: // Dialog mode
-		if sysState.DwInteger == 1 {
-			fmt.Printf("      💬 Simulation is in Dialog Mode\n")
-		} else {
-			fmt.Printf("      🎮 Simulation is not in Dialog Mode\n")
-		}
-	case 104: // Sim state
-		if sysState.DwInteger == 1 {
-			fmt.Printf("      🎮 User is in control of simulation\n")
-		} else {
-			fmt.Printf("      🖱️  User is navigating UI\n")
+	}
+
+	// Handle integer-based states (flags)
+	if isIntegerState {
+		fmt.Printf("      Integer Value: %d\n", sysState.DwInteger)
+
+		switch sysState.DwRequestID {
+		case 101: // Dialog mode
+			if sysState.DwInteger == 1 {
+				fmt.Printf("      💬 Simulation is in Dialog Mode\n")
+			} else {
+				fmt.Printf("      🎮 Simulation is not in Dialog Mode\n")
+			}
+		case 104: // Sim state
+			if sysState.DwInteger == 1 {
+				fmt.Printf("      🎮 User is in control of simulation\n")
+			} else {
+				fmt.Printf("      🖱️  User is navigating UI\n")
+			}
 		}
 	}
+
 	fmt.Println()
 }
 

@@ -5,7 +5,6 @@ package client
 
 import (
 	"fmt"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/helpers"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -16,18 +15,27 @@ import (
 // state: System state to request (e.g., "AircraftLoaded", "DialogMode", "FlightLoaded", "FlightPlan", "Sim")
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/General/SimConnect_RequestSystemState.htm
 func (e *Engine) RequestSystemState(requestID uint32, state string) error {
-	// Convert Go string to null-terminated C string
-	cState := append([]byte(state), 0) // Add null terminator
+	// Check if we have a valid connection handle
+	if e.handle == 0 {
+		return fmt.Errorf("SimConnect not connected - handle is null")
+	}
+
+	// Convert Go string to null-terminated C string using syscall helper
+	szState, err := helpers.StringToBytePtr(state)
+	if err != nil {
+		return fmt.Errorf("failed to convert state string to C string: %v", err)
+	}
 
 	// Request the system state from SimConnect
+	// Note: Use e.handle directly, not e.getHandle() which is for receiving handles
 	hresult, _, _ := SimConnect_RequestSystemState.Call(
-		e.getHandle(),                       // hSimConnect
-		uintptr(requestID),                  // RequestID (client-defined)
-		uintptr(unsafe.Pointer(&cState[0])), // szState (null-terminated string)
+		e.handle,
+		uintptr(uint32(requestID)), // Explicit cast
+		szState,
 	)
 
 	if !helpers.IsHRESULTSuccess(hresult) {
-		return fmt.Errorf("SimConnect_RequestSystemState failed: 0x%08X", uint32(hresult))
+		return fmt.Errorf("SimConnect_RequestSystemState failed for state '%s': 0x%08X", state, uint32(hresult))
 	}
 
 	return nil

@@ -62,8 +62,16 @@ func (e *Engine) dispatch() {
 				// Parse and send message to channel (non-blocking)
 				fmt.Println("SimConnect_GetNextDispatch succeeded")
 
-				// Parse the raw message data
-				parsedMsg := e.parseMessage(ppData, pcbData)
+				// CRITICAL: Copy the data immediately to prevent race conditions
+				// SimConnect may reuse the buffer for subsequent messages
+				rawDataCopy := make([]byte, pcbData)
+				copy(rawDataCopy, (*[1 << 30]byte)(unsafe.Pointer(ppData))[:pcbData:pcbData])
+
+				// Create a new pointer to our copied data
+				copiedDataPtr := uintptr(unsafe.Pointer(&rawDataCopy[0]))
+
+				// Parse the message using our safe copy
+				parsedMsg := e.parseMessage(copiedDataPtr, pcbData)
 
 				// Send the parsed message to the channel (non-blocking)
 				select {

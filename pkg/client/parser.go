@@ -12,6 +12,7 @@ import (
 )
 
 // parseMessage converts raw SimConnect message data into a ParsedMessage
+// Note: ppData should point to a stable copy of the data, not SimConnect's internal buffer
 func (e *Engine) parseMessage(ppData uintptr, pcbData uint32) ParsedMessage {
 	// Convert raw data to byte slice for easier handling
 	rawData := (*[1 << 30]byte)(unsafe.Pointer(ppData))[:pcbData:pcbData]
