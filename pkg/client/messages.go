@@ -70,3 +70,11 @@ func (msg *ParsedMessage) GetException() (*types.SIMCONNECT_RECV_EXCEPTION, bool
 	}
 	return nil, false
 }
+
+// GetOpen safely casts the data to SIMCONNECT_RECV_OPEN
+func (msg *ParsedMessage) GetOpen() (*types.SIMCONNECT_RECV_OPEN, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_OPEN); ok {
+		return data, true
+	}
+	return nil, false
+}

@@ -64,6 +64,29 @@ func handleMessage(msg client.ParsedMessage) {
 	case msg.IsOpen():
 		fmt.Println("✅ SimConnect connection established successfully!")
 
+		// Extract and display detailed open message information
+		if openData, ok := msg.GetOpen(); ok {
+			// Convert the application name from byte array to string
+			appName := string(openData.SzApplicationName[:])
+			// Find the null terminator and trim the string
+			if nullIndex := findNullTerminator(openData.SzApplicationName[:]); nullIndex >= 0 {
+				appName = string(openData.SzApplicationName[:nullIndex])
+			}
+
+			fmt.Printf("   📋 Connection Details:\n")
+			fmt.Printf("      Application Name: %s\n", appName)
+			fmt.Printf("      Application Version: %d.%d\n",
+				openData.DwApplicationVersionMajor, openData.DwApplicationVersionMinor)
+			fmt.Printf("      Application Build: %d.%d\n",
+				openData.DwApplicationBuildMajor, openData.DwApplicationBuildMinor)
+			fmt.Printf("      SimConnect Version: %d.%d\n",
+				openData.DwSimConnectVersionMajor, openData.DwSimConnectVersionMinor)
+			fmt.Printf("      SimConnect Build: %d.%d\n",
+				openData.DwSimConnectBuildMajor, openData.DwSimConnectBuildMinor)
+			fmt.Printf("      Reserved1: %d, Reserved2: %d\n",
+				openData.DwReserved1, openData.DwReserved2)
+		}
+
 	case msg.IsQuit():
 		fmt.Println("❌ SimConnect connection closed")
 
@@ -108,6 +131,16 @@ func handleMessage(msg client.ParsedMessage) {
 			fmt.Printf("📦 Unhandled message type: %v\n", msg.MessageType)
 		}
 	}
+}
+
+// findNullTerminator finds the index of the first null byte in a byte slice
+func findNullTerminator(data []byte) int {
+	for i, b := range data {
+		if b == 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 // handleSimObjectData demonstrates how to extract actual flight data
