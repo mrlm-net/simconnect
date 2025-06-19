@@ -3,6 +3,8 @@
 
 package client
 
+// TODO consider https://blog.gopheracademy.com/advent-2019/safe-use-of-unsafe-pointer/
+
 import (
 	"fmt"
 	"log"
@@ -116,6 +118,7 @@ func (e *Engine) parseQuit(ppData uintptr, pcbData uint32) *types.SIMCONNECT_REC
 	if pcbData < uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_QUIT{})) {
 		return nil
 	}
+
 	return (*types.SIMCONNECT_RECV_QUIT)(unsafe.Pointer(ppData))
 }
 
