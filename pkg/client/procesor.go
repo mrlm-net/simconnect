@@ -13,12 +13,15 @@ import (
 )
 
 func (e *Engine) Stream() <-chan ParsedMessage {
+	e.wg.Add(1)
 	go e.dispatch()
 
 	return e.queue // Return the channel for receiving messages
 }
 
 func (e *Engine) dispatch() {
+	defer e.wg.Done() // Signal completion when function exits
+
 	// Ensure the goroutine runs on the same OS thread
 	// This is important for Windows API calls that require thread affinity
 	// This is a workaround for the fact that SimConnect API calls are not thread-safe
@@ -29,13 +32,23 @@ func (e *Engine) dispatch() {
 	// Note: This is a blocking call, so it should be used with care.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+
 	// Start the message processing loop
 	for {
 		select {
 		case <-e.ctx.Done():
 			// Context is done, exit the goroutine
-			e.Disconnect() // Exit the goroutine if the context is done
+			return
 		default:
+			// Check if we're closing before attempting to read messages
+			e.mu.RLock()
+			closing := e.isClosing
+			e.mu.RUnlock()
+
+			if closing {
+				return
+			}
+
 			var ppData uintptr
 			var pcbData uint32
 			// Call SimConnect_GetNextDispatch
@@ -56,6 +69,9 @@ func (e *Engine) dispatch() {
 				select {
 				case e.queue <- parsedMsg:
 					// Message sent successfully
+				case <-e.ctx.Done():
+					// Context cancelled while trying to send
+					return
 				default:
 					// Channel is full, log warning but don't block
 					log.Printf("Warning: Message queue is full, dropping message of type %v", parsedMsg.MessageType)

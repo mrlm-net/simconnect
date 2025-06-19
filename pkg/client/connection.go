@@ -35,13 +35,41 @@ func (e *Engine) Connect() error {
 }
 
 func (e *Engine) Disconnect() error {
-	hresult, _, _ := SimConnect_Close.Call(e.handle)
+	var err error
+	e.once.Do(func() {
+		// Set closing flag
+		e.mu.Lock()
+		e.isClosing = true
+		e.mu.Unlock()
 
-	if !helpers.IsHRESULTSuccess(hresult) {
-		return fmt.Errorf("SimConnect_Close failed with HRESULT: 0x%08X", hresult)
+		// Cancel context to stop message processing
+		if e.cancel != nil {
+			e.cancel()
+		}
 
-	}
-	return nil
+		// Wait for goroutines to finish
+		e.wg.Wait()
+
+		// Close the SimConnect connection if it exists
+		if e.handle != 0 {
+			hresult, _, _ := SimConnect_Close.Call(e.handle)
+			if !helpers.IsHRESULTSuccess(hresult) {
+				err = fmt.Errorf("SimConnect_Close failed with HRESULT: 0x%08X", hresult)
+			} else {
+				fmt.Println("SimConnect connection closed successfully")
+			}
+			e.handle = 0
+		}
+
+		// Close the message queue channel
+		close(e.queue)
+	})
+	return err
+}
+
+// Shutdown triggers a graceful shutdown of the SimConnect client
+func (e *Engine) Shutdown() error {
+	return e.Disconnect()
 }
 
 func (e *Engine) getHandle() uintptr {

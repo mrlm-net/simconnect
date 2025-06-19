@@ -15,14 +15,17 @@ const (
 )
 
 func New(name string) *Engine {
+	ctx, cancel := context.WithCancel(context.Background())
 	client := &Engine{
-		ctx:    context.Background(),
+		ctx:    ctx,
+		cancel: cancel,
 		dll:    syscall.NewLazyDLL(DLL_DEFAULT_PATH),
 		handle: 0, // Initially no connection
 		name:   name,
 		queue:  make(chan ParsedMessage, DEFAULT_STREAM_BUFFER_SIZE), // Buffered channel for parsed message queueing
 	}
 	if err := client.bootstrap(); err != nil {
+		cancel() // Clean up context if bootstrap fails
 		return nil
 	}
 	return client

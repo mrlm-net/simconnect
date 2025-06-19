@@ -6,6 +6,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -14,6 +17,14 @@ import (
 )
 
 func main() {
+	fmt.Println("SimConnect Message Parsing Example with Graceful Shutdown")
+	fmt.Println("Features demonstrated:")
+	fmt.Println("  - Signal handling (Ctrl+C)")
+	fmt.Println("  - Graceful shutdown on timeout")
+	fmt.Println("  - Proper resource cleanup")
+	fmt.Println("  - SimConnect quit message handling")
+	fmt.Println()
+
 	// Create a new SimConnect client
 	simClient := client.New("ExampleApp")
 	if simClient == nil {
@@ -25,35 +36,72 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
-	defer simClient.Disconnect()
+
+	// Set up graceful shutdown on system signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Channel to coordinate shutdown
+	done := make(chan bool, 1)
+
+	// Goroutine to handle signals
+	go func() {
+		sig := <-sigChan
+		fmt.Printf("\nReceived %v signal, initiating graceful shutdown...\n", sig)
+		done <- true
+	}()
 
 	// Start message streaming
 	messageStream := simClient.Stream()
 
-	// Set up a timeout for the example
+	// Set up a timeout for the example (30 seconds)
 	timeout := time.After(30 * time.Second)
 
 	fmt.Println("Listening for SimConnect messages...")
+	fmt.Println("Press Ctrl+C to stop gracefully")
 
-	// Message processing loop
+	// Message processing loop with graceful shutdown
 	for {
 		select {
-		case msg := <-messageStream:
-			handleMessage(msg)
+		case msg, ok := <-messageStream:
+			if !ok {
+				// Channel was closed, connection terminated
+				fmt.Println("Message stream closed, connection terminated")
+				return
+			}
+			// Check if we should exit after handling this message
+			if shouldExit := handleMessage(msg); shouldExit {
+				fmt.Println("Received quit message, shutting down gracefully...")
+				if err := simClient.Shutdown(); err != nil {
+					log.Printf("Error during shutdown: %v", err)
+				}
+				return
+			}
 
 		case <-timeout:
-			fmt.Println("Example timeout reached, exiting...")
+			fmt.Println("Example timeout reached, shutting down gracefully...")
+			if err := simClient.Shutdown(); err != nil {
+				log.Printf("Error during shutdown: %v", err)
+			}
+			return
+
+		case <-done:
+			fmt.Println("Shutting down gracefully...")
+			if err := simClient.Shutdown(); err != nil {
+				log.Printf("Error during shutdown: %v", err)
+			}
 			return
 		}
 	}
 }
 
 // handleMessage demonstrates how to handle different types of parsed messages
-func handleMessage(msg client.ParsedMessage) {
+// Returns true if the application should exit (e.g., on quit message)
+func handleMessage(msg client.ParsedMessage) bool {
 	// Check for parsing errors first
 	if msg.Error != nil {
 		log.Printf("Message parsing error: %v", msg.Error)
-		return
+		return false
 	}
 
 	// Log basic message info
@@ -86,7 +134,6 @@ func handleMessage(msg client.ParsedMessage) {
 			fmt.Printf("      Reserved1: %d, Reserved2: %d\n",
 				openData.DwReserved1, openData.DwReserved2)
 		}
-
 	case msg.IsQuit():
 		fmt.Println("❌ SimConnect connection closed")
 
@@ -98,6 +145,9 @@ func handleMessage(msg client.ParsedMessage) {
 			fmt.Printf("      Message ID: %d (SIMCONNECT_RECV_ID_QUIT)\n", quitData.DwID)
 			fmt.Printf("      Note: This indicates SimConnect is shutting down or the connection was terminated\n")
 		}
+		// Quit message indicates SimConnect is shutting down, return gracefully
+		fmt.Println("SimConnect indicated shutdown, exiting gracefully...")
+		return true
 
 	case msg.IsException():
 		if exception, ok := msg.GetException(); ok {
@@ -135,11 +185,12 @@ func handleMessage(msg client.ParsedMessage) {
 				fmt.Printf("🖥️  System State: RequestID=%d, Integer=%d, Float=%d\n",
 					sysState.DwRequestID, sysState.DwInteger, sysState.DwFloat)
 			}
-
 		default:
 			fmt.Printf("📦 Unhandled message type: %v\n", msg.MessageType)
 		}
 	}
+
+	return false // Continue processing messages
 }
 
 // findNullTerminator finds the index of the first null byte in a byte slice
