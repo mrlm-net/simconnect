@@ -6,13 +6,15 @@ package client
 import "syscall"
 
 var (
-	SimConnect_Open            *syscall.LazyProc
-	SimConnect_Close           *syscall.LazyProc
+	// SimConnect connection procedures
+	SimConnect_Open  *syscall.LazyProc
+	SimConnect_Close *syscall.LazyProc
+	// SimConnect message handling procedures
 	SimConnect_CallDispatch    *syscall.LazyProc
 	SimConnect_GetNextDispatch *syscall.LazyProc
 )
 
-func (e *Engine) lazyloadProcedures() {
+func (e *Engine) bootstrapProcedures() {
 
 	SimConnect_Open = e.dll.NewProc("SimConnect_Open")
 	SimConnect_Close = e.dll.NewProc("SimConnect_Close")
