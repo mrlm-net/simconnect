@@ -35,8 +35,9 @@ func (e *Engine) dispatch() {
 	defer runtime.UnlockOSThread()
 	for {
 		select {
-		//case <-e.ctx.Done():
-		//	return e.ctx.Err() // Graceful shutdown requested
+		case <-e.ctx.Done():
+			// Context is done, exit the goroutine
+			e.Disconnect() // Exit the goroutine if the context is done
 		default:
 			var ppData uintptr
 			var pcbData uint32
@@ -56,5 +57,4 @@ func (e *Engine) dispatch() {
 			//time.Sleep(10 * time.Millisecond)
 		}
 	}
-
 }
