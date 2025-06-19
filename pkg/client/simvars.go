@@ -44,3 +44,49 @@ func (e *Engine) AddToDataDefinition(defineID int, datumName string, unitsName s
 
 	return nil
 }
+
+// RequestDataOnSimObjectType implements types. Client.
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestDataOnSimObjectType.htm
+func (e *Engine) RequestDataOnSimObjectType(reguest int, definition int, radius string, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
+
+	// Convert strings to C-style for SimConnect
+	varRadiusPtr, err := helpers.StringToBytePtr(radius)
+	if err != nil {
+		return fmt.Errorf("invalid variable name: %v", err)
+	}
+	// Call SimConnect_RequestDataOnSimObject
+	hresult, _, _ := SimConnect_RequestDataOnSimObjectType.Call(
+		uintptr(e.handle),   // hSimConnect
+		uintptr(reguest),    // RequestID
+		uintptr(definition), // DefineID
+		varRadiusPtr,        // Radius from user aircraft
+		uintptr(objectType), // SimObjectType
+	)
+
+	if !helpers.IsHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_RequestDataOnSimObjectType failed: 0x%08X", uint32(hresult))
+	}
+	return nil
+}
+
+// RequestDataOnSimObject implements types. Client.
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestDataOnSimObject.htm
+func (e *Engine) RequestDataOnSimObject(reguest int, definition int, object int, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin int, interval int, limit int) error {
+	// Call SimConnect_RequestDataOnSimObject
+	hresult, _, _ := SimConnect_RequestDataOnSimObject.Call(
+		uintptr(e.handle),   // hSimConnect
+		uintptr(reguest),    // RequestID
+		uintptr(definition), // DefineID
+		uintptr(object),     // ObjectID (user aircraft)
+		uintptr(period),     // Period (one-time request)
+		uintptr(types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT), // Flags
+		0, // origin
+		0, // interval
+		0, // limit
+	)
+
+	if !helpers.IsHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_RequestDataOnSimObject failed: 0x%08X", uint32(hresult))
+	}
+	return nil
+}
