@@ -10,8 +10,8 @@ import (
 
 type Engine struct {
 	ctx    context.Context
-	dll    *syscall.LazyDLL // The DLL handle for the SimConnect.dll library
-	handle uintptr          // The handle to the SimConnect connection
-	name   string           // The name of the SimConnect client
-	queue  chan Message     // Channel for message queueing, for now any type is used
+	dll    *syscall.LazyDLL   // The DLL handle for the SimConnect.dll library
+	handle uintptr            // The handle to the SimConnect connection
+	name   string             // The name of the SimConnect client
+	queue  chan ParsedMessage // Channel for parsed message queueing
 }
