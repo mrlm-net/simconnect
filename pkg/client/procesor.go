@@ -4,16 +4,22 @@
 package client
 
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/helpers"
 )
 
-func (e *Engine) Listen() <-chan any {
+func (e *Engine) Listen() <-chan Message {
 	go e.dispatch()
 
 	return e.queue // Return the channel for receiving messages
+}
+
+type Message struct {
+	PPData  uintptr // Pointer to the data
+	PCBData uint32  // Size of the data
 }
 
 func (e *Engine) dispatch() {
@@ -43,9 +49,10 @@ func (e *Engine) dispatch() {
 
 			if helpers.IsHRESULTSuccess(hresult) {
 				// Parse and send message to channel (non-blocking)
-				//e.handleMessage(ppData, pcbData)
-				e.queue <- []any{ppData, pcbData} // Send the raw data to the channel
+				fmt.Println("SimConnect_GetNextDispatch succeeded")
+				e.queue <- Message{ppData, pcbData} // Send the raw data to the channel
 			}
+
 			//time.Sleep(10 * time.Millisecond)
 		}
 	}

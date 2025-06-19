@@ -10,7 +10,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/helpers"
 )
 
-func (e *Engine) Open() error {
+func (e *Engine) Connect() error {
 	szName, _ := helpers.StringToBytePtr(e.name)
 	hresult, _, _ := SimConnect_Open.Call(
 		e.getHandle(), // phSimConnect
@@ -34,7 +34,7 @@ func (e *Engine) Open() error {
 	return nil
 }
 
-func (e *Engine) Close() error {
+func (e *Engine) Disconnect() error {
 	hresult, _, _ := SimConnect_Close.Call(e.handle)
 
 	if !helpers.IsHRESULTSuccess(hresult) {
