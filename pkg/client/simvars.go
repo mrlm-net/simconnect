@@ -90,3 +90,23 @@ func (e *Engine) RequestDataOnSimObject(reguest int, definition int, object int,
 	}
 	return nil
 }
+
+// SetDataOnSimObject implements types. Client.
+func (e *Engine) SetDataOnSimObject(definition int, object int, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount int, unitSize int, data uintptr) error {
+	// Call SimConnect_SetDataOnSimObject
+	hresult, _, _ := SimConnect_SetDataOnSimObject.Call(
+		e.getHandle(),       // hSimConnect
+		uintptr(definition), // DefineID
+		uintptr(object),     // ObjectID
+		uintptr(types.SIMCONNECT_DATA_SET_FLAG_DEFAULT), // Flags
+		uintptr(arrayCount),                             // ArrayCount (0 for single values)
+		uintptr(unitSize),                               // cbUnitSize
+		uintptr(data),                                   // pDataSet
+	)
+
+	if !helpers.IsHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_SetDataOnSimObject failed: 0x%08X", uint32(hresult))
+	}
+
+	return nil
+}
