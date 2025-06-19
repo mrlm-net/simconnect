@@ -1,9 +1,6 @@
 //go:build windows
 // +build windows
 
-//go:noinline
-//go:nosplit
-
 package client
 
 import (
@@ -63,8 +60,6 @@ func (e *Engine) dispatch() {
 					// Channel is full, log warning but don't block
 					log.Printf("Warning: Message queue is full, dropping message of type %v", parsedMsg.MessageType)
 				}
-			} else {
-				log.Printf("SimConnect_GetNextDispatch failed: %v", hresult)
 			}
 
 			//time.Sleep(10 * time.Millisecond)
