@@ -4,7 +4,6 @@
 package client
 
 import (
-	"fmt"
 	"log"
 	"runtime"
 	"unsafe"
@@ -50,8 +49,7 @@ func (e *Engine) dispatch() {
 			}
 
 			var ppData uintptr
-			var pcbData uint32
-			// Call SimConnect_GetNextDispatch
+			var pcbData uint32 // Call SimConnect_GetNextDispatch
 			hresult, _, _ := SimConnect_GetNextDispatch.Call(
 				uintptr(e.handle),                 // hSimConnect
 				uintptr(unsafe.Pointer(&ppData)),  // ppData
@@ -59,9 +57,6 @@ func (e *Engine) dispatch() {
 			)
 
 			if helpers.IsHRESULTSuccess(hresult) {
-				// Parse and send message to channel (non-blocking)
-				fmt.Println("SimConnect_GetNextDispatch succeeded")
-
 				// CRITICAL: Copy the data immediately to prevent race conditions
 				// SimConnect may reuse the buffer for subsequent messages
 				rawDataCopy := make([]byte, pcbData)

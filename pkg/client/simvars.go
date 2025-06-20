@@ -26,10 +26,9 @@ func (e *Engine) AddToDataDefinition(defineID int, datumName string, unitsName s
 	if err != nil {
 		return fmt.Errorf("invalid units: %v", err)
 	}
-
 	// Call SimConnect_AddToDataDefinition with the specified data type
 	hresult, _, _ := SimConnect_AddToDataDefinition.Call(
-		e.getHandle(),      // hSimConnect
+		e.handle,           // hSimConnect (use handle directly, not getHandle())
 		uintptr(defineID),  // DefineID
 		varNamePtr,         // DatumName
 		unitsPtr,           // UnitsName
@@ -56,7 +55,7 @@ func (e *Engine) RequestDataOnSimObjectType(reguest int, definition int, radius 
 	}
 	// Call SimConnect_RequestDataOnSimObject
 	hresult, _, _ := SimConnect_RequestDataOnSimObjectType.Call(
-		uintptr(e.handle),   // hSimConnect
+		e.handle,            // hSimConnect (use handle directly, not getHandle())
 		uintptr(reguest),    // RequestID
 		uintptr(definition), // DefineID
 		varRadiusPtr,        // Radius from user aircraft
@@ -74,15 +73,15 @@ func (e *Engine) RequestDataOnSimObjectType(reguest int, definition int, radius 
 func (e *Engine) RequestDataOnSimObject(reguest int, definition int, object int, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin int, interval int, limit int) error {
 	// Call SimConnect_RequestDataOnSimObject
 	hresult, _, _ := SimConnect_RequestDataOnSimObject.Call(
-		uintptr(e.handle),   // hSimConnect
+		e.handle,            // hSimConnect (use handle directly, not getHandle())
 		uintptr(reguest),    // RequestID
 		uintptr(definition), // DefineID
 		uintptr(object),     // ObjectID (user aircraft)
-		uintptr(period),     // Period (one-time request)
-		uintptr(types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT), // Flags
-		0, // origin
-		0, // interval
-		0, // limit
+		uintptr(period),     // Period
+		uintptr(flags),      // Flags (use the parameter passed in)
+		uintptr(origin),     // Origin
+		uintptr(interval),   // Interval
+		uintptr(limit),      // Limit
 	)
 
 	if !helpers.IsHRESULTSuccess(hresult) {
@@ -92,10 +91,11 @@ func (e *Engine) RequestDataOnSimObject(reguest int, definition int, object int,
 }
 
 // SetDataOnSimObject implements types. Client.
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_SetDataOnSimObject.htm
 func (e *Engine) SetDataOnSimObject(definition int, object int, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount int, unitSize int, data uintptr) error {
 	// Call SimConnect_SetDataOnSimObject
 	hresult, _, _ := SimConnect_SetDataOnSimObject.Call(
-		e.getHandle(),       // hSimConnect
+		e.handle,            // hSimConnect (use handle directly, not getHandle())
 		uintptr(definition), // DefineID
 		uintptr(object),     // ObjectID
 		uintptr(types.SIMCONNECT_DATA_SET_FLAG_DEFAULT), // Flags
