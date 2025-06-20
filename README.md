@@ -6,7 +6,7 @@ GoLang wrapper above SimConnect SDK, to allow Gophers create their flight simula
 |--|--|
 | Package name | github.com/mrlm-net/simconnect |
 | Go version | 1.21+ |
-| License | MIT License |
+| License | Apache 2.0 License |
 | Platform | Windows only |
 
 ## Table of contents
@@ -15,6 +15,7 @@ GoLang wrapper above SimConnect SDK, to allow Gophers create their flight simula
 • [Usage](#usage)  
 • [Examples](#examples)  
 • [API Reference](#api-reference)  
+• [Debugging](#debugging)  
 • [Advanced Usage](#advanced-usage)  
 • [Contributing](#contributing)
 
@@ -93,6 +94,60 @@ For detailed API documentation, see the [docs/](./docs/) directory:
 - **[Message Handling](./docs/messages.md)** - Processing SimConnect messages
 - **[Error Handling](./docs/errors.md)** - Error handling and debugging
 
+## Debugging
+
+### SimConnect Inspector
+
+Microsoft Flight Simulator includes a built-in **SimConnect Inspector** tool that is invaluable for debugging SimConnect applications. This tool allows you to monitor SimConnect traffic in real-time and troubleshoot connection issues.
+
+#### Accessing SimConnect Inspector
+
+1. **Enable Developer Mode** in Microsoft Flight Simulator:
+   - Go to **Options** → **General** → **Developers**
+   - Turn on **Developer Mode**
+
+2. **Open SimConnect Inspector**:
+   - Access the top menu bar in Developer Mode
+   - Navigate to **Tools** → **SimConnect Inspector**
+
+#### Features
+
+The SimConnect Inspector provides:
+
+- **Real-time message monitoring** - See all SimConnect messages as they flow between your application and the simulator
+- **Connection status** - Monitor active SimConnect connections and their states
+- **Message details** - Inspect message types, parameters, and data payloads
+- **Performance metrics** - Track message frequency and connection health
+- **Error visualization** - Identify failed messages and exceptions
+
+#### Using with Your Go Application
+
+When developing with this package, the SimConnect Inspector helps you:
+
+```go
+// Example: Debug data requests
+simClient := client.New("MyDebugApp")  // This name will appear in the inspector
+simClient.Connect()
+
+// Add data definition - you'll see this in the inspector
+simClient.AddToDataDefinition(1, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
+
+// Request data - monitor the request/response cycle
+simClient.RequestDataOnSimObject(1, 1, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
+```
+
+#### Debugging Tips
+
+- **Check connection names**: Your application name (from `client.New("YourAppName")`) will appear in the inspector
+- **Monitor message flow**: Verify that your requests are being sent and responses received
+- **Identify bottlenecks**: Use the inspector to see if you're sending too many requests
+- **Validate data definitions**: Ensure your data definitions are correctly formatted
+- **Debug exceptions**: The inspector will show SimConnect exceptions with detailed error information
+
+For more detailed debugging techniques, see the [Error Handling Guide](./docs/errors.md).
+
+**Documentation**: [SimConnect Inspector - Microsoft Docs](https://docs.flightsimulator.com/html/Developer_Mode/Menus/Tools/SimConnect_Inspector.htm)
+
 ## Advanced Usage
 
 ### Working with Custom Data Definitions
@@ -106,7 +161,7 @@ type AircraftData struct {
 }
 
 // Add data definition
-err := client.AddToDataDefinition(
+err := simClient.AddToDataDefinition(
     1,                                    // Definition ID
     "PLANE ALTITUDE",                     // SimVar name
     "feet",                              // Units
@@ -120,32 +175,16 @@ err := client.AddToDataDefinition(
 
 ```go
 // Map event to SimConnect
-err := client.MapClientEventToSimEvent(1, "TOGGLE_EXTERNAL_POWER")
+err := simClient.MapClientEventToSimEvent(1, "TOGGLE_EXTERNAL_POWER")
 
 // Add event to notification group
-err := client.AddClientEventToNotificationGroup(1, 1)
+err = simClient.AddClientEventToNotificationGroup(1, 1)
 
 // Transmit event
-err := client.TransmitClientEvent(0, 1, 0, 1)
+err = simClient.TransmitClientEvent(0, 1, 0, 1)
 ```
 
 See [Advanced Usage Guide](./docs/advanced.md) for more examples.
-
-## Contributing
-
-Contributions are welcomed and must follow Code of Conduct and common [Contributions guidelines](https://github.com/mrlm-net/.github/blob/main/docs/CONTRIBUTING.md).
-
-> If you'd like to report security issue please follow security guidelines.
-
-All rights reserved © Martin Hrášek [<@marley-ma>](https://github.com/marley-ma) and WANTED.solutions s.r.o. [<@wanted-solutions>](https://github.com/wanted-solutions)
-
-### Client Interface
-
-Coming soon...
-
-### Event Types
-
-Coming soon...
 
 ## Contributing
 

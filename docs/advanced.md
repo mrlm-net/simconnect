@@ -20,15 +20,15 @@ Group related data together to minimize the number of requests and improve perfo
 ```go
 // Instead of multiple separate definitions
 // BAD:
-client.AddToDataDefinition(1, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
-client.AddToDataDefinition(2, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
-client.AddToDataDefinition(3, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
+simClient.AddToDataDefinition(1, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
+simClient.AddToDataDefinition(2, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
+simClient.AddToDataDefinition(3, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
 
 // GOOD: Group into single definition
 defineID := 1
-client.AddToDataDefinition(defineID, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
-client.AddToDataDefinition(defineID, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 1)
-client.AddToDataDefinition(defineID, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 2)
+simClient.AddToDataDefinition(defineID, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
+simClient.AddToDataDefinition(defineID, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 1)
+simClient.AddToDataDefinition(defineID, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 2)
 ```
 
 ### Smart Update Frequencies
@@ -37,16 +37,16 @@ Use appropriate periods and epsilon values to reduce unnecessary updates.
 
 ```go
 // High-frequency critical data (flight controls)
-client.AddToDataDefinition(1, "ELEVATOR POSITION", "position", types.SIMCONNECT_DATATYPE_FLOAT64, 0.001, 0)
-client.RequestDataOnSimObject(1, 1, 0, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
+simClient.AddToDataDefinition(1, "ELEVATOR POSITION", "position", types.SIMCONNECT_DATATYPE_FLOAT64, 0.001, 0)
+simClient.RequestDataOnSimObject(1, 1, 0, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
 
 // Medium-frequency navigation data
-client.AddToDataDefinition(2, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 10.0, 0) // 10ft epsilon
-client.RequestDataOnSimObject(2, 2, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
+simClient.AddToDataDefinition(2, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 10.0, 0) // 10ft epsilon
+simClient.RequestDataOnSimObject(2, 2, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
 
 // Low-frequency system data
-client.AddToDataDefinition(3, "FUEL TOTAL QUANTITY", "gallons", types.SIMCONNECT_DATATYPE_FLOAT64, 1.0, 0) // 1 gallon epsilon
-client.RequestDataOnSimObject(3, 3, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 5, 0) // Every 5 seconds
+simClient.AddToDataDefinition(3, "FUEL TOTAL QUANTITY", "gallons", types.SIMCONNECT_DATATYPE_FLOAT64, 1.0, 0) // 1 gallon epsilon
+simClient.RequestDataOnSimObject(3, 3, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 5, 0) // Every 5 seconds
 ```
 
 ### Message Queue Management

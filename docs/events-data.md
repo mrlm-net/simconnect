@@ -30,7 +30,7 @@ Adds a simulation variable to a data definition.
 **Example:**
 ```go
 // Define aircraft basic data
-err := client.AddToDataDefinition(
+err := simClient.AddToDataDefinition(
     1,                                    // Definition ID
     "PLANE ALTITUDE",                     // SimVar name
     "feet",                              // Units
@@ -39,7 +39,7 @@ err := client.AddToDataDefinition(
     0,                                   // Datum ID
 )
 
-err = client.AddToDataDefinition(
+err = simClient.AddToDataDefinition(
     1,                                    // Same definition ID
     "AIRSPEED INDICATED",                 // SimVar name
     "knots",                             // Units
@@ -58,7 +58,7 @@ Clears all data from a data definition.
 
 **Example:**
 ```go
-err := client.ClearDataDefinition(1)
+err := simClient.ClearDataDefinition(1)
 ```
 
 ## Requesting Data
@@ -82,7 +82,7 @@ Requests data for a specific simulation object.
 **Example:**
 ```go
 // Request aircraft data every simulation frame, only when changed
-err := client.RequestDataOnSimObject(
+err := simClient.RequestDataOnSimObject(
     1,                                              // Request ID
     1,                                              // Definition ID
     0,                                              // Object ID (user aircraft)
@@ -107,7 +107,7 @@ Requests data for all objects of a specific type within a radius.
 **Example:**
 ```go
 // Find all aircraft within 50 nautical miles
-err := client.RequestDataOnSimObjectType(
+err := simClient.RequestDataOnSimObjectType(
     2,                                        // Request ID
     2,                                        // Definition ID
     "50000",                                  // 50000 meters radius
@@ -137,7 +137,7 @@ import "unsafe"
 
 // Set aircraft altitude to 5000 feet
 newAltitude := float64(5000.0)
-err := client.SetDataOnSimObject(
+err := simClient.SetDataOnSimObject(
     1,                                           // Definition ID
     0,                                           // Object ID (user aircraft)
     types.SIMCONNECT_DATA_SET_FLAG_DEFAULT,     // Flags
@@ -162,10 +162,10 @@ Maps a client event ID to a simulator event name.
 **Example:**
 ```go
 // Map event ID 1 to external power toggle
-err := client.MapClientEventToSimEvent(1, "TOGGLE_EXTERNAL_POWER")
+err := simClient.MapClientEventToSimEvent(1, "TOGGLE_EXTERNAL_POWER")
 
 // Map event ID 2 to gear toggle
-err := client.MapClientEventToSimEvent(2, "GEAR_TOGGLE")
+err = simClient.MapClientEventToSimEvent(2, "GEAR_TOGGLE")
 ```
 
 ### `TransmitClientEvent(object, event, data, group) error`
@@ -181,7 +181,7 @@ Transmits an event to the simulator.
 **Example:**
 ```go
 // Toggle external power
-err := client.TransmitClientEvent(
+err := simClient.TransmitClientEvent(
     0, // User aircraft
     1, // Event ID (mapped to TOGGLE_EXTERNAL_POWER)
     0, // No additional data
@@ -204,7 +204,7 @@ Adds an event to a notification group to receive notifications when it occurs.
 **Example:**
 ```go
 // Add external power event to group 1
-err := client.AddClientEventToNotificationGroup(1, 1)
+err := simClient.AddClientEventToNotificationGroup(1, 1)
 ```
 
 ### `SetNotificationGroupPriority(group, priority) error`
@@ -218,7 +218,7 @@ Sets the priority level for a notification group.
 **Example:**
 ```go
 // Set high priority for critical events
-err := client.SetNotificationGroupPriority(1, 1000)
+err := simClient.SetNotificationGroupPriority(1, 1000)
 ```
 
 ## Common Patterns
@@ -400,7 +400,7 @@ func main() {
 
 ```go
 // Good practice: Only request changes greater than 10 feet for altitude
-err := client.AddToDataDefinition(
+err := simClient.AddToDataDefinition(
     1, "PLANE ALTITUDE", "feet", 
     types.SIMCONNECT_DATATYPE_FLOAT64, 
     10.0, // Only report changes > 10 feet
