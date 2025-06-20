@@ -110,3 +110,7 @@ func (e *Engine) SetDataOnSimObject(definition int, object int, flags types.SIMC
 
 	return nil
 }
+
+func (e *Engine) ClearDataDefinition(defineID int) error {
+	return nil
+}
