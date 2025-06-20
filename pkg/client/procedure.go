@@ -29,6 +29,7 @@ var (
 	// SimConnect procedures for sending and receiving events
 	SimConnect_MapClientEventToSimEvent          *syscall.LazyProc
 	SimConnect_AddClientEventToNotificationGroup *syscall.LazyProc
+	SimConnect_SetNotificationGroupPriority      *syscall.LazyProc
 	SimConnect_TransmitClientEvent               *syscall.LazyProc
 
 	// SimConnect procedures for managing facilities
@@ -62,6 +63,7 @@ func (e *Engine) bootstrapProcedures() {
 	SimConnect_TransmitClientEvent = e.dll.NewProc("SimConnect_TransmitClientEvent")
 	SimConnect_MapClientEventToSimEvent = e.dll.NewProc("SimConnect_MapClientEventToSimEvent")
 	SimConnect_AddClientEventToNotificationGroup = e.dll.NewProc("SimConnect_AddClientEventToNotificationGroup")
+	SimConnect_SetNotificationGroupPriority = e.dll.NewProc("SimConnect_SetNotificationGroupPriority")
 
 	// SimConnect procedures for managing facilities
 	SimConnect_AddToFacilityDefinition = e.dll.NewProc("SimConnect_AddToFacilityDefinition")

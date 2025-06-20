@@ -111,6 +111,15 @@ func (e *Engine) SetDataOnSimObject(definition int, object int, flags types.SIMC
 	return nil
 }
 
-func (e *Engine) ClearDataDefinition(defineID int) error {
+func (e *Engine) ClearDataDefinition(definition int) error {
+	hresult, _, _ := SimConnect_ClearDataDefinition.Call(
+		e.handle,            // hSimConnect (use handle directly, not getHandle())
+		uintptr(definition), // DefineID
+	)
+
+	if !helpers.IsHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_ClearDataDefinition failed: 0x%08X", uint32(hresult))
+	}
+
 	return nil
 }
