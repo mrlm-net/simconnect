@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -88,13 +89,21 @@ var (
 	aircraftStateMutex sync.Mutex
 	simClient          *client.Engine
 	requestID          uint32 = 1 // Counter for unique request IDs
+	verbose            bool       // Verbose logging flag
 )
 
 func main() {
+	// Parse command-line flags
+	flag.BoolVar(&verbose, "v", false, "Enable verbose output")
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
+	flag.Parse()
+
 	fmt.Println("SimConnect Aircraft State Monitor with Web GUI")
-	fmt.Println("============================================")
-	fmt.Println("This demo displays real-time aircraft state data in a web interface")
-	fmt.Println()
+	if verbose {
+		fmt.Println("============================================")
+		fmt.Println("This demo displays real-time aircraft state data in a web interface")
+		fmt.Println()
+	}
 
 	// Initialize aircraft state
 	currentState = &AircraftState{}
@@ -112,7 +121,9 @@ func main() {
 	}
 	defer simClient.Disconnect()
 
-	fmt.Println("Connected to SimConnect successfully!")
+	if verbose {
+		fmt.Println("Connected to SimConnect successfully!")
+	}
 
 	// Setup data definitions
 	err = setupDataDefinitions()
@@ -139,10 +150,11 @@ func main() {
 		fmt.Printf("\nReceived %v signal, shutting down...\n", sig)
 		done <- true
 	}()
-
 	// Start message processing
 	fmt.Printf("Web interface available at: http://localhost:%s\n", WEB_PORT)
-	fmt.Println("Processing SimConnect messages...")
+	if verbose {
+		fmt.Println("Processing SimConnect messages...")
+	}
 
 	messageStream := simClient.Stream()
 
@@ -151,10 +163,11 @@ func main() {
 		case <-done:
 			fmt.Println("Shutting down...")
 			return
-
 		case msg := <-messageStream:
 			if msg.Error != nil {
-				fmt.Printf("Message error: %v\n", msg.Error)
+				if verbose {
+					fmt.Printf("Message error: %v\n", msg.Error)
+				}
 				continue
 			}
 
@@ -164,14 +177,20 @@ func main() {
 
 			case msg.IsException():
 				if exception, ok := msg.GetException(); ok {
-					fmt.Printf("SimConnect Exception: %v\n", exception)
+					if verbose {
+						fmt.Printf("SimConnect Exception: %v\n", exception)
+					}
 				}
 
 			case msg.IsOpen():
-				fmt.Println("SimConnect connection confirmed")
+				if verbose {
+					fmt.Println("SimConnect connection confirmed")
+				}
 
 			case msg.IsQuit():
-				fmt.Println("SimConnect quit received")
+				if verbose {
+					fmt.Println("SimConnect quit received")
+				}
 				done <- true
 				return
 			}
@@ -180,7 +199,9 @@ func main() {
 }
 
 func setupDataDefinitions() error {
-	fmt.Println("Setting up aircraft state data definitions...")
+	if verbose {
+		fmt.Println("Setting up aircraft state data definitions...")
+	}
 
 	defineID := AIRCRAFT_STATE_DEFINITION
 
@@ -281,7 +302,9 @@ func setupDataDefinitions() error {
 		return fmt.Errorf("failed to add IS USER SIM: %v", err)
 	}
 
-	fmt.Println("Aircraft state data definitions setup complete (19 variables)")
+	if verbose {
+		fmt.Println("Aircraft state data definitions setup complete (19 variables)")
+	}
 	return nil
 }
 
@@ -304,7 +327,9 @@ func requestAircraftData() error {
 func handleAircraftData(msg client.ParsedMessage) {
 	if data, ok := msg.GetSimObjectData(); ok {
 		if data.DwDefineID == AIRCRAFT_STATE_DEFINITION {
-			fmt.Printf("Debug: DefineCount: %d elements expected\n", data.DwDefineCount)
+			if verbose {
+				fmt.Printf("Debug: DefineCount: %d elements expected\n", data.DwDefineCount)
+			}
 
 			// Parse using struct pointer casting (as in working examples)
 			aircraftData := (*AircraftData)(unsafe.Pointer(&data.DwData))
@@ -320,15 +345,17 @@ func handleAircraftData(msg client.ParsedMessage) {
 			// Convert standard ATM temperature from Rankine to Fahrenheit
 			standardTempF := aircraftData.StandardTemp - 459.67
 
-			fmt.Printf("SimConnect data (fields=%d):\n", data.DwDefineCount)
-			fmt.Printf("  Position: %.6f°N, %.6f°E, %.1f ft\n", latDeg, lonDeg, aircraftData.Altitude)
-			fmt.Printf("  Speed: IAS=%.1f TAS=%.1f GS=%.1f VS=%.1f M=%.3f\n",
-				aircraftData.AirspeedIndicated, aircraftData.AirspeedTrue, aircraftData.GroundSpeed, aircraftData.VerticalSpeed, aircraftData.AirspeedMach)
-			fmt.Printf("  Attitude: P=%.2f° B=%.2f° H(T)=%.1f° H(M)=%.1f°\n", pitchDeg, bankDeg, headingTrueDeg, headingMagDeg)
-			fmt.Printf("  Surface: Type=%d Cond=%d Runway=%v Parking=%v\n",
-				int(aircraftData.SurfaceType), int(aircraftData.SurfaceCondition), aircraftData.OnAnyRunway > 0.5, aircraftData.ParkingState > 0.5)
-			fmt.Printf("  Environment: TAT=%.1f°C SAT=%.1f°F UserSim=%v\n",
-				aircraftData.TotalAirTemp, standardTempF, aircraftData.IsUserSim > 0.5)
+			if verbose {
+				fmt.Printf("SimConnect data (fields=%d):\n", data.DwDefineCount)
+				fmt.Printf("  Position: %.6f°N, %.6f°E, %.1f ft\n", latDeg, lonDeg, aircraftData.Altitude)
+				fmt.Printf("  Speed: IAS=%.1f TAS=%.1f GS=%.1f VS=%.1f M=%.3f\n",
+					aircraftData.AirspeedIndicated, aircraftData.AirspeedTrue, aircraftData.GroundSpeed, aircraftData.VerticalSpeed, aircraftData.AirspeedMach)
+				fmt.Printf("  Attitude: P=%.2f° B=%.2f° H(T)=%.1f° H(M)=%.1f°\n", pitchDeg, bankDeg, headingTrueDeg, headingMagDeg)
+				fmt.Printf("  Surface: Type=%d Cond=%d Runway=%v Parking=%v\n",
+					int(aircraftData.SurfaceType), int(aircraftData.SurfaceCondition), aircraftData.OnAnyRunway > 0.5, aircraftData.ParkingState > 0.5)
+				fmt.Printf("  Environment: TAT=%.1f°C SAT=%.1f°F UserSim=%v\n",
+					aircraftData.TotalAirTemp, standardTempF, aircraftData.IsUserSim > 0.5)
+			}
 
 			// Update state struct for web display (with thread safety)
 			aircraftStateMutex.Lock()
@@ -354,14 +381,15 @@ func handleAircraftData(msg client.ParsedMessage) {
 
 			// Environmental data
 			currentState.TotalAirTemp = aircraftData.TotalAirTemp
-			currentState.StandardTemp = standardTempF
-
-			// Set title
+			currentState.StandardTemp = standardTempF // Set title
 			currentState.Title = "Real-time Data"
 			aircraftStateMutex.Unlock()
 
-			fmt.Printf("✈️  Aircraft Data Update: Position %.6f°N, %.6f°E, Alt %.2f ft, Speed %.1f kts\n",
-				currentState.Latitude, currentState.Longitude, currentState.Altitude, currentState.GroundSpeed)
+			// Only show this message in verbose mode since it repeats frequently
+			if verbose {
+				fmt.Printf("✈️  Aircraft Data Update: Position %.6f°N, %.6f°E, Alt %.2f ft, Speed %.1f kts\n",
+					currentState.Latitude, currentState.Longitude, currentState.Altitude, currentState.GroundSpeed)
+			}
 		}
 	}
 }
@@ -370,7 +398,9 @@ func startWebServer() {
 	http.HandleFunc("/", serveIndex)
 	http.HandleFunc("/api/aircraft-state", serveAircraftState)
 
-	fmt.Printf("Starting web server on port %s...\n", WEB_PORT)
+	if verbose {
+		fmt.Printf("Starting web server on port %s...\n", WEB_PORT)
+	}
 	log.Fatal(http.ListenAndServe(":"+WEB_PORT, nil))
 }
 
@@ -385,138 +415,231 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
     <script>
         tailwind.config = {
             theme: {
-                extend: {                    colors: {
+                extend: {
+                    colors: {
                         'flight-blue': '#1e40af',
                         'altitude-green': '#16a34a',
-                        'surface-brown': '#a16207'
+                        'surface-brown': '#a16207',
+                        'neon-blue': '#00d4ff',
+                        'neon-green': '#00ff88',
+                        'neon-orange': '#ff8800',
+                        'neon-purple': '#bb00ff'
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out'
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' }
+                        }
+                    },
+                    boxShadow: {
+                        'neon': '0 0 20px rgba(0, 212, 255, 0.3)',
+                        'neon-green': '0 0 20px rgba(0, 255, 136, 0.3)',
+                        'neon-orange': '0 0 20px rgba(255, 136, 0, 0.3)'
                     }
                 }
             }
         }
     </script>
+    <style>
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .data-card {
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, rgba(45, 55, 72, 0.9), rgba(26, 32, 44, 0.9));
+        }
+        .data-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        .value-display {
+            transition: all 0.2s ease;
+        }
+        .connection-pulse {
+            animation: pulse 2s infinite;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a202c 0%, #2d3748 50%, #4a5568 100%);
+        }
+        .panel-header {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
+            border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        .data-row {
+            background: rgba(55, 65, 81, 0.6);
+            border: 1px solid rgba(75, 85, 99, 0.3);
+            transition: all 0.2s ease;
+        }
+        .data-row:hover {
+            background: rgba(75, 85, 99, 0.8);
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen">
+<body class="bg-gray-900 text-white min-h-screen gradient-bg">
     <div class="container mx-auto px-4 py-6">
         <!-- Header -->
-        <div class="mb-8 text-center">
-            <h1 class="text-4xl font-bold text-blue-400 mb-2">Aircraft State Monitor</h1>
-            <p class="text-gray-300">Real-time flight simulator data visualization</p>
-            <div class="mt-4 flex justify-center items-center space-x-4">
-                <div class="flex items-center">
-                    <div id="connection-indicator" class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                    <span id="connection-status" class="text-sm">Connected</span>
-                </div>
-                <div class="text-sm text-gray-400">
-                    Last Update: <span id="last-update">--</span>
+        <div class="mb-8 text-center animate-fade-in">
+            <h1 class="text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-500 to-cyan-400 bg-clip-text text-transparent mb-4">
+                ✈️ Aircraft State Monitor
+            </h1>
+            <p class="text-xl text-gray-300 mb-6">Real-time flight simulator data visualization</p>
+            <div class="glass-effect rounded-xl px-6 py-4 inline-block">
+                <div class="flex justify-center items-center space-x-6">
+                    <div class="flex items-center">
+                        <div id="connection-indicator" class="w-4 h-4 bg-green-400 rounded-full mr-3 connection-pulse shadow-neon-green"></div>
+                        <span id="connection-status" class="text-lg font-medium">Connected</span>
+                    </div>
+                    <div class="text-lg text-gray-300">
+                        Last Update: <span id="last-update" class="text-cyan-400 font-mono">--</span>
+                    </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Main Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        </div>        <!-- Main Grid -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
             
             <!-- Flight Data Panel -->
-            <div class="lg:col-span-1">
-                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                    <h2 class="text-xl font-semibold mb-4 text-blue-400">Flight Data</h2>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Altitude</span>
-                            <span id="altitude" class="font-mono text-green-400 text-lg">-- ft</span>
+            <div class="animate-slide-up">
+                <div class="data-card rounded-2xl p-6 shadow-2xl border border-blue-500/20 h-fit">
+                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6">
+                        <h2 class="text-2xl font-bold text-blue-400 flex items-center">
+                            <span class="mr-3">🚀</span> Flight Data
+                        </h2>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🏔️ Altitude</span>
+                            <span id="altitude" class="font-mono text-green-400 text-xl font-bold">-- ft</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Airspeed (IAS)</span>
-                            <span id="airspeed-indicated" class="font-mono text-blue-400 text-lg">-- kts</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🛩️ Airspeed (IAS)</span>
+                            <span id="airspeed-indicated" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Airspeed (TAS)</span>
-                            <span id="airspeed-true" class="font-mono text-blue-400 text-lg">-- kts</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">✈️ Airspeed (TAS)</span>
+                            <span id="airspeed-true" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Ground Speed</span>
-                            <span id="ground-speed" class="font-mono text-purple-400 text-lg">-- kts</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌍 Ground Speed</span>
+                            <span id="ground-speed" class="font-mono text-purple-400 text-xl font-bold">-- kts</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Vertical Speed</span>
-                            <span id="vertical-speed" class="font-mono text-yellow-400 text-lg">-- fpm</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">📈 Vertical Speed</span>
+                            <span id="vertical-speed" class="font-mono text-yellow-400 text-xl font-bold">-- fpm</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Mach</span>
-                            <span id="mach" class="font-mono text-red-400 text-lg">--</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">⚡ Mach</span>
+                            <span id="mach" class="font-mono text-red-400 text-xl font-bold">--</span>
                         </div>
-                    </div>                </div>
-
+                    </div>
+                </div>
             </div>
 
             <!-- Attitude and Position Panel -->
-            <div class="lg:col-span-1">
-                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                    <h2 class="text-xl font-semibold mb-4 text-green-400">Attitude & Heading</h2>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Pitch</span>
-                            <span id="pitch" class="font-mono text-green-400 text-lg">--°</span>
+            <div class="animate-slide-up" style="animation-delay: 0.1s;">
+                <div class="data-card rounded-2xl p-6 shadow-2xl border border-green-500/20 h-fit">
+                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05)); border-bottom: 1px solid rgba(34, 197, 94, 0.2);">
+                        <h2 class="text-2xl font-bold text-green-400 flex items-center">
+                            <span class="mr-3">🧭</span> Attitude & Heading
+                        </h2>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">📐 Pitch</span>
+                            <span id="pitch" class="font-mono text-green-400 text-xl font-bold">--°</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Bank</span>
-                            <span id="bank" class="font-mono text-green-400 text-lg">--°</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🔄 Bank</span>
+                            <span id="bank" class="font-mono text-green-400 text-xl font-bold">--°</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Heading (MAG)</span>
-                            <span id="heading-magnetic" class="font-mono text-blue-400 text-lg">--°</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🧲 Heading (MAG)</span>
+                            <span id="heading-magnetic" class="font-mono text-blue-400 text-xl font-bold">--°</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Heading (TRUE)</span>
-                            <span id="heading-true" class="font-mono text-blue-400 text-lg">--°</span>                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌟 Heading (TRUE)</span>
+                            <span id="heading-true" class="font-mono text-blue-400 text-xl font-bold">--°</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Position and Surface Info -->
-            <div class="lg:col-span-1">
-                <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-                    <h2 class="text-xl font-semibold mb-4 text-orange-400">Position & Surface</h2>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Latitude</span>
-                            <span id="latitude" class="font-mono text-orange-400 text-lg">--°</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Longitude</span>
-                            <span id="longitude" class="font-mono text-orange-400 text-lg">--°</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">On Runway</span>
-                            <span id="on-runway" class="font-mono text-red-400 text-lg">--</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Parking State</span>
-                            <span id="parking-state" class="font-mono text-red-400 text-lg">--</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Surface Type</span>
-                            <span id="surface-type" class="font-mono text-brown-400 text-lg">--</span>
-                        </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Surface Condition</span>
-                            <span id="surface-condition" class="font-mono text-brown-400 text-lg">--</span>
+            <!-- Combined Position, Surface and Environmental Panel -->
+            <div class="animate-slide-up xl:col-span-1 lg:col-span-2" style="animation-delay: 0.2s;">
+                <!-- Position and Surface Info -->
+                <div class="data-card rounded-2xl p-6 shadow-2xl border border-orange-500/20 mb-8">
+                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05)); border-bottom: 1px solid rgba(251, 146, 60, 0.2);">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-2xl font-bold text-orange-400 flex items-center">
+                                <span class="mr-3">📍</span> Position & Surface
+                            </h2>
+                            <button id="open-maps" class="text-orange-400 hover:text-orange-300 transition-all duration-300 hover:scale-110" title="Open in Google Maps">
+                                <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clip-rule="evenodd"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
-                </div>                <!-- Environmental Data -->
-                <div class="bg-gray-800 rounded-lg p-6 shadow-lg mt-6">
-                    <h2 class="text-xl font-semibold mb-4 text-cyan-400">Environmental</h2>
-                    <div class="space-y-3">
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Total Air Temp</span>
-                            <span id="total-air-temp" class="font-mono text-cyan-400 text-lg">--°C</span>
+                    
+                    <!-- Two column layout for position data -->
+                    <div class="space-y-4">
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌐 Latitude</span>
+                            <span id="latitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">Standard Temp</span>
-                            <span id="standard-temp" class="font-mono text-cyan-400 text-lg">--°F</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌐 Longitude</span>
+                            <span id="longitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
                         </div>
-                        <div class="flex justify-between items-center p-3 bg-gray-700 rounded">
-                            <span class="text-gray-300">User Aircraft</span>
-                            <span id="user-sim" class="font-mono text-green-400 text-lg">--</span>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🛬 On Runway</span>
+                            <span id="on-runway" class="font-mono text-red-400 text-xl font-bold">--</span>
+                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🅿️ Parking State</span>
+                            <span id="parking-state" class="font-mono text-red-400 text-xl font-bold">--</span>
+                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🏗️ Surface Type</span>
+                            <span id="surface-type" class="font-mono text-brown-400 text-xl font-bold">--</span>
+                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌧️ Surface Condition</span>
+                            <span id="surface-condition" class="font-mono text-brown-400 text-xl font-bold">--</span>
+                        </div>
+                    </div>
+    
+                </div>
+
+                <!-- Environmental Data -->
+                <div class="data-card rounded-2xl p-6 shadow-2xl border border-cyan-500/20">
+                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), rgba(6, 182, 212, 0.05)); border-bottom: 1px solid rgba(6, 182, 212, 0.2);">
+                        <h2 class="text-2xl font-bold text-cyan-400 flex items-center">
+                            <span class="mr-3">🌡️</span> Environmental
+                        </h2>
+                    </div>                    <div class="space-y-4">
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">🌡️ Total Air Temp</span>
+                            <span id="total-air-temp" class="font-mono text-cyan-400 text-xl font-bold">--°C</span>
+                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">📊 Standard Temp</span>
+                            <span id="standard-temp" class="font-mono text-cyan-400 text-xl font-bold">--°F</span>
+                        </div>
+                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                            <span class="text-gray-300 font-medium">👤 User Aircraft</span>
+                            <span id="user-sim" class="font-mono text-green-400 text-xl font-bold">--</span>
                         </div>
                     </div>
                 </div>
@@ -573,22 +696,29 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
                     // Update environmental
                     document.getElementById('total-air-temp').textContent = formatNumber(data.totalAirTemp, 1) + '°C';
                     document.getElementById('standard-temp').textContent = formatNumber(data.standardTemp, 1) + '°F';
-                    document.getElementById('user-sim').textContent = data.isUserSim ? 'YES' : 'NO';
-
-                    // Update connection status
-                    document.getElementById('connection-indicator').className = 'w-3 h-3 bg-green-500 rounded-full mr-2';
+                    document.getElementById('user-sim').textContent = data.isUserSim ? 'YES' : 'NO';                    // Update connection status
+                    document.getElementById('connection-indicator').className = 'w-4 h-4 bg-green-400 rounded-full mr-3 connection-pulse shadow-neon-green';
                     document.getElementById('connection-status').textContent = 'Connected';
                     lastUpdateTime = new Date();
                     document.getElementById('last-update').textContent = lastUpdateTime.toLocaleTimeString();
                 })
                 .catch(error => {
                     console.error('Error fetching data:', error);
-                    document.getElementById('connection-indicator').className = 'w-3 h-3 bg-red-500 rounded-full mr-2';
+                    document.getElementById('connection-indicator').className = 'w-4 h-4 bg-red-500 rounded-full mr-3';
                     document.getElementById('connection-status').textContent = 'Disconnected';
-                });        }
-
-        // Update data every 50ms for smooth real-time updates (20 FPS)
+                });}        // Update data every 50ms for smooth real-time updates (20 FPS)
         setInterval(updateData, 50);
+        
+        // Globe icon click handler
+        document.getElementById('open-maps').addEventListener('click', function() {
+            const lat = document.getElementById('latitude').textContent.replace('°', '');
+            const lon = document.getElementById('longitude').textContent.replace('°', '');
+            
+            if (lat !== '--' && lon !== '--') {
+                const url = 'https://www.google.com/maps/@' + lat + ',' + lon + ',15z';
+                window.open(url, '_blank');
+            }
+        });
         
         // Initial data load
         updateData();
