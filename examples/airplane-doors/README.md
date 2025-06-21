@@ -1,61 +1,57 @@
 # Airplane Doors Example
 
-A demonstration of controlling aircraft doors using SimConnect events. This example uses the `TOGGLE_AIRCRAFT_EXIT` event to control individual passenger doors on an aircraft.
-
-## Features
-
-- Toggle individual aircraft doors (doors 1-4)
-- Interactive command-line interface
-- Real-time door control with immediate feedback
-- Proper error handling and graceful shutdown
-
-## Usage
-
-```bash
-go run main.go
-```
-
-**Requirements:**
-- Windows OS
-- Microsoft Flight Simulator or compatible simulator running
-- Aircraft loaded in the simulator
-
-## Commands
-
-- `D1` - Toggle door #1 (front left passenger door)
-- `D2` - Toggle door #2 (front right passenger door)
-- `D3` - Toggle door #3 (rear left passenger door)
-- `D4` - Toggle door #4 (rear right passenger door)
-- `H` - Show help
-- `Q` - Quit application
+Interactive aircraft door control system with keyboard input handling.
 
 ## What it demonstrates
 
-- Creating a SimConnect client connection
-- Mapping and transmitting events with parameters to the simulator
-- Event notification group setup and prioritization
-- Interactive command processing in a separate goroutine
-- Processing different SimConnect message types (events, exceptions)
-- Proper resource cleanup and shutdown handling
+- **Event System**: Use `TOGGLE_AIRCRAFT_EXIT` event with parameters
+- **Interactive Input**: Real-time keyboard command processing
+- **Concurrent Goroutines**: Separate message processing and input handling
+- **Signal Handling**: Graceful shutdown on Ctrl+C or system signals
+- **Parameter Events**: Pass door numbers (1-4) to SimConnect events
 
-## Key Concepts
+## How to run
 
-- **Event Mapping**: Maps client events to simulator events (`TOGGLE_AIRCRAFT_EXIT`)
-- **Event Parameters**: Passes door number as parameter to the event
-- **Event Groups**: Organizes events into notification groups for prioritization
-- **Interactive Control**: Demonstrates user input handling for real-time control
-- **Message Processing**: Handles different SimConnect message types in a unified loop
+```bash
+cd examples/airplane-doors
+go run main.go
+```
 
-## Code Structure
+## Controls
 
-The example follows this pattern:
-1. Initialize SimConnect client
-2. Map events for controlling aircraft doors
-3. Configure event notification groups
-4. Start interactive input handler in a goroutine
-5. Process messages in a loop until interrupted
-6. Clean shutdown on signal or error
+| Key | Action |
+|-----|--------|
+| `1` | Toggle Door 1 (main entry) |
+| `2` | Toggle Door 2 (secondary) |
+| `3` | Toggle Door 3 (emergency) |
+| `4` | Toggle Door 4 (service) |
+| `q` | Quit application |
+| Ctrl+C | Emergency shutdown |
 
-## Note
+## Key code patterns
 
-Since aircraft door states are not available as readable simulation variables, this demo only sends toggle commands. Check the aircraft visually to see the actual door states after sending commands.
+```go
+// Event with parameters
+client.MapClientEventToSimEvent(EVENT_TOGGLE_AIRCRAFT_EXIT, "TOGGLE_AIRCRAFT_EXIT")
+client.TransmitClientEvent(EVENT_TOGGLE_AIRCRAFT_EXIT, uint32(doorNumber))
+
+// Concurrent input handling
+go keyboardInputHandler(simClient)
+
+// Signal handling for graceful shutdown
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+```
+
+## Aircraft Compatibility
+
+- Works with aircraft that have configurable doors
+- Door availability depends on aircraft model
+- Some aircraft may have fewer than 4 doors
+- Effect visible in external camera view
+
+## Requirements
+
+- Running MSFS with compatible aircraft
+- Aircraft with configurable door systems
+- External camera view recommended for visual feedback

@@ -1,49 +1,64 @@
 # Message Parsing Example
 
-A comprehensive example demonstrating message processing, graceful shutdown handling, and proper resource management with SimConnect.
-
-## Features
-
-- Parse and display different SimConnect message types
-- Graceful shutdown handling with signal processing
-- Proper resource cleanup and connection management
-- Message type identification and categorization
-- Error handling and exception processing
-
-## Usage
-
-```bash
-go run main.go
-```
-
-The program will:
-1. Connect to SimConnect and start message processing
-2. Display detailed information about each received message
-3. Show message types, data, and any errors
-4. Handle shutdown signals (Ctrl+C) gracefully
-5. Clean up resources on exit
+Demonstrates proper SimConnect message handling patterns and application lifecycle management.
 
 ## What it demonstrates
 
-- **Message Type Processing**: Handling all major SimConnect message types
-- **Signal Handling**: Proper response to system signals (SIGINT, SIGTERM)
-- **Resource Management**: Clean connection establishment and teardown
-- **Error Processing**: Comprehensive error and exception handling
-- **Graceful Shutdown**: Coordinated shutdown with timeout handling
+- **Signal Handling**: Proper Ctrl+C and system signal processing
+- **Graceful Shutdown**: Clean resource cleanup and connection termination
+- **Message Loop Patterns**: Robust message processing with timeout handling
+- **Error Recovery**: Exception handling and connection state management
+- **Application Lifecycle**: Complete startup and shutdown sequence
 
-## Message Types Shown
+## How to run
 
-The example processes and displays information for:
-- **Connection Messages**: Open, quit, and connection state changes
-- **Data Messages**: Simulation object data and system information
-- **Event Messages**: Simulator events and notifications
-- **Exception Messages**: Error conditions and debugging information
-- **System Messages**: General system state and status updates
+```bash
+cd examples/message-parsing
+go run main.go
+```
 
-## Key Concepts
+The example runs for 30 seconds automatically, or until Ctrl+C is pressed.
 
-- **Message Loop**: Processing SimConnect messages in a continuous loop
-- **Type Safety**: Safe message type casting and validation
-- **Concurrency**: Using goroutines for signal handling and shutdown coordination
-- **Timeout Handling**: Preventing indefinite blocking during shutdown
-- **Clean Architecture**: Separation of concerns for maintainable code
+## Key Features
+
+- **Automatic Timeout**: Demonstrates time-based shutdown (30 seconds)
+- **Signal Handling**: Graceful response to interrupt signals
+- **Message Classification**: Proper handling of different message types
+- **Resource Cleanup**: Ensures SimConnect connection is properly closed
+- **Error Logging**: Comprehensive error reporting and debugging
+
+## Key code patterns
+
+```go
+// Signal handling setup
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+// Timeout handling
+timeout := time.After(30 * time.Second)
+
+// Message processing with multiple exit conditions
+select {
+case <-done:           // Signal received
+case <-timeout:        // Timeout reached  
+case msg := <-stream:  // Message received
+}
+
+// Proper cleanup
+defer func() {
+    simClient.Disconnect()
+    fmt.Println("Resources cleaned up")
+}()
+```
+
+## Message Types Handled
+
+- **Open Messages**: Connection confirmation
+- **Quit Messages**: SimConnect shutdown signals  
+- **Exception Messages**: Error conditions and recovery
+- **Timeout Events**: Application lifecycle management
+
+## Requirements
+
+- Running MSFS (connection will be established but no specific aircraft needed)
+- Used as foundation pattern for other applications

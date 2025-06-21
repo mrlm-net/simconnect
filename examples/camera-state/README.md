@@ -1,48 +1,58 @@
 # Camera State Example
 
-An example demonstrating how to monitor and control camera state in the flight simulator using SimConnect.
-
-## Features
-
-- Monitor current camera state/view via simulation variable
-- Display real-time camera state changes  
-- Cycle through different camera views programmatically
-- Support for all major camera types (cockpit, external, drone, etc.)
-
-## Usage
-
-```bash
-go run main.go
-```
-
-The program will:
-1. Connect to SimConnect and monitor camera state
-2. Display current camera view in real-time
-3. Allow cycling through camera views (implementation dependent)
-4. Show camera state changes as they occur
+Monitor and control MSFS camera views programmatically.
 
 ## What it demonstrates
 
-- Monitoring camera-related simulation variables (`CAMERA STATE`)
-- Real-time tracking of view changes
-- Handling different camera modes and states
-- Continuous data monitoring with appropriate update frequencies
+- **Camera State Monitoring**: Track current camera view in real-time
+- **Camera View Switching**: Programmatically change camera perspectives  
+- **State Mapping**: Convert numeric camera states to readable names
+- **Periodic Data Requests**: Regular camera state polling
+- **View Cycle Control**: Automatic camera view cycling
 
-## Camera States
+## How to run
 
-The example recognizes these camera states:
-- **Cockpit** (2) - Internal cockpit view
-- **External/Chase** (3) - External chase camera
-- **Drone** (4) - Free-roaming drone camera
-- **Fixed on Plane** (5) - Fixed external view
-- **Environment** (6) - Environment/scenery camera
-- **Six DoF** (7) - Six degrees of freedom camera
-- **Gameplay** (8) - Gameplay-specific camera
-- **Showcase** (9) - Showcase/cinematic camera
-- **Drone Aircraft** (10) - Aircraft-focused drone camera
+```bash
+cd examples/camera-state
+go run main.go
+```
 
-## Key Concepts
+## Controls
 
-- **Camera Variables**: Accessing camera-related simulation variables
-- **State Monitoring**: Continuous monitoring of camera state changes
-- **View Management**: Understanding different camera modes available in the simulator
+| Key | Action |
+|-----|--------|
+| `c` | Cycle to next camera view |
+| `1-9` | Switch to specific camera view |
+| `q` | Quit application |
+| Ctrl+C | Emergency shutdown |
+
+## Camera Views
+
+| ID | View Name | Description |
+|----|-----------|-------------|
+| 2 | Cockpit | Interior pilot view |
+| 3 | External/Chase | Follow aircraft externally |
+| 4 | Drone | Free-roaming drone camera |
+| 5 | Fixed on Plane | Fixed external view |
+| 6 | Environment | Environment/scenery focus |
+| 7 | Six DoF | 6-degrees-of-freedom view |
+| 8 | Gameplay | Gameplay-specific camera |
+| 9 | Showcase | Cinematic showcase view |
+| 10 | Drone Aircraft | Aircraft-focused drone |
+
+## Key code patterns
+
+```go
+// Monitor camera state
+client.AddToDataDefinition(CAMERA_STATE_DEFINITION, "CAMERA STATE", "Enum", types.DATATYPE_INT32)
+client.RequestDataOnSimObject(CAMERA_STATE_REQUEST, CAMERA_STATE_DEFINITION, types.SIMOBJECT_TYPE_USER, types.PERIOD_SIM_FRAME)
+
+// Switch camera views  
+client.MapClientEventToSimEvent(eventID, "CHASE_VIEW_TOGGLE")
+client.TransmitClientEvent(eventID, 0)
+```
+
+## Requirements
+
+- Running MSFS with any aircraft or scenario
+- Camera controls enabled in simulator settings

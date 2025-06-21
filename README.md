@@ -76,115 +76,84 @@ func main() {
 }
 ```
 
-## Examples
-
-The package includes several practical examples in the [`examples/`](./examples/) directory:
-
-- **[Simple Controller](./examples/simple-controller/)** - Monitor and control aircraft external power
-- **[Camera State](./examples/camera-state/)** - Monitor camera position and orientation
-- **[Message Parsing](./examples/message-parsing/)** - Parse and display different SimConnect message types
-
-## API Reference
-
-For detailed API documentation, see the [docs/](./docs/) directory:
-
-- **[Client API](./docs/client.md)** - Core client functionality and connection management
-- **[Types Reference](./docs/types.md)** - SimConnect data types and structures
-- **[Events & Data](./docs/events-data.md)** - Working with events and simulation data
-- **[Message Handling](./docs/messages.md)** - Processing SimConnect messages
-- **[Error Handling](./docs/errors.md)** - Error handling and debugging
-
-## Debugging
-
-### SimConnect Inspector
-
-Microsoft Flight Simulator includes a built-in **SimConnect Inspector** tool that is invaluable for debugging SimConnect applications. This tool allows you to monitor SimConnect traffic in real-time and troubleshoot connection issues.
-
-#### Accessing SimConnect Inspector
-
-1. **Enable Developer Mode** in Microsoft Flight Simulator:
-   - Go to **Options** → **General** → **Developers**
-   - Turn on **Developer Mode**
-
-2. **Open SimConnect Inspector**:
-   - Access the top menu bar in Developer Mode
-   - Navigate to **Tools** → **SimConnect Inspector**
-
-#### Features
-
-The SimConnect Inspector provides:
-
-- **Real-time message monitoring** - See all SimConnect messages as they flow between your application and the simulator
-- **Connection status** - Monitor active SimConnect connections and their states
-- **Message details** - Inspect message types, parameters, and data payloads
-- **Performance metrics** - Track message frequency and connection health
-- **Error visualization** - Identify failed messages and exceptions
-
-#### Using with Your Go Application
-
-When developing with this package, the SimConnect Inspector helps you:
-
-```go
-// Example: Debug data requests
-simClient := client.New("MyDebugApp")  // This name will appear in the inspector
-simClient.Connect()
-
-// Add data definition - you'll see this in the inspector
-simClient.AddToDataDefinition(1, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 0)
-
-// Request data - monitor the request/response cycle
-simClient.RequestDataOnSimObject(1, 1, 0, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
-```
-
-#### Debugging Tips
-
-- **Check connection names**: Your application name (from `client.New("YourAppName")`) will appear in the inspector
-- **Monitor message flow**: Verify that your requests are being sent and responses received
-- **Identify bottlenecks**: Use the inspector to see if you're sending too many requests
-- **Validate data definitions**: Ensure your data definitions are correctly formatted
-- **Debug exceptions**: The inspector will show SimConnect exceptions with detailed error information
-
-For more detailed debugging techniques, see the [Error Handling Guide](./docs/errors.md).
 
 **Documentation**: [SimConnect Inspector - Microsoft Docs](https://docs.flightsimulator.com/html/Developer_Mode/Menus/Tools/SimConnect_Inspector.htm)
 
+## Examples
+
+The `examples/` directory contains practical demonstrations of SimConnect features:
+
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [simple-controller](examples/simple-controller/) | Basic aircraft state monitoring and control | SimVar reading, Event triggering, External power control |
+| [airplane-state](examples/airplane-state/) | Complete aircraft telemetry with web dashboard | Data definitions, HTTP server, Real-time telemetry |
+| [airplane-doors](examples/airplane-doors/) | Interactive aircraft door control | Event handling, Keyboard input, Door toggle operations |
+| [camera-state](examples/camera-state/) | Camera view monitoring and switching | Camera state tracking, View changes, State monitoring |
+| [message-parsing](examples/message-parsing/) | Message handling patterns | Signal handling, Graceful shutdown, Message parsing |
+
+Run any example:
+```bash
+cd examples/simple-controller
+go run main.go
+```
+
+## API Reference
+
+### Core Components
+
+#### Client Creation
+```go
+client := client.New("AppName")    // Create new client
+err := client.Connect()            // Connect to SimConnect
+defer client.Disconnect()         // Always disconnect
+```
+
+#### Message Processing
+```go
+for message := range client.Stream() {
+    switch {
+    case message.IsSimObjectData():  // Aircraft data
+    case message.IsEvent():          // Event notifications  
+    case message.IsException():      // SimConnect exceptions
+    case message.IsOpen():           // Connection confirmed
+    case message.IsQuit():           // Shutdown signal
+    }
+}
+```
+
+#### Data Definitions
+```go
+// Define data structure
+client.AddToDataDefinition(defID, "PLANE ALTITUDE", "feet", types.DATATYPE_FLOAT64)
+client.RequestDataOnSimObject(reqID, defID, types.SIMOBJECT_TYPE_USER)
+```
+
+#### Event Handling
+```go
+// Map and trigger events
+client.MapClientEventToSimEvent(eventID, "TOGGLE_EXTERNAL_POWER")
+client.TransmitClientEvent(eventID, 0)
+```
+
+## Debugging
+
+Enable SimConnect logging in MSFS Developer Mode:
+1. Open Developer Mode → Windows → SimConnect Inspector
+2. Monitor connection status and message flow
+3. Check for exceptions and data validation errors
+
+Common issues:
+- **Connection failed**: Ensure MSFS is running and SimConnect is enabled
+- **Data not received**: Verify data definitions match SimConnect documentation
+- **Events not working**: Check event names against MSFS Key Events documentation
+
 ## Advanced Usage
 
-### Working with Custom Data Definitions
-
-```go
-// Define custom data structure
-type AircraftData struct {
-    Altitude  float64
-    Airspeed  float64
-    Heading   float64
-}
-
-// Add data definition
-err := simClient.AddToDataDefinition(
-    1,                                    // Definition ID
-    "PLANE ALTITUDE",                     // SimVar name
-    "feet",                              // Units
-    types.SIMCONNECT_DATATYPE_FLOAT64,   // Data type
-    0.0,                                 // Epsilon
-    0,                                   // Datum ID
-)
-```
-
-### Event Handling
-
-```go
-// Map event to SimConnect
-err := simClient.MapClientEventToSimEvent(1, "TOGGLE_EXTERNAL_POWER")
-
-// Add event to notification group
-err = simClient.AddClientEventToNotificationGroup(1, 1)
-
-// Transmit event
-err = simClient.TransmitClientEvent(0, 1, 0, 1)
-```
-
-See [Advanced Usage Guide](./docs/advanced.md) for more examples.
+For complex scenarios, see [Advanced Documentation](docs/):
+- [Data Handling](docs/data-handling.md) - SimVar management and custom data types
+- [Event System](docs/event-system.md) - Advanced event handling and system events
+- [Error Handling](docs/error-handling.md) - Exception management and recovery
+- [Performance](docs/performance.md) - Optimization and best practices
 
 ## Contributing
 
