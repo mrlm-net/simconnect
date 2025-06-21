@@ -51,6 +51,24 @@ type AircraftData struct {
 	TotalAirTemp      float64 // TOTAL AIR TEMPERATURE in celsius
 	StandardTemp      float64 // STANDARD ATM TEMPERATURE in rankine
 	IsUserSim         float64 // IS USER SIM as boolean (0/1)
+	// Weather and Environment (19-28)
+	AmbientWindDirection float64 // AMBIENT WIND DIRECTION in degrees
+	AmbientWindVelocity  float64 // AMBIENT WIND VELOCITY in knots
+	AmbientPressure      float64 // AMBIENT PRESSURE in inches of mercury
+	AmbientTemperature   float64 // AMBIENT TEMPERATURE in celsius
+	AmbientVisibility    float64 // AMBIENT VISIBILITY in meters
+	BarometerPressure    float64 // BAROMETER PRESSURE in millibars
+	MagVar               float64 // MAGVAR in degrees
+	// Aircraft State (29-35)
+	SimOnGround    float64 // SIM ON GROUND as boolean (0/1)
+	GroundAltitude float64 // GROUND ALTITUDE in meters
+	CrashFlag      float64 // CRASH FLAG as enum
+	Realism        float64 // REALISM as number
+	// Velocity Components (36-38)
+	VelocityWorldX     float64 // VELOCITY WORLD X in feet per second
+	VelocityWorldY     float64 // VELOCITY WORLD Y in feet per second
+	VelocityWorldZ     float64 // VELOCITY WORLD Z in feet per second
+	TotalWorldVelocity float64 // TOTAL WORLD VELOCITY in feet per second
 }
 type AircraftState struct {
 	// Basic Flight Data
@@ -77,11 +95,31 @@ type AircraftState struct {
 	// Aircraft State
 	Title     string `json:"title"`
 	IsUserSim bool   `json:"isUserSim"`
-
 	// Additional Flight Data
 	Mach         float64 `json:"mach"`
 	TotalAirTemp float64 `json:"totalAirTemp"`
 	StandardTemp float64 `json:"standardTemp"`
+
+	// Weather and Environment
+	AmbientWindDirection float64 `json:"ambientWindDirection"`
+	AmbientWindVelocity  float64 `json:"ambientWindVelocity"`
+	AmbientPressure      float64 `json:"ambientPressure"`
+	AmbientTemperature   float64 `json:"ambientTemperature"`
+	AmbientVisibility    float64 `json:"ambientVisibility"`
+	BarometerPressure    float64 `json:"barometerPressure"`
+	MagVar               float64 `json:"magVar"`
+
+	// Extended Aircraft State
+	SimOnGround    bool    `json:"simOnGround"`
+	GroundAltitude float64 `json:"groundAltitude"`
+	CrashFlag      int32   `json:"crashFlag"`
+	Realism        float64 `json:"realism"`
+
+	// Velocity Components
+	VelocityWorldX     float64 `json:"velocityWorldX"`
+	VelocityWorldY     float64 `json:"velocityWorldY"`
+	VelocityWorldZ     float64 `json:"velocityWorldZ"`
+	TotalWorldVelocity float64 `json:"totalWorldVelocity"`
 }
 
 var (
@@ -296,14 +334,91 @@ func setupDataDefinitions() error {
 	if err != nil {
 		return fmt.Errorf("failed to add STANDARD ATM TEMPERATURE: %v", err)
 	}
-
 	err = simClient.AddToDataDefinition(defineID, "IS USER SIM", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 18)
 	if err != nil {
 		return fmt.Errorf("failed to add IS USER SIM: %v", err)
 	}
 
+	// Weather and Environment (19-28)
+	err = simClient.AddToDataDefinition(defineID, "AMBIENT WIND DIRECTION", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 19)
+	if err != nil {
+		return fmt.Errorf("failed to add AMBIENT WIND DIRECTION: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "AMBIENT WIND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 20)
+	if err != nil {
+		return fmt.Errorf("failed to add AMBIENT WIND VELOCITY: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "AMBIENT PRESSURE", "inches of mercury", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 21)
+	if err != nil {
+		return fmt.Errorf("failed to add AMBIENT PRESSURE: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "AMBIENT TEMPERATURE", "celsius", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 22)
+	if err != nil {
+		return fmt.Errorf("failed to add AMBIENT TEMPERATURE: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "AMBIENT VISIBILITY", "meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 23)
+	if err != nil {
+		return fmt.Errorf("failed to add AMBIENT VISIBILITY: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "BAROMETER PRESSURE", "millibars", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 24)
+	if err != nil {
+		return fmt.Errorf("failed to add BAROMETER PRESSURE: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "MAGVAR", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 25)
+	if err != nil {
+		return fmt.Errorf("failed to add MAGVAR: %v", err)
+	}
+
+	// Aircraft State (26-29)
+	err = simClient.AddToDataDefinition(defineID, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 26)
+	if err != nil {
+		return fmt.Errorf("failed to add SIM ON GROUND: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "GROUND ALTITUDE", "meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 27)
+	if err != nil {
+		return fmt.Errorf("failed to add GROUND ALTITUDE: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "CRASH FLAG", "enum", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 28)
+	if err != nil {
+		return fmt.Errorf("failed to add CRASH FLAG: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "REALISM", "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 29)
+	if err != nil {
+		return fmt.Errorf("failed to add REALISM: %v", err)
+	}
+
+	// Velocity Components (30-33)
+	err = simClient.AddToDataDefinition(defineID, "VELOCITY WORLD X", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 30)
+	if err != nil {
+		return fmt.Errorf("failed to add VELOCITY WORLD X: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "VELOCITY WORLD Y", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 31)
+	if err != nil {
+		return fmt.Errorf("failed to add VELOCITY WORLD Y: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "VELOCITY WORLD Z", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 32)
+	if err != nil {
+		return fmt.Errorf("failed to add VELOCITY WORLD Z: %v", err)
+	}
+
+	err = simClient.AddToDataDefinition(defineID, "TOTAL WORLD VELOCITY", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0.0, 33)
+	if err != nil {
+		return fmt.Errorf("failed to add TOTAL WORLD VELOCITY: %v", err)
+	}
+
 	if verbose {
-		fmt.Println("Aircraft state data definitions setup complete (19 variables)")
+		fmt.Println("Aircraft state data definitions setup complete (34 variables)")
 	}
 	return nil
 }
@@ -340,9 +455,7 @@ func handleAircraftData(msg client.ParsedMessage) {
 			pitchDeg := aircraftData.PitchDegrees * 180.0 / math.Pi
 			bankDeg := aircraftData.BankDegrees * 180.0 / math.Pi
 			headingTrueDeg := aircraftData.HeadingTrue * 180.0 / math.Pi
-			headingMagDeg := aircraftData.HeadingMagnetic * 180.0 / math.Pi
-
-			// Convert standard ATM temperature from Rankine to Fahrenheit
+			headingMagDeg := aircraftData.HeadingMagnetic * 180.0 / math.Pi // Convert standard ATM temperature from Rankine to Fahrenheit
 			standardTempF := aircraftData.StandardTemp - 459.67
 
 			if verbose {
@@ -353,8 +466,8 @@ func handleAircraftData(msg client.ParsedMessage) {
 				fmt.Printf("  Attitude: P=%.2f° B=%.2f° H(T)=%.1f° H(M)=%.1f°\n", pitchDeg, bankDeg, headingTrueDeg, headingMagDeg)
 				fmt.Printf("  Surface: Type=%d Cond=%d Runway=%v Parking=%v\n",
 					int(aircraftData.SurfaceType), int(aircraftData.SurfaceCondition), aircraftData.OnAnyRunway > 0.5, aircraftData.ParkingState > 0.5)
-				fmt.Printf("  Environment: TAT=%.1f°C SAT=%.1f°F UserSim=%v\n",
-					aircraftData.TotalAirTemp, standardTempF, aircraftData.IsUserSim > 0.5)
+				fmt.Printf("  Environment: TAT=%.1f°C SAT=%.1f°F UserSim=%v Realism=%.1f%%\n",
+					aircraftData.TotalAirTemp, standardTempF, aircraftData.IsUserSim > 0.5, aircraftData.Realism*100.0)
 			}
 
 			// Update state struct for web display (with thread safety)
@@ -377,11 +490,30 @@ func handleAircraftData(msg client.ParsedMessage) {
 			currentState.ParkingState = aircraftData.ParkingState > 0.5
 			currentState.SurfaceType = int32(aircraftData.SurfaceType)
 			currentState.SurfaceCondition = int32(aircraftData.SurfaceCondition)
-			currentState.IsUserSim = aircraftData.IsUserSim > 0.5
-
-			// Environmental data
+			currentState.IsUserSim = aircraftData.IsUserSim > 0.5 // Environmental data
 			currentState.TotalAirTemp = aircraftData.TotalAirTemp
-			currentState.StandardTemp = standardTempF // Set title
+			currentState.StandardTemp = standardTempF
+
+			// Weather and Environment
+			currentState.AmbientWindDirection = aircraftData.AmbientWindDirection
+			currentState.AmbientWindVelocity = aircraftData.AmbientWindVelocity
+			currentState.AmbientPressure = aircraftData.AmbientPressure
+			currentState.AmbientTemperature = aircraftData.AmbientTemperature
+			currentState.AmbientVisibility = aircraftData.AmbientVisibility
+			currentState.BarometerPressure = aircraftData.BarometerPressure
+			currentState.MagVar = aircraftData.MagVar // Extended Aircraft State
+			currentState.SimOnGround = aircraftData.SimOnGround > 0.5
+			currentState.GroundAltitude = aircraftData.GroundAltitude
+			currentState.CrashFlag = int32(aircraftData.CrashFlag)
+			currentState.Realism = aircraftData.Realism * 100.0 // Convert from 0-1 range to 0-100 percentage
+
+			// Velocity Components
+			currentState.VelocityWorldX = aircraftData.VelocityWorldX
+			currentState.VelocityWorldY = aircraftData.VelocityWorldY
+			currentState.VelocityWorldZ = aircraftData.VelocityWorldZ
+			currentState.TotalWorldVelocity = aircraftData.TotalWorldVelocity
+
+			// Set title
 			currentState.Title = "Real-time Data"
 			aircraftStateMutex.Unlock()
 
@@ -506,144 +638,222 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
                     </div>
                 </div>
             </div>
-        </div>        <!-- Main Grid -->
-        <div class="grid grid-cols-1 xl:grid-cols-3 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
-            
-            <!-- Flight Data Panel -->
-            <div class="animate-slide-up">
-                <div class="data-card rounded-2xl p-6 shadow-2xl border border-blue-500/20 h-fit">
-                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6">
-                        <h2 class="text-2xl font-bold text-blue-400 flex items-center">
-                            <span class="mr-3">🚀</span> Flight Data
-                        </h2>
-                    </div>
-                    <div class="space-y-4">
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🏔️ Altitude</span>
-                            <span id="altitude" class="font-mono text-green-400 text-xl font-bold">-- ft</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🛩️ Airspeed (IAS)</span>
-                            <span id="airspeed-indicated" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">✈️ Airspeed (TAS)</span>
-                            <span id="airspeed-true" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌍 Ground Speed</span>
-                            <span id="ground-speed" class="font-mono text-purple-400 text-xl font-bold">-- kts</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">📈 Vertical Speed</span>
-                            <span id="vertical-speed" class="font-mono text-yellow-400 text-xl font-bold">-- fpm</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">⚡ Mach</span>
-                            <span id="mach" class="font-mono text-red-400 text-xl font-bold">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Attitude and Position Panel -->
-            <div class="animate-slide-up" style="animation-delay: 0.1s;">
-                <div class="data-card rounded-2xl p-6 shadow-2xl border border-green-500/20 h-fit">
-                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05)); border-bottom: 1px solid rgba(34, 197, 94, 0.2);">
-                        <h2 class="text-2xl font-bold text-green-400 flex items-center">
-                            <span class="mr-3">🧭</span> Attitude & Heading
-                        </h2>
-                    </div>
-                    <div class="space-y-4">
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">📐 Pitch</span>
-                            <span id="pitch" class="font-mono text-green-400 text-xl font-bold">--°</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🔄 Bank</span>
-                            <span id="bank" class="font-mono text-green-400 text-xl font-bold">--°</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🧲 Heading (MAG)</span>
-                            <span id="heading-magnetic" class="font-mono text-blue-400 text-xl font-bold">--°</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌟 Heading (TRUE)</span>
-                            <span id="heading-true" class="font-mono text-blue-400 text-xl font-bold">--°</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Combined Position, Surface and Environmental Panel -->
-            <div class="animate-slide-up xl:col-span-1 lg:col-span-2" style="animation-delay: 0.2s;">
-                <!-- Position and Surface Info -->
-                <div class="data-card rounded-2xl p-6 shadow-2xl border border-orange-500/20 mb-8">
-                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05)); border-bottom: 1px solid rgba(251, 146, 60, 0.2);">
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-2xl font-bold text-orange-400 flex items-center">
-                                <span class="mr-3">📍</span> Position & Surface
+        </div>
+        
+        <!-- Main Dashboard Grid - Clean 3x2 Responsive Layout -->
+        <div class="max-w-7xl mx-auto px-4">
+            <!-- Dashboard Grid Container -->            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+                
+                <!-- Panel 1: Flight Data -->
+                <div class="animate-slide-up">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-blue-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6">
+                            <h2 class="text-2xl font-bold text-blue-400 flex items-center">
+                                <span class="mr-3">🚀</span> Flight Data
                             </h2>
-                            <button id="open-maps" class="text-orange-400 hover:text-orange-300 transition-all duration-300 hover:scale-110" title="Open in Google Maps">
-                                <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clip-rule="evenodd"></path>
-                                </svg>
-                            </button>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🏔️ Altitude</span>
+                                <span id="altitude" class="font-mono text-green-400 text-xl font-bold">-- ft</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🛩️ Airspeed (IAS)</span>
+                                <span id="airspeed-indicated" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">✈️ Airspeed (TAS)</span>
+                                <span id="airspeed-true" class="font-mono text-blue-400 text-xl font-bold">-- kts</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌍 Ground Speed</span>
+                                <span id="ground-speed" class="font-mono text-purple-400 text-xl font-bold">-- kts</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">📈 Vertical Speed</span>
+                                <span id="vertical-speed" class="font-mono text-yellow-400 text-xl font-bold">-- fpm</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">⚡ Mach</span>
+                                <span id="mach" class="font-mono text-red-400 text-xl font-bold">--</span>
+                            </div>
                         </div>
                     </div>
-                    
-                    <!-- Two column layout for position data -->
-                    <div class="space-y-4">
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌐 Latitude</span>
-                            <span id="latitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
+                </div>                <!-- Panel 2: Weather & Environment -->
+                <div class="animate-slide-up" style="animation-delay: 0.1s;">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-cyan-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), rgba(6, 182, 212, 0.05)); border-bottom: 1px solid rgba(6, 182, 212, 0.2);">
+                            <h2 class="text-2xl font-bold text-cyan-400 flex items-center">
+                                <span class="mr-3">🌡️</span> Weather & Environment
+                            </h2>
                         </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌐 Longitude</span>
-                            <span id="longitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🛬 On Runway</span>
-                            <span id="on-runway" class="font-mono text-red-400 text-xl font-bold">--</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🅿️ Parking State</span>
-                            <span id="parking-state" class="font-mono text-red-400 text-xl font-bold">--</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🏗️ Surface Type</span>
-                            <span id="surface-type" class="font-mono text-brown-400 text-xl font-bold">--</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌧️ Surface Condition</span>
-                            <span id="surface-condition" class="font-mono text-brown-400 text-xl font-bold">--</span>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌡️ Total Air Temp</span>
+                                <span id="total-air-temp" class="font-mono text-cyan-400 text-xl font-bold">--°C</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌡️ Ambient Temp</span>
+                                <span id="ambient-temp" class="font-mono text-cyan-400 text-xl font-bold">--°C</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">💨 Wind Direction</span>
+                                <span id="wind-direction" class="font-mono text-yellow-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">💨 Wind Velocity</span>
+                                <span id="wind-velocity" class="font-mono text-yellow-400 text-xl font-bold">-- kts</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌫️ Visibility</span>
+                                <span id="visibility" class="font-mono text-purple-400 text-xl font-bold">-- m</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">📊 Pressure (Baro)</span>
+                                <span id="barometer-pressure" class="font-mono text-blue-400 text-xl font-bold">-- mb</span>
+                            </div>
                         </div>
                     </div>
-    
                 </div>
 
-                <!-- Environmental Data -->
-                <div class="data-card rounded-2xl p-6 shadow-2xl border border-cyan-500/20">
-                    <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), rgba(6, 182, 212, 0.05)); border-bottom: 1px solid rgba(6, 182, 212, 0.2);">
-                        <h2 class="text-2xl font-bold text-cyan-400 flex items-center">
-                            <span class="mr-3">🌡️</span> Environmental
-                        </h2>
-                    </div>                    <div class="space-y-4">
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">🌡️ Total Air Temp</span>
-                            <span id="total-air-temp" class="font-mono text-cyan-400 text-xl font-bold">--°C</span>
+                <!-- Panel 3: Position & Surface -->
+                <div class="animate-slide-up" style="animation-delay: 0.2s;">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-orange-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05)); border-bottom: 1px solid rgba(251, 146, 60, 0.2);">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-2xl font-bold text-orange-400 flex items-center">
+                                    <span class="mr-3">📍</span> Position & Surface
+                                </h2>
+                                <button id="open-maps" class="text-orange-400 hover:text-orange-300 transition-all duration-300 hover:scale-110" title="Open in Google Maps">
+                                    <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">📊 Standard Temp</span>
-                            <span id="standard-temp" class="font-mono text-cyan-400 text-xl font-bold">--°F</span>
-                        </div>
-                        <div class="data-row flex justify-between items-center p-4 rounded-xl">
-                            <span class="text-gray-300 font-medium">👤 User Aircraft</span>
-                            <span id="user-sim" class="font-mono text-green-400 text-xl font-bold">--</span>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌐 Latitude</span>
+                                <span id="latitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌐 Longitude</span>
+                                <span id="longitude" class="font-mono text-orange-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🛬 On Runway</span>
+                                <span id="on-runway" class="font-mono text-red-400 text-xl font-bold">--</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🅿️ Parking State</span>
+                                <span id="parking-state" class="font-mono text-red-400 text-xl font-bold">--</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🏗️ Surface Type</span>
+                                <span id="surface-type" class="font-mono text-brown-400 text-xl font-bold">--</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌧️ Surface Condition</span>
+                                <span id="surface-condition" class="font-mono text-brown-400 text-xl font-bold">--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+
+                <!-- Panel 4: Attitude & Heading -->
+                <div class="animate-slide-up" style="animation-delay: 0.3s;">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-green-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05)); border-bottom: 1px solid rgba(34, 197, 94, 0.2);">
+                            <h2 class="text-2xl font-bold text-green-400 flex items-center">
+                                <span class="mr-3">🧭</span> Attitude & Heading
+                            </h2>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">📐 Pitch</span>
+                                <span id="pitch" class="font-mono text-green-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🔄 Bank</span>
+                                <span id="bank" class="font-mono text-green-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🧲 Heading (MAG)</span>
+                                <span id="heading-magnetic" class="font-mono text-blue-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌟 Heading (TRUE)</span>
+                                <span id="heading-true" class="font-mono text-blue-400 text-xl font-bold">--°</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>                <!-- Panel 5: Aircraft State -->
+                <div class="animate-slide-up" style="animation-delay: 0.4s;">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-purple-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(168, 85, 247, 0.1), rgba(168, 85, 247, 0.05)); border-bottom: 1px solid rgba(168, 85, 247, 0.2);">
+                            <h2 class="text-2xl font-bold text-purple-400 flex items-center">
+                                <span class="mr-3">🛠️</span> Aircraft State
+                            </h2>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🛬 On Ground</span>
+                                <span id="sim-on-ground" class="font-mono text-green-400 text-xl font-bold">--</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🏔️ Ground Altitude</span>
+                                <span id="ground-altitude" class="font-mono text-brown-400 text-xl font-bold">-- m</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🧭 Magnetic Variation</span>
+                                <span id="mag-var" class="font-mono text-blue-400 text-xl font-bold">--°</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">💥 Crash State</span>
+                                <span id="crash-flag" class="font-mono text-red-400 text-xl font-bold">--</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🎯 Realism Level</span>
+                                <span id="realism" class="font-mono text-green-400 text-xl font-bold">--%</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">👤 User Aircraft</span>
+                                <span id="user-sim" class="font-mono text-green-400 text-xl font-bold">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 6: Velocity Components -->
+                <div class="animate-slide-up" style="animation-delay: 0.5s;">
+                    <div class="data-card rounded-2xl p-6 shadow-2xl border border-yellow-500/20">
+                        <div class="panel-header -mx-6 -mt-6 px-6 py-4 rounded-t-2xl mb-6" style="background: linear-gradient(90deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05)); border-bottom: 1px solid rgba(245, 158, 11, 0.2);">
+                            <h2 class="text-2xl font-bold text-yellow-400 flex items-center">
+                                <span class="mr-3">🌍</span> Velocity Components
+                            </h2>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">➡️ East/West (X)</span>
+                                <span id="velocity-x" class="font-mono text-yellow-400 text-xl font-bold">-- ft/s</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">⬆️ Vertical (Y)</span>
+                                <span id="velocity-y" class="font-mono text-green-400 text-xl font-bold">-- ft/s</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">⬇️ North/South (Z)</span>
+                                <span id="velocity-z" class="font-mono text-blue-400 text-xl font-bold">-- ft/s</span>
+                            </div>
+                            <div class="data-row flex justify-between items-center p-4 rounded-xl">
+                                <span class="text-gray-300 font-medium">🌐 Total World Velocity</span>
+                                <span id="total-world-velocity" class="font-mono text-purple-400 text-xl font-bold">-- ft/s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div> <!-- End of main grid -->
         </div>
     </div>
 
@@ -664,6 +874,11 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
             0: 'Normal', 1: 'Wet', 2: 'Icy', 3: 'Snow'
         };
 
+        const crashFlags = {
+            0: 'None', 2: 'Mountain', 4: 'General', 6: 'Building', 8: 'Splash', 
+            10: 'Gear Up', 12: 'Overstress', 14: 'Building', 16: 'Aircraft', 18: 'Fuel Truck'
+        };
+
         function formatNumber(value, decimals = 1) {
             if (value === null || value === undefined || isNaN(value)) return '--';
             return Number(value).toFixed(decimals);
@@ -679,7 +894,9 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
                     document.getElementById('airspeed-true').textContent = formatNumber(data.airspeedTrue, 0) + ' kts';
                     document.getElementById('ground-speed').textContent = formatNumber(data.groundSpeed, 0) + ' kts';
                     document.getElementById('vertical-speed').textContent = formatNumber(data.verticalSpeed, 0) + ' fpm';
-                    document.getElementById('mach').textContent = formatNumber(data.mach, 3);                    // Update attitude
+                    document.getElementById('mach').textContent = formatNumber(data.mach, 3);
+                    
+                    // Update attitude
                     document.getElementById('pitch').textContent = formatNumber(data.pitchDegrees, 1) + '°';
                     document.getElementById('bank').textContent = formatNumber(data.bankDegrees, 1) + '°';
                     document.getElementById('heading-magnetic').textContent = formatNumber(data.headingMagnetic, 0) + '°';
@@ -692,11 +909,30 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
                     document.getElementById('parking-state').textContent = data.parkingState ? 'PARKED' : 'ACTIVE';
                     document.getElementById('surface-type').textContent = surfaceTypes[data.surfaceType] || 'Unknown';
                     document.getElementById('surface-condition').textContent = surfaceConditions[data.surfaceCondition] || 'Unknown';
-
+                    
                     // Update environmental
                     document.getElementById('total-air-temp').textContent = formatNumber(data.totalAirTemp, 1) + '°C';
-                    document.getElementById('standard-temp').textContent = formatNumber(data.standardTemp, 1) + '°F';
-                    document.getElementById('user-sim').textContent = data.isUserSim ? 'YES' : 'NO';                    // Update connection status
+                    document.getElementById('ambient-temp').textContent = formatNumber(data.ambientTemperature, 1) + '°C';
+                    document.getElementById('wind-direction').textContent = formatNumber(data.ambientWindDirection, 0) + '°';
+                    document.getElementById('wind-velocity').textContent = formatNumber(data.ambientWindVelocity, 1) + ' kts';
+                    document.getElementById('visibility').textContent = formatNumber(data.ambientVisibility / 1000, 1) + ' km';
+                    document.getElementById('barometer-pressure').textContent = formatNumber(data.barometerPressure, 1) + ' mb';
+
+                    // Update aircraft state
+                    document.getElementById('sim-on-ground').textContent = data.simOnGround ? 'YES' : 'NO';
+                    document.getElementById('ground-altitude').textContent = formatNumber(data.groundAltitude, 1) + ' m';
+                    document.getElementById('mag-var').textContent = formatNumber(data.magVar, 2) + '°';
+                    document.getElementById('crash-flag').textContent = crashFlags[data.crashFlag] || 'Unknown';
+                    document.getElementById('realism').textContent = formatNumber(data.realism, 0) + '%';
+                    document.getElementById('user-sim').textContent = data.isUserSim ? 'YES' : 'NO';
+
+                    // Update velocity components
+                    document.getElementById('velocity-x').textContent = formatNumber(data.velocityWorldX, 1) + ' ft/s';
+                    document.getElementById('velocity-y').textContent = formatNumber(data.velocityWorldY, 1) + ' ft/s';
+                    document.getElementById('velocity-z').textContent = formatNumber(data.velocityWorldZ, 1) + ' ft/s';
+                    document.getElementById('total-world-velocity').textContent = formatNumber(data.totalWorldVelocity, 1) + ' ft/s';
+                    
+                    // Update connection status
                     document.getElementById('connection-indicator').className = 'w-4 h-4 bg-green-400 rounded-full mr-3 connection-pulse shadow-neon-green';
                     document.getElementById('connection-status').textContent = 'Connected';
                     lastUpdateTime = new Date();
@@ -706,7 +942,10 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
                     console.error('Error fetching data:', error);
                     document.getElementById('connection-indicator').className = 'w-4 h-4 bg-red-500 rounded-full mr-3';
                     document.getElementById('connection-status').textContent = 'Disconnected';
-                });}        // Update data every 50ms for smooth real-time updates (20 FPS)
+                });
+        }
+        
+        // Update data every 50ms for smooth real-time updates (20 FPS)
         setInterval(updateData, 50);
         
         // Globe icon click handler
@@ -721,11 +960,9 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
         });
         
         // Initial data load
-        updateData();
-    </script>
+        updateData();    </script>
 </body>
 </html>`
-
 	w.Header().Set("Content-Type", "text/html")
 	tmpl := template.Must(template.New("index").Parse(htmlTemplate))
 	tmpl.Execute(w, nil)
