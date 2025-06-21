@@ -88,6 +88,7 @@ The `examples/` directory contains practical demonstrations of SimConnect featur
 | [simple-controller](examples/simple-controller/) | Basic aircraft state monitoring and control | SimVar reading, Event triggering, External power control |
 | [airplane-state](examples/airplane-state/) | Complete aircraft telemetry with web dashboard | Data definitions, HTTP server, Real-time telemetry |
 | [airplane-doors](examples/airplane-doors/) | Interactive aircraft door control | Event handling, Keyboard input, Door toggle operations |
+| [camera-controller](examples/camera-controller/) | Advanced camera control with web interface | Real-time camera monitoring, Interactive controls, Web dashboard |
 | [camera-state](examples/camera-state/) | Camera view monitoring and switching | Camera state tracking, View changes, State monitoring |
 | [message-parsing](examples/message-parsing/) | Message handling patterns | Signal handling, Graceful shutdown, Message parsing |
 
