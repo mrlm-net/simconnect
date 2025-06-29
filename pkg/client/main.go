@@ -16,11 +16,15 @@ const (
 )
 
 func New(name string) *Engine {
+	return NewWithDLL(name, DLL_DEFAULT_PATH)
+}
+
+func NewWithDLL(name string, dllPath string) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &Engine{
 		ctx:    ctx,
 		cancel: cancel,
-		dll:    syscall.NewLazyDLL(DLL_DEFAULT_PATH),
+		dll:    syscall.NewLazyDLL(dllPath),
 		handle: 0, // Initially no connection
 		name:   name,
 		queue:  make(chan ParsedMessage, DEFAULT_STREAM_BUFFER_SIZE), // Buffered channel for parsed message queueing
