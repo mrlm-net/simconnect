@@ -150,6 +150,7 @@ type SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE struct {
 type SIMCONNECT_RECV_EVENT_FILENAME struct {
 	SIMCONNECT_RECV           // Inherits from base structure
 	UEventID        uint32    // Event ID for the filename event
+	DwData          uint32    // Data associated with the event (MISSING FIELD, aligns struct with C SDK)
 	DwFlags         uint32    // Flags associated with the filename event
 	DwGroupID       uint32    // Group ID for the event
 	SzFileName      [260]byte // Filename associated with the event
