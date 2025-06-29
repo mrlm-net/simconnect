@@ -55,8 +55,6 @@ func (e *Engine) Disconnect() error {
 			hresult, _, _ := SimConnect_Close.Call(e.handle)
 			if !helpers.IsHRESULTSuccess(hresult) {
 				err = fmt.Errorf("SimConnect_Close failed with HRESULT: 0x%08X", hresult)
-			} else {
-				fmt.Println("SimConnect connection closed successfully")
 			}
 			e.handle = 0
 		}
