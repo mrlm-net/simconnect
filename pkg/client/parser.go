@@ -7,7 +7,6 @@ package client
 
 import (
 	"fmt"
-	"log"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -56,10 +55,12 @@ func (e *Engine) parseMessage(ppData uintptr, pcbData uint32) ParsedMessage {
 		parsedMsg.Data = e.parseAssignedObjectID(ppData, pcbData)
 	case types.SIMCONNECT_RECV_ID_SYSTEM_STATE:
 		parsedMsg.Data = e.parseSystemState(ppData, pcbData)
+	case types.SIMCONNECT_RECV_ID_EVENT_FILENAME:
+		parsedMsg.Data = e.parseEventFilename(ppData, pcbData)
 	default:
 		// For unhandled message types, just provide the raw header
 		parsedMsg.Data = header
-		log.Printf("Unhandled message type: %v", header.DwID)
+		//log.Printf("Unhandled message type: %v", header.DwID)
 	}
 
 	return parsedMsg
@@ -136,4 +137,12 @@ func (e *Engine) parseSystemState(ppData uintptr, pcbData uint32) *types.SIMCONN
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_SYSTEM_STATE)(unsafe.Pointer(ppData))
+}
+
+// parseEventFilename parses SIMCONNECT_RECV_EVENT_FILENAME messages
+func (e *Engine) parseEventFilename(ppData uintptr, pcbData uint32) *types.SIMCONNECT_RECV_EVENT_FILENAME {
+	if pcbData < uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_EVENT_FILENAME{})) {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_EVENT_FILENAME)(unsafe.Pointer(ppData))
 }
