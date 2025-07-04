@@ -33,9 +33,12 @@ var (
 	SimConnect_TransmitClientEvent               *syscall.LazyProc
 
 	// SimConnect procedures for managing facilities
-	SimConnect_AddToFacilityDefinition *syscall.LazyProc
-	SimConnect_RequestFacilitesList    *syscall.LazyProc
-	SimConnect_RequestFacilityData     *syscall.LazyProc
+	SimConnect_AddToFacilityDefinition         *syscall.LazyProc
+	SimConnect_RequestFacilitesList            *syscall.LazyProc
+	SimConnect_RequestFacilityData             *syscall.LazyProc
+	SimConnect_AddFacilityDataDefinitionFilter *syscall.LazyProc
+	SimConnect_SubscribeToFacilities           *syscall.LazyProc
+	SimConnect_UnsubscribeToFacilities         *syscall.LazyProc
 )
 
 func (e *Engine) bootstrapProcedures() {
@@ -69,4 +72,7 @@ func (e *Engine) bootstrapProcedures() {
 	SimConnect_AddToFacilityDefinition = e.dll.NewProc("SimConnect_AddToFacilityDefinition")
 	SimConnect_RequestFacilitesList = e.dll.NewProc("SimConnect_RequestFacilitiesList")
 	SimConnect_RequestFacilityData = e.dll.NewProc("SimConnect_RequestFacilityData")
+	SimConnect_AddFacilityDataDefinitionFilter = e.dll.NewProc("SimConnect_AddFacilityDataDefinitionFilter")
+	SimConnect_SubscribeToFacilities = e.dll.NewProc("SimConnect_SubscribeToFacilities")
+	SimConnect_UnsubscribeToFacilities = e.dll.NewProc("SimConnect_UnsubscribeToFacilities")
 }
