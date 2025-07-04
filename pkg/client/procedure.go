@@ -44,6 +44,13 @@ var (
 	SimConnect_FlightLoad     *syscall.LazyProc
 	SimConnect_FlightSave     *syscall.LazyProc
 	SimConnect_FlightPlanLoad *syscall.LazyProc
+
+	// SimConnect procedures for debugging and diagnostics
+	SimConnect_GetLastSentPacketID  *syscall.LazyProc
+	SimConnect_RequestResponseTimes *syscall.LazyProc
+
+	// SimConnect AI objects procedures
+	SimConnect_EnumerateSimObjectsAndLiveries *syscall.LazyProc
 )
 
 func (e *Engine) bootstrapProcedures() {
@@ -85,4 +92,11 @@ func (e *Engine) bootstrapProcedures() {
 	SimConnect_FlightLoad = e.dll.NewProc("SimConnect_FlightLoad")
 	SimConnect_FlightSave = e.dll.NewProc("SimConnect_FlightSave")
 	SimConnect_FlightPlanLoad = e.dll.NewProc("SimConnect_FlightPlanLoad")
+
+	// SimConnect procedures for debigging and diagnostics
+	SimConnect_GetLastSentPacketID = e.dll.NewProc("SimConnect_GetLastSentPacketID")
+	SimConnect_RequestResponseTimes = e.dll.NewProc("SimConnect_RequestResponseTimes")
+
+	// SimConnect AI objects procedures
+	SimConnect_EnumerateSimObjectsAndLiveries = e.dll.NewProc("SimConnect_EnumerateSimObjectsAndLiveries")
 }
