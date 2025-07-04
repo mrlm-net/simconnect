@@ -39,6 +39,11 @@ var (
 	SimConnect_AddFacilityDataDefinitionFilter *syscall.LazyProc
 	SimConnect_SubscribeToFacilities           *syscall.LazyProc
 	SimConnect_UnsubscribeToFacilities         *syscall.LazyProc
+
+	// SimConnect procedures for flight operations
+	SimConnect_FlightLoad     *syscall.LazyProc
+	SimConnect_FlightSave     *syscall.LazyProc
+	SimConnect_FlightPlanLoad *syscall.LazyProc
 )
 
 func (e *Engine) bootstrapProcedures() {
@@ -75,4 +80,9 @@ func (e *Engine) bootstrapProcedures() {
 	SimConnect_AddFacilityDataDefinitionFilter = e.dll.NewProc("SimConnect_AddFacilityDataDefinitionFilter")
 	SimConnect_SubscribeToFacilities = e.dll.NewProc("SimConnect_SubscribeToFacilities")
 	SimConnect_UnsubscribeToFacilities = e.dll.NewProc("SimConnect_UnsubscribeToFacilities")
+
+	// SimConnect procedures for flight operations
+	SimConnect_FlightLoad = e.dll.NewProc("SimConnect_FlightLoad")
+	SimConnect_FlightSave = e.dll.NewProc("SimConnect_FlightSave")
+	SimConnect_FlightPlanLoad = e.dll.NewProc("SimConnect_FlightPlanLoad")
 }
