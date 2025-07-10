@@ -54,8 +54,13 @@ var (
 
 	// SimConnect AI objects procedures
 	SimConnect_EnumerateSimObjectsAndLiveries *syscall.LazyProc
-	SimConnect_AICreateSimulatedObject        *syscall.LazyProc
 	SimConnect_AICreateSimulatedObject_EX1    *syscall.LazyProc
+	SimConnect_AIReleaseControl               *syscall.LazyProc
+	SimConnect_AIRemoveObject                 *syscall.LazyProc
+	SimConnect_AISetAircraftFlightPlan        *syscall.LazyProc
+	SimConnect_AICreateEnrouteATCAircraft_EX1 *syscall.LazyProc
+	SimConnect_AICreateNonATCAircraft_EX1     *syscall.LazyProc
+	SimConnect_AICreateParkedATCAircraft_EX1  *syscall.LazyProc
 )
 
 func (e *Engine) bootstrapProcedures() {
@@ -107,6 +112,12 @@ func (e *Engine) bootstrapProcedures() {
 
 	// SimConnect AI objects procedures
 	SimConnect_EnumerateSimObjectsAndLiveries = e.dll.NewProc("SimConnect_EnumerateSimObjectsAndLiveries")
-	SimConnect_AICreateSimulatedObject = e.dll.NewProc("SimConnect_AICreateSimulatedObject")
 	SimConnect_AICreateSimulatedObject_EX1 = e.dll.NewProc("SimConnect_AICreateSimulatedObject_EX1")
+	SimConnect_AIReleaseControl = e.dll.NewProc("SimConnect_AIReleaseControl")
+	SimConnect_AIRemoveObject = e.dll.NewProc("SimConnect_AIRemoveObject")
+	SimConnect_AISetAircraftFlightPlan = e.dll.NewProc("SimConnect_AI")
+	SimConnect_AICreateEnrouteATCAircraft_EX1 = e.dll.NewProc("SimConnect_AICreateEnrouteATCAircraft_EX1")
+	SimConnect_AICreateNonATCAircraft_EX1 = e.dll.NewProc("SimConnect_AICreateNonATCAircraft_EX1")
+	SimConnect_AICreateParkedATCAircraft_EX1 = e.dll.NewProc("SimConnect_AICreateParkedATCAircraft_EX1")
+
 }
