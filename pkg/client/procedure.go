@@ -10,6 +10,9 @@ var (
 	SimConnect_Open  *syscall.LazyProc
 	SimConnect_Close *syscall.LazyProc
 
+	// SimConnect Execution procedures
+	SimConnect_ExecuteAction *syscall.LazyProc
+
 	// SimConnect message handling procedures
 	SimConnect_CallDispatch    *syscall.LazyProc
 	SimConnect_GetNextDispatch *syscall.LazyProc
@@ -57,6 +60,9 @@ func (e *Engine) bootstrapProcedures() {
 	// SimConnect connection procedures
 	SimConnect_Open = e.dll.NewProc("SimConnect_Open")
 	SimConnect_Close = e.dll.NewProc("SimConnect_Close")
+
+	// SimConnect Execution procedures
+	SimConnect_ExecuteAction = e.dll.NewProc("SimConnect_ExecuteAction")
 
 	// SimConnect message handling procedures
 	SimConnect_CallDispatch = e.dll.NewProc("SimConnect_CallDispatch")
