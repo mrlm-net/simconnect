@@ -54,6 +54,8 @@ var (
 
 	// SimConnect AI objects procedures
 	SimConnect_EnumerateSimObjectsAndLiveries *syscall.LazyProc
+	SimConnect_AICreateSimulatedObject        *syscall.LazyProc
+	SimConnect_AICreateSimulatedObject_EX1    *syscall.LazyProc
 )
 
 func (e *Engine) bootstrapProcedures() {
@@ -105,4 +107,6 @@ func (e *Engine) bootstrapProcedures() {
 
 	// SimConnect AI objects procedures
 	SimConnect_EnumerateSimObjectsAndLiveries = e.dll.NewProc("SimConnect_EnumerateSimObjectsAndLiveries")
+	SimConnect_AICreateSimulatedObject = e.dll.NewProc("SimConnect_AICreateSimulatedObject")
+	SimConnect_AICreateSimulatedObject_EX1 = e.dll.NewProc("SimConnect_AICreateSimulatedObject_EX1")
 }
