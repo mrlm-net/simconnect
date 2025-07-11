@@ -12,6 +12,7 @@ This document explains the fundamental concepts of SimConnect and how they are i
 - [Message Processing](#message-processing)
 - [Request-Response Pattern](#request-response-pattern)
 - [Data Flow Architecture](#data-flow-architecture)
+- [Internal Architecture and Graceful Shutdown](#internal-architecture-and-graceful-shutdown)
 
 ## SimConnect Overview
 
@@ -345,3 +346,339 @@ sc.RequestDataOnSimObject(
 ```
 
 This approach provides smooth data flow while minimizing performance impact on both your application and the simulator.
+
+## Internal Architecture and Graceful Shutdown
+
+Understanding the internal architecture of the SimConnect Go library helps you build more robust applications and troubleshoot issues effectively.
+
+### Library Architecture Overview
+
+The library implements a sophisticated concurrent architecture using Go's concurrency primitives:
+
+```
+Application Layer
+       ↓
+  SimConnect Go Library
+       ↓ (Stream())
+  Message Processing Loop
+       ↓ (dispatch goroutine)
+  SimConnect API Polling
+       ↓ (GetNextDispatch)
+  SimConnect DLL
+       ↓
+Flight Simulator
+```
+
+### Core Components
+
+#### Engine Structure
+```go
+type Engine struct {
+    ctx       context.Context      // Cancellation coordination
+    cancel    context.CancelFunc   // Shutdown trigger
+    dll       *syscall.LazyDLL     // SimConnect DLL handle
+    handle    uintptr             // SimConnect connection handle
+    name      string              // Client application name
+    queue     chan ParsedMessage  // Buffered message channel
+    wg        sync.WaitGroup     // Goroutine coordination
+    once      sync.Once          // Single cleanup execution
+    isClosing bool               // Shutdown state flag
+    mu        sync.RWMutex       // Protects isClosing
+}
+```
+
+#### Message Processing Loop
+The core of the library is the `dispatch()` method that runs in a dedicated goroutine:
+
+```go
+func (e *Engine) dispatch() {
+    defer e.wg.Done()
+    runtime.LockOSThread() // Windows API thread affinity
+    defer runtime.UnlockOSThread()
+
+    for {
+        select {
+        case <-e.ctx.Done():
+            return // Context cancelled - immediate exit
+        default:
+            // Check shutdown state
+            e.mu.RLock()
+            closing := e.isClosing
+            e.mu.RUnlock()
+            
+            if closing {
+                return
+            }
+
+            // Poll SimConnect for messages
+            // Non-blocking message processing
+        }
+    }
+}
+```
+
+### Concurrency and Thread Safety
+
+#### Thread Affinity
+SimConnect requires thread affinity for Windows API calls:
+- **OS Thread Locking**: `runtime.LockOSThread()` ensures the goroutine stays on the same OS thread
+- **API Compatibility**: Critical for SimConnect's COM-based architecture
+- **Stability**: Prevents crashes from cross-thread API access
+
+#### Synchronization Mechanisms
+
+1. **Context-Based Cancellation**
+   ```go
+   ctx, cancel := context.WithCancel(context.Background())
+   ```
+   - Provides coordinated shutdown signaling
+   - Integrates with Go's cancellation patterns
+   - Enables timeout and deadline support
+
+2. **WaitGroup Coordination**
+   ```go
+   e.wg.Add(1)    // Track goroutine
+   go e.dispatch() // Start background processing
+   e.wg.Wait()    // Wait for completion
+   ```
+   - Ensures all goroutines complete before shutdown
+   - Prevents resource leaks
+   - Coordinates cleanup timing
+
+3. **Mutex Protection**
+   ```go
+   e.mu.Lock()
+   e.isClosing = true
+   e.mu.Unlock()
+   ```
+   - Thread-safe state management
+   - Protects shared state during concurrent access
+   - Prevents race conditions
+
+4. **Once-Only Semantics**
+   ```go
+   e.once.Do(func() {
+       // Cleanup logic runs exactly once
+   })
+   ```
+   - Safe multiple `Disconnect()` calls
+   - Prevents double-cleanup issues
+   - Idempotent shutdown behavior
+
+### Message Queue Management
+
+#### Buffered Channel Design
+```go
+queue: make(chan ParsedMessage, DEFAULT_STREAM_BUFFER_SIZE)
+```
+
+**Benefits:**
+- **Decoupling**: Separates message polling from application processing
+- **Buffering**: Handles burst message scenarios
+- **Non-blocking**: Prevents SimConnect polling from blocking on application processing
+
+#### Message Send Strategy
+```go
+select {
+case e.queue <- parsedMsg:
+    // Success
+case <-e.ctx.Done():
+    return // Shutdown during send
+default:
+    // Channel full - drop message with warning
+    log.Printf("Warning: Message queue full, dropping message")
+}
+```
+
+**Features:**
+- **Non-blocking Sends**: Never blocks the polling loop
+- **Context Awareness**: Respects cancellation during sends
+- **Overflow Protection**: Gracefully handles queue overflow
+- **Diagnostic Logging**: Warns about performance issues
+
+### Graceful Shutdown Process
+
+The shutdown process involves multiple coordinated steps:
+
+#### 1. Shutdown Initiation
+```go
+func (e *Engine) Disconnect() error {
+    var err error
+    e.once.Do(func() {
+        // Multi-step shutdown process
+    })
+    return err
+}
+```
+
+#### 2. State Transition
+```go
+// Step 1: Set shutdown flag
+e.mu.Lock()
+e.isClosing = true
+e.mu.Unlock()
+```
+- Prevents new operations from starting
+- Signals internal components to stop
+- Thread-safe state transition
+
+#### 3. Context Cancellation
+```go
+// Step 2: Cancel context
+if e.cancel != nil {
+    e.cancel()
+}
+```
+- Signals all goroutines to stop
+- Triggers immediate exit from polling loops
+- Propagates cancellation to application code
+
+#### 4. Goroutine Synchronization
+```go
+// Step 3: Wait for goroutines
+e.wg.Wait()
+```
+- Waits for message processing to complete
+- Ensures clean termination of background work
+- Prevents premature resource cleanup
+
+#### 5. Resource Cleanup
+```go
+// Step 4: Close SimConnect
+if e.handle != 0 {
+    SimConnect_Close.Call(e.handle)
+    e.handle = 0
+}
+
+// Step 5: Close message channel
+close(e.queue)
+```
+- Closes SimConnect connection properly
+- Signals end of message stream to applications
+- Releases system resources
+
+### Shutdown Flow Diagram
+
+```
+User calls Disconnect()
+         ↓
+┌─── once.Do() ensures single execution
+│        ↓
+│   Set isClosing = true
+│        ↓
+│   Cancel context (ctx.cancel())
+│        ↓
+│   dispatch() goroutine receives ctx.Done()
+│        ↓
+│   dispatch() exits, calls wg.Done()
+│        ↓
+│   wg.Wait() unblocks
+│        ↓
+│   Close SimConnect handle
+│        ↓
+│   Close message channel
+│        ↓
+└── Cleanup complete
+```
+
+### Error Handling During Shutdown
+
+#### Partial Failure Handling
+```go
+if !helpers.IsHRESULTSuccess(hresult) {
+    err = fmt.Errorf("SimConnect_Close failed: 0x%08X", hresult)
+}
+```
+- Records but doesn't abort on SimConnect close errors
+- Continues with remaining cleanup steps
+- Returns error information to caller
+
+#### Channel Cleanup Safety
+```go
+close(e.queue)
+```
+- Safe to call even if no readers exist
+- Signals EOF to any active `range` loops
+- Prevents goroutine leaks in application code
+
+### Application Integration Patterns
+
+#### Recommended Usage Pattern
+```go
+func main() {
+    sc := client.New("My App")
+    defer sc.Disconnect() // Ensures cleanup
+
+    // Signal handling for graceful shutdown
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+    if err := sc.Connect(); err != nil {
+        log.Fatal("Connection failed:", err)
+    }
+
+    messageStream := sc.Stream()
+
+    // Application processing
+    go func() {
+        for msg := range messageStream {
+            // Process messages
+            // Channel closes automatically on Disconnect()
+        }
+    }()
+
+    <-c // Wait for signal
+    // defer sc.Disconnect() handles cleanup
+}
+```
+
+#### Why This Works
+- **Automatic Cleanup**: `defer` ensures `Disconnect()` is called
+- **Signal Integration**: Works with OS interrupt signals
+- **Channel Semantics**: `range` loop exits when channel closes
+- **No Explicit Coordination**: Library handles all synchronization internally
+
+### Performance Characteristics
+
+#### Memory Usage
+- **Fixed Overhead**: Channel buffer size is constant (100 messages)
+- **Message Copying**: Each message is safely copied to prevent races
+- **Garbage Collection**: Parsed messages are garbage collected normally
+
+#### CPU Usage
+- **Polling Overhead**: Continuous polling of SimConnect API
+- **Context Switching**: Goroutine scheduling overhead
+- **Thread Affinity**: OS thread locked for API compatibility
+
+#### Latency
+- **Message Latency**: Single goroutine hop from SimConnect to application
+- **Shutdown Latency**: Deterministic shutdown time based on message processing
+- **Buffering Benefits**: Reduces latency spikes during message bursts
+
+### Advanced Considerations
+
+#### Custom Message Processing
+For applications needing lower-level control:
+```go
+// Alternative: Custom dispatch processing
+sc.DispatchProc(func(recv *types.SIMCONNECT_RECV, cbData uint32, context uintptr) {
+    // Direct message processing without channel overhead
+}, 0)
+```
+
+#### Context Integration
+For complex applications with existing context hierarchies:
+```go
+// The library's internal context can be integrated
+// with application-level context management
+```
+
+#### Resource Monitoring
+Monitor library health:
+```go
+// Watch for queue overflow warnings in logs
+// Monitor goroutine counts during development
+// Profile memory usage under load
+```
+
+This architecture provides a robust, thread-safe foundation for SimConnect applications while hiding the complexity of Windows API integration and concurrent programming from application developers.
