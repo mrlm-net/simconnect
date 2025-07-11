@@ -255,12 +255,41 @@ This document provides solutions to common issues encountered when using the Sim
 
 ## Debugging Techniques
 
-### Enable Debug Logging
+### Enable Custom Logging
 
-Set environment variable for detailed logging:
-```bash
-set SIMCONNECT_DEBUG=1
-go run main.go
+The library provides basic operational logging. For detailed debugging, implement custom logging in your application:
+
+```go
+messageStream := sc.Stream()
+for msg := range messageStream {
+    // Log all messages for debugging
+    log.Printf("Debug: Message Type: %v, Size: %d, Error: %v", 
+        msg.MessageType, len(msg.RawData), msg.Error)
+    
+    if msg.Error != nil {
+        log.Printf("Message parsing error: %v", msg.Error)
+        continue
+    }
+    // Process message...
+}
+
+### Built-in Debug Methods
+
+The library provides debug methods for performance analysis:
+
+```go
+// Request response time statistics
+err := sc.RequestResponseTimes(10)
+if err != nil {
+    log.Printf("Failed to request response times: %v", err)
+}
+
+// Get packet correlation information
+var packetID uintptr
+err = sc.GetLastSentPacketID(uintptr(unsafe.Pointer(&packetID)))
+if err != nil {
+    log.Printf("Failed to get packet ID: %v", err)
+}
 ```
 
 ### Connection Testing

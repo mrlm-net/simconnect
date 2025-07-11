@@ -141,17 +141,39 @@ For quick reference, the main client methods include:
 
 ## Debugging
 
-Enable debug logging by setting the environment variable:
+The library provides basic logging for operational issues:
 
-```bash
-export SIMCONNECT_DEBUG=1
+- **Message Queue Warnings** - Automatic warnings when the message queue is full
+- **Error Reporting** - Detailed error messages with HRESULT codes
+- **Debug Methods** - Built-in methods for response time analysis
+
+### Built-in Debug Methods
+
+```go
+// Request response time statistics from SimConnect
+err := sc.RequestResponseTimes(10)
+
+// Get the last sent packet ID for correlation
+var packetID uintptr
+err := sc.GetLastSentPacketID(uintptr(unsafe.Pointer(&packetID)))
 ```
 
-This will output detailed information about:
-- Connection establishment
-- Message parsing and processing
-- API call results
-- Error conditions
+### Custom Logging
+
+For detailed debugging, implement custom logging in your message processing:
+
+```go
+messageStream := sc.Stream()
+for msg := range messageStream {
+    // Log all messages for debugging
+    fmt.Printf("Debug: Message Type: %v, Error: %v\n", msg.MessageType, msg.Error)
+    
+    if msg.Error != nil {
+        log.Printf("Message error: %v", msg.Error)
+        continue
+    }
+    // Process message...
+}
 
 ## Advanced Usage
 
@@ -207,7 +229,7 @@ This library provides a comprehensive Go wrapper for the SimConnect SDK with the
 ### Development Support
 - **Rich Examples** - Multiple working examples for different use cases
 - **Comprehensive Documentation** - Detailed guides and API reference
-- **Debug Support** - Built-in logging and debugging capabilities
+- **Debug Methods** - Built-in methods for performance analysis and troubleshooting
 - **Performance Optimization** - Efficient message processing and memory usage
 
 ## Use Cases
