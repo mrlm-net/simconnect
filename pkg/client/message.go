@@ -86,3 +86,120 @@ func (msg *ParsedMessage) GetQuit() (*types.SIMCONNECT_RECV_QUIT, bool) {
 	}
 	return nil, false
 }
+
+// Additional helper methods for new message types
+
+// IsEventEX1 checks if the message is an extended event with multiple parameters
+func (msg *ParsedMessage) IsEventEX1() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_EVENT_EX1
+}
+
+// IsClientData checks if the message is client data
+func (msg *ParsedMessage) IsClientData() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_CLIENT_DATA
+}
+
+// IsFacilityData checks if the message is facility data
+func (msg *ParsedMessage) IsFacilityData() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_FACILITY_DATA
+}
+
+// IsAirportList checks if the message is an airport list
+func (msg *ParsedMessage) IsAirportList() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_AIRPORT_LIST
+}
+
+// IsInputEvent checks if the message is related to input events
+func (msg *ParsedMessage) IsInputEvent() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENTS ||
+		msg.MessageType == types.SIMCONNECT_RECV_ID_GET_INPUT_EVENT ||
+		msg.MessageType == types.SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT ||
+		msg.MessageType == types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENT_PARAMS
+}
+
+// IsMultiplayerEvent checks if the message is a multiplayer event
+func (msg *ParsedMessage) IsMultiplayerEvent() bool {
+	return msg.MessageType == types.SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SERVER_STARTED ||
+		msg.MessageType == types.SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_CLIENT_STARTED ||
+		msg.MessageType == types.SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SESSION_ENDED
+}
+
+// GetEventEX1 safely casts the data to SIMCONNECT_RECV_EVENT_EX1
+func (msg *ParsedMessage) GetEventEX1() (*types.SIMCONNECT_RECV_EVENT_EX1, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_EVENT_EX1); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetClientData safely casts the data to SIMCONNECT_RECV_CLIENT_DATA
+func (msg *ParsedMessage) GetClientData() (*types.SIMCONNECT_RECV_CLIENT_DATA, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_CLIENT_DATA); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetFacilityData safely casts the data to SIMCONNECT_RECV_FACILITY_DATA
+func (msg *ParsedMessage) GetFacilityData() (*types.SIMCONNECT_RECV_FACILITY_DATA, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_FACILITY_DATA); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetAirportList safely casts the data to SIMCONNECT_RECV_AIRPORT_LIST
+func (msg *ParsedMessage) GetAirportList() (*types.SIMCONNECT_RECV_AIRPORT_LIST, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_AIRPORT_LIST); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetVORList safely casts the data to SIMCONNECT_RECV_VOR_LIST
+func (msg *ParsedMessage) GetVORList() (*types.SIMCONNECT_RECV_VOR_LIST, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_VOR_LIST); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetNDBList safely casts the data to SIMCONNECT_RECV_NDB_LIST
+func (msg *ParsedMessage) GetNDBList() (*types.SIMCONNECT_RECV_NDB_LIST, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_NDB_LIST); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetWaypointList safely casts the data to SIMCONNECT_RECV_WAYPOINT_LIST
+func (msg *ParsedMessage) GetWaypointList() (*types.SIMCONNECT_RECV_WAYPOINT_LIST, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_WAYPOINT_LIST); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetControllersList safely casts the data to SIMCONNECT_RECV_CONTROLLERS_LIST
+func (msg *ParsedMessage) GetControllersList() (*types.SIMCONNECT_RECV_CONTROLLERS_LIST, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_CONTROLLERS_LIST); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetEnumerateInputEvents safely casts the data to SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS
+func (msg *ParsedMessage) GetEnumerateInputEvents() (*types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS); ok {
+		return data, true
+	}
+	return nil, false
+}
+
+// GetReservedKey safely casts the data to SIMCONNECT_RECV_RESERVED_KEY
+func (msg *ParsedMessage) GetReservedKey() (*types.SIMCONNECT_RECV_RESERVED_KEY, bool) {
+	if data, ok := msg.Data.(*types.SIMCONNECT_RECV_RESERVED_KEY); ok {
+		return data, true
+	}
+	return nil, false
+}
