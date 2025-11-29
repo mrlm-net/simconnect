@@ -3,4 +3,7 @@
 
 package engine
 
-type Client interface{}
+type Client interface {
+	Connect() error
+	Disconnect() error
+}
