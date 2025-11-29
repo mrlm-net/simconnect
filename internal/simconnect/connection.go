@@ -5,7 +5,6 @@ package simconnect
 
 import (
 	"fmt"
-	"unsafe"
 )
 
 func (sc *SimConnect) Connect() error {
@@ -56,12 +55,4 @@ func (sc *SimConnect) Disconnect() error {
 	}
 
 	return nil
-}
-
-func (sc *SimConnect) getConnection() uintptr {
-	return uintptr(sc.connection)
-}
-
-func (sc *SimConnect) getConnectionPtr() uintptr {
-	return uintptr(unsafe.Pointer(&sc.connection))
 }

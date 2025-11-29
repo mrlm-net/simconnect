@@ -26,12 +26,12 @@ func main() {
 			return
 		}
 
-		fmt.Println("Disconnected")
+		fmt.Println("Disconnected from SimConnect...")
 
 	}()
 
 	// Application logic would go here.
-	fmt.Println("Connected to SimConnect")
+	fmt.Println("Connected to SimConnect...")
 	fmt.Println("Sleeping for 2 seconds...")
 	time.Sleep(2 * time.Second)
 
