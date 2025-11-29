@@ -1,0 +1,85 @@
+//go:build windows
+// +build windows
+
+package types
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_FACILITY_DATA_TYPE.htm
+type SIMCONNECT_FACILITY_DATA_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_DATA_AIRPORT SIMCONNECT_FACILITY_DATA_TYPE = iota
+	SIMCONNECT_FACILITY_DATA_RUNWAY
+	SIMCONNECT_FACILITY_DATA_START
+	SIMCONNECT_FACILITY_DATA_FREQUENCY
+	SIMCONNECT_FACILITY_DATA_HELIPAD
+	SIMCONNECT_FACILITY_DATA_APPROACH
+	SIMCONNECT_FACILITY_DATA_APPROACH_TRANSITION
+	SIMCONNECT_FACILITY_DATA_APPROACH_LEG
+	SIMCONNECT_FACILITY_DATA_FINAL_APPROACH_LEG
+	SIMCONNECT_FACILITY_DATA_MISSED_APPROACH_LEG
+	SIMCONNECT_FACILITY_DATA_DEPARTURE
+	SIMCONNECT_FACILITY_DATA_ARRIVAL
+	SIMCONNECT_FACILITY_DATA_RUNWAY_TRANSITION
+	SIMCONNECT_FACILITY_DATA_ENROUTE_TRANSITION
+	SIMCONNECT_FACILITY_DATA_TAXI_POINT
+	SIMCONNECT_FACILITY_DATA_TAXI_PARKING
+	SIMCONNECT_FACILITY_DATA_TAXI_PATH
+	SIMCONNECT_FACILITY_DATA_TAXI_NAME
+	SIMCONNECT_FACILITY_DATA_JETWAY
+	SIMCONNECT_FACILITY_DATA_VOR
+	SIMCONNECT_FACILITY_DATA_NDB
+	SIMCONNECT_FACILITY_DATA_WAYPOINT
+	SIMCONNECT_FACILITY_DATA_ROUTE
+	SIMCONNECT_FACILITY_DATA_PAVEMENT
+	SIMCONNECT_FACILITY_DATA_APPROACH_LIGHTS
+	SIMCONNECT_FACILITY_DATA_VASI
+)
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_AIRPORT.htm
+type SIMCONNECT_DATA_FACILITY_AIRPORT struct {
+	Ident     [9]byte // ident[9]
+	Region    [3]byte // region[3]
+	Latitude  float64 // double Latitude
+	Longitude float64 // double Longitude
+	Altitude  float64 // double Altitude
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_FACILITY_MINIMAL.htm
+type SIMCONNECT_FACILITY_MINIMAL struct {
+	ICAO SIMCONNECT_ICAO
+	LLA  SIMCONNECT_DATA_LATLONALT
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_NDB.htm
+type SIMCONNECT_DATA_FACILITY_NDB struct {
+	SIMCONNECT_DATA_FACILITY_WAYPOINT
+	FFrequency DWORD // DWORD fFrequency
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_WAYPOINT.htm
+type SIMCONNECT_DATA_FACILITY_WAYPOINT struct {
+	SIMCONNECT_DATA_FACILITY_AIRPORT
+	FMagVar float64 // double fMagVar
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_VOR.htm
+type SIMCONNECT_DATA_FACILITY_VOR struct {
+	SIMCONNECT_DATA_FACILITY_NDB
+	Flags            DWORD
+	FLocalizer       float64 // double FLocalizer
+	GlideLat         float64 // double GlideLat
+	GlideLon         float64 // double GlideLon
+	GlideAlt         float64 // double GlideAlt
+	FGlideSlopeAngle float64 // double FGlideSlopeAngle
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_FACILITY_LIST_TYPE.htm
+type SIMCONNECT_FACILITY_LIST_TYPE uint32
+
+const (
+	SIMCONNECT_FACILITY_LIST_AIRPORT SIMCONNECT_FACILITY_LIST_TYPE = iota
+	SIMCONNECT_FACILITY_LIST_WAYPOINT
+	SIMCONNECT_FACILITY_LIST_TYPE_NDB
+	SIMCONNECT_FACILITY_LIST_TYPE_VOR
+	SIMCONNECT_FACILITY_LIST_TYPE_COUNT
+)
