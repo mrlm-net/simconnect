@@ -4,21 +4,32 @@
 package engine
 
 import (
+	"context"
+	"sync"
+
 	"github.com/mrlm-net/simconnect/internal/simconnect"
 )
 
 func New(name string, options ...Option) *Engine {
+	ctx, cancel := context.WithCancel(context.Background())
 	config := defaultConfig()
 	for _, option := range options {
 		option(config)
 	}
 	return &Engine{
-		api:    simconnect.New(config),
+		api:    simconnect.New(name, config),
 		config: config,
+		ctx:    ctx,
+		cancel: cancel,
+		queue:  make(chan Message, config.BufferSize),
 	}
 }
 
 type Engine struct {
-	api    Client
+	api    SimConnect
 	config *Config
+	ctx    context.Context
+	cancel context.CancelFunc
+	queue  chan Message
+	sync   sync.WaitGroup
 }

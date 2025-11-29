@@ -8,7 +8,7 @@ import (
 )
 
 func (sc *SimConnect) Connect() error {
-	szName, err := stringToBytePtr("GO SimConnect Client")
+	szName, err := stringToBytePtr(sc.name)
 
 	if err != nil {
 		return fmt.Errorf("failed to convert client name to byte pointer: %w", err)

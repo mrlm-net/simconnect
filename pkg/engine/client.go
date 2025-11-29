@@ -3,7 +3,23 @@
 
 package engine
 
+import "github.com/mrlm-net/simconnect/pkg/types"
+
 type Client interface {
 	Connect() error
 	Disconnect() error
+
+	Stream() <-chan Message
+
+	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
+	SubscribeToSystemEvent(eventID uint32, eventName string) error
+}
+
+type SimConnect interface {
+	Connect() error
+	Disconnect() error
+
+	GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error)
+	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
+	SubscribeToSystemEvent(eventID uint32, eventName string) error
 }
