@@ -34,6 +34,7 @@ func main() {
 
 	for msg := range client.Stream() {
 		fmt.Println(msg.SIMCONNECT_RECV)
+		// TODO parse message data as example
 	}
 
 }

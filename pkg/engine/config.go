@@ -3,7 +3,11 @@
 
 package engine
 
-import "github.com/mrlm-net/simconnect/internal/simconnect"
+import (
+	"context"
+
+	"github.com/mrlm-net/simconnect/internal/simconnect"
+)
 
 const (
 	DEFAULT_BUFFER_SIZE = 256
@@ -26,9 +30,16 @@ func WithDLLPath(path string) Option {
 	}
 }
 
+func WithContext(ctx context.Context) Option {
+	return func(c *Config) {
+		c.Context = ctx
+	}
+}
+
 func defaultConfig() *Config {
 	return &Config{
 		BufferSize: DEFAULT_BUFFER_SIZE,
+		Context:    context.Background(),
 		DLLPath:    DEFAULT_DLL_PATH,
 	}
 }

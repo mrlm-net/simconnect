@@ -11,11 +11,11 @@ import (
 )
 
 func New(name string, options ...Option) *Engine {
-	ctx, cancel := context.WithCancel(context.Background())
 	config := defaultConfig()
 	for _, option := range options {
 		option(config)
 	}
+	ctx, cancel := context.WithCancel(config.Context)
 	return &Engine{
 		api:    simconnect.New(name, config),
 		config: config,

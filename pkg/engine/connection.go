@@ -8,5 +8,7 @@ func (e *Engine) Connect() error {
 }
 
 func (e *Engine) Disconnect() error {
+	e.cancel()
+	e.sync.Wait()
 	return e.api.Disconnect()
 }
