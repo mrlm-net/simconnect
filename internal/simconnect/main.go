@@ -16,5 +16,5 @@ func New(config *Config) *SimConnect {
 type SimConnect struct {
 	// Add fields as necessary
 	library    *dll.DLL
-	connection uint32
+	connection uintptr
 }

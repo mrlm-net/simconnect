@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mrlm-net/simconnect"
 )
@@ -30,6 +31,8 @@ func main() {
 	}()
 
 	// Application logic would go here.
-	fmt.Println("Connected")
+	fmt.Println("Connected to SimConnect")
+	fmt.Println("Sleeping for 2 seconds...")
+	time.Sleep(2 * time.Second)
 
 }
