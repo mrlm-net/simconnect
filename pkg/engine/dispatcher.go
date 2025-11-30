@@ -3,10 +3,20 @@
 
 package engine
 
-import "log"
+import (
+	"fmt"
+	"log"
+	"unsafe"
+
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+const HEARTBEAT_EVENT_ID = ^uint32(0)
 
 func (e *Engine) dispatch() error {
-	defer log.Println("[dispatcher] Starting dispatcher goroutine")
+	log.Println("[dispatcher] Starting dispatcher goroutine")
+	// Subscribe to a system event to receive regular updates about the simulator connection state
+	e.api.SubscribeToSystemEvent(HEARTBEAT_EVENT_ID, "6Hz") // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
 		defer log.Println("[dispatcher] Exiting dispatcher goroutine")
 		for {
@@ -16,11 +26,36 @@ func (e *Engine) dispatch() error {
 			default:
 				recv, size, err := e.api.GetNextDispatch()
 
-				if size > 0 || err != nil {
-					e.queue <- Message{
+				if err != nil {
+					log.Printf("[dispatcher] Error: %v\n", err)
+					e.queue <- Message{Err: err}
+					continue
+				}
+
+				if recv == nil {
+					// No message available, continue the loop
+					continue
+				}
+
+				recvID := types.SIMCONNECT_RECV_ID(recv.DwID)
+
+				if recvID == types.SIMCONNECT_RECV_ID_EVENT {
+					event := (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(recv))
+					if event.UEventID == HEARTBEAT_EVENT_ID { // Heartbeat event ID
+						fmt.Println("Heartbeat event received")
+						continue
+					}
+				}
+
+				if size > 0 {
+					select {
+					case <-e.ctx.Done():
+						return
+					case e.queue <- Message{
 						SIMCONNECT_RECV: recv,
 						Size:            size,
 						Err:             err,
+					}:
 					}
 				}
 			}

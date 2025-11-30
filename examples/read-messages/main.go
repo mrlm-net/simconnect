@@ -30,8 +30,6 @@ func main() {
 	// Application logic would go here.
 	fmt.Println("Connected to SimConnect...")
 
-	client.SubscribeToSystemEvent(1001, "6Hz")
-
 	for msg := range client.Stream() {
 		fmt.Println(msg.SIMCONNECT_RECV)
 		// TODO parse message data as example
