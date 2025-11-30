@@ -4,7 +4,6 @@
 package engine
 
 import (
-	"fmt"
 	"log"
 	"unsafe"
 
@@ -42,7 +41,7 @@ func (e *Engine) dispatch() error {
 				if recvID == types.SIMCONNECT_RECV_ID_EVENT {
 					event := (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(recv))
 					if event.UEventID == HEARTBEAT_EVENT_ID { // Heartbeat event ID
-						fmt.Println("Heartbeat event received")
+						log.Printf("[dispatcher] %s\n", "Heartbeat event received")
 						continue
 					}
 				}

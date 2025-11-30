@@ -3,7 +3,9 @@
 
 package engine
 
-import "github.com/mrlm-net/simconnect/pkg/types"
+import (
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
 
 type Client interface {
 	Connect() error
