@@ -21,6 +21,7 @@ func (e *Engine) dispatch() error {
 		for {
 			select {
 			case <-e.ctx.Done():
+				log.Println("[dispatcher] Context cancelled, stopping dispatcher")
 				return
 			default:
 				recv, size, err := e.api.GetNextDispatch()
@@ -49,6 +50,7 @@ func (e *Engine) dispatch() error {
 				if size > 0 {
 					select {
 					case <-e.ctx.Done():
+						log.Println("[dispatcher] Context cancelled, stopping dispatcher")
 						return
 					case e.queue <- Message{
 						SIMCONNECT_RECV: recv,
