@@ -18,18 +18,18 @@ func New(name string, options ...Option) *Engine {
 	ctx, cancel := context.WithCancel(config.Context)
 	return &Engine{
 		api:    simconnect.New(name, config),
+		cancel: cancel,
 		config: config,
 		ctx:    ctx,
-		cancel: cancel,
 		queue:  make(chan Message, config.BufferSize),
 	}
 }
 
 type Engine struct {
 	api    SimConnect
+	cancel context.CancelFunc
 	config *Config
 	ctx    context.Context
-	cancel context.CancelFunc
 	queue  chan Message
 	sync   sync.WaitGroup
 }
