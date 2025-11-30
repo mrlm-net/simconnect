@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/engine"
 )
 
 func main() {
@@ -25,11 +26,12 @@ func main() {
 		<-sigChan
 		fmt.Println("\nReceived interrupt signal, shutting down...")
 		cancel()
+		ctx.Done()
 	}()
 
 	// Initialize client with context
 	client := simconnect.New("GO Example - SimConnect Await Connection",
-		simconnect.WithContext(ctx),
+		engine.WithContext(ctx),
 	)
 
 	// Retry connection until simulator is running
@@ -61,8 +63,10 @@ connected:
 
 	}()
 
-	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
+	fmt.Println("Connected to SimConnect...")
 	fmt.Println("Waiting for connection ready...")
+
+	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	connectionReady := false
 
@@ -70,12 +74,6 @@ connected:
 		if msg.Err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", msg.Err)
 			continue
-		}
-
-		if msg.DwID == 2 { // SIMCONNECT_RECV_ID_OPEN
-			fmt.Println("Connection established!")
-			connectionReady = true
-			break
 		}
 	}
 

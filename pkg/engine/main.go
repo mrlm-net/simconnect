@@ -21,7 +21,6 @@ func New(name string, options ...Option) *Engine {
 		cancel: cancel,
 		config: config,
 		ctx:    ctx,
-		queue:  make(chan Message, config.BufferSize),
 	}
 }
 
