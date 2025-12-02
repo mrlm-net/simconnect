@@ -4,7 +4,7 @@
 package types
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_PERIOD.htm
-type SIMCONNECT_PERIOD DWORD
+type SIMCONNECT_PERIOD uint32
 
 const (
 	SIMCONNECT_PERIOD_NEVER SIMCONNECT_PERIOD = iota
@@ -15,7 +15,7 @@ const (
 )
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_CLIENT_DATA_PERIOD.htm
-type SIMCONNECT_CLIENT_DATA_PERIOD DWORD
+type SIMCONNECT_CLIENT_DATA_PERIOD uint32
 
 const (
 	SIMCONNECT_CLIENT_DATA_PERIOD_NEVER SIMCONNECT_CLIENT_DATA_PERIOD = iota
