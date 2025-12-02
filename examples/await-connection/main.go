@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func main() {
@@ -26,7 +27,6 @@ func main() {
 		<-sigChan
 		fmt.Println("\nReceived interrupt signal, shutting down...")
 		cancel()
-		ctx.Done()
 	}()
 
 	// Initialize client with context
@@ -74,6 +74,12 @@ connected:
 		if msg.Err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", msg.Err)
 			continue
+		}
+
+		if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
+			connectionReady = true
+			fmt.Println("Connection is ready!")
+			break
 		}
 	}
 
