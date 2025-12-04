@@ -25,7 +25,7 @@ func New(name string, options ...Option) *Engine {
 }
 
 type Engine struct {
-	api    SimConnect
+	api    simconnect.API
 	cancel context.CancelFunc
 	config *Config
 	ctx    context.Context
