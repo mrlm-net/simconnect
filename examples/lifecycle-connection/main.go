@@ -25,15 +25,15 @@ func runConnection(ctx context.Context) error {
 	)
 
 	// Retry connection until simulator is running
-	fmt.Println("Waiting for simulator to start...")
+	fmt.Println("⏳ Waiting for simulator to start...")
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Cancelled while waiting for simulator")
+			fmt.Println("🚫 Cancelled while waiting for simulator")
 			return ctx.Err()
 		default:
 			if err := client.Connect(); err != nil {
-				fmt.Printf("Connection attempt failed: %v, retrying in 2 seconds...\n", err)
+				fmt.Printf("🔄 Connection attempt failed: %v, retrying in 2 seconds...\n", err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -42,7 +42,7 @@ func runConnection(ctx context.Context) error {
 	}
 
 connected:
-	fmt.Println("Connected to SimConnect, listening for messages...")
+	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -50,29 +50,28 @@ connected:
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Context cancelled, disconnecting...")
+			fmt.Println("🔌 Context cancelled, disconnecting...")
 			if err := client.Disconnect(); err != nil {
-				fmt.Fprintf(os.Stderr, "Disconnect error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "❌ Disconnect error: %v\n", err)
 			}
-			//fmt.Println("Disconnected from SimConnect")
 			return ctx.Err()
 		case msg, ok := <-stream:
 			if !ok {
-				fmt.Println("Stream closed (simulator disconnected)")
+				fmt.Println("📴 Stream closed (simulator disconnected)")
 				return nil // Return nil to allow reconnection
 			}
 
 			if msg.Err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", msg.Err)
+				fmt.Fprintf(os.Stderr, "❌ Error: %v\n", msg.Err)
 				continue
 			}
 
 			// Log the connection ready message specially
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
-				fmt.Println("Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
+				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
 			}
 
-			fmt.Printf("Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
+			fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
 		}
 	}
 }
@@ -86,29 +85,29 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt)
 	go func() {
 		<-sigChan
-		fmt.Println("Received interrupt signal, shutting down...")
+		fmt.Println("🛑 Received interrupt signal, shutting down...")
 		cancel()
 	}()
 
-	fmt.Println("(Press Ctrl+C to exit)")
+	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
 
 	// Reconnection loop - keeps trying to connect when simulator disconnects
 	for {
 		err := runConnection(ctx)
 		if err != nil {
 			// Context cancelled (Ctrl+C) - exit completely
-			fmt.Printf("Connection ended: %v\n", err)
+			fmt.Printf("⚠️  Connection ended: %v\n", err)
 			return
 		}
 
 		// Simulator disconnected (err == nil) - wait and retry
-		fmt.Println("Waiting 5 seconds before reconnecting...")
+		fmt.Println("⏳ Waiting 5 seconds before reconnecting...")
 		select {
 		case <-ctx.Done():
-			fmt.Println("Shutdown requested, not reconnecting")
+			fmt.Println("🛑 Shutdown requested, not reconnecting")
 			return
 		case <-time.After(5 * time.Second):
-			fmt.Println("Attempting to reconnect...")
+			fmt.Println("🔄 Attempting to reconnect...")
 		}
 	}
 }

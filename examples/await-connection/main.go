@@ -24,7 +24,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt)
 	go func() {
 		<-sigChan
-		fmt.Println("Received interrupt signal, shutting down...")
+		fmt.Println("🛑 Received interrupt signal, shutting down...")
 		cancel()
 	}()
 
@@ -34,15 +34,15 @@ func main() {
 	)
 
 	// Retry connection until simulator is running
-	fmt.Println("Waiting for simulator to start...")
+	fmt.Println("⏳ Waiting for simulator to start...")
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Cancelled while waiting for simulator")
+			fmt.Println("🚫 Cancelled while waiting for simulator")
 			return
 		default:
 			if err := client.Connect(); err != nil {
-				fmt.Printf("Connection attempt failed: %v, retrying in 2 seconds...\n", err)
+				fmt.Printf("🔄 Connection attempt failed: %v, retrying in 2 seconds...\n", err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -51,8 +51,8 @@ func main() {
 	}
 
 connected:
-	fmt.Println("Connected to SimConnect, listening for messages...")
-	fmt.Println("(Press Ctrl+C to exit)")
+	fmt.Println("✅ Connected to SimConnect, listening for messages...")
+	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -60,29 +60,29 @@ connected:
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Context cancelled, disconnecting...")
+			fmt.Println("🔌 Context cancelled, disconnecting...")
 			if err := client.Disconnect(); err != nil {
-				fmt.Fprintf(os.Stderr, "Disconnect error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "❌ Disconnect error: %v\n", err)
 			}
-			fmt.Println("Disconnected from SimConnect")
+			fmt.Println("👋 Disconnected from SimConnect")
 			return
 		case msg, ok := <-stream:
 			if !ok {
-				fmt.Println("Stream closed (simulator likely closed), exiting...")
+				fmt.Println("📴 Stream closed (simulator likely closed), exiting...")
 				return
 			}
 
 			if msg.Err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", msg.Err)
+				fmt.Fprintf(os.Stderr, "❌ Error: %v\n", msg.Err)
 				continue
 			}
 
 			// Log the connection ready message specially
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
-				fmt.Println("Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
+				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
 			}
 
-			fmt.Printf("Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
+			fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
 		}
 	}
 }
