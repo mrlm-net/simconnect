@@ -48,6 +48,18 @@ type API interface {
 	AICreateParkedATCAircraft(szContainerTitle string, szTailNumber string, szAirportID string, RequestID uint32) error
 	AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
 	AIReleaseControl(objectID uint32, requestID uint32) error
+
+	AddToFacilityDefinition(definitionID uint32, fieldName string) error
+	AddFacilityDataDefinitionFilter(definitionID uint32, filterPath string, filterData unsafe.Pointer, filterDataSize uint32) error
+	ClearAllFacilityDataDefinitionFilters(definitionID uint32) error
+	RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilityData(definitionID uint32, icao string, region string) error
+	RequestFacilityDataEX1(definitionID uint32, icao string, region string, facilityType byte) error
+	RequestJetwayData(airportICAO string, arrayCount uint32, indexes *int32) error
+	SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error
+	SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, newElemInRangeRequestID uint32, oldElemOutRangeRequestID uint32) error
+	UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error
 }
 
 func (sc *SimConnect) getConnection() uintptr {
