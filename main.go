@@ -29,3 +29,7 @@ func WithLogger(logger *slog.Logger) engine.Option {
 func WithDLLPath(path string) engine.Option {
 	return engine.WithDLLPath(path)
 }
+
+func WithHeartbeat(frequency string) engine.Option {
+	return engine.WithHeartbeat(frequency)
+}

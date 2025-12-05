@@ -49,10 +49,10 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithHeartbeatFrequency(heartbeat string) Option {
+func WithHeartbeat(frequency string) Option {
 	return func(c *Config) {
 		// TODO add validation and enum?
-		c.Heartbeat = heartbeat
+		c.Heartbeat = frequency
 	}
 }
 
