@@ -62,6 +62,16 @@ type API interface {
 	SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error
 	SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, newElemInRangeRequestID uint32, oldElemOutRangeRequestID uint32) error
 	UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error
+
+	MapClientEventToSimEvent(eventID uint32, eventName string) error
+	RemoveClientEvent(groupID uint32, eventID uint32) error
+	TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error
+	TransmitClientEventEx1(objectID uint32, eventID uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG, data [5]uint32) error
+	MapClientDataNameToID(clientDataName string, clientDataID uint32) error
+
+	AddClientEventToNotificationGroup(groupID uint32, eventID uint32, mask bool) error
+	ClearNotificationGroup(groupID uint32) error
+	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error
 }
 
 func (sc *SimConnect) getConnection() uintptr {

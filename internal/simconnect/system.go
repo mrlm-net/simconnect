@@ -90,25 +90,3 @@ func (sc *SimConnect) SetSystemEventState(eventID uint32, state types.SIMCONNECT
 
 	return nil
 }
-
-// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_MapClientEventToSimEvent.htm
-func (sc *SimConnect) MapClientEventToSimEvent(eventID uint32, eventName string) error {
-	szEventName, err := stringToBytePtr(eventName)
-	if err != nil {
-		return fmt.Errorf("failed to convert event name to byte pointer: %w", err)
-	}
-
-	procedure := sc.library.LoadProcedure("SimConnect_MapClientEventToSimEvent")
-
-	hresult, _, _ := procedure.Call(
-		sc.getConnection(), // phSimConnect - pointer to handle
-		uintptr(eventID),
-		szEventName,
-	)
-
-	if !isHRESULTSuccess(hresult) {
-		return fmt.Errorf("SimConnect_MapClientEventToSimEvent failed with HRESULT: 0x%08X", uint32(hresult))
-	}
-
-	return nil
-}
