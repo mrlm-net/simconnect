@@ -92,7 +92,7 @@ type SIMCONNECT_RECV_SIMOBJECT_DATA struct {
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE.htm
-type SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE struct {
+type SIMCONNECT_RECV_SIMOBJECT_DATA_BTYPE struct {
 	SIMCONNECT_RECV_SIMOBJECT_DATA
 }
 

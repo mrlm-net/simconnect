@@ -34,19 +34,15 @@ func (sc *SimConnect) RequestDataOnSimObject(requestID uint32, definitionID uint
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestDataOnSimObjectType.htm
-func (sc *SimConnect) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error {
+func (sc *SimConnect) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
 	procedure := sc.library.LoadProcedure("SimConnect_RequestDataOnSimObjectType")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(requestID),
 		uintptr(definitionID),
+		uintptr(dwRadiusMeters),
 		uintptr(objectType),
-		uintptr(period),
-		uintptr(flags),
-		uintptr(origin),
-		uintptr(interval),
-		uintptr(limit),
 	)
 
 	if !isHRESULTSuccess(hresult) {

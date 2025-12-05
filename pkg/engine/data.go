@@ -17,8 +17,8 @@ func (e *Engine) RequestDataOnSimObject(requestID uint32, definitionID uint32, o
 	return e.api.RequestDataOnSimObject(requestID, definitionID, objectID, period, flags, origin, interval, limit)
 }
 
-func (e *Engine) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error {
-	return e.api.RequestDataOnSimObjectType(requestID, definitionID, objectType, period, flags, origin, interval, limit)
+func (e *Engine) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
+	return e.api.RequestDataOnSimObjectType(requestID, definitionID, dwRadiusMeters, objectType)
 }
 
 func (e *Engine) ClearDataDefinition(definitionID uint32) error {

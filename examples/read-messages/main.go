@@ -77,6 +77,10 @@ connected:
 	client.AddToDataDefinition(2000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING260, 0, 2)
 
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+
+	client.AddToDataDefinition(3000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.RequestDataOnSimObjectType(3001, 3000, 1000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+
 	// Main message processing loop
 	for {
 		select {
@@ -98,7 +102,9 @@ connected:
 				continue
 			}
 
-			fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
+			fmt.Println("📨 Message received - ", msg.DwID)
+
+			//fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg, msg.Size)
 
 			// Handle specific messages
 			// This could be done based on type and also if needed request IDs
@@ -151,12 +157,33 @@ connected:
 				)
 				// Cast the data pointer to CameraData struct
 				// The DwData field is the start of the actual data block
-				cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
-				fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s \n",
-					cameraData.CameraState,
-					cameraData.CameraSubstate,
-					cameraData.Category,
+				if simObjData.DwDefineID == 2000 {
+
+					cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
+					fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s \n",
+						cameraData.CameraState,
+						cameraData.CameraSubstate,
+						cameraData.Category,
+					)
+				}
+			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
+				simObjData := msg.AsSimObjectDataBType()
+				fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
+					simObjData.DwRequestID,
+					simObjData.DwDefineID,
+					simObjData.DwObjectID,
+					simObjData.DwFlags,
+					simObjData.DwOutOf,
+					simObjData.DwDefineCount,
 				)
+				if simObjData.DwDefineID == 3000 {
+					aircraftData := engine.CastDataAs[struct {
+						Title [128]byte
+					}](&simObjData.DwData)
+					fmt.Printf("     Aircraft Title: %s \n",
+						engine.BytesToString(aircraftData.Title[:]),
+					)
+				}
 			default:
 				// Other message types can be handled here
 			}
