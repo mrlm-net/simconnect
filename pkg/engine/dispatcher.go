@@ -62,7 +62,13 @@ func (e *Engine) dispatch() error {
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
-					log.Println("[dispatcher] Simulator has closed the connection")
+					log.Println("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
+					// Sent message that simulator is quitting
+					e.queue <- Message{
+						SIMCONNECT_RECV: recv,
+						Size:            size,
+						Err:             err,
+					}
 					e.state.Reset()
 					e.cancel()
 					close(e.queue)
