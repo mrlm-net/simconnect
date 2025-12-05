@@ -75,6 +75,11 @@ func (e *Engine) dispatch() error {
 					return
 				}
 
+				if recvID == types.SIMCONNECT_RECV_ID_EXCEPTION {
+					exception := (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(recv))
+					e.logger.Error(fmt.Sprintf("[dispatcher] Exception received - ID: %d, Error: %d\n", exception.DwException, exception.DwSendID))
+				}
+
 				if size > 0 {
 					select {
 					case <-e.ctx.Done():
