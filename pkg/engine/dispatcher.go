@@ -77,6 +77,7 @@ func (e *Engine) dispatch() error {
 						} else {
 							e.logger.Debug("[dispatcher] Simulator is UNPAUSED")
 						}
+						// TODO - make configurable to send pause events to queue
 						//continue
 					}
 
@@ -88,6 +89,7 @@ func (e *Engine) dispatch() error {
 						} else {
 							e.logger.Debug("[dispatcher] Simulator SIM STOPPED")
 						}
+						// TODO - make configurable to send sim events to queue
 						//continue
 					}
 
@@ -99,6 +101,7 @@ func (e *Engine) dispatch() error {
 						} else {
 							e.logger.Debug("[dispatcher] Simulator SOUND OFF")
 						}
+						// TODO - make configurable to send sound events to queue
 						//continue
 					}
 
