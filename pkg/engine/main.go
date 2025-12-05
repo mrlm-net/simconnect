@@ -17,7 +17,7 @@ func New(name string, options ...Option) *Engine {
 	}
 	ctx, cancel := context.WithCancel(config.Context)
 	return &Engine{
-		api:    simconnect.New(name, config),
+		api:    simconnect.New(name, &config.Config),
 		cancel: cancel,
 		config: config,
 		ctx:    ctx,

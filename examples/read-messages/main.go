@@ -128,7 +128,6 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 			default:
 				// Other message types can be handled here
-				fmt.Println("Unknown message")
 			}
 		}
 	}
