@@ -135,17 +135,15 @@ connected:
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
-				fmt.Println("=> Received SimObject data event")
+				fmt.Println("  => Received SimObject data event")
 				simObjData := msg.AsSimObjectData()
-				fmt.Printf("  Received SIMCONNECT_RECV_SIMOBJECT_DATA for Request ID: %d, Object ID: %d, Flags: %d, Out of %d\n",
+				fmt.Printf("     Request ID: %d, Object ID: %d, Flags: %d, Out of: %d, State: %d\n",
 					simObjData.DwRequestID,
 					simObjData.DwObjectID,
-					simObjData.DwFlags)
-				// Here we would parse the data based on the request ID
-				// For example, if request ID is 2000 (our CAMERA STATE request)
-				if simObjData.DwRequestID == 2000 {
-					fmt.Printf("%d\n", simObjData.DwData)
-				}
+					simObjData.DwFlags,
+					simObjData.DwOutOf,
+					simObjData.DwData,
+				)
 			default:
 				// Other message types can be handled here
 			}

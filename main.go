@@ -5,9 +5,9 @@ package simconnect
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/log"
 )
 
 func New(name string, options ...engine.Option) engine.Client {
@@ -22,6 +22,6 @@ func WithBufferSize(size int) engine.Option {
 	return engine.WithBufferSize(size)
 }
 
-func WithLogger(logger log.Logger) engine.Option {
+func WithLogger(logger *slog.Logger) engine.Option {
 	return engine.WithLogger(logger)
 }

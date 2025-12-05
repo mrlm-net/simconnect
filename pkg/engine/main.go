@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/mrlm-net/simconnect/internal/simconnect"
@@ -21,6 +22,7 @@ func New(name string, options ...Option) *Engine {
 		cancel: cancel,
 		config: config,
 		ctx:    ctx,
+		logger: config.Logger,
 		state:  &State{},
 	}
 }
@@ -30,6 +32,7 @@ type Engine struct {
 	cancel context.CancelFunc
 	config *Config
 	ctx    context.Context
+	logger *slog.Logger
 	queue  chan Message
 	sync   sync.WaitGroup
 	state  *State

@@ -19,12 +19,12 @@ func (e *Engine) dispatch() error {
 	// Subscribe to a system event to receive regular updates about the simulator connection state
 	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), "6Hz") // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
-		defer log.Println("[dispatcher] Exiting dispatcher goroutine")
+		defer e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
 		defer e.state.Reset()
 		for {
 			select {
 			case <-e.ctx.Done():
-				log.Println("[dispatcher] Context cancelled, stopping dispatcher")
+				e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 				return
 			default:
 				recv, size, err := e.api.GetNextDispatch()
@@ -33,7 +33,7 @@ func (e *Engine) dispatch() error {
 					log.Printf("[dispatcher] Error: %v\n", err)
 					select {
 					case <-e.ctx.Done():
-						log.Println("[dispatcher] Context cancelled, stopping dispatcher")
+						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
 					case e.queue <- Message{Err: err}:
 						continue
@@ -51,18 +51,18 @@ func (e *Engine) dispatch() error {
 				if recvID == types.SIMCONNECT_RECV_ID_EVENT {
 					event := (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(recv))
 					if event.UEventID == HEARTBEAT_EVENT_ID { // Heartbeat event ID
-						log.Printf("[dispatcher] %s\n", "Heartbeat event received")
+						e.logger.Debug("[dispatcher] Heartbeat event received")
 						continue
 					}
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_OPEN {
-					log.Println("[dispatcher] Connection to simulator established")
+					e.logger.Debug("[dispatcher] Connection to simulator established")
 					e.state.SetReady(true)
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
-					log.Println("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
+					e.logger.Debug("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
 					// Sent message that simulator is quitting
 					e.queue <- Message{
 						SIMCONNECT_RECV: recv,
@@ -78,7 +78,7 @@ func (e *Engine) dispatch() error {
 				if size > 0 {
 					select {
 					case <-e.ctx.Done():
-						log.Println("[dispatcher] Context cancelled, stopping dispatcher")
+						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
 					case e.queue <- Message{
 						SIMCONNECT_RECV: recv,
