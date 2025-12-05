@@ -103,14 +103,14 @@ connected:
 					}
 				}
 				if eventMsg.UEventID == 1001 {
-					if eventMsg.DwData == 1 {
-						fmt.Println("  ⏸️  Simulator is SIM PAUSED")
+					if eventMsg.DwData == 0 {
+						fmt.Println("  🛑 Simulator SIM STOPPED")
 					} else {
-						fmt.Println("  ▶️  Simulator is SIM UNPAUSED")
+						fmt.Println("  🏁 Simulator SIM STARTED")
 					}
 				}
 				if eventMsg.UEventID == 1002 {
-					if eventMsg.DwData == 1 {
+					if eventMsg.DwData == 0 {
 						fmt.Println("  🔇 Simulator SOUND OFF")
 					} else {
 						fmt.Println("  🔊 Simulator SOUND ON")
