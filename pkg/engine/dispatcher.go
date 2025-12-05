@@ -10,7 +10,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-const HEARTBEAT_EVENT_ID types.DWORD = ^types.DWORD(0) // SimConnect_SystemState_6Hz
+const HEARTBEAT_EVENT_ID types.DWORD = 4294967295 // SimConnect_SystemState_6Hz ID
 
 func (e *Engine) dispatch() error {
 	e.logger.Debug("[dispatcher] Starting dispatcher goroutine")

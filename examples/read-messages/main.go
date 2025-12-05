@@ -4,11 +4,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -66,7 +68,9 @@ connected:
 
 	//
 	client.AddToDataDefinition(2000, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
+	client.AddToDataDefinition(2001, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
 	client.RequestDataOnSimObject(2000, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+	client.RequestDataOnSimObject(2001, 2001, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
 	// Main message processing loop
 	for {
@@ -137,13 +141,29 @@ connected:
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
 				fmt.Println("  => Received SimObject data event")
 				simObjData := msg.AsSimObjectData()
-				fmt.Printf("     Request ID: %d, Object ID: %d, Flags: %d, Out of: %d, State: %d\n",
-					simObjData.DwRequestID,
-					simObjData.DwObjectID,
-					simObjData.DwFlags,
-					simObjData.DwOutOf,
-					simObjData.DwData,
-				)
+
+				switch simObjData.DwDefineID {
+				case 2000:
+					fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, State: %d\n",
+						simObjData.DwRequestID,
+						simObjData.DwDefineID,
+						simObjData.DwObjectID,
+						simObjData.DwFlags,
+						simObjData.DwOutOf,
+						simObjData.DwData,
+					)
+				case 2001:
+					// For string data, we need to read the raw bytes after the SIMCONNECT_RECV_SIMOBJECT_DATA header
+					dataPtr := (*[260]byte)(unsafe.Pointer(&simObjData.DwData))
+					categoryStr := string(bytes.TrimRight(dataPtr[:128], "\x00"))
+					fmt.Printf("     Request ID: %d, Object ID: %d, Flags: %d, Out of: %d, Category: '%s'\n",
+						simObjData.DwRequestID,
+						simObjData.DwObjectID,
+						simObjData.DwFlags,
+						simObjData.DwOutOf,
+						categoryStr,
+					)
+				}
 			default:
 				// Other message types can be handled here
 			}
