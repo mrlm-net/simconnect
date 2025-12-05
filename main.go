@@ -25,3 +25,7 @@ func WithBufferSize(size int) engine.Option {
 func WithLogger(logger *slog.Logger) engine.Option {
 	return engine.WithLogger(logger)
 }
+
+func WithDLLPath(path string) engine.Option {
+	return engine.WithDLLPath(path)
+}

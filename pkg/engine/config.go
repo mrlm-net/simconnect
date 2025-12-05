@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"os"
 
 	"log/slog"
 
@@ -54,6 +55,10 @@ func defaultConfig() *Config {
 			Context:    context.Background(),
 			DLLPath:    DEFAULT_DLL_PATH,
 		},
-		Logger: slog.Default(),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: slog.LevelWarn, // Set minimum log level to WARN
+			}),
+		),
 	}
 }

@@ -4,7 +4,7 @@
 package engine
 
 import (
-	"log"
+	"fmt"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -13,7 +13,7 @@ import (
 const HEARTBEAT_EVENT_ID types.DWORD = ^types.DWORD(0) // SimConnect_SystemState_6Hz
 
 func (e *Engine) dispatch() error {
-	log.Println("[dispatcher] Starting dispatcher goroutine")
+	e.logger.Debug("[dispatcher] Starting dispatcher goroutine")
 	e.queue = make(chan Message, e.config.BufferSize)
 	e.state.SetAvailable(true)
 	// Subscribe to a system event to receive regular updates about the simulator connection state
@@ -30,7 +30,7 @@ func (e *Engine) dispatch() error {
 				recv, size, err := e.api.GetNextDispatch()
 
 				if err != nil {
-					log.Printf("[dispatcher] Error: %v\n", err)
+					e.logger.Error(fmt.Sprintf("[dispatcher] Error: %v\n", err))
 					select {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
