@@ -34,10 +34,10 @@ go run examples/read-messages/main.go
 ✅ Connected to SimConnect, listening for messages...
 🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)
 📨 Message received - ID: 1, Size: 304 bytes
-📨 Message received - ID: 5, Size: 24 bytes
+📨 Message received - ID: 4, Size: 24 bytes
    Event ID: 1000, Data: 1
    >> Simulator is PAUSED
-📨 Message received - ID: 5, Size: 24 bytes
+📨 Message received - ID: 4, Size: 24 bytes
    Event ID: 1000, Data: 0
    >> Simulator is UNPAUSED
 ...
