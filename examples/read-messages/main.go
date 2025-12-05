@@ -65,7 +65,8 @@ connected:
 	// --------------------------------------------
 
 	//
-	//client.Add
+	client.AddToDataDefinition(2000, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
+	client.RequestDataOnSimObject(2000, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
 	// Main message processing loop
 	for {
