@@ -21,7 +21,8 @@ type Option func(*Config)
 
 type Config struct {
 	simconnect.Config
-	Logger *slog.Logger
+	Heartbeat string
+	Logger    *slog.Logger
 }
 
 func WithBufferSize(size int) Option {
@@ -48,6 +49,13 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+func WithHeartbeatFrequency(heartbeat string) Option {
+	return func(c *Config) {
+		// TODO add validation and enum?
+		c.Heartbeat = heartbeat
+	}
+}
+
 func defaultConfig() *Config {
 	return &Config{
 		Config: simconnect.Config{
@@ -55,6 +63,7 @@ func defaultConfig() *Config {
 			Context:    context.Background(),
 			DLLPath:    DEFAULT_DLL_PATH,
 		},
+		Heartbeat: "6Hz",
 		Logger: slog.New(
 			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 				Level: slog.LevelWarn, // Set minimum log level to WARN

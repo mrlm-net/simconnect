@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	HEARTBEAT_EVENT_ID types.DWORD = 99999999 // SimConnect_SystemState_6Hz ID
+	HEARTBEAT_EVENT_ID types.DWORD = 999999999 // SimConnect_SystemState_6Hz ID
 )
 
 func (e *Engine) dispatch() error {
 	e.logger.Debug("[dispatcher] Starting dispatcher goroutine")
 	e.queue = make(chan Message, e.config.BufferSize)
 	// Subscribe to a system event to receive regular updates about the simulator connection state
-	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), "6Hz") // SimConnect_SystemState_6Hz
+	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), e.config.Heartbeat) // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
 		defer e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
 		for {
