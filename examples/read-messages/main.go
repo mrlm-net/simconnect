@@ -55,10 +55,17 @@ connected:
 	//   State is returned in dwData field as number (0=unpaused, 1=paused)
 	client.SubscribeToSystemEvent(1000, "Pause")
 	// --------------------------------------------
+	// - Sim event occurs when simulator starts/stops.
+	//   State is returned in dwData field as number (0=stopped, 1=started)
 	client.SubscribeToSystemEvent(1001, "Sim")
 	// --------------------------------------------
+	// - Sound event occurs when simulator master sound is toggled.
+	//   State is returned in dwData field as number (0=off, 1=on)
 	client.SubscribeToSystemEvent(1002, "Sound")
 	// --------------------------------------------
+
+	//
+	//client.Add
 
 	// Main message processing loop
 	for {

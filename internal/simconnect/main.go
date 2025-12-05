@@ -32,6 +32,8 @@ type API interface {
 	GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error)
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 	SubscribeToSystemEvent(eventID uint32, eventName string) error
+	UnsubscribeFromSystemEvent(eventID uint32) error
+	SetSystemEventState(eventID uint32, state types.SIMCONNECT_STATE) error
 
 	FlightLoad(flightFile string) error
 	FlightPlanLoad(flightPlanFile string) error
