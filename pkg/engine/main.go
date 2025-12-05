@@ -21,6 +21,7 @@ func New(name string, options ...Option) *Engine {
 		cancel: cancel,
 		config: config,
 		ctx:    ctx,
+		state:  &State{},
 	}
 }
 
@@ -31,4 +32,5 @@ type Engine struct {
 	ctx    context.Context
 	queue  chan Message
 	sync   sync.WaitGroup
+	state  *State
 }

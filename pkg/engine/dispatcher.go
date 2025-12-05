@@ -15,10 +15,12 @@ const HEARTBEAT_EVENT_ID = ^uint32(0)
 func (e *Engine) dispatch() error {
 	log.Println("[dispatcher] Starting dispatcher goroutine")
 	e.queue = make(chan Message, e.config.BufferSize)
+	e.state.SetAvailable(true)
 	// Subscribe to a system event to receive regular updates about the simulator connection state
 	e.api.SubscribeToSystemEvent(HEARTBEAT_EVENT_ID, "6Hz") // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
 		defer log.Println("[dispatcher] Exiting dispatcher goroutine")
+		defer e.state.Reset()
 		for {
 			select {
 			case <-e.ctx.Done():
@@ -56,10 +58,12 @@ func (e *Engine) dispatch() error {
 
 				if recvID == types.SIMCONNECT_RECV_ID_OPEN {
 					log.Println("[dispatcher] Connection to simulator established")
+					e.state.SetReady(true)
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
 					log.Println("[dispatcher] Simulator has closed the connection")
+					e.state.Reset()
 					e.cancel()
 					close(e.queue)
 					return
