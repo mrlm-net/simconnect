@@ -17,22 +17,23 @@ func main() {
 	client := simconnect.New("GO Example - SimConnect Basic Connection")
 
 	if err := client.Connect(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, "❌ Error:", err)
 		return
 	}
 	defer func() {
 		if err := client.Disconnect(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(os.Stderr, "❌ Disconnect error:", err)
 			return
 		}
 
-		fmt.Println("Disconnected from SimConnect...")
+		fmt.Println("👋 Disconnected from SimConnect...")
 
 	}()
 
 	// Application logic would go here.
-	fmt.Println("Connected to SimConnect...")
-	fmt.Println("Sleeping for 2 seconds...")
+	fmt.Println("✅ Connected to SimConnect...")
+	fmt.Println("⏳ Sleeping for 2 seconds...")
 	time.Sleep(2 * time.Second)
+	fmt.Println("✈️  Ready for takeoff!")
 
 }
