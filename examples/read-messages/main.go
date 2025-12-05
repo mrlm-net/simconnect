@@ -49,12 +49,18 @@ connected:
 
 	// We can already register data definitions and requests here
 
-	// Example: Subscribe to a system event (Pause)
+	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
 	// --------------------------------------------
 	// - Pause event occurs when user pauses/unpauses the simulator.
 	//   State is returned in dwData field as number (0=unpaused, 1=paused)
 	client.SubscribeToSystemEvent(1000, "Pause")
+	// --------------------------------------------
+	client.SubscribeToSystemEvent(1001, "Sim")
+	// --------------------------------------------
+	client.SubscribeToSystemEvent(1002, "Sound")
+	// --------------------------------------------
 
+	// Main message processing loop
 	for {
 		select {
 		case <-ctx.Done():
@@ -77,7 +83,7 @@ connected:
 
 			// Log the connection ready message specially
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
-				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
+
 			}
 
 			fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg.DwID, msg.Size)
@@ -96,7 +102,33 @@ connected:
 						fmt.Println("  ▶️  Simulator is UNPAUSED")
 					}
 				}
+				if eventMsg.UEventID == 1001 {
+					if eventMsg.DwData == 1 {
+						fmt.Println("  ⏸️  Simulator is SIM PAUSED")
+					} else {
+						fmt.Println("  ▶️  Simulator is SIM UNPAUSED")
+					}
+				}
+				if eventMsg.UEventID == 1002 {
+					if eventMsg.DwData == 1 {
+						fmt.Println("  🔇 Simulator SOUND OFF")
+					} else {
+						fmt.Println("  🔊 Simulator SOUND ON")
+					}
+				}
 				// Add more cases here for other message types as needed
+			case types.SIMCONNECT_RECV_ID_OPEN:
+				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
+				msg := msg.AsOpen()
+				fmt.Println("📡 Received SIMCONNECT_RECV_OPEN message!")
+				fmt.Printf("  Application Name: '%s'\n", engine.BytesToString(msg.SzApplicationName[:]))
+				fmt.Printf("  Application Version: %d.%d\n", msg.DwApplicationVersionMajor, msg.DwApplicationVersionMinor)
+				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
+				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
+				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
+			default:
+				// Other message types can be handled here
+				fmt.Println("Unknown message")
 			}
 		}
 	}

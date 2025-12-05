@@ -24,9 +24,25 @@ func CastAs[T any](m *Message) T {
 	return zero
 }
 
+func BytesToString(data []byte) string {
+	for i, b := range data {
+		if b == 0 {
+			return string(data[:i])
+		}
+	}
+	return string(data)
+}
+
 func (m *Message) AsEvent() *types.SIMCONNECT_RECV_EVENT {
 	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsOpen() *types.SIMCONNECT_RECV_OPEN {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_OPEN {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_OPEN)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
