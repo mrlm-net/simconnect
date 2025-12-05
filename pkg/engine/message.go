@@ -24,6 +24,12 @@ func CastAs[T any](m *Message) T {
 	return zero
 }
 
+// CastData casts the DwData field from a SimObject data response to the specified struct type.
+// The type T must match the data definition structure registered with SimConnect.
+func CastDataAs[T any](dwData *types.DWORD) *T {
+	return (*T)(unsafe.Pointer(dwData))
+}
+
 func BytesToString(data []byte) string {
 	for i, b := range data {
 		if b == 0 {

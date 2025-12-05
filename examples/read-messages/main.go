@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -21,6 +20,7 @@ import (
 type CameraData struct {
 	CameraState    int32
 	CameraSubstate int32
+	Category       [260]byte // String260
 }
 
 // runConnection handles a single connection lifecycle to the simulator.
@@ -72,9 +72,11 @@ connected:
 	// - Define data structure for CAMERA STATE and CAMERA SUBSTATE
 	//   and request updates every second
 	// --------------------------------------------
-	client.AddToDataDefinition(4, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
-	client.AddToDataDefinition(4, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1)
-	client.RequestDataOnSimObject(2000, 4, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+	client.AddToDataDefinition(2000, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
+	client.AddToDataDefinition(2000, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1)
+	client.AddToDataDefinition(2000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING260, 0, 2)
+
+	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 	// Main message processing loop
 	for {
 		select {
@@ -149,10 +151,11 @@ connected:
 				)
 				// Cast the data pointer to CameraData struct
 				// The DwData field is the start of the actual data block
-				cameraData := (*CameraData)(unsafe.Pointer(&simObjData.DwData))
-				fmt.Printf("     Camera State: %d, Camera Substate: %d\n",
+				cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
+				fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s\n",
 					cameraData.CameraState,
 					cameraData.CameraSubstate,
+					engine.BytesToString(cameraData.Category[:]),
 				)
 			default:
 				// Other message types can be handled here
