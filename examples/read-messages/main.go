@@ -78,8 +78,8 @@ connected:
 
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
-	client.AddToDataDefinition(3000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
-	client.RequestDataOnSimObjectType(3001, 3000, 1000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.RequestDataOnSimObjectType(3001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
 	// Main message processing loop
 	for {
