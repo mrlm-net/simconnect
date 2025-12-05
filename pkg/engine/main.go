@@ -23,7 +23,6 @@ func New(name string, options ...Option) *Engine {
 		config: config,
 		ctx:    ctx,
 		logger: config.Logger,
-		state:  &State{},
 	}
 }
 
@@ -35,5 +34,4 @@ type Engine struct {
 	logger *slog.Logger
 	queue  chan Message
 	sync   sync.WaitGroup
-	state  *State
 }

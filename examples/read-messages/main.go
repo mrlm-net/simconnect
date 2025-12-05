@@ -51,18 +51,30 @@ func runConnection(ctx context.Context) error {
 
 connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
-
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
-
 	// We can already register data definitions and requests here
 
-	//
+	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
+	// --------------------------------------------
+	// - Pause event occurs when user pauses/unpauses the simulator.
+	//   State is returned in dwData field as number (0=unpaused, 1=paused)
+	client.SubscribeToSystemEvent(1000, "Pause")
+	// --------------------------------------------
+	// - Sim event occurs when simulator starts/stops.
+	//   State is returned in dwData field as number (0=stopped, 1=started)
+	client.SubscribeToSystemEvent(1001, "Sim")
+	// --------------------------------------------
+	// - Sound event occurs when simulator master sound is toggled.
+	//   State is returned in dwData field as number (0=off, 1=on)
+	client.SubscribeToSystemEvent(1002, "Sound")
+	// --------------------------------------------
+	// - Define data structure for CAMERA STATE and CAMERA SUBSTATE
+	//   and request updates every second
+	// --------------------------------------------
 	client.AddToDataDefinition(4, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
 	client.AddToDataDefinition(4, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1)
-
 	client.RequestDataOnSimObject(2000, 4, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
-
 	// Main message processing loop
 	for {
 		select {
@@ -92,22 +104,22 @@ connected:
 			case types.SIMCONNECT_RECV_ID_EVENT:
 				eventMsg := msg.AsEvent()
 				fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
-				// Check if this is the Pause event (ID 9998)
-				if eventMsg.UEventID == 9998 {
+				// Check if this is the Pause event (ID 1000)
+				if eventMsg.UEventID == 1000 {
 					if eventMsg.DwData == 1 {
 						fmt.Println("  ⏸️  Simulator is PAUSED")
 					} else {
 						fmt.Println("  ▶️  Simulator is UNPAUSED")
 					}
 				}
-				if eventMsg.UEventID == 9997 {
+				if eventMsg.UEventID == 1001 {
 					if eventMsg.DwData == 0 {
 						fmt.Println("  🛑 Simulator SIM STOPPED")
 					} else {
 						fmt.Println("  🏁 Simulator SIM STARTED")
 					}
 				}
-				if eventMsg.UEventID == 9996 {
+				if eventMsg.UEventID == 1002 {
 					if eventMsg.DwData == 0 {
 						fmt.Println("  🔇 Simulator SOUND OFF")
 					} else {
@@ -135,7 +147,7 @@ connected:
 					simObjData.DwOutOf,
 					simObjData.DwDefineCount,
 				)
-				// Cast the data pointer to our CameraData struct
+				// Cast the data pointer to CameraData struct
 				// The DwData field is the start of the actual data block
 				cameraData := (*CameraData)(unsafe.Pointer(&simObjData.DwData))
 				fmt.Printf("     Camera State: %d, Camera Substate: %d\n",
