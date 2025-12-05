@@ -3,4 +3,4 @@
 
 package types
 
-type DWORD = uint32
+type DWORD uint32

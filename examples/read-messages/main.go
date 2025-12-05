@@ -86,9 +86,16 @@ connected:
 			// This could be done based on type and also if needed request IDs
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 			case types.SIMCONNECT_RECV_ID_EVENT:
-				eventMsg := msg.AsEventType()
-				fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.DwID, eventMsg.DwData)
-				//fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.EventID, eventMsg.Data)
+				eventMsg := msg.AsEvent()
+				fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
+				// Check if this is the Pause event (ID 1000)
+				if eventMsg.UEventID == 1000 {
+					if eventMsg.DwData == 1 {
+						fmt.Println("  >> Simulator is PAUSED")
+					} else {
+						fmt.Println("  >> Simulator is UNPAUSED")
+					}
+				}
 				// Add more cases here for other message types as needed
 			}
 		}

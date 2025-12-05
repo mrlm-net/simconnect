@@ -18,15 +18,15 @@ type Message struct {
 func CastAs[T any](m *Message) T {
 	switch types.SIMCONNECT_RECV_ID(m.DwID) {
 	case types.SIMCONNECT_RECV_ID_EVENT:
-		return any((*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(&m.SIMCONNECT_RECV))).(T)
+		return any((*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))).(T)
 	}
 	var zero T
 	return zero
 }
 
-func (m *Message) AsEventType() *types.SIMCONNECT_RECV_EVENT {
+func (m *Message) AsEvent() *types.SIMCONNECT_RECV_EVENT {
 	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
 		return nil
 	}
-	return (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(&m.SIMCONNECT_RECV))
+	return (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
