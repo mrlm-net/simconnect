@@ -152,10 +152,10 @@ connected:
 				// Cast the data pointer to CameraData struct
 				// The DwData field is the start of the actual data block
 				cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
-				fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s\n",
+				fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s \n",
 					cameraData.CameraState,
 					cameraData.CameraSubstate,
-					engine.BytesToString(cameraData.Category[:]),
+					cameraData.Category,
 				)
 			default:
 				// Other message types can be handled here
