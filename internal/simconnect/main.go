@@ -50,6 +50,7 @@ type API interface {
 	AICreateParkedATCAircraft(szContainerTitle string, szTailNumber string, szAirportID string, RequestID uint32) error
 	AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
 	AIReleaseControl(objectID uint32, requestID uint32) error
+	AISetAircraftFlightPlan(objectID uint32, szFlightPlanPath string, requestID uint32) error
 
 	AddToFacilityDefinition(definitionID uint32, fieldName string) error
 	AddFacilityDataDefinitionFilter(definitionID uint32, filterPath string, filterData unsafe.Pointer, filterDataSize uint32) error
