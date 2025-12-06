@@ -88,10 +88,9 @@ connected:
 	client.AddToDataDefinition(3000, "GROUND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 9)
 	client.AddToDataDefinition(3000, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 10)
 	client.AddToDataDefinition(3000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 11)
-	client.AddToDataDefinition(3000, "PLANE IN PARKING STATE", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 12)
-	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 13)
-	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 14)
-	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 15)
+	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 12)
+	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 13)
+	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 14)
 	// Request data for all aircraft within 10km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
@@ -206,17 +205,26 @@ connected:
 						GroundSpeed       float64
 						AirspeedIndicated float64
 						AirspeedTrue      float64
-						InParkingState    int32
 						OnAnyRunway       int32
-						SurfaceType       [128]byte
+						SurfaceType       int32
 						SimOnGround       int32
 					}](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f \n",
+					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d\n",
 						engine.BytesToString(aircraftData.Title[:]),
 						aircraftData.Lat,
 						aircraftData.Lon,
 						aircraftData.Alt,
 						aircraftData.Head,
+						aircraftData.HeadMag,
+						aircraftData.Vs,
+						aircraftData.Pitch,
+						aircraftData.Bank,
+						aircraftData.GroundSpeed,
+						aircraftData.AirspeedIndicated,
+						aircraftData.AirspeedTrue,
+						aircraftData.OnAnyRunway,
+						aircraftData.SurfaceType,
+						aircraftData.SimOnGround,
 					)
 				}
 			default:
