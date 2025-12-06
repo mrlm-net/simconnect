@@ -76,6 +76,8 @@ connected:
 
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
+	client.AICreateParkedATCAircraft("FSLTL A320 VLG Vueling", "N12345", "LKPR", 5000)
+
 	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
 	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
 	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
@@ -92,7 +94,7 @@ connected:
 	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 13)
 	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 14)
 	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 15)
-	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING64, 0, 16)
+	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 16)
 
 	// Request data for all aircraft within 10km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
@@ -212,9 +214,9 @@ connected:
 						SurfaceType       int32
 						SimOnGround       int32
 						AtcID             [32]byte
-						AtcAirline        [64]byte
+						AtcAirline        [32]byte
 					}](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AtcAirline: %s\n",
+					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
 						engine.BytesToString(aircraftData.Title[:]),
 						aircraftData.Lat,
 						aircraftData.Lon,
@@ -231,7 +233,6 @@ connected:
 						aircraftData.SurfaceType,
 						aircraftData.SimOnGround,
 						engine.BytesToString(aircraftData.AtcID[:]),
-						engine.BytesToString(aircraftData.AtcAirline[:]),
 					)
 				}
 			default:
