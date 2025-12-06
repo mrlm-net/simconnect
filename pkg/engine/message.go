@@ -13,6 +13,8 @@ type Message struct {
 	*types.SIMCONNECT_RECV
 	Size uint32
 	Err  error
+
+	data []byte // Internal field to keep the copied data alive
 }
 
 func CastAs[T any](m *Message) T {

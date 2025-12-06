@@ -79,6 +79,7 @@ connected:
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
 	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.AddToDataDefinition(3000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING260, 0, 1)
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
 	// Main message processing loop
@@ -102,7 +103,7 @@ connected:
 				continue
 			}
 
-			fmt.Println("📨 Message received - ", msg.DwID)
+			fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
 
 			//fmt.Printf("📨 Message received - ID: %d, Size: %d bytes\n", msg, msg.Size)
 
@@ -178,10 +179,12 @@ connected:
 				)
 				if simObjData.DwDefineID == 3000 {
 					aircraftData := engine.CastDataAs[struct {
-						Title [128]byte
+						Title    [128]byte
+						Category [260]byte
 					}](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s \n",
+					fmt.Printf("     Aircraft Title: %s, Category: %s \n",
 						engine.BytesToString(aircraftData.Title[:]),
+						engine.BytesToString(aircraftData.Category[:]),
 					)
 				}
 			default:

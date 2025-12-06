@@ -46,10 +46,15 @@ func (e *Engine) dispatch() error {
 					continue
 				}
 
-				recvID := types.SIMCONNECT_RECV_ID(recv.DwID)
+				// Copy the received message before sending to the queue
+				dataCopy := make([]byte, size)
+				copy(dataCopy, unsafe.Slice((*byte)(unsafe.Pointer(recv)), size))
+				recvCopy := (*types.SIMCONNECT_RECV)(unsafe.Pointer(&dataCopy[0]))
+
+				recvID := types.SIMCONNECT_RECV_ID(recvCopy.DwID)
 
 				if recvID == types.SIMCONNECT_RECV_ID_EVENT {
-					event := (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(recv))
+					event := (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(recvCopy))
 					// Ignore those events to reduce noise (maybe consider making this configurable later)
 					if event.UEventID == HEARTBEAT_EVENT_ID { // Heartbeat event ID
 						e.logger.Debug("[dispatcher] Heartbeat event received")
@@ -66,9 +71,10 @@ func (e *Engine) dispatch() error {
 					e.logger.Debug("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
 					// Sent message that simulator is quitting
 					e.queue <- Message{
-						SIMCONNECT_RECV: recv,
+						SIMCONNECT_RECV: recvCopy,
 						Size:            size,
 						Err:             err,
+						data:            dataCopy, // Keep reference to prevent GC
 					}
 					e.cancel()
 					close(e.queue)
@@ -76,7 +82,7 @@ func (e *Engine) dispatch() error {
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_EXCEPTION {
-					exception := (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(recv))
+					exception := (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(recvCopy))
 					e.logger.Error(fmt.Sprintf("[dispatcher] Exception received - ID: %d, Error: %d\n", exception.DwException, exception.DwSendID))
 				}
 
@@ -85,11 +91,15 @@ func (e *Engine) dispatch() error {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
-					case e.queue <- Message{
-						SIMCONNECT_RECV: recv,
-						Size:            size,
-						Err:             err,
-					}:
+					default:
+						fmt.Println("[dispatcher] Message received - ", types.SIMCONNECT_RECV_ID(recvCopy.DwID))
+						// Send the copied message to the queue
+						e.queue <- Message{
+							SIMCONNECT_RECV: recvCopy,
+							Size:            size,
+							Err:             err,
+							data:            dataCopy, // Keep reference to prevent GC
+						}
 					}
 				}
 			}
