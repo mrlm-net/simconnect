@@ -51,8 +51,6 @@ func runConnection(ctx context.Context) error {
 
 connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
-	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
-	stream := client.Stream()
 	// We can already register data definitions and requests here
 
 	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
@@ -79,12 +77,14 @@ connected:
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
 	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
-	client.AddToDataDefinition(3000, "PLANE LATITUDE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
-	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
 	client.AddToDataDefinition(3000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
-	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
+	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
+	stream := client.Stream()
 	// Main message processing loop
 	for {
 		select {
@@ -182,12 +182,18 @@ connected:
 				)
 				if simObjData.DwDefineID == 3000 {
 					aircraftData := engine.CastDataAs[struct {
-						Title    [128]byte
-						Category [260]byte
+						Title [128]byte
+						Lat   float64
+						Lon   float64
+						Alt   float64
+						Head  float64
 					}](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Category: %s \n",
+					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f \n",
 						engine.BytesToString(aircraftData.Title[:]),
-						engine.BytesToString(aircraftData.Category[:]),
+						aircraftData.Lat,
+						aircraftData.Lon,
+						aircraftData.Alt,
+						aircraftData.Head,
 					)
 				}
 			default:
