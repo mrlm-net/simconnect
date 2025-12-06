@@ -79,7 +79,10 @@ connected:
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
 	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
-	client.AddToDataDefinition(3000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING260, 0, 1)
+	client.AddToDataDefinition(3000, "PLANE LATITUDE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(3000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "radians", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
 	// Main message processing loop
