@@ -91,6 +91,9 @@ connected:
 	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 12)
 	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 13)
 	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 14)
+	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 15)
+	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING64, 0, 16)
+
 	// Request data for all aircraft within 10km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
@@ -208,8 +211,10 @@ connected:
 						OnAnyRunway       int32
 						SurfaceType       int32
 						SimOnGround       int32
+						AtcID             [32]byte
+						AtcAirline        [64]byte
 					}](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d\n",
+					fmt.Printf("     Aircraft Title: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AtcAirline: %s\n",
 						engine.BytesToString(aircraftData.Title[:]),
 						aircraftData.Lat,
 						aircraftData.Lon,
@@ -225,6 +230,8 @@ connected:
 						aircraftData.OnAnyRunway,
 						aircraftData.SurfaceType,
 						aircraftData.SimOnGround,
+						engine.BytesToString(aircraftData.AtcID[:]),
+						engine.BytesToString(aircraftData.AtcAirline[:]),
 					)
 				}
 			default:
