@@ -28,3 +28,23 @@ func (e *Engine) AICreateSimulatedObject(szContainerTitle string, initPos types.
 func (e *Engine) AIReleaseControl(objectID uint32, requestID uint32) error {
 	return e.api.AIReleaseControl(objectID, requestID)
 }
+
+func (e *Engine) EnumerateSimObjectsAndLiveries(requestID uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
+	return e.api.EnumerateSimObjectsAndLiveries(requestID, objectType)
+}
+
+func (e *Engine) AIRemoveObject(objectID uint32, requestID uint32) error {
+	return e.api.AIRemoveObject(objectID, requestID)
+}
+
+func (e *Engine) AICreateEnrouteATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, iFlightNumber uint32, szFlightPlanPath string, dFlightPlanPosition float64, bTouchAndGo bool, RequestID uint32) error {
+	return e.api.AICreateEnrouteATCAircraftEX1(szContainerTitle, szLivery, szTailNumber, iFlightNumber, szFlightPlanPath, dFlightPlanPosition, bTouchAndGo, RequestID)
+}
+
+func (e *Engine) AICreateNonATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
+	return e.api.AICreateNonATCAircraftEX1(szContainerTitle, szLivery, szTailNumber, initPos, RequestID)
+}
+
+func (e *Engine) AICreateParkedATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, szAirportID string, RequestID uint32) error {
+	return e.api.AICreateParkedATCAircraftEX1(szContainerTitle, szLivery, szTailNumber, szAirportID, RequestID)
+}
