@@ -75,3 +75,10 @@ func (m *Message) AsSimObjectDataBType() *types.SIMCONNECT_RECV_SIMOBJECT_DATA_B
 	}
 	return (*types.SIMCONNECT_RECV_SIMOBJECT_DATA_BTYPE)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+func (m *Message) AsSimObjectAndLiveryEnumeration() *types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}

@@ -13,3 +13,15 @@ const (
 	SIMCONNECT_SIMOBJECT_TYPE_BOAT
 	SIMCONNECT_SIMOBJECT_TYPE_GROUND
 )
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST.htm
+type SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST struct {
+	SIMCONNECT_RECV_LIST_TEMPLATE
+	RgData []SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY
+}
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY.htm
+type SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY struct {
+	AircraftTitle [256]byte // String256
+	LiveryName    [256]byte // String256
+}
