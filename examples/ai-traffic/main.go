@@ -117,7 +117,7 @@ connected:
 	for i, p := range planes {
 		//wg := &sync.WaitGroup{}
 
-		if p.FlightClearance != 0 && p.FlightPlan != "" {
+		if p.FlightClearance >= 0 && p.FlightPlan != "" {
 			//wg.Add(1)
 			// Simple per-plane delay (tweak as needed or load from data):
 			delay := time.Duration(p.FlightClearance) * time.Second

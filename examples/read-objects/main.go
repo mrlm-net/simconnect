@@ -8,20 +8,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
-
-// CameraData represents the data structure for CAMERA STATE and CAMERA SUBSTATE
-// The fields must match the order of AddToDataDefinition calls
-type CameraData struct {
-	CameraState    int32
-	CameraSubstate int32
-	Category       [260]byte // String260
-}
 
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
@@ -97,12 +91,59 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 			case types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST:
 				enumMsg := msg.AsSimObjectAndLiveryEnumeration()
-				fmt.Printf("  Enumerated %d entries\n", len(enumMsg.RgData))
-				for i, entry := range enumMsg.RgData {
-					liveryName := engine.BytesToString(entry.LiveryName[:])
-					simObjectName := engine.BytesToString(entry.AircraftTitle[:])
-					fmt.Printf("  [%d] Aircraft Model: '%s', Livery: '%s'\n", i, simObjectName, liveryName)
+				fmt.Printf("  Enumerated %d entries (request ID: %d, entry number: %d, out of: %d)\n",
+					enumMsg.DwArraySize,
+					enumMsg.DwRequestID,
+					enumMsg.DwEntryNumber,
+					enumMsg.DwOutOf)
+
+				fmt.Printf("  Message size: %d bytes\n", msg.DwSize)
+
+				// Calculate actual entry size from the message
+				headerSize := types.DWORD(32)
+				actualDataSize := msg.DwSize - headerSize
+				actualEntrySize := actualDataSize / types.DWORD(enumMsg.DwArraySize)
+
+				fmt.Printf("  Actual entry size: %d bytes\n", actualEntrySize)
+
+				// Access the raw data buffer directly from the message
+				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(enumMsg)) + uintptr(headerSize))
+
+				// Collect entries with data
+				validEntries := 0
+				emptyEntries := 0
+
+				// Parse each entry manually from the data buffer
+				for i := uint32(0); i < uint32(enumMsg.DwArraySize); i++ {
+					offset := uintptr(i) * uintptr(actualEntrySize)
+					entryPtr := unsafe.Pointer(uintptr(dataStart) + offset)
+					entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(entryPtr)
+
+					title := engine.BytesToString(entry.AircraftTitle[:])
+					livery := engine.BytesToString(entry.LiveryName[:])
+
+					// Check if entry has any data
+					// check if starts with FSLTL prefix
+					if strings.HasPrefix(title, "FSLTL") || strings.HasPrefix(livery, "FSLTL") {
+						validEntries++
+						fmt.Printf("\n  Entry #%d:\n", i+1)
+						if title != "" {
+							fmt.Printf("    Title: %s\n", title)
+						} else {
+							fmt.Printf("    Title: (empty)\n")
+						}
+						if livery != "" {
+							fmt.Printf("    Livery: %s\n", livery)
+						} else {
+							fmt.Printf("    Livery: (empty)\n")
+						}
+					} else {
+						emptyEntries++
+					}
 				}
+
+				fmt.Printf("\n  Summary: %d entries with data, %d empty entries\n", validEntries, emptyEntries)
+
 			default:
 				// Other message types can be handled here
 			}
