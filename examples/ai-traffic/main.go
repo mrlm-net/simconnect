@@ -133,7 +133,7 @@ connected:
 				}
 			}(p))
 		} else {
-			fmt.Printf("Adding parked plane - plane=%s number=%s\n", p.Plane, p.Number)
+			fmt.Printf("📝 Adding parked plane - plane=%s number=%s\n", p.Plane, p.Number)
 			client.AICreateParkedATCAircraft(p.Plane, p.Number, p.Airport, 1000+uint32(i))
 		}
 	}
