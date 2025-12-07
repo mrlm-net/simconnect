@@ -80,7 +80,8 @@ connected:
 	client.AICreateParkedATCAircraft("FSLTL_A359_CAL-China Airlines", "N12346", "LKPR", 5001)
 	// FSLTL A320 Air France SL
 
-	//client.AICreateEnrouteATCAircraft("FSLTL A320 Air France SL", "N12347", 1234, "CUSTOMFLIGHT", 0.05, false, 5002)
+	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
+	//client.AICreateEnrouteATCAircraft("FSLTL A320 Air France SL", "N12347", 123, "C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25", 0.0, false, 5006)
 
 	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
 	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
