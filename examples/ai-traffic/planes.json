@@ -2,12 +2,12 @@
     "airport": "LKPR",
     "plane": "FSLTL A320 VLG Vueling",
     "number": "N12345",
-    "plan": "LKPRLFPG",
-    "clearance": 0
+    "plan": "LKPREDDN_NoProc",
+    "clearance": 1
 }, {
     "airport": "LKPR",
     "plane": "FSLTL_A359_CAL-China Airlines",
     "number": "N12346",
-    "plan": "LKPRZSPD",
+    "plan": "LKPREDDN_NoProc",
     "clearance": 120
 }]
