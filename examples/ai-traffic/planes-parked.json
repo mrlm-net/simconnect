@@ -1,9 +1,13 @@
 [{
     "airport": "LKPR",
     "plane": "FSLTL A320 VLG Vueling",
-    "number": "N12345"  
+    "number": "N12345",
+    "plan": "LKPRLFPG",
+    "clearance": 0
 }, {
     "airport": "LKPR",
     "plane": "FSLTL_A359_CAL-China Airlines",
-    "number": "N12346"
+    "number": "N12346",
+    "plan": "LKPRZSPD",
+    "clearance": 120
 }]
