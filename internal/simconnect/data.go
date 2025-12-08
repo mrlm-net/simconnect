@@ -99,21 +99,21 @@ func (sc *SimConnect) ClearDataDefinition(definitionID uint32) error {
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_SetDataOnSimObject.htm
-func (sc *SimConnect) SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, data unsafe.Pointer, dataSize uint32) error {
+func (sc *SimConnect) SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error {
 	procedure := sc.library.LoadProcedure("SimConnect_SetDataOnSimObject")
 
 	hresult, _, _ := procedure.Call(
-		sc.getConnection(), // phSimConnect - pointer to handle
-		uintptr(definitionID),
-		uintptr(objectID),
-		uintptr(flags),
-		uintptr(dataSize),
-		uintptr(data),
+		sc.getConnection(),    // HANDLE hSimConnect
+		uintptr(definitionID), // SIMCONNECT_DATA_DEFINITION_ID DefineID
+		uintptr(objectID),     // SIMCONNECT_OBJECT_ID ObjectID
+		uintptr(flags),        // SIMCONNECT_DATA_SET_FLAG Flags
+		uintptr(arrayCount),   // DWORD ArrayCount
+		uintptr(cbUnitSize),   // DWORD cbUnitSize
+		uintptr(data),         // void* pDataSet
 	)
 
 	if !isHRESULTSuccess(hresult) {
 		return fmt.Errorf("SimConnect_SetDataOnSimObject failed with HRESULT: 0x%08X", uint32(hresult))
 	}
-
 	return nil
 }
