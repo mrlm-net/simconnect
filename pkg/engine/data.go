@@ -25,6 +25,6 @@ func (e *Engine) ClearDataDefinition(definitionID uint32) error {
 	return e.api.ClearDataDefinition(definitionID)
 }
 
-func (e *Engine) SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, data unsafe.Pointer, dataSize uint32) error {
-	return e.api.SetDataOnSimObject(definitionID, objectID, flags, data, dataSize)
+func (e *Engine) SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error {
+	return e.api.SetDataOnSimObject(definitionID, objectID, flags, arrayCount, cbUnitSize, data)
 }
