@@ -68,10 +68,10 @@ func main() {
 
 	// Before main event loop create timeout async functions to set camera state
 	go func() {
-		// After 5 seconds set camera to external view (2)
+		// After 5 seconds set camera to external view (3)
 		time.Sleep(15 * time.Second)
-		fmt.Println("🔄 Setting camera state to EXTERNAL VIEW (2)")
-		value := int32(2)
+		fmt.Println("🔄 Setting camera state to EXTERNAL VIEW (3)")
+		value := int32(3)
 		_ = client.SetDataOnSimObject(
 			2000,                            // definitionID (CAMERA STATE)
 			types.SIMCONNECT_OBJECT_ID_USER, // objectID
@@ -82,8 +82,8 @@ func main() {
 		)
 
 		time.Sleep(5 * time.Second)
-		fmt.Println("🔄 Setting camera state to COCKPIT VIEW (1)")
-		value = int32(1)
+		fmt.Println("🔄 Setting camera state to COCKPIT VIEW (2)")
+		value = int32(2)
 		_ = client.SetDataOnSimObject(
 			2000,                            // definitionID (CAMERA STATE)
 			types.SIMCONNECT_OBJECT_ID_USER, // objectID
@@ -92,6 +92,46 @@ func main() {
 			uint32(unsafe.Sizeof(value)),    // cbUnitSize (size of one int32)
 			unsafe.Pointer(&value),          // pDataSet (pointer to value)
 		)
+
+		time.Sleep(5 * time.Second)
+		fmt.Println("🔄 Setting camera state to DRONE VIEW (4)")
+		value = int32(4)
+		_ = client.SetDataOnSimObject(
+			2000,                            // definitionID (CAMERA STATE)
+			types.SIMCONNECT_OBJECT_ID_USER, // objectID
+			0,                               // flags (SIMCONNECT_DATA_SET_FLAG_DEFAULT)
+			1,                               // arrayCount (one int32)
+			uint32(unsafe.Sizeof(value)),    // cbUnitSize (size of one int32)
+			unsafe.Pointer(&value),          // pDataSet (pointer to value)
+		)
+
+		time.Sleep(5 * time.Second)
+		fmt.Println("🔄 Setting camera state to COCKPIT VIEW (2)")
+		value = int32(2)
+		_ = client.SetDataOnSimObject(
+			2000,                            // definitionID (CAMERA STATE)
+			types.SIMCONNECT_OBJECT_ID_USER, // objectID
+			0,                               // flags (SIMCONNECT_DATA_SET_FLAG_DEFAULT)
+			1,                               // arrayCount (one int32)
+			uint32(unsafe.Sizeof(value)),    // cbUnitSize (size of one int32)
+			unsafe.Pointer(&value),          // pDataSet (pointer to value)
+		)
+
+		time.Sleep(5 * time.Second)
+		fmt.Println("🔄 Setting camera state to EXTERNAL VIEW (3)")
+		value = int32(3)
+		_ = client.SetDataOnSimObject(
+			2000,                            // definitionID (CAMERA STATE)
+			types.SIMCONNECT_OBJECT_ID_USER, // objectID
+			0,                               // flags (SIMCONNECT_DATA_SET_FLAG_DEFAULT)
+			1,                               // arrayCount (one int32)
+			uint32(unsafe.Sizeof(value)),    // cbUnitSize (size of one int32)
+			unsafe.Pointer(&value),          // pDataSet (pointer to value)
+		)
+
+		time.Sleep(15 * time.Second)
+		fmt.Println("🛑 Finished setting camera states, exiting...")
+		cancel()
 	}()
 
 	for {
