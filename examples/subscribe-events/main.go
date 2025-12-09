@@ -45,6 +45,11 @@ connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 
+	client.MapClientEventToSimEvent(2000, "PAUSE_TOGGLE")
+
+	client.AddClientEventToNotificationGroup(3000, 2000, false)
+	client.SetNotificationGroupPriority(3000, 1)
+
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	// Main message processing loop
