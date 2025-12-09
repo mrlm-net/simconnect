@@ -45,6 +45,8 @@ connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 
+	client.RequestFacilitiesList(2000, types.SIMCONNECT_FACILITY_LIST_AIRPORT)
+
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	// Main message processing loop
@@ -85,6 +87,13 @@ connected:
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 
+			case types.SIMCONNECT_RECV_ID_AIRPORT_LIST:
+			case types.SIMCONNECT_RECV_ID_NDB_LIST:
+			case types.SIMCONNECT_RECV_ID_VOR_LIST:
+			case types.SIMCONNECT_RECV_ID_WAYPOINT_LIST:
+				facilityListMsg := msg.AsFacilityList()
+				count := facilityListMsg.DwArraySize
+				fmt.Printf("🏢 Received facility list with %d entries:\n", count)
 			default:
 				// Other message types can be handled here
 			}

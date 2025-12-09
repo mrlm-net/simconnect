@@ -89,3 +89,14 @@ func (m *Message) AsFacilityData() *types.SIMCONNECT_RECV_FACILITY_DATA {
 	}
 	return (*types.SIMCONNECT_RECV_FACILITY_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+func (m *Message) AsFacilityList() *types.SIMCONNECT_RECV_FACILITIES_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_AIRPORT_LIST ||
+		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_VOR_LIST ||
+		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_NDB_LIST ||
+		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_WAYPOINT_LIST {
+		return (*types.SIMCONNECT_RECV_FACILITIES_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+
+	}
+	return nil
+}
