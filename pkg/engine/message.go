@@ -100,3 +100,31 @@ func (m *Message) AsFacilityList() *types.SIMCONNECT_RECV_FACILITIES_LIST {
 	}
 	return nil
 }
+
+func (m *Message) AsAirportList() *types.SIMCONNECT_RECV_AIRPORT_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_AIRPORT_LIST {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_AIRPORT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsNDBList() *types.SIMCONNECT_RECV_NDB_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_NDB_LIST {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_NDB_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsVORList() *types.SIMCONNECT_RECV_VOR_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_VOR_LIST {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_VOR_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsWaypointList() *types.SIMCONNECT_RECV_WAYPOINT_LIST {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_WAYPOINT_LIST {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_WAYPOINT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}

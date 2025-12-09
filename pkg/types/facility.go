@@ -37,8 +37,8 @@ const (
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_AIRPORT.htm
 type SIMCONNECT_DATA_FACILITY_AIRPORT struct {
-	Ident     [9]byte // ident[9]
-	Region    [3]byte // region[3]
+	Ident     [6]byte // char ident[6]
+	Region    [3]byte // char region[3]
 	Latitude  float64 // double Latitude
 	Longitude float64 // double Longitude
 	Altitude  float64 // double Altitude

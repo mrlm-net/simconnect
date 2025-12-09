@@ -73,7 +73,7 @@ func (sc *SimConnect) ClearAllFacilityDataDefinitionFilters(definitionID uint32)
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilitesList.htm
 func (sc *SimConnect) RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitesList")
+	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitiesList")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -89,7 +89,7 @@ func (sc *SimConnect) RequestFacilitiesList(definitionID uint32, listType types.
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilitiesList_EX1.htm
 func (sc *SimConnect) RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitesList_EX1")
+	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitiesList_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle

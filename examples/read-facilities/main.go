@@ -5,10 +5,13 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -45,7 +48,7 @@ connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 
-	client.RequestFacilitiesList(2000, types.SIMCONNECT_FACILITY_LIST_AIRPORT)
+	client.RequestFacilitiesListEX1(2000, types.SIMCONNECT_FACILITY_LIST_AIRPORT)
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -88,12 +91,100 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 
 			case types.SIMCONNECT_RECV_ID_AIRPORT_LIST:
-			case types.SIMCONNECT_RECV_ID_NDB_LIST:
-			case types.SIMCONNECT_RECV_ID_VOR_LIST:
-			case types.SIMCONNECT_RECV_ID_WAYPOINT_LIST:
-				facilityListMsg := msg.AsFacilityList()
-				count := facilityListMsg.DwArraySize
-				fmt.Printf("🏢 Received facility list with %d entries:\n", count)
+				// Work with raw message pointer to avoid struct issues
+				list := msg.AsAirportList()
+				// Read header fields manually
+				// SIMCONNECT_RECV (12 bytes: Size, Version, ID) + dwRequestID (4) + dwArraySize (4) + dwEntryNumber (4) + dwOutOf (4) = 28 bytes
+
+				fmt.Printf("🏢 Received facility list:\n")
+				fmt.Printf("  dwRequestID: %d\n", list.DwRequestID)
+				fmt.Printf("  dwArraySize: %d\n", list.DwArraySize)
+				fmt.Printf("  dwEntryNumber: %d\n", list.DwEntryNumber)
+				fmt.Printf("  dwOutOf: %d\n", list.DwOutOf)
+
+				if list.DwArraySize == 0 {
+					fmt.Println("  No airports in this message")
+					continue
+				}
+
+				// Calculate actual entry size from the message
+				// SIMCONNECT_RECV_FACILITIES_LIST header is 28 bytes
+				headerSize := types.DWORD(28)
+				actualDataSize := msg.DwSize - headerSize
+				actualEntrySize := actualDataSize / types.DWORD(list.DwArraySize)
+
+				fmt.Printf("  Actual entry size: %d bytes\n", actualEntrySize)
+
+				// Determine offsets based on entry size
+				var latOffset, lonOffset, altOffset uintptr
+
+				switch actualEntrySize {
+				case 33: // Packed (1-byte alignment)
+					// Ident(6) + Region(3) = 9
+					latOffset, lonOffset, altOffset = 9, 17, 25
+				case 36: // 4-byte alignment
+					// Ident(6) + Region(3) + Padding(3) = 12
+					latOffset, lonOffset, altOffset = 12, 20, 28
+				case 40: // 8-byte alignment
+					// Ident(6) + Region(3) + Padding(7) = 16
+					latOffset, lonOffset, altOffset = 16, 24, 32
+				default:
+					// Fallback: Try 4-byte alignment as it's common for mixed C++ structs
+					latOffset, lonOffset, altOffset = 12, 20, 28
+					fmt.Printf("⚠️  Unknown entry size %d, defaulting to 4-byte aligned offsets (12/20/28)\n", actualEntrySize)
+				}
+
+				// Access the raw data buffer directly from the message
+				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + uintptr(headerSize))
+
+				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
+					// Calculate pointer to the start of this entry
+					entryOffset := uintptr(i) * uintptr(actualEntrySize)
+					entryPtr := unsafe.Pointer(uintptr(dataStart) + entryOffset)
+
+					// 1. Read Ident (6 bytes) - Always at offset 0
+					var ident [6]byte
+					for j := 0; j < 6; j++ {
+						ident[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + uintptr(j)))
+					}
+
+					// 2. Read Region (3 bytes) - Always at offset 6
+					var region [3]byte
+					for j := 0; j < 3; j++ {
+						region[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + 6 + uintptr(j)))
+					}
+
+					// 3. Read Latitude
+					latBytes := make([]byte, 8)
+					for j := 0; j < 8; j++ {
+						latBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + latOffset + uintptr(j)))
+					}
+					lat := math.Float64frombits(binary.LittleEndian.Uint64(latBytes))
+
+					// 4. Read Longitude
+					lonBytes := make([]byte, 8)
+					for j := 0; j < 8; j++ {
+						lonBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + lonOffset + uintptr(j)))
+					}
+					lon := math.Float64frombits(binary.LittleEndian.Uint64(lonBytes))
+
+					// 5. Read Altitude
+					altBytes := make([]byte, 8)
+					for j := 0; j < 8; j++ {
+						altBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + altOffset + uintptr(j)))
+					}
+					alt := math.Float64frombits(binary.LittleEndian.Uint64(altBytes))
+
+					fmt.Printf("  Airport #%d: Ident: %s, Region: %s, Lat: %f, Lon: %f, Alt: %f\n",
+						i+1,
+						engine.BytesToString(ident[:]),
+						engine.BytesToString(region[:]),
+						lat,
+						lon,
+						alt,
+					)
+				}
+
 			default:
 				// Other message types can be handled here
 			}
@@ -135,4 +226,11 @@ func main() {
 			fmt.Println("🔄 Attempting to reconnect...")
 		}
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
