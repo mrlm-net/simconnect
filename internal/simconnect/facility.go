@@ -104,7 +104,7 @@ func (sc *SimConnect) RequestFacilitiesListEX1(definitionID uint32, listType typ
 }
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilityData.htm
-func (sc *SimConnect) RequestFacilityData(definitionID uint32, icao string, region string) error {
+func (sc *SimConnect) RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error {
 	szICAO, err := stringToBytePtr(icao)
 	if err != nil {
 		return fmt.Errorf("failed to convert ICAO to byte pointer: %w", err)
@@ -120,6 +120,7 @@ func (sc *SimConnect) RequestFacilityData(definitionID uint32, icao string, regi
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
+		uintptr(requestID),
 		szICAO,
 		szRegion,
 	)
@@ -132,7 +133,7 @@ func (sc *SimConnect) RequestFacilityData(definitionID uint32, icao string, regi
 }
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilityData_EX1.htm
-func (sc *SimConnect) RequestFacilityDataEX1(definitionID uint32, icao string, region string, facilityType byte) error {
+func (sc *SimConnect) RequestFacilityDataEX1(definitionID uint32, requestID uint32, icao string, region string, facilityType byte) error {
 	szICAO, err := stringToBytePtr(icao)
 	if err != nil {
 		return fmt.Errorf("failed to convert ICAO to byte pointer: %w", err)
@@ -148,6 +149,7 @@ func (sc *SimConnect) RequestFacilityDataEX1(definitionID uint32, icao string, r
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
+		uintptr(requestID),
 		szICAO,
 		szRegion,
 		uintptr(facilityType),

@@ -29,12 +29,12 @@ func (e *Engine) RequestFacilitiesListEX1(definitionID uint32, listType types.SI
 	return e.api.RequestFacilitiesListEX1(definitionID, listType)
 }
 
-func (e *Engine) RequestFacilityData(definitionID uint32, icao string, region string) error {
-	return e.api.RequestFacilityData(definitionID, icao, region)
+func (e *Engine) RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error {
+	return e.api.RequestFacilityData(definitionID, requestID, icao, region)
 }
 
-func (e *Engine) RequestFacilityDataEX1(definitionID uint32, icao string, region string, facilityType byte) error {
-	return e.api.RequestFacilityDataEX1(definitionID, icao, region, facilityType)
+func (e *Engine) RequestFacilityDataEX1(definitionID uint32, requestID uint32, icao string, region string, facilityType byte) error {
+	return e.api.RequestFacilityDataEX1(definitionID, requestID, icao, region, facilityType)
 }
 
 func (e *Engine) RequestJetwayData(airportICAO string, arrayCount uint32, indexes *int32) error {

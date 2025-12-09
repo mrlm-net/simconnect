@@ -82,3 +82,10 @@ func (m *Message) AsSimObjectAndLiveryEnumeration() *types.SIMCONNECT_RECV_ENUME
 	}
 	return (*types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+func (m *Message) AsFacilityData() *types.SIMCONNECT_RECV_FACILITY_DATA {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FACILITY_DATA {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_FACILITY_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
