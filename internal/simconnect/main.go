@@ -79,6 +79,7 @@ type API interface {
 	AddClientEventToNotificationGroup(groupID uint32, eventID uint32, mask bool) error
 	ClearNotificationGroup(groupID uint32) error
 	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error
+	SetNotificationGroupPriority(groupID uint32, priority uint32) error
 }
 
 func (sc *SimConnect) getConnection() uintptr {

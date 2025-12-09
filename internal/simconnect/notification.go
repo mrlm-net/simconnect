@@ -63,3 +63,20 @@ func (sc *SimConnect) RequestNotificationGroup(groupID uint32, dwReserved uint32
 
 	return nil
 }
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/General/SimConnect_SetNotificationGroupPriority.htm
+func (sc *SimConnect) SetNotificationGroupPriority(groupID uint32, priority uint32) error {
+	procedure := sc.library.LoadProcedure("SimConnect_SetNotificationGroupPriority")
+
+	hresult, _, _ := procedure.Call(
+		sc.getConnection(), // phSimConnect - pointer to handle
+		uintptr(groupID),
+		uintptr(priority),
+	)
+
+	if !isHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_SetNotificationGroupPriority failed with HRESULT: 0x%08X", uint32(hresult))
+	}
+
+	return nil
+}
