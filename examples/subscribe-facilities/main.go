@@ -15,21 +15,12 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-type AirportData struct {
-	Latitude  float64
-	Longitude float64
-	Altitude  float64
-	ICAO      [8]byte
-	Name      [32]byte
-	Name64    [64]byte
-}
-
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Read facility and its data",
+	client := simconnect.New("GO Example - SimConnect Read objects and their data",
 		engine.WithContext(ctx),
 	)
 
@@ -53,18 +44,6 @@ func runConnection(ctx context.Context) error {
 connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
-
-	// See remarks in docs for open/close usage
-	// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_AddToFacilityDefinition.htm#remarks
-	client.AddToFacilityDefinition(3000, "OPEN AIRPORT")
-	client.AddToFacilityDefinition(3000, "LATITUDE")
-	client.AddToFacilityDefinition(3000, "LONGITUDE")
-	client.AddToFacilityDefinition(3000, "ALTITUDE")
-	client.AddToFacilityDefinition(3000, "ICAO")
-	client.AddToFacilityDefinition(3000, "NAME")
-	client.AddToFacilityDefinition(3000, "NAME64")
-	client.AddToFacilityDefinition(3000, "CLOSE AIRPORT")
-	client.RequestFacilityData(3000, 123, "LKPR", "")
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -105,39 +84,6 @@ connected:
 				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
-
-			case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
-				/*struct SIMCONNECT_RECV_FACILITY_DATA : public SIMCONNECT_RECV{
-				  DWORD UserRequestId;
-				  DWORD UniqueRequestId;
-				  DWORD ParentUniqueRequestId;
-				  SIMCONNECT_FACILITY_DATA_TYPE Type;
-				  bool IsListItem;
-				  DWORD ItemIndex;
-				  DWORD ListSize;
-				  DWORD Data;
-				  };*/
-				fmt.Println("🏗️  Received SIMCONNECT_RECV_ID_FACILITY_DATA message!")
-				msg := msg.AsFacilityData()
-
-				fmt.Printf("  UserRequestId: %d\n", msg.UserRequestId)
-				fmt.Printf("  UniqueRequestId: %d\n", msg.UniqueRequestId)
-				fmt.Printf("  ParentUniqueRequestId: %d\n", msg.ParentUniqueRequestId)
-				fmt.Printf("  Type: %d\n", msg.Type)
-				fmt.Printf("  IsListItem: %v\n", msg.IsListItem)
-				fmt.Printf("  ItemIndex: %d\n", msg.ItemIndex)
-				fmt.Printf("  ListSize: %d\n", msg.ListSize)
-				// Buffer of data. Have to cast it to a struct which matches the definition.
-				data := engine.CastDataAs[AirportData](&msg.Data)
-				fmt.Printf("  Data:\n")
-				fmt.Printf("    Latitude: %f\n", data.Latitude)
-				fmt.Printf("    Longitude: %f\n", data.Longitude)
-				fmt.Printf("    Altitude: %f\n", data.Altitude)
-				fmt.Printf("    ICAO: '%s'\n", engine.BytesToString(data.ICAO[:]))
-				fmt.Printf("    Name: '%s'\n", engine.BytesToString(data.Name[:]))
-				fmt.Printf("    Name64: '%s'\n", engine.BytesToString(data.Name64[:]))
-			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
-				fmt.Println("🏁 Received SIMCONNECT_RECV_ID_FACILITY_DATA_END message!")
 
 			default:
 				// Other message types can be handled here
