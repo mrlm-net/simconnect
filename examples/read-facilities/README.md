@@ -44,20 +44,19 @@ go run main.go
   SimConnect Build: 62651.0
 📨 Message received - SIMCONNECT_RECV_ID_AIRPORT_LIST
 🏢 Received facility list:
-  dwRequestID: 2000
-  dwArraySize: 50
-  dwEntryNumber: 1
-  dwOutOf: 150
+  📋 Request ID: 2000
+  📊 Array Size: 50
+  📦 Packet: 1 of 3
   Actual entry size: 36 bytes
-  Airport #1: Ident: LKPR, Region: CZ, Lat: 50.100833, Lon: 14.260000, Alt: 1247.375000
-  Airport #2: Ident: LKVO, Region: CZ, Lat: 49.151667, Lon: 17.438889, Alt: 794.500000
+  ✈️  Airport #1: LKPR (CZ) | 🌍 Lat: 50.100833, Lon: 14.260000 | 📏 Alt: 1247.38m
+  ✈️  Airport #2: LKVO (CZ) | 🌍 Lat: 49.151667, Lon: 17.438889 | 📏 Alt: 794.50m
+  ✈️  Airport #3: LKTB (CZ) | 🌍 Lat: 49.151250, Lon: 16.694444 | 📏 Alt: 528.17m
   ...
 📨 Message received - SIMCONNECT_RECV_ID_AIRPORT_LIST
 🏢 Received facility list:
-  dwRequestID: 2000
-  dwArraySize: 50
-  dwEntryNumber: 2
-  dwOutOf: 150
+  📋 Request ID: 2000
+  📊 Array Size: 50
+  📦 Packet: 2 of 3
   ...
 ```
 

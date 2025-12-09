@@ -97,10 +97,9 @@ connected:
 				// SIMCONNECT_RECV (12 bytes: Size, Version, ID) + dwRequestID (4) + dwArraySize (4) + dwEntryNumber (4) + dwOutOf (4) = 28 bytes
 
 				fmt.Printf("🏢 Received facility list:\n")
-				fmt.Printf("  dwRequestID: %d\n", list.DwRequestID)
-				fmt.Printf("  dwArraySize: %d\n", list.DwArraySize)
-				fmt.Printf("  dwEntryNumber: %d\n", list.DwEntryNumber)
-				fmt.Printf("  dwOutOf: %d\n", list.DwOutOf)
+				fmt.Printf("  📋 Request ID: %d\n", list.DwRequestID)
+				fmt.Printf("  📊 Array Size: %d\n", list.DwArraySize)
+				fmt.Printf("  📦 Packet: %d of %d\n", list.DwEntryNumber, list.DwOutOf)
 
 				if list.DwArraySize == 0 {
 					fmt.Println("  No airports in this message")
@@ -175,7 +174,7 @@ connected:
 					}
 					alt := math.Float64frombits(binary.LittleEndian.Uint64(altBytes))
 
-					fmt.Printf("  Airport #%d: Ident: %s, Region: %s, Lat: %f, Lon: %f, Alt: %f\n",
+					fmt.Printf("  ✈️  Airport #%d: %s (%s) | 🌍 Lat: %.6f, Lon: %.6f | 📏 Alt: %.2fm\n",
 						i+1,
 						engine.BytesToString(ident[:]),
 						engine.BytesToString(region[:]),
