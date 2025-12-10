@@ -5,9 +5,7 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"time"
@@ -17,6 +15,17 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// AirportEntry represents a single airport facility entry (36 bytes total)
+// Must be packed to match exact memory layout from SimConnect
+type AirportEntry struct {
+	Ident  [6]byte // Offset 0-5
+	Region [3]byte // Offset 6-8
+	_      [3]byte // Offset 9-11 (padding)
+	Lat    float64 // Offset 12-19
+	Lon    float64 // Offset 20-27
+	Alt    float64 // Offset 28-35
+}
 
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
@@ -91,10 +100,7 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 
 			case types.SIMCONNECT_RECV_ID_AIRPORT_LIST:
-				// Work with raw message pointer to avoid struct issues
 				list := msg.AsAirportList()
-				// Read header fields manually
-				// SIMCONNECT_RECV (12 bytes: Size, Version, ID) + dwRequestID (4) + dwArraySize (4) + dwEntryNumber (4) + dwOutOf (4) = 28 bytes
 
 				fmt.Printf("🏢 Received facility list:\n")
 				fmt.Printf("  📋 Request ID: %d\n", list.DwRequestID)
@@ -107,80 +113,36 @@ connected:
 				}
 
 				// Calculate actual entry size from the message
-				// SIMCONNECT_RECV_FACILITIES_LIST header is 28 bytes
-				headerSize := types.DWORD(28)
-				actualDataSize := msg.DwSize - headerSize
-				actualEntrySize := actualDataSize / types.DWORD(list.DwArraySize)
+				headerSize := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
+				actualDataSize := uintptr(msg.DwSize) - headerSize
+				actualEntrySize := actualDataSize / uintptr(list.DwArraySize)
 
-				fmt.Printf("  Actual entry size: %d bytes\n", actualEntrySize)
+				fmt.Printf("  📏 Header size: %d bytes\n", headerSize)
+				fmt.Printf("  📏 Actual entry size: %d bytes\n", actualEntrySize)
+				fmt.Printf("  📏 Struct size: %d bytes\n", unsafe.Sizeof(AirportEntry{}))
 
-				// Determine offsets based on entry size
-				var latOffset, lonOffset, altOffset uintptr
-
-				switch actualEntrySize {
-				case 33: // Packed (1-byte alignment)
-					// Ident(6) + Region(3) = 9
-					latOffset, lonOffset, altOffset = 9, 17, 25
-				case 36: // 4-byte alignment
-					// Ident(6) + Region(3) + Padding(3) = 12
-					latOffset, lonOffset, altOffset = 12, 20, 28
-				case 40: // 8-byte alignment
-					// Ident(6) + Region(3) + Padding(7) = 16
-					latOffset, lonOffset, altOffset = 16, 24, 32
-				default:
-					// Fallback: Try 4-byte alignment as it's common for mixed C++ structs
-					latOffset, lonOffset, altOffset = 12, 20, 28
-					fmt.Printf("⚠️  Unknown entry size %d, defaulting to 4-byte aligned offsets (12/20/28)\n", actualEntrySize)
-				}
-
-				// Access the raw data buffer directly from the message
-				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + uintptr(headerSize))
+				// dataStart points to the beginning of the array data (after the header)
+				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
 
 				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
-					// Calculate pointer to the start of this entry
-					entryOffset := uintptr(i) * uintptr(actualEntrySize)
+					entryOffset := uintptr(i) * actualEntrySize
 					entryPtr := unsafe.Pointer(uintptr(dataStart) + entryOffset)
 
-					// 1. Read Ident (6 bytes) - Always at offset 0
+					// Read fields at exact offsets - can't use struct due to Go's alignment rules
 					var ident [6]byte
-					for j := 0; j < 6; j++ {
-						ident[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + uintptr(j)))
-					}
-
-					// 2. Read Region (3 bytes) - Always at offset 6
 					var region [3]byte
-					for j := 0; j < 3; j++ {
-						region[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + 6 + uintptr(j)))
-					}
+					copy(ident[:], (*[6]byte)(entryPtr)[:])
+					copy(region[:], (*[3]byte)(unsafe.Pointer(uintptr(entryPtr) + 6))[:])
 
-					// 3. Read Latitude
-					latBytes := make([]byte, 8)
-					for j := 0; j < 8; j++ {
-						latBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + latOffset + uintptr(j)))
-					}
-					lat := math.Float64frombits(binary.LittleEndian.Uint64(latBytes))
-
-					// 4. Read Longitude
-					lonBytes := make([]byte, 8)
-					for j := 0; j < 8; j++ {
-						lonBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + lonOffset + uintptr(j)))
-					}
-					lon := math.Float64frombits(binary.LittleEndian.Uint64(lonBytes))
-
-					// 5. Read Altitude
-					altBytes := make([]byte, 8)
-					for j := 0; j < 8; j++ {
-						altBytes[j] = *(*byte)(unsafe.Pointer(uintptr(entryPtr) + altOffset + uintptr(j)))
-					}
-					alt := math.Float64frombits(binary.LittleEndian.Uint64(altBytes))
+					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 12))
+					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 20))
+					alt := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 28))
 
 					fmt.Printf("  ✈️  Airport #%d: %s (%s) | 🌍 Lat: %.6f, Lon: %.6f | 📏 Alt: %.2fm\n",
 						i+1,
 						engine.BytesToString(ident[:]),
 						engine.BytesToString(region[:]),
-						lat,
-						lon,
-						alt,
+						lat, lon, alt,
 					)
 				}
 
