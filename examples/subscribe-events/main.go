@@ -50,6 +50,8 @@ connected:
 	client.AddClientEventToNotificationGroup(3000, 2000, false)
 	client.SetNotificationGroupPriority(3000, 1)
 
+	//client.RequestNotificationGroup(3000, 0, 0)
+
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	// Main message processing loop
