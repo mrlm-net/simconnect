@@ -18,7 +18,8 @@ The main aim of this package is to abstract and describe common use-cases for yo
 
 | Requirement | Version |
 |-------------|---------|
-| Go | 1.21+ |
+| Go | 1.25+ |
+| Operating system | Windows |
 | Microsoft Flight Simulator | 2020 / 2024 |
 | SimConnect SDK | Bundled with MSFS |
 
