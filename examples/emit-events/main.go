@@ -136,13 +136,13 @@ connected:
 								}
 
 								if doorIndex == 0 {
-									fmt.Println("❌ Door index must be greater than 0.\n")
+									fmt.Println("❌ Door index must be greater than 0.")
 									continue
 								}
 
 								// Transmit the event
 								if !connectionReady {
-									fmt.Println("⚠️  Connection not ready yet. Please wait...\n")
+									fmt.Println("⚠️  Connection not ready yet. Please wait...")
 									continue
 								}
 
