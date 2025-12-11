@@ -3,14 +3,292 @@
 
 package manager
 
-import "github.com/mrlm-net/simconnect/pkg/engine"
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
 
-func New(name string) Manager {
+	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+// New creates a new Manager instance with the given application name and options
+func New(name string, opts ...Option) Manager {
+	config := defaultConfig()
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	ctx, cancel := context.WithCancel(config.Context)
+
 	return &Instance{
-		engine: engine.New(name),
+		name:            name,
+		config:          config,
+		ctx:             ctx,
+		cancel:          cancel,
+		logger:          config.Logger,
+		state:           StateDisconnected,
+		stateHandlers:   []StateChangeHandler{},
+		messageHandlers: []MessageHandler{},
 	}
 }
 
+// Instance implements the Manager interface
 type Instance struct {
+	name   string
+	config *Config
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	logger *slog.Logger
+
+	// Connection state
+	mu              sync.RWMutex
+	state           ConnectionState
+	stateHandlers   []StateChangeHandler
+	messageHandlers []MessageHandler
+
+	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
+}
+
+// State returns the current connection state
+func (m *Instance) State() ConnectionState {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.state
+}
+
+// setState updates the connection state and notifies handlers
+func (m *Instance) setState(newState ConnectionState) {
+	m.mu.Lock()
+	oldState := m.state
+	if oldState == newState {
+		m.mu.Unlock()
+		return
+	}
+	m.state = newState
+	handlers := make([]StateChangeHandler, len(m.stateHandlers))
+	copy(handlers, m.stateHandlers)
+	m.mu.Unlock()
+
+	m.logger.Info(fmt.Sprintf("[manager] State changed: %s -> %s", oldState, newState))
+
+	// Notify handlers outside the lock
+	for _, handler := range handlers {
+		handler(oldState, newState)
+	}
+}
+
+// OnStateChange registers a callback to be invoked when connection state changes
+func (m *Instance) OnStateChange(handler StateChangeHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stateHandlers = append(m.stateHandlers, handler)
+}
+
+// OnMessage registers a callback to be invoked when a message is received
+func (m *Instance) OnMessage(handler MessageHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.messageHandlers = append(m.messageHandlers, handler)
+}
+
+// Client returns the underlying engine client for direct API access
+func (m *Instance) Client() engine.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.engine
+}
+
+// Start begins the connection lifecycle management
+func (m *Instance) Start() error {
+	m.logger.Info("[manager] Starting connection lifecycle management")
+
+	// Reconnection loop
+	for {
+		select {
+		case <-m.ctx.Done():
+			m.logger.Info("[manager] Context cancelled, stopping manager")
+			m.setState(StateDisconnected)
+			return m.ctx.Err()
+		default:
+		}
+
+		err := m.runConnection()
+		if err != nil {
+			// Context cancelled - exit completely
+			m.logger.Info(fmt.Sprintf("[manager] Connection ended with error: %v", err))
+			return err
+		}
+
+		// Simulator disconnected (err == nil) - check if we should reconnect
+		if !m.config.AutoReconnect {
+			m.logger.Info("[manager] Auto-reconnect disabled, stopping manager")
+			return nil
+		}
+
+		m.setState(StateReconnecting)
+		m.logger.Info(fmt.Sprintf("[manager] Waiting %v before reconnecting...", m.config.ReconnectDelay))
+
+		select {
+		case <-m.ctx.Done():
+			m.logger.Info("[manager] Shutdown requested, not reconnecting")
+			m.setState(StateDisconnected)
+			return m.ctx.Err()
+		case <-time.After(m.config.ReconnectDelay):
+			m.logger.Info("[manager] Attempting to reconnect...")
+		}
+	}
+}
+
+// runConnection handles a single connection lifecycle to the simulator.
+// Returns nil when the simulator disconnects (allowing reconnection),
+// or an error if cancelled via context.
+func (m *Instance) runConnection() error {
+	// Create engine options combining user options with our context
+	opts := append([]engine.Option{engine.WithContext(m.ctx)}, m.config.EngineOptions...)
+	if m.config.Logger != nil {
+		opts = append(opts, engine.WithLogger(m.config.Logger))
+	}
+
+	// Create a new engine instance for this connection
+	m.mu.Lock()
+	m.engine = engine.New(m.name, opts...)
+	m.mu.Unlock()
+
+	// Attempt to connect with backoff
+	if err := m.connectWithBackoff(); err != nil {
+		m.mu.Lock()
+		m.engine = nil
+		m.mu.Unlock()
+		return err
+	}
+
+	m.setState(StateConnected)
+	m.logger.Info("[manager] Connected to simulator")
+
+	// Process messages until disconnection or cancellation
+	stream := m.engine.Stream()
+	for {
+		select {
+		case <-m.ctx.Done():
+			m.logger.Debug("[manager] Context cancelled, disconnecting...")
+			m.disconnect()
+			return m.ctx.Err()
+
+		case msg, ok := <-stream:
+			if !ok {
+				// Stream closed (simulator disconnected)
+				m.logger.Info("[manager] Stream closed (simulator disconnected)")
+				m.setState(StateDisconnected)
+				m.mu.Lock()
+				m.engine = nil
+				m.mu.Unlock()
+				return nil // Return nil to allow reconnection
+			}
+
+			if msg.Err != nil {
+				m.logger.Error(fmt.Sprintf("[manager] Stream error: %v", msg.Err))
+				continue
+			}
+
+			// Check for connection ready (OPEN) message
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
+				m.logger.Info("[manager] Received OPEN message, connection is now available")
+				m.setState(StateAvailable)
+				continue
+			}
+
+			// Check for quit message
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_QUIT {
+				m.logger.Info("[manager] Received QUIT message from simulator")
+				m.setState(StateDisconnected)
+				m.mu.Lock()
+				m.engine = nil
+				m.mu.Unlock()
+				return nil // Return nil to allow reconnection
+			}
+
+			// Forward message to registered handlers
+			m.mu.RLock()
+			handlers := make([]MessageHandler, len(m.messageHandlers))
+			copy(handlers, m.messageHandlers)
+			m.mu.RUnlock()
+
+			for _, handler := range handlers {
+				handler(msg)
+			}
+		}
+	}
+}
+
+// connectWithBackoff attempts to connect to the simulator with exponential backoff
+func (m *Instance) connectWithBackoff() error {
+	m.setState(StateConnecting)
+
+	delay := m.config.InitialDelay
+	attempts := 0
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			m.logger.Debug("[manager] Cancelled while waiting for simulator")
+			m.setState(StateDisconnected)
+			return m.ctx.Err()
+		default:
+		}
+
+		err := m.engine.Connect()
+		if err == nil {
+			return nil // Connected successfully
+		}
+
+		attempts++
+		if m.config.MaxRetries > 0 && attempts >= m.config.MaxRetries {
+			m.setState(StateDisconnected)
+			return fmt.Errorf("max connection retries (%d) exceeded: %w", m.config.MaxRetries, err)
+		}
+
+		m.logger.Info(fmt.Sprintf("[manager] Connection attempt %d failed: %v, retrying in %v...", attempts, err, delay))
+
+		select {
+		case <-m.ctx.Done():
+			m.setState(StateDisconnected)
+			return m.ctx.Err()
+		case <-time.After(delay):
+		}
+
+		// Exponential backoff
+		delay = time.Duration(float64(delay) * m.config.BackoffFactor)
+		if delay > m.config.MaxDelay {
+			delay = m.config.MaxDelay
+		}
+	}
+}
+
+// disconnect gracefully disconnects from the simulator
+func (m *Instance) disconnect() {
+	m.mu.Lock()
+	eng := m.engine
+	m.engine = nil
+	m.mu.Unlock()
+
+	if eng != nil {
+		if err := eng.Disconnect(); err != nil {
+			m.logger.Error(fmt.Sprintf("[manager] Disconnect error: %v", err))
+		}
+	}
+	m.setState(StateDisconnected)
+}
+
+// Stop gracefully shuts down the manager
+func (m *Instance) Stop() error {
+	m.logger.Info("[manager] Stopping manager")
+	m.cancel()
+	m.disconnect()
+	return nil
 }
