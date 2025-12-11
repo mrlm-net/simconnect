@@ -4,10 +4,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect"
@@ -20,7 +23,7 @@ import (
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Read objects and their data",
+	client := simconnect.New("GO Example - SimConnect Emit Events (Interactive Door Toggle)",
 		engine.WithContext(ctx),
 	)
 
@@ -44,22 +47,18 @@ func runConnection(ctx context.Context) error {
 connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
-
-	//client.MapClientEventToSimEvent(2000, "KEY_SELECT_2")
-	client.MapClientEventToSimEvent(2001, "TOGGLE_AIRCRAFT_EXIT")
-
-	//client.AddClientEventToNotificationGroup(3000, 2000, false)
-	client.AddClientEventToNotificationGroup(3000, 2001, false)
-
-	client.SetNotificationGroupPriority(3000, 1)
-
-	//client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, 2000, 1, 3000, 0)
-	client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, 2001, 1, 3000, 0)
-
-	//client.RequestNotificationGroup(3000, 0, 0)
+	// Map events
+	client.MapClientEventToSimEvent(2010, "TOGGLE_AIRCRAFT_EXIT")
+	// Add to notification group
+	client.AddClientEventToNotificationGroup(3000, 2010, false)
+	client.SetNotificationGroupPriority(3000, 1000)
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
+
+	// Track if connection is ready to start accepting input
+	connectionReady := false
+	inputStarted := false
 	// Main message processing loop
 	for {
 		select {
@@ -97,6 +96,73 @@ connected:
 				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
+
+				// Mark connection as ready and start input goroutine
+				connectionReady = true
+				if !inputStarted {
+					inputStarted = true
+					fmt.Println("\n🚪 Interactive Door Toggle")
+					fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+					fmt.Println("Enter a door/exit index number and press Enter to toggle it.")
+					fmt.Println("Common indices: 1 (main door), 2-25 (additional doors/exits)")
+					fmt.Println("Note: Valid door indices vary by aircraft model.")
+					fmt.Println("Press Ctrl+C to exit.")
+					fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+
+					// Start input goroutine
+					go func() {
+						scanner := bufio.NewScanner(os.Stdin)
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							default:
+								fmt.Print("Door index: ")
+								if !scanner.Scan() {
+									// EOF or error
+									return
+								}
+
+								input := strings.TrimSpace(scanner.Text())
+								if input == "" {
+									continue
+								}
+
+								// Parse door index
+								doorIndex, err := strconv.ParseUint(input, 10, 32)
+								if err != nil {
+									fmt.Printf("❌ Invalid input '%s'. Please enter a positive integer.\n\n", input)
+									continue
+								}
+
+								if doorIndex == 0 {
+									fmt.Println("❌ Door index must be greater than 0.\n")
+									continue
+								}
+
+								// Transmit the event
+								if !connectionReady {
+									fmt.Println("⚠️  Connection not ready yet. Please wait...\n")
+									continue
+								}
+
+								err = client.TransmitClientEvent(
+									types.SIMCONNECT_OBJECT_ID_USER,
+									2010,
+									uint32(doorIndex),
+									3000,
+									0,
+								)
+
+								if err != nil {
+									fmt.Printf("❌ Failed to transmit event: %v\n\n", err)
+								} else {
+									fmt.Printf("✅ Toggled door/exit index %d\n\n", doorIndex)
+								}
+							}
+						}
+					}()
+				}
 
 			default:
 				// Other message types can be handled here
