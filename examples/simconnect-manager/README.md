@@ -1,4 +1,3 @@
-````markdown
 # SimConnect Manager Example
 
 ## Overview
@@ -197,5 +196,3 @@ type AircraftData struct {
 - You need fine-grained control over connection timing
 - You're implementing custom connection logic
 - Minimal overhead is required
-
-````
