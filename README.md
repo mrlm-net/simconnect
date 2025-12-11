@@ -35,15 +35,15 @@ go get github.com/mrlm-net/simconnect
 package main
 
 import (
-    "github.com/mrlm-net/simconnect/pkg/engine"
+    "github.com/mrlm-net/simconnect"
 )
 
 func main() {
-    client := engine.New()
-    if err := client.Connect("MyApp"); err != nil {
+    client := simconnect.NewClient("MyApp")
+    if err := client.Connect(); err != nil {
         panic(err)
     }
-    defer client.Close()
+    defer client.Disconnect()
     // … interact with the simulator
 }
 ```
@@ -55,6 +55,7 @@ func main() {
 | [`basic-connection`](examples/basic-connection) | Minimal setup that connects to the simulator and prints status updates. |
 | [`await-connection`](examples/await-connection) | Demonstrates waiting for the SimConnect server and retrying the connection sequence. |
 | [`lifecycle-connection`](examples/lifecycle-connection) | Showcases clean connection lifecycle management including graceful shutdown. |
+| [`simconnect-manager`](examples/simconnect-manager) | Uses the Manager interface for automatic connection lifecycle and reconnection handling. |
 | [`read-messages`](examples/read-messages) | Reads incoming SimConnect messages and displays their payloads. |
 | [`read-objects`](examples/read-objects) | Retrieves simulator objects and inspects their properties. |
 | [`set-variables`](examples/set-variables) | Writes data back to the simulator to control aircraft state. |
@@ -71,8 +72,9 @@ func main() {
 
 | Package | Description |
 |---------|-------------|
+| `simconnect` (root) | Main entry point providing `New()` for a managed connection (returns `manager.Manager`) and `NewClient()` for direct engine access (returns `engine.Client`). |
 | [`pkg/engine`](pkg/engine) | High-level client that manages the SimConnect session lifecycle, message dispatching, and data subscriptions. Use this when you want batteries-included helpers around the lower-level API. |
-| [`pkg/manager`](pkg/manager) | Convenience layer for configuring and running the engine with common defaults. Ideal for bootstrapping services that wrap SimConnect interactions. |
+| [`pkg/manager`](pkg/manager) | Connection lifecycle manager with automatic reconnection support. Ideal for long-running services that need robust connection handling. |
 | [`pkg/types`](pkg/types) | Strongly typed representations of SimConnect data structures, events, and helper enums used across the public API. |
 | [`pkg/datasets`](pkg/datasets) | Ready-made dataset definitions that describe common SimConnect data requests, providing reusable building blocks for your own subscriptions. |
 | [`pkg/convert`](pkg/convert) | Utility helpers to convert between Go-native types and SimConnect-specific formats when marshalling data in and out of requests. |

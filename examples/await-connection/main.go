@@ -29,7 +29,7 @@ func main() {
 	}()
 
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Await Connection",
+	client := simconnect.NewClient("GO Example - SimConnect Await Connection",
 		engine.WithContext(ctx),
 	)
 

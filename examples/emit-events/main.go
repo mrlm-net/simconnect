@@ -23,7 +23,7 @@ import (
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Emit Events (Interactive Door Toggle)",
+	client := simconnect.NewClient("GO Example - SimConnect Emit Events (Interactive Door Toggle)",
 		engine.WithContext(ctx),
 	)
 

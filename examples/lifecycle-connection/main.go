@@ -20,7 +20,7 @@ import (
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Lifecycle Connection",
+	client := simconnect.NewClient("GO Example - SimConnect Lifecycle Connection",
 		engine.WithContext(ctx),
 	)
 

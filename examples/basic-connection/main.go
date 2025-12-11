@@ -14,7 +14,7 @@ import (
 func main() {
 	// This is a placeholder main function.
 	// The actual implementation would go here.
-	client := simconnect.New("GO Example - SimConnect Basic Connection")
+	client := simconnect.NewClient("GO Example - SimConnect Basic Connection")
 
 	if err := client.Connect(); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ Error:", err)

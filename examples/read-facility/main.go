@@ -29,7 +29,7 @@ type AirportData struct {
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.New("GO Example - SimConnect Read facility and its data",
+	client := simconnect.NewClient("GO Example - SimConnect Read facility and its data",
 		engine.WithContext(ctx),
 	)
 

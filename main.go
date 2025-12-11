@@ -8,9 +8,18 @@ import (
 	"log/slog"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager"
 )
 
-func New(name string, options ...engine.Option) engine.Client {
+func New() manager.Manager {
+	return manager.New("simconnect-example",
+		manager.WithContext(context.Background()),
+		manager.WithAutoReconnect(true),
+		manager.WithLogger(slog.Default()),
+	)
+}
+
+func NewClient(name string, options ...engine.Option) engine.Client {
 	return engine.New(name, options...)
 }
 
