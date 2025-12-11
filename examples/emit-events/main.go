@@ -107,7 +107,7 @@ connected:
 					fmt.Println("Common indices: 1 (main door), 2-25 (additional doors/exits)")
 					fmt.Println("Note: Valid door indices vary by aircraft model.")
 					fmt.Println("Press Ctrl+C to exit.")
-					fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+					fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 					// Start input goroutine
 					go func() {
