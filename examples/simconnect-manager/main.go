@@ -231,16 +231,18 @@ func main() {
 		case manager.StateConnecting:
 			fmt.Println("⏳ Connecting to simulator...")
 		case manager.StateConnected:
-			fmt.Println("✅ Connected to SimConnect")
-		case manager.StateAvailable:
-			// Connection is fully ready - setup data definitions
+			fmt.Println("✅ Connected to SimConnect, simulator is loading...")
+			// Connection is ready - setup data definitions
 			if client := mgr.Client(); client != nil {
 				setupDataDefinitions(client)
 			}
+		case manager.StateAvailable:
+			// Connection is fully available so messages can be processed
+			fmt.Println("🚀 Simulator connection is AVAILABLE. Ready to process messages...")
 		case manager.StateReconnecting:
 			fmt.Println("🔄 Reconnecting to simulator...")
 		case manager.StateDisconnected:
-			fmt.Println("📴 Disconnected from simulator")
+			fmt.Println("📴 Disconnected from simulator...")
 		}
 	})
 
