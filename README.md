@@ -75,7 +75,7 @@ func main() {
 
 | Package | Description |
 |---------|-------------|
-| `simconnect` (root) | Main entry point providing `New()` for a managed connection (returns `manager.Manager`) and `NewClient()` for direct engine access (returns `engine.Client`). |
+| [`simconnect`](root) | Main entry point providing `New()` for a managed connection (returns `manager.Manager`) and `NewClient()` for direct engine access (returns `engine.Client`). |
 | [`pkg/engine`](pkg/engine) | High-level client that manages the SimConnect session lifecycle, message dispatching, and data subscriptions. Use this when you want batteries-included helpers around the lower-level API. |
 | [`pkg/manager`](pkg/manager) | Connection lifecycle manager with automatic reconnection support. Ideal for long-running services that need robust connection handling. |
 | [`pkg/types`](pkg/types) | Strongly typed representations of SimConnect data structures, events, and helper enums used across the public API. |
