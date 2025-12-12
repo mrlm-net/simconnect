@@ -36,3 +36,13 @@ type Engine struct {
 	queue        chan Message
 	sync         sync.WaitGroup
 }
+
+// HeartbeatFrequency represents the valid heartbeat frequencies for SimConnect system events.
+type HeartbeatFrequency string
+
+const (
+	HEARTBEAT_6HZ   HeartbeatFrequency = "6Hz"
+	HEARTBEAT_1SEC  HeartbeatFrequency = "1sec"
+	HEARTBEAT_4SEC  HeartbeatFrequency = "4sec"
+	HEARTBEAT_FRAME HeartbeatFrequency = "Frame"
+)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 const (
@@ -133,7 +132,7 @@ func WithDLLPath(path string) Option {
 // WithHeartbeat sets the heartbeat frequency for the underlying engine.
 // This is a convenience wrapper for engine.WithHeartbeat.
 // Valid values: "1Hz", "6Hz", etc. Default is "6Hz".
-func WithHeartbeat(frequency types.HeartbeatFrequency) Option {
+func WithHeartbeat(frequency engine.HeartbeatFrequency) Option {
 	return func(c *Config) {
 		c.EngineOptions = append(c.EngineOptions, engine.WithHeartbeat(frequency))
 	}

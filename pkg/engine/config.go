@@ -10,7 +10,6 @@ import (
 	"log/slog"
 
 	"github.com/mrlm-net/simconnect/internal/simconnect"
-	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 const (
@@ -22,7 +21,7 @@ type Option func(*Config)
 
 type Config struct {
 	simconnect.Config
-	Heartbeat types.HeartbeatFrequency
+	Heartbeat HeartbeatFrequency
 	Logger    *slog.Logger
 }
 
@@ -50,7 +49,7 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-func WithHeartbeat(frequency types.HeartbeatFrequency) Option {
+func WithHeartbeat(frequency HeartbeatFrequency) Option {
 	return func(c *Config) {
 		c.Heartbeat = frequency
 	}
@@ -63,7 +62,7 @@ func defaultConfig() *Config {
 			Context:    context.Background(),
 			DLLPath:    DEFAULT_DLL_PATH,
 		},
-		Heartbeat: types.Heartbeat6Hz,
+		Heartbeat: HEARTBEAT_6HZ,
 		Logger: slog.New(
 			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 				Level: slog.LevelInfo, // Set minimum log level to INFO (harmonized)

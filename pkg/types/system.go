@@ -3,16 +3,6 @@
 
 package types
 
-// HeartbeatFrequency represents the valid heartbeat frequencies for SimConnect system events.
-type HeartbeatFrequency string
-
-const (
-	Heartbeat6Hz   HeartbeatFrequency = "6Hz"
-	Heartbeat1sec  HeartbeatFrequency = "1sec"
-	Heartbeat4sec  HeartbeatFrequency = "4sec"
-	HeartbeatFrame HeartbeatFrequency = "Frame"
-)
-
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_STATE.htm
 type DWORD uint32
 

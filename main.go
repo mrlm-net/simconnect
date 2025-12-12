@@ -10,7 +10,20 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager"
-	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+// HeartbeatFrequency re-exports the engine HeartbeatFrequency type so callers
+// can refer to `simconnect.HeartbeatFrequency` instead of importing
+// `pkg/engine` directly.
+type HeartbeatFrequency = engine.HeartbeatFrequency
+
+// HEARTBEAT_* constants moved from the old `types` package into `pkg/engine`.
+// They are re-exported here for convenience as `simconnect.HEARTBEAT_*`.
+const (
+	HEARTBEAT_6HZ   HeartbeatFrequency = engine.HEARTBEAT_6HZ
+	HEARTBEAT_1SEC  HeartbeatFrequency = engine.HEARTBEAT_1SEC
+	HEARTBEAT_4SEC  HeartbeatFrequency = engine.HEARTBEAT_4SEC
+	HEARTBEAT_FRAME HeartbeatFrequency = engine.HEARTBEAT_FRAME
 )
 
 func New(name string, options ...manager.Option) manager.Manager {
@@ -48,8 +61,11 @@ func ClientWithDLLPath(path string) engine.Option {
 }
 
 // ClientWithHeartbeat sets the heartbeat frequency.
-// Valid values: "2sec", "1sec", "6Hz", etc. Default is "6Hz".
-func ClientWithHeartbeat(frequency types.HeartbeatFrequency) engine.Option {
+// Valid values: HEARTBEAT_6HZ, HEARTBEAT_1SEC, HEARTBEAT_4SEC, HEARTBEAT_FRAME.
+// These constants moved from the `types` package into `pkg/engine` and
+// are re-exported here as `simconnect.HEARTBEAT_*` for convenience.
+// Default is HEARTBEAT_6HZ.
+func ClientWithHeartbeat(frequency engine.HeartbeatFrequency) engine.Option {
 	return engine.WithHeartbeat(frequency)
 }
 
@@ -123,7 +139,10 @@ func WithDLLPath(path string) manager.Option {
 }
 
 // WithHeartbeat sets the heartbeat frequency for the underlying engine.
-// Valid values: "1Hz", "6Hz", etc. Default is "6Hz".
-func WithHeartbeat(frequency types.HeartbeatFrequency) manager.Option {
+// Valid values: HEARTBEAT_6HZ, HEARTBEAT_1SEC, HEARTBEAT_4SEC, HEARTBEAT_FRAME.
+// These constants moved from the `types` package into `pkg/engine` and
+// are re-exported here as `simconnect.HEARTBEAT_*` for convenience.
+// Default is HEARTBEAT_6HZ.
+func WithHeartbeat(frequency engine.HeartbeatFrequency) manager.Option {
 	return manager.WithHeartbeat(frequency)
 }
