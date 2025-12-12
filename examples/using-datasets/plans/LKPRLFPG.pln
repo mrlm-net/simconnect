@@ -1,0 +1,243 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<SimBase.Document Type="AceXML" version="1,0">
+    <Descr>AceXML Document</Descr>
+    <FlightPlan.FlightPlan>
+        <Title>LKPR to LFPG</Title>
+        <FPType>IFR</FPType>
+        <RouteType>HighAlt</RouteType>
+        <CruisingAlt>36000.000</CruisingAlt>
+        <DepartureID>LKPR</DepartureID>
+        <DepartureLLA>N50° 6' 3.00",E14° 15' 36.00",+001234.00</DepartureLLA>
+        <DestinationID>LFPG</DestinationID>
+        <DestinationLLA>N49° 0' 35.00",E2° 32' 52.00",+000392.00</DestinationLLA>
+        <Descr>LKPR to LFPG created by SimBrief</Descr>
+        <DepartureName>Ruzyne</DepartureName>
+        <DestinationName>Charles-de-gaulle</DestinationName>
+        <AppVersion>
+            <AppVersionMajor>11</AppVersionMajor>
+            <AppVersionBuild>282174</AppVersionBuild>
+        </AppVersion>
+        <ATCWaypoint id="LKPR">
+            <ATCWaypointType>Airport</ATCWaypointType>
+            <WorldPosition>N50° 6' 3.00",E14° 15' 36.00",+001234.00</WorldPosition>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAOIdent>LKPR</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PR402">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 2' 17.81",E14° 0' 55.69",+006800.00</WorldPosition>
+            <DepartureFP>BALT5A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PR402</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PR405">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 11' 57.78",E13° 50' 31.95",+012800.00</WorldPosition>
+            <DepartureFP>BALT5A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PR405</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BALTU">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 5' 22.06",E13° 19' 35.48",+019900.00</WorldPosition>
+            <DepartureFP>BALT5A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>BALTU</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DONAD">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 4' 50.93",E13° 0' 0.00",+023400.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>DONAD</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RAPET">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 11' 25.76",E12° 20' 19.10",+028100.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>RAPET</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UNAVI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 11' 17.00",E11° 49' 20.00",+031100.00</WorldPosition>
+            <ATCAirway>Z93</ATCAirway>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>UNAVI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="KODUK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 11' 52.00",E10° 56' 32.00",+035100.00</WorldPosition>
+            <ATCAirway>Z93</ATCAirway>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>KODUK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MARZA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 8' 24.00",E10° 16' 18.00",+036000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>MARZA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LOHRE">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 4' 1.00",E9° 29' 11.00",+036000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>LOHRE</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="NOSPA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 1' 14.00",E6° 42' 41.00",+036000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>NOSPA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="USFIL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 0' 57.00",E6° 31' 54.00",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>USFIL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RALAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 0' 52.00",E6° 22' 31.00",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>ED</ICAORegion>
+                <ICAOIdent>RALAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ARVUG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 55' 22.00",E6° 13' 45.00",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>EL</ICAORegion>
+                <ICAOIdent>ARVUG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DIK">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N49° 51' 40.70",E6° 7' 47.10",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>EL</ICAORegion>
+                <ICAOIdent>DIK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="IDOSA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 44' 30.00",E5° 52' 11.00",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>EB</ICAORegion>
+                <ICAOIdent>IDOSA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TOLVU">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 37' 31.00",E5° 22' 18.00",+036000.00</WorldPosition>
+            <ATCAirway>UN857</ATCAirway>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>TOLVU</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RAPOR">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 35' 29.00",E5° 12' 47.00",+037000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>RAPOR</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VEDUS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 35' 41.00",E4° 46' 53.00",+037000.00</WorldPosition>
+            <ArrivalFP>VEDU9H</ArrivalFP>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>VEDUS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="XERAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 35' 48.00",E4° 4' 2.00",+026300.00</WorldPosition>
+            <ArrivalFP>VEDU9H</ArrivalFP>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>XERAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ENORI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 28' 28.90",E3° 46' 40.60",+021400.00</WorldPosition>
+            <ArrivalFP>VEDU9H</ArrivalFP>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>ENORI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DEVIM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 27' 0.60",E3° 37' 56.00",+019100.00</WorldPosition>
+            <ArrivalFP>VEDU9H</ArrivalFP>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>DEVIM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LORNI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 25' 9.90",E3° 27' 5.00",+016400.00</WorldPosition>
+            <ArrivalFP>VEDU9H</ArrivalFP>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>LF</ICAORegion>
+                <ICAOIdent>LORNI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LFPG">
+            <ATCWaypointType>Airport</ATCWaypointType>
+            <WorldPosition>N49° 0' 35.00",E2° 32' 52.00",+000392.00</WorldPosition>
+            <RunwayNumberFP>27</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAOIdent>LFPG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+    </FlightPlan.FlightPlan>
+</SimBase.Document>

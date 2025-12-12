@@ -1,0 +1,31 @@
+[{
+    "airport": "LKPR",
+    "plane": "FSLTL A320 VLG Vueling",
+    "number": "N12345",
+    "plan": "LKPRLFPG",
+    "clearance": 0
+}, {
+    "airport": "LKPR",
+    "plane": "FSLTL_A359_CAL-China Airlines",
+    "number": "N12346",
+    "plan": "LKPRZSPD",
+    "clearance": 90
+}, {
+    "airport": "LKPR",
+    "plane": "FSLTL A20N PGT Pegasus",
+    "number": "N12347",
+    "plan": "LKPRZSPD",
+    "clearance": 0
+}, {
+    "airport": "LKPR",
+    "plane": "FSLTL_TFS_A333_KAL-Korean",
+    "number": "N12348",
+    "plan": "LKPRLFPG",
+    "clearance": 20
+}, {
+    "airport": "LKPR",
+    "plane": "FSLTL_FAIB_B763_MZN-Amazon Air_Cargo",
+    "number": "N12349",
+    "plan": "LKPRZSPD",
+    "clearance": 30
+}]

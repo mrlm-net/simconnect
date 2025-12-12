@@ -1,0 +1,1154 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<SimBase.Document Type="AceXML" version="1,0">
+    <Descr>AceXML Document</Descr>
+    <FlightPlan.FlightPlan>
+        <Title>LKPR to ZSPD</Title>
+        <FPType>IFR</FPType>
+        <RouteType>HighAlt</RouteType>
+        <CruisingAlt>35000.000</CruisingAlt>
+        <DepartureID>LKPR</DepartureID>
+        <DepartureLLA>N50° 6' 3.00",E14° 15' 36.00",+001234.00</DepartureLLA>
+        <DestinationID>ZSPD</DestinationID>
+        <DestinationLLA>N31° 8' 42.00",E121° 47' 36.00",+000012.00</DestinationLLA>
+        <Descr>LKPR to ZSPD created by SimBrief</Descr>
+        <DepartureName>Ruzyne</DepartureName>
+        <DestinationName>Pudong</DestinationName>
+        <AppVersion>
+            <AppVersionMajor>11</AppVersionMajor>
+            <AppVersionBuild>282174</AppVersionBuild>
+        </AppVersion>
+        <ATCWaypoint id="LKPR">
+            <ATCWaypointType>Airport</ATCWaypointType>
+            <WorldPosition>N50° 6' 3.00",E14° 15' 36.00",+001234.00</WorldPosition>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAOIdent>LKPR</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PR402">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N50° 2' 17.81",E14° 0' 55.69",+005200.00</WorldPosition>
+            <DepartureFP>VOZ4A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PR402</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PR403">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 51' 23.47",E14° 9' 33.64",+009700.00</WorldPosition>
+            <DepartureFP>VOZ4A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PR403</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PR404">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 40' 2.98",E14° 32' 41.81",+015200.00</WorldPosition>
+            <DepartureFP>VOZ4A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PR404</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VOZ">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N49° 31' 56.38",E14° 52' 28.79",+018600.00</WorldPosition>
+            <DepartureFP>VOZ4A</DepartureFP>
+            <RunwayNumberFP>24</RunwayNumberFP>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>VOZ</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LIKSA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N49° 9' 9.96",E16° 0' 53.13",+027000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>LIKSA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PEPIK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N48° 46' 58.00",E17° 4' 45.00",+031600.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>PEPIK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PATAK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N48° 4' 23.00",E19° 7' 38.00",+035000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LH</ICAORegion>
+                <ICAOIdent>PATAK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ADUKU">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 55' 26.00",E22° 0' 0.00",+035000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LR</ICAORegion>
+                <ICAOIdent>ADUKU</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ARGES">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 4' 56.00",E26° 49' 36.00",+035000.00</WorldPosition>
+            <ICAO>
+                <ICAORegion>LR</ICAORegion>
+                <ICAOIdent>ARGES</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MATEL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N43° 3' 33.00",E28° 47' 31.00",+037000.00</WorldPosition>
+            <ATCAirway>T746</ATCAirway>
+            <ICAO>
+                <ICAORegion>LB</ICAORegion>
+                <ICAOIdent>MATEL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UDROS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 44' 20.00",E30° 35' 46.00",+037000.00</WorldPosition>
+            <ATCAirway>L744</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>UDROS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BAMUP">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 35' 15.00",E32° 1' 3.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>BAMUP</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ABKEV">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 35' 3.00",E32° 2' 54.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>ABKEV</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BIMVO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 27' 22.00",E33° 7' 55.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>BIMVO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VEPUM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 25' 14.00",E33° 25' 2.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>VEPUM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RERVA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 21' 35.00",E33° 53' 33.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>RERVA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RUVOM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 17' 37.00",E34° 23' 36.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>RUVOM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OSDIP">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 14' 18.00",E34° 47' 55.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>OSDIP</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="EVKAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 9' 5.00",E35° 24' 47.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>EVKAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="KARDE">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 54' 14.00",E37° 2' 43.00",+037000.00</WorldPosition>
+            <ATCAirway>UM859</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>KARDE</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="FALAZ">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 50' 40.00",E39° 31' 0.00",+037000.00</WorldPosition>
+            <ATCAirway>UN644</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>FALAZ</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ZERGE">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 49' 17.99",E40° 7' 35.78",+037000.00</WorldPosition>
+            <ATCAirway>UN644</ATCAirway>
+            <ICAO>
+                <ICAORegion>LT</ICAORegion>
+                <ICAOIdent>ZERGE</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ROLIN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 47' 57.00",E40° 39' 23.00",+037000.00</WorldPosition>
+            <ATCAirway>UN644</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>ROLIN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ODILI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 43' 17.00",E42° 5' 40.00",+037000.00</WorldPosition>
+            <ATCAirway>N644</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>ODILI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TETRO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 40' 21.00",E42° 51' 35.00",+037000.00</WorldPosition>
+            <ATCAirway>N644</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>TETRO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="AGISO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 37' 40.00",E43° 29' 45.00",+037000.00</WorldPosition>
+            <ATCAirway>N644</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>AGISO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LAGAS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 34' 19.00",E44° 13' 53.00",+037000.00</WorldPosition>
+            <ATCAirway>N644</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>LAGAS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BARAD">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 21' 31.00",E45° 5' 0.00",+037000.00</WorldPosition>
+            <ATCAirway>M747</ATCAirway>
+            <ICAO>
+                <ICAORegion>UG</ICAORegion>
+                <ICAOIdent>BARAD</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VERCA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 12' 42.00",E45° 39' 9.00",+037000.00</WorldPosition>
+            <ATCAirway>M747</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>VERCA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BAGVA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 2' 29.00",E46° 17' 36.00",+037000.00</WorldPosition>
+            <ATCAirway>M747</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>BAGVA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SUBUT">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 53' 57.00",E46° 49' 19.00",+037000.00</WorldPosition>
+            <ATCAirway>M747</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>SUBUT</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LEYLA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 6' 33.00",E47° 58' 49.00",+037000.00</WorldPosition>
+            <ATCAirway>T916</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>LEYLA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OKTAT">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 25' 24.00",E48° 33' 12.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>OKTAT</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LEKBA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 31' 36.00",E48° 44' 18.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>LEKBA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ABTEK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 48' 39.00",E49° 18' 20.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>ABTEK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GASBI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 26' 11.00",E50° 28' 11.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UB</ICAORegion>
+                <ICAOIdent>GASBI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ARLIF">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N43° 39' 27.00",E52° 40' 39.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>ARLIF</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RELGE">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N43° 53' 4.00",E53° 6' 30.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>RELGE</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TITIL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 39' 44.00",E54° 38' 10.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>TITIL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MASAV">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N45° 5' 7.00",E55° 10' 53.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>MASAV</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DIVNO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N45° 44' 18.00",E57° 40' 0.00",+037000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>DIVNO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ABDUN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 13' 37.00",E59° 43' 16.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>ABDUN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RITET">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 49' 37.00",E62° 34' 17.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>RITET</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ARKAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 11' 35.00",E64° 32' 20.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>ARKAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BAGED">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 16' 28.00",E65° 0' 16.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>BAGED</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TIROK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 24' 56.00",E65° 50' 37.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>TIROK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ABURA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 33' 45.00",E66° 43' 12.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>ABURA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DZG">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N47° 43' 17.10",E67° 45' 41.70",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>DZG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="AMASO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 49' 14.00",E68° 48' 57.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>AMASO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DERAD">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 46' 34.00",E70° 38' 5.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>DERAD</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UNABO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 43' 52.00",E71° 49' 35.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>UNABO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MADEV">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 18' 57.00",E77° 3' 28.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>MADEV</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RUDIZ">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 11' 22.00",E79° 8' 56.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>RUDIZ</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GOMAL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 8' 9.00",E79° 51' 50.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>GOMAL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BURID">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N47° 2' 34.00",E81° 0' 51.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>BURID</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GILAK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 57' 38.00",E81° 55' 36.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>UA</ICAORegion>
+                <ICAOIdent>GILAK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SARIN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 51' 54.00",E82° 53' 18.00",+039000.00</WorldPosition>
+            <ATCAirway>N161</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>SARIN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TCH">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N46° 39' 30.00",E83° 22' 6.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>TCH</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OSUPO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N46° 15' 52.00",E84° 8' 45.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>OSUPO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SALMO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N45° 41' 53.00",E85° 13' 15.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>SALMO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OMKEN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 50' 0.00",E86° 48' 0.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>OMKEN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="IKARA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 43' 20.00",E86° 59' 34.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>IKARA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UGPEL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 33' 7.00",E87° 17' 13.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>UGPEL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VARMI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 20' 3.00",E87° 41' 5.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>VARMI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="FKG">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N44° 10' 24.00",E87° 59' 0.00",+039100.00</WorldPosition>
+            <ATCAirway>A368</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>FKG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ADPET">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 25' 3.00",E89° 41' 36.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>ADPET</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ESGIV">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 7' 9.00",E91° 2' 11.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>ESGIV</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DAKPA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N44° 1' 48.00",E91° 25' 21.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>DAKPA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RIMDU">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N43° 38' 56.00",E92° 59' 13.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>RIMDU</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BATUS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N43° 7' 33.00",E95° 5' 11.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZW</ICAORegion>
+                <ICAOIdent>BATUS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LIKMI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N42° 23' 18.00",E95° 45' 59.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>LIKMI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GOVSA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 52' 16.00",E96° 14' 32.00",+039100.00</WorldPosition>
+            <ATCAirway>W188</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>GOVSA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="JNQ">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N41° 59' 24.00",E101° 3' 0.00",+039100.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>JNQ</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="POTOT">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 31' 40.00",E102° 42' 13.00",+041000.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>POTOT</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GOBIN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 29' 58.00",E102° 48' 27.00",+041000.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>GOBIN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BUVTA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 27' 9.00",E102° 59' 20.00",+041000.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>BUVTA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ATBUG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N41° 1' 50.00",E104° 28' 24.00",+041000.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZL</ICAORegion>
+                <ICAOIdent>ATBUG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DKO">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N40° 18' 30.00",E106° 57' 48.00",+041000.00</WorldPosition>
+            <ATCAirway>W66</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>DKO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RINBI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 21' 30.00",E108° 0' 0.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>RINBI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OMGEL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 25' 21.00",E109° 58' 29.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>OMGEL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="VALNI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 25' 17.00",E110° 12' 43.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>VALNI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="RUSER">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 24' 36.00",E111° 17' 45.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>RUSER</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UBRAG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 23' 59.00",E111° 52' 18.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>UBRAG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LAXIB">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 23' 57.00",E111° 53' 49.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>LAXIB</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="NUTLO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 23' 51.00",E111° 58' 47.00",+041000.00</WorldPosition>
+            <ATCAirway>W64</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>NUTLO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ISBAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N40° 12' 33.00",E112° 1' 34.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>ISBAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DUBUB">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N39° 59' 8.00",E112° 4' 52.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>DUBUB</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TODAM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N39° 29' 31.00",E112° 12' 3.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>TODAM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="EKETA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N37° 52' 29.00",E112° 35' 21.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>EKETA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TYN">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N37° 44' 54.00",E112° 37' 12.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>TYN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="EXORI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N37° 37' 24.00",E112° 39' 40.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>EXORI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ANPIG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N37° 3' 15.00",E112° 51' 1.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>ANPIG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SQ">
+            <ATCWaypointType>NDB</ATCWaypointType>
+            <WorldPosition>N36° 14' 24.00",E113° 7' 0.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>SQ</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PADNO">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N35° 50' 45.00",E113° 17' 36.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZB</ICAORegion>
+                <ICAOIdent>PADNO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="TAMIX">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N35° 36' 43.00",E113° 23' 52.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>TAMIX</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="NOPIN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N35° 26' 45.00",E113° 28' 17.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>NOPIN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DUBAG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N34° 51' 46.00",E113° 43' 46.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>DUBAG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="CGO">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N34° 31' 6.00",E113° 50' 36.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>CGO</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="KAMDA">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N33° 21' 57.00",E114° 12' 13.00",+041000.00</WorldPosition>
+            <ATCAirway>W129</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>KAMDA</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="IGMIG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N33° 17' 14.00",E114° 27' 15.00",+041000.00</WorldPosition>
+            <ATCAirway>W128</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>IGMIG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="DUDBI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N33° 12' 21.00",E114° 42' 56.00",+041000.00</WorldPosition>
+            <ATCAirway>W128</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>DUDBI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="EPGOS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N32° 58' 31.00",E115° 26' 28.00",+041000.00</WorldPosition>
+            <ATCAirway>W128</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>EPGOS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="FYG">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N32° 53' 0.00",E115° 44' 0.00",+041000.00</WorldPosition>
+            <ATCAirway>W128</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZH</ICAORegion>
+                <ICAOIdent>FYG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="BIPIM">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N32° 33' 56.00",E116° 10' 57.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>BIPIM</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="GUXUV">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N32° 11' 18.00",E116° 43' 42.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>GUXUV</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MAGLI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 59' 0.00",E117° 0' 47.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>MAGLI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="HFE">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N31° 46' 30.00",E117° 18' 6.00",+041000.00</WorldPosition>
+            <ATCAirway>B208</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>HFE</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="MADUK">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 43' 5.00",E118° 6' 16.00",+041000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>MADUK</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="UPLEL">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 39' 15.00",E118° 59' 19.00",+041000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>UPLEL</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="OLRIS">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 39' 1.00",E119° 2' 25.00",+041000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>OLRIS</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="LUPVI">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 38' 42.00",E119° 8' 38.00",+041000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>LUPVI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ATLIX">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 38' 3.00",E119° 23' 0.00",+041000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>ATLIX</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ESBAG">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 37' 13.00",E119° 40' 23.00",+040000.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>ESBAG</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SASAN">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 35' 22.00",E120° 19' 10.00",+031700.00</WorldPosition>
+            <ATCAirway>R343</ATCAirway>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>SASAN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SS202">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 27' 0.00",E120° 47' 25.00",+025200.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>SS202</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="SS420">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 24' 1.00",E120° 57' 1.00",+022900.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>SS420</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="JTN">
+            <ATCWaypointType>VOR</ATCWaypointType>
+            <WorldPosition>N31° 7' 24.00",E121° 20' 30.00",+016300.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>JTN</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PD408">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N31° 2' 20.00",E121° 42' 30.00",+011300.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>PD408</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PD404">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N30° 57' 8.00",E121° 44' 28.00",+010100.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>PD404</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PD403">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N30° 52' 43.00",E121° 46' 8.00",+008800.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>PD403</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PD402">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N30° 48' 18.00",E121° 47' 48.00",+007500.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>PD402</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="PD401">
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <WorldPosition>N30° 43' 45.00",E121° 49' 30.00",+006300.00</WorldPosition>
+            <ArrivalFP>SAS91A</ArrivalFP>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAORegion>ZS</ICAORegion>
+                <ICAOIdent>PD401</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ATCWaypoint id="ZSPD">
+            <ATCWaypointType>Airport</ATCWaypointType>
+            <WorldPosition>N31° 8' 42.00",E121° 47' 36.00",+000012.00</WorldPosition>
+            <RunwayNumberFP>34</RunwayNumberFP>
+            <RunwayDesignatorFP>RIGHT</RunwayDesignatorFP>
+            <ICAO>
+                <ICAOIdent>ZSPD</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+    </FlightPlan.FlightPlan>
+</SimBase.Document>
