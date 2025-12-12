@@ -328,7 +328,7 @@ func (m *Instance) runConnection() error {
 						}()
 						allowed = sub.filter(msg)
 					}()
-				} else if sub.allowedTypes != nil && len(sub.allowedTypes) > 0 {
+				} else if len(sub.allowedTypes) > 0 {
 					_, ok := sub.allowedTypes[types.SIMCONNECT_RECV_ID(msg.DwID)]
 					allowed = ok
 				}
