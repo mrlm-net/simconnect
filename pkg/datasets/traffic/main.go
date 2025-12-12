@@ -10,7 +10,6 @@ import (
 
 func NewAircraftDataset(name string, id uint32) *datasets.DataSet {
 	return &datasets.DataSet{
-		Name:         name,
 		DefinitionID: id,
 		Definitions: []datasets.DataDefinition{
 			{Name: "TITLE", Unit: "", Type: types.SIMCONNECT_DATATYPE_STRING128, Epsilon: 0},
