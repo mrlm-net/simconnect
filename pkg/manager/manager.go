@@ -62,6 +62,16 @@ type Manager interface {
 	// GetSubscription returns an existing subscription by ID, or nil if not found.
 	GetSubscription(id string) Subscription
 
+	// SubscribeStateChange creates a new state change subscription that delivers state changes to a channel.
+	// The returned StateSubscription can be used to receive state changes in an isolated goroutine.
+	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+	// The channel is buffered with the specified size.
+	// Call Unsubscribe() when done to release resources.
+	SubscribeStateChange(id string, bufferSize int) StateSubscription
+
+	// GetStateSubscription returns an existing state subscription by ID, or nil if not found.
+	GetStateSubscription(id string) StateSubscription
+
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client

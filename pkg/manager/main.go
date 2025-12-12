@@ -24,15 +24,16 @@ func New(name string, opts ...Option) Manager {
 	ctx, cancel := context.WithCancel(config.Context)
 
 	return &Instance{
-		name:            name,
-		config:          config,
-		ctx:             ctx,
-		cancel:          cancel,
-		logger:          config.Logger,
-		state:           StateDisconnected,
-		stateHandlers:   []StateChangeHandler{},
-		messageHandlers: []MessageHandler{},
-		subscriptions:   make(map[string]*subscription),
+		name:               name,
+		config:             config,
+		ctx:                ctx,
+		cancel:             cancel,
+		logger:             config.Logger,
+		state:              StateDisconnected,
+		stateHandlers:      []StateChangeHandler{},
+		messageHandlers:    []MessageHandler{},
+		subscriptions:      make(map[string]*subscription),
+		stateSubscriptions: make(map[string]*stateSubscription),
 	}
 }
 
@@ -47,12 +48,14 @@ type Instance struct {
 	logger *slog.Logger
 
 	// Connection state
-	mu              sync.RWMutex
-	state           ConnectionState
-	stateHandlers   []StateChangeHandler
-	messageHandlers []MessageHandler
-	subscriptions   map[string]*subscription
-	subsWg          sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
+	mu                 sync.RWMutex
+	state              ConnectionState
+	stateHandlers      []StateChangeHandler
+	messageHandlers    []MessageHandler
+	subscriptions      map[string]*subscription
+	subsWg             sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
+	stateSubscriptions map[string]*stateSubscription
+	stateSubsWg        sync.WaitGroup // WaitGroup for graceful shutdown of state subscriptions
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
@@ -76,6 +79,10 @@ func (m *Instance) setState(newState ConnectionState) {
 	m.state = newState
 	handlers := make([]StateChangeHandler, len(m.stateHandlers))
 	copy(handlers, m.stateHandlers)
+	stateSubs := make([]*stateSubscription, 0, len(m.stateSubscriptions))
+	for _, sub := range m.stateSubscriptions {
+		stateSubs = append(stateSubs, sub)
+	}
 	m.mu.Unlock()
 
 	m.logger.Debug(fmt.Sprintf("[manager] State changed: %s -> %s", oldState, newState))
@@ -83,6 +90,21 @@ func (m *Instance) setState(newState ConnectionState) {
 	// Notify handlers outside the lock
 	for _, handler := range handlers {
 		handler(oldState, newState)
+	}
+
+	// Forward state change to subscriptions (non-blocking)
+	stateChange := StateChange{OldState: oldState, NewState: newState}
+	for _, sub := range stateSubs {
+		sub.closeMu.Lock()
+		if !sub.closed {
+			select {
+			case sub.ch <- stateChange:
+			default:
+				// Channel full, skip state change to avoid blocking
+				m.logger.Debug("[manager] State subscription channel full, dropping state change")
+			}
+		}
+		sub.closeMu.Unlock()
 	}
 }
 
@@ -362,6 +384,7 @@ func (m *Instance) Stop() error {
 	done := make(chan struct{})
 	go func() {
 		m.subsWg.Wait()
+		m.stateSubsWg.Wait()
 		close(done)
 	}()
 

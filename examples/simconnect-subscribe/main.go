@@ -258,6 +258,31 @@ func main() {
 		}
 	})
 
+	// Alternative: Subscribe to state changes via channel (demonstrates the new pattern)
+	// This is equivalent to using OnStateChange but with channel-based consumption
+	stateSub := mgr.SubscribeStateChange("state-subscriber", 16)
+
+	// Start a goroutine to process state changes from the subscription channel
+	go func() {
+		fmt.Println("📬 State subscription started, waiting for state changes...")
+		for {
+			select {
+			case change, ok := <-stateSub.StateChanges():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 State subscription channel closed")
+					return
+				}
+				// Log state changes received via subscription (complementary to callback)
+				fmt.Printf("📡 [Subscription] State changed: %s -> %s\n", change.OldState, change.NewState)
+			case <-stateSub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 State subscription cancelled")
+				return
+			}
+		}
+	}()
+
 	// Create a subscription to receive messages via channel instead of callback
 	// This demonstrates the Subscribe pattern for message handling
 	// - First parameter is the subscription ID (empty string for auto-generated UUID)
@@ -293,6 +318,7 @@ func main() {
 
 	// Unsubscribe when done (cleanup)
 	sub.Unsubscribe()
+	stateSub.Unsubscribe()
 
 	// Small delay to allow goroutines to complete cleanup
 	time.Sleep(100 * time.Millisecond)
