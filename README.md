@@ -66,6 +66,7 @@ func main() {
 | [`subscribe-facilities`](examples/subscribe-facilities) | Subscribes to facility data streams. |
 | [`read-facility`](examples/read-facility) | Resolves a single facility by ICAO identifier. |
 | [`read-facilities`](examples/read-facilities) | Enumerates facilities matching a filter. |
+| [`all-facilities`](examples/all-facilities) | Requests and reads the complete set of facilities (airports), handling multi-packet responses. |
 | [`ai-traffic`](examples/ai-traffic) | Drives AI traffic plans using flight plans shipped in `examples/ai-traffic/plans`. |
 
 > **Tip:** Browse the [`examples`](examples) folder to explore additional scenarios as they are added.
