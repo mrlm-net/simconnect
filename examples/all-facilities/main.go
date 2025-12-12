@@ -16,6 +16,8 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
+// AirportEntry represents a single airport facility entry (36 bytes total)
+// Must be packed to match exact memory layout from SimConnect
 type AirportEntry struct {
 	Ident  [6]byte // Offset 0-5
 	Region [3]byte // Offset 6-8
@@ -30,7 +32,7 @@ type AirportEntry struct {
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.NewClient("GO Example - SimConnect Read objects and their data",
+	client := simconnect.NewClient("GO Example - SimConnect Read facilities and their data",
 		engine.WithContext(ctx),
 	)
 
@@ -54,7 +56,8 @@ func runConnection(ctx context.Context) error {
 connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
-	client.SubscribeToFacilities(types.SIMCONNECT_FACILITY_LIST_AIRPORT, 2000)
+
+	client.RequestAllFacilities(types.SIMCONNECT_FACILITY_LIST_AIRPORT, 2000)
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -95,6 +98,7 @@ connected:
 				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
+
 			case types.SIMCONNECT_RECV_ID_AIRPORT_LIST:
 				list := msg.AsAirportList()
 
@@ -141,6 +145,7 @@ connected:
 						lat, lon, alt,
 					)
 				}
+
 			default:
 				// Other message types can be handled here
 			}
