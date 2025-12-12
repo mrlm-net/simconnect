@@ -43,6 +43,7 @@ All manager options are available both via the root `simconnect` package (unpref
 |--------------|-----------------|------|---------|-------------|
 | `WithContext(ctx)` | `manager.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
 | `WithLogger(logger)` | `manager.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
+| `WithLogLevel(level)` | `manager.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `WithLogger` to provide a custom logger) |
 | `WithRetryInterval(d)` | `manager.WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
 | `WithConnectionTimeout(d)` | `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
 | `WithReconnectDelay(d)` | `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
@@ -86,6 +87,16 @@ logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 }))
 
 mgr := manager.New("MyApp", manager.WithLogger(logger))
+```
+
+### WithLogLevel
+
+Set the minimum level used when the manager constructs a default logger. Manager-level logger overrides engine-level logger when the manager creates engine instances.
+
+```go
+mgr := manager.New("MyApp", manager.WithLogLevel(slog.LevelDebug))
+// Or from root package
+mgr := simconnect.New("MyApp", simconnect.WithLogLevel(slog.LevelDebug))
 ```
 
 ### WithRetryInterval

@@ -6,6 +6,7 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/mrlm-net/simconnect/internal/simconnect"
@@ -15,6 +16,12 @@ func New(name string, options ...Option) *Engine {
 	config := defaultConfig()
 	for _, option := range options {
 		option(config)
+	}
+	// If caller did not provide a logger, construct one using the configured
+	// LogLevel. This defers logger creation until after options have been
+	// applied so `WithLogLevel` and `WithLogger` behave intuitively.
+	if config.Logger == nil {
+		config.Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: config.LogLevel}))
 	}
 	ctx, cancel := context.WithCancel(config.Context)
 	return &Engine{

@@ -6,7 +6,7 @@ package manager
 import (
 	"context"
 	"log/slog"
-	"os"
+	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -28,6 +28,10 @@ type Config struct {
 
 	// Logger for manager operations
 	Logger *slog.Logger
+	// LogLevel controls the minimum level used when the package constructs
+	// a default logger. If `Logger` is provided via `WithLogger`, that
+	// logger takes precedence.
+	LogLevel slog.Level
 
 	// Connection retry settings
 	RetryInterval     time.Duration // Fixed delay between connection attempts
@@ -57,6 +61,21 @@ func WithContext(ctx context.Context) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *Config) {
 		c.Logger = logger
+	}
+}
+
+// WithLogLevel sets the minimum level for the manager's default logger.
+// If the caller provides a custom logger via WithLogger, that logger wins.
+func WithLogLevel(level slog.Level) Option {
+	return func(c *Config) {
+		c.LogLevel = level
+	}
+}
+
+// WithLogLevelFromString parses a textual level and sets the manager's level.
+func WithLogLevelFromString(level string) Option {
+	return func(c *Config) {
+		c.LogLevel = parseLogLevel(level)
 	}
 }
 
@@ -141,8 +160,11 @@ func WithHeartbeat(frequency engine.HeartbeatFrequency) Option {
 // defaultConfig returns a Config with default values
 func defaultConfig() *Config {
 	return &Config{
-		Context:           context.Background(),
-		Logger:            slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		Context: context.Background(),
+		// Defer creating a concrete logger until constructor time so that
+		// WithLogLevel and WithLogger options can be applied in any order.
+		Logger:            nil,
+		LogLevel:          slog.LevelInfo,
 		RetryInterval:     DEFAULT_RETRY_INTERVAL,
 		ConnectionTimeout: DEFAULT_CONNECTION_TIMEOUT,
 		ReconnectDelay:    DEFAULT_RECONNECT_DELAY,
@@ -150,5 +172,22 @@ func defaultConfig() *Config {
 		MaxRetries:        DEFAULT_MAX_RETRIES,
 		AutoReconnect:     DEFAULT_AUTO_RECONNECT,
 		EngineOptions:     []engine.Option{},
+	}
+}
+
+// parseLogLevel maps common textual level names to slog.Level. Unknown
+// values fall back to INFO.
+func parseLogLevel(v string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "debug", "d":
+		return slog.LevelDebug
+	case "info", "i":
+		return slog.LevelInfo
+	case "warn", "warning", "w":
+		return slog.LevelWarn
+	case "error", "err", "e":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }

@@ -44,6 +44,7 @@ Client options are available via the root `simconnect` package (with `Client` pr
 | `ClientWithDLLPath(path)` | `engine.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
 | `ClientWithContext(ctx)` | `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
 | `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
+| `ClientWithLogLevel(level)` | `engine.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `ClientWithLogger` to provide a custom logger) |
 | `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `types.HeartbeatFrequency` | `types.Heartbeat6Hz` | Heartbeat frequency for connection monitoring |
 
 ## Option Details
@@ -85,6 +86,16 @@ logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 }))
 
 client := engine.New("MyApp", engine.WithLogger(logger))
+```
+
+### WithLogLevel
+
+Set the minimum level used when the engine constructs a default logger. This is a convenience so callers don't need to instantiate a full `slog.Logger` to control verbosity.
+
+```go
+client := engine.New("MyApp", engine.WithLogLevel(slog.LevelDebug))
+// Or from root package
+client := simconnect.NewClient("MyApp", simconnect.ClientWithLogLevel(slog.LevelDebug))
 ```
 
 ### WithHeartbeat

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -22,6 +23,12 @@ func New(name string, opts ...Option) Manager {
 	config := defaultConfig()
 	for _, opt := range opts {
 		opt(config)
+	}
+
+	// If caller did not provide a logger, construct one using the configured
+	// LogLevel so manager logs reflect the requested verbosity.
+	if config.Logger == nil {
+		config.Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: config.LogLevel}))
 	}
 
 	ctx, cancel := context.WithCancel(config.Context)

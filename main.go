@@ -54,6 +54,17 @@ func ClientWithLogger(logger *slog.Logger) engine.Option {
 	return engine.WithLogger(logger)
 }
 
+// ClientWithLogLevel sets the minimum level for the client's default logger.
+func ClientWithLogLevel(level slog.Level) engine.Option {
+	return engine.WithLogLevel(level)
+}
+
+// ClientWithLogLevelFromString sets the client's default logger level from a
+// textual representation like "debug" or "info".
+func ClientWithLogLevelFromString(level string) engine.Option {
+	return engine.WithLogLevelFromString(level)
+}
+
 // ClientWithDLLPath sets the path to the SimConnect DLL.
 // Default is "C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll".
 func ClientWithDLLPath(path string) engine.Option {
@@ -81,6 +92,17 @@ func WithContext(ctx context.Context) manager.Option {
 // WithLogger sets the logger for the manager
 func WithLogger(logger *slog.Logger) manager.Option {
 	return manager.WithLogger(logger)
+}
+
+// WithLogLevel sets the manager's default logger level.
+func WithLogLevel(level slog.Level) manager.Option {
+	return manager.WithLogLevel(level)
+}
+
+// WithLogLevelFromString sets the manager's default logger level from a
+// textual representation like "debug" or "info".
+func WithLogLevelFromString(level string) manager.Option {
+	return manager.WithLogLevelFromString(level)
 }
 
 // WithRetryInterval sets the fixed delay between connection attempts.
