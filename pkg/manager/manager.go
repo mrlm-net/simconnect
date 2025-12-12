@@ -3,7 +3,11 @@
 
 package manager
 
-import "github.com/mrlm-net/simconnect/pkg/engine"
+import (
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/engine"
+)
 
 // Manager defines the interface for managing SimConnect connections with
 // automatic lifecycle handling and reconnection support
@@ -61,4 +65,24 @@ type Manager interface {
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client
+
+	// Configuration getters
+
+	// IsAutoReconnect returns whether automatic reconnection is enabled
+	IsAutoReconnect() bool
+
+	// RetryInterval returns the delay between connection attempts
+	RetryInterval() time.Duration
+
+	// ConnectionTimeout returns the timeout for each connection attempt
+	ConnectionTimeout() time.Duration
+
+	// ReconnectDelay returns the delay before reconnecting after disconnect
+	ReconnectDelay() time.Duration
+
+	// ShutdownTimeout returns the timeout for graceful shutdown of subscriptions
+	ShutdownTimeout() time.Duration
+
+	// MaxRetries returns the maximum number of connection retries (0 = unlimited)
+	MaxRetries() int
 }

@@ -102,10 +102,39 @@ func WithAutoReconnect(enabled bool) Option {
 	}
 }
 
-// WithEngineOptions passes options through to the underlying engine
+// WithEngineOptions passes options through to the underlying engine.
+// Note: Context and Logger options passed here will be ignored as the manager
+// controls these settings. Use WithContext and WithLogger on the manager instead.
 func WithEngineOptions(opts ...engine.Option) Option {
 	return func(c *Config) {
 		c.EngineOptions = append(c.EngineOptions, opts...)
+	}
+}
+
+// WithBufferSize sets the buffer size for the underlying engine.
+// This is a convenience wrapper for engine.WithBufferSize.
+// Default is 256.
+func WithBufferSize(size int) Option {
+	return func(c *Config) {
+		c.EngineOptions = append(c.EngineOptions, engine.WithBufferSize(size))
+	}
+}
+
+// WithDLLPath sets the path to the SimConnect DLL for the underlying engine.
+// This is a convenience wrapper for engine.WithDLLPath.
+// Default is "C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll".
+func WithDLLPath(path string) Option {
+	return func(c *Config) {
+		c.EngineOptions = append(c.EngineOptions, engine.WithDLLPath(path))
+	}
+}
+
+// WithHeartbeat sets the heartbeat frequency for the underlying engine.
+// This is a convenience wrapper for engine.WithHeartbeat.
+// Valid values: "1Hz", "6Hz", etc. Default is "6Hz".
+func WithHeartbeat(frequency string) Option {
+	return func(c *Config) {
+		c.EngineOptions = append(c.EngineOptions, engine.WithHeartbeat(frequency))
 	}
 }
 

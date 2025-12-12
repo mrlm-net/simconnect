@@ -214,9 +214,17 @@ func main() {
 	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
 
 	// Create the manager with automatic reconnection
+	// Demonstrates convenience options for common engine settings:
+	// - WithBufferSize: sets the message buffer size (default: 256)
+	// - WithHeartbeat: sets the heartbeat frequency (default: "6Hz")
+	// - WithDLLPath: sets custom SimConnect DLL path if needed
+	// Note: WithContext and WithLogger on manager take precedence over
+	// any context/logger passed via WithEngineOptions.
 	mgr := manager.New("GO Example - SimConnect Manager",
 		manager.WithContext(ctx),
 		manager.WithAutoReconnect(true),
+		manager.WithBufferSize(512),  // Optional: increase buffer for high-frequency data
+		manager.WithHeartbeat("6Hz"), // Optional: set heartbeat frequency
 	)
 
 	// Setup signal handler goroutine - calls mgr.Stop() for graceful shutdown

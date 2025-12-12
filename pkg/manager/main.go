@@ -107,6 +107,36 @@ func (m *Instance) Client() engine.Client {
 	return m.engine
 }
 
+// IsAutoReconnect returns whether automatic reconnection is enabled
+func (m *Instance) IsAutoReconnect() bool {
+	return m.config.AutoReconnect
+}
+
+// RetryInterval returns the delay between connection attempts
+func (m *Instance) RetryInterval() time.Duration {
+	return m.config.RetryInterval
+}
+
+// ConnectionTimeout returns the timeout for each connection attempt
+func (m *Instance) ConnectionTimeout() time.Duration {
+	return m.config.ConnectionTimeout
+}
+
+// ReconnectDelay returns the delay before reconnecting after disconnect
+func (m *Instance) ReconnectDelay() time.Duration {
+	return m.config.ReconnectDelay
+}
+
+// ShutdownTimeout returns the timeout for graceful shutdown of subscriptions
+func (m *Instance) ShutdownTimeout() time.Duration {
+	return m.config.ShutdownTimeout
+}
+
+// MaxRetries returns the maximum number of connection retries (0 = unlimited)
+func (m *Instance) MaxRetries() int {
+	return m.config.MaxRetries
+}
+
 // Start begins the connection lifecycle management
 func (m *Instance) Start() error {
 	m.logger.Debug("[manager] Starting connection lifecycle management")
@@ -152,8 +182,11 @@ func (m *Instance) Start() error {
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
 func (m *Instance) runConnection() error {
-	// Create engine options combining user options with our context
-	opts := append([]engine.Option{engine.WithContext(m.ctx)}, m.config.EngineOptions...)
+	// Create engine options: start with manager's context, then add user options
+	// (excluding any Context or Logger options as manager controls these)
+	opts := []engine.Option{engine.WithContext(m.ctx)}
+	opts = append(opts, m.config.EngineOptions...)
+	// Manager's logger always takes precedence over any logger in EngineOptions
 	if m.config.Logger != nil {
 		opts = append(opts, engine.WithLogger(m.config.Logger))
 	}
