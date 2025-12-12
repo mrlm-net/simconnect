@@ -15,12 +15,20 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
+// CameraData represents the data structure for CAMERA STATE and CAMERA SUBSTATE
+// The fields must match the order of AddToDataDefinition calls
+type CameraData struct {
+	CameraState    int32
+	CameraSubstate int32
+	Category       [260]byte // String260
+}
+
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.NewClient("GO Example - SimConnect Read objects and their data",
+	client := simconnect.NewClient("GO Example - SimConnect Read Sim Events Messages and their data",
 		engine.WithContext(ctx),
 	)
 
@@ -45,12 +53,19 @@ connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 
-	client.MapClientEventToSimEvent(2000, "PAUSE_TOGGLE")
-
-	client.AddClientEventToNotificationGroup(3000, 2000, false)
-	client.SetNotificationGroupPriority(3000, 1)
-
-	//client.RequestNotificationGroup(3000, 0, 0)
+	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
+	// --------------------------------------------
+	// - Pause event occurs when user pauses/unpauses the simulator.
+	//   State is returned in dwData field as number (0=unpaused, 1=paused)
+	client.SubscribeToSystemEvent(1000, "Pause")
+	// --------------------------------------------
+	// - Sim event occurs when simulator starts/stops.
+	//   State is returned in dwData field as number (0=stopped, 1=started)
+	client.SubscribeToSystemEvent(1001, "Sim")
+	// --------------------------------------------
+	// - Sound event occurs when simulator master sound is toggled.
+	//   State is returned in dwData field as number (0=off, 1=on)
+	client.SubscribeToSystemEvent(1002, "Sound")
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -82,6 +97,32 @@ connected:
 			// Handle specific messages
 			// This could be done based on type and also if needed request IDs
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
+			case types.SIMCONNECT_RECV_ID_EVENT:
+				eventMsg := msg.AsEvent()
+				fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
+				// Check if this is the Pause event (ID 1000)
+				if eventMsg.UEventID == 1000 {
+					if eventMsg.DwData == 1 {
+						fmt.Println("  ⏸️  Simulator is PAUSED")
+					} else {
+						fmt.Println("  ▶️  Simulator is UNPAUSED")
+					}
+				}
+				if eventMsg.UEventID == 1001 {
+					if eventMsg.DwData == 0 {
+						fmt.Println("  🛑 Simulator SIM STOPPED")
+					} else {
+						fmt.Println("  🏁 Simulator SIM STARTED")
+					}
+				}
+				if eventMsg.UEventID == 1002 {
+					if eventMsg.DwData == 0 {
+						fmt.Println("  🔇 Simulator SOUND OFF")
+					} else {
+						fmt.Println("  🔊 Simulator SOUND ON")
+					}
+				}
+				// Add more cases here for other message types as needed
 			case types.SIMCONNECT_RECV_ID_OPEN:
 				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
 				msg := msg.AsOpen()
@@ -91,7 +132,6 @@ connected:
 				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
 				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
-
 			default:
 				// Other message types can be handled here
 			}

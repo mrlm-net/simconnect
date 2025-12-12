@@ -53,19 +53,6 @@ connected:
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 
-	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
-	// --------------------------------------------
-	// - Pause event occurs when user pauses/unpauses the simulator.
-	//   State is returned in dwData field as number (0=unpaused, 1=paused)
-	client.SubscribeToSystemEvent(1000, "Pause")
-	// --------------------------------------------
-	// - Sim event occurs when simulator starts/stops.
-	//   State is returned in dwData field as number (0=stopped, 1=started)
-	client.SubscribeToSystemEvent(1001, "Sim")
-	// --------------------------------------------
-	// - Sound event occurs when simulator master sound is toggled.
-	//   State is returned in dwData field as number (0=off, 1=on)
-	client.SubscribeToSystemEvent(1002, "Sound")
 	// --------------------------------------------
 	// - Define data structure for CAMERA STATE and CAMERA SUBSTATE
 	//   and request updates every second
@@ -129,32 +116,6 @@ connected:
 			// Handle specific messages
 			// This could be done based on type and also if needed request IDs
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
-			case types.SIMCONNECT_RECV_ID_EVENT:
-				eventMsg := msg.AsEvent()
-				fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
-				// Check if this is the Pause event (ID 1000)
-				if eventMsg.UEventID == 1000 {
-					if eventMsg.DwData == 1 {
-						fmt.Println("  ⏸️  Simulator is PAUSED")
-					} else {
-						fmt.Println("  ▶️  Simulator is UNPAUSED")
-					}
-				}
-				if eventMsg.UEventID == 1001 {
-					if eventMsg.DwData == 0 {
-						fmt.Println("  🛑 Simulator SIM STOPPED")
-					} else {
-						fmt.Println("  🏁 Simulator SIM STARTED")
-					}
-				}
-				if eventMsg.UEventID == 1002 {
-					if eventMsg.DwData == 0 {
-						fmt.Println("  🔇 Simulator SOUND OFF")
-					} else {
-						fmt.Println("  🔊 Simulator SOUND ON")
-					}
-				}
-				// Add more cases here for other message types as needed
 			case types.SIMCONNECT_RECV_ID_OPEN:
 				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
 				msg := msg.AsOpen()
