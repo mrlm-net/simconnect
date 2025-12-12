@@ -1,8 +1,22 @@
 # Engine/Client Configuration
 
-The `engine` package provides a high-level client for interacting with SimConnect. Configuration is done via functional options passed to `engine.New()`.
+The `engine` package provides a high-level client for interacting with SimConnect. Configuration is done via functional options passed to `engine.New()` or via the root `simconnect` package with `Client` prefixed options.
 
 ## Quick Start
+
+### Using the Root Package
+
+```go
+import "github.com/mrlm-net/simconnect"
+
+client := simconnect.NewClient("MyApp",
+    simconnect.ClientWithBufferSize(512),
+    simconnect.ClientWithDLLPath("C:/Custom/Path/SimConnect.dll"),
+    simconnect.ClientWithHeartbeat("6Hz"),
+)
+```
+
+### Using the Engine Package Directly
 
 ```go
 import "github.com/mrlm-net/simconnect/pkg/engine"
@@ -16,13 +30,15 @@ client := engine.New("MyApp",
 
 ## Configuration Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `WithBufferSize(size)` | `int` | `256` | Size of the message buffer for SimConnect communication |
-| `WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
-| `WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
-| `WithLogger(logger)` | `*slog.Logger` | Text handler, WARN level | Logger for engine operations |
-| `WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency for connection monitoring |
+Client options are available via the root `simconnect` package (with `Client` prefix) and the `engine` subpackage.
+
+| Root Package | Engine Package | Type | Default | Description |
+|--------------|----------------|------|---------|-------------|
+| `ClientWithBufferSize(size)` | `engine.WithBufferSize(size)` | `int` | `256` | Size of the message buffer for SimConnect communication |
+| `ClientWithDLLPath(path)` | `engine.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
+| `ClientWithContext(ctx)` | `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
+| `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, WARN level | Logger for engine operations |
+| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency for connection monitoring |
 
 ## Option Details
 

@@ -1,11 +1,30 @@
 # Manager Configuration
 
-The `manager` package provides automatic connection lifecycle management with reconnection support. Configuration is done via functional options passed to `manager.New()`.
+The `manager` package provides automatic connection lifecycle management with reconnection support. Configuration is done via functional options passed to `manager.New()` or via the root `simconnect` package.
 
 ## Quick Start
 
+### Using the Root Package (Recommended)
+
 ```go
-import "github.com/mrlm-net/simconnect/pkg/manager"
+import (
+    "time"
+    "github.com/mrlm-net/simconnect"
+)
+
+mgr := simconnect.New("MyApp",
+    simconnect.WithAutoReconnect(true),
+    simconnect.WithRetryInterval(10 * time.Second),
+)
+```
+
+### Using the Manager Package Directly
+
+```go
+import (
+    "time"
+    "github.com/mrlm-net/simconnect/pkg/manager"
+)
 
 mgr := manager.New("MyApp",
     manager.WithAutoReconnect(true),
@@ -15,29 +34,31 @@ mgr := manager.New("MyApp",
 
 ## Configuration Options
 
+All manager options are available both via the root `simconnect` package (unprefixed) and the `manager` subpackage.
+
 ### Manager-Specific Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
-| `WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
-| `WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
-| `WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
-| `WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
-| `WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
-| `WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
-| `WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
+| Root Package | Manager Package | Type | Default | Description |
+|--------------|-----------------|------|---------|-------------|
+| `WithContext(ctx)` | `manager.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
+| `WithLogger(logger)` | `manager.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
+| `WithRetryInterval(d)` | `manager.WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
+| `WithConnectionTimeout(d)` | `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
+| `WithReconnectDelay(d)` | `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
+| `WithShutdownTimeout(d)` | `manager.WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
+| `WithMaxRetries(n)` | `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
+| `WithAutoReconnect(enabled)` | `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
 
 ### Engine Pass-Through Options
 
 These options configure the underlying engine client:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
-| `WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
-| `WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency |
-| `WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
+| Root Package | Manager Package | Type | Default | Description |
+|--------------|-----------------|------|---------|-------------|
+| `WithBufferSize(size)` | `manager.WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
+| `WithDLLPath(path)` | `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
+| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency |
+| `WithEngineOptions(opts...)` | `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
 

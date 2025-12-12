@@ -84,21 +84,38 @@ func main() {
 
 ## Configuration
 
-Both the `engine.Client` and `manager.Manager` support configuration via functional options:
+Both the `engine.Client` and `manager.Manager` support configuration via functional options. The root `simconnect` package exposes all options for convenience:
 
 ```go
-// Direct engine client
-client := engine.New("MyApp",
-    engine.WithBufferSize(512),
-    engine.WithHeartbeat("6Hz"),
+import (
+    "time"
+    "github.com/mrlm-net/simconnect"
 )
 
-// Managed connection with auto-reconnect
-mgr := manager.New("MyApp",
-    manager.WithAutoReconnect(true),
-    manager.WithRetryInterval(10 * time.Second),
-    manager.WithBufferSize(512),
+// Managed connection with auto-reconnect (recommended)
+mgr := simconnect.New("MyApp",
+    simconnect.WithAutoReconnect(true),
+    simconnect.WithRetryInterval(10 * time.Second),
+    simconnect.WithBufferSize(512),
 )
+
+// Direct engine client (for advanced use cases)
+client := simconnect.NewClient("MyApp",
+    simconnect.ClientWithBufferSize(512),
+    simconnect.ClientWithHeartbeat("6Hz"),
+)
+```
+
+Alternatively, use the subpackages directly:
+
+```go
+import (
+    "github.com/mrlm-net/simconnect/pkg/engine"
+    "github.com/mrlm-net/simconnect/pkg/manager"
+)
+
+mgr := manager.New("MyApp", manager.WithAutoReconnect(true))
+client := engine.New("MyApp", engine.WithBufferSize(512))
 ```
 
 | Documentation | Description |
