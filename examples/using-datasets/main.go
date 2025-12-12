@@ -192,7 +192,10 @@ connected:
 				)
 				if simObjData.DwDefineID == 3000 {
 					aircraftData := engine.CastDataAs[AircraftData](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
+					// Verbose whole data dump
+					//fmt.Printf("     Aircraft Data: %+v\n", aircraftData)
+					// Print selected fields
+					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AmbientInCloud: %d, IsUserSim: %d, IsTowConnected: %d, AltAboveGround: %f, WingSpan: %f \n",
 						aircraftData.TitleAsString(),
 						aircraftData.CategoryAsString(),
 						aircraftData.LiveryNameAsString(),
@@ -212,6 +215,11 @@ connected:
 						aircraftData.SurfaceType,
 						aircraftData.SimOnGround,
 						aircraftData.ATCIDAsString(),
+						aircraftData.AmbientInCloud,
+						aircraftData.IsUserSim,
+						aircraftData.IsTowConnected,
+						aircraftData.AltAboveGround,
+						aircraftData.WingSpan,
 					)
 				}
 			default:
