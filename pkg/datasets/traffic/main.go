@@ -32,6 +32,11 @@ func NewAircraftDataset(name string, id uint32) *datasets.DataSet {
 			{Name: "SIM ON GROUND", Unit: "bool", Type: types.SIMCONNECT_DATATYPE_INT32, Epsilon: 0},
 			{Name: "ATC ID", Unit: "", Type: types.SIMCONNECT_DATATYPE_STRING32, Epsilon: 0},
 			{Name: "ATC AIRLINE", Unit: "", Type: types.SIMCONNECT_DATATYPE_STRING32, Epsilon: 0},
+			{Name: "AMBIENT IN CLOUD", Unit: "bool", Type: types.SIMCONNECT_DATATYPE_INT32, Epsilon: 0},
+			{Name: "IS USER SIM", Unit: "bool", Type: types.SIMCONNECT_DATATYPE_INT32, Epsilon: 0},
+			{Name: "TOW CONNECTION", Unit: "bool", Type: types.SIMCONNECT_DATATYPE_INT32, Epsilon: 0},
+			{Name: "PLANE ALT ABOVE GROUND", Unit: "feet", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
+			{Name: "WING SPAN", Unit: "feet", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
 		},
 	}
 }
@@ -57,4 +62,9 @@ type AircraftDataset struct {
 	SimOnGround       int32
 	AtcID             [32]byte
 	AtcAirline        [32]byte
+	AmbientInCloud    int32
+	IsUserSim         int32
+	IsTowConnected    int32
+	AltAboveGround    float64
+	WingSpan          float64
 }
