@@ -33,8 +33,8 @@ func New(name string, opts ...Option) Manager {
 		cancel:             cancel,
 		logger:             config.Logger,
 		state:              StateDisconnected,
-		stateHandlers:      []StateChangeHandler{},
-		messageHandlers:    []MessageHandler{},
+		stateHandlers:      []stateHandlerEntry{},
+		messageHandlers:    []messageHandlerEntry{},
 		subscriptions:      make(map[string]*subscription),
 		stateSubscriptions: make(map[string]*stateSubscription),
 	}
@@ -51,10 +51,12 @@ type Instance struct {
 	logger *slog.Logger
 
 	// Connection state
-	mu                 sync.RWMutex
-	state              ConnectionState
-	stateHandlers      []StateChangeHandler
-	messageHandlers    []MessageHandler
+	mu    sync.RWMutex
+	state ConnectionState
+	// Handler entries store an id and the callback function so callers can
+	// unregister using the id (similar to subscriptions).
+	stateHandlers      []stateHandlerEntry
+	messageHandlers    []messageHandlerEntry
 	subscriptions      map[string]*subscription
 	subsWg             sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
 	stateSubscriptions map[string]*stateSubscription
@@ -62,6 +64,18 @@ type Instance struct {
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
+}
+
+// stateHandlerEntry stores a state change handler with an identifier
+type stateHandlerEntry struct {
+	id string
+	fn StateChangeHandler
+}
+
+// messageHandlerEntry stores a message handler with an identifier
+type messageHandlerEntry struct {
+	id string
+	fn MessageHandler
 }
 
 // State returns the current connection state
@@ -81,7 +95,9 @@ func (m *Instance) setState(newState ConnectionState) {
 	}
 	m.state = newState
 	handlers := make([]StateChangeHandler, len(m.stateHandlers))
-	copy(handlers, m.stateHandlers)
+	for i, e := range m.stateHandlers {
+		handlers[i] = e.fn
+	}
 	stateSubs := make([]*stateSubscription, 0, len(m.stateSubscriptions))
 	for _, sub := range m.stateSubscriptions {
 		stateSubs = append(stateSubs, sub)
@@ -111,18 +127,62 @@ func (m *Instance) setState(newState ConnectionState) {
 	}
 }
 
-// OnStateChange registers a callback to be invoked when connection state changes
-func (m *Instance) OnStateChange(handler StateChangeHandler) {
+// OnStateChange registers a callback to be invoked when connection state changes.
+// Returns a unique id that can be used to remove the handler via RemoveStateChange.
+func (m *Instance) OnStateChange(handler StateChangeHandler) string {
+	id := generateUUID()
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.stateHandlers = append(m.stateHandlers, handler)
+	m.stateHandlers = append(m.stateHandlers, stateHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered state handler: %s", id))
+	}
+	return id
 }
 
-// OnMessage registers a callback to be invoked when a message is received
-func (m *Instance) OnMessage(handler MessageHandler) {
+// RemoveStateChange removes a previously registered state change handler by id.
+func (m *Instance) RemoveStateChange(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.messageHandlers = append(m.messageHandlers, handler)
+	for i, e := range m.stateHandlers {
+		if e.id == id {
+			m.stateHandlers = append(m.stateHandlers[:i], m.stateHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed state handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("state handler not found: %s", id)
+}
+
+// OnMessage registers a callback to be invoked when a message is received.
+// Returns a unique id that can be used to remove the handler via RemoveMessage.
+func (m *Instance) OnMessage(handler MessageHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.messageHandlers = append(m.messageHandlers, messageHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered message handler: %s", id))
+	}
+	return id
+}
+
+// RemoveMessage removes a previously registered message handler by id.
+func (m *Instance) RemoveMessage(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.messageHandlers {
+		if e.id == id {
+			m.messageHandlers = append(m.messageHandlers[:i], m.messageHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed message handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("message handler not found: %s", id)
 }
 
 // Client returns the underlying engine client for direct API access
@@ -294,7 +354,9 @@ func (m *Instance) runConnection() error {
 			// Forward message to registered handlers
 			m.mu.RLock()
 			handlers := make([]MessageHandler, len(m.messageHandlers))
-			copy(handlers, m.messageHandlers)
+			for i, e := range m.messageHandlers {
+				handlers[i] = e.fn
+			}
 			subs := make([]*subscription, 0, len(m.subscriptions))
 			for _, sub := range m.subscriptions {
 				subs = append(subs, sub)

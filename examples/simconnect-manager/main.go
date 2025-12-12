@@ -236,7 +236,7 @@ func main() {
 	}()
 
 	// Register state change handler to setup data definitions when available
-	mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
+	_ = mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
 		fmt.Printf("🔄 State changed: %s -> %s\n", oldState, newState)
 
 		switch newState {
@@ -259,7 +259,7 @@ func main() {
 	})
 
 	// Register message handler for processing events and data
-	mgr.OnMessage(handleMessage)
+	_ = mgr.OnMessage(handleMessage)
 
 	// Start the manager - this blocks until context is cancelled
 	// The manager handles connection lifecycle automatically

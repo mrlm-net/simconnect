@@ -46,12 +46,14 @@ type Manager interface {
 	State() ConnectionState
 
 	// OnStateChange registers a callback to be invoked when connection state changes
-	OnStateChange(handler StateChangeHandler)
+	// Returns a unique id that can be used to remove the handler via RemoveStateChange.
+	OnStateChange(handler StateChangeHandler) string
 
 	// OnMessage registers a callback to be invoked when a message is received.
+	// Returns a unique id that can be used to remove the handler via RemoveMessage.
 	// This allows handling events, data, and other messages while the manager
 	// handles connection lifecycle automatically.
-	OnMessage(handler MessageHandler)
+	OnMessage(handler MessageHandler) string
 
 	// Subscribe creates a new message subscription that delivers messages to a channel.
 	// The returned Subscription can be used to receive messages in an isolated goroutine.
@@ -104,4 +106,12 @@ type Manager interface {
 
 	// MaxRetries returns the maximum number of connection retries (0 = unlimited)
 	MaxRetries() int
+
+	// RemoveStateChange removes a previously registered state change handler by id.
+	// Returns an error if the id is unknown.
+	RemoveStateChange(id string) error
+
+	// RemoveMessage removes a previously registered message handler by id.
+	// Returns an error if the id is unknown.
+	RemoveMessage(id string) error
 }
