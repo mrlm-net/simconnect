@@ -56,6 +56,7 @@ func main() {
 | [`await-connection`](examples/await-connection) | Demonstrates waiting for the SimConnect server and retrying the connection sequence. |
 | [`lifecycle-connection`](examples/lifecycle-connection) | Showcases clean connection lifecycle management including graceful shutdown. |
 | [`simconnect-manager`](examples/simconnect-manager) | Uses the Manager interface for automatic connection lifecycle and reconnection handling. |
+| [`simconnect-subscribe`](examples/simconnect-subscribe) | Demonstrates channel-based subscriptions for messages and state changes using the Manager interface. |
 | [`read-messages`](examples/read-messages) | Reads incoming SimConnect messages and displays their payloads. |
 | [`read-objects`](examples/read-objects) | Retrieves simulator objects and inspects their properties. |
 | [`set-variables`](examples/set-variables) | Writes data back to the simulator to control aircraft state. |
