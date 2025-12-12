@@ -396,7 +396,7 @@ func (m *Instance) disconnect() {
 
 // Stop gracefully shuts down the manager
 func (m *Instance) Stop() error {
-	m.logger.Info("[manager] Stopping manager")
+	m.logger.Debug("[manager] Stopping manager")
 	m.cancel() // This will trigger all subscription context watchers
 
 	// Wait for all subscriptions to close with timeout
