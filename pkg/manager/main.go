@@ -32,6 +32,7 @@ func New(name string, opts ...Option) Manager {
 		state:           StateDisconnected,
 		stateHandlers:   []StateChangeHandler{},
 		messageHandlers: []MessageHandler{},
+		subscriptions:   make(map[string]*subscription),
 	}
 }
 
@@ -50,6 +51,8 @@ type Instance struct {
 	state           ConnectionState
 	stateHandlers   []StateChangeHandler
 	messageHandlers []MessageHandler
+	subscriptions   map[string]*subscription
+	subsWg          sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
@@ -160,8 +163,8 @@ func (m *Instance) runConnection() error {
 	m.engine = engine.New(m.name, opts...)
 	m.mu.Unlock()
 
-	// Attempt to connect with backoff
-	if err := m.connectWithBackoff(); err != nil {
+	// Attempt to connect with retry
+	if err := m.connectWithRetry(); err != nil {
 		m.mu.Lock()
 		m.engine = nil
 		m.mu.Unlock()
@@ -217,20 +220,37 @@ func (m *Instance) runConnection() error {
 			m.mu.RLock()
 			handlers := make([]MessageHandler, len(m.messageHandlers))
 			copy(handlers, m.messageHandlers)
+			subs := make([]*subscription, 0, len(m.subscriptions))
+			for _, sub := range m.subscriptions {
+				subs = append(subs, sub)
+			}
 			m.mu.RUnlock()
 
 			for _, handler := range handlers {
 				handler(msg)
 			}
+
+			// Forward message to subscriptions (non-blocking)
+			for _, sub := range subs {
+				sub.closeMu.Lock()
+				if !sub.closed {
+					select {
+					case sub.ch <- msg:
+					default:
+						// Channel full, skip message to avoid blocking
+						m.logger.Debug("[manager] Subscription channel full, dropping message")
+					}
+				}
+				sub.closeMu.Unlock()
+			}
 		}
 	}
 }
 
-// connectWithBackoff attempts to connect to the simulator with exponential backoff
-func (m *Instance) connectWithBackoff() error {
+// connectWithRetry attempts to connect to the simulator with fixed retry interval
+func (m *Instance) connectWithRetry() error {
 	m.setState(StateConnecting)
 
-	delay := m.config.InitialDelay
 	attempts := 0
 
 	for {
@@ -242,7 +262,11 @@ func (m *Instance) connectWithBackoff() error {
 		default:
 		}
 
-		err := m.engine.Connect()
+		// Create a timeout context for this connection attempt
+		connectCtx, cancel := context.WithTimeout(m.ctx, m.config.ConnectionTimeout)
+		err := m.connectWithTimeout(connectCtx)
+		cancel()
+
 		if err == nil {
 			return nil // Connected successfully
 		}
@@ -253,20 +277,30 @@ func (m *Instance) connectWithBackoff() error {
 			return fmt.Errorf("max connection retries (%d) exceeded: %w", m.config.MaxRetries, err)
 		}
 
-		m.logger.Info(fmt.Sprintf("[manager] Connection attempt %d failed: %v, retrying in %v...", attempts, err, delay))
+		m.logger.Info(fmt.Sprintf("[manager] Connection attempt %d failed: %v, retrying in %v...", attempts, err, m.config.RetryInterval))
 
 		select {
 		case <-m.ctx.Done():
 			m.setState(StateDisconnected)
 			return m.ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(m.config.RetryInterval):
 		}
+	}
+}
 
-		// Exponential backoff
-		delay = time.Duration(float64(delay) * m.config.BackoffFactor)
-		if delay > m.config.MaxDelay {
-			delay = m.config.MaxDelay
-		}
+// connectWithTimeout attempts a single connection with timeout
+func (m *Instance) connectWithTimeout(ctx context.Context) error {
+	done := make(chan error, 1)
+
+	go func() {
+		done <- m.engine.Connect()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
 	}
 }
 
@@ -288,7 +322,23 @@ func (m *Instance) disconnect() {
 // Stop gracefully shuts down the manager
 func (m *Instance) Stop() error {
 	m.logger.Info("[manager] Stopping manager")
-	m.cancel()
+	m.cancel() // This will trigger all subscription context watchers
+
+	// Wait for all subscriptions to close with timeout
+	m.logger.Debug("[manager] Waiting for subscriptions to close...")
+	done := make(chan struct{})
+	go func() {
+		m.subsWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		m.logger.Debug("[manager] All subscriptions closed")
+	case <-time.After(m.config.ShutdownTimeout):
+		m.logger.Warn(fmt.Sprintf("[manager] Shutdown timeout (%v) exceeded, some subscriptions may not have closed gracefully", m.config.ShutdownTimeout))
+	}
+
 	m.disconnect()
 	return nil
 }

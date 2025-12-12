@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	DEFAULT_INITIAL_DELAY   = 2 * time.Second
-	DEFAULT_MAX_DELAY       = 30 * time.Second
-	DEFAULT_RECONNECT_DELAY = 5 * time.Second
-	DEFAULT_MAX_RETRIES     = 0 // 0 = unlimited retries
-	DEFAULT_BACKOFF_FACTOR  = 2.0
-	DEFAULT_AUTO_RECONNECT  = true
+	DEFAULT_RETRY_INTERVAL     = 30 * time.Second // Delay between connection attempts
+	DEFAULT_CONNECTION_TIMEOUT = 15 * time.Second // Timeout for each connection attempt
+	DEFAULT_RECONNECT_DELAY    = 5 * time.Second  // Delay before reconnecting after disconnect
+	DEFAULT_SHUTDOWN_TIMEOUT   = 10 * time.Second // Timeout for graceful shutdown
+	DEFAULT_MAX_RETRIES        = 0                // 0 = unlimited retries
+	DEFAULT_AUTO_RECONNECT     = true
 )
 
 // Config holds the configuration for the Manager
@@ -29,12 +29,12 @@ type Config struct {
 	// Logger for manager operations
 	Logger *slog.Logger
 
-	// Connection backoff settings
-	InitialDelay   time.Duration // Initial delay between connection attempts
-	MaxDelay       time.Duration // Maximum delay between connection attempts
-	ReconnectDelay time.Duration // Delay before reconnecting after disconnect
-	MaxRetries     int           // Maximum number of connection retries (0 = unlimited)
-	BackoffFactor  float64       // Multiplier for exponential backoff
+	// Connection retry settings
+	RetryInterval     time.Duration // Fixed delay between connection attempts
+	ConnectionTimeout time.Duration // Timeout for each connection attempt
+	ReconnectDelay    time.Duration // Delay before reconnecting after disconnect
+	ShutdownTimeout   time.Duration // Timeout for graceful shutdown of subscriptions
+	MaxRetries        int           // Maximum number of connection retries (0 = unlimited)
 
 	// Behavior settings
 	AutoReconnect bool // Whether to automatically reconnect on disconnect
@@ -60,17 +60,17 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-// WithInitialDelay sets the initial delay between connection attempts
-func WithInitialDelay(d time.Duration) Option {
+// WithRetryInterval sets the fixed delay between connection attempts
+func WithRetryInterval(d time.Duration) Option {
 	return func(c *Config) {
-		c.InitialDelay = d
+		c.RetryInterval = d
 	}
 }
 
-// WithMaxDelay sets the maximum delay between connection attempts
-func WithMaxDelay(d time.Duration) Option {
+// WithConnectionTimeout sets the timeout for each connection attempt
+func WithConnectionTimeout(d time.Duration) Option {
 	return func(c *Config) {
-		c.MaxDelay = d
+		c.ConnectionTimeout = d
 	}
 }
 
@@ -81,17 +81,17 @@ func WithReconnectDelay(d time.Duration) Option {
 	}
 }
 
+// WithShutdownTimeout sets the timeout for graceful shutdown of subscriptions
+func WithShutdownTimeout(d time.Duration) Option {
+	return func(c *Config) {
+		c.ShutdownTimeout = d
+	}
+}
+
 // WithMaxRetries sets the maximum number of connection retries (0 = unlimited)
 func WithMaxRetries(n int) Option {
 	return func(c *Config) {
 		c.MaxRetries = n
-	}
-}
-
-// WithBackoffFactor sets the multiplier for exponential backoff
-func WithBackoffFactor(f float64) Option {
-	return func(c *Config) {
-		c.BackoffFactor = f
 	}
 }
 
@@ -112,14 +112,14 @@ func WithEngineOptions(opts ...engine.Option) Option {
 // defaultConfig returns a Config with default values
 func defaultConfig() *Config {
 	return &Config{
-		Context:        context.Background(),
-		Logger:         slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
-		InitialDelay:   DEFAULT_INITIAL_DELAY,
-		MaxDelay:       DEFAULT_MAX_DELAY,
-		ReconnectDelay: DEFAULT_RECONNECT_DELAY,
-		MaxRetries:     DEFAULT_MAX_RETRIES,
-		BackoffFactor:  DEFAULT_BACKOFF_FACTOR,
-		AutoReconnect:  DEFAULT_AUTO_RECONNECT,
-		EngineOptions:  []engine.Option{},
+		Context:           context.Background(),
+		Logger:            slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		RetryInterval:     DEFAULT_RETRY_INTERVAL,
+		ConnectionTimeout: DEFAULT_CONNECTION_TIMEOUT,
+		ReconnectDelay:    DEFAULT_RECONNECT_DELAY,
+		ShutdownTimeout:   DEFAULT_SHUTDOWN_TIMEOUT,
+		MaxRetries:        DEFAULT_MAX_RETRIES,
+		AutoReconnect:     DEFAULT_AUTO_RECONNECT,
+		EngineOptions:     []engine.Option{},
 	}
 }
