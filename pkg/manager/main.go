@@ -307,6 +307,36 @@ func (m *Instance) runConnection() error {
 
 			// Forward message to subscriptions (non-blocking)
 			for _, sub := range subs {
+				// fast-path: skip closed subscriptions
+				sub.closeMu.Lock()
+				closed := sub.closed
+				sub.closeMu.Unlock()
+				if closed {
+					continue
+				}
+
+				// Determine whether this subscription should receive the message
+				allowed := true
+				if sub.filter != nil {
+					// Protect against panics in user-provided filters
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								m.logger.Error(fmt.Sprintf("[manager] Subscription filter panic: %v", r))
+								allowed = false
+							}
+						}()
+						allowed = sub.filter(msg)
+					}()
+				} else if sub.allowedTypes != nil && len(sub.allowedTypes) > 0 {
+					_, ok := sub.allowedTypes[types.SIMCONNECT_RECV_ID(msg.DwID)]
+					allowed = ok
+				}
+
+				if !allowed {
+					continue
+				}
+
 				sub.closeMu.Lock()
 				if !sub.closed {
 					select {

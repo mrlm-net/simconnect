@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // Manager defines the interface for managing SimConnect connections with
@@ -58,6 +59,14 @@ type Manager interface {
 	// The channel is buffered with the specified size.
 	// Call Unsubscribe() when done to release resources.
 	Subscribe(id string, bufferSize int) Subscription
+
+	// SubscribeWithFilter creates a new message subscription that only forwards
+	// messages for which the provided filter function returns true.
+	SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool) Subscription
+
+	// SubscribeWithType creates a new message subscription that only forwards
+	// messages whose `DwID` matches one of the provided SIMCONNECT_RECV_ID values.
+	SubscribeWithType(id string, bufferSize int, recvIDs ...types.SIMCONNECT_RECV_ID) Subscription
 
 	// GetSubscription returns an existing subscription by ID, or nil if not found.
 	GetSubscription(id string) Subscription
