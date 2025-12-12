@@ -81,6 +81,30 @@ func main() {
 
 > Detailed documentation will be available in the `docs` folder.
 
+## Configuration
+
+Both the `engine.Client` and `manager.Manager` support configuration via functional options:
+
+```go
+// Direct engine client
+client := engine.New("MyApp",
+    engine.WithBufferSize(512),
+    engine.WithHeartbeat("6Hz"),
+)
+
+// Managed connection with auto-reconnect
+mgr := manager.New("MyApp",
+    manager.WithAutoReconnect(true),
+    manager.WithRetryInterval(10 * time.Second),
+    manager.WithBufferSize(512),
+)
+```
+
+| Documentation | Description |
+|---------------|-------------|
+| [Engine/Client Config](docs/config-client.md) | Buffer size, DLL path, heartbeat, logging |
+| [Manager Config](docs/config-manager.md) | Auto-reconnect, retry intervals, timeouts, plus all engine options |
+
 ## Contributing
 
 _Contributions are welcomed and must follow the [Code of Conduct](https://github.com/mrlm-net/simconnect?tab=coc-ov-file) and common [Contribution guidelines](https://github.com/mrlm-net/.github/blob/main/docs/CONTRIBUTING.md)._
