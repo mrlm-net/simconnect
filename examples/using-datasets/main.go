@@ -57,6 +57,10 @@ func (data *AircraftData) ATCIDAsString() string {
 	return engine.BytesToString(data.AtcID[:])
 }
 
+func (data *AircraftData) AtcAirlineAsString() string {
+	return engine.BytesToString(data.AtcAirline[:])
+}
+
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -195,7 +199,7 @@ connected:
 					// Verbose whole data dump
 					//fmt.Printf("     Aircraft Data: %+v\n", aircraftData)
 					// Print selected fields
-					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AmbientInCloud: %d, IsUserSim: %d, IsTowConnected: %d, AltAboveGround: %f, WingSpan: %f \n",
+					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AtcAirline: %s, AmbientInCloud: %d, IsUserSim: %d, IsTowConnected: %d, AltAboveGround: %f, WingSpan: %f \n",
 						aircraftData.TitleAsString(),
 						aircraftData.CategoryAsString(),
 						aircraftData.LiveryNameAsString(),
@@ -215,6 +219,7 @@ connected:
 						aircraftData.SurfaceType,
 						aircraftData.SimOnGround,
 						aircraftData.ATCIDAsString(),
+						aircraftData.AtcAirlineAsString(),
 						aircraftData.AmbientInCloud,
 						aircraftData.IsUserSim,
 						aircraftData.IsTowConnected,
