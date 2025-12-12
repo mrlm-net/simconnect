@@ -52,3 +52,7 @@ func (e *Engine) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIS
 func (e *Engine) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error {
 	return e.api.UnsubscribeToFacilitiesEX1(listType, unsubscribeNewInRange, unsubscribeOldOutRange)
 }
+
+func (e *Engine) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
+	return e.api.RequestAllFacilities(listType, requestID)
+}

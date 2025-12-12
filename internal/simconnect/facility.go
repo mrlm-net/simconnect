@@ -265,3 +265,19 @@ func (sc *SimConnect) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACIL
 	}
 	return nil
 }
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_RequestAllFacilities.htm
+func (sc *SimConnect) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
+	procedure := sc.library.LoadProcedure("SimConnect_RequestAllFacilites")
+
+	hresult, _, _ := procedure.Call(
+		sc.getConnection(), // phSimConnect - pointer to handle
+		uintptr(listType),
+		uintptr(requestID),
+	)
+
+	if !isHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_RequestAllFacilites failed with HRESULT: 0x%08X", uint32(hresult))
+	}
+	return nil
+}
