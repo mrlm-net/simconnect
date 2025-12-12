@@ -35,28 +35,7 @@ type IFRAircraft struct {
 	InitPhase  float64 `json:"phase"`
 }
 
-type AircraftData struct {
-	Title             [128]byte
-	Category          [128]byte
-	LiveryName        [128]byte
-	LiveryFolder      [128]byte
-	Lat               float64
-	Lon               float64
-	Alt               float64
-	Head              float64
-	HeadMag           float64
-	Vs                float64
-	Pitch             float64
-	Bank              float64
-	GroundSpeed       float64
-	AirspeedIndicated float64
-	AirspeedTrue      float64
-	OnAnyRunway       int32
-	SurfaceType       int32
-	SimOnGround       int32
-	AtcID             [32]byte
-	AtcAirline        [32]byte
-}
+type AircraftData traffic.AircraftDataset
 
 func (data *AircraftData) TitleAsString() string {
 	return engine.BytesToString(data.Title[:])
