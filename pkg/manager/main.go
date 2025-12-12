@@ -219,7 +219,7 @@ func (m *Instance) runConnection() error {
 		case msg, ok := <-stream:
 			if !ok {
 				// Stream closed (simulator disconnected)
-				m.logger.Info("[manager] Stream closed (simulator disconnected)")
+				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
