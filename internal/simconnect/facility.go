@@ -268,7 +268,7 @@ func (sc *SimConnect) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACIL
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_RequestAllFacilities.htm
 func (sc *SimConnect) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestAllFacilites")
+	procedure := sc.library.LoadProcedure("SimConnect_RequestAllFacilities")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
