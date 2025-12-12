@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -207,7 +210,24 @@ func (m *Instance) runConnection() error {
 	// Create engine options: start with manager's context, then add user options
 	// (excluding any Context or Logger options as manager controls these)
 	opts := []engine.Option{engine.WithContext(m.ctx)}
-	opts = append(opts, m.config.EngineOptions...)
+	for _, eo := range m.config.EngineOptions {
+		// Heuristic: try to detect if option is a Context or Logger wrapper by
+		// inspecting the underlying function name. This is best-effort and
+		// only intended to warn users that such options will be overridden.
+		if eo != nil {
+			pc := reflect.ValueOf(eo).Pointer()
+			if fn := runtime.FuncForPC(pc); fn != nil {
+				name := fn.Name()
+				if strings.Contains(name, "WithContext") {
+					m.logger.Warn("[manager] EngineOptions contains WithContext; this will be overridden by manager context.")
+				}
+				if strings.Contains(name, "WithLogger") {
+					m.logger.Warn("[manager] EngineOptions contains WithLogger; this will be overridden by manager logger.")
+				}
+			}
+		}
+		opts = append(opts, eo)
+	}
 	// Manager's logger always takes precedence over any logger in EngineOptions
 	if m.config.Logger != nil {
 		opts = append(opts, engine.WithLogger(m.config.Logger))

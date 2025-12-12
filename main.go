@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func New(name string, options ...manager.Option) manager.Manager {
@@ -47,8 +48,8 @@ func ClientWithDLLPath(path string) engine.Option {
 }
 
 // ClientWithHeartbeat sets the heartbeat frequency.
-// Valid values: "1Hz", "6Hz", etc. Default is "6Hz".
-func ClientWithHeartbeat(frequency string) engine.Option {
+// Valid values: "2sec", "1sec", "6Hz", etc. Default is "6Hz".
+func ClientWithHeartbeat(frequency types.HeartbeatFrequency) engine.Option {
 	return engine.WithHeartbeat(frequency)
 }
 
@@ -123,6 +124,6 @@ func WithDLLPath(path string) manager.Option {
 
 // WithHeartbeat sets the heartbeat frequency for the underlying engine.
 // Valid values: "1Hz", "6Hz", etc. Default is "6Hz".
-func WithHeartbeat(frequency string) manager.Option {
+func WithHeartbeat(frequency types.HeartbeatFrequency) manager.Option {
 	return manager.WithHeartbeat(frequency)
 }

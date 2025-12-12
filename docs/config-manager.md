@@ -24,6 +24,7 @@ mgr := simconnect.New("MyApp",
 import (
     "time"
     "github.com/mrlm-net/simconnect/pkg/manager"
+    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 mgr := manager.New("MyApp",
@@ -57,7 +58,7 @@ These options configure the underlying engine client:
 |--------------|-----------------|------|---------|-------------|
 | `WithBufferSize(size)` | `manager.WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
 | `WithDLLPath(path)` | `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
-| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency |
+| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `types.HeartbeatFrequency` | `types.Heartbeat6Hz` | Heartbeat frequency |
 | `WithEngineOptions(opts...)` | `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
@@ -77,7 +78,7 @@ mgr := manager.New("MyApp", manager.WithContext(ctx))
 
 ### WithLogger
 
-Sets a custom structured logger. The manager logs at INFO level by default, which is more verbose than the engine's WARN default.
+Sets a custom structured logger. Both manager and engine default to INFO level.
 
 ```go
 logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -145,7 +146,7 @@ Convenience wrappers for common engine options:
 mgr := manager.New("MyApp",
     manager.WithBufferSize(512),
     manager.WithDLLPath("D:/Custom/SimConnect.dll"),
-    manager.WithHeartbeat("1Hz"),
+    manager.WithHeartbeat(types.Heartbeat1Hz),
 )
 ```
 
@@ -229,7 +230,7 @@ func main() {
         
         // Engine settings
         manager.WithBufferSize(512),
-        manager.WithHeartbeat("6Hz"),
+        manager.WithHeartbeat(types.Heartbeat6Hz),
     )
 
     mgr.OnStateChange(func(old, new manager.ConnectionState) {

@@ -36,10 +36,11 @@ package main
 
 import (
     "github.com/mrlm-net/simconnect"
+    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func main() {
-    client := simconnect.NewClient("MyApp")
+    client := simconnect.NewClient("MyApp", simconnect.ClientWithHeartbeat(types.Heartbeat6Hz))
     if err := client.Connect(); err != nil {
         panic(err)
     }
@@ -102,7 +103,7 @@ mgr := simconnect.New("MyApp",
 // Direct engine client (for advanced use cases)
 client := simconnect.NewClient("MyApp",
     simconnect.ClientWithBufferSize(512),
-    simconnect.ClientWithHeartbeat("6Hz"),
+    simconnect.ClientWithHeartbeat(types.Heartbeat6Hz),
 )
 ```
 

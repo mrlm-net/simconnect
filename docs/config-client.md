@@ -7,24 +7,30 @@ The `engine` package provides a high-level client for interacting with SimConnec
 ### Using the Root Package
 
 ```go
-import "github.com/mrlm-net/simconnect"
+import (
+    "github.com/mrlm-net/simconnect"
+    "github.com/mrlm-net/simconnect/pkg/types"
+)
 
 client := simconnect.NewClient("MyApp",
     simconnect.ClientWithBufferSize(512),
     simconnect.ClientWithDLLPath("C:/Custom/Path/SimConnect.dll"),
-    simconnect.ClientWithHeartbeat("6Hz"),
+    simconnect.ClientWithHeartbeat(types.Heartbeat6Hz),
 )
 ```
 
 ### Using the Engine Package Directly
 
 ```go
-import "github.com/mrlm-net/simconnect/pkg/engine"
+import (
+    "github.com/mrlm-net/simconnect/pkg/engine"
+    "github.com/mrlm-net/simconnect/pkg/types"
+)
 
 client := engine.New("MyApp",
     engine.WithBufferSize(512),
     engine.WithDLLPath("C:/Custom/Path/SimConnect.dll"),
-    engine.WithHeartbeat("6Hz"),
+    engine.WithHeartbeat(types.Heartbeat6Hz),
 )
 ```
 
@@ -37,8 +43,8 @@ Client options are available via the root `simconnect` package (with `Client` pr
 | `ClientWithBufferSize(size)` | `engine.WithBufferSize(size)` | `int` | `256` | Size of the message buffer for SimConnect communication |
 | `ClientWithDLLPath(path)` | `engine.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
 | `ClientWithContext(ctx)` | `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
-| `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, WARN level | Logger for engine operations |
-| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `string` | `"6Hz"` | Heartbeat frequency for connection monitoring |
+| `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
+| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `types.HeartbeatFrequency` | `types.Heartbeat6Hz` | Heartbeat frequency for connection monitoring |
 
 ## Option Details
 
@@ -71,7 +77,7 @@ client := engine.New("MyApp", engine.WithContext(ctx))
 
 ### WithLogger
 
-Sets a custom structured logger for engine operations. The engine logs at WARN level by default.
+Sets a custom structured logger for engine operations. The engine logs at INFO level by default.
 
 ```go
 logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -83,11 +89,11 @@ client := engine.New("MyApp", engine.WithLogger(logger))
 
 ### WithHeartbeat
 
-Configures the heartbeat frequency for monitoring the connection to the simulator.
+Configures the heartbeat frequency for monitoring the connection to the simulator. Use the typed constants from `pkg/types`.
 
 ```go
-engine.WithHeartbeat("1Hz")  // Check every second
-engine.WithHeartbeat("6Hz")  // Check 6 times per second (default)
+engine.WithHeartbeat(types.Heartbeat1Hz)  // Check every second
+engine.WithHeartbeat(types.Heartbeat6Hz)  // Check 6 times per second (default)
 ```
 
 ## Underlying SimConnect Config
@@ -111,6 +117,7 @@ import (
     "os"
 
     "github.com/mrlm-net/simconnect/pkg/engine"
+    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func main() {
@@ -126,7 +133,7 @@ func main() {
         engine.WithLogger(logger),
         engine.WithBufferSize(512),
         engine.WithDLLPath("C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll"),
-        engine.WithHeartbeat("6Hz"),
+        engine.WithHeartbeat(types.Heartbeat6Hz),
     )
 
     if err := client.Connect(); err != nil {
