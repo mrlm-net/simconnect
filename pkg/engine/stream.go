@@ -4,8 +4,8 @@
 package engine
 
 func (e *Engine) Stream() <-chan Message {
-	if e.queue == nil {
+	e.dispatchOnce.Do(func() {
 		e.dispatch()
-	}
+	})
 	return e.queue
 }

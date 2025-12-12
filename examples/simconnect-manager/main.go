@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager"
@@ -209,11 +210,6 @@ func main() {
 	// Setup signal handler for Ctrl+C
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
-	go func() {
-		<-sigChan
-		fmt.Println("🛑 Received interrupt signal, shutting down...")
-		cancel()
-	}()
 
 	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
 
@@ -222,6 +218,14 @@ func main() {
 		manager.WithContext(ctx),
 		manager.WithAutoReconnect(true),
 	)
+
+	// Setup signal handler goroutine - calls mgr.Stop() for graceful shutdown
+	go func() {
+		<-sigChan
+		fmt.Println("🛑 Received interrupt signal, shutting down...")
+		mgr.Stop() // Gracefully stop manager (handles shutdown timeout internally)
+		cancel()
+	}()
 
 	// Register state change handler to setup data definitions when available
 	mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
@@ -254,4 +258,8 @@ func main() {
 	if err := mgr.Start(); err != nil {
 		fmt.Printf("⚠️  Manager stopped: %v\n", err)
 	}
+
+	// Small delay to allow goroutines to complete cleanup
+	time.Sleep(100 * time.Millisecond)
+	fmt.Println("👋 Goodbye!")
 }

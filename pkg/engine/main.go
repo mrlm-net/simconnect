@@ -27,11 +27,12 @@ func New(name string, options ...Option) *Engine {
 }
 
 type Engine struct {
-	api    simconnect.API
-	cancel context.CancelFunc
-	config *Config
-	ctx    context.Context
-	logger *slog.Logger
-	queue  chan Message
-	sync   sync.WaitGroup
+	api          simconnect.API
+	cancel       context.CancelFunc
+	config       *Config
+	ctx          context.Context
+	dispatchOnce sync.Once
+	logger       *slog.Logger
+	queue        chan Message
+	sync         sync.WaitGroup
 }

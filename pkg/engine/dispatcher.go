@@ -87,19 +87,18 @@ func (e *Engine) dispatch() error {
 				}
 
 				if size > 0 {
+					e.logger.Debug(fmt.Sprintf("[dispatcher] Message received - %v", types.SIMCONNECT_RECV_ID(recvCopy.DwID)))
+					// Send the copied message to the queue, respecting context cancellation
 					select {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
-					default:
-						fmt.Println("[dispatcher] Message received - ", types.SIMCONNECT_RECV_ID(recvCopy.DwID))
-						// Send the copied message to the queue
-						e.queue <- Message{
-							SIMCONNECT_RECV: recvCopy,
-							Size:            size,
-							Err:             err,
-							data:            dataCopy, // Keep reference to prevent GC
-						}
+					case e.queue <- Message{
+						SIMCONNECT_RECV: recvCopy,
+						Size:            size,
+						Err:             err,
+						data:            dataCopy, // Keep reference to prevent GC
+					}:
 					}
 				}
 			}
