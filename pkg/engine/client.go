@@ -6,6 +6,7 @@ package engine
 import (
 	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/datasets"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -14,6 +15,7 @@ type Client interface {
 	Disconnect() error
 
 	Stream() <-chan Message
+	RegisterDataset(dataset *datasets.DataSet) error
 
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 	SubscribeToSystemEvent(eventID uint32, eventName string) error
