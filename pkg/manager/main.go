@@ -78,7 +78,7 @@ func (m *Instance) setState(newState ConnectionState) {
 	copy(handlers, m.stateHandlers)
 	m.mu.Unlock()
 
-	m.logger.Info(fmt.Sprintf("[manager] State changed: %s -> %s", oldState, newState))
+	m.logger.Debug(fmt.Sprintf("[manager] State changed: %s -> %s", oldState, newState))
 
 	// Notify handlers outside the lock
 	for _, handler := range handlers {
@@ -109,13 +109,13 @@ func (m *Instance) Client() engine.Client {
 
 // Start begins the connection lifecycle management
 func (m *Instance) Start() error {
-	m.logger.Info("[manager] Starting connection lifecycle management")
+	m.logger.Debug("[manager] Starting connection lifecycle management")
 
 	// Reconnection loop
 	for {
 		select {
 		case <-m.ctx.Done():
-			m.logger.Info("[manager] Context cancelled, stopping manager")
+			m.logger.Debug("[manager] Context cancelled, stopping manager")
 			m.setState(StateDisconnected)
 			return m.ctx.Err()
 		default:
@@ -124,26 +124,26 @@ func (m *Instance) Start() error {
 		err := m.runConnection()
 		if err != nil {
 			// Context cancelled - exit completely
-			m.logger.Info(fmt.Sprintf("[manager] Connection ended with error: %v", err))
+			m.logger.Debug(fmt.Sprintf("[manager] Connection ended with error: %v", err))
 			return err
 		}
 
 		// Simulator disconnected (err == nil) - check if we should reconnect
 		if !m.config.AutoReconnect {
-			m.logger.Info("[manager] Auto-reconnect disabled, stopping manager")
+			m.logger.Debug("[manager] Auto-reconnect disabled, stopping manager")
 			return nil
 		}
 
 		m.setState(StateReconnecting)
-		m.logger.Info(fmt.Sprintf("[manager] Waiting %v before reconnecting...", m.config.ReconnectDelay))
+		m.logger.Debug(fmt.Sprintf("[manager] Waiting %v before reconnecting...", m.config.ReconnectDelay))
 
 		select {
 		case <-m.ctx.Done():
-			m.logger.Info("[manager] Shutdown requested, not reconnecting")
+			m.logger.Debug("[manager] Shutdown requested, not reconnecting")
 			m.setState(StateDisconnected)
 			return m.ctx.Err()
 		case <-time.After(m.config.ReconnectDelay):
-			m.logger.Info("[manager] Attempting to reconnect...")
+			m.logger.Debug("[manager] Attempting to reconnect...")
 		}
 	}
 }
@@ -172,7 +172,7 @@ func (m *Instance) runConnection() error {
 	}
 
 	m.setState(StateConnected)
-	m.logger.Info("[manager] Connected to simulator")
+	m.logger.Debug("[manager] Connected to simulator")
 
 	// Process messages until disconnection or cancellation
 	stream := m.engine.Stream()
@@ -201,14 +201,14 @@ func (m *Instance) runConnection() error {
 
 			// Check for connection ready (OPEN) message
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
-				m.logger.Info("[manager] Received OPEN message, connection is now available")
+				m.logger.Debug("[manager] Received OPEN message, connection is now available")
 				m.setState(StateAvailable)
 				continue
 			}
 
 			// Check for quit message
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_QUIT {
-				m.logger.Info("[manager] Received QUIT message from simulator")
+				m.logger.Debug("[manager] Received QUIT message from simulator")
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -277,7 +277,7 @@ func (m *Instance) connectWithRetry() error {
 			return fmt.Errorf("max connection retries (%d) exceeded: %w", m.config.MaxRetries, err)
 		}
 
-		m.logger.Info(fmt.Sprintf("[manager] Connection attempt %d failed: %v, retrying in %v...", attempts, err, m.config.RetryInterval))
+		m.logger.Debug(fmt.Sprintf("[manager] Connection attempt %d failed: %v, retrying in %v...", attempts, err, m.config.RetryInterval))
 
 		select {
 		case <-m.ctx.Done():

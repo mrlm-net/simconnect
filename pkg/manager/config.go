@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	DEFAULT_RETRY_INTERVAL     = 30 * time.Second // Delay between connection attempts
-	DEFAULT_CONNECTION_TIMEOUT = 15 * time.Second // Timeout for each connection attempt
-	DEFAULT_RECONNECT_DELAY    = 5 * time.Second  // Delay before reconnecting after disconnect
+	DEFAULT_RETRY_INTERVAL     = 15 * time.Second // Delay between connection attempts
+	DEFAULT_RECONNECT_DELAY    = 30 * time.Second // Delay before reconnecting after disconnect
+	DEFAULT_CONNECTION_TIMEOUT = 30 * time.Second // Timeout for each connection attempt
 	DEFAULT_SHUTDOWN_TIMEOUT   = 10 * time.Second // Timeout for graceful shutdown
 	DEFAULT_MAX_RETRIES        = 0                // 0 = unlimited retries
 	DEFAULT_AUTO_RECONNECT     = true
