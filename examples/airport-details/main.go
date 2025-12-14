@@ -24,6 +24,16 @@ type AirportData struct {
 	Name64    [64]byte
 }
 
+type ParkingPlace struct {
+	Name             uint32
+	Number           uint32
+	Heading          float32
+	Type             uint32
+	BiasX            float32
+	BiasZ            float32
+	NumberOfAirlines uint32
+}
+
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -64,7 +74,21 @@ connected:
 	client.AddToFacilityDefinition(3000, "NAME")
 	client.AddToFacilityDefinition(3000, "NAME64")
 	client.AddToFacilityDefinition(3000, "CLOSE AIRPORT")
+
+	client.AddToFacilityDefinition(3001, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(3001, "OPEN TAXI_PARKING")
+	client.AddToFacilityDefinition(3001, "NAME")
+	client.AddToFacilityDefinition(3001, "NUMBER")
+	client.AddToFacilityDefinition(3001, "HEADING")
+	client.AddToFacilityDefinition(3001, "TYPE")
+	client.AddToFacilityDefinition(3001, "BIAS_X")
+	client.AddToFacilityDefinition(3001, "BIAS_Z")
+	client.AddToFacilityDefinition(3001, "N_AIRLINES")
+	client.AddToFacilityDefinition(3001, "CLOSE TAXI_PARKING")
+	client.AddToFacilityDefinition(3001, "CLOSE AIRPORT")
+
 	client.RequestFacilityData(3000, 123, "LKPR", "")
+	client.RequestFacilityData(3001, 124, "LKPR", "")
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -107,16 +131,6 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 
 			case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
-				/*struct SIMCONNECT_RECV_FACILITY_DATA : public SIMCONNECT_RECV{
-				  DWORD UserRequestId;
-				  DWORD UniqueRequestId;
-				  DWORD ParentUniqueRequestId;
-				  SIMCONNECT_FACILITY_DATA_TYPE Type;
-				  bool IsListItem;
-				  DWORD ItemIndex;
-				  DWORD ListSize;
-				  DWORD Data;
-				  };*/
 				fmt.Println("🏗️  Received SIMCONNECT_RECV_ID_FACILITY_DATA message!")
 				msg := msg.AsFacilityData()
 
@@ -128,16 +142,32 @@ connected:
 				fmt.Printf("  ItemIndex: %d\n", msg.ItemIndex)
 				fmt.Printf("  ListSize: %d\n", msg.ListSize)
 				// Buffer of data. Have to cast it to a struct which matches the definition.
-				data := engine.CastDataAs[AirportData](&msg.Data)
-				fmt.Printf("  Data:\n")
-				fmt.Printf("    Latitude: %f\n", data.Latitude)
-				fmt.Printf("    Longitude: %f\n", data.Longitude)
-				fmt.Printf("    Altitude: %f\n", data.Altitude)
-				fmt.Printf("    ICAO: '%s'\n", engine.BytesToString(data.ICAO[:]))
-				fmt.Printf("    Name: '%s'\n", engine.BytesToString(data.Name[:]))
-				fmt.Printf("    Name64: '%s'\n", engine.BytesToString(data.Name64[:]))
+				if msg.UserRequestId == 123 {
+					fmt.Println("  Facility Data Type: Airport")
+					data := engine.CastDataAs[AirportData](&msg.Data)
+					fmt.Printf("  Data:\n")
+					fmt.Printf("    Latitude: %f\n", data.Latitude)
+					fmt.Printf("    Longitude: %f\n", data.Longitude)
+					fmt.Printf("    Altitude: %f\n", data.Altitude)
+					fmt.Printf("    ICAO: '%s'\n", engine.BytesToString(data.ICAO[:]))
+					fmt.Printf("    Name: '%s'\n", engine.BytesToString(data.Name[:]))
+					fmt.Printf("    Name64: '%s'\n", engine.BytesToString(data.Name64[:]))
+				} else if msg.UserRequestId == 124 {
+					fmt.Println("  Facility Data Type: Parking Place")
+					data := engine.CastDataAs[ParkingPlace](&msg.Data)
+					fmt.Printf("  Data:\n")
+					fmt.Printf("    Name: '%d'\n", data.Name)
+					fmt.Printf("    Number: %d\n", data.Number)
+					fmt.Printf("    Heading: %f\n", data.Heading)
+					fmt.Printf("    Type: %d\n", data.Type)
+					fmt.Printf("    BiasX: %f\n", data.BiasX)
+					fmt.Printf("    BiasZ: %f\n", data.BiasZ)
+					fmt.Printf("    NumberOfAirlines: %d\n", data.NumberOfAirlines)
+				}
+
 			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
 				fmt.Println("🏁 Received SIMCONNECT_RECV_ID_FACILITY_DATA_END message!")
+				//return nil // Disconnect after receiving all data to retrigger loop and request data again
 
 			default:
 				// Other message types can be handled here
