@@ -127,6 +127,15 @@ connected:
 	// Request data for all aircraft within 50km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 25000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
+	_ = types.SIMCONNECT_DATA_WAYPOINT{
+		Latitude:  50.033333,
+		Longitude: 14.570000,
+		Altitude:  0,
+		Flags:     types.SIMCONNECT_WAYPOINT_ON_GROUND,
+		Speed:     0,
+		Throttle:  0,
+	}
+
 	// create ticker to periodically request data
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()

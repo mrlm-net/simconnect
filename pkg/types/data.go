@@ -70,13 +70,25 @@ type SIMCONNECT_DATA_INITPOSITION struct {
 	Bank      float64 // double Bank
 	Heading   float64 // double Heading
 	OnGround  DWORD
-	Airspeed  DWORD
+	Airspeed  SIMCONNECT_DATA_INITPOSITION_AIRSPEED
 }
 
+type SIMCONNECT_DATA_INITPOSITION_AIRSPEED DWORD
+
 const (
-	INITPOSITION_AIRSPEED_CRUISE = -1 // DWORD Airspeed
-	INITPOSITION_AIRSPEED_KEEP   = -2 // DWORD Airspeed
+	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE = -1 // DWORD Airspeed
+	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_KEEP   = -2 // DWORD Airspeed
 )
+
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_WAYPOINT.htm
+type SIMCONNECT_DATA_WAYPOINT struct {
+	Latitude  float64 // double Latitude
+	Longitude float64 // double Longitude
+	Altitude  float64 // double Altitude
+	Flags     uint32  // unsigned long Flags
+	Speed     float64 // double ktsSpeed
+	Throttle  float64 // double percentThrottle
+}
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_MARKERSTATE.htm
 type SIMCONNECT_DATA_MARKERSTATE struct {
