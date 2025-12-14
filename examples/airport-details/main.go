@@ -90,6 +90,9 @@ connected:
 	client.RequestFacilityData(3000, 123, "LKPR", "")
 	client.RequestFacilityData(3001, 124, "LKPR", "")
 
+	// Container for storing parking places
+	var parkingPlaces []ParkingPlace
+
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	// Main message processing loop
@@ -155,19 +158,26 @@ connected:
 				} else if msg.UserRequestId == 124 {
 					fmt.Println("  Facility Data Type: Parking Place")
 					data := engine.CastDataAs[ParkingPlace](&msg.Data)
-					fmt.Printf("  Data:\n")
+					/*fmt.Printf("  Data:\n")
 					fmt.Printf("    Name: '%d'\n", data.Name)
 					fmt.Printf("    Number: %d\n", data.Number)
 					fmt.Printf("    Heading: %f\n", data.Heading)
 					fmt.Printf("    Type: %d\n", data.Type)
 					fmt.Printf("    BiasX: %f\n", data.BiasX)
 					fmt.Printf("    BiasZ: %f\n", data.BiasZ)
-					fmt.Printf("    NumberOfAirlines: %d\n", data.NumberOfAirlines)
+					fmt.Printf("    NumberOfAirlines: %d\n", data.NumberOfAirlines)*/
+					if data.Number != 0 {
+						parkingPlaces = append(parkingPlaces, *data)
+					}
 				}
 
 			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
 				fmt.Println("🏁 Received SIMCONNECT_RECV_ID_FACILITY_DATA_END message!")
 				//return nil // Disconnect after receiving all data to retrigger loop and request data again
+				for i, place := range parkingPlaces {
+					fmt.Printf("🅿️  Parking Place %d: Name='%d', Number=%d, Heading=%f, Type=%d, BiasX=%f, BiasZ=%f, NumberOfAirlines=%d\n",
+						i+1, place.Name, place.Number, place.Heading, place.Type, place.BiasX, place.BiasZ, place.NumberOfAirlines)
+				}
 
 			default:
 				// Other message types can be handled here
