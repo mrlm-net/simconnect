@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -90,6 +91,7 @@ connected:
 	client.RequestFacilityData(3000, 123, "LKPR", "")
 	client.RequestFacilityData(3001, 124, "LKPR", "")
 
+	var airport AirportData
 	// Container for storing parking places
 	var parkingPlaces []ParkingPlace
 
@@ -145,7 +147,8 @@ connected:
 				fmt.Printf("  ItemIndex: %d\n", msg.ItemIndex)
 				fmt.Printf("  ListSize: %d\n", msg.ListSize)
 				// Buffer of data. Have to cast it to a struct which matches the definition.
-				if msg.UserRequestId == 123 {
+				switch msg.UserRequestId {
+				case 123:
 					fmt.Println("  Facility Data Type: Airport")
 					data := engine.CastDataAs[AirportData](&msg.Data)
 					fmt.Printf("  Data:\n")
@@ -155,17 +158,11 @@ connected:
 					fmt.Printf("    ICAO: '%s'\n", engine.BytesToString(data.ICAO[:]))
 					fmt.Printf("    Name: '%s'\n", engine.BytesToString(data.Name[:]))
 					fmt.Printf("    Name64: '%s'\n", engine.BytesToString(data.Name64[:]))
-				} else if msg.UserRequestId == 124 {
+					airport = *data
+				case 124:
 					fmt.Println("  Facility Data Type: Parking Place")
 					data := engine.CastDataAs[ParkingPlace](&msg.Data)
-					/*fmt.Printf("  Data:\n")
-					fmt.Printf("    Name: '%d'\n", data.Name)
-					fmt.Printf("    Number: %d\n", data.Number)
-					fmt.Printf("    Heading: %f\n", data.Heading)
-					fmt.Printf("    Type: %d\n", data.Type)
-					fmt.Printf("    BiasX: %f\n", data.BiasX)
-					fmt.Printf("    BiasZ: %f\n", data.BiasZ)
-					fmt.Printf("    NumberOfAirlines: %d\n", data.NumberOfAirlines)*/
+					// We don't want empty parking places (Number==0)
 					if data.Number != 0 {
 						parkingPlaces = append(parkingPlaces, *data)
 					}
@@ -173,10 +170,16 @@ connected:
 
 			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
 				fmt.Println("🏁 Received SIMCONNECT_RECV_ID_FACILITY_DATA_END message!")
-				//return nil // Disconnect after receiving all data to retrigger loop and request data again
+				fmt.Printf("Airport ref: lat=%f lon=%f\n", airport.Latitude, airport.Longitude)
+
 				for i, place := range parkingPlaces {
-					fmt.Printf("🅿️  Parking Place %d: Name='%d', Number=%d, Heading=%f, Type=%d, BiasX=%f, BiasZ=%f, NumberOfAirlines=%d\n",
-						i+1, place.Name, place.Number, place.Heading, place.Type, place.BiasX, place.BiasZ, place.NumberOfAirlines)
+					//heading := float64(place.Heading)
+
+					lat, lon := convert.OffsetToLatLon(airport.Latitude, airport.Longitude, float64(place.BiasX), float64(place.BiasZ))
+
+					fmt.Printf("🅿️  Parking %d: Name=%d, Number=%d, Heading=%f, BiasX=%f, BiasZ=%f, N_Airlines=%d, Lat=%f, Lon=%f\n",
+						i+1, int32(place.Name), place.Number, place.Heading, place.BiasX, place.BiasZ, place.NumberOfAirlines, lat, lon)
+
 				}
 
 			default:

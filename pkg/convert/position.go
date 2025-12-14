@@ -5,21 +5,28 @@ package convert
 
 import "math"
 
-// PositionFromBias returns a new latitude and longitude (degrees) when starting
-// from latRef/lonRef and applying a forward (meters along airport heading)
-// and right (meters to the right of the heading) offset.
-// headingDeg is azimuth clockwise from north.
-func PositionFromBias(latRef, lonRef, headingDeg, forwardMeters, rightMeters float64) (lat, lon float64) {
-	theta := headingDeg * math.Pi / 180.0
-	// heading unit: (sinθ east, cosθ north)
-	// right unit:   (cosθ east, -sinθ north)
-	east := forwardMeters*math.Sin(theta) + rightMeters*math.Cos(theta)
-	north := forwardMeters*math.Cos(theta) - rightMeters*math.Sin(theta)
+// OffsetToLatLon calculates the latitude and longitude of a point
+// given a reference point (latRef, lonRef in degrees) and offsets
+// X (east, meters) and Z (north, meters).
+func OffsetToLatLon(latRef, lonRef, xEast, zNorth float64) (lat, lon float64) {
+	// WGS84 ellipsoid
+	const a = 6378137.0
+	const b = 6356752.314245
+	e2 := (a*a - b*b) / (a * a)
 
-	metersPerDegLat := 110574.0
-	metersPerDegLon := 111319.9 * math.Cos(latRef*math.Pi/180.0)
+	latRefRad := latRef * math.Pi / 180.0
+	sinLat := math.Sin(latRefRad)
+	W := math.Sqrt(1 - e2*sinLat*sinLat)
 
-	lat = latRef + north/metersPerDegLat
-	lon = lonRef + east/metersPerDegLon
+	// Meridian radius of curvature (M) and prime vertical radius (N)
+	M := a * (1 - e2) / (W * W * W)
+	N := a / W
+
+	// Convert meter offsets to degrees using local radii
+	deltaLat := (zNorth / M) * (180.0 / math.Pi)
+	deltaLon := (xEast / (N * math.Cos(latRefRad))) * (180.0 / math.Pi)
+
+	lat = latRef + deltaLat
+	lon = lonRef + deltaLon
 	return
 }

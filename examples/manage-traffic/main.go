@@ -114,11 +114,11 @@ connected:
 	// FSLTL A320 Air France SL
 
 	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
-	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "N12347", "123", types.SIMCONNECT_DATA_INITPOSITION{
-		Latitude:  50.108218,
-		Longitude: 14.264246,
+	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "", "123", types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude:  50.110150,
+		Longitude: 14.269961,
 		Altitude:  0,
-		Heading:   35,
+		Heading:   244,
 		Pitch:     0,
 		Bank:      0,
 		OnGround:  1,
