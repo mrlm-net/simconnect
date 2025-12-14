@@ -147,7 +147,8 @@ connected:
 				fmt.Printf("  ItemIndex: %d\n", msg.ItemIndex)
 				fmt.Printf("  ListSize: %d\n", msg.ListSize)
 				// Buffer of data. Have to cast it to a struct which matches the definition.
-				if msg.UserRequestId == 123 {
+				switch msg.UserRequestId {
+				case 123:
 					fmt.Println("  Facility Data Type: Airport")
 					data := engine.CastDataAs[AirportData](&msg.Data)
 					fmt.Printf("  Data:\n")
@@ -158,7 +159,7 @@ connected:
 					fmt.Printf("    Name: '%s'\n", engine.BytesToString(data.Name[:]))
 					fmt.Printf("    Name64: '%s'\n", engine.BytesToString(data.Name64[:]))
 					airport = *data
-				} else if msg.UserRequestId == 124 {
+				case 124:
 					fmt.Println("  Facility Data Type: Parking Place")
 					data := engine.CastDataAs[ParkingPlace](&msg.Data)
 					// We don't want empty parking places (Number==0)
