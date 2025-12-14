@@ -5,15 +5,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"time"
 
 	"github.com/mrlm-net/simconnect"
-	"github.com/mrlm-net/simconnect/pkg/datasets/traffic"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -35,7 +32,28 @@ type IFRAircraft struct {
 	InitPhase  float64 `json:"phase"`
 }
 
-type AircraftData traffic.AircraftDataset
+type AircraftData struct {
+	Title             [128]byte
+	Category          [128]byte
+	LiveryName        [128]byte
+	LiveryFolder      [128]byte
+	Lat               float64
+	Lon               float64
+	Alt               float64
+	Head              float64
+	HeadMag           float64
+	Vs                float64
+	Pitch             float64
+	Bank              float64
+	GroundSpeed       float64
+	AirspeedIndicated float64
+	AirspeedTrue      float64
+	OnAnyRunway       int32
+	SurfaceType       int32
+	SimOnGround       int32
+	AtcID             [32]byte
+	AtcAirline        [32]byte
+}
 
 func (data *AircraftData) TitleAsString() string {
 	return engine.BytesToString(data.Title[:])
@@ -57,16 +75,12 @@ func (data *AircraftData) ATCIDAsString() string {
 	return engine.BytesToString(data.AtcID[:])
 }
 
-func (data *AircraftData) AtcAirlineAsString() string {
-	return engine.BytesToString(data.AtcAirline[:])
-}
-
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.NewClient("GO Example - SimConnect Read Messages and their data by using Datasets",
+	client := simconnect.NewClient("GO Example - SimConnect Read Messages and their data",
 		engine.WithContext(ctx),
 	)
 
@@ -92,35 +106,7 @@ connected:
 	// We can already register data definitions and requests here
 	addPlanesRequestDataset(client)
 	// Load parked aircraft from JSON
-	planes, err := loadParkedAircraft("planes.json")
-	if err != nil {
-		fmt.Println("Error:", err)
-		return err
-	}
-	// Add parked aircraft and set flight plans with delays if specified
-	for i, p := range planes {
-		//wg := &sync.WaitGroup{}
 
-		if p.FlightClearance >= 0 && p.FlightPlan != "" {
-			//wg.Add(1)
-			// Simple per-plane delay (tweak as needed or load from data):
-			delay := time.Duration(p.FlightClearance) * time.Second
-			time.AfterFunc(delay, func(p ParkedAircraft) func() {
-				return func() {
-					//defer wg.Done()
-					// Demo: assign a flight plan or any follow-up work here.
-					// Replace with real SimConnect call if desired.
-					fmt.Printf("📝 Assigning flight plan for %s (%s) after %s\n", p.Plane, p.Number, delay)
-					// Example placeholder: filepath.Join(cwd, "plans", p.FlightPlan)
-					client.AICreateEnrouteATCAircraftEX1(p.Plane, "", p.Number, 123+uint32(i),
-						filepath.Join(cwd, "plans", p.FlightPlan), 0.0, false, 2000+uint32(i))
-				}
-			}(p))
-		} else {
-			fmt.Printf("📝 Adding parked plane - plane=%s number=%s\n", p.Plane, p.Number)
-			client.AICreateParkedATCAircraft(p.Plane, p.Number, p.Airport, 1000+uint32(i))
-		}
-	}
 	fmt.Println("✈️  Ready for plane spotting???")
 
 	//client.AICreateParkedATCAircraft("FSLTL A320 VLG Vueling", "N12345", "LKPR", 5000)
@@ -128,7 +114,15 @@ connected:
 	// FSLTL A320 Air France SL
 
 	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
-	//client.AICreateEnrouteATCAircraft("FSLTL A320 Air France SL", "N12347", 123, "C:\\MSFS-TEST-PLANS\\LKPREDDN_MFS_NoProc_07Dec25", 0.0, false, 5006)
+	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "N12347", "123", types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude:  50.108218,
+		Longitude: 14.264246,
+		Altitude:  0,
+		Heading:   35,
+		Pitch:     0,
+		Bank:      0,
+		OnGround:  1,
+	}, 5006)
 
 	// Request data for all aircraft within 50km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 25000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
@@ -196,10 +190,7 @@ connected:
 				)
 				if simObjData.DwDefineID == 3000 {
 					aircraftData := engine.CastDataAs[AircraftData](&simObjData.DwData)
-					// Verbose whole data dump
-					//fmt.Printf("     Aircraft Data: %+v\n", aircraftData)
-					// Print selected fields
-					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s, AtcAirline: %s, AmbientInCloud: %d, IsUserSim: %d, IsTowConnected: %d, AltAboveGround: %f, WingSpan: %f \n",
+					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
 						aircraftData.TitleAsString(),
 						aircraftData.CategoryAsString(),
 						aircraftData.LiveryNameAsString(),
@@ -219,12 +210,6 @@ connected:
 						aircraftData.SurfaceType,
 						aircraftData.SimOnGround,
 						aircraftData.ATCIDAsString(),
-						aircraftData.AtcAirlineAsString(),
-						aircraftData.AmbientInCloud,
-						aircraftData.IsUserSim,
-						aircraftData.IsTowConnected,
-						aircraftData.AltAboveGround,
-						aircraftData.WingSpan,
 					)
 				}
 			default:
@@ -270,22 +255,26 @@ func main() {
 	}
 }
 
-func loadParkedAircraft(path string) ([]ParkedAircraft, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
-	}
-
-	var planes []ParkedAircraft
-	if err := json.Unmarshal(data, &planes); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
-	}
-	return planes, nil
-}
-
 func addPlanesRequestDataset(client engine.Client) {
 	// Define data structure for plane request dataset
-	client.RegisterDataset(
-		traffic.NewAircraftDataset("AircraftDataset", 3000),
-	)
+	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.AddToDataDefinition(3000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 1)
+	client.AddToDataDefinition(3000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 2)
+	client.AddToDataDefinition(3000, "LIVERY FOLDER", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 3)
+	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
+	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 5)
+	client.AddToDataDefinition(3000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 6)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 7)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 8)
+	client.AddToDataDefinition(3000, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 9)
+	client.AddToDataDefinition(3000, "PLANE PITCH DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 10)
+	client.AddToDataDefinition(3000, "PLANE BANK DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 11)
+	client.AddToDataDefinition(3000, "GROUND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 12)
+	client.AddToDataDefinition(3000, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 13)
+	client.AddToDataDefinition(3000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 14)
+	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 15)
+	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 16)
+	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 17)
+	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 18)
+	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 19)
 }
