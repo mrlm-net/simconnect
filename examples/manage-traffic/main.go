@@ -114,7 +114,7 @@ connected:
 	// FSLTL A320 Air France SL
 
 	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
-	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "", "123", types.SIMCONNECT_DATA_INITPOSITION{
+	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "", "N1234", types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  50.110150,
 		Longitude: 14.269961,
 		Altitude:  0,
@@ -189,6 +189,7 @@ connected:
 				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
 				simObjData := msg.AsSimObjectDataBType()
+
 				fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
 					simObjData.DwRequestID,
 					simObjData.DwDefineID,
@@ -220,6 +221,13 @@ connected:
 						aircraftData.SimOnGround,
 						aircraftData.ATCIDAsString(),
 					)
+
+					// Make login to assign plan as you need to have object ID
+					// assigned before you can issue flight plan commands
+					// simObjData.DwObjectID
+					if aircraftData.ATCIDAsString() == "N1234" {
+						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
+					}
 				}
 			default:
 				// Other message types can be handled here
