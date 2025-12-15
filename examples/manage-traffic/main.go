@@ -160,6 +160,7 @@ connected:
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
 	// Main message processing loop
+	var planAssigned bool = false
 	for {
 		select {
 		case <-ctx.Done():
@@ -232,9 +233,10 @@ connected:
 					// Make login to assign plan as you need to have object ID
 					// assigned before you can issue flight plan commands
 					// simObjData.DwObjectID
-					if aircraftData.ATCIDAsString() == "N1234" {
+					if aircraftData.ATCIDAsString() == "N1234" && !planAssigned {
 						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
 						client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(*aircraftData)), unsafe.Pointer(aircraftData))
+						planAssigned = true
 					}
 				}
 			default:
