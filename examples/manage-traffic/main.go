@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -130,7 +129,7 @@ connected:
 
 	client.AddToDataDefinition(4000, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0)
 
-	waypoints := []types.SIMCONNECT_DATA_WAYPOINT{
+	_ = []types.SIMCONNECT_DATA_WAYPOINT{
 		{
 			Latitude:        50.033333,
 			Longitude:       14.570000,
@@ -234,7 +233,7 @@ connected:
 					if aircraftData.ATCIDAsString() == "N1234" && !planAssigned {
 						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
 
-						client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
+						//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
 						planAssigned = true
 						fmt.Println("✅ Flight plan assigned!")
 
