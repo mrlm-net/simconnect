@@ -227,6 +227,7 @@ connected:
 					// simObjData.DwObjectID
 					if aircraftData.ATCIDAsString() == "N1234" {
 						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
+						//client.SetDataOnSimObject()
 					}
 				}
 			default:
