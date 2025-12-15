@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -127,6 +128,12 @@ connected:
 	// Request data for all aircraft within 50km radius
 	client.RequestDataOnSimObjectType(4001, 3000, 25000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 
+	client.AddToDataDefinition(4000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.AddToDataDefinition(4000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 1)
+	client.AddToDataDefinition(4000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(4000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
+	client.AddToDataDefinition(4000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
+
 	_ = types.SIMCONNECT_DATA_WAYPOINT{
 		Latitude:  50.033333,
 		Longitude: 14.570000,
@@ -227,7 +234,7 @@ connected:
 					// simObjData.DwObjectID
 					if aircraftData.ATCIDAsString() == "N1234" {
 						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
-						//client.SetDataOnSimObject()
+						client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(*aircraftData)), unsafe.Pointer(aircraftData))
 					}
 				}
 			default:
