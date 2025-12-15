@@ -82,12 +82,12 @@ const (
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_WAYPOINT.htm
 type SIMCONNECT_DATA_WAYPOINT struct {
-	Latitude  float64 // double Latitude
-	Longitude float64 // double Longitude
-	Altitude  float64 // double Altitude
-	Flags     uint32  // unsigned long Flags
-	Speed     float64 // double ktsSpeed
-	Throttle  float64 // double percentThrottle
+	Latitude        float64 // double Latitude
+	Longitude       float64 // double Longitude
+	Altitude        float64 // double Altitude
+	Flags           uint32  // unsigned long Flags
+	KtsSpeed        float64 // double ktsSpeed
+	PercentThrottle float64 // double percentThrottle
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_MARKERSTATE.htm

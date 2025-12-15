@@ -128,3 +128,10 @@ func (m *Message) AsWaypointList() *types.SIMCONNECT_RECV_WAYPOINT_LIST {
 	}
 	return (*types.SIMCONNECT_RECV_WAYPOINT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+func (m *Message) AsException() *types.SIMCONNECT_RECV_EXCEPTION {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EXCEPTION {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
