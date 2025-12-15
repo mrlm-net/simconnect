@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -168,17 +169,6 @@ connected:
 	client.AddToFacilityDefinition(3004, "CLOSE TAXI_POINT")
 	client.AddToFacilityDefinition(3004, "CLOSE AIRPORT")
 
-	client.AddToFacilityDefinition(3005, "OPEN WAYPOINT")
-	client.AddToFacilityDefinition(3005, "LATITUDE")
-	client.AddToFacilityDefinition(3005, "LONGITUDE")
-	client.AddToFacilityDefinition(3005, "ALTITUDE")
-	client.AddToFacilityDefinition(3005, "TYPE")
-	client.AddToFacilityDefinition(3005, "ICAO")
-	//client.AddToFacilityDefinition(3005, "IS_TERMINAL_WPT")
-	client.AddToFacilityDefinition(3005, "CLOSE WAYPOINT")
-
-	//client.RequestFacilityData(3005, 128, "ED5V6", "")
-
 	client.RequestFacilityData(3000, 123, "LKPR", "")
 	client.RequestFacilityData(3001, 124, "LKPR", "")
 	client.RequestFacilityData(3002, 125, "LKPR", "")
@@ -283,11 +273,6 @@ connected:
 					data := engine.CastDataAs[TaxiPoint](&msg.Data)
 					// Handle taxi point data if needed
 					taxiPoints = append(taxiPoints, *data)
-				case 128:
-					fmt.Println("  Facility Data Type: Waypoint")
-					data := engine.CastDataAs[Waypoint](&msg.Data)
-					// Handle waypoint data if needed
-					waypoints = append(waypoints, *data)
 				}
 
 			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
@@ -301,7 +286,7 @@ connected:
 				fmt.Printf("Total Taxi Points received: %d\n", len(taxiPoints))
 				fmt.Printf("Total Waypoints received: %d\n", len(waypoints))
 
-				/*for i, place := range parkingPlaces {
+				for i, place := range parkingPlaces {
 					//heading := float64(place.Heading)
 
 					lat, lon := convert.OffsetToLatLon(airport.Latitude, airport.Longitude, float64(place.BiasX), float64(place.BiasZ))
@@ -309,17 +294,17 @@ connected:
 					fmt.Printf("🅿️  Parking %d: Name=%d, Number=%d, Heading=%f, BiasX=%f, BiasZ=%f, N_Airlines=%d, Lat=%f, Lon=%f\n",
 						i+1, int32(place.Name), place.Number, place.Heading, place.BiasX, place.BiasZ, place.NumberOfAirlines, lat, lon)
 
-				}*/
+				}
 
 				/*for i, path := range taxiPaths {
 					fmt.Printf("🚖 Taxi Path %d: Type=%d, Start=%d, End=%d\n",
 						i+1, path.Type, path.Start, path.End)
 				}*/
 
-				/*for i, tname := range taxiNames {
+				for i, tname := range taxiNames {
 					fmt.Printf("🚖 Taxi Name %d: Name='%s'\n",
 						i+1, engine.BytesToString(tname.Name[:]))
-				}*/
+				}
 
 			default:
 				// Other message types can be handled here
