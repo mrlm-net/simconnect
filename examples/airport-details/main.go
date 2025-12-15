@@ -77,21 +77,6 @@ func (tp *TaxiPoints) Get(index int) *TaxiPoint {
 	return &(*tp)[index]
 }
 
-type Waypoint struct {
-	Latitude   float64
-	Longitude  float64
-	Altitude   float64
-	Type       uint32
-	ICAO       [8]byte
-	IsTerminal uint32
-}
-
-type Waypoints []Waypoint
-
-func (wp *Waypoints) Get(index int) *Waypoint {
-	return &(*wp)[index]
-}
-
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -184,8 +169,6 @@ connected:
 	var taxiNames TaxiNames
 
 	var taxiPoints TaxiPoints
-
-	var waypoints Waypoints
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
@@ -284,7 +267,6 @@ connected:
 				fmt.Printf("Total Taxi Paths received: %d\n", len(taxiPaths))
 				fmt.Printf("Total Taxi Names received: %d\n", len(taxiNames))
 				fmt.Printf("Total Taxi Points received: %d\n", len(taxiPoints))
-				fmt.Printf("Total Waypoints received: %d\n", len(waypoints))
 
 				for i, place := range parkingPlaces {
 					//heading := float64(place.Heading)
