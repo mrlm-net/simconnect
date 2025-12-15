@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -135,8 +136,35 @@ connected:
 				fmt.Println("🏁 Received SIMCONNECT_RECV_ID_FACILITY_DATA_END message!")
 			case types.SIMCONNECT_RECV_ID_WAYPOINT_LIST:
 				fmt.Println("🛤️  Received SIMCONNECT_RECV_ID_WAYPOINT_LIST message!")
-				msg := msg.AsWaypointList()
-				fmt.Printf("  Number of waypoints: %d\n", msg.DwArraySize)
+				list := msg.AsWaypointList()
+				fmt.Printf("  Number of waypoints: %d, size: %d\n", list.DwArraySize, list.DwSize)
+
+				// Read array entries
+				headerSize := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
+				actualDataSize := uintptr(msg.DwSize) - headerSize
+				actualEntrySize := actualDataSize / uintptr(list.DwArraySize)
+				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
+				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
+					entryOffset := uintptr(i) * actualEntrySize
+					entryPtr := unsafe.Pointer(uintptr(dataStart) + entryOffset)
+
+					// Read fields at exact offsets - can't use struct due to Go's alignment rules
+					var ident [6]byte
+					var region [3]byte
+					copy(ident[:], (*[6]byte)(entryPtr)[:])
+					copy(region[:], (*[3]byte)(unsafe.Pointer(uintptr(entryPtr) + 6))[:])
+
+					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 12))
+					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 20))
+					alt := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 28))
+
+					fmt.Printf("  ✈️  Waypoint #%d: %s (%s) | 🌍 Lat: %.6f, Lon: %.6f | 📏 Alt: %.2fm\n",
+						i+1,
+						engine.BytesToString(ident[:]),
+						engine.BytesToString(region[:]),
+						lat, lon, alt,
+					)
+				}
 
 			default:
 				// Other message types can be handled here
