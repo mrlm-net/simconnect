@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"time"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -140,7 +139,7 @@ connected:
 				fmt.Printf("  Number of waypoints: %d, size: %d\n", list.DwArraySize, list.DwSize)
 
 				// Read array entries
-				headerSize := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
+				/*headerSize := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
 				actualDataSize := uintptr(msg.DwSize) - headerSize
 				actualEntrySize := actualDataSize / uintptr(list.DwArraySize)
 				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
@@ -164,7 +163,7 @@ connected:
 						engine.BytesToString(region[:]),
 						lat, lon, alt,
 					)
-				}
+				}*/
 
 			default:
 				// Other message types can be handled here

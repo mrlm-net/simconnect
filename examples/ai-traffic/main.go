@@ -77,6 +77,10 @@ func (data *AircraftData) ATCIDAsString() string {
 	return engine.BytesToString(data.AtcID[:])
 }
 
+func (data *AircraftData) AtcAirlineAsString() string {
+	return engine.BytesToString(data.AtcAirline[:])
+}
+
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -212,7 +216,7 @@ connected:
 				)
 				if simObjData.DwDefineID == 3000 {
 					aircraftData := engine.CastDataAs[AircraftData](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
+					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, GroundSpeed: %f, AtcID: %s, AtcAirline: %s\n",
 						aircraftData.TitleAsString(),
 						aircraftData.CategoryAsString(),
 						aircraftData.LiveryNameAsString(),
@@ -221,17 +225,18 @@ connected:
 						aircraftData.Lon,
 						aircraftData.Alt,
 						aircraftData.Head,
-						aircraftData.HeadMag,
-						aircraftData.Vs,
-						aircraftData.Pitch,
-						aircraftData.Bank,
+						//aircraftData.HeadMag,
+						//aircraftData.Vs,
+						//aircraftData.Pitch,
+						//aircraftData.Bank,
 						aircraftData.GroundSpeed,
-						aircraftData.AirspeedIndicated,
-						aircraftData.AirspeedTrue,
-						aircraftData.OnAnyRunway,
-						aircraftData.SurfaceType,
-						aircraftData.SimOnGround,
+						//aircraftData.AirspeedIndicated,
+						//aircraftData.AirspeedTrue,
+						//aircraftData.OnAnyRunway,
+						//aircraftData.SurfaceType,
+						//aircraftData.SimOnGround,
 						aircraftData.ATCIDAsString(),
+						aircraftData.AtcAirlineAsString(),
 					)
 				}
 			default:
