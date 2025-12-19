@@ -48,6 +48,13 @@ func (m *Message) AsEvent() *types.SIMCONNECT_RECV_EVENT {
 	return (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
+func (m *Message) AsEventFrame() *types.SIMCONNECT_RECV_EVENT_FRAME {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_FRAME {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_EVENT_FRAME)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
 func (m *Message) AsEventFilename() *types.SIMCONNECT_RECV_EVENT_FILENAME {
 	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_FILENAME {
 		return nil

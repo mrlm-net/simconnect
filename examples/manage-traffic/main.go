@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -80,9 +82,12 @@ func (data *AircraftData) ATCIDAsString() string {
 // or an error if cancelled via context.
 func runConnection(ctx context.Context) error {
 	// Initialize client with context
-	client := simconnect.NewClient("GO Example - SimConnect Read Messages and their data",
+	client := simconnect.NewClient("GO Example - SimConnect Manage Traffic",
 		engine.WithContext(ctx),
 	)
+
+	// tracked aircraft state (for movement)
+	var trackedObjectID uint32 = 0
 
 	// Retry connection until simulator is running
 	fmt.Println("⏳ Waiting for simulator to start...")
@@ -138,27 +143,21 @@ connected:
 
 	client.AddToDataDefinition(4000, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0)
 
-	client.AddToDataDefinition(8000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
-	client.AddToDataDefinition(8000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+	//client.AddToDataDefinition(8000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+	//client.AddToDataDefinition(8000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+	//client.AddToDataDefinition(8000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(8000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+	client.AddToDataDefinition(8000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
 
-	/*waypoints := []types.SIMCONNECT_DATA_WAYPOINT{
-		{
-			Latitude:        50.110150,
-			Longitude:       14.269960,
-			Altitude:        0,
-			Flags:           types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL | types.SIMCONNECT_WAYPOINT_WRAP_TO_FIRST | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED,
-			KtsSpeed:        -1,
-			PercentThrottle: -1,
-		},
-		{
-			Latitude:        50.110150,
-			Longitude:       14.269940,
-			Altitude:        0,
-			Flags:           types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL | types.SIMCONNECT_WAYPOINT_WRAP_TO_FIRST | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED,
-			KtsSpeed:        0,
-			PercentThrottle: 0,
-		},
-	}*/
+	client.SubscribeToSystemEvent(1111, "Frame")
+
+	speedAndHeading := struct {
+		Speed   float64
+		Heading float64
+	}{
+		Speed:   5.0,  // knots
+		Heading: 35.0, // degrees
+	}
 
 	// create ticker to periodically request data
 	ticker := time.NewTicker(5 * time.Second)
@@ -198,7 +197,7 @@ connected:
 				continue
 			}
 
-			fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
+			//fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
 
 			// Handle specific messages
 			// This could be done based on type and also if needed request IDs
@@ -247,6 +246,11 @@ connected:
 						aircraftData.ATCIDAsString(),
 					)
 
+					// Track and remember our aircraft state so we can move it each frame
+					if aircraftData.ATCIDAsString() == "N1234" {
+						trackedObjectID = uint32(simObjData.DwObjectID)
+					}
+
 					// Make login to assign plan as you need to have object ID
 					// assigned before you can issue flight plan commands
 					// simObjData.DwObjectID
@@ -255,7 +259,12 @@ connected:
 
 						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2012, 1, 30000, 0)
 						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2011, 1, 30000, 0)
-						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2010, 1, 30000, 0)
+						//client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2010, 1, 30000, 0)
+
+						asSlice := []float64{speedAndHeading.Speed, speedAndHeading.Heading}
+						client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(asSlice[0]))*2, unsafe.Pointer(&asSlice[0]))
+
+						// client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , )
 
 						//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
 
@@ -271,6 +280,73 @@ connected:
 						planAssigned = true
 						fmt.Println("✅ Flight plan assigned!")
 					}
+				}
+			case types.SIMCONNECT_RECV_ID_EVENT_FRAME:
+				eventMsg := msg.AsEventFrame()
+				if eventMsg.UEventID == 1111 {
+
+					// set speed and heading on our tracked object
+
+					// add small increments to heading and speed for demo purposes
+					// but also allow around 150 degree max and direct
+
+					if speedAndHeading.Heading <= 185.0 {
+						speedAndHeading.Heading += 0.1
+					}
+					//speedAndHeading.Speed += 0.1
+
+					asSlice := []float64{speedAndHeading.Speed, speedAndHeading.Heading}
+
+					client.SetDataOnSimObject(8000, uint32(trackedObjectID), 0, 1, uint32(unsafe.Sizeof(asSlice[0]))*2, unsafe.Pointer(&asSlice[0]))
+					// compute delta time
+					/*now := time.Now()
+					if lastFrameTime.IsZero() {
+						lastFrameTime = now
+						continue
+					}
+					dt := now.Sub(lastFrameTime).Seconds()
+					lastFrameTime = now
+
+					// if we have a tracked object, advance it by speed*dt
+					if trackedObjectID != 0 {
+						// debug + fallback speed
+						useSpeed := trackedSpeed
+						if useSpeed <= 0 {
+							useSpeed = 2.0 // kts fallback for testing
+							fmt.Printf("DBG fallback speed used=%.1f kts\n", useSpeed)
+						}
+
+						// compute
+						speedMS := useSpeed * 0.514444
+						distanceM := speedMS * dt
+						fmt.Printf("DBG dt=%.6f speed=%.3f knots speedMS=%.3f m/s distanceM=%.6f heading=%.3f\n", dt, useSpeed, speedMS, distanceM, trackedHeading)
+
+						newLat, newLon := moveLatLon(trackedLat, trackedLon, trackedHeading, distanceM)
+
+						// write into sim using data definition 8000 (PLANE LAT/LON)
+						latLong := []float64{newLat, newLon}
+						// size: two float64s
+						cb := uint32(unsafe.Sizeof(latLong[0])) * 2
+
+						if err := client.SetDataOnSimObject(8000, trackedObjectID, 0, 1, cb, unsafe.Pointer(&latLong[0])); err != nil {
+							fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(two) error: %v\n", err)
+							// fallback: try writing components separately
+							cb1 := uint32(unsafe.Sizeof(latLong[0]))
+							if err2 := client.SetDataOnSimObject(8000, trackedObjectID, 0, 1, cb1, unsafe.Pointer(&latLong[0])); err2 != nil {
+								fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(lat) error: %v\n", err2)
+							} else if err3 := client.SetDataOnSimObject(8000, trackedObjectID, 1, 1, cb1, unsafe.Pointer(&latLong[1])); err3 != nil {
+								fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(lon) error: %v\n", err3)
+							} else {
+								fmt.Printf("ℹ️ Fallback updated pos obj=%d lat=%f lon=%f\n", trackedObjectID, newLat, newLon)
+								trackedLat = newLat
+								trackedLon = newLon
+							}
+						} else {
+							fmt.Printf("ℹ️ Updated pos obj=%d lat=%f lon=%f cb=%d\n", trackedObjectID, newLat, newLon, cb)
+							trackedLat = newLat
+							trackedLon = newLon
+						}
+					}*/
 				}
 			case types.SIMCONNECT_RECV_ID_EXCEPTION:
 				ex := msg.AsException()
@@ -340,4 +416,23 @@ func addPlanesRequestDataset(client engine.Client) {
 	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 17)
 	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 18)
 	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 19)
+}
+
+func moveLatLon(latDeg, lonDeg, bearingDeg, distanceM float64) (float64, float64) {
+	const R = 6371000.0 // earth radius meters
+	phi1 := latDeg * math.Pi / 180.0
+	lambda1 := lonDeg * math.Pi / 180.0
+	theta := bearingDeg * math.Pi / 180.0
+	dR := distanceM / R
+
+	sinPhi2 := math.Sin(phi1)*math.Cos(dR) + math.Cos(phi1)*math.Sin(dR)*math.Cos(theta)
+	phi2 := math.Asin(sinPhi2)
+
+	y := math.Sin(theta) * math.Sin(dR) * math.Cos(phi1)
+	x := math.Cos(dR) - math.Sin(phi1)*math.Sin(phi2)
+	lambda2 := lambda1 + math.Atan2(y, x)
+
+	lat2 := phi2 * 180.0 / math.Pi
+	lon2 := lambda2 * 180.0 / math.Pi
+	return lat2, lon2
 }
