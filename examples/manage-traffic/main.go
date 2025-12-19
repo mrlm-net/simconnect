@@ -107,6 +107,7 @@ func runConnection(ctx context.Context) error {
 	}
 
 connected:
+	var index = 0.001
 	fmt.Println("✅ Connected to SimConnect, listening for messages...")
 	// We can already register data definitions and requests here
 	addPlanesRequestDataset(client)
@@ -114,13 +115,28 @@ connected:
 
 	fmt.Println("✈️  Ready for plane spotting???")
 
+	client.MapClientEventToSimEvent(2013, "TAXI_LIGHTS_SET")
+	client.MapClientEventToSimEvent(2009, "BEACON_LIGHTS_SET")
+	client.MapClientEventToSimEvent(2014, "LANDING_LIGHTS_SET")
+	client.MapClientEventToSimEvent(2008, "NAV_LIGHTS_SET")
+	client.MapClientEventToSimEvent(2007, "CABIN_LIGHTS_SET")
+	client.MapClientEventToSimEvent(2006, "STROBES_SET")
+
 	client.MapClientEventToSimEvent(2010, "FREEZE_LATITUDE_LONGITUDE_SET")
 	client.MapClientEventToSimEvent(2011, "FREEZE_ALTITUDE_SET")
 	client.MapClientEventToSimEvent(2012, "FREEZE_ATTITUDE_SET")
 	// Add to notification group
+	client.AddClientEventToNotificationGroup(30000, 2009, false)
 	client.AddClientEventToNotificationGroup(30000, 2010, false)
 	client.AddClientEventToNotificationGroup(30000, 2011, false)
 	client.AddClientEventToNotificationGroup(30000, 2012, false)
+	client.AddClientEventToNotificationGroup(30000, 2006, false)
+	client.AddClientEventToNotificationGroup(30000, 2007, false)
+	client.AddClientEventToNotificationGroup(30000, 2008, false)
+	client.AddClientEventToNotificationGroup(30000, 2013, false)
+	client.AddClientEventToNotificationGroup(30000, 2014, false)
+	// Set group priority
+
 	client.SetNotificationGroupPriority(30000, 1000)
 
 	//client.AICreateParkedATCAircraft("FSLTL A320 VLG Vueling", "N12345", "LKPR", 5000)
@@ -155,7 +171,7 @@ connected:
 		Speed   float64
 		Heading float64
 	}{
-		Speed:   5.0,  // knots
+		Speed:   0.0,  // knots
 		Heading: 35.0, // degrees
 	}
 
@@ -264,6 +280,13 @@ connected:
 						asSlice := []float64{speedAndHeading.Speed, speedAndHeading.Heading}
 						client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(asSlice[0]))*2, unsafe.Pointer(&asSlice[0]))
 
+						time.Sleep(250 * time.Millisecond)
+
+						client.TransmitClientEvent(uint32(trackedObjectID), 2009, uint32(1), 30000, 0)
+						client.TransmitClientEvent(uint32(trackedObjectID), 2008, uint32(1), 30000, 0)
+						client.TransmitClientEvent(uint32(trackedObjectID), 2007, uint32(1), 30000, 0)
+						client.TransmitClientEvent(uint32(trackedObjectID), 2013, uint32(1), 30000, 0)
+
 						// client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , )
 
 						//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
@@ -285,13 +308,29 @@ connected:
 				eventMsg := msg.AsEventFrame()
 				if eventMsg.UEventID == 1111 {
 
+					if speedAndHeading.Speed < 5.0 {
+						speedAndHeading.Speed += 0.05
+					}
+
+					if speedAndHeading.Speed < 2.0 {
+						continue
+					}
 					// set speed and heading on our tracked object
 
 					// add small increments to heading and speed for demo purposes
 					// but also allow around 150 degree max and direct
 
-					if speedAndHeading.Heading <= 185.0 {
-						speedAndHeading.Heading += 0.1
+					if speedAndHeading.Heading > 205 && speedAndHeading.Heading <= 275 {
+						speedAndHeading.Heading += index
+						if index > 0 {
+							index -= 0.0006
+						}
+					} else if speedAndHeading.Heading <= 275 {
+						speedAndHeading.Heading += index
+
+						if index < 0.08 {
+							index += 0.0006
+						}
 					}
 					//speedAndHeading.Speed += 0.1
 
