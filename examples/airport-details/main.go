@@ -16,6 +16,8 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
+var airport = "LKPD" // ICAO code of airport to query
+
 type AirportData struct {
 	Latitude  float64
 	Longitude float64
@@ -154,12 +156,11 @@ connected:
 	client.AddToFacilityDefinition(3004, "CLOSE TAXI_POINT")
 	client.AddToFacilityDefinition(3004, "CLOSE AIRPORT")
 
-	client.RequestFacilityData(3000, 123, "LKPR", "")
-	client.RequestFacilityData(3001, 124, "LKPR", "")
-	client.RequestFacilityData(3002, 125, "LKPR", "")
-	client.RequestFacilityData(3003, 126, "LKPR", "")
-	client.RequestFacilityData(3004, 127, "LKPR", "")
-
+	client.RequestFacilityData(3000, 123, airport, "")
+	client.RequestFacilityData(3001, 124, airport, "")
+	client.RequestFacilityData(3002, 125, airport, "")
+	client.RequestFacilityData(3003, 126, airport, "")
+	client.RequestFacilityData(3004, 127, airport, "")
 	var airport AirportData
 	// Container for storing parking places
 	var parkingPlaces ParkingPlaces
@@ -278,10 +279,15 @@ connected:
 
 				}
 
-				/*for i, path := range taxiPaths {
+				for i, path := range taxiPaths {
 					fmt.Printf("🚖 Taxi Path %d: Type=%d, Start=%d, End=%d\n",
 						i+1, path.Type, path.Start, path.End)
-				}*/
+				}
+
+				for i, point := range taxiPoints {
+					fmt.Printf("🚖 Taxi Point %d: Type=%d, Orientation=%d, BiasX=%f, BiasZ=%f\n",
+						i+1, point.Type, point.Orientation, point.BiasX, point.BiasZ)
+				}
 
 				for i, tname := range taxiNames {
 					fmt.Printf("🚖 Taxi Name %d: Name='%s'\n",

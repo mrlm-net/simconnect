@@ -109,16 +109,25 @@ connected:
 
 	fmt.Println("✈️  Ready for plane spotting???")
 
+	client.MapClientEventToSimEvent(2010, "FREEZE_LATITUDE_LONGITUDE_SET")
+	client.MapClientEventToSimEvent(2011, "FREEZE_ALTITUDE_SET")
+	client.MapClientEventToSimEvent(2012, "FREEZE_ATTITUDE_SET")
+	// Add to notification group
+	client.AddClientEventToNotificationGroup(30000, 2010, false)
+	client.AddClientEventToNotificationGroup(30000, 2011, false)
+	client.AddClientEventToNotificationGroup(30000, 2012, false)
+	client.SetNotificationGroupPriority(30000, 1000)
+
 	//client.AICreateParkedATCAircraft("FSLTL A320 VLG Vueling", "N12345", "LKPR", 5000)
 	//client.AICreateParkedATCAircraft("FSLTL_A359_CAL-China Airlines", "N12346", "LKPR", 5001)
 	// FSLTL A320 Air France SL
 
 	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
 	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "", "N1234", types.SIMCONNECT_DATA_INITPOSITION{
-		Latitude:  50.110150,
-		Longitude: 14.269961,
+		Latitude:  50.016725,
+		Longitude: 15.725807,
 		Altitude:  0,
-		Heading:   244,
+		Heading:   35,
 		Pitch:     0,
 		Bank:      0,
 		OnGround:  1,
@@ -129,16 +138,27 @@ connected:
 
 	client.AddToDataDefinition(4000, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0)
 
-	_ = []types.SIMCONNECT_DATA_WAYPOINT{
+	client.AddToDataDefinition(8000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+	client.AddToDataDefinition(8000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+
+	/*waypoints := []types.SIMCONNECT_DATA_WAYPOINT{
 		{
-			Latitude:        50.033333,
-			Longitude:       14.570000,
+			Latitude:        50.110150,
+			Longitude:       14.269960,
 			Altitude:        0,
-			Flags:           types.SIMCONNECT_WAYPOINT_ON_GROUND,
+			Flags:           types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL | types.SIMCONNECT_WAYPOINT_WRAP_TO_FIRST | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED,
+			KtsSpeed:        -1,
+			PercentThrottle: -1,
+		},
+		{
+			Latitude:        50.110150,
+			Longitude:       14.269940,
+			Altitude:        0,
+			Flags:           types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL | types.SIMCONNECT_WAYPOINT_WRAP_TO_FIRST | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED,
 			KtsSpeed:        0,
 			PercentThrottle: 0,
 		},
-	}
+	}*/
 
 	// create ticker to periodically request data
 	ticker := time.NewTicker(5 * time.Second)
@@ -233,10 +253,23 @@ connected:
 					if aircraftData.ATCIDAsString() == "N1234" && !planAssigned {
 						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
 
+						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2012, 1, 30000, 0)
+						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2011, 1, 30000, 0)
+						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2010, 1, 30000, 0)
+
 						//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
+
+						/*for _, wp := range waypoints {
+							time.Sleep(500 * time.Millisecond)
+							// We need to set each waypoint individually and only lat long as slice
+							latLong := []float64{wp.Latitude, wp.Longitude}
+							client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(latLong[0]))*2, unsafe.Pointer(&latLong[0]))
+							//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(wp)), unsafe.Pointer(&wp))
+						}*/
+						//client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , unsafe.Pointer(&))
+						//client.AIReleaseControl(uint32(simObjData.DwObjectID), 5006)
 						planAssigned = true
 						fmt.Println("✅ Flight plan assigned!")
-
 					}
 				}
 			case types.SIMCONNECT_RECV_ID_EXCEPTION:

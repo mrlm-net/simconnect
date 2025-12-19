@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -61,11 +63,8 @@ connected:
 	// --------------------------------------------
 	client.AddToDataDefinition(2000, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
 	client.AddToDataDefinition(2000, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1)
-	// POSITION ALT
 	client.AddToDataDefinition(2000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
-	// POSITION LAT
 	client.AddToDataDefinition(2000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
-	// POSITION LON
 	client.AddToDataDefinition(2000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
 	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 
@@ -94,6 +93,11 @@ connected:
 
 	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
+	// Track user position and ensure we only request the list once
+	var myLatitude float64
+	var myLongitude float64
+	requestedClosest := false
+
 	// Main message processing loop
 	for {
 		select {
@@ -154,6 +158,19 @@ connected:
 						cameraData.GPSPositionLat,
 						cameraData.GPSPositionLon,
 					)
+
+					// store user position and request airport list once
+					myLatitude = cameraData.GPSPositionLat
+					myLongitude = cameraData.GPSPositionLon
+					if !requestedClosest {
+						// Request airports in reality bubble; use definition id 5000
+						if err := client.RequestFacilitiesListEX1(5000, types.SIMCONNECT_FACILITY_LIST_AIRPORT); err != nil {
+							fmt.Fprintf(os.Stderr, "❌ RequestFacilitiesListEX1 failed: %v\n", err)
+						} else {
+							fmt.Println("🔎 Requested airport list (for closest-airport search)")
+							requestedClosest = true
+						}
+					}
 				}
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
 				simObjData := msg.AsSimObjectDataBType()
@@ -207,6 +224,49 @@ connected:
 						aircraftData.SimOnGround,
 						engine.BytesToString(aircraftData.AtcID[:]),
 					)
+				}
+			case types.SIMCONNECT_RECV_ID_AIRPORT_LIST:
+				list := msg.AsAirportList()
+
+				fmt.Printf("🏢 Received facility list (airport list): RequestID=%d, ArraySize=%d, Packet=%d of %d\n",
+					list.DwRequestID, list.DwArraySize, list.DwEntryNumber, list.DwOutOf)
+
+				if list.DwArraySize == 0 {
+					fmt.Println("  No airports in this message")
+					continue
+				}
+
+				// Calculate actual entry size from the message
+				headerSize := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
+				actualDataSize := uintptr(msg.DwSize) - headerSize
+				actualEntrySize := actualDataSize / uintptr(list.DwArraySize)
+
+				// dataStart points to the beginning of the array data (after the header)
+				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
+
+				closestDistance := math.MaxFloat64
+				var closestIdent string
+
+				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
+					entryOffset := uintptr(i) * actualEntrySize
+					entryPtr := unsafe.Pointer(uintptr(dataStart) + entryOffset)
+
+					var ident [6]byte
+					copy(ident[:], (*[6]byte)(entryPtr)[:])
+
+					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 12))
+					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 20))
+
+					// Euclidean on lat/lon degrees (sufficient for nearby search)
+					distance := math.Sqrt(math.Pow(lat-myLatitude, 2) + math.Pow(lon-myLongitude, 2))
+					if distance < closestDistance {
+						closestDistance = distance
+						closestIdent = engine.BytesToString(ident[:])
+					}
+				}
+
+				if closestIdent != "" {
+					fmt.Printf("✅ Closest airport Ident: %s (approx distance: %f degrees)\n", closestIdent, closestDistance)
 				}
 			default:
 				// Other message types can be handled here
