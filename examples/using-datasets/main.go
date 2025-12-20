@@ -286,6 +286,6 @@ func loadParkedAircraft(path string) ([]ParkedAircraft, error) {
 func addPlanesRequestDataset(client engine.Client) {
 	// Define data structure for plane request dataset
 	client.RegisterDataset(
-		traffic.NewAircraftDataset("AircraftDataset", 3000),
+		3000, traffic.NewAircraftDataset(),
 	)
 }

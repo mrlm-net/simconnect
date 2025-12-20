@@ -15,7 +15,7 @@ type Client interface {
 	Disconnect() error
 
 	Stream() <-chan Message
-	RegisterDataset(dataset *datasets.DataSet) error
+	RegisterDataset(definitionID uint32, dataset *datasets.DataSet) error
 
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 	SubscribeToSystemEvent(eventID uint32, eventName string) error

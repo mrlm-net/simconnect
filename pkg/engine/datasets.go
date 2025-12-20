@@ -5,10 +5,10 @@ package engine
 
 import "github.com/mrlm-net/simconnect/pkg/datasets"
 
-func (e *Engine) RegisterDataset(dataset *datasets.DataSet) error {
+func (e *Engine) RegisterDataset(definitionID uint32, dataset *datasets.DataSet) error {
 	for index, def := range dataset.Definitions {
 		err := e.AddToDataDefinition(
-			dataset.DefinitionID,
+			definitionID,
 			def.Name,
 			def.Unit,
 			def.Type,

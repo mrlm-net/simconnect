@@ -8,9 +8,8 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-func NewAircraftDataset(name string, id uint32) *datasets.DataSet {
+func NewAircraftDataset() *datasets.DataSet {
 	return &datasets.DataSet{
-		DefinitionID: id,
 		Definitions: []datasets.DataDefinition{
 			{Name: "TITLE", Unit: "", Type: types.SIMCONNECT_DATATYPE_STRING128, Epsilon: 0},
 			{Name: "CATEGORY", Unit: "", Type: types.SIMCONNECT_DATATYPE_STRING128, Epsilon: 0},
