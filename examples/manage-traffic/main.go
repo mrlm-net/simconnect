@@ -121,6 +121,9 @@ connected:
 	client.MapClientEventToSimEvent(2008, "NAV_LIGHTS_SET")
 	client.MapClientEventToSimEvent(2007, "CABIN_LIGHTS_SET")
 	client.MapClientEventToSimEvent(2006, "STROBES_SET")
+	client.MapClientEventToSimEvent(2002, "TOGGLE_PUSHBACK")
+	// TOGGLE_EXTERNAL_POWER
+	client.MapClientEventToSimEvent(2003, "TOGGLE_EXTERNAL_POWER")
 
 	client.MapClientEventToSimEvent(2010, "FREEZE_LATITUDE_LONGITUDE_SET")
 	client.MapClientEventToSimEvent(2011, "FREEZE_ALTITUDE_SET")
@@ -135,6 +138,8 @@ connected:
 	client.AddClientEventToNotificationGroup(30000, 2008, false)
 	client.AddClientEventToNotificationGroup(30000, 2013, false)
 	client.AddClientEventToNotificationGroup(30000, 2014, false)
+	client.AddClientEventToNotificationGroup(30000, 2002, false)
+	client.AddClientEventToNotificationGroup(30000, 2003, false)
 	// Set group priority
 
 	client.SetNotificationGroupPriority(30000, 1000)
@@ -286,6 +291,8 @@ connected:
 						client.TransmitClientEvent(uint32(trackedObjectID), 2008, uint32(1), 30000, 0)
 						client.TransmitClientEvent(uint32(trackedObjectID), 2007, uint32(1), 30000, 0)
 						client.TransmitClientEvent(uint32(trackedObjectID), 2013, uint32(1), 30000, 0)
+
+						client.TransmitClientEvent(uint32(trackedObjectID), 2002, uint32(0), 30000, 0)
 
 						// client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , )
 
