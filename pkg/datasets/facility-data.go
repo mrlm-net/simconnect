@@ -2,3 +2,5 @@
 // +build windows
 
 package datasets
+
+type FacilityDataDefinition string
