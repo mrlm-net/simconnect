@@ -27,6 +27,18 @@ type CameraData struct {
 	GPSPositionLon float64
 }
 
+// haversineMeters returns the great-circle distance between two points
+// specified by latitude/longitude in degrees. Result is in meters.
+func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthRadius = 6371000.0 // meters
+	toRad := func(deg float64) float64 { return deg * math.Pi / 180.0 }
+	dLat := toRad(lat2 - lat1)
+	dLon := toRad(lon2 - lon1)
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(toRad(lat1))*math.Cos(toRad(lat2))*math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return earthRadius * c
+}
+
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -244,8 +256,9 @@ connected:
 				// dataStart points to the beginning of the array data (after the header)
 				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
 
-				closestDistance := math.MaxFloat64
+				closestDistanceMeters := math.MaxFloat64
 				var closestIdent string
+				var closestLat, closestLon float64
 
 				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
 					entryOffset := uintptr(i) * actualEntrySize
@@ -257,16 +270,24 @@ connected:
 					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 12))
 					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 20))
 
-					// Euclidean on lat/lon degrees (sufficient for nearby search)
-					distance := math.Sqrt(math.Pow(lat-myLatitude, 2) + math.Pow(lon-myLongitude, 2))
-					if distance < closestDistance {
-						closestDistance = distance
+					// Use Haversine for meters (more accurate for real distances)
+					distMeters := haversineMeters(myLatitude, myLongitude, lat, lon)
+					if distMeters < closestDistanceMeters {
+						closestDistanceMeters = distMeters
 						closestIdent = engine.BytesToString(ident[:])
+						closestLat = lat
+						closestLon = lon
 					}
 				}
 
 				if closestIdent != "" {
-					fmt.Printf("✅ Closest airport Ident: %s (approx distance: %f degrees)\n", closestIdent, closestDistance)
+					degDistance := math.Sqrt(math.Pow(closestLat-myLatitude, 2) + math.Pow(closestLon-myLongitude, 2))
+					fmt.Printf("✅ Closest airport Ident: %s (approx: %f degrees, %.0f m / %.2f km)\n",
+						closestIdent,
+						degDistance,
+						closestDistanceMeters,
+						closestDistanceMeters/1000.0,
+					)
 				}
 			default:
 				// Other message types can be handled here
