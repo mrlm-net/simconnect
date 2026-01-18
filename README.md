@@ -94,7 +94,10 @@ Both `engine.Client` and `manager.Manager` support configuration via functional 
 | Documentation | Description |
 |---------------|-------------|
 | [Engine/Client Config](docs/config-client.md) | Buffer size, DLL path, heartbeat, logging |
+| [Engine/Client Usage](docs/usage-client.md) | Data definitions, events, AI traffic, facilities |
 | [Manager Config](docs/config-manager.md) | Auto-reconnect, retry intervals, timeouts |
+| [Manager Usage](docs/usage-manager.md) | Lifecycle, subscriptions, state handling |
+| [Request ID Management](docs/manager-requests-ids.md) | ID allocation and conflict prevention |
 
 ## Contributing
 

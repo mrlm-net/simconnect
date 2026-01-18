@@ -158,5 +158,6 @@ func main() {
 
 ## See Also
 
+- [Client Usage Guide](usage-client.md) - Complete API reference for data, events, AI, and facilities
 - [Manager Configuration](config-manager.md) - For automatic connection lifecycle management
 - [Examples](../examples) - Working code samples

@@ -319,5 +319,7 @@ User Application
 
 ## See Also
 
+- [Manager Usage Guide](usage-manager.md) - Complete API reference for lifecycle, subscriptions, and state
+- [Request ID Management](manager-requests-ids.md) - ID allocation strategy and conflict prevention
 - [Client/Engine Configuration](config-client.md) - For direct engine access without manager
 - [Examples](../examples/simconnect-manager) - Working manager example
