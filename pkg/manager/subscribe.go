@@ -264,6 +264,51 @@ func (m *Instance) GetConnectionStateSubscription(id string) ConnectionStateSubs
 	return nil
 }
 
+// SubscribeSimStateChange creates a new simulator state change subscription that delivers state changes to a channel.
+// The returned SimStateSubscription can be used to receive state changes in an isolated goroutine.
+// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+// The channel is buffered with the specified size.
+// The subscription is automatically cancelled when the manager's context is cancelled.
+// Call Unsubscribe() when done to release resources.
+func (m *Instance) SubscribeSimStateChange(id string, bufferSize int) SimStateSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+
+	// Derive context from manager's context for automatic cancellation
+	subCtx, subCancel := context.WithCancel(m.ctx)
+
+	sub := &simStateSubscription{
+		id:      id,
+		ctx:     subCtx,
+		cancel:  subCancel,
+		ch:      make(chan SimStateChange, bufferSize),
+		done:    make(chan struct{}),
+		manager: m,
+	}
+
+	m.mu.Lock()
+	m.simStateSubscriptions[id] = sub
+	m.simStateSubsWg.Add(1)
+	m.mu.Unlock()
+
+	// Start goroutine to watch for context cancellation
+	go sub.watchContext()
+
+	m.logger.Debug(fmt.Sprintf("[manager] Created SimState subscription: %s", id))
+	return sub
+}
+
+// GetSimStateSubscription returns an existing simulator state subscription by ID, or nil if not found.
+func (m *Instance) GetSimStateSubscription(id string) SimStateSubscription {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if sub, ok := m.simStateSubscriptions[id]; ok {
+		return sub
+	}
+	return nil
+}
+
 // ID returns the unique identifier of the state subscription
 func (s *connectionStateSubscription) ID() string {
 	return s.id
@@ -302,4 +347,61 @@ func (s *connectionStateSubscription) Unsubscribe() {
 	// Signal WaitGroup that this subscription is done
 	s.manager.connectionStateSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] State subscription unsubscribed: %s", s.id))
+}
+
+// simStateSubscription implements the SimStateSubscription interface
+type simStateSubscription struct {
+	id      string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	ch      chan SimStateChange
+	done    chan struct{}
+	closed  bool
+	closeMu sync.Mutex
+	manager *Instance
+}
+
+// ID returns the unique identifier of the subscription
+func (s *simStateSubscription) ID() string {
+	return s.id
+}
+
+// SimStateChanges returns the channel for receiving state changes
+func (s *simStateSubscription) SimStateChanges() <-chan SimStateChange {
+	return s.ch
+}
+
+// Done returns a channel that is closed when the subscription ends
+func (s *simStateSubscription) Done() <-chan struct{} {
+	return s.done
+}
+
+// watchContext watches for context cancellation and closes the subscription
+func (s *simStateSubscription) watchContext() {
+	<-s.ctx.Done()
+	s.Unsubscribe()
+}
+
+// Unsubscribe cancels the sim state subscription and closes the channel.
+// Blocks until any pending state change delivery completes.
+func (s *simStateSubscription) Unsubscribe() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+	s.cancel()    // Cancel the subscription's context
+	close(s.done) // Signal consumers to stop
+	close(s.ch)   // Close state change channel
+
+	// Remove from manager's sim state subscription map
+	s.manager.mu.Lock()
+	delete(s.manager.simStateSubscriptions, s.id)
+	s.manager.mu.Unlock()
+
+	// Signal WaitGroup that this subscription is done
+	s.manager.simStateSubsWg.Done()
+	s.manager.logger.Debug(fmt.Sprintf("[manager] SimState subscription unsubscribed: %s", s.id))
 }

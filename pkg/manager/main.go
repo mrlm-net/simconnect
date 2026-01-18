@@ -44,6 +44,11 @@ func New(name string, opts ...Option) Manager {
 		messageHandlers:              []messageHandlerEntry{},
 		subscriptions:                make(map[string]*subscription),
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
+		simState:                     SimState{Camera: CameraStateUninitialized},
+		simStateHandlers:             []simStateHandlerEntry{},
+		simStateSubscriptions:        make(map[string]*simStateSubscription),
+		cameraDefinitionID:           cameraDefinitionID,
+		cameraRequestID:              cameraRequestID,
 	}
 }
 
@@ -69,6 +74,15 @@ type Instance struct {
 	connectionStateSubscriptions map[string]*connectionStateSubscription
 	connectionStateSubsWg        sync.WaitGroup // WaitGroup for graceful shutdown of connection state subscriptions
 
+	// Simulator state
+	simState                 SimState
+	simStateHandlers         []simStateHandlerEntry
+	simStateSubscriptions    map[string]*simStateSubscription
+	simStateSubsWg           sync.WaitGroup // WaitGroup for graceful shutdown of simulator state subscriptions
+	cameraDefinitionID       uint32
+	cameraRequestID          uint32
+	cameraDataRequestPending bool
+
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
 }
@@ -77,6 +91,12 @@ type Instance struct {
 type stateHandlerEntry struct {
 	id string
 	fn ConnectionStateChangeHandler
+}
+
+// simStateHandlerEntry stores a simulator state change handler with an identifier
+type simStateHandlerEntry struct {
+	id string
+	fn SimStateChangeHandler
 }
 
 // messageHandlerEntry stores a message handler with an identifier
@@ -128,6 +148,48 @@ func (m *Instance) setState(newState ConnectionState) {
 			default:
 				// Channel full, skip state change to avoid blocking
 				m.logger.Debug("[manager] State subscription channel full, dropping state change")
+			}
+		}
+		sub.closeMu.Unlock()
+	}
+}
+
+// setSimState updates the simulator state and notifies handlers
+func (m *Instance) setSimState(newState SimState) {
+	m.mu.Lock()
+	oldState := m.simState
+	if oldState.Equal(newState) {
+		m.mu.Unlock()
+		return
+	}
+	m.simState = newState
+	handlers := make([]SimStateChangeHandler, len(m.simStateHandlers))
+	for i, e := range m.simStateHandlers {
+		handlers[i] = e.fn
+	}
+	stateSubs := make([]*simStateSubscription, 0, len(m.simStateSubscriptions))
+	for _, sub := range m.simStateSubscriptions {
+		stateSubs = append(stateSubs, sub)
+	}
+	m.mu.Unlock()
+
+	m.logger.Debug(fmt.Sprintf("[manager] SimState changed: Camera %s -> %s", oldState.Camera, newState.Camera))
+
+	// Notify handlers outside the lock
+	for _, handler := range handlers {
+		handler(oldState, newState)
+	}
+
+	// Forward state change to subscriptions (non-blocking)
+	stateChange := SimStateChange{OldState: oldState, NewState: newState}
+	for _, sub := range stateSubs {
+		sub.closeMu.Lock()
+		if !sub.closed {
+			select {
+			case sub.ch <- stateChange:
+			default:
+				// Channel full, skip state change to avoid blocking
+				m.logger.Debug("[manager] SimState subscription channel full, dropping state change")
 			}
 		}
 		sub.closeMu.Unlock()
@@ -190,6 +252,42 @@ func (m *Instance) RemoveMessage(id string) error {
 		}
 	}
 	return fmt.Errorf("message handler not found: %s", id)
+}
+
+// SimState returns the current simulator state
+func (m *Instance) SimState() SimState {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.simState
+}
+
+// OnSimStateChange registers a callback to be invoked when simulator state changes.
+// Returns a unique id that can be used to remove the handler via RemoveSimStateChange.
+func (m *Instance) OnSimStateChange(handler SimStateChangeHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.simStateHandlers = append(m.simStateHandlers, simStateHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered SimState handler: %s", id))
+	}
+	return id
+}
+
+// RemoveSimStateChange removes a previously registered simulator state change handler by id.
+func (m *Instance) RemoveSimStateChange(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.simStateHandlers {
+		if e.id == id {
+			m.simStateHandlers = append(m.simStateHandlers[:i], m.simStateHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed SimState handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("SimState handler not found: %s", id)
 }
 
 // Client returns the underlying engine client for direct API access
@@ -329,6 +427,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -345,17 +444,68 @@ func (m *Instance) runConnection() error {
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
 				m.logger.Debug("[manager] Received OPEN message, connection is now available")
 				m.setState(StateAvailable)
+
+				// Initialize simulator state and request camera data
+				m.mu.Lock()
+				client := m.engine
+				m.mu.Unlock()
+
+				if client != nil {
+					// Set initial SimState
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized})
+
+					// Define camera data structure
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add CAMERA STATE definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add CAMERA SUBSTATE definition: %v", err))
+					}
+
+					// Request camera data with period matching heartbeat configuration
+					period := types.SIMCONNECT_PERIOD_SECOND
+					if err := client.RequestDataOnSimObject(m.cameraRequestID, m.cameraDefinitionID, types.SIMCONNECT_OBJECT_ID_USER, period, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to request camera data: %v", err))
+					} else {
+						m.mu.Lock()
+						m.cameraDataRequestPending = true
+						m.mu.Unlock()
+						m.logger.Debug("[manager] Camera data request submitted")
+					}
+				}
 				continue
 			}
 
 			// Check for quit message
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_QUIT {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
 				m.mu.Unlock()
 				return nil // Return nil to allow reconnection
+			}
+
+			// Handle camera state data
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
+				simObjMsg := msg.AsSimObjectData()
+				if uint32(simObjMsg.DwRequestID) == m.cameraRequestID && uint32(simObjMsg.DwDefineID) == m.cameraDefinitionID {
+					// Extract camera state and substate from data
+					cameraData := engine.CastDataAs[cameraDataStruct](&simObjMsg.DwData)
+					newCameraState := CameraState(cameraData.CameraState)
+					newCameraSubstate := CameraSubstate(cameraData.CameraSubstate)
+
+					m.mu.RLock()
+					oldCameraState := m.simState.Camera
+					oldCameraSubstate := m.simState.Substate
+					m.mu.RUnlock()
+
+					if oldCameraState != newCameraState || oldCameraSubstate != newCameraSubstate {
+						newSimState := SimState{Camera: newCameraState, Substate: newCameraSubstate}
+						m.setSimState(newSimState)
+					}
+				}
 			}
 
 			// Forward message to registered handlers
@@ -483,9 +633,18 @@ func (m *Instance) disconnect() {
 	m.mu.Lock()
 	eng := m.engine
 	m.engine = nil
+	cameraRequestPending := m.cameraDataRequestPending
+	m.cameraDataRequestPending = false
 	m.mu.Unlock()
 
 	if eng != nil {
+		// Clear camera data definition if it was requested
+		if cameraRequestPending {
+			if err := eng.ClearDataDefinition(m.cameraDefinitionID); err != nil {
+				m.logger.Error(fmt.Sprintf("[manager] Failed to clear camera data definition: %v", err))
+			}
+		}
+
 		if err := eng.Disconnect(); err != nil {
 			m.logger.Error(fmt.Sprintf("[manager] Disconnect error: %v", err))
 		}
@@ -504,6 +663,7 @@ func (m *Instance) Stop() error {
 	go func() {
 		m.subsWg.Wait()
 		m.connectionStateSubsWg.Wait()
+		m.simStateSubsWg.Wait()
 		close(done)
 	}()
 

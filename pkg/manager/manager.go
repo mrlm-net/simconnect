@@ -83,6 +83,27 @@ type Manager interface {
 	// GetStateSubscription returns an existing state subscription by ID, or nil if not found.
 	GetConnectionStateSubscription(id string) ConnectionStateSubscription
 
+	// SimState returns the current simulator state
+	SimState() SimState
+
+	// OnSimStateChange registers a callback to be invoked when simulator state changes.
+	// Returns a unique id that can be used to remove the handler via RemoveSimStateChange.
+	OnSimStateChange(handler SimStateChangeHandler) string
+
+	// RemoveSimStateChange removes a previously registered simulator state change handler by id.
+	// Returns an error if the id is unknown.
+	RemoveSimStateChange(id string) error
+
+	// SubscribeSimStateChange creates a new simulator state change subscription that delivers state changes to a channel.
+	// The returned SimStateSubscription can be used to receive state changes in an isolated goroutine.
+	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+	// The channel is buffered with the specified size.
+	// Call Unsubscribe() when done to release resources.
+	SubscribeSimStateChange(id string, bufferSize int) SimStateSubscription
+
+	// GetSimStateSubscription returns an existing sim state subscription by ID, or nil if not found.
+	GetSimStateSubscription(id string) SimStateSubscription
+
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client

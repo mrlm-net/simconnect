@@ -1,0 +1,371 @@
+//go:build windows
+// +build windows
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+// CameraData represents the data structure for CAMERA STATE and CAMERA SUBSTATE
+// The fields must match the order of AddToDataDefinition calls
+type CameraData struct {
+	CameraState    int32
+	CameraSubstate int32
+	Category       [260]byte // String260
+}
+
+// AircraftData represents the data structure for aircraft information
+type AircraftData struct {
+	Title             [128]byte
+	LiveryName        [128]byte
+	LiveryFolder      [128]byte
+	Lat               float64
+	Lon               float64
+	Alt               float64
+	Head              float64
+	HeadMag           float64
+	Vs                float64
+	Pitch             float64
+	Bank              float64
+	GroundSpeed       float64
+	AirspeedIndicated float64
+	AirspeedTrue      float64
+	OnAnyRunway       int32
+	SurfaceType       int32
+	SimOnGround       int32
+	AtcID             [32]byte
+	AtcAirline        [32]byte
+}
+
+// setupDataDefinitions registers all event subscriptions and data definitions
+// when the connection becomes available
+func setupDataDefinitions(client engine.Client) {
+	fmt.Println("✅ Setting up data definitions and event subscriptions...")
+
+	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
+	// --------------------------------------------
+	// - Pause event occurs when user pauses/unpauses the simulator.
+	//   State is returned in dwData field as number (0=unpaused, 1=paused)
+	client.SubscribeToSystemEvent(1000, "Pause")
+	// --------------------------------------------
+	// - Sim event occurs when simulator starts/stops.
+	//   State is returned in dwData field as number (0=stopped, 1=started)
+	client.SubscribeToSystemEvent(1001, "Sim")
+	// --------------------------------------------
+	// - Sound event occurs when simulator master sound is toggled.
+	//   State is returned in dwData field as number (0=off, 1=on)
+	client.SubscribeToSystemEvent(1002, "Sound")
+	// --------------------------------------------
+	// - Define data structure for CAMERA STATE and CAMERA SUBSTATE
+	//   and request updates every second
+	// --------------------------------------------
+	client.AddToDataDefinition(2000, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0)
+	client.AddToDataDefinition(2000, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1)
+	client.AddToDataDefinition(2000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING260, 0, 2)
+
+	client.RequestDataOnSimObject(2001, 2000, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+
+	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
+	client.AddToDataDefinition(3000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 1)
+	client.AddToDataDefinition(3000, "LIVERY FOLDER", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 2)
+	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
+	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
+	client.AddToDataDefinition(3000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 5)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 6)
+	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 7)
+	client.AddToDataDefinition(3000, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 8)
+	client.AddToDataDefinition(3000, "PLANE PITCH DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 9)
+	client.AddToDataDefinition(3000, "PLANE BANK DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 10)
+	client.AddToDataDefinition(3000, "GROUND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 11)
+	client.AddToDataDefinition(3000, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 12)
+	client.AddToDataDefinition(3000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 13)
+	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 14)
+	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 15)
+	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 16)
+	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 17)
+	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 18)
+
+	// Request data for all aircraft within 10km radius
+	client.RequestDataOnSimObjectType(4001, 3000, 10000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+}
+
+// handleMessage processes incoming messages from the simulator
+func handleMessage(msg engine.Message) {
+	if msg.Err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Error: %v\n", msg.Err)
+		return
+	}
+
+	fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
+
+	// Handle specific messages
+	// This could be done based on type and also if needed request IDs
+	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
+	case types.SIMCONNECT_RECV_ID_EVENT:
+		eventMsg := msg.AsEvent()
+		fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
+		// Check if this is the Pause event (ID 1000)
+		if eventMsg.UEventID == 1000 {
+			if eventMsg.DwData == 1 {
+				fmt.Println("  ⏸️  Simulator is PAUSED")
+			} else {
+				fmt.Println("  ▶️  Simulator is UNPAUSED")
+			}
+		}
+		if eventMsg.UEventID == 1001 {
+			if eventMsg.DwData == 0 {
+				fmt.Println("  🛑 Simulator SIM STOPPED")
+			} else {
+				fmt.Println("  🏁 Simulator SIM STARTED")
+			}
+		}
+		if eventMsg.UEventID == 1002 {
+			if eventMsg.DwData == 0 {
+				fmt.Println("  🔇 Simulator SOUND OFF")
+			} else {
+				fmt.Println("  🔊 Simulator SOUND ON")
+			}
+		}
+	case types.SIMCONNECT_RECV_ID_OPEN:
+		fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
+		openMsg := msg.AsOpen()
+		fmt.Println("📡 Received SIMCONNECT_RECV_OPEN message!")
+		fmt.Printf("  Application Name: '%s'\n", engine.BytesToString(openMsg.SzApplicationName[:]))
+		fmt.Printf("  Application Version: %d.%d\n", openMsg.DwApplicationVersionMajor, openMsg.DwApplicationVersionMinor)
+		fmt.Printf("  Application Build: %d.%d\n", openMsg.DwApplicationBuildMajor, openMsg.DwApplicationBuildMinor)
+		fmt.Printf("  SimConnect Version: %d.%d\n", openMsg.DwSimConnectVersionMajor, openMsg.DwSimConnectVersionMinor)
+		fmt.Printf("  SimConnect Build: %d.%d\n", openMsg.DwSimConnectBuildMajor, openMsg.DwSimConnectBuildMinor)
+	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
+		fmt.Println("  => Received SimObject data event")
+		simObjData := msg.AsSimObjectData()
+		fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
+			simObjData.DwRequestID,
+			simObjData.DwDefineID,
+			simObjData.DwObjectID,
+			simObjData.DwFlags,
+			simObjData.DwOutOf,
+			simObjData.DwDefineCount,
+		)
+		// Cast the data pointer to CameraData struct
+		// The DwData field is the start of the actual data block
+		if simObjData.DwDefineID == 2000 {
+			cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
+			fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s \n",
+				cameraData.CameraState,
+				cameraData.CameraSubstate,
+				cameraData.Category,
+			)
+		}
+	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
+		simObjData := msg.AsSimObjectDataBType()
+		fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
+			simObjData.DwRequestID,
+			simObjData.DwDefineID,
+			simObjData.DwObjectID,
+			simObjData.DwFlags,
+			simObjData.DwOutOf,
+			simObjData.DwDefineCount,
+		)
+		if simObjData.DwDefineID == 3000 {
+			aircraftData := engine.CastDataAs[AircraftData](&simObjData.DwData)
+			fmt.Printf("     Aircraft Title: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
+				engine.BytesToString(aircraftData.Title[:]),
+				engine.BytesToString(aircraftData.LiveryName[:]),
+				engine.BytesToString(aircraftData.LiveryFolder[:]),
+				aircraftData.Lat,
+				aircraftData.Lon,
+				aircraftData.Alt,
+				aircraftData.Head,
+				aircraftData.HeadMag,
+				aircraftData.Vs,
+				aircraftData.Pitch,
+				aircraftData.Bank,
+				aircraftData.GroundSpeed,
+				aircraftData.AirspeedIndicated,
+				aircraftData.AirspeedTrue,
+				aircraftData.OnAnyRunway,
+				aircraftData.SurfaceType,
+				aircraftData.SimOnGround,
+				engine.BytesToString(aircraftData.AtcID[:]),
+			)
+		}
+	default:
+		// Other message types can be handled here
+	}
+}
+
+func main() {
+	// Create cancellable context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Setup signal handler for Ctrl+C
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+
+	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
+
+	// Create the manager with automatic reconnection
+	// Demonstrates convenience options for common engine settings:
+	// - WithBufferSize: sets the message buffer size (default: 256)
+	// - WithHeartbeat: sets the heartbeat frequency (default: "6Hz")
+	// - WithDLLPath: sets custom SimConnect DLL path if needed
+	// Note: WithContext and WithLogger on manager take precedence over
+	// any context/logger passed via WithEngineOptions.
+	mgr := manager.New("GO Example - SimConnect Subscribe",
+		manager.WithContext(ctx),
+		manager.WithAutoReconnect(true),
+		manager.WithBufferSize(512),  // Optional: increase buffer for high-frequency data
+		manager.WithHeartbeat("6Hz"), // Optional: set heartbeat frequency
+	)
+
+	// Setup signal handler goroutine - calls mgr.Stop() for graceful shutdown
+	go func() {
+		<-sigChan
+		fmt.Println("🛑 Received interrupt signal, shutting down...")
+		mgr.Stop() // Gracefully stop manager (handles shutdown timeout internally)
+		cancel()
+	}()
+
+	// Register SimState change handler to monitor camera state
+	_ = mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
+		fmt.Printf("🎥 SimState changed: Camera %s (Substate: %s) -> Camera %s (Substate: %s)\n",
+			oldState.Camera, oldState.Substate, newState.Camera, newState.Substate)
+	})
+
+	// Register connection state change handler to setup data definitions when available
+	_ = mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
+		fmt.Printf("🔄 Connection state changed: %s -> %s\n", oldState, newState)
+
+		switch newState {
+		case manager.StateConnecting:
+			fmt.Println("⏳ Connecting to simulator...")
+		case manager.StateConnected:
+			fmt.Println("✅ Connected to SimConnect, simulator is loading...")
+			// Connection is ready - setup data definitions
+			if client := mgr.Client(); client != nil {
+				setupDataDefinitions(client)
+			}
+		case manager.StateAvailable:
+			// Connection is fully available so messages can be processed
+			fmt.Println("🚀 Simulator connection is AVAILABLE. Ready to process messages...")
+			// Note: SimState will track camera state independently from this point on
+			currentSimState := mgr.SimState()
+			fmt.Printf("📊 Current SimState: Camera %s (Substate: %s)\n", currentSimState.Camera, currentSimState.Substate)
+		case manager.StateReconnecting:
+			fmt.Println("🔄 Reconnecting to simulator...")
+		case manager.StateDisconnected:
+			fmt.Println("📴 Disconnected from simulator...")
+		}
+	})
+
+	// Subscribe to connection state changes via channel
+	// This is equivalent to using OnConnectionStateChange but with channel-based consumption
+	connStateSub := mgr.SubscribeConnectionStateChange("connection-state-subscriber", 16)
+
+	// Start a goroutine to process connection state changes from the subscription channel
+	go func() {
+		fmt.Println("📬 Connection state subscription started, waiting for changes...")
+		for {
+			select {
+			case change, ok := <-connStateSub.ConnectionStateChanges():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 Connection state subscription channel closed")
+					return
+				}
+				// Log connection state changes received via subscription (complementary to callback)
+				fmt.Printf("📡 [Connection State Subscription] Changed: %s -> %s\n", change.OldState, change.NewState)
+			case <-connStateSub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 Connection state subscription cancelled")
+				return
+			}
+		}
+	}()
+
+	// Subscribe to simulator state changes via channel
+	// This monitors camera state and other simulator state variables
+	simStateSub := mgr.SubscribeSimStateChange("sim-state-subscriber", 16)
+
+	// Start a goroutine to process simulator state changes from the subscription channel
+	go func() {
+		fmt.Println("📬 SimState subscription started, monitoring camera state...")
+		for {
+			select {
+			case change, ok := <-simStateSub.SimStateChanges():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 SimState subscription channel closed")
+					return
+				}
+				// Log simulator state changes received via subscription
+				fmt.Printf("📡 [SimState Subscription] Camera %s (Substate: %s) -> Camera %s (Substate: %s)\n",
+					change.OldState.Camera, change.OldState.Substate,
+					change.NewState.Camera, change.NewState.Substate)
+				// Could trigger additional logic here based on camera state
+				if change.NewState.Camera == manager.CameraStateExternalChase {
+					fmt.Println("   🎥 Now viewing from EXTERNAL/CHASE camera")
+				} else if change.NewState.Camera == manager.CameraStateCockpit {
+					fmt.Println("   🛩️  Now viewing from COCKPIT camera")
+				} else if change.NewState.Camera == manager.CameraStateDrone {
+					fmt.Println("   🚁 Now viewing from DRONE camera")
+				}
+			case <-simStateSub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 SimState subscription cancelled")
+				return
+			}
+		}
+	}()
+
+	// Create a subscription to receive messages via channel instead of callback
+	// This demonstrates the Subscribe pattern for message handling
+	// - First parameter is the subscription ID (empty string for auto-generated UUID)
+	// - Second parameter is the channel buffer size
+	sub := mgr.Subscribe("main-subscriber", 256)
+
+	// Start a goroutine to process messages from the subscription channel
+	go func() {
+		fmt.Println("📬 Message subscription started, waiting for messages...")
+		for {
+			select {
+			case msg, ok := <-sub.Messages():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 Subscription channel closed")
+					return
+				}
+				// Process the message using the same handler
+				handleMessage(msg)
+			case <-sub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 Subscription cancelled")
+				return
+			}
+		}
+	}()
+
+	// Start the manager - this blocks until context is cancelled
+	// The manager handles connection lifecycle automatically
+	if err := mgr.Start(); err != nil {
+		fmt.Printf("⚠️  Manager stopped: %v\n", err)
+	}
+
+	// Unsubscribe when done (cleanup)
+	sub.Unsubscribe()
+	connStateSub.Unsubscribe()
+	simStateSub.Unsubscribe()
+
+	// Small delay to allow goroutines to complete cleanup
+	time.Sleep(100 * time.Millisecond)
+	fmt.Println("👋 Goodbye!")
+}
