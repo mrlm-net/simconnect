@@ -145,11 +145,12 @@ func (s CameraSubstate) String() string {
 type SimState struct {
 	Camera   CameraState
 	Substate CameraSubstate
+	Paused   bool
 }
 
 // Equal returns true if two SimState values are equivalent
 func (s SimState) Equal(other SimState) bool {
-	return s.Camera == other.Camera && s.Substate == other.Substate
+	return s.Camera == other.Camera && s.Substate == other.Substate && s.Paused == other.Paused
 }
 
 // SimStateChange represents a simulator state transition event
