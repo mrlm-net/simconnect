@@ -16,7 +16,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-var airport = "LKPD" // ICAO code of airport to query
+var airport = "EDDM" // ICAO code of airport to query
 
 type AirportData struct {
 	Latitude  float64
