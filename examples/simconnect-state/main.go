@@ -105,7 +105,19 @@ func handleMessage(msg engine.Message) {
 		return
 	}
 
-	fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
+	// Skip printing message received for SIMCONNECT_RECV_ID_SIMOBJECT_DATA with manager's internal request IDs
+	// Manager uses 999000/999001 for camera data, so filter those out to avoid clutter
+	shouldPrintMessage := true
+	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
+		simObjData := msg.AsSimObjectData()
+		if simObjData != nil && ((simObjData.DwDefineID == types.DWORD(manager.CameraDefinitionID) && simObjData.DwRequestID == types.DWORD(manager.CameraRequestID)) || (simObjData.DwDefineID == 2000 && simObjData.DwRequestID == 2001)) {
+			shouldPrintMessage = false
+		}
+	}
+
+	if shouldPrintMessage {
+		fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
+	}
 
 	// Handle specific messages
 	// This could be done based on type and also if needed request IDs
@@ -145,19 +157,23 @@ func handleMessage(msg engine.Message) {
 		fmt.Printf("  SimConnect Version: %d.%d\n", openMsg.DwSimConnectVersionMajor, openMsg.DwSimConnectVersionMinor)
 		fmt.Printf("  SimConnect Build: %d.%d\n", openMsg.DwSimConnectBuildMajor, openMsg.DwSimConnectBuildMinor)
 	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
-		fmt.Println("  => Received SimObject data event")
 		simObjData := msg.AsSimObjectData()
-		fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
-			simObjData.DwRequestID,
-			simObjData.DwDefineID,
-			simObjData.DwObjectID,
-			simObjData.DwFlags,
-			simObjData.DwOutOf,
-			simObjData.DwDefineCount,
-		)
+		// Skip printing for manager's internal camera data (999000/999001) and DID 2000/RID 2001
+		isFilteredMessage := (simObjData.DwDefineID == types.DWORD(manager.CameraDefinitionID) && simObjData.DwRequestID == types.DWORD(manager.CameraRequestID)) || (simObjData.DwDefineID == 2000 && simObjData.DwRequestID == 2001)
+		if !isFilteredMessage {
+			fmt.Println("  => Received SimObject data event")
+			fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
+				simObjData.DwRequestID,
+				simObjData.DwDefineID,
+				simObjData.DwObjectID,
+				simObjData.DwFlags,
+				simObjData.DwOutOf,
+				simObjData.DwDefineCount,
+			)
+		}
 		// Cast the data pointer to CameraData struct
 		// The DwData field is the start of the actual data block
-		if simObjData.DwDefineID == 2000 {
+		if simObjData.DwDefineID == 2000 && simObjData.DwRequestID != 2001 {
 			cameraData := engine.CastDataAs[CameraData](&simObjData.DwData)
 			fmt.Printf("     Camera State: %d, Camera Substate: %d, Category: %s \n",
 				cameraData.CameraState,

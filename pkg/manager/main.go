@@ -51,9 +51,10 @@ func New(name string, opts ...Option) Manager {
 		simState:                     SimState{Camera: CameraStateUninitialized, Paused: false},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
-		cameraDefinitionID:           cameraDefinitionID,
-		cameraRequestID:              cameraRequestID,
-		pauseEventID:                 1000,
+		cameraDefinitionID:           CameraDefinitionID,
+		cameraRequestID:              CameraRequestID,
+		pauseEventID:                 PauseEventID,
+		requestRegistry:              NewRequestRegistry(),
 	}
 }
 
@@ -94,6 +95,9 @@ type Instance struct {
 	cameraRequestID          uint32
 	cameraDataRequestPending bool
 	pauseEventID             uint32
+
+	// Request tracking
+	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
@@ -625,11 +629,13 @@ func (m *Instance) runConnection() error {
 					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false})
 
 					// Subscribe to pause events
+					m.requestRegistry.Register(m.pauseEventID, RequestTypeEvent, "Pause Event Subscription")
 					if err := client.SubscribeToSystemEvent(m.pauseEventID, "Pause"); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to Pause event: %v", err))
 					}
 
 					// Define camera data structure
+					m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Camera State and Substate Definition")
 					if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to add CAMERA STATE definition: %v", err))
 					}
@@ -638,7 +644,8 @@ func (m *Instance) runConnection() error {
 					}
 
 					// Request camera data with period matching heartbeat configuration
-					period := types.SIMCONNECT_PERIOD_SECOND
+					period := types.SIMCONNECT_PERIOD_SIM_FRAME
+					m.requestRegistry.Register(m.cameraRequestID, RequestTypeDataRequest, "Camera State Data Request")
 					if err := client.RequestDataOnSimObject(m.cameraRequestID, m.cameraDefinitionID, types.SIMCONNECT_OBJECT_ID_USER, period, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to request camera data: %v", err))
 					} else {
@@ -844,6 +851,10 @@ func (m *Instance) disconnect() {
 			m.logger.Error(fmt.Sprintf("[manager] Disconnect error: %v", err))
 		}
 	}
+
+	// Clean up request registry on disconnect
+	m.requestRegistry.Clear()
+
 	m.setState(StateDisconnected)
 }
 
