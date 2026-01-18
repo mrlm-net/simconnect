@@ -212,9 +212,10 @@ if mgr.IsConnected() {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `CameraState` | `int32` | Current camera state (0=cockpit, 1=external, etc.) |
-| `CameraSubstate` | `int32` | Substate of the current camera |
-| `IsPaused` | `bool` | Whether the simulator is paused |
+| `Camera` | `CameraState` | Current camera state (cockpit, external, drone, etc.) |
+| `Substate` | `CameraSubstate` | Substate of the current camera (locked, unlocked, quickview, etc.) |
+| `Paused` | `bool` | Whether the simulator is paused |
+| `SimRunning` | `bool` | Whether the simulator engine is running (false until first Sim event received) |
 
 ### Monitoring Simulator State Changes
 
@@ -222,11 +223,18 @@ Subscribe to simulator state changes using `SubscribeSimStateChange()`:
 
 ```go
 mgr.SubscribeSimStateChange(func(oldState, newState manager.SimState) {
-    if oldState.IsPaused != newState.IsPaused {
-        if newState.IsPaused {
+    if oldState.Paused != newState.Paused {
+        if newState.Paused {
             fmt.Println("Simulator paused")
         } else {
             fmt.Println("Simulator resumed")
+        }
+    }
+    if oldState.SimRunning != newState.SimRunning {
+        if newState.SimRunning {
+            fmt.Println("Simulator started")
+        } else {
+            fmt.Println("Simulator stopped")
         }
     }
 })

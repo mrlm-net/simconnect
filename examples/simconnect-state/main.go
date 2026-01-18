@@ -55,11 +55,11 @@ func setupDataDefinitions(client engine.Client) {
 	// --------------------------------------------
 	// - Pause event occurs when user pauses/unpauses the simulator.
 	//   State is returned in dwData field as number (0=unpaused, 1=paused)
-	client.SubscribeToSystemEvent(1000, "Pause")
+	//client.SubscribeToSystemEvent(1000, "Pause")
 	// --------------------------------------------
 	// - Sim event occurs when simulator starts/stops.
 	//   State is returned in dwData field as number (0=stopped, 1=started)
-	client.SubscribeToSystemEvent(1001, "Sim")
+	//client.SubscribeToSystemEvent(1001, "Sim")
 	// --------------------------------------------
 	// - Sound event occurs when simulator master sound is toggled.
 	//   State is returned in dwData field as number (0=off, 1=on)
@@ -251,18 +251,29 @@ func main() {
 		cancel()
 	}()
 
-	// Register SimState change handler to monitor camera state and pause state
+	// Register SimState change handler to monitor all simulation state changes
 	_ = mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
+		oldSimStatus := "Started"
+		if !oldState.SimRunning {
+			oldSimStatus = "Stopped"
+		}
 		oldPauseStatus := "▶️  Running"
 		if oldState.Paused {
 			oldPauseStatus = "⏸️  Paused"
+		}
+		newSimStatus := "Started"
+		if !newState.SimRunning {
+			newSimStatus = "Stopped"
 		}
 		newPauseStatus := "▶️  Running"
 		if newState.Paused {
 			newPauseStatus = "⏸️  Paused"
 		}
-		fmt.Printf("🎥 SimState changed: Camera %s (Substate: %s, %s) -> Camera %s (Substate: %s, %s)\n",
-			oldState.Camera, oldState.Substate, oldPauseStatus, newState.Camera, newState.Substate, newPauseStatus)
+		fmt.Printf("🎥 SimState changed:\n")
+		fmt.Printf("   Old: Camera=%s, Substate=%s, %s, Sim=%s\n",
+			oldState.Camera, oldState.Substate, oldPauseStatus, oldSimStatus)
+		fmt.Printf("   New: Camera=%s, Substate=%s, %s, Sim=%s\n",
+			newState.Camera, newState.Substate, newPauseStatus, newSimStatus)
 	})
 
 	// Register connection state change handler to setup data definitions when available
@@ -281,13 +292,19 @@ func main() {
 		case manager.StateAvailable:
 			// Connection is fully available so messages can be processed
 			fmt.Println("🚀 Simulator connection is AVAILABLE. Ready to process messages...")
-			// Note: SimState will track camera state independently from this point on
+			// Note: SimState will track all state changes independently from this point on
 			currentSimState := mgr.SimState()
+			simStatus := "Started"
+			if !currentSimState.SimRunning {
+				simStatus = "Stopped"
+			}
 			pauseStatus := "▶️  Running"
 			if currentSimState.Paused {
 				pauseStatus = "⏸️  Paused"
 			}
-			fmt.Printf("📊 Current SimState: Camera %s (Substate: %s), %s\n", currentSimState.Camera, currentSimState.Substate, pauseStatus)
+			fmt.Printf("📊 Current SimState:\n")
+			fmt.Printf("   Camera: %s (Substate: %s)\n", currentSimState.Camera, currentSimState.Substate)
+			fmt.Printf("   Status: %s, Sim: %s\n", pauseStatus, simStatus)
 		case manager.StateReconnecting:
 			fmt.Println("🔄 Reconnecting to simulator...")
 		case manager.StateDisconnected:
@@ -422,17 +439,27 @@ func main() {
 					return
 				}
 				// Log simulator state changes received via subscription
+				oldSimStatus := "Started"
+				if !change.OldState.SimRunning {
+					oldSimStatus = "Stopped"
+				}
 				oldPauseStatus := "▶️  Running"
 				if change.OldState.Paused {
 					oldPauseStatus = "⏸️  Paused"
+				}
+				newSimStatus := "Started"
+				if !change.NewState.SimRunning {
+					newSimStatus = "Stopped"
 				}
 				newPauseStatus := "▶️  Running"
 				if change.NewState.Paused {
 					newPauseStatus = "⏸️  Paused"
 				}
-				fmt.Printf("📡 [SimState Subscription] Camera %s (Substate: %s, %s) -> Camera %s (Substate: %s, %s)\n",
-					change.OldState.Camera, change.OldState.Substate, oldPauseStatus,
-					change.NewState.Camera, change.NewState.Substate, newPauseStatus)
+				fmt.Printf("📡 [SimState Subscription] State changed:\n")
+				fmt.Printf("   Old: Camera=%s, Substate=%s, %s, Sim=%s\n",
+					change.OldState.Camera, change.OldState.Substate, oldPauseStatus, oldSimStatus)
+				fmt.Printf("   New: Camera=%s, Substate=%s, %s, Sim=%s\n",
+					change.NewState.Camera, change.NewState.Substate, newPauseStatus, newSimStatus)
 				// Could trigger additional logic here based on camera state
 				if change.NewState.Camera == manager.CameraStateExternalChase {
 					fmt.Println("   🎥 Now viewing from EXTERNAL/CHASE camera")

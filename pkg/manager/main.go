@@ -48,12 +48,13 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Paused: false},
+		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
 		cameraRequestID:              CameraRequestID,
 		pauseEventID:                 PauseEventID,
+		simEventID:                   SimEventID,
 		requestRegistry:              NewRequestRegistry(),
 	}
 }
@@ -95,6 +96,7 @@ type Instance struct {
 	cameraRequestID          uint32
 	cameraDataRequestPending bool
 	pauseEventID             uint32
+	simEventID               uint32
 
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
@@ -583,7 +585,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -626,12 +628,20 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false})
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
 
 					// Subscribe to pause events
+					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
 					m.requestRegistry.Register(m.pauseEventID, RequestTypeEvent, "Pause Event Subscription")
 					if err := client.SubscribeToSystemEvent(m.pauseEventID, "Pause"); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to Pause event: %v", err))
+					}
+
+					// Subscribe to sim events
+					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1001
+					m.requestRegistry.Register(m.simEventID, RequestTypeEvent, "Sim Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.simEventID, "Sim"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to Sim event: %v", err))
 					}
 
 					// Define camera data structure
@@ -663,7 +673,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -671,9 +681,10 @@ func (m *Instance) runConnection() error {
 				return nil // Return nil to allow reconnection
 			}
 
-			// Handle pause event
+			// Handle pause and sim events
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT {
 				eventMsg := msg.AsEvent()
+				// Handle pause event (SimConnect event ID 1000)
 				if eventMsg.UEventID == types.DWORD(m.pauseEventID) {
 					newPausedState := eventMsg.DwData == 1
 
@@ -682,7 +693,20 @@ func (m *Instance) runConnection() error {
 					m.mu.RUnlock()
 
 					if oldPausedState != newPausedState {
-						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: newPausedState}
+						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: newPausedState, SimRunning: m.simState.SimRunning}
+						m.setSimState(newSimState)
+					}
+				}
+				// Handle sim event (SimConnect event ID 1001)
+				if eventMsg.UEventID == types.DWORD(m.simEventID) {
+					newSimRunningState := eventMsg.DwData == 1
+
+					m.mu.RLock()
+					oldSimRunningState := m.simState.SimRunning
+					m.mu.RUnlock()
+
+					if oldSimRunningState != newSimRunningState {
+						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: m.simState.Paused, SimRunning: newSimRunningState}
 						m.setSimState(newSimState)
 					}
 				}
@@ -701,10 +725,11 @@ func (m *Instance) runConnection() error {
 					oldCameraState := m.simState.Camera
 					oldCameraSubstate := m.simState.Substate
 					oldPausedState := m.simState.Paused
+					oldSimRunningState := m.simState.SimRunning
 					m.mu.RUnlock()
 
 					if oldCameraState != newCameraState || oldCameraSubstate != newCameraSubstate {
-						newSimState := SimState{Camera: newCameraState, Substate: newCameraSubstate, Paused: oldPausedState}
+						newSimState := SimState{Camera: newCameraState, Substate: newCameraSubstate, Paused: oldPausedState, SimRunning: oldSimRunningState}
 						m.setSimState(newSimState)
 					}
 				}

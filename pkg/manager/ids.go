@@ -34,8 +34,10 @@ const (
 	CameraRequestID    uint32 = 999001 // Request ID for periodic camera state data polling
 
 	// Event System IDs - Used for internal system event subscriptions
-	// These IDs subscribe to simulator events like pause/unpause that affect SimState.
-	PauseEventID uint32 = 999100 // Event ID for pause/unpause system events
+	// These IDs are used for request registry tracking (manager reserved range).
+	// The actual SimConnect subscription uses standard event IDs (1000, 1001).
+	PauseEventID uint32 = 999100 // Manager ID for tracking pause event subscription
+	SimEventID   uint32 = 999101 // Manager ID for tracking sim event subscription
 
 	// Status and Heartbeat IDs - Used for internal status monitoring
 	// These IDs are used for periodic status checks and heartbeat operations.

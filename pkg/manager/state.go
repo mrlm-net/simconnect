@@ -143,14 +143,15 @@ func (s CameraSubstate) String() string {
 
 // SimState represents the current simulator state with all monitored substates
 type SimState struct {
-	Camera   CameraState
-	Substate CameraSubstate
-	Paused   bool
+	Camera     CameraState
+	Substate   CameraSubstate
+	Paused     bool
+	SimRunning bool
 }
 
 // Equal returns true if two SimState values are equivalent
 func (s SimState) Equal(other SimState) bool {
-	return s.Camera == other.Camera && s.Substate == other.Substate && s.Paused == other.Paused
+	return s.Camera == other.Camera && s.Substate == other.Substate && s.Paused == other.Paused && s.SimRunning == other.SimRunning
 }
 
 // SimStateChange represents a simulator state transition event
