@@ -3,6 +3,8 @@
 
 package manager
 
+import "github.com/mrlm-net/simconnect/pkg/types"
+
 // StateChange represents a connection state transition event
 type ConnectionStateChange struct {
 	OldState ConnectionState
@@ -60,5 +62,45 @@ type ConnectionStateSubscription interface {
 
 	// Unsubscribe cancels the subscription and closes the channel.
 	// Blocks until any pending state change delivery completes.
+	Unsubscribe()
+}
+
+// ConnectionOpenHandler is a callback function invoked when connection opens
+type ConnectionOpenHandler func(data types.ConnectionOpenData)
+
+// ConnectionQuitHandler is a callback function invoked when connection quits
+type ConnectionQuitHandler func(data types.ConnectionQuitData)
+
+// ConnectionOpenSubscription represents an active connection open subscription that can be cancelled
+type ConnectionOpenSubscription interface {
+	// ID returns the unique identifier of the subscription
+	ID() string
+
+	// Opens returns the channel for receiving connection open events
+	Opens() <-chan types.ConnectionOpenData
+
+	// Done returns a channel that is closed when the subscription ends.
+	// Use this to detect when to exit your consumer goroutine.
+	Done() <-chan struct{}
+
+	// Unsubscribe cancels the subscription and closes the channel.
+	// Blocks until any pending change delivery completes.
+	Unsubscribe()
+}
+
+// ConnectionQuitSubscription represents an active connection quit subscription that can be cancelled
+type ConnectionQuitSubscription interface {
+	// ID returns the unique identifier of the subscription
+	ID() string
+
+	// Quits returns the channel for receiving connection quit events
+	Quits() <-chan types.ConnectionQuitData
+
+	// Done returns a channel that is closed when the subscription ends.
+	// Use this to detect when to exit your consumer goroutine.
+	Done() <-chan struct{}
+
+	// Unsubscribe cancels the subscription and closes the channel.
+	// Blocks until any pending change delivery completes.
 	Unsubscribe()
 }

@@ -104,6 +104,42 @@ type Manager interface {
 	// GetSimStateSubscription returns an existing sim state subscription by ID, or nil if not found.
 	GetSimStateSubscription(id string) SimStateSubscription
 
+	// OnOpen registers a callback to be invoked when the simulator connection opens.
+	// Returns a unique id that can be used to remove the handler via RemoveOpen.
+	OnOpen(handler ConnectionOpenHandler) string
+
+	// RemoveOpen removes a previously registered open handler by id.
+	// Returns an error if the id is unknown.
+	RemoveOpen(id string) error
+
+	// SubscribeOnOpen creates a new connection open subscription that delivers open events to a channel.
+	// The returned ConnectionOpenSubscription can be used to receive open events in an isolated goroutine.
+	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+	// The channel is buffered with the specified size.
+	// Call Unsubscribe() when done to release resources.
+	SubscribeOnOpen(id string, bufferSize int) ConnectionOpenSubscription
+
+	// GetOpenSubscription returns an existing open subscription by ID, or nil if not found.
+	GetOpenSubscription(id string) ConnectionOpenSubscription
+
+	// OnQuit registers a callback to be invoked when the simulator quits.
+	// Returns a unique id that can be used to remove the handler via RemoveQuit.
+	OnQuit(handler ConnectionQuitHandler) string
+
+	// RemoveQuit removes a previously registered quit handler by id.
+	// Returns an error if the id is unknown.
+	RemoveQuit(id string) error
+
+	// SubscribeOnQuit creates a new connection quit subscription that delivers quit events to a channel.
+	// The returned ConnectionQuitSubscription can be used to receive quit events in an isolated goroutine.
+	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+	// The channel is buffered with the specified size.
+	// Call Unsubscribe() when done to release resources.
+	SubscribeOnQuit(id string, bufferSize int) ConnectionQuitSubscription
+
+	// GetQuitSubscription returns an existing quit subscription by ID, or nil if not found.
+	GetQuitSubscription(id string) ConnectionQuitSubscription
+
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client

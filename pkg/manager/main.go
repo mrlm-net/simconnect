@@ -42,8 +42,12 @@ func New(name string, opts ...Option) Manager {
 		state:                        StateDisconnected,
 		stateHandlers:                []stateHandlerEntry{},
 		messageHandlers:              []messageHandlerEntry{},
+		openHandlers:                 []openHandlerEntry{},
+		quitHandlers:                 []quitHandlerEntry{},
 		subscriptions:                make(map[string]*subscription),
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
+		openSubscriptions:            make(map[string]*connectionOpenSubscription),
+		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
 		simState:                     SimState{Camera: CameraStateUninitialized},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
@@ -69,10 +73,16 @@ type Instance struct {
 	// unregister using the id (similar to subscriptions).
 	stateHandlers                []stateHandlerEntry
 	messageHandlers              []messageHandlerEntry
+	openHandlers                 []openHandlerEntry
+	quitHandlers                 []quitHandlerEntry
 	subscriptions                map[string]*subscription
 	subsWg                       sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
 	connectionStateSubscriptions map[string]*connectionStateSubscription
 	connectionStateSubsWg        sync.WaitGroup // WaitGroup for graceful shutdown of connection state subscriptions
+	openSubscriptions            map[string]*connectionOpenSubscription
+	openSubsWg                   sync.WaitGroup // WaitGroup for graceful shutdown of open subscriptions
+	quitSubscriptions            map[string]*connectionQuitSubscription
+	quitSubsWg                   sync.WaitGroup // WaitGroup for graceful shutdown of quit subscriptions
 
 	// Simulator state
 	simState                 SimState
@@ -103,6 +113,18 @@ type simStateHandlerEntry struct {
 type messageHandlerEntry struct {
 	id string
 	fn MessageHandler
+}
+
+// openHandlerEntry stores a connection open handler with an identifier
+type openHandlerEntry struct {
+	id string
+	fn ConnectionOpenHandler
+}
+
+// quitHandlerEntry stores a connection quit handler with an identifier
+type quitHandlerEntry struct {
+	id string
+	fn ConnectionQuitHandler
 }
 
 // State returns the current connection state
@@ -252,6 +274,134 @@ func (m *Instance) RemoveMessage(id string) error {
 		}
 	}
 	return fmt.Errorf("message handler not found: %s", id)
+}
+
+// OnOpen registers a callback to be invoked when the simulator connection opens.
+// Returns a unique id that can be used to remove the handler via RemoveOpen.
+func (m *Instance) OnOpen(handler ConnectionOpenHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.openHandlers = append(m.openHandlers, openHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered open handler: %s", id))
+	}
+	return id
+}
+
+// RemoveOpen removes a previously registered open handler by id.
+func (m *Instance) RemoveOpen(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.openHandlers {
+		if e.id == id {
+			m.openHandlers = append(m.openHandlers[:i], m.openHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed open handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("open handler not found: %s", id)
+}
+
+// OnQuit registers a callback to be invoked when the simulator quits.
+// Returns a unique id that can be used to remove the handler via RemoveQuit.
+func (m *Instance) OnQuit(handler ConnectionQuitHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.quitHandlers = append(m.quitHandlers, quitHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered quit handler: %s", id))
+	}
+	return id
+}
+
+// RemoveQuit removes a previously registered quit handler by id.
+func (m *Instance) RemoveQuit(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.quitHandlers {
+		if e.id == id {
+			m.quitHandlers = append(m.quitHandlers[:i], m.quitHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed quit handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("quit handler not found: %s", id)
+}
+
+// setOpen invokes all registered open handlers and sends to subscriptions
+func (m *Instance) setOpen(data types.ConnectionOpenData) {
+	m.mu.Lock()
+	handlers := make([]ConnectionOpenHandler, len(m.openHandlers))
+	for i, e := range m.openHandlers {
+		handlers[i] = e.fn
+	}
+	openSubs := make([]*connectionOpenSubscription, 0, len(m.openSubscriptions))
+	for _, sub := range m.openSubscriptions {
+		openSubs = append(openSubs, sub)
+	}
+	m.mu.Unlock()
+
+	m.logger.Debug("[manager] Connection opened")
+
+	// Notify handlers outside the lock
+	for _, handler := range handlers {
+		handler(data)
+	}
+
+	// Forward open event to subscriptions (non-blocking)
+	for _, sub := range openSubs {
+		sub.closeMu.Lock()
+		if !sub.closed {
+			select {
+			case sub.ch <- data:
+			default:
+				// Channel full, skip event to avoid blocking
+				m.logger.Debug("[manager] Open subscription channel full, dropping open event")
+			}
+		}
+		sub.closeMu.Unlock()
+	}
+}
+
+// setQuit invokes all registered quit handlers and sends to subscriptions
+func (m *Instance) setQuit(data types.ConnectionQuitData) {
+	m.mu.Lock()
+	handlers := make([]ConnectionQuitHandler, len(m.quitHandlers))
+	for i, e := range m.quitHandlers {
+		handlers[i] = e.fn
+	}
+	quitSubs := make([]*connectionQuitSubscription, 0, len(m.quitSubscriptions))
+	for _, sub := range m.quitSubscriptions {
+		quitSubs = append(quitSubs, sub)
+	}
+	m.mu.Unlock()
+
+	m.logger.Debug("[manager] Connection quit")
+
+	// Notify handlers outside the lock
+	for _, handler := range handlers {
+		handler(data)
+	}
+
+	// Forward quit event to subscriptions (non-blocking)
+	for _, sub := range quitSubs {
+		sub.closeMu.Lock()
+		if !sub.closed {
+			select {
+			case sub.ch <- data:
+			default:
+				// Channel full, skip event to avoid blocking
+				m.logger.Debug("[manager] Quit subscription channel full, dropping quit event")
+			}
+		}
+		sub.closeMu.Unlock()
+	}
 }
 
 // SimState returns the current simulator state
@@ -445,6 +595,24 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received OPEN message, connection is now available")
 				m.setState(StateAvailable)
 
+				// Extract version information from OPEN message
+				openMsg := msg.AsOpen()
+				if openMsg != nil {
+					appName := engine.BytesToString(openMsg.SzApplicationName[:])
+					openData := types.ConnectionOpenData{
+						ApplicationName:         appName,
+						ApplicationVersionMajor: uint32(openMsg.DwApplicationVersionMajor),
+						ApplicationVersionMinor: uint32(openMsg.DwApplicationVersionMinor),
+						ApplicationBuildMajor:   uint32(openMsg.DwApplicationBuildMajor),
+						ApplicationBuildMinor:   uint32(openMsg.DwApplicationBuildMinor),
+						SimConnectVersionMajor:  uint32(openMsg.DwSimConnectVersionMajor),
+						SimConnectVersionMinor:  uint32(openMsg.DwSimConnectVersionMinor),
+						SimConnectBuildMajor:    uint32(openMsg.DwSimConnectBuildMajor),
+						SimConnectBuildMinor:    uint32(openMsg.DwSimConnectBuildMinor),
+					}
+					m.setOpen(openData)
+				}
+
 				// Initialize simulator state and request camera data
 				m.mu.Lock()
 				client := m.engine
@@ -479,6 +647,8 @@ func (m *Instance) runConnection() error {
 			// Check for quit message
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_QUIT {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
+				quitData := types.ConnectionQuitData{}
+				m.setQuit(quitData)
 				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized})
 				m.setState(StateDisconnected)
 				m.mu.Lock()

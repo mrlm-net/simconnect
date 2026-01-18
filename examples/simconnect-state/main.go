@@ -267,6 +267,29 @@ func main() {
 		}
 	})
 
+	// Register OnOpen handler to capture simulator connection open event with version info
+	_ = mgr.OnOpen(func(data types.ConnectionOpenData) {
+		fmt.Println("🔓 [OnOpen Callback] Simulator connection opened!")
+		fmt.Printf("   App: %s (v%d.%d.%d.%d)\n",
+			data.ApplicationName,
+			data.ApplicationVersionMajor,
+			data.ApplicationVersionMinor,
+			data.ApplicationBuildMajor,
+			data.ApplicationBuildMinor,
+		)
+		fmt.Printf("   SimConnect: v%d.%d.%d.%d\n",
+			data.SimConnectVersionMajor,
+			data.SimConnectVersionMinor,
+			data.SimConnectBuildMajor,
+			data.SimConnectBuildMinor,
+		)
+	})
+
+	// Register OnQuit handler to capture simulator quit event
+	_ = mgr.OnQuit(func(data types.ConnectionQuitData) {
+		fmt.Println("🔒 [OnQuit Callback] Simulator is quitting!")
+	})
+
 	// Subscribe to connection state changes via channel
 	// This is equivalent to using OnConnectionStateChange but with channel-based consumption
 	connStateSub := mgr.SubscribeConnectionStateChange("connection-state-subscriber", 16)
@@ -287,6 +310,69 @@ func main() {
 			case <-connStateSub.Done():
 				// Subscription was cancelled
 				fmt.Println("📭 Connection state subscription cancelled")
+				return
+			}
+		}
+	}()
+
+	// Subscribe to connection open events via channel
+	// This demonstrates the SubscribeOnOpen pattern for receiving version info on connection
+	openSub := mgr.SubscribeOnOpen("open-subscriber", 16)
+
+	// Start a goroutine to process open events from the subscription channel
+	go func() {
+		fmt.Println("📬 OnOpen subscription started, waiting for connection open event...")
+		for {
+			select {
+			case data, ok := <-openSub.Opens():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 OnOpen subscription channel closed")
+					return
+				}
+				// Log open event received via subscription
+				fmt.Println("📡 [OnOpen Subscription] Simulator connection opened!")
+				fmt.Printf("   App: %s (v%d.%d.%d.%d)\n",
+					data.ApplicationName,
+					data.ApplicationVersionMajor,
+					data.ApplicationVersionMinor,
+					data.ApplicationBuildMajor,
+					data.ApplicationBuildMinor,
+				)
+				fmt.Printf("   SimConnect: v%d.%d.%d.%d\n",
+					data.SimConnectVersionMajor,
+					data.SimConnectVersionMinor,
+					data.SimConnectBuildMajor,
+					data.SimConnectBuildMinor,
+				)
+			case <-openSub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 OnOpen subscription cancelled")
+				return
+			}
+		}
+	}()
+
+	// Subscribe to connection quit events via channel
+	// This demonstrates the SubscribeOnQuit pattern for detecting simulator quit
+	quitSub := mgr.SubscribeOnQuit("quit-subscriber", 16)
+
+	// Start a goroutine to process quit events from the subscription channel
+	go func() {
+		fmt.Println("📬 OnQuit subscription started, waiting for quit event...")
+		for {
+			select {
+			case _, ok := <-quitSub.Quits():
+				if !ok {
+					// Channel closed, subscription ended
+					fmt.Println("📭 OnQuit subscription channel closed")
+					return
+				}
+				// Log quit event received via subscription
+				fmt.Println("📡 [OnQuit Subscription] Simulator is quitting!")
+			case <-quitSub.Done():
+				// Subscription was cancelled
+				fmt.Println("📭 OnQuit subscription cancelled")
 				return
 			}
 		}
@@ -363,6 +449,8 @@ func main() {
 	// Unsubscribe when done (cleanup)
 	sub.Unsubscribe()
 	connStateSub.Unsubscribe()
+	openSub.Unsubscribe()
+	quitSub.Unsubscribe()
 	simStateSub.Unsubscribe()
 
 	// Small delay to allow goroutines to complete cleanup

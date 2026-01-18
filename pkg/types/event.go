@@ -28,3 +28,20 @@ const (
 	SIMCONNECT_EVENT_FLAG_FAST_REPEAT_TIMER
 	SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY
 )
+
+// ConnectionOpenData contains information passed when the connection opens
+type ConnectionOpenData struct {
+	ApplicationName         string
+	ApplicationVersionMajor uint32
+	ApplicationVersionMinor uint32
+	ApplicationBuildMajor   uint32
+	ApplicationBuildMinor   uint32
+	SimConnectVersionMajor  uint32
+	SimConnectVersionMinor  uint32
+	SimConnectBuildMajor    uint32
+	SimConnectBuildMinor    uint32
+}
+
+// ConnectionQuitData contains information passed when the connection closes
+type ConnectionQuitData struct {
+}

@@ -44,6 +44,30 @@ type connectionStateSubscription struct {
 	manager *Instance
 }
 
+// connectionOpenSubscription implements the ConnectionOpenSubscription interface
+type connectionOpenSubscription struct {
+	id      string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	ch      chan types.ConnectionOpenData
+	done    chan struct{}
+	closed  bool
+	closeMu sync.Mutex
+	manager *Instance
+}
+
+// connectionQuitSubscription implements the ConnectionQuitSubscription interface
+type connectionQuitSubscription struct {
+	id      string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	ch      chan types.ConnectionQuitData
+	done    chan struct{}
+	closed  bool
+	closeMu sync.Mutex
+	manager *Instance
+}
+
 // Subscribe creates a new message subscription that delivers messages to a channel.
 // The returned Subscription can be used to receive messages in an isolated goroutine.
 // The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
@@ -404,4 +428,186 @@ func (s *simStateSubscription) Unsubscribe() {
 	// Signal WaitGroup that this subscription is done
 	s.manager.simStateSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] SimState subscription unsubscribed: %s", s.id))
+}
+
+// SubscribeOnOpen creates a new connection open subscription that delivers open events to a channel.
+// The returned ConnectionOpenSubscription can be used to receive open events in an isolated goroutine.
+// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+// The channel is buffered with the specified size.
+// The subscription is automatically cancelled when the manager's context is cancelled.
+// Call Unsubscribe() when done to release resources.
+func (m *Instance) SubscribeOnOpen(id string, bufferSize int) ConnectionOpenSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+
+	// Derive context from manager's context for automatic cancellation
+	subCtx, subCancel := context.WithCancel(m.ctx)
+
+	sub := &connectionOpenSubscription{
+		id:      id,
+		ctx:     subCtx,
+		cancel:  subCancel,
+		ch:      make(chan types.ConnectionOpenData, bufferSize),
+		done:    make(chan struct{}),
+		manager: m,
+	}
+
+	m.mu.Lock()
+	m.openSubscriptions[id] = sub
+	m.openSubsWg.Add(1)
+	m.mu.Unlock()
+
+	// Start goroutine to watch for context cancellation
+	go sub.watchContext()
+
+	m.logger.Debug(fmt.Sprintf("[manager] Created open subscription: %s", id))
+	return sub
+}
+
+// watchContext monitors the open subscription's context and auto-unsubscribes when cancelled
+func (s *connectionOpenSubscription) watchContext() {
+	<-s.ctx.Done()
+	s.Unsubscribe()
+}
+
+// ID returns the unique identifier of the open subscription
+func (s *connectionOpenSubscription) ID() string {
+	return s.id
+}
+
+// Opens returns the channel for receiving connection open events
+func (s *connectionOpenSubscription) Opens() <-chan types.ConnectionOpenData {
+	return s.ch
+}
+
+// Done returns a channel that is closed when the subscription ends.
+// Use this to detect when to exit your consumer goroutine.
+func (s *connectionOpenSubscription) Done() <-chan struct{} {
+	return s.done
+}
+
+// Unsubscribe cancels the open subscription and closes the channel.
+// Blocks until any pending open event delivery completes.
+func (s *connectionOpenSubscription) Unsubscribe() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+	s.cancel()    // Cancel the subscription's context
+	close(s.done) // Signal consumers to stop
+	close(s.ch)   // Close event channel
+
+	// Remove from manager's open subscription map
+	s.manager.mu.Lock()
+	delete(s.manager.openSubscriptions, s.id)
+	s.manager.mu.Unlock()
+
+	// Signal WaitGroup that this subscription is done
+	s.manager.openSubsWg.Done()
+	s.manager.logger.Debug(fmt.Sprintf("[manager] Open subscription unsubscribed: %s", s.id))
+}
+
+// GetOpenSubscription returns an existing open subscription by ID, or nil if not found.
+func (m *Instance) GetOpenSubscription(id string) ConnectionOpenSubscription {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if sub, ok := m.openSubscriptions[id]; ok {
+		return sub
+	}
+	return nil
+}
+
+// SubscribeOnQuit creates a new connection quit subscription that delivers quit events to a channel.
+// The returned ConnectionQuitSubscription can be used to receive quit events in an isolated goroutine.
+// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
+// The channel is buffered with the specified size.
+// The subscription is automatically cancelled when the manager's context is cancelled.
+// Call Unsubscribe() when done to release resources.
+func (m *Instance) SubscribeOnQuit(id string, bufferSize int) ConnectionQuitSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+
+	// Derive context from manager's context for automatic cancellation
+	subCtx, subCancel := context.WithCancel(m.ctx)
+
+	sub := &connectionQuitSubscription{
+		id:      id,
+		ctx:     subCtx,
+		cancel:  subCancel,
+		ch:      make(chan types.ConnectionQuitData, bufferSize),
+		done:    make(chan struct{}),
+		manager: m,
+	}
+
+	m.mu.Lock()
+	m.quitSubscriptions[id] = sub
+	m.quitSubsWg.Add(1)
+	m.mu.Unlock()
+
+	// Start goroutine to watch for context cancellation
+	go sub.watchContext()
+
+	m.logger.Debug(fmt.Sprintf("[manager] Created quit subscription: %s", id))
+	return sub
+}
+
+// watchContext monitors the quit subscription's context and auto-unsubscribes when cancelled
+func (s *connectionQuitSubscription) watchContext() {
+	<-s.ctx.Done()
+	s.Unsubscribe()
+}
+
+// ID returns the unique identifier of the quit subscription
+func (s *connectionQuitSubscription) ID() string {
+	return s.id
+}
+
+// Quits returns the channel for receiving connection quit events
+func (s *connectionQuitSubscription) Quits() <-chan types.ConnectionQuitData {
+	return s.ch
+}
+
+// Done returns a channel that is closed when the subscription ends.
+// Use this to detect when to exit your consumer goroutine.
+func (s *connectionQuitSubscription) Done() <-chan struct{} {
+	return s.done
+}
+
+// Unsubscribe cancels the quit subscription and closes the channel.
+// Blocks until any pending quit event delivery completes.
+func (s *connectionQuitSubscription) Unsubscribe() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+	s.cancel()    // Cancel the subscription's context
+	close(s.done) // Signal consumers to stop
+	close(s.ch)   // Close event channel
+
+	// Remove from manager's quit subscription map
+	s.manager.mu.Lock()
+	delete(s.manager.quitSubscriptions, s.id)
+	s.manager.mu.Unlock()
+
+	// Signal WaitGroup that this subscription is done
+	s.manager.quitSubsWg.Done()
+	s.manager.logger.Debug(fmt.Sprintf("[manager] Quit subscription unsubscribed: %s", s.id))
+}
+
+// GetQuitSubscription returns an existing quit subscription by ID, or nil if not found.
+func (m *Instance) GetQuitSubscription(id string) ConnectionQuitSubscription {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if sub, ok := m.quitSubscriptions[id]; ok {
+		return sub
+	}
+	return nil
 }
