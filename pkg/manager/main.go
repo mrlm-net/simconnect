@@ -101,6 +101,10 @@ type Instance struct {
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
 
+	// Pre-allocated slices to reduce GC pressure in hot path (reused per message)
+	handlersBuf []MessageHandler
+	subsBuf     []*subscription
+
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
 }
@@ -594,7 +598,7 @@ func (m *Instance) runConnection() error {
 			}
 
 			if msg.Err != nil {
-				m.logger.Error(fmt.Sprintf("[manager] Stream error: %v", msg.Err))
+				m.logger.Error("[manager] Stream error", "error", msg.Err)
 				continue
 			}
 
@@ -737,22 +741,31 @@ func (m *Instance) runConnection() error {
 
 			// Forward message to registered handlers
 			m.mu.RLock()
-			handlers := make([]MessageHandler, len(m.messageHandlers))
-			for i, e := range m.messageHandlers {
-				handlers[i] = e.fn
+			// Reuse pre-allocated slices, grow if necessary
+			if cap(m.handlersBuf) < len(m.messageHandlers) {
+				m.handlersBuf = make([]MessageHandler, len(m.messageHandlers))
+			} else {
+				m.handlersBuf = m.handlersBuf[:len(m.messageHandlers)]
 			}
-			subs := make([]*subscription, 0, len(m.subscriptions))
+			for i, e := range m.messageHandlers {
+				m.handlersBuf[i] = e.fn
+			}
+			if cap(m.subsBuf) < len(m.subscriptions) {
+				m.subsBuf = make([]*subscription, 0, len(m.subscriptions))
+			} else {
+				m.subsBuf = m.subsBuf[:0]
+			}
 			for _, sub := range m.subscriptions {
-				subs = append(subs, sub)
+				m.subsBuf = append(m.subsBuf, sub)
 			}
 			m.mu.RUnlock()
 
-			for _, handler := range handlers {
+			for _, handler := range m.handlersBuf {
 				handler(msg)
 			}
 
 			// Forward message to subscriptions (non-blocking)
-			for _, sub := range subs {
+			for _, sub := range m.subsBuf {
 				// fast-path: skip closed subscriptions
 				sub.closeMu.Lock()
 				closed := sub.closed
@@ -768,7 +781,7 @@ func (m *Instance) runConnection() error {
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
-								m.logger.Error(fmt.Sprintf("[manager] Subscription filter panic: %v", r))
+								m.logger.Error("[manager] Subscription filter panic", "panic", r)
 								allowed = false
 							}
 						}()

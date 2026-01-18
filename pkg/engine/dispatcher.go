@@ -4,11 +4,22 @@
 package engine
 
 import (
-	"fmt"
+	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// byteSlicePool reduces GC pressure by reusing byte slices for message copying.
+// Slices larger than maxPooledSliceSize are not pooled to prevent memory bloat.
+var byteSlicePool = sync.Pool{
+	New: func() any {
+		return make([]byte, 0, 4096) // Pre-allocate 4KB capacity
+	},
+}
+
+const maxPooledSliceSize = 65536 // 64KB - larger messages won't be pooled
 
 const (
 	HEARTBEAT_EVENT_ID types.DWORD = 999999999 // SimConnect_SystemState_6Hz ID
@@ -30,7 +41,7 @@ func (e *Engine) dispatch() error {
 				recv, size, err := e.api.GetNextDispatch()
 
 				if err != nil {
-					e.logger.Error(fmt.Sprintf("[dispatcher] Error: %v\n", err))
+					e.logger.Error("[dispatcher] Error", "error", err)
 					select {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
@@ -42,12 +53,25 @@ func (e *Engine) dispatch() error {
 				}
 
 				if recv == nil {
-					// No message available, continue the loop
+					// No message available, sleep briefly to prevent CPU spinning
+					time.Sleep(1 * time.Millisecond)
 					continue
 				}
 
 				// Copy the received message before sending to the queue
-				dataCopy := make([]byte, size)
+				// Use pooled slice if size is reasonable, otherwise allocate fresh
+				var dataCopy []byte
+				if size <= maxPooledSliceSize {
+					pooled := byteSlicePool.Get().([]byte)
+					if cap(pooled) >= int(size) {
+						dataCopy = pooled[:size]
+					} else {
+						// Pooled slice too small, allocate new one
+						dataCopy = make([]byte, size)
+					}
+				} else {
+					dataCopy = make([]byte, size)
+				}
 				copy(dataCopy, unsafe.Slice((*byte)(unsafe.Pointer(recv)), size))
 				recvCopy := (*types.SIMCONNECT_RECV)(unsafe.Pointer(&dataCopy[0]))
 
@@ -83,11 +107,11 @@ func (e *Engine) dispatch() error {
 
 				if recvID == types.SIMCONNECT_RECV_ID_EXCEPTION {
 					exception := (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(recvCopy))
-					e.logger.Error(fmt.Sprintf("[dispatcher] Exception received - ID: %d, Error: %d\n", exception.DwException, exception.DwSendID))
+					e.logger.Error("[dispatcher] Exception received", "exceptionID", exception.DwException, "sendID", exception.DwSendID)
 				}
 
 				if size > 0 {
-					e.logger.Debug(fmt.Sprintf("[dispatcher] Message received - %v", types.SIMCONNECT_RECV_ID(recvCopy.DwID)))
+					e.logger.Debug("[dispatcher] Message received", "recvID", types.SIMCONNECT_RECV_ID(recvCopy.DwID))
 					// Send the copied message to the queue, respecting context cancellation
 					select {
 					case <-e.ctx.Done():
