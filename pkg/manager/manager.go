@@ -43,7 +43,7 @@ type Manager interface {
 	Stop() error
 
 	// State returns the current connection state
-	State() ConnectionState
+	ConnectionState() ConnectionState
 
 	// OnConnectionStateChange registers a callback to be invoked when connection state changes
 	// Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.

@@ -86,7 +86,7 @@ type messageHandlerEntry struct {
 }
 
 // State returns the current connection state
-func (m *Instance) State() ConnectionState {
+func (m *Instance) ConnectionState() ConnectionState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.state
