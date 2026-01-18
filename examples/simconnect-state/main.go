@@ -270,10 +270,10 @@ func main() {
 			newPauseStatus = "⏸️  Paused"
 		}
 		fmt.Printf("🎥 SimState changed:\n")
-		fmt.Printf("   Old: Camera=%s, Substate=%s, %s, Sim=%s\n",
-			oldState.Camera, oldState.Substate, oldPauseStatus, oldSimStatus)
-		fmt.Printf("   New: Camera=%s, Substate=%s, %s, Sim=%s\n",
-			newState.Camera, newState.Substate, newPauseStatus, newSimStatus)
+		fmt.Printf("   Old: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
+			oldState.Camera, oldState.Camera, oldState.Substate, oldPauseStatus, oldSimStatus)
+		fmt.Printf("   New: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
+			newState.Camera, newState.Camera, newState.Substate, newPauseStatus, newSimStatus)
 	})
 
 	// Register connection state change handler to setup data definitions when available
@@ -303,7 +303,7 @@ func main() {
 				pauseStatus = "⏸️  Paused"
 			}
 			fmt.Printf("📊 Current SimState:\n")
-			fmt.Printf("   Camera: %s (Substate: %s)\n", currentSimState.Camera, currentSimState.Substate)
+			fmt.Printf("   Camera: %s [%d] (Substate: %s)\n", currentSimState.Camera, currentSimState.Camera, currentSimState.Substate)
 			fmt.Printf("   Status: %s, Sim: %s\n", pauseStatus, simStatus)
 		case manager.StateReconnecting:
 			fmt.Println("🔄 Reconnecting to simulator...")
@@ -456,10 +456,10 @@ func main() {
 					newPauseStatus = "⏸️  Paused"
 				}
 				fmt.Printf("📡 [SimState Subscription] State changed:\n")
-				fmt.Printf("   Old: Camera=%s, Substate=%s, %s, Sim=%s\n",
-					change.OldState.Camera, change.OldState.Substate, oldPauseStatus, oldSimStatus)
-				fmt.Printf("   New: Camera=%s, Substate=%s, %s, Sim=%s\n",
-					change.NewState.Camera, change.NewState.Substate, newPauseStatus, newSimStatus)
+				fmt.Printf("   Old: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
+					change.OldState.Camera, change.OldState.Camera, change.OldState.Substate, oldPauseStatus, oldSimStatus)
+				fmt.Printf("   New: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
+					change.NewState.Camera, change.NewState.Camera, change.NewState.Substate, newPauseStatus, newSimStatus)
 				// Could trigger additional logic here based on camera state
 				if change.NewState.Camera == manager.CameraStateExternalChase {
 					fmt.Println("   🎥 Now viewing from EXTERNAL/CHASE camera")

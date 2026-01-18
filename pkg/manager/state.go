@@ -50,6 +50,13 @@ const (
 	CameraStateGround CameraState = 24
 	// CameraStateFollowTrafficAircraft represents the Follow Traffic Aircraft camera view
 	CameraStateFollowTrafficAircraft CameraState = 25
+
+	// Note: Some camera states from MSFS documentation are omitted due to being unused or deprecated
+	CameraStateInGameMenuAnimation CameraState = 29
+	CameraStateInGameLoading       CameraState = 30
+	CameraStateMainMenu            CameraState = 32
+	CameraStateInGameMenu          CameraState = 34
+	CameraStateMainMenuAnimation   CameraState = 35
 )
 
 // String returns a human-readable representation of the camera state
@@ -97,6 +104,16 @@ func (s CameraState) String() string {
 		return "Ground"
 	case CameraStateFollowTrafficAircraft:
 		return "Follow Traffic Aircraft"
+	case CameraStateInGameLoading:
+		return "In-Game Loading"
+	case CameraStateMainMenu:
+		return "Main Menu"
+	case CameraStateMainMenuAnimation:
+		return "Main Menu Animation"
+	case CameraStateInGameMenuAnimation:
+		return "In-Game Menu Animation"
+	case CameraStateInGameMenu:
+		return "In-Game Menu"
 	default:
 		return "Unknown"
 	}
