@@ -45,9 +45,9 @@ type Manager interface {
 	// State returns the current connection state
 	State() ConnectionState
 
-	// OnStateChange registers a callback to be invoked when connection state changes
-	// Returns a unique id that can be used to remove the handler via RemoveStateChange.
-	OnStateChange(handler StateChangeHandler) string
+	// OnConnectionStateChange registers a callback to be invoked when connection state changes
+	// Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.
+	OnConnectionStateChange(handler ConnectionStateChangeHandler) string
 
 	// OnMessage registers a callback to be invoked when a message is received.
 	// Returns a unique id that can be used to remove the handler via RemoveMessage.
@@ -78,10 +78,10 @@ type Manager interface {
 	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
 	// The channel is buffered with the specified size.
 	// Call Unsubscribe() when done to release resources.
-	SubscribeStateChange(id string, bufferSize int) StateSubscription
+	SubscribeConnectionStateChange(id string, bufferSize int) ConnectionStateSubscription
 
 	// GetStateSubscription returns an existing state subscription by ID, or nil if not found.
-	GetStateSubscription(id string) StateSubscription
+	GetConnectionStateSubscription(id string) ConnectionStateSubscription
 
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
@@ -109,7 +109,7 @@ type Manager interface {
 
 	// RemoveStateChange removes a previously registered state change handler by id.
 	// Returns an error if the id is unknown.
-	RemoveStateChange(id string) error
+	RemoveConnectionStateChange(id string) error
 
 	// RemoveMessage removes a previously registered message handler by id.
 	// Returns an error if the id is unknown.

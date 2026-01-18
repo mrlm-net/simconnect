@@ -236,7 +236,7 @@ func main() {
 	}()
 
 	// Register state change handler to setup data definitions when available
-	_ = mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
+	_ = mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
 		fmt.Printf("🔄 State changed: %s -> %s\n", oldState, newState)
 
 		switch newState {
@@ -260,14 +260,14 @@ func main() {
 
 	// Alternative: Subscribe to state changes via channel (demonstrates the new pattern)
 	// This is equivalent to using OnStateChange but with channel-based consumption
-	stateSub := mgr.SubscribeStateChange("state-subscriber", 16)
+	stateSub := mgr.SubscribeConnectionStateChange("state-subscriber", 16)
 
 	// Start a goroutine to process state changes from the subscription channel
 	go func() {
 		fmt.Println("📬 State subscription started, waiting for state changes...")
 		for {
 			select {
-			case change, ok := <-stateSub.StateChanges():
+			case change, ok := <-stateSub.ConnectionStateChanges():
 				if !ok {
 					// Channel closed, subscription ended
 					fmt.Println("📭 State subscription channel closed")

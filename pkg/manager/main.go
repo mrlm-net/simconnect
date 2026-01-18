@@ -34,16 +34,16 @@ func New(name string, opts ...Option) Manager {
 	ctx, cancel := context.WithCancel(config.Context)
 
 	return &Instance{
-		name:               name,
-		config:             config,
-		ctx:                ctx,
-		cancel:             cancel,
-		logger:             config.Logger,
-		state:              StateDisconnected,
-		stateHandlers:      []stateHandlerEntry{},
-		messageHandlers:    []messageHandlerEntry{},
-		subscriptions:      make(map[string]*subscription),
-		stateSubscriptions: make(map[string]*stateSubscription),
+		name:                         name,
+		config:                       config,
+		ctx:                          ctx,
+		cancel:                       cancel,
+		logger:                       config.Logger,
+		state:                        StateDisconnected,
+		stateHandlers:                []stateHandlerEntry{},
+		messageHandlers:              []messageHandlerEntry{},
+		subscriptions:                make(map[string]*subscription),
+		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 	}
 }
 
@@ -62,12 +62,12 @@ type Instance struct {
 	state ConnectionState
 	// Handler entries store an id and the callback function so callers can
 	// unregister using the id (similar to subscriptions).
-	stateHandlers      []stateHandlerEntry
-	messageHandlers    []messageHandlerEntry
-	subscriptions      map[string]*subscription
-	subsWg             sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
-	stateSubscriptions map[string]*stateSubscription
-	stateSubsWg        sync.WaitGroup // WaitGroup for graceful shutdown of state subscriptions
+	stateHandlers                []stateHandlerEntry
+	messageHandlers              []messageHandlerEntry
+	subscriptions                map[string]*subscription
+	subsWg                       sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
+	connectionStateSubscriptions map[string]*connectionStateSubscription
+	connectionStateSubsWg        sync.WaitGroup // WaitGroup for graceful shutdown of connection state subscriptions
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
@@ -76,7 +76,7 @@ type Instance struct {
 // stateHandlerEntry stores a state change handler with an identifier
 type stateHandlerEntry struct {
 	id string
-	fn StateChangeHandler
+	fn ConnectionStateChangeHandler
 }
 
 // messageHandlerEntry stores a message handler with an identifier
@@ -101,12 +101,12 @@ func (m *Instance) setState(newState ConnectionState) {
 		return
 	}
 	m.state = newState
-	handlers := make([]StateChangeHandler, len(m.stateHandlers))
+	handlers := make([]ConnectionStateChangeHandler, len(m.stateHandlers))
 	for i, e := range m.stateHandlers {
 		handlers[i] = e.fn
 	}
-	stateSubs := make([]*stateSubscription, 0, len(m.stateSubscriptions))
-	for _, sub := range m.stateSubscriptions {
+	stateSubs := make([]*connectionStateSubscription, 0, len(m.connectionStateSubscriptions))
+	for _, sub := range m.connectionStateSubscriptions {
 		stateSubs = append(stateSubs, sub)
 	}
 	m.mu.Unlock()
@@ -119,7 +119,7 @@ func (m *Instance) setState(newState ConnectionState) {
 	}
 
 	// Forward state change to subscriptions (non-blocking)
-	stateChange := StateChange{OldState: oldState, NewState: newState}
+	stateChange := ConnectionStateChange{OldState: oldState, NewState: newState}
 	for _, sub := range stateSubs {
 		sub.closeMu.Lock()
 		if !sub.closed {
@@ -134,9 +134,9 @@ func (m *Instance) setState(newState ConnectionState) {
 	}
 }
 
-// OnStateChange registers a callback to be invoked when connection state changes.
-// Returns a unique id that can be used to remove the handler via RemoveStateChange.
-func (m *Instance) OnStateChange(handler StateChangeHandler) string {
+// OnConnectionStateChange registers a callback to be invoked when connection state changes.
+// Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.
+func (m *Instance) OnConnectionStateChange(handler ConnectionStateChangeHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
 	m.stateHandlers = append(m.stateHandlers, stateHandlerEntry{id: id, fn: handler})
@@ -147,8 +147,8 @@ func (m *Instance) OnStateChange(handler StateChangeHandler) string {
 	return id
 }
 
-// RemoveStateChange removes a previously registered state change handler by id.
-func (m *Instance) RemoveStateChange(id string) error {
+// RemoveConnectionStateChange removes a previously registered connection state change handler by id.
+func (m *Instance) RemoveConnectionStateChange(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.stateHandlers {
@@ -503,7 +503,7 @@ func (m *Instance) Stop() error {
 	done := make(chan struct{})
 	go func() {
 		m.subsWg.Wait()
-		m.stateSubsWg.Wait()
+		m.connectionStateSubsWg.Wait()
 		close(done)
 	}()
 

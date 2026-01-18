@@ -4,7 +4,7 @@
 package manager
 
 // StateChange represents a connection state transition event
-type StateChange struct {
+type ConnectionStateChange struct {
 	OldState ConnectionState
 	NewState ConnectionState
 }
@@ -43,16 +43,16 @@ func (s ConnectionState) String() string {
 	}
 }
 
-// StateChangeHandler is a callback function invoked when connection state changes
-type StateChangeHandler func(oldState, newState ConnectionState)
+// ConnectionStateChangeHandler is a callback function invoked when connection state changes
+type ConnectionStateChangeHandler func(oldState, newState ConnectionState)
 
-// StateSubscription represents an active state change subscription that can be cancelled
-type StateSubscription interface {
+// ConnectionStateSubscription represents an active state change subscription that can be cancelled
+type ConnectionStateSubscription interface {
 	// ID returns the unique identifier of the subscription
 	ID() string
 
 	// StateChanges returns the channel for receiving state change events
-	StateChanges() <-chan StateChange
+	ConnectionStateChanges() <-chan ConnectionStateChange
 
 	// Done returns a channel that is closed when the subscription ends.
 	// Use this to detect when to exit your consumer goroutine.

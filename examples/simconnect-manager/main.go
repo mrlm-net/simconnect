@@ -236,7 +236,7 @@ func main() {
 	}()
 
 	// Register state change handler to setup data definitions when available
-	_ = mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
+	_ = mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
 		fmt.Printf("🔄 State changed: %s -> %s\n", oldState, newState)
 
 		switch newState {

@@ -33,11 +33,11 @@ type subscription struct {
 }
 
 // stateSubscription implements the StateSubscription interface
-type stateSubscription struct {
+type connectionStateSubscription struct {
 	id      string
 	ctx     context.Context
 	cancel  context.CancelFunc
-	ch      chan StateChange
+	ch      chan ConnectionStateChange
 	done    chan struct{}
 	closed  bool
 	closeMu sync.Mutex
@@ -219,7 +219,7 @@ func (s *subscription) Unsubscribe() {
 // The channel is buffered with the specified size.
 // The subscription is automatically cancelled when the manager's context is cancelled.
 // Call Unsubscribe() when done to release resources.
-func (m *Instance) SubscribeStateChange(id string, bufferSize int) StateSubscription {
+func (m *Instance) SubscribeConnectionStateChange(id string, bufferSize int) ConnectionStateSubscription {
 	if id == "" {
 		id = generateUUID()
 	}
@@ -227,18 +227,18 @@ func (m *Instance) SubscribeStateChange(id string, bufferSize int) StateSubscrip
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)
 
-	sub := &stateSubscription{
+	sub := &connectionStateSubscription{
 		id:      id,
 		ctx:     subCtx,
 		cancel:  subCancel,
-		ch:      make(chan StateChange, bufferSize),
+		ch:      make(chan ConnectionStateChange, bufferSize),
 		done:    make(chan struct{}),
 		manager: m,
 	}
 
 	m.mu.Lock()
-	m.stateSubscriptions[id] = sub
-	m.stateSubsWg.Add(1)
+	m.connectionStateSubscriptions[id] = sub
+	m.connectionStateSubsWg.Add(1)
 	m.mu.Unlock()
 
 	// Start goroutine to watch for context cancellation
@@ -249,40 +249,40 @@ func (m *Instance) SubscribeStateChange(id string, bufferSize int) StateSubscrip
 }
 
 // watchContext monitors the state subscription's context and auto-unsubscribes when cancelled
-func (s *stateSubscription) watchContext() {
+func (s *connectionStateSubscription) watchContext() {
 	<-s.ctx.Done()
 	s.Unsubscribe()
 }
 
-// GetStateSubscription returns an existing state subscription by ID, or nil if not found.
-func (m *Instance) GetStateSubscription(id string) StateSubscription {
+// GetConnectionStateSubscription returns an existing connection state subscription by ID, or nil if not found.
+func (m *Instance) GetConnectionStateSubscription(id string) ConnectionStateSubscription {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if sub, ok := m.stateSubscriptions[id]; ok {
+	if sub, ok := m.connectionStateSubscriptions[id]; ok {
 		return sub
 	}
 	return nil
 }
 
 // ID returns the unique identifier of the state subscription
-func (s *stateSubscription) ID() string {
+func (s *connectionStateSubscription) ID() string {
 	return s.id
 }
 
 // StateChanges returns the channel for receiving state change events
-func (s *stateSubscription) StateChanges() <-chan StateChange {
+func (s *connectionStateSubscription) ConnectionStateChanges() <-chan ConnectionStateChange {
 	return s.ch
 }
 
 // Done returns a channel that is closed when the state subscription ends.
 // Use this to detect when to exit your consumer goroutine.
-func (s *stateSubscription) Done() <-chan struct{} {
+func (s *connectionStateSubscription) Done() <-chan struct{} {
 	return s.done
 }
 
 // Unsubscribe cancels the state subscription and closes the channel.
 // Blocks until any pending state change delivery completes.
-func (s *stateSubscription) Unsubscribe() {
+func (s *connectionStateSubscription) Unsubscribe() {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
 
@@ -296,10 +296,10 @@ func (s *stateSubscription) Unsubscribe() {
 
 	// Remove from manager's state subscription map
 	s.manager.mu.Lock()
-	delete(s.manager.stateSubscriptions, s.id)
+	delete(s.manager.connectionStateSubscriptions, s.id)
 	s.manager.mu.Unlock()
 
 	// Signal WaitGroup that this subscription is done
-	s.manager.stateSubsWg.Done()
+	s.manager.connectionStateSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] State subscription unsubscribed: %s", s.id))
 }
