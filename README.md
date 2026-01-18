@@ -86,44 +86,15 @@ func main() {
 
 ## Configuration
 
-Both the `engine.Client` and `manager.Manager` support configuration via functional options. The root `simconnect` package exposes all options for convenience:
+Both `engine.Client` and `manager.Manager` support configuration via functional options. Choose based on your needs:
 
-```go
-import (
-    "time"
-    "github.com/mrlm-net/simconnect"
-)
-
-// Managed connection with auto-reconnect (recommended)
-mgr := simconnect.New("MyApp",
-    simconnect.WithAutoReconnect(true),
-    simconnect.WithRetryInterval(10 * time.Second),
-    simconnect.WithBufferSize(512),
-)
-
-// Direct engine client (for advanced use cases)
-client := simconnect.NewClient("MyApp",
-    simconnect.ClientWithBufferSize(512),
-    simconnect.ClientWithHeartbeat(types.Heartbeat6Hz),
-)
-```
-
-Alternatively, use the subpackages directly:
-
-```go
-import (
-    "github.com/mrlm-net/simconnect/pkg/engine"
-    "github.com/mrlm-net/simconnect/pkg/manager"
-)
-
-mgr := manager.New("MyApp", manager.WithAutoReconnect(true))
-client := engine.New("MyApp", engine.WithBufferSize(512))
-```
+- **Manager** (`simconnect.New`) — Use for long-running services with automatic reconnection
+- **Client** (`simconnect.NewClient`) — Use for simple scripts with direct engine access
 
 | Documentation | Description |
 |---------------|-------------|
 | [Engine/Client Config](docs/config-client.md) | Buffer size, DLL path, heartbeat, logging |
-| [Manager Config](docs/config-manager.md) | Auto-reconnect, retry intervals, timeouts, plus all engine options |
+| [Manager Config](docs/config-manager.md) | Auto-reconnect, retry intervals, timeouts |
 
 ## Contributing
 

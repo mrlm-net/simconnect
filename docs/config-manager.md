@@ -194,6 +194,44 @@ if mgr.IsAutoReconnect() {
 }
 ```
 
+## Simulator State Tracking
+
+The Manager provides access to simulator state through the `SimState()` method, available when the connection is active.
+
+### Accessing Simulator State
+
+```go
+if mgr.IsConnected() {
+    state := mgr.SimState()
+    fmt.Printf("Camera State: %d\n", state.CameraState)
+    fmt.Printf("Is Paused: %v\n", state.IsPaused)
+}
+```
+
+### SimState Structure
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `CameraState` | `int32` | Current camera state (0=cockpit, 1=external, etc.) |
+| `CameraSubstate` | `int32` | Substate of the current camera |
+| `IsPaused` | `bool` | Whether the simulator is paused |
+
+### Monitoring Simulator State Changes
+
+Subscribe to simulator state changes using `SubscribeSimStateChange()`:
+
+```go
+mgr.SubscribeSimStateChange(func(oldState, newState manager.SimState) {
+    if oldState.IsPaused != newState.IsPaused {
+        if newState.IsPaused {
+            fmt.Println("Simulator paused")
+        } else {
+            fmt.Println("Simulator resumed")
+        }
+    }
+})
+```
+
 ## Example: Full Configuration
 
 ```go
