@@ -4,11 +4,18 @@
 package manager
 
 import (
+	"errors"
 	"time"
+	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/datasets"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// ErrNotConnected is returned when an operation requires an active connection
+// but the manager is not currently connected to the simulator.
+var ErrNotConnected = errors.New("manager: not connected to simulator")
 
 // Manager defines the interface for managing SimConnect connections with
 // automatic lifecycle handling and reconnection support
@@ -143,6 +150,36 @@ type Manager interface {
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client
+
+	// Dataset Registration Methods
+	// These methods provide direct access to dataset operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// RegisterDataset registers a complete dataset definition with SimConnect.
+	// This is a convenience method that iterates over all definitions in the dataset
+	// and calls AddToDataDefinition for each one.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RegisterDataset(definitionID uint32, dataset *datasets.DataSet) error
+
+	// AddToDataDefinition adds a single data definition to a definition group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error
+
+	// RequestDataOnSimObject requests data for a specific simulation object.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestDataOnSimObject(requestID uint32, definitionID uint32, objectID uint32, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error
+
+	// RequestDataOnSimObjectType requests data for all objects of a specific type within a radius.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error
+
+	// ClearDataDefinition clears all data definitions for a definition group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	ClearDataDefinition(definitionID uint32) error
+
+	// SetDataOnSimObject sets data on a simulation object.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error
 
 	// Configuration getters
 

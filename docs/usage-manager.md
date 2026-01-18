@@ -373,6 +373,132 @@ if !manager.IsValidUserID(MyDataDefID) {
 }
 ```
 
+## Dataset Registration
+
+The manager exposes dataset registration methods directly, eliminating the need to access the underlying client for common data definition operations. All methods return `manager.ErrNotConnected` if called when not connected.
+
+### RegisterDataset
+
+Registers a complete pre-built dataset with SimConnect.
+
+```go
+import "github.com/mrlm-net/simconnect/pkg/datasets/traffic"
+
+mgr.OnConnectionStateChange(func(old, new manager.ConnectionState) {
+    if new == manager.StateConnected {
+        // Register a pre-built dataset directly on the manager
+        if err := mgr.RegisterDataset(DataDefID, traffic.NewAircraftDataset()); err != nil {
+            log.Printf("Failed to register dataset: %v", err)
+        }
+    }
+})
+```
+
+### AddToDataDefinition
+
+Adds individual data definitions to a definition group.
+
+```go
+mgr.OnConnectionStateChange(func(old, new manager.ConnectionState) {
+    if new == manager.StateConnected {
+        mgr.AddToDataDefinition(DataDefID, "PLANE LATITUDE", "degrees", 
+            types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+        mgr.AddToDataDefinition(DataDefID, "PLANE LONGITUDE", "degrees", 
+            types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+        mgr.AddToDataDefinition(DataDefID, "PLANE ALTITUDE", "feet", 
+            types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+    }
+})
+```
+
+### RequestDataOnSimObject
+
+Requests periodic data for a specific object (e.g., user aircraft).
+
+```go
+err := mgr.RequestDataOnSimObject(
+    DataReqID,                              // Request ID
+    DataDefID,                              // Definition ID
+    types.SIMCONNECT_OBJECT_ID_USER,        // User aircraft
+    types.SIMCONNECT_PERIOD_SECOND,         // Update every second
+    types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, // Only when changed
+    0, 0, 0,                                // origin, interval, limit
+)
+if err != nil {
+    if errors.Is(err, manager.ErrNotConnected) {
+        log.Println("Not connected, will retry later")
+    }
+}
+```
+
+### RequestDataOnSimObjectType
+
+Requests data for all objects of a type within a radius.
+
+```go
+// Request data for all aircraft within 25km
+err := mgr.RequestDataOnSimObjectType(
+    TrafficReqID,
+    TrafficDefID,
+    25000, // radius in meters
+    types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT,
+)
+```
+
+### ClearDataDefinition
+
+Clears all definitions from a definition group.
+
+```go
+err := mgr.ClearDataDefinition(DataDefID)
+```
+
+### SetDataOnSimObject
+
+Sets data values on a simulation object.
+
+```go
+type AircraftPosition struct {
+    Latitude  float64
+    Longitude float64
+    Altitude  float64
+}
+
+pos := AircraftPosition{
+    Latitude:  47.4502,
+    Longitude: -122.3088,
+    Altitude:  5000,
+}
+
+err := mgr.SetDataOnSimObject(
+    DataDefID,
+    types.SIMCONNECT_OBJECT_ID_USER,
+    0, // flags
+    0, // array count (0 for single object)
+    uint32(unsafe.Sizeof(pos)),
+    unsafe.Pointer(&pos),
+)
+```
+
+### Dataset Methods Summary
+
+| Method | Description |
+|--------|-------------|
+| `RegisterDataset(defID, dataset)` | Register a complete dataset |
+| `AddToDataDefinition(...)` | Add single data definition |
+| `RequestDataOnSimObject(...)` | Request data for specific object |
+| `RequestDataOnSimObjectType(...)` | Request data for object type |
+| `ClearDataDefinition(defID)` | Clear all definitions |
+| `SetDataOnSimObject(...)` | Set data on an object |
+
+All methods return `manager.ErrNotConnected` when not connected. Use `errors.Is()` to check:
+
+```go
+if errors.Is(err, manager.ErrNotConnected) {
+    // Handle not connected state
+}
+```
+
 ## Example: Complete Application
 
 ```go
@@ -428,7 +554,7 @@ func main() {
     // Set up data definitions when connected
     mgr.OnConnectionStateChange(func(old, new manager.ConnectionState) {
         if new == manager.StateConnected {
-            setupDataDefinitions(mgr.Client())
+            setupDataDefinitions(mgr)
         }
     })
 
@@ -461,15 +587,15 @@ func main() {
     }
 }
 
-func setupDataDefinitions(client engine.Client) {
-    client.AddToDataDefinition(DataDefID, "PLANE LATITUDE", "degrees", 
+func setupDataDefinitions(mgr manager.Manager) {
+    mgr.AddToDataDefinition(DataDefID, "PLANE LATITUDE", "degrees", 
         types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
-    client.AddToDataDefinition(DataDefID, "PLANE LONGITUDE", "degrees", 
+    mgr.AddToDataDefinition(DataDefID, "PLANE LONGITUDE", "degrees", 
         types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
-    client.AddToDataDefinition(DataDefID, "PLANE ALTITUDE", "feet", 
+    mgr.AddToDataDefinition(DataDefID, "PLANE ALTITUDE", "feet", 
         types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
 
-    client.RequestDataOnSimObject(
+    mgr.RequestDataOnSimObject(
         DataReqID, DataDefID,
         types.SIMCONNECT_OBJECT_ID_USER,
         types.SIMCONNECT_PERIOD_SECOND,
