@@ -1,7 +1,6 @@
 # mrlm-net/simconnect
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrlm-net/simconnect.svg)](https://pkg.go.dev/github.com/mrlm-net/simconnect)
-[![License](https://img.shields.io/github/license/mrlm-net/simconnect)](LICENSE)
 
 > **GoLang wrapper over SimConnect.dll SDK** — build Microsoft Flight Simulator add-ons with ease.
 
