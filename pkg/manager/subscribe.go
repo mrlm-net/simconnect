@@ -13,6 +13,291 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
+// FilenameEvent represents events that carry a filename (FlightLoaded, AircraftLoaded, FlightPlanActivated)
+type FilenameEvent struct {
+	Filename string
+}
+
+// FilenameSubscription is a typed subscription for filename-based system events
+type FilenameSubscription interface {
+	ID() string
+	Events() <-chan FilenameEvent
+	Done() <-chan struct{}
+	Unsubscribe()
+}
+
+type filenameSubscription struct {
+	id      string
+	sub     Subscription
+	ch      chan FilenameEvent
+	done    chan struct{}
+	mgr     *Instance
+	closeMu sync.Mutex
+}
+
+func (s *filenameSubscription) ID() string                   { return s.id }
+func (s *filenameSubscription) Events() <-chan FilenameEvent { return s.ch }
+func (s *filenameSubscription) Done() <-chan struct{}        { return s.done }
+func (s *filenameSubscription) Unsubscribe() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.sub != nil {
+		s.sub.Unsubscribe()
+		s.sub = nil
+	}
+	select {
+	case <-s.done:
+		// already closed
+	default:
+		close(s.done)
+	}
+	// ensure channel closed
+	select {
+	case <-s.ch:
+	default:
+		close(s.ch)
+	}
+}
+
+// SubscribeOnFlightLoaded returns a subscription delivering FlightLoaded filenames
+func (m *Instance) SubscribeOnFlightLoaded(id string, bufferSize int) FilenameSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	// subscribe to filename messages
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
+
+	go func() {
+		defer fs.Unsubscribe()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-fs.sub.Done():
+				return
+			case msg, ok := <-fs.sub.Messages():
+				if !ok {
+					return
+				}
+				fname := msg.AsEventFilename()
+				if fname == nil {
+					continue
+				}
+				if fname.UEventID != types.DWORD(m.flightLoadedEventID) {
+					continue
+				}
+				name := engine.BytesToString(fname.SzFileName[:])
+				select {
+				case fs.ch <- FilenameEvent{Filename: name}:
+				default:
+					m.logger.Debug(fmt.Sprintf("[manager] FlightLoaded subscription channel full, dropping event"))
+				}
+			}
+		}
+	}()
+	return fs
+}
+
+// SubscribeOnAircraftLoaded returns a subscription delivering AircraftLoaded filenames
+func (m *Instance) SubscribeOnAircraftLoaded(id string, bufferSize int) FilenameSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
+
+	go func() {
+		defer fs.Unsubscribe()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-fs.sub.Done():
+				return
+			case msg, ok := <-fs.sub.Messages():
+				if !ok {
+					return
+				}
+				fname := msg.AsEventFilename()
+				if fname == nil {
+					continue
+				}
+				if fname.UEventID != types.DWORD(m.aircraftLoadedEventID) {
+					continue
+				}
+				name := engine.BytesToString(fname.SzFileName[:])
+				select {
+				case fs.ch <- FilenameEvent{Filename: name}:
+				default:
+					m.logger.Debug(fmt.Sprintf("[manager] AircraftLoaded subscription channel full, dropping event"))
+				}
+			}
+		}
+	}()
+	return fs
+}
+
+// SubscribeOnFlightPlanActivated returns a subscription delivering FlightPlanActivated filenames
+func (m *Instance) SubscribeOnFlightPlanActivated(id string, bufferSize int) FilenameSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
+
+	go func() {
+		defer fs.Unsubscribe()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-fs.sub.Done():
+				return
+			case msg, ok := <-fs.sub.Messages():
+				if !ok {
+					return
+				}
+				fname := msg.AsEventFilename()
+				if fname == nil {
+					continue
+				}
+				if fname.UEventID != types.DWORD(m.flightPlanActivatedEventID) {
+					continue
+				}
+				name := engine.BytesToString(fname.SzFileName[:])
+				select {
+				case fs.ch <- FilenameEvent{Filename: name}:
+				default:
+					m.logger.Debug(fmt.Sprintf("[manager] FlightPlanActivated subscription channel full, dropping event"))
+				}
+			}
+		}
+	}()
+	return fs
+}
+
+// ObjectEvent represents an object add/remove event
+type ObjectEvent struct {
+	ObjectID uint32
+	ObjType  types.SIMCONNECT_SIMOBJECT_TYPE
+}
+
+// ObjectSubscription is a typed subscription for object add/remove events
+type ObjectSubscription interface {
+	ID() string
+	Events() <-chan ObjectEvent
+	Done() <-chan struct{}
+	Unsubscribe()
+}
+
+type objectSubscription struct {
+	id      string
+	sub     Subscription
+	ch      chan ObjectEvent
+	done    chan struct{}
+	mgr     *Instance
+	closeMu sync.Mutex
+}
+
+func (s *objectSubscription) ID() string                 { return s.id }
+func (s *objectSubscription) Events() <-chan ObjectEvent { return s.ch }
+func (s *objectSubscription) Done() <-chan struct{}      { return s.done }
+func (s *objectSubscription) Unsubscribe() {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.sub != nil {
+		s.sub.Unsubscribe()
+		s.sub = nil
+	}
+	select {
+	case <-s.done:
+	default:
+		close(s.done)
+	}
+	select {
+	case <-s.ch:
+	default:
+		close(s.ch)
+	}
+}
+
+// SubscribeOnObjectAdded returns a subscription delivering ObjectAdded events
+func (m *Instance) SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE)
+	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
+
+	go func() {
+		defer os.Unsubscribe()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-os.sub.Done():
+				return
+			case msg, ok := <-os.sub.Messages():
+				if !ok {
+					return
+				}
+				o := msg.AsEventObjectAddRemove()
+				if o == nil {
+					continue
+				}
+				if o.UEventID != types.DWORD(m.objectAddedEventID) {
+					continue
+				}
+				select {
+				case os.ch <- ObjectEvent{ObjectID: uint32(o.DwData), ObjType: o.EObjType}:
+				default:
+					m.logger.Debug(fmt.Sprintf("[manager] ObjectAdded subscription channel full, dropping event"))
+				}
+			}
+		}
+	}()
+	return os
+}
+
+// SubscribeOnObjectRemoved returns a subscription delivering ObjectRemoved events
+func (m *Instance) SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSubscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE)
+	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
+
+	go func() {
+		defer os.Unsubscribe()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-os.sub.Done():
+				return
+			case msg, ok := <-os.sub.Messages():
+				if !ok {
+					return
+				}
+				o := msg.AsEventObjectAddRemove()
+				if o == nil {
+					continue
+				}
+				if o.UEventID != types.DWORD(m.objectRemovedEventID) {
+					continue
+				}
+				select {
+				case os.ch <- ObjectEvent{ObjectID: uint32(o.DwData), ObjType: o.EObjType}:
+				default:
+					m.logger.Debug(fmt.Sprintf("[manager] ObjectRemoved subscription channel full, dropping event"))
+				}
+			}
+		}
+	}()
+	return os
+}
+
 // subscription implements the Subscription interface
 type subscription struct {
 	id      string

@@ -129,8 +129,8 @@ type SIMCONNECT_RECV_EVENT_EX1 struct {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_EVENT_FILENAME.htm
 type SIMCONNECT_RECV_EVENT_FILENAME struct {
-	SIMCONNECT_RECV
-	SzFileName [260]byte // Name of the file associated with the event;
+	SIMCONNECT_RECV_EVENT
+	SzFileName [260]byte // Name of the file associated with the event
 	DwFlags    DWORD
 }
 

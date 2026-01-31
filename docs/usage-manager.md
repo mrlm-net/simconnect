@@ -219,6 +219,55 @@ sub := mgr.SubscribeWithType("game-events", 10,
 defer sub.Unsubscribe()
 ```
 
+### Typed System Event Subscriptions
+
+The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
+
+- `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
+- `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
+- `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
+- `SubscribeOnObjectAdded(id, bufferSize)` — delivers `ObjectEvent` when an AI object is added (contains `ObjectID` and `ObjType`).
+- `SubscribeOnObjectRemoved(id, bufferSize)` — delivers `ObjectEvent` when an AI object is removed (contains `ObjectID` and `ObjType`).
+
+Example — receive flight-loaded notifications:
+
+```go
+sub := mgr.SubscribeOnFlightLoaded("flight-load", 5)
+defer sub.Unsubscribe()
+
+for {
+    select {
+    case ev := <-sub.Events():
+        fmt.Printf("Flight loaded: %s\n", ev.Filename)
+    case <-sub.Done():
+        return
+    }
+}
+```
+
+Example — monitor AI object add/remove events:
+
+```go
+subAdd := mgr.SubscribeOnObjectAdded("obj-add", 20)
+defer subAdd.Unsubscribe()
+subRem := mgr.SubscribeOnObjectRemoved("obj-rem", 20)
+defer subRem.Unsubscribe()
+
+go func() {
+    for ev := range subAdd.Events() {
+        fmt.Printf("Object added: id=%d type=%d\n", ev.ObjectID, ev.ObjType)
+    }
+}()
+
+for ev := range subRem.Events() {
+    fmt.Printf("Object removed: id=%d type=%d\n", ev.ObjectID, ev.ObjType)
+}
+```
+
+Notes:
+- These helpers filter and forward the appropriate SimConnect message types. They are safe to use concurrently and will automatically cancel when the manager stops.
+- The manager already subscribes to the corresponding SimConnect system events on connection open; these helpers simply provide typed channels for consumers.
+
 ### GetSubscription
 
 Retrieves an existing subscription by ID.

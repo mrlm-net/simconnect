@@ -55,6 +55,11 @@ func New(name string, opts ...Option) Manager {
 		cameraRequestID:              CameraRequestID,
 		pauseEventID:                 PauseEventID,
 		simEventID:                   SimEventID,
+		flightLoadedEventID:          FlightLoadedEventID,
+		aircraftLoadedEventID:        AircraftLoadedEventID,
+		objectAddedEventID:           ObjectAddedEventID,
+		objectRemovedEventID:         ObjectRemovedEventID,
+		flightPlanActivatedEventID:   FlightPlanActivatedEventID,
 		requestRegistry:              NewRequestRegistry(),
 	}
 }
@@ -88,15 +93,27 @@ type Instance struct {
 	quitSubsWg                   sync.WaitGroup // WaitGroup for graceful shutdown of quit subscriptions
 
 	// Simulator state
-	simState                 SimState
-	simStateHandlers         []simStateHandlerEntry
-	simStateSubscriptions    map[string]*simStateSubscription
-	simStateSubsWg           sync.WaitGroup // WaitGroup for graceful shutdown of simulator state subscriptions
-	cameraDefinitionID       uint32
-	cameraRequestID          uint32
-	cameraDataRequestPending bool
-	pauseEventID             uint32
-	simEventID               uint32
+	simState                   SimState
+	simStateHandlers           []simStateHandlerEntry
+	simStateSubscriptions      map[string]*simStateSubscription
+	simStateSubsWg             sync.WaitGroup // WaitGroup for graceful shutdown of simulator state subscriptions
+	cameraDefinitionID         uint32
+	cameraRequestID            uint32
+	cameraDataRequestPending   bool
+	pauseEventID               uint32
+	simEventID                 uint32
+	flightLoadedEventID        uint32
+	aircraftLoadedEventID      uint32
+	objectAddedEventID         uint32
+	objectRemovedEventID       uint32
+	flightPlanActivatedEventID uint32
+
+	// Event handlers
+	flightLoadedHandlers        []flightLoadedHandlerEntry
+	aircraftLoadedHandlers      []flightLoadedHandlerEntry
+	flightPlanActivatedHandlers []flightLoadedHandlerEntry
+	objectAddedHandlers         []objectChangeHandlerEntry
+	objectRemovedHandlers       []objectChangeHandlerEntry
 
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
@@ -125,6 +142,22 @@ type simStateHandlerEntry struct {
 type messageHandlerEntry struct {
 	id string
 	fn MessageHandler
+}
+
+// FlightLoaded handler type
+type FlightLoadedHandler func(filename string)
+
+type flightLoadedHandlerEntry struct {
+	id string
+	fn FlightLoadedHandler
+}
+
+// Object change handler type (add/remove)
+type ObjectChangeHandler func(objectID uint32, objType types.SIMCONNECT_SIMOBJECT_TYPE)
+
+type objectChangeHandlerEntry struct {
+	id string
+	fn ObjectChangeHandler
 }
 
 // openHandlerEntry stores a connection open handler with an identifier
@@ -344,6 +377,146 @@ func (m *Instance) RemoveQuit(id string) error {
 		}
 	}
 	return fmt.Errorf("quit handler not found: %s", id)
+}
+
+// OnFlightLoaded registers a callback invoked when a FlightLoaded system event arrives.
+func (m *Instance) OnFlightLoaded(handler FlightLoadedHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.flightLoadedHandlers = append(m.flightLoadedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered FlightLoaded handler: %s", id))
+	}
+	return id
+}
+
+// RemoveFlightLoaded removes a previously registered FlightLoaded handler.
+func (m *Instance) RemoveFlightLoaded(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.flightLoadedHandlers {
+		if e.id == id {
+			m.flightLoadedHandlers = append(m.flightLoadedHandlers[:i], m.flightLoadedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed FlightLoaded handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("FlightLoaded handler not found: %s", id)
+}
+
+// OnAircraftLoaded registers a callback invoked when an AircraftLoaded system event arrives.
+func (m *Instance) OnAircraftLoaded(handler FlightLoadedHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.aircraftLoadedHandlers = append(m.aircraftLoadedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered AircraftLoaded handler: %s", id))
+	}
+	return id
+}
+
+// RemoveAircraftLoaded removes a previously registered AircraftLoaded handler.
+func (m *Instance) RemoveAircraftLoaded(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.aircraftLoadedHandlers {
+		if e.id == id {
+			m.aircraftLoadedHandlers = append(m.aircraftLoadedHandlers[:i], m.aircraftLoadedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed AircraftLoaded handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("AircraftLoaded handler not found: %s", id)
+}
+
+// OnFlightPlanActivated registers a callback invoked when a FlightPlanActivated system event arrives.
+func (m *Instance) OnFlightPlanActivated(handler FlightLoadedHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.flightPlanActivatedHandlers = append(m.flightPlanActivatedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered FlightPlanActivated handler: %s", id))
+	}
+	return id
+}
+
+// RemoveFlightPlanActivated removes a previously registered FlightPlanActivated handler.
+func (m *Instance) RemoveFlightPlanActivated(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.flightPlanActivatedHandlers {
+		if e.id == id {
+			m.flightPlanActivatedHandlers = append(m.flightPlanActivatedHandlers[:i], m.flightPlanActivatedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed FlightPlanActivated handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("FlightPlanActivated handler not found: %s", id)
+}
+
+// OnObjectAdded registers a callback invoked when an ObjectAdded system event arrives.
+func (m *Instance) OnObjectAdded(handler ObjectChangeHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.objectAddedHandlers = append(m.objectAddedHandlers, objectChangeHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered ObjectAdded handler: %s", id))
+	}
+	return id
+}
+
+// RemoveObjectAdded removes a previously registered ObjectAdded handler.
+func (m *Instance) RemoveObjectAdded(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.objectAddedHandlers {
+		if e.id == id {
+			m.objectAddedHandlers = append(m.objectAddedHandlers[:i], m.objectAddedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed ObjectAdded handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("ObjectAdded handler not found: %s", id)
+}
+
+// OnObjectRemoved registers a callback invoked when an ObjectRemoved system event arrives.
+func (m *Instance) OnObjectRemoved(handler ObjectChangeHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.objectRemovedHandlers = append(m.objectRemovedHandlers, objectChangeHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered ObjectRemoved handler: %s", id))
+	}
+	return id
+}
+
+// RemoveObjectRemoved removes a previously registered ObjectRemoved handler.
+func (m *Instance) RemoveObjectRemoved(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.objectRemovedHandlers {
+		if e.id == id {
+			m.objectRemovedHandlers = append(m.objectRemovedHandlers[:i], m.objectRemovedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed ObjectRemoved handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("ObjectRemoved handler not found: %s", id)
 }
 
 // setOpen invokes all registered open handlers and sends to subscriptions
@@ -648,6 +821,34 @@ func (m *Instance) runConnection() error {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to Sim event: %v", err))
 					}
 
+					// Subscribe to additional system events
+					m.requestRegistry.Register(m.flightLoadedEventID, RequestTypeEvent, "FlightLoaded Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.flightLoadedEventID, "FlightLoaded"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to FlightLoaded event: %v", err))
+					}
+
+					m.requestRegistry.Register(m.aircraftLoadedEventID, RequestTypeEvent, "AircraftLoaded Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.aircraftLoadedEventID, "AircraftLoaded"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to AircraftLoaded event: %v", err))
+					}
+
+					m.requestRegistry.Register(m.flightPlanActivatedEventID, RequestTypeEvent, "FlightPlanActivated Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.flightPlanActivatedEventID, "FlightPlanActivated"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to FlightPlanActivated event: %v", err))
+					}
+
+					m.requestRegistry.Register(m.objectAddedEventID, RequestTypeEvent, "ObjectAdded Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.objectAddedEventID, "ObjectAdded"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to ObjectAdded event: %v", err))
+					}
+
+					m.requestRegistry.Register(m.objectRemovedEventID, RequestTypeEvent, "ObjectRemoved Event Subscription")
+					if err := client.SubscribeToSystemEvent(m.objectRemovedEventID, "ObjectRemoved"); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to subscribe to ObjectRemoved event: %v", err))
+					}
+
+					// (Position change events removed)
+
 					// Define camera data structure
 					m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Camera State and Substate Definition")
 					if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
@@ -712,6 +913,87 @@ func (m *Instance) runConnection() error {
 					if oldSimRunningState != newSimRunningState {
 						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: m.simState.Paused, SimRunning: newSimRunningState}
 						m.setSimState(newSimState)
+					}
+				}
+
+				// (Position change event handling removed)
+			}
+
+			// Handle filename events (FlightLoaded, AircraftLoaded, FlightPlanActivated)
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FILENAME {
+				fnameMsg := msg.AsEventFilename()
+				if fnameMsg != nil {
+					name := engine.BytesToString(fnameMsg.SzFileName[:])
+					if fnameMsg.UEventID == types.DWORD(m.flightLoadedEventID) {
+						m.logger.Debug(fmt.Sprintf("[manager] FlightLoaded event: %s", name))
+						// Invoke registered FlightLoaded handlers
+						m.mu.RLock()
+						hs := make([]FlightLoadedHandler, len(m.flightLoadedHandlers))
+						for i, e := range m.flightLoadedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(name)
+						}
+					}
+
+					if fnameMsg.UEventID == types.DWORD(m.aircraftLoadedEventID) {
+						m.logger.Debug(fmt.Sprintf("[manager] AircraftLoaded event: %s", name))
+						m.mu.RLock()
+						hs := make([]FlightLoadedHandler, len(m.aircraftLoadedHandlers))
+						for i, e := range m.aircraftLoadedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(name)
+						}
+					}
+
+					if fnameMsg.UEventID == types.DWORD(m.flightPlanActivatedEventID) {
+						m.logger.Debug(fmt.Sprintf("[manager] FlightPlanActivated event: %s", name))
+						m.mu.RLock()
+						hs := make([]FlightLoadedHandler, len(m.flightPlanActivatedHandlers))
+						for i, e := range m.flightPlanActivatedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(name)
+						}
+					}
+				}
+			}
+
+			// Handle object add/remove events (ObjectAdded, ObjectRemoved)
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE {
+				objMsg := msg.AsEventObjectAddRemove()
+				if objMsg != nil {
+					if objMsg.UEventID == types.DWORD(m.objectAddedEventID) {
+						m.logger.Debug(fmt.Sprintf("[manager] ObjectAdded event: id=%d, type=%d", objMsg.DwData, objMsg.EObjType))
+						// Invoke object added handlers
+						m.mu.RLock()
+						hs := make([]ObjectChangeHandler, len(m.objectAddedHandlers))
+						for i, e := range m.objectAddedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(uint32(objMsg.DwData), objMsg.EObjType)
+						}
+					}
+					if objMsg.UEventID == types.DWORD(m.objectRemovedEventID) {
+						m.logger.Debug(fmt.Sprintf("[manager] ObjectRemoved event: id=%d, type=%d", objMsg.DwData, objMsg.EObjType))
+						m.mu.RLock()
+						hs := make([]ObjectChangeHandler, len(m.objectRemovedHandlers))
+						for i, e := range m.objectRemovedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(uint32(objMsg.DwData), objMsg.EObjType)
+						}
 					}
 				}
 			}

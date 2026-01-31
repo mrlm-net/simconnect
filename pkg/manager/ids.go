@@ -24,14 +24,23 @@ const (
 	// Camera System IDs - Used for internal camera state polling
 	// These IDs manage the camera state (position, type) data that is continuously requested
 	// from the simulator and used to update the manager's SimState.
-	CameraDefinitionID uint32 = 999999997 // Definition ID for camera state data structure
-	CameraRequestID    uint32 = 999999998 // Request ID for periodic camera state data polling
+	CameraDefinitionID uint32 = 999999900 // Definition ID for camera state data structure
+	CameraRequestID    uint32 = 999999901 // Request ID for periodic camera state data polling
 
 	// Event System IDs - Used for internal system event subscriptions
 	// These IDs are used for request registry tracking (manager reserved range).
 	// The actual SimConnect subscription uses standard event IDs (1000, 1001).
-	PauseEventID uint32 = 999999900 // Manager ID for tracking pause event subscription
-	SimEventID   uint32 = 999999901 // Manager ID for tracking sim event subscription
+	PauseEventID uint32 = 999999998 // Manager ID for tracking pause event subscription
+	SimEventID   uint32 = 999999997 // Manager ID for tracking sim event subscription
+
+	// Additional Manager Event IDs
+	// These IDs map internal manager subscriptions for SimConnect system events.
+	FlightLoadedEventID        uint32 = 999999996 // Flight file loaded event
+	AircraftLoadedEventID      uint32 = 999999995 // Aircraft (AIR) loaded/changed event
+	ObjectAddedEventID         uint32 = 999999994 // Object (AI/traffic) added
+	ObjectRemovedEventID       uint32 = 999999993 // Object (AI/traffic) removed
+	FlightPlanActivatedEventID uint32 = 999999992 // Flight plan activated
+	// Position change event removed
 
 	// ID Range Documentation:
 	// User-Available Range: 1 - 998999 (998,999 IDs available for user requests)

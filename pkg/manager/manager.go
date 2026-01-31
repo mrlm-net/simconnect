@@ -147,6 +147,29 @@ type Manager interface {
 	// GetQuitSubscription returns an existing quit subscription by ID, or nil if not found.
 	GetQuitSubscription(id string) ConnectionQuitSubscription
 
+	// Typed system event subscriptions (filename/object events)
+	SubscribeOnFlightLoaded(id string, bufferSize int) FilenameSubscription
+	SubscribeOnAircraftLoaded(id string, bufferSize int) FilenameSubscription
+	SubscribeOnFlightPlanActivated(id string, bufferSize int) FilenameSubscription
+	SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubscription
+	SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSubscription
+
+	// Callback-style handlers for system events (convenience helpers)
+	OnFlightLoaded(handler FlightLoadedHandler) string
+	RemoveFlightLoaded(id string) error
+
+	OnAircraftLoaded(handler FlightLoadedHandler) string
+	RemoveAircraftLoaded(id string) error
+
+	OnFlightPlanActivated(handler FlightLoadedHandler) string
+	RemoveFlightPlanActivated(id string) error
+
+	OnObjectAdded(handler ObjectChangeHandler) string
+	RemoveObjectAdded(id string) error
+
+	OnObjectRemoved(handler ObjectChangeHandler) string
+	RemoveObjectRemoved(id string) error
+
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client

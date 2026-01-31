@@ -62,6 +62,13 @@ func (m *Message) AsEventFilename() *types.SIMCONNECT_RECV_EVENT_FILENAME {
 	return (*types.SIMCONNECT_RECV_EVENT_FILENAME)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
+func (m *Message) AsEventObjectAddRemove() *types.SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
 func (m *Message) AsOpen() *types.SIMCONNECT_RECV_OPEN {
 	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_OPEN {
 		return nil

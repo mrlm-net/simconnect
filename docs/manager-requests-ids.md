@@ -22,36 +22,34 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 
 ## Current Manager IDs
 
-### Camera System (999000-999001)
+### Camera System
 
 ```go
-CameraDefinitionID = 999000  // Camera state/substate data definition
-CameraRequestID    = 999001  // Periodic camera data requests
+CameraDefinitionID = 999999900  // Camera state/substate data definition
+CameraRequestID    = 999999901  // Periodic camera data requests
 ```
 
 **Purpose**: Continuously polls camera state (position, type) to update the manager's `SimState`.
 
 **Usage**: Internal to the manager. Not directly accessible to users but affects `OnSimStateChange` notifications.
 
-### Event System (999100)
+### Event System (manager-reserved IDs)
+
+The manager reserves specific high-number IDs for internal system event subscriptions. These are registered on connection open and used for request tracking; the actual SimConnect system event names are standard (e.g. "Pause", "Sim", "FlightLoaded").
 
 ```go
-PauseEventID = 999100  // Pause/unpause event subscription
+PauseEventID                 = 999999998 // Pause/unpause event subscription
+SimEventID                   = 999999997 // Sim start/stop event subscription
+FlightLoadedEventID          = 999999996 // Flight file loaded (filename returned)
+AircraftLoadedEventID        = 999999995 // Aircraft file loaded/changed (.AIR)
+ObjectAddedEventID           = 999999994 // AI object added
+ObjectRemovedEventID         = 999999993 // AI object removed
+FlightPlanActivatedEventID   = 999999992 // Flight plan activated (filename returned)
 ```
 
-**Purpose**: Subscribes to simulator pause events to track pause state in `SimState`.
+**Purpose**: These IDs are used to register and track the manager's internal subscriptions to SimConnect system events. Responses may arrive as different `SIMCONNECT_RECV` variants (e.g., `SIMCONNECT_RECV_EVENT`, `SIMCONNECT_RECV_EVENT_FILENAME`, `SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE`).
 
-**Usage**: Internal to the manager. Affects `Paused` field in `SimStateChange` notifications.
-
-### Heartbeat System (999999)
-
-```go
-HeartbeatEventID = 999999  // System heartbeat/status monitoring
-```
-
-**Purpose**: Used by the underlying engine for periodic status checks.
-
-**Usage**: Internal to the engine/manager coordination.
+**Usage**: Internal to the manager. The manager updates `SimState` for Pause/Sim events and provides typed subscription helpers for filename/object events.
 
 ## Request Registry
 
