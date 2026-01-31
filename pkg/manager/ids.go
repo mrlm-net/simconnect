@@ -20,28 +20,18 @@ const (
 	// - Consider organizing your IDs in logical sub-ranges if managing multiple concurrent requests
 	// - Example: Use 1000-1999 for aircraft data, 2000-2999 for environment data, etc.
 	// - Use the IsValidUserID() function to validate your chosen IDs before use
-	//
-	// INTERNAL MANAGER ID ALLOCATION:
-	// The manager allocates IDs as follows:
-	// - 999000-999099: Data Definitions (currently using 999000 for camera)
-	// - 999100-999199: Event Subscriptions (currently using 999100 for pause)
-	// - 999900-999999: System & Heartbeat (currently using 999999 for heartbeat)
 
 	// Camera System IDs - Used for internal camera state polling
 	// These IDs manage the camera state (position, type) data that is continuously requested
 	// from the simulator and used to update the manager's SimState.
-	CameraDefinitionID uint32 = 999000 // Definition ID for camera state data structure
-	CameraRequestID    uint32 = 999001 // Request ID for periodic camera state data polling
+	CameraDefinitionID uint32 = 999999997 // Definition ID for camera state data structure
+	CameraRequestID    uint32 = 999999998 // Request ID for periodic camera state data polling
 
 	// Event System IDs - Used for internal system event subscriptions
 	// These IDs are used for request registry tracking (manager reserved range).
 	// The actual SimConnect subscription uses standard event IDs (1000, 1001).
-	PauseEventID uint32 = 999100 // Manager ID for tracking pause event subscription
-	SimEventID   uint32 = 999101 // Manager ID for tracking sim event subscription
-
-	// Status and Heartbeat IDs - Used for internal status monitoring
-	// These IDs are used for periodic status checks and heartbeat operations.
-	HeartbeatEventID uint32 = 999999 // Event ID for heartbeat/status polling
+	PauseEventID uint32 = 999999900 // Manager ID for tracking pause event subscription
+	SimEventID   uint32 = 999999901 // Manager ID for tracking sim event subscription
 
 	// ID Range Documentation:
 	// User-Available Range: 1 - 998999 (998,999 IDs available for user requests)

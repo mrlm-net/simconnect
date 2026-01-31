@@ -202,9 +202,3 @@ type cameraDataStruct struct {
 	CameraState    int32
 	CameraSubstate int32
 }
-
-// Constants for camera data definition and request
-const (
-	cameraDefinitionID uint32 = 6000
-	cameraRequestID    uint32 = 6001
-)
