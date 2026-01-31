@@ -48,7 +48,7 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false},
+		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
@@ -762,7 +762,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -805,7 +805,7 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 
 					// Subscribe to pause events
 					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
@@ -857,6 +857,54 @@ func (m *Instance) runConnection() error {
 					if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to add CAMERA SUBSTATE definition: %v", err))
 					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIMULATION RATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add SIMULATION RATE definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIMULATION TIME", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add SIMULATION TIME definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL TIME", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add LOCAL TIME definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU TIME", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 5); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add ZULU TIME definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN VR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 6); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS IN VR definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING MOTION CONTROLLERS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 7); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS USING MOTION CONTROLLERS definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING JOYSTICK THROTTLE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 8); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS USING JOYSTICK THROTTLE definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN RTC", "", types.SIMCONNECT_DATATYPE_INT32, 0, 9); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS IN RTC definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AVATAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 10); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS AVATAR definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AIRCRAFT", "", types.SIMCONNECT_DATATYPE_INT32, 0, 11); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add IS AIRCRAFT definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_INT32, 0, 12); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add LOCAL DAY OF MONTH definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 13); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add LOCAL MONTH OF YEAR definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 14); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add LOCAL YEAR definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_INT32, 0, 15); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add ZULU DAY OF MONTH definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 16); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add ZULU MONTH OF YEAR definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 17); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add ZULU YEAR definition: %v", err))
+					}
 
 					// Request camera data with period matching heartbeat configuration
 					period := types.SIMCONNECT_PERIOD_SIM_FRAME
@@ -878,7 +926,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -898,7 +946,28 @@ func (m *Instance) runConnection() error {
 					m.mu.RUnlock()
 
 					if oldPausedState != newPausedState {
-						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: newPausedState, SimRunning: m.simState.SimRunning}
+						newSimState := SimState{
+							Camera:                   m.simState.Camera,
+							Substate:                 m.simState.Substate,
+							Paused:                   newPausedState,
+							SimRunning:               m.simState.SimRunning,
+							SimulationRate:           m.simState.SimulationRate,
+							SimulationTime:           m.simState.SimulationTime,
+							LocalTime:                m.simState.LocalTime,
+							ZuluTime:                 m.simState.ZuluTime,
+							IsInVR:                   m.simState.IsInVR,
+							IsUsingMotionControllers: m.simState.IsUsingMotionControllers,
+							IsUsingJoystickThrottle:  m.simState.IsUsingJoystickThrottle,
+							IsInRTC:                  m.simState.IsInRTC,
+							IsAvatar:                 m.simState.IsAvatar,
+							IsAircraft:               m.simState.IsAircraft,
+							LocalDay:                 m.simState.LocalDay,
+							LocalMonth:               m.simState.LocalMonth,
+							LocalYear:                m.simState.LocalYear,
+							ZuluDay:                  m.simState.ZuluDay,
+							ZuluMonth:                m.simState.ZuluMonth,
+							ZuluYear:                 m.simState.ZuluYear,
+						}
 						m.setSimState(newSimState)
 					}
 				}
@@ -911,7 +980,28 @@ func (m *Instance) runConnection() error {
 					m.mu.RUnlock()
 
 					if oldSimRunningState != newSimRunningState {
-						newSimState := SimState{Camera: m.simState.Camera, Substate: m.simState.Substate, Paused: m.simState.Paused, SimRunning: newSimRunningState}
+						newSimState := SimState{
+							Camera:                   m.simState.Camera,
+							Substate:                 m.simState.Substate,
+							Paused:                   m.simState.Paused,
+							SimRunning:               newSimRunningState,
+							SimulationRate:           m.simState.SimulationRate,
+							SimulationTime:           m.simState.SimulationTime,
+							LocalTime:                m.simState.LocalTime,
+							ZuluTime:                 m.simState.ZuluTime,
+							IsInVR:                   m.simState.IsInVR,
+							IsUsingMotionControllers: m.simState.IsUsingMotionControllers,
+							IsUsingJoystickThrottle:  m.simState.IsUsingJoystickThrottle,
+							IsInRTC:                  m.simState.IsInRTC,
+							IsAvatar:                 m.simState.IsAvatar,
+							IsAircraft:               m.simState.IsAircraft,
+							LocalDay:                 m.simState.LocalDay,
+							LocalMonth:               m.simState.LocalMonth,
+							LocalYear:                m.simState.LocalYear,
+							ZuluDay:                  m.simState.ZuluDay,
+							ZuluMonth:                m.simState.ZuluMonth,
+							ZuluYear:                 m.simState.ZuluYear,
+						}
 						m.setSimState(newSimState)
 					}
 				}
@@ -1007,15 +1097,61 @@ func (m *Instance) runConnection() error {
 					newCameraState := CameraState(cameraData.CameraState)
 					newCameraSubstate := CameraSubstate(cameraData.CameraSubstate)
 
+					// Extract additional simulation and environment variables
+					newSimRate := cameraData.SimulationRate
+					newSimTime := cameraData.SimulationTime
+					newLocalTime := cameraData.LocalTime
+					newZuluTime := cameraData.ZuluTime
+					newIsInVR := cameraData.IsInVR == 1
+					newIsUsingMotionControllers := cameraData.IsUsingMotionControllers == 1
+					newIsUsingJoystickThrottle := cameraData.IsUsingJoystickThrottle == 1
+					newIsInRTC := cameraData.IsInRTC == 1
+					newIsAvatar := cameraData.IsAvatar == 1
+					newIsAircraft := cameraData.IsAircraft == 1
+
+					// Date fields
+					newLocalDay := int(cameraData.LocalDay)
+					newLocalMonth := int(cameraData.LocalMonth)
+					newLocalYear := int(cameraData.LocalYear)
+					newZuluDay := int(cameraData.ZuluDay)
+					newZuluMonth := int(cameraData.ZuluMonth)
+					newZuluYear := int(cameraData.ZuluYear)
+
 					m.mu.RLock()
-					oldCameraState := m.simState.Camera
-					oldCameraSubstate := m.simState.Substate
-					oldPausedState := m.simState.Paused
-					oldSimRunningState := m.simState.SimRunning
+					old := m.simState
 					m.mu.RUnlock()
 
-					if oldCameraState != newCameraState || oldCameraSubstate != newCameraSubstate {
-						newSimState := SimState{Camera: newCameraState, Substate: newCameraSubstate, Paused: oldPausedState, SimRunning: oldSimRunningState}
+					// If any monitored field changed, publish a new SimState
+
+					if old.Camera != newCameraState || old.Substate != newCameraSubstate ||
+						old.SimulationRate != newSimRate || old.SimulationTime != newSimTime || old.LocalTime != newLocalTime || old.ZuluTime != newZuluTime ||
+						old.IsInVR != newIsInVR || old.IsUsingMotionControllers != newIsUsingMotionControllers || old.IsUsingJoystickThrottle != newIsUsingJoystickThrottle ||
+						old.IsInRTC != newIsInRTC || old.IsAvatar != newIsAvatar || old.IsAircraft != newIsAircraft ||
+						old.LocalDay != newLocalDay || old.LocalMonth != newLocalMonth || old.LocalYear != newLocalYear ||
+						old.ZuluDay != newZuluDay || old.ZuluMonth != newZuluMonth || old.ZuluYear != newZuluYear {
+
+						newSimState := SimState{
+							Camera:                   newCameraState,
+							Substate:                 newCameraSubstate,
+							Paused:                   old.Paused,
+							SimRunning:               old.SimRunning,
+							SimulationRate:           newSimRate,
+							SimulationTime:           newSimTime,
+							LocalTime:                newLocalTime,
+							ZuluTime:                 newZuluTime,
+							IsInVR:                   newIsInVR,
+							IsUsingMotionControllers: newIsUsingMotionControllers,
+							IsUsingJoystickThrottle:  newIsUsingJoystickThrottle,
+							IsInRTC:                  newIsInRTC,
+							IsAvatar:                 newIsAvatar,
+							IsAircraft:               newIsAircraft,
+							LocalDay:                 newLocalDay,
+							LocalMonth:               newLocalMonth,
+							LocalYear:                newLocalYear,
+							ZuluDay:                  newZuluDay,
+							ZuluMonth:                newZuluMonth,
+							ZuluYear:                 newZuluYear,
+						}
 						m.setSimState(newSimState)
 					}
 				}

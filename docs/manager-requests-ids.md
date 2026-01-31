@@ -33,6 +33,16 @@ CameraRequestID    = 999999901  // Periodic camera data requests
 
 **Usage**: Internal to the manager. Not directly accessible to users but affects `OnSimStateChange` notifications.
 
+The manager's camera data definition now includes additional environment and simulation variables which are exposed on `SimState`:
+
+- `SIMULATION RATE` (Number) — internal rate of passing time
+- `SIMULATION TIME` (Seconds) — seconds since the simulation started
+- `LOCAL TIME` (Seconds) — seconds since local midnight
+- `ZULU TIME` (Seconds) — seconds since Zulu (UTC) midnight
+- `LOCAL DAY OF MONTH`, `LOCAL MONTH OF YEAR`, `LOCAL YEAR` (Number) — local date
+- `ZULU DAY OF MONTH`, `ZULU MONTH OF YEAR`, `ZULU YEAR` (Number) — Zulu date
+- `IS IN VR`, `IS USING MOTION CONTROLLERS`, `IS USING JOYSTICK THROTTLE`, `IS IN RTC`, `IS AVATAR`, `IS AIRCRAFT` (Boolean) — environment flags
+
 ### Event System (manager-reserved IDs)
 
 The manager reserves specific high-number IDs for internal system event subscriptions. These are registered on connection open and used for request tracking; the actual SimConnect system event names are standard (e.g. "Pause", "Sim", "FlightLoaded").
@@ -192,9 +202,9 @@ Potential improvements for request management:
 Manager registers internal requests at these points:
 
 1. **On Connection (via `onEngineOpen`)**: 
-   - Camera Definition (999000)
-   - Camera Request (999001)
-   - Pause Event (999100)
+    - Camera Definition (999000) — registers camera state, simulation/time variables, date fields and IS_* flags
+    - Camera Request (999001)
+    - Pause Event (999100)
 
 2. **On Disconnect (via `disconnect`)**:
    - All requests cleared via `requestRegistry.Clear()`

@@ -164,11 +164,50 @@ type SimState struct {
 	Substate   CameraSubstate
 	Paused     bool
 	SimRunning bool
+	// Simulation variables
+	SimulationRate float64 // SIMULATION RATE
+	SimulationTime float64 // SIMULATION TIME (seconds since simulation start)
+	LocalTime      float64 // LOCAL TIME (seconds since midnight local)
+	ZuluTime       float64 // ZULU TIME (seconds since midnight Zulu)
+
+	// Boolean environment flags (IS_*)
+	IsInVR                   bool
+	IsUsingMotionControllers bool
+	IsUsingJoystickThrottle  bool
+	IsInRTC                  bool
+	IsAvatar                 bool
+	IsAircraft               bool
+	// Date fields (local and Zulu)
+	LocalDay   int // LOCAL DAY OF MONTH
+	LocalMonth int // LOCAL MONTH OF YEAR
+	LocalYear  int // LOCAL YEAR
+	ZuluDay    int // ZULU DAY OF MONTH
+	ZuluMonth  int // ZULU MONTH OF YEAR
+	ZuluYear   int // ZULU YEAR
 }
 
 // Equal returns true if two SimState values are equivalent
 func (s SimState) Equal(other SimState) bool {
-	return s.Camera == other.Camera && s.Substate == other.Substate && s.Paused == other.Paused && s.SimRunning == other.SimRunning
+	return s.Camera == other.Camera &&
+		s.Substate == other.Substate &&
+		s.Paused == other.Paused &&
+		s.SimRunning == other.SimRunning &&
+		s.SimulationRate == other.SimulationRate &&
+		s.SimulationTime == other.SimulationTime &&
+		s.LocalTime == other.LocalTime &&
+		s.ZuluTime == other.ZuluTime &&
+		s.IsInVR == other.IsInVR &&
+		s.IsUsingMotionControllers == other.IsUsingMotionControllers &&
+		s.IsUsingJoystickThrottle == other.IsUsingJoystickThrottle &&
+		s.IsInRTC == other.IsInRTC &&
+		s.IsAvatar == other.IsAvatar &&
+		s.IsAircraft == other.IsAircraft &&
+		s.LocalDay == other.LocalDay &&
+		s.LocalMonth == other.LocalMonth &&
+		s.LocalYear == other.LocalYear &&
+		s.ZuluDay == other.ZuluDay &&
+		s.ZuluMonth == other.ZuluMonth &&
+		s.ZuluYear == other.ZuluYear
 }
 
 // SimStateChange represents a simulator state transition event
@@ -199,6 +238,22 @@ type SimStateSubscription interface {
 
 // cameraDataStruct is the structure for camera data received from SimConnect
 type cameraDataStruct struct {
-	CameraState    int32
-	CameraSubstate int32
+	CameraState              int32
+	CameraSubstate           int32
+	SimulationRate           float64
+	SimulationTime           float64
+	LocalTime                float64
+	ZuluTime                 float64
+	IsInVR                   int32
+	IsUsingMotionControllers int32
+	IsUsingJoystickThrottle  int32
+	IsInRTC                  int32
+	IsAvatar                 int32
+	IsAircraft               int32
+	LocalDay                 int32
+	LocalMonth               int32
+	LocalYear                int32
+	ZuluDay                  int32
+	ZuluMonth                int32
+	ZuluYear                 int32
 }
