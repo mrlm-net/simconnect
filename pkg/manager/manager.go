@@ -154,9 +154,24 @@ type Manager interface {
 	SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubscription
 	SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSubscription
 
+	// Typed system event subscriptions (crash/sound events)
+	SubscribeOnCrashed(id string, bufferSize int) Subscription
+	SubscribeOnCrashReset(id string, bufferSize int) Subscription
+	SubscribeOnSoundEvent(id string, bufferSize int) Subscription
+
 	// Callback-style handlers for system events (convenience helpers)
 	OnFlightLoaded(handler FlightLoadedHandler) string
 	RemoveFlightLoaded(id string) error
+
+	// Crash and sound event handlers
+	OnCrashed(handler CrashedHandler) string
+	RemoveCrashed(id string) error
+
+	OnCrashReset(handler CrashResetHandler) string
+	RemoveCrashReset(id string) error
+
+	OnSoundEvent(handler SoundEventHandler) string
+	RemoveSoundEvent(id string) error
 
 	OnAircraftLoaded(handler FlightLoadedHandler) string
 	RemoveAircraftLoaded(id string) error

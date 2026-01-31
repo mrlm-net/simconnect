@@ -177,6 +177,10 @@ type SimState struct {
 	IsInRTC                  bool
 	IsAvatar                 bool
 	IsAircraft               bool
+	// Crash and sound flags
+	Crashed     bool
+	CrashReset  bool
+	LastSoundID uint32
 	// Date fields (local and Zulu)
 	LocalDay   int // LOCAL DAY OF MONTH
 	LocalMonth int // LOCAL MONTH OF YEAR
@@ -202,6 +206,10 @@ func (s SimState) Equal(other SimState) bool {
 		s.IsInRTC == other.IsInRTC &&
 		s.IsAvatar == other.IsAvatar &&
 		s.IsAircraft == other.IsAircraft &&
+		// Crash and sound flags
+		s.Crashed == other.Crashed &&
+		s.CrashReset == other.CrashReset &&
+		s.LastSoundID == other.LastSoundID &&
 		s.LocalDay == other.LocalDay &&
 		s.LocalMonth == other.LocalMonth &&
 		s.LocalYear == other.LocalYear &&

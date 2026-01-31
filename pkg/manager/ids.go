@@ -32,6 +32,10 @@ const (
 	// The actual SimConnect subscription uses standard event IDs (1000, 1001).
 	PauseEventID uint32 = 999999998 // Manager ID for tracking pause event subscription
 	SimEventID   uint32 = 999999997 // Manager ID for tracking sim event subscription
+	// Crash and Sound Events
+	CrashedEventID    uint32 = 999999991 // Manager ID for tracking 'Crashed' system event
+	CrashResetEventID uint32 = 999999990 // Manager ID for tracking 'Crash Reset' system event
+	SoundEventID      uint32 = 999999989 // Manager ID for tracking 'Sound' system event
 
 	// Additional Manager Event IDs
 	// These IDs map internal manager subscriptions for SimConnect system events.

@@ -48,7 +48,7 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
+		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
@@ -60,6 +60,12 @@ func New(name string, opts ...Option) Manager {
 		objectAddedEventID:           ObjectAddedEventID,
 		objectRemovedEventID:         ObjectRemovedEventID,
 		flightPlanActivatedEventID:   FlightPlanActivatedEventID,
+		crashedEventID:               CrashedEventID,
+		crashResetEventID:            CrashResetEventID,
+		soundEventID:                 SoundEventID,
+		crashedHandlers:              []crashedHandlerEntry{},
+		crashResetHandlers:           []crashResetHandlerEntry{},
+		soundEventHandlers:           []soundEventHandlerEntry{},
 		requestRegistry:              NewRequestRegistry(),
 	}
 }
@@ -115,6 +121,13 @@ type Instance struct {
 	objectAddedHandlers         []objectChangeHandlerEntry
 	objectRemovedHandlers       []objectChangeHandlerEntry
 
+	crashedHandlers    []crashedHandlerEntry
+	crashResetHandlers []crashResetHandlerEntry
+	soundEventHandlers []soundEventHandlerEntry
+	crashedEventID     uint32
+	crashResetEventID  uint32
+	soundEventID       uint32
+
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
 
@@ -158,6 +171,30 @@ type ObjectChangeHandler func(objectID uint32, objType types.SIMCONNECT_SIMOBJEC
 type objectChangeHandlerEntry struct {
 	id string
 	fn ObjectChangeHandler
+}
+
+// Crashed handler type
+type CrashedHandler func()
+
+type crashedHandlerEntry struct {
+	id string
+	fn CrashedHandler
+}
+
+// CrashReset handler type
+type CrashResetHandler func()
+
+type crashResetHandlerEntry struct {
+	id string
+	fn CrashResetHandler
+}
+
+// Sound event handler type
+type SoundEventHandler func(soundID uint32)
+
+type soundEventHandlerEntry struct {
+	id string
+	fn SoundEventHandler
 }
 
 // openHandlerEntry stores a connection open handler with an identifier
@@ -519,6 +556,135 @@ func (m *Instance) RemoveObjectRemoved(id string) error {
 	return fmt.Errorf("ObjectRemoved handler not found: %s", id)
 }
 
+// SubscribeOnCrashed returns a subscription that receives raw engine.Message for Crashed events
+func (m *Instance) SubscribeOnCrashed(id string, bufferSize int) Subscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	filter := func(msg engine.Message) bool {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+			return false
+		}
+		ev := msg.AsEvent()
+		return ev != nil && ev.UEventID == types.DWORD(m.crashedEventID)
+	}
+	return m.SubscribeWithFilter(id+"-crashed", bufferSize, filter)
+}
+
+// SubscribeOnCrashReset returns a subscription for CrashReset events
+func (m *Instance) SubscribeOnCrashReset(id string, bufferSize int) Subscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	filter := func(msg engine.Message) bool {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+			return false
+		}
+		ev := msg.AsEvent()
+		return ev != nil && ev.UEventID == types.DWORD(m.crashResetEventID)
+	}
+	return m.SubscribeWithFilter(id+"-crashreset", bufferSize, filter)
+}
+
+// SubscribeOnSoundEvent returns a subscription for Sound events
+func (m *Instance) SubscribeOnSoundEvent(id string, bufferSize int) Subscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	filter := func(msg engine.Message) bool {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+			return false
+		}
+		ev := msg.AsEvent()
+		return ev != nil && ev.UEventID == types.DWORD(m.soundEventID)
+	}
+	return m.SubscribeWithFilter(id+"-sound", bufferSize, filter)
+}
+
+// OnCrashed registers a callback invoked when a Crashed system event arrives.
+func (m *Instance) OnCrashed(handler CrashedHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.crashedHandlers = append(m.crashedHandlers, crashedHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered Crashed handler: %s", id))
+	}
+	return id
+}
+
+// RemoveCrashed removes a previously registered Crashed handler.
+func (m *Instance) RemoveCrashed(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.crashedHandlers {
+		if e.id == id {
+			m.crashedHandlers = append(m.crashedHandlers[:i], m.crashedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed Crashed handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("Crashed handler not found: %s", id)
+}
+
+// OnCrashReset registers a callback invoked when a CrashReset system event arrives.
+func (m *Instance) OnCrashReset(handler CrashResetHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.crashResetHandlers = append(m.crashResetHandlers, crashResetHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered CrashReset handler: %s", id))
+	}
+	return id
+}
+
+// RemoveCrashReset removes a previously registered CrashReset handler.
+func (m *Instance) RemoveCrashReset(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.crashResetHandlers {
+		if e.id == id {
+			m.crashResetHandlers = append(m.crashResetHandlers[:i], m.crashResetHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed CrashReset handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("CrashReset handler not found: %s", id)
+}
+
+// OnSoundEvent registers a callback invoked when a Sound event arrives.
+func (m *Instance) OnSoundEvent(handler SoundEventHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.soundEventHandlers = append(m.soundEventHandlers, soundEventHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug(fmt.Sprintf("[manager] Registered SoundEvent handler: %s", id))
+	}
+	return id
+}
+
+// RemoveSoundEvent removes a previously registered Sound event handler.
+func (m *Instance) RemoveSoundEvent(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.soundEventHandlers {
+		if e.id == id {
+			m.soundEventHandlers = append(m.soundEventHandlers[:i], m.soundEventHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug(fmt.Sprintf("[manager] Removed SoundEvent handler: %s", id))
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("SoundEvent handler not found: %s", id)
+}
+
 // setOpen invokes all registered open handlers and sends to subscriptions
 func (m *Instance) setOpen(data types.ConnectionOpenData) {
 	m.mu.Lock()
@@ -762,7 +928,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -805,7 +971,7 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 
 					// Subscribe to pause events
 					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
@@ -926,7 +1092,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -995,6 +1161,9 @@ func (m *Instance) runConnection() error {
 							IsInRTC:                  m.simState.IsInRTC,
 							IsAvatar:                 m.simState.IsAvatar,
 							IsAircraft:               m.simState.IsAircraft,
+							Crashed:                  m.simState.Crashed,
+							CrashReset:               m.simState.CrashReset,
+							LastSoundID:              m.simState.LastSoundID,
 							LocalDay:                 m.simState.LocalDay,
 							LocalMonth:               m.simState.LocalMonth,
 							LocalYear:                m.simState.LocalYear,
@@ -1003,6 +1172,142 @@ func (m *Instance) runConnection() error {
 							ZuluYear:                 m.simState.ZuluYear,
 						}
 						m.setSimState(newSimState)
+					}
+				}
+
+				// Handle Crashed event
+				if eventMsg.UEventID == types.DWORD(m.crashedEventID) {
+					newCrashed := eventMsg.DwData == 1
+					m.mu.RLock()
+					old := m.simState
+					m.mu.RUnlock()
+					if old.Crashed != newCrashed {
+						newSimState := SimState{
+							Camera:                   old.Camera,
+							Substate:                 old.Substate,
+							Paused:                   old.Paused,
+							SimRunning:               old.SimRunning,
+							SimulationRate:           old.SimulationRate,
+							SimulationTime:           old.SimulationTime,
+							LocalTime:                old.LocalTime,
+							ZuluTime:                 old.ZuluTime,
+							IsInVR:                   old.IsInVR,
+							IsUsingMotionControllers: old.IsUsingMotionControllers,
+							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
+							IsInRTC:                  old.IsInRTC,
+							IsAvatar:                 old.IsAvatar,
+							IsAircraft:               old.IsAircraft,
+							Crashed:                  newCrashed,
+							CrashReset:               old.CrashReset,
+							LastSoundID:              old.LastSoundID,
+							LocalDay:                 old.LocalDay,
+							LocalMonth:               old.LocalMonth,
+							LocalYear:                old.LocalYear,
+							ZuluDay:                  old.ZuluDay,
+							ZuluMonth:                old.ZuluMonth,
+							ZuluYear:                 old.ZuluYear,
+						}
+						m.setSimState(newSimState)
+						// invoke handlers
+						m.mu.RLock()
+						hs := make([]CrashedHandler, len(m.crashedHandlers))
+						for i, e := range m.crashedHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h()
+						}
+					}
+				}
+
+				// Handle CrashReset event
+				if eventMsg.UEventID == types.DWORD(m.crashResetEventID) {
+					newReset := eventMsg.DwData == 1
+					m.mu.RLock()
+					old := m.simState
+					m.mu.RUnlock()
+					if old.CrashReset != newReset {
+						newSimState := SimState{
+							Camera:                   old.Camera,
+							Substate:                 old.Substate,
+							Paused:                   old.Paused,
+							SimRunning:               old.SimRunning,
+							SimulationRate:           old.SimulationRate,
+							SimulationTime:           old.SimulationTime,
+							LocalTime:                old.LocalTime,
+							ZuluTime:                 old.ZuluTime,
+							IsInVR:                   old.IsInVR,
+							IsUsingMotionControllers: old.IsUsingMotionControllers,
+							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
+							IsInRTC:                  old.IsInRTC,
+							IsAvatar:                 old.IsAvatar,
+							IsAircraft:               old.IsAircraft,
+							Crashed:                  old.Crashed,
+							CrashReset:               newReset,
+							LastSoundID:              old.LastSoundID,
+							LocalDay:                 old.LocalDay,
+							LocalMonth:               old.LocalMonth,
+							LocalYear:                old.LocalYear,
+							ZuluDay:                  old.ZuluDay,
+							ZuluMonth:                old.ZuluMonth,
+							ZuluYear:                 old.ZuluYear,
+						}
+						m.setSimState(newSimState)
+						m.mu.RLock()
+						hs := make([]CrashResetHandler, len(m.crashResetHandlers))
+						for i, e := range m.crashResetHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h()
+						}
+					}
+				}
+
+				// Handle Sound event
+				if eventMsg.UEventID == types.DWORD(m.soundEventID) {
+					newSound := uint32(eventMsg.DwData)
+					m.mu.RLock()
+					old := m.simState
+					m.mu.RUnlock()
+					if old.LastSoundID != newSound {
+						newSimState := SimState{
+							Camera:                   old.Camera,
+							Substate:                 old.Substate,
+							Paused:                   old.Paused,
+							SimRunning:               old.SimRunning,
+							SimulationRate:           old.SimulationRate,
+							SimulationTime:           old.SimulationTime,
+							LocalTime:                old.LocalTime,
+							ZuluTime:                 old.ZuluTime,
+							IsInVR:                   old.IsInVR,
+							IsUsingMotionControllers: old.IsUsingMotionControllers,
+							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
+							IsInRTC:                  old.IsInRTC,
+							IsAvatar:                 old.IsAvatar,
+							IsAircraft:               old.IsAircraft,
+							Crashed:                  old.Crashed,
+							CrashReset:               old.CrashReset,
+							LastSoundID:              newSound,
+							LocalDay:                 old.LocalDay,
+							LocalMonth:               old.LocalMonth,
+							LocalYear:                old.LocalYear,
+							ZuluDay:                  old.ZuluDay,
+							ZuluMonth:                old.ZuluMonth,
+							ZuluYear:                 old.ZuluYear,
+						}
+						m.setSimState(newSimState)
+						m.mu.RLock()
+						hs := make([]SoundEventHandler, len(m.soundEventHandlers))
+						for i, e := range m.soundEventHandlers {
+							hs[i] = e.fn
+						}
+						m.mu.RUnlock()
+						for _, h := range hs {
+							h(newSound)
+						}
 					}
 				}
 
@@ -1145,6 +1450,9 @@ func (m *Instance) runConnection() error {
 							IsInRTC:                  newIsInRTC,
 							IsAvatar:                 newIsAvatar,
 							IsAircraft:               newIsAircraft,
+							Crashed:                  old.Crashed,
+							CrashReset:               old.CrashReset,
+							LastSoundID:              old.LastSoundID,
 							LocalDay:                 newLocalDay,
 							LocalMonth:               newLocalMonth,
 							LocalYear:                newLocalYear,
