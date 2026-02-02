@@ -180,7 +180,7 @@ type SimState struct {
 	// Crash and sound flags
 	Crashed     bool
 	CrashReset  bool
-	LastSoundID uint32
+	Sound uint32
 	// Date fields (local and Zulu)
 	LocalDay   int // LOCAL DAY OF MONTH
 	LocalMonth int // LOCAL MONTH OF YEAR
@@ -209,7 +209,7 @@ func (s SimState) Equal(other SimState) bool {
 		// Crash and sound flags
 		s.Crashed == other.Crashed &&
 		s.CrashReset == other.CrashReset &&
-		s.LastSoundID == other.LastSoundID &&
+		s.Sound == other.Sound &&
 		s.LocalDay == other.LocalDay &&
 		s.LocalMonth == other.LocalMonth &&
 		s.LocalYear == other.LocalYear &&

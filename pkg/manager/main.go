@@ -48,7 +48,7 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
+		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
@@ -928,7 +928,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -971,7 +971,7 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
 
 					// Subscribe to pause events
 					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
@@ -1092,7 +1092,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, LastSoundID: 0})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -1163,7 +1163,7 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               m.simState.IsAircraft,
 							Crashed:                  m.simState.Crashed,
 							CrashReset:               m.simState.CrashReset,
-							LastSoundID:              m.simState.LastSoundID,
+							Sound:              m.simState.Sound,
 							LocalDay:                 m.simState.LocalDay,
 							LocalMonth:               m.simState.LocalMonth,
 							LocalYear:                m.simState.LocalYear,
@@ -1199,7 +1199,7 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  newCrashed,
 							CrashReset:               old.CrashReset,
-							LastSoundID:              old.LastSoundID,
+							Sound:              old.Sound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
@@ -1245,7 +1245,7 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               newReset,
-							LastSoundID:              old.LastSoundID,
+							Sound:              old.Sound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
@@ -1272,7 +1272,7 @@ func (m *Instance) runConnection() error {
 					m.mu.RLock()
 					old := m.simState
 					m.mu.RUnlock()
-					if old.LastSoundID != newSound {
+					if old.Sound != newSound {
 						newSimState := SimState{
 							Camera:                   old.Camera,
 							Substate:                 old.Substate,
@@ -1290,7 +1290,7 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               old.CrashReset,
-							LastSoundID:              newSound,
+							Sound:              newSound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
@@ -1452,7 +1452,7 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               newIsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               old.CrashReset,
-							LastSoundID:              old.LastSoundID,
+							Sound:              old.Sound,
 							LocalDay:                 newLocalDay,
 							LocalMonth:               newLocalMonth,
 							LocalYear:                newLocalYear,

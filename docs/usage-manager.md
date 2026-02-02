@@ -103,21 +103,40 @@ mgr.RemoveConnectionStateChange(handlerID)
 
 ### OnSimStateChange
 
-Called when the simulator state changes (camera, pause state).
+Called when the simulator state changes (camera, pause/sim running state, crash and sound flags).
 
 ```go
 handlerID := mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
-    if oldState.IsPaused != newState.IsPaused {
-        if newState.IsPaused {
+    if oldState.Paused != newState.Paused {
+        if newState.Paused {
             fmt.Println("Simulator paused")
         } else {
             fmt.Println("Simulator resumed")
         }
     }
-    
-    if oldState.CameraState != newState.CameraState {
-        fmt.Printf("Camera changed: %d → %d\n", 
-            oldState.CameraState, newState.CameraState)
+
+    if oldState.SimRunning != newState.SimRunning {
+        if newState.SimRunning {
+            fmt.Println("Simulator started")
+        } else {
+            fmt.Println("Simulator stopped")
+        }
+    }
+
+    if oldState.Camera != newState.Camera {
+        fmt.Printf("Camera changed: %v → %v\n", oldState.Camera, newState.Camera)
+    }
+
+    if oldState.Crashed != newState.Crashed {
+        if newState.Crashed {
+            fmt.Println("Simulator reports a crash")
+        } else {
+            fmt.Println("Crash state reset")
+        }
+    }
+
+    if oldState.Sound != newState.Sound {
+        fmt.Printf("Sound event: id=%d\n", newState.Sound)
     }
 })
 
@@ -219,6 +238,7 @@ sub := mgr.SubscribeWithType("game-events", 10,
 defer sub.Unsubscribe()
 ```
 
+
 ### Typed System Event Subscriptions
 
 The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
@@ -228,6 +248,9 @@ The manager exposes convenience subscriptions for common system events (wrapping
 - `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
 - `SubscribeOnObjectAdded(id, bufferSize)` — delivers `ObjectEvent` when an AI object is added (contains `ObjectID` and `ObjType`).
 - `SubscribeOnObjectRemoved(id, bufferSize)` — delivers `ObjectEvent` when an AI object is removed (contains `ObjectID` and `ObjType`).
+- `SubscribeOnCrashed(id, bufferSize)` — delivers raw `engine.Message` for the `Crashed` system event (filter pre-applied).
+- `SubscribeOnCrashReset(id, bufferSize)` — delivers raw `engine.Message` for the `Crash Reset` system event.
+- `SubscribeOnSoundEvent(id, bufferSize)` — delivers raw `engine.Message` for the `Sound` system event (sound ID available in `DwData`).
 
 Example — receive flight-loaded notifications:
 
@@ -243,6 +266,34 @@ for {
         return
     }
 }
+```
+
+Example — subscribe to crash/sound events (raw message subscription delivered by helpers):
+
+```go
+subCrash := mgr.SubscribeOnCrashed("crash-sub", 4)
+defer subCrash.Unsubscribe()
+
+go func() {
+    for msg := range subCrash.Messages() {
+        ev := msg.AsEvent()
+        if ev != nil {
+            fmt.Printf("[sub] Crashed event: data=%d\n", ev.DwData)
+        }
+    }
+}()
+
+subSound := mgr.SubscribeOnSoundEvent("sound-sub", 4)
+defer subSound.Unsubscribe()
+
+go func() {
+    for msg := range subSound.Messages() {
+        ev := msg.AsEvent()
+        if ev != nil {
+            fmt.Printf("[sub] Sound event id=%d data=%d\n", ev.UEventID, ev.DwData)
+        }
+    }
+}()
 ```
 
 Example — monitor AI object add/remove events:
@@ -363,22 +414,27 @@ for {
 
 ## Simulator State
 
+
 ### SimState
 
 Returns the current simulator state when connected.
 
 ```go
 state := mgr.SimState()
-fmt.Printf("Camera: %d, Paused: %v\n", state.CameraState, state.IsPaused)
+fmt.Printf("Camera: %v, Paused: %v, Crashed: %v\n", state.Camera, state.Paused, state.Crashed)
 ```
 
 ### SimState Structure
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `CameraState` | `int32` | Current camera mode |
-| `CameraSubstate` | `int32` | Camera substate |
-| `IsPaused` | `bool` | Whether simulation is paused |
+| `Camera` | `CameraState` | Current camera mode |
+| `Substate` | `CameraSubstate` | Camera substate |
+| `Paused` | `bool` | Whether simulation is paused |
+| `SimRunning` | `bool` | Whether simulation is running |
+| `Crashed` | `bool` | Whether simulator reports a crash |
+| `CrashReset` | `bool` | Crash reset flag |
+| `Sound` | `uint32` | Last sound event id reported by simulator |
 
 ### Camera States
 
@@ -387,9 +443,9 @@ Common camera state values:
 | Value | Constant | Description |
 |-------|----------|-------------|
 | 0 | `CameraStateCockpit` | Cockpit view |
-| 1 | `CameraStateExternal` | External/chase view |
+| 1 | `CameraStateExternalChase` | External/chase view |
 | 2 | `CameraStateDrone` | Drone camera |
-| 3 | `CameraStateFixed` | Fixed view |
+| 3 | `CameraStateFixedOnPlane` | Fixed on plane |
 | 4 | `CameraStateEnvironment` | Environment camera |
 | 5 | `CameraStateSixDoF` | Six degrees of freedom |
 | 6 | `CameraStateGameplay` | Gameplay camera |

@@ -55,6 +55,9 @@ AircraftLoadedEventID        = 999999995 // Aircraft file loaded/changed (.AIR)
 ObjectAddedEventID           = 999999994 // AI object added
 ObjectRemovedEventID         = 999999993 // AI object removed
 FlightPlanActivatedEventID   = 999999992 // Flight plan activated (filename returned)
+CrashedEventID               = 999999991 // Simulator crashed (manager reserved ID)
+CrashResetEventID            = 999999990 // Crash reset event (manager reserved ID)
+SoundEventID                 = 999999989 // Sound event (manager reserved ID)
 ```
 
 **Purpose**: These IDs are used to register and track the manager's internal subscriptions to SimConnect system events. Responses may arrive as different `SIMCONNECT_RECV` variants (e.g., `SIMCONNECT_RECV_EVENT`, `SIMCONNECT_RECV_EVENT_FILENAME`, `SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE`).
@@ -205,6 +208,7 @@ Manager registers internal requests at these points:
     - Camera Definition (999000) — registers camera state, simulation/time variables, date fields and IS_* flags
     - Camera Request (999001)
     - Pause Event (999100)
+    - Crashed/CrashReset/Sound event subscriptions (manager reserved IDs listed above)
 
 2. **On Disconnect (via `disconnect`)**:
    - All requests cleared via `requestRegistry.Clear()`

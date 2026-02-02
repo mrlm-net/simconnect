@@ -36,6 +36,19 @@ func main() {
 		fmt.Printf("[handler] ObjectRemoved: id=%d type=%d\n", objectID, objType)
 	})
 
+	// New event handlers
+	mgr.OnCrashed(func() {
+		fmt.Println("[handler] Crashed event received")
+	})
+
+	mgr.OnCrashReset(func() {
+		fmt.Println("[handler] CrashReset event received")
+	})
+
+	mgr.OnSoundEvent(func(soundID uint32) {
+		fmt.Printf("[handler] Sound event: id=%d\n", soundID)
+	})
+
 	// Create channel subscriptions
 	subFL := mgr.SubscribeOnFlightLoaded("sub-flight", 8)
 	defer subFL.Unsubscribe()
@@ -51,6 +64,16 @@ func main() {
 
 	subRem := mgr.SubscribeOnObjectRemoved("sub-obj-rem", 32)
 	defer subRem.Unsubscribe()
+
+	// Subscribe to crash/sound events (raw message subscriptions)
+	subCrash := mgr.SubscribeOnCrashed("sub-crash", 8)
+	defer subCrash.Unsubscribe()
+
+	subReset := mgr.SubscribeOnCrashReset("sub-crashreset", 8)
+	defer subReset.Unsubscribe()
+
+	subSound := mgr.SubscribeOnSoundEvent("sub-sound", 8)
+	defer subSound.Unsubscribe()
 
 	// Start manager
 	_, stop := context.WithCancel(context.Background())
@@ -83,6 +106,21 @@ loop:
 
 		case ev := <-subRem.Events():
 			fmt.Printf("[sub] ObjectRemoved: id=%d type=%d\n", ev.ObjectID, ev.ObjType)
+
+		case msg := <-subCrash.Messages():
+			if ev := msg.AsEvent(); ev != nil {
+				fmt.Printf("[sub] Crashed event data=%d\n", ev.DwData)
+			}
+
+		case msg := <-subReset.Messages():
+			if ev := msg.AsEvent(); ev != nil {
+				fmt.Printf("[sub] CrashReset event data=%d\n", ev.DwData)
+			}
+
+		case msg := <-subSound.Messages():
+			if ev := msg.AsEvent(); ev != nil {
+				fmt.Printf("[sub] Sound event id=%d data=%d\n", ev.UEventID, ev.DwData)
+			}
 
 		case s := <-sig:
 			fmt.Printf("signal: %v, shutting down...\n", s)
