@@ -274,6 +274,10 @@ func main() {
 			oldState.Camera, oldState.Camera, oldState.Substate, oldPauseStatus, oldSimStatus)
 		fmt.Printf("   New: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
 			newState.Camera, newState.Camera, newState.Substate, newPauseStatus, newSimStatus)
+		fmt.Printf("   Realism: %.2f, VisualModelRadius: %.2f m, SimDisabled: %v\n",
+			newState.Realism, newState.VisualModelRadius, newState.SimDisabled)
+		fmt.Printf("   CrashDetection: %v, CrashWithOthers: %v, TrackIR: %v, UserInput: %v, OnGround: %v\n",
+			newState.RealismCrashDetection, newState.RealismCrashWithOthers, newState.TrackIREnabled, newState.UserInputEnabled, newState.SimOnGround)
 	})
 
 	// Register connection state change handler to setup data definitions when available
@@ -305,6 +309,9 @@ func main() {
 			fmt.Printf("📊 Current SimState:\n")
 			fmt.Printf("   Camera: %s [%d] (Substate: %s)\n", currentSimState.Camera, currentSimState.Camera, currentSimState.Substate)
 			fmt.Printf("   Status: %s, Sim: %s\n", pauseStatus, simStatus)
+			fmt.Printf("   Realism: %.2f, Visual Model Radius: %.2f m\n", currentSimState.Realism, currentSimState.VisualModelRadius)
+			fmt.Printf("   Sim Disabled: %v, Crash Detection: %v, Crash with Others: %v\n", currentSimState.SimDisabled, currentSimState.RealismCrashDetection, currentSimState.RealismCrashWithOthers)
+			fmt.Printf("   TrackIR: %v, User Input: %v, On Ground: %v\n", currentSimState.TrackIREnabled, currentSimState.UserInputEnabled, currentSimState.SimOnGround)
 		case manager.StateReconnecting:
 			fmt.Println("🔄 Reconnecting to simulator...")
 		case manager.StateDisconnected:
@@ -460,6 +467,10 @@ func main() {
 					change.OldState.Camera, change.OldState.Camera, change.OldState.Substate, oldPauseStatus, oldSimStatus)
 				fmt.Printf("   New: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
 					change.NewState.Camera, change.NewState.Camera, change.NewState.Substate, newPauseStatus, newSimStatus)
+				fmt.Printf("   Realism: %.2f, VisualModelRadius: %.2f m, SimDisabled: %v\n",
+					change.NewState.Realism, change.NewState.VisualModelRadius, change.NewState.SimDisabled)
+				fmt.Printf("   CrashDetection: %v, CrashWithOthers: %v, TrackIR: %v, UserInput: %v, OnGround: %v\n",
+					change.NewState.RealismCrashDetection, change.NewState.RealismCrashWithOthers, change.NewState.TrackIREnabled, change.NewState.UserInputEnabled, change.NewState.SimOnGround)
 				// Could trigger additional logic here based on camera state
 				if change.NewState.Camera == manager.CameraStateExternalChase {
 					fmt.Println("   🎥 Now viewing from EXTERNAL/CHASE camera")

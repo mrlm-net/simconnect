@@ -188,6 +188,15 @@ type SimState struct {
 	ZuluDay    int // ZULU DAY OF MONTH
 	ZuluMonth  int // ZULU MONTH OF YEAR
 	ZuluYear   int // ZULU YEAR
+	// Miscellaneous simulation variables
+	Realism                float64 // REALISM
+	VisualModelRadius      float64 // VISUAL MODEL RADIUS (meters)
+	SimDisabled            bool    // SIM DISABLED
+	RealismCrashDetection  bool    // REALISM CRASH DETECTION
+	RealismCrashWithOthers bool    // REALISM CRASH WITH OTHERS
+	TrackIREnabled         bool    // TRACK IR ENABLE
+	UserInputEnabled       bool    // USER INPUT ENABLED
+	SimOnGround            bool    // SIM ON GROUND
 }
 
 // Equal returns true if two SimState values are equivalent
@@ -215,7 +224,16 @@ func (s SimState) Equal(other SimState) bool {
 		s.LocalYear == other.LocalYear &&
 		s.ZuluDay == other.ZuluDay &&
 		s.ZuluMonth == other.ZuluMonth &&
-		s.ZuluYear == other.ZuluYear
+		s.ZuluYear == other.ZuluYear &&
+		// Miscellaneous simulation variables
+		s.Realism == other.Realism &&
+		s.VisualModelRadius == other.VisualModelRadius &&
+		s.SimDisabled == other.SimDisabled &&
+		s.RealismCrashDetection == other.RealismCrashDetection &&
+		s.RealismCrashWithOthers == other.RealismCrashWithOthers &&
+		s.TrackIREnabled == other.TrackIREnabled &&
+		s.UserInputEnabled == other.UserInputEnabled &&
+		s.SimOnGround == other.SimOnGround
 }
 
 // SimStateChange represents a simulator state transition event
@@ -264,4 +282,12 @@ type cameraDataStruct struct {
 	ZuluDay                  int32
 	ZuluMonth                int32
 	ZuluYear                 int32
+	Realism                  float64
+	VisualModelRadius        float64
+	SimDisabled              int32
+	RealismCrashDetection    int32
+	RealismCrashWithOthers   int32
+	TrackIREnabled           int32
+	UserInputEnabled         int32
+	SimOnGround              int32
 }

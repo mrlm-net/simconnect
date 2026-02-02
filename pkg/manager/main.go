@@ -48,7 +48,7 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0},
+		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false},
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
@@ -928,7 +928,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -971,7 +971,7 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0})
+					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
 
 					// Subscribe to pause events
 					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
@@ -1071,6 +1071,30 @@ func (m *Instance) runConnection() error {
 					if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 17); err != nil {
 						m.logger.Error(fmt.Sprintf("[manager] Failed to add ZULU YEAR definition: %v", err))
 					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 18); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add REALISM definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "VISUAL MODEL RADIUS", "meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 19); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add VISUAL MODEL RADIUS definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM DISABLED", "", types.SIMCONNECT_DATATYPE_INT32, 0, 20); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add SIM DISABLED definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH DETECTION", "", types.SIMCONNECT_DATATYPE_INT32, 0, 21); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add REALISM CRASH DETECTION definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH WITH OTHERS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 22); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add REALISM CRASH WITH OTHERS definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "TRACK IR ENABLE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 23); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add TRACK IR ENABLE definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "USER INPUT ENABLED", "", types.SIMCONNECT_DATATYPE_INT32, 0, 24); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add USER INPUT ENABLED definition: %v", err))
+					}
+					if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM ON GROUND", "", types.SIMCONNECT_DATATYPE_INT32, 0, 25); err != nil {
+						m.logger.Error(fmt.Sprintf("[manager] Failed to add SIM ON GROUND definition: %v", err))
+					}
 
 					// Request camera data with period matching heartbeat configuration
 					period := types.SIMCONNECT_PERIOD_SIM_FRAME
@@ -1092,7 +1116,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0})
+				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -1133,6 +1157,14 @@ func (m *Instance) runConnection() error {
 							ZuluDay:                  m.simState.ZuluDay,
 							ZuluMonth:                m.simState.ZuluMonth,
 							ZuluYear:                 m.simState.ZuluYear,
+							Realism:                  m.simState.Realism,
+							VisualModelRadius:        m.simState.VisualModelRadius,
+							SimDisabled:              m.simState.SimDisabled,
+							RealismCrashDetection:    m.simState.RealismCrashDetection,
+							RealismCrashWithOthers:   m.simState.RealismCrashWithOthers,
+							TrackIREnabled:           m.simState.TrackIREnabled,
+							UserInputEnabled:         m.simState.UserInputEnabled,
+							SimOnGround:              m.simState.SimOnGround,
 						}
 						m.setSimState(newSimState)
 					}
@@ -1163,13 +1195,21 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               m.simState.IsAircraft,
 							Crashed:                  m.simState.Crashed,
 							CrashReset:               m.simState.CrashReset,
-							Sound:              m.simState.Sound,
+							Sound:                    m.simState.Sound,
 							LocalDay:                 m.simState.LocalDay,
 							LocalMonth:               m.simState.LocalMonth,
 							LocalYear:                m.simState.LocalYear,
 							ZuluDay:                  m.simState.ZuluDay,
 							ZuluMonth:                m.simState.ZuluMonth,
 							ZuluYear:                 m.simState.ZuluYear,
+							Realism:                  m.simState.Realism,
+							VisualModelRadius:        m.simState.VisualModelRadius,
+							SimDisabled:              m.simState.SimDisabled,
+							RealismCrashDetection:    m.simState.RealismCrashDetection,
+							RealismCrashWithOthers:   m.simState.RealismCrashWithOthers,
+							TrackIREnabled:           m.simState.TrackIREnabled,
+							UserInputEnabled:         m.simState.UserInputEnabled,
+							SimOnGround:              m.simState.SimOnGround,
 						}
 						m.setSimState(newSimState)
 					}
@@ -1199,13 +1239,21 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  newCrashed,
 							CrashReset:               old.CrashReset,
-							Sound:              old.Sound,
+							Sound:                    old.Sound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
 							ZuluDay:                  old.ZuluDay,
 							ZuluMonth:                old.ZuluMonth,
 							ZuluYear:                 old.ZuluYear,
+							Realism:                  old.Realism,
+							VisualModelRadius:        old.VisualModelRadius,
+							SimDisabled:              old.SimDisabled,
+							RealismCrashDetection:    old.RealismCrashDetection,
+							RealismCrashWithOthers:   old.RealismCrashWithOthers,
+							TrackIREnabled:           old.TrackIREnabled,
+							UserInputEnabled:         old.UserInputEnabled,
+							SimOnGround:              old.SimOnGround,
 						}
 						m.setSimState(newSimState)
 						// invoke handlers
@@ -1245,13 +1293,21 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               newReset,
-							Sound:              old.Sound,
+							Sound:                    old.Sound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
 							ZuluDay:                  old.ZuluDay,
 							ZuluMonth:                old.ZuluMonth,
 							ZuluYear:                 old.ZuluYear,
+							Realism:                  old.Realism,
+							VisualModelRadius:        old.VisualModelRadius,
+							SimDisabled:              old.SimDisabled,
+							RealismCrashDetection:    old.RealismCrashDetection,
+							RealismCrashWithOthers:   old.RealismCrashWithOthers,
+							TrackIREnabled:           old.TrackIREnabled,
+							UserInputEnabled:         old.UserInputEnabled,
+							SimOnGround:              old.SimOnGround,
 						}
 						m.setSimState(newSimState)
 						m.mu.RLock()
@@ -1290,13 +1346,21 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               old.IsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               old.CrashReset,
-							Sound:              newSound,
+							Sound:                    newSound,
 							LocalDay:                 old.LocalDay,
 							LocalMonth:               old.LocalMonth,
 							LocalYear:                old.LocalYear,
 							ZuluDay:                  old.ZuluDay,
 							ZuluMonth:                old.ZuluMonth,
 							ZuluYear:                 old.ZuluYear,
+							Realism:                  old.Realism,
+							VisualModelRadius:        old.VisualModelRadius,
+							SimDisabled:              old.SimDisabled,
+							RealismCrashDetection:    old.RealismCrashDetection,
+							RealismCrashWithOthers:   old.RealismCrashWithOthers,
+							TrackIREnabled:           old.TrackIREnabled,
+							UserInputEnabled:         old.UserInputEnabled,
+							SimOnGround:              old.SimOnGround,
 						}
 						m.setSimState(newSimState)
 						m.mu.RLock()
@@ -1422,6 +1486,16 @@ func (m *Instance) runConnection() error {
 					newZuluMonth := int(cameraData.ZuluMonth)
 					newZuluYear := int(cameraData.ZuluYear)
 
+					// Miscellaneous simulation variables
+					newRealism := cameraData.Realism
+					newVisualModelRadius := cameraData.VisualModelRadius
+					newSimDisabled := cameraData.SimDisabled == 1
+					newRealismCrashDetection := cameraData.RealismCrashDetection == 1
+					newRealismCrashWithOthers := cameraData.RealismCrashWithOthers == 1
+					newTrackIREnabled := cameraData.TrackIREnabled == 1
+					newUserInputEnabled := cameraData.UserInputEnabled == 1
+					newSimOnGround := cameraData.SimOnGround == 1
+
 					m.mu.RLock()
 					old := m.simState
 					m.mu.RUnlock()
@@ -1433,7 +1507,11 @@ func (m *Instance) runConnection() error {
 						old.IsInVR != newIsInVR || old.IsUsingMotionControllers != newIsUsingMotionControllers || old.IsUsingJoystickThrottle != newIsUsingJoystickThrottle ||
 						old.IsInRTC != newIsInRTC || old.IsAvatar != newIsAvatar || old.IsAircraft != newIsAircraft ||
 						old.LocalDay != newLocalDay || old.LocalMonth != newLocalMonth || old.LocalYear != newLocalYear ||
-						old.ZuluDay != newZuluDay || old.ZuluMonth != newZuluMonth || old.ZuluYear != newZuluYear {
+						old.ZuluDay != newZuluDay || old.ZuluMonth != newZuluMonth || old.ZuluYear != newZuluYear ||
+						old.Realism != newRealism || old.VisualModelRadius != newVisualModelRadius ||
+						old.SimDisabled != newSimDisabled || old.RealismCrashDetection != newRealismCrashDetection ||
+						old.RealismCrashWithOthers != newRealismCrashWithOthers || old.TrackIREnabled != newTrackIREnabled ||
+						old.UserInputEnabled != newUserInputEnabled || old.SimOnGround != newSimOnGround {
 
 						newSimState := SimState{
 							Camera:                   newCameraState,
@@ -1452,13 +1530,21 @@ func (m *Instance) runConnection() error {
 							IsAircraft:               newIsAircraft,
 							Crashed:                  old.Crashed,
 							CrashReset:               old.CrashReset,
-							Sound:              old.Sound,
+							Sound:                    old.Sound,
 							LocalDay:                 newLocalDay,
 							LocalMonth:               newLocalMonth,
 							LocalYear:                newLocalYear,
 							ZuluDay:                  newZuluDay,
 							ZuluMonth:                newZuluMonth,
 							ZuluYear:                 newZuluYear,
+							Realism:                  newRealism,
+							VisualModelRadius:        newVisualModelRadius,
+							SimDisabled:              newSimDisabled,
+							RealismCrashDetection:    newRealismCrashDetection,
+							RealismCrashWithOthers:   newRealismCrashWithOthers,
+							TrackIREnabled:           newTrackIREnabled,
+							UserInputEnabled:         newUserInputEnabled,
+							SimOnGround:              newSimOnGround,
 						}
 						m.setSimState(newSimState)
 					}
