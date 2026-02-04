@@ -62,7 +62,7 @@ func (m *Instance) SubscribeOnFlightLoaded(id string, bufferSize int) FilenameSu
 		id = generateUUID()
 	}
 	// subscribe to filename messages
-	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
 	go func() {
@@ -101,7 +101,7 @@ func (m *Instance) SubscribeOnAircraftLoaded(id string, bufferSize int) Filename
 	if id == "" {
 		id = generateUUID()
 	}
-	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
 	go func() {
@@ -140,7 +140,7 @@ func (m *Instance) SubscribeOnFlightPlanActivated(id string, bufferSize int) Fil
 	if id == "" {
 		id = generateUUID()
 	}
-	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_FILENAME)
+	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
 	go func() {

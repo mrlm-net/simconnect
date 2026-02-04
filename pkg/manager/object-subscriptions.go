@@ -59,7 +59,7 @@ func (m *Instance) SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubsc
 	if id == "" {
 		id = generateUUID()
 	}
-	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE)
+	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
 	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
 	go func() {
@@ -97,7 +97,7 @@ func (m *Instance) SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSub
 	if id == "" {
 		id = generateUUID()
 	}
-	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE)
+	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
 	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
 	go func() {

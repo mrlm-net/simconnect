@@ -300,6 +300,45 @@ func (m *Instance) setSimState(newState SimState) {
 	}
 }
 
+// notifySimStateChange notifies handlers and subscriptions of a SimState change.
+// This is a helper used by delta update paths where state is already modified in-place.
+// The caller must have already updated m.simState and must NOT hold m.mu when calling this.
+func (m *Instance) notifySimStateChange(oldState, newState SimState) {
+	// Gather handlers and subscriptions under lock
+	m.mu.Lock()
+	handlers := make([]SimStateChangeHandler, len(m.simStateHandlers))
+	for i, e := range m.simStateHandlers {
+		handlers[i] = e.fn
+	}
+	stateSubs := make([]*simStateSubscription, 0, len(m.simStateSubscriptions))
+	for _, sub := range m.simStateSubscriptions {
+		stateSubs = append(stateSubs, sub)
+	}
+	m.mu.Unlock()
+
+	m.logger.Debug(fmt.Sprintf("[manager] SimState changed: Camera %s -> %s", oldState.Camera, newState.Camera))
+
+	// Notify handlers outside the lock
+	for _, handler := range handlers {
+		handler(oldState, newState)
+	}
+
+	// Forward state change to subscriptions (non-blocking)
+	stateChange := SimStateChange{OldState: oldState, NewState: newState}
+	for _, sub := range stateSubs {
+		sub.closeMu.Lock()
+		if !sub.closed {
+			select {
+			case sub.ch <- stateChange:
+			default:
+				// Channel full, skip state change to avoid blocking
+				m.logger.Debug("[manager] SimState subscription channel full, dropping state change")
+			}
+		}
+		sub.closeMu.Unlock()
+	}
+}
+
 // OnConnectionStateChange registers a callback to be invoked when connection state changes.
 // Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.
 func (m *Instance) OnConnectionStateChange(handler ConnectionStateChangeHandler) string {
@@ -1131,247 +1170,114 @@ func (m *Instance) runConnection() error {
 				if eventMsg.UEventID == types.DWORD(m.pauseEventID) {
 					newPausedState := eventMsg.DwData == 1
 
-					m.mu.RLock()
-					oldPausedState := m.simState.Paused
-					m.mu.RUnlock()
-
-					if oldPausedState != newPausedState {
-						newSimState := SimState{
-							Camera:                   m.simState.Camera,
-							Substate:                 m.simState.Substate,
-							Paused:                   newPausedState,
-							SimRunning:               m.simState.SimRunning,
-							SimulationRate:           m.simState.SimulationRate,
-							SimulationTime:           m.simState.SimulationTime,
-							LocalTime:                m.simState.LocalTime,
-							ZuluTime:                 m.simState.ZuluTime,
-							IsInVR:                   m.simState.IsInVR,
-							IsUsingMotionControllers: m.simState.IsUsingMotionControllers,
-							IsUsingJoystickThrottle:  m.simState.IsUsingJoystickThrottle,
-							IsInRTC:                  m.simState.IsInRTC,
-							IsAvatar:                 m.simState.IsAvatar,
-							IsAircraft:               m.simState.IsAircraft,
-							LocalDay:                 m.simState.LocalDay,
-							LocalMonth:               m.simState.LocalMonth,
-							LocalYear:                m.simState.LocalYear,
-							ZuluDay:                  m.simState.ZuluDay,
-							ZuluMonth:                m.simState.ZuluMonth,
-							ZuluYear:                 m.simState.ZuluYear,
-							Realism:                  m.simState.Realism,
-							VisualModelRadius:        m.simState.VisualModelRadius,
-							SimDisabled:              m.simState.SimDisabled,
-							RealismCrashDetection:    m.simState.RealismCrashDetection,
-							RealismCrashWithOthers:   m.simState.RealismCrashWithOthers,
-							TrackIREnabled:           m.simState.TrackIREnabled,
-							UserInputEnabled:         m.simState.UserInputEnabled,
-							SimOnGround:              m.simState.SimOnGround,
-						}
-						m.setSimState(newSimState)
+					m.mu.Lock()
+					if m.simState.Paused != newPausedState {
+						oldState := m.simState
+						m.simState.Paused = newPausedState
+						newState := m.simState
+						m.mu.Unlock()
+						m.notifySimStateChange(oldState, newState)
+					} else {
+						m.mu.Unlock()
 					}
 				}
 				// Handle sim event (SimConnect event ID 1001)
 				if eventMsg.UEventID == types.DWORD(m.simEventID) {
 					newSimRunningState := eventMsg.DwData == 1
 
-					m.mu.RLock()
-					oldSimRunningState := m.simState.SimRunning
-					m.mu.RUnlock()
-
-					if oldSimRunningState != newSimRunningState {
-						newSimState := SimState{
-							Camera:                   m.simState.Camera,
-							Substate:                 m.simState.Substate,
-							Paused:                   m.simState.Paused,
-							SimRunning:               newSimRunningState,
-							SimulationRate:           m.simState.SimulationRate,
-							SimulationTime:           m.simState.SimulationTime,
-							LocalTime:                m.simState.LocalTime,
-							ZuluTime:                 m.simState.ZuluTime,
-							IsInVR:                   m.simState.IsInVR,
-							IsUsingMotionControllers: m.simState.IsUsingMotionControllers,
-							IsUsingJoystickThrottle:  m.simState.IsUsingJoystickThrottle,
-							IsInRTC:                  m.simState.IsInRTC,
-							IsAvatar:                 m.simState.IsAvatar,
-							IsAircraft:               m.simState.IsAircraft,
-							Crashed:                  m.simState.Crashed,
-							CrashReset:               m.simState.CrashReset,
-							Sound:                    m.simState.Sound,
-							LocalDay:                 m.simState.LocalDay,
-							LocalMonth:               m.simState.LocalMonth,
-							LocalYear:                m.simState.LocalYear,
-							ZuluDay:                  m.simState.ZuluDay,
-							ZuluMonth:                m.simState.ZuluMonth,
-							ZuluYear:                 m.simState.ZuluYear,
-							Realism:                  m.simState.Realism,
-							VisualModelRadius:        m.simState.VisualModelRadius,
-							SimDisabled:              m.simState.SimDisabled,
-							RealismCrashDetection:    m.simState.RealismCrashDetection,
-							RealismCrashWithOthers:   m.simState.RealismCrashWithOthers,
-							TrackIREnabled:           m.simState.TrackIREnabled,
-							UserInputEnabled:         m.simState.UserInputEnabled,
-							SimOnGround:              m.simState.SimOnGround,
-						}
-						m.setSimState(newSimState)
+					m.mu.Lock()
+					if m.simState.SimRunning != newSimRunningState {
+						oldState := m.simState
+						m.simState.SimRunning = newSimRunningState
+						newState := m.simState
+						m.mu.Unlock()
+						m.notifySimStateChange(oldState, newState)
+					} else {
+						m.mu.Unlock()
 					}
 				}
 
 				// Handle Crashed event
 				if eventMsg.UEventID == types.DWORD(m.crashedEventID) {
 					newCrashed := eventMsg.DwData == 1
-					m.mu.RLock()
-					old := m.simState
-					m.mu.RUnlock()
-					if old.Crashed != newCrashed {
-						newSimState := SimState{
-							Camera:                   old.Camera,
-							Substate:                 old.Substate,
-							Paused:                   old.Paused,
-							SimRunning:               old.SimRunning,
-							SimulationRate:           old.SimulationRate,
-							SimulationTime:           old.SimulationTime,
-							LocalTime:                old.LocalTime,
-							ZuluTime:                 old.ZuluTime,
-							IsInVR:                   old.IsInVR,
-							IsUsingMotionControllers: old.IsUsingMotionControllers,
-							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
-							IsInRTC:                  old.IsInRTC,
-							IsAvatar:                 old.IsAvatar,
-							IsAircraft:               old.IsAircraft,
-							Crashed:                  newCrashed,
-							CrashReset:               old.CrashReset,
-							Sound:                    old.Sound,
-							LocalDay:                 old.LocalDay,
-							LocalMonth:               old.LocalMonth,
-							LocalYear:                old.LocalYear,
-							ZuluDay:                  old.ZuluDay,
-							ZuluMonth:                old.ZuluMonth,
-							ZuluYear:                 old.ZuluYear,
-							Realism:                  old.Realism,
-							VisualModelRadius:        old.VisualModelRadius,
-							SimDisabled:              old.SimDisabled,
-							RealismCrashDetection:    old.RealismCrashDetection,
-							RealismCrashWithOthers:   old.RealismCrashWithOthers,
-							TrackIREnabled:           old.TrackIREnabled,
-							UserInputEnabled:         old.UserInputEnabled,
-							SimOnGround:              old.SimOnGround,
-						}
-						m.setSimState(newSimState)
-						// invoke handlers
-						m.mu.RLock()
+
+					m.mu.Lock()
+					if m.simState.Crashed != newCrashed {
+						oldState := m.simState
+						m.simState.Crashed = newCrashed
+						newState := m.simState
+
+						// Copy handlers under lock
 						hs := make([]CrashedHandler, len(m.crashedHandlers))
 						for i, e := range m.crashedHandlers {
 							hs[i] = e.fn
 						}
-						m.mu.RUnlock()
+						m.mu.Unlock()
+
+						m.notifySimStateChange(oldState, newState)
+
+						// Invoke handlers outside lock
 						for _, h := range hs {
 							h()
 						}
+					} else {
+						m.mu.Unlock()
 					}
 				}
 
 				// Handle CrashReset event
 				if eventMsg.UEventID == types.DWORD(m.crashResetEventID) {
 					newReset := eventMsg.DwData == 1
-					m.mu.RLock()
-					old := m.simState
-					m.mu.RUnlock()
-					if old.CrashReset != newReset {
-						newSimState := SimState{
-							Camera:                   old.Camera,
-							Substate:                 old.Substate,
-							Paused:                   old.Paused,
-							SimRunning:               old.SimRunning,
-							SimulationRate:           old.SimulationRate,
-							SimulationTime:           old.SimulationTime,
-							LocalTime:                old.LocalTime,
-							ZuluTime:                 old.ZuluTime,
-							IsInVR:                   old.IsInVR,
-							IsUsingMotionControllers: old.IsUsingMotionControllers,
-							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
-							IsInRTC:                  old.IsInRTC,
-							IsAvatar:                 old.IsAvatar,
-							IsAircraft:               old.IsAircraft,
-							Crashed:                  old.Crashed,
-							CrashReset:               newReset,
-							Sound:                    old.Sound,
-							LocalDay:                 old.LocalDay,
-							LocalMonth:               old.LocalMonth,
-							LocalYear:                old.LocalYear,
-							ZuluDay:                  old.ZuluDay,
-							ZuluMonth:                old.ZuluMonth,
-							ZuluYear:                 old.ZuluYear,
-							Realism:                  old.Realism,
-							VisualModelRadius:        old.VisualModelRadius,
-							SimDisabled:              old.SimDisabled,
-							RealismCrashDetection:    old.RealismCrashDetection,
-							RealismCrashWithOthers:   old.RealismCrashWithOthers,
-							TrackIREnabled:           old.TrackIREnabled,
-							UserInputEnabled:         old.UserInputEnabled,
-							SimOnGround:              old.SimOnGround,
-						}
-						m.setSimState(newSimState)
-						m.mu.RLock()
+
+					m.mu.Lock()
+					if m.simState.CrashReset != newReset {
+						oldState := m.simState
+						m.simState.CrashReset = newReset
+						newState := m.simState
+
+						// Copy handlers under lock
 						hs := make([]CrashResetHandler, len(m.crashResetHandlers))
 						for i, e := range m.crashResetHandlers {
 							hs[i] = e.fn
 						}
-						m.mu.RUnlock()
+						m.mu.Unlock()
+
+						m.notifySimStateChange(oldState, newState)
+
+						// Invoke handlers outside lock
 						for _, h := range hs {
 							h()
 						}
+					} else {
+						m.mu.Unlock()
 					}
 				}
 
 				// Handle Sound event
 				if eventMsg.UEventID == types.DWORD(m.soundEventID) {
 					newSound := uint32(eventMsg.DwData)
-					m.mu.RLock()
-					old := m.simState
-					m.mu.RUnlock()
-					if old.Sound != newSound {
-						newSimState := SimState{
-							Camera:                   old.Camera,
-							Substate:                 old.Substate,
-							Paused:                   old.Paused,
-							SimRunning:               old.SimRunning,
-							SimulationRate:           old.SimulationRate,
-							SimulationTime:           old.SimulationTime,
-							LocalTime:                old.LocalTime,
-							ZuluTime:                 old.ZuluTime,
-							IsInVR:                   old.IsInVR,
-							IsUsingMotionControllers: old.IsUsingMotionControllers,
-							IsUsingJoystickThrottle:  old.IsUsingJoystickThrottle,
-							IsInRTC:                  old.IsInRTC,
-							IsAvatar:                 old.IsAvatar,
-							IsAircraft:               old.IsAircraft,
-							Crashed:                  old.Crashed,
-							CrashReset:               old.CrashReset,
-							Sound:                    newSound,
-							LocalDay:                 old.LocalDay,
-							LocalMonth:               old.LocalMonth,
-							LocalYear:                old.LocalYear,
-							ZuluDay:                  old.ZuluDay,
-							ZuluMonth:                old.ZuluMonth,
-							ZuluYear:                 old.ZuluYear,
-							Realism:                  old.Realism,
-							VisualModelRadius:        old.VisualModelRadius,
-							SimDisabled:              old.SimDisabled,
-							RealismCrashDetection:    old.RealismCrashDetection,
-							RealismCrashWithOthers:   old.RealismCrashWithOthers,
-							TrackIREnabled:           old.TrackIREnabled,
-							UserInputEnabled:         old.UserInputEnabled,
-							SimOnGround:              old.SimOnGround,
-						}
-						m.setSimState(newSimState)
-						m.mu.RLock()
+
+					m.mu.Lock()
+					if m.simState.Sound != newSound {
+						oldState := m.simState
+						m.simState.Sound = newSound
+						newState := m.simState
+
+						// Copy handlers under lock
 						hs := make([]SoundEventHandler, len(m.soundEventHandlers))
 						for i, e := range m.soundEventHandlers {
 							hs[i] = e.fn
 						}
-						m.mu.RUnlock()
+						m.mu.Unlock()
+
+						m.notifySimStateChange(oldState, newState)
+
+						// Invoke handlers outside lock
 						for _, h := range hs {
 							h(newSound)
 						}
+					} else {
+						m.mu.Unlock()
 					}
 				}
 
@@ -1496,57 +1402,56 @@ func (m *Instance) runConnection() error {
 					newUserInputEnabled := cameraData.UserInputEnabled == 1
 					newSimOnGround := cameraData.SimOnGround == 1
 
-					m.mu.RLock()
-					old := m.simState
-					m.mu.RUnlock()
+					// Check if any monitored field changed and update in-place
+					m.mu.Lock()
+					changed := m.simState.Camera != newCameraState || m.simState.Substate != newCameraSubstate ||
+						m.simState.SimulationRate != newSimRate || m.simState.SimulationTime != newSimTime ||
+						m.simState.LocalTime != newLocalTime || m.simState.ZuluTime != newZuluTime ||
+						m.simState.IsInVR != newIsInVR || m.simState.IsUsingMotionControllers != newIsUsingMotionControllers ||
+						m.simState.IsUsingJoystickThrottle != newIsUsingJoystickThrottle ||
+						m.simState.IsInRTC != newIsInRTC || m.simState.IsAvatar != newIsAvatar || m.simState.IsAircraft != newIsAircraft ||
+						m.simState.LocalDay != newLocalDay || m.simState.LocalMonth != newLocalMonth || m.simState.LocalYear != newLocalYear ||
+						m.simState.ZuluDay != newZuluDay || m.simState.ZuluMonth != newZuluMonth || m.simState.ZuluYear != newZuluYear ||
+						m.simState.Realism != newRealism || m.simState.VisualModelRadius != newVisualModelRadius ||
+						m.simState.SimDisabled != newSimDisabled || m.simState.RealismCrashDetection != newRealismCrashDetection ||
+						m.simState.RealismCrashWithOthers != newRealismCrashWithOthers || m.simState.TrackIREnabled != newTrackIREnabled ||
+						m.simState.UserInputEnabled != newUserInputEnabled || m.simState.SimOnGround != newSimOnGround
 
-					// If any monitored field changed, publish a new SimState
+					if changed {
+						oldState := m.simState
+						// Update only changed fields in-place
+						m.simState.Camera = newCameraState
+						m.simState.Substate = newCameraSubstate
+						m.simState.SimulationRate = newSimRate
+						m.simState.SimulationTime = newSimTime
+						m.simState.LocalTime = newLocalTime
+						m.simState.ZuluTime = newZuluTime
+						m.simState.IsInVR = newIsInVR
+						m.simState.IsUsingMotionControllers = newIsUsingMotionControllers
+						m.simState.IsUsingJoystickThrottle = newIsUsingJoystickThrottle
+						m.simState.IsInRTC = newIsInRTC
+						m.simState.IsAvatar = newIsAvatar
+						m.simState.IsAircraft = newIsAircraft
+						m.simState.LocalDay = newLocalDay
+						m.simState.LocalMonth = newLocalMonth
+						m.simState.LocalYear = newLocalYear
+						m.simState.ZuluDay = newZuluDay
+						m.simState.ZuluMonth = newZuluMonth
+						m.simState.ZuluYear = newZuluYear
+						m.simState.Realism = newRealism
+						m.simState.VisualModelRadius = newVisualModelRadius
+						m.simState.SimDisabled = newSimDisabled
+						m.simState.RealismCrashDetection = newRealismCrashDetection
+						m.simState.RealismCrashWithOthers = newRealismCrashWithOthers
+						m.simState.TrackIREnabled = newTrackIREnabled
+						m.simState.UserInputEnabled = newUserInputEnabled
+						m.simState.SimOnGround = newSimOnGround
+						newState := m.simState
+						m.mu.Unlock()
 
-					if old.Camera != newCameraState || old.Substate != newCameraSubstate ||
-						old.SimulationRate != newSimRate || old.SimulationTime != newSimTime || old.LocalTime != newLocalTime || old.ZuluTime != newZuluTime ||
-						old.IsInVR != newIsInVR || old.IsUsingMotionControllers != newIsUsingMotionControllers || old.IsUsingJoystickThrottle != newIsUsingJoystickThrottle ||
-						old.IsInRTC != newIsInRTC || old.IsAvatar != newIsAvatar || old.IsAircraft != newIsAircraft ||
-						old.LocalDay != newLocalDay || old.LocalMonth != newLocalMonth || old.LocalYear != newLocalYear ||
-						old.ZuluDay != newZuluDay || old.ZuluMonth != newZuluMonth || old.ZuluYear != newZuluYear ||
-						old.Realism != newRealism || old.VisualModelRadius != newVisualModelRadius ||
-						old.SimDisabled != newSimDisabled || old.RealismCrashDetection != newRealismCrashDetection ||
-						old.RealismCrashWithOthers != newRealismCrashWithOthers || old.TrackIREnabled != newTrackIREnabled ||
-						old.UserInputEnabled != newUserInputEnabled || old.SimOnGround != newSimOnGround {
-
-						newSimState := SimState{
-							Camera:                   newCameraState,
-							Substate:                 newCameraSubstate,
-							Paused:                   old.Paused,
-							SimRunning:               old.SimRunning,
-							SimulationRate:           newSimRate,
-							SimulationTime:           newSimTime,
-							LocalTime:                newLocalTime,
-							ZuluTime:                 newZuluTime,
-							IsInVR:                   newIsInVR,
-							IsUsingMotionControllers: newIsUsingMotionControllers,
-							IsUsingJoystickThrottle:  newIsUsingJoystickThrottle,
-							IsInRTC:                  newIsInRTC,
-							IsAvatar:                 newIsAvatar,
-							IsAircraft:               newIsAircraft,
-							Crashed:                  old.Crashed,
-							CrashReset:               old.CrashReset,
-							Sound:                    old.Sound,
-							LocalDay:                 newLocalDay,
-							LocalMonth:               newLocalMonth,
-							LocalYear:                newLocalYear,
-							ZuluDay:                  newZuluDay,
-							ZuluMonth:                newZuluMonth,
-							ZuluYear:                 newZuluYear,
-							Realism:                  newRealism,
-							VisualModelRadius:        newVisualModelRadius,
-							SimDisabled:              newSimDisabled,
-							RealismCrashDetection:    newRealismCrashDetection,
-							RealismCrashWithOthers:   newRealismCrashWithOthers,
-							TrackIREnabled:           newTrackIREnabled,
-							UserInputEnabled:         newUserInputEnabled,
-							SimOnGround:              newSimOnGround,
-						}
-						m.setSimState(newSimState)
+						m.notifySimStateChange(oldState, newState)
+					} else {
+						m.mu.Unlock()
 					}
 				}
 			}
@@ -1614,6 +1519,17 @@ func (m *Instance) runConnection() error {
 					case sub.ch <- msg:
 					default:
 						// Channel full, skip message to avoid blocking
+						if sub.onDrop != nil {
+							// Protect dispatch loop from user callback panics
+							func() {
+								defer func() {
+									if r := recover(); r != nil {
+										m.logger.Error("[manager] OnDrop callback panicked", "panic", r)
+									}
+								}()
+								sub.onDrop(1)
+							}()
+						}
 						m.logger.Debug("[manager] Subscription channel full, dropping message")
 					}
 				}

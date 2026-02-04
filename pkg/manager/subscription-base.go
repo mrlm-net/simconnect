@@ -30,6 +30,10 @@ type subscription struct {
 	// and non-empty, only messages whose DwID matches one of the keys
 	// will be forwarded.
 	allowedTypes map[types.SIMCONNECT_RECV_ID]struct{}
+	// Optional callback invoked when messages are dropped due to full buffer.
+	// Called with the number of messages dropped (typically 1).
+	// Must not block - called from message dispatch loop.
+	onDrop func(dropped int)
 }
 
 // watchContext monitors the subscription's context and auto-unsubscribes when cancelled
@@ -95,13 +99,27 @@ func (s *subscription) Unsubscribe() {
 	s.manager.logger.Debug(fmt.Sprintf("[manager] Unsubscribed: %s", s.id))
 }
 
+// SubscriptionOption is a functional option for configuring subscriptions
+type SubscriptionOption func(*subscription)
+
+// WithOnDrop configures a callback to be invoked when messages are dropped
+// due to a full subscription buffer. The callback receives the number of
+// dropped messages (typically 1 per call). The callback must not block as
+// it is called from the message dispatch loop.
+func WithOnDrop(fn func(dropped int)) SubscriptionOption {
+	return func(s *subscription) {
+		s.onDrop = fn
+	}
+}
+
 // Subscribe creates a new message subscription that delivers messages to a channel.
 // The returned Subscription can be used to receive messages in an isolated goroutine.
 // The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
 // The channel is buffered with the specified size.
 // The subscription is automatically cancelled when the manager's context is cancelled.
 // Call Unsubscribe() when done to release resources.
-func (m *Instance) Subscribe(id string, bufferSize int) Subscription {
+// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
 	}
@@ -118,6 +136,11 @@ func (m *Instance) Subscribe(id string, bufferSize int) Subscription {
 		manager: m,
 	}
 
+	// Apply options
+	for _, opt := range opts {
+		opt(sub)
+	}
+
 	m.mu.Lock()
 	m.subscriptions[id] = sub
 	m.subsWg.Add(1)
@@ -132,7 +155,8 @@ func (m *Instance) Subscribe(id string, bufferSize int) Subscription {
 
 // SubscribeWithFilter creates a new message subscription that delivers messages
 // to a channel only when the provided filter returns true for a message.
-func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool) Subscription {
+// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
 	}
@@ -151,6 +175,11 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 		allowedTypes: nil,
 	}
 
+	// Apply options
+	for _, opt := range opts {
+		opt(sub)
+	}
+
 	m.mu.Lock()
 	m.subscriptions[id] = sub
 	m.subsWg.Add(1)
@@ -165,7 +194,8 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 
 // SubscribeWithType creates a new message subscription that delivers messages
 // only when their DwID (SIMCONNECT_RECV_ID) is one of the provided types.
-func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs ...types.SIMCONNECT_RECV_ID) Subscription {
+// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs []types.SIMCONNECT_RECV_ID, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
 	}
@@ -187,6 +217,11 @@ func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs ...types
 		manager:      m,
 		filter:       nil,
 		allowedTypes: allowed,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(sub)
 	}
 
 	m.mu.Lock()

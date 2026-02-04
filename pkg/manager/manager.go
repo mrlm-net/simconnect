@@ -67,15 +67,18 @@ type Manager interface {
 	// The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
 	// The channel is buffered with the specified size.
 	// Call Unsubscribe() when done to release resources.
-	Subscribe(id string, bufferSize int) Subscription
+	// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+	Subscribe(id string, bufferSize int, opts ...SubscriptionOption) Subscription
 
 	// SubscribeWithFilter creates a new message subscription that only forwards
 	// messages for which the provided filter function returns true.
-	SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool) Subscription
+	// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+	SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool, opts ...SubscriptionOption) Subscription
 
 	// SubscribeWithType creates a new message subscription that only forwards
 	// messages whose `DwID` matches one of the provided SIMCONNECT_RECV_ID values.
-	SubscribeWithType(id string, bufferSize int, recvIDs ...types.SIMCONNECT_RECV_ID) Subscription
+	// Optional SubscriptionOption parameters can be provided to configure drop notifications.
+	SubscribeWithType(id string, bufferSize int, recvIDs []types.SIMCONNECT_RECV_ID, opts ...SubscriptionOption) Subscription
 
 	// GetSubscription returns an existing subscription by ID, or nil if not found.
 	GetSubscription(id string) Subscription

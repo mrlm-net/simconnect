@@ -14,7 +14,32 @@ type Message struct {
 	Size uint32
 	Err  error
 
-	data []byte // Internal field to keep the copied data alive
+	data    []byte // Internal field to keep the copied data alive
+	release func() // Internal function to return buffer to pool
+}
+
+// newMessage creates a new Message with pooled buffer.
+// IMPORTANT: Callers should call Release() when done with the message to return
+// the buffer to the pool. If Release() is not called, the buffer will be garbage
+// collected but pool efficiency will be reduced under high load.
+func newMessage(recv *types.SIMCONNECT_RECV, size uint32, err error, data []byte, release func()) Message {
+	return Message{
+		SIMCONNECT_RECV: recv,
+		Size:            size,
+		Err:             err,
+		data:            data,
+		release:         release,
+	}
+}
+
+// Release returns the message's buffer to the appropriate pool.
+// Call this when the message is no longer needed for best performance.
+// Safe to call multiple times (no-op after first call).
+func (m *Message) Release() {
+	if m.release != nil {
+		m.release()
+		m.release = nil // Prevent double-release
+	}
 }
 
 func CastAs[T any](m *Message) T {

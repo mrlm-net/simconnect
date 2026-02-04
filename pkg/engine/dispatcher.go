@@ -11,15 +11,38 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-// byteSlicePool reduces GC pressure by reusing byte slices for message copying.
-// Slices larger than maxPooledSliceSize are not pooled to prevent memory bloat.
-var byteSlicePool = sync.Pool{
-	New: func() any {
-		return make([]byte, 0, 4096) // Pre-allocate 4KB capacity
-	},
+// Tiered byte pools reduce GC pressure by reusing byte slices for message copying.
+// Messages are pooled in size-appropriate tiers to minimize waste.
+var (
+	pool4KB  = sync.Pool{New: func() any { return make([]byte, 4*1024) }}
+	pool16KB = sync.Pool{New: func() any { return make([]byte, 16*1024) }}
+	pool64KB = sync.Pool{New: func() any { return make([]byte, 64*1024) }}
+)
+
+// getPooledSlice returns a byte slice from the appropriate pool tier and a release function.
+// For sizes > 64KB, allocates a fresh slice without pooling to prevent memory bloat.
+func getPooledSlice(size uint32) ([]byte, func()) {
+	switch {
+	case size <= 4*1024:
+		s := pool4KB.Get().([]byte)
+		return s[:size], func() { pool4KB.Put(s) }
+	case size <= 16*1024:
+		s := pool16KB.Get().([]byte)
+		return s[:size], func() { pool16KB.Put(s) }
+	case size <= 64*1024:
+		s := pool64KB.Get().([]byte)
+		return s[:size], func() { pool64KB.Put(s) }
+	default:
+		// No pooling for very large messages to prevent memory bloat
+		return make([]byte, size), func() {}
+	}
 }
 
-const maxPooledSliceSize = 65536 // 64KB - larger messages won't be pooled
+// Adaptive polling constants for exponential backoff
+const (
+	minSleep = 1 * time.Millisecond
+	maxSleep = 50 * time.Millisecond
+)
 
 const (
 	HEARTBEAT_EVENT_ID types.DWORD = 999999999 // SimConnect_SystemState_6Hz ID
@@ -32,6 +55,10 @@ func (e *Engine) dispatch() error {
 	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), string(e.config.Heartbeat)) // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
 		defer e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
+
+		// Adaptive sleep for backoff when no messages available
+		sleepDuration := minSleep
+
 		for {
 			select {
 			case <-e.ctx.Done():
@@ -53,25 +80,23 @@ func (e *Engine) dispatch() error {
 				}
 
 				if recv == nil {
-					// No message available, sleep briefly to prevent CPU spinning
-					time.Sleep(1 * time.Millisecond)
+					// No message available, apply adaptive backoff to reduce CPU usage
+					time.Sleep(sleepDuration)
+					// Exponential backoff: 1ms -> 2ms -> 4ms -> 8ms -> 16ms -> 32ms -> 50ms (cap)
+					if sleepDuration < maxSleep {
+						sleepDuration *= 2
+						if sleepDuration > maxSleep {
+							sleepDuration = maxSleep
+						}
+					}
 					continue
 				}
 
-				// Copy the received message before sending to the queue
-				// Use pooled slice if size is reasonable, otherwise allocate fresh
-				var dataCopy []byte
-				if size <= maxPooledSliceSize {
-					pooled := byteSlicePool.Get().([]byte)
-					if cap(pooled) >= int(size) {
-						dataCopy = pooled[:size]
-					} else {
-						// Pooled slice too small, allocate new one
-						dataCopy = make([]byte, size)
-					}
-				} else {
-					dataCopy = make([]byte, size)
-				}
+				// Reset sleep duration on activity
+				sleepDuration = minSleep
+
+				// Copy the received message using tiered pooling
+				dataCopy, release := getPooledSlice(size)
 				copy(dataCopy, unsafe.Slice((*byte)(unsafe.Pointer(recv)), size))
 				recvCopy := (*types.SIMCONNECT_RECV)(unsafe.Pointer(&dataCopy[0]))
 
@@ -82,6 +107,7 @@ func (e *Engine) dispatch() error {
 					// Ignore those events to reduce noise (maybe consider making this configurable later)
 					if event.UEventID == HEARTBEAT_EVENT_ID { // Heartbeat event ID
 						e.logger.Debug("[dispatcher] Heartbeat event received")
+						release() // Return buffer to pool
 						continue
 					}
 
@@ -94,12 +120,7 @@ func (e *Engine) dispatch() error {
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
 					e.logger.Debug("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
 					// Sent message that simulator is quitting
-					e.queue <- Message{
-						SIMCONNECT_RECV: recvCopy,
-						Size:            size,
-						Err:             err,
-						data:            dataCopy, // Keep reference to prevent GC
-					}
+					e.queue <- newMessage(recvCopy, size, err, dataCopy, release)
 					e.cancel()
 					close(e.queue)
 					return
@@ -117,12 +138,7 @@ func (e *Engine) dispatch() error {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
-					case e.queue <- Message{
-						SIMCONNECT_RECV: recvCopy,
-						Size:            size,
-						Err:             err,
-						data:            dataCopy, // Keep reference to prevent GC
-					}:
+					case e.queue <- newMessage(recvCopy, size, err, dataCopy, release):
 					}
 				}
 			}
