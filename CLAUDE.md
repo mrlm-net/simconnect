@@ -50,8 +50,11 @@ go test ./...
 # Run example
 go run ./examples/basic-connection
 
-# Vet & lint
-go vet ./...
+# Vet (disable unsafeptr for DLL interop false positives)
+go vet -unsafeptr=false ./...
+
+# Lint (if golangci-lint installed)
+golangci-lint run ./...
 ```
 
 ## Conventions

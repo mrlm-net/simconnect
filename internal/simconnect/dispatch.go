@@ -1,11 +1,11 @@
 //go:build windows
-// +build windows
 
 package simconnect
 
 import (
 	"errors"
 	"fmt"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -43,5 +43,9 @@ func (sc *SimConnect) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) 
 		return nil, 0, nil
 	}
 
-	return toSIMCONNECT_RECV(ppData), pcbData, nil
+	// Convert uintptr to SIMCONNECT_RECV pointer.
+	// SAFETY: ppData is a pointer value written by the SimConnect DLL, pointing to DLL-managed memory.
+	// The conversion is safe because the memory is not Go-managed and remains valid until next dispatch.
+	//nolint:govet // ppData is from SimConnect DLL (C memory), not Go heap - conversion is safe
+	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(ppData)), pcbData, nil
 }

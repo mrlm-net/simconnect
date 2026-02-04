@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package simconnect
 
@@ -30,10 +29,6 @@ func isHRESULTSuccess(hresult uintptr) bool {
 func isHRESULTFailure(hresult uintptr) bool {
 	// HRESULT failure is indicated by the high bit being set (0x80000000)
 	return (uint32(hresult) & 0x80000000) != 0
-}
-
-func toSIMCONNECT_RECV(ppData uintptr) *types.SIMCONNECT_RECV {
-	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(ppData))
 }
 
 func toUnsafePointer[T any](ptr *T) uintptr {

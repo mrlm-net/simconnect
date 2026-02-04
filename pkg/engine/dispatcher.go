@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package engine
 
@@ -48,13 +47,23 @@ const (
 	HEARTBEAT_EVENT_ID types.DWORD = 999999999 // SimConnect_SystemState_6Hz ID
 )
 
+// closeQueue safely closes the queue channel exactly once
+func (e *Engine) closeQueue() {
+	e.closeOnce.Do(func() {
+		close(e.queue)
+	})
+}
+
 func (e *Engine) dispatch() error {
 	e.logger.Debug("[dispatcher] Starting dispatcher goroutine")
-	e.queue = make(chan Message, e.config.BufferSize)
 	// Subscribe to a system event to receive regular updates about the simulator connection state
 	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), string(e.config.Heartbeat)) // SimConnect_SystemState_6Hz
 	e.sync.Go(func() {
-		defer e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
+		defer func() {
+			e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
+			// Ensure queue is closed on all exit paths
+			e.closeQueue()
+		}()
 
 		// Adaptive sleep for backoff when no messages available
 		sleepDuration := minSleep
@@ -119,11 +128,10 @@ func (e *Engine) dispatch() error {
 
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
 					e.logger.Debug("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
-					// Sent message that simulator is quitting
+					// Send message that simulator is quitting
 					e.queue <- newMessage(recvCopy, size, err, dataCopy, release)
 					e.cancel()
-					close(e.queue)
-					return
+					return // closeQueue called by defer
 				}
 
 				if recvID == types.SIMCONNECT_RECV_ID_EXCEPTION {
@@ -137,9 +145,13 @@ func (e *Engine) dispatch() error {
 					select {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
+						release() // Return buffer to pool on early exit
 						return
 					case e.queue <- newMessage(recvCopy, size, err, dataCopy, release):
 					}
+				} else {
+					// No data to send, release buffer
+					release()
 				}
 			}
 		}

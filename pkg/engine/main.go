@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package engine
 
@@ -30,6 +29,8 @@ func New(name string, options ...Option) *Engine {
 		config: config,
 		ctx:    ctx,
 		logger: config.Logger,
+		// Initialize queue here to prevent race condition between Stream() and dispatch()
+		queue: make(chan Message, config.BufferSize),
 	}
 }
 
@@ -42,6 +43,7 @@ type Engine struct {
 	logger       *slog.Logger
 	queue        chan Message
 	sync         sync.WaitGroup
+	closeOnce    sync.Once // Ensures queue is closed only once
 }
 
 // HeartbeatFrequency represents the valid heartbeat frequencies for SimConnect system events.

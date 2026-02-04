@@ -1,17 +1,19 @@
 //go:build windows
-// +build windows
 
 package manager
 
 import (
 	"context"
 	"crypto/rand"
-	"fmt"
+	"encoding/hex"
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// Default buffer size for subscriptions when invalid value is provided
+const defaultSubscriptionBufferSize = 16
 
 // subscription implements the Subscription interface
 type subscription struct {
@@ -34,10 +36,18 @@ type subscription struct {
 	// Called with the number of messages dropped (typically 1).
 	// Must not block - called from message dispatch loop.
 	onDrop func(dropped int)
+	// WaitGroup entry tracked by manager for graceful shutdown
+	watchWg sync.WaitGroup
 }
 
 // watchContext monitors the subscription's context and auto-unsubscribes when cancelled
 func (s *subscription) watchContext() {
+	defer s.watchWg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			s.manager.logger.Error("[subscription] watchContext panic recovered", "panic", r)
+		}
+	}()
 	<-s.ctx.Done()
 	s.Unsubscribe()
 }
@@ -52,11 +62,25 @@ func (m *Instance) GetSubscription(id string) Subscription {
 	return nil
 }
 
-// generateUUID generates a simple UUID v4
+// generateUUID generates a simple UUID v4 with optimized allocation
 func generateUUID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	// Set version (4) and variant bits
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	// Use pre-allocated buffer for hex encoding
+	var buf [36]byte
+	hex.Encode(buf[0:8], b[0:4])
+	buf[8] = '-'
+	hex.Encode(buf[9:13], b[4:6])
+	buf[13] = '-'
+	hex.Encode(buf[14:18], b[6:8])
+	buf[18] = '-'
+	hex.Encode(buf[19:23], b[8:10])
+	buf[23] = '-'
+	hex.Encode(buf[24:36], b[10:16])
+	return string(buf[:])
 }
 
 // ID returns the unique identifier of the subscription
@@ -79,15 +103,15 @@ func (s *subscription) Done() <-chan struct{} {
 // Blocks until any pending message delivery completes.
 func (s *subscription) Unsubscribe() {
 	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-
 	if s.closed {
+		s.closeMu.Unlock()
 		return
 	}
 	s.closed = true
 	s.cancel()    // Cancel the subscription's context
 	close(s.done) // Signal consumers to stop
 	close(s.ch)   // Close message channel
+	s.closeMu.Unlock()
 
 	// Remove from manager's subscription map
 	s.manager.mu.Lock()
@@ -96,7 +120,7 @@ func (s *subscription) Unsubscribe() {
 
 	// Signal WaitGroup that this subscription is done
 	s.manager.subsWg.Done()
-	s.manager.logger.Debug(fmt.Sprintf("[manager] Unsubscribed: %s", s.id))
+	s.manager.logger.Debug("[manager] Unsubscribed: " + s.id)
 }
 
 // SubscriptionOption is a functional option for configuring subscriptions
@@ -115,13 +139,18 @@ func WithOnDrop(fn func(dropped int)) SubscriptionOption {
 // Subscribe creates a new message subscription that delivers messages to a channel.
 // The returned Subscription can be used to receive messages in an isolated goroutine.
 // The id parameter is a unique identifier for the subscription (use "" for auto-generated UUID).
-// The channel is buffered with the specified size.
+// The channel is buffered with the specified size (defaults to 16 if <= 0).
 // The subscription is automatically cancelled when the manager's context is cancelled.
 // Call Unsubscribe() when done to release resources.
 // Optional SubscriptionOption parameters can be provided to configure drop notifications.
 func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
+	}
+
+	// Validate buffer size
+	if bufferSize <= 0 {
+		bufferSize = defaultSubscriptionBufferSize
 	}
 
 	// Derive context from manager's context for automatic cancellation
@@ -146,10 +175,11 @@ func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOpti
 	m.subsWg.Add(1)
 	m.mu.Unlock()
 
-	// Start goroutine to watch for context cancellation
+	// Start goroutine to watch for context cancellation with tracking
+	sub.watchWg.Add(1)
 	go sub.watchContext()
 
-	m.logger.Debug(fmt.Sprintf("[manager] Created subscription: %s", id))
+	m.logger.Debug("[manager] Created subscription: " + id)
 	return sub
 }
 
@@ -159,6 +189,11 @@ func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOpti
 func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
+	}
+
+	// Validate buffer size
+	if bufferSize <= 0 {
+		bufferSize = defaultSubscriptionBufferSize
 	}
 
 	// Derive context from manager's context for automatic cancellation
@@ -185,10 +220,11 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 	m.subsWg.Add(1)
 	m.mu.Unlock()
 
-	// Start goroutine to watch for context cancellation
+	// Start goroutine to watch for context cancellation with tracking
+	sub.watchWg.Add(1)
 	go sub.watchContext()
 
-	m.logger.Debug(fmt.Sprintf("[manager] Created filtered subscription: %s", id))
+	m.logger.Debug("[manager] Created filtered subscription: " + id)
 	return sub
 }
 
@@ -198,6 +234,11 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs []types.SIMCONNECT_RECV_ID, opts ...SubscriptionOption) Subscription {
 	if id == "" {
 		id = generateUUID()
+	}
+
+	// Validate buffer size
+	if bufferSize <= 0 {
+		bufferSize = defaultSubscriptionBufferSize
 	}
 
 	// Derive context from manager's context for automatic cancellation
@@ -229,9 +270,10 @@ func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs []types.
 	m.subsWg.Add(1)
 	m.mu.Unlock()
 
-	// Start goroutine to watch for context cancellation
+	// Start goroutine to watch for context cancellation with tracking
+	sub.watchWg.Add(1)
 	go sub.watchContext()
 
-	m.logger.Debug(fmt.Sprintf("[manager] Created type subscription: %s", id))
+	m.logger.Debug("[manager] Created type subscription: " + id)
 	return sub
 }

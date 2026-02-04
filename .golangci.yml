@@ -1,0 +1,23 @@
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - typecheck
+
+linters-settings:
+  govet:
+    # Disable the unsafeptr check for DLL interop code
+    # The uintptr->unsafe.Pointer conversions are safe when the uintptr
+    # originates from C/DLL memory (not Go heap)
+    disable:
+      - unsafeptr
+
+issues:
+  # Exclude specific files from certain checks if needed
+  exclude-rules:
+    - path: internal/simconnect/
+      linters:
+        - govet
+      text: "possible misuse of unsafe.Pointer"

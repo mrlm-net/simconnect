@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package manager
 
@@ -17,6 +16,55 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// defaultSimState returns a new SimState with all fields initialized to their default/uninitialized values.
+// This centralizes the initialization to avoid duplication and ensure consistency.
+func defaultSimState() SimState {
+	return SimState{
+		Camera:                   CameraStateUninitialized,
+		Substate:                 CameraSubstateUninitialized,
+		Paused:                   false,
+		SimRunning:               false,
+		SimulationRate:           0,
+		SimulationTime:           0,
+		LocalTime:                0,
+		ZuluTime:                 0,
+		IsInVR:                   false,
+		IsUsingMotionControllers: false,
+		IsUsingJoystickThrottle:  false,
+		IsInRTC:                  false,
+		IsAvatar:                 false,
+		IsAircraft:               false,
+		Crashed:                  false,
+		CrashReset:               false,
+		Sound:                    0,
+		LocalDay:                 0,
+		LocalMonth:               0,
+		LocalYear:                0,
+		ZuluDay:                  0,
+		ZuluMonth:                0,
+		ZuluYear:                 0,
+		Realism:                  0,
+		VisualModelRadius:        0,
+		SimDisabled:              false,
+		RealismCrashDetection:    false,
+		RealismCrashWithOthers:   false,
+		TrackIREnabled:           false,
+		UserInputEnabled:         false,
+		SimOnGround:              false,
+	}
+}
+
+// safeCallHandler executes a handler function with panic recovery.
+// If the handler panics, the panic is logged and execution continues.
+func safeCallHandler(logger *slog.Logger, name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("[manager] Handler panic recovered", "handler", name, "panic", r)
+		}
+	}()
+	fn()
+}
 
 // New creates a new Manager instance with the given application name and options
 func New(name string, opts ...Option) Manager {
@@ -48,7 +96,7 @@ func New(name string, opts ...Option) Manager {
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
-		simState:                     SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false},
+		simState:                     defaultSimState(),
 		simStateHandlers:             []simStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
@@ -237,9 +285,12 @@ func (m *Instance) setState(newState ConnectionState) {
 
 	m.logger.Debug(fmt.Sprintf("[manager] State changed: %s -> %s", oldState, newState))
 
-	// Notify handlers outside the lock
+	// Notify handlers outside the lock with panic recovery
 	for _, handler := range handlers {
-		handler(oldState, newState)
+		h := handler // capture for closure
+		safeCallHandler(m.logger, "ConnectionStateChangeHandler", func() {
+			h(oldState, newState)
+		})
 	}
 
 	// Forward state change to subscriptions (non-blocking)
@@ -279,9 +330,12 @@ func (m *Instance) setSimState(newState SimState) {
 
 	m.logger.Debug(fmt.Sprintf("[manager] SimState changed: Camera %s -> %s", oldState.Camera, newState.Camera))
 
-	// Notify handlers outside the lock
+	// Notify handlers outside the lock with panic recovery
 	for _, handler := range handlers {
-		handler(oldState, newState)
+		h := handler // capture for closure
+		safeCallHandler(m.logger, "SimStateChangeHandler", func() {
+			h(oldState, newState)
+		})
 	}
 
 	// Forward state change to subscriptions (non-blocking)
@@ -318,9 +372,12 @@ func (m *Instance) notifySimStateChange(oldState, newState SimState) {
 
 	m.logger.Debug(fmt.Sprintf("[manager] SimState changed: Camera %s -> %s", oldState.Camera, newState.Camera))
 
-	// Notify handlers outside the lock
+	// Notify handlers outside the lock with panic recovery
 	for _, handler := range handlers {
-		handler(oldState, newState)
+		h := handler // capture for closure
+		safeCallHandler(m.logger, "SimStateChangeHandler", func() {
+			h(oldState, newState)
+		})
 	}
 
 	// Forward state change to subscriptions (non-blocking)
@@ -739,9 +796,13 @@ func (m *Instance) setOpen(data types.ConnectionOpenData) {
 
 	m.logger.Debug("[manager] Connection opened")
 
-	// Notify handlers outside the lock
+	// Notify handlers outside the lock with panic recovery
 	for _, handler := range handlers {
-		handler(data)
+		h := handler // capture for closure
+		d := data    // capture for closure
+		safeCallHandler(m.logger, "ConnectionOpenHandler", func() {
+			h(d)
+		})
 	}
 
 	// Forward open event to subscriptions (non-blocking)
@@ -774,9 +835,13 @@ func (m *Instance) setQuit(data types.ConnectionQuitData) {
 
 	m.logger.Debug("[manager] Connection quit")
 
-	// Notify handlers outside the lock
+	// Notify handlers outside the lock with panic recovery
 	for _, handler := range handlers {
-		handler(data)
+		h := handler // capture for closure
+		d := data    // capture for closure
+		safeCallHandler(m.logger, "ConnectionQuitHandler", func() {
+			h(d)
+		})
 	}
 
 	// Forward quit event to subscriptions (non-blocking)
@@ -967,7 +1032,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
+				m.setSimState(defaultSimState())
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -1010,7 +1075,7 @@ func (m *Instance) runConnection() error {
 
 				if client != nil {
 					// Set initial SimState
-					m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
+					m.setSimState(defaultSimState())
 
 					// Subscribe to pause events
 					// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
@@ -1155,7 +1220,7 @@ func (m *Instance) runConnection() error {
 				m.logger.Debug("[manager] Received QUIT message from simulator")
 				quitData := types.ConnectionQuitData{}
 				m.setQuit(quitData)
-				m.setSimState(SimState{Camera: CameraStateUninitialized, Substate: CameraSubstateUninitialized, Paused: false, SimRunning: false, SimulationRate: 0, SimulationTime: 0, LocalTime: 0, ZuluTime: 0, IsInVR: false, IsUsingMotionControllers: false, IsUsingJoystickThrottle: false, IsInRTC: false, IsAvatar: false, IsAircraft: false, Crashed: false, CrashReset: false, Sound: 0, LocalDay: 0, LocalMonth: 0, LocalYear: 0, ZuluDay: 0, ZuluMonth: 0, ZuluYear: 0, Realism: 0, VisualModelRadius: 0, SimDisabled: false, RealismCrashDetection: false, RealismCrashWithOthers: false, TrackIREnabled: false, UserInputEnabled: false, SimOnGround: false})
+				m.setSimState(defaultSimState())
 				m.setState(StateDisconnected)
 				m.mu.Lock()
 				m.engine = nil
@@ -1216,9 +1281,12 @@ func (m *Instance) runConnection() error {
 
 						m.notifySimStateChange(oldState, newState)
 
-						// Invoke handlers outside lock
+						// Invoke handlers outside lock with panic recovery
 						for _, h := range hs {
-							h()
+							handler := h // capture for closure
+							safeCallHandler(m.logger, "CrashedHandler", func() {
+								handler()
+							})
 						}
 					} else {
 						m.mu.Unlock()
@@ -1244,9 +1312,12 @@ func (m *Instance) runConnection() error {
 
 						m.notifySimStateChange(oldState, newState)
 
-						// Invoke handlers outside lock
+						// Invoke handlers outside lock with panic recovery
 						for _, h := range hs {
-							h()
+							handler := h // capture for closure
+							safeCallHandler(m.logger, "CrashResetHandler", func() {
+								handler()
+							})
 						}
 					} else {
 						m.mu.Unlock()
@@ -1272,9 +1343,13 @@ func (m *Instance) runConnection() error {
 
 						m.notifySimStateChange(oldState, newState)
 
-						// Invoke handlers outside lock
+						// Invoke handlers outside lock with panic recovery
 						for _, h := range hs {
-							h(newSound)
+							handler := h        // capture for closure
+							sound := newSound   // capture for closure
+							safeCallHandler(m.logger, "SoundEventHandler", func() {
+								handler(sound)
+							})
 						}
 					} else {
 						m.mu.Unlock()
@@ -1291,7 +1366,7 @@ func (m *Instance) runConnection() error {
 					name := engine.BytesToString(fnameMsg.SzFileName[:])
 					if fnameMsg.UEventID == types.DWORD(m.flightLoadedEventID) {
 						m.logger.Debug(fmt.Sprintf("[manager] FlightLoaded event: %s", name))
-						// Invoke registered FlightLoaded handlers
+						// Invoke registered FlightLoaded handlers with panic recovery
 						m.mu.RLock()
 						hs := make([]FlightLoadedHandler, len(m.flightLoadedHandlers))
 						for i, e := range m.flightLoadedHandlers {
@@ -1299,7 +1374,11 @@ func (m *Instance) runConnection() error {
 						}
 						m.mu.RUnlock()
 						for _, h := range hs {
-							h(name)
+							handler := h   // capture for closure
+							n := name      // capture for closure
+							safeCallHandler(m.logger, "FlightLoadedHandler", func() {
+								handler(n)
+							})
 						}
 					}
 
@@ -1312,7 +1391,11 @@ func (m *Instance) runConnection() error {
 						}
 						m.mu.RUnlock()
 						for _, h := range hs {
-							h(name)
+							handler := h   // capture for closure
+							n := name      // capture for closure
+							safeCallHandler(m.logger, "AircraftLoadedHandler", func() {
+								handler(n)
+							})
 						}
 					}
 
@@ -1325,7 +1408,11 @@ func (m *Instance) runConnection() error {
 						}
 						m.mu.RUnlock()
 						for _, h := range hs {
-							h(name)
+							handler := h   // capture for closure
+							n := name      // capture for closure
+							safeCallHandler(m.logger, "FlightPlanActivatedHandler", func() {
+								handler(n)
+							})
 						}
 					}
 				}
@@ -1337,15 +1424,20 @@ func (m *Instance) runConnection() error {
 				if objMsg != nil {
 					if objMsg.UEventID == types.DWORD(m.objectAddedEventID) {
 						m.logger.Debug(fmt.Sprintf("[manager] ObjectAdded event: id=%d, type=%d", objMsg.DwData, objMsg.EObjType))
-						// Invoke object added handlers
+						// Invoke object added handlers with panic recovery
 						m.mu.RLock()
 						hs := make([]ObjectChangeHandler, len(m.objectAddedHandlers))
 						for i, e := range m.objectAddedHandlers {
 							hs[i] = e.fn
 						}
 						m.mu.RUnlock()
+						objID := uint32(objMsg.DwData)
+						objType := objMsg.EObjType
 						for _, h := range hs {
-							h(uint32(objMsg.DwData), objMsg.EObjType)
+							handler := h // capture for closure
+							safeCallHandler(m.logger, "ObjectAddedHandler", func() {
+								handler(objID, objType)
+							})
 						}
 					}
 					if objMsg.UEventID == types.DWORD(m.objectRemovedEventID) {
@@ -1356,8 +1448,13 @@ func (m *Instance) runConnection() error {
 							hs[i] = e.fn
 						}
 						m.mu.RUnlock()
+						objID := uint32(objMsg.DwData)
+						objType := objMsg.EObjType
 						for _, h := range hs {
-							h(uint32(objMsg.DwData), objMsg.EObjType)
+							handler := h // capture for closure
+							safeCallHandler(m.logger, "ObjectRemovedHandler", func() {
+								handler(objID, objType)
+							})
 						}
 					}
 				}
@@ -1478,7 +1575,11 @@ func (m *Instance) runConnection() error {
 			m.mu.RUnlock()
 
 			for _, handler := range m.handlersBuf {
-				handler(msg)
+				h := handler   // capture for closure
+				message := msg // capture for closure
+				safeCallHandler(m.logger, "MessageHandler", func() {
+					h(message)
+				})
 			}
 
 			// Forward message to subscriptions (non-blocking)
