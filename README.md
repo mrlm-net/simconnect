@@ -2,31 +2,29 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrlm-net/simconnect.svg)](https://pkg.go.dev/github.com/mrlm-net/simconnect)
 
-> **GoLang wrapper over SimConnect.dll SDK** — build Microsoft Flight Simulator add-ons with ease.
-
-The main aim of this package is to abstract and describe common use-cases for your add-on application. We strive to keep it **small**, **simple**, **intuitive**, and **performant**. Feel free to contribute if there is something you are missing!
+> **Go wrapper for SimConnect.dll** — build Microsoft Flight Simulator 2020/2024 add-ons with type-safe, zero-dependency Go code.
 
 ## Features
 
-- Lightweight abstraction over `SimConnect.dll`
-- Typed data structures and enums for safer code
-- Ready-to-use dataset definitions
-- Comprehensive examples covering most scenarios
+### Engine — Direct SimConnect Access
+- Full SimConnect DLL binding via syscalls — zero CGo, Windows-only
+- Typed message stream via Go channels with callback handlers
+- Manual and pre-built dataset definitions across 6 domains (aircraft, environment, facilities, objects, simulator, traffic)
+- AI traffic management — create, remove, and control parked, enroute, and non-ATC aircraft with livery selection
+- Facility data queries — airports, runways, parking, frequencies, VOR, NDB, waypoints, jetways, helipads, and 14 facility types total
+- SimConnect.dll auto-detection via environment variables, SDK paths, and common installation locations
 
-## Requirements
+### Manager — Production Lifecycle
+- Automatic connection lifecycle with reconnection and health monitoring
+- 60+ SimVar state tracking via SimState — camera, position, speed, weather, VR, environment, realism settings
+- Channel-based and callback-based subscriptions with message type filtering
+- 10 typed system event handlers — Pause, Sim, Crashed, CrashReset, Sound, FlightLoaded, AircraftLoaded, FlightPlanActivated, ObjectAdded, ObjectRemoved
 
-| Requirement | Version |
-|-------------|---------|
-| Go | 1.25+ |
-| Operating system | Windows |
-| Microsoft Flight Simulator | 2020 / 2024 |
-| SimConnect SDK | Bundled with MSFS |
+### Utilities
+- Great-circle distance (haversine), altitude/distance/speed conversions, ICAO validation, WGS84 coordinate offsets
+- Tiered buffer pooling and pre-allocated handler buffers for zero-allocation dispatching
 
-## Installation
-
-```shell
-go get github.com/mrlm-net/simconnect
-```
+*Zero external dependencies — standard library only.*
 
 ## Quick Start
 
@@ -49,64 +47,51 @@ func main() {
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [`basic-connection`](examples/basic-connection) | Minimal setup that connects to the simulator and prints status updates. |
-| [`await-connection`](examples/await-connection) | Demonstrates waiting for the SimConnect server and retrying the connection sequence. |
-| [`lifecycle-connection`](examples/lifecycle-connection) | Showcases clean connection lifecycle management including graceful shutdown. |
-| [`simconnect-manager`](examples/simconnect-manager) | Uses the Manager interface for automatic connection lifecycle and reconnection handling. |
-| [`simconnect-subscribe`](examples/simconnect-subscribe) | Demonstrates channel-based subscriptions for messages and state changes using the Manager interface. |
-| [`simconnect-state`](examples/simconnect-state) | Demonstrates state tracking and SimState API with connection lifecycle management. |
-| [`simconnect-events`](examples/simconnect-events) | Demonstrates crash/sound/object event subscriptions using callback and channel-based handlers. |
-| [`read-messages`](examples/read-messages) | Reads incoming SimConnect messages and displays their payloads. |
-| [`read-objects`](examples/read-objects) | Retrieves simulator objects and inspects their properties. |
-| [`set-variables`](examples/set-variables) | Writes data back to the simulator to control aircraft state. |
-| [`emit-events`](examples/emit-events) | Sends custom events into the simulator. |
-| [`subscribe-events`](examples/subscribe-events) | Listens to simulator events and reacts to them. |
-| [`subscribe-facilities`](examples/subscribe-facilities) | Subscribes to facility data streams. |
-| [`read-facility`](examples/read-facility) | Resolves a single facility by ICAO identifier. |
-| [`read-facilities`](examples/read-facilities) | Enumerates facilities matching a filter. |
-| [`read-waypoints`](examples/read-waypoints) | Waypoint facility data retrieval from the simulator's facilities database. |
-| [`all-facilities`](examples/all-facilities) | Requests and reads the complete set of facilities (airports), handling multi-packet responses. |
-| [`ai-traffic`](examples/ai-traffic) | Drives AI traffic plans using flight plans shipped in `examples/ai-traffic/plans`. |
-| [`airport-details`](examples/airport-details) | Queries detailed airport information including parking, runways, and taxi paths. |
-| [`locate-airport`](examples/locate-airport) | Geolocation-based airport discovery using haversine distance calculation. |
-| [`manage-traffic`](examples/manage-traffic) | Advanced AI traffic management with creation, flight plans, and position updates. |
-| [`monitor-traffic`](examples/monitor-traffic) | Real-time AI traffic monitoring with periodic position and state tracking. |
-| [`simconnect-facilities`](examples/simconnect-facilities) | Facility dataset registration for airport, runway, parking, and frequency data. |
-| [`using-datasets`](examples/using-datasets) | Pre-built dataset registration and AI traffic spawning from JSON configuration. |
-| [`simconnect-benchmark`](examples/simconnect-benchmark) | Performance benchmarking with pprof, MemStats, and GC trace analysis. |
+All examples include standalone `main` packages with individual READMEs. Browse the [`examples`](examples) folder or run any example directly:
 
-> **Tip:** Browse the [`examples`](examples) folder to explore additional scenarios as they are added.
+```shell
+go run ./examples/<name>
+```
+
+- **Getting Started** — [basic-connection](examples/basic-connection), [await-connection](examples/await-connection), [lifecycle-connection](examples/lifecycle-connection)
+- **Manager Interface** — [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events)
+- **Data Operations** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [using-datasets](examples/using-datasets)
+- **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
+- **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic)
+- **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
+
+## Documentation
+
+- **[Client Configuration](docs/config-client.md)** — Engine/Client functional options (buffer size, DLL path, heartbeat, logging)
+- **[Client API Reference](docs/usage-client.md)** — Complete Engine/Client API — data definitions, events, AI traffic, facilities
+- **[Manager Configuration](docs/config-manager.md)** — Manager functional options (auto-reconnect, retry intervals, timeouts)
+- **[Manager Usage](docs/usage-manager.md)** — Lifecycle management, subscriptions, state handling
+- **[Request ID Management](docs/manager-requests-ids.md)** — ID allocation strategy and conflict prevention
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| [`simconnect`](root) | Main entry point providing `New()` for a managed connection (returns `manager.Manager`) and `NewClient()` for direct engine access (returns `engine.Client`). |
-| [`pkg/engine`](pkg/engine) | High-level client that manages the SimConnect session lifecycle, message dispatching, and data subscriptions. Use this when you want batteries-included helpers around the lower-level API. |
-| [`pkg/manager`](pkg/manager) | Connection lifecycle manager with automatic reconnection support. Ideal for long-running services that need robust connection handling. |
-| [`pkg/types`](pkg/types) | Strongly typed representations of SimConnect data structures, events, and helper enums used across the public API. |
-| [`pkg/datasets`](pkg/datasets) | Ready-made dataset definitions for common SimConnect data requests. Includes sub-packages for aircraft, environment, facilities (airport, runway, parking, frequency, and 20+ more), objects, simulator, and traffic data. |
-| [`pkg/convert`](pkg/convert) | Unit conversion utilities (altitude, distance, speed), ICAO code validation and region lookup, and WGS84 coordinate offset calculation. |
-| [`pkg/calc`](pkg/calc) | Calculation helpers including great-circle distance (haversine formula) for geographic coordinates. |
+- **[`simconnect`](https://pkg.go.dev/github.com/mrlm-net/simconnect)** — Main entry point — `New()` for managed connection, `NewClient()` for direct engine access
+- **[`pkg/engine`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/engine)** — High-level client, session lifecycle, message dispatching
+- **[`pkg/manager`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/manager)** — Connection manager with auto-reconnect and state tracking
+- **[`pkg/types`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/types)** — Typed data structures, enums, events
+- **[`pkg/datasets`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/datasets)** — Pre-built dataset definitions (aircraft, environment, facilities, objects, simulator, traffic)
+- **[`pkg/convert`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/convert)** — Unit conversions, ICAO validation, WGS84 coordinate offsets
+- **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Calculation helpers (haversine great-circle distance)
 
-> Detailed documentation will be available in the `docs` folder.
+## Installation
 
-## Configuration
+```shell
+go get github.com/mrlm-net/simconnect
+```
 
-Both `engine.Client` and `manager.Manager` support configuration via functional options. Choose based on your needs:
+## Requirements
 
-- **Manager** (`simconnect.New`) — Use for long-running services with automatic reconnection
-- **Client** (`simconnect.NewClient`) — Use for simple scripts with direct engine access
-
-| Documentation | Description |
-|---------------|-------------|
-| [Engine/Client Config](docs/config-client.md) | Buffer size, DLL path, heartbeat, logging |
-| [Engine/Client Usage](docs/usage-client.md) | Data definitions, events, AI traffic, facilities |
-| [Manager Config](docs/config-manager.md) | Auto-reconnect, retry intervals, timeouts |
-| [Manager Usage](docs/usage-manager.md) | Lifecycle, subscriptions, state handling |
-| [Request ID Management](docs/manager-requests-ids.md) | ID allocation and conflict prevention |
+| Requirement | Version |
+|-------------|---------|
+| Go | 1.25+ |
+| Operating system | Windows |
+| Microsoft Flight Simulator | 2020 / 2024 |
+| SimConnect SDK | Bundled with MSFS |
 
 ## Contributing
 
