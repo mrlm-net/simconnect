@@ -10,15 +10,15 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 
 | Range | Owner | Count | Purpose |
 |-------|-------|-------|---------|
-| 1 - 998,999 | **User Applications** | 998,999 | User-defined data definitions and requests |
-| 999,000 - 999,999 | **Manager** | 1,000 | Internal manager operations (reserved) |
+| 1 - 999,999,899 | **User Applications** | 999,999,899 | User-defined data definitions and requests |
+| 999,999,900 - 999,999,999 | **Manager** | 100 | Internal manager operations (reserved) |
 
 ### Why High Numbers for Manager?
 
 1. **User-Friendly**: Allows applications to use IDs starting from 1 without conflict
 2. **Defensive**: High numbers are unlikely to be chosen by developers
 3. **Clear Boundaries**: Easy to identify and validate ID ownership
-4. **Scalable**: Provides >999K IDs for user applications
+4. **Scalable**: Provides >999M IDs for user applications
 
 ## Current Manager IDs
 
@@ -42,6 +42,10 @@ The manager's camera data definition now includes additional environment and sim
 - `LOCAL DAY OF MONTH`, `LOCAL MONTH OF YEAR`, `LOCAL YEAR` (Number) — local date
 - `ZULU DAY OF MONTH`, `ZULU MONTH OF YEAR`, `ZULU YEAR` (Number) — Zulu date
 - `IS IN VR`, `IS USING MOTION CONTROLLERS`, `IS USING JOYSTICK THROTTLE`, `IS IN RTC`, `IS AVATAR`, `IS AIRCRAFT` (Boolean) — environment flags
+- `AMBIENT TEMPERATURE` (Celsius), `AMBIENT PRESSURE` (inHg), `AMBIENT WIND VELOCITY` (Knots)
+- `AMBIENT WIND DIRECTION` (Degrees), `AMBIENT VISIBILITY` (Meters), `AMBIENT IN CLOUD` (Boolean)
+- `AMBIENT PRECIP STATE` (Mask), `BAROMETER PRESSURE` (Millibars), `SEA LEVEL PRESSURE` (Millibars)
+- `GROUND ALTITUDE` (Feet), `MAGVAR` (Degrees), `SURFACE TYPE` (Enum)
 
 ### Event System (manager-reserved IDs)
 
@@ -117,7 +121,7 @@ RequestTypeCustom          // User-defined or other request types
 
 ### 1. Choose Your ID Range
 
-Pick a sub-range within 1-998,999 for your application:
+Pick a sub-range within 1-999,999,899 for your application:
 
 ```go
 const (
@@ -182,7 +186,7 @@ if manager.IsValidUserID(1000) {
 
 If your application accidentally uses a manager-reserved ID:
 
-1. **On Connection**: The manager will register its internal requests (999000, 999001, 999100)
+1. **On Connection**: The manager will register its internal requests (999999900, 999999901, 999999998)
 2. **Potential Conflict**: If you use the same ID, your definition will be overwritten
 3. **Detection**: Check the manager logs or use `IsManagerID()` in validation
 
@@ -204,10 +208,10 @@ Potential improvements for request management:
 
 Manager registers internal requests at these points:
 
-1. **On Connection (via `onEngineOpen`)**: 
-    - Camera Definition (999000) — registers camera state, simulation/time variables, date fields and IS_* flags
-    - Camera Request (999001)
-    - Pause Event (999100)
+1. **On Connection (via `onEngineOpen`)**:
+    - Camera Definition (999999900) — registers camera state, simulation/time variables, date fields, IS_* flags, and environment SimVars
+    - Camera Request (999999901)
+    - Pause Event (999999998)
     - Crashed/CrashReset/Sound event subscriptions (manager reserved IDs listed above)
 
 2. **On Disconnect (via `disconnect`)**:

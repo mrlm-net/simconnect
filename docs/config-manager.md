@@ -61,6 +61,8 @@ These options configure the underlying engine client:
 | `WithDLLPath(path)` | `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
 | `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency |
 | `WithEngineOptions(opts...)` | `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
+| `WithAutoDetect()` | `manager.WithAutoDetect()` | - | disabled | Enable automatic DLL path detection (engine pass-through) |
+| `WithLogLevelFromString(level)` | `manager.WithLogLevelFromString(level)` | `string` | - | Set log level from string (engine pass-through) |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
 
@@ -176,6 +178,28 @@ mgr := manager.New("MyApp",
     ),
 )
 ```
+
+### WithAutoDetect
+
+Enables automatic detection of the SimConnect DLL path for the underlying engine. See [Client Configuration — DLL Auto-Detection](config-client.md#dll-auto-detection) for the full detection strategy.
+
+```go
+mgr := manager.New("MyApp", manager.WithAutoDetect())
+// Or from root package
+mgr := simconnect.New("MyApp", simconnect.WithAutoDetect())
+```
+
+### WithLogLevelFromString
+
+Convenience wrapper to set the manager's default logger level from a textual representation:
+
+```go
+mgr := manager.New("MyApp", manager.WithLogLevelFromString("debug"))
+// Or from root package
+mgr := simconnect.New("MyApp", simconnect.WithLogLevelFromString("debug"))
+```
+
+Accepted values: `"debug"`, `"info"`, `"warn"`, `"warning"`, `"error"`, `"err"` (case-insensitive). Unknown values default to INFO.
 
 ## Configuration Getters
 
@@ -321,6 +345,7 @@ User Application
     └─► manager.WithBufferSize() ──────► Engine.BufferSize
         manager.WithDLLPath() ─────────► Engine.DLLPath
         manager.WithHeartbeat() ───────► Engine.Heartbeat
+        manager.WithAutoDetect() ──────► Engine.AutoDetect
 ```
 
 ## See Also

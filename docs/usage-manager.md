@@ -514,6 +514,18 @@ fmt.Printf("Camera: %v, Paused: %v, Crashed: %v\n", state.Camera, state.Paused, 
 | `TrackIREnabled` | `bool` | TrackIR head tracking enabled |
 | `UserInputEnabled` | `bool` | User input enabled |
 | `SimOnGround` | `bool` | Aircraft is on ground |
+| `AmbientTemperature` | `float64` | Ambient temperature (Celsius) |
+| `AmbientPressure` | `float64` | Ambient pressure (inHg) |
+| `AmbientWindVelocity` | `float64` | Ambient wind speed (Knots) |
+| `AmbientWindDirection` | `float64` | Ambient wind direction (Degrees) |
+| `AmbientVisibility` | `float64` | Ambient visibility (Meters) |
+| `AmbientInCloud` | `bool` | Whether aircraft is in cloud |
+| `AmbientPrecipState` | `uint32` | Precipitation state mask (2=None, 4=Rain, 8=Snow) |
+| `BarometerPressure` | `float64` | Barometric pressure (Millibars) |
+| `SeaLevelPressure` | `float64` | Sea level pressure (Millibars) |
+| `GroundAltitude` | `float64` | Ground elevation at aircraft position (Feet) |
+| `MagVar` | `float64` | Magnetic variation (Degrees) |
+| `SurfaceType` | `uint32` | Surface type enum |
 
 ### Camera States
 

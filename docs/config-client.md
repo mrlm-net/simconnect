@@ -40,6 +40,8 @@ Client options are available via the root `simconnect` package (with `Client` pr
 | `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
 | `ClientWithLogLevel(level)` | `engine.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `ClientWithLogger` to provide a custom logger) |
 | `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency for connection monitoring |
+| `ClientWithAutoDetect()` | `engine.WithAutoDetect()` | - | disabled | Enable automatic SimConnect DLL path detection |
+| `ClientWithLogLevelFromString(level)` | `engine.WithLogLevelFromString(level)` | `string` | - | Set log level from string ("debug", "info", "warn", "error") |
 
 ## Option Details
 
@@ -105,6 +107,38 @@ simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_1SEC)
 simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_6HZ)
 ```
 
+### WithAutoDetect
+
+Enables automatic detection of the SimConnect DLL path. When enabled, the engine searches for the DLL in this priority order:
+
+0. `SIMCONNECT_DLL` environment variable (direct path to DLL)
+1. SDK root environment variables: `MSFS_SDK`, `MSFS2024_SDK`, `MSFS2020_SDK`
+2. Common installation paths (C:/MSFS 2024 SDK, C:/Program Files/..., etc.)
+3. User home directory (~)
+
+Within each SDK root, both `SimConnect SDK/lib/SimConnect.dll` and `lib/SimConnect.dll` layouts are checked.
+
+```go
+// Auto-detect (recommended for most users)
+client := engine.New("MyApp", engine.WithAutoDetect())
+
+// Or from root package
+client := simconnect.NewClient("MyApp", simconnect.ClientWithAutoDetect())
+```
+
+When enabled, detection runs regardless of any path set via `WithDLLPath`. If detection succeeds, the detected path overrides the configured path. If detection fails, the existing path (default or explicit) is kept as fallback.
+
+### WithLogLevelFromString
+
+Convenience function to set log level from a textual representation:
+
+```go
+engine.WithLogLevelFromString("debug")  // Same as WithLogLevel(slog.LevelDebug)
+engine.WithLogLevelFromString("warn")   // Same as WithLogLevel(slog.LevelWarn)
+```
+
+Accepted values: `"debug"`, `"info"`, `"warn"`, `"warning"`, `"error"`, `"err"` (case-insensitive). Unknown values default to INFO.
+
 ## Underlying SimConnect Config
 
 The engine embeds the internal SimConnect configuration:
@@ -114,6 +148,35 @@ The engine embeds the internal SimConnect configuration:
 | `BufferSize` | `int` | Message buffer size |
 | `Context` | `context.Context` | Lifecycle context |
 | `DLLPath` | `string` | Path to SimConnect.dll |
+
+## DLL Auto-Detection
+
+The package provides automatic DLL detection to simplify setup across different MSFS installations.
+
+### Public API
+
+You can detect the DLL path without creating a client:
+
+```go
+import "github.com/mrlm-net/simconnect"
+
+dllPath, err := simconnect.DetectDLLPath()
+if err != nil {
+    if errors.Is(err, simconnect.ErrDLLNotFound) {
+        log.Fatal("SimConnect DLL not found — install MSFS SDK or set SIMCONNECT_DLL env var")
+    }
+}
+fmt.Println("Found DLL at:", dllPath)
+```
+
+### Detection Priority
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 0 | `SIMCONNECT_DLL` env var | `C:/Custom/SimConnect.dll` |
+| 1 | SDK root env vars (`MSFS_SDK`, `MSFS2024_SDK`, `MSFS2020_SDK`) | `%MSFS_SDK%/SimConnect SDK/lib/SimConnect.dll` |
+| 2 | Common installation paths | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` |
+| 3 | User home directory | `~/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` |
 
 ## Example: Full Configuration
 

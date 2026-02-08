@@ -35,11 +35,10 @@ package main
 
 import (
     "github.com/mrlm-net/simconnect"
-    "github.com/mrlm-net/simconnect/pkg/engine"
 )
 
 func main() {
-    client := simconnect.NewClient("MyApp", simconnect.ClientWithHeartbeat(engine.Heartbeat6Hz))
+    client := simconnect.NewClient("MyApp", simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_6HZ))
     if err := client.Connect(); err != nil {
         panic(err)
     }
@@ -70,6 +69,12 @@ func main() {
 | [`read-waypoints`](examples/read-waypoints) | Waypoint facility data retrieval from the simulator's facilities database. |
 | [`all-facilities`](examples/all-facilities) | Requests and reads the complete set of facilities (airports), handling multi-packet responses. |
 | [`ai-traffic`](examples/ai-traffic) | Drives AI traffic plans using flight plans shipped in `examples/ai-traffic/plans`. |
+| [`airport-details`](examples/airport-details) | Queries detailed airport information including parking, runways, and taxi paths. |
+| [`locate-airport`](examples/locate-airport) | Geolocation-based airport discovery using haversine distance calculation. |
+| [`manage-traffic`](examples/manage-traffic) | Advanced AI traffic management with creation, flight plans, and position updates. |
+| [`monitor-traffic`](examples/monitor-traffic) | Real-time AI traffic monitoring with periodic position and state tracking. |
+| [`simconnect-facilities`](examples/simconnect-facilities) | Facility dataset registration for airport, runway, parking, and frequency data. |
+| [`using-datasets`](examples/using-datasets) | Pre-built dataset registration and AI traffic spawning from JSON configuration. |
 
 > **Tip:** Browse the [`examples`](examples) folder to explore additional scenarios as they are added.
 
@@ -81,8 +86,8 @@ func main() {
 | [`pkg/engine`](pkg/engine) | High-level client that manages the SimConnect session lifecycle, message dispatching, and data subscriptions. Use this when you want batteries-included helpers around the lower-level API. |
 | [`pkg/manager`](pkg/manager) | Connection lifecycle manager with automatic reconnection support. Ideal for long-running services that need robust connection handling. |
 | [`pkg/types`](pkg/types) | Strongly typed representations of SimConnect data structures, events, and helper enums used across the public API. |
-| [`pkg/datasets`](pkg/datasets) | Ready-made dataset definitions that describe common SimConnect data requests, providing reusable building blocks for your own subscriptions. |
-| [`pkg/convert`](pkg/convert) | Utility helpers to convert between Go-native types and SimConnect-specific formats when marshalling data in and out of requests. |
+| [`pkg/datasets`](pkg/datasets) | Ready-made dataset definitions for common SimConnect data requests. Includes sub-packages for aircraft, environment, facilities (airport, runway, parking, frequency, and 20+ more), objects, simulator, and traffic data. |
+| [`pkg/convert`](pkg/convert) | Unit conversion utilities (altitude, distance, speed), ICAO code validation and region lookup, and WGS84 coordinate offset calculation. |
 
 > Detailed documentation will be available in the `docs` folder.
 

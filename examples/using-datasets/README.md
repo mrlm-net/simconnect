@@ -1,4 +1,3 @@
-````markdown
 # Using Datasets Example
 
 ## Overview
@@ -71,6 +70,4 @@ If you provide a `planes.json` file the example will create parked or enroute AI
 - Ensure aircraft titles in `planes.json` exactly match installed aircraft titles in MSFS.
 - Flight plan files (if used) must be valid `.pln` files and accessible from the working directory.
 - Adjust the data request radius (third parameter to `RequestDataOnSimObjectType`) to tune which aircraft are returned.
-
-````
 

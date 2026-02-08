@@ -109,6 +109,38 @@ import "github.com/mrlm-net/simconnect/pkg/datasets/aircraft"
 client.RegisterDataset(PositionDefID, aircraft.Position)
 ```
 
+### RegisterFacilityDataset
+
+Registers a pre-built facility dataset from the `datasets/facilities` package. Unlike `RegisterDataset` which uses `AddToDataDefinition`, this uses `AddToFacilityDefinition` internally.
+
+```go
+import "github.com/mrlm-net/simconnect/pkg/datasets/facilities"
+
+client.RegisterFacilityDataset(AirportDefID, facilities.NewAirportFacilityDataset())
+client.RegisterFacilityDataset(RunwayDefID, facilities.NewRunwayFacilityDataset())
+client.RegisterFacilityDataset(ParkingDefID, facilities.NewParkingFacilityDataset())
+client.RegisterFacilityDataset(FrequencyDefID, facilities.NewFrequencyFacilityDataset())
+```
+
+Available facility dataset constructors in `pkg/datasets/facilities`:
+
+| Constructor | Data |
+|-------------|------|
+| `NewAirportFacilityDataset()` | Airport info (name, ICAO, position, tower, transition) |
+| `NewRunwayFacilityDataset()` | Runway dimensions, heading, surface, lighting |
+| `NewParkingFacilityDataset()` | Parking spots, gates, ramps |
+| `NewFrequencyFacilityDataset()` | COM/NAV frequencies |
+| `NewTaxiPointFacilityDataset()` | Taxiway intersection points |
+| `NewTaxiPathFacilityDataset()` | Taxiway paths and routes |
+| `NewTaxiNameFacilityDataset()` | Taxiway names |
+| `NewHelipadFacilityDataset()` | Helipad locations and properties |
+| `NewJetwayFacilityDataset()` | Jetway data |
+| `NewDepartureFacilityDataset()` | SID procedures |
+| `NewApproachFacilityDataset()` | Approach procedures |
+| `NewVORFacilityDataset()` | VOR navaid data |
+| `NewNDBFacilityDataset()` | NDB navaid data |
+| `NewWaypointFacilityDataset()` | Waypoint data |
+
 ## Requesting Data
 
 ### RequestDataOnSimObject
@@ -219,6 +251,10 @@ for msg := range client.Stream() {
 }
 ```
 
+**Signature**: `func CastDataAs[T any](dwData *types.DWORD) *T`
+
+The struct layout must exactly match the SimConnect data definition order and types. Use `float64` for `SIMCONNECT_DATATYPE_FLOAT64`, `int32`/`uint32` for `INT32`, and fixed-size byte arrays for strings (`[256]byte` for `STRING256`).
+
 ### Message Type Methods
 
 The `Message` struct provides helper methods to cast to specific types:
@@ -243,6 +279,21 @@ SimConnect returns null-terminated strings. Use `ParseNullTerminatedString` to c
 ```go
 title := engine.ParseNullTerminatedString(data.SzTitle[:])
 ```
+
+## System State
+
+### RequestSystemState
+
+Requests simulator system state information.
+
+```go
+client.RequestSystemState(
+    StateReqID,
+    types.SIMCONNECT_SYSTEM_STATE_SIM,  // Simulation running state
+)
+```
+
+Response arrives as `SIMCONNECT_RECV_ID_SYSTEM_STATE` message.
 
 ## Events
 
@@ -400,6 +451,50 @@ Releases control of an AI object back to the simulator.
 client.AIReleaseControl(objectID, ReleaseReqID)
 ```
 
+### AICreateNonATCAircraft
+
+Creates a non-ATC-controlled aircraft at a specific position.
+
+```go
+initPos := types.SIMCONNECT_DATA_INITPOSITION{
+    Latitude:  47.4502,
+    Longitude: -122.3088,
+    Altitude:  5000,
+    Pitch:     0,
+    Bank:      0,
+    Heading:   270,
+    OnGround:  0,
+    Airspeed:  120,
+}
+client.AICreateNonATCAircraft("Cessna Skyhawk Asobo", "N12345", initPos, CreateReqID)
+```
+
+### AICreateSimulatedObject
+
+Creates a non-aircraft simulated object (ground vehicle, boat, etc.).
+
+```go
+client.AICreateSimulatedObject("Generic Ground Vehicle", initPos, CreateReqID)
+```
+
+### EX1 Variants (Livery Selection)
+
+The `EX1` variants of AI creation methods add a `livery` parameter:
+
+```go
+client.AICreateParkedATCAircraftEX1("Boeing 787-10 Asobo", "House", "N12345", "KSEA", ReqID)
+client.AICreateEnrouteATCAircraftEX1("Airbus A320 Neo Asobo", "Asobo", "UAL123", 0, "plan.pln", 0.5, false, ReqID)
+client.AICreateNonATCAircraftEX1("Cessna Skyhawk Asobo", "Blue", "N12345", initPos, ReqID)
+```
+
+### EnumerateSimObjectsAndLiveries
+
+Lists available aircraft/objects and their liveries.
+
+```go
+client.EnumerateSimObjectsAndLiveries(EnumReqID, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+```
+
 ## Facilities
 
 ### RequestFacilitiesList
@@ -425,6 +520,73 @@ client.RequestFacilityData(
     "",  // Region (optional)
     types.SIMCONNECT_FACILITY_DATA_AIRPORT,
 )
+```
+
+### RequestFacilityDataEX1
+
+Extended version that explicitly specifies the facility type.
+
+```go
+client.RequestFacilityDataEX1(
+    FacilityDefID,
+    FacilityDataReqID,
+    "KSEA",
+    "",                                        // Region (optional)
+    types.SIMCONNECT_FACILITY_DATA_AIRPORT,    // Explicit facility type
+)
+```
+
+### RequestJetwayData
+
+Requests jetway data for a specific airport.
+
+```go
+indexes := []int32{0, 1, 2}
+client.RequestJetwayData("KSEA", uint32(len(indexes)), &indexes[0])
+```
+
+### RequestAllFacilities
+
+Requests all facilities of a specific type.
+
+```go
+client.RequestAllFacilities(
+    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
+    AllFacilitiesReqID,
+)
+```
+
+### SubscribeToFacilitiesEX1
+
+Extended subscription with separate request IDs for facilities entering and leaving range.
+
+```go
+client.SubscribeToFacilitiesEX1(
+    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
+    NewInRangeReqID,
+    OldOutRangeReqID,
+)
+```
+
+### AddFacilityDataDefinitionFilter
+
+Filters facility data requests.
+
+```go
+client.AddFacilityDataDefinitionFilter(
+    FacilityDefID,
+    "filterPath",
+    filterDataPtr,
+    filterDataSize,
+)
+```
+
+### ClearAllFacilityDataDefinitionFilters
+
+Removes all filters from a facility definition.
+
+```go
+client.ClearAllFacilityDataDefinitionFilters(FacilityDefID)
 ```
 
 ### SubscribeToFacilities
