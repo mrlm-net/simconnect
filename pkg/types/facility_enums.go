@@ -9,22 +9,22 @@ package types
 type SIMCONNECT_FACILITY_TAXI_PARKING_TYPE DWORD
 
 const (
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_NONE         SIMCONNECT_FACILITY_TAXI_PARKING_TYPE = iota // 0
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA                                                   // 1
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_SMALL                                             // 2
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_MEDIUM                                            // 3
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_LARGE                                             // 4
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_CARGO                                                // 5
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_CARGO                                            // 6
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_COMBAT                                           // 7
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_SMALL                                                // 8
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_MEDIUM                                               // 9
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY                                                // 10
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_DOCK_GA                                                   // 11
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_FUEL                                                      // 12
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_VEHICLE                                                   // 13
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_EXTRA                                             // 14
-	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_EXTRA                                                // 15
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_NONE            SIMCONNECT_FACILITY_TAXI_PARKING_TYPE = iota // 0
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA                                                      // 1
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_SMALL                                                // 2
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_MEDIUM                                               // 3
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_LARGE                                                // 4
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_CARGO                                                   // 5
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_CARGO                                               // 6
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_COMBAT                                              // 7
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_SMALL                                                   // 8
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_MEDIUM                                                  // 9
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY                                                   // 10
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_DOCK_GA                                                      // 11
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_FUEL                                                         // 12
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_VEHICLE                                                      // 13
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_EXTRA                                                // 14
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_EXTRA                                                   // 15
 )
 
 // SIMCONNECT_FACILITY_TAXI_PARKING_NAME represents the name/designation of a parking spot.
@@ -116,13 +116,13 @@ type SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR DWORD
 
 const (
 	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_NONE   SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR = iota // 0
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LEFT                                                 // 1
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_RIGHT                                                // 2
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_CENTER                                               // 3
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_WATER                                                // 4
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_A                                                    // 5
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_B                                                    // 6
-	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LAST                                                 // 7
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LEFT                                                // 1
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_RIGHT                                               // 2
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_CENTER                                              // 3
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_WATER                                               // 4
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_A                                                   // 5
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_B                                                   // 6
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LAST                                                // 7
 )
 
 // SIMCONNECT_FACILITY_TAXI_DESIGNATOR represents the taxiway designator letter.
@@ -130,13 +130,13 @@ type SIMCONNECT_FACILITY_TAXI_DESIGNATOR DWORD
 
 const (
 	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_NONE   SIMCONNECT_FACILITY_TAXI_DESIGNATOR = iota // 0
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LEFT                                               // 1
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_RIGHT                                              // 2
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_CENTER                                             // 3
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_WATER                                              // 4
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_A                                                  // 5
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_B                                                  // 6
-	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LAST                                               // 7
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LEFT                                              // 1
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_RIGHT                                             // 2
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_CENTER                                            // 3
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_WATER                                             // 4
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_A                                                 // 5
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_B                                                 // 6
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LAST                                              // 7
 )
 
 // SIMCONNECT_FACILITY_FREQUENCY_TYPE represents the type of radio frequency.
@@ -165,18 +165,18 @@ const (
 type SIMCONNECT_FACILITY_APPROACH_TYPE DWORD
 
 const (
-	SIMCONNECT_FACILITY_APPROACH_TYPE_UNDEFINED              SIMCONNECT_FACILITY_APPROACH_TYPE = iota // 0
-	SIMCONNECT_FACILITY_APPROACH_TYPE_GPS                                                              // 1
-	SIMCONNECT_FACILITY_APPROACH_TYPE_VOR                                                              // 2
-	SIMCONNECT_FACILITY_APPROACH_TYPE_NDB                                                              // 3
-	SIMCONNECT_FACILITY_APPROACH_TYPE_ILS                                                              // 4
-	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER                                                        // 5
-	SIMCONNECT_FACILITY_APPROACH_TYPE_SDF                                                              // 6
-	SIMCONNECT_FACILITY_APPROACH_TYPE_LDA                                                              // 7
-	SIMCONNECT_FACILITY_APPROACH_TYPE_VORDME                                                           // 8
-	SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME                                                           // 9
-	SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV                                                             // 10
-	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER_BACK_COURSE                                            // 11
+	SIMCONNECT_FACILITY_APPROACH_TYPE_UNDEFINED             SIMCONNECT_FACILITY_APPROACH_TYPE = iota // 0
+	SIMCONNECT_FACILITY_APPROACH_TYPE_GPS                                                            // 1
+	SIMCONNECT_FACILITY_APPROACH_TYPE_VOR                                                            // 2
+	SIMCONNECT_FACILITY_APPROACH_TYPE_NDB                                                            // 3
+	SIMCONNECT_FACILITY_APPROACH_TYPE_ILS                                                            // 4
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER                                                      // 5
+	SIMCONNECT_FACILITY_APPROACH_TYPE_SDF                                                            // 6
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LDA                                                            // 7
+	SIMCONNECT_FACILITY_APPROACH_TYPE_VORDME                                                         // 8
+	SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME                                                         // 9
+	SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV                                                           // 10
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER_BACK_COURSE                                          // 11
 )
 
 // SIMCONNECT_FACILITY_HELIPAD_TYPE represents the type of helipad.
@@ -194,11 +194,11 @@ const (
 type SIMCONNECT_FACILITY_TAXI_POINT_TYPE DWORD
 
 const (
-	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NONE                 SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 0
-	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NORMAL               SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 1
-	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT           SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 2
-	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_ILS_HOLD_SHORT       SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 4
-	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT_NO_DRAW   SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 5
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NONE                   SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 0
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NORMAL                 SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 1
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT             SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 2
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_ILS_HOLD_SHORT         SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 4
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT_NO_DRAW     SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 5
 	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_ILS_HOLD_SHORT_NO_DRAW SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 6
 )
 
@@ -206,7 +206,7 @@ const (
 type SIMCONNECT_FACILITY_TAXI_PATH_TYPE DWORD
 
 const (
-	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_NONE        SIMCONNECT_FACILITY_TAXI_PATH_TYPE = iota // 0
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_NONE         SIMCONNECT_FACILITY_TAXI_PATH_TYPE = iota // 0
 	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI                                                   // 1
 	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY                                                 // 2
 	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING                                                // 3

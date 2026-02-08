@@ -62,16 +62,16 @@ type AirportData struct {
 // SECONDARY_NUMBER, SECONDARY_DESIGNATOR, SECONDARY_THRESHOLD, SECONDARY_BLASTPAD,
 // SECONDARY_OVERRUN, SECONDARY_APPROACH_LIGHTS, SECONDARY_LEFT_VASI, SECONDARY_RIGHT_VASI
 type RunwayData struct {
-	Latitude     float64
-	Longitude    float64
-	Altitude     float64
-	Heading      float32
-	Length       float32
-	Width        float32
-	PatternAlt   float32
-	Slope        float32
-	TrueSlope    float32
-	Surface      int32
+	Latitude   float64
+	Longitude  float64
+	Altitude   float64
+	Heading    float32
+	Length     float32
+	Width      float32
+	PatternAlt float32
+	Slope      float32
+	TrueSlope  float32
+	Surface    int32
 }
 
 // ParkingData matches the field order in NewParkingFacilityDataset:

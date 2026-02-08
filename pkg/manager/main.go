@@ -1330,7 +1330,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 			// (Position change events removed)
 
 			// Define camera data structure
-			m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Camera State and Substate Definition")
+			m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Simulator State Definition")
 			if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
 				m.logger.Error("[manager] Failed to add CAMERA STATE definition", "error", err)
 			}
@@ -1481,10 +1481,55 @@ func (m *Instance) processMessage(msg engine.Message) {
 			if err := client.AddToDataDefinition(m.cameraDefinitionID, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 49); err != nil {
 				m.logger.Error("[manager] Failed to add VERTICAL SPEED definition", "error", err)
 			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SMART CAMERA ACTIVE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 50); err != nil {
+				m.logger.Error("[manager] Failed to add SMART CAMERA ACTIVE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "HAND ANIM STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 51); err != nil {
+				m.logger.Error("[manager] Failed to add HAND ANIM STATE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "HIDE AVATAR IN AIRCRAFT", "", types.SIMCONNECT_DATATYPE_INT32, 0, 52); err != nil {
+				m.logger.Error("[manager] Failed to add HIDE AVATAR IN AIRCRAFT definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "MISSION SCORE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 53); err != nil {
+				m.logger.Error("[manager] Failed to add MISSION SCORE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PARACHUTE OPEN", "", types.SIMCONNECT_DATATYPE_INT32, 0, 54); err != nil {
+				m.logger.Error("[manager] Failed to add PARACHUTE OPEN definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU SUNRISE TIME", "Seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 55); err != nil {
+				m.logger.Error("[manager] Failed to add ZULU SUNRISE TIME definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU SUNSET TIME", "Seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 56); err != nil {
+				m.logger.Error("[manager] Failed to add ZULU SUNSET TIME definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "TIME ZONE OFFSET", "Seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 57); err != nil {
+				m.logger.Error("[manager] Failed to add TIME ZONE OFFSET definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "TOOLTIP UNITS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 58); err != nil {
+				m.logger.Error("[manager] Failed to add TOOLTIP UNITS definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "UNITS OF MEASURE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 59); err != nil {
+				m.logger.Error("[manager] Failed to add UNITS OF MEASURE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN SMOKE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 60); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT IN SMOKE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "ENV SMOKE DENSITY", "Percent Over 100", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 61); err != nil {
+				m.logger.Error("[manager] Failed to add ENV SMOKE DENSITY definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "ENV CLOUD DENSITY", "Percent Over 100", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 62); err != nil {
+				m.logger.Error("[manager] Failed to add ENV CLOUD DENSITY definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "DENSITY ALTITUDE", "Feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 63); err != nil {
+				m.logger.Error("[manager] Failed to add DENSITY ALTITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SEA LEVEL AMBIENT TEMPERATURE", "Celsius", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 64); err != nil {
+				m.logger.Error("[manager] Failed to add SEA LEVEL AMBIENT TEMPERATURE definition", "error", err)
+			}
 
 			// Request camera data with period matching heartbeat configuration
 			period := types.SIMCONNECT_PERIOD_SIM_FRAME
-			m.requestRegistry.Register(m.cameraRequestID, RequestTypeDataRequest, "Camera State Data Request")
+			m.requestRegistry.Register(m.cameraRequestID, RequestTypeDataRequest, "Simulator State Data Request")
 			if err := client.RequestDataOnSimObject(m.cameraRequestID, m.cameraDefinitionID, types.SIMCONNECT_OBJECT_ID_USER, period, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 				m.logger.Error("[manager] Failed to request camera data", "error", err)
 			} else {
@@ -1837,7 +1882,22 @@ func (m *Instance) processMessage(msg engine.Message) {
 				GroundSpeed:              stateData.GroundSpeed,
 				IndicatedAirspeed:        stateData.IndicatedAirspeed,
 				TrueAirspeed:             stateData.TrueAirspeed,
-				VerticalSpeed:            stateData.VerticalSpeed,
+				VerticalSpeed:              stateData.VerticalSpeed,
+				SmartCameraActive:          stateData.SmartCameraActive == 1,
+				HandAnimState:              stateData.HandAnimState,
+				HideAvatarInAircraft:       stateData.HideAvatarInAircraft == 1,
+				MissionScore:               stateData.MissionScore,
+				ParachuteOpen:              stateData.ParachuteOpen == 1,
+				ZuluSunriseTime:            stateData.ZuluSunriseTime,
+				ZuluSunsetTime:             stateData.ZuluSunsetTime,
+				TimeZoneOffset:             stateData.TimeZoneOffset,
+				TooltipUnits:               stateData.TooltipUnits,
+				UnitsOfMeasure:             stateData.UnitsOfMeasure,
+				AmbientInSmoke:             stateData.AmbientInSmoke == 1,
+				EnvSmokeDensity:            stateData.EnvSmokeDensity,
+				EnvCloudDensity:            stateData.EnvCloudDensity,
+				DensityAltitude:            stateData.DensityAltitude,
+				SeaLevelAmbientTemperature: stateData.SeaLevelAmbientTemperature,
 			}
 
 			// Short lock: preserve event-driven fields and compare

@@ -224,6 +224,26 @@ type SimState struct {
 	IndicatedAirspeed float64 // AIRSPEED INDICATED (knots)
 	TrueAirspeed      float64 // AIRSPEED TRUE (knots)
 	VerticalSpeed     float64 // VERTICAL SPEED (feet per second)
+	// Camera extended
+	SmartCameraActive bool // SMART CAMERA ACTIVE
+	// Miscellaneous
+	HandAnimState       int32 // HAND ANIM STATE (Enum: 0-12 frame IDs)
+	HideAvatarInAircraft bool  // HIDE AVATAR IN AIRCRAFT
+	MissionScore        float64 // MISSION SCORE
+	ParachuteOpen       bool    // PARACHUTE OPEN
+	// Environment time
+	ZuluSunriseTime float64 // ZULU SUNRISE TIME (seconds since midnight Zulu)
+	ZuluSunsetTime  float64 // ZULU SUNSET TIME (seconds since midnight Zulu)
+	TimeZoneOffset  float64 // TIME ZONE OFFSET (seconds, local minus Zulu)
+	// Environment units
+	TooltipUnits   int32 // TOOLTIP UNITS (Enum: 0=Default, 1=Metric, 2=US)
+	UnitsOfMeasure int32 // UNITS OF MEASURE (Enum: 0=English, 1=Metric/feet, 2=Metric/meters)
+	// Environment weather (extended)
+	AmbientInSmoke            bool    // AMBIENT IN SMOKE
+	EnvSmokeDensity           float64 // ENV SMOKE DENSITY (Percent Over 100)
+	EnvCloudDensity           float64 // ENV CLOUD DENSITY (Percent Over 100)
+	DensityAltitude           float64 // DENSITY ALTITUDE (Feet)
+	SeaLevelAmbientTemperature float64 // SEA LEVEL AMBIENT TEMPERATURE (Celsius)
 }
 
 // Equal returns true if two SimState values are equivalent
@@ -305,8 +325,23 @@ type simStateDataStruct struct {
 	MagneticHeading          float64
 	Pitch                    float64
 	Bank                     float64
-	GroundSpeed              float64
-	IndicatedAirspeed        float64
-	TrueAirspeed             float64
-	VerticalSpeed            float64
+	GroundSpeed                float64
+	IndicatedAirspeed          float64
+	TrueAirspeed               float64
+	VerticalSpeed              float64
+	SmartCameraActive          int32
+	HandAnimState              int32
+	HideAvatarInAircraft       int32
+	MissionScore               float64
+	ParachuteOpen              int32
+	ZuluSunriseTime            float64
+	ZuluSunsetTime             float64
+	TimeZoneOffset             float64
+	TooltipUnits               int32
+	UnitsOfMeasure             int32
+	AmbientInSmoke             int32
+	EnvSmokeDensity            float64
+	EnvCloudDensity            float64
+	DensityAltitude            float64
+	SeaLevelAmbientTemperature float64
 }
