@@ -67,8 +67,33 @@ golangci-lint run ./...
 - Channel-based subscriptions for async message/state handling
 - Zero external dependencies — standard library only
 
-## Development Workflow
+## MRLM Plugin Usage
 
-- `/mrlm:plan` — analyse requirements and plan work
-- `/mrlm:make` — implement via SDLC delegation
-- `/mrlm:review` — review and test changes
+This project uses the [mrlm devstack plugin](https://github.com/mrlm-net/devstack) for AI-assisted development. Available commands:
+
+| Command | What it does |
+|---------|-------------|
+| `/spec` | Gather requirements, write user stories and acceptance criteria |
+| `/design` | Design system architecture, define interfaces and technical patterns |
+| `/build` | Implement code and unit tests (engineer only, no review) |
+| `/review` | Systematic code review for correctness, style, and performance |
+| `/test` | Run E2E, performance, UX, and accessibility testing |
+| `/secure` | Vulnerability scan, SBOM generation, OWASP compliance check |
+| `/deploy` | Infrastructure provisioning and deployment automation |
+| `/make` | Full SDLC pipeline — from requirements through security scan |
+| `/ask` | Ask any question using full agent toolkit (read-only) |
+| `/write` | Generate articles, documentation, or marketing content |
+| `/generate` | Scaffold new agents, skills, or commands |
+| `/init` | Initialize project structure and CLAUDE.md |
+
+### Recommended Workflow
+
+For new features, use the full pipeline: `/make [feature description]`
+
+For focused work, chain individual commands:
+1. `/spec` — define what to build
+2. `/design` — plan how to build it
+3. `/build` — implement it
+4. `/review` — review the code
+5. `/test` — verify it works
+6. `/secure` — check for vulnerabilities

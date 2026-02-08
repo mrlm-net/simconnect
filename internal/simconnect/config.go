@@ -9,4 +9,5 @@ type Config struct {
 	BufferSize int
 	Context    context.Context
 	DLLPath    string
+	AutoDetect bool
 }

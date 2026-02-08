@@ -1,0 +1,188 @@
+//go:build windows
+// +build windows
+
+package facilities
+
+import "github.com/mrlm-net/simconnect/pkg/datasets"
+
+func NewApproachFacilityDataset() *datasets.FacilityDataSet {
+	return &datasets.FacilityDataSet{
+		Definitions: []datasets.FacilityDataDefinition{
+			"OPEN APPROACH",
+			"TYPE",
+			"SUFFIX",
+			"RUNWAY_NUMBER",
+			"RUNWAY_DESIGNATOR",
+			"FAF_ICAO",
+			"FAF_REGION",
+			"FAF_HEADING",
+			"FAF_ALTITUDE",
+			"FAF_TYPE",
+			"MISSED_ALTITUDE",
+			"HAS_LNAV",
+			"HAS_LNAVVNAV",
+			"HAS_LP",
+			"HAS_LPV",
+			"N_TRANSITIONS",
+			"N_FINAL_APPROACH_LEGS",
+			"N_MISSED_APPROACH_LEGS",
+			"CLOSE APPROACH",
+		},
+	}
+}
+
+func NewApproachTransitionFacilityDataset() *datasets.FacilityDataSet {
+	return &datasets.FacilityDataSet{
+		Definitions: []datasets.FacilityDataDefinition{
+			"OPEN APPROACH_TRANSITION",
+			"TYPE",
+			"IAF_ICAO",
+			"IAF_REGION",
+			"IAF_TYPE",
+			"IAF_ALTITUDE",
+			"DME_ARC_ICAO",
+			"DME_ARC_REGION",
+			"DME_ARC_TYPE",
+			"DME_ARC_RADIAL",
+			"DME_ARC_DISTANCE",
+			"NAME",
+			"N_APPROACH_LEGS",
+			"CLOSE APPROACH_TRANSITION",
+		},
+	}
+}
+
+func NewApproachLegFacilityDataset() *datasets.FacilityDataSet {
+	return &datasets.FacilityDataSet{
+		Definitions: []datasets.FacilityDataDefinition{
+			"OPEN APPROACH_LEG",
+			"TYPE",
+			"FIX_ICAO",
+			"FIX_REGION",
+			"FIX_TYPE",
+			"FIX_LATITUDE",
+			"FIX_LONGITUDE",
+			"FIX_ALTITUDE",
+			"FLY_OVER",
+			"DISTANCE_MINUTE",
+			"TRUE_DEGREE",
+			"TURN_DIRECTION",
+			"ORIGIN_ICAO",
+			"ORIGIN_REGION",
+			"ORIGIN_TYPE",
+			"ORIGIN_LATITUDE",
+			"ORIGIN_LONGITUDE",
+			"ORIGIN_ALTITUDE",
+			"THETA",
+			"RHO",
+			"COURSE",
+			"ROUTE_DISTANCE",
+			"APPROACH_ALT_DESC",
+			"ALTITUDE1",
+			"ALTITUDE2",
+			"SPEED_LIMIT",
+			"VERTICAL_ANGLE",
+			"ARC_CENTER_FIX_ICAO",
+			"ARC_CENTER_FIX_REGION",
+			"ARC_CENTER_FIX_TYPE",
+			"ARC_CENTER_FIX_LATITUDE",
+			"ARC_CENTER_FIX_LONGITUDE",
+			"ARC_CENTER_FIX_ALTITUDE",
+			"IS_IAF",
+			"IS_IF",
+			"IS_FAF",
+			"IS_MAP",
+			"CLOSE APPROACH_LEG",
+		},
+	}
+}
+
+func NewFinalApproachLegFacilityDataset() *datasets.FacilityDataSet {
+	return &datasets.FacilityDataSet{
+		Definitions: []datasets.FacilityDataDefinition{
+			"OPEN FINAL_APPROACH_LEG",
+			"TYPE",
+			"FIX_ICAO",
+			"FIX_REGION",
+			"FIX_TYPE",
+			"FIX_LATITUDE",
+			"FIX_LONGITUDE",
+			"FIX_ALTITUDE",
+			"FLY_OVER",
+			"DISTANCE_MINUTE",
+			"TRUE_DEGREE",
+			"TURN_DIRECTION",
+			"ORIGIN_ICAO",
+			"ORIGIN_REGION",
+			"ORIGIN_TYPE",
+			"ORIGIN_LATITUDE",
+			"ORIGIN_LONGITUDE",
+			"ORIGIN_ALTITUDE",
+			"THETA",
+			"RHO",
+			"COURSE",
+			"ROUTE_DISTANCE",
+			"APPROACH_ALT_DESC",
+			"ALTITUDE1",
+			"ALTITUDE2",
+			"SPEED_LIMIT",
+			"VERTICAL_ANGLE",
+			"ARC_CENTER_FIX_ICAO",
+			"ARC_CENTER_FIX_REGION",
+			"ARC_CENTER_FIX_TYPE",
+			"ARC_CENTER_FIX_LATITUDE",
+			"ARC_CENTER_FIX_LONGITUDE",
+			"ARC_CENTER_FIX_ALTITUDE",
+			"IS_IAF",
+			"IS_IF",
+			"IS_FAF",
+			"IS_MAP",
+			"CLOSE FINAL_APPROACH_LEG",
+		},
+	}
+}
+
+func NewMissedApproachLegFacilityDataset() *datasets.FacilityDataSet {
+	return &datasets.FacilityDataSet{
+		Definitions: []datasets.FacilityDataDefinition{
+			"OPEN MISSED_APPROACH_LEG",
+			"TYPE",
+			"FIX_ICAO",
+			"FIX_REGION",
+			"FIX_TYPE",
+			"FIX_LATITUDE",
+			"FIX_LONGITUDE",
+			"FIX_ALTITUDE",
+			"FLY_OVER",
+			"DISTANCE_MINUTE",
+			"TRUE_DEGREE",
+			"TURN_DIRECTION",
+			"ORIGIN_ICAO",
+			"ORIGIN_REGION",
+			"ORIGIN_TYPE",
+			"ORIGIN_LATITUDE",
+			"ORIGIN_LONGITUDE",
+			"ORIGIN_ALTITUDE",
+			"THETA",
+			"RHO",
+			"COURSE",
+			"ROUTE_DISTANCE",
+			"APPROACH_ALT_DESC",
+			"ALTITUDE1",
+			"ALTITUDE2",
+			"SPEED_LIMIT",
+			"VERTICAL_ANGLE",
+			"ARC_CENTER_FIX_ICAO",
+			"ARC_CENTER_FIX_REGION",
+			"ARC_CENTER_FIX_TYPE",
+			"ARC_CENTER_FIX_LATITUDE",
+			"ARC_CENTER_FIX_LONGITUDE",
+			"ARC_CENTER_FIX_ALTITUDE",
+			"IS_IAF",
+			"IS_IF",
+			"IS_FAF",
+			"IS_MAP",
+			"CLOSE MISSED_APPROACH_LEG",
+		},
+	}
+}

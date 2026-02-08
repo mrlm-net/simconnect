@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/mrlm-net/simconnect/internal/dll"
 	"github.com/mrlm-net/simconnect/internal/simconnect"
 )
 
@@ -21,6 +22,15 @@ func New(name string, options ...Option) *Engine {
 	// applied so `WithLogLevel` and `WithLogger` behave intuitively.
 	if config.Logger == nil {
 		config.Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: config.LogLevel}))
+	}
+	// Auto-detect DLL path when enabled and no explicit path was provided.
+	if config.AutoDetect && config.DLLPath == DEFAULT_DLL_PATH {
+		if detected, err := dll.Detect(); err == nil {
+			config.Logger.Debug("SimConnect DLL auto-detected", "path", detected)
+			config.DLLPath = detected
+		} else {
+			config.Logger.Debug("SimConnect DLL auto-detection failed, using default", "error", err)
+		}
 	}
 	ctx, cancel := context.WithCancel(config.Context)
 	return &Engine{

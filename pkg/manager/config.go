@@ -157,6 +157,15 @@ func WithHeartbeat(frequency engine.HeartbeatFrequency) Option {
 	}
 }
 
+// WithAutoDetect enables automatic detection of SimConnect.dll by searching
+// environment variables and common SDK installation paths.
+// This is a convenience wrapper for engine.WithAutoDetect.
+func WithAutoDetect() Option {
+	return func(c *Config) {
+		c.EngineOptions = append(c.EngineOptions, engine.WithAutoDetect())
+	}
+}
+
 // defaultConfig returns a Config with default values
 func defaultConfig() *Config {
 	return &Config{

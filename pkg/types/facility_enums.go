@@ -1,0 +1,218 @@
+//go:build windows
+// +build windows
+
+package types
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_AddToFacilityDefinition.htm
+
+// SIMCONNECT_FACILITY_TAXI_PARKING_TYPE represents the type of parking spot.
+type SIMCONNECT_FACILITY_TAXI_PARKING_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_NONE         SIMCONNECT_FACILITY_TAXI_PARKING_TYPE = iota // 0
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA                                                   // 1
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_SMALL                                             // 2
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_MEDIUM                                            // 3
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_LARGE                                             // 4
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_CARGO                                                // 5
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_CARGO                                            // 6
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_MIL_COMBAT                                           // 7
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_SMALL                                                // 8
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_MEDIUM                                               // 9
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY                                                // 10
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_DOCK_GA                                                   // 11
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_FUEL                                                      // 12
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_VEHICLE                                                   // 13
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_EXTRA                                             // 14
+	SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_EXTRA                                                // 15
+)
+
+// SIMCONNECT_FACILITY_TAXI_PARKING_NAME represents the name/designation of a parking spot.
+type SIMCONNECT_FACILITY_TAXI_PARKING_NAME DWORD
+
+const (
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_NONE       SIMCONNECT_FACILITY_TAXI_PARKING_NAME = iota // 0
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_PARKING                                                 // 1
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_N_PARKING                                               // 2
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_NE_PARKING                                              // 3
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_E_PARKING                                               // 4
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_SE_PARKING                                              // 5
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_S_PARKING                                               // 6
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_SW_PARKING                                              // 7
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_W_PARKING                                               // 8
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_NW_PARKING                                              // 9
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE                                                    // 10
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_DOCK                                                    // 11
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_A                                                  // 12
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_B                                                  // 13
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_C                                                  // 14
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_D                                                  // 15
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_E                                                  // 16
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_F                                                  // 17
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_G                                                  // 18
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_H                                                  // 19
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_I                                                  // 20
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_J                                                  // 21
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_K                                                  // 22
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_L                                                  // 23
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_M                                                  // 24
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_N                                                  // 25
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_O                                                  // 26
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_P                                                  // 27
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_Q                                                  // 28
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_R                                                  // 29
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_S                                                  // 30
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_T                                                  // 31
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_U                                                  // 32
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_V                                                  // 33
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_W                                                  // 34
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_X                                                  // 35
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_Y                                                  // 36
+	SIMCONNECT_FACILITY_TAXI_PARKING_NAME_GATE_Z                                                  // 37
+)
+
+// SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE represents the surface material of a runway.
+type SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_CONCRETE           SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 0
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_GRASS              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 1
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WATER_FSX          SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 2
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_GRASS_BUMPY        SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 3
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_ASPHALT            SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 4
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_SHORT_GRASS        SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 5
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_LONG_GRASS         SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 6
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_HARD_TURF          SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 7
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_SNOW               SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 8
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_ICE                SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 9
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_URBAN              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 10
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_FOREST             SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 11
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_DIRT               SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 12
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_CORAL              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 13
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_GRAVEL             SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 14
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_OIL_TREATED        SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 15
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_STEEL_MATS         SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 16
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_BITUMINUS          SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 17
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_BRICK              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 18
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_MACADAM            SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 19
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_PLANKS             SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 20
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_SAND               SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 21
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_SHALE              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 22
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_TARMAC             SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 23
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WRIGHT_FLYER_TRACK SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 24
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_OCEAN              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 26
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WATER              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 27
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_POND               SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 28
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_LAKE               SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 29
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_RIVER              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 30
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WASTE_WATER        SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 31
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_PAINT              SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 32
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_UNKNOWN            SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 254
+	SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_UNDEFINED          SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE = 255
+)
+
+// SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR represents the runway designator suffix.
+type SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR DWORD
+
+const (
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_NONE   SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR = iota // 0
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LEFT                                                 // 1
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_RIGHT                                                // 2
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_CENTER                                               // 3
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_WATER                                                // 4
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_A                                                    // 5
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_B                                                    // 6
+	SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR_LAST                                                 // 7
+)
+
+// SIMCONNECT_FACILITY_TAXI_DESIGNATOR represents the taxiway designator letter.
+type SIMCONNECT_FACILITY_TAXI_DESIGNATOR DWORD
+
+const (
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_NONE   SIMCONNECT_FACILITY_TAXI_DESIGNATOR = iota // 0
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LEFT                                               // 1
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_RIGHT                                              // 2
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_CENTER                                             // 3
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_WATER                                              // 4
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_A                                                  // 5
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_B                                                  // 6
+	SIMCONNECT_FACILITY_TAXI_DESIGNATOR_LAST                                               // 7
+)
+
+// SIMCONNECT_FACILITY_FREQUENCY_TYPE represents the type of radio frequency.
+type SIMCONNECT_FACILITY_FREQUENCY_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_NONE      SIMCONNECT_FACILITY_FREQUENCY_TYPE = iota // 0
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_ATIS                                                // 1
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_MULTICOM                                            // 2
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_UNICOM                                              // 3
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_CTAF                                                // 4
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_GROUND                                              // 5
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_TOWER                                               // 6
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_CLEARANCE                                           // 7
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_APPROACH                                            // 8
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_DEPARTURE                                           // 9
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_CENTER                                              // 10
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_FSS                                                 // 11
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_AWOS                                                // 12
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_ASOS                                                // 13
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_CPT                                                 // 14
+	SIMCONNECT_FACILITY_FREQUENCY_TYPE_GCO                                                 // 15
+)
+
+// SIMCONNECT_FACILITY_APPROACH_TYPE represents the type of instrument approach.
+type SIMCONNECT_FACILITY_APPROACH_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_APPROACH_TYPE_UNDEFINED              SIMCONNECT_FACILITY_APPROACH_TYPE = iota // 0
+	SIMCONNECT_FACILITY_APPROACH_TYPE_GPS                                                              // 1
+	SIMCONNECT_FACILITY_APPROACH_TYPE_VOR                                                              // 2
+	SIMCONNECT_FACILITY_APPROACH_TYPE_NDB                                                              // 3
+	SIMCONNECT_FACILITY_APPROACH_TYPE_ILS                                                              // 4
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER                                                        // 5
+	SIMCONNECT_FACILITY_APPROACH_TYPE_SDF                                                              // 6
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LDA                                                              // 7
+	SIMCONNECT_FACILITY_APPROACH_TYPE_VORDME                                                           // 8
+	SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME                                                           // 9
+	SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV                                                             // 10
+	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER_BACK_COURSE                                            // 11
+)
+
+// SIMCONNECT_FACILITY_HELIPAD_TYPE represents the type of helipad.
+type SIMCONNECT_FACILITY_HELIPAD_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_HELIPAD_TYPE_NONE    SIMCONNECT_FACILITY_HELIPAD_TYPE = iota // 0
+	SIMCONNECT_FACILITY_HELIPAD_TYPE_H                                               // 1
+	SIMCONNECT_FACILITY_HELIPAD_TYPE_SQUARE                                          // 2
+	SIMCONNECT_FACILITY_HELIPAD_TYPE_CIRCLE                                          // 3
+	SIMCONNECT_FACILITY_HELIPAD_TYPE_MEDICAL                                         // 4
+)
+
+// SIMCONNECT_FACILITY_TAXI_POINT_TYPE represents the type of taxi point.
+type SIMCONNECT_FACILITY_TAXI_POINT_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NONE                 SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 0
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_NORMAL               SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 1
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT           SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 2
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_ILS_HOLD_SHORT       SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 4
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_HOLD_SHORT_NO_DRAW   SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 5
+	SIMCONNECT_FACILITY_TAXI_POINT_TYPE_ILS_HOLD_SHORT_NO_DRAW SIMCONNECT_FACILITY_TAXI_POINT_TYPE = 6
+)
+
+// SIMCONNECT_FACILITY_TAXI_PATH_TYPE represents the type of taxi path segment.
+type SIMCONNECT_FACILITY_TAXI_PATH_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_NONE        SIMCONNECT_FACILITY_TAXI_PATH_TYPE = iota // 0
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI                                                   // 1
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY                                                 // 2
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING                                                // 3
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PATH                                                   // 4
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_CLOSED                                                 // 5
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_VEHICLE                                                // 6
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_ROAD                                                   // 7
+	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PAINTED_LINE                                           // 8
+)

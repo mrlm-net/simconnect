@@ -197,6 +197,19 @@ type SimState struct {
 	TrackIREnabled         bool    // TRACK IR ENABLE
 	UserInputEnabled       bool    // USER INPUT ENABLED
 	SimOnGround            bool    // SIM ON GROUND
+	// Environment variables
+	AmbientTemperature  float64 // AMBIENT TEMPERATURE (Celsius)
+	AmbientPressure     float64 // AMBIENT PRESSURE (inHg)
+	AmbientWindVelocity float64 // AMBIENT WIND VELOCITY (Knots)
+	AmbientWindDirection float64 // AMBIENT WIND DIRECTION (Degrees)
+	AmbientVisibility  float64 // AMBIENT VISIBILITY (Meters)
+	AmbientInCloud     bool    // AMBIENT IN CLOUD
+	AmbientPrecipState uint32  // AMBIENT PRECIP STATE (Mask: 2=None, 4=Rain, 8=Snow)
+	BarometerPressure  float64 // BAROMETER PRESSURE (Millibars)
+	SeaLevelPressure    float64 // SEA LEVEL PRESSURE (Millibars)
+	GroundAltitude      float64 // GROUND ALTITUDE (Feet)
+	MagVar              float64 // MAGVAR (Degrees, magnetic variation)
+	SurfaceType         uint32  // SURFACE TYPE (Surface type enum)
 }
 
 // Equal returns true if two SimState values are equivalent
@@ -258,4 +271,16 @@ type cameraDataStruct struct {
 	TrackIREnabled           int32
 	UserInputEnabled         int32
 	SimOnGround              int32
+	AmbientTemperature       float64
+	AmbientPressure          float64
+	AmbientWindVelocity      float64
+	AmbientWindDirection     float64
+	AmbientVisibility        float64
+	AmbientInCloud           int32
+	AmbientPrecipState       int32
+	BarometerPressure        float64
+	SeaLevelPressure         float64
+	GroundAltitude           float64
+	MagVar                   float64
+	SurfaceType              int32
 }

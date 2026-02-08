@@ -52,6 +52,18 @@ func defaultSimState() SimState {
 		TrackIREnabled:           false,
 		UserInputEnabled:         false,
 		SimOnGround:              false,
+		AmbientTemperature:       0,
+		AmbientPressure:          0,
+		AmbientWindVelocity:      0,
+		AmbientWindDirection:     0,
+		AmbientVisibility:        0,
+		AmbientInCloud:           false,
+		AmbientPrecipState:       0,
+		BarometerPressure:        0,
+		SeaLevelPressure:         0,
+		GroundAltitude:           0,
+		MagVar:                   0,
+		SurfaceType:              0,
 	}
 }
 
@@ -1397,6 +1409,42 @@ func (m *Instance) processMessage(msg engine.Message) {
 			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM ON GROUND", "", types.SIMCONNECT_DATATYPE_INT32, 0, 25); err != nil {
 				m.logger.Error("[manager] Failed to add SIM ON GROUND definition", "error", err)
 			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT TEMPERATURE", "Celsius", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 26); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT TEMPERATURE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT PRESSURE", "inHg", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 27); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT PRESSURE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT WIND VELOCITY", "Knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 28); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT WIND VELOCITY definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT WIND DIRECTION", "Degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 29); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT WIND DIRECTION definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT VISIBILITY", "Meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 30); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT VISIBILITY definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN CLOUD", "", types.SIMCONNECT_DATATYPE_INT32, 0, 31); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT IN CLOUD definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT PRECIP STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 32); err != nil {
+				m.logger.Error("[manager] Failed to add AMBIENT PRECIP STATE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "BAROMETER PRESSURE", "Millibars", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 33); err != nil {
+				m.logger.Error("[manager] Failed to add BAROMETER PRESSURE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SEA LEVEL PRESSURE", "Millibars", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 34); err != nil {
+				m.logger.Error("[manager] Failed to add SEA LEVEL PRESSURE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "GROUND ALTITUDE", "Feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 35); err != nil {
+				m.logger.Error("[manager] Failed to add GROUND ALTITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "MAGVAR", "Degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 36); err != nil {
+				m.logger.Error("[manager] Failed to add MAGVAR definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SURFACE TYPE", "Enum", types.SIMCONNECT_DATATYPE_INT32, 0, 37); err != nil {
+				m.logger.Error("[manager] Failed to add SURFACE TYPE definition", "error", err)
+			}
 
 			// Request camera data with period matching heartbeat configuration
 			period := types.SIMCONNECT_PERIOD_SIM_FRAME
@@ -1730,6 +1778,18 @@ func (m *Instance) processMessage(msg engine.Message) {
 				TrackIREnabled:           cameraData.TrackIREnabled == 1,
 				UserInputEnabled:         cameraData.UserInputEnabled == 1,
 				SimOnGround:              cameraData.SimOnGround == 1,
+				AmbientTemperature:       cameraData.AmbientTemperature,
+				AmbientPressure:          cameraData.AmbientPressure,
+				AmbientWindVelocity:      cameraData.AmbientWindVelocity,
+				AmbientWindDirection:     cameraData.AmbientWindDirection,
+				AmbientVisibility:        cameraData.AmbientVisibility,
+				AmbientInCloud:           cameraData.AmbientInCloud == 1,
+				AmbientPrecipState:       uint32(cameraData.AmbientPrecipState),
+				BarometerPressure:        cameraData.BarometerPressure,
+				SeaLevelPressure:         cameraData.SeaLevelPressure,
+				GroundAltitude:           cameraData.GroundAltitude,
+				MagVar:                   cameraData.MagVar,
+				SurfaceType:              uint32(cameraData.SurfaceType),
 			}
 
 			// Short lock: preserve event-driven fields and compare

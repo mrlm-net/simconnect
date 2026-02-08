@@ -80,6 +80,12 @@ func ClientWithHeartbeat(frequency engine.HeartbeatFrequency) engine.Option {
 	return engine.WithHeartbeat(frequency)
 }
 
+// ClientWithAutoDetect enables automatic detection of SimConnect.dll for the
+// client by searching environment variables and common SDK installation paths.
+func ClientWithAutoDetect() engine.Option {
+	return engine.WithAutoDetect()
+}
+
 // ====================
 // Manager Options
 // ====================
@@ -167,4 +173,10 @@ func WithDLLPath(path string) manager.Option {
 // Default is HEARTBEAT_6HZ.
 func WithHeartbeat(frequency engine.HeartbeatFrequency) manager.Option {
 	return manager.WithHeartbeat(frequency)
+}
+
+// WithAutoDetect enables automatic detection of SimConnect.dll by searching
+// environment variables and common SDK installation paths.
+func WithAutoDetect() manager.Option {
+	return manager.WithAutoDetect()
 }
