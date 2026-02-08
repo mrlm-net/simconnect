@@ -178,9 +178,9 @@ type SimState struct {
 	IsAvatar                 bool
 	IsAircraft               bool
 	// Crash and sound flags
-	Crashed     bool
-	CrashReset  bool
-	Sound uint32
+	Crashed    bool
+	CrashReset bool
+	Sound      uint32
 	// Date fields (local and Zulu)
 	LocalDay   int // LOCAL DAY OF MONTH
 	LocalMonth int // LOCAL MONTH OF YEAR
@@ -198,18 +198,32 @@ type SimState struct {
 	UserInputEnabled       bool    // USER INPUT ENABLED
 	SimOnGround            bool    // SIM ON GROUND
 	// Environment variables
-	AmbientTemperature  float64 // AMBIENT TEMPERATURE (Celsius)
-	AmbientPressure     float64 // AMBIENT PRESSURE (inHg)
-	AmbientWindVelocity float64 // AMBIENT WIND VELOCITY (Knots)
+	AmbientTemperature   float64 // AMBIENT TEMPERATURE (Celsius)
+	AmbientPressure      float64 // AMBIENT PRESSURE (inHg)
+	AmbientWindVelocity  float64 // AMBIENT WIND VELOCITY (Knots)
 	AmbientWindDirection float64 // AMBIENT WIND DIRECTION (Degrees)
-	AmbientVisibility  float64 // AMBIENT VISIBILITY (Meters)
-	AmbientInCloud     bool    // AMBIENT IN CLOUD
-	AmbientPrecipState uint32  // AMBIENT PRECIP STATE (Mask: 2=None, 4=Rain, 8=Snow)
-	BarometerPressure  float64 // BAROMETER PRESSURE (Millibars)
-	SeaLevelPressure    float64 // SEA LEVEL PRESSURE (Millibars)
-	GroundAltitude      float64 // GROUND ALTITUDE (Feet)
-	MagVar              float64 // MAGVAR (Degrees, magnetic variation)
-	SurfaceType         uint32  // SURFACE TYPE (Surface type enum)
+	AmbientVisibility    float64 // AMBIENT VISIBILITY (Meters)
+	AmbientInCloud       bool    // AMBIENT IN CLOUD
+	AmbientPrecipState   uint32  // AMBIENT PRECIP STATE (Mask: 2=None, 4=Rain, 8=Snow)
+	BarometerPressure    float64 // BAROMETER PRESSURE (Millibars)
+	SeaLevelPressure     float64 // SEA LEVEL PRESSURE (Millibars)
+	GroundAltitude       float64 // GROUND ALTITUDE (Feet)
+	MagVar               float64 // MAGVAR (Degrees, magnetic variation)
+	SurfaceType          uint32  // SURFACE TYPE (Surface type enum)
+	// Aircraft position and orientation
+	Latitude          float64 // PLANE LATITUDE (degrees)
+	Longitude         float64 // PLANE LONGITUDE (degrees)
+	Altitude          float64 // PLANE ALTITUDE (feet MSL)
+	IndicatedAltitude float64 // INDICATED ALTITUDE (feet)
+	TrueHeading       float64 // PLANE HEADING DEGREES TRUE (degrees)
+	MagneticHeading   float64 // PLANE HEADING DEGREES MAGNETIC (degrees)
+	Pitch             float64 // PLANE PITCH DEGREES (degrees)
+	Bank              float64 // PLANE BANK DEGREES (degrees)
+	// Aircraft speed
+	GroundSpeed       float64 // GROUND VELOCITY (knots)
+	IndicatedAirspeed float64 // AIRSPEED INDICATED (knots)
+	TrueAirspeed      float64 // AIRSPEED TRUE (knots)
+	VerticalSpeed     float64 // VERTICAL SPEED (feet per second)
 }
 
 // Equal returns true if two SimState values are equivalent
@@ -243,8 +257,8 @@ type SimStateSubscription interface {
 	Unsubscribe()
 }
 
-// cameraDataStruct is the structure for camera data received from SimConnect
-type cameraDataStruct struct {
+// simStateDataStruct is the structure for simulator state data received from SimConnect
+type simStateDataStruct struct {
 	CameraState              int32
 	CameraSubstate           int32
 	SimulationRate           float64
@@ -283,4 +297,16 @@ type cameraDataStruct struct {
 	GroundAltitude           float64
 	MagVar                   float64
 	SurfaceType              int32
+	Latitude                 float64
+	Longitude                float64
+	Altitude                 float64
+	IndicatedAltitude        float64
+	TrueHeading              float64
+	MagneticHeading          float64
+	Pitch                    float64
+	Bank                     float64
+	GroundSpeed              float64
+	IndicatedAirspeed        float64
+	TrueAirspeed             float64
+	VerticalSpeed            float64
 }

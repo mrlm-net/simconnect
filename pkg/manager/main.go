@@ -1445,6 +1445,42 @@ func (m *Instance) processMessage(msg engine.Message) {
 			if err := client.AddToDataDefinition(m.cameraDefinitionID, "SURFACE TYPE", "Enum", types.SIMCONNECT_DATATYPE_INT32, 0, 37); err != nil {
 				m.logger.Error("[manager] Failed to add SURFACE TYPE definition", "error", err)
 			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 38); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE LATITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 39); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE LONGITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 40); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE ALTITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "INDICATED ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 41); err != nil {
+				m.logger.Error("[manager] Failed to add INDICATED ALTITUDE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 42); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE HEADING DEGREES TRUE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 43); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE HEADING DEGREES MAGNETIC definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE PITCH DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 44); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE PITCH DEGREES definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE BANK DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 45); err != nil {
+				m.logger.Error("[manager] Failed to add PLANE BANK DEGREES definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "GROUND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 46); err != nil {
+				m.logger.Error("[manager] Failed to add GROUND VELOCITY definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 47); err != nil {
+				m.logger.Error("[manager] Failed to add AIRSPEED INDICATED definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 48); err != nil {
+				m.logger.Error("[manager] Failed to add AIRSPEED TRUE definition", "error", err)
+			}
+			if err := client.AddToDataDefinition(m.cameraDefinitionID, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 49); err != nil {
+				m.logger.Error("[manager] Failed to add VERTICAL SPEED definition", "error", err)
+			}
 
 			// Request camera data with period matching heartbeat configuration
 			period := types.SIMCONNECT_PERIOD_SIM_FRAME
@@ -1748,48 +1784,60 @@ func (m *Instance) processMessage(msg engine.Message) {
 		simObjMsg := msg.AsSimObjectData()
 		if uint32(simObjMsg.DwRequestID) == m.cameraRequestID && uint32(simObjMsg.DwDefineID) == m.cameraDefinitionID {
 			// Extract camera state and substate from data
-			cameraData := engine.CastDataAs[cameraDataStruct](&simObjMsg.DwData)
+			stateData := engine.CastDataAs[simStateDataStruct](&simObjMsg.DwData)
 
-			// Build new state from camera data (no lock needed)
+			// Build new state from sim state data (no lock needed)
 			newState := SimState{
-				Camera:                   CameraState(cameraData.CameraState),
-				Substate:                 CameraSubstate(cameraData.CameraSubstate),
-				SimulationRate:           cameraData.SimulationRate,
-				SimulationTime:           cameraData.SimulationTime,
-				LocalTime:                cameraData.LocalTime,
-				ZuluTime:                 cameraData.ZuluTime,
-				IsInVR:                   cameraData.IsInVR == 1,
-				IsUsingMotionControllers: cameraData.IsUsingMotionControllers == 1,
-				IsUsingJoystickThrottle:  cameraData.IsUsingJoystickThrottle == 1,
-				IsInRTC:                  cameraData.IsInRTC == 1,
-				IsAvatar:                 cameraData.IsAvatar == 1,
-				IsAircraft:               cameraData.IsAircraft == 1,
-				LocalDay:                 int(cameraData.LocalDay),
-				LocalMonth:               int(cameraData.LocalMonth),
-				LocalYear:                int(cameraData.LocalYear),
-				ZuluDay:                  int(cameraData.ZuluDay),
-				ZuluMonth:                int(cameraData.ZuluMonth),
-				ZuluYear:                 int(cameraData.ZuluYear),
-				Realism:                  cameraData.Realism,
-				VisualModelRadius:        cameraData.VisualModelRadius,
-				SimDisabled:              cameraData.SimDisabled == 1,
-				RealismCrashDetection:    cameraData.RealismCrashDetection == 1,
-				RealismCrashWithOthers:   cameraData.RealismCrashWithOthers == 1,
-				TrackIREnabled:           cameraData.TrackIREnabled == 1,
-				UserInputEnabled:         cameraData.UserInputEnabled == 1,
-				SimOnGround:              cameraData.SimOnGround == 1,
-				AmbientTemperature:       cameraData.AmbientTemperature,
-				AmbientPressure:          cameraData.AmbientPressure,
-				AmbientWindVelocity:      cameraData.AmbientWindVelocity,
-				AmbientWindDirection:     cameraData.AmbientWindDirection,
-				AmbientVisibility:        cameraData.AmbientVisibility,
-				AmbientInCloud:           cameraData.AmbientInCloud == 1,
-				AmbientPrecipState:       uint32(cameraData.AmbientPrecipState),
-				BarometerPressure:        cameraData.BarometerPressure,
-				SeaLevelPressure:         cameraData.SeaLevelPressure,
-				GroundAltitude:           cameraData.GroundAltitude,
-				MagVar:                   cameraData.MagVar,
-				SurfaceType:              uint32(cameraData.SurfaceType),
+				Camera:                   CameraState(stateData.CameraState),
+				Substate:                 CameraSubstate(stateData.CameraSubstate),
+				SimulationRate:           stateData.SimulationRate,
+				SimulationTime:           stateData.SimulationTime,
+				LocalTime:                stateData.LocalTime,
+				ZuluTime:                 stateData.ZuluTime,
+				IsInVR:                   stateData.IsInVR == 1,
+				IsUsingMotionControllers: stateData.IsUsingMotionControllers == 1,
+				IsUsingJoystickThrottle:  stateData.IsUsingJoystickThrottle == 1,
+				IsInRTC:                  stateData.IsInRTC == 1,
+				IsAvatar:                 stateData.IsAvatar == 1,
+				IsAircraft:               stateData.IsAircraft == 1,
+				LocalDay:                 int(stateData.LocalDay),
+				LocalMonth:               int(stateData.LocalMonth),
+				LocalYear:                int(stateData.LocalYear),
+				ZuluDay:                  int(stateData.ZuluDay),
+				ZuluMonth:                int(stateData.ZuluMonth),
+				ZuluYear:                 int(stateData.ZuluYear),
+				Realism:                  stateData.Realism,
+				VisualModelRadius:        stateData.VisualModelRadius,
+				SimDisabled:              stateData.SimDisabled == 1,
+				RealismCrashDetection:    stateData.RealismCrashDetection == 1,
+				RealismCrashWithOthers:   stateData.RealismCrashWithOthers == 1,
+				TrackIREnabled:           stateData.TrackIREnabled == 1,
+				UserInputEnabled:         stateData.UserInputEnabled == 1,
+				SimOnGround:              stateData.SimOnGround == 1,
+				AmbientTemperature:       stateData.AmbientTemperature,
+				AmbientPressure:          stateData.AmbientPressure,
+				AmbientWindVelocity:      stateData.AmbientWindVelocity,
+				AmbientWindDirection:     stateData.AmbientWindDirection,
+				AmbientVisibility:        stateData.AmbientVisibility,
+				AmbientInCloud:           stateData.AmbientInCloud == 1,
+				AmbientPrecipState:       uint32(stateData.AmbientPrecipState),
+				BarometerPressure:        stateData.BarometerPressure,
+				SeaLevelPressure:         stateData.SeaLevelPressure,
+				GroundAltitude:           stateData.GroundAltitude,
+				MagVar:                   stateData.MagVar,
+				SurfaceType:              uint32(stateData.SurfaceType),
+				Latitude:                 stateData.Latitude,
+				Longitude:                stateData.Longitude,
+				Altitude:                 stateData.Altitude,
+				IndicatedAltitude:        stateData.IndicatedAltitude,
+				TrueHeading:              stateData.TrueHeading,
+				MagneticHeading:          stateData.MagneticHeading,
+				Pitch:                    stateData.Pitch,
+				Bank:                     stateData.Bank,
+				GroundSpeed:              stateData.GroundSpeed,
+				IndicatedAirspeed:        stateData.IndicatedAirspeed,
+				TrueAirspeed:             stateData.TrueAirspeed,
+				VerticalSpeed:            stateData.VerticalSpeed,
 			}
 
 			// Short lock: preserve event-driven fields and compare
