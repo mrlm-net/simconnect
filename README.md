@@ -75,6 +75,7 @@ func main() {
 | [`monitor-traffic`](examples/monitor-traffic) | Real-time AI traffic monitoring with periodic position and state tracking. |
 | [`simconnect-facilities`](examples/simconnect-facilities) | Facility dataset registration for airport, runway, parking, and frequency data. |
 | [`using-datasets`](examples/using-datasets) | Pre-built dataset registration and AI traffic spawning from JSON configuration. |
+| [`simconnect-benchmark`](examples/simconnect-benchmark) | Performance benchmarking with pprof, MemStats, and GC trace analysis. |
 
 > **Tip:** Browse the [`examples`](examples) folder to explore additional scenarios as they are added.
 
@@ -88,6 +89,7 @@ func main() {
 | [`pkg/types`](pkg/types) | Strongly typed representations of SimConnect data structures, events, and helper enums used across the public API. |
 | [`pkg/datasets`](pkg/datasets) | Ready-made dataset definitions for common SimConnect data requests. Includes sub-packages for aircraft, environment, facilities (airport, runway, parking, frequency, and 20+ more), objects, simulator, and traffic data. |
 | [`pkg/convert`](pkg/convert) | Unit conversion utilities (altitude, distance, speed), ICAO code validation and region lookup, and WGS84 coordinate offset calculation. |
+| [`pkg/calc`](pkg/calc) | Calculation helpers including great-circle distance (haversine formula) for geographic coordinates. |
 
 > Detailed documentation will be available in the `docs` folder.
 

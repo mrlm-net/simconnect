@@ -22,18 +22,18 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 
 ## Current Manager IDs
 
-### Camera System
+### Simulator State System
 
 ```go
-CameraDefinitionID = 999999900  // Camera state/substate data definition
-CameraRequestID    = 999999901  // Periodic camera data requests
+SimulatorDefinitionID = 999999900  // Simulator state data definition
+SimulatorRequestID    = 999999901  // Periodic simulator state requests
 ```
 
-**Purpose**: Continuously polls camera state (position, type) to update the manager's `SimState`.
+**Purpose**: Continuously polls simulator state (camera, simulation, environment, aircraft telemetry) to update the manager's `SimState`.
 
 **Usage**: Internal to the manager. Not directly accessible to users but affects `OnSimStateChange` notifications.
 
-The manager's camera data definition now includes additional environment and simulation variables which are exposed on `SimState`:
+The manager's simulator state data definition now includes additional environment, simulation, and aircraft telemetry variables which are exposed on `SimState`:
 
 - `SIMULATION RATE` (Number) — internal rate of passing time
 - `SIMULATION TIME` (Seconds) — seconds since the simulation started
@@ -46,6 +46,16 @@ The manager's camera data definition now includes additional environment and sim
 - `AMBIENT WIND DIRECTION` (Degrees), `AMBIENT VISIBILITY` (Meters), `AMBIENT IN CLOUD` (Boolean)
 - `AMBIENT PRECIP STATE` (Mask), `BAROMETER PRESSURE` (Millibars), `SEA LEVEL PRESSURE` (Millibars)
 - `GROUND ALTITUDE` (Feet), `MAGVAR` (Degrees), `SURFACE TYPE` (Enum)
+- `PLANE LATITUDE` (Degrees), `PLANE LONGITUDE` (Degrees), `PLANE ALTITUDE` (Feet), `INDICATED ALTITUDE` (Feet)
+- `PLANE HEADING DEGREES TRUE` (Degrees), `PLANE HEADING DEGREES MAGNETIC` (Degrees)
+- `PLANE PITCH DEGREES` (Degrees), `PLANE BANK DEGREES` (Degrees)
+- `GROUND VELOCITY` (Knots), `AIRSPEED INDICATED` (Knots), `AIRSPEED TRUE` (Knots), `VERTICAL SPEED` (Feet per second)
+- `SMART CAMERA ACTIVE` (Boolean)
+- `HAND ANIM STATE` (Number, 0-12 frame IDs), `HIDE AVATAR IN AIRCRAFT` (Boolean), `MISSION SCORE` (Number), `PARACHUTE OPEN` (Boolean)
+- `ZULU SUNRISE TIME` (Seconds), `ZULU SUNSET TIME` (Seconds), `TIME ZONE OFFSET` (Seconds)
+- `TOOLTIP UNITS` (Enum: 0=Default, 1=Metric, 2=US), `UNITS OF MEASURE` (Enum: 0=English, 1=Metric/feet, 2=Metric/meters)
+- `AMBIENT IN SMOKE` (Boolean), `ENV SMOKE DENSITY` (Percent), `ENV CLOUD DENSITY` (Percent)
+- `DENSITY ALTITUDE` (Feet), `SEA LEVEL AMBIENT TEMPERATURE` (Celsius)
 
 ### Event System (manager-reserved IDs)
 
@@ -209,8 +219,8 @@ Potential improvements for request management:
 Manager registers internal requests at these points:
 
 1. **On Connection (via `onEngineOpen`)**:
-    - Camera Definition (999999900) — registers camera state, simulation/time variables, date fields, IS_* flags, and environment SimVars
-    - Camera Request (999999901)
+    - Simulator State Definition (999999900) — registers camera state, simulation/time variables, date fields, IS_* flags, environment SimVars, aircraft telemetry, and extended variables
+    - Simulator State Request (999999901)
     - Pause Event (999999998)
     - Crashed/CrashReset/Sound event subscriptions (manager reserved IDs listed above)
 
@@ -227,8 +237,8 @@ Manager registers internal requests at these points:
 
 When the connection closes or manager stops:
 1. Unsubscribe from pause events
-2. Clear camera data definition
+2. Clear simulator state data definition
 3. Clear all entries in request registry
-4. Reset `cameraDataRequestPending` flag
+4. Reset `simStateDataRequestPending` flag
 
 This ensures a clean state for the next connection.

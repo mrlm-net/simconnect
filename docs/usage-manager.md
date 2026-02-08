@@ -526,6 +526,104 @@ fmt.Printf("Camera: %v, Paused: %v, Crashed: %v\n", state.Camera, state.Paused, 
 | `GroundAltitude` | `float64` | Ground elevation at aircraft position (Feet) |
 | `MagVar` | `float64` | Magnetic variation (Degrees) |
 | `SurfaceType` | `uint32` | Surface type enum |
+| `Latitude` | `float64` | Aircraft latitude (Degrees) |
+| `Longitude` | `float64` | Aircraft longitude (Degrees) |
+| `Altitude` | `float64` | Aircraft altitude MSL (Feet) |
+| `IndicatedAltitude` | `float64` | Indicated altitude (Feet) |
+| `TrueHeading` | `float64` | True heading (Degrees) |
+| `MagneticHeading` | `float64` | Magnetic heading (Degrees) |
+| `Pitch` | `float64` | Aircraft pitch (Degrees) |
+| `Bank` | `float64` | Aircraft bank (Degrees) |
+| `GroundSpeed` | `float64` | Ground velocity (Knots) |
+| `IndicatedAirspeed` | `float64` | Indicated airspeed (Knots) |
+| `TrueAirspeed` | `float64` | True airspeed (Knots) |
+| `VerticalSpeed` | `float64` | Vertical speed (Feet per second) |
+| `SmartCameraActive` | `bool` | Whether smart camera is active |
+| `HandAnimState` | `int32` | Hand animation state (Enum: 0-12 frame IDs) |
+| `HideAvatarInAircraft` | `bool` | Whether avatar is hidden in aircraft |
+| `MissionScore` | `float64` | Current mission score |
+| `ParachuteOpen` | `bool` | Whether parachute is open |
+| `ZuluSunriseTime` | `float64` | Zulu sunrise time (Seconds since midnight) |
+| `ZuluSunsetTime` | `float64` | Zulu sunset time (Seconds since midnight) |
+| `TimeZoneOffset` | `float64` | Time zone offset (Seconds, local minus Zulu) |
+| `TooltipUnits` | `int32` | Tooltip units (Enum: 0=Default, 1=Metric, 2=US) |
+| `UnitsOfMeasure` | `int32` | Units of measure (Enum: 0=English, 1=Metric/feet, 2=Metric/meters) |
+| `AmbientInSmoke` | `bool` | Whether aircraft is in smoke |
+| `EnvSmokeDensity` | `float64` | Smoke density (Percent over 100) |
+| `EnvCloudDensity` | `float64` | Cloud density (Percent over 100) |
+| `DensityAltitude` | `float64` | Density altitude (Feet) |
+| `SeaLevelAmbientTemperature` | `float64` | Sea level ambient temperature (Celsius) |
+
+## State Helpers
+
+The manager package provides convenience functions for common state checks:
+
+```go
+import "github.com/mrlm-net/simconnect/pkg/manager"
+
+state := mgr.SimState()
+
+// Check if in any playable/interactive state
+if manager.IsInGame(state) {
+    fmt.Println("In game")
+}
+
+// Check if actively playing (unpaused, running, in flight)
+if manager.IsPlaying(state) {
+    fmt.Println("Playing")
+}
+
+// Check if in running game (active flight)
+if manager.IsInRunningGame(state) {
+    fmt.Println("In running game")
+}
+
+// Check if showing loading screen
+if manager.IsInLoadingGame(state) {
+    fmt.Println("Loading game")
+}
+
+// Check if in drone camera mode
+if manager.IsInDroneCamera(state) {
+    fmt.Println("In drone camera")
+}
+
+// Check if in any in-game menu state
+if manager.IsInGameMenuStates(state) {
+    fmt.Println("In game menu")
+}
+```
+
+State transition helpers:
+
+```go
+oldState := mgr.SimState()
+// ... wait for state change ...
+newState := mgr.SimState()
+
+// Detect in-game state change
+if manager.IsInGameChange(oldState, newState) {
+    fmt.Println("In-game state changed")
+}
+
+// Detect known MSFS camera bug (switching to main menu)
+if manager.IsInGameMenuMainBug(oldState, newState) {
+    fmt.Println("Main menu camera bug detected")
+}
+```
+
+Available helper functions:
+
+| Function | Description |
+|----------|-------------|
+| `IsInGame(state)` | Whether sim is in any playable/interactive state |
+| `IsInGameChange(old, new)` | Whether in-game state changed between two states |
+| `IsInRunningGame(state)` | Whether sim is actively running a flight |
+| `IsInLoadingGame(state)` | Whether sim is showing loading screen |
+| `IsInGameMenuMainBug(old, new)` | Whether state change matches known MSFS camera bug |
+| `IsInGameMenuStates(state)` | Whether sim is in any in-game menu state |
+| `IsInDroneCamera(state)` | Whether sim is in drone camera mode |
+| `IsPlaying(state)` | Whether sim is actively playing (unpaused, running, in flight) |
 
 ### Camera States
 
