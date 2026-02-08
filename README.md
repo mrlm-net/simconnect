@@ -57,6 +57,8 @@ func main() {
 | [`lifecycle-connection`](examples/lifecycle-connection) | Showcases clean connection lifecycle management including graceful shutdown. |
 | [`simconnect-manager`](examples/simconnect-manager) | Uses the Manager interface for automatic connection lifecycle and reconnection handling. |
 | [`simconnect-subscribe`](examples/simconnect-subscribe) | Demonstrates channel-based subscriptions for messages and state changes using the Manager interface. |
+| [`simconnect-state`](examples/simconnect-state) | Demonstrates state tracking and SimState API with connection lifecycle management. |
+| [`simconnect-events`](examples/simconnect-events) | Demonstrates crash/sound/object event subscriptions using callback and channel-based handlers. |
 | [`read-messages`](examples/read-messages) | Reads incoming SimConnect messages and displays their payloads. |
 | [`read-objects`](examples/read-objects) | Retrieves simulator objects and inspects their properties. |
 | [`set-variables`](examples/set-variables) | Writes data back to the simulator to control aircraft state. |
@@ -65,6 +67,7 @@ func main() {
 | [`subscribe-facilities`](examples/subscribe-facilities) | Subscribes to facility data streams. |
 | [`read-facility`](examples/read-facility) | Resolves a single facility by ICAO identifier. |
 | [`read-facilities`](examples/read-facilities) | Enumerates facilities matching a filter. |
+| [`read-waypoints`](examples/read-waypoints) | Waypoint facility data retrieval from the simulator's facilities database. |
 | [`all-facilities`](examples/all-facilities) | Requests and reads the complete set of facilities (airports), handling multi-packet responses. |
 | [`ai-traffic`](examples/ai-traffic) | Drives AI traffic plans using flight plans shipped in `examples/ai-traffic/plans`. |
 

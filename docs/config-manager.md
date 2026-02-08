@@ -59,7 +59,7 @@ These options configure the underlying engine client:
 |--------------|-----------------|------|---------|-------------|
 | `WithBufferSize(size)` | `manager.WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
 | `WithDLLPath(path)` | `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
-| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `types.HeartbeatFrequency` | `types.Heartbeat6Hz` | Heartbeat frequency |
+| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency |
 | `WithEngineOptions(opts...)` | `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
@@ -154,10 +154,12 @@ manager.WithAutoReconnect(false)  // Stop after first disconnect
 Convenience wrappers for common engine options:
 
 ```go
+import "github.com/mrlm-net/simconnect/pkg/engine"
+
 mgr := manager.New("MyApp",
     manager.WithBufferSize(512),
     manager.WithDLLPath("D:/Custom/SimConnect.dll"),
-    manager.WithHeartbeat(types.Heartbeat1Hz),
+    manager.WithHeartbeat(engine.HEARTBEAT_1SEC),
 )
 ```
 
@@ -204,18 +206,13 @@ The Manager provides access to simulator state through the `SimState()` method, 
 if mgr.IsConnected() {
     state := mgr.SimState()
     fmt.Printf("Camera State: %d\n", state.CameraState)
-    fmt.Printf("Is Paused: %v\n", state.IsPaused)
+    fmt.Printf("Is Paused: %v\n", state.Paused)
 }
 ```
 
 ### SimState Structure
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `Camera` | `CameraState` | Current camera state (cockpit, external, drone, etc.) |
-| `Substate` | `CameraSubstate` | Substate of the current camera (locked, unlocked, quickview, etc.) |
-| `Paused` | `bool` | Whether the simulator is paused |
-| `SimRunning` | `bool` | Whether the simulator engine is running (false until first Sim event received) |
+See [Manager Usage - SimState Structure](usage-manager.md#simstate-structure) for the complete field reference.
 
 ### Monitoring Simulator State Changes
 
@@ -252,6 +249,7 @@ import (
     "os/signal"
     "time"
 
+    "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/manager"
 )
 
@@ -274,20 +272,20 @@ func main() {
         // Lifecycle
         manager.WithContext(ctx),
         manager.WithLogger(logger),
-        
+
         // Connection behavior
         manager.WithAutoReconnect(true),
         manager.WithRetryInterval(10 * time.Second),
         manager.WithConnectionTimeout(20 * time.Second),
         manager.WithReconnectDelay(15 * time.Second),
         manager.WithMaxRetries(0),  // Unlimited
-        
+
         // Shutdown
         manager.WithShutdownTimeout(5 * time.Second),
-        
+
         // Engine settings
         manager.WithBufferSize(512),
-        manager.WithHeartbeat(types.Heartbeat6Hz),
+        manager.WithHeartbeat(engine.HEARTBEAT_6HZ),
     )
 
     mgr.OnStateChange(func(old, new manager.ConnectionState) {

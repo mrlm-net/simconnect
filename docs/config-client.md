@@ -7,30 +7,24 @@ The `engine` package provides a high-level client for interacting with SimConnec
 ### Using the Root Package
 
 ```go
-import (
-    "github.com/mrlm-net/simconnect"
-    "github.com/mrlm-net/simconnect/pkg/types"
-)
+import "github.com/mrlm-net/simconnect"
 
 client := simconnect.NewClient("MyApp",
     simconnect.ClientWithBufferSize(512),
     simconnect.ClientWithDLLPath("C:/Custom/Path/SimConnect.dll"),
-    simconnect.ClientWithHeartbeat(types.Heartbeat6Hz),
+    simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_6HZ),
 )
 ```
 
 ### Using the Engine Package Directly
 
 ```go
-import (
-    "github.com/mrlm-net/simconnect/pkg/engine"
-    "github.com/mrlm-net/simconnect/pkg/types"
-)
+import "github.com/mrlm-net/simconnect/pkg/engine"
 
 client := engine.New("MyApp",
     engine.WithBufferSize(512),
     engine.WithDLLPath("C:/Custom/Path/SimConnect.dll"),
-    engine.WithHeartbeat(types.Heartbeat6Hz),
+    engine.WithHeartbeat(engine.HEARTBEAT_6HZ),
 )
 ```
 
@@ -45,7 +39,7 @@ Client options are available via the root `simconnect` package (with `Client` pr
 | `ClientWithContext(ctx)` | `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
 | `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
 | `ClientWithLogLevel(level)` | `engine.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `ClientWithLogger` to provide a custom logger) |
-| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `types.HeartbeatFrequency` | `types.Heartbeat6Hz` | Heartbeat frequency for connection monitoring |
+| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency for connection monitoring |
 
 ## Option Details
 
@@ -100,11 +94,15 @@ client := simconnect.NewClient("MyApp", simconnect.ClientWithLogLevel(slog.Level
 
 ### WithHeartbeat
 
-Configures the heartbeat frequency for monitoring the connection to the simulator. Use the typed constants from `pkg/types`.
+Configures the heartbeat frequency for monitoring the connection to the simulator. Use the typed constants from `pkg/engine` or the top-level `simconnect` package.
 
 ```go
-engine.WithHeartbeat(types.Heartbeat1Hz)  // Check every second
-engine.WithHeartbeat(types.Heartbeat6Hz)  // Check 6 times per second (default)
+engine.WithHeartbeat(engine.HEARTBEAT_1SEC)  // Check every second
+engine.WithHeartbeat(engine.HEARTBEAT_6HZ)   // Check 6 times per second (default)
+
+// Or from the root package:
+simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_1SEC)
+simconnect.ClientWithHeartbeat(simconnect.HEARTBEAT_6HZ)
 ```
 
 ## Underlying SimConnect Config
@@ -128,7 +126,6 @@ import (
     "os"
 
     "github.com/mrlm-net/simconnect/pkg/engine"
-    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func main() {
@@ -144,7 +141,7 @@ func main() {
         engine.WithLogger(logger),
         engine.WithBufferSize(512),
         engine.WithDLLPath("C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll"),
-        engine.WithHeartbeat(types.Heartbeat6Hz),
+        engine.WithHeartbeat(engine.HEARTBEAT_6HZ),
     )
 
     if err := client.Connect(); err != nil {

@@ -42,15 +42,22 @@ func (sc *SimConnect) Connect() error {
 func (sc *SimConnect) Disconnect() error {
 	procedure := sc.library.LoadProcedure("SimConnect_Close")
 
-	if sc.connection != 0 {
+	sc.sync.Lock()
+	conn := sc.connection
+	sc.sync.Unlock()
+
+	if conn != 0 {
 		hresult, _, _ := procedure.Call(
-			sc.getConnection(), // hSimConnect
+			uintptr(conn), // hSimConnect
 		)
 
 		if !isHRESULTSuccess(hresult) {
 			return fmt.Errorf("SimConnect_Close failed with HRESULT: 0x%08X", hresult)
 		}
+
+		sc.sync.Lock()
 		sc.connection = 0
+		sc.sync.Unlock()
 	}
 
 	return nil

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -18,8 +19,8 @@ type connectionStateSubscription struct {
 	cancel  context.CancelFunc
 	ch      chan ConnectionStateChange
 	done    chan struct{}
-	closed  bool
-	closeMu sync.Mutex
+	closed  atomic.Bool
+	closeMu sync.Mutex // kept for channel close coordination only
 	manager *Instance
 }
 
@@ -30,8 +31,8 @@ type connectionOpenSubscription struct {
 	cancel  context.CancelFunc
 	ch      chan types.ConnectionOpenData
 	done    chan struct{}
-	closed  bool
-	closeMu sync.Mutex
+	closed  atomic.Bool
+	closeMu sync.Mutex // kept for channel close coordination only
 	manager *Instance
 }
 
@@ -42,8 +43,8 @@ type connectionQuitSubscription struct {
 	cancel  context.CancelFunc
 	ch      chan types.ConnectionQuitData
 	done    chan struct{}
-	closed  bool
-	closeMu sync.Mutex
+	closed  atomic.Bool
+	closeMu sync.Mutex // kept for channel close coordination only
 	manager *Instance
 }
 
@@ -54,8 +55,8 @@ type simStateSubscription struct {
 	cancel  context.CancelFunc
 	ch      chan SimStateChange
 	done    chan struct{}
-	closed  bool
-	closeMu sync.Mutex
+	closed  atomic.Bool
+	closeMu sync.Mutex // kept for channel close coordination only
 	manager *Instance
 }
 
@@ -164,16 +165,15 @@ func (s *connectionStateSubscription) Done() <-chan struct{} {
 // Unsubscribe cancels the state subscription and closes the channel.
 // Blocks until any pending state change delivery completes.
 func (s *connectionStateSubscription) Unsubscribe() {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-
-	if s.closed {
-		return
+	if s.closed.Swap(true) {
+		return // already closed
 	}
-	s.closed = true
-	s.cancel()    // Cancel the subscription's context
+	s.closeMu.Lock()
 	close(s.done) // Signal consumers to stop
 	close(s.ch)   // Close state change channel
+	s.closeMu.Unlock()
+
+	s.cancel() // Cancel the subscription's context
 
 	// Remove from manager's state subscription map
 	s.manager.mu.Lock()
@@ -191,15 +191,14 @@ func (s *simStateSubscription) SimStateChanges() <-chan SimStateChange { return 
 func (s *simStateSubscription) Done() <-chan struct{}                  { return s.done }
 func (s *simStateSubscription) watchContext()                          { <-s.ctx.Done(); s.Unsubscribe() }
 func (s *simStateSubscription) Unsubscribe() {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-	if s.closed {
-		return
+	if s.closed.Swap(true) {
+		return // already closed
 	}
-	s.closed = true
-	s.cancel()
+	s.closeMu.Lock()
 	close(s.done)
 	close(s.ch)
+	s.closeMu.Unlock()
+	s.cancel()
 	s.manager.mu.Lock()
 	delete(s.manager.simStateSubscriptions, s.id)
 	s.manager.mu.Unlock()
@@ -243,15 +242,14 @@ func (s *connectionOpenSubscription) ID() string                             { r
 func (s *connectionOpenSubscription) Opens() <-chan types.ConnectionOpenData { return s.ch }
 func (s *connectionOpenSubscription) Done() <-chan struct{}                  { return s.done }
 func (s *connectionOpenSubscription) Unsubscribe() {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-	if s.closed {
-		return
+	if s.closed.Swap(true) {
+		return // already closed
 	}
-	s.closed = true
-	s.cancel()
+	s.closeMu.Lock()
 	close(s.done)
 	close(s.ch)
+	s.closeMu.Unlock()
+	s.cancel()
 	s.manager.mu.Lock()
 	delete(s.manager.openSubscriptions, s.id)
 	s.manager.mu.Unlock()
@@ -305,15 +303,14 @@ func (s *connectionQuitSubscription) ID() string                             { r
 func (s *connectionQuitSubscription) Quits() <-chan types.ConnectionQuitData { return s.ch }
 func (s *connectionQuitSubscription) Done() <-chan struct{}                  { return s.done }
 func (s *connectionQuitSubscription) Unsubscribe() {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-	if s.closed {
-		return
+	if s.closed.Swap(true) {
+		return // already closed
 	}
-	s.closed = true
-	s.cancel()
+	s.closeMu.Lock()
 	close(s.done)
 	close(s.ch)
+	s.closeMu.Unlock()
+	s.cancel()
 	s.manager.mu.Lock()
 	delete(s.manager.quitSubscriptions, s.id)
 	s.manager.mu.Unlock()

@@ -201,39 +201,7 @@ type SimState struct {
 
 // Equal returns true if two SimState values are equivalent
 func (s SimState) Equal(other SimState) bool {
-	return s.Camera == other.Camera &&
-		s.Substate == other.Substate &&
-		s.Paused == other.Paused &&
-		s.SimRunning == other.SimRunning &&
-		s.SimulationRate == other.SimulationRate &&
-		s.SimulationTime == other.SimulationTime &&
-		s.LocalTime == other.LocalTime &&
-		s.ZuluTime == other.ZuluTime &&
-		s.IsInVR == other.IsInVR &&
-		s.IsUsingMotionControllers == other.IsUsingMotionControllers &&
-		s.IsUsingJoystickThrottle == other.IsUsingJoystickThrottle &&
-		s.IsInRTC == other.IsInRTC &&
-		s.IsAvatar == other.IsAvatar &&
-		s.IsAircraft == other.IsAircraft &&
-		// Crash and sound flags
-		s.Crashed == other.Crashed &&
-		s.CrashReset == other.CrashReset &&
-		s.Sound == other.Sound &&
-		s.LocalDay == other.LocalDay &&
-		s.LocalMonth == other.LocalMonth &&
-		s.LocalYear == other.LocalYear &&
-		s.ZuluDay == other.ZuluDay &&
-		s.ZuluMonth == other.ZuluMonth &&
-		s.ZuluYear == other.ZuluYear &&
-		// Miscellaneous simulation variables
-		s.Realism == other.Realism &&
-		s.VisualModelRadius == other.VisualModelRadius &&
-		s.SimDisabled == other.SimDisabled &&
-		s.RealismCrashDetection == other.RealismCrashDetection &&
-		s.RealismCrashWithOthers == other.RealismCrashWithOthers &&
-		s.TrackIREnabled == other.TrackIREnabled &&
-		s.UserInputEnabled == other.UserInputEnabled &&
-		s.SimOnGround == other.SimOnGround
+	return s == other
 }
 
 // SimStateChange represents a simulator state transition event

@@ -24,7 +24,7 @@ func (sc *SimConnect) AddClientEventToNotificationGroup(groupID uint32, eventID 
 	)
 
 	if !isHRESULTSuccess(hresult) {
-		return fmt.Errorf("SimConnect_AISetAircraftFlightPlan failed with HRESULT: 0x%08X", uint32(hresult))
+		return fmt.Errorf("SimConnect_AddClientEventToNotificationGroup failed with HRESULT: 0x%08X", uint32(hresult))
 	}
 
 	return nil

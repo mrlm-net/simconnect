@@ -4,19 +4,19 @@ const (
 	// Manager ID Allocation Strategy:
 	// ==============================
 	//
-	// The manager uses high-number IDs at the end of the uint32 scale (999000-999999) to provide
+	// The manager uses high-number IDs near the end of the uint32 scale (999999900-999999999) to provide
 	// maximum flexibility for user-defined requests. This strategy:
 	//
 	// RATIONALE:
 	// - Reserves a dedicated, easily-identifiable range for internal manager operations
-	// - Provides plenty of space (998,999 IDs) for user-defined request/definition IDs (1-998999)
+	// - Provides plenty of space (999,999,899 IDs) for user-defined request/definition IDs (1-999999899)
 	// - Avoids collisions with typical application ID assignments (which often start from 1)
-	// - Follows the principle of defensive ID allocation by using high numbers
+	// - Follows the principle of defensive ID allocation by using very high numbers
 	// - Simplifies ID range validation and conflict detection
 	//
 	// USAGE GUIDELINES FOR END USERS:
-	// - Use IDs from 1 to 998999 for your own data definitions and requests
-	// - NEVER use IDs in the 999000-999999 range (reserved for manager)
+	// - Use IDs from 1 to 999999899 for your own data definitions and requests
+	// - NEVER use IDs in the 999999900-999999999 range (reserved for manager)
 	// - Consider organizing your IDs in logical sub-ranges if managing multiple concurrent requests
 	// - Example: Use 1000-1999 for aircraft data, 2000-2999 for environment data, etc.
 	// - Use the IsValidUserID() function to validate your chosen IDs before use
@@ -47,8 +47,8 @@ const (
 	// Position change event removed
 
 	// ID Range Documentation:
-	// User-Available Range: 1 - 998999 (998,999 IDs available for user requests)
-	// Manager Reserved Range: 999000 - 999999 (1,000 IDs reserved for manager operations)
+	// User-Available Range: 1 - 999999899 (999,999,899 IDs available for user requests)
+	// Manager Reserved Range: 999999900 - 999999999 (100 IDs reserved for manager operations)
 )
 
 // IDRange defines the boundaries for ID allocation
@@ -59,9 +59,9 @@ var IDRange = struct {
 	ManagerMax uint32
 }{
 	UserMin:    1,
-	UserMax:    998999,
-	ManagerMin: 999000,
-	ManagerMax: 999999,
+	UserMax:    999999899,
+	ManagerMin: 999999900,
+	ManagerMax: 999999999,
 }
 
 // IsManagerID checks if an ID is reserved for manager use

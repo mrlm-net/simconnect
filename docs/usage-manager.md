@@ -239,9 +239,64 @@ defer sub.Unsubscribe()
 ```
 
 
+### Callback-Style System Event Handlers
+
+For simple event handling, the manager provides callback-style handlers that register functions to be invoked when specific events occur:
+
+```go
+// Crash event handler
+crashID := mgr.OnCrashed(func() {
+    fmt.Println("Aircraft crashed!")
+})
+// Remove handler when no longer needed
+mgr.RemoveCrashed(crashID)
+
+// Crash reset handler
+resetID := mgr.OnCrashReset(func() {
+    fmt.Println("Crash reset")
+})
+mgr.RemoveCrashReset(resetID)
+
+// Sound event handler
+soundID := mgr.OnSoundEvent(func(soundEventID uint32) {
+    fmt.Printf("Sound event: %d\n", soundEventID)
+})
+mgr.RemoveSoundEvent(soundID)
+
+// Flight loaded handler
+flightID := mgr.OnFlightLoaded(func(filename string) {
+    fmt.Printf("Flight loaded: %s\n", filename)
+})
+mgr.RemoveFlightLoaded(flightID)
+
+// Aircraft loaded handler
+aircraftID := mgr.OnAircraftLoaded(func(filename string) {
+    fmt.Printf("Aircraft loaded: %s\n", filename)
+})
+mgr.RemoveAircraftLoaded(aircraftID)
+
+// Flight plan activated handler
+planID := mgr.OnFlightPlanActivated(func(filename string) {
+    fmt.Printf("Flight plan activated: %s\n", filename)
+})
+mgr.RemoveFlightPlanActivated(planID)
+
+// Object added handler
+addID := mgr.OnObjectAdded(func(objectID uint32, objType uint32) {
+    fmt.Printf("Object added: id=%d type=%d\n", objectID, objType)
+})
+mgr.RemoveObjectAdded(addID)
+
+// Object removed handler
+remID := mgr.OnObjectRemoved(func(objectID uint32, objType uint32) {
+    fmt.Printf("Object removed: id=%d type=%d\n", objectID, objType)
+})
+mgr.RemoveObjectRemoved(remID)
+```
+
 ### Typed System Event Subscriptions
 
-The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
+For more control over event handling (e.g., goroutine-based processing), use channel-based subscriptions. The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
 
 - `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
 - `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
@@ -369,7 +424,7 @@ defer sub.Unsubscribe()
 for {
     select {
     case change := <-sub.Changes():
-        if change.New.IsPaused {
+        if change.New.Paused {
             pauseDataCollection()
         } else {
             resumeDataCollection()
@@ -432,24 +487,51 @@ fmt.Printf("Camera: %v, Paused: %v, Crashed: %v\n", state.Camera, state.Paused, 
 | `Substate` | `CameraSubstate` | Camera substate |
 | `Paused` | `bool` | Whether simulation is paused |
 | `SimRunning` | `bool` | Whether simulation is running |
-| `Crashed` | `bool` | Whether simulator reports a crash |
+| `SimulationRate` | `float64` | Current simulation rate multiplier |
+| `SimulationTime` | `float64` | Seconds since simulation start |
+| `LocalTime` | `float64` | Seconds since midnight (local) |
+| `ZuluTime` | `float64` | Seconds since midnight (Zulu/UTC) |
+| `IsInVR` | `bool` | Whether user is in VR mode |
+| `IsUsingMotionControllers` | `bool` | Motion controllers active |
+| `IsUsingJoystickThrottle` | `bool` | Joystick throttle active |
+| `IsInRTC` | `bool` | In real-time communication |
+| `IsAvatar` | `bool` | Avatar mode active |
+| `IsAircraft` | `bool` | Controlling an aircraft |
+| `Crashed` | `bool` | Crash state reported by sim |
 | `CrashReset` | `bool` | Crash reset flag |
-| `Sound` | `uint32` | Last sound event id reported by simulator |
+| `Sound` | `uint32` | Last sound event ID |
+| `LocalDay` | `int` | Local day of month |
+| `LocalMonth` | `int` | Local month of year |
+| `LocalYear` | `int` | Local year |
+| `ZuluDay` | `int` | Zulu day of month |
+| `ZuluMonth` | `int` | Zulu month of year |
+| `ZuluYear` | `int` | Zulu year |
+| `Realism` | `float64` | Realism setting value |
+| `VisualModelRadius` | `float64` | Visual model radius (meters) |
+| `SimDisabled` | `bool` | Simulation disabled flag |
+| `RealismCrashDetection` | `bool` | Crash detection enabled |
+| `RealismCrashWithOthers` | `bool` | Crash with others enabled |
+| `TrackIREnabled` | `bool` | TrackIR head tracking enabled |
+| `UserInputEnabled` | `bool` | User input enabled |
+| `SimOnGround` | `bool` | Aircraft is on ground |
 
 ### Camera States
 
-Common camera state values:
+Common camera state values (see `pkg/manager/state.go` for the complete list of 20+ camera states):
 
 | Value | Constant | Description |
 |-------|----------|-------------|
-| 0 | `CameraStateCockpit` | Cockpit view |
-| 1 | `CameraStateExternalChase` | External/chase view |
-| 2 | `CameraStateDrone` | Drone camera |
-| 3 | `CameraStateFixedOnPlane` | Fixed on plane |
-| 4 | `CameraStateEnvironment` | Environment camera |
-| 5 | `CameraStateSixDoF` | Six degrees of freedom |
-| 6 | `CameraStateGameplay` | Gameplay camera |
-| 7 | `CameraStateShowcase` | Showcase mode |
+| 2 | `CameraStateCockpit` | Cockpit view |
+| 3 | `CameraStateExternalChase` | External/chase view |
+| 4 | `CameraStateDrone` | Drone camera |
+| 5 | `CameraStateFixedOnPlane` | Fixed on plane |
+| 6 | `CameraStateEnvironment` | Environment camera |
+| 7 | `CameraStateSixDoF` | Six degrees of freedom |
+| 8 | `CameraStateGameplay` | Gameplay camera |
+| 9 | `CameraStateShowcase` | Showcase mode |
+| 10 | `CameraStateDroneAircraft` | Drone Aircraft |
+| 12 | `CameraStateWorldMap` | World Map |
+| 17 | `CameraStateReplay` | Replay |
 
 ## Configuration Getters
 
@@ -677,8 +759,8 @@ func main() {
 
     // React to pause state
     mgr.OnSimStateChange(func(old, new manager.SimState) {
-        if old.IsPaused != new.IsPaused {
-            if new.IsPaused {
+        if old.Paused != new.Paused {
+            if new.Paused {
                 fmt.Println("⏸ Paused")
             } else {
                 fmt.Println("▶ Resumed")

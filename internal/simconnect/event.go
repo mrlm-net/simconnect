@@ -5,8 +5,6 @@ package simconnect
 
 import (
 	"fmt"
-	"syscall"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -15,10 +13,15 @@ import (
 func (sc *SimConnect) MapClientEventToSimEvent(eventID uint32, eventName string) error {
 	procedure := sc.library.LoadProcedure("SimConnect_MapClientEventToSimEvent")
 
+	eventNamePtr, err := stringToBytePtr(eventName)
+	if err != nil {
+		return fmt.Errorf("SimConnect_MapClientEventToSimEvent failed to convert eventName: %w", err)
+	}
+
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(eventID),
-		uintptr(unsafe.Pointer(syscall.StringBytePtr(eventName))),
+		eventNamePtr,
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -93,9 +96,14 @@ func (sc *SimConnect) TransmitClientEventEx1(objectID uint32, eventID uint32, gr
 func (sc *SimConnect) MapClientDataNameToID(clientDataName string, clientDataID uint32) error {
 	procedure := sc.library.LoadProcedure("SimConnect_MapClientDataNameToID")
 
+	clientDataNamePtr, err := stringToBytePtr(clientDataName)
+	if err != nil {
+		return fmt.Errorf("SimConnect_MapClientDataNameToID failed to convert clientDataName: %w", err)
+	}
+
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		uintptr(unsafe.Pointer(syscall.StringBytePtr(clientDataName))),
+		clientDataNamePtr,
 		uintptr(clientDataID),
 	)
 

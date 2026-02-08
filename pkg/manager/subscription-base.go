@@ -4,9 +4,11 @@ package manager
 
 import (
 	"context"
-	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
+	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -22,8 +24,8 @@ type subscription struct {
 	cancel  context.CancelFunc
 	ch      chan engine.Message
 	done    chan struct{}
-	closed  bool
-	closeMu sync.Mutex
+	closed  atomic.Bool
+	closeMu sync.Mutex // kept for channel close coordination only
 	manager *Instance
 	// Optional filter predicate. If non-nil, only messages for which
 	// filter(msg) == true are forwarded to this subscription.
@@ -62,10 +64,11 @@ func (m *Instance) GetSubscription(id string) Subscription {
 	return nil
 }
 
-// generateUUID generates a simple UUID v4 with optimized allocation
+// generateUUID generates a simple UUID v4 with optimized allocation using math/rand/v2
 func generateUUID() string {
 	var b [16]byte
-	_, _ = rand.Read(b[:])
+	binary.LittleEndian.PutUint64(b[0:8], rand.Uint64())
+	binary.LittleEndian.PutUint64(b[8:16], rand.Uint64())
 	// Set version (4) and variant bits
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
@@ -102,16 +105,15 @@ func (s *subscription) Done() <-chan struct{} {
 // Unsubscribe cancels the subscription and closes the channel.
 // Blocks until any pending message delivery completes.
 func (s *subscription) Unsubscribe() {
-	s.closeMu.Lock()
-	if s.closed {
-		s.closeMu.Unlock()
-		return
+	if s.closed.Swap(true) {
+		return // already closed
 	}
-	s.closed = true
-	s.cancel()    // Cancel the subscription's context
+	s.closeMu.Lock()
 	close(s.done) // Signal consumers to stop
 	close(s.ch)   // Close message channel
 	s.closeMu.Unlock()
+
+	s.cancel() // Cancel the subscription's context
 
 	// Remove from manager's subscription map
 	s.manager.mu.Lock()
