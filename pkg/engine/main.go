@@ -23,13 +23,15 @@ func New(name string, options ...Option) *Engine {
 	if config.Logger == nil {
 		config.Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: config.LogLevel}))
 	}
-	// Auto-detect DLL path when enabled and no explicit path was provided.
-	if config.AutoDetect && config.DLLPath == DEFAULT_DLL_PATH {
+	// Auto-detect DLL path when enabled. Detection overrides whatever path
+	// is currently set (default or explicit). If detection fails, the
+	// existing config.DLLPath is kept as fallback.
+	if config.AutoDetect {
 		if detected, err := dll.Detect(); err == nil {
 			config.Logger.Debug("SimConnect DLL auto-detected", "path", detected)
 			config.DLLPath = detected
 		} else {
-			config.Logger.Debug("SimConnect DLL auto-detection failed, using default", "error", err)
+			config.Logger.Warn("SimConnect DLL auto-detection failed", "error", err, "fallback", config.DLLPath)
 		}
 	}
 	ctx, cancel := context.WithCancel(config.Context)

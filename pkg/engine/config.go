@@ -43,7 +43,8 @@ func WithDLLPath(path string) Option {
 
 // WithAutoDetect enables automatic detection of SimConnect.dll by searching
 // environment variables and common SDK installation paths.
-// A user-specified path (via WithDLLPath) takes precedence over auto-detection.
+// When enabled, detection runs regardless of any path set via WithDLLPath.
+// If detection fails, the existing path (default or explicit) is kept as fallback.
 func WithAutoDetect() Option {
 	return func(c *Config) {
 		c.AutoDetect = true
