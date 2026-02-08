@@ -8,9 +8,33 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mrlm-net/simconnect/internal/dll"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager"
 )
+
+// DetectDLLPath searches for SimConnect.dll on the local filesystem.
+// Returns the first path where the DLL exists, or [ErrDLLNotFound].
+//
+// Detection priority:
+//  0. SIMCONNECT_DLL env var — direct path to SimConnect.dll
+//  1. SDK root env vars: MSFS_SDK, MSFS2024_SDK, MSFS2020_SDK
+//  2. Common installation paths: C:/MSFS 2024 SDK, C:/Program Files/MSFS 2024 SDK, etc.
+//  3. User home directory: ~/MSFS 2024 SDK, ~/MSFS SDK, etc.
+//
+// Within each SDK root, both "SimConnect SDK/lib/SimConnect.dll" and
+// "lib/SimConnect.dll" layouts are checked.
+//
+// When using [ClientWithAutoDetect] or [WithAutoDetect] options, an explicit
+// path via [ClientWithDLLPath] or [WithDLLPath] takes precedence over
+// auto-detection, which in turn overrides the default path.
+func DetectDLLPath() (string, error) {
+	return dll.Detect()
+}
+
+// ErrDLLNotFound is returned by [DetectDLLPath] when SimConnect.dll
+// cannot be located in any known location.
+var ErrDLLNotFound = dll.ErrDLLNotFound
 
 // HeartbeatFrequency re-exports the engine HeartbeatFrequency type so callers
 // can refer to `simconnect.HeartbeatFrequency` instead of importing

@@ -8,7 +8,7 @@ import "github.com/mrlm-net/simconnect/pkg/datasets"
 func NewAirportFacilityDataset() *datasets.FacilityDataSet {
 	return &datasets.FacilityDataSet{
 		Definitions: []datasets.FacilityDataDefinition{
-			"OPEN_AIRPORT",
+			"OPEN AIRPORT",
 			"LATITUDE",
 			"LONGITUDE",
 			"ALTITUDE",
@@ -25,7 +25,7 @@ func NewAirportFacilityDataset() *datasets.FacilityDataSet {
 			"IS_CLOSED",
 			"COUNTRY",
 			"CITY_STATE",
-			"CLOSE_AIRPORT",
+			"CLOSE AIRPORT",
 		},
 	}
 }
