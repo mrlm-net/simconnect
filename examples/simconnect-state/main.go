@@ -53,6 +53,11 @@ func setupDataDefinitions(client engine.Client) {
 
 	// Example: Subscribe to a system event (Pause, Sim, Sound, etc.)
 	// --------------------------------------------
+	// NOTE: The manager internally subscribes to Pause, Sim, Sound, Crashed, CrashReset,
+	// FlightLoaded, AircraftLoaded, FlightPlanActivated, ObjectAdded, and ObjectRemoved events.
+	// Do NOT subscribe to these events manually as it will cause SimConnect exceptionID=1.
+	// Instead, use the manager's callback handlers: OnSimStateChange, OnCrashed, OnCrashReset, OnSoundEvent.
+	// --------------------------------------------
 	// - Pause event occurs when user pauses/unpauses the simulator.
 	//   State is returned in dwData field as number (0=unpaused, 1=paused)
 	//client.SubscribeToSystemEvent(1000, "Pause")
@@ -63,7 +68,7 @@ func setupDataDefinitions(client engine.Client) {
 	// --------------------------------------------
 	// - Sound event occurs when simulator master sound is toggled.
 	//   State is returned in dwData field as number (0=off, 1=on)
-	client.SubscribeToSystemEvent(1002, "Sound")
+	//client.SubscribeToSystemEvent(1002, "Sound")
 	// --------------------------------------------
 	// - Define data structure for CAMERA STATE and CAMERA SUBSTATE
 	//   and request updates every second
@@ -121,32 +126,9 @@ func handleMessage(msg engine.Message) {
 
 	// Handle specific messages
 	// This could be done based on type and also if needed request IDs
+	// NOTE: System events (Pause, Sim, Sound, Crashed, CrashReset, etc.) are handled internally
+	// by the manager and delivered via OnSimStateChange, OnCrashed, OnCrashReset, OnSoundEvent callbacks.
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
-	case types.SIMCONNECT_RECV_ID_EVENT:
-		eventMsg := msg.AsEvent()
-		fmt.Printf("  Event ID: %d, Data: %d\n", eventMsg.UEventID, eventMsg.DwData)
-		// Check if this is the Pause event (ID 1000)
-		if eventMsg.UEventID == 1000 {
-			if eventMsg.DwData == 1 {
-				fmt.Println("  ⏸️  Simulator is PAUSED")
-			} else {
-				fmt.Println("  ▶️  Simulator is UNPAUSED")
-			}
-		}
-		if eventMsg.UEventID == 1001 {
-			if eventMsg.DwData == 0 {
-				fmt.Println("  🛑 Simulator SIM STOPPED")
-			} else {
-				fmt.Println("  🏁 Simulator SIM STARTED")
-			}
-		}
-		if eventMsg.UEventID == 1002 {
-			if eventMsg.DwData == 0 {
-				fmt.Println("  🔇 Simulator SOUND OFF")
-			} else {
-				fmt.Println("  🔊 Simulator SOUND ON")
-			}
-		}
 	case types.SIMCONNECT_RECV_ID_OPEN:
 		fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
 		openMsg := msg.AsOpen()
@@ -251,7 +233,9 @@ func main() {
 		cancel()
 	}()
 
-	// Register SimState change handler to monitor all simulation state changes
+	// Register SimState change handler to monitor significant discrete state changes
+	// NOTE: As of issue #15, this handler only fires on discrete state changes (camera, pause, sim running, VR, realism settings)
+	// and NOT on noisy SimVars like time, position, weather, or speed to reduce false positives.
 	_ = mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
 		oldSimStatus := "Started"
 		if !oldState.SimRunning {
@@ -269,7 +253,7 @@ func main() {
 		if newState.Paused {
 			newPauseStatus = "⏸️  Paused"
 		}
-		fmt.Printf("🎥 SimState changed:\n")
+		fmt.Printf("🎥 SimState changed (discrete state change detected):\n")
 		fmt.Printf("   Old: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
 			oldState.Camera, oldState.Camera, oldState.Substate, oldPauseStatus, oldSimStatus)
 		fmt.Printf("   New: Camera=%s [%d], Substate=%s, %s, Sim=%s\n",
@@ -278,6 +262,25 @@ func main() {
 			newState.Realism, newState.VisualModelRadius, newState.SimDisabled)
 		fmt.Printf("   CrashDetection: %v, CrashWithOthers: %v, TrackIR: %v, UserInput: %v, OnGround: %v\n",
 			newState.RealismCrashDetection, newState.RealismCrashWithOthers, newState.TrackIREnabled, newState.UserInputEnabled, newState.SimOnGround)
+	})
+
+	// Register Crashed event handler (added in issue #22)
+	_ = mgr.OnCrashed(func() {
+		fmt.Println("💥 [OnCrashed Callback] Aircraft crashed!")
+	})
+
+	// Register CrashReset event handler (added in issue #22)
+	_ = mgr.OnCrashReset(func() {
+		fmt.Println("🔄 [OnCrashReset Callback] Crash reset - aircraft restored!")
+	})
+
+	// Register Sound event handler (added in issue #22)
+	_ = mgr.OnSoundEvent(func(soundID uint32) {
+		soundState := "ON"
+		if soundID == 0 {
+			soundState = "OFF"
+		}
+		fmt.Printf("🔊 [OnSoundEvent Callback] Master sound toggled: %s (soundID=%d)\n", soundState, soundID)
 	})
 
 	// Register connection state change handler to setup data definitions when available
