@@ -227,10 +227,10 @@ type SimState struct {
 	// Camera extended
 	SmartCameraActive bool // SMART CAMERA ACTIVE
 	// Miscellaneous
-	HandAnimState       int32 // HAND ANIM STATE (Enum: 0-12 frame IDs)
-	HideAvatarInAircraft bool  // HIDE AVATAR IN AIRCRAFT
-	MissionScore        float64 // MISSION SCORE
-	ParachuteOpen       bool    // PARACHUTE OPEN
+	HandAnimState        int32   // HAND ANIM STATE (Enum: 0-12 frame IDs)
+	HideAvatarInAircraft bool    // HIDE AVATAR IN AIRCRAFT
+	MissionScore         float64 // MISSION SCORE
+	ParachuteOpen        bool    // PARACHUTE OPEN
 	// Environment time
 	ZuluSunriseTime float64 // ZULU SUNRISE TIME (seconds since midnight Zulu)
 	ZuluSunsetTime  float64 // ZULU SUNSET TIME (seconds since midnight Zulu)
@@ -239,15 +239,16 @@ type SimState struct {
 	TooltipUnits   int32 // TOOLTIP UNITS (Enum: 0=Default, 1=Metric, 2=US)
 	UnitsOfMeasure int32 // UNITS OF MEASURE (Enum: 0=English, 1=Metric/feet, 2=Metric/meters)
 	// Environment weather (extended)
-	AmbientInSmoke            bool    // AMBIENT IN SMOKE
-	EnvSmokeDensity           float64 // ENV SMOKE DENSITY (Percent Over 100)
-	EnvCloudDensity           float64 // ENV CLOUD DENSITY (Percent Over 100)
-	DensityAltitude           float64 // DENSITY ALTITUDE (Feet)
+	AmbientInSmoke             bool    // AMBIENT IN SMOKE
+	EnvSmokeDensity            float64 // ENV SMOKE DENSITY (Percent Over 100)
+	EnvCloudDensity            float64 // ENV CLOUD DENSITY (Percent Over 100)
+	DensityAltitude            float64 // DENSITY ALTITUDE (Feet)
 	SeaLevelAmbientTemperature float64 // SEA LEVEL AMBIENT TEMPERATURE (Celsius)
 }
 
 // Equal returns true if two SimState values are equivalent
 func (s SimState) Equal(other SimState) bool {
+	// TODO we should ignore some changes that are irrelevant but should be uptodate when triggering the event
 	return s == other
 }
 
@@ -279,52 +280,52 @@ type SimStateSubscription interface {
 
 // simStateDataStruct is the structure for simulator state data received from SimConnect
 type simStateDataStruct struct {
-	CameraState              int32
-	CameraSubstate           int32
-	SimulationRate           float64
-	SimulationTime           float64
-	LocalTime                float64
-	ZuluTime                 float64
-	IsInVR                   int32
-	IsUsingMotionControllers int32
-	IsUsingJoystickThrottle  int32
-	IsInRTC                  int32
-	IsAvatar                 int32
-	IsAircraft               int32
-	LocalDay                 int32
-	LocalMonth               int32
-	LocalYear                int32
-	ZuluDay                  int32
-	ZuluMonth                int32
-	ZuluYear                 int32
-	Realism                  float64
-	VisualModelRadius        float64
-	SimDisabled              int32
-	RealismCrashDetection    int32
-	RealismCrashWithOthers   int32
-	TrackIREnabled           int32
-	UserInputEnabled         int32
-	SimOnGround              int32
-	AmbientTemperature       float64
-	AmbientPressure          float64
-	AmbientWindVelocity      float64
-	AmbientWindDirection     float64
-	AmbientVisibility        float64
-	AmbientInCloud           int32
-	AmbientPrecipState       int32
-	BarometerPressure        float64
-	SeaLevelPressure         float64
-	GroundAltitude           float64
-	MagVar                   float64
-	SurfaceType              int32
-	Latitude                 float64
-	Longitude                float64
-	Altitude                 float64
-	IndicatedAltitude        float64
-	TrueHeading              float64
-	MagneticHeading          float64
-	Pitch                    float64
-	Bank                     float64
+	CameraState                int32
+	CameraSubstate             int32
+	SimulationRate             float64
+	SimulationTime             float64
+	LocalTime                  float64
+	ZuluTime                   float64
+	IsInVR                     int32
+	IsUsingMotionControllers   int32
+	IsUsingJoystickThrottle    int32
+	IsInRTC                    int32
+	IsAvatar                   int32
+	IsAircraft                 int32
+	LocalDay                   int32
+	LocalMonth                 int32
+	LocalYear                  int32
+	ZuluDay                    int32
+	ZuluMonth                  int32
+	ZuluYear                   int32
+	Realism                    float64
+	VisualModelRadius          float64
+	SimDisabled                int32
+	RealismCrashDetection      int32
+	RealismCrashWithOthers     int32
+	TrackIREnabled             int32
+	UserInputEnabled           int32
+	SimOnGround                int32
+	AmbientTemperature         float64
+	AmbientPressure            float64
+	AmbientWindVelocity        float64
+	AmbientWindDirection       float64
+	AmbientVisibility          float64
+	AmbientInCloud             int32
+	AmbientPrecipState         int32
+	BarometerPressure          float64
+	SeaLevelPressure           float64
+	GroundAltitude             float64
+	MagVar                     float64
+	SurfaceType                int32
+	Latitude                   float64
+	Longitude                  float64
+	Altitude                   float64
+	IndicatedAltitude          float64
+	TrueHeading                float64
+	MagneticHeading            float64
+	Pitch                      float64
+	Bank                       float64
 	GroundSpeed                float64
 	IndicatedAirspeed          float64
 	TrueAirspeed               float64

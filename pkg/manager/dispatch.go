@@ -92,7 +92,20 @@ func (m *Instance) processMessage(msg engine.Message) {
 				m.logger.Error("[manager] Failed to subscribe to ObjectRemoved event", "error", err)
 			}
 
-			// (Position change events removed)
+			m.requestRegistry.Register(m.crashedEventID, RequestTypeEvent, "Crashed Event Subscription")
+			if err := client.SubscribeToSystemEvent(m.crashedEventID, "Crashed"); err != nil {
+				m.logger.Error("[manager] Failed to subscribe to Crashed event", "error", err)
+			}
+
+			m.requestRegistry.Register(m.crashResetEventID, RequestTypeEvent, "CrashReset Event Subscription")
+			if err := client.SubscribeToSystemEvent(m.crashResetEventID, "CrashReset"); err != nil {
+				m.logger.Error("[manager] Failed to subscribe to CrashReset event", "error", err)
+			}
+
+			m.requestRegistry.Register(m.soundEventID, RequestTypeEvent, "Sound Event Subscription")
+			if err := client.SubscribeToSystemEvent(m.soundEventID, "Sound"); err != nil {
+				m.logger.Error("[manager] Failed to subscribe to Sound event", "error", err)
+			}
 
 			// Define camera data structure
 			m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Simulator State Definition")
@@ -598,55 +611,55 @@ func (m *Instance) processMessage(msg engine.Message) {
 
 			// Build new state from sim state data (no lock needed)
 			newState := SimState{
-				Camera:                   CameraState(stateData.CameraState),
-				Substate:                 CameraSubstate(stateData.CameraSubstate),
-				SimulationRate:           stateData.SimulationRate,
-				SimulationTime:           stateData.SimulationTime,
-				LocalTime:                stateData.LocalTime,
-				ZuluTime:                 stateData.ZuluTime,
-				IsInVR:                   stateData.IsInVR == 1,
-				IsUsingMotionControllers: stateData.IsUsingMotionControllers == 1,
-				IsUsingJoystickThrottle:  stateData.IsUsingJoystickThrottle == 1,
-				IsInRTC:                  stateData.IsInRTC == 1,
-				IsAvatar:                 stateData.IsAvatar == 1,
-				IsAircraft:               stateData.IsAircraft == 1,
-				LocalDay:                 int(stateData.LocalDay),
-				LocalMonth:               int(stateData.LocalMonth),
-				LocalYear:                int(stateData.LocalYear),
-				ZuluDay:                  int(stateData.ZuluDay),
-				ZuluMonth:                int(stateData.ZuluMonth),
-				ZuluYear:                 int(stateData.ZuluYear),
-				Realism:                  stateData.Realism,
-				VisualModelRadius:        stateData.VisualModelRadius,
-				SimDisabled:              stateData.SimDisabled == 1,
-				RealismCrashDetection:    stateData.RealismCrashDetection == 1,
-				RealismCrashWithOthers:   stateData.RealismCrashWithOthers == 1,
-				TrackIREnabled:           stateData.TrackIREnabled == 1,
-				UserInputEnabled:         stateData.UserInputEnabled == 1,
-				SimOnGround:              stateData.SimOnGround == 1,
-				AmbientTemperature:       stateData.AmbientTemperature,
-				AmbientPressure:          stateData.AmbientPressure,
-				AmbientWindVelocity:      stateData.AmbientWindVelocity,
-				AmbientWindDirection:     stateData.AmbientWindDirection,
-				AmbientVisibility:        stateData.AmbientVisibility,
-				AmbientInCloud:           stateData.AmbientInCloud == 1,
-				AmbientPrecipState:       uint32(stateData.AmbientPrecipState),
-				BarometerPressure:        stateData.BarometerPressure,
-				SeaLevelPressure:         stateData.SeaLevelPressure,
-				GroundAltitude:           stateData.GroundAltitude,
-				MagVar:                   stateData.MagVar,
-				SurfaceType:              uint32(stateData.SurfaceType),
-				Latitude:                 stateData.Latitude,
-				Longitude:                stateData.Longitude,
-				Altitude:                 stateData.Altitude,
-				IndicatedAltitude:        stateData.IndicatedAltitude,
-				TrueHeading:              stateData.TrueHeading,
-				MagneticHeading:          stateData.MagneticHeading,
-				Pitch:                    stateData.Pitch,
-				Bank:                     stateData.Bank,
-				GroundSpeed:              stateData.GroundSpeed,
-				IndicatedAirspeed:        stateData.IndicatedAirspeed,
-				TrueAirspeed:             stateData.TrueAirspeed,
+				Camera:                     CameraState(stateData.CameraState),
+				Substate:                   CameraSubstate(stateData.CameraSubstate),
+				SimulationRate:             stateData.SimulationRate,
+				SimulationTime:             stateData.SimulationTime,
+				LocalTime:                  stateData.LocalTime,
+				ZuluTime:                   stateData.ZuluTime,
+				IsInVR:                     stateData.IsInVR == 1,
+				IsUsingMotionControllers:   stateData.IsUsingMotionControllers == 1,
+				IsUsingJoystickThrottle:    stateData.IsUsingJoystickThrottle == 1,
+				IsInRTC:                    stateData.IsInRTC == 1,
+				IsAvatar:                   stateData.IsAvatar == 1,
+				IsAircraft:                 stateData.IsAircraft == 1,
+				LocalDay:                   int(stateData.LocalDay),
+				LocalMonth:                 int(stateData.LocalMonth),
+				LocalYear:                  int(stateData.LocalYear),
+				ZuluDay:                    int(stateData.ZuluDay),
+				ZuluMonth:                  int(stateData.ZuluMonth),
+				ZuluYear:                   int(stateData.ZuluYear),
+				Realism:                    stateData.Realism,
+				VisualModelRadius:          stateData.VisualModelRadius,
+				SimDisabled:                stateData.SimDisabled == 1,
+				RealismCrashDetection:      stateData.RealismCrashDetection == 1,
+				RealismCrashWithOthers:     stateData.RealismCrashWithOthers == 1,
+				TrackIREnabled:             stateData.TrackIREnabled == 1,
+				UserInputEnabled:           stateData.UserInputEnabled == 1,
+				SimOnGround:                stateData.SimOnGround == 1,
+				AmbientTemperature:         stateData.AmbientTemperature,
+				AmbientPressure:            stateData.AmbientPressure,
+				AmbientWindVelocity:        stateData.AmbientWindVelocity,
+				AmbientWindDirection:       stateData.AmbientWindDirection,
+				AmbientVisibility:          stateData.AmbientVisibility,
+				AmbientInCloud:             stateData.AmbientInCloud == 1,
+				AmbientPrecipState:         uint32(stateData.AmbientPrecipState),
+				BarometerPressure:          stateData.BarometerPressure,
+				SeaLevelPressure:           stateData.SeaLevelPressure,
+				GroundAltitude:             stateData.GroundAltitude,
+				MagVar:                     stateData.MagVar,
+				SurfaceType:                uint32(stateData.SurfaceType),
+				Latitude:                   stateData.Latitude,
+				Longitude:                  stateData.Longitude,
+				Altitude:                   stateData.Altitude,
+				IndicatedAltitude:          stateData.IndicatedAltitude,
+				TrueHeading:                stateData.TrueHeading,
+				MagneticHeading:            stateData.MagneticHeading,
+				Pitch:                      stateData.Pitch,
+				Bank:                       stateData.Bank,
+				GroundSpeed:                stateData.GroundSpeed,
+				IndicatedAirspeed:          stateData.IndicatedAirspeed,
+				TrueAirspeed:               stateData.TrueAirspeed,
 				VerticalSpeed:              stateData.VerticalSpeed,
 				SmartCameraActive:          stateData.SmartCameraActive == 1,
 				HandAnimState:              stateData.HandAnimState,
@@ -681,7 +694,12 @@ func (m *Instance) processMessage(msg engine.Message) {
 			m.simState = newState
 			m.mu.Unlock()
 
-			m.notifySimStateChange(oldState, newState)
+			if !oldState.Equal(newState) {
+				// States are not equal
+				// notify handlers of the change
+				m.notifySimStateChange(oldState, newState)
+			}
+
 		}
 	}
 
