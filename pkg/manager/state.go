@@ -246,10 +246,37 @@ type SimState struct {
 	SeaLevelAmbientTemperature float64 // SEA LEVEL AMBIENT TEMPERATURE (Celsius)
 }
 
-// Equal returns true if two SimState values are equivalent
+// Equal returns true if two SimState values have equivalent significant state.
+// Only compares discrete state fields that represent meaningful changes,
+// ignoring continuously-changing values like time, position, weather, and speed.
 func (s SimState) Equal(other SimState) bool {
-	// TODO we should ignore some changes that are irrelevant but should be uptodate when triggering the event
-	return s == other
+	return s.Camera == other.Camera &&
+		s.Substate == other.Substate &&
+		s.Paused == other.Paused &&
+		s.SimRunning == other.SimRunning &&
+		s.SimulationRate == other.SimulationRate &&
+		s.IsInVR == other.IsInVR &&
+		s.IsUsingMotionControllers == other.IsUsingMotionControllers &&
+		s.IsUsingJoystickThrottle == other.IsUsingJoystickThrottle &&
+		s.IsInRTC == other.IsInRTC &&
+		s.IsAvatar == other.IsAvatar &&
+		s.IsAircraft == other.IsAircraft &&
+		s.Crashed == other.Crashed &&
+		s.CrashReset == other.CrashReset &&
+		s.Sound == other.Sound &&
+		s.Realism == other.Realism &&
+		s.VisualModelRadius == other.VisualModelRadius &&
+		s.SimDisabled == other.SimDisabled &&
+		s.RealismCrashDetection == other.RealismCrashDetection &&
+		s.RealismCrashWithOthers == other.RealismCrashWithOthers &&
+		s.TrackIREnabled == other.TrackIREnabled &&
+		s.UserInputEnabled == other.UserInputEnabled &&
+		s.SimOnGround == other.SimOnGround &&
+		s.SmartCameraActive == other.SmartCameraActive &&
+		s.HandAnimState == other.HandAnimState &&
+		s.HideAvatarInAircraft == other.HideAvatarInAircraft &&
+		s.MissionScore == other.MissionScore &&
+		s.ParachuteOpen == other.ParachuteOpen
 }
 
 // SimStateChange represents a simulator state transition event
