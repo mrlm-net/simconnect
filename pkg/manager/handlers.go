@@ -394,6 +394,92 @@ func (m *Instance) RemoveSoundEvent(id string) error {
 	return fmt.Errorf("SoundEvent handler not found: %s", id)
 }
 
+// OnView registers a callback invoked when a View system event arrives.
+func (m *Instance) OnView(handler ViewHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.viewHandlers = append(m.viewHandlers, viewHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug("[manager] Registered View handler", "id", id)
+	}
+	return id
+}
+
+// RemoveView removes a previously registered View handler.
+func (m *Instance) RemoveView(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.viewHandlers {
+		if e.id == id {
+			m.viewHandlers = append(m.viewHandlers[:i], m.viewHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug("[manager] Removed View handler", "id", id)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("View handler not found: %s", id)
+}
+
+// SubscribeOnView returns a subscription that receives raw engine.Message for View events
+func (m *Instance) SubscribeOnView(id string, bufferSize int) Subscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	filter := func(msg engine.Message) bool {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+			return false
+		}
+		ev := msg.AsEvent()
+		return ev != nil && ev.UEventID == types.DWORD(m.viewEventID)
+	}
+	return m.SubscribeWithFilter(id+"-view", bufferSize, filter)
+}
+
+// OnFlightPlanDeactivated registers a callback invoked when the active flight plan is deactivated.
+func (m *Instance) OnFlightPlanDeactivated(handler FlightPlanDeactivatedHandler) string {
+	id := generateUUID()
+	m.mu.Lock()
+	m.flightPlanDeactivatedHandlers = append(m.flightPlanDeactivatedHandlers, flightPlanDeactivatedHandlerEntry{id: id, fn: handler})
+	m.mu.Unlock()
+	if m.logger != nil {
+		m.logger.Debug("[manager] Registered FlightPlanDeactivated handler", "id", id)
+	}
+	return id
+}
+
+// RemoveFlightPlanDeactivated removes a previously registered FlightPlanDeactivated handler.
+func (m *Instance) RemoveFlightPlanDeactivated(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.flightPlanDeactivatedHandlers {
+		if e.id == id {
+			m.flightPlanDeactivatedHandlers = append(m.flightPlanDeactivatedHandlers[:i], m.flightPlanDeactivatedHandlers[i+1:]...)
+			if m.logger != nil {
+				m.logger.Debug("[manager] Removed FlightPlanDeactivated handler", "id", id)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("FlightPlanDeactivated handler not found: %s", id)
+}
+
+// SubscribeOnFlightPlanDeactivated returns a subscription for FlightPlanDeactivated events
+func (m *Instance) SubscribeOnFlightPlanDeactivated(id string, bufferSize int) Subscription {
+	if id == "" {
+		id = generateUUID()
+	}
+	filter := func(msg engine.Message) bool {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+			return false
+		}
+		ev := msg.AsEvent()
+		return ev != nil && ev.UEventID == types.DWORD(m.flightPlanDeactivatedEventID)
+	}
+	return m.SubscribeWithFilter(id+"-flightplandeactivated", bufferSize, filter)
+}
+
 // OnSimStateChange registers a callback to be invoked when simulator state changes.
 // Returns a unique id that can be used to remove the handler via RemoveSimStateChange.
 func (m *Instance) OnSimStateChange(handler SimStateChangeHandler) string {

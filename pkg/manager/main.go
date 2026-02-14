@@ -140,6 +140,10 @@ func New(name string, opts ...Option) Manager {
 		crashedHandlers:              []crashedHandlerEntry{},
 		crashResetHandlers:           []crashResetHandlerEntry{},
 		soundEventHandlers:           []soundEventHandlerEntry{},
+		viewEventID:                    ViewEventID,
+		flightPlanDeactivatedEventID:   FlightPlanDeactivatedEventID,
+		viewHandlers:                    []viewHandlerEntry{},
+		flightPlanDeactivatedHandlers:   []flightPlanDeactivatedHandlerEntry{},
 		requestRegistry:              NewRequestRegistry(),
 	}
 }
@@ -202,6 +206,11 @@ type Instance struct {
 	crashResetEventID  uint32
 	soundEventID       uint32
 
+	viewHandlers                    []viewHandlerEntry
+	flightPlanDeactivatedHandlers   []flightPlanDeactivatedHandlerEntry
+	viewEventID                    uint32
+	flightPlanDeactivatedEventID   uint32
+
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
 
@@ -217,6 +226,8 @@ type Instance struct {
 	crashedHandlersBuf      []CrashedHandler
 	crashResetHandlersBuf   []CrashResetHandler
 	soundEventHandlersBuf   []SoundEventHandler
+	viewHandlersBuf                    []ViewHandler
+	flightPlanDeactivatedHandlersBuf   []FlightPlanDeactivatedHandler
 	flightLoadedHandlersBuf []FlightLoadedHandler
 	objectChangeHandlersBuf []ObjectChangeHandler
 	stateSubsBuf            []*connectionStateSubscription
@@ -284,6 +295,22 @@ type SoundEventHandler func(soundID uint32)
 type soundEventHandlerEntry struct {
 	id string
 	fn SoundEventHandler
+}
+
+// View event handler type — called when the camera view changes
+type ViewHandler func(viewID uint32)
+
+type viewHandlerEntry struct {
+	id string
+	fn ViewHandler
+}
+
+// FlightPlanDeactivated handler type — called when the active flight plan is deactivated
+type FlightPlanDeactivatedHandler func()
+
+type flightPlanDeactivatedHandlerEntry struct {
+	id string
+	fn FlightPlanDeactivatedHandler
 }
 
 // openHandlerEntry stores a connection open handler with an identifier

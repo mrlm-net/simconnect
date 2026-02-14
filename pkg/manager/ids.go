@@ -36,6 +36,8 @@ const (
 	CrashedEventID    uint32 = 999999991 // Manager ID for tracking 'Crashed' system event
 	CrashResetEventID uint32 = 999999990 // Manager ID for tracking 'Crash Reset' system event
 	SoundEventID      uint32 = 999999989 // Manager ID for tracking 'Sound' system event
+	ViewEventID                    uint32 = 999999988 // Manager ID for tracking 'View' system event
+	FlightPlanDeactivatedEventID   uint32 = 999999987 // Manager ID for tracking 'FlightPlanDeactivated' system event
 
 	// Additional Manager Event IDs
 	// These IDs map internal manager subscriptions for SimConnect system events.

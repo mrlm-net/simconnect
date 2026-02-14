@@ -68,6 +68,16 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 		m.logger.Error("[manager] Failed to subscribe to Sound event", "error", err)
 	}
 
+	m.requestRegistry.Register(m.viewEventID, RequestTypeEvent, "View Event Subscription")
+	if err := client.SubscribeToSystemEvent(m.viewEventID, "View"); err != nil {
+		m.logger.Error("[manager] Failed to subscribe to View event", "error", err)
+	}
+
+	m.requestRegistry.Register(m.flightPlanDeactivatedEventID, RequestTypeEvent, "FlightPlanDeactivated Event Subscription")
+	if err := client.SubscribeToSystemEvent(m.flightPlanDeactivatedEventID, "FlightPlanDeactivated"); err != nil {
+		m.logger.Error("[manager] Failed to subscribe to FlightPlanDeactivated event", "error", err)
+	}
+
 	// Define camera data structure
 	m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Simulator State Definition")
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
