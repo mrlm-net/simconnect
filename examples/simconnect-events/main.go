@@ -23,6 +23,14 @@ func main() {
 	)
 
 	// ──────────────────────────────────────────────────────────────────────
+	// Connection state — log all transitions so progress is visible
+	// ──────────────────────────────────────────────────────────────────────
+
+	mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
+		fmt.Printf("[state] %s -> %s\n", oldState, newState)
+	})
+
+	// ──────────────────────────────────────────────────────────────────────
 	// Callback handlers — invoked on the dispatch goroutine
 	// ──────────────────────────────────────────────────────────────────────
 

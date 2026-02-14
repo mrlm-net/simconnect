@@ -52,17 +52,19 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Check if already subscribed
-	if _, exists := m.customSystemEvents[eventName]; exists {
-		// Already subscribed, return existing subscription
+	if ce, exists := m.customSystemEvents[eventName]; exists {
+		eventID := ce.id
+		m.mu.Unlock()
+		// Create filtered subscription outside lock to avoid deadlock
+		// (SubscribeWithFilter also acquires mu.Lock)
 		filter := func(msg engine.Message) bool {
 			if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
 				return false
 			}
 			ev := msg.AsEvent()
-			return ev != nil && ev.UEventID == types.DWORD(m.customSystemEvents[eventName].id)
+			return ev != nil && ev.UEventID == types.DWORD(eventID)
 		}
 		return m.SubscribeWithFilter(eventName+"-custom", bufferSize, filter), nil
 	}
@@ -70,15 +72,18 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	// Allocate new event ID
 	eventID, err := m.allocateCustomEventIDLocked()
 	if err != nil {
+		m.mu.Unlock()
 		return nil, err
 	}
 
 	// Subscribe via engine
 	if m.engine == nil {
+		m.mu.Unlock()
 		return nil, ErrNotConnected
 	}
 
 	if err := m.engine.SubscribeToSystemEvent(eventID, eventName); err != nil {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("manager: failed to subscribe to custom system event '%s': %w", eventName, err)
 	}
 
@@ -90,8 +95,10 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	}
 
 	m.logger.Debug("[manager] Subscribed to custom system event", "event", eventName, "id", eventID)
+	m.mu.Unlock()
 
-	// Return filtered subscription
+	// Create filtered subscription outside lock to avoid deadlock
+	// (SubscribeWithFilter also acquires mu.Lock)
 	filter := func(msg engine.Message) bool {
 		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
 			return false
