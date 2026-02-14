@@ -1146,6 +1146,7 @@ func monitorConnectionState(mgr manager.Manager) {
 
 ## See Also
 
+- [Event Lifecycle](events-lifecycle.md) — Complete event reference with dispatch architecture
 - [Manager Configuration](config-manager.md) — All configuration options
 - [Client Usage](usage-client.md) — Direct engine client API
 - [Request ID Management](manager-requests-ids.md) — ID allocation strategy
