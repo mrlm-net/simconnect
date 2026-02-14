@@ -263,6 +263,12 @@ soundID := mgr.OnSoundEvent(func(soundEventID uint32) {
 })
 mgr.RemoveSoundEvent(soundID)
 
+// View event handler
+viewID := mgr.OnView(func(viewID uint32) {
+    fmt.Printf("View changed: %d\n", viewID)
+})
+mgr.RemoveView(viewID)
+
 // Flight loaded handler
 flightID := mgr.OnFlightLoaded(func(filename string) {
     fmt.Printf("Flight loaded: %s\n", filename)
@@ -280,6 +286,12 @@ planID := mgr.OnFlightPlanActivated(func(filename string) {
     fmt.Printf("Flight plan activated: %s\n", filename)
 })
 mgr.RemoveFlightPlanActivated(planID)
+
+// Flight plan deactivated handler
+deactivatedID := mgr.OnFlightPlanDeactivated(func() {
+    fmt.Println("Flight plan deactivated")
+})
+mgr.RemoveFlightPlanDeactivated(deactivatedID)
 
 // Object added handler
 addID := mgr.OnObjectAdded(func(objectID uint32, objType uint32) {
@@ -301,11 +313,13 @@ For more control over event handling (e.g., goroutine-based processing), use cha
 - `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
 - `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
 - `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
+- `SubscribeOnFlightPlanDeactivated(id, bufferSize)` — delivers raw `engine.Message` for the `Flight Plan Deactivated` system event (void event, no data).
 - `SubscribeOnObjectAdded(id, bufferSize)` — delivers `ObjectEvent` when an AI object is added (contains `ObjectID` and `ObjType`).
 - `SubscribeOnObjectRemoved(id, bufferSize)` — delivers `ObjectEvent` when an AI object is removed (contains `ObjectID` and `ObjType`).
 - `SubscribeOnCrashed(id, bufferSize)` — delivers raw `engine.Message` for the `Crashed` system event (filter pre-applied).
 - `SubscribeOnCrashReset(id, bufferSize)` — delivers raw `engine.Message` for the `Crash Reset` system event.
 - `SubscribeOnSoundEvent(id, bufferSize)` — delivers raw `engine.Message` for the `Sound` system event (sound ID available in `DwData`).
+- `SubscribeOnView(id, bufferSize)` — delivers raw `engine.Message` for the `View` system event (view ID available in `DwData`).
 
 Example — receive flight-loaded notifications:
 
@@ -323,7 +337,7 @@ for {
 }
 ```
 
-Example — subscribe to crash/sound events (raw message subscription delivered by helpers):
+Example — subscribe to crash/sound/view events (raw message subscription delivered by helpers):
 
 ```go
 subCrash := mgr.SubscribeOnCrashed("crash-sub", 4)
@@ -349,6 +363,18 @@ go func() {
         }
     }
 }()
+
+subView := mgr.SubscribeOnView("view-sub", 4)
+defer subView.Unsubscribe()
+
+go func() {
+    for msg := range subView.Messages() {
+        ev := msg.AsEvent()
+        if ev != nil {
+            fmt.Printf("[sub] View changed: viewID=%d\n", ev.DwData)
+        }
+    }
+}()
 ```
 
 Example — monitor AI object add/remove events:
@@ -368,6 +394,27 @@ go func() {
 for ev := range subRem.Events() {
     fmt.Printf("Object removed: id=%d type=%d\n", ev.ObjectID, ev.ObjType)
 }
+```
+
+Example — monitor flight plan activation/deactivation:
+
+```go
+subActivated := mgr.SubscribeOnFlightPlanActivated("plan-activate", 4)
+defer subActivated.Unsubscribe()
+subDeactivated := mgr.SubscribeOnFlightPlanDeactivated("plan-deactivate", 4)
+defer subDeactivated.Unsubscribe()
+
+go func() {
+    for ev := range subActivated.Events() {
+        fmt.Printf("Flight plan activated: %s\n", ev.Filename)
+    }
+}()
+
+go func() {
+    for range subDeactivated.Messages() {
+        fmt.Println("Flight plan deactivated")
+    }
+}()
 ```
 
 Notes:

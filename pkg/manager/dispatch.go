@@ -206,6 +206,54 @@ func (m *Instance) processMessage(msg engine.Message) {
 			} else {
 				m.mu.Unlock()
 			}
+
+		case types.DWORD(m.viewEventID):
+			// Handle view change event
+			newView := uint32(eventMsg.DwData)
+			m.logger.Debug("[manager] View event", "viewID", newView)
+
+			m.mu.RLock()
+			if cap(m.viewHandlersBuf) < len(m.viewHandlers) {
+				m.viewHandlersBuf = make([]ViewHandler, len(m.viewHandlers))
+			} else {
+				m.viewHandlersBuf = m.viewHandlersBuf[:len(m.viewHandlers)]
+			}
+			for i, e := range m.viewHandlers {
+				m.viewHandlersBuf[i] = e.fn
+			}
+			hs := m.viewHandlersBuf
+			m.mu.RUnlock()
+
+			for _, h := range hs {
+				handler := h
+				view := newView
+				safeCallHandler(m.logger, "ViewHandler", func() {
+					handler(view)
+				})
+			}
+
+		case types.DWORD(m.flightPlanDeactivatedEventID):
+			// Handle flight plan deactivated event
+			m.logger.Debug("[manager] FlightPlanDeactivated event")
+
+			m.mu.RLock()
+			if cap(m.flightPlanDeactivatedHandlersBuf) < len(m.flightPlanDeactivatedHandlers) {
+				m.flightPlanDeactivatedHandlersBuf = make([]FlightPlanDeactivatedHandler, len(m.flightPlanDeactivatedHandlers))
+			} else {
+				m.flightPlanDeactivatedHandlersBuf = m.flightPlanDeactivatedHandlersBuf[:len(m.flightPlanDeactivatedHandlers)]
+			}
+			for i, e := range m.flightPlanDeactivatedHandlers {
+				m.flightPlanDeactivatedHandlersBuf[i] = e.fn
+			}
+			hs := m.flightPlanDeactivatedHandlersBuf
+			m.mu.RUnlock()
+
+			for _, h := range hs {
+				handler := h
+				safeCallHandler(m.logger, "FlightPlanDeactivatedHandler", func() {
+					handler()
+				})
+			}
 		}
 		// (Position change event handling removed)
 	}

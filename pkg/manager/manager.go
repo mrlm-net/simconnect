@@ -161,6 +161,8 @@ type Manager interface {
 	SubscribeOnCrashed(id string, bufferSize int) Subscription
 	SubscribeOnCrashReset(id string, bufferSize int) Subscription
 	SubscribeOnSoundEvent(id string, bufferSize int) Subscription
+	SubscribeOnView(id string, bufferSize int) Subscription
+	SubscribeOnFlightPlanDeactivated(id string, bufferSize int) Subscription
 
 	// Callback-style handlers for system events (convenience helpers)
 	OnFlightLoaded(handler FlightLoadedHandler) string
@@ -175,6 +177,12 @@ type Manager interface {
 
 	OnSoundEvent(handler SoundEventHandler) string
 	RemoveSoundEvent(id string) error
+
+	OnView(handler ViewHandler) string
+	RemoveView(id string) error
+
+	OnFlightPlanDeactivated(handler FlightPlanDeactivatedHandler) string
+	RemoveFlightPlanDeactivated(id string) error
 
 	OnAircraftLoaded(handler FlightLoadedHandler) string
 	RemoveAircraftLoaded(id string) error
