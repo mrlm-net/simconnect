@@ -242,6 +242,9 @@ type Manager interface {
 	// MaxRetries returns the maximum number of connection retries (0 = unlimited)
 	MaxRetries() int
 
+	// SimStatePeriod returns the configured SimState data request period
+	SimStatePeriod() types.SIMCONNECT_PERIOD
+
 	// RemoveStateChange removes a previously registered state change handler by id.
 	// Returns an error if the id is unknown.
 	RemoveConnectionStateChange(id string) error

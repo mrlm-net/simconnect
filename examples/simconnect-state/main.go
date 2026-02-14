@@ -121,7 +121,7 @@ func handleMessage(msg engine.Message) {
 	}
 
 	if shouldPrintMessage {
-		fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
+		//fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
 	}
 
 	// Handle specific messages
@@ -223,6 +223,9 @@ func main() {
 		manager.WithAutoReconnect(true),
 		manager.WithBufferSize(512),  // Optional: increase buffer for high-frequency data
 		manager.WithHeartbeat("6Hz"), // Optional: set heartbeat frequency
+		// Optional: set SimState update frequency (default: every sim frame)
+		// Use types.SIMCONNECT_PERIOD_SECOND for lower CPU usage (1Hz updates)
+		// manager.WithSimStatePeriod(types.SIMCONNECT_PERIOD_SECOND),
 	)
 
 	// Setup signal handler goroutine - calls mgr.Stop() for graceful shutdown

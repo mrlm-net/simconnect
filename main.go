@@ -11,6 +11,7 @@ import (
 	"github.com/mrlm-net/simconnect/internal/dll"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // DetectDLLPath searches for SimConnect.dll on the local filesystem.
@@ -169,6 +170,19 @@ func WithMaxRetries(n int) manager.Option {
 // Default is true.
 func WithAutoReconnect(enabled bool) manager.Option {
 	return manager.WithAutoReconnect(enabled)
+}
+
+// WithSimStatePeriod sets the update frequency for internal SimState data requests.
+// Controls how often the manager polls simulator state variables.
+//
+// Supported values:
+//   - types.SIMCONNECT_PERIOD_SIM_FRAME — every simulation frame (default)
+//   - types.SIMCONNECT_PERIOD_VISUAL_FRAME — every visual frame
+//   - types.SIMCONNECT_PERIOD_SECOND — once per second (1Hz)
+//   - types.SIMCONNECT_PERIOD_ONCE — single snapshot
+//   - types.SIMCONNECT_PERIOD_NEVER — disable SimState requests
+func WithSimStatePeriod(period types.SIMCONNECT_PERIOD) manager.Option {
+	return manager.WithSimStatePeriod(period)
 }
 
 // WithEngineOptions passes options through to the underlying engine.

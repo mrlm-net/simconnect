@@ -266,8 +266,12 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 		m.logger.Error("[manager] Failed to add SEA LEVEL AMBIENT TEMPERATURE definition", "error", err)
 	}
 
-	// Request camera data with period matching heartbeat configuration
-	period := types.SIMCONNECT_PERIOD_SIM_FRAME
+	// Request camera data with period from configuration
+	period := m.config.SimStatePeriod
+	if period == types.SIMCONNECT_PERIOD_NEVER {
+		m.logger.Warn("[manager] SimStatePeriod set to NEVER — SimState tracking disabled, change notifications will not fire")
+		return
+	}
 	m.requestRegistry.Register(m.cameraRequestID, RequestTypeDataRequest, "Simulator State Data Request")
 	if err := client.RequestDataOnSimObject(m.cameraRequestID, m.cameraDefinitionID, types.SIMCONNECT_OBJECT_ID_USER, period, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		m.logger.Error("[manager] Failed to request camera data", "error", err)

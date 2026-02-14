@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // State returns the current connection state
@@ -57,4 +58,9 @@ func (m *Instance) ShutdownTimeout() time.Duration {
 // MaxRetries returns the maximum number of connection retries (0 = unlimited)
 func (m *Instance) MaxRetries() int {
 	return m.config.MaxRetries
+}
+
+// SimStatePeriod returns the configured SimState data request period
+func (m *Instance) SimStatePeriod() types.SIMCONNECT_PERIOD {
+	return m.config.SimStatePeriod
 }

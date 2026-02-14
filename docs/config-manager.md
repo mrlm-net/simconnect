@@ -50,6 +50,7 @@ All manager options are available both via the root `simconnect` package (unpref
 | `WithShutdownTimeout(d)` | `manager.WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
 | `WithMaxRetries(n)` | `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
 | `WithAutoReconnect(enabled)` | `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
+| `WithSimStatePeriod(period)` | `manager.WithSimStatePeriod(period)` | `types.SIMCONNECT_PERIOD` | `SIMCONNECT_PERIOD_SIM_FRAME` | SimState data request frequency |
 
 ### Engine Pass-Through Options
 
@@ -151,6 +152,34 @@ manager.WithAutoReconnect(true)   // Auto-reconnect (default)
 manager.WithAutoReconnect(false)  // Stop after first disconnect
 ```
 
+### WithSimStatePeriod
+
+Controls how frequently the manager requests SimState data from SimConnect. Lower frequencies reduce CPU usage at the cost of less responsive state change notifications.
+
+```go
+import "github.com/mrlm-net/simconnect/pkg/types"
+
+// Default: every simulation frame (~30-60Hz)
+manager.WithSimStatePeriod(types.SIMCONNECT_PERIOD_SIM_FRAME)
+
+// Once per second (lower CPU, suitable for dashboards)
+manager.WithSimStatePeriod(types.SIMCONNECT_PERIOD_SECOND)
+
+// Single snapshot (no periodic updates)
+manager.WithSimStatePeriod(types.SIMCONNECT_PERIOD_ONCE)
+
+// Disable SimState requests entirely
+manager.WithSimStatePeriod(types.SIMCONNECT_PERIOD_NEVER)
+```
+
+| Period | Update Rate | Use Case |
+|--------|-------------|----------|
+| `SIMCONNECT_PERIOD_SIM_FRAME` | ~30-60Hz | Real-time instruments, HUDs (default) |
+| `SIMCONNECT_PERIOD_VISUAL_FRAME` | ~30-60Hz | Visual frame-synced updates |
+| `SIMCONNECT_PERIOD_SECOND` | 1Hz | Dashboards, status monitors |
+| `SIMCONNECT_PERIOD_ONCE` | Once | Initial state snapshot |
+| `SIMCONNECT_PERIOD_NEVER` | Never | Disable automatic state tracking |
+
 ### WithBufferSize / WithDLLPath / WithHeartbeat
 
 Convenience wrappers for common engine options:
@@ -213,6 +242,7 @@ The Manager interface exposes getters for inspecting configuration at runtime:
 | `ReconnectDelay()` | `time.Duration` | Delay before reconnecting |
 | `ShutdownTimeout()` | `time.Duration` | Graceful shutdown timeout |
 | `MaxRetries()` | `int` | Max retries (0 = unlimited) |
+| `SimStatePeriod()` | `types.SIMCONNECT_PERIOD` | SimState data request frequency |
 
 ```go
 if mgr.IsAutoReconnect() {
@@ -341,6 +371,7 @@ User Application
     ├─► manager.WithShutdownTimeout() ─► Manager only
     ├─► manager.WithMaxRetries() ──────► Manager only
     ├─► manager.WithAutoReconnect() ───► Manager only
+    ├─► manager.WithSimStatePeriod() ──► Manager only (SimState request period)
     │
     └─► manager.WithBufferSize() ──────► Engine.BufferSize
         manager.WithDLLPath() ─────────► Engine.DLLPath
