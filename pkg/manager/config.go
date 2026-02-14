@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 const (
@@ -42,6 +43,11 @@ type Config struct {
 
 	// Behavior settings
 	AutoReconnect bool // Whether to automatically reconnect on disconnect
+
+	// SimStatePeriod controls how often the manager requests SimState data from SimConnect.
+	// Default is SIMCONNECT_PERIOD_SIM_FRAME (every simulation frame).
+	// Use SIMCONNECT_PERIOD_SECOND for lower-frequency updates (1Hz) to reduce CPU usage.
+	SimStatePeriod types.SIMCONNECT_PERIOD
 
 	// Engine options to pass through
 	EngineOptions []engine.Option
@@ -121,6 +127,21 @@ func WithAutoReconnect(enabled bool) Option {
 	}
 }
 
+// WithSimStatePeriod sets the update frequency for internal SimState data requests.
+// Controls how often the manager polls simulator state variables (camera, position, weather, etc.).
+//
+// Supported values:
+//   - types.SIMCONNECT_PERIOD_SIM_FRAME — every simulation frame (~30-60Hz, default)
+//   - types.SIMCONNECT_PERIOD_VISUAL_FRAME — every visual frame
+//   - types.SIMCONNECT_PERIOD_SECOND — once per second (1Hz, lower CPU usage)
+//   - types.SIMCONNECT_PERIOD_ONCE — single snapshot (no periodic updates)
+//   - types.SIMCONNECT_PERIOD_NEVER — disable SimState data requests entirely
+func WithSimStatePeriod(period types.SIMCONNECT_PERIOD) Option {
+	return func(c *Config) {
+		c.SimStatePeriod = period
+	}
+}
+
 // WithEngineOptions passes options through to the underlying engine.
 // Note: Context and Logger options passed here will be ignored as the manager
 // controls these settings. Use WithContext and WithLogger on the manager instead.
@@ -180,6 +201,7 @@ func defaultConfig() *Config {
 		ShutdownTimeout:   DEFAULT_SHUTDOWN_TIMEOUT,
 		MaxRetries:        DEFAULT_MAX_RETRIES,
 		AutoReconnect:     DEFAULT_AUTO_RECONNECT,
+		SimStatePeriod:    types.SIMCONNECT_PERIOD_SIM_FRAME,
 		EngineOptions:     []engine.Option{},
 	}
 }
