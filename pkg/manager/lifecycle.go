@@ -185,6 +185,12 @@ func (m *Instance) disconnect() {
 		}
 	}
 
+	// Clear custom system events on disconnect
+	m.mu.Lock()
+	m.customSystemEvents = make(map[string]*customSystemEvent)
+	m.customEventIDAlloc = CustomEventIDMin
+	m.mu.Unlock()
+
 	// Clean up request registry on disconnect
 	m.requestRegistry.Clear()
 

@@ -10,8 +10,9 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 
 | Range | Owner | Count | Purpose |
 |-------|-------|-------|---------|
-| 1 - 999,999,899 | **User Applications** | 999,999,899 | User-defined data definitions and requests |
-| 999,999,900 - 999,999,999 | **Manager** | 100 | Internal manager operations (reserved) |
+| 1 - 999,999,849 | **User Applications** | 999,999,849 | User-defined data definitions and requests |
+| 999,999,850 - 999,999,886 | **Manager** | 37 | Custom system event IDs (dynamic allocation) |
+| 999,999,887 - 999,999,999 | **Manager** | 113 | Internal manager operations (reserved) |
 
 ### Why High Numbers for Manager?
 
@@ -62,21 +63,36 @@ The manager's simulator state data definition now includes additional environmen
 The manager reserves specific high-number IDs for internal system event subscriptions. These are registered on connection open and used for request tracking; the actual SimConnect system event names are standard (e.g. "Pause", "Sim", "FlightLoaded").
 
 ```go
-PauseEventID                 = 999999998 // Pause/unpause event subscription
-SimEventID                   = 999999997 // Sim start/stop event subscription
-FlightLoadedEventID          = 999999996 // Flight file loaded (filename returned)
-AircraftLoadedEventID        = 999999995 // Aircraft file loaded/changed (.AIR)
-ObjectAddedEventID           = 999999994 // AI object added
-ObjectRemovedEventID         = 999999993 // AI object removed
-FlightPlanActivatedEventID   = 999999992 // Flight plan activated (filename returned)
+PauseEventID                 = 999999999 // Pause/unpause event subscription
+SimEventID                   = 999999998 // Sim start/stop event subscription
+FlightLoadedEventID          = 999999997 // Flight file loaded (filename returned)
+AircraftLoadedEventID        = 999999996 // Aircraft file loaded/changed (.AIR)
+ObjectAddedEventID           = 999999995 // AI object added
+ObjectRemovedEventID         = 999999994 // AI object removed
+FlightPlanActivatedEventID   = 999999993 // Flight plan activated (filename returned)
+FlightPlanDeactivatedEventID = 999999992 // Flight plan deactivated
 CrashedEventID               = 999999991 // Simulator crashed (manager reserved ID)
 CrashResetEventID            = 999999990 // Crash reset event (manager reserved ID)
 SoundEventID                 = 999999989 // Sound event (manager reserved ID)
+ViewEventID                  = 999999988 // View camera event (manager reserved ID)
 ```
 
 **Purpose**: These IDs are used to register and track the manager's internal subscriptions to SimConnect system events. Responses may arrive as different `SIMCONNECT_RECV` variants (e.g., `SIMCONNECT_RECV_EVENT`, `SIMCONNECT_RECV_EVENT_FILENAME`, `SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE`).
 
 **Usage**: Internal to the manager. The manager updates `SimState` for Pause/Sim events and provides typed subscription helpers for filename/object events.
+
+### Custom Event System (manager-reserved ID range)
+
+The manager reserves a range of IDs for user-defined custom system events:
+
+```go
+CustomEventIDMin = 999999850 // First ID for custom events
+CustomEventIDMax = 999999886 // Last ID for custom events (37 slots total)
+```
+
+**Purpose**: These IDs are dynamically allocated when users subscribe to custom SimConnect system events by name (e.g., "6Hz", "1sec"). Custom events use the `SubscribeToCustomSystemEvent` and `OnCustomSystemEvent` APIs.
+
+**Usage**: Managed internally by the manager. Custom event subscriptions are automatically cleared on disconnect and are not persisted across reconnection cycles.
 
 ## Request Registry
 

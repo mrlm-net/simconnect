@@ -244,11 +244,30 @@ defer sub.Unsubscribe()
 For simple event handling, the manager provides callback-style handlers that register functions to be invoked when specific events occur:
 
 ```go
+// Pause event handler
+pauseID := mgr.OnPause(func(paused bool) {
+    if paused {
+        fmt.Println("Simulator paused")
+    } else {
+        fmt.Println("Simulator unpaused")
+    }
+})
+mgr.RemovePause(pauseID)
+
+// SimRunning event handler
+simID := mgr.OnSimRunning(func(running bool) {
+    if running {
+        fmt.Println("Simulator started")
+    } else {
+        fmt.Println("Simulator stopped")
+    }
+})
+mgr.RemoveSimRunning(simID)
+
 // Crash event handler
 crashID := mgr.OnCrashed(func() {
     fmt.Println("Aircraft crashed!")
 })
-// Remove handler when no longer needed
 mgr.RemoveCrashed(crashID)
 
 // Crash reset handler
@@ -310,6 +329,8 @@ mgr.RemoveObjectRemoved(remID)
 
 For more control over event handling (e.g., goroutine-based processing), use channel-based subscriptions. The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
 
+- `SubscribeOnPause(id, bufferSize)` — delivers `PauseEvent` containing a boolean `Paused` field indicating whether the simulator is paused.
+- `SubscribeOnSimRunning(id, bufferSize)` — delivers `SimRunningEvent` containing a boolean `Running` field indicating whether the simulator is running.
 - `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
 - `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
 - `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
@@ -320,6 +341,34 @@ For more control over event handling (e.g., goroutine-based processing), use cha
 - `SubscribeOnCrashReset(id, bufferSize)` — delivers raw `engine.Message` for the `Crash Reset` system event.
 - `SubscribeOnSoundEvent(id, bufferSize)` — delivers raw `engine.Message` for the `Sound` system event (sound ID available in `DwData`).
 - `SubscribeOnView(id, bufferSize)` — delivers raw `engine.Message` for the `View` system event (view ID available in `DwData`).
+
+Example — receive pause/sim running notifications:
+
+```go
+pauseSub := mgr.SubscribeOnPause("pause-sub", 5)
+defer pauseSub.Unsubscribe()
+
+go func() {
+    for ev := range pauseSub.Events() {
+        if ev.Paused {
+            fmt.Println("Simulator paused")
+        } else {
+            fmt.Println("Simulator unpaused")
+        }
+    }
+}()
+
+simSub := mgr.SubscribeOnSimRunning("sim-sub", 5)
+defer simSub.Unsubscribe()
+
+for ev := range simSub.Events() {
+    if ev.Running {
+        fmt.Println("Simulator running")
+    } else {
+        fmt.Println("Simulator stopped")
+    }
+}
+```
 
 Example — receive flight-loaded notifications:
 
@@ -420,6 +469,92 @@ go func() {
 Notes:
 - These helpers filter and forward the appropriate SimConnect message types. They are safe to use concurrently and will automatically cancel when the manager stops.
 - The manager already subscribes to the corresponding SimConnect system events on connection open; these helpers simply provide typed channels for consumers.
+
+## Custom System Events
+
+In addition to the built-in system events (Pause, Sim, Crashed, etc.), the manager allows subscription to custom SimConnect system events by name. These can be used to monitor any simulator event not covered by the pre-defined handlers.
+
+### OnCustomSystemEvent (Callback)
+
+Register a callback handler for a custom system event:
+
+```go
+// Subscribe to a custom system event (e.g., "6Hz" for high-frequency timer)
+handlerID, err := mgr.OnCustomSystemEvent("6Hz", func(eventName string, data uint32) {
+    fmt.Printf("Custom event '%s' fired: data=%d\n", eventName, data)
+})
+if err != nil {
+    log.Printf("Failed to subscribe to custom event: %v", err)
+}
+
+// Remove handler when no longer needed
+if err := mgr.RemoveCustomSystemEvent("6Hz", handlerID); err != nil {
+    log.Printf("Failed to remove custom event handler: %v", err)
+}
+```
+
+### SubscribeToCustomSystemEvent (Channel)
+
+For goroutine-based processing, use channel subscriptions:
+
+```go
+// Subscribe to custom event via channel
+sub, err := mgr.SubscribeToCustomSystemEvent("6Hz", 10)
+if err != nil {
+    log.Printf("Failed to subscribe to custom event: %v", err)
+    return
+}
+defer sub.Unsubscribe()
+
+go func() {
+    for ev := range sub.Events() {
+        fmt.Printf("Custom event '%s': data=%d\n", ev.EventName, ev.Data)
+    }
+}()
+
+// Unsubscribe from the custom event
+if err := mgr.UnsubscribeFromCustomSystemEvent("6Hz"); err != nil {
+    log.Printf("Failed to unsubscribe: %v", err)
+}
+```
+
+### Reserved Event Names
+
+The following event names are reserved for built-in manager subscriptions and cannot be used with custom event APIs:
+
+- `Pause`, `Sim`, `Crashed`, `CrashReset`, `Sound`, `View`
+- `FlightLoaded`, `AircraftLoaded`, `FlightPlanActivated`, `FlightPlanDeactivated`
+- `ObjectAdded`, `ObjectRemoved`
+
+Attempting to subscribe to a reserved event name using the custom APIs will return an error.
+
+### Custom Event ID Allocation
+
+Custom system events are assigned IDs from the manager-reserved range (999,999,850 - 999,999,886, 37 slots). See [ID Management](#id-management) for details. Custom event subscriptions are automatically cleared on disconnect.
+
+### Example: Multiple Custom Events
+
+```go
+// Subscribe to multiple custom events
+events := []string{"1sec", "4sec", "6Hz"}
+
+for _, eventName := range events {
+    _, err := mgr.OnCustomSystemEvent(eventName, func(name string, data uint32) {
+        fmt.Printf("[%s] fired: %d\n", name, data)
+    })
+    if err != nil {
+        log.Printf("Failed to subscribe to %s: %v", eventName, err)
+    }
+}
+
+// Later, unsubscribe from all custom events on shutdown
+for _, eventName := range events {
+    // Callback handlers can be removed individually by ID or all at once by unsubscribing
+    if err := mgr.UnsubscribeFromCustomSystemEvent(eventName); err != nil {
+        log.Printf("Failed to unsubscribe from %s: %v", eventName, err)
+    }
+}
+```
 
 ### GetSubscription
 

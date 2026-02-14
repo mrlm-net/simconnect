@@ -48,9 +48,14 @@ const (
 	FlightPlanActivatedEventID uint32 = 999999992 // Flight plan activated
 	// Position change event removed
 
+	// Custom System Event Range — dynamically allocated for user-defined system events
+	CustomEventIDMin uint32 = 999999850
+	CustomEventIDMax uint32 = 999999886
+
 	// ID Range Documentation:
 	// User-Available Range: 1 - 999999899 (999,999,899 IDs available for user requests)
 	// Manager Reserved Range: 999999900 - 999999999 (100 IDs reserved for manager operations)
+	// Custom Event Range: 999999850 - 999999886 (37 IDs for custom system events)
 )
 
 // IDRange defines the boundaries for ID allocation

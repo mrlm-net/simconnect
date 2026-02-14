@@ -144,6 +144,10 @@ func New(name string, opts ...Option) Manager {
 		flightPlanDeactivatedEventID:   FlightPlanDeactivatedEventID,
 		viewHandlers:                    []viewHandlerEntry{},
 		flightPlanDeactivatedHandlers:   []flightPlanDeactivatedHandlerEntry{},
+		pauseHandlers:          []pauseHandlerEntry{},
+		simRunningHandlers:     []simRunningHandlerEntry{},
+		customSystemEvents:     make(map[string]*customSystemEvent),
+		customEventIDAlloc:     CustomEventIDMin,
 		requestRegistry:              NewRequestRegistry(),
 	}
 }
@@ -211,6 +215,13 @@ type Instance struct {
 	viewEventID                    uint32
 	flightPlanDeactivatedEventID   uint32
 
+	pauseHandlers          []pauseHandlerEntry
+	simRunningHandlers     []simRunningHandlerEntry
+
+	// Custom system events
+	customSystemEvents     map[string]*customSystemEvent
+	customEventIDAlloc     uint32
+
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
 
@@ -228,6 +239,8 @@ type Instance struct {
 	soundEventHandlersBuf   []SoundEventHandler
 	viewHandlersBuf                    []ViewHandler
 	flightPlanDeactivatedHandlersBuf   []FlightPlanDeactivatedHandler
+	pauseHandlersBuf       []PauseHandler
+	simRunningHandlersBuf  []SimRunningHandler
 	flightLoadedHandlersBuf []FlightLoadedHandler
 	objectChangeHandlersBuf []ObjectChangeHandler
 	stateSubsBuf            []*connectionStateSubscription
@@ -312,6 +325,37 @@ type flightPlanDeactivatedHandlerEntry struct {
 	id string
 	fn FlightPlanDeactivatedHandler
 }
+
+// PauseHandler is invoked when the simulator pause state changes
+type PauseHandler func(paused bool)
+
+type pauseHandlerEntry struct {
+	id string
+	fn PauseHandler
+}
+
+// SimRunningHandler is invoked when the simulator running state changes
+type SimRunningHandler func(running bool)
+
+type simRunningHandlerEntry struct {
+	id string
+	fn SimRunningHandler
+}
+
+// customSystemEvent tracks a user-registered custom system event
+type customSystemEvent struct {
+	name     string
+	id       uint32
+	handlers []customSystemEventHandlerEntry
+}
+
+type customSystemEventHandlerEntry struct {
+	id string
+	fn CustomSystemEventHandler
+}
+
+// CustomSystemEventHandler is invoked when a custom system event fires
+type CustomSystemEventHandler func(eventName string, data uint32)
 
 // openHandlerEntry stores a connection open handler with an identifier
 type openHandlerEntry struct {
