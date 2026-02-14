@@ -196,6 +196,22 @@ type Manager interface {
 	OnObjectRemoved(handler ObjectChangeHandler) string
 	RemoveObjectRemoved(id string) error
 
+	// Pause event dual API
+	OnPause(handler PauseHandler) string
+	RemovePause(id string) error
+	SubscribeOnPause(id string, bufferSize int) Subscription
+
+	// Sim running event dual API
+	OnSimRunning(handler SimRunningHandler) string
+	RemoveSimRunning(id string) error
+	SubscribeOnSimRunning(id string, bufferSize int) Subscription
+
+	// Custom system event API
+	SubscribeToCustomSystemEvent(eventName string, bufferSize int) (Subscription, error)
+	UnsubscribeFromCustomSystemEvent(eventName string) error
+	OnCustomSystemEvent(eventName string, handler CustomSystemEventHandler) (string, error)
+	RemoveCustomSystemEvent(eventName string, handlerID string) error
+
 	// Client returns the underlying engine client for direct API access.
 	// Returns nil if not connected.
 	Client() engine.Client
