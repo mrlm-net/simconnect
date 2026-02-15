@@ -12,7 +12,12 @@ import (
 // OnSimStateChange registers a callback to be invoked when simulator state changes.
 // Returns a unique id that can be used to remove the handler via RemoveSimStateChange.
 func (m *Instance) OnSimStateChange(handler SimStateChangeHandler) string {
-	return handlers.RegisterSimStateHandler(&m.mu, &m.simStateHandlers, handler, m.logger)
+	// Wrap as func(interface{}, interface{}) so the internal notify package can type-assert
+	// without importing the manager package (which would cause an import cycle).
+	wrapped := func(old, new interface{}) {
+		handler(old.(SimState), new.(SimState))
+	}
+	return handlers.RegisterSimStateHandler(&m.mu, &m.simStateHandlers, wrapped, m.logger)
 }
 
 // RemoveSimStateChange removes a previously registered simulator state change handler by id.
