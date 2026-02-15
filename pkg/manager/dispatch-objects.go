@@ -5,18 +5,18 @@ package manager
 
 import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/types"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/dispatch"
 )
 
 // processObjectEvent handles SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE messages.
 func (m *Instance) processObjectEvent(msg engine.Message) {
-	objMsg := msg.AsEventObjectAddRemove()
-	if objMsg == nil {
+	eventID, objectID, objType := dispatch.ExtractObjectEventData(msg)
+	if eventID == 0 {
 		return
 	}
 
-	if objMsg.UEventID == types.DWORD(m.objectAddedEventID) {
-		m.logger.Debug("[manager] ObjectAdded event", "id", objMsg.DwData, "type", objMsg.EObjType)
+	if eventID == m.objectAddedEventID {
+		m.logger.Debug("[manager] ObjectAdded event", "id", objectID, "type", objType)
 		// Invoke object added handlers with panic recovery
 		m.mu.RLock()
 		if cap(m.objectChangeHandlersBuf) < len(m.objectAddedHandlers) {
@@ -29,18 +29,18 @@ func (m *Instance) processObjectEvent(msg engine.Message) {
 		}
 		hs := m.objectChangeHandlersBuf
 		m.mu.RUnlock()
-		objID := uint32(objMsg.DwData)
-		objType := objMsg.EObjType
 		for _, h := range hs {
 			handler := h // capture for closure
+			id := objectID
+			typ := objType
 			safeCallHandler(m.logger, "ObjectAddedHandler", func() {
-				handler(objID, objType)
+				handler(id, typ)
 			})
 		}
 	}
 
-	if objMsg.UEventID == types.DWORD(m.objectRemovedEventID) {
-		m.logger.Debug("[manager] ObjectRemoved event", "id", objMsg.DwData, "type", objMsg.EObjType)
+	if eventID == m.objectRemovedEventID {
+		m.logger.Debug("[manager] ObjectRemoved event", "id", objectID, "type", objType)
 		m.mu.RLock()
 		if cap(m.objectChangeHandlersBuf) < len(m.objectRemovedHandlers) {
 			m.objectChangeHandlersBuf = make([]ObjectChangeHandler, len(m.objectRemovedHandlers))
@@ -52,12 +52,12 @@ func (m *Instance) processObjectEvent(msg engine.Message) {
 		}
 		hs := m.objectChangeHandlersBuf
 		m.mu.RUnlock()
-		objID := uint32(objMsg.DwData)
-		objType := objMsg.EObjType
 		for _, h := range hs {
 			handler := h // capture for closure
+			id := objectID
+			typ := objType
 			safeCallHandler(m.logger, "ObjectRemovedHandler", func() {
-				handler(objID, objType)
+				handler(id, typ)
 			})
 		}
 	}
