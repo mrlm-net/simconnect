@@ -3,8 +3,55 @@
 package manager
 
 import (
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/notify"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// stateSubscriptionAdapter adapts connectionStateSubscription to notify.SubscriptionTarget[interface{}]
+type stateSubscriptionAdapter struct {
+	sub *connectionStateSubscription
+}
+
+func (a *stateSubscriptionAdapter) Lock()          { a.sub.closeMu.Lock() }
+func (a *stateSubscriptionAdapter) Unlock()        { a.sub.closeMu.Unlock() }
+func (a *stateSubscriptionAdapter) IsClosed() bool { return a.sub.closed.Load() }
+func (a *stateSubscriptionAdapter) TrySend(val interface{}) bool {
+	// Convert interface{} struct back to ConnectionStateChange
+	change := val.(struct{ OldState, NewState interface{} })
+	stateChange := ConnectionStateChange{
+		OldState: change.OldState.(ConnectionState),
+		NewState: change.NewState.(ConnectionState),
+	}
+	select {
+	case a.sub.ch <- stateChange:
+		return true
+	default:
+		return false
+	}
+}
+
+// simStateSubscriptionAdapter adapts simStateSubscription to notify.SubscriptionTarget[interface{}]
+type simStateSubscriptionAdapter struct {
+	sub *simStateSubscription
+}
+
+func (a *simStateSubscriptionAdapter) Lock()          { a.sub.closeMu.Lock() }
+func (a *simStateSubscriptionAdapter) Unlock()        { a.sub.closeMu.Unlock() }
+func (a *simStateSubscriptionAdapter) IsClosed() bool { return a.sub.closed.Load() }
+func (a *simStateSubscriptionAdapter) TrySend(val interface{}) bool {
+	// Convert interface{} struct back to SimStateChange
+	change := val.(struct{ OldState, NewState interface{} })
+	stateChange := SimStateChange{
+		OldState: change.OldState.(SimState),
+		NewState: change.NewState.(SimState),
+	}
+	select {
+	case a.sub.ch <- stateChange:
+		return true
+	default:
+		return false
+	}
+}
 
 // setState updates the connection state and notifies handlers
 func (m *Instance) setState(newState ConnectionState) {
@@ -15,52 +62,26 @@ func (m *Instance) setState(newState ConnectionState) {
 		return
 	}
 	m.state = newState
-	// Reuse pre-allocated buffers
-	if cap(m.stateHandlersBuf) < len(m.stateHandlers) {
-		m.stateHandlersBuf = make([]ConnectionStateChangeHandler, len(m.stateHandlers))
-	} else {
-		m.stateHandlersBuf = m.stateHandlersBuf[:len(m.stateHandlers)]
-	}
-	for i, e := range m.stateHandlers {
-		m.stateHandlersBuf[i] = e.Fn.(ConnectionStateChangeHandler)
-	}
-	handlers := m.stateHandlersBuf
-
-	if cap(m.stateSubsBuf) < len(m.connectionStateSubscriptions) {
-		m.stateSubsBuf = make([]*connectionStateSubscription, 0, len(m.connectionStateSubscriptions))
-	} else {
-		m.stateSubsBuf = m.stateSubsBuf[:0]
-	}
-	for _, sub := range m.connectionStateSubscriptions {
-		m.stateSubsBuf = append(m.stateSubsBuf, sub)
-	}
-	stateSubs := m.stateSubsBuf
 	m.mu.Unlock()
 
-	m.logger.Debug("[manager] State changed", "old", oldState, "new", newState)
-
-	// Notify handlers outside the lock with panic recovery
-	for _, handler := range handlers {
-		h := handler // capture for closure
-		safeCallHandler(m.logger, "ConnectionStateChangeHandler", func() {
-			h(oldState, newState)
-		})
+	// Build subscription adapters
+	m.mu.RLock()
+	subs := make([]notify.SubscriptionTarget[interface{}], 0, len(m.connectionStateSubscriptions))
+	for _, sub := range m.connectionStateSubscriptions {
+		subs = append(subs, &stateSubscriptionAdapter{sub: sub})
 	}
+	m.mu.RUnlock()
 
-	// Forward state change to subscriptions (non-blocking)
-	stateChange := ConnectionStateChange{OldState: oldState, NewState: newState}
-	for _, sub := range stateSubs {
-		sub.closeMu.Lock()
-		if !sub.closed.Load() {
-			select {
-			case sub.ch <- stateChange:
-			default:
-				// Channel full, skip state change to avoid blocking
-				m.logger.Debug("[manager] State subscription channel full, dropping state change")
-			}
-		}
-		sub.closeMu.Unlock()
-	}
+	// Delegate to notify package
+	notify.NotifyState(
+		m.logger,
+		&m.mu,
+		oldState,
+		newState,
+		&m.stateHandlers,
+		subs,
+		safeCallHandler,
+	)
 }
 
 // setSimState updates the simulator state and notifies handlers
@@ -72,206 +93,90 @@ func (m *Instance) setSimState(newState SimState) {
 		return
 	}
 	m.simState = newState
-	// Reuse pre-allocated buffers
-	if cap(m.simStateHandlersBuf) < len(m.simStateHandlers) {
-		m.simStateHandlersBuf = make([]SimStateChangeHandler, len(m.simStateHandlers))
-	} else {
-		m.simStateHandlersBuf = m.simStateHandlersBuf[:len(m.simStateHandlers)]
-	}
-	for i, e := range m.simStateHandlers {
-		m.simStateHandlersBuf[i] = e.Fn.(SimStateChangeHandler)
-	}
-	handlers := m.simStateHandlersBuf
-
-	if cap(m.simStateSubsBuf) < len(m.simStateSubscriptions) {
-		m.simStateSubsBuf = make([]*simStateSubscription, 0, len(m.simStateSubscriptions))
-	} else {
-		m.simStateSubsBuf = m.simStateSubsBuf[:0]
-	}
-	for _, sub := range m.simStateSubscriptions {
-		m.simStateSubsBuf = append(m.simStateSubsBuf, sub)
-	}
-	stateSubs := m.simStateSubsBuf
 	m.mu.Unlock()
 
-	m.logger.Debug("[manager] SimState changed", "oldCamera", oldState.Camera, "newCamera", newState.Camera)
-
-	// Notify handlers outside the lock with panic recovery
-	for _, handler := range handlers {
-		h := handler // capture for closure
-		safeCallHandler(m.logger, "SimStateChangeHandler", func() {
-			h(oldState, newState)
-		})
+	// Build subscription adapters
+	m.mu.RLock()
+	subs := make([]notify.SubscriptionTarget[interface{}], 0, len(m.simStateSubscriptions))
+	for _, sub := range m.simStateSubscriptions {
+		subs = append(subs, &simStateSubscriptionAdapter{sub: sub})
 	}
+	m.mu.RUnlock()
 
-	// Forward state change to subscriptions (non-blocking)
-	stateChange := SimStateChange{OldState: oldState, NewState: newState}
-	for _, sub := range stateSubs {
-		sub.closeMu.Lock()
-		if !sub.closed.Load() {
-			select {
-			case sub.ch <- stateChange:
-			default:
-				// Channel full, skip state change to avoid blocking
-				m.logger.Debug("[manager] SimState subscription channel full, dropping state change")
-			}
-		}
-		sub.closeMu.Unlock()
-	}
+	// Delegate to notify package
+	notify.NotifySimState(
+		m.logger,
+		&m.mu,
+		oldState,
+		newState,
+		&m.simStateHandlers,
+		subs,
+		safeCallHandler,
+	)
 }
 
 // notifySimStateChange notifies handlers and subscriptions of a SimState change.
 // This is a helper used by delta update paths where state is already modified in-place.
 // The caller must have already updated m.simState and must NOT hold m.mu when calling this.
 func (m *Instance) notifySimStateChange(oldState, newState SimState) {
-	// Gather handlers and subscriptions under lock
-	m.mu.Lock()
-	// Reuse pre-allocated buffers
-	if cap(m.simStateHandlersBuf) < len(m.simStateHandlers) {
-		m.simStateHandlersBuf = make([]SimStateChangeHandler, len(m.simStateHandlers))
-	} else {
-		m.simStateHandlersBuf = m.simStateHandlersBuf[:len(m.simStateHandlers)]
-	}
-	for i, e := range m.simStateHandlers {
-		m.simStateHandlersBuf[i] = e.Fn.(SimStateChangeHandler)
-	}
-	handlers := m.simStateHandlersBuf
-
-	if cap(m.simStateSubsBuf) < len(m.simStateSubscriptions) {
-		m.simStateSubsBuf = make([]*simStateSubscription, 0, len(m.simStateSubscriptions))
-	} else {
-		m.simStateSubsBuf = m.simStateSubsBuf[:0]
-	}
+	// Build subscription adapters
+	m.mu.RLock()
+	subs := make([]notify.SubscriptionTarget[interface{}], 0, len(m.simStateSubscriptions))
 	for _, sub := range m.simStateSubscriptions {
-		m.simStateSubsBuf = append(m.simStateSubsBuf, sub)
+		subs = append(subs, &simStateSubscriptionAdapter{sub: sub})
 	}
-	stateSubs := m.simStateSubsBuf
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	m.logger.Debug("[manager] SimState changed", "oldCamera", oldState.Camera, "newCamera", newState.Camera)
-
-	// Notify handlers outside the lock with panic recovery
-	for _, handler := range handlers {
-		h := handler // capture for closure
-		safeCallHandler(m.logger, "SimStateChangeHandler", func() {
-			h(oldState, newState)
-		})
-	}
-
-	// Forward state change to subscriptions (non-blocking)
-	stateChange := SimStateChange{OldState: oldState, NewState: newState}
-	for _, sub := range stateSubs {
-		sub.closeMu.Lock()
-		if !sub.closed.Load() {
-			select {
-			case sub.ch <- stateChange:
-			default:
-				// Channel full, skip state change to avoid blocking
-				m.logger.Debug("[manager] SimState subscription channel full, dropping state change")
-			}
-		}
-		sub.closeMu.Unlock()
-	}
+	// Delegate to notify package
+	notify.NotifySimState(
+		m.logger,
+		&m.mu,
+		oldState,
+		newState,
+		&m.simStateHandlers,
+		subs,
+		safeCallHandler,
+	)
 }
 
 // setOpen invokes all registered open handlers and sends to subscriptions
 func (m *Instance) setOpen(data types.ConnectionOpenData) {
-	m.mu.Lock()
-	// Reuse pre-allocated buffers
-	if cap(m.openHandlersBuf) < len(m.openHandlers) {
-		m.openHandlersBuf = make([]ConnectionOpenHandler, len(m.openHandlers))
-	} else {
-		m.openHandlersBuf = m.openHandlersBuf[:len(m.openHandlers)]
-	}
-	for i, e := range m.openHandlers {
-		m.openHandlersBuf[i] = e.Fn.(ConnectionOpenHandler)
-	}
-	handlers := m.openHandlersBuf
-
-	if cap(m.openSubsBuf) < len(m.openSubscriptions) {
-		m.openSubsBuf = make([]*connectionOpenSubscription, 0, len(m.openSubscriptions))
-	} else {
-		m.openSubsBuf = m.openSubsBuf[:0]
-	}
+	// Build subscription adapters
+	m.mu.RLock()
+	subs := make([]notify.SubscriptionTarget[types.ConnectionOpenData], 0, len(m.openSubscriptions))
 	for _, sub := range m.openSubscriptions {
-		m.openSubsBuf = append(m.openSubsBuf, sub)
+		subs = append(subs, notify.NewSubscriptionAdapter(&sub.closeMu, sub.closed.Load, sub.ch))
 	}
-	openSubs := m.openSubsBuf
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	m.logger.Debug("[manager] Connection opened")
-
-	// Notify handlers outside the lock with panic recovery
-	for _, handler := range handlers {
-		h := handler // capture for closure
-		d := data    // capture for closure
-		safeCallHandler(m.logger, "ConnectionOpenHandler", func() {
-			h(d)
-		})
-	}
-
-	// Forward open event to subscriptions (non-blocking)
-	for _, sub := range openSubs {
-		sub.closeMu.Lock()
-		if !sub.closed.Load() {
-			select {
-			case sub.ch <- data:
-			default:
-				// Channel full, skip event to avoid blocking
-				m.logger.Debug("[manager] Open subscription channel full, dropping open event")
-			}
-		}
-		sub.closeMu.Unlock()
-	}
+	// Delegate to notify package
+	notify.NotifyOpen(
+		m.logger,
+		&m.mu,
+		data,
+		&m.openHandlers,
+		subs,
+		safeCallHandler,
+	)
 }
 
 // setQuit invokes all registered quit handlers and sends to subscriptions
 func (m *Instance) setQuit(data types.ConnectionQuitData) {
-	m.mu.Lock()
-	// Reuse pre-allocated buffers
-	if cap(m.quitHandlersBuf) < len(m.quitHandlers) {
-		m.quitHandlersBuf = make([]ConnectionQuitHandler, len(m.quitHandlers))
-	} else {
-		m.quitHandlersBuf = m.quitHandlersBuf[:len(m.quitHandlers)]
-	}
-	for i, e := range m.quitHandlers {
-		m.quitHandlersBuf[i] = e.Fn.(ConnectionQuitHandler)
-	}
-	handlers := m.quitHandlersBuf
-
-	if cap(m.quitSubsBuf) < len(m.quitSubscriptions) {
-		m.quitSubsBuf = make([]*connectionQuitSubscription, 0, len(m.quitSubscriptions))
-	} else {
-		m.quitSubsBuf = m.quitSubsBuf[:0]
-	}
+	// Build subscription adapters
+	m.mu.RLock()
+	subs := make([]notify.SubscriptionTarget[types.ConnectionQuitData], 0, len(m.quitSubscriptions))
 	for _, sub := range m.quitSubscriptions {
-		m.quitSubsBuf = append(m.quitSubsBuf, sub)
+		subs = append(subs, notify.NewSubscriptionAdapter(&sub.closeMu, sub.closed.Load, sub.ch))
 	}
-	quitSubs := m.quitSubsBuf
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	m.logger.Debug("[manager] Connection quit")
-
-	// Notify handlers outside the lock with panic recovery
-	for _, handler := range handlers {
-		h := handler // capture for closure
-		d := data    // capture for closure
-		safeCallHandler(m.logger, "ConnectionQuitHandler", func() {
-			h(d)
-		})
-	}
-
-	// Forward quit event to subscriptions (non-blocking)
-	for _, sub := range quitSubs {
-		sub.closeMu.Lock()
-		if !sub.closed.Load() {
-			select {
-			case sub.ch <- data:
-			default:
-				// Channel full, skip event to avoid blocking
-				m.logger.Debug("[manager] Quit subscription channel full, dropping quit event")
-			}
-		}
-		sub.closeMu.Unlock()
-	}
+	// Delegate to notify package
+	notify.NotifyQuit(
+		m.logger,
+		&m.mu,
+		data,
+		&m.quitHandlers,
+		subs,
+		safeCallHandler,
+	)
 }
