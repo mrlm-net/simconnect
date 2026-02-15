@@ -29,7 +29,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── facility.go      #   Facility data requests
 │       ├── flight.go        #   Flight plan operations
 │       ├── notification.go  #   Notification groups
-│       ├── object.go        #   SimObject operations
+│       ├── object.go        #   Generic SimObject operations
+│       ├── object-ai.go     #   AI aircraft creation & management
 │       └── system.go        #   System events & state
 ├── pkg/
 │   ├── engine/              # High-level client, lifecycle, dispatching
@@ -50,19 +51,31 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── system.go        #   System events & state
 │   │   └── logger.go        #   Structured slog logger
 │   ├── manager/             # Connection manager with auto-reconnect
-│   │   ├── main.go          #   Manager struct & constructor
+│   │   ├── main.go          #   Manager constructor & helpers
+│   │   ├── instance.go      #   Instance struct & handler entry types
 │   │   ├── config.go        #   Manager options (ManagerWith*)
 │   │   ├── lifecycle.go     #   Start/Stop/reconnect loop
 │   │   ├── connection.go    #   Connection state management
-│   │   ├── dispatch.go      #   Dispatch loop & handler routing
-│   │   ├── handlers.go      #   Message handler registry
+│   │   ├── dispatch.go      #   Dispatch routing hub
+│   │   ├── dispatch-events.go      # System event dispatch
+│   │   ├── dispatch-filenames.go   # Filename event dispatch
+│   │   ├── dispatch-objects.go     # Object event dispatch
+│   │   ├── dispatch-simstate.go    # SimState data dispatch
+│   │   ├── handlers-connection.go  # Connection/message/open/quit handlers
+│   │   ├── handlers-filename-events.go # Flight/aircraft file handlers
+│   │   ├── handlers-object-events.go  # Object add/remove handlers
+│   │   ├── handlers-system-events.go  # Crash/sound/view handlers
+│   │   ├── handlers-simstate.go    # SimState/pause/sim running handlers
+│   │   ├── custom_events.go #   Custom system event support
 │   │   ├── datasets.go      #   Dataset registration
 │   │   ├── request.go       #   Data request helpers
 │   │   ├── ids.go           #   Define/Request ID allocation
-│   │   ├── state.go         #   SimState tracking
+│   │   ├── state.go         #   SimState struct & types
+│   │   ├── state-enums.go   #   CameraState/CameraSubstate enums
 │   │   ├── state-helpers.go #   SimState comparison & diffing
 │   │   ├── simstate_registration.go # SimState dataset setup
-│   │   ├── state-subscriptions.go   # State change subscriptions
+│   │   ├── state-subscriptions.go   # State/SimState change subscriptions
+│   │   ├── connection-event-subscriptions.go # Open/Quit subscriptions
 │   │   ├── object-subscriptions.go  # Object add/remove subscriptions
 │   │   ├── filename-subscriptions.go # Flight/aircraft file subscriptions
 │   │   ├── subscription-base.go     # Shared subscription plumbing
@@ -97,7 +110,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── convert/             # Type conversion utilities
 │   │   ├── altitude.go      #   Feet/meters conversion
 │   │   ├── distance.go      #   NM/km/mi conversion
-│   │   ├── icao.go          #   ICAO code helpers
+│   │   ├── icao.go          #   ICAO code validation & lookup
+│   │   ├── icao-data.go     #   ICAO prefix region/country map
 │   │   ├── position.go      #   Lat/lon conversion
 │   │   └── speed.go         #   Knots/km/h/m/s conversion
 │   └── calc/                # Calculation helpers
