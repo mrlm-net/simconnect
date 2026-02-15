@@ -3,13 +3,17 @@
 
 package manager
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
+)
 
 // OnFlightLoaded registers a callback invoked when a FlightLoaded system event arrives.
 func (m *Instance) OnFlightLoaded(handler FlightLoadedHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.flightLoadedHandlers = append(m.flightLoadedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.flightLoadedHandlers = append(m.flightLoadedHandlers, instance.FlightLoadedHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered FlightLoaded handler", "id", id)
@@ -22,7 +26,7 @@ func (m *Instance) RemoveFlightLoaded(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.flightLoadedHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.flightLoadedHandlers = append(m.flightLoadedHandlers[:i], m.flightLoadedHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed FlightLoaded handler", "id", id)
@@ -37,7 +41,7 @@ func (m *Instance) RemoveFlightLoaded(id string) error {
 func (m *Instance) OnAircraftLoaded(handler FlightLoadedHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.aircraftLoadedHandlers = append(m.aircraftLoadedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.aircraftLoadedHandlers = append(m.aircraftLoadedHandlers, instance.FlightLoadedHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered AircraftLoaded handler", "id", id)
@@ -50,7 +54,7 @@ func (m *Instance) RemoveAircraftLoaded(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.aircraftLoadedHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.aircraftLoadedHandlers = append(m.aircraftLoadedHandlers[:i], m.aircraftLoadedHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed AircraftLoaded handler", "id", id)
@@ -65,7 +69,7 @@ func (m *Instance) RemoveAircraftLoaded(id string) error {
 func (m *Instance) OnFlightPlanActivated(handler FlightLoadedHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.flightPlanActivatedHandlers = append(m.flightPlanActivatedHandlers, flightLoadedHandlerEntry{id: id, fn: handler})
+	m.flightPlanActivatedHandlers = append(m.flightPlanActivatedHandlers, instance.FlightLoadedHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered FlightPlanActivated handler", "id", id)
@@ -78,7 +82,7 @@ func (m *Instance) RemoveFlightPlanActivated(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.flightPlanActivatedHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.flightPlanActivatedHandlers = append(m.flightPlanActivatedHandlers[:i], m.flightPlanActivatedHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed FlightPlanActivated handler", "id", id)

@@ -27,7 +27,7 @@ func (m *Instance) processFilenameEvent(msg engine.Message) {
 			m.flightLoadedHandlersBuf = m.flightLoadedHandlersBuf[:len(m.flightLoadedHandlers)]
 		}
 		for i, e := range m.flightLoadedHandlers {
-			m.flightLoadedHandlersBuf[i] = e.fn
+			m.flightLoadedHandlersBuf[i] = e.Fn.(FlightLoadedHandler)
 		}
 		hs := m.flightLoadedHandlersBuf
 		m.mu.RUnlock()
@@ -49,7 +49,7 @@ func (m *Instance) processFilenameEvent(msg engine.Message) {
 			m.flightLoadedHandlersBuf = m.flightLoadedHandlersBuf[:len(m.aircraftLoadedHandlers)]
 		}
 		for i, e := range m.aircraftLoadedHandlers {
-			m.flightLoadedHandlersBuf[i] = e.fn
+			m.flightLoadedHandlersBuf[i] = e.Fn.(FlightLoadedHandler)
 		}
 		hs := m.flightLoadedHandlersBuf
 		m.mu.RUnlock()
@@ -71,7 +71,7 @@ func (m *Instance) processFilenameEvent(msg engine.Message) {
 			m.flightLoadedHandlersBuf = m.flightLoadedHandlersBuf[:len(m.flightPlanActivatedHandlers)]
 		}
 		for i, e := range m.flightPlanActivatedHandlers {
-			m.flightLoadedHandlersBuf[i] = e.fn
+			m.flightLoadedHandlersBuf[i] = e.Fn.(FlightLoadedHandler)
 		}
 		hs := m.flightLoadedHandlersBuf
 		m.mu.RUnlock()

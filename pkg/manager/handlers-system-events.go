@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -59,7 +60,7 @@ func (m *Instance) SubscribeOnSoundEvent(id string, bufferSize int) Subscription
 func (m *Instance) OnCrashed(handler CrashedHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.crashedHandlers = append(m.crashedHandlers, crashedHandlerEntry{id: id, fn: handler})
+	m.crashedHandlers = append(m.crashedHandlers, instance.CrashedHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered Crashed handler", "id", id)
@@ -72,7 +73,7 @@ func (m *Instance) RemoveCrashed(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.crashedHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.crashedHandlers = append(m.crashedHandlers[:i], m.crashedHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed Crashed handler", "id", id)
@@ -87,7 +88,7 @@ func (m *Instance) RemoveCrashed(id string) error {
 func (m *Instance) OnCrashReset(handler CrashResetHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.crashResetHandlers = append(m.crashResetHandlers, crashResetHandlerEntry{id: id, fn: handler})
+	m.crashResetHandlers = append(m.crashResetHandlers, instance.CrashResetHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered CrashReset handler", "id", id)
@@ -100,7 +101,7 @@ func (m *Instance) RemoveCrashReset(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.crashResetHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.crashResetHandlers = append(m.crashResetHandlers[:i], m.crashResetHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed CrashReset handler", "id", id)
@@ -115,7 +116,7 @@ func (m *Instance) RemoveCrashReset(id string) error {
 func (m *Instance) OnSoundEvent(handler SoundEventHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.soundEventHandlers = append(m.soundEventHandlers, soundEventHandlerEntry{id: id, fn: handler})
+	m.soundEventHandlers = append(m.soundEventHandlers, instance.SoundEventHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered SoundEvent handler", "id", id)
@@ -128,7 +129,7 @@ func (m *Instance) RemoveSoundEvent(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.soundEventHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.soundEventHandlers = append(m.soundEventHandlers[:i], m.soundEventHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed SoundEvent handler", "id", id)
@@ -143,7 +144,7 @@ func (m *Instance) RemoveSoundEvent(id string) error {
 func (m *Instance) OnView(handler ViewHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.viewHandlers = append(m.viewHandlers, viewHandlerEntry{id: id, fn: handler})
+	m.viewHandlers = append(m.viewHandlers, instance.ViewHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered View handler", "id", id)
@@ -156,7 +157,7 @@ func (m *Instance) RemoveView(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.viewHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.viewHandlers = append(m.viewHandlers[:i], m.viewHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed View handler", "id", id)
@@ -186,7 +187,7 @@ func (m *Instance) SubscribeOnView(id string, bufferSize int) Subscription {
 func (m *Instance) OnFlightPlanDeactivated(handler FlightPlanDeactivatedHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.flightPlanDeactivatedHandlers = append(m.flightPlanDeactivatedHandlers, flightPlanDeactivatedHandlerEntry{id: id, fn: handler})
+	m.flightPlanDeactivatedHandlers = append(m.flightPlanDeactivatedHandlers, instance.FlightPlanDeactivatedHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered FlightPlanDeactivated handler", "id", id)
@@ -199,7 +200,7 @@ func (m *Instance) RemoveFlightPlanDeactivated(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.flightPlanDeactivatedHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.flightPlanDeactivatedHandlers = append(m.flightPlanDeactivatedHandlers[:i], m.flightPlanDeactivatedHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed FlightPlanDeactivated handler", "id", id)

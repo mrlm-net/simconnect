@@ -3,14 +3,18 @@
 
 package manager
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
+)
 
 // OnConnectionStateChange registers a callback to be invoked when connection state changes.
 // Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.
 func (m *Instance) OnConnectionStateChange(handler ConnectionStateChangeHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.stateHandlers = append(m.stateHandlers, stateHandlerEntry{id: id, fn: handler})
+	m.stateHandlers = append(m.stateHandlers, instance.StateHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered state handler", "id", id)
@@ -23,7 +27,7 @@ func (m *Instance) RemoveConnectionStateChange(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.stateHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.stateHandlers = append(m.stateHandlers[:i], m.stateHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed state handler", "id", id)
@@ -39,7 +43,7 @@ func (m *Instance) RemoveConnectionStateChange(id string) error {
 func (m *Instance) OnMessage(handler MessageHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.messageHandlers = append(m.messageHandlers, messageHandlerEntry{id: id, fn: handler})
+	m.messageHandlers = append(m.messageHandlers, instance.MessageHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered message handler", "id", id)
@@ -52,7 +56,7 @@ func (m *Instance) RemoveMessage(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.messageHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.messageHandlers = append(m.messageHandlers[:i], m.messageHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed message handler", "id", id)
@@ -68,7 +72,7 @@ func (m *Instance) RemoveMessage(id string) error {
 func (m *Instance) OnOpen(handler ConnectionOpenHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.openHandlers = append(m.openHandlers, openHandlerEntry{id: id, fn: handler})
+	m.openHandlers = append(m.openHandlers, instance.OpenHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered open handler", "id", id)
@@ -81,7 +85,7 @@ func (m *Instance) RemoveOpen(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.openHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.openHandlers = append(m.openHandlers[:i], m.openHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed open handler", "id", id)
@@ -97,7 +101,7 @@ func (m *Instance) RemoveOpen(id string) error {
 func (m *Instance) OnQuit(handler ConnectionQuitHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.quitHandlers = append(m.quitHandlers, quitHandlerEntry{id: id, fn: handler})
+	m.quitHandlers = append(m.quitHandlers, instance.QuitHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered quit handler", "id", id)
@@ -110,7 +114,7 @@ func (m *Instance) RemoveQuit(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.quitHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.quitHandlers = append(m.quitHandlers[:i], m.quitHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed quit handler", "id", id)

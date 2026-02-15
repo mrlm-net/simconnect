@@ -25,7 +25,7 @@ func (m *Instance) processObjectEvent(msg engine.Message) {
 			m.objectChangeHandlersBuf = m.objectChangeHandlersBuf[:len(m.objectAddedHandlers)]
 		}
 		for i, e := range m.objectAddedHandlers {
-			m.objectChangeHandlersBuf[i] = e.fn
+			m.objectChangeHandlersBuf[i] = e.Fn.(ObjectChangeHandler)
 		}
 		hs := m.objectChangeHandlersBuf
 		m.mu.RUnlock()
@@ -48,7 +48,7 @@ func (m *Instance) processObjectEvent(msg engine.Message) {
 			m.objectChangeHandlersBuf = m.objectChangeHandlersBuf[:len(m.objectRemovedHandlers)]
 		}
 		for i, e := range m.objectRemovedHandlers {
-			m.objectChangeHandlersBuf[i] = e.fn
+			m.objectChangeHandlersBuf[i] = e.Fn.(ObjectChangeHandler)
 		}
 		hs := m.objectChangeHandlersBuf
 		m.mu.RUnlock()

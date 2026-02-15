@@ -99,7 +99,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 		m.handlersBuf = m.handlersBuf[:len(m.messageHandlers)]
 	}
 	for i, e := range m.messageHandlers {
-		m.handlersBuf[i] = e.fn
+		m.handlersBuf[i] = e.Fn.(MessageHandler)
 	}
 	if cap(m.subsBuf) < len(m.subscriptions) {
 		m.subsBuf = make([]*subscription, 0, len(m.subscriptions))

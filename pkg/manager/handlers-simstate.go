@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -15,7 +16,7 @@ import (
 func (m *Instance) OnSimStateChange(handler SimStateChangeHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.simStateHandlers = append(m.simStateHandlers, simStateHandlerEntry{id: id, fn: handler})
+	m.simStateHandlers = append(m.simStateHandlers, instance.SimStateHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered SimState handler", "id", id)
@@ -28,7 +29,7 @@ func (m *Instance) RemoveSimStateChange(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.simStateHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.simStateHandlers = append(m.simStateHandlers[:i], m.simStateHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed SimState handler", "id", id)
@@ -43,7 +44,7 @@ func (m *Instance) RemoveSimStateChange(id string) error {
 func (m *Instance) OnPause(handler PauseHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.pauseHandlers = append(m.pauseHandlers, pauseHandlerEntry{id: id, fn: handler})
+	m.pauseHandlers = append(m.pauseHandlers, instance.PauseHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered Pause handler", "id", id)
@@ -56,7 +57,7 @@ func (m *Instance) RemovePause(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.pauseHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.pauseHandlers = append(m.pauseHandlers[:i], m.pauseHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed Pause handler", "id", id)
@@ -86,7 +87,7 @@ func (m *Instance) SubscribeOnPause(id string, bufferSize int) Subscription {
 func (m *Instance) OnSimRunning(handler SimRunningHandler) string {
 	id := generateUUID()
 	m.mu.Lock()
-	m.simRunningHandlers = append(m.simRunningHandlers, simRunningHandlerEntry{id: id, fn: handler})
+	m.simRunningHandlers = append(m.simRunningHandlers, instance.SimRunningHandlerEntry{ID: id, Fn: handler})
 	m.mu.Unlock()
 	if m.logger != nil {
 		m.logger.Debug("[manager] Registered SimRunning handler", "id", id)
@@ -99,7 +100,7 @@ func (m *Instance) RemoveSimRunning(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, e := range m.simRunningHandlers {
-		if e.id == id {
+		if e.ID == id {
 			m.simRunningHandlers = append(m.simRunningHandlers[:i], m.simRunningHandlers[i+1:]...)
 			if m.logger != nil {
 				m.logger.Debug("[manager] Removed SimRunning handler", "id", id)

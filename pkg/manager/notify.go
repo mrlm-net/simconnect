@@ -22,7 +22,7 @@ func (m *Instance) setState(newState ConnectionState) {
 		m.stateHandlersBuf = m.stateHandlersBuf[:len(m.stateHandlers)]
 	}
 	for i, e := range m.stateHandlers {
-		m.stateHandlersBuf[i] = e.fn
+		m.stateHandlersBuf[i] = e.Fn.(ConnectionStateChangeHandler)
 	}
 	handlers := m.stateHandlersBuf
 
@@ -79,7 +79,7 @@ func (m *Instance) setSimState(newState SimState) {
 		m.simStateHandlersBuf = m.simStateHandlersBuf[:len(m.simStateHandlers)]
 	}
 	for i, e := range m.simStateHandlers {
-		m.simStateHandlersBuf[i] = e.fn
+		m.simStateHandlersBuf[i] = e.Fn.(SimStateChangeHandler)
 	}
 	handlers := m.simStateHandlersBuf
 
@@ -133,7 +133,7 @@ func (m *Instance) notifySimStateChange(oldState, newState SimState) {
 		m.simStateHandlersBuf = m.simStateHandlersBuf[:len(m.simStateHandlers)]
 	}
 	for i, e := range m.simStateHandlers {
-		m.simStateHandlersBuf[i] = e.fn
+		m.simStateHandlersBuf[i] = e.Fn.(SimStateChangeHandler)
 	}
 	handlers := m.simStateHandlersBuf
 
@@ -184,7 +184,7 @@ func (m *Instance) setOpen(data types.ConnectionOpenData) {
 		m.openHandlersBuf = m.openHandlersBuf[:len(m.openHandlers)]
 	}
 	for i, e := range m.openHandlers {
-		m.openHandlersBuf[i] = e.fn
+		m.openHandlersBuf[i] = e.Fn.(ConnectionOpenHandler)
 	}
 	handlers := m.openHandlersBuf
 
@@ -235,7 +235,7 @@ func (m *Instance) setQuit(data types.ConnectionQuitData) {
 		m.quitHandlersBuf = m.quitHandlersBuf[:len(m.quitHandlers)]
 	}
 	for i, e := range m.quitHandlers {
-		m.quitHandlersBuf[i] = e.fn
+		m.quitHandlersBuf[i] = e.Fn.(ConnectionQuitHandler)
 	}
 	handlers := m.quitHandlersBuf
 

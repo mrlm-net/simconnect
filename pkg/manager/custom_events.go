@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -55,7 +56,7 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 
 	// Check if already subscribed
 	if ce, exists := m.customSystemEvents[eventName]; exists {
-		eventID := ce.id
+		eventID := ce.ID
 		m.mu.Unlock()
 		// Create filtered subscription outside lock to avoid deadlock
 		// (SubscribeWithFilter also acquires mu.Lock)
@@ -88,10 +89,10 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	}
 
 	// Store custom event
-	m.customSystemEvents[eventName] = &customSystemEvent{
-		name:     eventName,
-		id:       eventID,
-		handlers: []customSystemEventHandlerEntry{},
+	m.customSystemEvents[eventName] = &instance.CustomSystemEvent{
+		Name:     eventName,
+		ID:       eventID,
+		Handlers: []instance.CustomSystemEventHandlerEntry{},
 	}
 
 	m.logger.Debug("[manager] Subscribed to custom system event", "event", eventName, "id", eventID)
@@ -121,7 +122,7 @@ func (m *Instance) UnsubscribeFromCustomSystemEvent(eventName string) error {
 
 	// Unsubscribe via engine
 	if m.engine != nil {
-		if err := m.engine.UnsubscribeFromSystemEvent(ce.id); err != nil {
+		if err := m.engine.UnsubscribeFromSystemEvent(ce.ID); err != nil {
 			return fmt.Errorf("manager: failed to unsubscribe from custom system event '%s': %w", eventName, err)
 		}
 	}
@@ -129,7 +130,7 @@ func (m *Instance) UnsubscribeFromCustomSystemEvent(eventName string) error {
 	// Remove from map
 	delete(m.customSystemEvents, eventName)
 
-	m.logger.Debug("[manager] Unsubscribed from custom system event", "event", eventName, "id", ce.id)
+	m.logger.Debug("[manager] Unsubscribed from custom system event", "event", eventName, "id", ce.ID)
 	return nil
 }
 
@@ -149,7 +150,7 @@ func (m *Instance) OnCustomSystemEvent(eventName string, handler CustomSystemEve
 	}
 
 	id := generateUUID()
-	ce.handlers = append(ce.handlers, customSystemEventHandlerEntry{id: id, fn: handler})
+	ce.Handlers = append(ce.Handlers, instance.CustomSystemEventHandlerEntry{ID: id, Fn: handler})
 
 	m.logger.Debug("[manager] Registered custom system event handler", "event", eventName, "id", id)
 	return id, nil
@@ -165,9 +166,9 @@ func (m *Instance) RemoveCustomSystemEvent(eventName string, handlerID string) e
 		return ErrCustomEventNotFound
 	}
 
-	for i, e := range ce.handlers {
-		if e.id == handlerID {
-			ce.handlers = append(ce.handlers[:i], ce.handlers[i+1:]...)
+	for i, e := range ce.Handlers {
+		if e.ID == handlerID {
+			ce.Handlers = append(ce.Handlers[:i], ce.Handlers[i+1:]...)
 			m.logger.Debug("[manager] Removed custom system event handler", "event", eventName, "handlerID", handlerID)
 			return nil
 		}
