@@ -5,12 +5,14 @@ package manager
 
 import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/dispatch"
 )
 
 // processSimStateData handles SIMCONNECT_RECV_ID_SIMOBJECT_DATA for camera/simstate.
 func (m *Instance) processSimStateData(msg engine.Message) {
-	simObjMsg := msg.AsSimObjectData()
-	if uint32(simObjMsg.DwRequestID) != m.cameraRequestID || uint32(simObjMsg.DwDefineID) != m.cameraDefinitionID {
+	// Validate the message is for camera/simstate data
+	simObjMsg := dispatch.ValidateSimObjectDataMessage(msg, m.cameraRequestID, m.cameraDefinitionID)
+	if simObjMsg == nil {
 		return
 	}
 

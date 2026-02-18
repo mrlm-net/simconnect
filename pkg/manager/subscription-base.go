@@ -4,18 +4,13 @@ package manager
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/hex"
-	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
-
-// Default buffer size for subscriptions when invalid value is provided
-const defaultSubscriptionBufferSize = 16
 
 // subscription implements the Subscription interface
 type subscription struct {
@@ -64,26 +59,9 @@ func (m *Instance) GetSubscription(id string) Subscription {
 	return nil
 }
 
-// generateUUID generates a simple UUID v4 with optimized allocation using math/rand/v2
+// generateUUID delegates to subscriptions.GenerateID for subscription ID generation
 func generateUUID() string {
-	var b [16]byte
-	binary.LittleEndian.PutUint64(b[0:8], rand.Uint64())
-	binary.LittleEndian.PutUint64(b[8:16], rand.Uint64())
-	// Set version (4) and variant bits
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	// Use pre-allocated buffer for hex encoding
-	var buf [36]byte
-	hex.Encode(buf[0:8], b[0:4])
-	buf[8] = '-'
-	hex.Encode(buf[9:13], b[4:6])
-	buf[13] = '-'
-	hex.Encode(buf[14:18], b[6:8])
-	buf[18] = '-'
-	hex.Encode(buf[19:23], b[8:10])
-	buf[23] = '-'
-	hex.Encode(buf[24:36], b[10:16])
-	return string(buf[:])
+	return subscriptions.GenerateID("")
 }
 
 // ID returns the unique identifier of the subscription
@@ -146,14 +124,8 @@ func WithOnDrop(fn func(dropped int)) SubscriptionOption {
 // Call Unsubscribe() when done to release resources.
 // Optional SubscriptionOption parameters can be provided to configure drop notifications.
 func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOption) Subscription {
-	if id == "" {
-		id = generateUUID()
-	}
-
-	// Validate buffer size
-	if bufferSize <= 0 {
-		bufferSize = defaultSubscriptionBufferSize
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)
@@ -189,14 +161,8 @@ func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOpti
 // to a channel only when the provided filter returns true for a message.
 // Optional SubscriptionOption parameters can be provided to configure drop notifications.
 func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(engine.Message) bool, opts ...SubscriptionOption) Subscription {
-	if id == "" {
-		id = generateUUID()
-	}
-
-	// Validate buffer size
-	if bufferSize <= 0 {
-		bufferSize = defaultSubscriptionBufferSize
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)
@@ -234,14 +200,8 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 // only when their DwID (SIMCONNECT_RECV_ID) is one of the provided types.
 // Optional SubscriptionOption parameters can be provided to configure drop notifications.
 func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs []types.SIMCONNECT_RECV_ID, opts ...SubscriptionOption) Subscription {
-	if id == "" {
-		id = generateUUID()
-	}
-
-	// Validate buffer size
-	if bufferSize <= 0 {
-		bufferSize = defaultSubscriptionBufferSize
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)

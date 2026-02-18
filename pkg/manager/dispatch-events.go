@@ -5,16 +5,21 @@ package manager
 
 import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/types"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/dispatch"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 )
 
 // processEventMessage handles SIMCONNECT_RECV_ID_EVENT messages.
 func (m *Instance) processEventMessage(msg engine.Message) {
-	eventMsg := msg.AsEvent()
-	switch eventMsg.UEventID {
-	case types.DWORD(m.pauseEventID):
+	eventID, eventData := dispatch.ExtractEventData(msg)
+	if eventID == 0 {
+		return
+	}
+
+	switch eventID {
+	case m.pauseEventID:
 		// Handle pause event
-		newPausedState := eventMsg.DwData == 1
+		newPausedState := eventData == 1
 
 		m.mu.Lock()
 		if m.simState.Paused != newPausedState {
@@ -28,7 +33,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 				m.pauseHandlersBuf = m.pauseHandlersBuf[:len(m.pauseHandlers)]
 			}
 			for i, e := range m.pauseHandlers {
-				m.pauseHandlersBuf[i] = e.fn
+				m.pauseHandlersBuf[i] = e.Fn.(PauseHandler)
 			}
 			hs := m.pauseHandlersBuf
 			m.mu.Unlock()
@@ -44,9 +49,9 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.mu.Unlock()
 		}
 
-	case types.DWORD(m.simEventID):
+	case m.simEventID:
 		// Handle sim running event
-		newSimRunningState := eventMsg.DwData == 1
+		newSimRunningState := eventData == 1
 
 		m.mu.Lock()
 		if m.simState.SimRunning != newSimRunningState {
@@ -60,7 +65,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 				m.simRunningHandlersBuf = m.simRunningHandlersBuf[:len(m.simRunningHandlers)]
 			}
 			for i, e := range m.simRunningHandlers {
-				m.simRunningHandlersBuf[i] = e.fn
+				m.simRunningHandlersBuf[i] = e.Fn.(SimRunningHandler)
 			}
 			hs := m.simRunningHandlersBuf
 			m.mu.Unlock()
@@ -76,9 +81,9 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.mu.Unlock()
 		}
 
-	case types.DWORD(m.crashedEventID):
+	case m.crashedEventID:
 		// Handle crashed event
-		newCrashed := eventMsg.DwData == 1
+		newCrashed := eventData == 1
 
 		m.mu.Lock()
 		if m.simState.Crashed != newCrashed {
@@ -93,7 +98,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 				m.crashedHandlersBuf = m.crashedHandlersBuf[:len(m.crashedHandlers)]
 			}
 			for i, e := range m.crashedHandlers {
-				m.crashedHandlersBuf[i] = e.fn
+				m.crashedHandlersBuf[i] = e.Fn.(CrashedHandler)
 			}
 			hs := m.crashedHandlersBuf
 			m.mu.Unlock()
@@ -111,9 +116,9 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.mu.Unlock()
 		}
 
-	case types.DWORD(m.crashResetEventID):
+	case m.crashResetEventID:
 		// Handle crash reset event
-		newReset := eventMsg.DwData == 1
+		newReset := eventData == 1
 
 		m.mu.Lock()
 		if m.simState.CrashReset != newReset {
@@ -128,7 +133,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 				m.crashResetHandlersBuf = m.crashResetHandlersBuf[:len(m.crashResetHandlers)]
 			}
 			for i, e := range m.crashResetHandlers {
-				m.crashResetHandlersBuf[i] = e.fn
+				m.crashResetHandlersBuf[i] = e.Fn.(CrashResetHandler)
 			}
 			hs := m.crashResetHandlersBuf
 			m.mu.Unlock()
@@ -146,9 +151,9 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.mu.Unlock()
 		}
 
-	case types.DWORD(m.soundEventID):
+	case m.soundEventID:
 		// Handle sound event
-		newSound := uint32(eventMsg.DwData)
+		newSound := eventData
 
 		m.mu.Lock()
 		if m.simState.Sound != newSound {
@@ -163,7 +168,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 				m.soundEventHandlersBuf = m.soundEventHandlersBuf[:len(m.soundEventHandlers)]
 			}
 			for i, e := range m.soundEventHandlers {
-				m.soundEventHandlersBuf[i] = e.fn
+				m.soundEventHandlersBuf[i] = e.Fn.(SoundEventHandler)
 			}
 			hs := m.soundEventHandlersBuf
 			m.mu.Unlock()
@@ -182,9 +187,9 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.mu.Unlock()
 		}
 
-	case types.DWORD(m.viewEventID):
+	case m.viewEventID:
 		// Handle view change event
-		newView := uint32(eventMsg.DwData)
+		newView := eventData
 		m.logger.Debug("[manager] View event", "viewID", newView)
 
 		m.mu.RLock()
@@ -194,7 +199,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.viewHandlersBuf = m.viewHandlersBuf[:len(m.viewHandlers)]
 		}
 		for i, e := range m.viewHandlers {
-			m.viewHandlersBuf[i] = e.fn
+			m.viewHandlersBuf[i] = e.Fn.(ViewHandler)
 		}
 		hs := m.viewHandlersBuf
 		m.mu.RUnlock()
@@ -207,7 +212,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			})
 		}
 
-	case types.DWORD(m.flightPlanDeactivatedEventID):
+	case m.flightPlanDeactivatedEventID:
 		// Handle flight plan deactivated event
 		m.logger.Debug("[manager] FlightPlanDeactivated event")
 
@@ -218,7 +223,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.flightPlanDeactivatedHandlersBuf = m.flightPlanDeactivatedHandlersBuf[:len(m.flightPlanDeactivatedHandlers)]
 		}
 		for i, e := range m.flightPlanDeactivatedHandlers {
-			m.flightPlanDeactivatedHandlersBuf[i] = e.fn
+			m.flightPlanDeactivatedHandlersBuf[i] = e.Fn.(FlightPlanDeactivatedHandler)
 		}
 		hs := m.flightPlanDeactivatedHandlersBuf
 		m.mu.RUnlock()
@@ -232,22 +237,20 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 
 	default:
 		// Check if this is a custom system event
-		eventID := uint32(eventMsg.UEventID)
 		if eventID >= CustomEventIDMin && eventID <= CustomEventIDMax {
 			m.mu.RLock()
-			var ce *customSystemEvent
+			var ce *instance.CustomSystemEvent
 			for _, entry := range m.customSystemEvents {
-				if entry.id == eventID {
+				if entry.ID == eventID {
 					ce = entry
 					break
 				}
 			}
-			if ce != nil && len(ce.handlers) > 0 {
-				eventName := ce.name
-				eventData := uint32(eventMsg.DwData)
-				handlers := make([]CustomSystemEventHandler, len(ce.handlers))
-				for i, e := range ce.handlers {
-					handlers[i] = e.fn
+			if ce != nil && len(ce.Handlers) > 0 {
+				eventName := ce.Name
+				handlers := make([]CustomSystemEventHandler, len(ce.Handlers))
+				for i, e := range ce.Handlers {
+					handlers[i] = e.Fn.(CustomSystemEventHandler)
 				}
 				m.mu.RUnlock()
 				for _, h := range handlers {

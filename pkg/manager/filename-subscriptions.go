@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -58,9 +59,8 @@ func (s *filenameSubscription) Unsubscribe() {
 
 // SubscribeOnFlightLoaded returns a subscription delivering FlightLoaded filenames
 func (m *Instance) SubscribeOnFlightLoaded(id string, bufferSize int) FilenameSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 	// subscribe to filename messages
 	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
@@ -98,9 +98,8 @@ func (m *Instance) SubscribeOnFlightLoaded(id string, bufferSize int) FilenameSu
 
 // SubscribeOnAircraftLoaded returns a subscription delivering AircraftLoaded filenames
 func (m *Instance) SubscribeOnAircraftLoaded(id string, bufferSize int) FilenameSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
@@ -137,9 +136,8 @@ func (m *Instance) SubscribeOnAircraftLoaded(id string, bufferSize int) Filename
 
 // SubscribeOnFlightPlanActivated returns a subscription delivering FlightPlanActivated filenames
 func (m *Instance) SubscribeOnFlightPlanActivated(id string, bufferSize int) FilenameSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 	msgSub := m.SubscribeWithType(id+"-fname", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_FILENAME})
 	fs := &filenameSubscription{id: id, sub: msgSub, ch: make(chan FilenameEvent, bufferSize), done: make(chan struct{}), mgr: m}
 

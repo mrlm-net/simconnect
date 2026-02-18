@@ -6,6 +6,7 @@ package manager
 import (
 	"sync"
 
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -56,9 +57,8 @@ func (s *objectSubscription) Unsubscribe() {
 
 // SubscribeOnObjectAdded returns a subscription delivering ObjectAdded events
 func (m *Instance) SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
 	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
 
@@ -94,9 +94,8 @@ func (m *Instance) SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubsc
 
 // SubscribeOnObjectRemoved returns a subscription delivering ObjectRemoved events
 func (m *Instance) SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
 	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
 

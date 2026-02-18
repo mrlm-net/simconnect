@@ -3,120 +3,66 @@
 
 package manager
 
-import "fmt"
+import (
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/handlers"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
 
 // OnConnectionStateChange registers a callback to be invoked when connection state changes.
 // Returns a unique id that can be used to remove the handler via RemoveConnectionStateChange.
 func (m *Instance) OnConnectionStateChange(handler ConnectionStateChangeHandler) string {
-	id := generateUUID()
-	m.mu.Lock()
-	m.stateHandlers = append(m.stateHandlers, stateHandlerEntry{id: id, fn: handler})
-	m.mu.Unlock()
-	if m.logger != nil {
-		m.logger.Debug("[manager] Registered state handler", "id", id)
+	// Wrap as func(interface{}, interface{}) so the internal notify package can type-assert
+	// without importing the manager package (which would cause an import cycle).
+	wrapped := func(old, new interface{}) {
+		handler(old.(ConnectionState), new.(ConnectionState))
 	}
-	return id
+	return handlers.RegisterStateHandler(&m.mu, &m.stateHandlers, wrapped, m.logger)
 }
 
 // RemoveConnectionStateChange removes a previously registered connection state change handler by id.
 func (m *Instance) RemoveConnectionStateChange(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, e := range m.stateHandlers {
-		if e.id == id {
-			m.stateHandlers = append(m.stateHandlers[:i], m.stateHandlers[i+1:]...)
-			if m.logger != nil {
-				m.logger.Debug("[manager] Removed state handler", "id", id)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("state handler not found: %s", id)
+	return handlers.RemoveStateHandler(&m.mu, &m.stateHandlers, id, m.logger)
 }
 
 // OnMessage registers a callback to be invoked when a message is received.
 // Returns a unique id that can be used to remove the handler via RemoveMessage.
 func (m *Instance) OnMessage(handler MessageHandler) string {
-	id := generateUUID()
-	m.mu.Lock()
-	m.messageHandlers = append(m.messageHandlers, messageHandlerEntry{id: id, fn: handler})
-	m.mu.Unlock()
-	if m.logger != nil {
-		m.logger.Debug("[manager] Registered message handler", "id", id)
-	}
-	return id
+	return handlers.RegisterMessageHandler(&m.mu, &m.messageHandlers, handler, m.logger)
 }
 
 // RemoveMessage removes a previously registered message handler by id.
 func (m *Instance) RemoveMessage(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, e := range m.messageHandlers {
-		if e.id == id {
-			m.messageHandlers = append(m.messageHandlers[:i], m.messageHandlers[i+1:]...)
-			if m.logger != nil {
-				m.logger.Debug("[manager] Removed message handler", "id", id)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("message handler not found: %s", id)
+	return handlers.RemoveMessageHandler(&m.mu, &m.messageHandlers, id, m.logger)
 }
 
 // OnOpen registers a callback to be invoked when the simulator connection opens.
 // Returns a unique id that can be used to remove the handler via RemoveOpen.
 func (m *Instance) OnOpen(handler ConnectionOpenHandler) string {
-	id := generateUUID()
-	m.mu.Lock()
-	m.openHandlers = append(m.openHandlers, openHandlerEntry{id: id, fn: handler})
-	m.mu.Unlock()
-	if m.logger != nil {
-		m.logger.Debug("[manager] Registered open handler", "id", id)
+	// Wrap as anonymous func so the internal notify package can type-assert
+	// without importing the named ConnectionOpenHandler type.
+	wrapped := func(data types.ConnectionOpenData) {
+		handler(data)
 	}
-	return id
+	return handlers.RegisterOpenHandler(&m.mu, &m.openHandlers, wrapped, m.logger)
 }
 
 // RemoveOpen removes a previously registered open handler by id.
 func (m *Instance) RemoveOpen(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, e := range m.openHandlers {
-		if e.id == id {
-			m.openHandlers = append(m.openHandlers[:i], m.openHandlers[i+1:]...)
-			if m.logger != nil {
-				m.logger.Debug("[manager] Removed open handler", "id", id)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("open handler not found: %s", id)
+	return handlers.RemoveOpenHandler(&m.mu, &m.openHandlers, id, m.logger)
 }
 
 // OnQuit registers a callback to be invoked when the simulator quits.
 // Returns a unique id that can be used to remove the handler via RemoveQuit.
 func (m *Instance) OnQuit(handler ConnectionQuitHandler) string {
-	id := generateUUID()
-	m.mu.Lock()
-	m.quitHandlers = append(m.quitHandlers, quitHandlerEntry{id: id, fn: handler})
-	m.mu.Unlock()
-	if m.logger != nil {
-		m.logger.Debug("[manager] Registered quit handler", "id", id)
+	// Wrap as anonymous func so the internal notify package can type-assert
+	// without importing the named ConnectionQuitHandler type.
+	wrapped := func(data types.ConnectionQuitData) {
+		handler(data)
 	}
-	return id
+	return handlers.RegisterQuitHandler(&m.mu, &m.quitHandlers, wrapped, m.logger)
 }
 
 // RemoveQuit removes a previously registered quit handler by id.
 func (m *Instance) RemoveQuit(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, e := range m.quitHandlers {
-		if e.id == id {
-			m.quitHandlers = append(m.quitHandlers[:i], m.quitHandlers[i+1:]...)
-			if m.logger != nil {
-				m.logger.Debug("[manager] Removed quit handler", "id", id)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("quit handler not found: %s", id)
+	return handlers.RemoveQuitHandler(&m.mu, &m.quitHandlers, id, m.logger)
 }

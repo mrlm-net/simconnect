@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 )
 
 // connectionStateSubscription is defined in another file to avoid duplicate declarations.
@@ -36,9 +38,8 @@ type simStateSubscription struct {
 
 // SubscribeConnectionStateChange creates a new state change subscription that delivers state changes to a channel.
 func (m *Instance) SubscribeConnectionStateChange(id string, bufferSize int) ConnectionStateSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)
@@ -82,9 +83,8 @@ func (m *Instance) GetConnectionStateSubscription(id string) ConnectionStateSubs
 
 // SubscribeSimStateChange creates a new simulator state change subscription that delivers state changes to a channel.
 func (m *Instance) SubscribeSimStateChange(id string, bufferSize int) SimStateSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)

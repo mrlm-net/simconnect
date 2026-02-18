@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -38,9 +39,8 @@ type connectionQuitSubscription struct {
 
 // SubscribeOnOpen creates a new connection open subscription that delivers open events to a channel.
 func (m *Instance) SubscribeOnOpen(id string, bufferSize int) ConnectionOpenSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)
@@ -99,9 +99,8 @@ func (m *Instance) GetOpenSubscription(id string) ConnectionOpenSubscription {
 
 // SubscribeOnQuit creates a new connection quit subscription that delivers quit events to a channel.
 func (m *Instance) SubscribeOnQuit(id string, bufferSize int) ConnectionQuitSubscription {
-	if id == "" {
-		id = generateUUID()
-	}
+	id = subscriptions.GenerateID(id)
+	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
 
 	// Derive context from manager's context for automatic cancellation
 	subCtx, subCancel := context.WithCancel(m.ctx)

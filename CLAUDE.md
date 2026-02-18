@@ -52,7 +52,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   └── logger.go        #   Structured slog logger
 │   ├── manager/             # Connection manager with auto-reconnect
 │   │   ├── main.go          #   Manager constructor & helpers
-│   │   ├── instance.go      #   Instance struct & handler entry types
+│   │   ├── instance.go      #   Instance struct
 │   │   ├── config.go        #   Manager options (ManagerWith*)
 │   │   ├── lifecycle.go     #   Start/Stop/reconnect loop
 │   │   ├── connection.go    #   Connection state management
@@ -81,7 +81,23 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── subscription-base.go     # Shared subscription plumbing
 │   │   ├── notify.go        #   Notification helpers
 │   │   ├── getters.go       #   Public state accessors
-│   │   └── manager.go       #   Manager interface definition
+│   │   ├── manager.go       #   Manager interface definition
+│   │   └── internal/        #   Internal utilities & helpers
+│   │       ├── instance/    #   Handler entry types (exported)
+│   │       │   └── types.go #     StateHandlerEntry, MessageHandlerEntry, etc.
+│   │       ├── notify/      #   Notification dispatch functions
+│   │       │   └── notify.go #    NotifyState, NotifySimState, NotifyOpen, NotifyQuit
+│   │       ├── handlers/    #   Handler registration & removal
+│   │       │   ├── handlers.go #  GenerateUUID, state/message/open/quit handlers
+│   │       │   ├── connection.go # Connection handler docs
+│   │       │   ├── filenames.go #  FlightLoaded/AircraftLoaded/FlightPlanActivated
+│   │       │   ├── objects.go #    ObjectAdded/ObjectRemoved
+│   │       │   ├── simstate.go #   SimState/Pause/SimRunning
+│   │       │   └── system.go #     Crashed/CrashReset/Sound/View/FlightPlanDeactivated
+│   │       ├── subscriptions/ # Subscription utilities
+│   │       │   └── subscriptions.go # GenerateID, ValidateBufferSize
+│   │       └── dispatch/    #   Message parsing & routing helpers
+│   │           └── helpers.go #    ExtractEventData, ExtractFilenameEventData, etc.
 │   ├── types/               # Typed data structures, enums, events
 │   │   ├── data.go          #   Data definition types
 │   │   ├── event.go         #   Event ID enums

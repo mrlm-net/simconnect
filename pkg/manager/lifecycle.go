@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 )
 
 // Start begins the connection lifecycle management
@@ -187,7 +188,7 @@ func (m *Instance) disconnect() {
 
 	// Clear custom system events on disconnect
 	m.mu.Lock()
-	m.customSystemEvents = make(map[string]*customSystemEvent)
+	m.customSystemEvents = make(map[string]*instance.CustomSystemEvent)
 	m.customEventIDAlloc = CustomEventIDMin
 	m.mu.Unlock()
 

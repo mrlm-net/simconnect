@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -27,10 +28,10 @@ type Instance struct {
 	state ConnectionState
 	// Handler entries store an id and the callback function so callers can
 	// unregister using the id (similar to subscriptions).
-	stateHandlers                []stateHandlerEntry
-	messageHandlers              []messageHandlerEntry
-	openHandlers                 []openHandlerEntry
-	quitHandlers                 []quitHandlerEntry
+	stateHandlers                []instance.StateHandlerEntry
+	messageHandlers              []instance.MessageHandlerEntry
+	openHandlers                 []instance.OpenHandlerEntry
+	quitHandlers                 []instance.QuitHandlerEntry
 	subscriptions                map[string]*subscription
 	subsWg                       sync.WaitGroup // WaitGroup for graceful shutdown of subscriptions
 	connectionStateSubscriptions map[string]*connectionStateSubscription
@@ -42,7 +43,7 @@ type Instance struct {
 
 	// Simulator state
 	simState                   SimState
-	simStateHandlers           []simStateHandlerEntry
+	simStateHandlers           []instance.SimStateHandlerEntry
 	simStateSubscriptions      map[string]*simStateSubscription
 	simStateSubsWg             sync.WaitGroup // WaitGroup for graceful shutdown of simulator state subscriptions
 	cameraDefinitionID         uint32
@@ -57,29 +58,29 @@ type Instance struct {
 	flightPlanActivatedEventID uint32
 
 	// Event handlers
-	flightLoadedHandlers        []flightLoadedHandlerEntry
-	aircraftLoadedHandlers      []flightLoadedHandlerEntry
-	flightPlanActivatedHandlers []flightLoadedHandlerEntry
-	objectAddedHandlers         []objectChangeHandlerEntry
-	objectRemovedHandlers       []objectChangeHandlerEntry
+	flightLoadedHandlers        []instance.FlightLoadedHandlerEntry
+	aircraftLoadedHandlers      []instance.FlightLoadedHandlerEntry
+	flightPlanActivatedHandlers []instance.FlightLoadedHandlerEntry
+	objectAddedHandlers         []instance.ObjectChangeHandlerEntry
+	objectRemovedHandlers       []instance.ObjectChangeHandlerEntry
 
-	crashedHandlers    []crashedHandlerEntry
-	crashResetHandlers []crashResetHandlerEntry
-	soundEventHandlers []soundEventHandlerEntry
+	crashedHandlers    []instance.CrashedHandlerEntry
+	crashResetHandlers []instance.CrashResetHandlerEntry
+	soundEventHandlers []instance.SoundEventHandlerEntry
 	crashedEventID     uint32
 	crashResetEventID  uint32
 	soundEventID       uint32
 
-	viewHandlers                  []viewHandlerEntry
-	flightPlanDeactivatedHandlers []flightPlanDeactivatedHandlerEntry
+	viewHandlers                  []instance.ViewHandlerEntry
+	flightPlanDeactivatedHandlers []instance.FlightPlanDeactivatedHandlerEntry
 	viewEventID                   uint32
 	flightPlanDeactivatedEventID  uint32
 
-	pauseHandlers      []pauseHandlerEntry
-	simRunningHandlers []simRunningHandlerEntry
+	pauseHandlers      []instance.PauseHandlerEntry
+	simRunningHandlers []instance.SimRunningHandlerEntry
 
 	// Custom system events
-	customSystemEvents map[string]*customSystemEvent
+	customSystemEvents map[string]*instance.CustomSystemEvent
 	customEventIDAlloc uint32
 
 	// Request tracking
@@ -112,119 +113,34 @@ type Instance struct {
 	engine *engine.Engine
 }
 
-// stateHandlerEntry stores a state change handler with an identifier
-type stateHandlerEntry struct {
-	id string
-	fn ConnectionStateChangeHandler
-}
-
-// simStateHandlerEntry stores a simulator state change handler with an identifier
-type simStateHandlerEntry struct {
-	id string
-	fn SimStateChangeHandler
-}
-
-// messageHandlerEntry stores a message handler with an identifier
-type messageHandlerEntry struct {
-	id string
-	fn MessageHandler
-}
+// Handler function types that are part of the public Manager API
 
 // FlightLoaded handler type
 type FlightLoadedHandler func(filename string)
 
-type flightLoadedHandlerEntry struct {
-	id string
-	fn FlightLoadedHandler
-}
-
 // Object change handler type (add/remove)
 type ObjectChangeHandler func(objectID uint32, objType types.SIMCONNECT_SIMOBJECT_TYPE)
-
-type objectChangeHandlerEntry struct {
-	id string
-	fn ObjectChangeHandler
-}
 
 // Crashed handler type
 type CrashedHandler func()
 
-type crashedHandlerEntry struct {
-	id string
-	fn CrashedHandler
-}
-
 // CrashReset handler type
 type CrashResetHandler func()
-
-type crashResetHandlerEntry struct {
-	id string
-	fn CrashResetHandler
-}
 
 // Sound event handler type
 type SoundEventHandler func(soundID uint32)
 
-type soundEventHandlerEntry struct {
-	id string
-	fn SoundEventHandler
-}
-
 // View event handler type — called when the camera view changes
 type ViewHandler func(viewID uint32)
-
-type viewHandlerEntry struct {
-	id string
-	fn ViewHandler
-}
 
 // FlightPlanDeactivated handler type — called when the active flight plan is deactivated
 type FlightPlanDeactivatedHandler func()
 
-type flightPlanDeactivatedHandlerEntry struct {
-	id string
-	fn FlightPlanDeactivatedHandler
-}
-
 // PauseHandler is invoked when the simulator pause state changes
 type PauseHandler func(paused bool)
-
-type pauseHandlerEntry struct {
-	id string
-	fn PauseHandler
-}
 
 // SimRunningHandler is invoked when the simulator running state changes
 type SimRunningHandler func(running bool)
 
-type simRunningHandlerEntry struct {
-	id string
-	fn SimRunningHandler
-}
-
-// customSystemEvent tracks a user-registered custom system event
-type customSystemEvent struct {
-	name     string
-	id       uint32
-	handlers []customSystemEventHandlerEntry
-}
-
-type customSystemEventHandlerEntry struct {
-	id string
-	fn CustomSystemEventHandler
-}
-
 // CustomSystemEventHandler is invoked when a custom system event fires
 type CustomSystemEventHandler func(eventName string, data uint32)
-
-// openHandlerEntry stores a connection open handler with an identifier
-type openHandlerEntry struct {
-	id string
-	fn ConnectionOpenHandler
-}
-
-// quitHandlerEntry stores a connection quit handler with an identifier
-type quitHandlerEntry struct {
-	id string
-	fn ConnectionQuitHandler
-}

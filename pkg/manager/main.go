@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 )
 
 // defaultSimState returns a new SimState with all fields initialized to their default/uninitialized values.
@@ -110,16 +112,16 @@ func New(name string, opts ...Option) Manager {
 		cancel:                       cancel,
 		logger:                       config.Logger,
 		state:                        StateDisconnected,
-		stateHandlers:                []stateHandlerEntry{},
-		messageHandlers:              []messageHandlerEntry{},
-		openHandlers:                 []openHandlerEntry{},
-		quitHandlers:                 []quitHandlerEntry{},
+		stateHandlers:                []instance.StateHandlerEntry{},
+		messageHandlers:              []instance.MessageHandlerEntry{},
+		openHandlers:                 []instance.OpenHandlerEntry{},
+		quitHandlers:                 []instance.QuitHandlerEntry{},
 		subscriptions:                make(map[string]*subscription),
 		connectionStateSubscriptions: make(map[string]*connectionStateSubscription),
 		openSubscriptions:            make(map[string]*connectionOpenSubscription),
 		quitSubscriptions:            make(map[string]*connectionQuitSubscription),
 		simState:                     defaultSimState(),
-		simStateHandlers:             []simStateHandlerEntry{},
+		simStateHandlers:             []instance.SimStateHandlerEntry{},
 		simStateSubscriptions:        make(map[string]*simStateSubscription),
 		cameraDefinitionID:           CameraDefinitionID,
 		cameraRequestID:              CameraRequestID,
@@ -133,16 +135,16 @@ func New(name string, opts ...Option) Manager {
 		crashedEventID:               CrashedEventID,
 		crashResetEventID:            CrashResetEventID,
 		soundEventID:                 SoundEventID,
-		crashedHandlers:              []crashedHandlerEntry{},
-		crashResetHandlers:           []crashResetHandlerEntry{},
-		soundEventHandlers:           []soundEventHandlerEntry{},
+		crashedHandlers:              []instance.CrashedHandlerEntry{},
+		crashResetHandlers:           []instance.CrashResetHandlerEntry{},
+		soundEventHandlers:           []instance.SoundEventHandlerEntry{},
 		viewEventID:                    ViewEventID,
 		flightPlanDeactivatedEventID:   FlightPlanDeactivatedEventID,
-		viewHandlers:                    []viewHandlerEntry{},
-		flightPlanDeactivatedHandlers:   []flightPlanDeactivatedHandlerEntry{},
-		pauseHandlers:          []pauseHandlerEntry{},
-		simRunningHandlers:     []simRunningHandlerEntry{},
-		customSystemEvents:     make(map[string]*customSystemEvent),
+		viewHandlers:                    []instance.ViewHandlerEntry{},
+		flightPlanDeactivatedHandlers:   []instance.FlightPlanDeactivatedHandlerEntry{},
+		pauseHandlers:          []instance.PauseHandlerEntry{},
+		simRunningHandlers:     []instance.SimRunningHandlerEntry{},
+		customSystemEvents:     make(map[string]*instance.CustomSystemEvent),
 		customEventIDAlloc:     CustomEventIDMin,
 		requestRegistry:              NewRequestRegistry(),
 	}
