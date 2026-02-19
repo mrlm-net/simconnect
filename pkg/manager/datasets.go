@@ -10,17 +10,6 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-// ensureConnected checks if the manager is connected and returns the client.
-// Returns ErrNotConnected if not connected.
-func (m *Instance) ensureConnected() error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.engine == nil {
-		return ErrNotConnected
-	}
-	return nil
-}
-
 // RegisterDataset registers a complete dataset definition with SimConnect.
 // This is a convenience method that iterates over all definitions in the dataset
 // and calls AddToDataDefinition for each one.

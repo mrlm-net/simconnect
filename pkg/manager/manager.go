@@ -299,8 +299,8 @@ type Manager interface {
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 
 	// SubscribeToSystemEvent subscribes to a SimConnect system event.
-	// WARNING: Do not use event IDs in the manager's reserved range (999,999,850 - 999,999,999).
-	// Use IDs from 1 to 999,999,849 for your own subscriptions.
+	// WARNING: Do not use event IDs in the manager's reserved range (999,999,900 - 999,999,999).
+	// Use IDs from 1 to 999,999,899 for your own subscriptions.
 	// Returns ErrNotConnected if not connected to the simulator.
 	SubscribeToSystemEvent(eventID uint32, eventName string) error
 
