@@ -1,3 +1,10 @@
+---
+title: "Manager Usage"
+description: "Complete API for robust long-running SimConnect applications."
+order: 4
+section: "manager"
+---
+
 # Manager Usage
 
 The `manager` package provides automatic connection lifecycle management with reconnection support. This document covers the complete API for robust, long-running SimConnect applications.

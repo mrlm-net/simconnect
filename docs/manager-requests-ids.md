@@ -1,3 +1,10 @@
+---
+title: "Request and ID Management"
+description: "ID allocation strategy and conflict prevention."
+order: 6
+section: "internals"
+---
+
 # Manager Request and ID Management
 
 This document explains how the manager package handles SimConnect requests and ID allocation to prevent conflicts and enable request tracking.

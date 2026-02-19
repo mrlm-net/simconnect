@@ -1,3 +1,10 @@
+---
+title: "Manager Configuration"
+description: "Configuration options for the connection manager."
+order: 3
+section: "manager"
+---
+
 # Manager Configuration
 
 The `manager` package provides automatic connection lifecycle management with reconnection support. Configuration is done via functional options passed to `manager.New()` or via the root `simconnect` package.

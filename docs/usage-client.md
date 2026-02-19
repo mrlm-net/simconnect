@@ -1,3 +1,10 @@
+---
+title: "Engine/Client Usage"
+description: "Complete API reference for direct simulator communication."
+order: 2
+section: "client"
+---
+
 # Engine/Client Usage
 
 The `engine` package provides a high-level client for interacting with SimConnect. This document covers the complete API for direct simulator communication.

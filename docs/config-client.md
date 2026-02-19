@@ -1,3 +1,10 @@
+---
+title: "Engine/Client Configuration"
+description: "Configuration options for the SimConnect engine client."
+order: 1
+section: "client"
+---
+
 # Engine/Client Configuration
 
 The `engine` package provides a high-level client for interacting with SimConnect. Configuration is done via functional options passed to `engine.New()` or via the root `simconnect` package with `Client` prefixed options.
