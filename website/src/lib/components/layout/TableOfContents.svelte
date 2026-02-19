@@ -4,6 +4,7 @@
 	let { headings }: { headings: TocEntry[] } = $props();
 
 	let activeId = $state('');
+	let anchorRefs: Record<string, HTMLAnchorElement> = $state({});
 
 	$effect(() => {
 		if (typeof IntersectionObserver === 'undefined') return;
@@ -31,6 +32,12 @@
 
 		return () => observer.disconnect();
 	});
+
+	$effect(() => {
+		if (activeId && anchorRefs[activeId]) {
+			anchorRefs[activeId].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	});
 </script>
 
 {#if headings.length > 0}
@@ -50,6 +57,7 @@
 				{@const active = activeId === heading.id}
 				<li style="padding-left: {(heading.depth - 2) * 0.75}rem;">
 					<a
+						bind:this={anchorRefs[heading.id]}
 						href="#{heading.id}"
 						class="block py-0.5 transition-colors"
 						style="color: {active ? 'var(--color-link)' : 'var(--color-text-muted)'};"
@@ -61,3 +69,14 @@
 		</ul>
 	</nav>
 {/if}
+
+<style>
+	nav {
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+
+	nav::-webkit-scrollbar {
+		display: none;
+	}
+</style>

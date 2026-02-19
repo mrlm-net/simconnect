@@ -235,7 +235,7 @@ func main() {
 		</div>
 	</article>
 
-	<aside class="hidden shrink-0 pr-4 xl:block">
+	<aside class="toc-aside hidden shrink-0 pr-4 xl:block">
 		<TableOfContents {headings} />
 	</aside>
 </div>
