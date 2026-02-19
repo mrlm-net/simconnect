@@ -18,9 +18,9 @@ func (m *Instance) RequestSystemState(requestID uint32, state types.SIMCONNECT_S
 
 // SubscribeToSystemEvent subscribes to a SimConnect system event.
 //
-// WARNING: Do not use event IDs in the manager's reserved range (999,999,850 - 999,999,999).
+// WARNING: Do not use event IDs in the manager's reserved range (999,999,900 - 999,999,999).
 // The manager uses these IDs internally for its own system event subscriptions.
-// Use IDs from 1 to 999,999,849 for your own subscriptions.
+// Use IDs from 1 to 999,999,899 for your own subscriptions.
 // See pkg/manager/ids.go for the full ID allocation reference.
 //
 // Returns ErrNotConnected if not connected to the simulator.
