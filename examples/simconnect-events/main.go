@@ -1,3 +1,4 @@
+// Demonstrates all manager event handlers and channel subscriptions.
 package main
 
 import (
