@@ -253,7 +253,7 @@ func main() {
 
 		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 			<a href="https://github.com/mrlm-net/simconnect/releases/latest" target="_blank" rel="noopener noreferrer">
-				<img src="https://img.shields.io/github/v/release/mrlm-net/simconnect?label=release" alt="Latest Release" height="20" class="h-5" />
+				<img src="https://img.shields.io/github/release/mrlm-net/simconnect?label=release" alt="Latest Release" height="20" class="h-5" />
 			</a>
 			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer">
 				<img src="https://img.shields.io/badge/go-reference-007d9c?logo=go&logoColor=white" alt="Go Reference" height="20" class="h-5" />
