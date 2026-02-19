@@ -32,3 +32,11 @@ go.work.sum
 # .vscode/
 
 .claude/*.local.json
+
+# Website
+website/node_modules/
+website/build/
+website/.svelte-kit/
+
+.mrlm
+.playwright-mcp

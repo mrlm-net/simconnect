@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+	--color-bg-primary: #0d1117;
+	--color-bg-secondary: #161b22;
+	--color-bg-tertiary: #1c2128;
+	--color-bg-code: #1a1e24;
+	--color-text-primary: #e6edf3;
+	--color-text-secondary: #8b949e;
+	--color-text-muted: #6e7681;
+	--color-link: #58a6ff;
+	--color-link-hover: #79c0ff;
+	--color-border: #30363d;
+	--color-border-active: #58a6ff;
+	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+	scrollbar-color: var(--color-border) var(--color-bg-primary);
+}
+
+body {
+	background-color: var(--color-bg-primary);
+	color: var(--color-text-primary);
+	font-family: var(--font-sans);
+}
+
+/* Prose overrides for dark theme */
+.prose {
+	--tw-prose-body: var(--color-text-primary);
+	--tw-prose-headings: var(--color-text-primary);
+	--tw-prose-lead: var(--color-text-secondary);
+	--tw-prose-links: var(--color-link);
+	--tw-prose-bold: var(--color-text-primary);
+	--tw-prose-counters: var(--color-text-secondary);
+	--tw-prose-bullets: var(--color-text-muted);
+	--tw-prose-hr: var(--color-border);
+	--tw-prose-quotes: var(--color-text-secondary);
+	--tw-prose-quote-borders: var(--color-border);
+	--tw-prose-captions: var(--color-text-muted);
+	--tw-prose-code: var(--color-text-primary);
+	--tw-prose-pre-code: var(--color-text-primary);
+	--tw-prose-pre-bg: var(--color-bg-code);
+	--tw-prose-th-borders: var(--color-border);
+	--tw-prose-td-borders: var(--color-border);
+}
+
+.prose a {
+	color: var(--color-link);
+	text-decoration: none;
+}
+
+.prose a:hover {
+	color: var(--color-link-hover);
+	text-decoration: underline;
+}
+
+.prose code {
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.prose :not(pre) > code {
+	background-color: var(--color-bg-code);
+	padding: 0.15em 0.35em;
+	border-radius: 0.25rem;
+	border: 1px solid var(--color-border);
+}
+
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+	content: "";
+}
+
+.prose pre {
+	background-color: var(--color-bg-code);
+	border: 1px solid var(--color-border);
+	border-radius: 0.5rem;
+	overflow-x: auto;
+}
+
+.prose pre code {
+	font-size: 0.8125rem;
+	line-height: 1.7;
+}
+
+.prose table {
+	font-size: 0.875rem;
+}
+
+.prose th {
+	color: var(--color-text-primary);
+	font-weight: 600;
+	border-bottom-color: var(--color-border);
+}
+
+.prose td {
+	border-bottom-color: var(--color-border);
+}
+
+.prose blockquote {
+	border-left-color: var(--color-border-active);
+	background-color: var(--color-bg-secondary);
+	padding: 0.5rem 1rem;
+	border-radius: 0 0.25rem 0.25rem 0;
+}
+
+.prose h2 {
+	border-bottom: 1px solid var(--color-border);
+	padding-bottom: 0.3em;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+	scroll-margin-top: 5rem;
+}
+
+/* Prism token colors — GitHub Dark theme */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+	color: #8b949e;
+}
+
+.token.punctuation {
+	color: #c9d1d9;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+	color: #79c0ff;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+	color: #a5d6ff;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+	color: #d2a8ff;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+	color: #ff7b72;
+}
+
+.token.function,
+.token.class-name {
+	color: #d2a8ff;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+	color: #ffa657;
+}
+
+.token.important,
+.token.bold {
+	font-weight: bold;
+}
+
+.token.italic {
+	font-style: italic;
+}
