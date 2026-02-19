@@ -131,14 +131,12 @@ body {
 	text-decoration: none;
 }
 
-/* Sticky TOC sidebar */
+/* TOC sidebar — stays visible while scrolling content */
 .toc-aside {
-	position: sticky;
+	position: absolute;
 	top: 4rem;
-	height: calc(100vh - 4rem);
-	align-self: flex-start;
+	right: 0;
 }
-
 
 /* Prism token colors — GitHub Dark theme */
 .token.comment,

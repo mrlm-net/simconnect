@@ -128,8 +128,8 @@ func main() {
 	/>
 </svelte:head>
 
-<div class="flex">
-	<article class="prose mx-auto min-w-0 max-w-4xl flex-1 p-6 lg:p-10">
+<div class="relative flex">
+	<article class="prose min-w-0 max-w-4xl flex-1 p-6 lg:p-10">
 		<h1>Getting Started</h1>
 		<p>
 			This guide walks you through installing the SimConnect Go SDK and connecting to Microsoft
@@ -235,7 +235,7 @@ func main() {
 		</div>
 	</article>
 
-	<aside class="toc-aside hidden shrink-0 pr-4 xl:block">
+	<aside class="toc-aside hidden pr-4 xl:block">
 		<TableOfContents {headings} />
 	</aside>
 </div>
