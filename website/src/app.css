@@ -87,7 +87,10 @@ body {
 }
 
 .prose table {
+	width: 100%;
 	font-size: 0.875rem;
+	overflow-x: auto;
+	display: block;
 }
 
 .prose th {
@@ -117,6 +120,7 @@ body {
 .prose h3 {
 	scroll-margin-top: 5rem;
 }
+
 
 /* Prism token colors — GitHub Dark theme */
 .token.comment,

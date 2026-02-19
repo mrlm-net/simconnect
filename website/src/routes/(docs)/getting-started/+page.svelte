@@ -2,6 +2,7 @@
 	import { base } from '$app/paths';
 	import TableOfContents from '$lib/components/layout/TableOfContents.svelte';
 	import Prism from 'prismjs';
+	import 'prismjs/components/prism-clike';
 	import 'prismjs/components/prism-go';
 	import 'prismjs/components/prism-bash';
 
@@ -13,8 +14,14 @@
 		{ depth: 2, text: 'Next Steps', id: 'next-steps' }
 	];
 
+	function escapeHtml(text: string): string {
+		return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
 	function hl(code: string, lang: string): string {
-		return Prism.highlight(code, Prism.languages[lang], lang);
+		const grammar = Prism.languages[lang];
+		if (grammar) return Prism.highlight(code, grammar, lang);
+		return escapeHtml(code);
 	}
 
 	const installCode = `mkdir my-simconnect-app && cd my-simconnect-app
@@ -228,9 +235,9 @@ func main() {
 		</div>
 	</article>
 
-	<div class="hidden shrink-0 p-6 xl:block">
+	<aside class="hidden shrink-0 pr-4 xl:block">
 		<TableOfContents {headings} />
-	</div>
+	</aside>
 </div>
 
 <style>
