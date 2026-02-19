@@ -246,6 +246,30 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error
 
+	// Event Emission Methods
+	// These methods provide direct access to event operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// MapClientEventToSimEvent maps a client event ID to a SimConnect event name.
+	// Returns ErrNotConnected if not connected to the simulator.
+	MapClientEventToSimEvent(eventID uint32, eventName string) error
+
+	// RemoveClientEvent removes a client event from a notification group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RemoveClientEvent(groupID uint32, eventID uint32) error
+
+	// TransmitClientEvent transmits a client event to the simulator.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error
+
+	// TransmitClientEventEx1 transmits a client event with extended data to the simulator.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TransmitClientEventEx1(objectID uint32, eventID uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG, data [5]uint32) error
+
+	// MapClientDataNameToID maps a client data name to a client data ID.
+	// Returns ErrNotConnected if not connected to the simulator.
+	MapClientDataNameToID(clientDataName string, clientDataID uint32) error
+
 	// Configuration getters
 
 	// IsAutoReconnect returns whether automatic reconnection is enabled
