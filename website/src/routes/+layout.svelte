@@ -5,7 +5,12 @@
 
 	let { children }: { children: Snippet } = $props();
 
+	let isFirstNav = true;
 	afterNavigate(() => {
+		if (isFirstNav) {
+			isFirstNav = false;
+			return;
+		}
 		const main = document.getElementById('main-content');
 		if (main) {
 			main.focus({ preventScroll: true });

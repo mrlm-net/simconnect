@@ -145,7 +145,7 @@ func main() {
 
 <SeoHead
 	{siteConfig}
-	title="SimConnect Go SDK -- GoLang wrapper for MSFS 2020/2024"
+	title="SimConnect Go SDK — GoLang wrapper for MSFS 2020/2024"
 	description="Build Microsoft Flight Simulator add-ons with Go. Lightweight, typed, zero-dependency SimConnect wrapper."
 	path="/"
 />

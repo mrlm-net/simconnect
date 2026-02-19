@@ -6,7 +6,6 @@ export const prerender = true;
 
 export const GET: RequestHandler = () => {
 	const baseUrl = `${siteConfig.url}${siteConfig.basePath}`;
-	const today = new Date().toISOString().split('T')[0];
 
 	const staticPages = ['/', '/getting-started', '/docs', '/examples'];
 
@@ -19,7 +18,6 @@ export const GET: RequestHandler = () => {
 		.map(
 			(page) => `  <url>
     <loc>${baseUrl}${page}</loc>
-    <lastmod>${today}</lastmod>
   </url>`
 		)
 		.join('\n');
