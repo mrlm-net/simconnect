@@ -1,7 +1,7 @@
 # mrlm-net/simconnect
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrlm-net/simconnect.svg)](https://pkg.go.dev/github.com/mrlm-net/simconnect)
-[![Documentation](https://img.shields.io/badge/docs-mrlm--net.github.io%2Fsimconnect-blue)](https://mrlm-net.github.io/simconnect/)
+[![Documentation](https://img.shields.io/badge/docs-simconnect.mrlm.net-blue)](https://simconnect.mrlm.net/)
 
 > **Go wrapper for SimConnect.dll** — build Microsoft Flight Simulator 2020/2024 add-ons with type-safe, zero-dependency Go code.
 
@@ -63,13 +63,13 @@ go run ./examples/<name>
 
 ## Documentation
 
-**[mrlm-net.github.io/simconnect](https://mrlm-net.github.io/simconnect/)** — Full documentation website with getting started guide, configuration reference, and usage guides.
+**[simconnect.mrlm.net](https://simconnect.mrlm.net/)** — Full documentation website with getting started guide, configuration reference, and usage guides.
 
-- [Client Configuration](https://mrlm-net.github.io/simconnect/docs/config-client) — Engine/Client functional options
-- [Client API Reference](https://mrlm-net.github.io/simconnect/docs/usage-client) — Complete Engine/Client API
-- [Manager Configuration](https://mrlm-net.github.io/simconnect/docs/config-manager) — Manager functional options
-- [Manager Usage](https://mrlm-net.github.io/simconnect/docs/usage-manager) — Lifecycle management, subscriptions, state handling
-- [Request ID Management](https://mrlm-net.github.io/simconnect/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
+- [Client Configuration](https://simconnect.mrlm.net/docs/config-client) — Engine/Client functional options
+- [Client API Reference](https://simconnect.mrlm.net/docs/usage-client) — Complete Engine/Client API
+- [Manager Configuration](https://simconnect.mrlm.net/docs/config-manager) — Manager functional options
+- [Manager Usage](https://simconnect.mrlm.net/docs/usage-manager) — Lifecycle management, subscriptions, state handling
+- [Request ID Management](https://simconnect.mrlm.net/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
 
 ## Packages
 
