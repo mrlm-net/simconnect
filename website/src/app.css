@@ -60,6 +60,7 @@ body {
 .prose code {
 	font-family: var(--font-mono);
 	font-size: 0.875em;
+	font-weight: 400;
 }
 
 .prose :not(pre) > code {
@@ -124,7 +125,6 @@ body {
 
 .prose td code {
 	font-size: 0.7rem;
-	font-weight: 400;
 	padding: 0.1em 0.25em;
 }
 
