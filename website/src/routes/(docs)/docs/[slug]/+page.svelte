@@ -48,7 +48,7 @@
 				{#if data.prev}
 					<a
 						href="{base}/docs/{data.prev.slug}"
-						class="group flex flex-1 flex-col rounded-lg border p-4 transition-colors"
+						class="group flex flex-1 flex-col rounded-lg border p-4 transition-all duration-200"
 						style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
 					>
 						<span class="text-xs uppercase tracking-wider" style="color: var(--color-text-muted);">
@@ -64,7 +64,7 @@
 				{#if data.next}
 					<a
 						href="{base}/docs/{data.next.slug}"
-						class="group flex flex-1 flex-col items-end rounded-lg border p-4 text-right transition-colors"
+						class="group flex flex-1 flex-col items-end rounded-lg border p-4 text-right transition-all duration-200"
 						style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
 					>
 						<span class="text-xs uppercase tracking-wider" style="color: var(--color-text-muted);">
@@ -87,5 +87,6 @@
 <style>
 	a.group:hover {
 		border-color: var(--color-link) !important;
+		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
 	}
 </style>

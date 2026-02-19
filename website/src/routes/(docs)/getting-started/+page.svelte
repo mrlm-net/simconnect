@@ -285,7 +285,7 @@ func main() {
 					href={link.href}
 					target={link.external ? '_blank' : undefined}
 					rel={link.external ? 'noopener noreferrer' : undefined}
-					class="group rounded-lg border p-5 transition-colors"
+					class="group rounded-lg border p-5 transition-all duration-200"
 					style="background-color: var(--color-bg-secondary); border-color: var(--color-border);"
 				>
 					<h3
@@ -316,5 +316,6 @@ func main() {
 <style>
 	a.group:hover {
 		border-color: var(--color-link) !important;
+		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
 	}
 </style>
