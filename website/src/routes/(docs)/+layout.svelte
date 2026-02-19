@@ -33,7 +33,7 @@
 />
 
 <div class="flex flex-1 pt-16 md:pl-70">
-	<main id="main-content" class="flex-1 min-w-0">
+	<main id="main-content" tabindex="-1" class="flex-1 min-w-0">
 		{@render children()}
 	</main>
 </div>

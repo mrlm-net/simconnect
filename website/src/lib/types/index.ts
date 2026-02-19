@@ -22,6 +22,12 @@ export interface SiteConfig {
 	description: string;
 	repoUrl: string;
 	basePath: string;
+	url: string;
+	ogImage: string;
+	ogImageWidth: number;
+	ogImageHeight: number;
+	locale: string;
+	license: string;
 }
 
 export interface DocMeta {

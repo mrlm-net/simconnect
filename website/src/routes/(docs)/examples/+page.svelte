@@ -2,6 +2,8 @@
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-clike';
 	import 'prismjs/components/prism-go';
+	import SeoHead from '$lib/components/seo/SeoHead.svelte';
+	import { siteConfig } from '$lib/config/site.js';
 	import type { Example } from '$lib/content/examples.js';
 
 	let {
@@ -38,13 +40,12 @@
 	}
 </script>
 
-<svelte:head>
-	<title>Examples - SimConnect Go SDK</title>
-	<meta
-		name="description"
-		content="Browse example applications for the SimConnect Go SDK."
-	/>
-</svelte:head>
+<SeoHead
+	{siteConfig}
+	title="Examples - SimConnect Go SDK"
+	description="Browse example applications for the SimConnect Go SDK"
+	path="/examples"
+/>
 
 <div class="p-6 pl-8 lg:p-10 lg:pl-12">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Examples</h1>

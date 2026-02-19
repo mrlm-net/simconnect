@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import TableOfContents from '$lib/components/layout/TableOfContents.svelte';
+	import SeoHead from '$lib/components/seo/SeoHead.svelte';
+	import { siteConfig } from '$lib/config/site.js';
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-clike';
 	import 'prismjs/components/prism-go';
@@ -120,13 +122,12 @@ func main() {
 	];
 </script>
 
-<svelte:head>
-	<title>Getting Started -- SimConnect Go SDK</title>
-	<meta
-		name="description"
-		content="Step-by-step guide to connect your Go application to Microsoft Flight Simulator."
-	/>
-</svelte:head>
+<SeoHead
+	{siteConfig}
+	title="Getting Started - SimConnect Go SDK"
+	description="Install, connect, and start building MSFS add-ons with Go"
+	path="/getting-started"
+/>
 
 <div class="flex">
 	<article class="prose max-w-none min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
