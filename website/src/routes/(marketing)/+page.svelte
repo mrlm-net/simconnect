@@ -249,19 +249,11 @@ func main() {
 					{/if}
 				</button>
 			</div>
-			{#if copied}
-				<div
-					class="absolute left-1/2 mt-3 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap"
-					style="background-color: #3fb950; color: var(--color-bg-primary);"
-				>
-					Copied to clipboard
-				</div>
-			{/if}
 		</div>
 
 		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 			<a href="https://github.com/mrlm-net/simconnect/releases/latest" target="_blank" rel="noopener noreferrer">
-				<img src="https://img.shields.io/github/v/release/mrlm-net/simconnect?style=flat-square&color=58a6ff&label=release" alt="Latest Release" class="h-5" />
+				<img src="https://img.shields.io/github/v/release/mrlm-net/simconnect?style=flat-square&label=release" alt="Latest Release" class="h-5" />
 			</a>
 			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer">
 				<img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="Go Reference" class="h-5" />
