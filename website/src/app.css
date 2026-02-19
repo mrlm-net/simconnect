@@ -86,37 +86,44 @@ body {
 	line-height: 1.7;
 }
 
-.prose table {
-	width: 100%;
-	font-size: 0.875rem;
+.prose .table-wrapper {
 	overflow-x: auto;
-	display: block;
 	scrollbar-width: thin;
 	scrollbar-color: var(--color-border) var(--color-bg-secondary);
 }
 
-.prose table::-webkit-scrollbar {
+.prose .table-wrapper::-webkit-scrollbar {
 	height: 6px;
 }
 
-.prose table::-webkit-scrollbar-track {
+.prose .table-wrapper::-webkit-scrollbar-track {
 	background: var(--color-bg-secondary);
 	border-radius: 3px;
 }
 
-.prose table::-webkit-scrollbar-thumb {
+.prose .table-wrapper::-webkit-scrollbar-thumb {
 	background: var(--color-border);
 	border-radius: 3px;
+}
+
+.prose table {
+	width: 100%;
+	font-size: 0.75rem;
 }
 
 .prose th {
 	color: var(--color-text-primary);
 	font-weight: 600;
 	border-bottom-color: var(--color-border);
+	white-space: nowrap;
 }
 
 .prose td {
 	border-bottom-color: var(--color-border);
+}
+
+.prose td code {
+	font-size: 0.7rem;
 }
 
 .prose blockquote {

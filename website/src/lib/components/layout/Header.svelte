@@ -45,7 +45,7 @@
 			style="color: var(--color-text-primary);"
 		>
 			<img src="{base}/icon.png" alt="" class="mr-1 h-8 w-auto" />
-			{siteConfig.title}
+			<span class="hidden md:inline">{siteConfig.title}</span>
 		</a>
 	</div>
 

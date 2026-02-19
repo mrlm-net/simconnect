@@ -46,31 +46,31 @@ All manager options are available both via the root `simconnect` package (unpref
 
 ### Manager-Specific Options
 
-| Root Package | Manager Package | Type | Default | Description |
-|--------------|-----------------|------|---------|-------------|
-| `WithContext(ctx)` | `manager.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
-| `WithLogger(logger)` | `manager.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
-| `WithLogLevel(level)` | `manager.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `WithLogger` to provide a custom logger) |
-| `WithRetryInterval(d)` | `manager.WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
-| `WithConnectionTimeout(d)` | `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
-| `WithReconnectDelay(d)` | `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
-| `WithShutdownTimeout(d)` | `manager.WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
-| `WithMaxRetries(n)` | `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
-| `WithAutoReconnect(enabled)` | `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
-| `WithSimStatePeriod(period)` | `manager.WithSimStatePeriod(period)` | `types.SIMCONNECT_PERIOD` | `SIMCONNECT_PERIOD_SIM_FRAME` | SimState data request frequency |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `WithContext(ctx)` <br> `manager.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
+| `WithLogger(logger)` <br> `manager.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
+| `WithLogLevel(level)` <br> `manager.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `WithLogger` to provide a custom logger) |
+| `WithRetryInterval(d)` <br> `manager.WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
+| `WithConnectionTimeout(d)` <br> `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
+| `WithReconnectDelay(d)` <br> `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
+| `WithShutdownTimeout(d)` <br> `manager.WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
+| `WithMaxRetries(n)` <br> `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
+| `WithAutoReconnect(enabled)` <br> `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
+| `WithSimStatePeriod(period)` <br> `manager.WithSimStatePeriod(period)` | `types.SIMCONNECT_PERIOD` | `SIMCONNECT_PERIOD_SIM_FRAME` | SimState data request frequency |
 
 ### Engine Pass-Through Options
 
 These options configure the underlying engine client:
 
-| Root Package | Manager Package | Type | Default | Description |
-|--------------|-----------------|------|---------|-------------|
-| `WithBufferSize(size)` | `manager.WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
-| `WithDLLPath(path)` | `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
-| `WithHeartbeat(freq)` | `manager.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency |
-| `WithEngineOptions(opts...)` | `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
-| `WithAutoDetect()` | `manager.WithAutoDetect()` | - | disabled | Enable automatic DLL path detection (engine pass-through) |
-| `WithLogLevelFromString(level)` | `manager.WithLogLevelFromString(level)` | `string` | - | Set log level from string (engine pass-through) |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `WithBufferSize(size)` <br> `manager.WithBufferSize(size)` | `int` | `256` | Message buffer size for SimConnect |
+| `WithDLLPath(path)` <br> `manager.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/...` | Path to SimConnect DLL |
+| `WithHeartbeat(freq)` <br> `manager.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency |
+| `WithEngineOptions(opts...)` <br> `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
+| `WithAutoDetect()` <br> `manager.WithAutoDetect()` | - | disabled | Enable automatic DLL path detection (engine pass-through) |
+| `WithLogLevelFromString(level)` <br> `manager.WithLogLevelFromString(level)` | `string` | - | Set log level from string (engine pass-through) |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
 

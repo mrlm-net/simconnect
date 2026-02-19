@@ -39,16 +39,16 @@ client := engine.New("MyApp",
 
 Client options are available via the root `simconnect` package (with `Client` prefix) and the `engine` subpackage.
 
-| Root Package | Engine Package | Type | Default | Description |
-|--------------|----------------|------|---------|-------------|
-| `ClientWithBufferSize(size)` | `engine.WithBufferSize(size)` | `int` | `256` | Size of the message buffer for SimConnect communication |
-| `ClientWithDLLPath(path)` | `engine.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
-| `ClientWithContext(ctx)` | `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
-| `ClientWithLogger(logger)` | `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
-| `ClientWithLogLevel(level)` | `engine.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `ClientWithLogger` to provide a custom logger) |
-| `ClientWithHeartbeat(freq)` | `engine.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency for connection monitoring |
-| `ClientWithAutoDetect()` | `engine.WithAutoDetect()` | - | disabled | Enable automatic SimConnect DLL path detection |
-| `ClientWithLogLevelFromString(level)` | `engine.WithLogLevelFromString(level)` | `string` | - | Set log level from string ("debug", "info", "warn", "error") |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ClientWithBufferSize(size)` <br> `engine.WithBufferSize(size)` | `int` | `256` | Size of the message buffer for SimConnect communication |
+| `ClientWithDLLPath(path)` <br> `engine.WithDLLPath(path)` | `string` | `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll` | Path to the SimConnect DLL |
+| `ClientWithContext(ctx)` <br> `engine.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for lifecycle management |
+| `ClientWithLogger(logger)` <br> `engine.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for engine operations |
+| `ClientWithLogLevel(level)` <br> `engine.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `ClientWithLogger` to provide a custom logger) |
+| `ClientWithHeartbeat(freq)` <br> `engine.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency for connection monitoring |
+| `ClientWithAutoDetect()` <br> `engine.WithAutoDetect()` | - | disabled | Enable automatic SimConnect DLL path detection |
+| `ClientWithLogLevelFromString(level)` <br> `engine.WithLogLevelFromString(level)` | `string` | - | Set log level from string ("debug", "info", "warn", "error") |
 
 ## Option Details
 
