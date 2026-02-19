@@ -334,7 +334,7 @@ func main() {
 					class="flex items-center gap-2 border-b px-4 py-2.5"
 					style="background-color: var(--color-bg-tertiary); border-color: var(--color-border);"
 				>
-					<span class="inline-block h-2.5 w-2.5 rounded-full" style="background-color: var(--color-link); opacity: 0.6;"></span>
+					<span class="dot-pulse inline-block h-2.5 w-2.5 rounded-full" style="background-color: var(--color-link);"></span>
 					<span class="font-mono text-xs" style="color: var(--color-text-muted);">Low-Level Client</span>
 				</div>
 				<pre class="overflow-x-auto p-4"><code class="language-go text-[0.8125rem] leading-relaxed">{@html clientHighlighted}</code></pre>
@@ -348,7 +348,7 @@ func main() {
 					class="flex items-center gap-2 border-b px-4 py-2.5"
 					style="background-color: var(--color-bg-tertiary); border-color: var(--color-border);"
 				>
-					<span class="inline-block h-2.5 w-2.5 rounded-full" style="background-color: #3fb950; opacity: 0.6;"></span>
+					<span class="dot-pulse inline-block h-2.5 w-2.5 rounded-full" style="background-color: #3fb950;"></span>
 					<span class="font-mono text-xs" style="color: var(--color-text-muted);">Manager with Auto-Reconnect</span>
 				</div>
 				<pre class="overflow-x-auto p-4"><code class="language-go text-[0.8125rem] leading-relaxed">{@html managerHighlighted}</code></pre>
@@ -399,5 +399,25 @@ func main() {
 <style>
 	a.group:hover {
 		border-color: var(--color-link) !important;
+	}
+
+	@keyframes dot-pulse {
+		0%, 100% {
+			opacity: 0.4;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	.dot-pulse {
+		animation: dot-pulse 3s ease-in-out infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.dot-pulse {
+			animation: none;
+			opacity: 0.7;
+		}
 	}
 </style>
