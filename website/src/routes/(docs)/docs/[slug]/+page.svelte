@@ -19,8 +19,8 @@
 	<meta name="description" content={data.doc.description} />
 </svelte:head>
 
-<div class="relative flex">
-	<article class="prose min-w-0 max-w-4xl flex-1 p-6 lg:p-10">
+<div class="flex">
+	<article class="prose max-w-none min-w-0 flex-1 p-6 lg:p-10">
 		{@html data.doc.renderedContent}
 
 		<!-- Prev/Next navigation -->
@@ -64,7 +64,7 @@
 		{/if}
 	</article>
 
-	<aside class="toc-aside hidden pr-4 xl:block">
+	<aside class="toc-aside hidden shrink-0 pr-4 xl:block">
 		<TableOfContents headings={data.doc.headings} />
 	</aside>
 </div>

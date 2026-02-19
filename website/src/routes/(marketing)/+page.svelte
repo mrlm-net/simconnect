@@ -82,7 +82,7 @@ func main() {
 			icon: 'bolt'
 		},
 		{
-			title: 'MSFS 2020 & 2024',
+			title: 'MSFS\u00a02020\u00a0&\u00a02024',
 			description: 'Full compatibility with both simulator generations out of the box.',
 			icon: 'plane'
 		}
@@ -152,7 +152,7 @@ func main() {
 		<p class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed md:text-xl" style="color: var(--color-text-secondary);">
 			Build Microsoft Flight Simulator add-ons with Go.
 			<span style="color: var(--color-text-primary);">Lightweight, typed, zero-dependency</span>
-			wrapper over SimConnect.dll for MSFS&nbsp;2020&nbsp;&&nbsp;2024.
+			wrapper over SimConnect.dll for&nbsp;MSFS&nbsp;2020&nbsp;&&nbsp;2024.
 		</p>
 
 		<div class="mb-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -179,7 +179,7 @@ func main() {
 				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
 			>
 				<span style="color: var(--color-text-muted);">$</span>
-				<span style="color: var(--color-text-primary);">go get github.com/mrlm-net/simconnect</span>
+				<span><span style="color: var(--color-text-secondary);">go get</span> <span style="color: var(--color-link);">github.com/mrlm-net/simconnect</span></span>
 				<button
 					class="rounded p-1 transition-colors hover:bg-white/5"
 					style="color: {copied ? '#3fb950' : 'var(--color-text-muted)'};"
@@ -327,7 +327,7 @@ func main() {
 <section class="py-10">
 	<div class="mx-auto max-w-4xl px-6 text-center">
 		<p class="text-sm" style="color: var(--color-text-muted);">
-			Microsoft Flight Simulator 2020 & 2024 &middot; Go 1.25+ &middot; Windows &middot; Zero external dependencies
+			Microsoft Flight Simulator&nbsp;2020&nbsp;&&nbsp;2024 &middot; Go&nbsp;1.25+ &middot; Windows &middot; Zero external dependencies
 		</p>
 	</div>
 </section>

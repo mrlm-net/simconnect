@@ -17,7 +17,7 @@
 	<div class="flex items-center gap-3">
 		{#if showMenuButton}
 			<button
-				class="rounded p-1.5 md:hidden"
+				class="cursor-pointer rounded p-1.5 md:hidden"
 				style="color: var(--color-text-secondary);"
 				onclick={onToggleSidebar}
 				aria-label="Toggle navigation"
@@ -41,9 +41,10 @@
 		{/if}
 		<a
 			href="{base}/"
-			class="text-lg font-semibold tracking-tight"
+			class="flex items-center gap-2 text-lg font-semibold tracking-tight"
 			style="color: var(--color-text-primary);"
 		>
+			<img src="{base}/icon.png" alt="" class="mr-1 h-8 w-auto" />
 			{siteConfig.title}
 		</a>
 	</div>

@@ -46,7 +46,7 @@
 	/>
 </svelte:head>
 
-<div class="mx-auto max-w-4xl p-6 lg:p-10">
+<div class="p-6 lg:p-10">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Examples</h1>
 	<p class="mb-6" style="color: var(--color-text-secondary);">
 		Browse {data.examples.length} example applications covering connections, data reading, events,

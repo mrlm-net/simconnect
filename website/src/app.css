@@ -91,6 +91,22 @@ body {
 	font-size: 0.875rem;
 	overflow-x: auto;
 	display: block;
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) var(--color-bg-secondary);
+}
+
+.prose table::-webkit-scrollbar {
+	height: 6px;
+}
+
+.prose table::-webkit-scrollbar-track {
+	background: var(--color-bg-secondary);
+	border-radius: 3px;
+}
+
+.prose table::-webkit-scrollbar-thumb {
+	background: var(--color-border);
+	border-radius: 3px;
 }
 
 .prose th {
@@ -131,12 +147,12 @@ body {
 	text-decoration: none;
 }
 
-/* TOC sidebar — stays visible while scrolling content */
 .toc-aside {
-	position: absolute;
+	position: sticky;
 	top: 4rem;
-	right: 0;
+	align-self: flex-start;
 }
+
 
 /* Prism token colors — GitHub Dark theme */
 .token.comment,
