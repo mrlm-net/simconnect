@@ -270,6 +270,148 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	MapClientDataNameToID(clientDataName string, clientDataID uint32) error
 
+	// Notification Group Methods
+	// These methods provide direct access to notification group operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// AddClientEventToNotificationGroup adds a client event to a notification group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AddClientEventToNotificationGroup(groupID uint32, eventID uint32, mask bool) error
+
+	// ClearNotificationGroup clears all events from a notification group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	ClearNotificationGroup(groupID uint32) error
+
+	// RequestNotificationGroup requests a notification group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error
+
+	// SetNotificationGroupPriority sets the priority of a notification group.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SetNotificationGroupPriority(groupID uint32, priority uint32) error
+
+	// System State Methods
+	// These methods provide direct access to system state operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// RequestSystemState requests a system state value from the simulator.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
+
+	// SubscribeToSystemEvent subscribes to a SimConnect system event.
+	// WARNING: Do not use event IDs in the manager's reserved range (999,999,850 - 999,999,999).
+	// Use IDs from 1 to 999,999,849 for your own subscriptions.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SubscribeToSystemEvent(eventID uint32, eventName string) error
+
+	// UnsubscribeFromSystemEvent unsubscribes from a SimConnect system event.
+	// Returns ErrNotConnected if not connected to the simulator.
+	UnsubscribeFromSystemEvent(eventID uint32) error
+
+	// Facility Methods
+	// These methods provide direct access to facility operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// RegisterFacilityDataset registers a complete facility dataset definition with SimConnect.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RegisterFacilityDataset(definitionID uint32, dataset *datasets.FacilityDataSet) error
+
+	// AddToFacilityDefinition adds a field to a facility data definition.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AddToFacilityDefinition(definitionID uint32, fieldName string) error
+
+	// AddFacilityDataDefinitionFilter adds a filter to a facility data definition.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AddFacilityDataDefinitionFilter(definitionID uint32, filterPath string, filterData unsafe.Pointer, filterDataSize uint32) error
+
+	// ClearAllFacilityDataDefinitionFilters clears all filters from a facility data definition.
+	// Returns ErrNotConnected if not connected to the simulator.
+	ClearAllFacilityDataDefinitionFilters(definitionID uint32) error
+
+	// RequestFacilitiesList requests a list of facilities of the specified type.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+
+	// RequestFacilitiesListEX1 requests a list of facilities of the specified type (extended version).
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+
+	// RequestFacilityData requests facility data for a specific ICAO code and region.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error
+
+	// RequestFacilityDataEX1 requests facility data with a facility type filter (extended version).
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestFacilityDataEX1(definitionID uint32, requestID uint32, icao string, region string, facilityType byte) error
+
+	// RequestJetwayData requests jetway data for an airport.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestJetwayData(airportICAO string, arrayCount uint32, indexes *int32) error
+
+	// SubscribeToFacilities subscribes to facility list updates of the specified type.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error
+
+	// SubscribeToFacilitiesEX1 subscribes to facility list updates with separate in-range and out-of-range request IDs.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, newElemInRangeRequestID uint32, oldElemOutRangeRequestID uint32) error
+
+	// UnsubscribeToFacilitiesEX1 unsubscribes from facility list updates.
+	// Returns ErrNotConnected if not connected to the simulator.
+	UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error
+
+	// RequestAllFacilities requests all facilities of the specified type.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error
+
+	// AI Traffic Methods
+	// These methods provide direct access to AI traffic operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// AICreateParkedATCAircraft creates a parked ATC aircraft at an airport.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateParkedATCAircraft(szContainerTitle string, szTailNumber string, szAirportID string, RequestID uint32) error
+
+	// AISetAircraftFlightPlan assigns a flight plan to an AI aircraft.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AISetAircraftFlightPlan(objectID uint32, szFlightPlanPath string, requestID uint32) error
+
+	// AICreateEnrouteATCAircraft creates an enroute ATC aircraft along a flight plan.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateEnrouteATCAircraft(szContainerTitle string, szTailNumber string, iFlightNumber uint32, szFlightPlanPath string, dFlightPlanPosition float64, bTouchAndGo bool, RequestID uint32) error
+
+	// AICreateNonATCAircraft creates a non-ATC aircraft at a specific position.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateNonATCAircraft(szContainerTitle string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
+
+	// AICreateSimulatedObject creates a simulated object at a specific position.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
+
+	// AIReleaseControl releases control of an AI object back to the simulator.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AIReleaseControl(objectID uint32, requestID uint32) error
+
+	// AIRemoveObject removes an AI object from the simulation.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AIRemoveObject(objectID uint32, requestID uint32) error
+
+	// EnumerateSimObjectsAndLiveries enumerates available sim objects and their liveries.
+	// Returns ErrNotConnected if not connected to the simulator.
+	EnumerateSimObjectsAndLiveries(requestID uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error
+
+	// AICreateEnrouteATCAircraftEX1 creates an enroute ATC aircraft with livery selection.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateEnrouteATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, iFlightNumber uint32, szFlightPlanPath string, dFlightPlanPosition float64, bTouchAndGo bool, RequestID uint32) error
+
+	// AICreateNonATCAircraftEX1 creates a non-ATC aircraft with livery selection.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateNonATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
+
+	// AICreateParkedATCAircraftEX1 creates a parked ATC aircraft with livery selection.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateParkedATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, szAirportID string, RequestID uint32) error
+
 	// Configuration getters
 
 	// IsAutoReconnect returns whether automatic reconnection is enabled
