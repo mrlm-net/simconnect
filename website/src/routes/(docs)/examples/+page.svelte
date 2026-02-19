@@ -36,6 +36,19 @@
 		expandedSlug = expandedSlug === slug ? '' : slug;
 	}
 
+	const categoryColors: Record<string, { bg: string; text: string }> = {
+		basics: { bg: 'rgba(56, 139, 253, 0.15)', text: '#58a6ff' },
+		data: { bg: 'rgba(188, 140, 255, 0.15)', text: '#bc8cff' },
+		events: { bg: 'rgba(210, 153, 34, 0.15)', text: '#d2992a' },
+		facilities: { bg: 'rgba(63, 185, 80, 0.15)', text: '#3fb950' },
+		traffic: { bg: 'rgba(219, 109, 40, 0.15)', text: '#db6d28' },
+		manager: { bg: 'rgba(57, 211, 204, 0.15)', text: '#39d3cc' }
+	};
+
+	function categoryColor(cat: string): { bg: string; text: string } {
+		return categoryColors[cat] ?? { bg: 'var(--color-bg-tertiary)', text: 'var(--color-text-muted)' };
+	}
+
 	function copyCode(slug: string, code: string) {
 		navigator.clipboard.writeText(code);
 		copiedSlug = slug;
@@ -61,13 +74,18 @@
 	<div class="mb-8 flex flex-wrap gap-2">
 		{#each categories as cat (cat)}
 			{@const active = activeCategory === cat}
+			{@const colors = cat !== 'all' ? categoryColor(cat) : null}
 			<button
 				class="cursor-pointer rounded-full px-3 py-1 text-sm font-medium transition-colors"
 				style="background-color: {active
 					? 'var(--color-link)'
-					: 'var(--color-bg-secondary)'}; color: {active
+					: colors
+						? colors.bg
+						: 'var(--color-bg-secondary)'}; color: {active
 					? 'var(--color-bg-primary)'
-					: 'var(--color-text-secondary)'}; border: 1px solid {active
+					: colors
+						? colors.text
+						: 'var(--color-text-secondary)'}; border: 1px solid {active
 					? 'var(--color-link)'
 					: 'var(--color-border)'};"
 				onclick={() => (activeCategory = cat)}
@@ -81,6 +99,7 @@
 	<div class="space-y-3">
 		{#each filtered as example (example.slug)}
 			{@const expanded = expandedSlug === example.slug}
+			{@const badgeColors = categoryColor(example.category)}
 			<div
 				class="rounded-lg border"
 				style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
@@ -101,8 +120,8 @@
 					</div>
 					<div class="flex items-center gap-2">
 						<span
-							class="rounded-full px-2 py-0.5 text-xs"
-							style="background-color: var(--color-bg-tertiary); color: var(--color-text-muted);"
+							class="rounded-full px-2 py-0.5 text-xs font-medium"
+							style="background-color: {badgeColors.bg}; color: {badgeColors.text};"
 						>
 							{data.categoryLabels[example.category] ?? example.category}
 						</span>
