@@ -44,12 +44,12 @@
 				},
 				{
 					title: 'Event IDs',
-					href: 'https://docs.flightsimulator.com/flighting/html/Programming_Tools/Event_IDs/Event_IDs.htm',
+					href: 'https://docs.flightsimulator.com/html/Programming_Tools/Event_IDs/Event_IDs.htm',
 					description: 'Key event reference'
 				},
 				{
 					title: 'Simulation Variables',
-					href: 'https://docs.flightsimulator.com/flighting/html/Programming_Tools/SimVars/Simulation_Variables.htm',
+					href: 'https://docs.flightsimulator.com/html/Programming_Tools/SimVars/Simulation_Variables.htm',
 					description: 'SimVar reference'
 				}
 			]
@@ -78,7 +78,7 @@
 </svelte:head>
 
 <div class="flex">
-	<div class="min-w-0 flex-1 p-6 lg:p-10">
+	<div class="min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
 		<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">
 			Documentation
 		</h1>
