@@ -1,3 +1,10 @@
+---
+title: "Event Lifecycle"
+description: "System events dispatch pipeline and consumption patterns."
+order: 5
+section: "events"
+---
+
 # Event Lifecycle
 
 This document describes every system event the manager subscribes to, how events flow through the dispatch pipeline, and the two consumption patterns available to users: callbacks and channel-based subscriptions.
