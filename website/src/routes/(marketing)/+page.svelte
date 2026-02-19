@@ -261,7 +261,7 @@ func main() {
 			{#if milestoneNumber && milestoneTitle}
 				<a href="https://github.com/mrlm-net/simconnect/milestone/{milestoneNumber}" target="_blank" rel="noopener noreferrer">
 					<img
-						src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/{milestoneNumber}?color=a5d6ff&label={encodeURIComponent(milestoneTitle ?? '')}"
+						src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/{milestoneNumber}?label={encodeURIComponent(milestoneTitle ?? '')}"
 						alt="{milestoneTitle} Progress"
 						height="20"
 						class="h-5"
