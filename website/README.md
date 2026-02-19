@@ -76,7 +76,6 @@ To add a new section, update `sectionMeta` and `sectionOrder` in `src/lib/config
 
 Three custom rehype plugins in `src/lib/plugins/` process markdown during compilation:
 
-- **rehype-highlight.js** -- Syntax highlighting using highlight.js with support for Go, Bash, JSON, YAML, JavaScript, and TypeScript
 - **rehype-slug.js** -- Adds `id` attributes to headings for anchor links and table of contents
 - **rehype-rewrite-links.js** -- Rewrites relative `.md` links to `/docs/<slug>` format and converts `../examples/*` links to GitHub URLs
 
@@ -113,18 +112,12 @@ website/
 
 ## GitHub Pages Deployment
 
-Set the `BASE_PATH` environment variable when building for a non-root deployment path:
-
-```bash
-BASE_PATH="/simconnect" npm run build
-```
-
-This prefixes all internal links and asset paths with the specified base. When deployed at the repository root, leave `BASE_PATH` unset or empty.
+The site is deployed to the custom domain `simconnect.mrlm.net` via GitHub Actions (`deploy-website.yml`). No `BASE_PATH` is needed — the site is served at the domain root.
 
 ## Tech Stack
 
 - [SvelteKit](https://svelte.dev/docs/kit) with `@sveltejs/adapter-static` for static site generation
 - [Tailwind CSS v4](https://tailwindcss.com/) with `@tailwindcss/typography` for prose styling
 - [mdsvex](https://mdsvex.pngwn.io/) for markdown preprocessing in Svelte
-- [highlight.js](https://highlightjs.org/) for syntax highlighting (via custom rehype plugin)
+- [Prism.js](https://prismjs.com/) for syntax highlighting
 - [gray-matter](https://github.com/jonschlinkert/gray-matter) for YAML frontmatter parsing
