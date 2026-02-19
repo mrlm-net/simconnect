@@ -360,7 +360,7 @@ func main() {
 			{#each quickLinks as link}
 				<a
 					href={link.href}
-					class="group relative overflow-hidden rounded-xl border p-6 transition-colors"
+					class="group relative overflow-hidden rounded-xl border p-6 transition-all duration-200"
 					style="background-color: var(--color-bg-secondary); border-color: var(--color-border);"
 				>
 					<h3 class="mb-2 flex items-center gap-2 text-base font-semibold" style="color: var(--color-text-primary);">
@@ -392,6 +392,7 @@ func main() {
 <style>
 	a.group:hover {
 		border-color: var(--color-link) !important;
+		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
 	}
 
 	@keyframes dot-pulse {
