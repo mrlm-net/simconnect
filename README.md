@@ -1,6 +1,7 @@
 # mrlm-net/simconnect
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrlm-net/simconnect.svg)](https://pkg.go.dev/github.com/mrlm-net/simconnect)
+[![Documentation](https://img.shields.io/badge/docs-mrlm--net.github.io%2Fsimconnect-blue)](https://mrlm-net.github.io/simconnect/)
 
 > **Go wrapper for SimConnect.dll** — build Microsoft Flight Simulator 2020/2024 add-ons with type-safe, zero-dependency Go code.
 
@@ -62,11 +63,13 @@ go run ./examples/<name>
 
 ## Documentation
 
-- **[Client Configuration](docs/config-client.md)** — Engine/Client functional options (buffer size, DLL path, heartbeat, logging)
-- **[Client API Reference](docs/usage-client.md)** — Complete Engine/Client API — data definitions, events, AI traffic, facilities
-- **[Manager Configuration](docs/config-manager.md)** — Manager functional options (auto-reconnect, retry intervals, timeouts)
-- **[Manager Usage](docs/usage-manager.md)** — Lifecycle management, subscriptions, state handling
-- **[Request ID Management](docs/manager-requests-ids.md)** — ID allocation strategy and conflict prevention
+**[mrlm-net.github.io/simconnect](https://mrlm-net.github.io/simconnect/)** — Full documentation website with getting started guide, configuration reference, and usage guides.
+
+- [Client Configuration](https://mrlm-net.github.io/simconnect/docs/config-client) — Engine/Client functional options
+- [Client API Reference](https://mrlm-net.github.io/simconnect/docs/usage-client) — Complete Engine/Client API
+- [Manager Configuration](https://mrlm-net.github.io/simconnect/docs/config-manager) — Manager functional options
+- [Manager Usage](https://mrlm-net.github.io/simconnect/docs/usage-manager) — Lifecycle management, subscriptions, state handling
+- [Request ID Management](https://mrlm-net.github.io/simconnect/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
 
 ## Packages
 
