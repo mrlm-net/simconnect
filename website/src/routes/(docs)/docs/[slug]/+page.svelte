@@ -20,7 +20,7 @@
 </svelte:head>
 
 <div class="flex">
-	<article class="prose max-w-none min-w-0 flex-1 p-6 lg:p-10">
+	<article class="prose max-w-none min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
 		{@html data.doc.renderedContent}
 
 		<!-- Prev/Next navigation -->

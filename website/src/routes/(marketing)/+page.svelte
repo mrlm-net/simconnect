@@ -5,6 +5,39 @@
 
 	let copied = $state(false);
 
+	// Dynamic milestone badge
+	let milestoneNumber = $state<number | null>(null);
+	let milestoneTitle = $state<string | null>(null);
+	let milestoneLoaded = $state(false);
+
+	interface Milestone {
+		number: number;
+		title: string;
+		due_on: string | null;
+		open_issues: number;
+		closed_issues: number;
+	}
+
+	$effect(() => {
+		fetch('https://api.github.com/repos/mrlm-net/simconnect/milestones?state=open&sort=due_on&direction=asc')
+			.then((res) => {
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				return res.json();
+			})
+			.then((milestones: Milestone[]) => {
+				const candidates = milestones
+					.filter((m) => m.due_on !== null && (m.open_issues + m.closed_issues) > 0)
+					.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+				if (candidates.length === 0) return;
+				milestoneNumber = candidates[0].number;
+				milestoneTitle = candidates[0].title;
+			})
+			.catch((err) => console.warn('[milestone badge]', err))
+			.finally(() => {
+				milestoneLoaded = true;
+			});
+	});
+
 	function copyInstall() {
 		navigator.clipboard.writeText('go get github.com/mrlm-net/simconnect');
 		copied = true;
@@ -181,7 +214,7 @@ func main() {
 				<span style="color: var(--color-text-muted);">$</span>
 				<span><span style="color: var(--color-text-secondary);">go get</span> <span style="color: var(--color-link);">github.com/mrlm-net/simconnect</span></span>
 				<button
-					class="rounded p-1 transition-colors hover:bg-white/5"
+					class="cursor-pointer rounded p-1 transition-colors hover:bg-white/5"
 					style="color: {copied ? '#3fb950' : 'var(--color-text-muted)'};"
 					aria-label="Copy install command"
 					onclick={copyInstall}
@@ -210,9 +243,17 @@ func main() {
 			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer">
 				<img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="Go Reference" class="h-5" />
 			</a>
-			<a href="https://github.com/mrlm-net/simconnect/milestone/4" target="_blank" rel="noopener noreferrer">
-				<img src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/4?style=flat-square&color=a5d6ff&label=v0.3.0" alt="v0.3.0 Progress" class="h-5" />
-			</a>
+			{#if milestoneNumber && milestoneTitle}
+				<a href="https://github.com/mrlm-net/simconnect/milestone/{milestoneNumber}" target="_blank" rel="noopener noreferrer">
+					<img
+						src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/{milestoneNumber}?style=flat-square&color=a5d6ff&label={encodeURIComponent(milestoneTitle ?? '')}"
+						alt="{milestoneTitle} Progress"
+						class="h-5"
+					/>
+				</a>
+			{:else if !milestoneLoaded}
+				<span class="inline-block h-5 w-20 animate-pulse rounded" style="background-color: var(--color-border);"></span>
+			{/if}
 		</div>
 	</div>
 </section>

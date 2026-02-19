@@ -46,7 +46,7 @@
 	/>
 </svelte:head>
 
-<div class="p-6 lg:p-10">
+<div class="p-6 pl-8 lg:p-10 lg:pl-12">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Examples</h1>
 	<p class="mb-6" style="color: var(--color-text-secondary);">
 		Browse {data.examples.length} example applications covering connections, data reading, events,
@@ -58,7 +58,7 @@
 		{#each categories as cat (cat)}
 			{@const active = activeCategory === cat}
 			<button
-				class="rounded-full px-3 py-1 text-sm font-medium transition-colors"
+				class="cursor-pointer rounded-full px-3 py-1 text-sm font-medium transition-colors"
 				style="background-color: {active
 					? 'var(--color-link)'
 					: 'var(--color-bg-secondary)'}; color: {active
@@ -82,7 +82,7 @@
 				style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
 			>
 				<button
-					class="flex w-full items-center justify-between p-4 text-left"
+					class="flex w-full cursor-pointer items-center justify-between p-4 text-left"
 					onclick={() => toggle(example.slug)}
 				>
 					<div>
