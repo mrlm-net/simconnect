@@ -40,7 +40,7 @@
 {#if open}
 	<!-- Backdrop for mobile -->
 	<div
-		class="fixed inset-0 z-40 bg-black/50 md:hidden"
+		class="fixed inset-0 z-40 cursor-pointer bg-black/50 md:hidden"
 		onclick={onClose}
 		role="presentation"
 	></div>
@@ -80,7 +80,7 @@
 		{#each navigation as section}
 			<div class="mb-3">
 				<button
-					class="flex w-full items-center justify-between px-2 py-1.5 text-xs font-semibold uppercase tracking-wider"
+					class="flex w-full cursor-pointer items-center justify-between px-2 py-1.5 text-xs font-semibold uppercase tracking-wider"
 					style="color: var(--color-text-muted);"
 					onclick={() => toggleSection(section.id)}
 					aria-expanded={sectionState[section.id] ?? false}

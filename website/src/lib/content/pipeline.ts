@@ -12,6 +12,7 @@ import type { DocMeta, TocEntry } from '$lib/types/index.js';
 import { extractToc } from './toc.js';
 import rehypeSlug from '$lib/plugins/rehype-slug.js';
 import rehypeRewriteLinks from '$lib/plugins/rehype-rewrite-links.js';
+import rehypeTableWrap from '$lib/plugins/rehype-table-wrap.js';
 
 function escapeHtml(text: string): string {
 	return text
@@ -88,7 +89,7 @@ export async function loadDocPage(slug: string): Promise<DocPage | null> {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const compiled = await compile(content, {
 		highlight: { highlighter: highlightCode },
-		rehypePlugins: [rehypeSlug, rehypeRewriteLinks]
+		rehypePlugins: [rehypeSlug, rehypeRewriteLinks, rehypeTableWrap]
 	} as any);
 
 	let renderedContent = '';
