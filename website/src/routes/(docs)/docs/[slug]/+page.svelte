@@ -15,7 +15,7 @@
 		{@html data.doc.renderedContent}
 	</article>
 
-	<aside class="hidden shrink-0 pr-4 xl:block">
+	<aside class="toc-aside hidden shrink-0 pr-4 xl:block">
 		<TableOfContents headings={data.doc.headings} />
 	</aside>
 </div>

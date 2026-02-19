@@ -202,6 +202,18 @@ func main() {
 				</div>
 			{/if}
 		</div>
+
+		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+			<a href="https://github.com/mrlm-net/simconnect/releases/latest" target="_blank" rel="noopener noreferrer">
+				<img src="https://img.shields.io/github/v/release/mrlm-net/simconnect?style=flat-square&color=58a6ff&label=release" alt="Latest Release" class="h-5" />
+			</a>
+			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer">
+				<img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square&logo=go&logoColor=white" alt="Go Reference" class="h-5" />
+			</a>
+			<a href="https://github.com/mrlm-net/simconnect/milestone/4" target="_blank" rel="noopener noreferrer">
+				<img src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/4?style=flat-square&color=a5d6ff&label=v0.3.0" alt="v0.3.0 Progress" class="h-5" />
+			</a>
+		</div>
 	</div>
 </section>
 
