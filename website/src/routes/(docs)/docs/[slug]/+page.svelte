@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import TableOfContents from '$lib/components/layout/TableOfContents.svelte';
+	import SeoHead from '$lib/components/seo/SeoHead.svelte';
+	import JsonLd from '$lib/components/seo/JsonLd.svelte';
+	import { siteConfig } from '$lib/config/site.js';
 	import type { DocPage } from '$lib/content/pipeline.js';
 
 	let {
@@ -14,10 +17,22 @@
 	} = $props();
 </script>
 
-<svelte:head>
-	<title>{data.doc.title} - SimConnect Go SDK</title>
-	<meta name="description" content={data.doc.description} />
-</svelte:head>
+<SeoHead
+	{siteConfig}
+	title="{data.doc.title} - SimConnect Go SDK"
+	description={data.doc.description}
+	path="/docs/{data.doc.slug}"
+	type="article"
+/>
+<JsonLd
+	schema={{
+		'@context': 'https://schema.org',
+		'@type': 'TechArticle',
+		headline: data.doc.title,
+		description: data.doc.description,
+		url: `${siteConfig.url}${siteConfig.basePath}/docs/${data.doc.slug}`
+	}}
+/>
 
 <div class="flex">
 	<article class="prose max-w-none min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">

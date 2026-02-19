@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://simconnect.mrlm.net/sitemap.xml

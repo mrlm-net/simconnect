@@ -2,6 +2,9 @@
 	import { base } from '$app/paths';
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-go';
+	import SeoHead from '$lib/components/seo/SeoHead.svelte';
+	import JsonLd from '$lib/components/seo/JsonLd.svelte';
+	import { siteConfig } from '$lib/config/site.js';
 
 	let copied = $state(false);
 
@@ -140,13 +143,33 @@ func main() {
 	];
 </script>
 
-<svelte:head>
-	<title>SimConnect Go SDK -- GoLang wrapper for MSFS 2020/2024</title>
-	<meta
-		name="description"
-		content="Build Microsoft Flight Simulator add-ons with Go. Lightweight, typed, zero-dependency SimConnect wrapper."
-	/>
-</svelte:head>
+<SeoHead
+	{siteConfig}
+	title="SimConnect Go SDK -- GoLang wrapper for MSFS 2020/2024"
+	description="Build Microsoft Flight Simulator add-ons with Go. Lightweight, typed, zero-dependency SimConnect wrapper."
+	path="/"
+/>
+<JsonLd
+	schema={{
+		'@context': 'https://schema.org',
+		'@type': 'WebSite',
+		name: siteConfig.title,
+		url: `${siteConfig.url}${siteConfig.basePath}/`,
+		description: siteConfig.description
+	}}
+/>
+<JsonLd
+	schema={{
+		'@context': 'https://schema.org',
+		'@type': 'SoftwareSourceCode',
+		name: siteConfig.title,
+		description: siteConfig.description,
+		codeRepository: siteConfig.repoUrl,
+		programmingLanguage: 'Go',
+		runtimePlatform: 'Windows',
+		license: `https://opensource.org/licenses/${siteConfig.license}`
+	}}
+/>
 
 <!-- Hero -->
 <section class="relative overflow-hidden py-24 md:py-36">

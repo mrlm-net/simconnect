@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
+	import SeoHead from '$lib/components/seo/SeoHead.svelte';
+	import { siteConfig } from '$lib/config/site.js';
 	import type { DocMeta } from '$lib/types/index.js';
 
 	let { data }: { data: { docs: DocMeta[] } } = $props();
@@ -73,9 +75,12 @@
 	];
 </script>
 
-<svelte:head>
-	<title>Documentation - SimConnect Go SDK</title>
-</svelte:head>
+<SeoHead
+	{siteConfig}
+	title="Documentation - SimConnect Go SDK"
+	description="Browse all SimConnect Go SDK documentation guides"
+	path="/docs"
+/>
 
 <div class="flex">
 	<div class="min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
