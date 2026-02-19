@@ -158,12 +158,51 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── simconnect-facilities/ # Manager facility queries
 │   ├── simconnect-traffic/  #   Manager traffic operations
 │   └── simconnect-benchmark/ #  Performance benchmarking
-└── docs/                    # Documentation
-    ├── config-client.md     #   Client configuration reference
-    ├── config-manager.md    #   Manager configuration reference
-    ├── usage-client.md      #   Client usage guide
-    ├── usage-manager.md     #   Manager usage guide
-    └── manager-requests-ids.md # ID allocation reference
+├── docs/                    # Documentation (source of truth for guides)
+│   ├── config-client.md     #   Client configuration reference
+│   ├── config-manager.md    #   Manager configuration reference
+│   ├── usage-client.md      #   Client usage guide
+│   ├── usage-manager.md     #   Manager usage guide
+│   ├── events-lifecycle.md  #   Event lifecycle reference
+│   └── manager-requests-ids.md # ID allocation reference
+└── website/                 # SvelteKit documentation site (static)
+    ├── package.json         #   Dependencies & scripts
+    ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
+    ├── vite.config.js       #   Vite build configuration
+    ├── tsconfig.json        #   TypeScript configuration
+    ├── static/              #   Static assets (favicon, .nojekyll)
+    └── src/
+        ├── app.html         #   HTML shell
+        ├── app.css          #   Tailwind imports & dark theme tokens
+        ├── lib/
+        │   ├── plugins/     #   Custom rehype plugins
+        │   │   ├── rehype-highlight.js  # highlight.js syntax highlighting
+        │   │   ├── rehype-slug.js       # Heading ID generation
+        │   │   └── rehype-rewrite-links.js # .md link rewriting
+        │   ├── content/     #   Build-time content pipeline
+        │   │   ├── pipeline.ts  # Reads docs/*.md, extracts frontmatter
+        │   │   └── toc.ts       # Table of contents extraction
+        │   ├── components/
+        │   │   └── layout/  #   Layout components
+        │   │       ├── Header.svelte
+        │   │       ├── Sidebar.svelte
+        │   │       ├── TableOfContents.svelte
+        │   │       └── Footer.svelte
+        │   ├── config/      #   Site configuration
+        │   │   ├── site.ts      # Title, description, repo URL
+        │   │   └── navigation.ts # Section ordering & sidebar builder
+        │   └── types/       #   TypeScript interfaces
+        │       └── index.ts     # NavItem, NavSection, DocMeta, etc.
+        └── routes/          #   SvelteKit pages
+            ├── +layout.svelte       # Root layout shell
+            ├── +layout.server.ts    # Prerender, load navigation
+            ├── +page.svelte         # Landing page
+            ├── docs/
+            │   ├── +page.svelte     # Docs listing page
+            │   ├── +page.server.ts  # Load doc index
+            │   └── [slug]/
+            │       ├── +page.svelte     # Individual doc page
+            │       └── +page.server.ts  # Load & render doc by slug
 ```
 
 ## Build & Test
@@ -208,6 +247,35 @@ Agents track work decisions, blockers, and outcomes in GitHub Issues.
 - One PR per task — PRs reference the issue they resolve (e.g., `Closes #42`)
 - Agents post decisions (e.g., "Chose X over Y because Z"), blockers, quality gate failures, and phase outcomes
 - Agents do NOT post progress notifications or status updates — keep it human-consumable
+
+## GitHub Projects v2
+
+**Project**: SimConnect GoLang SDK
+**URL**: https://github.com/orgs/mrlm-net/projects/7
+**Project number**: 7
+**Owner**: mrlm-net
+**Project ID**: PVT_kwDOBxaH0c4A9IjR
+
+### Custom Fields
+
+| Field | Field ID | Options |
+|-------|----------|---------|
+| Status | `PVTSSF_lADOBxaH0c4A9IjRzgw7UX8` | Backlog=`f75ad846`, Ready=`61e4505c`, In progress=`47fc9ee4`, In review=`df73e18b`, Done=`98236657` |
+| Priority | `PVTSSF_lADOBxaH0c4A9IjRzgw7UcQ` | P0=`79628723`, P1=`0a877460`, P2=`da944a9c` |
+| Size | `PVTSSF_lADOBxaH0c4A9IjRzgw7UcU` | XS=`6c6483d2`, S=`f784b110`, M=`7515a9f1`, L=`817d0097`, XL=`db339eb2` |
+
+### Board Update Commands
+
+```bash
+# Add issue to board
+gh project item-add 7 --owner mrlm-net --url <ISSUE_URL>
+
+# Get item ID
+gh project item-list 7 --owner mrlm-net --format json -L 100
+
+# Update field
+gh project item-edit --project-id PVT_kwDOBxaH0c4A9IjR --id <ITEM_ID> --field-id <FIELD_ID> --single-select-option-id <OPTION_ID>
+```
 
 ## MRLM Plugin Usage
 
