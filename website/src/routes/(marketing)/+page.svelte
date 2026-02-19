@@ -6,40 +6,9 @@
 	import JsonLd from '$lib/components/seo/JsonLd.svelte';
 	import { siteConfig } from '$lib/config/site.js';
 
+	let { data } = $props();
+
 	let copied = $state(false);
-
-	// Dynamic milestone badge
-	let milestoneNumber = $state<number | null>(null);
-	let milestoneTitle = $state<string | null>(null);
-	let milestoneLoaded = $state(false);
-
-	interface Milestone {
-		number: number;
-		title: string;
-		due_on: string | null;
-		open_issues: number;
-		closed_issues: number;
-	}
-
-	$effect(() => {
-		fetch('https://api.github.com/repos/mrlm-net/simconnect/milestones?state=open&sort=due_on&direction=asc')
-			.then((res) => {
-				if (!res.ok) throw new Error(`HTTP ${res.status}`);
-				return res.json();
-			})
-			.then((milestones: Milestone[]) => {
-				const candidates = milestones
-					.filter((m) => m.due_on !== null && (m.open_issues + m.closed_issues) > 0)
-					.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
-				if (candidates.length === 0) return;
-				milestoneNumber = candidates[0].number;
-				milestoneTitle = candidates[0].title;
-			})
-			.catch((err) => console.warn('[milestone badge]', err))
-			.finally(() => {
-				milestoneLoaded = true;
-			});
-	});
 
 	function copyInstall() {
 		navigator.clipboard.writeText('go get github.com/mrlm-net/simconnect');
@@ -251,24 +220,19 @@ func main() {
 			</div>
 		</div>
 
-		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-			<a href="https://github.com/mrlm-net/simconnect/releases/latest" target="_blank" rel="noopener noreferrer">
-				<img src="https://img.shields.io/github/release/mrlm-net/simconnect?label=release" alt="Latest Release" height="20" class="h-5" />
-			</a>
-			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer">
-				<img src="https://img.shields.io/badge/go-reference-007d9c?logo=go&logoColor=white" alt="Go Reference" height="20" class="h-5" />
-			</a>
-			{#if milestoneNumber && milestoneTitle}
-				<a href="https://github.com/mrlm-net/simconnect/milestone/{milestoneNumber}" target="_blank" rel="noopener noreferrer">
-					<img
-						src="https://img.shields.io/github/milestones/progress-percent/mrlm-net/simconnect/{milestoneNumber}?label={encodeURIComponent(milestoneTitle ?? '')}"
-						alt="{milestoneTitle} Progress"
-						height="20"
-						class="h-5"
-					/>
+		<div class="mt-6 flex flex-wrap items-center justify-center gap-2">
+			{#if data.release}
+				<a href="https://github.com/mrlm-net/simconnect/releases/latest" target="_blank" rel="noopener noreferrer" class="badge">
+					<span class="badge-label">current</span><span class="badge-value">{data.release}</span>
 				</a>
-			{:else if !milestoneLoaded}
-				<span class="inline-block h-5 w-20 animate-pulse rounded" style="background-color: var(--color-border);"></span>
+			{/if}
+			<a href="https://pkg.go.dev/github.com/mrlm-net/simconnect" target="_blank" rel="noopener noreferrer" class="badge">
+				<span class="badge-label">go</span><span class="badge-value badge-go">reference</span>
+			</a>
+			{#if data.milestone}
+				<a href="https://github.com/mrlm-net/simconnect/milestone/{data.milestone.number}" target="_blank" rel="noopener noreferrer" class="badge">
+					<span class="badge-label">upcoming</span><span class="badge-value">{data.milestone.title} — {data.milestone.progress}%</span>
+				</a>
 			{/if}
 		</div>
 	</div>
@@ -390,6 +354,34 @@ func main() {
 </section>
 
 <style>
+	.badge {
+		display: inline-flex;
+		font-size: 0.6875rem;
+		line-height: 1;
+		border-radius: 0.25rem;
+		overflow: hidden;
+		text-decoration: none;
+		font-family: var(--font-mono);
+	}
+
+	.badge-label {
+		padding: 0.25rem 0.4rem;
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-secondary);
+		font-weight: 300;
+	}
+
+	.badge-value {
+		padding: 0.25rem 0.4rem;
+		background-color: var(--color-link);
+		color: var(--color-bg-primary);
+	}
+
+	.badge-go {
+		background-color: #007d9c;
+		color: #fff;
+	}
+
 	a.group:hover {
 		border-color: var(--color-link) !important;
 		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
