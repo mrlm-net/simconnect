@@ -9,9 +9,13 @@ export const prerender = true;
 export const load: LayoutServerLoad = () => {
 	const docs = loadDocIndex();
 	const navigation = buildNavigation(docs, base);
+	const topLinks = [
+		{ title: 'Getting Started', href: `${base}/getting-started`, order: 0 }
+	];
 
 	return {
 		navigation,
+		topLinks,
 		siteConfig
 	};
 };

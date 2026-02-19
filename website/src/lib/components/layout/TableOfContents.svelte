@@ -34,9 +34,10 @@
 </script>
 
 {#if headings.length > 0}
-	<div
-		class="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto xl:block"
-		style="width: 240px;"
+	<nav
+		class="py-6 pl-6 pr-6"
+		style="min-width: 280px;"
+		aria-label="Table of contents"
 	>
 		<p
 			class="mb-3 text-xs font-semibold uppercase tracking-wider"
@@ -58,5 +59,5 @@
 				</li>
 			{/each}
 		</ul>
-	</div>
+	</nav>
 {/if}

@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import type { NavSection } from '$lib/types/index.js';
+	import type { NavSection, NavItem } from '$lib/types/index.js';
 
 	let {
 		navigation,
+		topLinks = [],
 		open,
 		onClose
-	}: { navigation: NavSection[]; open: boolean; onClose: () => void } = $props();
+	}: { navigation: NavSection[]; topLinks?: NavItem[]; open: boolean; onClose: () => void } =
+		$props();
 
 	let sectionState = $state<Record<string, boolean>>({});
 
@@ -51,6 +53,30 @@
 	style="background-color: var(--color-bg-secondary); border-color: var(--color-border);"
 >
 	<nav class="p-4" aria-label="Documentation">
+		{#if topLinks && topLinks.length > 0}
+			<ul class="mb-4 space-y-0.5">
+				{#each topLinks as link}
+					{@const active = isActive(link.href)}
+					<li>
+						<a
+							href={link.href}
+							class="block rounded-md px-2 py-2 text-sm font-medium transition-colors"
+							style="color: {active
+								? 'var(--color-link)'
+								: 'var(--color-text-primary)'}; {active
+								? 'background-color: var(--color-bg-tertiary);'
+								: ''}"
+							aria-current={active ? 'page' : undefined}
+							onclick={onClose}
+						>
+							{link.title}
+						</a>
+					</li>
+				{/each}
+			</ul>
+			<div class="mb-3 border-b" style="border-color: var(--color-border);"></div>
+		{/if}
+
 		{#each navigation as section}
 			<div class="mb-3">
 				<button

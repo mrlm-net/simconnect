@@ -2,11 +2,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { compile } from 'mdsvex';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-go.js';
+import 'prismjs/components/prism-bash.js';
+import 'prismjs/components/prism-json.js';
+import 'prismjs/components/prism-yaml.js';
+import 'prismjs/components/prism-typescript.js';
 import type { DocMeta, TocEntry } from '$lib/types/index.js';
 import { extractToc } from './toc.js';
-import rehypeHighlight from '$lib/plugins/rehype-highlight.js';
 import rehypeSlug from '$lib/plugins/rehype-slug.js';
 import rehypeRewriteLinks from '$lib/plugins/rehype-rewrite-links.js';
+
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}
+
+function highlightCode(code: string, lang: string | undefined): string {
+	if (lang && Prism.languages[lang]) {
+		const html = Prism.highlight(code, Prism.languages[lang], lang);
+		return `<pre class="language-${lang}"><code class="language-${lang}">${html}</code></pre>`;
+	}
+	return `<pre><code>${escapeHtml(code)}</code></pre>`;
+}
 
 function docsDir(): string {
 	return path.resolve(process.cwd(), '..', 'docs');
@@ -67,14 +87,8 @@ export async function loadDocPage(slug: string): Promise<DocPage | null> {
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const compiled = await compile(content, {
-		rehypePlugins: [
-			rehypeSlug,
-			rehypeRewriteLinks,
-			[
-				rehypeHighlight,
-				{ languages: ['go', 'bash', 'json', 'yaml', 'javascript', 'typescript'] }
-			]
-		]
+		highlight: { highlighter: highlightCode },
+		rehypePlugins: [rehypeSlug, rehypeRewriteLinks]
 	} as any);
 
 	let renderedContent = '';
