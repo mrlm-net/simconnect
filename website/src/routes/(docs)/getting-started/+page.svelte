@@ -102,6 +102,14 @@ func main() {
 	const firstConnectionHighlighted = hl(firstConnectionCode, 'go');
 	const managerHighlighted = hl(managerCode, 'go');
 
+	let copiedBlock = $state('');
+
+	function copyCode(block: string, code: string) {
+		navigator.clipboard.writeText(code);
+		copiedBlock = block;
+		setTimeout(() => (copiedBlock = ''), 2000);
+	}
+
 	const nextSteps = [
 		{
 			title: 'Client Configuration',
@@ -157,7 +165,23 @@ func main() {
 
 		<h2 id="installation">Installation</h2>
 		<p>Create a new Go project and install the SDK:</p>
-		<pre><code class="language-bash">{@html installHighlighted}</code></pre>
+		<div class="relative">
+			<button
+				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'install' ? '#3fb950' : 'var(--color-text-muted)'};"
+				aria-label="Copy code"
+				onclick={() => copyCode('install', installCode)}
+			>
+				{#if copiedBlock === 'install'}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					Copied
+				{:else}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					Copy
+				{/if}
+			</button>
+			<pre><code class="language-bash">{@html installHighlighted}</code></pre>
+		</div>
 
 		<blockquote>
 			<p>
@@ -170,10 +194,42 @@ func main() {
 		<p>
 			Create a <code>main.go</code> file with the following code:
 		</p>
-		<pre><code class="language-go">{@html firstConnectionHighlighted}</code></pre>
+		<div class="relative">
+			<button
+				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'first-connection' ? '#3fb950' : 'var(--color-text-muted)'};"
+				aria-label="Copy code"
+				onclick={() => copyCode('first-connection', firstConnectionCode)}
+			>
+				{#if copiedBlock === 'first-connection'}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					Copied
+				{:else}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					Copy
+				{/if}
+			</button>
+			<pre><code class="language-go">{@html firstConnectionHighlighted}</code></pre>
+		</div>
 
 		<p>Run your application while MSFS is running:</p>
-		<pre><code class="language-bash">{@html hl('go run .', 'bash')}</code></pre>
+		<div class="relative">
+			<button
+				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'run' ? '#3fb950' : 'var(--color-text-muted)'};"
+				aria-label="Copy code"
+				onclick={() => copyCode('run', 'go run .')}
+			>
+				{#if copiedBlock === 'run'}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					Copied
+				{:else}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					Copy
+				{/if}
+			</button>
+			<pre><code class="language-bash">{@html hl('go run .', 'bash')}</code></pre>
+		</div>
 
 		<blockquote>
 			<p>
@@ -188,7 +244,23 @@ func main() {
 			For production applications, the Manager provides automatic reconnection, state tracking,
 			and structured lifecycle management. This is the recommended approach for robust add-ons.
 		</p>
-		<pre><code class="language-go">{@html managerHighlighted}</code></pre>
+		<div class="relative">
+			<button
+				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'manager' ? '#3fb950' : 'var(--color-text-muted)'};"
+				aria-label="Copy code"
+				onclick={() => copyCode('manager', managerCode)}
+			>
+				{#if copiedBlock === 'manager'}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					Copied
+				{:else}
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					Copy
+				{/if}
+			</button>
+			<pre><code class="language-go">{@html managerHighlighted}</code></pre>
+		</div>
 
 		<p>Key differences from the low-level client:</p>
 		<ul>

@@ -120,7 +120,7 @@
 					</div>
 					<div class="flex items-center gap-2">
 						<span
-							class="rounded-full px-2 py-0.5 text-xs font-medium"
+							class="rounded-full px-2 py-0.5 text-xs font-normal"
 							style="background-color: {badgeColors.bg}; color: {badgeColors.text};"
 						>
 							{data.categoryLabels[example.category] ?? example.category}
@@ -146,7 +146,7 @@
 					<div class="border-t px-4 pb-4" style="border-color: var(--color-border);">
 						<div class="relative mt-3">
 							<button
-								class="absolute top-2 right-2 flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
+								class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
 								style="background-color: var(--color-bg-tertiary); color: {copiedSlug === example.slug ? '#3fb950' : 'var(--color-text-muted)'};"
 								aria-label="Copy code"
 								onclick={() => copyCode(example.slug, example.code)}
