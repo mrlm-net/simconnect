@@ -6,6 +6,8 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -92,6 +94,72 @@ func parseValue(s string, dt types.SIMCONNECT_DATATYPE) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("unsupported datatype for parsing: %d", dt)
 	}
+}
+
+// eventMapping tracks a mapped client event.
+type eventMapping struct {
+	eventID   uint32
+	name      string
+	listening bool
+}
+
+var (
+	eventCache     sync.Map      // map[string]*eventMapping (uppercase name -> mapping)
+	eventIDCounter atomic.Uint32 // allocates unique event IDs
+)
+
+const (
+	listenGroupID       uint32 = 900_000_000
+	listenGroupPriority uint32 = 1
+	emitGroupID         uint32 = 900_000_001
+)
+
+// nextEventID returns the next unique event ID.
+func nextEventID() uint32 {
+	return eventIDCounter.Add(1)
+}
+
+// getOrMapEvent returns the eventMapping for the given event name,
+// calling MapClientEventToSimEvent if first time seen.
+func getOrMapEvent(client engine.Client, name string) (*eventMapping, error) {
+	key := strings.ToUpper(name)
+	if val, ok := eventCache.Load(key); ok {
+		return val.(*eventMapping), nil
+	}
+	id := nextEventID()
+	if err := client.MapClientEventToSimEvent(id, key); err != nil {
+		return nil, fmt.Errorf("MapClientEventToSimEvent(%q): %w", key, err)
+	}
+	m := &eventMapping{eventID: id, name: key}
+	actual, _ := eventCache.LoadOrStore(key, m)
+	return actual.(*eventMapping), nil
+}
+
+// resolveEventName finds event name by ID (reverse lookup).
+func resolveEventName(eventID uint32) string {
+	var found string
+	eventCache.Range(func(key, value any) bool {
+		m := value.(*eventMapping)
+		if m.eventID == eventID {
+			found = m.name
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// parseEventData parses data values for emit. Accepts signed integers (int32 range), casts to uint32.
+func parseEventData(args []string) ([]uint32, error) {
+	result := make([]uint32, len(args))
+	for i, s := range args {
+		v, err := strconv.ParseInt(s, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid data value %q at position %d: %w", s, i, err)
+		}
+		result[i] = uint32(int32(v))
+	}
+	return result, nil
 }
 
 // formatValue uses CastDataAs to extract and format the typed value from a SimObject data response.

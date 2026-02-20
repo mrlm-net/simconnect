@@ -8,9 +8,11 @@ Interactive command-line tool for reading and writing MSFS Simulation Variables 
 
 1. **Read SimVars** - Fetches a single variable value from the simulator and prints it to stdout
 2. **Write SimVars** - Sets a variable value on the user aircraft
-3. **Interactive REPL** - Opens a persistent session for issuing multiple get/set commands without reconnecting
-4. **Auto-reconnection** - Retries connection to the simulator with 2-second intervals until successful
-5. **Graceful shutdown** - Responds to Ctrl+C interrupt signals cleanly
+3. **Emit Events** - Fires client events (e.g., AP_MASTER, GEAR_TOGGLE) with optional data parameters
+4. **Listen for Events** - Monitors client events in real time with timestamps until Ctrl+C
+5. **Interactive REPL** - Opens a persistent session for issuing multiple get/set/emit/listen commands without reconnecting
+6. **Auto-reconnection** - Retries connection to the simulator with 2-second intervals until successful
+7. **Graceful shutdown** - Responds to Ctrl+C interrupt signals cleanly
 
 ## Prerequisites
 
@@ -88,6 +90,47 @@ simvar-cli set "AUTOPILOT HEADING LOCK DIR" degrees float64 270.0
 
 **Output:** Prints `OK` to stdout on success, or a SimConnect exception on failure.
 
+### Emit an Event
+
+Fire a client event on the user aircraft. Supports 0-1 data values via `TransmitClientEvent` and 2-5 data values via `TransmitClientEventEx1`.
+
+```bash
+# Syntax
+simvar-cli emit <event-name> [data...]
+
+# Toggle autopilot master (data defaults to 0)
+simvar-cli emit AP_MASTER
+
+# Toggle a specific aircraft exit
+simvar-cli emit TOGGLE_AIRCRAFT_EXIT 3
+
+# Signed integer values (int32 range, cast to uint32)
+simvar-cli emit AXIS_ELEVATOR_SET -8000
+
+# Multiple data values (uses TransmitClientEventEx1)
+simvar-cli emit SOME_EVENT 1 2 3 4 5
+simvar-cli emit SOME_EVENT 100 200
+```
+
+**Output:** Prints `OK` to stdout on success, or a SimConnect exception on failure.
+
+### Listen for Events
+
+Monitor client events in real time. Prints received events with timestamps until interrupted with Ctrl+C.
+
+```bash
+# Syntax
+simvar-cli listen <event-name> [event-name...]
+
+# Listen for a single event
+simvar-cli listen GEAR_TOGGLE
+
+# Listen for multiple events
+simvar-cli listen AP_MASTER GEAR_TOGGLE
+```
+
+**Output:** Each received event is printed as `[RFC3339 timestamp] EVENT_NAME data=VALUE`. Connection status goes to stderr.
+
 ### REPL Mode
 
 Start an interactive session. This is the default when no subcommand is given.
@@ -105,12 +148,29 @@ Inside the REPL:
 ```
 simvar> get "PLANE ALTITUDE" feet float64
 35024.5
-simvar> get "AIRSPEED INDICATED" knots float64
-245.3
 simvar> set "CAMERA STATE" "" int32 3
 OK
-simvar> get "CAMERA STATE" "" int32
-3
+simvar> emit AP_MASTER
+OK
+simvar> emit AXIS_ELEVATOR_SET -8000
+OK
+simvar> listen GEAR_TOGGLE AP_MASTER
+Listening for GEAR_TOGGLE
+Listening for AP_MASTER
+simvar> listeners
+Active listeners: AP_MASTER, GEAR_TOGGLE
+simvar> unlisten GEAR_TOGGLE
+Stopped listening for GEAR_TOGGLE
+simvar> help
+Commands:
+  get <variable-name> <unit> <datatype>        Read a SimVar value
+  set <variable-name> <unit> <datatype> <value> Write a SimVar value
+  emit <event-name> [data...]                  Fire a client event
+  listen <event-name> [event-name...]           Subscribe to events
+  unlisten <event-name>                         Unsubscribe from event
+  listeners                                     Show active listeners
+  help                                          Show this help
+  exit | quit                                   End the session
 simvar> exit
 ```
 
@@ -120,9 +180,14 @@ REPL commands:
 |---------|-------------|
 | `get <var> <unit> <datatype>` | Read a SimVar value |
 | `set <var> <unit> <datatype> <value>` | Write a SimVar value |
+| `emit <event-name> [data...]` | Fire a client event |
+| `listen <event-name> [event-name...]` | Subscribe to events |
+| `unlisten <event-name>` | Unsubscribe from an event |
+| `listeners` | Show active event listeners |
+| `help` | Show available commands |
 | `exit` / `quit` | End the session |
 
-The REPL maintains a single persistent connection and handles responses asynchronously, so it is significantly faster for multiple operations than running individual `get`/`set` commands.
+The REPL maintains a single persistent connection and handles responses asynchronously, so it is significantly faster for multiple operations than running individual `get`/`set`/`emit` commands. Event listeners print incoming events to stderr to keep the prompt clean.
 
 ## Supported Data Types
 
@@ -154,10 +219,12 @@ For unitless variables (e.g., `CAMERA STATE`), pass an empty string `""` as the 
 | File | Purpose |
 |------|---------|
 | `main.go` | Entrypoint, global flag parsing, CURE router setup |
-| `bridge.go` | Shared utilities: ID counters, type parsing, value formatting |
+| `bridge.go` | Shared utilities: ID counters, type parsing, value formatting, event mapping |
 | `get.go` | `get` command implementation |
 | `set.go` | `set` command implementation |
-| `repl.go` | `repl` command with interactive input loop and async response handling |
+| `emit.go` | `emit` command implementation (TransmitClientEvent / TransmitClientEventEx1) |
+| `listen.go` | `listen` command implementation (notification group based event monitoring) |
+| `repl.go` | `repl` command with interactive input loop, async response handling, and event commands |
 | `go.mod` | Standalone module with CURE dependency and parent module replace directive |
 
 ## SimVar Reference
@@ -168,7 +235,8 @@ For the full list of available simulation variables, units, and data types, see 
 
 ## Notes
 
-- The tool connects as client name `SimVar CLI - Get`, `SimVar CLI - Set`, or `SimVar CLI - REPL` depending on the command
-- Each `get` and `set` invocation creates a fresh connection; use REPL mode for repeated operations
+- The tool connects as client name `SimVar CLI - Get`, `SimVar CLI - Set`, `SimVar CLI - Emit`, `SimVar CLI - Listen`, or `SimVar CLI - REPL` depending on the command
+- Each `get`, `set`, `emit`, and `listen` invocation creates a fresh connection; use REPL mode for repeated operations
+- Event mappings (MapClientEventToSimEvent) are cached and reused across multiple emit/listen calls within a session
 - The `go.mod` uses a `replace` directive pointing to the parent module (`../..`) for local development
 - `unsafe.Pointer` is used internally for `SetDataOnSimObject` calls, matching the pattern in the `set-variables` example
