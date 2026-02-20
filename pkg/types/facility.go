@@ -35,6 +35,15 @@ const (
 	SIMCONNECT_FACILITY_DATA_VASI
 )
 
+// SIMCONNECT_DATA_FACILITY_AIRPORT represents basic airport facility data.
+// C SDK field order: char Ident[6], char Region[3], double Latitude, double Longitude, double Altitude.
+// Go aligns the float64 fields to 8 bytes: unsafe.Sizeof = 40 on amd64.
+//
+// Note: MSFS 2024 reports a per-entry stride of 41 bytes in multi-entry AIRPORT_LIST
+// messages. Do not cast this struct directly from a multi-entry SimConnect buffer;
+// use runtime stride arithmetic with offset detection instead.
+// See examples/read-facilities for the reference implementation.
+//
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_AIRPORT.htm
 type SIMCONNECT_DATA_FACILITY_AIRPORT struct {
 	Ident     [6]byte // char ident[6]
