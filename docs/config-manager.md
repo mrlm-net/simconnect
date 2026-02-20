@@ -349,7 +349,7 @@ func main() {
         manager.WithHeartbeat(engine.HEARTBEAT_6HZ),
     )
 
-    mgr.OnStateChange(func(old, new manager.ConnectionState) {
+    mgr.OnConnectionStateChange(func(old, new manager.ConnectionState) {
         logger.Info("State changed", "from", old, "to", new)
     })
 

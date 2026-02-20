@@ -53,8 +53,7 @@
 		href={siteConfig.repoUrl}
 		target="_blank"
 		rel="noopener noreferrer"
-		class="rounded p-1.5 transition-colors"
-		style="color: var(--color-text-secondary);"
+		class="github-link rounded p-1.5 transition-colors"
 		aria-label="View on GitHub"
 	>
 		<svg
@@ -70,3 +69,12 @@
 		</svg>
 	</a>
 </header>
+
+<style>
+	.github-link {
+		color: var(--color-text-secondary);
+	}
+	.github-link:hover {
+		color: #fff;
+	}
+</style>
