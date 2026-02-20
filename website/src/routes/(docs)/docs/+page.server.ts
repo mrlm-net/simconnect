@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types.js';
-import { loadDocIndex } from '$lib/content/pipeline.js';
+import { loadDocIndex } from '$lib/content/pipeline.server.js';
 
 export const prerender = true;
 

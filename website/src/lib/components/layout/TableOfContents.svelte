@@ -35,7 +35,7 @@
 
 {#if headings.length > 0}
 	<nav
-		class="py-6 pl-6 pr-6"
+		class="pt-12 pb-6 pr-6"
 		style="min-width: 280px;"
 		aria-label="Table of contents"
 	>

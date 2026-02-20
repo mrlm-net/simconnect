@@ -4,7 +4,7 @@
 	import 'prismjs/components/prism-go';
 	import SeoHead from '$lib/components/seo/SeoHead.svelte';
 	import { siteConfig } from '$lib/config/site.js';
-	import type { Example } from '$lib/content/examples.js';
+	import type { Example } from '$lib/content/types.js';
 
 	let {
 		data
@@ -63,7 +63,7 @@
 	path="/examples"
 />
 
-<div class="p-6 pl-8 lg:p-10 lg:pl-12">
+<div class="px-8 py-6 lg:px-12 lg:py-10">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Examples</h1>
 	<p class="mb-6" style="color: var(--color-text-secondary);">
 		Browse {data.examples.length} example applications covering connections, data reading, events,

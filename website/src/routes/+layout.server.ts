@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from './$types.js';
-import { loadDocIndex } from '$lib/content/pipeline.js';
+import { loadDocIndex } from '$lib/content/pipeline.server.js';
 import { buildNavigation } from '$lib/config/navigation.js';
 import { siteConfig } from '$lib/config/site.js';
 import { base } from '$app/paths';

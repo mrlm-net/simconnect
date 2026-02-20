@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types.js';
-import { loadDocIndex } from '$lib/content/pipeline.js';
+import { loadDocIndex } from '$lib/content/pipeline.server.js';
 import { siteConfig } from '$lib/config/site.js';
 
 export const prerender = true;

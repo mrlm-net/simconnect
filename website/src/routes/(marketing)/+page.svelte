@@ -238,27 +238,8 @@ func main() {
 	</div>
 </section>
 
-<!-- CTA Banner -->
-<section class="relative isolate -mt-6" aria-labelledby="cta-heading">
-	<div class="px-6 py-16 sm:py-20 lg:px-8">
-		<div class="mx-auto max-w-2xl text-center">
-			<h2 id="cta-heading" class="text-4xl font-semibold tracking-tight text-balance sm:text-5xl" style="color: var(--color-text-primary);">Build powerful MSFS&nbsp;add&#8209;ons with&nbsp;Go.</h2>
-			<p class="mx-auto mt-6 max-w-xl text-lg/8 text-pretty" style="color: var(--color-text-secondary);">From real&#8209;time telemetry dashboards to&nbsp;AI&nbsp;traffic controllers&nbsp;&mdash; connect directly to&nbsp;the simulator with a&nbsp;typed, zero&#8209;dependency&nbsp;SDK.</p>
-		</div>
-	</div>
-	<svg viewBox="0 0 1024 1024" aria-hidden="true" class="absolute top-1/2 left-1/2 -z-10 size-256 -translate-x-1/2 mask-[radial-gradient(closest-side,white,transparent)]">
-		<circle r="512" cx="512" cy="512" fill="url(#cta-gradient)" fill-opacity="0.08" />
-		<defs>
-			<radialGradient id="cta-gradient">
-				<stop stop-color="#58a6ff" />
-				<stop offset="1" stop-color="#a5d6ff" />
-			</radialGradient>
-		</defs>
-	</svg>
-</section>
-
 <!-- Features -->
-<section class="py-20" aria-labelledby="features-heading">
+<section class="pt-6 pb-20" aria-labelledby="features-heading">
 	<div class="mx-auto max-w-5xl px-6">
 		<h2 id="features-heading" class="mb-12 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
 			Why SimConnect Go SDK
@@ -289,6 +270,25 @@ func main() {
 			{/each}
 		</div>
 	</div>
+</section>
+
+<!-- CTA Banner -->
+<section class="relative isolate" aria-labelledby="cta-heading">
+	<div class="px-6 pt-4 pb-16 sm:pb-20 lg:px-8">
+		<div class="mx-auto max-w-2xl text-center">
+			<h2 id="cta-heading" class="text-4xl font-semibold tracking-tight text-balance sm:text-5xl" style="color: var(--color-text-primary);">Build powerful MSFS&nbsp;add&#8209;ons with&nbsp;Go.</h2>
+			<p class="mx-auto mt-6 max-w-xl text-lg/8 text-pretty" style="color: var(--color-text-secondary);">From real&#8209;time telemetry dashboards to&nbsp;AI&nbsp;traffic controllers&nbsp;&mdash; connect directly to&nbsp;the simulator with a&nbsp;typed, zero&#8209;dependency&nbsp;SDK.</p>
+		</div>
+	</div>
+	<svg viewBox="0 0 1024 1024" aria-hidden="true" class="absolute top-1/2 left-1/2 -z-10 size-256 -translate-x-1/2 mask-[radial-gradient(closest-side,white,transparent)]">
+		<circle r="512" cx="512" cy="512" fill="url(#cta-gradient)" fill-opacity="0.08" />
+		<defs>
+			<radialGradient id="cta-gradient">
+				<stop stop-color="#58a6ff" />
+				<stop offset="1" stop-color="#a5d6ff" />
+			</radialGradient>
+		</defs>
+	</svg>
 </section>
 
 <!-- Code Preview -->

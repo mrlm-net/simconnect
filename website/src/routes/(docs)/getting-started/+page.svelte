@@ -138,7 +138,7 @@ func main() {
 />
 
 <div class="flex">
-	<article class="prose max-w-none min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
+	<article class="prose max-w-none min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
 		<h1>Getting Started</h1>
 		<p>
 			This guide walks you through installing the SimConnect Go SDK and connecting to Microsoft

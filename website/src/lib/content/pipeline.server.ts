@@ -8,7 +8,8 @@ import 'prismjs/components/prism-bash.js';
 import 'prismjs/components/prism-json.js';
 import 'prismjs/components/prism-yaml.js';
 import 'prismjs/components/prism-typescript.js';
-import type { DocMeta, TocEntry } from '$lib/types/index.js';
+import type { DocMeta } from '$lib/types/index.js';
+import type { DocPage } from './types.js';
 import { extractToc } from './toc.js';
 import rehypeSlug from '$lib/plugins/rehype-slug.js';
 import rehypeRewriteLinks from '$lib/plugins/rehype-rewrite-links.js';
@@ -54,15 +55,7 @@ export function loadDocIndex(): DocMeta[] {
 	});
 }
 
-export interface DocPage {
-	slug: string;
-	title: string;
-	description: string;
-	order: number;
-	section: string;
-	renderedContent: string;
-	headings: TocEntry[];
-}
+
 
 /**
  * Resolve mdsvex {@html `...`} directives by extracting their template literal content.
