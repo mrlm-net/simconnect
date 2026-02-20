@@ -42,7 +42,8 @@
 		events: { bg: 'rgba(210, 153, 34, 0.15)', text: '#d2992a' },
 		facilities: { bg: 'rgba(63, 185, 80, 0.15)', text: '#3fb950' },
 		traffic: { bg: 'rgba(219, 109, 40, 0.15)', text: '#db6d28' },
-		manager: { bg: 'rgba(57, 211, 204, 0.15)', text: '#39d3cc' }
+		manager: { bg: 'rgba(57, 211, 204, 0.15)', text: '#39d3cc' },
+		tools: { bg: 'rgba(163, 113, 247, 0.15)', text: '#a371f7' }
 	};
 
 	function categoryColor(cat: string): { bg: string; text: string } {
