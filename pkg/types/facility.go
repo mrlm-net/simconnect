@@ -39,8 +39,10 @@ const (
 // C SDK field order: char Ident[6], char Region[3], double Latitude, double Longitude, double Altitude.
 // Go aligns the float64 fields to 8 bytes: unsafe.Sizeof = 40 on amd64.
 //
-// Note: MSFS 2024 reports a per-entry stride of 41 bytes in multi-entry AIRPORT_LIST
-// messages. Do not cast this struct directly from a multi-entry SimConnect buffer;
+// Note: MSFS 2024 SDK uses char Ident[9] (not char Ident[6]), giving a wire layout
+// of ident[9] + region[3] + 3×float64 = 36 bytes. Multi-entry AIRPORT_LIST messages
+// from RequestFacilitiesListEX1 report a 41-byte stride (36 data + 5 trailing bytes).
+// Do not cast this struct directly from a multi-entry SimConnect buffer;
 // use runtime stride arithmetic with offset detection instead.
 // See examples/read-facilities for the reference implementation.
 //

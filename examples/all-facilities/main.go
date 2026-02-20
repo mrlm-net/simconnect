@@ -16,18 +16,6 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-// airportWire8 reflects the 8-byte-aligned C layout used by MSFS 2024 (stride 40-41 bytes).
-// Field offsets are derived via unsafe.Offsetof rather than hardcoded magic numbers.
-// Do not cast this struct directly from SimConnect memory — use runtime stride arithmetic.
-type airportWire8 struct {
-	Ident  [6]byte  // Offset 0-5
-	Region [3]byte  // Offset 6-8
-	_      [7]byte  // Offset 9-15 (alignment padding for 8-byte double)
-	Lat    float64  // Offset 16-23
-	Lon    float64  // Offset 24-31
-	Alt    float64  // Offset 32-39
-}
-
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
@@ -124,14 +112,10 @@ connected:
 				// Derive field offsets based on actual entry size reported by SimConnect.
 				var latOff, lonOff, altOff uintptr
 				switch actualEntrySize {
-				case 33: // 1-byte packing (no padding after Region)
+				case 33: // MSFS 2020: ident[6] + region[3] + 3x float64 = 33
 					latOff, lonOff, altOff = 9, 17, 25
-				case 36: // 4-byte alignment (3 bytes padding after Region)
+				case 36, 40, 41: // MSFS 2024: ident[9] + region[3] + 3x float64 = 36 (+trailing bytes)
 					latOff, lonOff, altOff = 12, 20, 28
-				case 40, 41: // 8-byte alignment (observed in MSFS 2024; 41 = 40 + trailing byte)
-					latOff = unsafe.Offsetof(airportWire8{}.Lat)
-					lonOff = unsafe.Offsetof(airportWire8{}.Lon)
-					altOff = unsafe.Offsetof(airportWire8{}.Alt)
 				default:
 					fmt.Fprintf(os.Stderr, "  ⚠️  Unrecognized entry size %d bytes — skipping batch\n", actualEntrySize)
 					continue
