@@ -231,11 +231,30 @@ func main() {
 			</a>
 			{#if data.milestone}
 				<a href="https://github.com/mrlm-net/simconnect/milestone/{data.milestone.number}" target="_blank" rel="noopener noreferrer" class="badge">
-					<span class="badge-label">upcoming</span><span class="badge-value">{data.milestone.title} — {data.milestone.progress}%</span>
+					<span class="badge-label">upcoming</span><span class="badge-value">{data.milestone.title}</span>
 				</a>
 			{/if}
 		</div>
 	</div>
+</section>
+
+<!-- CTA Banner -->
+<section class="relative isolate -mt-6" aria-labelledby="cta-heading">
+	<div class="px-6 py-16 sm:py-20 lg:px-8">
+		<div class="mx-auto max-w-2xl text-center">
+			<h2 id="cta-heading" class="text-4xl font-semibold tracking-tight text-balance sm:text-5xl" style="color: var(--color-text-primary);">Build powerful MSFS&nbsp;add&#8209;ons with&nbsp;Go.</h2>
+			<p class="mx-auto mt-6 max-w-xl text-lg/8 text-pretty" style="color: var(--color-text-secondary);">From real&#8209;time telemetry dashboards to&nbsp;AI&nbsp;traffic controllers&nbsp;&mdash; connect directly to&nbsp;the simulator with a&nbsp;typed, zero&#8209;dependency&nbsp;SDK.</p>
+		</div>
+	</div>
+	<svg viewBox="0 0 1024 1024" aria-hidden="true" class="absolute top-1/2 left-1/2 -z-10 size-256 -translate-x-1/2 mask-[radial-gradient(closest-side,white,transparent)]">
+		<circle r="512" cx="512" cy="512" fill="url(#cta-gradient)" fill-opacity="0.08" />
+		<defs>
+			<radialGradient id="cta-gradient">
+				<stop stop-color="#58a6ff" />
+				<stop offset="1" stop-color="#a5d6ff" />
+			</radialGradient>
+		</defs>
+	</svg>
 </section>
 
 <!-- Features -->
@@ -374,7 +393,7 @@ func main() {
 	.badge-value {
 		padding: 0.25rem 0.4rem;
 		background-color: var(--color-link);
-		color: var(--color-bg-primary);
+		color: #fff;
 	}
 
 	.badge-go {

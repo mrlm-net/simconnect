@@ -34,7 +34,8 @@ export const GET: RequestHandler = () => {
 		{ path: '/', priority: '1.0', lastmod: buildDate },
 		{ path: '/getting-started', priority: '0.9', lastmod: buildDate },
 		{ path: '/docs', priority: '0.8', lastmod: buildDate },
-		{ path: '/examples', priority: '0.8', lastmod: buildDate }
+		{ path: '/examples', priority: '0.8', lastmod: buildDate },
+		{ path: '/changelog', priority: '0.7', lastmod: buildDate }
 	];
 
 	const docs = loadDocIndex();

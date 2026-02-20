@@ -21,6 +21,7 @@ export const GET: RequestHandler = () => {
 - Getting Started: ${baseUrl}/getting-started
 - Documentation: ${baseUrl}/docs
 - Examples: ${baseUrl}/examples
+- Changelog: ${baseUrl}/changelog
 - Repository: ${siteConfig.repoUrl}
 - Go Reference: https://pkg.go.dev/github.com/mrlm-net/simconnect
 

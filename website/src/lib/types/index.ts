@@ -37,3 +37,13 @@ export interface DocMeta {
 	order: number;
 	section: string;
 }
+
+export interface ChangelogRelease {
+	tag: string;
+	name: string;
+	date: string;
+	body: string;
+	renderedBody: string;
+	url: string;
+	prerelease: boolean;
+}

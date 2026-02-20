@@ -19,7 +19,8 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 |-------|-------|-------|---------|
 | 1 - 999,999,849 | **User Applications** | 999,999,849 | User-defined data definitions and requests |
 | 999,999,850 - 999,999,886 | **Manager** | 37 | Custom system event IDs (dynamic allocation) |
-| 999,999,887 - 999,999,999 | **Manager** | 113 | Internal manager operations (reserved) |
+| 999,999,887 - 999,999,899 | **Reserved** | 13 | Unallocated buffer for future use |
+| 999,999,900 - 999,999,999 | **Manager** | 100 | Internal manager operations (reserved) |
 
 ### Why High Numbers for Manager?
 
@@ -33,8 +34,8 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 ### Simulator State System
 
 ```go
-SimulatorDefinitionID = 999999900  // Simulator state data definition
-SimulatorRequestID    = 999999901  // Periodic simulator state requests
+CameraDefinitionID = 999999900  // Camera/simulator state data definition
+CameraRequestID    = 999999901  // Periodic camera state data polling
 ```
 
 **Purpose**: Continuously polls simulator state (camera, simulation, environment, aircraft telemetry) to update the manager's `SimState`.
@@ -70,18 +71,18 @@ The manager's simulator state data definition now includes additional environmen
 The manager reserves specific high-number IDs for internal system event subscriptions. These are registered on connection open and used for request tracking; the actual SimConnect system event names are standard (e.g. "Pause", "Sim", "FlightLoaded").
 
 ```go
-PauseEventID                 = 999999999 // Pause/unpause event subscription
-SimEventID                   = 999999998 // Sim start/stop event subscription
-FlightLoadedEventID          = 999999997 // Flight file loaded (filename returned)
-AircraftLoadedEventID        = 999999996 // Aircraft file loaded/changed (.AIR)
-ObjectAddedEventID           = 999999995 // AI object added
-ObjectRemovedEventID         = 999999994 // AI object removed
-FlightPlanActivatedEventID   = 999999993 // Flight plan activated (filename returned)
-FlightPlanDeactivatedEventID = 999999992 // Flight plan deactivated
+PauseEventID                 = 999999998 // Pause/unpause event subscription
+SimEventID                   = 999999997 // Sim start/stop event subscription
+FlightLoadedEventID          = 999999996 // Flight file loaded (filename returned)
+AircraftLoadedEventID        = 999999995 // Aircraft file loaded/changed (.AIR)
+ObjectAddedEventID           = 999999994 // AI object added
+ObjectRemovedEventID         = 999999993 // AI object removed
+FlightPlanActivatedEventID   = 999999992 // Flight plan activated (filename returned)
 CrashedEventID               = 999999991 // Simulator crashed (manager reserved ID)
 CrashResetEventID            = 999999990 // Crash reset event (manager reserved ID)
 SoundEventID                 = 999999989 // Sound event (manager reserved ID)
 ViewEventID                  = 999999988 // View camera event (manager reserved ID)
+FlightPlanDeactivatedEventID = 999999987 // Flight plan deactivated
 ```
 
 **Purpose**: These IDs are used to register and track the manager's internal subscriptions to SimConnect system events. Responses may arrive as different `SIMCONNECT_RECV` variants (e.g., `SIMCONNECT_RECV_EVENT`, `SIMCONNECT_RECV_EVENT_FILENAME`, `SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE`).

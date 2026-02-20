@@ -238,10 +238,10 @@ Creates a subscription filtered by message types.
 
 ```go
 // Only receive object data and event messages
-sub := mgr.SubscribeWithType("game-events", 10,
+sub := mgr.SubscribeWithType("game-events", 10, []types.SIMCONNECT_RECV_ID{
     types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
     types.SIMCONNECT_RECV_ID_EVENT,
-)
+})
 defer sub.Unsubscribe()
 ```
 
