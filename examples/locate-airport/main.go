@@ -17,6 +17,18 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
+// airportWire8 reflects the 8-byte-aligned C layout used by MSFS 2024 (stride 40-41 bytes).
+// Field offsets are derived via unsafe.Offsetof rather than hardcoded magic numbers.
+// Do not cast this struct directly from SimConnect memory — use runtime stride arithmetic.
+type airportWire8 struct {
+	Ident  [6]byte  // Offset 0-5
+	Region [3]byte  // Offset 6-8
+	_      [7]byte  // Offset 9-15 (alignment padding for 8-byte double)
+	Lat    float64  // Offset 16-23
+	Lon    float64  // Offset 24-31
+	Alt    float64  // Offset 32-39
+}
+
 // CameraData represents the data structure for CAMERA STATE and CAMERA SUBSTATE
 // The fields must match the order of AddToDataDefinition calls
 type CameraData struct {
@@ -253,6 +265,21 @@ connected:
 				actualDataSize := uintptr(msg.DwSize) - headerSize
 				actualEntrySize := actualDataSize / uintptr(list.DwArraySize)
 
+				// Derive field offsets based on actual entry size reported by SimConnect.
+				var latOff, lonOff uintptr
+				switch actualEntrySize {
+				case 33: // 1-byte packing (no padding after Region)
+					latOff, lonOff = 9, 17
+				case 36: // 4-byte alignment (3 bytes padding after Region)
+					latOff, lonOff = 12, 20
+				case 40, 41: // 8-byte alignment (observed in MSFS 2024; 41 = 40 + trailing byte)
+					latOff = unsafe.Offsetof(airportWire8{}.Lat)
+					lonOff = unsafe.Offsetof(airportWire8{}.Lon)
+				default:
+					fmt.Fprintf(os.Stderr, "  ⚠️  Unrecognized entry size %d bytes — skipping batch\n", actualEntrySize)
+					continue
+				}
+
 				// dataStart points to the beginning of the array data (after the header)
 				dataStart := unsafe.Pointer(uintptr(unsafe.Pointer(list)) + headerSize)
 
@@ -261,14 +288,13 @@ connected:
 				var closestLat, closestLon float64
 
 				for i := uint32(0); i < uint32(list.DwArraySize); i++ {
-					entryOffset := uintptr(i) * actualEntrySize
-					entryPtr := unsafe.Pointer(uintptr(dataStart) + entryOffset)
+					entryPtr := unsafe.Pointer(uintptr(dataStart) + uintptr(i)*actualEntrySize)
 
 					var ident [6]byte
 					copy(ident[:], (*[6]byte)(entryPtr)[:])
 
-					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 12))
-					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + 20))
+					lat := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + latOff))
+					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + lonOff))
 
 					// Use Haversine for meters (more accurate for real distances)
 					distMeters := haversineMeters(myLatitude, myLongitude, lat, lon)
