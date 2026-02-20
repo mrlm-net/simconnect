@@ -4,7 +4,7 @@
 	import SeoHead from '$lib/components/seo/SeoHead.svelte';
 	import JsonLd from '$lib/components/seo/JsonLd.svelte';
 	import { siteConfig } from '$lib/config/site.js';
-	import type { DocPage } from '$lib/content/pipeline.js';
+	import type { DocPage } from '$lib/content/types.js';
 
 	let {
 		data
@@ -35,7 +35,7 @@
 />
 
 <div class="flex">
-	<article class="prose max-w-none min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
+	<article class="prose max-w-none min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
 		{@html data.doc.renderedContent}
 
 		<!-- Prev/Next navigation -->

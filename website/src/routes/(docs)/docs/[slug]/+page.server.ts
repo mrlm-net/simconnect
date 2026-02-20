@@ -1,5 +1,5 @@
 import type { PageServerLoad, EntryGenerator } from './$types.js';
-import { loadDocPage, loadDocIndex, loadAllSlugs } from '$lib/content/pipeline.js';
+import { loadDocPage, loadDocIndex, loadAllSlugs } from '$lib/content/pipeline.server.js';
 import { error } from '@sveltejs/kit';
 
 export const prerender = true;

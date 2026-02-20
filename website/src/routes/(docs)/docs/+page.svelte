@@ -83,7 +83,7 @@
 />
 
 <div class="flex">
-	<div class="min-w-0 flex-1 p-6 pl-8 lg:p-10 lg:pl-12">
+	<div class="min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
 		<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">
 			Documentation
 		</h1>
@@ -122,7 +122,7 @@
 	</div>
 
 	<aside class="toc-aside hidden shrink-0 pr-4 xl:block">
-		<nav class="py-6 pl-6 pr-6" style="min-width: 280px;" aria-label="External resources">
+		<nav class="pt-12 pb-6 pr-6" style="min-width: 280px;" aria-label="External resources">
 			{#each externalLinks as group}
 				<div class="mb-5">
 					<p

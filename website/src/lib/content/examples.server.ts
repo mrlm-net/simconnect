@@ -1,13 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-
-export interface Example {
-	slug: string;
-	title: string;
-	description: string;
-	category: string;
-	code: string;
-}
+import type { Example } from './types.js';
 
 const categoryMap: Record<string, string> = {
 	'basic-connection': 'basics',

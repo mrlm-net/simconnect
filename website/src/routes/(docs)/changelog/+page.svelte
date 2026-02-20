@@ -36,7 +36,7 @@
 	}}
 />
 
-<div class="p-6 pl-8 lg:p-10 lg:pl-12">
+<div class="px-8 py-6 lg:px-12 lg:py-10">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Changelog</h1>
 	<p class="mb-8" style="color: var(--color-text-secondary);">
 		Release history for the SimConnect Go SDK.
