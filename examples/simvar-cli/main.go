@@ -59,6 +59,8 @@ func main() {
 	// Register commands
 	router.Register(&getCommand{engineOpts: engineOpts, timeout: timeout})
 	router.Register(&setCommand{engineOpts: engineOpts, timeout: timeout})
+	router.Register(&emitCommand{engineOpts: engineOpts, timeout: timeout})
+	router.Register(&listenCommand{engineOpts: engineOpts, timeout: timeout})
 	router.Register(&replCommand{engineOpts: engineOpts, timeout: timeout})
 
 	// Setup signal handler context
