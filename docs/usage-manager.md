@@ -596,7 +596,7 @@ defer sub.Unsubscribe()
 
 for {
     select {
-    case change := <-sub.Changes():
+    case change := <-sub.ConnectionStateChanges():
         fmt.Printf("Connection: %v → %v\n", change.Old, change.New)
     case <-sub.Done():
         return
@@ -612,7 +612,7 @@ defer sub.Unsubscribe()
 
 for {
     select {
-    case change := <-sub.Changes():
+    case change := <-sub.SimStateChanges():
         if change.New.Paused {
             pauseDataCollection()
         } else {
@@ -847,7 +847,7 @@ fmt.Printf("Max retries: %d\n", mgr.MaxRetries())
 
 ## ID Management
 
-The manager reserves IDs 999,000-999,999 for internal use. See [Request ID Management](manager-requests-ids.md) for details.
+The manager reserves IDs 999,999,900-999,999,999 for internal use. See [Request ID Management](manager-requests-ids.md) for details.
 
 ### Validating User IDs
 
@@ -1119,9 +1119,9 @@ func main() {
 }
 
 func processPositionData(mgr manager.Manager) {
-    sub := mgr.SubscribeWithType("position", 100,
+    sub := mgr.SubscribeWithType("position", 100, []types.SIMCONNECT_RECV_ID{
         types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
-    )
+    })
     defer sub.Unsubscribe()
 
     for {
@@ -1142,7 +1142,7 @@ func monitorConnectionState(mgr manager.Manager) {
 
     for {
         select {
-        case change := <-sub.Changes():
+        case change := <-sub.ConnectionStateChanges():
             fmt.Printf("Connection state: %v → %v\n", change.Old, change.New)
         case <-sub.Done():
             return

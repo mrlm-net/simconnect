@@ -19,7 +19,7 @@
 - Automatic connection lifecycle with reconnection and health monitoring
 - 60+ SimVar state tracking via SimState — camera, position, speed, weather, VR, environment, realism settings
 - Channel-based and callback-based subscriptions with message type filtering
-- 10 typed system event handlers — Pause, Sim, Crashed, CrashReset, Sound, FlightLoaded, AircraftLoaded, FlightPlanActivated, ObjectAdded, ObjectRemoved
+- 12 typed system event handlers — Pause, Sim, Crashed, CrashReset, Sound, View, FlightLoaded, AircraftLoaded, FlightPlanActivated, FlightPlanDeactivated, ObjectAdded, ObjectRemoved
 
 ### Utilities
 - Great-circle distance (haversine), altitude/distance/speed conversions, ICAO validation, WGS84 coordinate offsets
