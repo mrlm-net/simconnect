@@ -58,8 +58,9 @@ go run ./examples/<name>
 - **Manager Interface** — [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events)
 - **Data Operations** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [using-datasets](examples/using-datasets)
 - **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
-- **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic)
+- **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
 - **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
+- **Tools** — [simvar-cli](examples/simvar-cli)
 
 ## Documentation
 
@@ -70,6 +71,7 @@ go run ./examples/<name>
 - [Manager Configuration](https://simconnect.mrlm.net/docs/config-manager) — Manager functional options
 - [Manager Usage](https://simconnect.mrlm.net/docs/usage-manager) — Lifecycle management, subscriptions, state handling
 - [Request ID Management](https://simconnect.mrlm.net/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
+- [Event Lifecycle](https://simconnect.mrlm.net/docs/events-lifecycle) — Event lifecycle reference
 
 ## Packages
 

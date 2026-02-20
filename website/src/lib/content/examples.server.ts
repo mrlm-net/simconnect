@@ -28,7 +28,8 @@ const categoryMap: Record<string, string> = {
 	'simconnect-events': 'manager',
 	'simconnect-facilities': 'manager',
 	'simconnect-traffic': 'manager',
-	'simconnect-benchmark': 'manager'
+	'simconnect-benchmark': 'manager',
+	'simvar-cli': 'tools'
 };
 
 const categoryLabels: Record<string, string> = {
@@ -37,7 +38,8 @@ const categoryLabels: Record<string, string> = {
 	events: 'Events',
 	facilities: 'Facilities',
 	traffic: 'AI Traffic',
-	manager: 'Manager'
+	manager: 'Manager',
+	tools: 'Tools'
 };
 
 function slugToTitle(slug: string): string {
