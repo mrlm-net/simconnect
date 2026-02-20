@@ -280,7 +280,7 @@ See [Manager Usage - SimState Structure](usage-manager.md#simstate-structure) fo
 Subscribe to simulator state changes using `SubscribeSimStateChange()`:
 
 ```go
-mgr.SubscribeSimStateChange(func(oldState, newState manager.SimState) {
+mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
     if oldState.Paused != newState.Paused {
         if newState.Paused {
             fmt.Println("Simulator paused")
