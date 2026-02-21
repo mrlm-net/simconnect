@@ -239,7 +239,7 @@ func main() {
 </section>
 
 <!-- Features -->
-<section class="pt-6 pb-20" aria-labelledby="features-heading">
+<section class="pt-6 pb-20 overflow-hidden" aria-labelledby="features-heading">
 	<div class="mx-auto max-w-5xl px-6">
 		<h2 id="features-heading" class="mb-12 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
 			Why SimConnect Go SDK
@@ -273,7 +273,7 @@ func main() {
 </section>
 
 <!-- CTA Banner -->
-<section class="relative isolate" aria-labelledby="cta-heading">
+<section class="relative isolate overflow-hidden" aria-labelledby="cta-heading">
 	<div class="px-6 pt-4 pb-16 sm:pb-20 lg:px-8">
 		<div class="mx-auto max-w-2xl text-center">
 			<h2 id="cta-heading" class="text-4xl font-semibold tracking-tight text-balance sm:text-5xl" style="color: var(--color-text-primary);">Build powerful MSFS&nbsp;add&#8209;ons with&nbsp;Go.</h2>
@@ -292,7 +292,7 @@ func main() {
 </section>
 
 <!-- Code Preview -->
-<section class="relative py-20" aria-labelledby="code-preview-heading">
+<section class="relative py-20 overflow-hidden" aria-labelledby="code-preview-heading">
 	<div class="absolute inset-x-0 top-0 h-px" style="background: linear-gradient(90deg, transparent, var(--color-border) 20%, var(--color-border) 80%, transparent);"></div>
 	<div class="mx-auto max-w-5xl px-6">
 		<h2 id="code-preview-heading" class="mb-2 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
@@ -334,7 +334,7 @@ func main() {
 </section>
 
 <!-- Quick Links -->
-<section class="py-20" aria-labelledby="quick-links-heading">
+<section class="py-20 overflow-hidden" aria-labelledby="quick-links-heading">
 	<div class="mx-auto max-w-4xl px-6">
 		<h2 id="quick-links-heading" class="mb-10 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
 			Explore the docs
@@ -364,7 +364,7 @@ func main() {
 </section>
 
 <!-- Compatibility -->
-<section class="py-10">
+<section class="py-10 overflow-hidden">
 	<div class="mx-auto max-w-4xl px-6 text-center">
 		<p class="text-sm" style="color: var(--color-text-muted);">
 			Microsoft Flight Simulator&nbsp;2020&nbsp;&&nbsp;2024 &middot; Go&nbsp;1.25+ &middot; Windows &middot; Zero external dependencies

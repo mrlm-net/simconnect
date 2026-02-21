@@ -5,6 +5,6 @@
 	let { children }: { children: Snippet } = $props();
 </script>
 
-<div class="min-h-screen overflow-x-hidden flex flex-col">
+<div class="min-h-screen flex flex-col">
 	{@render children()}
 </div>
