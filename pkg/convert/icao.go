@@ -1,23 +1,18 @@
-//go:build windows
-// +build windows
-
 // https://en.wikipedia.org/wiki/ICAO_airport_code#Prefixes
 package convert
-
-// this package will be used for conversions between different unit systems
 
 // IsICAOCode returns true if the code is a valid ICAO airport code prefix (not a full registry check).
 func IsICAOCode(code string) bool {
 	if len(code) != 4 {
 		return false
 	}
-	// Valid first letters (from Wikipedia ICAO prefix table)
-	validFirst := "ABCDEFGHJKLMNOPTUVWYZ"
+	// Valid first letters (from Wikipedia ICAO prefix table).
+	// Excluded: I, J (unassigned), Q, X (reserved), and pseudo-code ZZZZ.
+	validFirst := "ABCDEFGHKLMNOPRSTUVWYZ"
 	if !containsRune(validFirst, rune(code[0])) {
 		return false
 	}
-	// Exclude known pseudo-codes and reserved letters
-	if code == "ZZZZ" || code[0] == 'Q' || code[0] == 'X' || code[0] == 'I' || code[0] == 'J' {
+	if code == "ZZZZ" {
 		return false
 	}
 	return true
