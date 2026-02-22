@@ -13,25 +13,25 @@ func TestBearingDegrees(t *testing.T) {
 		tolerance              float64 // degrees
 	}{
 		{
-			name:        "due north",
+			name: "due north",
 			lat1: 0, lon1: 0, lat2: 1, lon2: 0,
 			wantBearing: 0,
 			tolerance:   0.01,
 		},
 		{
-			name:        "due east",
+			name: "due east",
 			lat1: 0, lon1: 0, lat2: 0, lon2: 1,
 			wantBearing: 90,
 			tolerance:   0.01,
 		},
 		{
-			name:        "due south",
+			name: "due south",
 			lat1: 1, lon1: 0, lat2: 0, lon2: 0,
 			wantBearing: 180,
 			tolerance:   0.01,
 		},
 		{
-			name:        "due west",
+			name: "due west",
 			lat1: 0, lon1: 1, lat2: 0, lon2: 0,
 			wantBearing: 270,
 			tolerance:   0.01,
@@ -53,8 +53,8 @@ func TestBearingDegrees(t *testing.T) {
 func TestBearingDegreesRange(t *testing.T) {
 	// Result must always be in [0, 360) regardless of direction.
 	pairs := [][4]float64{
-		{51.5, 0, 40.7, -74},  // London → NYC (SW)
-		{0, 0, -1, 179},        // SW antipodal
+		{51.5, 0, 40.7, -74},       // London → NYC (SW)
+		{0, 0, -1, 179},            // SW antipodal
 		{-33.9, 151.2, 59.9, 30.3}, // Sydney → Helsinki (NW)
 	}
 	for _, p := range pairs {
