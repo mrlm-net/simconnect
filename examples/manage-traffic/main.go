@@ -5,100 +5,509 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-var cwd, _ = os.Getwd()
+// Target airport — swap this to test at a different field.
+const icao = "LKPR"
 
-type ParkedAircraft struct {
-	Airport         string `json:"airport"`
-	Plane           string `json:"plane"`
-	FlightPlan      string `json:"plan,omitempty"`
-	FlightClearance int    `json:"clearance,omitempty"`
-	Number          string `json:"number"`
+// Facility definition IDs — one per query shape.
+const (
+	defFacAirport  uint32 = 1000
+	defFacParking  uint32 = 1001
+	defFacTaxiPath uint32 = 1002
+	defFacTaxiPt   uint32 = 1003
+	defFacRunway   uint32 = 1004
+)
+
+// Facility request IDs — returned in FACILITY_DATA.UserRequestId.
+const (
+	reqFacAirport  uint32 = 100
+	reqFacParking  uint32 = 101
+	reqFacTaxiPath uint32 = 102
+	reqFacTaxiPt   uint32 = 103
+	reqFacRunway   uint32 = 104
+)
+
+// Waypoint data definition — shared by all AI objects.
+const defWaypoints uint32 = 2000
+
+// Monitor data definition — lat/lon/alt/hdg per-second poll.
+const defMonitor uint32 = 3000
+
+// Spawn request IDs — gate aircraft 200–204, taxi 210, takeoff 211.
+const (
+	reqSpawnGate0   uint32 = 200
+	reqSpawnTaxi    uint32 = 210
+	reqSpawnTakeoff uint32 = 211
+)
+
+// AIReleaseControl request IDs.
+const (
+	reqReleaseTaxi    uint32 = 220
+	reqReleaseTakeoff uint32 = 221
+)
+
+// Monitor request IDs — one per monitored object.
+const (
+	reqMonitorTaxi    uint32 = 230
+	reqMonitorTakeoff uint32 = 231
+)
+
+// Object lifecycle events.
+const (
+	evtAdded   uint32 = 400
+	evtRemoved uint32 = 401
+)
+
+const (
+	maxGates     = 5
+	taxiChainLen = 8
+	model        = "FSLTL A320 Air France SL"
+)
+
+// ── Facility data structs ──────────────────────────────────────────────────
+// Field order must match the AddToFacilityDefinition calls exactly.
+
+type apInfo struct {
+	Latitude  float64
+	Longitude float64
+	Altitude  float64 // meters MSL
+	ICAO      [8]byte
+	Name      [32]byte
+	Name64    [64]byte
 }
 
-type IFRAircraft struct {
-	Plane      string  `json:"plane"`
-	Number     string  `json:"number"`
-	FlightPlan string  `json:"plan"`
-	InitPhase  float64 `json:"phase"`
+type parkingSpot struct {
+	Name             uint32
+	Number           uint32
+	Heading          float32
+	Type             uint32
+	BiasX            float32 // east offset in meters from airport reference
+	BiasZ            float32 // north offset in meters from airport reference
+	NumberOfAirlines uint32
 }
 
-type AircraftData struct {
-	Title             [128]byte
-	Category          [128]byte
-	LiveryName        [128]byte
-	LiveryFolder      [128]byte
-	Lat               float64
-	Lon               float64
-	Alt               float64
-	Head              float64
-	HeadMag           float64
-	Vs                float64
-	Pitch             float64
-	Bank              float64
-	GroundSpeed       float64
-	AirspeedIndicated float64
-	AirspeedTrue      float64
-	OnAnyRunway       int32
-	SurfaceType       int32
-	SimOnGround       int32
-	AtcID             [32]byte
-	AtcAirline        [32]byte
+type taxiPath struct {
+	Type      uint32
+	Start     uint32
+	End       uint32
+	NameIndex uint32
 }
 
-func (data *AircraftData) TitleAsString() string {
-	return engine.BytesToString(data.Title[:])
+type taxiPoint struct {
+	Type        uint32
+	Orientation uint32
+	BiasX       float32 // east offset in meters
+	BiasZ       float32 // north offset in meters
 }
 
-func (data *AircraftData) CategoryAsString() string {
-	return engine.BytesToString(data.Category[:])
+type runwayData struct {
+	Latitude  float64 // center lat
+	Longitude float64 // center lon
+	Altitude  float64 // meters MSL
+	Heading   float64 // primary heading in degrees
+	Length    float64 // meters
 }
 
-func (data *AircraftData) LiveryNameAsString() string {
-	return engine.BytesToString(data.LiveryName[:])
+// parseRunway reads a runway data buffer from a FACILITY_DATA message.
+// SimConnect packs the runway wire as [lat:f64][lon:f64][alt:f64][hdg:f32][len:f32]
+// = 32 bytes. Both Heading and Length are float32, so Go's natural 8-byte-aligned
+// struct cannot cast this directly — same root cause as SIMCONNECT_DATA_WAYPOINT.
+func parseRunway(data *types.DWORD) runwayData {
+	raw := (*[32]byte)(unsafe.Pointer(data))
+	return runwayData{
+		Latitude:  math.Float64frombits(binary.LittleEndian.Uint64(raw[0:])),
+		Longitude: math.Float64frombits(binary.LittleEndian.Uint64(raw[8:])),
+		Altitude:  math.Float64frombits(binary.LittleEndian.Uint64(raw[16:])),
+		Heading:   float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[24:]))),
+		Length:    float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[28:]))),
+	}
 }
 
-func (data *AircraftData) LiveryFolderAsString() string {
-	return engine.BytesToString(data.LiveryFolder[:])
+// monitorData matches defMonitor field order: lat, lon, alt (ft), heading (deg).
+type monitorData struct {
+	Latitude  float64
+	Longitude float64
+	Altitude  float64
+	Heading   float64
 }
 
-func (data *AircraftData) ATCIDAsString() string {
-	return engine.BytesToString(data.AtcID[:])
+// ── Accumulated state ──────────────────────────────────────────────────────
+
+type trafficState struct {
+	airport    apInfo
+	parking    []parkingSpot
+	taxiPaths  []taxiPath
+	taxiPoints []taxiPoint
+	runways    []runwayData
+	pending    int // decrements on FACILITY_DATA_END; spawn when == 0
+
+	selectedRunway runwayData // the runway chosen for the takeoff aircraft
+
+	gateIDs   [maxGates]uint32
+	taxiID    uint32
+	takeoffID uint32
 }
 
-// runConnection handles a single connection lifecycle to the simulator.
-// Returns nil when the simulator disconnects (allowing reconnection),
-// or an error if cancelled via context.
+// ── Geometry helpers ───────────────────────────────────────────────────────
+
+// aheadOf returns the lat/lon displaced from (lat, lon) by meters along hdgDeg.
+func aheadOf(lat, lon, hdgDeg, meters float64) (float64, float64) {
+	rad := hdgDeg * math.Pi / 180
+	return convert.OffsetToLatLon(lat, lon,
+		meters*math.Sin(rad), // east component
+		meters*math.Cos(rad), // north component
+	)
+}
+
+// buildTaxiChain greedy-walks the taxi-path adjacency graph from point 0,
+// returning up to maxLen point indices.
+func buildTaxiChain(paths []taxiPath, nPoints, maxLen int) []int {
+	if len(paths) == 0 || nPoints == 0 {
+		return nil
+	}
+	adj := make([][]int, nPoints)
+	for _, p := range paths {
+		s, e := int(p.Start), int(p.End)
+		if s < nPoints && e < nPoints {
+			adj[s] = append(adj[s], e)
+			adj[e] = append(adj[e], s)
+		}
+	}
+	visited := make([]bool, nPoints)
+	chain := make([]int, 0, maxLen)
+	cur := 0
+	for len(chain) < maxLen {
+		chain = append(chain, cur)
+		visited[cur] = true
+		next := -1
+		for _, nb := range adj[cur] {
+			if !visited[nb] {
+				next = nb
+				break
+			}
+		}
+		if next == -1 {
+			break
+		}
+		cur = next
+	}
+	return chain
+}
+
+// taxiWaypoints converts point-index chain to a looping ON_GROUND waypoint slice.
+func taxiWaypoints(chain []int, points []taxiPoint, ap apInfo) []types.SIMCONNECT_DATA_WAYPOINT {
+	altFt := convert.MetersToFeet(ap.Altitude)
+	wps := make([]types.SIMCONNECT_DATA_WAYPOINT, len(chain))
+	for i, idx := range chain {
+		pt := points[idx]
+		lat, lon := convert.OffsetToLatLon(ap.Latitude, ap.Longitude,
+			float64(pt.BiasX), float64(pt.BiasZ))
+		flags := uint32(types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED)
+		if i == len(chain)-1 {
+			flags |= uint32(types.SIMCONNECT_WAYPOINT_WRAP_TO_FIRST)
+		}
+		wps[i] = types.SIMCONNECT_DATA_WAYPOINT{
+			Latitude:  lat,
+			Longitude: lon,
+			Altitude:  altFt,
+			Flags:     flags,
+			KtsSpeed:  15,
+		}
+	}
+	return wps
+}
+
+// takeoffWaypoints builds an ascending waypoint sequence for a departing aircraft.
+// All altitudes use ALTITUDE_IS_AGL so the sim resolves them relative to local
+// terrain, and COMPUTE_VERTICAL_SPEED tells the AI to calculate the VS needed to
+// reach each altitude at the waypoint — this is what drives proper climb rates.
+// THROTTLE_REQUESTED at 100 % keeps the engine at full power during the climb.
+// No near-field anchor waypoint — that caused the aircraft to overshoot and bank
+// to intercept the next waypoint, producing the observed right-turn deviation.
+func takeoffWaypoints(rwy runwayData) []types.SIMCONNECT_DATA_WAYPOINT {
+	hdg := rwy.Heading
+
+	// Threshold = spawn origin — all distances measured from here.
+	threshLat, threshLon := aheadOf(rwy.Latitude, rwy.Longitude, hdg+180, rwy.Length/2)
+
+	climbFlags := uint32(
+		types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED |
+			types.SIMCONNECT_WAYPOINT_THROTTLE_REQUESTED |
+			types.SIMCONNECT_WAYPOINT_COMPUTE_VERTICAL_SPEED |
+			types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL,
+	)
+
+	// Airborne waypoints measured from the departure threshold.
+	// 1.5 nm: 1 500 ft AGL — COMPUTE_VERTICAL_SPEED drives proper climb rate.
+	c1Lat, c1Lon := aheadOf(threshLat, threshLon, hdg, 2778)
+	// 5 nm: 4 000 ft AGL.
+	c2Lat, c2Lon := aheadOf(threshLat, threshLon, hdg, 9260)
+	// 12 nm: 9 000 ft AGL.
+	c3Lat, c3Lon := aheadOf(threshLat, threshLon, hdg, 22224)
+
+	return []types.SIMCONNECT_DATA_WAYPOINT{
+		{
+			// Taxi 250 m to lineup at the threshold before the takeoff roll.
+			// 15 kt matches the proven taxi speed used by the taxi aircraft.
+			Latitude:  threshLat,
+			Longitude: threshLon,
+			Altitude:  0,
+			Flags:     uint32(types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED),
+			KtsSpeed:  15,
+		},
+		{
+			Latitude:        c1Lat,
+			Longitude:       c1Lon,
+			Altitude:        1500,
+			Flags:           climbFlags,
+			KtsSpeed:        200,
+			PercentThrottle: 100,
+		},
+		{
+			Latitude:        c2Lat,
+			Longitude:       c2Lon,
+			Altitude:        4000,
+			Flags:           climbFlags,
+			KtsSpeed:        240,
+			PercentThrottle: 90,
+		},
+		{
+			Latitude:        c3Lat,
+			Longitude:       c3Lon,
+			Altitude:        9000,
+			Flags:           climbFlags,
+			KtsSpeed:        280,
+			PercentThrottle: 85,
+		},
+	}
+}
+
+// ── SimConnect helpers ─────────────────────────────────────────────────────
+
+func sendWaypoints(client engine.Client, objectID uint32, wps []types.SIMCONNECT_DATA_WAYPOINT) error {
+	packed := engine.PackWaypoints(wps)
+	return client.SetDataOnSimObject(
+		defWaypoints,
+		objectID,
+		types.SIMCONNECT_DATA_SET_FLAG_DEFAULT,
+		uint32(len(wps)),
+		engine.WaypointWireSize,
+		unsafe.Pointer(&packed[0]),
+	)
+}
+
+func removeAll(client engine.Client, ids []uint32) {
+	for i, id := range ids {
+		if id == 0 {
+			continue
+		}
+		fmt.Printf("🗑️  Removing object %d\n", id)
+		if err := client.AIRemoveObject(id, 300+uint32(i)); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ AIRemoveObject id=%d: %v\n", id, err)
+		}
+	}
+	if len(ids) > 0 {
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// ── Facility setup ─────────────────────────────────────────────────────────
+
+func registerFacilities(client engine.Client) {
+	// Airport reference position
+	client.AddToFacilityDefinition(defFacAirport, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(defFacAirport, "LATITUDE")
+	client.AddToFacilityDefinition(defFacAirport, "LONGITUDE")
+	client.AddToFacilityDefinition(defFacAirport, "ALTITUDE")
+	client.AddToFacilityDefinition(defFacAirport, "ICAO")
+	client.AddToFacilityDefinition(defFacAirport, "NAME")
+	client.AddToFacilityDefinition(defFacAirport, "NAME64")
+	client.AddToFacilityDefinition(defFacAirport, "CLOSE AIRPORT")
+
+	// Gate/apron parking positions
+	client.AddToFacilityDefinition(defFacParking, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(defFacParking, "OPEN TAXI_PARKING")
+	client.AddToFacilityDefinition(defFacParking, "NAME")
+	client.AddToFacilityDefinition(defFacParking, "NUMBER")
+	client.AddToFacilityDefinition(defFacParking, "HEADING")
+	client.AddToFacilityDefinition(defFacParking, "TYPE")
+	client.AddToFacilityDefinition(defFacParking, "BIAS_X")
+	client.AddToFacilityDefinition(defFacParking, "BIAS_Z")
+	client.AddToFacilityDefinition(defFacParking, "N_AIRLINES")
+	client.AddToFacilityDefinition(defFacParking, "CLOSE TAXI_PARKING")
+	client.AddToFacilityDefinition(defFacParking, "CLOSE AIRPORT")
+
+	// Taxi path graph edges (start/end taxi-point indices)
+	client.AddToFacilityDefinition(defFacTaxiPath, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(defFacTaxiPath, "OPEN TAXI_PATH")
+	client.AddToFacilityDefinition(defFacTaxiPath, "TYPE")
+	client.AddToFacilityDefinition(defFacTaxiPath, "START")
+	client.AddToFacilityDefinition(defFacTaxiPath, "END")
+	client.AddToFacilityDefinition(defFacTaxiPath, "NAME_INDEX")
+	client.AddToFacilityDefinition(defFacTaxiPath, "CLOSE TAXI_PATH")
+	client.AddToFacilityDefinition(defFacTaxiPath, "CLOSE AIRPORT")
+
+	// Taxi point positions (meter offsets from airport reference)
+	client.AddToFacilityDefinition(defFacTaxiPt, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(defFacTaxiPt, "OPEN TAXI_POINT")
+	client.AddToFacilityDefinition(defFacTaxiPt, "TYPE")
+	client.AddToFacilityDefinition(defFacTaxiPt, "ORIENTATION")
+	client.AddToFacilityDefinition(defFacTaxiPt, "BIAS_X")
+	client.AddToFacilityDefinition(defFacTaxiPt, "BIAS_Z")
+	client.AddToFacilityDefinition(defFacTaxiPt, "CLOSE TAXI_POINT")
+	client.AddToFacilityDefinition(defFacTaxiPt, "CLOSE AIRPORT")
+
+	// Runway centre position, heading, and length
+	client.AddToFacilityDefinition(defFacRunway, "OPEN AIRPORT")
+	client.AddToFacilityDefinition(defFacRunway, "OPEN RUNWAY")
+	client.AddToFacilityDefinition(defFacRunway, "LATITUDE")
+	client.AddToFacilityDefinition(defFacRunway, "LONGITUDE")
+	client.AddToFacilityDefinition(defFacRunway, "ALTITUDE")
+	client.AddToFacilityDefinition(defFacRunway, "HEADING")
+	client.AddToFacilityDefinition(defFacRunway, "LENGTH")
+	client.AddToFacilityDefinition(defFacRunway, "CLOSE RUNWAY")
+	client.AddToFacilityDefinition(defFacRunway, "CLOSE AIRPORT")
+
+	// Fire all 5 requests — each produces N FACILITY_DATA + 1 FACILITY_DATA_END.
+	client.RequestFacilityData(defFacAirport, reqFacAirport, icao, "")
+	client.RequestFacilityData(defFacParking, reqFacParking, icao, "")
+	client.RequestFacilityData(defFacTaxiPath, reqFacTaxiPath, icao, "")
+	client.RequestFacilityData(defFacTaxiPt, reqFacTaxiPt, icao, "")
+	client.RequestFacilityData(defFacRunway, reqFacRunway, icao, "")
+}
+
+// ── Traffic spawning ───────────────────────────────────────────────────────
+
+// spawnTraffic is called once all 5 facility batches have been received.
+func spawnTraffic(client engine.Client, st *trafficState) {
+	ap := st.airport
+	altFt := convert.MetersToFeet(ap.Altitude)
+
+	// 1. Parked aircraft at real gate positions.
+	gateIdx := 0
+	for _, spot := range st.parking {
+		if gateIdx >= maxGates {
+			break
+		}
+		if spot.Number == 0 {
+			continue // skip unnamed / non-gate spots
+		}
+		lat, lon := convert.OffsetToLatLon(ap.Latitude, ap.Longitude,
+			float64(spot.BiasX), float64(spot.BiasZ))
+		tail := fmt.Sprintf("G%03d", spot.Number)
+		reqID := reqSpawnGate0 + uint32(gateIdx)
+		client.AICreateNonATCAircraftEX1(
+			model, "", tail,
+			types.SIMCONNECT_DATA_INITPOSITION{
+				Latitude:  lat,
+				Longitude: lon,
+				Altitude:  altFt,
+				Heading:   float64(spot.Heading),
+				OnGround:  1,
+				Airspeed:  0,
+			},
+			reqID,
+		)
+		fmt.Printf("🅿️  Gate %d: spot #%d tail=%s (reqID=%d)\n",
+			gateIdx+1, spot.Number, tail, reqID)
+		gateIdx++
+	}
+	if gateIdx == 0 {
+		fmt.Println("⚠️  No usable gate spots found at", icao)
+	}
+
+	// 2. Taxiing aircraft following a connected sequence of taxi points.
+	if len(st.taxiPoints) > 0 {
+		chain := buildTaxiChain(st.taxiPaths, len(st.taxiPoints), taxiChainLen)
+		if len(chain) >= 2 {
+			startPt := st.taxiPoints[chain[0]]
+			startLat, startLon := convert.OffsetToLatLon(ap.Latitude, ap.Longitude,
+				float64(startPt.BiasX), float64(startPt.BiasZ))
+			client.AICreateNonATCAircraftEX1(
+				model, "", "TAXI01",
+				types.SIMCONNECT_DATA_INITPOSITION{
+					Latitude:  startLat,
+					Longitude: startLon,
+					Altitude:  altFt,
+					Heading:   0,
+					OnGround:  1,
+					Airspeed:  0,
+				},
+				reqSpawnTaxi,
+			)
+			fmt.Printf("🚖 Taxiing aircraft requested (chain=%d pts, reqID=%d)\n",
+				len(chain), reqSpawnTaxi)
+		} else {
+			fmt.Println("⚠️  Taxi chain too short — skipping taxi aircraft")
+		}
+	}
+
+	// 3. Departing aircraft at the primary threshold of the first usable runway.
+	var chosenRwy *runwayData
+	for i := range st.runways {
+		if st.runways[i].Heading != 0 && st.runways[i].Length > 0 {
+			chosenRwy = &st.runways[i]
+			break
+		}
+	}
+	if chosenRwy == nil && len(st.runways) > 0 {
+		chosenRwy = &st.runways[0] // fall back to first if all are "zero"
+	}
+	if chosenRwy != nil {
+		st.selectedRunway = *chosenRwy
+		rwy := st.selectedRunway
+		// Threshold = center displaced half-length opposite the primary heading.
+		threshLat, threshLon := aheadOf(rwy.Latitude, rwy.Longitude,
+			rwy.Heading+180, rwy.Length/2)
+		// Spawn 250 m behind the threshold on the extended centreline so the
+		// aircraft taxis into lineup before starting the takeoff roll.
+		spawnLat, spawnLon := aheadOf(threshLat, threshLon, rwy.Heading+180, 250)
+		client.AICreateNonATCAircraftEX1(
+			model, "", "TKOF01",
+			types.SIMCONNECT_DATA_INITPOSITION{
+				Latitude:  spawnLat,
+				Longitude: spawnLon,
+				Altitude:  convert.MetersToFeet(rwy.Altitude),
+				Heading:   rwy.Heading,
+				OnGround:  1,
+				Airspeed:  0,
+			},
+			reqSpawnTakeoff,
+		)
+		fmt.Printf("🛫 Takeoff aircraft requested (rwy hdg=%.1f°, reqID=%d)\n",
+			rwy.Heading, reqSpawnTakeoff)
+	}
+}
+
+// ── Connection lifecycle ───────────────────────────────────────────────────
+
 func runConnection(ctx context.Context) error {
-	// Initialize client with context
-	client := simconnect.NewClient("GO Example - SimConnect Manage Traffic",
+	client := simconnect.NewClient("GO Example - Manage Traffic",
 		engine.WithContext(ctx),
 	)
 
-	// tracked aircraft state (for movement)
-	var trackedObjectID uint32 = 0
-
-	// Retry connection until simulator is running
-	fmt.Println("⏳ Waiting for simulator to start...")
+	fmt.Println("⏳ Waiting for simulator...")
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("🛑 Cancelled while waiting for simulator")
 			return ctx.Err()
 		default:
 			if err := client.Connect(); err != nil {
-				fmt.Printf("🔄 Connection attempt failed: %v, retrying in 2 seconds...\n", err)
+				fmt.Printf("🔄 Retrying in 2s: %v\n", err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -107,378 +516,194 @@ func runConnection(ctx context.Context) error {
 	}
 
 connected:
-	var index = 0.001
-	fmt.Println("✅ Connected to SimConnect, listening for messages...")
-	// We can already register data definitions and requests here
-	addPlanesRequestDataset(client)
-	// Load parked aircraft from JSON
+	fmt.Println("✅ Connected to SimConnect")
 
-	fmt.Println("✈️  Ready for plane spotting???")
+	// Shared waypoint data definition used by all AI objects.
+	client.AddToDataDefinition(defWaypoints, "AI Waypoint List", "number",
+		types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0)
 
-	client.MapClientEventToSimEvent(2013, "TAXI_LIGHTS_SET")
-	client.MapClientEventToSimEvent(2009, "BEACON_LIGHTS_SET")
-	client.MapClientEventToSimEvent(2014, "LANDING_LIGHTS_SET")
-	client.MapClientEventToSimEvent(2008, "NAV_LIGHTS_SET")
-	client.MapClientEventToSimEvent(2007, "CABIN_LIGHTS_SET")
-	client.MapClientEventToSimEvent(2006, "STROBES_SET")
-	client.MapClientEventToSimEvent(2002, "TOGGLE_PUSHBACK")
-	// TOGGLE_EXTERNAL_POWER
-	client.MapClientEventToSimEvent(2003, "TOGGLE_EXTERNAL_POWER")
+	// Monitor definition — lat/lon/alt/heading polled every second.
+	client.AddToDataDefinition(defMonitor, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+	client.AddToDataDefinition(defMonitor, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
+	client.AddToDataDefinition(defMonitor, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(defMonitor, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 3)
 
-	client.MapClientEventToSimEvent(2010, "FREEZE_LATITUDE_LONGITUDE_SET")
-	client.MapClientEventToSimEvent(2011, "FREEZE_ALTITUDE_SET")
-	client.MapClientEventToSimEvent(2012, "FREEZE_ATTITUDE_SET")
-	// Add to notification group
-	client.AddClientEventToNotificationGroup(30000, 2009, false)
-	client.AddClientEventToNotificationGroup(30000, 2010, false)
-	client.AddClientEventToNotificationGroup(30000, 2011, false)
-	client.AddClientEventToNotificationGroup(30000, 2012, false)
-	client.AddClientEventToNotificationGroup(30000, 2006, false)
-	client.AddClientEventToNotificationGroup(30000, 2007, false)
-	client.AddClientEventToNotificationGroup(30000, 2008, false)
-	client.AddClientEventToNotificationGroup(30000, 2013, false)
-	client.AddClientEventToNotificationGroup(30000, 2014, false)
-	client.AddClientEventToNotificationGroup(30000, 2002, false)
-	client.AddClientEventToNotificationGroup(30000, 2003, false)
-	// Set group priority
+	// Object lifecycle events for diagnostics.
+	client.SubscribeToSystemEvent(evtAdded, "ObjectAdded")
+	client.SubscribeToSystemEvent(evtRemoved, "ObjectRemoved")
 
-	client.SetNotificationGroupPriority(30000, 1000)
+	// Query LKPR facility data — 5 batches, each ending with FACILITY_DATA_END.
+	registerFacilities(client)
 
-	//client.AICreateParkedATCAircraft("FSLTL A320 VLG Vueling", "N12345", "LKPR", 5000)
-	//client.AICreateParkedATCAircraft("FSLTL_A359_CAL-China Airlines", "N12346", "LKPR", 5001)
-	// FSLTL A320 Air France SL
+	st := &trafficState{pending: 5}
 
-	//client.FlightPlanLoad("C:\\MSFS-TEST-PLANS\\LKPRLKPD_M24_06Dec25")
-	client.AICreateNonATCAircraftEX1("FSLTL A320 Air France SL", "", "N1234", types.SIMCONNECT_DATA_INITPOSITION{
-		Latitude:  50.016725,
-		Longitude: 15.725807,
-		Altitude:  0,
-		Heading:   35,
-		Pitch:     0,
-		Bank:      0,
-		OnGround:  1,
-	}, 5006)
-
-	// Request data for all aircraft within 50km radius
-	client.RequestDataOnSimObjectType(4001, 3000, 25000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
-
-	client.AddToDataDefinition(4000, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0)
-
-	//client.AddToDataDefinition(8000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
-	//client.AddToDataDefinition(8000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
-	//client.AddToDataDefinition(8000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
-	client.AddToDataDefinition(8000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
-	client.AddToDataDefinition(8000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1)
-
-	client.SubscribeToSystemEvent(1111, "Frame")
-
-	speedAndHeading := struct {
-		Speed   float64
-		Heading float64
-	}{
-		Speed:   0.0,  // knots
-		Heading: 35.0, // degrees
+	// Collect all spawned object IDs for cleanup on shutdown.
+	allIDs := func() []uint32 {
+		ids := make([]uint32, 0, maxGates+2)
+		for _, id := range st.gateIDs {
+			ids = append(ids, id)
+		}
+		ids = append(ids, st.taxiID, st.takeoffID)
+		return ids
 	}
 
-	// create ticker to periodically request data
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				client.RequestDataOnSimObjectType(4001, 3000, 25000, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
-			}
-		}
-	}()
-
-	// Wait for SIMCONNECT_RECV_ID_OPEN message to confirm connection is ready
 	stream := client.Stream()
-	// Main message processing loop
-	var planAssigned bool = false
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("🔌 Context cancelled, disconnecting...")
+			fmt.Println("🔌 Shutting down...")
+			removeAll(client, allIDs())
 			if err := client.Disconnect(); err != nil {
-				fmt.Fprintf(os.Stderr, "❌ Disconnect error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "❌ Disconnect: %v\n", err)
 			}
-			//fmt.Println("Disconnected from SimConnect")
 			return ctx.Err()
+
 		case msg, ok := <-stream:
 			if !ok {
 				fmt.Println("📴 Stream closed (simulator disconnected)")
-				return nil // Return nil to allow reconnection
+				return nil
 			}
-
 			if msg.Err != nil {
-				fmt.Fprintf(os.Stderr, "❌ Error: %v\n", msg.Err)
+				fmt.Fprintf(os.Stderr, "❌ Stream error: %v\n", msg.Err)
 				continue
 			}
 
-			//fmt.Println("📨 Message received - ", types.SIMCONNECT_RECV_ID(msg.SIMCONNECT_RECV.DwID))
-
-			// Handle specific messages
-			// This could be done based on type and also if needed request IDs
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
+
 			case types.SIMCONNECT_RECV_ID_OPEN:
-				fmt.Println("🟢 Connection ready (SIMCONNECT_RECV_ID_OPEN received)")
-				msg := msg.AsOpen()
-				fmt.Println("📡 Received SIMCONNECT_RECV_OPEN message!")
-				fmt.Printf("  Application Name: '%s'\n", engine.BytesToString(msg.SzApplicationName[:]))
-				fmt.Printf("  Application Version: %d.%d\n", msg.DwApplicationVersionMajor, msg.DwApplicationVersionMinor)
-				fmt.Printf("  Application Build: %d.%d\n", msg.DwApplicationBuildMajor, msg.DwApplicationBuildMinor)
-				fmt.Printf("  SimConnect Version: %d.%d\n", msg.DwSimConnectVersionMajor, msg.DwSimConnectVersionMinor)
-				fmt.Printf("  SimConnect Build: %d.%d\n", msg.DwSimConnectBuildMajor, msg.DwSimConnectBuildMinor)
-			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
-				simObjData := msg.AsSimObjectDataBType()
+				o := msg.AsOpen()
+				fmt.Printf("🟢 Simulator: %s v%d.%d\n",
+					engine.BytesToString(o.SzApplicationName[:]),
+					o.DwApplicationVersionMajor, o.DwApplicationVersionMinor)
 
-				fmt.Printf("     Request ID: %d, Define ID: %d, Object ID: %d, Flags: %d, Out of: %d, DefineCount: %d\n",
-					simObjData.DwRequestID,
-					simObjData.DwDefineID,
-					simObjData.DwObjectID,
-					simObjData.DwFlags,
-					simObjData.DwOutOf,
-					simObjData.DwDefineCount,
-				)
-				if simObjData.DwDefineID == 3000 {
-					aircraftData := engine.CastDataAs[AircraftData](&simObjData.DwData)
-					fmt.Printf("     Aircraft Title: %s, Category: %s, Livery Name: %s, Livery Folder: %s, Lat: %f, Lon: %f, Alt: %f, Head: %f, HeadMag: %f, VS: %f, Pitch: %f, Bank: %f, GroundSpeed: %f, AirspeedIndicated: %f, AirspeedTrue: %f, OnAnyRunway: %d, SurfaceType: %d, SimOnGround: %d, AtcID: %s\n",
-						aircraftData.TitleAsString(),
-						aircraftData.CategoryAsString(),
-						aircraftData.LiveryNameAsString(),
-						aircraftData.LiveryFolderAsString(),
-						aircraftData.Lat,
-						aircraftData.Lon,
-						aircraftData.Alt,
-						aircraftData.Head,
-						aircraftData.HeadMag,
-						aircraftData.Vs,
-						aircraftData.Pitch,
-						aircraftData.Bank,
-						aircraftData.GroundSpeed,
-						aircraftData.AirspeedIndicated,
-						aircraftData.AirspeedTrue,
-						aircraftData.OnAnyRunway,
-						aircraftData.SurfaceType,
-						aircraftData.SimOnGround,
-						aircraftData.ATCIDAsString(),
-					)
-
-					// Track and remember our aircraft state so we can move it each frame
-					if aircraftData.ATCIDAsString() == "N1234" {
-						trackedObjectID = uint32(simObjData.DwObjectID)
+			case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
+				fd := msg.AsFacilityData()
+				switch uint32(fd.UserRequestId) {
+				case reqFacAirport:
+					st.airport = *engine.CastDataAs[apInfo](&fd.Data)
+					fmt.Printf("📍 Airport %s: lat=%.4f lon=%.4f alt=%.0fm\n",
+						icao, st.airport.Latitude, st.airport.Longitude, st.airport.Altitude)
+				case reqFacParking:
+					spot := engine.CastDataAs[parkingSpot](&fd.Data)
+					if spot.Number > 0 {
+						st.parking = append(st.parking, *spot)
 					}
-
-					// Make login to assign plan as you need to have object ID
-					// assigned before you can issue flight plan commands
-					// simObjData.DwObjectID
-					if aircraftData.ATCIDAsString() == "N1234" && !planAssigned {
-						fmt.Println("✈️  Found our aircraft, assigning flight plan...")
-
-						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2012, 1, 30000, 0)
-						client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2011, 1, 30000, 0)
-						//client.TransmitClientEvent(uint32(simObjData.DwObjectID), 2010, 1, 30000, 0)
-
-						asSlice := []float64{speedAndHeading.Speed, speedAndHeading.Heading}
-						client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(asSlice[0]))*2, unsafe.Pointer(&asSlice[0]))
-
-						time.Sleep(250 * time.Millisecond)
-
-						client.TransmitClientEvent(uint32(trackedObjectID), 2009, uint32(1), 30000, 0)
-						client.TransmitClientEvent(uint32(trackedObjectID), 2008, uint32(1), 30000, 0)
-						client.TransmitClientEvent(uint32(trackedObjectID), 2007, uint32(1), 30000, 0)
-						client.TransmitClientEvent(uint32(trackedObjectID), 2013, uint32(1), 30000, 0)
-
-						client.TransmitClientEvent(uint32(trackedObjectID), 2002, uint32(0), 30000, 0)
-
-						// client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , )
-
-						//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, 44, unsafe.Pointer(&waypoints))
-
-						/*for _, wp := range waypoints {
-							time.Sleep(500 * time.Millisecond)
-							// We need to set each waypoint individually and only lat long as slice
-							latLong := []float64{wp.Latitude, wp.Longitude}
-							client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(latLong[0]))*2, unsafe.Pointer(&latLong[0]))
-							//client.SetDataOnSimObject(4000, uint32(simObjData.DwObjectID), 0, 1, uint32(unsafe.Sizeof(wp)), unsafe.Pointer(&wp))
-						}*/
-						//client.SetDataOnSimObject(8000, uint32(simObjData.DwObjectID), 0, 1, , unsafe.Pointer(&))
-						//client.AIReleaseControl(uint32(simObjData.DwObjectID), 5006)
-						planAssigned = true
-						fmt.Println("✅ Flight plan assigned!")
-					}
+				case reqFacTaxiPath:
+					st.taxiPaths = append(st.taxiPaths,
+						*engine.CastDataAs[taxiPath](&fd.Data))
+				case reqFacTaxiPt:
+					st.taxiPoints = append(st.taxiPoints,
+						*engine.CastDataAs[taxiPoint](&fd.Data))
+				case reqFacRunway:
+					rwy := parseRunway(&fd.Data)
+					fmt.Printf("  Runway: lat=%.4f lon=%.4f alt=%.0fm hdg=%.1f° len=%.0fm\n",
+						rwy.Latitude, rwy.Longitude, rwy.Altitude, rwy.Heading, rwy.Length)
+					st.runways = append(st.runways, rwy)
 				}
-			case types.SIMCONNECT_RECV_ID_EVENT_FRAME:
-				eventMsg := msg.AsEventFrame()
-				if eventMsg.UEventID == 1111 {
 
-					if speedAndHeading.Speed < 5.0 {
-						speedAndHeading.Speed += 0.05
-					}
-
-					if speedAndHeading.Speed < 2.0 {
-						continue
-					}
-					// set speed and heading on our tracked object
-
-					// add small increments to heading and speed for demo purposes
-					// but also allow around 150 degree max and direct
-
-					if speedAndHeading.Heading > 205 && speedAndHeading.Heading <= 275 {
-						speedAndHeading.Heading += index
-						if index > 0 {
-							index -= 0.0006
-						}
-					} else if speedAndHeading.Heading <= 275 {
-						speedAndHeading.Heading += index
-
-						if index < 0.08 {
-							index += 0.0006
-						}
-					}
-					//speedAndHeading.Speed += 0.1
-
-					asSlice := []float64{speedAndHeading.Speed, speedAndHeading.Heading}
-
-					client.SetDataOnSimObject(8000, uint32(trackedObjectID), 0, 1, uint32(unsafe.Sizeof(asSlice[0]))*2, unsafe.Pointer(&asSlice[0]))
-					// compute delta time
-					/*now := time.Now()
-					if lastFrameTime.IsZero() {
-						lastFrameTime = now
-						continue
-					}
-					dt := now.Sub(lastFrameTime).Seconds()
-					lastFrameTime = now
-
-					// if we have a tracked object, advance it by speed*dt
-					if trackedObjectID != 0 {
-						// debug + fallback speed
-						useSpeed := trackedSpeed
-						if useSpeed <= 0 {
-							useSpeed = 2.0 // kts fallback for testing
-							fmt.Printf("DBG fallback speed used=%.1f kts\n", useSpeed)
-						}
-
-						// compute
-						speedMS := useSpeed * 0.514444
-						distanceM := speedMS * dt
-						fmt.Printf("DBG dt=%.6f speed=%.3f knots speedMS=%.3f m/s distanceM=%.6f heading=%.3f\n", dt, useSpeed, speedMS, distanceM, trackedHeading)
-
-						newLat, newLon := moveLatLon(trackedLat, trackedLon, trackedHeading, distanceM)
-
-						// write into sim using data definition 8000 (PLANE LAT/LON)
-						latLong := []float64{newLat, newLon}
-						// size: two float64s
-						cb := uint32(unsafe.Sizeof(latLong[0])) * 2
-
-						if err := client.SetDataOnSimObject(8000, trackedObjectID, 0, 1, cb, unsafe.Pointer(&latLong[0])); err != nil {
-							fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(two) error: %v\n", err)
-							// fallback: try writing components separately
-							cb1 := uint32(unsafe.Sizeof(latLong[0]))
-							if err2 := client.SetDataOnSimObject(8000, trackedObjectID, 0, 1, cb1, unsafe.Pointer(&latLong[0])); err2 != nil {
-								fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(lat) error: %v\n", err2)
-							} else if err3 := client.SetDataOnSimObject(8000, trackedObjectID, 1, 1, cb1, unsafe.Pointer(&latLong[1])); err3 != nil {
-								fmt.Fprintf(os.Stderr, "❌ SetDataOnSimObject(lon) error: %v\n", err3)
-							} else {
-								fmt.Printf("ℹ️ Fallback updated pos obj=%d lat=%f lon=%f\n", trackedObjectID, newLat, newLon)
-								trackedLat = newLat
-								trackedLon = newLon
-							}
-						} else {
-							fmt.Printf("ℹ️ Updated pos obj=%d lat=%f lon=%f cb=%d\n", trackedObjectID, newLat, newLon, cb)
-							trackedLat = newLat
-							trackedLon = newLon
-						}
-					}*/
+			case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
+				st.pending--
+				fmt.Printf("🏁 Facility batch complete (%d remaining)\n", st.pending)
+				if st.pending == 0 {
+					fmt.Printf("📦 Data ready: %d gates, %d paths, %d points, %d runways\n",
+						len(st.parking), len(st.taxiPaths), len(st.taxiPoints), len(st.runways))
+					spawnTraffic(client, st)
 				}
+
+			case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
+				assigned := msg.AsAssignedObjectID()
+				reqID := uint32(assigned.DwRequestID)
+				objID := uint32(assigned.DwObjectID)
+
+				switch {
+				case reqID >= reqSpawnGate0 && reqID < reqSpawnGate0+maxGates:
+					idx := reqID - reqSpawnGate0
+					st.gateIDs[idx] = objID
+					fmt.Printf("✅ Gate %d parked: id=%d\n", idx+1, objID)
+
+				case reqID == reqSpawnTaxi:
+					st.taxiID = objID
+					fmt.Printf("✅ Taxi aircraft: id=%d — releasing AI control\n", objID)
+					client.AIReleaseControl(objID, reqReleaseTaxi)
+					chain := buildTaxiChain(st.taxiPaths, len(st.taxiPoints), taxiChainLen)
+					wps := taxiWaypoints(chain, st.taxiPoints, st.airport)
+					if len(wps) > 0 {
+						if err := sendWaypoints(client, objID, wps); err != nil {
+							fmt.Fprintf(os.Stderr, "❌ taxi waypoints: %v\n", err)
+						}
+					}
+					client.RequestDataOnSimObject(reqMonitorTaxi, defMonitor, objID,
+						types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+
+				case reqID == reqSpawnTakeoff:
+					st.takeoffID = objID
+					fmt.Printf("✅ Takeoff aircraft: id=%d — releasing AI control\n", objID)
+					client.AIReleaseControl(objID, reqReleaseTakeoff)
+					if st.selectedRunway.Length > 0 {
+						wps := takeoffWaypoints(st.selectedRunway)
+						if err := sendWaypoints(client, objID, wps); err != nil {
+							fmt.Fprintf(os.Stderr, "❌ takeoff waypoints: %v\n", err)
+						}
+					}
+					client.RequestDataOnSimObject(reqMonitorTakeoff, defMonitor, objID,
+						types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+				}
+
+			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
+				d := msg.AsSimObjectData()
+				pos := engine.CastDataAs[monitorData](&d.DwData)
+				label := "?"
+				switch uint32(d.DwRequestID) {
+				case reqMonitorTaxi:
+					label = "TAXI"
+				case reqMonitorTakeoff:
+					label = "TKOF"
+				}
+				fmt.Printf("📡 [%s] id=%d lat=%.4f lon=%.4f alt=%.0fft hdg=%.1f°\n",
+					label, uint32(d.DwObjectID),
+					pos.Latitude, pos.Longitude, pos.Altitude, pos.Heading)
+
+			case types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE:
+				evt := msg.AsEventObjectAddRemove()
+				switch uint32(evt.UEventID) {
+				case evtAdded:
+					fmt.Printf("➕ Object added:   id=%d type=%d\n", evt.DwData, evt.EObjType)
+				case evtRemoved:
+					fmt.Printf("➖ Object removed: id=%d type=%d\n", evt.DwData, evt.EObjType)
+				}
+
 			case types.SIMCONNECT_RECV_ID_EXCEPTION:
 				ex := msg.AsException()
-				fmt.Printf("🚨 SimConnect exception - ExceptionID: %d, Index: %d, SendSize: %d\n",
-					ex.DwException, ex.DwIndex, ex.DwSize)
-			default:
+				fmt.Printf("🚨 SimConnect exception %d at index %d\n", ex.DwException, ex.DwIndex)
 			}
 		}
 	}
 }
 
 func main() {
-	// Create cancellable context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Setup signal handler for Ctrl+C
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("🛑 Received interrupt signal, shutting down...")
+		fmt.Println("🛑 Interrupt received, shutting down...")
 		cancel()
 	}()
 
-	fmt.Println("ℹ️  (Press Ctrl+C to exit)")
+	fmt.Println("ℹ️  Press Ctrl+C to exit")
 
-	// Reconnection loop - keeps trying to connect when simulator disconnects
 	for {
-		err := runConnection(ctx)
-		if err != nil {
-			// Context cancelled (Ctrl+C) - exit completely
-			fmt.Printf("⚠️  Connection ended: %v\n", err)
+		if err := runConnection(ctx); err != nil {
+			fmt.Printf("⚠️  %v\n", err)
 			return
 		}
-
-		// Simulator disconnected (err == nil) - wait and retry
-		fmt.Println("⏳ Waiting 5 seconds before reconnecting...")
+		fmt.Println("⏳ Waiting 5s before reconnecting...")
 		select {
 		case <-ctx.Done():
-			fmt.Println("🛑 Shutdown requested, not reconnecting")
 			return
 		case <-time.After(5 * time.Second):
-			fmt.Println("🔄 Attempting to reconnect...")
+			fmt.Println("🔄 Reconnecting...")
 		}
 	}
-}
-
-func addPlanesRequestDataset(client engine.Client) {
-	// Define data structure for plane request dataset
-	client.AddToDataDefinition(3000, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 0)
-	client.AddToDataDefinition(3000, "CATEGORY", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 1)
-	client.AddToDataDefinition(3000, "LIVERY NAME", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 2)
-	client.AddToDataDefinition(3000, "LIVERY FOLDER", "", types.SIMCONNECT_DATATYPE_STRING128, 0, 3)
-	client.AddToDataDefinition(3000, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 4)
-	client.AddToDataDefinition(3000, "PLANE LONGITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 5)
-	client.AddToDataDefinition(3000, "PLANE ALTITUDE", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 6)
-	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES TRUE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 7)
-	client.AddToDataDefinition(3000, "PLANE HEADING DEGREES MAGNETIC", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 8)
-	client.AddToDataDefinition(3000, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 9)
-	client.AddToDataDefinition(3000, "PLANE PITCH DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 10)
-	client.AddToDataDefinition(3000, "PLANE BANK DEGREES", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 11)
-	client.AddToDataDefinition(3000, "GROUND VELOCITY", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 12)
-	client.AddToDataDefinition(3000, "AIRSPEED INDICATED", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 13)
-	client.AddToDataDefinition(3000, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 14)
-	client.AddToDataDefinition(3000, "ON ANY RUNWAY", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 15)
-	client.AddToDataDefinition(3000, "SURFACE TYPE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 16)
-	client.AddToDataDefinition(3000, "SIM ON GROUND", "bool", types.SIMCONNECT_DATATYPE_INT32, 0, 17)
-	client.AddToDataDefinition(3000, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 18)
-	client.AddToDataDefinition(3000, "ATC AIRLINE", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 19)
-}
-
-func moveLatLon(latDeg, lonDeg, bearingDeg, distanceM float64) (float64, float64) {
-	const R = 6371000.0 // earth radius meters
-	phi1 := latDeg * math.Pi / 180.0
-	lambda1 := lonDeg * math.Pi / 180.0
-	theta := bearingDeg * math.Pi / 180.0
-	dR := distanceM / R
-
-	sinPhi2 := math.Sin(phi1)*math.Cos(dR) + math.Cos(phi1)*math.Sin(dR)*math.Cos(theta)
-	phi2 := math.Asin(sinPhi2)
-
-	y := math.Sin(theta) * math.Sin(dR) * math.Cos(phi1)
-	x := math.Cos(dR) - math.Sin(phi1)*math.Sin(phi2)
-	lambda2 := lambda1 + math.Atan2(y, x)
-
-	lat2 := phi2 * 180.0 / math.Pi
-	lon2 := lambda2 * 180.0 / math.Pi
-	return lat2, lon2
 }
