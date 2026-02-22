@@ -7,6 +7,45 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.6] - 2026-02-22
+
+### Fixed
+
+- **`pkg/types/receiver.go`** — `SIMCONNECT_RECV_VOR_LIST` had a wrong struct layout copy-pasted from `SIMCONNECT_RECV_SYSTEM_STATE`. It now correctly embeds `SIMCONNECT_RECV_FACILITIES_LIST` with `RgData []SIMCONNECT_DATA_FACILITY_VOR`, matching the SDK and the pattern of `SIMCONNECT_RECV_NDB_LIST` / `SIMCONNECT_RECV_AIRPORT_LIST`. `AsVORList()` previously returned a misinterpreted pointer. Closes #189.
+- **`pkg/datasets/facilities/ndb.go`** — `NewNDBFacilityDataset()` was missing `ICAO` and `REGION` fields; NDB identifiers were silently absent from dataset responses. Closes #190.
+- **`pkg/datasets/facilities/vor.go`** — `NewVORFacilityDataset()` was missing `ICAO` and `REGION` fields. Closes #191.
+- **`pkg/datasets/facilities/waypoint.go`** — `NewRouteFacilityDataset()` PREV block was missing `PREV_LATITUDE` and `PREV_LONGITUDE`; the NEXT block had both but PREV did not. Closes #192.
+
+### Added
+
+#### `pkg/convert`
+
+| Function | File | Description |
+|----------|------|-------------|
+| `NMToStatuteMiles` | distance.go | NM → statute miles |
+| `StatuteMilesToNM` | distance.go | Statute miles → NM |
+| `KilometersToStatuteMiles` | distance.go | km → statute miles |
+| `StatuteMilesToKilometers` | distance.go | Statute miles → km |
+| `StatuteMilesToMeters` | distance.go | Statute miles → m |
+| `MetersToStatuteMiles` | distance.go | m → statute miles |
+| `KnotsToFeetPerSecond` | speed.go | knots → ft/s (SimConnect body-axis velocity unit) |
+| `FeetPerSecondToKnots` | speed.go | ft/s → knots |
+| `NormalizeAngle` | angle.go | Normalises angle to (-180, 180] |
+| `AngleDifference` | angle.go | Shortest signed rotation from → to in (-180, 180] |
+
+Closes #193, #194, #195.
+
+#### `pkg/calc`
+
+| Function | File | Description |
+|----------|------|-------------|
+| `AlongTrackMeters` | crosstrack.go | Signed along-track distance from A toward B for point D; positive = ahead, negative = behind |
+| `HaversineKM` | haversine.go | Great-circle distance in kilometres |
+
+Closes #196, #197.
+
+---
+
 ## [0.3.5] - 2026-02-22
 
 ### Added

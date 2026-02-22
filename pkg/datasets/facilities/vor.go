@@ -9,6 +9,8 @@ func NewVORFacilityDataset() *datasets.FacilityDataSet {
 	return &datasets.FacilityDataSet{
 		Definitions: []datasets.FacilityDataDefinition{
 			"OPEN VOR",
+			"ICAO",
+			"REGION",
 			"VOR_LATITUDE",
 			"VOR_LONGITUDE",
 			"VOR_ALTITUDE",

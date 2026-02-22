@@ -9,6 +9,8 @@ func NewNDBFacilityDataset() *datasets.FacilityDataSet {
 	return &datasets.FacilityDataSet{
 		Definitions: []datasets.FacilityDataDefinition{
 			"OPEN NDB",
+			"ICAO",
+			"REGION",
 			"LATITUDE",
 			"LONGITUDE",
 			"ALTITUDE",

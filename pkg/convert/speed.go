@@ -50,3 +50,16 @@ func FeetPerMinuteToMetersPerSecond(fpm float64) float64 {
 func MetersPerSecondToFeetPerMinute(ms float64) float64 {
 	return ms / 0.00508
 }
+
+// knotsToFPS is derived from the exact SI definitions:
+// 1 knot = 1852 m/hr, 1 ft = 0.3048 m, 1 hr = 3600 s
+// → 1 knot = 1852 / (3600 × 0.3048) ft/s
+const knotsToFPS = 1852.0 / (3600.0 * 0.3048)
+
+func KnotsToFeetPerSecond(knots float64) float64 {
+	return knots * knotsToFPS
+}
+
+func FeetPerSecondToKnots(fps float64) float64 {
+	return fps / knotsToFPS
+}

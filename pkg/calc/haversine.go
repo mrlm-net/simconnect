@@ -22,3 +22,9 @@ func HaversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
 func HaversineNM(lat1, lon1, lat2, lon2 float64) float64 {
 	return HaversineMeters(lat1, lon1, lat2, lon2) / 1852.0
 }
+
+// HaversineKM calculates the great-circle distance in kilometres between
+// two geographic coordinates using the haversine formula.
+func HaversineKM(lat1, lon1, lat2, lon2 float64) float64 {
+	return HaversineMeters(lat1, lon1, lat2, lon2) / 1000.0
+}

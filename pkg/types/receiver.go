@@ -268,11 +268,8 @@ type SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT struct {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_VOR_LIST.htm
 type SIMCONNECT_RECV_VOR_LIST struct {
-	SIMCONNECT_RECV
-	DwRequestID DWORD     // Request ID for the VOR SIMCONNECT_RECV_VOR_LIST
-	DwInteger   DWORD     // Integer value
-	FFloat      float64   // Float value
-	SzString    [260]byte // String data, typically used for VOR names or identifiers
+	SIMCONNECT_RECV_FACILITIES_LIST
+	RgData []SIMCONNECT_DATA_FACILITY_VOR
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_WAYPOINT_LIST.htm
