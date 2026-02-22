@@ -38,6 +38,8 @@ func NewRouteFacilityDataset() *datasets.FacilityDataSet {
 			"PREV_ICAO",
 			"PREV_REGION",
 			"PREV_TYPE",
+			"PREV_LATITUDE",
+			"PREV_LONGITUDE",
 			"PREV_ALTITUDE",
 			"CLOSE ROUTE",
 		},

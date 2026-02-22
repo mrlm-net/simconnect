@@ -174,6 +174,56 @@ func TestMachCrossChainConsistency(t *testing.T) {
 	}
 }
 
+func TestKnotsToFeetPerSecond(t *testing.T) {
+	tests := []struct {
+		name  string
+		knots float64
+		want  float64
+	}{
+		{name: "zero", knots: 0, want: 0},
+		{name: "1 knot ≈ 1.68781 fps", knots: 1, want: knotsToFPS},
+		{name: "100 knots ≈ 168.781 fps", knots: 100, want: 100 * knotsToFPS},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := KnotsToFeetPerSecond(tt.knots)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("KnotsToFeetPerSecond(%v) = %v, want %v", tt.knots, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFeetPerSecondToKnots(t *testing.T) {
+	tests := []struct {
+		name string
+		fps  float64
+		want float64
+	}{
+		{name: "zero", fps: 0, want: 0},
+		{name: "knotsToFPS → 1 knot", fps: knotsToFPS, want: 1},
+		{name: "100 * knotsToFPS → 100 knots", fps: 100 * knotsToFPS, want: 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FeetPerSecondToKnots(tt.fps)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("FeetPerSecondToKnots(%v) = %v, want %v", tt.fps, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestKnotsFPSRoundtrip(t *testing.T) {
+	values := []float64{0, 1, 100, 250, 500}
+	for _, v := range values {
+		got := FeetPerSecondToKnots(KnotsToFeetPerSecond(v))
+		if math.Abs(got-v) > epsilon {
+			t.Errorf("roundtrip KnotsToFPS->FPSToKnots(%v) = %v", v, got)
+		}
+	}
+}
+
 func TestKnotsMetersPerSecond(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -95,3 +95,43 @@ func TestHaversineNM(t *testing.T) {
 		})
 	}
 }
+
+func TestHaversineKM(t *testing.T) {
+	tests := []struct {
+		name                   string
+		lat1, lon1, lat2, lon2 float64
+		wantKM                 float64
+		tolerance              float64
+	}{
+		{
+			name: "same point",
+			lat1: 0, lon1: 0, lat2: 0, lon2: 0,
+			wantKM: 0,
+		},
+		{
+			// EGLL (London Heathrow) → JFK; same route as HaversineNM test but in km.
+			// ~5540 km (= ~2992 NM × 1.852)
+			name: "EGLL to JFK ~5540 km",
+			lat1: 51.4775, lon1: -0.4614, lat2: 40.6413, lon2: -73.7781,
+			wantKM:    5540,
+			tolerance: 0.01,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := HaversineKM(tt.lat1, tt.lon1, tt.lat2, tt.lon2)
+			// KM result must equal meters / 1000 exactly
+			wantFromMeters := HaversineMeters(tt.lat1, tt.lon1, tt.lat2, tt.lon2) / 1000.0
+			if math.Abs(got-wantFromMeters) > 1e-9 {
+				t.Errorf("HaversineKM() = %v, HaversineMeters()/1000 = %v", got, wantFromMeters)
+			}
+			if tt.wantKM == 0 {
+				return
+			}
+			diff := math.Abs(got-tt.wantKM) / tt.wantKM
+			if diff > tt.tolerance {
+				t.Errorf("HaversineKM() = %v, want ~%v (%.2f%% error)", got, tt.wantKM, diff*100)
+			}
+		})
+	}
+}

@@ -99,3 +99,110 @@ func TestNMKilometerConsistency(t *testing.T) {
 		}
 	}
 }
+
+func TestNMToStatuteMiles(t *testing.T) {
+	tests := []struct {
+		name string
+		nm   float64
+		want float64
+	}{
+		{name: "zero", nm: 0, want: 0},
+		{name: "1 NM ≈ 1.15078 statute miles", nm: 1, want: 1852.0 / statuteMileToMeters},
+		{name: "10 NM", nm: 10, want: 10 * 1852.0 / statuteMileToMeters},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NMToStatuteMiles(tt.nm)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("NMToStatuteMiles(%v) = %v, want %v", tt.nm, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStatuteMilesToNM(t *testing.T) {
+	tests := []struct {
+		name string
+		mi   float64
+		want float64
+	}{
+		{name: "zero", mi: 0, want: 0},
+		{name: "1 statute mile ≈ 0.86898 NM", mi: 1, want: statuteMileToMeters / 1852.0},
+		{name: "10 statute miles", mi: 10, want: 10 * statuteMileToMeters / 1852.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StatuteMilesToNM(tt.mi)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("StatuteMilesToNM(%v) = %v, want %v", tt.mi, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestKilometersToStatuteMiles(t *testing.T) {
+	tests := []struct {
+		name string
+		km   float64
+		want float64
+	}{
+		{name: "zero", km: 0, want: 0},
+		{name: "1 km ≈ 0.62137 statute miles", km: 1, want: 1000.0 / statuteMileToMeters},
+		{name: "1.609344 km = 1 statute mile", km: 1.609344, want: 1.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := KilometersToStatuteMiles(tt.km)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("KilometersToStatuteMiles(%v) = %v, want %v", tt.km, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStatuteMilesToKilometers(t *testing.T) {
+	tests := []struct {
+		name string
+		mi   float64
+		want float64
+	}{
+		{name: "zero", mi: 0, want: 0},
+		{name: "1 statute mile = 1.609344 km", mi: 1, want: 1.609344},
+		{name: "2 statute miles", mi: 2, want: 2 * 1.609344},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StatuteMilesToKilometers(tt.mi)
+			if math.Abs(got-tt.want) > epsilon {
+				t.Errorf("StatuteMilesToKilometers(%v) = %v, want %v", tt.mi, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStatuteMilesRoundTrips(t *testing.T) {
+	// NM -> SM -> NM
+	nmValues := []float64{0, 1, 0.5, 100, 5000}
+	for _, nm := range nmValues {
+		got := StatuteMilesToNM(NMToStatuteMiles(nm))
+		if math.Abs(got-nm) > epsilon {
+			t.Errorf("roundtrip NMToSM->SMToNM(%v) = %v", nm, got)
+		}
+	}
+	// km -> SM -> km
+	kmValues := []float64{0, 1, 1.609344, 100}
+	for _, km := range kmValues {
+		got := StatuteMilesToKilometers(KilometersToStatuteMiles(km))
+		if math.Abs(got-km) > epsilon {
+			t.Errorf("roundtrip kmToSM->SMToKm(%v) = %v", km, got)
+		}
+	}
+	// m -> SM -> m
+	mValues := []float64{0, 1609.344, 5000, 100000}
+	for _, m := range mValues {
+		got := StatuteMilesToMeters(MetersToStatuteMiles(m))
+		if math.Abs(got-m) > epsilon {
+			t.Errorf("roundtrip mToSM->SMToM(%v) = %v", m, got)
+		}
+	}
+}
