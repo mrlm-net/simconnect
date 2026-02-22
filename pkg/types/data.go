@@ -81,6 +81,15 @@ const (
 )
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_WAYPOINT.htm
+//
+// WARNING: SimConnect.h wraps all structures in #pragma pack(push, 1), so the
+// C wire layout is 44 bytes — Flags (uint32) at offset 24 is directly followed
+// by ktsSpeed (float64) at offset 28 with NO padding.  Go's natural alignment
+// inserts 4 bytes of padding after Flags, making sizeof == 48.
+//
+// Do NOT pass a []SIMCONNECT_DATA_WAYPOINT slice directly to SetDataOnSimObject
+// via unsafe.Pointer — use engine.PackWaypoints to produce the correct 44-byte-
+// per-element packed buffer first.
 type SIMCONNECT_DATA_WAYPOINT struct {
 	Latitude        float64 // double Latitude
 	Longitude       float64 // double Longitude

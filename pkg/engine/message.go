@@ -3,10 +3,45 @@
 package engine
 
 import (
+	"encoding/binary"
+	"math"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
+
+// waypointWireSize is the packed size of SIMCONNECT_DATA_WAYPOINT in the
+// SimConnect wire format (C #pragma pack(1), no alignment padding).
+const waypointWireSize = 44
+
+// PackWaypoints serialises a slice of SIMCONNECT_DATA_WAYPOINT into the
+// 44-byte-per-element packed wire format that SimConnect expects.
+//
+// The Go struct is 48 bytes due to 4 bytes of implicit padding inserted after
+// the uint32 Flags field to align the following float64.  SimConnect's C header
+// uses #pragma pack(1) so that padding does not exist on the wire.
+//
+// Use the returned slice with SetDataOnSimObject:
+//
+//	packed := engine.PackWaypoints(wps)
+//	client.SetDataOnSimObject(defID, objID, flag,
+//	    uint32(len(wps)), engine.WaypointWireSize, unsafe.Pointer(&packed[0]))
+func PackWaypoints(wps []types.SIMCONNECT_DATA_WAYPOINT) []byte {
+	buf := make([]byte, len(wps)*waypointWireSize)
+	for i, wp := range wps {
+		b := buf[i*waypointWireSize:]
+		binary.LittleEndian.PutUint64(b[0:], math.Float64bits(wp.Latitude))
+		binary.LittleEndian.PutUint64(b[8:], math.Float64bits(wp.Longitude))
+		binary.LittleEndian.PutUint64(b[16:], math.Float64bits(wp.Altitude))
+		binary.LittleEndian.PutUint32(b[24:], wp.Flags)
+		binary.LittleEndian.PutUint64(b[28:], math.Float64bits(wp.KtsSpeed))
+		binary.LittleEndian.PutUint64(b[36:], math.Float64bits(wp.PercentThrottle))
+	}
+	return buf
+}
+
+// WaypointWireSize is the packed wire size per SIMCONNECT_DATA_WAYPOINT element.
+const WaypointWireSize = waypointWireSize
 
 type Message struct {
 	*types.SIMCONNECT_RECV
@@ -165,6 +200,20 @@ func (m *Message) AsWaypointList() *types.SIMCONNECT_RECV_WAYPOINT_LIST {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_WAYPOINT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsAssignedObjectID() *types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+func (m *Message) AsFacilityDataEnd() *types.SIMCONNECT_RECV_FACILITY_DATA_END {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FACILITY_DATA_END {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_FACILITY_DATA_END)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsException() *types.SIMCONNECT_RECV_EXCEPTION {
