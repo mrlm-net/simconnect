@@ -17,8 +17,8 @@ func TestOffsetToLatLon(t *testing.T) {
 		tolerance float64
 	}{
 		{
-			name:      "zero offset at origin",
-			latRef:    0, lonRef: 0,
+			name:   "zero offset at origin",
+			latRef: 0, lonRef: 0,
 			xEast: 0, zNorth: 0,
 			wantLat: 0, wantLon: 0,
 			tolerance: epsilon,
@@ -72,15 +72,15 @@ func TestOffsetToLatLon(t *testing.T) {
 			tolerance: epsilonDeg,
 		},
 		{
-			name:      "pole guard — east offset at north pole returns deltaLon=0",
-			latRef:    90, lonRef: 0,
+			name:   "pole guard — east offset at north pole returns deltaLon=0",
+			latRef: 90, lonRef: 0,
 			xEast: 1000, zNorth: 0,
 			wantLat: 90, wantLon: 0,
 			tolerance: epsilon,
 		},
 		{
-			name:      "pole guard — east offset at south pole returns deltaLon=0",
-			latRef:    -90, lonRef: 0,
+			name:   "pole guard — east offset at south pole returns deltaLon=0",
+			latRef: -90, lonRef: 0,
 			xEast: 1000, zNorth: 0,
 			wantLat: -90, wantLon: 0,
 			tolerance: epsilon,

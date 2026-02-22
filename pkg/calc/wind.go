@@ -17,3 +17,17 @@ func HeadwindCrosswind(windDir, windSpeed, runwayHeading float64) (headwind, cro
 	crosswind = windSpeed * math.Sin(angle)
 	return
 }
+
+// CrosswindComponent returns the crosswind component (perpendicular to runway).
+// Positive means wind from the right.
+func CrosswindComponent(windDir, windSpeed, runwayHeading float64) float64 {
+	_, crosswind := HeadwindCrosswind(windDir, windSpeed, runwayHeading)
+	return crosswind
+}
+
+// HeadwindComponent returns the headwind component (parallel to runway).
+// Negative values indicate a tailwind.
+func HeadwindComponent(windDir, windSpeed, runwayHeading float64) float64 {
+	headwind, _ := HeadwindCrosswind(windDir, windSpeed, runwayHeading)
+	return headwind
+}

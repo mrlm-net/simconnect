@@ -16,25 +16,25 @@ func TestHaversineMeters(t *testing.T) {
 		tolerance float64 // fraction, e.g. 0.01 = 1%
 	}{
 		{
-			name:     "same point",
+			name: "same point",
 			lat1: 0, lon1: 0, lat2: 0, lon2: 0,
 			wantDist:  0.0,
 			tolerance: 0,
 		},
 		{
-			name:     "NYC to London",
+			name: "NYC to London",
 			lat1: 40.7128, lon1: -74.0060, lat2: 51.5074, lon2: -0.1278,
 			wantDist:  5570000,
 			tolerance: 0.01,
 		},
 		{
-			name:     "1 degree longitude at equator",
+			name: "1 degree longitude at equator",
 			lat1: 0, lon1: 0, lat2: 0, lon2: 1,
 			wantDist:  111195,
 			tolerance: 0.01,
 		},
 		{
-			name:     "antipodal points",
+			name: "antipodal points",
 			lat1: 0, lon1: 0, lat2: 0, lon2: 180,
 			wantDist:  20015000,
 			tolerance: 0.01,
@@ -66,12 +66,12 @@ func TestHaversineNM(t *testing.T) {
 		tolerance              float64
 	}{
 		{
-			name:   "same point",
+			name: "same point",
 			lat1: 0, lon1: 0, lat2: 0, lon2: 0,
 			wantNM: 0,
 		},
 		{
-			name:   "NYC to London ~3006 NM",
+			name: "NYC to London ~3006 NM",
 			lat1: 40.7128, lon1: -74.0060, lat2: 51.5074, lon2: -0.1278,
 			wantNM:    3006,
 			tolerance: 0.01,
