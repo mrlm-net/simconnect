@@ -333,6 +333,41 @@ func main() {
 	</div>
 </section>
 
+<!-- Sponsoring -->
+<section class="relative py-20" aria-labelledby="sponsoring-heading">
+	<div class="absolute inset-x-0 top-0 h-px" style="background: linear-gradient(90deg, transparent, var(--color-border) 20%, var(--color-border) 80%, transparent);"></div>
+	<div
+		class="pointer-events-none absolute inset-0"
+		style="background: radial-gradient(ellipse 60% 80% at 50% 50%, rgba(88,166,255,0.05) 0%, transparent 70%);"
+	></div>
+	<div class="relative mx-auto max-w-xl px-6 text-center">
+		<h2
+			id="sponsoring-heading"
+			class="mb-3 text-sm font-semibold uppercase tracking-widest"
+			style="color: var(--color-text-muted);"
+		>
+			Support the project
+		</h2>
+		<p class="mb-4 text-2xl font-bold tracking-tight" style="color: var(--color-text-primary);">
+			Back open-source MSFS tooling
+		</p>
+		<p class="mx-auto mb-8 max-w-md text-base leading-relaxed text-pretty" style="color: var(--color-text-secondary);">
+			Sponsoring covers infrastructure costs, development time, and MSFS&nbsp;2020&nbsp;&amp;&nbsp;2024
+			licences required to test against real simulator versions.
+		</p>
+		<a
+			href="https://revolut.me/mrlm"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:brightness-110"
+			style="background-color: var(--color-link); color: var(--color-bg-primary);"
+		>
+			Sponsor via Revolut
+			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+		</a>
+	</div>
+</section>
+
 <!-- Quick Links -->
 <section class="py-20 overflow-hidden" aria-labelledby="quick-links-heading">
 	<div class="mx-auto max-w-4xl px-6">

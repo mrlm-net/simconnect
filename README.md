@@ -104,6 +104,17 @@ _Contributions are welcomed and must follow the [Code of Conduct](https://github
 
 > If you'd like to report a security issue please follow the [security guidelines](https://github.com/mrlm-net/simconnect?tab=security-ov-file).
 
+## Sponsoring
+
+This library is developed and maintained in personal time. Sponsorship helps cover the direct costs of keeping it accurate and active:
+
+- **MSFS 2024 license** — required to test against the current simulator version
+- **Windows development environment** — the only supported platform; ongoing hardware and OS costs
+- **Documentation hosting** — simconnect.mrlm.net is served from a paid static hosting account
+- **Development time** — research against undocumented SimConnect behaviors, writing typed wrappers, and reviewing contributions
+
+If this library has saved you time, a one-time or recurring contribution via [Revolut](https://revolut.me/mrlm) is appreciated. There is no obligation.
+
 ## License
 
 This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
