@@ -31,6 +31,9 @@ func Register(name, category string, constructor func() *DataSet) {
 	if name == "" {
 		panic("datasets.Register: name must not be empty")
 	}
+	if category == "" {
+		panic("datasets.Register: category must not be empty")
+	}
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
 	globalRegistry.entries[name] = registryEntry{

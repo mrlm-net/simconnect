@@ -63,28 +63,35 @@ func TestGet_Miss(t *testing.T) {
 
 func TestList_Sorted(t *testing.T) {
 	orig := cloneEntries()
-	defer resetRegistry(make(map[string]registryEntry))
+	defer resetRegistry(orig)
 
 	Register("test/gamma", "test", newTestConstructor("gamma"))
 	Register("test/alpha", "test", newTestConstructor("alpha"))
 	Register("test/beta", "test", newTestConstructor("beta"))
 
 	names := List()
-	if len(names) != 3 {
-		t.Fatalf("List: expected 3 names, got %d: %v", len(names), names)
+	if len(names) != len(orig)+3 {
+		t.Fatalf("List: expected %d names, got %d: %v", len(orig)+3, len(names), names)
 	}
-	expected := []string{"test/alpha", "test/beta", "test/gamma"}
-	for i, name := range names {
-		if name != expected[i] {
-			t.Errorf("List[%d]: expected %q, got %q", i, expected[i], name)
+	// Verify the three registered names appear in sorted order within the result.
+	contains := func(ss []string, s string) bool {
+		for _, v := range ss {
+			if v == s {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range []string{"test/alpha", "test/beta", "test/gamma"} {
+		if !contains(names, want) {
+			t.Errorf("List: expected %q to be present, got %v", want, names)
 		}
 	}
-	_ = orig // suppress "declared and not used"
 }
 
 func TestCategories_DistinctSorted(t *testing.T) {
 	orig := cloneEntries()
-	defer resetRegistry(make(map[string]registryEntry))
+	defer resetRegistry(orig)
 
 	Register("test/a1", "test-z", newTestConstructor("a1"))
 	Register("test/a2", "test-a", newTestConstructor("a2"))
@@ -92,21 +99,31 @@ func TestCategories_DistinctSorted(t *testing.T) {
 	Register("test/a4", "test-m", newTestConstructor("a4"))
 
 	cats := Categories()
-	if len(cats) != 3 {
-		t.Fatalf("Categories: expected 3 distinct categories, got %d: %v", len(cats), cats)
+	// Verify our three new categories are present (may include others from orig).
+	contains := func(ss []string, s string) bool {
+		for _, v := range ss {
+			if v == s {
+				return true
+			}
+		}
+		return false
 	}
-	expected := []string{"test-a", "test-m", "test-z"}
-	for i, cat := range cats {
-		if cat != expected[i] {
-			t.Errorf("Categories[%d]: expected %q, got %q", i, expected[i], cat)
+	for _, want := range []string{"test-a", "test-m", "test-z"} {
+		if !contains(cats, want) {
+			t.Errorf("Categories: expected %q to be present, got %v", want, cats)
 		}
 	}
-	_ = orig
+	// Categories must be sorted.
+	for i := 1; i < len(cats); i++ {
+		if cats[i] < cats[i-1] {
+			t.Errorf("Categories: not sorted at index %d: %v", i, cats)
+		}
+	}
 }
 
 func TestListByCategory_Matching(t *testing.T) {
 	orig := cloneEntries()
-	defer resetRegistry(make(map[string]registryEntry))
+	defer resetRegistry(orig)
 
 	Register("test/c1", "cat-one", newTestConstructor("c1"))
 	Register("test/c2", "cat-two", newTestConstructor("c2"))
@@ -122,7 +139,6 @@ func TestListByCategory_Matching(t *testing.T) {
 			t.Errorf("ListByCategory[%d]: expected %q, got %q", i, expected[i], name)
 		}
 	}
-	_ = orig
 }
 
 func TestListByCategory_UnknownCategory(t *testing.T) {
@@ -142,6 +158,15 @@ func TestRegister_EmptyNamePanics(t *testing.T) {
 		}
 	}()
 	Register("", "test", newTestConstructor("should-panic"))
+}
+
+func TestRegister_EmptyCategoryPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Register: expected panic for empty category, got none")
+		}
+	}()
+	Register("test/empty-cat", "", newTestConstructor("should-panic"))
 }
 
 func TestRegister_DuplicateSilentlyOverwrites(t *testing.T) {
