@@ -68,6 +68,6 @@ func (b *Builder) Len() int {
 // Reset removes all definitions from the builder.
 // Returns the builder for chaining.
 func (b *Builder) Reset() *Builder {
-	b.definitions = b.definitions[:0]
+	b.definitions = nil
 	return b
 }
