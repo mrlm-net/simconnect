@@ -127,8 +127,11 @@ func main() {
 		fmt.Printf("Simulator not running (%v) — skipping registration demo\n", err)
 	} else {
 		const mergedDefID = 1000
-		client.RegisterDataset(mergedDefID, &merged)
-		fmt.Printf("Registered merged dataset under define ID %d\n", mergedDefID)
+		if err := client.RegisterDataset(mergedDefID, &merged); err != nil {
+			fmt.Printf("RegisterDataset failed: %v\n", err)
+		} else {
+			fmt.Printf("Registered merged dataset under define ID %d\n", mergedDefID)
+		}
 		_ = client.Disconnect()
 	}
 

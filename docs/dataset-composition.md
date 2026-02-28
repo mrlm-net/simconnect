@@ -209,7 +209,7 @@ The blank import `_` is the Go idiom for importing a package solely for its `ini
 ```go
 ctor, ok := datasets.Get("traffic/aircraft")
 if !ok {
-    log.Fatal("traffic/aircraft not registered")
+    panic("traffic/aircraft not registered")
 }
 ds := ctor()   // fresh *DataSet
 ```
