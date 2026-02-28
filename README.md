@@ -113,7 +113,7 @@ This library is developed and maintained in personal time. Sponsorship helps cov
 - **Documentation hosting** — simconnect.mrlm.net is served from a paid static hosting account
 - **Development time** — research against undocumented SimConnect behaviors, writing typed wrappers, and reviewing contributions
 
-If this library has saved you time, a one-time or recurring contribution via [Revolut](https://revolut.me/mrlm) is appreciated. There is no obligation.
+If this library has saved you time, a one-time or recurring contribution via [Revolut](https://revolut.me/mrlm?currency=EUR) is appreciated. There is no obligation.
 
 ## License
 

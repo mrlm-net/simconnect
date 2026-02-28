@@ -356,7 +356,7 @@ func main() {
 			licences required to test against real simulator versions.
 		</p>
 		<a
-			href="https://revolut.me/mrlm"
+			href="https://revolut.me/mrlm?currency=EUR"
 			target="_blank"
 			rel="noopener noreferrer"
 			class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:brightness-110"
