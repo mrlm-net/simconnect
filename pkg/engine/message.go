@@ -222,3 +222,13 @@ func (m *Message) AsException() *types.SIMCONNECT_RECV_EXCEPTION {
 	}
 	return (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+// AsFlowEvent casts the message to SIMCONNECT_RECV_FLOW_EVENT.
+// Returns nil if the message is not a flow event.
+// Note: MSFS 2024 only.
+func (m *Message) AsFlowEvent() *types.SIMCONNECT_RECV_FLOW_EVENT {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FLOW_EVENT {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_FLOW_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}

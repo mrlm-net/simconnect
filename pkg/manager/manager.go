@@ -308,6 +308,31 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	UnsubscribeFromSystemEvent(eventID uint32) error
 
+	// Flow Event Methods (MSFS 2024 only)
+
+	// SubscribeToFlowEvent subscribes to all simulator flow events.
+	// No automatic re-subscription on reconnect — caller responsibility.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SubscribeToFlowEvent() error
+
+	// UnsubscribeFromFlowEvent cancels the active flow event subscription.
+	// Returns ErrNotConnected if not connected to the simulator.
+	UnsubscribeFromFlowEvent() error
+
+	// Flight Methods
+
+	// FlightLoad requests the simulator to load a saved flight file.
+	// Returns ErrNotConnected if not connected to the simulator.
+	FlightLoad(flightFile string) error
+
+	// FlightPlanLoad requests the simulator to load a flight plan file.
+	// Returns ErrNotConnected if not connected to the simulator.
+	FlightPlanLoad(flightPlanFile string) error
+
+	// FlightSave requests the simulator to save the current flight to a file.
+	// Returns ErrNotConnected if not connected to the simulator.
+	FlightSave(flightFile string, title string, description string) error
+
 	// Facility Methods
 	// These methods provide direct access to facility operations without needing
 	// to call Client() first. They return ErrNotConnected if not connected.
