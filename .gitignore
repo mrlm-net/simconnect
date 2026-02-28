@@ -41,3 +41,7 @@ website/.svelte-kit/
 .mrlm
 .playwright-mcp
 website/sbom-npm.json
+
+examples/**/*.gpx
+examples/**/*.csv
+examples/**/*.json

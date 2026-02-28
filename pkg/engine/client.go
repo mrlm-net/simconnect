@@ -22,6 +22,11 @@ type Client interface {
 	SubscribeToSystemEvent(eventID uint32, eventName string) error
 	UnsubscribeFromSystemEvent(eventID uint32) error
 
+	// SubscribeToFlowEvent subscribes to all simulator flow events (MSFS 2024 only).
+	SubscribeToFlowEvent() error
+	// UnsubscribeFromFlowEvent cancels the active flow event subscription (MSFS 2024 only).
+	UnsubscribeFromFlowEvent() error
+
 	AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error
 	RequestDataOnSimObject(requestID uint32, definitionID uint32, objectID uint32, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error
 	RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error

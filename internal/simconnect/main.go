@@ -35,6 +35,9 @@ type API interface {
 	UnsubscribeFromSystemEvent(eventID uint32) error
 	SetSystemEventState(eventID uint32, state types.SIMCONNECT_STATE) error
 
+	SubscribeToFlowEvent() error
+	UnsubscribeFromFlowEvent() error
+
 	FlightLoad(flightFile string) error
 	FlightPlanLoad(flightPlanFile string) error
 	FlightSave(flightFile string, title string, description string) error
