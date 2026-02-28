@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.11] - 2026-02-28
+
+### Fixed
+
+- **Sponsorship links** — appended `?currency=EUR` to all Revolut URLs in `.github/FUNDING.yml`, `README.md`, and the marketing homepage.
+
+---
+
 ## [0.3.10] - 2026-02-28
 
 ### Added
