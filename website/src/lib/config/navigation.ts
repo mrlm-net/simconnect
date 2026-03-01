@@ -3,11 +3,13 @@ import type { DocMeta, NavSection } from '$lib/types/index.js';
 const sectionMeta: Record<string, { title: string; defaultOpen: boolean }> = {
 	client: { title: 'Client / Engine', defaultOpen: true },
 	manager: { title: 'Manager', defaultOpen: true },
+	datasets: { title: 'Datasets', defaultOpen: true },
+	traffic: { title: 'Traffic', defaultOpen: true },
 	events: { title: 'Events', defaultOpen: true },
 	internals: { title: 'Internals', defaultOpen: false }
 };
 
-const sectionOrder = ['client', 'manager', 'events', 'internals'];
+const sectionOrder = ['client', 'manager', 'datasets', 'traffic', 'events', 'internals'];
 
 export function buildNavigation(docs: DocMeta[], basePath: string): NavSection[] {
 	const grouped = new Map<string, DocMeta[]>();
