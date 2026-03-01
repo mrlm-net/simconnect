@@ -7,6 +7,72 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### `pkg/engine` — MSFS 2024 Input Event API (#143)
+
+Six new methods on the `Client` interface expose the full Input Event lifecycle. This API
+is available in MSFS 2024 only — the underlying DLL functions are not present in MSFS 2020.
+
+| Method | Description |
+|--------|-------------|
+| `EnumerateInputEvents(requestID uint32) error` | Requests a paginated list of all input events known to the simulator; responses arrive as `SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS` messages |
+| `GetInputEvent(requestID uint32, hash uint64) error` | Requests the current value of a single input event by 64-bit hash; response arrives as `SIMCONNECT_RECV_GET_INPUT_EVENT` |
+| `SetInputEventDouble(hash uint64, value float64) error` | Sets an input event value from a Go `float64`; owns the stack-allocated buffer for the synchronous DLL call duration |
+| `SetInputEventString(hash uint64, value string) error` | Sets an input event value from a Go `string`; same buffer-safety guarantee as the double variant |
+| `SubscribeInputEvent(hash uint64) error` | Subscribes to value-change notifications for an input event; updates arrive as `SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT` messages |
+| `UnsubscribeInputEvent(hash uint64) error` | Cancels a previous subscription |
+
+Four package-level value extractor functions are provided in `pkg/engine` to decode the
+inline byte buffers returned by the DLL without exposing `unsafe.Pointer` to callers:
+
+| Function | Description |
+|----------|-------------|
+| `InputEventValueAsFloat64(recv *types.SIMCONNECT_RECV_GET_INPUT_EVENT) (float64, bool)` | Reads the first 8 bytes of `Value` as a little-endian IEEE 754 `float64`; returns `false` if `EType` is not `SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE` |
+| `InputEventValueAsString(recv *types.SIMCONNECT_RECV_GET_INPUT_EVENT) (string, bool)` | Reads `Value` to null terminator as a UTF-8 string; returns `false` if `EType` is not `SIMCONNECT_INPUT_EVENT_TYPE_STRING` |
+| `SubscribeInputEventValueAsFloat64(recv *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT) (float64, bool)` | Same as above for subscribe receive type |
+| `SubscribeInputEventValueAsString(recv *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT) (string, bool)` | Same as above for subscribe receive type |
+
+Three new `As*` helpers on `*Message` follow the existing nil-guard-then-cast pattern:
+
+| Method | Description |
+|--------|-------------|
+| `(*Message).AsEnumerateInputEvents() *types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS` | Casts dispatch buffer to enumerate response; returns `nil` if message ID does not match |
+| `(*Message).AsGetInputEvent() *types.SIMCONNECT_RECV_GET_INPUT_EVENT` | Casts dispatch buffer to get-event response |
+| `(*Message).AsSubscribeInputEvent() *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT` | Casts dispatch buffer to subscribe notification |
+
+#### `pkg/types` — receive struct fixes and new type (#143)
+
+- `SIMCONNECT_RECV_GET_INPUT_EVENT.Value` corrected from `unsafe.Pointer` to `[260]byte` —
+  the original type was incorrect because the bytes are inline in the DLL dispatch buffer,
+  not a heap pointer. `[260]byte` covers both DOUBLE (8 bytes, read via
+  `math.Float64frombits`) and STRING (up to 32 chars per MSFS 2024 SDK) and is safe for
+  the GC.
+- `SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT` restructured to flat fields (no embedded
+  `SIMCONNECT_RECV`) — confirmed via MSFS 2024 SDK and FlyByWire Rust bindgen output that
+  `SimConnect.h` wraps this struct in `#pragma pack(1)`. Go's natural alignment would
+  insert 4 bytes of padding before `Hash` (UINT64 at wire offset 12), producing incorrect
+  field reads. The flat layout matches the wire format exactly. `Value` corrected from
+  `unsafe.Pointer` to `[260]byte` (max 256 chars for STRING per MSFS 2024 SDK).
+- `SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS` added — embeds `SIMCONNECT_RECV_LIST_TEMPLATE`
+  (28 bytes) with a sentinel `RgData [1]SIMCONNECT_INPUT_EVENT_DESCRIPTOR` field; iterate
+  over `DwArraySize` elements via the `AsEnumerateInputEvents()` engine helper using
+  unsafe pointer arithmetic, identical to the existing airport/NDB/VOR list patterns.
+
+#### `internal/simconnect` — five new DLL bindings (#143)
+
+`internal/simconnect/inputevent.go` adds raw syscall wrappers for
+`SimConnect_EnumerateInputEvents`, `SimConnect_GetInputEvent`, `SimConnect_SetInputEvent`,
+`SimConnect_SubscribeInputEvent`, and `SimConnect_UnsubscribeInputEvent`. The 64-bit hash
+parameter is passed as `uintptr(hash)` at the syscall boundary (amd64 Windows, no
+split-register concern). `SetInputEvent` accepts `unsafe.Pointer` at the internal API
+boundary only; the `pkg/engine` typed wrappers above keep `unsafe.Pointer` off the public
+`Client` interface entirely.
+
+---
+
 ## [0.4.1] - 2026-03-01
 
 ### Fixed
