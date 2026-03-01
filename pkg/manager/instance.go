@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -111,6 +112,10 @@ type Instance struct {
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
+
+	// AI traffic fleet — tracks pending and active AI aircraft.
+	// Reset on each reconnect (ObjectIDs are invalidated across disconnects).
+	fleet *traffic.Fleet
 }
 
 // Handler function types that are part of the public Manager API

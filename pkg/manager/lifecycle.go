@@ -74,11 +74,13 @@ func (m *Instance) runConnection() error {
 		m.mu.Lock()
 		m.engine = nil
 		m.mu.Unlock()
+		m.fleet.SetClient(nil)
 		return err
 	}
 
 	m.setState(StateConnected)
 	m.logger.Debug("[manager] Connected to simulator")
+	m.fleet.SetClient(m.engine)
 
 	// Process messages until disconnection or cancellation
 	stream := m.engine.Stream()
@@ -98,6 +100,7 @@ func (m *Instance) runConnection() error {
 				m.mu.Lock()
 				m.engine = nil
 				m.mu.Unlock()
+				m.fleet.SetClient(nil)
 				return nil // Return nil to allow reconnection
 			}
 
