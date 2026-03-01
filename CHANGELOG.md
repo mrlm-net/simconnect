@@ -7,6 +7,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.0] - 2026-03-01
+
+### Added
+
+#### `pkg/traffic` — traffic guide and updated example (#38)
+
+- `docs/traffic-guide.md` — MVP guide covering all three aircraft kinds, the async
+  create→acknowledge lifecycle, waypoint helpers with flag reference, fleet management
+  API, manager integration, and known limitations (no ground routing yet)
+- `examples/simconnect-traffic/main.go` — rewritten to use `pkg/traffic`: parked spawn,
+  non-ATC spawn with pushback→taxi→takeoff waypoint chain, periodic fleet status log,
+  and graceful `Fleet.RemoveAll` on shutdown
+- Website sidebar now includes Traffic and Datasets navigation sections
+
+---
+
 ## [0.3.13] - 2026-03-01
 
 ### Added
