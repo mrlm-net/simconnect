@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -25,18 +26,6 @@ type CameraData struct {
 	GPSPositionAlt float64
 	GPSPositionLat float64
 	GPSPositionLon float64
-}
-
-// haversineMeters returns the great-circle distance between two points
-// specified by latitude/longitude in degrees. Result is in meters.
-func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
-	const earthRadius = 6371000.0 // meters
-	toRad := func(deg float64) float64 { return deg * math.Pi / 180.0 }
-	dLat := toRad(lat2 - lat1)
-	dLon := toRad(lon2 - lon1)
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(toRad(lat1))*math.Cos(toRad(lat2))*math.Sin(dLon/2)*math.Sin(dLon/2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-	return earthRadius * c
 }
 
 // runConnection handles a single connection lifecycle to the simulator.
@@ -282,7 +271,7 @@ connected:
 					lon := *(*float64)(unsafe.Pointer(uintptr(entryPtr) + lonOff))
 
 					// Use Haversine for meters (more accurate for real distances)
-					distMeters := haversineMeters(myLatitude, myLongitude, lat, lon)
+					distMeters := calc.HaversineMeters(myLatitude, myLongitude, lat, lon)
 					if distMeters < closestDistanceMeters {
 						closestDistanceMeters = distMeters
 						closestIdent = engine.BytesToString(ident[:])
