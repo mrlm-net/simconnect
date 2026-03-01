@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // defaultSimState returns a new SimState with all fields initialized to their default/uninitialized values.
@@ -146,6 +147,7 @@ func New(name string, opts ...Option) Manager {
 		simRunningHandlers:     []instance.SimRunningHandlerEntry{},
 		customSystemEvents:     make(map[string]*instance.CustomSystemEvent),
 		customEventIDAlloc:     CustomEventIDMin,
-		requestRegistry:              NewRequestRegistry(),
+		requestRegistry:        NewRequestRegistry(),
+		fleet:                  traffic.NewFleet(nil),
 	}
 }

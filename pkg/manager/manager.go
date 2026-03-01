@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/datasets"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -436,6 +437,46 @@ type Manager interface {
 	// AICreateParkedATCAircraftEX1 creates a parked ATC aircraft with livery selection.
 	// Returns ErrNotConnected if not connected to the simulator.
 	AICreateParkedATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, szAirportID string, RequestID uint32) error
+
+	// Traffic Package Methods
+	// High-level AI aircraft management via pkg/traffic.Fleet.
+	// These wrap the raw AI* methods above with fleet tracking and typed options.
+
+	// Fleet returns the manager's internal aircraft fleet.
+	// Valid for the lifetime of the manager; reset (cleared) on each reconnect.
+	// Call Fleet().Acknowledge(reqID, objectID) from your ASSIGNED_OBJECT_ID handler.
+	Fleet() *traffic.Fleet
+
+	// TrafficParked queues a parked ATC aircraft creation at an airport gate.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficParked(opts traffic.ParkedOpts, reqID uint32) error
+
+	// TrafficEnroute queues an enroute ATC aircraft creation along a flight plan.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficEnroute(opts traffic.EnrouteOpts, reqID uint32) error
+
+	// TrafficNonATC queues a non-ATC aircraft creation at an explicit position.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficNonATC(opts traffic.NonATCOpts, reqID uint32) error
+
+	// TrafficRemove removes an AI aircraft from the simulation and from the fleet.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficRemove(objectID uint32, reqID uint32) error
+
+	// TrafficReleaseControl releases simulator control over a NonATC aircraft.
+	// Must be called before TrafficSetWaypoints.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficReleaseControl(objectID uint32, reqID uint32) error
+
+	// TrafficSetWaypoints assigns a waypoint chain to a non-ATC aircraft.
+	// Build wps with traffic.PushbackWaypoint, TaxiWaypoint, LineupWaypoint,
+	// ClimbWaypoint, and TakeoffClimb helpers.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficSetWaypoints(objectID uint32, defID uint32, wps []types.SIMCONNECT_DATA_WAYPOINT) error
+
+	// TrafficSetFlightPlan assigns a flight plan to an ATC aircraft.
+	// Returns ErrNotConnected if not connected to the simulator.
+	TrafficSetFlightPlan(objectID uint32, planPath string, reqID uint32) error
 
 	// Configuration getters
 
