@@ -48,18 +48,16 @@ go run main.go
 - **AddToDataDefinition()** — Define camera/position data structure
 - **RequestDataOnSimObject()** — Request periodic position updates
 - **RequestFacilitiesList()** — Query all airports from facilities database
-- **haversineMeters()** — Calculate great-circle distance between coordinates
+- **calc.HaversineMeters()** — Calculate great-circle distance between coordinates (from `pkg/calc`)
 
 ### Haversine Formula
 
 The example uses the haversine formula to calculate the shortest distance between two points on Earth's surface:
 
 ```go
-func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
-    const earthRadius = 6371000.0 // meters
-    // Calculate distance using spherical law of cosines
-    // Result is in meters
-}
+import "github.com/mrlm-net/simconnect/pkg/calc"
+
+distMeters := calc.HaversineMeters(lat1, lon1, lat2, lon2)
 ```
 
 ### GPS Position Tracking
@@ -91,7 +89,7 @@ Airport Name
 Once you have your position and airport coordinates:
 
 ```go
-distanceMeters := haversineMeters(yourLat, yourLon, airportLat, airportLon)
+distanceMeters := calc.HaversineMeters(yourLat, yourLon, airportLat, airportLon)
 distanceKm := distanceMeters / 1000.0
 ```
 

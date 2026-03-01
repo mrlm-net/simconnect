@@ -54,11 +54,11 @@ func LatLonToOffset(latRef, lonRef, lat, lon float64) (xEast, zNorth float64) {
 
 	latRefRad := latRef * math.Pi / 180.0
 	sinLat := math.Sin(latRefRad)
-	w := math.Sqrt(1 - e2*sinLat*sinLat)
+	W := math.Sqrt(1 - e2*sinLat*sinLat)
 
 	// Meridian radius of curvature (M) and prime vertical radius (N)
-	M := a * (1 - e2) / (w * w * w)
-	N := a / w
+	M := a * (1 - e2) / (W * W * W)
+	N := a / W
 
 	zNorth = (lat - latRef) * (math.Pi / 180.0) * M
 	if math.Abs(latRef) < 90.0 {

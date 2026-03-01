@@ -21,33 +21,33 @@ func TestDisplaceByHeading(t *testing.T) {
 		wantLonInc     bool
 	}{
 		{
-			name:           "due north 1852m from equator",
-			lat:            0, lon: 0, hdgDeg: 0, distanceMeters: 1852,
+			name: "due north 1852m from equator",
+			lat:  0, lon: 0, hdgDeg: 0, distanceMeters: 1852,
 			wantLat: 0.016667, wantLon: 0,
 		},
 		{
-			name:           "due east 1852m at equator",
-			lat:            0, lon: 0, hdgDeg: 90, distanceMeters: 1852,
+			name: "due east 1852m at equator",
+			lat:  0, lon: 0, hdgDeg: 90, distanceMeters: 1852,
 			wantLat: 0, wantLon: 0.016667,
 		},
 		{
-			name:           "due south 1852m",
-			lat:            1, lon: 0, hdgDeg: 180, distanceMeters: 1852,
+			name: "due south 1852m",
+			lat:  1, lon: 0, hdgDeg: 180, distanceMeters: 1852,
 			wantLat: 0.983333, wantLon: 0,
 		},
 		{
-			name:           "due west 1852m at equator",
-			lat:            0, lon: 1, hdgDeg: 270, distanceMeters: 1852,
+			name: "due west 1852m at equator",
+			lat:  0, lon: 1, hdgDeg: 270, distanceMeters: 1852,
 			wantLat: 0, wantLon: 0.983333,
 		},
 		{
-			name:           "zero distance",
-			lat:            51.5, lon: -0.1, hdgDeg: 135, distanceMeters: 0,
+			name: "zero distance",
+			lat:  51.5, lon: -0.1, hdgDeg: 135, distanceMeters: 0,
 			wantLat: 51.5, wantLon: -0.1,
 		},
 		{
-			name:           "45 degree heading 1000m",
-			lat:            0, lon: 0, hdgDeg: 45, distanceMeters: 1000,
+			name: "45 degree heading 1000m",
+			lat:  0, lon: 0, hdgDeg: 45, distanceMeters: 1000,
 			checkDirection: true,
 			wantLatInc:     true,
 			wantLonInc:     true,
