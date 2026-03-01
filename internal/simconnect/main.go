@@ -84,6 +84,13 @@ type API interface {
 	ClearNotificationGroup(groupID uint32) error
 	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error
 	SetNotificationGroupPriority(groupID uint32, priority uint32) error
+
+	// Input Event API (MSFS 2024 only)
+	EnumerateInputEvents(requestID uint32) error
+	GetInputEvent(requestID uint32, hash uint64) error
+	SetInputEvent(hash uint64, value unsafe.Pointer) error
+	SubscribeInputEvent(hash uint64) error
+	UnsubscribeInputEvent(hash uint64) error
 }
 
 func (sc *SimConnect) getConnection() uintptr {

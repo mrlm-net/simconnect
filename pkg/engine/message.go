@@ -232,3 +232,33 @@ func (m *Message) AsFlowEvent() *types.SIMCONNECT_RECV_FLOW_EVENT {
 	}
 	return (*types.SIMCONNECT_RECV_FLOW_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+// AsEnumerateInputEvents casts the message to SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS.
+// Returns nil if the message is not an enumerate input events response.
+// Note: MSFS 2024 only.
+func (m *Message) AsEnumerateInputEvents() *types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENTS {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+// AsGetInputEvent casts the message to SIMCONNECT_RECV_GET_INPUT_EVENT.
+// Returns nil if the message is not a get input event response.
+// Note: MSFS 2024 only.
+func (m *Message) AsGetInputEvent() *types.SIMCONNECT_RECV_GET_INPUT_EVENT {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_GET_INPUT_EVENT {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_GET_INPUT_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+// AsSubscribeInputEvent casts the message to SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT.
+// Returns nil if the message is not a subscribe input event notification.
+// Note: MSFS 2024 only.
+func (m *Message) AsSubscribeInputEvent() *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
