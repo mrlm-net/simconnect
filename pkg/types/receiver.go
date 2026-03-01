@@ -264,14 +264,18 @@ type SIMCONNECT_RECV_RESERVED_KEY struct {
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT.htm
-// Note: flat field layout required — SimConnect.h uses #pragma pack(1), placing Hash at offset 12.
-// Embedding SIMCONNECT_RECV would insert 4 bytes of Go alignment padding before Hash (uint64
-// requires 8-byte alignment), shifting Hash to offset 16 — incorrect.
+// Note: HashBytes [8]byte is used instead of uint64 for the wire Hash field.
+// SimConnect.h uses #pragma pack(1), placing Hash (UINT64) at offset 12 immediately
+// after the 12-byte SIMCONNECT_RECV base fields (3 x DWORD). Go's uint64 requires
+// 8-byte alignment; offset 12 is not 8-byte aligned, so the compiler would insert
+// 4 bytes of padding and shift Hash to offset 16 — wrong. [8]byte has alignment 1
+// and lands exactly at offset 12 with no padding. Use
+// binary.LittleEndian.Uint64(recv.HashBytes[:]) to read the uint64 value.
 type SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT struct {
 	DwSize    DWORD                       // offset 0 — mirrors SIMCONNECT_RECV.DwSize
 	DwVersion DWORD                       // offset 4 — mirrors SIMCONNECT_RECV.DwVersion
 	DwID      DWORD                       // offset 8 — mirrors SIMCONNECT_RECV.DwID; used by AsSubscribeInputEvent()
-	Hash      uint64                      // offset 12 — UINT64 Hash; packed, no alignment gap
+	HashBytes [8]byte                     // offset 12 — UINT64 Hash as raw bytes; use binary.LittleEndian.Uint64(HashBytes[:])
 	EType     SIMCONNECT_INPUT_EVENT_TYPE // offset 20 — input event type (DOUBLE or STRING)
 	Value     [260]byte                   // offset 24 — inline value: 8 bytes (float64) for DOUBLE, null-terminated for STRING
 }

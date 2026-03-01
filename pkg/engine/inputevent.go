@@ -26,10 +26,11 @@ func (e *Engine) SetInputEventDouble(hash uint64, value float64) error {
 }
 
 // SetInputEventString sets a STRING-typed input event value.
-// The value is copied into a null-terminated [260]byte buffer before the call.
+// value is copied into a 260-byte null-terminated buffer. Strings longer than 259
+// bytes are silently truncated to 259 bytes to preserve the null terminator at buf[259].
 func (e *Engine) SetInputEventString(hash uint64, value string) error {
 	var buf [260]byte
-	copy(buf[:], value)
+	copy(buf[:259], value) // reserve buf[259] as null terminator
 	return e.api.SetInputEvent(hash, unsafe.Pointer(&buf[0]))
 }
 
