@@ -25,7 +25,11 @@ var globalRegistry = &registry{entries: make(map[string]registryEntry)}
 
 // Register adds a dataset constructor to the global registry under the given
 // name and category. The name must follow the "<category>/<descriptor>"
-// convention (e.g. "traffic/aircraft"). Panics if name is empty.
+// convention (e.g. "traffic/aircraft").
+//
+// Intended for use in package init() functions with compile-time constant
+// arguments. Panics if name or category is empty — this is a programming
+// error that must be caught at development time, not at runtime.
 // Silently overwrites any previously registered entry with the same name.
 func Register(name, category string, constructor func() *DataSet) {
 	if name == "" {

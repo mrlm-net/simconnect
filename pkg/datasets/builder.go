@@ -9,6 +9,9 @@ import "github.com/mrlm-net/simconnect/pkg/types"
 // All mutating methods return the receiver to allow method chaining.
 // Build() is non-destructive and may be called multiple times; each call
 // returns an independent snapshot of the current builder state.
+//
+// Builder is not safe for concurrent use by multiple goroutines.
+// Callers that share a Builder across goroutines must synchronise externally.
 type Builder struct {
 	definitions []DataDefinition
 }

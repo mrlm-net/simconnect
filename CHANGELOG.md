@@ -7,6 +7,43 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### `pkg/datasets` — composition helpers (epic #26 / #32)
+
+| API | Description |
+|-----|-------------|
+| `(DataSet).Clone() DataSet` | Deep copy of a dataset; returned value has an independent backing slice |
+| `Merge(...DataSet) DataSet` | Combines multiple datasets; last definition wins on duplicate `Name` (position shifts to last occurrence) |
+| `NewBuilder() *Builder` | Fluent builder for incremental dataset construction |
+| `(*Builder).Add(def DataDefinition) *Builder` | Appends a pre-built definition |
+| `(*Builder).AddField(name, unit string, dataType, epsilon) *Builder` | Convenience wrapper that constructs a `DataDefinition` inline |
+| `(*Builder).Remove(name string) *Builder` | Removes first definition matching `Name` |
+| `(*Builder).Build() DataSet` | Returns a new `DataSet`; backing slice is independent of the builder |
+| `(*Builder).Len() int` | Number of pending definitions |
+| `(*Builder).Reset() *Builder` | Clears the builder (severs backing array) |
+
+#### `pkg/datasets` — global registry (epic #26 / #34)
+
+| API | Description |
+|-----|-------------|
+| `Register(name, category string, constructor func() *DataSet)` | Registers a named dataset constructor; panics on empty name or category; silently overwrites duplicates |
+| `Get(name string) (func() *DataSet, bool)` | Retrieves a constructor by name |
+| `List() []string` | Sorted list of all registered names |
+| `Categories() []string` | Sorted list of distinct categories |
+| `ListByCategory(category string) []string` | Sorted names in a given category; nil if category unknown |
+
+`pkg/datasets/traffic` now auto-registers `"traffic/aircraft"` (category `"traffic"`) via `init()` — import it blank (`_ "github.com/mrlm-net/simconnect/pkg/datasets/traffic"`) to activate.
+
+#### Documentation (epic #26 / #35)
+
+- New guide: `docs/dataset-composition.md` — covers `Clone`, `Merge`, `Builder`, and the global registry with runnable end-to-end snippet.
+- `examples/using-datasets/main.go` rewritten to demonstrate blank-import auto-registration, `List`, `Categories`, `Get`, `Clone`, `Builder`, and `Merge`.
+
+---
+
 ## [0.3.11] - 2026-02-28
 
 ### Fixed
