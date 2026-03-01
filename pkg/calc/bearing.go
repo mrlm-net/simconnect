@@ -14,3 +14,10 @@ func BearingDegrees(lat1, lon1, lat2, lon2 float64) float64 {
 	theta := math.Atan2(x, y) * 180.0 / math.Pi
 	return math.Mod(theta+360.0, 360.0)
 }
+
+// BearingFromOffsets returns the bearing in degrees [0, 360) from the local
+// coordinate origin toward (xEast, zNorth). Uses SimConnect convention: X=east,
+// Z=north. Returns 0 for the zero vector (both inputs are 0).
+func BearingFromOffsets(xEast, zNorth float64) float64 {
+	return math.Mod(math.Atan2(xEast, zNorth)*180.0/math.Pi+360.0, 360.0)
+}
