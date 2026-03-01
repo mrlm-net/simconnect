@@ -4,9 +4,7 @@
 package traffic
 
 import (
-	"math"
-
-	"github.com/mrlm-net/simconnect/pkg/convert"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -97,22 +95,12 @@ func ClimbWaypoint(lat, lon, altAGL, ktsSpeed, throttlePct float64) types.SIMCON
 // Append these directly after a LineupWaypoint to complete a full departure
 // sequence: [PushbackWaypoint] [TaxiWaypoint...] [LineupWaypoint] [TakeoffClimb...]
 func TakeoffClimb(rwyLat, rwyLon, hdgDeg float64) []types.SIMCONNECT_DATA_WAYPOINT {
-	c1Lat, c1Lon := ahead(rwyLat, rwyLon, hdgDeg, 2778)  // 1.5 nm
-	c2Lat, c2Lon := ahead(rwyLat, rwyLon, hdgDeg, 9260)  // 5 nm
-	c3Lat, c3Lon := ahead(rwyLat, rwyLon, hdgDeg, 22224) // 12 nm
+	c1Lat, c1Lon := calc.DisplaceByHeading(rwyLat, rwyLon, hdgDeg, 2778)  // 1.5 nm
+	c2Lat, c2Lon := calc.DisplaceByHeading(rwyLat, rwyLon, hdgDeg, 9260)  // 5 nm
+	c3Lat, c3Lon := calc.DisplaceByHeading(rwyLat, rwyLon, hdgDeg, 22224) // 12 nm
 	return []types.SIMCONNECT_DATA_WAYPOINT{
 		ClimbWaypoint(c1Lat, c1Lon, 1500, 200, 100),
 		ClimbWaypoint(c2Lat, c2Lon, 4000, 240, 90),
 		ClimbWaypoint(c3Lat, c3Lon, 9000, 280, 85),
 	}
-}
-
-// ahead returns the lat/lon displaced from (lat, lon) by the given distance in
-// meters along heading hdgDeg. Uses convert.OffsetToLatLon under the hood.
-func ahead(lat, lon, hdgDeg, meters float64) (float64, float64) {
-	rad := hdgDeg * math.Pi / 180
-	return convert.OffsetToLatLon(lat, lon,
-		meters*math.Sin(rad), // east component (X)
-		meters*math.Cos(rad), // north component (Z)
-	)
 }
