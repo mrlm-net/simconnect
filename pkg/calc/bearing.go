@@ -16,8 +16,14 @@ func BearingDegrees(lat1, lon1, lat2, lon2 float64) float64 {
 }
 
 // BearingFromOffsets returns the bearing in degrees [0, 360) from the local
-// coordinate origin toward (xEast, zNorth). Uses SimConnect convention: X=east,
-// Z=north. Returns 0 for the zero vector (both inputs are 0).
+// coordinate origin toward the point (xEast, zNorth), where xEast is the
+// eastward offset and zNorth is the northward offset, both in any consistent
+// linear unit (metres, feet, SimConnect BiasX/BiasZ units).
+//
+// The coordinate convention matches SimConnect's local airport frame:
+// X is east, Z is north.
+//
+// Returns 0 for the degenerate case where both offsets are zero.
 func BearingFromOffsets(xEast, zNorth float64) float64 {
 	return math.Mod(math.Atan2(xEast, zNorth)*180.0/math.Pi+360.0, 360.0)
 }
