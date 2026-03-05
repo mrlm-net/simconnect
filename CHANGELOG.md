@@ -9,6 +9,47 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-05
+
+### Fixed
+
+#### `pkg/types` — wire struct alignment bugs (second pass)
+
+Two additional Go-vs-wire alignment bugs discovered by systematic review, following the same
+`#pragma pack(1)` vs Go alignment-padding pattern fixed in v0.4.2.
+
+**`SIMCONNECT_DATA_RACE_RESULT` — critical data corruption on float64 fields**
+
+`FTotalTime float64` and `FPenaltyTime float64` were at wire offset 1060 and 1068 respectively.
+The prefix before `FTotalTime` is `DWORD(4) + GUID(16) + 4×char[260](1040) = 1060 bytes`;
+`1060 % 8 = 4`, so Go inserts 4 bytes of padding, shifting both fields 4 bytes past their
+wire positions. Any cast of a raw SimConnect buffer to this struct would silently produce
+garbage values for both timing fields and `DwIsDisqualified`.
+
+Fix: `FTotalTime float64` → `FTotalTimeBytes [8]byte` and `FPenaltyTime float64` →
+`FPenaltyTimeBytes [8]byte` (alignment 1, no padding). Decode with
+`math.Float64frombits(binary.LittleEndian.Uint64(r.FTotalTimeBytes[:]))`.
+
+Note: This is a **breaking rename** of public fields. Any code reading `.FTotalTime` or
+`.FPenaltyTime` directly will fail to compile — this is intentional, as silent misreads
+are more dangerous than a compile error.
+
+**`SIMCONNECT_DATA_FACILITY_VOR` — compound misalignment documented**
+
+The VOR struct has two independent misalignment layers that compound:
+
+1. Airport base (already documented on `SIMCONNECT_DATA_FACILITY_AIRPORT`): the
+   `ident+region` byte prefix before `Latitude` is not 8-byte aligned, causing Go to
+   pad before all float64 fields.
+2. VOR-internal (previously undocumented): `Flags DWORD` immediately precedes
+   `FLocalizer float64`. `NDB` Go sizeof = 56; `Flags` ends at offset 60; `60 % 8 = 4`;
+   Go pads 4 more bytes. `FLocalizer` lands at Go offset 64 vs wire offset 52 (MSFS 2024)
+   — a 12-byte total discrepancy affecting all five VOR float64 fields.
+
+Fix: detailed `WARNING` godoc block added to `SIMCONNECT_DATA_FACILITY_VOR` documenting
+both misalignment levels and exact Go vs wire offsets. No field changes (struct is only
+used via runtime stride arithmetic per the AIRPORT pattern).
+
 ### Added
 
 #### `pkg/engine` — MSFS 2024 Input Event API (#143)

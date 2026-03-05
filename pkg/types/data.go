@@ -27,16 +27,27 @@ const (
 )
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_RACE_RESULT.htm
+//
+// Alignment note: SimConnect.h wraps all structs in #pragma pack(1) so there
+// is no padding on the wire. The prefix before the first double is:
+//   DWORD(4) + GUID(16) + 4×char[260](1040) = 1060 bytes, 1060 % 8 = 4.
+// Go would pad 4 bytes before a float64 field at offset 1060, shifting it to
+// offset 1064 and misreading the wire data. FTotalTimeByte and FPenaltyTimeByte
+// use [8]byte (alignment 1) to land at exactly the wire offsets 1060 and 1068.
+// Use encoding/binary.LittleEndian.Uint64 + math.Float64frombits to read values.
 type SIMCONNECT_DATA_RACE_RESULT struct {
-	DwNumberOfRacers DWORD     // DWORD dwNumberOfRacers;
-	MissionGUID      [16]byte  // GUID MissionGUID (16 bytes)
-	SzPlayerName     [260]byte // char szPlayerName[MAX_PATH];
-	SzSessionType    [260]byte // char szSessionType[MAX_PATH];
-	SzAircraft       [260]byte // char szAircraft[MAX_PATH];
-	SzPlayerRole     [260]byte // char szPlayerRole[MAX_PATH];
-	FTotalTime       float64   // double fTotalTime;
-	FPenaltyTime     float64   // double fPenaltyTime;
-	DwIsDisqualified DWORD     // DWORD dwIsDisqualified;
+	DwNumberOfRacers  DWORD     // DWORD dwNumberOfRacers; offset 0
+	MissionGUID       [16]byte  // GUID MissionGUID (16 bytes); offset 4
+	SzPlayerName      [260]byte // char szPlayerName[MAX_PATH]; offset 20
+	SzSessionType     [260]byte // char szSessionType[MAX_PATH]; offset 280
+	SzAircraft        [260]byte // char szAircraft[MAX_PATH]; offset 540
+	SzPlayerRole      [260]byte // char szPlayerRole[MAX_PATH]; offset 800
+	// FTotalTimeByte holds the wire-packed double fTotalTime at offset 1060.
+	// float64 at Go offset 1060 would be padded to 1064 (1060 % 8 == 4) — wrong.
+	FTotalTimeBytes   [8]byte   // double fTotalTime; wire offset 1060
+	// FPenaltyTimeByte holds the wire-packed double fPenaltyTime at offset 1068.
+	FPenaltyTimeBytes [8]byte   // double fPenaltyTime; wire offset 1068
+	DwIsDisqualified  DWORD     // DWORD dwIsDisqualified; wire offset 1076
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_LATLONALT.htm

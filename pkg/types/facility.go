@@ -74,10 +74,28 @@ type SIMCONNECT_DATA_FACILITY_WAYPOINT struct {
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_FACILITY_VOR.htm
+//
+// WARNING — compound struct misalignment: Do NOT cast this struct directly from
+// a multi-entry SimConnect RECV_VOR_LIST buffer. Two independent misalignments
+// accumulate here:
+//
+//  1. Airport base misalignment (documented on SIMCONNECT_DATA_FACILITY_AIRPORT):
+//     MSFS 2020 wire: ident[6]+region[3] = 9 bytes before Latitude → Go pads 7 bytes (Go offset 16, wire 9).
+//     MSFS 2024 wire: ident[9]+region[3] = 12 bytes before Latitude → Go pads 4 bytes (Go offset 16, wire 12).
+//
+//  2. VOR-internal misalignment: Flags (DWORD) immediately precedes FLocalizer (float64).
+//     NDB Go sizeof = 56; Flags at Go offset 56, Flags+4 = 60; 60 % 8 = 4 → Go pads 4 more bytes.
+//     FLocalizer Go offset = 64.
+//     Wire (MSFS 2024): NDB wire size = 48, Flags at wire 48, FLocalizer at wire 52.
+//     Total discrepancy at FLocalizer: Go 64 vs wire 52 = 12 bytes (MSFS 2024) or 15 bytes (MSFS 2020).
+//
+// Use runtime stride arithmetic identical to the AIRPORT pattern (see examples/read-facilities)
+// to read VOR entries. Direct struct indexing via RgData[i] will produce garbage for all
+// fields from FLocalizer onward.
 type SIMCONNECT_DATA_FACILITY_VOR struct {
 	SIMCONNECT_DATA_FACILITY_NDB
 	Flags            DWORD
-	FLocalizer       float64 // double FLocalizer
+	FLocalizer       float64 // double FLocalizer — WARNING: Go offset 64, wire offset 52 (MSFS 2024); see struct comment
 	GlideLat         float64 // double GlideLat
 	GlideLon         float64 // double GlideLon
 	GlideAlt         float64 // double GlideAlt
