@@ -15,11 +15,11 @@ type SIMCONNECT_ICAO struct {
 type SIMCONNECT_JETWAY_DATA struct {
 	SIMCONNECT_RECV
 	AirportIcao         [8]byte // [8]byte
-	ParkingIndex        int     // DWORD
+	ParkingIndex        uint32  // DWORD; was int (8 bytes on 64-bit Go), corrected to uint32 (4 bytes)
 	LLA                 SIMCONNECT_DATA_LATLONALT
 	PBH                 SIMCONNECT_DATA_PBH
-	Status              int
-	Door                int
+	Status              uint32 // DWORD
+	Door                uint32 // DWORD
 	ExitDoorRelativePos SIMCONNECT_DATA_XYZ
 	MainHandlePos       SIMCONNECT_DATA_XYZ
 	SecondaryHandle     SIMCONNECT_DATA_XYZ

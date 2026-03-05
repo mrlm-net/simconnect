@@ -102,7 +102,11 @@ type SIMCONNECT_RECV_SYSTEM_STATE struct {
 	SIMCONNECT_RECV
 	DwRequestID DWORD
 	WInteger    DWORD
-	FFloat      float64
+	// FFloatBytes holds the float64 value at wire offset 20.
+	// float64 (alignment 8) after 12+4+4 bytes would be padded to offset 24 by Go — wrong.
+	// [8]byte (alignment 1) places the field at wire-correct offset 20.
+	// Use engine.SystemStateFloat64(recv) or binary.LittleEndian.Uint64 + math.Float64frombits.
+	FFloatBytes [8]byte
 	SzString    [260]byte // String data, typically used for state names or identifiers
 }
 

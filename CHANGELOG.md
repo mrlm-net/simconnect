@@ -73,6 +73,55 @@ boundary only; the `pkg/engine` typed wrappers above keep `unsafe.Pointer` off t
 
 ---
 
+## [0.4.2] - 2026-03-05
+
+### Fixed
+
+#### `pkg/manager` — critical `simStateDataStruct` alignment bug
+
+`simStateDataStruct` mixed `int32` and `float64` fields. SimConnect packs data definition
+buffers with no alignment padding; Go inserts padding before `float64` fields not at
+8-byte-aligned struct offsets. This produced four silent misalignment gaps:
+
+- Before `Latitude` (+4 bytes): all position and speed fields read from wrong offsets
+- Before `MissionScore` (+8 bytes cumulative)
+- Before `ZuluSunriseTime` (+12 bytes cumulative): time zone fields corrupted
+- Before `EnvSmokeDensity` (+16 bytes cumulative): all extended environment fields corrupted
+
+The bug produced garbage floating-point values (e.g. `Lon = -2.6e+67`) in every Manager
+SimState update. Introduced in commit `06e735b` (v0.2.0, 2026-02-08) when `SurfaceType`
+(`int32`) was added immediately before the `Latitude` (`float64`) block.
+
+Fix: all fields in `simStateDataStruct` changed to `float64`. SimConnect automatically
+converts integer SimVars to `float64` when `SIMCONNECT_DATATYPE_FLOAT64` is requested,
+so no data is lost. All `AddToDataDefinition` calls in `simstate_registration.go` updated
+to match (`SIMCONNECT_DATATYPE_INT32` → `SIMCONNECT_DATATYPE_FLOAT64`). Cast sites in
+`dispatch-simstate.go` updated with `int32(stateData.X)` where the public `SimState`
+field is `int32`.
+
+#### `pkg/types` — wire struct alignment fixes
+
+- `SIMCONNECT_RECV_SYSTEM_STATE.FFloat float64` → `FFloatBytes [8]byte` — `float64`
+  (alignment 8) after `SIMCONNECT_RECV` (12 B) + `DwRequestID` (4 B) + `WInteger` (4 B)
+  = 20 bytes total; Go would pad to offset 24. `[8]byte` (alignment 1) places the field
+  at wire-correct offset 20. Use `engine.SystemStateFloat64(recv)` to decode.
+- `SIMCONNECT_JETWAY_DATA.ParkingIndex`, `Status`, `Door` changed from `int` (8 bytes on
+  64-bit Go) to `uint32` (4 bytes, matching the SDK DWORD). The previous `int` fields
+  doubled the size of each, corrupting all subsequent field offsets.
+
+### Added
+
+#### `pkg/engine` — value extractor helpers
+
+- `SystemStateFloat64(recv *types.SIMCONNECT_RECV_SYSTEM_STATE) float64` — decodes
+  `FFloatBytes [8]byte` via `binary.LittleEndian`; eliminates manual bit conversion at
+  call sites.
+- `SubscribeInputEventHash(recv *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT) uint64` —
+  decodes `HashBytes [8]byte` at wire offset 12; callers no longer need to write
+  `binary.LittleEndian.Uint64(recv.HashBytes[:])` directly.
+
+---
+
 ## [0.4.1] - 2026-03-01
 
 ### Fixed

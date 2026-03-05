@@ -150,46 +150,50 @@ type SimStateSubscription interface {
 	Unsubscribe()
 }
 
-// simStateDataStruct is the structure for simulator state data received from SimConnect
+// simStateDataStruct is the structure for simulator state data received from SimConnect.
+// All fields are float64 regardless of logical type. SimConnect converts integer SimVars
+// to float64 when SIMCONNECT_DATATYPE_FLOAT64 is requested.
+// Using a uniform float64 layout eliminates Go struct alignment padding that would
+// otherwise corrupt fields after any int32→float64 transition at an odd 4-byte boundary.
 type simStateDataStruct struct {
-	CameraState                int32
-	CameraSubstate             int32
+	CameraState                float64
+	CameraSubstate             float64
 	SimulationRate             float64
 	SimulationTime             float64
 	LocalTime                  float64
 	ZuluTime                   float64
-	IsInVR                     int32
-	IsUsingMotionControllers   int32
-	IsUsingJoystickThrottle    int32
-	IsInRTC                    int32
-	IsAvatar                   int32
-	IsAircraft                 int32
-	LocalDay                   int32
-	LocalMonth                 int32
-	LocalYear                  int32
-	ZuluDay                    int32
-	ZuluMonth                  int32
-	ZuluYear                   int32
+	IsInVR                     float64
+	IsUsingMotionControllers   float64
+	IsUsingJoystickThrottle    float64
+	IsInRTC                    float64
+	IsAvatar                   float64
+	IsAircraft                 float64
+	LocalDay                   float64
+	LocalMonth                 float64
+	LocalYear                  float64
+	ZuluDay                    float64
+	ZuluMonth                  float64
+	ZuluYear                   float64
 	Realism                    float64
 	VisualModelRadius          float64
-	SimDisabled                int32
-	RealismCrashDetection      int32
-	RealismCrashWithOthers     int32
-	TrackIREnabled             int32
-	UserInputEnabled           int32
-	SimOnGround                int32
+	SimDisabled                float64
+	RealismCrashDetection      float64
+	RealismCrashWithOthers     float64
+	TrackIREnabled             float64
+	UserInputEnabled           float64
+	SimOnGround                float64
 	AmbientTemperature         float64
 	AmbientPressure            float64
 	AmbientWindVelocity        float64
 	AmbientWindDirection       float64
 	AmbientVisibility          float64
-	AmbientInCloud             int32
-	AmbientPrecipState         int32
+	AmbientInCloud             float64
+	AmbientPrecipState         float64
 	BarometerPressure          float64
 	SeaLevelPressure           float64
 	GroundAltitude             float64
 	MagVar                     float64
-	SurfaceType                int32
+	SurfaceType                float64
 	Latitude                   float64
 	Longitude                  float64
 	Altitude                   float64
@@ -202,17 +206,17 @@ type simStateDataStruct struct {
 	IndicatedAirspeed          float64
 	TrueAirspeed               float64
 	VerticalSpeed              float64
-	SmartCameraActive          int32
-	HandAnimState              int32
-	HideAvatarInAircraft       int32
+	SmartCameraActive          float64
+	HandAnimState              float64
+	HideAvatarInAircraft       float64
 	MissionScore               float64
-	ParachuteOpen              int32
+	ParachuteOpen              float64
 	ZuluSunriseTime            float64
 	ZuluSunsetTime             float64
 	TimeZoneOffset             float64
-	TooltipUnits               int32
-	UnitsOfMeasure             int32
-	AmbientInSmoke             int32
+	TooltipUnits               float64
+	UnitsOfMeasure             float64
+	AmbientInSmoke             float64
 	EnvSmokeDensity            float64
 	EnvCloudDensity            float64
 	DensityAltitude            float64

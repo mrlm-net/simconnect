@@ -42,14 +42,18 @@ func (e *Engine) UnsubscribeInputEvent(hash uint64) error {
 	return e.api.UnsubscribeInputEvent(hash)
 }
 
+// bytesAsFloat64 interprets the first 8 bytes of b as a little-endian IEEE 754 float64.
+func bytesAsFloat64(b []byte) float64 {
+	return math.Float64frombits(binary.LittleEndian.Uint64(b[:8]))
+}
+
 // InputEventValueAsFloat64 extracts the float64 value from a GET_INPUT_EVENT receive struct.
 // Returns (0, false) if Type is not SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE.
 func InputEventValueAsFloat64(recv *types.SIMCONNECT_RECV_GET_INPUT_EVENT) (float64, bool) {
 	if recv.Type != types.SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE {
 		return 0, false
 	}
-	bits := binary.LittleEndian.Uint64(recv.Value[:8])
-	return math.Float64frombits(bits), true
+	return bytesAsFloat64(recv.Value[:]), true
 }
 
 // InputEventValueAsString extracts the string value from a GET_INPUT_EVENT receive struct.
@@ -61,14 +65,19 @@ func InputEventValueAsString(recv *types.SIMCONNECT_RECV_GET_INPUT_EVENT) (strin
 	return BytesToString(recv.Value[:]), true
 }
 
+// SubscribeInputEventHash extracts the event hash from a SUBSCRIBE_INPUT_EVENT receive struct.
+// HashBytes is stored as [8]byte at wire offset 12 to avoid Go alignment padding.
+func SubscribeInputEventHash(recv *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT) uint64 {
+	return binary.LittleEndian.Uint64(recv.HashBytes[:])
+}
+
 // SubscribeInputEventValueAsFloat64 extracts the float64 value from a SUBSCRIBE_INPUT_EVENT receive struct.
 // Returns (0, false) if EType is not SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE.
 func SubscribeInputEventValueAsFloat64(recv *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT) (float64, bool) {
 	if recv.EType != types.SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE {
 		return 0, false
 	}
-	bits := binary.LittleEndian.Uint64(recv.Value[:8])
-	return math.Float64frombits(bits), true
+	return bytesAsFloat64(recv.Value[:]), true
 }
 
 // SubscribeInputEventValueAsString extracts the string value from a SUBSCRIBE_INPUT_EVENT receive struct.

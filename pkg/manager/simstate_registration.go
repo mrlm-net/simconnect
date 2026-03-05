@@ -80,10 +80,10 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 
 	// Define camera data structure
 	m.requestRegistry.Register(m.cameraDefinitionID, RequestTypeDataDefinition, "Simulator State Definition")
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 0); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA STATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 		m.logger.Error("[manager] Failed to add CAMERA STATE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 1); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "CAMERA SUBSTATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 1); err != nil {
 		m.logger.Error("[manager] Failed to add CAMERA SUBSTATE definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIMULATION RATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2); err != nil {
@@ -98,40 +98,40 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU TIME", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 5); err != nil {
 		m.logger.Error("[manager] Failed to add ZULU TIME definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN VR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 6); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN VR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 6); err != nil {
 		m.logger.Error("[manager] Failed to add IS IN VR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING MOTION CONTROLLERS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 7); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING MOTION CONTROLLERS", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 7); err != nil {
 		m.logger.Error("[manager] Failed to add IS USING MOTION CONTROLLERS definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING JOYSTICK THROTTLE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 8); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS USING JOYSTICK THROTTLE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 8); err != nil {
 		m.logger.Error("[manager] Failed to add IS USING JOYSTICK THROTTLE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN RTC", "", types.SIMCONNECT_DATATYPE_INT32, 0, 9); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS IN RTC", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 9); err != nil {
 		m.logger.Error("[manager] Failed to add IS IN RTC definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AVATAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 10); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AVATAR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 10); err != nil {
 		m.logger.Error("[manager] Failed to add IS AVATAR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AIRCRAFT", "", types.SIMCONNECT_DATATYPE_INT32, 0, 11); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "IS AIRCRAFT", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 11); err != nil {
 		m.logger.Error("[manager] Failed to add IS AIRCRAFT definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_INT32, 0, 12); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 12); err != nil {
 		m.logger.Error("[manager] Failed to add LOCAL DAY OF MONTH definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 13); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 13); err != nil {
 		m.logger.Error("[manager] Failed to add LOCAL MONTH OF YEAR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 14); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "LOCAL YEAR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 14); err != nil {
 		m.logger.Error("[manager] Failed to add LOCAL YEAR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_INT32, 0, 15); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU DAY OF MONTH", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 15); err != nil {
 		m.logger.Error("[manager] Failed to add ZULU DAY OF MONTH definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 16); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU MONTH OF YEAR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 16); err != nil {
 		m.logger.Error("[manager] Failed to add ZULU MONTH OF YEAR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU YEAR", "", types.SIMCONNECT_DATATYPE_INT32, 0, 17); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU YEAR", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 17); err != nil {
 		m.logger.Error("[manager] Failed to add ZULU YEAR definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 18); err != nil {
@@ -140,22 +140,22 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "VISUAL MODEL RADIUS", "meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 19); err != nil {
 		m.logger.Error("[manager] Failed to add VISUAL MODEL RADIUS definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM DISABLED", "", types.SIMCONNECT_DATATYPE_INT32, 0, 20); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM DISABLED", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 20); err != nil {
 		m.logger.Error("[manager] Failed to add SIM DISABLED definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH DETECTION", "", types.SIMCONNECT_DATATYPE_INT32, 0, 21); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH DETECTION", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 21); err != nil {
 		m.logger.Error("[manager] Failed to add REALISM CRASH DETECTION definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH WITH OTHERS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 22); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "REALISM CRASH WITH OTHERS", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 22); err != nil {
 		m.logger.Error("[manager] Failed to add REALISM CRASH WITH OTHERS definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "TRACK IR ENABLE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 23); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "TRACK IR ENABLE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 23); err != nil {
 		m.logger.Error("[manager] Failed to add TRACK IR ENABLE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "USER INPUT ENABLED", "", types.SIMCONNECT_DATATYPE_INT32, 0, 24); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "USER INPUT ENABLED", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 24); err != nil {
 		m.logger.Error("[manager] Failed to add USER INPUT ENABLED definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM ON GROUND", "", types.SIMCONNECT_DATATYPE_INT32, 0, 25); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SIM ON GROUND", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 25); err != nil {
 		m.logger.Error("[manager] Failed to add SIM ON GROUND definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT TEMPERATURE", "Celsius", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 26); err != nil {
@@ -173,10 +173,10 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT VISIBILITY", "Meters", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 30); err != nil {
 		m.logger.Error("[manager] Failed to add AMBIENT VISIBILITY definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN CLOUD", "", types.SIMCONNECT_DATATYPE_INT32, 0, 31); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN CLOUD", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 31); err != nil {
 		m.logger.Error("[manager] Failed to add AMBIENT IN CLOUD definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT PRECIP STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 32); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT PRECIP STATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 32); err != nil {
 		m.logger.Error("[manager] Failed to add AMBIENT PRECIP STATE definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "BAROMETER PRESSURE", "Millibars", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 33); err != nil {
@@ -191,7 +191,7 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "MAGVAR", "Degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 36); err != nil {
 		m.logger.Error("[manager] Failed to add MAGVAR definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SURFACE TYPE", "Enum", types.SIMCONNECT_DATATYPE_INT32, 0, 37); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SURFACE TYPE", "Enum", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 37); err != nil {
 		m.logger.Error("[manager] Failed to add SURFACE TYPE definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "PLANE LATITUDE", "degrees", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 38); err != nil {
@@ -230,19 +230,19 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 49); err != nil {
 		m.logger.Error("[manager] Failed to add VERTICAL SPEED definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SMART CAMERA ACTIVE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 50); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SMART CAMERA ACTIVE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 50); err != nil {
 		m.logger.Error("[manager] Failed to add SMART CAMERA ACTIVE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "HAND ANIM STATE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 51); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "HAND ANIM STATE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 51); err != nil {
 		m.logger.Error("[manager] Failed to add HAND ANIM STATE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "HIDE AVATAR IN AIRCRAFT", "", types.SIMCONNECT_DATATYPE_INT32, 0, 52); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "HIDE AVATAR IN AIRCRAFT", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 52); err != nil {
 		m.logger.Error("[manager] Failed to add HIDE AVATAR IN AIRCRAFT definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "MISSION SCORE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 53); err != nil {
 		m.logger.Error("[manager] Failed to add MISSION SCORE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "PARACHUTE OPEN", "", types.SIMCONNECT_DATATYPE_INT32, 0, 54); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "PARACHUTE OPEN", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 54); err != nil {
 		m.logger.Error("[manager] Failed to add PARACHUTE OPEN definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ZULU SUNRISE TIME", "Seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 55); err != nil {
@@ -254,13 +254,13 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "TIME ZONE OFFSET", "Seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 57); err != nil {
 		m.logger.Error("[manager] Failed to add TIME ZONE OFFSET definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "TOOLTIP UNITS", "", types.SIMCONNECT_DATATYPE_INT32, 0, 58); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "TOOLTIP UNITS", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 58); err != nil {
 		m.logger.Error("[manager] Failed to add TOOLTIP UNITS definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "UNITS OF MEASURE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 59); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "UNITS OF MEASURE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 59); err != nil {
 		m.logger.Error("[manager] Failed to add UNITS OF MEASURE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN SMOKE", "", types.SIMCONNECT_DATATYPE_INT32, 0, 60); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AMBIENT IN SMOKE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 60); err != nil {
 		m.logger.Error("[manager] Failed to add AMBIENT IN SMOKE definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "ENV SMOKE DENSITY", "Percent Over 100", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 61); err != nil {
