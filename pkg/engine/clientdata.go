@@ -10,6 +10,7 @@ import (
 )
 
 // CreateClientData registers a client data area with the given ID and size.
+// dwSize must be between 1 and 8192 bytes; the SimConnect SDK returns an HRESULT error if exceeded.
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_CreateClientData.htm
 func (e *Engine) CreateClientData(clientDataID uint32, dwSize uint32, flags types.SIMCONNECT_CREATE_CLIENT_DATA_FLAG) error {
 	return e.api.CreateClientData(clientDataID, dwSize, flags)
