@@ -32,7 +32,7 @@ type WeatherDataset struct {
 	WindVelocity  float64
 	Visibility    float64
 	PrecipRate    float64
-	PrecipState   float64
+	PrecipState   float64 // bitmask: 2=None, 4=Rain, 8=Snow; cast to uint32 before bit-testing
 }
 
 // NewTimeDataset returns a dataset for simulation time and date variables.

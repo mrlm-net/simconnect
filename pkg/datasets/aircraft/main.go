@@ -103,5 +103,5 @@ type ControlSurfacesDataset struct {
 	ElevatorPosition float64
 	RudderPosition   float64
 	FlapsHandleIndex float64
-	GearHandlePos    float64
+	GearHandlePos    float64 // 0.0=up, 1.0=down; not a continuous travel position
 }

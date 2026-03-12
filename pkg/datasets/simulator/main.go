@@ -28,7 +28,7 @@ type SimStateDataset struct {
 	SurfaceType float64
 	IsUserSim   float64
 	TotalWeight float64
-	CrashFlag   float64
+	CrashFlag   float64 // bitmask: cast to uint32 before bit-testing
 }
 
 // NewCameraDataset returns a dataset for camera and view state variables.
