@@ -80,6 +80,12 @@ type API interface {
 	TransmitClientEventEx1(objectID uint32, eventID uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG, data [5]uint32) error
 	MapClientDataNameToID(clientDataName string, clientDataID uint32) error
 
+	// Client Data Area API
+	CreateClientData(clientDataID uint32, dwSize uint32, flags types.SIMCONNECT_CREATE_CLIENT_DATA_FLAG) error
+	AddToClientDataDefinition(defineID uint32, dwOffset uint32, dwSizeOrType uint32, epsilon float32, datumID uint32) error
+	RequestClientData(clientDataID uint32, requestID uint32, defineID uint32, period types.SIMCONNECT_CLIENT_DATA_PERIOD, flags types.SIMCONNECT_CLIENT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error
+	SetClientData(clientDataID uint32, defineID uint32, flags uint32, dwReserved uint32, cbUnitSize uint32, data unsafe.Pointer) error
+
 	AddClientEventToNotificationGroup(groupID uint32, eventID uint32, mask bool) error
 	ClearNotificationGroup(groupID uint32) error
 	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error

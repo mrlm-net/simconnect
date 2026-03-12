@@ -262,3 +262,12 @@ func (m *Message) AsSubscribeInputEvent() *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT
 	}
 	return (*types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
+
+// AsClientData casts the message to SIMCONNECT_RECV_CLIENT_DATA.
+// Returns nil if the message is not a client data notification.
+func (m *Message) AsClientData() *types.SIMCONNECT_RECV_CLIENT_DATA {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CLIENT_DATA {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_CLIENT_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
