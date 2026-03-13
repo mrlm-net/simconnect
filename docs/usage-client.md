@@ -1,7 +1,7 @@
 ---
 title: "Engine/Client Usage"
 description: "Complete API reference for direct simulator communication."
-order: 2
+order: 3
 section: "client"
 ---
 

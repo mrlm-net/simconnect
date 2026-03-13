@@ -1,7 +1,7 @@
 ---
 title: "Manager Usage"
 description: "Complete API for robust long-running SimConnect applications."
-order: 4
+order: 2
 section: "manager"
 ---
 
