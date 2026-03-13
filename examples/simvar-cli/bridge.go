@@ -4,11 +4,15 @@
 package main
 
 import (
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -180,4 +184,117 @@ func formatValue(dwData *types.DWORD, dt types.SIMCONNECT_DATATYPE) string {
 	default:
 		return "<unsupported type>"
 	}
+}
+
+// ── Output formatting ────────────────────────────────────────────────────────
+
+// OutputFormat selects the rendering style for FormatOutput.
+// String alias chosen over iota: format values originate as strings from
+// CLI flags and TOML config files — no parse indirection required.
+type OutputFormat string
+
+const (
+	FormatTable OutputFormat = "table"
+	FormatJSON  OutputFormat = "json"
+	FormatCSV   OutputFormat = "csv"
+)
+
+// parseOutputFormat validates and normalises a raw string into an OutputFormat.
+// Accepts "table", "json", "csv" (case-insensitive).
+// Returns FormatTable and an error for any unrecognised value.
+func parseOutputFormat(s string) (OutputFormat, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "table":
+		return FormatTable, nil
+	case "json":
+		return FormatJSON, nil
+	case "csv":
+		return FormatCSV, nil
+	default:
+		return FormatTable, fmt.Errorf("unknown output format %q: must be table, json, or csv", s)
+	}
+}
+
+// FormattedValue is the data transfer object for FormatOutput.
+// It carries one SimVar reading with all context needed to render in any format.
+type FormattedValue struct {
+	Name      string    // SimVar name as supplied by the caller
+	Value     string    // Pre-formatted value string (from formatValue)
+	Unit      string    // Unit string as supplied by the caller
+	DataType  string    // Datatype label ("int32", "float64", etc.)
+	Timestamp time.Time // Time of value receipt
+}
+
+// FormatOutput renders fv to w in the requested format.
+//
+// table: four labelled lines — Name, Value, DataType, Time — with a
+//
+//	fixed 9-character label column for alignment.
+//
+// json:  single JSON object with RFC3339Nano timestamp, followed by a newline.
+//
+//	Each call writes exactly one complete, parseable JSON object (NDJSON).
+//
+// csv:   single data row (no header). Call FormatCSVHeader once before the
+//
+//	first FormatOutput(csv) call to write the header row.
+//
+// Returns a non-nil error for an unknown format or any write failure.
+func FormatOutput(w io.Writer, fv FormattedValue, format OutputFormat) error {
+	switch format {
+	case FormatTable:
+		_, err := fmt.Fprintf(w, "%-9s %s\n%-9s %s %s\n%-9s %s\n%-9s %s\n",
+			"Name:", fv.Name,
+			"Value:", fv.Value, fv.Unit,
+			"DataType:", fv.DataType,
+			"Time:", fv.Timestamp.Format(time.RFC3339Nano),
+		)
+		return err
+	case FormatJSON:
+		obj := struct {
+			Name      string `json:"name"`
+			Value     string `json:"value"`
+			Unit      string `json:"unit"`
+			DataType  string `json:"datatype"`
+			Timestamp string `json:"timestamp"`
+		}{
+			Name:      fv.Name,
+			Value:     fv.Value,
+			Unit:      fv.Unit,
+			DataType:  fv.DataType,
+			Timestamp: fv.Timestamp.Format(time.RFC3339Nano),
+		}
+		b, err := json.Marshal(obj)
+		if err != nil {
+			return fmt.Errorf("FormatOutput json: %w", err)
+		}
+		_, err = fmt.Fprintf(w, "%s\n", b)
+		return err
+	case FormatCSV:
+		cw := csv.NewWriter(w)
+		if err := cw.Write([]string{
+			fv.Name,
+			fv.Value,
+			fv.Unit,
+			fv.DataType,
+			fv.Timestamp.Format(time.RFC3339Nano),
+		}); err != nil {
+			return fmt.Errorf("FormatOutput csv: %w", err)
+		}
+		cw.Flush()
+		return cw.Error()
+	default:
+		return fmt.Errorf("FormatOutput: unknown format %q", format)
+	}
+}
+
+// FormatCSVHeader writes the CSV header row to w.
+// Call this exactly once before the first FormatOutput(FormatCSV, ...) call.
+func FormatCSVHeader(w io.Writer) error {
+	cw := csv.NewWriter(w)
+	if err := cw.Write([]string{"name", "value", "unit", "datatype", "timestamp"}); err != nil {
+		return fmt.Errorf("FormatCSVHeader: %w", err)
+	}
+	cw.Flush()
+	return cw.Error()
 }
