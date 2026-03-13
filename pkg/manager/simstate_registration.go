@@ -227,7 +227,7 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "AIRSPEED TRUE", "knots", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 48); err != nil {
 		m.logger.Error("[manager] Failed to add AIRSPEED TRUE definition", "error", err)
 	}
-	if err := client.AddToDataDefinition(m.cameraDefinitionID, "VERTICAL SPEED", "feet per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 49); err != nil {
+	if err := client.AddToDataDefinition(m.cameraDefinitionID, "VERTICAL SPEED", "feet per minute", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 49); err != nil {
 		m.logger.Error("[manager] Failed to add VERTICAL SPEED definition", "error", err)
 	}
 	if err := client.AddToDataDefinition(m.cameraDefinitionID, "SMART CAMERA ACTIVE", "", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 50); err != nil {
