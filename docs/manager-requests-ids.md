@@ -58,7 +58,7 @@ The manager's simulator state data definition now includes additional environmen
 - `PLANE LATITUDE` (Degrees), `PLANE LONGITUDE` (Degrees), `PLANE ALTITUDE` (Feet), `INDICATED ALTITUDE` (Feet)
 - `PLANE HEADING DEGREES TRUE` (Degrees), `PLANE HEADING DEGREES MAGNETIC` (Degrees)
 - `PLANE PITCH DEGREES` (Degrees), `PLANE BANK DEGREES` (Degrees)
-- `GROUND VELOCITY` (Knots), `AIRSPEED INDICATED` (Knots), `AIRSPEED TRUE` (Knots), `VERTICAL SPEED` (Feet per second)
+- `GROUND VELOCITY` (Knots), `AIRSPEED INDICATED` (Knots), `AIRSPEED TRUE` (Knots), `VERTICAL SPEED` (Feet per minute)
 - `SMART CAMERA ACTIVE` (Boolean)
 - `HAND ANIM STATE` (Number, 0-12 frame IDs), `HIDE AVATAR IN AIRCRAFT` (Boolean), `MISSION SCORE` (Number), `PARACHUTE OPEN` (Boolean)
 - `ZULU SUNRISE TIME` (Seconds), `ZULU SUNSET TIME` (Seconds), `TIME ZONE OFFSET` (Seconds)
