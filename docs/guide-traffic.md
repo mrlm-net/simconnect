@@ -9,7 +9,7 @@ section: "client"
 
 This guide covers AI aircraft injection using the Engine client's `AICreate*` methods — thin, typed wrappers over the raw SimConnect DLL. Every call maps directly to a single SimConnect API function with no extra abstraction.
 
-> **See also:** If you want a higher-level fleet management abstraction with pooling, scheduling, and state tracking, see [traffic-guide.md](traffic-guide.md).
+> **Scope:** This guide covers the raw Engine-layer `AICreate*` / `AIRemove*` / `AIRelease*` API. Manager-layer wrappers (`TrafficParked`, `TrafficEnroute`, `TrafficNonATC`, fleet tracking) and the `pkg/traffic.Fleet` abstraction are out of scope — see [traffic-guide.md](traffic-guide.md) for those.
 
 ## Aircraft Kinds
 

@@ -23,6 +23,8 @@ Client data areas are named shared memory regions that SimConnect clients use to
 
 > **See also:** [Client Data Areas](client-data-area.md) for a full conceptual guide, field-by-field parameter tables, types reference, and a complete annotated example. This section summarises the API surface and provides a self-contained writer + reader example.
 
+> **Interface note:** `CreateClientData`, `AddToClientDataDefinition`, `RequestClientData`, and `SetClientData` are methods on `*engine.Engine` (returned by `engine.New()`). They are **not** part of the `engine.Client` interface returned by `simconnect.NewClient()`. Use `engine.New()` directly when you need the Client Data Area API.
+
 ### Setup workflow
 
 A client data area is set up in four steps:

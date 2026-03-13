@@ -80,6 +80,8 @@ import (
 func main() {
     ctx, cancel := context.WithCancel(context.Background())
 
+    mgr := manager.New("MyApp", manager.WithContext(ctx))
+
     sig := make(chan os.Signal, 1)
     signal.Notify(sig, os.Interrupt)
     go func() {
@@ -88,7 +90,6 @@ func main() {
         cancel()
     }()
 
-    mgr := manager.New("MyApp", manager.WithContext(ctx))
     if err := mgr.Start(); err != nil {
         fmt.Println("Manager stopped:", err)
     }
@@ -336,7 +337,6 @@ package main
 import (
     "fmt"
 
-    "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/manager"
 )
 
@@ -347,11 +347,10 @@ func watchOpen(mgr manager.Manager) {
     for {
         select {
         case data := <-sub.Opens():
-            appName := engine.ParseNullTerminatedString(data.SzApplicationName[:])
             fmt.Printf("Connected to: %s v%d.%d\n",
-                appName,
-                data.DwApplicationVersionMajor,
-                data.DwApplicationVersionMinor,
+                data.ApplicationName,
+                data.ApplicationVersionMajor,
+                data.ApplicationVersionMinor,
             )
         case <-sub.Done():
             return
@@ -370,15 +369,17 @@ package main
 import (
     "fmt"
 
-    "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/manager"
     "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func registerOpenHandler(mgr manager.Manager) string {
-    return mgr.OnOpen(func(data *types.SIMCONNECT_RECV_OPEN) {
-        fmt.Printf("SimConnect open: %s\n",
-            engine.ParseNullTerminatedString(data.SzApplicationName[:]))
+    return mgr.OnOpen(func(data types.ConnectionOpenData) {
+        fmt.Printf("SimConnect open: %s v%d.%d\n",
+            data.ApplicationName,
+            data.ApplicationVersionMajor,
+            data.ApplicationVersionMinor,
+        )
     })
 }
 ```
@@ -660,6 +661,8 @@ func printRanges() {
     fmt.Printf("Manager range: %d — %d\n", manager.IDRange.ManagerMin, manager.IDRange.ManagerMax)
 }
 ```
+
+> **Note:** `IDRange.UserMax` is `999,999,899` — the technical upper bound of `IsValidUserID`. However, IDs 999,999,850–999,999,899 overlap with the manager's custom event and reserved sub-ranges. Safe application IDs are `1 — 999,999,849`; treat `IDRange.UserMax` as a validation guard, not a safe upper limit for allocation.
 
 ### Organising Application IDs
 
