@@ -1,7 +1,7 @@
 ---
 title: "Engine/Client Configuration"
 description: "Configuration options for the SimConnect engine client."
-order: 1
+order: 2
 section: "client"
 ---
 

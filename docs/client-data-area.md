@@ -1,7 +1,7 @@
 ---
 title: "Client Data Areas"
 description: "Using SimConnect Client Data Areas for inter-add-on shared memory communication."
-order: 5
+order: 6
 section: "client"
 ---
 

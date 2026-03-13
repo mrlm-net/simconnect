@@ -1,7 +1,7 @@
 ---
 title: "Manager Configuration"
 description: "Configuration options for the connection manager."
-order: 3
+order: 1
 section: "manager"
 ---
 
