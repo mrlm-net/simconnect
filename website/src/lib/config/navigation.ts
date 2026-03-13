@@ -7,10 +7,11 @@ const sectionMeta: Record<string, { title: string; defaultOpen: boolean }> = {
 	traffic: { title: 'Traffic', defaultOpen: true },
 	events: { title: 'Events', defaultOpen: true },
 	packages: { title: 'Packages', defaultOpen: true },
+	examples: { title: 'Examples', defaultOpen: true },
 	internals: { title: 'Internals', defaultOpen: false }
 };
 
-const sectionOrder = ['client', 'manager', 'datasets', 'traffic', 'events', 'packages', 'internals'];
+const sectionOrder = ['client', 'manager', 'datasets', 'traffic', 'events', 'packages', 'examples', 'internals'];
 
 export function buildNavigation(docs: DocMeta[], basePath: string): NavSection[] {
 	const grouped = new Map<string, DocMeta[]>();
