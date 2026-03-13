@@ -9,6 +9,71 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-13
+
+### Added
+
+#### `pkg/registry` — typed SimVar metadata catalogue (#230)
+
+Cross-platform (no `//go:build windows`) package providing a compile-time catalogue of 104 SimVar entries across three categories (`aircraft`, `environment`, `simulator`).
+
+| Function | Description |
+|----------|-------------|
+| `Lookup(name string) (SimVarMeta, bool)` | Case-insensitive lookup; strips `:N` indexed suffix |
+| `All() []SimVarMeta` | Snapshot of all 104 entries |
+| `Validate(name, unit string) error` | Checks name existence and unit acceptability |
+| `ByUnit(unit string) []SimVarMeta` | Filter entries by unit string |
+| `ByCategory(category string) []SimVarMeta` | Filter by category (`aircraft`, `environment`, `simulator`) |
+
+`SimVarMeta` carries `Name`, `Units []string`, `DefaultUnit`, `Type`, `Category`, `Writable`, `Indexed`, and `Description`. The `init()` function builds the in-memory map and panics on duplicate keys as a programming-error guard.
+
+#### `pkg/datasets` — aircraft, environment, simulator, and objects packages
+
+Four new dataset packages providing pre-built `DataSet` definitions for common SimVar groups:
+
+- `pkg/datasets/aircraft` — position, attitude, speed, engine, control surfaces, autopilot
+- `pkg/datasets/environment` — weather, ambient conditions, time
+- `pkg/datasets/simulator` — camera, realism, simulation state
+- `pkg/datasets/objects` — generic SimObject position and identity fields
+
+#### `pkg/engine` — SimConnect Client Data Area API (#227)
+
+Six new methods on the `Client` interface expose the full Client Data Area lifecycle:
+
+| Method | Description |
+|--------|-------------|
+| `MapClientDataNameToID(name string, clientDataID uint32) error` | Maps a named shared memory area to a numeric ID |
+| `CreateClientData(clientDataID, size uint32, flags uint32) error` | Allocates a new client data area |
+| `AddToClientDataDefinition(defineID, offset, sizeOrType uint32, epsilon float32, datumID uint32) error` | Adds a field to a client data definition |
+| `ClearClientDataDefinition(defineID uint32) error` | Removes all fields from a client data definition |
+| `RequestClientData(clientDataID, requestID, defineID uint32, period, flags uint32, origin, interval, limit uint32) error` | Subscribes to periodic client data updates |
+| `SetClientData(clientDataID, defineID uint32, flags uint32, data unsafe.Pointer, size uint32) error` | Writes a value to a client data area |
+
+#### `cmd/simvar-cli` — watch command, structured output, JSON config
+
+Interactive CLI tool promoted from `examples/` to `cmd/` as a first-class tool:
+
+- **`watch` command** — continuous SimVar streaming with `--interval second|visual-frame|sim-frame` and `--changed` (print only when value changes)
+- **`--format table|json|csv`** — aligned table (default), NDJSON, or RFC 4180 CSV output
+- **`--config`** — JSON config file with 4-step resolution (`--config` flag → `SIMVAR_CLI_CONFIG` env → `%APPDATA%\simvar-cli\config.json` → `.\simvar-cli.json`)
+- Zero external dependencies beyond CURE — config uses `encoding/json` (stdlib)
+
+### Fixed
+
+#### `pkg/datasets` / `pkg/manager` — unit string alignment (#229)
+
+Two SimVar unit strings were mismatched between `pkg/datasets` and the SimConnect SDK:
+
+- `AMBIENT PRESSURE` — `"millibars"` → `"inches of mercury"` (SimConnect returns inHg, not mbar)
+- `VERTICAL SPEED` — `"feet/minute"` → `"feet per minute"` (SDK unit string requires the spelled-out form)
+
+Both mismatches caused silent zero reads when using the pre-built dataset definitions with the manager's SimState.
+
+### Changed
+
+- `cmd/simvar-cli` promoted from `examples/simvar-cli` — module path updated to `github.com/mrlm-net/simconnect/cmd/simvar-cli`
+- `cmd/simvar-cli` config format changed from TOML to JSON — zero external dependencies
+
 ## [0.4.3] - 2026-03-05
 
 ### Fixed
