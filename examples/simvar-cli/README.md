@@ -11,8 +11,9 @@ Interactive command-line tool for reading and writing MSFS Simulation Variables 
 3. **Emit Events** - Fires client events (e.g., AP_MASTER, GEAR_TOGGLE) with optional data parameters
 4. **Listen for Events** - Monitors client events in real time with timestamps until Ctrl+C
 5. **Interactive REPL** - Opens a persistent session for issuing multiple get/set/emit/listen commands without reconnecting
-6. **Auto-reconnection** - Retries connection to the simulator with 2-second intervals until successful
-7. **Graceful shutdown** - Responds to Ctrl+C interrupt signals cleanly
+6. **Watch (stream)** - Streams a SimVar continuously at a chosen interval until Ctrl+C
+7. **Auto-reconnection** - Retries connection to the simulator with 2-second intervals until successful
+8. **Graceful shutdown** - Responds to Ctrl+C interrupt signals cleanly
 
 ## Prerequisites
 
@@ -49,6 +50,8 @@ All commands accept these flags before the subcommand:
 | `--auto-detect` | `false` | Auto-detect SimConnect.dll location |
 | `--log-level` | `warn` | Log level (`debug`, `info`, `warn`, `error`) |
 | `--timeout` | `10` | Timeout in seconds for operations |
+| `--format` | `table` | Output format: `table`, `json`, or `csv` |
+| `--config` | `""` | Path to a TOML config file |
 
 ### Get a SimVar
 
@@ -131,6 +134,47 @@ simvar-cli listen AP_MASTER GEAR_TOGGLE
 
 **Output:** Each received event is printed as `[RFC3339 timestamp] EVENT_NAME data=VALUE`. Connection status goes to stderr.
 
+### Watch (stream) a SimVar
+
+Stream a SimVar value continuously until interrupted with Ctrl+C. Useful for monitoring variables in real time or piping output into other tools.
+
+```bash
+# Syntax
+simvar-cli watch [--interval second|visual-frame|sim-frame] [--changed] <variable-name> <unit> <datatype>
+
+# Stream altitude once per second (default interval)
+simvar-cli watch "PLANE ALTITUDE" feet float64
+
+# Stream at visual frame rate
+simvar-cli watch --interval visual-frame "PLANE LATITUDE" degrees float64
+
+# Only print when value changes (suppresses duplicate readings)
+simvar-cli watch --interval sim-frame --changed "AUTOPILOT MASTER" "" int32
+
+# Stream altitude as NDJSON
+simvar-cli --format json watch "PLANE ALTITUDE" feet float64
+
+# Stream to CSV file
+simvar-cli --format csv watch "PLANE ALTITUDE" feet float64 > altitude.csv
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--interval` | `second` | Polling period: `second`, `visual-frame`, or `sim-frame` |
+| `--changed` | `false` | Only output a reading when the value differs from the previous one |
+
+**Interval mapping:**
+
+| Value | SimConnect period | Notes |
+|-------|-------------------|-------|
+| `second` | `SIMCONNECT_PERIOD_SECOND` | One reading per simulated second |
+| `visual-frame` | `SIMCONNECT_PERIOD_VISUAL_FRAME` | One reading per rendered frame |
+| `sim-frame` | `SIMCONNECT_PERIOD_SIM_FRAME` | One reading per simulation tick |
+
+Press Ctrl+C to stop streaming. The connection is closed cleanly on exit.
+
 ### REPL Mode
 
 Start an interactive session. This is the default when no subcommand is given.
@@ -189,6 +233,94 @@ REPL commands:
 
 The REPL maintains a single persistent connection and handles responses asynchronously, so it is significantly faster for multiple operations than running individual `get`/`set`/`emit` commands. Event listeners print incoming events to stderr to keep the prompt clean.
 
+## Output Formats
+
+The `--format` global flag controls how readings are rendered. It applies to the `get` and `watch` commands.
+
+| Format | Description |
+|--------|-------------|
+| `table` | Human-readable, four labelled lines per reading (default) |
+| `json` | One JSON object per reading, newline-delimited (NDJSON) |
+| `csv` | RFC 4180 CSV: one header row followed by one data row per reading |
+
+### table (default)
+
+```
+Name:     PLANE ALTITUDE
+Value:    35024.5 feet
+DataType: float64
+Time:     2025-11-01T12:34:56.789Z
+```
+
+### json
+
+Each reading is a complete JSON object followed by a newline. Multiple readings produce valid NDJSON that can be processed with `jq`.
+
+```json
+{"name":"PLANE ALTITUDE","value":"35024.5","unit":"feet","datatype":"float64","timestamp":"2025-11-01T12:34:56.789123456Z"}
+```
+
+```bash
+simvar-cli --format json watch "PLANE ALTITUDE" feet float64 | jq '.value'
+```
+
+### csv
+
+The first line is always a header row written by `FormatCSVHeader`. Each subsequent reading is a data row. Field order: `name,value,unit,datatype,timestamp`.
+
+```
+name,value,unit,datatype,timestamp
+PLANE ALTITUDE,35024.5,feet,float64,2025-11-01T12:34:56.789123456Z
+PLANE ALTITUDE,35100.2,feet,float64,2025-11-01T12:34:57.001234567Z
+```
+
+```bash
+simvar-cli --format csv watch "PLANE ALTITUDE" feet float64 > altitude.csv
+```
+
+## Config File
+
+`simvar-cli` supports a TOML configuration file for setting defaults without repeating flags on every invocation.
+
+### Resolution Order
+
+The config file is resolved in this order. The first file found is used; later candidates are not checked.
+
+1. `--config <path>` flag — explicit path; file must exist or the tool exits with an error
+2. `SIMVAR_CLI_CONFIG` environment variable — explicit path; file must exist or the tool exits with an error
+3. `%APPDATA%\simvar-cli\config.toml` — user-level default; silently ignored if absent
+4. `.\simvar-cli.toml` in the current working directory — project-level default; silently ignored if absent
+
+If no config file is found, the tool uses its built-in defaults.
+
+### Config Fields
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `dll_path` | string | Explicit path to SimConnect.dll | `""` |
+| `auto_detect` | bool | Auto-detect SimConnect.dll location | `false` |
+| `timeout` | int | Timeout in seconds for operations | `10` |
+| `log_level` | string | Log level: `debug`, `info`, `warn`, `error` | `"warn"` |
+| `format` | string | Output format: `table`, `json`, `csv` | `"table"` |
+
+### Precedence
+
+CLI flags always win over config file values, which win over built-in defaults. The tool uses `flag.Visit` to detect which flags were explicitly provided; unset flags fall back to the config, then to defaults.
+
+### Example Config File
+
+```toml
+# simvar-cli.toml
+
+dll_path    = "C:\\MSFS SDK\\SimConnect SDK\\lib\\SimConnect.dll"
+auto_detect = false
+timeout     = 30
+log_level   = "warn"
+format      = "table"
+```
+
+Save as `%APPDATA%\simvar-cli\config.toml` for user-level defaults, or as `simvar-cli.toml` in the directory you run the tool from for project-level defaults.
+
 ## Supported Data Types
 
 | Type | Size | Go Type | Example Values |
@@ -218,14 +350,16 @@ For unitless variables (e.g., `CAMERA STATE`), pass an empty string `""` as the 
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Entrypoint, global flag parsing, CURE router setup |
-| `bridge.go` | Shared utilities: ID counters, type parsing, value formatting, event mapping |
+| `main.go` | Entrypoint, global flag parsing, config loading, CURE router setup |
+| `bridge.go` | Shared utilities: ID counters, type parsing, value formatting, event mapping, output formatting |
+| `config.go` | TOML config file loading with 4-step resolution |
 | `get.go` | `get` command implementation |
 | `set.go` | `set` command implementation |
 | `emit.go` | `emit` command implementation (TransmitClientEvent / TransmitClientEventEx1) |
 | `listen.go` | `listen` command implementation (notification group based event monitoring) |
 | `repl.go` | `repl` command with interactive input loop, async response handling, and event commands |
-| `go.mod` | Standalone module with CURE dependency and parent module replace directive |
+| `watch.go` | `watch` command — continuous streaming with interval and changed-only filtering |
+| `go.mod` | Standalone module with CURE and BurntSushi/toml dependencies and parent module replace directive |
 
 ## SimVar Reference
 
@@ -235,8 +369,8 @@ For the full list of available simulation variables, units, and data types, see 
 
 ## Notes
 
-- The tool connects as client name `SimVar CLI - Get`, `SimVar CLI - Set`, `SimVar CLI - Emit`, `SimVar CLI - Listen`, or `SimVar CLI - REPL` depending on the command
-- Each `get`, `set`, `emit`, and `listen` invocation creates a fresh connection; use REPL mode for repeated operations
+- The tool connects as client name `SimVar CLI - Get`, `SimVar CLI - Set`, `SimVar CLI - Emit`, `SimVar CLI - Listen`, `SimVar CLI - REPL`, or `SimVar CLI - Watch` depending on the command
+- Each `get`, `set`, `emit`, `listen`, and `watch` invocation creates a fresh connection; use REPL mode for repeated operations
 - Event mappings (MapClientEventToSimEvent) are cached and reused across multiple emit/listen calls within a session
 - The `go.mod` uses a `replace` directive pointing to the parent module (`../..`) for local development
 - `unsafe.Pointer` is used internally for `SetDataOnSimObject` calls, matching the pattern in the `set-variables` example
