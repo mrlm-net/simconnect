@@ -68,7 +68,7 @@ type SimState struct {
 	GroundSpeed       float64 // GROUND VELOCITY (knots)
 	IndicatedAirspeed float64 // AIRSPEED INDICATED (knots)
 	TrueAirspeed      float64 // AIRSPEED TRUE (knots)
-	VerticalSpeed     float64 // VERTICAL SPEED (feet per second)
+	VerticalSpeed     float64 // VERTICAL SPEED (feet per minute)
 	// Camera extended
 	SmartCameraActive bool // SMART CAMERA ACTIVE
 	// Miscellaneous

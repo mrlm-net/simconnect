@@ -726,7 +726,7 @@ fmt.Printf("Camera: %v, Paused: %v, Crashed: %v\n", state.Camera, state.Paused, 
 | `GroundSpeed` | `float64` | Ground velocity (Knots) |
 | `IndicatedAirspeed` | `float64` | Indicated airspeed (Knots) |
 | `TrueAirspeed` | `float64` | True airspeed (Knots) |
-| `VerticalSpeed` | `float64` | Vertical speed (Feet per second) |
+| `VerticalSpeed` | `float64` | Vertical speed (Feet per minute) |
 | `SmartCameraActive` | `bool` | Whether smart camera is active |
 | `HandAnimState` | `int32` | Hand animation state (Enum: 0-12 frame IDs) |
 | `HideAvatarInAircraft` | `bool` | Whether avatar is hidden in aircraft |

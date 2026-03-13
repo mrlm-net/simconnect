@@ -13,7 +13,7 @@ func NewWeatherDataset() *datasets.DataSet {
 	return &datasets.DataSet{
 		Definitions: []datasets.DataDefinition{
 			{Name: "AMBIENT TEMPERATURE", Unit: "celsius", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
-			{Name: "AMBIENT PRESSURE", Unit: "millibars", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
+			{Name: "AMBIENT PRESSURE", Unit: "inHg", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
 			{Name: "AMBIENT WIND DIRECTION", Unit: "degrees", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
 			{Name: "AMBIENT WIND VELOCITY", Unit: "knots", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},
 			{Name: "AMBIENT VISIBILITY", Unit: "meters", Type: types.SIMCONNECT_DATATYPE_FLOAT64, Epsilon: 0},

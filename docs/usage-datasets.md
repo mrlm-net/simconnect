@@ -121,7 +121,7 @@ Import path: `github.com/mrlm-net/simconnect/pkg/datasets/environment`
 | Field | SimVar | Unit |
 |---|---|---|
 | `Temperature` | `AMBIENT TEMPERATURE` | celsius |
-| `Pressure` | `AMBIENT PRESSURE` | millibars |
+| `Pressure` | `AMBIENT PRESSURE` | inHg |
 | `WindDirection` | `AMBIENT WIND DIRECTION` | degrees |
 | `WindVelocity` | `AMBIENT WIND VELOCITY` | knots |
 | `Visibility` | `AMBIENT VISIBILITY` | meters |
