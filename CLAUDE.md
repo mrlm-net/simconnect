@@ -158,6 +158,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── simconnect-facilities/ # Manager facility queries
 │   ├── simconnect-traffic/  #   Manager traffic operations
 │   ├── simconnect-benchmark/ #  Performance benchmarking
+├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
 │   ├── config-client.md     #   Client configuration reference
@@ -219,7 +220,7 @@ go test ./...
 go run ./examples/basic-connection
 
 # Examples with own go.mod (have external dependencies)
-cd examples/simvar-cli && go run .
+cd cmd/simvar-cli && go run .
 
 # Vet (disable unsafeptr for DLL interop false positives)
 go vet -unsafeptr=false ./...

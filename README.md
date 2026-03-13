@@ -60,7 +60,29 @@ go run ./examples/<name>
 - **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
 - **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
 - **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
-- **Tools** — [simvar-cli](examples/simvar-cli)
+
+## CLI Tools
+
+### simvar-cli
+
+`simvar-cli` is a Windows command-line tool for reading, writing, and streaming MSFS SimVars directly from a terminal. It connects to a running simulator via SimConnect and supports JSON, CSV, and table output formats.
+
+```shell
+# Build from source
+cd cmd/simvar-cli
+go build -o simvar-cli.exe .
+
+# Read a SimVar
+simvar-cli get "PLANE ALTITUDE" feet float64
+
+# Stream continuously as NDJSON
+simvar-cli --format json watch "PLANE ALTITUDE" feet float64
+
+# Interactive REPL
+simvar-cli repl
+```
+
+See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli.md`](docs/simvar-cli.md) for the complete reference.
 
 ## Documentation
 
@@ -82,6 +104,8 @@ go run ./examples/<name>
 - **[`pkg/datasets`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/datasets)** — Pre-built dataset definitions (aircraft, environment, facilities, objects, simulator, traffic)
 - **[`pkg/convert`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/convert)** — Unit conversions, ICAO validation, WGS84 coordinate offsets
 - **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Calculation helpers (haversine great-circle distance)
+- **[`pkg/registry`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/registry)** — Cross-platform typed SimVar metadata catalogue (104 entries, no build tags)
+- **[`cmd/simvar-cli`](cmd/simvar-cli)** — Interactive CLI tool for reading, writing, and streaming SimVars
 
 ## Installation
 

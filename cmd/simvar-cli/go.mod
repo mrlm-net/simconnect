@@ -1,4 +1,4 @@
-module github.com/mrlm-net/simconnect/examples/simvar-cli
+module github.com/mrlm-net/simconnect/cmd/simvar-cli
 
 go 1.25
 

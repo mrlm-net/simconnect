@@ -1,7 +1,7 @@
 ---
 title: "SimVar CLI"
 description: "Interactive CLI tool for reading, writing, and streaming MSFS SimVars from the command line"
-section: "examples"
+section: "packages"
 order: 1
 ---
 
@@ -9,7 +9,7 @@ order: 1
 
 `simvar-cli` is a standalone Windows command-line tool for reading, writing, and streaming MSFS Simulation Variables (SimVars) directly from a terminal. It connects to a running simulator via SimConnect, executes the requested operation, and exits — or streams continuously until you press Ctrl+C.
 
-The tool lives in `examples/simvar-cli/` and has its own `go.mod`. It cannot be built from the repository root.
+The tool lives in `cmd/simvar-cli/` and has its own `go.mod`. It cannot be built from the repository root.
 
 ## Commands
 
@@ -25,7 +25,7 @@ The tool lives in `examples/simvar-cli/` and has its own `go.mod`. It cannot be 
 ## Installation / Build
 
 ```bash
-cd examples/simvar-cli
+cd cmd/simvar-cli
 go build -o simvar-cli.exe .
 ```
 

@@ -24,17 +24,17 @@ Interactive command-line tool for reading and writing MSFS Simulation Variables 
 
 ## Building
 
-This example has its own `go.mod` with an external dependency on CURE. It cannot be built from the repository root with `go run ./examples/simvar-cli`.
+`simvar-cli` has its own `go.mod` with an external dependency on CURE. It cannot be built from the repository root.
 
 ```bash
-cd examples/simvar-cli
+cd cmd/simvar-cli
 go run .
 ```
 
 To build a standalone binary:
 
 ```bash
-cd examples/simvar-cli
+cd cmd/simvar-cli
 go build -o simvar-cli.exe .
 ```
 
