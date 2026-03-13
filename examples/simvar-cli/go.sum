@@ -1,4 +1,2 @@
-github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
-github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/mrlm-net/cure v0.4.0 h1:gd7JAfwITZjqDzjmkb690CQHmX8BZdWe7Pb5rQGgalE=
 github.com/mrlm-net/cure v0.4.0/go.mod h1:61m63SMXSTdxRI1tuuPJgEDi/UpMDUOHAjxEOnpRjds=

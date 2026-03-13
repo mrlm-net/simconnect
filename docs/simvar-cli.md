@@ -49,7 +49,7 @@ These flags are accepted before the subcommand name and apply to all commands.
 | `--log-level <level>` | `warn` | Log level: `debug`, `info`, `warn`, `error` |
 | `--timeout <seconds>` | `10` | Operation timeout in seconds |
 | `--format <format>` | `table` | Output format: `table`, `json`, or `csv` |
-| `--config <path>` | `""` | Path to a TOML config file |
+| `--config <path>` | `""` | Path to a JSON config file |
 
 Flag precedence (highest to lowest): CLI flag > config file value > built-in default. The tool uses `flag.Visit` to detect which flags were explicitly set on the command line, so config values are only applied for flags you did not provide.
 
@@ -239,7 +239,7 @@ simvar-cli --format csv watch "PLANE ALTITUDE" feet float64 > altitude.csv
 
 ## Config File
 
-`simvar-cli` supports a TOML configuration file for setting persistent defaults without repeating flags on every invocation.
+`simvar-cli` supports a JSON configuration file for setting persistent defaults without repeating flags on every invocation.
 
 ### Resolution Order
 
@@ -247,8 +247,8 @@ The tool searches for a config file in this order. The first file found is decod
 
 1. `--config <path>` — explicit path provided on the command line; the file must exist or the tool exits with an error
 2. `SIMVAR_CLI_CONFIG` environment variable — explicit path; the file must exist or the tool exits with an error
-3. `%APPDATA%\simvar-cli\config.toml` — user-level default location; silently ignored if absent
-4. `.\simvar-cli.toml` in the current working directory — project-level default; silently ignored if absent
+3. `%APPDATA%\simvar-cli\config.json` — user-level default location; silently ignored if absent
+4. `.\simvar-cli.json` in the current working directory — project-level default; silently ignored if absent
 
 If no file is found at any candidate, the tool starts with built-in defaults and no error is reported.
 
@@ -264,17 +264,17 @@ If no file is found at any candidate, the tool starts with built-in defaults and
 
 ### Example Config File
 
-```toml
-# simvar-cli.toml
-
-dll_path    = "C:\\MSFS SDK\\SimConnect SDK\\lib\\SimConnect.dll"
-auto_detect = false
-timeout     = 30
-log_level   = "warn"
-format      = "table"
+```json
+{
+  "dll_path": "C:\\MSFS SDK\\SimConnect SDK\\lib\\SimConnect.dll",
+  "auto_detect": false,
+  "timeout": 30,
+  "log_level": "warn",
+  "format": "table"
+}
 ```
 
-Save as `%APPDATA%\simvar-cli\config.toml` for a user-level default that applies everywhere, or as `simvar-cli.toml` in a project directory for per-project defaults.
+Save as `%APPDATA%\simvar-cli\config.json` for a user-level default that applies everywhere, or as `simvar-cli.json` in a project directory for per-project defaults.
 
 > **Note:** CLI flags always override config file values. A flag you explicitly pass on the command line will never be overwritten by the config.
 
@@ -316,9 +316,8 @@ simvar-cli --format csv watch "PLANE ALTITUDE" feet float64 > trace.csv
 ### Use a project config file
 
 ```bash
-# Create simvar-cli.toml in the working directory
-echo 'dll_path = "C:\\SDK\\SimConnect.dll"' > simvar-cli.toml
-echo 'format   = "json"'                  >> simvar-cli.toml
+# Create simvar-cli.json in the working directory
+echo '{"dll_path":"C:\\SDK\\SimConnect.dll","format":"json"}' > simvar-cli.json
 
 # All subsequent runs use these defaults
 simvar-cli watch "PLANE ALTITUDE" feet float64

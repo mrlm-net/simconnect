@@ -7,6 +7,4 @@ require (
 	github.com/mrlm-net/simconnect v0.0.0
 )
 
-require github.com/BurntSushi/toml v1.6.0
-
 replace github.com/mrlm-net/simconnect => ../..

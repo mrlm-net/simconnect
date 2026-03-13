@@ -4,31 +4,30 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/BurntSushi/toml"
 )
 
-// Config holds values loaded from the TOML config file.
+// Config holds values loaded from the JSON config file.
 // Zero values mean "not set by config" — caller applies its own defaults.
 type Config struct {
-	DLLPath    string `toml:"dll_path"`
-	AutoDetect bool   `toml:"auto_detect"`
-	Timeout    int    `toml:"timeout"`
-	LogLevel   string `toml:"log_level"`
-	Format     string `toml:"format"`
+	DLLPath    string `json:"dll_path"`
+	AutoDetect bool   `json:"auto_detect"`
+	Timeout    int    `json:"timeout"`
+	LogLevel   string `json:"log_level"`
+	Format     string `json:"format"`
 }
 
 // loadConfig resolves the config file using the lookup order below,
-// decodes the TOML, and returns the populated Config.
+// decodes the JSON, and returns the populated Config.
 //
 // Lookup order (first found and readable wins):
 //  1. explicit — the --config flag value (non-empty); missing = error
 //  2. SIMVAR_CLI_CONFIG env var; missing file = error
-//  3. %APPDATA%\simvar-cli\config.toml; missing = silently ignored
-//  4. .\simvar-cli.toml in working dir; missing = silently ignored
+//  3. %APPDATA%\simvar-cli\config.json; missing = silently ignored
+//  4. .\simvar-cli.json in working dir; missing = silently ignored
 //
 // If no candidate file exists, returns zero Config and nil error.
 func loadConfig(explicit string) (Config, error) {
@@ -46,9 +45,9 @@ func loadConfig(explicit string) (Config, error) {
 			candidates = append(candidates, candidate{env, true})
 		}
 		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			candidates = append(candidates, candidate{filepath.Join(appdata, "simvar-cli", "config.toml"), false})
+			candidates = append(candidates, candidate{filepath.Join(appdata, "simvar-cli", "config.json"), false})
 		}
-		candidates = append(candidates, candidate{"simvar-cli.toml", false})
+		candidates = append(candidates, candidate{"simvar-cli.json", false})
 	}
 
 	for _, c := range candidates {
@@ -59,9 +58,15 @@ func loadConfig(explicit string) (Config, error) {
 			}
 			continue
 		}
+		f, err := os.Open(c.path)
+		if err != nil {
+			return Config{}, fmt.Errorf("config: open %q: %w", c.path, err)
+		}
 		var cfg Config
-		if _, err := toml.DecodeFile(c.path, &cfg); err != nil {
-			return Config{}, fmt.Errorf("config: decode %q: %w", c.path, err)
+		decErr := json.NewDecoder(f).Decode(&cfg)
+		f.Close()
+		if decErr != nil {
+			return Config{}, fmt.Errorf("config: decode %q: %w", c.path, decErr)
 		}
 		return cfg, nil
 	}

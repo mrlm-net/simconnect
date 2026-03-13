@@ -51,7 +51,7 @@ All commands accept these flags before the subcommand:
 | `--log-level` | `warn` | Log level (`debug`, `info`, `warn`, `error`) |
 | `--timeout` | `10` | Timeout in seconds for operations |
 | `--format` | `table` | Output format: `table`, `json`, or `csv` |
-| `--config` | `""` | Path to a TOML config file |
+| `--config` | `""` | Path to a JSON config file |
 
 ### Get a SimVar
 
@@ -280,7 +280,7 @@ simvar-cli --format csv watch "PLANE ALTITUDE" feet float64 > altitude.csv
 
 ## Config File
 
-`simvar-cli` supports a TOML configuration file for setting defaults without repeating flags on every invocation.
+`simvar-cli` supports a JSON configuration file for setting defaults without repeating flags on every invocation.
 
 ### Resolution Order
 
@@ -288,8 +288,8 @@ The config file is resolved in this order. The first file found is used; later c
 
 1. `--config <path>` flag — explicit path; file must exist or the tool exits with an error
 2. `SIMVAR_CLI_CONFIG` environment variable — explicit path; file must exist or the tool exits with an error
-3. `%APPDATA%\simvar-cli\config.toml` — user-level default; silently ignored if absent
-4. `.\simvar-cli.toml` in the current working directory — project-level default; silently ignored if absent
+3. `%APPDATA%\simvar-cli\config.json` — user-level default; silently ignored if absent
+4. `.\simvar-cli.json` in the current working directory — project-level default; silently ignored if absent
 
 If no config file is found, the tool uses its built-in defaults.
 
@@ -309,17 +309,17 @@ CLI flags always win over config file values, which win over built-in defaults. 
 
 ### Example Config File
 
-```toml
-# simvar-cli.toml
-
-dll_path    = "C:\\MSFS SDK\\SimConnect SDK\\lib\\SimConnect.dll"
-auto_detect = false
-timeout     = 30
-log_level   = "warn"
-format      = "table"
+```json
+{
+  "dll_path": "C:\\MSFS SDK\\SimConnect SDK\\lib\\SimConnect.dll",
+  "auto_detect": false,
+  "timeout": 30,
+  "log_level": "warn",
+  "format": "table"
+}
 ```
 
-Save as `%APPDATA%\simvar-cli\config.toml` for user-level defaults, or as `simvar-cli.toml` in the directory you run the tool from for project-level defaults.
+Save as `%APPDATA%\simvar-cli\config.json` for user-level defaults, or as `simvar-cli.json` in the directory you run the tool from for project-level defaults.
 
 ## Supported Data Types
 
@@ -352,14 +352,14 @@ For unitless variables (e.g., `CAMERA STATE`), pass an empty string `""` as the 
 |------|---------|
 | `main.go` | Entrypoint, global flag parsing, config loading, CURE router setup |
 | `bridge.go` | Shared utilities: ID counters, type parsing, value formatting, event mapping, output formatting |
-| `config.go` | TOML config file loading with 4-step resolution |
+| `config.go` | JSON config file loading with 4-step resolution |
 | `get.go` | `get` command implementation |
 | `set.go` | `set` command implementation |
 | `emit.go` | `emit` command implementation (TransmitClientEvent / TransmitClientEventEx1) |
 | `listen.go` | `listen` command implementation (notification group based event monitoring) |
 | `repl.go` | `repl` command with interactive input loop, async response handling, and event commands |
 | `watch.go` | `watch` command — continuous streaming with interval and changed-only filtering |
-| `go.mod` | Standalone module with CURE and BurntSushi/toml dependencies and parent module replace directive |
+| `go.mod` | Standalone module with CURE dependency and parent module replace directive |
 
 ## SimVar Reference
 
