@@ -114,6 +114,7 @@ func main() {
 	router.Register(&listenCommand{engineOpts: engineOpts, timeout: timeout})
 	router.Register(&replCommand{engineOpts: engineOpts, timeout: timeout})
 	router.Register(&watchCommand{engineOpts: engineOpts, timeout: timeout, format: outputFormat})
+	router.Register(&listCommand{format: outputFormat})
 
 	// Setup signal handler context
 	ctx, cancel := context.WithCancel(context.Background())
