@@ -227,6 +227,80 @@ func TestByCategoryUnknown(t *testing.T) {
 	}
 }
 
+// TestByCategoryAutopilot verifies that ByCategory("autopilot") returns exactly 8 entries.
+func TestByCategoryAutopilot(t *testing.T) {
+	results := ByCategory("autopilot")
+	const wantCount = 8
+	if len(results) != wantCount {
+		t.Errorf("ByCategory(\"autopilot\") returned %d entries; want %d", len(results), wantCount)
+	}
+}
+
+// TestAutopilotSimVarsLookup verifies that autopilot SimVars are resolvable and not duplicates of aircraft category.
+func TestAutopilotSimVarsLookup(t *testing.T) {
+	cases := []string{
+		"AUTOPILOT HEADING LOCK",
+		"AUTOPILOT ALTITUDE LOCK",
+		"AUTOPILOT VERTICAL HOLD",
+		"AUTOPILOT VERTICAL HOLD VAR",
+		"AUTOPILOT AIRSPEED HOLD",
+		"AUTOPILOT AIRSPEED HOLD VAR",
+		"AUTOPILOT NAV1 LOCK",
+		"AUTOPILOT APPROACH HOLD",
+	}
+	for _, name := range cases {
+		sv, ok := Lookup(name)
+		if !ok {
+			t.Errorf("Lookup(%q) returned ok=false", name)
+			continue
+		}
+		if sv.Category != "autopilot" {
+			t.Errorf("Lookup(%q).Category = %q; want \"autopilot\"", name, sv.Category)
+		}
+	}
+}
+
+// TestByCategoryNavigation verifies that ByCategory("navigation") returns exactly 9 entries.
+func TestByCategoryNavigation(t *testing.T) {
+	results := ByCategory("navigation")
+	const wantCount = 9
+	if len(results) != wantCount {
+		t.Errorf("ByCategory(\"navigation\") returned %d entries; want %d", len(results), wantCount)
+	}
+}
+
+// TestNavigationSimVarsLookup verifies that GPS and radio navigation SimVars are resolvable.
+func TestNavigationSimVarsLookup(t *testing.T) {
+	cases := []struct {
+		name    string
+		indexed bool
+	}{
+		{"COM STANDBY FREQUENCY:1", true},
+		{"COM STANDBY FREQUENCY:2", true},
+		{"NAV ACTIVE FREQUENCY:1", true},
+		{"NAV STANDBY FREQUENCY:1", true},
+		{"ADF ACTIVE FREQUENCY:1", true},
+		{"ADF RADIAL:1", true},
+		{"GPS GROUND SPEED", false},
+		{"GPS GROUND MAGNETIC TRACK", false},
+		{"GPS POSITION LAT", false},
+		{"GPS POSITION LON", false},
+	}
+	for _, tc := range cases {
+		sv, ok := Lookup(tc.name)
+		if !ok {
+			t.Errorf("Lookup(%q) returned ok=false", tc.name)
+			continue
+		}
+		if sv.Category != "navigation" {
+			t.Errorf("Lookup(%q).Category = %q; want \"navigation\"", tc.name, sv.Category)
+		}
+		if sv.Indexed != tc.indexed {
+			t.Errorf("Lookup(%q).Indexed = %v; want %v", tc.name, sv.Indexed, tc.indexed)
+		}
+	}
+}
+
 // TestNoDuplicates verifies that the simvars slice has no duplicate names.
 // Uses the internal simvarMap (same package — white-box test).
 func TestNoDuplicates(t *testing.T) {
