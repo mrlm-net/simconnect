@@ -9,6 +9,77 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-14
+
+### Added
+
+#### `pkg/manager` — Client Data Area API parity (#233, #234, #235)
+
+Five Client Data Area methods added to the `Manager` interface and `*Instance`, completing CDA support in the manager layer. All methods follow the `m.engine == nil → ErrNotConnected` guard pattern.
+
+| Method | Description |
+|--------|-------------|
+| `CreateClientData(clientDataID, dwSize uint32, flags types.SIMCONNECT_CREATE_CLIENT_DATA_FLAG) error` | Register a CDA with the given ID and byte size |
+| `AddToClientDataDefinition(defineID, dwOffset, dwSizeOrType uint32, epsilon float32, datumID uint32) error` | Add a typed field to a CDA definition |
+| `ClearClientDataDefinition(defineID uint32) error` | Remove all field definitions for a CDA definition ID |
+| `RequestClientData(clientDataID, requestID, defineID uint32, period, flags, origin, interval, limit ...) error` | Subscribe to CDA updates |
+| `SetClientData(clientDataID, defineID, flags, dwReserved, cbUnitSize uint32, data unsafe.Pointer) error` | Write data to a CDA |
+
+`ClearClientDataDefinition` also required a new raw DLL syscall binding in `internal/simconnect/clientdata.go` and a new `*Engine` implementation in `pkg/engine/clientdata.go`.
+
+**Breaking change:** `pkg/engine.Client` interface now declares all five CDA methods. Any external code that implements `Client` as a mock must add these methods. Acceptable under the pre-1.0 versioning policy.
+
+#### `pkg/manager` — Input Events API (#236)
+
+Six Input Event methods added to the `Manager` interface and `*Instance`. MSFS 2024 only; the engine layer already implemented these.
+
+| Method | Description |
+|--------|-------------|
+| `EnumerateInputEvents(requestID uint32) error` | Request enumeration of all registered input events |
+| `GetInputEvent(requestID uint32, hash uint64) error` | Request the current value of an input event by hash |
+| `SetInputEventDouble(hash uint64, value float64) error` | Set a double-typed input event value |
+| `SetInputEventString(hash uint64, value string) error` | Set a string-typed input event value |
+| `SubscribeInputEvent(hash uint64) error` | Subscribe to change notifications for an input event |
+| `UnsubscribeInputEvent(hash uint64) error` | Cancel a subscription |
+
+Subscriptions are not restored on reconnect — callers should resubscribe in an `OnOpen` or `OnConnectionStateChange` handler.
+
+#### `pkg/registry` — `navigation` and `autopilot` SimVar categories (#237, #238)
+
+Two new categories added to the compile-time SimVar registry.
+
+- **`navigation`** (9 entries): `COM STANDBY FREQUENCY`, `NAV ACTIVE/STANDBY FREQUENCY`, `ADF ACTIVE FREQUENCY`, `ADF RADIAL`, `GPS GROUND SPEED`, `GPS GROUND MAGNETIC TRACK`, `GPS POSITION LAT/LON`
+- **`autopilot`** (8 entries): `AUTOPILOT HEADING/ALTITUDE LOCK`, `AUTOPILOT VERTICAL HOLD (+ VAR)`, `AUTOPILOT AIRSPEED HOLD (+ VAR)`, `AUTOPILOT NAV1 LOCK`, `AUTOPILOT APPROACH HOLD`
+
+Registry total: 121 entries across 5 categories.
+
+#### `pkg/datasets/navigation` — new sub-package (#239)
+
+Pre-built dataset builders for radio stack and GPS data.
+
+| Constructor | Struct | Fields |
+|-------------|--------|--------|
+| `NewRadioDataset() *datasets.DataSet` | `RadioDataset` | COM1 active/standby, NAV1 active/standby, ADF1 active frequencies |
+| `NewGPSDataset() *datasets.DataSet` | `GPSDataset` | GPS latitude, longitude, ground speed, ground magnetic track |
+
+#### `simvar-cli` — `list` command (#240)
+
+New `list` subcommand enumerates the SimVar registry without connecting to the simulator.
+
+```
+simvar-cli list                            # all entries
+simvar-cli list --category navigation      # filter by category
+simvar-cli list --search altitude          # substring match on Name and Description
+simvar-cli list --category autopilot --search hold  # combined (AND)
+simvar-cli --format json list              # NDJSON output
+simvar-cli --format csv  list              # CSV with header row
+```
+
+#### Documentation (#241, #242)
+
+- `docs/manager-client-data-area.md` — complete reference for the 5 CDA manager methods, including a full reader example, method reference table, ID range guidance, and `ErrNotConnected` notes
+- `docs/manager-input-events.md` — complete reference for the 6 Input Event manager methods, including enumeration workflow, Double vs String guidance, and no-auto-resubscribe warning
+
 ## [0.5.1] - 2026-03-14
 
 ### Added
