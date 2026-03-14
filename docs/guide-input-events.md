@@ -341,5 +341,4 @@ func main() {
 
 - [Engine/Client API Reference](usage-engine-api.md) — Full Input Event API section with the complete method reference table
 - [Engine/Client Usage](usage-client.md) — General dispatch loop patterns and message handling
-- [Input Events (Manager)](manager-input-events.md) — Using Input Events through the manager with lifecycle-managed reconnection and auto-reconnect considerations
 - [Client Configuration](config-client.md) — Connection options

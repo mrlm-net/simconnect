@@ -344,5 +344,4 @@ client.SetClientData(WeatherAreaID, WeatherDefID, 0, 0,
 
 - [Engine/Client Usage](usage-client.md) — Full client API reference including data definitions and sim object data
 - [Manager Usage](usage-manager.md) — Automatic connection lifecycle management
-- [Client Data Areas (Manager)](manager-client-data-area.md) — Using Client Data Areas through the manager with lifecycle-managed reconnection
 - [Examples](../examples) — Working code samples
