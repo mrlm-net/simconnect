@@ -107,8 +107,8 @@ func renderListJSON(tc *terminal.Context, entries []registry.SimVarMeta) error {
 		Type        string `json:"type"`
 		DefaultUnit string `json:"default_unit"`
 		Units       []string `json:"units"`
-		Writable    bool   `json:"writable"`
-		Indexed     bool   `json:"indexed"`
+		Writable    bool     `json:"writable"`
+		Indexed     bool     `json:"indexed"`
 		Description string `json:"description"`
 	}
 
