@@ -53,7 +53,7 @@ These flags are accepted before the subcommand name and apply to all commands.
 
 Flag precedence (highest to lowest): CLI flag > config file value > built-in default. The tool uses `flag.Visit` to detect which flags were explicitly set on the command line, so config values are only applied for flags you did not provide.
 
-## Commands
+## Command Reference
 
 ### get
 
