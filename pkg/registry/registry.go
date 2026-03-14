@@ -31,7 +31,7 @@ import (
 // "int64", "bool", "string", "enum".
 //
 // Category groups SimVars by domain. Valid values in this release:
-// "aircraft", "environment", "simulator".
+// "aircraft", "environment", "simulator", "navigation", "autopilot".
 //
 // Writable reports whether SimConnect accepts SetDataOnSimObject writes.
 //
