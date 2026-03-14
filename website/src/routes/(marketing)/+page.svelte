@@ -381,7 +381,7 @@ func main() {
 					{/each}
 				</div>
 
-				<div class="relative mt-6 flex items-center justify-between">
+				<div class="relative mt-auto pt-6 flex items-center justify-between">
 					<a
 						href="https://simconnect-mcp.mrlm.net/"
 						target="_blank"
@@ -442,7 +442,7 @@ func main() {
 					</div>
 				</div>
 
-				<div class="relative mt-6 flex items-center justify-between">
+				<div class="relative mt-auto pt-6 flex items-center justify-between">
 					<a
 						href="{base}/docs/simvar-cli"
 						class="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all hover:brightness-110"
