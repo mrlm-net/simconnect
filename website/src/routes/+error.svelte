@@ -61,22 +61,50 @@
 		<!-- Heading -->
 		<h1 class="mb-3 text-2xl font-semibold tracking-tight md:text-3xl" style="color: var(--color-text-primary);">
 			{#if $page.status === 404}
-				Page not found
+				Waypoint not in navigation database.
 			{:else}
-				Something went wrong
+				Something went wrong.
 			{/if}
 		</h1>
 
 		<!-- Description -->
-		<p class="mx-auto mb-10 max-w-md text-base leading-relaxed" style="color: var(--color-text-secondary);">
+		<p class="mx-auto mb-6 max-w-md text-base leading-relaxed" style="color: var(--color-text-secondary);">
 			{#if $page.status === 404}
-				The page you're looking for doesn't exist or has been moved.
+				This page wasn't on the flight plan. ATC has no record of the requested route — maybe it got cleared direct to a runway that doesn't exist.
 			{:else if $page.error?.message}
 				{$page.error.message}
 			{:else}
 				An unexpected error occurred. Try refreshing the page.
 			{/if}
 		</p>
+
+		<!-- SimConnect-style exception panel (404 only) -->
+		{#if $page.status === 404}
+		<div
+			class="mx-auto mb-10 w-full max-w-sm overflow-hidden rounded-lg border text-left font-mono text-xs"
+			style="background-color: var(--color-bg-code); border-color: var(--color-border);"
+		>
+			<div
+				class="flex items-center gap-2 border-b px-4 py-2"
+				style="background-color: var(--color-bg-tertiary); border-color: var(--color-border);"
+			>
+				<span class="inline-block h-2 w-2 rounded-full" style="background-color: #f85149;"></span>
+				<span style="color: var(--color-text-muted);">simconnect exception</span>
+			</div>
+			<div class="px-4 py-3 leading-relaxed">
+				<p style="color: #f85149;">SIMCONNECT_EXCEPTION_NAME_UNRECOGNIZED</p>
+				<p class="mt-1" style="color: var(--color-text-muted);">
+					exceptionID=2 &nbsp;·&nbsp; sendID=404 &nbsp;·&nbsp; index=0
+				</p>
+				<p class="mt-2" style="color: var(--color-text-secondary);">
+					<span style="color: var(--color-text-muted);">goroutine 1</span> [running]:<br />
+					panic: page not found — <span style="color: var(--color-link);">go get</span> a valid URL
+				</p>
+			</div>
+		</div>
+		{:else}
+		<div class="mb-10"></div>
+		{/if}
 
 		<!-- Actions -->
 		<div class="flex flex-col items-center gap-3 sm:flex-row">
