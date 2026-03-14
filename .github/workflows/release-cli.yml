@@ -1,0 +1,44 @@
+name: Release CLI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build simvar-cli (Windows amd64)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cmd/simvar-cli
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+          cache-dependency-path: cmd/simvar-cli/go.sum
+
+      - name: Build Windows binary
+        run: GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o simvar-cli.exe .
+
+      - name: Package
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          ZIP="simvar-cli-${VERSION}-windows-amd64.zip"
+          zip "$ZIP" simvar-cli.exe README.md
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "${{ env.ZIP }}" \
+            --repo "${{ github.repository }}"

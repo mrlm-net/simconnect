@@ -9,6 +9,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-14
+
+### Added
+
+#### CI — `simvar-cli` Windows binary release automation
+
+A new GitHub Actions workflow (`.github/workflows/release-cli.yml`) runs on every published release and automatically builds and attaches a pre-built Windows binary to the release assets.
+
+| Asset | Description |
+|-------|-------------|
+| `simvar-cli-vX.Y.Z-windows-amd64.zip` | Binary (`simvar-cli.exe`) + README, stripped of debug symbols (`-s -w`) |
+
+### Changed
+
+- `docs/simvar-cli.md` — Installation section now lists the pre-built binary download as the recommended path; build-from-source instructions retained under a separate heading.
+
 ## [0.5.0] - 2026-03-13
 
 ### Added

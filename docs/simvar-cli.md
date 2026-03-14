@@ -22,21 +22,30 @@ The tool lives in `cmd/simvar-cli/` and has its own `go.mod`. It cannot be built
 | `repl` | Interactive session (default when no command is given) |
 | `watch` | Stream a SimVar continuously at a chosen interval |
 
-## Installation / Build
+## Installation
+
+### Pre-built binary (recommended)
+
+Download the latest `simvar-cli-vX.Y.Z-windows-amd64.zip` from the [GitHub Releases page](https://github.com/mrlm-net/simconnect/releases/latest), extract it, and place `simvar-cli.exe` anywhere on your `PATH`.
+
+Each release zip contains the binary and this README.
+
+### Build from source
+
+Requires Go 1.25+ and the full repository checked out:
 
 ```bash
 cd cmd/simvar-cli
-go build -o simvar-cli.exe .
+go build -ldflags "-s -w" -o simvar-cli.exe .
 ```
+
+The `go.mod` includes a `replace` directive pointing to the parent module (`../..`) so the build must be run from `cmd/simvar-cli/`, not the repository root.
 
 **Prerequisites:**
 
 - Windows OS — SimConnect is Windows-only
 - Microsoft Flight Simulator 2020 or 2024 running
 - SimConnect SDK installed (SimConnect.dll accessible)
-- Go 1.25+
-
-The `go.mod` includes a `replace` directive pointing to the parent module (`../..`) for local development.
 
 ## Global Flags
 
