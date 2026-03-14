@@ -171,7 +171,7 @@ The `watch` command subscribes to a SimVar using `RequestDataOnSimObject` and st
 
 When `--changed` is set, the tool compares each incoming value string against the previous one and skips the write step if they are equal. The comparison is string-level (post-formatting), so it reflects the value as it would appear in output.
 
-### Examples
+### Watch Examples
 
 ```bash
 # Stream altitude once per second in the default table format

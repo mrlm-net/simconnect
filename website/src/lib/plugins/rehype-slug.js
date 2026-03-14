@@ -47,9 +47,11 @@ function extractText(node) {
 
 /**
  * Rehype plugin that adds `id` attributes to h1-h6 elements.
+ * Deduplicates IDs by appending -2, -3, ... for repeated slugs.
  */
 export default function rehypeSlug() {
 	return function transformer(tree) {
+		const seen = new Map();
 		visit(tree, 'element', (node) => {
 			if (/^h[1-6]$/.test(node.tagName)) {
 				if (!node.properties) {
@@ -57,7 +59,10 @@ export default function rehypeSlug() {
 				}
 				if (!node.properties.id) {
 					const text = extractText(node);
-					node.properties.id = slugify(text);
+					const base = slugify(text);
+					const count = seen.get(base) ?? 0;
+					seen.set(base, count + 1);
+					node.properties.id = count === 0 ? base : `${base}-${count + 1}`;
 				}
 			}
 		});
