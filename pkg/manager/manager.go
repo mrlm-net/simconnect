@@ -271,6 +271,32 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	MapClientDataNameToID(clientDataName string, clientDataID uint32) error
 
+	// Client Data Area Methods
+	// These methods provide direct access to client data area operations without needing
+	// to call Client() first. They return ErrNotConnected if not connected.
+
+	// CreateClientData registers a client data area with the given ID and size.
+	// Returns ErrNotConnected if not connected to the simulator.
+	CreateClientData(clientDataID uint32, dwSize uint32, flags types.SIMCONNECT_CREATE_CLIENT_DATA_FLAG) error
+
+	// AddToClientDataDefinition adds a data field to a client data definition.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AddToClientDataDefinition(defineID uint32, dwOffset uint32, dwSizeOrType uint32, epsilon float32, datumID uint32) error
+
+	// ClearClientDataDefinition removes all data definitions for the given client data definition ID.
+	// Returns ErrNotConnected if not connected to the simulator.
+	ClearClientDataDefinition(defineID uint32) error
+
+	// RequestClientData subscribes to client data area updates for the given definition.
+	// Returns ErrNotConnected if not connected to the simulator.
+	RequestClientData(clientDataID uint32, requestID uint32, defineID uint32, period types.SIMCONNECT_CLIENT_DATA_PERIOD, flags types.SIMCONNECT_CLIENT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error
+
+	// SetClientData writes data to a client data area.
+	// flags is a plain uint32 — SimConnect.h does not define a typed enum for SetClientData flags.
+	// dwReserved must be 0.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SetClientData(clientDataID uint32, defineID uint32, flags uint32, dwReserved uint32, cbUnitSize uint32, data unsafe.Pointer) error
+
 	// Notification Group Methods
 	// These methods provide direct access to notification group operations without needing
 	// to call Client() first. They return ErrNotConnected if not connected.
@@ -319,6 +345,32 @@ type Manager interface {
 	// UnsubscribeFromFlowEvent cancels the active flow event subscription.
 	// Returns ErrNotConnected if not connected to the simulator.
 	UnsubscribeFromFlowEvent() error
+
+	// Input Event Methods (MSFS 2024 only)
+
+	// EnumerateInputEvents requests an enumeration of all registered input events.
+	// Returns ErrNotConnected if not connected to the simulator.
+	EnumerateInputEvents(requestID uint32) error
+
+	// GetInputEvent requests the current value of an input event by hash.
+	// Returns ErrNotConnected if not connected to the simulator.
+	GetInputEvent(requestID uint32, hash uint64) error
+
+	// SetInputEventDouble sets a DOUBLE-typed input event value.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SetInputEventDouble(hash uint64, value float64) error
+
+	// SetInputEventString sets a STRING-typed input event value.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SetInputEventString(hash uint64, value string) error
+
+	// SubscribeInputEvent subscribes to change notifications for an input event.
+	// Returns ErrNotConnected if not connected to the simulator.
+	SubscribeInputEvent(hash uint64) error
+
+	// UnsubscribeInputEvent cancels the subscription for an input event.
+	// Returns ErrNotConnected if not connected to the simulator.
+	UnsubscribeInputEvent(hash uint64) error
 
 	// Flight Methods
 

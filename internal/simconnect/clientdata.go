@@ -71,6 +71,22 @@ func (sc *SimConnect) RequestClientData(clientDataID uint32, requestID uint32, d
 	return nil
 }
 
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_ClearClientDataDefinition.htm
+func (sc *SimConnect) ClearClientDataDefinition(defineID uint32) error {
+	procedure := sc.library.LoadProcedure("SimConnect_ClearClientDataDefinition")
+
+	hresult, _, _ := procedure.Call(
+		sc.getConnection(), // HANDLE hSimConnect
+		uintptr(defineID),
+	)
+
+	if !isHRESULTSuccess(hresult) {
+		return fmt.Errorf("SimConnect_ClearClientDataDefinition failed with HRESULT: 0x%08X", uint32(hresult))
+	}
+
+	return nil
+}
+
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_SetClientData.htm
 // Note: Flags is a plain uint32 per ADR-B-01 — SimConnect.h does not define a typed enum for SetClientData flags.
 func (sc *SimConnect) SetClientData(clientDataID uint32, defineID uint32, flags uint32, dwReserved uint32, cbUnitSize uint32, data unsafe.Pointer) error {
