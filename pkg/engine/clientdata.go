@@ -28,6 +28,12 @@ func (e *Engine) RequestClientData(clientDataID uint32, requestID uint32, define
 	return e.api.RequestClientData(clientDataID, requestID, defineID, period, flags, origin, interval, limit)
 }
 
+// ClearClientDataDefinition removes all data definitions for the given client data definition ID.
+// https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_ClearClientDataDefinition.htm
+func (e *Engine) ClearClientDataDefinition(defineID uint32) error {
+	return e.api.ClearClientDataDefinition(defineID)
+}
+
 // SetClientData writes data to a client data area.
 // flags is a plain uint32 per ADR-B-01 — SimConnect.h does not define a typed enum for SetClientData flags.
 // dwReserved must be 0.
