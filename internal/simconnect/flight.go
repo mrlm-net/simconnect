@@ -3,7 +3,10 @@
 
 package simconnect
 
-import "fmt"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Flights/SimConnect_FlightLoad.htm
 func (sc *SimConnect) FlightLoad(flightFile string) error {
@@ -16,7 +19,7 @@ func (sc *SimConnect) FlightLoad(flightFile string) error {
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szFlightFile,
+		uintptr(unsafe.Pointer(szFlightFile)),
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -47,9 +50,9 @@ func (sc *SimConnect) FlightSave(flightFile string, title string, description st
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szFlightFile,
-		szTitle,
-		szDescription,
+		uintptr(unsafe.Pointer(szFlightFile)),
+		uintptr(unsafe.Pointer(szTitle)),
+		uintptr(unsafe.Pointer(szDescription)),
 		0, // reserved - must be zero
 	)
 
@@ -71,7 +74,7 @@ func (sc *SimConnect) FlightPlanLoad(flightPlanFile string) error {
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szFlightPlanFile,
+		uintptr(unsafe.Pointer(szFlightPlanFile)),
 	)
 
 	if !isHRESULTSuccess(hresult) {

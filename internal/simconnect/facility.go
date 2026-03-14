@@ -22,7 +22,7 @@ func (sc *SimConnect) AddToFacilityDefinition(definitionID uint32, fieldName str
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
-		szFieldName,
+		uintptr(unsafe.Pointer(szFieldName)),
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -43,7 +43,7 @@ func (sc *SimConnect) AddFacilityDataDefinitionFilter(definitionID uint32, filte
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
-		szFilterPath,
+		uintptr(unsafe.Pointer(szFilterPath)),
 		uintptr(filterDataSize),
 		uintptr(filterData),
 	)
@@ -121,8 +121,8 @@ func (sc *SimConnect) RequestFacilityData(definitionID uint32, requestID uint32,
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
 		uintptr(requestID),
-		szICAO,
-		szRegion,
+		uintptr(unsafe.Pointer(szICAO)),
+		uintptr(unsafe.Pointer(szRegion)),
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -150,8 +150,8 @@ func (sc *SimConnect) RequestFacilityDataEX1(definitionID uint32, requestID uint
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
 		uintptr(requestID),
-		szICAO,
-		szRegion,
+		uintptr(unsafe.Pointer(szICAO)),
+		uintptr(unsafe.Pointer(szRegion)),
 		uintptr(facilityType),
 	)
 
@@ -173,7 +173,7 @@ func (sc *SimConnect) RequestJetwayData(airportICAO string, arrayCount uint32, i
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szAirportICAO,
+		uintptr(unsafe.Pointer(szAirportICAO)),
 		uintptr(arrayCount),
 		uintptr(unsafe.Pointer(indexes)),
 	)

@@ -5,6 +5,7 @@ package simconnect
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -26,7 +27,7 @@ func (sc *SimConnect) RequestSystemState(requestID uint32, state types.SIMCONNEC
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(requestID), // Explicit cast
-		szState,
+		uintptr(unsafe.Pointer(szState)),
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -48,7 +49,7 @@ func (sc *SimConnect) SubscribeToSystemEvent(eventID uint32, eventName string) e
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(eventID),
-		szEventName,
+		uintptr(unsafe.Pointer(szEventName)),
 	)
 
 	if !isHRESULTSuccess(hresult) {

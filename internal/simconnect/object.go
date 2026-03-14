@@ -20,7 +20,7 @@ func (sc *SimConnect) AICreateSimulatedObject(szContainerTitle string, initPos t
 	procedure := sc.library.LoadProcedure("SimConnect_AICreateSimulatedObject")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
 		uintptr(unsafe.Pointer(&initPos)),
 		uintptr(RequestID),
 	)
@@ -92,8 +92,8 @@ func (sc *SimConnect) AICreateSimulatedObjectEX1(szContainerTitle string, szLive
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szLiveryPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szLiveryPtr)),
 		uintptr(unsafe.Pointer(&initPos)),
 		uintptr(RequestID),
 	)

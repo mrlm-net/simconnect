@@ -5,6 +5,7 @@ package simconnect
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -21,7 +22,7 @@ func (sc *SimConnect) MapClientEventToSimEvent(eventID uint32, eventName string)
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(eventID),
-		eventNamePtr,
+		uintptr(unsafe.Pointer(eventNamePtr)),
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -103,7 +104,7 @@ func (sc *SimConnect) MapClientDataNameToID(clientDataName string, clientDataID 
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		clientDataNamePtr,
+		uintptr(unsafe.Pointer(clientDataNamePtr)),
 		uintptr(clientDataID),
 	)
 

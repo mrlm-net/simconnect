@@ -68,8 +68,8 @@ func (sc *SimConnect) AddToDataDefinition(definitionID uint32, datumName string,
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
-		szDatumName,
-		szUnitsName,
+		uintptr(unsafe.Pointer(szDatumName)),
+		uintptr(unsafe.Pointer(szUnitsName)),
 		uintptr(datumType),
 		uintptr(*(*uint32)(unsafe.Pointer(&epsilon))), // float32 to uintptr conversion
 		uintptr(datumID),
