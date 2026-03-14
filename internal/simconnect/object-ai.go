@@ -38,10 +38,10 @@ func (sc *SimConnect) AICreateEnrouteATCAircraft(szContainerTitle string, szTail
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szTailNumberPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(iFlightNumber),
-		szFlightPlanPathPtr,
+		uintptr(unsafe.Pointer(szFlightPlanPathPtr)),
 		uintptr(unsafe.Pointer(&dFlightPlanPosition)),
 		bTouchAndGoUintptr,
 		uintptr(RequestID),
@@ -70,8 +70,8 @@ func (sc *SimConnect) AICreateNonATCAircraft(szContainerTitle string, szTailNumb
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szTailNumberPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(unsafe.Pointer(&initPos)),
 		uintptr(RequestID),
 	)
@@ -104,9 +104,9 @@ func (sc *SimConnect) AICreateParkedATCAircraft(szContainerTitle string, szTailN
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szTailNumberPtr,
-		szAirportIDPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
+		uintptr(unsafe.Pointer(szAirportIDPtr)),
 		uintptr(RequestID),
 	)
 
@@ -129,7 +129,7 @@ func (sc *SimConnect) AISetAircraftFlightPlan(objectID uint32, szFlightPlanPath 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(objectID),
-		szFlightPlanPathPtr,
+		uintptr(unsafe.Pointer(szFlightPlanPathPtr)),
 		uintptr(requestID),
 	)
 
@@ -167,11 +167,11 @@ func (sc *SimConnect) AICreateEnrouteATCAircraftEX1(szContainerTitle string, szL
 	procedure := sc.library.LoadProcedure("SimConnect_AICreateEnrouteATCAircraft_EX1")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szLiveryPtr,
-		szTailNumberPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szLiveryPtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(iFlightNumber),
-		szFlightPlanPathPtr,
+		uintptr(unsafe.Pointer(szFlightPlanPathPtr)),
 		uintptr(unsafe.Pointer(&dFlightPlanPosition)),
 		bTouchAndGoUintptr,
 		uintptr(RequestID),
@@ -200,9 +200,9 @@ func (sc *SimConnect) AICreateNonATCAircraftEX1(szContainerTitle string, szLiver
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szLiveryPtr,
-		szTailNumberPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szLiveryPtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(unsafe.Pointer(&initPos)),
 		uintptr(RequestID),
 	)
@@ -234,10 +234,10 @@ func (sc *SimConnect) AICreateParkedATCAircraftEX1(szContainerTitle string, szLi
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
-		szContainerTitlePtr,
-		szLiveryPtr,
-		szTailNumberPtr,
-		szAirportIDPtr,
+		uintptr(unsafe.Pointer(szContainerTitlePtr)),
+		uintptr(unsafe.Pointer(szLiveryPtr)),
+		uintptr(unsafe.Pointer(szTailNumberPtr)),
+		uintptr(unsafe.Pointer(szAirportIDPtr)),
 		uintptr(RequestID),
 	)
 	if !isHRESULTSuccess(hresult) {

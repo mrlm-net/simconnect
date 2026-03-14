@@ -4,6 +4,7 @@ package simconnect
 
 import (
 	"fmt"
+	"unsafe"
 )
 
 func (sc *SimConnect) Connect() error {
@@ -16,8 +17,8 @@ func (sc *SimConnect) Connect() error {
 	procedure := sc.library.LoadProcedure("SimConnect_Open")
 
 	hresult, _, _ := procedure.Call(
-		sc.getConnectionPtr(), // phSimConnect - pointer to connection handle
-		szName,                // szName
+		sc.getConnectionPtr(),            // phSimConnect - pointer to connection handle
+		uintptr(unsafe.Pointer(szName)), // szName
 		0,                     // hWnd (NULL)
 		0,                     // UserEventWin32
 		0,                     // hEventHandle
