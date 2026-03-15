@@ -24,6 +24,8 @@ jobs:
 
       - name: Scan main module
         run: govulncheck ./...
+        env:
+          GOOS: windows
 
       - name: Scan simvar-cli module
         run: govulncheck .
