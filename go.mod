@@ -1,3 +1,3 @@
 module github.com/mrlm-net/simconnect
 
-go 1.25
+go 1.25.8
