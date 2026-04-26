@@ -365,13 +365,13 @@ var simvars = []SimVarMeta{
 	},
 	{
 		Name:        "TRANSPONDER CODE",
-		Units:       []string{"number"},
-		DefaultUnit: "number",
+		Units:       []string{"number", "bcd16", ""},
+		DefaultUnit: "",
 		Type:        "float64",
 		Category:    "aircraft",
 		Writable:    true,
-		Indexed:     false,
-		Description: "Transponder squawk code (decimal encoding of the octal code).",
+		Indexed:     true,
+		Description: "Transponder squawk code. SDK unit: BCD16. Use empty unit \"\" to get decoded decimal; use \"bcd16\" to get raw BCD16.",
 	},
 	{
 		Name:        "COM ACTIVE FREQUENCY",

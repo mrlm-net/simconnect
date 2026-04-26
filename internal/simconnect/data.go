@@ -54,22 +54,26 @@ func (sc *SimConnect) RequestDataOnSimObjectType(requestID uint32, definitionID 
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_AddToDataDefinition.htm
 func (sc *SimConnect) AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error {
-	szDatumName, err := stringToBytePtr(datumName)
+	var szDatumNamePtr, szUnitsNamePtr *byte
+
+	szDatumNamePtr, err := stringToBytePtr(datumName)
 	if err != nil {
 		return fmt.Errorf("failed to convert datum name to byte pointer: %w", err)
 	}
 
-	szUnitsName, err := stringToBytePtr(unitsName)
-	if err != nil {
-		return fmt.Errorf("failed to convert units name to byte pointer: %w", err)
+	if unitsName != "" {
+		szUnitsNamePtr, err = stringToBytePtr(unitsName)
+		if err != nil {
+			return fmt.Errorf("failed to convert units name to byte pointer: %w", err)
+		}
 	}
 	procedure := sc.library.LoadProcedure("SimConnect_AddToDataDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
-		uintptr(unsafe.Pointer(szDatumName)),
-		uintptr(unsafe.Pointer(szUnitsName)),
+		uintptr(unsafe.Pointer(szDatumNamePtr)),
+		uintptr(unsafe.Pointer(szUnitsNamePtr)), // nil when unitsName == ""; signals SimConnect to use default unit
 		uintptr(datumType),
 		uintptr(*(*uint32)(unsafe.Pointer(&epsilon))), // float32 to uintptr conversion
 		uintptr(datumID),
