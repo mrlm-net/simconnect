@@ -77,11 +77,6 @@
   <h2>Taxi points by TYPE</h2>
   <table id="pointTypes"></table>
 
-  <h2>PARKING path endpoints</h2>
-  <label class="opt"><input type="radio" name="pm" value="parking" checked> END = parking index <span class="note">(SDK docs)</span></label>
-  <label class="opt"><input type="radio" name="pm" value="point"> END = taxi point index <span class="note">(manage-traffic)</span></label>
-  <div id="parkingCheck" class="note"></div>
-
   <h2>Options</h2>
   <label class="opt"><input type="checkbox" id="labels" checked> Taxiway name labels</label>
   <label class="opt"><input type="checkbox" id="follow"> Follow aircraft</label>
@@ -167,25 +162,22 @@ function kv(obj) { return Object.entries(obj).map(([k, v]) => `${k}: ${esc(v)}`)
 function pointLL(i) { const p = data.taxiPoints[i]; return p ? [p.lat, p.lon] : null; }
 function parkingLL(i) { const p = data.parking[i]; return p ? [p.lat, p.lon] : null; }
 
-// Resolves a path's endpoints. For TYPE=3 (PARKING) paths the END index is
-// interpreted according to the selected mode, so both readings can be compared.
-function endpoints(path, mode) {
+// Resolves a path's endpoints: START is a taxi point; END is a taxi point,
+// or a parking spot for TYPE=3 (PARKING) paths (verified on LKPR, see #247).
+function endpoints(path) {
   const a = pointLL(path.start);
-  const b = path.type === 3 && mode === 'parking' ? parkingLL(path.end) : pointLL(path.end);
+  const b = path.type === 3 ? parkingLL(path.end) : pointLL(path.end);
   return [a, b];
 }
-
-function mode() { return document.querySelector('input[name=pm]:checked').value; }
 
 function drawPaths() {
   for (const g of Object.values(pathGroups)) g.clearLayers();
   groups.labels.clearLayers();
   if (!data) return;
-  const m = mode();
   const labelled = new Set();
   let unresolved = 0;
   for (const p of data.taxiPaths) {
-    const [a, b] = endpoints(p, m);
+    const [a, b] = endpoints(p);
     const [tname, color] = PATH_TYPES[p.type] || [`(${p.type})`, '#ff00ff'];
     const name = data.taxiNames[p.nameIndex] || '';
     const pop = `<b>Taxi path #${p.index}</b><br>` + kv({
@@ -211,27 +203,6 @@ function drawPaths() {
     }
   }
   return unresolved;
-}
-
-// Summarises how PARKING paths resolve under each reading: an index that is out
-// of range, or a segment that is implausibly long, points to the wrong reading.
-function checkParkingPaths() {
-  const pp = data.taxiPaths.filter((p) => p.type === 3);
-  if (!pp.length) { $('parkingCheck').textContent = 'No PARKING paths.'; return; }
-  const stat = (m) => {
-    let ok = 0, lens = [];
-    for (const p of pp) { const [a, b] = endpoints(p, m); if (a && b) { ok++; lens.push(dist(a, b)); } }
-    lens.sort((x, y) => x - y);
-    const med = lens.length ? lens[Math.floor(lens.length / 2)] : NaN;
-    return { ok, med, long: lens.filter((l) => l > 150).length };
-  };
-  const sp = stat('parking'), st = stat('point');
-  const row = (n, s) => `<tr><td>${n}</td><td class="n">${s.ok}/${pp.length}</td><td class="n">${isNaN(s.med) ? '—' : s.med.toFixed(0) + ' m'}</td><td class="n">${s.long}</td></tr>`;
-  $('parkingCheck').innerHTML = `<table><tr><td></td><td class="n">resolved</td><td class="n">median</td><td class="n">&gt;150 m</td></tr>` +
-    row('→ parking', sp) + row('→ point', st) + `</table>` +
-    `<div>END &lt; ${data.parking.length} parking: ${pp.filter((p) => p.end < data.parking.length).length}, ` +
-    `END &lt; ${data.taxiPoints.length} points: ${pp.filter((p) => p.end < data.taxiPoints.length).length}. ` +
-    `Shorter median with everything resolved is the likely correct reading.</div>`;
 }
 
 function histogram(el, items, types, swatch) {
@@ -289,7 +260,6 @@ function draw() {
   const unresolved = drawPaths();
   histogram('pathTypes', data.taxiPaths, PATH_TYPES, 'sw');
   histogram('pointTypes', data.taxiPoints, POINT_TYPES, 'dot');
-  checkParkingPaths();
   $('info').innerHTML = `<b>${esc(data.icao)}</b> ${esc(data.name)}<br>` +
     `${data.runways.length} runways · ${data.parking.length} parking · ${data.taxiPoints.length} points · ` +
     `${data.taxiPaths.length} paths · ${data.taxiNames.length} names` +
@@ -444,7 +414,7 @@ const trafficIcon = (t) => L.divIcon({
   html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)"><path fill="${t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
 const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.agl.toFixed(0)}ft ${t.groundKts.toFixed(0)}kt` +
-  `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · ${esc(shortState(t.state))}`;
+  `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · ${esc(shortState(t.state))}`;
 async function pollTraffic() {
   if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
   let list = [];
@@ -480,7 +450,6 @@ $('labels').addEventListener('change', () => { if (data) drawPaths(); });
 $('overlaps').addEventListener('change', drawOverlaps);
 $('rTo').addEventListener('change', computeRoute);
 $('rRwyPaths').addEventListener('change', computeRoute);
-for (const r of document.querySelectorAll('input[name=pm]')) r.addEventListener('change', () => { if (data) draw(); });
 const initial = new URLSearchParams(location.search).get('icao') || 'LKPR';
 $('icao').value = initial;
 load(initial);

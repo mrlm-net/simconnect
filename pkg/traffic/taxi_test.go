@@ -28,6 +28,7 @@ type fakeClient struct {
 	removed   []uint32
 	waypoints [][]byte
 	periods   []types.SIMCONNECT_PERIOD
+	sendID    uint32
 }
 
 func (f *fakeClient) AddToDataDefinition(def uint32, name, unit string, _ types.SIMCONNECT_DATATYPE, _ float32, _ uint32) error {
@@ -45,6 +46,7 @@ func (f *fakeClient) AICreateNonATCAircraftEX1(_, _, _ string, p types.SIMCONNEC
 	f.spawned = append(f.spawned, p)
 	return nil
 }
+func (f *fakeClient) GetLastSentPacketID() (uint32, error) { f.sendID++; return f.sendID, nil }
 func (f *fakeClient) AIReleaseControl(obj, _ uint32) error {
 	f.released = append(f.released, obj)
 	return nil

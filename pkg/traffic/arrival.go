@@ -25,19 +25,21 @@ var ErrNoTouchdown = errors.New("traffic: aircraft did not touch down")
 type ArrivalState uint8
 
 const (
-	ArrivalIdle        ArrivalState = iota // not started
-	ArrivalSpawning                        // waiting for the simulator to create the aircraft
-	ArrivalApproaching                     // on final
-	ArrivalLanding                         // below LandingAGLFt, about to touch down
-	ArrivalRollout                         // on the runway after touchdown
-	ArrivalTaxiing                         // off the runway, taxiing to the stand
-	ArrivalParking                         // on the stand's PARKING path
-	ArrivalParked                          // stopped at the stand; the controller no longer moves it
-	ArrivalCancelled                       // Cancel was called
-	ArrivalFailed                          // an error ended the arrival
+	ArrivalIdle         ArrivalState = iota // not started
+	ArrivalSpawning                         // waiting for the simulator to create the aircraft
+	ArrivalApproaching                      // on final
+	ArrivalLanding                          // below LandingAGLFt, about to touch down
+	ArrivalRollout                          // on the runway after touchdown
+	ArrivalVacating                         // off the runway, rolling clear to the vacate stop
+	ArrivalAwaitingTaxi                     // stopped clear of the runway: after-landing lights, waiting for taxi clearance
+	ArrivalTaxiing                          // taxiing to the stand
+	ArrivalParking                          // on the stand's PARKING path
+	ArrivalParked                           // stopped at the stand; the controller no longer moves it
+	ArrivalCancelled                        // Cancel was called
+	ArrivalFailed                           // an error ended the arrival
 )
 
-var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "taxiing", "parking", "parked", "cancelled", "failed"}
+var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "vacating", "awaiting taxi", "taxiing", "parking", "parked", "cancelled", "failed"}
 
 func (s ArrivalState) String() string {
 	if int(s) < len(arrivalStateNames) {
@@ -69,6 +71,17 @@ type ArrivalRequest struct {
 	// airport elevation (experimental; for sloped runways and taxiways).
 	GroundAGL bool
 	Options   airport.RouteOptions
+	// NoseOffset is the distance from the aircraft reference point to the
+	// nose for stopping on the stand; 0 means DefaultNoseOffsetMeters.
+	NoseOffset float64
+	// NoStopWaypoint disables the active stop at the stand (for comparison).
+	NoStopWaypoint bool
+	// HoldForClearance keeps the aircraft stopped clear of the runway until
+	// ClearToTaxi is called; otherwise it continues after AfterLandingDwell.
+	HoldForClearance bool
+	// AfterLandingDwell is how long the aircraft stays stopped clear of the
+	// runway before taxiing on; 0 means DefaultAfterLandingDwell.
+	AfterLandingDwell time.Duration
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -96,7 +109,7 @@ type ArrivalEvent struct {
 type ArrivalOption func(*ArrivalController)
 
 // ArrivalWithIDs sets the first data definition ID and request ID; an
-// ArrivalController uses 3 definition IDs and 4 request IDs from them.
+// ArrivalController uses 4 definition IDs and 4 request IDs from them.
 func ArrivalWithIDs(defBase, reqBase uint32) ArrivalOption {
 	return func(c *ArrivalController) { c.defBase, c.reqBase = defBase, reqBase }
 }
@@ -116,24 +129,35 @@ type ArrivalController struct {
 	events  chan ArrivalEvent
 	now     func() time.Time
 
-	req       ArrivalRequest
-	plan      *ArrivalPlan
-	state     ArrivalState
-	objectID  uint32
-	last      ArrivalEvent
-	airborne  bool
-	track     *routeTracker
-	exitAlong float64 // route distance of the exit node (off the runway)
-	stillFrom time.Time
-	stopSent  bool
-	lastVS    float64 // vertical speed at the last airborne report
-	warned    bool
+	req            ArrivalRequest
+	plan           *ArrivalPlan
+	state          ArrivalState
+	objectID       uint32
+	last           ArrivalEvent
+	airborne       bool
+	track          *routeTracker
+	exitAlong      float64 // route distance of the exit node (off the runway)
+	stillFrom      time.Time
+	stopSent       bool
+	anchor         airport.LatLon // last position that moved
+	anchorAt       time.Time
+	standHeading   float64
+	sent           map[uint32]string // send ID → call, for attributing exceptions
+	lastVS         float64           // vertical speed at the last airborne report
+	warned         bool
+	vacateAlong    float64 // route distance of the vacate stop
+	vacateStopSent bool
+	clearAt        time.Time
+	cleared        bool
+	wantLights     [5]float64
+	lightsAt       time.Time
 }
 
 const (
 	arrDefWaypoints = iota
 	arrDefMonitor
 	arrDefGear
+	arrDefLights
 )
 
 const (
@@ -151,6 +175,7 @@ type arrivalMonitor struct {
 	GroundKts float64
 	OnGround  float64
 	VS        float64
+	Lights    [5]float64 // LIGHT LANDING, TAXI, STROBE, BEACON, NAV
 }
 
 // NewArrivalController creates a controller that spawns its aircraft through
@@ -201,7 +226,9 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}
-	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, req.SpawnNm, req.Exit, req.Options, req.GroundAGL)
+	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
+		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+	})
 	if err != nil {
 		return err
 	}
@@ -216,6 +243,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALT ABOVE GROUND", "feet"},
 		{"PLANE HEADING DEGREES TRUE", "degrees"}, {"GROUND VELOCITY", "knots"}, {"SIM ON GROUND", "bool"},
 		{"VERTICAL SPEED", "feet per minute"},
+		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -224,12 +252,20 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if err := client.AddToDataDefinition(c.defBase+arrDefGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 		return err
 	}
+	for i, l := range []string{"LIGHT LANDING", "LIGHT TAXI", "LIGHT STROBE", "LIGHT BEACON", "LIGHT NAV"} {
+		if err := client.AddToDataDefinition(c.defBase+arrDefLights, l, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
+			return err
+		}
+	}
+	c.sent = map[uint32]string{}
+	c.standHeading = req.Graph.Layout.Parking[req.Parking].Heading
 	if err := c.fleet.RequestNonATC(NonATCOpts{Model: req.Model, Livery: req.Livery, Tail: req.Tail, Position: plan.Spawn}, c.reqBase+arrReqSpawn); err != nil {
 		return fmt.Errorf("%w: %v", ErrCreationFailed, err)
 	}
 	c.req, c.plan = req, plan
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
+	c.vacateAlong = c.track.cum[plan.VacateIndex]
 	c.setState(ArrivalSpawning, nil)
 	return nil
 }
@@ -252,6 +288,14 @@ func (c *ArrivalController) Handle(msg engine.Message) bool {
 			return false
 		}
 		c.onSpawned(uint32(m.DwObjectID))
+		return true
+	case types.SIMCONNECT_RECV_ID_EXCEPTION:
+		e := msg.AsException()
+		call, ok := c.sent[uint32(e.DwSendID)]
+		if !ok {
+			return false
+		}
+		c.emit(fmt.Errorf("traffic: SimConnect exception %d on %s (parameter %d)", e.DwException, call, e.DwIndex), true)
 		return true
 	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
 		m := msg.AsSimObjectData()
@@ -280,10 +324,13 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 	}
 	// Without the gear handle down MSFS AI never touches down (#301).
 	gear := [1]float64{1}
-	if err := client.SetDataOnSimObject(c.defBase+arrDefGear, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(gear)), unsafe.Pointer(&gear)); err != nil {
+	err := client.SetDataOnSimObject(c.defBase+arrDefGear, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(gear)), unsafe.Pointer(&gear))
+	c.note("gear handle down", err)
+	if err != nil {
 		c.fail(err)
 		return
 	}
+	c.setLights(true, false, true, true, true, "lights approach")
 	if err := c.fleet.SetWaypoints(objectID, c.defBase+arrDefWaypoints, c.plan.Waypoints); err != nil {
 		c.fail(err)
 		return
@@ -307,12 +354,19 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		c.lastVS = m.VS
 		c.airborne = true
 	}
-	if m.GroundKts >= StoppedKts {
+	// Stopped means not moving: MSFS AI keeps reporting its last commanded
+	// ground speed after it stops.
+	if c.anchorAt.IsZero() || calc.HaversineMeters(c.anchor.Lat, c.anchor.Lon, pos.Lat, pos.Lon) > StationaryMeters {
+		c.anchor, c.anchorAt = pos, c.now()
 		c.stillFrom, c.warned = c.now(), false
 	}
+	stationary := c.now().Sub(c.anchorAt) >= StationarySeconds*time.Second
 	off := math.Abs(calc.CrossTrackMeters(c.plan.Runway.Primary.Threshold.Lat, c.plan.Runway.Primary.Threshold.Lon,
 		c.plan.Runway.Secondary.Threshold.Lat, c.plan.Runway.Secondary.Threshold.Lon, m.Latitude, m.Longitude))
-	if c.state >= ArrivalTaxiing {
+	// MSFS AI runs its own light logic: our light writes are applied, then
+	// overridden. Re-asserting them made the lights flicker (#295), so they
+	// are only set at phase changes; see the light events spike.
+	if c.state >= ArrivalVacating {
 		seg, along := c.track.advance(pos)
 		c.last.Remaining = math.Max(0, c.track.total()-along)
 		c.last.Taxiway = c.track.taxiwayAt(seg)
@@ -328,6 +382,9 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		switch {
 		case m.OnGround != 0 && c.airborne:
 			c.last.Touchdown, c.last.TouchdownFpm = past, c.lastVS
+			// MSFS AI switches its lights at its own state changes, touchdown
+			// among them: set the landing lights again once it has.
+			c.setLights(true, false, true, true, true, "lights rollout")
 			c.setState(ArrivalRollout, nil)
 			return
 		case past > c.plan.Runway.Length+300:
@@ -335,10 +392,34 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			return
 		}
 	case ArrivalRollout:
-		// Taxiing once off the runway surface, near or past the planned exit.
+		// Vacating once off the runway surface, near or past the planned exit.
 		if off > c.plan.Runway.Width/2+RunwayClearMeters && past > c.plan.Exit.Along-100 {
 			c.track.pos = c.exitAlong
-			c.setState(ArrivalTaxiing, nil)
+			c.setLights(true, false, true, true, true, "lights vacating")
+			c.setState(ArrivalVacating, nil)
+			return
+		}
+	case ArrivalVacating:
+		// Stopped clear of the runway: after-landing lights, then wait.
+		// Near the vacate stop: stop there actively, as at the stand, so the
+		// AI does not creep on towards its last waypoint.
+		if !c.vacateStopSent && c.track.pos >= c.vacateAlong-StandStopMeters {
+			c.vacateStopSent = true
+			c.stopHere(m, "SetWaypoints vacate stop")
+		}
+		if stationary && c.track.pos >= c.vacateAlong-VacateArriveMeters {
+			c.setLights(false, true, false, true, true, "lights taxi")
+			dwell := c.req.AfterLandingDwell
+			if dwell <= 0 {
+				dwell = DefaultAfterLandingDwell
+			}
+			c.clearAt = c.now().Add(dwell)
+			c.setState(ArrivalAwaitingTaxi, nil)
+			return
+		}
+	case ArrivalAwaitingTaxi:
+		if c.cleared || (!c.req.HoldForClearance && !c.now().Before(c.clearAt)) {
+			c.startTaxi()
 			return
 		}
 	case ArrivalTaxiing:
@@ -347,19 +428,20 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			return
 		}
 	case ArrivalParking:
-		stand := c.plan.Route.Points[len(c.plan.Route.Points)-1]
-		d := calc.HaversineMeters(stand.Lat, stand.Lon, m.Latitude, m.Longitude)
-		// Stop on the mark: at (or past) the stand, replace the chain with a
-		// single waypoint where the aircraft is, so it does not roll on
-		// towards the overshoot point.
-		if !c.stopSent && (c.last.Remaining <= StandStopMeters || d <= StandStopMeters) {
+		stop := c.plan.Stop
+		d := calc.HaversineMeters(stop.Lat, stop.Lon, m.Latitude, m.Longitude)
+		// Past the mark: the position lies ahead of the stop point along the
+		// stand heading.
+		brg := calc.BearingDegrees(stop.Lat, stop.Lon, m.Latitude, m.Longitude)
+		passed := d > 0.5 && math.Cos((brg-c.standHeading)*math.Pi/180) > 0
+		// Stop on the mark: replace the chain with a single waypoint where
+		// the aircraft is, so it does not roll on towards the overshoot point.
+		if !c.stopSent && !c.req.NoStopWaypoint && (d <= StandStopMeters || passed) {
 			c.stopSent = true
-			stop := []types.SIMCONNECT_DATA_WAYPOINT{groundAlt{feet: c.plan.Spawn.Altitude, agl: true}.waypoint(m.Latitude, m.Longitude, 0)}
-			if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, stop); err != nil {
-				c.emit(err, true)
-			}
+			c.stopHere(m, "SetWaypoints stand stop")
 		}
-		if m.GroundKts < StoppedKts && (d <= ParkedMeters || c.now().Sub(c.stillFrom) > 10*time.Second) {
+		if stationary && (d <= ParkedMeters || c.now().Sub(c.stillFrom) > 10*time.Second) {
+			c.setLights(false, false, false, true, true, "lights parked")
 			c.stopMonitor()
 			if d > ParkedMeters {
 				c.last.Err = fmt.Errorf("traffic: stopped %.0f m from the stand", d)
@@ -368,7 +450,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			return
 		}
 	}
-	if c.state >= ArrivalRollout && !c.warned && c.now().Sub(c.stillFrom) > StuckTimeout {
+	if (c.state == ArrivalRollout || c.state == ArrivalVacating || c.state >= ArrivalTaxiing) && !c.warned && c.now().Sub(c.stillFrom) > StuckTimeout {
 		c.warned = true
 		c.emit(ErrTaxiStuck, true)
 		return
@@ -431,6 +513,77 @@ const (
 	trackBehind = 30.0
 	trackAhead  = 250.0
 )
+
+// setLights sets the aircraft's lights by phase: MSFS AI runs its own light
+// logic, which switched landing lights and strobes off before the aircraft
+// had left the runway and never used taxi lights (#295).
+func (c *ArrivalController) setLights(landing, taxi, strobe, beacon, nav bool, desc string) {
+	b := func(v bool) float64 {
+		if v {
+			return 1
+		}
+		return 0
+	}
+	c.wantLights = [5]float64{b(landing), b(taxi), b(strobe), b(beacon), b(nav)}
+	c.writeLights(desc)
+}
+
+func (c *ArrivalController) writeLights(desc string) {
+	client := c.fleet.clientOrNil()
+	if client == nil || c.objectID == 0 {
+		return
+	}
+	l := c.wantLights
+	c.lightsAt = c.now()
+	c.note(desc, client.SetDataOnSimObject(c.defBase+arrDefLights, c.objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(l)), unsafe.Pointer(&l)))
+}
+
+// stopHere replaces the waypoint chain with a single waypoint at the
+// aircraft's position, which stops it where it is.
+func (c *ArrivalController) stopHere(m arrivalMonitor, desc string) {
+	wp := []types.SIMCONNECT_DATA_WAYPOINT{groundAlt{agl: true}.waypoint(m.Latitude, m.Longitude, 0)}
+	err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wp)
+	c.note(desc, err)
+	if err != nil {
+		c.emit(err, true)
+	}
+}
+
+// ClearToTaxi clears an aircraft waiting clear of the runway to taxi to its
+// stand. Before that it takes effect as soon as the aircraft has stopped.
+func (c *ArrivalController) ClearToTaxi() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cleared = true
+	if c.state == ArrivalAwaitingTaxi {
+		c.startTaxi()
+	}
+}
+
+// startTaxi sends the taxi-in chain from the vacate stop to the stand.
+func (c *ArrivalController) startTaxi() {
+	err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.plan.TaxiWaypoints)
+	c.note("SetWaypoints taxi-in", err)
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	c.stillFrom, c.warned = c.now(), false
+	c.setState(ArrivalTaxiing, nil)
+}
+
+// note records the send ID of the request just made, so a later
+// SimConnect exception can name it.
+func (c *ArrivalController) note(desc string, err error) {
+	client := c.fleet.clientOrNil()
+	if client == nil || c.sent == nil {
+		return
+	}
+	if id, idErr := client.GetLastSentPacketID(); idErr == nil {
+		c.sent[id] = desc
+	}
+	_ = err
+}
 
 // routeTracker projects positions onto a route polyline with monotonic
 // progress.

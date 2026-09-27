@@ -30,7 +30,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 ## What it shows
 
 - **Taxi paths** per `TYPE` (0 NONE … 8 PAINTEDLINE), each its own toggleable layer. Paths with an endpoint index outside the point/parking lists are drawn as magenta rings.
-- **PARKING path endpoints.** The SDK documents `TAXI_PATH.START/END` as "taxiway point *or parking space*" indexes. The side panel switches between reading a PARKING path's `END` as a parking index or a taxi point index, and compares how many resolve and how long the resulting segments are.
+- **PARKING paths** are drawn from their START taxi point to the parking spot at END (END indexes the parking list for PARKING paths, verified on LKPR).
 - **Taxi points** by `TYPE`; hold-short types (2, 4, 5, 6) get their own layer.
 - **Parking spots** as circles of their `RADIUS`, labelled from `NAME`, `NUMBER` and `SUFFIX` (e.g. `C22`, `S22A`). Stands whose circles overlap are outlined in orange.
 - **Live traffic:** every aircraft within 20 km (sim AI, injected AI, other clients' aircraft), updated every second, with tail, height, speed, vertical speed, gear and AI state on the map and in a side-panel table.

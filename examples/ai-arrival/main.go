@@ -37,6 +37,10 @@ func main() {
 	spawnNm := flag.Float64("spawn-nm", traffic.DefaultSpawnNm, "distance out on final to spawn")
 	groundAGL := flag.Bool("ground-agl", false, "ground waypoints at 0 ft AGL instead of airport elevation")
 	keep := flag.Bool("keep", false, "leave the parked aircraft in the sim on exit")
+	noStop := flag.Bool("no-stop", false, "disable the active stop waypoint at the stand (comparison)")
+	nose := flag.Float64("nose", 0, "reference-point-to-nose distance in meters (0 = default)")
+	hold := flag.Bool("hold", false, "hold clear of the runway until Enter (taxi clearance)")
+	dwell := flag.Duration("dwell", 0, "after-landing stop before taxiing on (0 = default)")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -68,6 +72,19 @@ func main() {
 		lastPrint time.Time
 		parked    bool
 	)
+	enter := make(chan struct{}, 1)
+	go func() {
+		b := make([]byte, 64)
+		for {
+			if n, err := os.Stdin.Read(b); err != nil || n == 0 {
+				return
+			}
+			select {
+			case enter <- struct{}{}:
+			default:
+			}
+		}
+	}()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	stream := client.Stream()
@@ -87,6 +104,12 @@ func main() {
 			}
 			fmt.Println("🛑 Aircraft removed, exiting")
 			return
+
+		case <-enter:
+			if ctl.State() == traffic.ArrivalAwaitingTaxi {
+				fmt.Println("🟢 Cleared to taxi")
+				ctl.ClearToTaxi()
+			}
 
 		case now := <-tick.C:
 			for _, res := range loader.Expire(now) {
@@ -109,6 +132,10 @@ func main() {
 				switch ev.State {
 				case traffic.ArrivalRollout:
 					extra = fmt.Sprintf(" — touchdown %.0f m past the threshold at %.0f kt, %.0f fpm", ev.Touchdown, ev.GroundSpeed, ev.TouchdownFpm)
+				case traffic.ArrivalAwaitingTaxi:
+					if *hold {
+						extra = " — holding clear of the runway, press Enter to clear to taxi"
+					}
 				case traffic.ArrivalParked:
 					parked = true
 				}
@@ -142,7 +169,7 @@ func main() {
 					var parking int
 					if parking, err = res.Layout.ParkingIndex(*stand); err == nil {
 						err = ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: *runway, Parking: parking, Model: *model,
-							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL})
+							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell})
 					}
 				}
 				if err != nil {

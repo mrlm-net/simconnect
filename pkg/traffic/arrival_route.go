@@ -40,18 +40,39 @@ func ExitSpeed(e airport.RunwayExit) float64 {
 // StandApproachSpeedKts to the stand, and a last waypoint StandOvershootMeters
 // past it, because MSFS AI stops short of its last ground waypoint.
 func TaxiInWaypoints(g *airport.Graph, r *airport.Route) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
-	return taxiIn(g, r, groundAlt{feet: convert.MetersToFeet(g.Layout.Altitude)})
+	return taxiIn(g, r, groundAlt{feet: convert.MetersToFeet(g.Layout.Altitude)}, DefaultNoseOffsetMeters, 0)
 }
 
-func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
+// StandStop returns where an aircraft's reference point should stop on the
+// stand at the end of route r: MSFS stands are circles sized for the largest
+// aircraft allowed, and aircraft park with the nose at the front of the
+// circle, so the stop point is RADIUS minus noseOffset (the distance from
+// the aircraft's reference point to its nose) ahead of the centre along the
+// stand heading.
+func StandStop(g *airport.Graph, r *airport.Route, noseOffset float64) (airport.LatLon, error) {
+	n := len(r.Nodes)
+	if n < 2 || g.Nodes[r.Nodes[n-1]].Kind != airport.NodeParking {
+		return airport.LatLon{}, ErrNotStandRoute
+	}
+	p := g.Layout.Parking[g.Nodes[r.Nodes[n-1]].Index]
+	ahead := math.Max(0, p.Radius-noseOffset)
+	lat, lon := calc.DisplaceByHeading(p.Position.Lat, p.Position.Lon, p.Heading, ahead)
+	return airport.LatLon{Lat: lat, Lon: lon}, nil
+}
+
+func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset float64, from int) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
 	n := len(r.Nodes)
 	if n < 3 || g.Nodes[r.Nodes[n-1]].Kind != airport.NodeParking {
 		return nil, ErrNotStandRoute
 	}
 	pts := r.Points
-	junction, stand := pts[n-2], pts[n-1]
+	junction := pts[n-2]
+	stand, err := StandStop(g, r, noseOffset)
+	if err != nil {
+		return nil, err
+	}
 
-	wps := groundLegs(thin(simplify(pts[:n-1]), MinWaypointSpacingMeters), alt, legOptions{
+	wps := groundLegs(thin(simplify(pts[from:n-1]), MinWaypointSpacingMeters), alt, legOptions{
 		maxKts: TaxiSpeedKts, endKts: TurnSpeedKts, endMeters: HoldShortApproachMeters,
 	})
 	in := calc.BearingDegrees(junction.Lat, junction.Lon, stand.Lat, stand.Lon)
@@ -118,6 +139,28 @@ func exitCost(e airport.RunwayExit, r *airport.Route) float64 {
 	return cost
 }
 
+// vacateIndex returns the route point where an arriving aircraft stops clear
+// of the runway: just past the hold-short behind the exit when the route
+// passes it, else the first point VacateOffsetMeters from the centreline. It
+// leaves at least two route points (the PARKING path) for the taxi-in.
+func vacateIndex(g *airport.Graph, r *airport.Route, x airport.RunwayExit, rwy airport.Runway) int {
+	last := len(r.Points) - 3
+	start := len(x.Path) - 1
+	for i := start; i <= last; i++ {
+		if r.Nodes[i] == x.HoldShort {
+			return min(i+1, last)
+		}
+	}
+	for i := start; i <= last; i++ {
+		p := r.Points[i]
+		off := math.Abs(calc.CrossTrackMeters(rwy.Primary.Threshold.Lat, rwy.Primary.Threshold.Lon, rwy.Secondary.Threshold.Lat, rwy.Secondary.Threshold.Lon, p.Lat, p.Lon))
+		if off >= VacateOffsetMeters {
+			return i
+		}
+	}
+	return max(start, min(start+1, last))
+}
+
 // thin drops points closer than minMeters to the last kept point, keeping
 // both ends. Closely spaced waypoints make MSFS AI overshoot one at speed and
 // loop back to it.
@@ -139,15 +182,40 @@ func thin(pts []airport.LatLon, minMeters float64) []airport.LatLon {
 	return append(out, end)
 }
 
+// ArrivalOptions shape an arrival plan.
+type ArrivalOptions struct {
+	// SpawnNm is how far out on final to start; 0 means DefaultSpawnNm.
+	SpawnNm float64
+	// Exit forces a runway exit; nil chooses one (see bestExit).
+	Exit *airport.RunwayExit
+	// Route controls taxi routing.
+	Route airport.RouteOptions
+	// GroundAGL sends ground waypoints at 0 ft above ground.
+	GroundAGL bool
+	// NoseOffset is the distance from the aircraft reference point to its
+	// nose, used to stop on the stand (StandStop); 0 means DefaultNoseOffsetMeters.
+	NoseOffset float64
+}
+
 // ArrivalPlan is a complete arrival for one aircraft.
 type ArrivalPlan struct {
-	Runway    airport.Runway
-	End       airport.RunwayEnd
-	Exit      airport.RunwayExit
-	Route     *airport.Route // exit → stand
-	SpawnNm   float64
-	Spawn     types.SIMCONNECT_DATA_INITPOSITION
+	Runway  airport.Runway
+	End     airport.RunwayEnd
+	Exit    airport.RunwayExit
+	Route   *airport.Route // exit → stand
+	SpawnNm float64
+	Spawn   types.SIMCONNECT_DATA_INITPOSITION
+	// Waypoints is the landing chain: approach, touchdown, rollout, exit and
+	// the roll clear of the runway to the vacate stop.
 	Waypoints []types.SIMCONNECT_DATA_WAYPOINT
+	// TaxiWaypoints is the taxi-in chain from the vacate stop to the stand,
+	// sent once the aircraft is cleared to taxi.
+	TaxiWaypoints []types.SIMCONNECT_DATA_WAYPOINT
+	// VacateIndex is the Route point where the aircraft stops clear of the
+	// runway after landing.
+	VacateIndex int
+	// Stop is where the aircraft stops on the stand (StandStop).
+	Stop airport.LatLon
 }
 
 // PlanArrival builds the waypoint chain from spawnNm out on final for
@@ -163,7 +231,11 @@ type ArrivalPlan struct {
 // exit may be nil to choose one with ExitFor for the required rollout. The
 // aircraft must have its gear down (SetDataOnSimObject GEAR HANDLE POSITION = 1)
 // or MSFS AI never touches down.
-func PlanArrival(g *airport.Graph, runwayEnd string, parking int, spawnNm float64, exit *airport.RunwayExit, opts airport.RouteOptions, groundAGL bool) (*ArrivalPlan, error) {
+func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptions) (*ArrivalPlan, error) {
+	spawnNm, exit, opts, groundAGL := o.SpawnNm, o.Exit, o.Route, o.GroundAGL
+	if o.NoseOffset <= 0 {
+		o.NoseOffset = DefaultNoseOffsetMeters
+	}
 	rwy, end, ok := g.Layout.RunwayEnd(runwayEnd)
 	if !ok {
 		return nil, airport.ErrUnknownRunway
@@ -222,11 +294,17 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, spawnNm float6
 	rn := route.Points[0]
 	p.Waypoints = append(p.Waypoints, ground.waypoint(rn.Lat, rn.Lon, exitKts))
 
-	in, err := taxiIn(g, route, ground)
+	// Roll clear of the runway to the vacate stop, then taxi-in from there.
+	p.VacateIndex = vacateIndex(g, route, x, rwy)
+	p.Waypoints = append(p.Waypoints, groundLegs(thin(simplify(route.Points[:p.VacateIndex+1]), MinWaypointSpacingMeters), ground, legOptions{
+		maxKts: ExitSpeed(x), endKts: VacateStopKts, endMeters: 40,
+	})...)
+	in, err := taxiIn(g, route, ground, o.NoseOffset, p.VacateIndex)
 	if err != nil {
 		return nil, err
 	}
-	p.Waypoints = append(p.Waypoints, in...)
+	p.TaxiWaypoints = in
+	p.Stop, _ = StandStop(g, route, o.NoseOffset)
 	return p, nil
 }
 

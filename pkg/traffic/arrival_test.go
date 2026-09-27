@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -27,7 +28,7 @@ func TestRequiredRollout(t *testing.T) {
 func TestPlanArrivalC22On24(t *testing.T) {
 	g := lkprGraph(t)
 	c22, _ := g.Layout.ParkingIndex("C22")
-	p, err := PlanArrival(g, "24", c22, 5, nil, airport.RouteOptions{}, false)
+	p, err := PlanArrival(g, "24", c22, ArrivalOptions{SpawnNm: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +80,23 @@ func TestPlanArrivalC22On24(t *testing.T) {
 	if exitIdx < 0 || wps[exitIdx].KtsSpeed != ExitSpeed(p.Exit) {
 		t.Fatalf("no exit waypoint at the runway node with the exit speed")
 	}
-	// Stand: nose-in at crawl speed, last waypoint past the stand.
-	stand, junction := p.Route.Points[len(p.Route.Points)-1], p.Route.Points[len(p.Route.Points)-2]
+	// Stand: nose-in at crawl speed to the stop point (radius − nose offset
+	// ahead of the circle centre along the stand heading), last waypoint past it.
+	centre, junction := p.Route.Points[len(p.Route.Points)-1], p.Route.Points[len(p.Route.Points)-2]
+	standInfo := g.Layout.Parking[c22]
+	if d := calc.HaversineMeters(centre.Lat, centre.Lon, p.Stop.Lat, p.Stop.Lon); math.Abs(d-(standInfo.Radius-DefaultNoseOffsetMeters)) > 0.5 {
+		t.Errorf("stop %.1f m ahead of the centre, want %.1f", d, standInfo.Radius-DefaultNoseOffsetMeters)
+	}
+	stand := p.Stop
+	// The landing chain ends at the vacate stop; the taxi-in chain ends at the stand.
+	v := p.Route.Points[p.VacateIndex]
+	if d := calc.HaversineMeters(v.Lat, v.Lon, wps[len(wps)-1].Latitude, wps[len(wps)-1].Longitude); d > 0.5 {
+		t.Errorf("landing chain ends %.1f m from the vacate stop", d)
+	}
+	if off := math.Abs(calc.CrossTrackMeters(p.Runway.Primary.Threshold.Lat, p.Runway.Primary.Threshold.Lon, p.Runway.Secondary.Threshold.Lat, p.Runway.Secondary.Threshold.Lon, v.Lat, v.Lon)); off < p.Runway.Width/2+RunwayClearMeters {
+		t.Errorf("vacate stop only %.0f m from the runway centreline", off)
+	}
+	wps = p.TaxiWaypoints
 	n := len(wps)
 	if d := calc.HaversineMeters(stand.Lat, stand.Lon, wps[n-2].Latitude, wps[n-2].Longitude); d > 0.5 {
 		t.Errorf("second-last waypoint %.1f m from the stand", d)
@@ -100,7 +116,7 @@ func TestPlanArrivalAllRunwaysAndGroundAGL(t *testing.T) {
 	g := lkprGraph(t)
 	c22, _ := g.Layout.ParkingIndex("C22")
 	for _, end := range []string{"24", "06", "12", "30"} {
-		p, err := PlanArrival(g, end, c22, 6, nil, airport.RouteOptions{}, true)
+		p, err := PlanArrival(g, end, c22, ArrivalOptions{SpawnNm: 6, GroundAGL: true})
 		if err != nil {
 			t.Fatalf("RWY %s: %v", end, err)
 		}
@@ -110,7 +126,7 @@ func TestPlanArrivalAllRunwaysAndGroundAGL(t *testing.T) {
 			}
 		}
 	}
-	if _, err := PlanArrival(g, "18", c22, 5, nil, airport.RouteOptions{}, false); !errors.Is(err, airport.ErrUnknownRunway) {
+	if _, err := PlanArrival(g, "18", c22, ArrivalOptions{SpawnNm: 5}); !errors.Is(err, airport.ErrUnknownRunway) {
 		t.Errorf("unknown runway: %v", err)
 	}
 	if _, err := TaxiInWaypoints(g, &airport.Route{}); !errors.Is(err, ErrNotStandRoute) {
@@ -129,7 +145,7 @@ func arrivalPositionMsg(req, obj uint32, p airport.LatLon, agl, hdg, kts float64
 	if ground {
 		g = 1
 	}
-	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300}
+	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300, [5]float64{}}
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 
@@ -174,8 +190,9 @@ func TestArrivalControllerFullArrival(t *testing.T) {
 	if !ctl.Handle(assignedMsg(req, 77)) {
 		t.Fatal("spawn not handled")
 	}
-	// Gear handle first, then the waypoint chain.
-	if len(fc.waypoints) != 2 || len(fc.waypoints[0]) != 8 || len(fc.waypoints[1])/engine.WaypointWireSize != len(p.Waypoints) {
+	// Gear handle, lights, then the waypoint chain.
+	// Gear handle, lights, then the landing chain.
+	if len(fc.waypoints) != 3 || len(fc.waypoints[0]) != 8 || len(fc.waypoints[1]) != 40 || len(fc.waypoints[2])/engine.WaypointWireSize != len(p.Waypoints) {
 		t.Fatalf("SetDataOnSimObject calls: %d (sizes %v)", len(fc.waypoints), []int{len(fc.waypoints[0])})
 	}
 	thr := p.End.Threshold
@@ -192,15 +209,39 @@ func TestArrivalControllerFullArrival(t *testing.T) {
 	ctl.Handle(arrivalPositionMsg(mon, 77, onFinal(300), 120, p.End.Heading, 140, false))
 	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(600), 12, p.End.Heading, 125, true))
 	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(1500), 12, p.End.Heading, 50, true))
-	// Walk the taxi-in route point by point, as 1 Hz updates would.
-	for _, q := range pts[len(p.Exit.Path)-1 : len(pts)-2] {
-		ctl.Handle(arrivalPositionMsg(mon, 77, q, 12, 300, 15, true))
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	step := func(q airport.LatLon, kts float64) {
+		ctl.Handle(arrivalPositionMsg(mon, 77, q, 12, 300, kts, true))
+		now = now.Add(time.Second)
 	}
-	ctl.Handle(arrivalPositionMsg(mon, 77, pts[len(pts)-2], 12, 35, 3, true)) // at the PARKING path
-	ctl.Handle(arrivalPositionMsg(mon, 77, pts[len(pts)-1], 12, 35, 0.2, true))
+	// Roll off the runway to the vacate stop, as 1 Hz updates would.
+	for _, q := range pts[len(p.Exit.Path)-1 : p.VacateIndex+1] {
+		step(q, 15)
+	}
+	// Stopped there (still reporting 5 kt, as MSFS AI does after stopping):
+	// after-landing lights, then the dwell before taxiing on.
+	for i := 0; i < StationarySeconds+2; i++ {
+		step(pts[p.VacateIndex], 5)
+	}
+	if ctl.State() != ArrivalAwaitingTaxi {
+		t.Fatalf("state %v at the vacate stop, want awaiting taxi", ctl.State())
+	}
+	taxiSent := len(fc.waypoints)
+	ctl.ClearToTaxi()
+	if len(fc.waypoints) <= taxiSent || len(fc.waypoints[len(fc.waypoints)-1])/engine.WaypointWireSize != len(p.TaxiWaypoints) {
+		t.Fatal("ClearToTaxi did not send the taxi-in chain")
+	}
+	for _, q := range pts[p.VacateIndex : len(pts)-1] {
+		step(q, 15)
+	}
+	// On the stop mark, then standing still for longer than StationarySeconds.
+	for i := 0; i < StationarySeconds+2; i++ {
+		step(p.Stop, 3)
+	}
 
 	states, evs := arrivalStates(ctl.Events())
-	want := []ArrivalState{ArrivalSpawning, ArrivalApproaching, ArrivalLanding, ArrivalRollout, ArrivalTaxiing, ArrivalParking, ArrivalParked}
+	want := []ArrivalState{ArrivalSpawning, ArrivalApproaching, ArrivalLanding, ArrivalRollout, ArrivalVacating, ArrivalAwaitingTaxi, ArrivalTaxiing, ArrivalParking, ArrivalParked}
 	if len(states) != len(want) {
 		t.Fatalf("states %v, want %v", states, want)
 	}

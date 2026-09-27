@@ -87,7 +87,7 @@ const (
 	RolloutSpacingMeters = 250.0
 	// ExitHighSpeedKts and ExitSpeedKts are the speeds for turning off onto a
 	// high-speed (≤ 45°) or a standard exit.
-	ExitHighSpeedKts = 20.0
+	ExitHighSpeedKts = 25.0
 	ExitSpeedKts     = 10.0
 	// StandApproachSpeedKts is the speed along the stand's PARKING path, and
 	// StandOvershootMeters how far past the stand the last waypoint lies:
@@ -121,4 +121,34 @@ const (
 	// RunwayClearMeters is how far beyond the runway half-width an aircraft
 	// must be to count as off the runway.
 	RunwayClearMeters = 10.0
+)
+
+// DefaultNoseOffsetMeters is the distance from an aircraft's reference point
+// to its nose, used to stop on a stand with the nose at the front of the
+// parking circle. About right for an A320 family aircraft.
+const DefaultNoseOffsetMeters = 17.0
+
+// Stop detection: MSFS AI keeps reporting its last commanded ground speed
+// after it has stopped (#295), so "stopped" means the position moved less
+// than StationaryMeters over StationarySeconds.
+const (
+	StationaryMeters  = 1.0 // MSFS AI creeps at ~0.4 kt towards its last waypoint
+	StationarySeconds = 3
+)
+
+// After landing: the aircraft rolls clear of the runway, stops, switches
+// to taxi lights and waits for taxi clearance (#295).
+const (
+	// VacateOffsetMeters is how far from the runway centreline the vacate
+	// stop lies when no hold-short is on the route (runway holding positions
+	// are typically 60–90 m from the centreline).
+	VacateOffsetMeters = 100.0
+	// VacateStopKts is the speed over the last meters before the vacate stop.
+	VacateStopKts = 5.0
+	// VacateArriveMeters is how close to the vacate stop (along the route) a
+	// stopped aircraft counts as arrived there.
+	VacateArriveMeters = 40.0
+	// DefaultAfterLandingDwell is how long the aircraft waits clear of the
+	// runway before taxiing on when HoldForClearance is off.
+	DefaultAfterLandingDwell = 15 * time.Second
 )
