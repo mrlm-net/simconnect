@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-27
+
 ### Added
 
 #### `pkg/airport` — airport ground layout and taxi routing (#268, #243)
