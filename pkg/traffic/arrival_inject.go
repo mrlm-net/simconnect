@@ -186,12 +186,13 @@ func (c *ArrivalController) applyLights(desc string) {
 func (c *ArrivalController) checkCrossing(pose GroundPose) {
 	g := c.req.Graph
 	nose := NoseGear(pose.Position, pose.Heading, c.profile())
-	// Between the hold-short lines of a crossing: from the nose reaching the
-	// first until the tail is past the opposite one.
+	// Between the hold-short lines of a crossing: from just after the nose
+	// gear crosses the first until a moment after the tail has passed the
+	// opposite one.
 	on := false
 	prof := c.profile()
 	for _, z := range c.crossZones {
-		if pose.Distance >= z.from && pose.Distance-prof.WheelbaseMeters-CrossingTailMeters <= z.to {
+		if pose.Distance >= z.from+CrossingOnMeters && pose.Distance-prof.WheelbaseMeters-CrossingTailMeters <= z.to {
 			on = true
 		}
 	}

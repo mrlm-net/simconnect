@@ -205,11 +205,14 @@ const (
 
 // Injected lights after landing: the taxi light comes on TaxiLightDelay
 // after the landing lights go off at the vacate stop; crossing lights stay
-// on until the main gear is CrossingTailMeters past the far hold-short line
-// (the tail clears it).
+// on until the main gear is CrossingTailMeters past the far hold-short line,
+// a moment after the tail has cleared it.
 const (
 	TaxiLightDelay     = 1500 * time.Millisecond
-	CrossingTailMeters = 20.0
+	CrossingTailMeters = 40.0
+	// CrossingOnMeters: the crossing lights come on once the nose gear is
+	// this far past the first hold-short line.
+	CrossingOnMeters = 10.0
 )
 
 // Variation after landing (injected arrivals): the wait clear of the runway

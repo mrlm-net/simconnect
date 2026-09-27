@@ -82,7 +82,7 @@ Lights, all set by the controller once it has taken over:
 | Rollout on the runway | nav, beacon, strobes, landing |
 | Clear of the runway | strobes off |
 | Vacate stop (or slowest point when rolling through) | landing off, taxi on `TaxiLightDelay` (1.5 s) later |
-| Crossing a runway | strobes and landing on from the hold-short line before it until the tail is past the opposite one |
+| Crossing a runway | strobes and landing on from just past the hold-short line before it until a moment after the tail has passed the opposite one |
 | Parked | nav only (beacon and taxi off) |
 
 Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` reports what the sim shows. [`examples/ai-arrival`](../examples/ai-arrival) runs it with `-inject`; `-roll-through 1` forces a rolling clearance.
