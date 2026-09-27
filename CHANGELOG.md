@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-27
+
 ### Fixed
 
 - `AddToDataDefinition` now passes `NULL` to SimConnect when `unitsName` is empty, so SimConnect uses the variable's default unit instead of raising `SIMCONNECT_EXCEPTION_UNRECOGNIZED_ID` (#263, thanks @aut0mater)
