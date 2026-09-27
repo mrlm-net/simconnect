@@ -145,7 +145,7 @@ func arrivalPositionMsg(req, obj uint32, p airport.LatLon, agl, hdg, kts float64
 	if ground {
 		g = 1
 	}
-	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300, [5]float64{}}
+	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300, [5]float64{}, 0, 0}
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 
@@ -288,4 +288,104 @@ func TestArrivalControllerCancelAndErrors(t *testing.T) {
 	if err := NewArrivalController(NewFleet(&fakeClient{})).Start(ArrivalRequest{Model: "x"}); !errors.Is(err, ErrBadTaxiRequest) {
 		t.Errorf("no graph: %v", err)
 	}
+}
+
+// TestArrivalControllerHybrid: MSFS AI lands, the injector takes over clear
+// of the runway without a jump, holds at the vacate stop with taxi lights,
+// and parks aligned on the stop mark (#309).
+func TestArrivalControllerHybrid(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA3", HoldForClearance: true}); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	req, mon := DefaultArrivalRequestBase, DefaultArrivalRequestBase+arrReqMonitor
+	ctl.Handle(assignedMsg(req, 77))
+	thr := p.End.Threshold
+	onRunway := func(m float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, p.End.Heading, m)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(-300), 120, p.End.Heading, 140, false))
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(600), 12, p.End.Heading, 125, true))
+	if ec.periods[len(ec.periods)-1] != types.SIMCONNECT_PERIOD_SIM_FRAME {
+		t.Fatal("not reading every frame after touchdown")
+	}
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+
+	// Roll along the exit with MSFS AI until clear of the runway.
+	pts := p.Route.Points
+	var at airport.LatLon
+	var hdg float64
+	for i := 1; i < len(pts) && ctl.State() == ArrivalRollout; i++ {
+		at, hdg = pts[i], calc.BearingDegrees(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon)
+		ctl.Handle(arrivalPositionMsg(mon, 77, at, 12, hdg, 20, true))
+		now = now.Add(time.Second / 60)
+	}
+	if ctl.State() != ArrivalVacating || !inj.Driven(77) {
+		t.Fatalf("state %v, driven %v after leaving the runway", ctl.State(), inj.Driven(77))
+	}
+	placed := func() []types.SIMCONNECT_DATA_INITPOSITION {
+		var out []types.SIMCONNECT_DATA_INITPOSITION
+		for _, b := range ec.waypoints {
+			if len(b) == int(unsafe.Sizeof(types.SIMCONNECT_DATA_INITPOSITION{})) && b[len(b)-8] == 1 { // OnGround
+				var q types.SIMCONNECT_DATA_INITPOSITION
+				copy(unsafe.Slice((*byte)(unsafe.Pointer(&q)), len(b)), b)
+				out = append(out, q)
+			}
+		}
+		return out
+	}
+	first := placed()
+	if len(first) != 1 {
+		t.Fatalf("%d placements at takeover, want 1", len(first))
+	}
+	// No jump at the switch: placed where the aircraft was, same heading.
+	if d := calc.HaversineMeters(at.Lat, at.Lon, first[0].Latitude, first[0].Longitude); d > 0.5 {
+		t.Errorf("takeover moved the aircraft %.2f m", d)
+	}
+	if math.Abs(headingDiff(first[0].Heading, hdg)) > 1 {
+		t.Errorf("takeover heading %.1f, was %.1f", first[0].Heading, hdg)
+	}
+
+	frames := func(until ArrivalState, max int) {
+		for i := 0; i < max && ctl.State() != until; i++ {
+			now = now.Add(time.Second / 60)
+			ctl.Handle(arrivalPositionMsg(mon, 77, at, 12, hdg, 0, true)) // positions are ignored now
+		}
+		if ctl.State() != until {
+			t.Fatalf("state %v, want %v", ctl.State(), until)
+		}
+	}
+	frames(ArrivalAwaitingTaxi, 60*120)
+	ec.events = nil
+	now = now.Add(time.Minute)
+	ctl.Handle(arrivalPositionMsg(mon, 77, at, 12, hdg, 0, true))
+	if ctl.State() != ArrivalAwaitingTaxi {
+		t.Fatal("did not hold for clearance")
+	}
+	ctl.ClearToTaxi()
+	frames(ArrivalParked, 60*900)
+
+	all := placed()
+	for i := 1; i < len(all); i++ {
+		d := calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude)
+		if d > 0.6 { // 20 kt at 60 Hz is 0.17 m per frame
+			t.Fatalf("aircraft jumped %.2f m between frames %d and %d", d, i-1, i)
+		}
+	}
+	last := all[len(all)-1]
+	if d := calc.HaversineMeters(p.Stop.Lat, p.Stop.Lon, last.Latitude, last.Longitude); d > 1 {
+		t.Errorf("parked %.2f m from the stop mark", d)
+	}
+	if hd := math.Abs(headingDiff(last.Heading, g.Layout.Parking[c22].Heading)); hd > 3 {
+		t.Errorf("parked %.1f° off the stand heading", hd)
+	}
+	t.Logf("%d placements, lights %v", len(all), ec.events)
 }

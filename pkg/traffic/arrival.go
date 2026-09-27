@@ -82,6 +82,10 @@ type ArrivalRequest struct {
 	// AfterLandingDwell is how long the aircraft stays stopped clear of the
 	// runway before taxiing on; 0 means DefaultAfterLandingDwell.
 	AfterLandingDwell time.Duration
+	// Profile is the ground motion of the aircraft type when the ground
+	// phase is injected (ArrivalWithInjector); zero means
+	// DefaultMotionProfile.
+	Profile MotionProfile
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -151,6 +155,14 @@ type ArrivalController struct {
 	cleared        bool
 	wantLights     [5]float64
 	lightsAt       time.Time
+
+	// Hybrid ground phase (ArrivalWithInjector).
+	inj       *Injector
+	mover     *GroundMover
+	lastStep  time.Time
+	lights    Lights // injected light state
+	fast      bool   // monitor every sim frame: throttle progress events
+	emittedAt time.Time
 }
 
 const (
@@ -176,6 +188,8 @@ type arrivalMonitor struct {
 	OnGround  float64
 	VS        float64
 	Lights    [5]float64 // LIGHT LANDING, TAXI, STROBE, BEACON, NAV
+	Logo      float64
+	Wing      float64
 }
 
 // NewArrivalController creates a controller that spawns its aircraft through
@@ -244,6 +258,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		{"PLANE HEADING DEGREES TRUE", "degrees"}, {"GROUND VELOCITY", "knots"}, {"SIM ON GROUND", "bool"},
 		{"VERTICAL SPEED", "feet per minute"},
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
+		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -345,6 +360,10 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
+	if c.mover != nil {
+		c.onInjectedFrame()
+		return
+	}
 	pos := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}
 	c.last.Position, c.last.AGL, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pos, m.AGL, m.Heading, m.GroundKts, m.OnGround != 0
 	t := c.plan.End.Threshold
@@ -385,6 +404,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			// MSFS AI switches its lights at its own state changes, touchdown
 			// among them: set the landing lights again once it has.
 			c.setLights(true, false, true, true, true, "lights rollout")
+			c.watchGround()
 			c.setState(ArrivalRollout, nil)
 			return
 		case past > c.plan.Runway.Length+300:
@@ -395,6 +415,16 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		// Vacating once off the runway surface, near or past the planned exit.
 		if off > c.plan.Runway.Width/2+RunwayClearMeters && past > c.plan.Exit.Along-100 {
 			c.track.pos = c.exitAlong
+			if c.inj != nil {
+				if err := c.takeover(m, pos); err == nil {
+					c.setState(ArrivalVacating, nil)
+					return
+				} else {
+					// Carry on with MSFS AI rather than fail the arrival.
+					c.mover = nil
+					c.emit(err, true)
+				}
+			}
 			c.setLights(true, false, true, true, true, "lights vacating")
 			c.setState(ArrivalVacating, nil)
 			return
@@ -469,6 +499,9 @@ func (c *ArrivalController) Cancel() error {
 	if c.objectID != 0 {
 		c.stopMonitor()
 		err = c.fleet.Remove(c.objectID, c.reqBase+arrReqRemove)
+		if c.inj != nil {
+			c.inj.Forget(c.objectID)
+		}
 	}
 	c.setState(ArrivalCancelled, nil)
 	return err
@@ -495,6 +528,10 @@ func (c *ArrivalController) setState(s ArrivalState, err error) {
 }
 
 func (c *ArrivalController) emit(err error, important bool) {
+	if !important && err == nil && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+		return // progress at most once a second while reading every frame
+	}
+	c.emittedAt = c.now()
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {
@@ -562,6 +599,12 @@ func (c *ArrivalController) ClearToTaxi() {
 
 // startTaxi sends the taxi-in chain from the vacate stop to the stand.
 func (c *ArrivalController) startTaxi() {
+	if c.mover != nil {
+		c.mover.ClearHold()
+		c.stillFrom, c.warned = c.now(), false
+		c.setState(ArrivalTaxiing, nil)
+		return
+	}
 	err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.plan.TaxiWaypoints)
 	c.note("SetWaypoints taxi-in", err)
 	if err != nil {

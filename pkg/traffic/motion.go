@@ -153,6 +153,32 @@ func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 	return m
 }
 
+// NewGroundMoverFrom takes over an aircraft that is already moving: the
+// nose gear at the start of path, the main gear one wheelbase behind it
+// along heading (true degrees), at speedKts.
+func NewGroundMoverFrom(path *GroundPath, p MotionProfile, heading, speedKts float64) *GroundMover {
+	m := &GroundMover{path: path, p: p, hold: path.Length(), v: math.Max(0, speedKts) * ktsToMS}
+	nose := path.PointAt(0)
+	kx := metersPerDegree * math.Cos(nose.Lat*math.Pi/180)
+	h := heading * math.Pi / 180
+	m.gear = airport.LatLon{
+		Lat: nose.Lat - math.Cos(h)*p.WheelbaseMeters/metersPerDegree,
+		Lon: nose.Lon - math.Sin(h)*p.WheelbaseMeters/kx,
+	}
+	m.place()
+	return m
+}
+
+// NoseGear returns where the nose gear of an aircraft is whose sim
+// reference point is at ref, heading true degrees: profile p's wheelbase
+// minus RefAheadMeters ahead.
+func NoseGear(ref airport.LatLon, heading float64, p MotionProfile) airport.LatLon {
+	d := p.WheelbaseMeters - p.RefAheadMeters
+	kx := metersPerDegree * math.Cos(ref.Lat*math.Pi/180)
+	h := heading * math.Pi / 180
+	return airport.LatLon{Lat: ref.Lat + math.Cos(h)*d/metersPerDegree, Lon: ref.Lon + math.Sin(h)*d/kx}
+}
+
 // Path returns the path being followed.
 func (m *GroundMover) Path() *GroundPath { return m.path }
 

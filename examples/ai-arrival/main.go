@@ -41,6 +41,7 @@ func main() {
 	nose := flag.Float64("nose", 0, "reference-point-to-nose distance in meters (0 = default)")
 	hold := flag.Bool("hold", false, "hold clear of the runway until Enter (taxi clearance)")
 	dwell := flag.Duration("dwell", 0, "after-landing stop before taxiing on (0 = default)")
+	inject := flag.Bool("inject", false, "hybrid: MSFS AI lands, position injection drives the ground phase from clear of the runway (#309)")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -60,7 +61,12 @@ func main() {
 
 	cache := airport.NewCache()
 	loader := airport.NewLoader(client, airport.LoaderWithCache(cache))
-	ctl := traffic.NewArrivalController(traffic.NewFleet(client))
+	inj := traffic.NewInjector(client)
+	var opts []traffic.ArrivalOption
+	if *inject {
+		opts = append(opts, traffic.ArrivalWithInjector(inj))
+	}
+	ctl := traffic.NewArrivalController(traffic.NewFleet(client), opts...)
 	if err := loader.Request(*icao); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		return
@@ -184,6 +190,12 @@ func main() {
 					fmt.Printf(", crossing %s", strings.Join(p.Route.RunwayCrossings, ", "))
 				}
 				fmt.Printf(" (%d waypoints)\n", len(p.Waypoints))
+				continue
+			}
+			if ok, err := inj.Handle(msg); ok {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
+				}
 				continue
 			}
 			if ctl.Handle(msg) {

@@ -1,0 +1,200 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"errors"
+	"math"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+// Hybrid arrival (#309): MSFS AI flies the approach, landing and rollout;
+// once the aircraft is clear of the runway an Injector takes it over and a
+// GroundMover drives it to the vacate stop, holds it there and taxis it to
+// the stand. Only the injector keeps the lights as set.
+
+// ArrivalWithInjector drives the ground phase after the runway by position
+// injection with inj (shared by all controllers; feed it every message as
+// well). Without it the whole arrival is flown and taxied by MSFS AI.
+func ArrivalWithInjector(inj *Injector) ArrivalOption {
+	return func(c *ArrivalController) { c.inj = inj }
+}
+
+// Stand axis: the injected path ends with standAxisMeters straight along
+// the stand heading, so the aircraft stops aligned with the stand.
+const standAxisMeters = 25.0
+
+// currentLights is the light state the sim reports.
+func (m arrivalMonitor) currentLights() Lights {
+	return Lights{
+		Landing: m.Lights[0] != 0, Taxi: m.Lights[1] != 0, Strobe: m.Lights[2] != 0,
+		Beacon: m.Lights[3] != 0, Nav: m.Lights[4] != 0, Logo: m.Logo != 0, Wing: m.Wing != 0,
+	}
+}
+
+// watchGround starts the injector's ground height requests at touchdown and
+// reads the aircraft every sim frame, so the takeover starts from a fresh
+// position with the ground height known.
+func (c *ArrivalController) watchGround() {
+	if c.inj == nil {
+		return
+	}
+	c.note("injector watch", c.inj.Watch(c.objectID))
+	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
+	c.fast = true
+}
+
+func (c *ArrivalController) monitorEvery(p types.SIMCONNECT_PERIOD) {
+	if client := c.fleet.clientOrNil(); client != nil {
+		c.note("monitor period", client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID,
+			p, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0))
+	}
+}
+
+// takeover hands the aircraft, still rolling off the runway, from MSFS AI to
+// the injector. Nothing visible changes at the switch: the mover starts at
+// the aircraft's nose gear with its heading and speed, and the lights are set
+// to what the sim shows.
+func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon) error {
+	prof := c.profile()
+	nose := NoseGear(pos, m.Heading, prof)
+	route := c.plan.Route.Points
+
+	// The path: from the nose gear on along the route (from the first route
+	// point ahead of it), ending straight along the stand axis with the
+	// reference point on the stop mark.
+	from := c.track.segmentAt(c.track.pos+prof.WheelbaseMeters-prof.RefAheadMeters) + 1
+	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
+	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
+	pts := []airport.LatLon{nose}
+	hold, vacate := 0.0, c.plan.VacateIndex
+	for i := from; i < len(route)-1; i++ {
+		// Drop route points on or past the stand axis start.
+		if alongHeading(stopNose, c.standHeading, route[i]) > -standAxisMeters {
+			break
+		}
+		if i == vacate {
+			hold = pathLen(pts) + localDist(pts[len(pts)-1], route[i])
+		}
+		pts = append(pts, route[i])
+	}
+	pts = append(pts, axis, stopNose)
+	path, err := NewGroundPath(pts, prof)
+	if err != nil {
+		return err
+	}
+	c.mover = NewGroundMoverFrom(path, prof, m.Heading, m.GroundKts)
+	// Hold at the vacate stop, or as soon as comfortably possible when the
+	// aircraft is already past it.
+	v := m.GroundKts * ktsToMS
+	c.mover.HoldAt(math.Max(hold, v*v/(2*prof.Decel)+2))
+
+	if err := c.inj.Takeover(c.objectID); err != nil {
+		return err
+	}
+	c.note("injector takeover", nil)
+	c.lights = m.currentLights()
+	c.note("injector lights at takeover", c.inj.SetLights(c.objectID, c.lights))
+	c.lastStep = c.now()
+	c.step()
+	return nil
+}
+
+func (c *ArrivalController) profile() MotionProfile {
+	if c.req.Profile != (MotionProfile{}) {
+		return c.req.Profile
+	}
+	return DefaultMotionProfile()
+}
+
+// setInjectedLights changes the lights of the injected aircraft; logo and
+// wing lights stay as the aircraft had them.
+func (c *ArrivalController) setInjectedLights(l Lights, desc string) {
+	l.Logo, l.Wing = c.lights.Logo, c.lights.Wing
+	c.lights = l
+	c.note(desc, c.inj.SetLights(c.objectID, l))
+}
+
+// step advances the mover to now and places the aircraft.
+func (c *ArrivalController) step() GroundPose {
+	now := c.now()
+	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
+	c.lastStep = now
+	pose := c.mover.Step(math.Max(dt, 0))
+	if err := c.inj.Place(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
+		c.emit(err, true)
+	}
+	return pose
+}
+
+// onInjectedFrame runs the ground phase once the injector has the aircraft:
+// every sim frame the mover steps and the aircraft is placed.
+func (c *ArrivalController) onInjectedFrame() {
+	pose := c.step()
+	path := c.mover.Path()
+	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
+	c.last.Remaining = math.Max(0, path.Length()-pose.Distance)
+	if seg, _ := c.track.advance(pose.Position); seg >= 0 {
+		c.last.Taxiway = c.track.taxiwayAt(seg)
+	}
+	switch c.state {
+	case ArrivalVacating:
+		// Stopped clear of the runway: after-landing lights, then wait.
+		if pose.Stopped {
+			c.setInjectedLights(LightsTaxi, "lights taxi")
+			dwell := c.req.AfterLandingDwell
+			if dwell <= 0 {
+				dwell = DefaultAfterLandingDwell
+			}
+			c.clearAt = c.now().Add(dwell)
+			c.setState(ArrivalAwaitingTaxi, nil)
+			return
+		}
+	case ArrivalAwaitingTaxi:
+		if c.cleared || (!c.req.HoldForClearance && !c.now().Before(c.clearAt)) {
+			c.startTaxi()
+			return
+		}
+	case ArrivalTaxiing:
+		if c.last.Remaining <= standAxisMeters+StandSlowMeters {
+			c.setState(ArrivalParking, nil)
+			return
+		}
+	case ArrivalParking:
+		if pose.Arrived {
+			// The aircraft stays frozen on the stand under the injector;
+			// Release it to hand it back to MSFS AI.
+			c.setInjectedLights(LightsParked, "lights parked")
+			c.stopMonitor()
+			c.setState(ArrivalParked, nil)
+			return
+		}
+	}
+	c.emit(nil, false)
+}
+
+// offsetHeading returns the point d meters from p along heading (true
+// degrees), in local meters.
+func offsetHeading(p airport.LatLon, heading, d float64) airport.LatLon {
+	h := heading * math.Pi / 180
+	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
+	return airport.LatLon{Lat: p.Lat + math.Cos(h)*d/metersPerDegree, Lon: p.Lon + math.Sin(h)*d/kx}
+}
+
+// alongHeading is how far q lies from p along heading (negative behind).
+func alongHeading(p airport.LatLon, heading float64, q airport.LatLon) float64 {
+	h := heading * math.Pi / 180
+	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
+	return (q.Lon-p.Lon)*kx*math.Sin(h) + (q.Lat-p.Lat)*metersPerDegree*math.Cos(h)
+}
+
+func pathLen(p []airport.LatLon) float64 {
+	d := 0.0
+	for i := 1; i < len(p); i++ {
+		d += localDist(p[i-1], p[i])
+	}
+	return d
+}
