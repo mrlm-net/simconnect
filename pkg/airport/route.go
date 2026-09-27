@@ -208,6 +208,11 @@ func (g *Graph) buildRoute(from, to NodeID, prev []NodeID) *Route {
 	for i, j := 0, len(nodes)-1; i < j; i, j = i+1, j-1 {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	}
+	return g.routeFromNodes(nodes)
+}
+
+// routeFromNodes assembles a Route along consecutive, adjacent nodes.
+func (g *Graph) routeFromNodes(nodes []NodeID) *Route {
 	r := &Route{Nodes: nodes, Taxiways: []string{}, RunwayCrossings: []string{}}
 	for i, id := range nodes {
 		r.Points = append(r.Points, g.Nodes[id].Position)
@@ -222,7 +227,7 @@ func (g *Graph) buildRoute(from, to NodeID, prev []NodeID) *Route {
 		}
 	}
 	r.RunwayCrossings = g.runwayCrossings(r.Points)
-	r.HoldShort = g.Nodes[to].HoldShort
+	r.HoldShort = g.Nodes[nodes[len(nodes)-1]].HoldShort
 	return r
 }
 
