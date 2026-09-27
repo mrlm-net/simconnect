@@ -62,9 +62,9 @@ const (
 // Each airport fetch uses request IDs reqBase+seq*reqStride+def offset, so
 // late messages from an abandoned (timed out) fetch are recognised and ignored.
 const (
-	reqBase     uint32 = 10000
-	reqStride   uint32 = 10
-	fetchParts         = 6
+	reqBase      uint32 = 10000
+	reqStride    uint32 = 10
+	fetchParts          = 6
 	fetchTimeout        = 30 * time.Second
 )
 
