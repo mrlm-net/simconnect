@@ -202,3 +202,12 @@ const (
 	InjectExitHighSpeedKts = 30.0
 	InjectExitKts          = 12.0
 )
+
+// Injected lights after landing: the taxi light comes on TaxiLightDelay
+// after the landing lights go off at the vacate stop; crossing lights stay
+// on until the main gear is CrossingTailMeters past the far hold-short line
+// (the tail clears it).
+const (
+	TaxiLightDelay     = 1500 * time.Millisecond
+	CrossingTailMeters = 20.0
+)

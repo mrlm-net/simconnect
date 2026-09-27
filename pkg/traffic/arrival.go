@@ -167,6 +167,8 @@ type ArrivalController struct {
 	crossing      bool   // on or near a runway: strobes and landing lights on
 	touchdownAt   time.Time
 	clearDist     float64 // injected path distance where the aircraft is clear of the runway
+	crossZones    []crossZone
+	taxiLightAt   time.Time
 	takeoverTried bool
 	emittedAt     time.Time
 }
@@ -621,6 +623,9 @@ func (c *ArrivalController) ClearToTaxi() {
 // startTaxi sends the taxi-in chain from the vacate stop to the stand.
 func (c *ArrivalController) startTaxi() {
 	if c.mover != nil {
+		if !c.lights.Taxi {
+			c.setInjectedLights(LightsTaxi, "lights taxi") // never taxi without it
+		}
 		c.mover.ClearHold()
 		c.stillFrom, c.warned = c.now(), false
 		c.setState(ArrivalTaxiing, nil)

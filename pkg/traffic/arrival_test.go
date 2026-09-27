@@ -389,12 +389,16 @@ func TestArrivalControllerHybrid(t *testing.T) {
 	if hd := math.Abs(headingDiff(last.Heading, g.Layout.Parking[c22].Heading)); hd > 3 {
 		t.Errorf("parked %.1f° off the stand heading", hd)
 	}
-	// Taxi-in from D crosses runway 12/30: strobes and landing lights on
+	// The taxi light comes on while waiting; taxi-in from D crosses runway
+	// 12/30: strobes and landing lights on
 	// while crossing, off again after it, then taxi and beacon off on the stand.
-	if want := []string{"STROBES_SET=1", "LANDING_LIGHTS_SET=1", "STROBES_SET=0", "LANDING_LIGHTS_SET=0", "BEACON_LIGHTS_SET=0", "TAXI_LIGHTS_SET=0"}; !equalStrings(ec.events, want) {
+	if want := []string{"TAXI_LIGHTS_SET=1", "STROBES_SET=1", "LANDING_LIGHTS_SET=1", "STROBES_SET=0", "LANDING_LIGHTS_SET=0", "BEACON_LIGHTS_SET=0", "TAXI_LIGHTS_SET=0"}; !equalStrings(ec.events, want) {
 		t.Errorf("lights after clearance %v, want %v", ec.events, want)
 	}
-	t.Logf("%d placements", len(all))
+	if len(ctl.crossZones) != 1 {
+		t.Errorf("crossing zones %v, want one (12/30 between its hold-short lines)", ctl.crossZones)
+	}
+	t.Logf("%d placements, crossing zones %v", len(all), ctl.crossZones)
 }
 
 // TestArrivalControllerHybridRunwayTakeover: the injector takes over during
@@ -455,8 +459,12 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 		if atExit == 0 && ctl.last.Position.Lat != 0 && calc.HaversineMeters(exitNode.Lat, exitNode.Lon, ctl.last.Position.Lat, ctl.last.Position.Lon) < 15 {
 			atExit = ctl.last.GroundSpeed
 		}
-		if ctl.State() == ArrivalRollout && lightsAt(ec.events, "LANDING_LIGHTS_SET") == "LANDING_LIGHTS_SET=0" {
-			t.Fatal("landing lights off while still on the runway")
+		landing := lightsAt(ec.events, "LANDING_LIGHTS_SET")
+		if (ctl.State() == ArrivalRollout || ctl.State() == ArrivalVacating) && landing == "LANDING_LIGHTS_SET=0" {
+			t.Fatalf("landing lights off before stopping (%v)", ctl.State())
+		}
+		if ctl.State() == ArrivalVacating && lightsAt(ec.events, "STROBES_SET") != "STROBES_SET=0" {
+			t.Fatal("strobes still on clear of the runway")
 		}
 	}
 	if ctl.State() != ArrivalAwaitingTaxi {
@@ -464,6 +472,15 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 	}
 	if atExit < 20 || atExit > InjectExitHighSpeedKts+1 {
 		t.Errorf("%.1f kt at the exit, want about %.0f", atExit, InjectExitHighSpeedKts)
+	}
+	// The taxi light TaxiLightDelay after the landing lights went off.
+	stopped := len(ec.events)
+	for i := 0; i < 60*3; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(s), 12, p.End.Heading, 0, true))
+		if i == 60 && len(ec.events) != stopped {
+			t.Errorf("taxi light after 1 s: %v", ec.events[stopped:])
+		}
 	}
 	for _, want := range []string{"LANDING_LIGHTS_SET=0", "STROBES_SET=0", "TAXI_LIGHTS_SET=1"} {
 		if !slices.Contains(ec.events, want) {

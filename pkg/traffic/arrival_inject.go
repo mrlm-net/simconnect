@@ -75,6 +75,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
 	pts := []airport.LatLon{nose}
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
+	var holds []holdOnPath
 	for i := from; i < len(route)-1; i++ {
 		// Drop route points on or past the stand axis start.
 		if alongHeading(stopNose, c.standHeading, route[i]) > -standAxisMeters {
@@ -87,9 +88,13 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if i == len(c.plan.Exit.Path)-1 {
 			clear = d // the exit's first node off the runway surface
 		}
+		if hs := c.req.Graph.Nodes[c.plan.Route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.plan.Runway.Index {
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
+		}
 		pts = append(pts, route[i])
 	}
 	pts = append(pts, axis, stopNose)
+	c.crossZones = c.crossingZones(holds)
 	fast := prof
 	fast.CruiseKts = math.Max(prof.CruiseKts, m.GroundKts+1) // no braking before the planned points
 	path, err := NewGroundPath(pts, fast)
@@ -172,7 +177,15 @@ func (c *ArrivalController) applyLights(desc string) {
 func (c *ArrivalController) checkCrossing(pose GroundPose) {
 	g := c.req.Graph
 	nose := NoseGear(pose.Position, pose.Heading, c.profile())
+	// Between the hold-short lines of a crossing: from the nose reaching the
+	// first until the tail is past the opposite one.
 	on := false
+	prof := c.profile()
+	for _, z := range c.crossZones {
+		if pose.Distance >= z.from && pose.Distance-prof.WheelbaseMeters-CrossingTailMeters <= z.to {
+			on = true
+		}
+	}
 	for _, p := range []airport.LatLon{nose, pose.Position} {
 		if r := g.RunwayAt(p, RunwayClearMeters); r >= 0 && !((c.state == ArrivalRollout || c.state == ArrivalVacating) && r == c.plan.Runway.Index) {
 			on = true
@@ -221,9 +234,11 @@ func (c *ArrivalController) onInjectedFrame() {
 			return
 		}
 	case ArrivalVacating:
-		// Stopped clear of the runway: after-landing lights, then wait.
+		// Stopped clear of the runway: landing lights off, and a moment
+		// later the taxi light on, then wait for the taxi clearance.
 		if pose.Stopped {
-			c.setInjectedLights(LightsTaxi, "lights taxi")
+			c.setInjectedLights(lightsStopped, "lights landing off")
+			c.taxiLightAt = c.now().Add(TaxiLightDelay)
 			dwell := c.req.AfterLandingDwell
 			if dwell <= 0 {
 				dwell = DefaultAfterLandingDwell
@@ -233,6 +248,9 @@ func (c *ArrivalController) onInjectedFrame() {
 			return
 		}
 	case ArrivalAwaitingTaxi:
+		if !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
+			c.setInjectedLights(LightsTaxi, "lights taxi")
+		}
 		if c.cleared || (!c.req.HoldForClearance && !c.now().Before(c.clearAt)) {
 			c.startTaxi()
 			return
@@ -278,9 +296,44 @@ func pathLen(p []airport.LatLon) float64 {
 	return d
 }
 
-// Lights after landing: landing lights and strobes while on the runway, off
-// once clear of it; the taxi light comes on at the vacate stop (LightsTaxi).
+// Lights after landing: landing lights and strobes while on the runway;
+// strobes off once clear of it, landing lights off at the vacate stop and
+// the taxi light on TaxiLightDelay later (LightsTaxi).
 var (
 	lightsRollout = Lights{Nav: true, Beacon: true, Strobe: true, Landing: true}
-	lightsVacated = Lights{Nav: true, Beacon: true}
+	lightsVacated = Lights{Nav: true, Beacon: true, Landing: true}
+	lightsStopped = Lights{Nav: true, Beacon: true}
 )
+
+// holdOnPath is a hold-short node on the injected path.
+type holdOnPath struct {
+	runway, index int
+	dist          float64
+}
+
+// crossZone is a runway crossing between two hold-short lines on the path,
+// in path distance.
+type crossZone struct{ from, to float64 }
+
+// crossingZones pairs consecutive hold-shorts of the same runway with the
+// route crossing that runway between them: the crossing lights come on at
+// the first and go off once the aircraft is past the second (#309).
+func (c *ArrivalController) crossingZones(holds []holdOnPath) []crossZone {
+	g, route := c.req.Graph, c.plan.Route.Points
+	var zones []crossZone
+	for k := 1; k < len(holds); k++ {
+		a, b := holds[k-1], holds[k]
+		if a.runway != b.runway {
+			continue
+		}
+		mid := airport.LatLon{Lat: (route[a.index].Lat + route[b.index].Lat) / 2, Lon: (route[a.index].Lon + route[b.index].Lon) / 2}
+		crosses := g.RunwayAt(mid, 0) == a.runway
+		for j := a.index + 1; j < b.index && !crosses; j++ {
+			crosses = g.RunwayAt(route[j], 0) == a.runway
+		}
+		if crosses {
+			zones = append(zones, crossZone{a.dist, b.dist})
+		}
+	}
+	return zones
+}
