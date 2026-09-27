@@ -20,7 +20,7 @@ Interactive command-line tool for reading and writing MSFS Simulation Variables 
 - Windows OS (SimConnect is Windows-only)
 - Microsoft Flight Simulator 2020/2024 running
 - SimConnect SDK installed (SimConnect.dll accessible)
-- Go 1.25+
+- Go 1.27+
 
 ## Building
 

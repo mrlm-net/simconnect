@@ -32,7 +32,7 @@ Each release zip contains the binary and this README.
 
 ### Build from source
 
-Requires Go 1.25+ and the full repository checked out:
+Requires Go 1.27+ and the full repository checked out:
 
 ```bash
 cd cmd/simvar-cli
