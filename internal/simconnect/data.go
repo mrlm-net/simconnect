@@ -54,13 +54,12 @@ func (sc *SimConnect) RequestDataOnSimObjectType(requestID uint32, definitionID 
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_AddToDataDefinition.htm
 func (sc *SimConnect) AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error {
-	var szDatumNamePtr, szUnitsNamePtr *byte
-
 	szDatumNamePtr, err := stringToBytePtr(datumName)
 	if err != nil {
 		return fmt.Errorf("failed to convert datum name to byte pointer: %w", err)
 	}
 
+	var szUnitsNamePtr *byte
 	if unitsName != "" {
 		szUnitsNamePtr, err = stringToBytePtr(unitsName)
 		if err != nil {
