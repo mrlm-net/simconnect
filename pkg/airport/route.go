@@ -33,6 +33,10 @@ type RouteOptions struct {
 	// RunwayCrossingPenalty is the extra cost of each runway crossing. Zero
 	// means DefaultRunwayCrossingPenalty; negative disables.
 	RunwayCrossingPenalty float64
+	// ApronPenalty is the extra cost, as a fraction of the length, of edges
+	// at taxi points where a stand connects, so routes keep to taxiways
+	// without stands. Zero means DefaultApronPenalty; negative disables.
+	ApronPenalty float64
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -176,9 +180,13 @@ func (g *Graph) RouteToParking(from NodeID, parking int, opts RouteOptions) (*Ro
 	return g.Route(from, to, opts)
 }
 
-// usable reports whether a route may traverse e.
+// usable reports whether a route may traverse e: RUNWAY paths only with
+// RouteOptions.UseRunwayPaths. Taxiway edges along a runway surface are
+// usable but expensive (AlongRunwayFactor), so a route can cross a runway
+// where the taxiway runs a short way along it (LROP) but never backtracks
+// along a runway while a taxiway will do.
 func usable(e Edge, opts RouteOptions) bool {
-	return (e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway) || opts.UseRunwayPaths
+	return e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || opts.UseRunwayPaths
 }
 
 // Turn costs (#307): pilots and ATC prefer routes with fewer and gentler
@@ -202,6 +210,12 @@ const (
 	// DefaultRunwayCrossingPenalty is the extra cost of each runway
 	// crossing: a crossing needs a clearance and blocks the runway.
 	DefaultRunwayCrossingPenalty = 1000.0
+	// AlongRunwayFactor multiplies the cost of taxiway edges that run along
+	// a runway surface (unless RouteOptions.UseRunwayPaths).
+	AlongRunwayFactor = 20.0
+	// DefaultApronPenalty is the extra cost, as a fraction of the length, of
+	// edges at taxi points where a stand connects (apron taxilanes).
+	DefaultApronPenalty = 0.5
 )
 
 func (o RouteOptions) turnPenalty() float64 {
@@ -212,6 +226,16 @@ func (o RouteOptions) turnPenalty() float64 {
 		return DefaultTurnPenalty
 	}
 	return o.TurnPenalty
+}
+
+func (o RouteOptions) apronPenalty() float64 {
+	switch {
+	case o.ApronPenalty < 0:
+		return 0
+	case o.ApronPenalty == 0:
+		return DefaultApronPenalty
+	}
+	return o.ApronPenalty
 }
 
 func (o RouteOptions) crossingPenalty() float64 {
@@ -327,6 +351,14 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 				continue
 			}
 			d := cur.dist + e.Length
+			if e.AlongRunway && !opts.UseRunwayPaths {
+				d += (AlongRunwayFactor - 1) * e.Length
+			}
+			// Apron taxilanes (a stand connects at either end) cost extra, so
+			// through traffic keeps to taxiways without stands (LROP: N, not M).
+			if pen := opts.apronPenalty(); pen > 0 && g.stands != nil && (g.stands[node] || g.stands[e.To]) {
+				d += pen * e.Length
+			}
 			if pen := opts.crossingPenalty(); pen > 0 {
 				k := [2]NodeID{node, e.To}
 				c, ok := crossed[k]

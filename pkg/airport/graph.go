@@ -66,8 +66,8 @@ type Edge struct {
 	Name   string                                   `json:"name"` // taxiway name, "" if none
 	Path   int                                      `json:"path"` // index into Layout.TaxiPaths
 	// AlongRunway marks a taxiway edge that lies on a runway surface and runs
-	// along it (MSFS data has such segments). Routes treat it like a RUNWAY
-	// edge: excluded unless RouteOptions.UseRunwayPaths.
+	// along it (MSFS data has such segments, e.g. where a taxiway crosses at a
+	// runway end). Routes may use it at AlongRunwayFactor times its length.
 	AlongRunway bool `json:"alongRunway,omitempty"`
 }
 
@@ -77,6 +77,9 @@ type Graph struct {
 	Nodes  []Node
 	Adj    [][]Edge
 	local  localFrame
+	// stands marks taxi points with a PARKING path to a stand: apron
+	// taxilanes, which routes avoid when a through taxiway will do.
+	stands []bool
 }
 
 // Taxiway, runway and parking path types taken into the graph. CLOSED,
@@ -152,6 +155,14 @@ func BuildGraph(l *Layout) (*Graph, error) {
 	}
 	if edges == 0 {
 		return nil, ErrNoTaxiNetwork
+	}
+	g.stands = make([]bool, len(g.Nodes))
+	for id, es := range g.Adj {
+		for _, e := range es {
+			if g.Nodes[id].Kind != NodeParking && g.Nodes[e.To].Kind == NodeParking {
+				g.stands[id] = true
+			}
+		}
 	}
 	return g, nil
 }
