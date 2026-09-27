@@ -27,12 +27,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect"
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -256,6 +258,40 @@ type Aircraft struct {
 	Updated   time.Time `json:"updated"`
 }
 
+// raw converts the fetched data to pkg/airport's raw facility records.
+func (d *AirportData) raw() airport.RawAirport {
+	r := airport.RawAirport{
+		ICAO: d.ICAO, Name: d.Name, Latitude: d.Latitude, Longitude: d.Longitude, Altitude: d.Altitude,
+		TaxiNames: d.TaxiNames,
+	}
+	for _, x := range d.Runways {
+		r.Runways = append(r.Runways, airport.RawRunway{
+			Latitude: x.Latitude, Longitude: x.Longitude, Altitude: x.Altitude,
+			Heading: float32(x.Heading), Length: float32(x.Length), Width: float32(x.Width),
+			PrimaryNumber: x.PrimaryNumber, PrimaryDesignator: x.PrimaryDesignator,
+			SecondaryNumber: x.SecondaryNumber, SecondaryDesignator: x.SecondaryDesignator,
+		})
+	}
+	for _, x := range d.Parking {
+		r.Parking = append(r.Parking, airport.RawParking{
+			Name: x.Name, Number: x.Number, Type: x.Type, Heading: float32(x.Heading),
+			Radius: float32(x.Radius), BiasX: float32(x.BiasX), BiasZ: float32(x.BiasZ),
+		})
+	}
+	for _, x := range d.TaxiPoints {
+		r.TaxiPoints = append(r.TaxiPoints, airport.RawTaxiPoint{
+			Type: x.Type, Orientation: x.Orientation, BiasX: float32(x.BiasX), BiasZ: float32(x.BiasZ),
+		})
+	}
+	for _, x := range d.TaxiPaths {
+		r.TaxiPaths = append(r.TaxiPaths, airport.RawTaxiPath{
+			Type: x.Type, Width: float32(x.Width), RunwayNumber: x.RunwayNumber, RunwayDesignator: x.RunwayDesignator,
+			Start: x.Start, End: x.End, NameIndex: x.NameIndex,
+		})
+	}
+	return r
+}
+
 // setAt stores v at index i, growing the slice as needed. SimConnect reports
 // each list item's index explicitly; storing by it keeps Index == position.
 func setAt[T any](s []T, i int, v T) []T {
@@ -294,6 +330,7 @@ type fetch struct {
 type state struct {
 	mu       sync.RWMutex
 	cache    map[string]*AirportData
+	graphs   map[string]*airport.Graph
 	aircraft *Aircraft
 	live     bool
 }
@@ -308,6 +345,30 @@ func (s *state) store(d *AirportData) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cache[d.ICAO] = d
+	delete(s.graphs, d.ICAO)
+}
+
+// graph returns the taxi graph of a loaded airport, building it on first use.
+func (s *state) graph(icao string) (*airport.Graph, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if g := s.graphs[icao]; g != nil {
+		return g, nil
+	}
+	d := s.cache[icao]
+	if d == nil {
+		return nil, fmt.Errorf("%s is not loaded", icao)
+	}
+	l, err := airport.BuildLayout(d.raw())
+	if err != nil {
+		return nil, err
+	}
+	g, err := airport.BuildGraph(l)
+	if err != nil {
+		return nil, err
+	}
+	s.graphs[icao] = g
+	return g, nil
 }
 
 // runConnection handles one connection lifecycle. It returns nil when the
@@ -589,6 +650,33 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- fetchReq
 		}
 	})
 
+	// GET /api/route?icao=LKPR&from=18&to=24 — departure route from a parking
+	// index to a runway end, computed with pkg/airport.
+	mux.HandleFunc("GET /api/route", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		icao := strings.ToUpper(strings.TrimSpace(q.Get("icao")))
+		g, err := st.graph(icao)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		from, err := strconv.Atoi(q.Get("from"))
+		if err != nil {
+			http.Error(w, "from must be a parking index", http.StatusBadRequest)
+			return
+		}
+		route, err := g.RouteToRunway(from, q.Get("to"), airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""})
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, airport.ErrNoRoute) {
+				status = http.StatusUnprocessableEntity
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		writeJSON(w, route)
+	})
+
 	mux.HandleFunc("GET /api/aircraft", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.RLock()
 		a := st.aircraft
@@ -631,7 +719,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	st := &state{cache: map[string]*AirportData{}}
+	st := &state{cache: map[string]*AirportData{}, graphs: map[string]*airport.Graph{}}
 	requests := make(chan fetchRequest)
 
 	if *file != "" {
