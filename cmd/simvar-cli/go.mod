@@ -1,6 +1,6 @@
 module github.com/mrlm-net/simconnect/cmd/simvar-cli
 
-go 1.25.14
+go 1.27.1
 
 require (
 	github.com/mrlm-net/cure v0.4.0

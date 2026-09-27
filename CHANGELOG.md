@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** minimum Go version raised to 1.27.1 (root module and `simvar-cli`). Go 1.25 no longer receives security fixes (#265)
+
 ## [0.6.1] - 2026-09-27
 
 ### Fixed

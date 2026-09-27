@@ -12,7 +12,7 @@ This guide walks you through installing the library, connecting to Microsoft Fli
 ## Prerequisites
 
 - **Windows only.** SimConnect is a Windows-native DLL. The library will not compile on other platforms.
-- **Go 1.25+**
+- **Go 1.27+**
 - **Microsoft Flight Simulator 2020 or 2024** installed and running when you test your add-on.
 - **SimConnect.dll** — bundled with MSFS. The library auto-detects it from common SDK installation paths. You can also set the `SIMCONNECT_DLL` environment variable or pass `simconnect.ClientWithDLLPath(...)` to override detection.
 

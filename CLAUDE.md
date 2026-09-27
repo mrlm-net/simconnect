@@ -4,7 +4,7 @@ GoLang wrapper over SimConnect.dll SDK for building Microsoft Flight Simulator 2
 
 ## Stack
 
-- **Language:** Go 1.25+
+- **Language:** Go 1.27+
 - **Platform:** Windows (requires SimConnect.dll from MSFS)
 - **Module:** `github.com/mrlm-net/simconnect`
 - **Dependencies:** Standard library only (zero external deps)
