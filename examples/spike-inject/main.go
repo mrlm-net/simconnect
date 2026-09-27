@@ -40,10 +40,12 @@ const (
 	evtFrzAtt  uint32 = 9382
 	evtTaxi    uint32 = 9383
 	evtBeacon  uint32 = 9384
+	evtNav     uint32 = 9385
+	evtLogo    uint32 = 9386
 )
 
 type monitor struct {
-	Lat, Lon, Alt, Ground, CG, Heading, Taxi, Beacon, OnGround, FrzLL, FrzAlt, FrzAtt float64
+	Lat, Lon, Alt, Ground, CG, Heading, Taxi, Beacon, OnGround, FrzLL, FrzAlt, FrzAtt, Nav, Logo float64
 }
 
 func main() {
@@ -53,6 +55,10 @@ func main() {
 	kts := flag.Float64("kts", 12, "taxi speed")
 	hz := flag.Float64("hz", 30, "position updates per second")
 	secs := flag.Int("seconds", 75, "how long to drive")
+	length := flag.Float64("length", 0, "stop after this many metres of route (0 = whole route)")
+	wheelbase := flag.Float64("wheelbase", 12.6, "nose gear to main gear, metres (A320 12.6)")
+	cgAhead := flag.Float64("cg-ahead", 1.0, "sim reference point ahead of the main gear, metres")
+	smooth := flag.Int("smooth", 4, "corner-rounding passes (Chaikin)")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -78,10 +84,11 @@ func main() {
 		{"GROUND ALTITUDE", "feet"}, {"STATIC CG TO GROUND", "feet"}, {"PLANE HEADING DEGREES TRUE", "degrees"},
 		{"LIGHT TAXI", "bool"}, {"LIGHT BEACON", "bool"}, {"SIM ON GROUND", "bool"},
 		{"IS LATITUDE LONGITUDE FREEZE ON", "bool"}, {"IS ALTITUDE FREEZE ON", "bool"}, {"IS ATTITUDE FREEZE ON", "bool"},
+		{"LIGHT NAV", "bool"}, {"LIGHT LOGO", "bool"},
 	} {
 		track("def "+v.n, client.AddToDataDefinition(defMon, v.n, v.u, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)))
 	}
-	for id, name := range map[uint32]string{evtFrzLL: "FREEZE_LATITUDE_LONGITUDE_SET", evtFrzAlt: "FREEZE_ALTITUDE_SET", evtFrzAtt: "FREEZE_ATTITUDE_SET", evtTaxi: "TAXI_LIGHTS_SET", evtBeacon: "BEACON_LIGHTS_SET"} {
+	for id, name := range map[uint32]string{evtFrzLL: "FREEZE_LATITUDE_LONGITUDE_SET", evtFrzAlt: "FREEZE_ALTITUDE_SET", evtFrzAtt: "FREEZE_ATTITUDE_SET", evtTaxi: "TAXI_LIGHTS_SET", evtBeacon: "BEACON_LIGHTS_SET", evtNav: "NAV_LIGHTS_SET", evtLogo: "LOGO_LIGHTS_SET"} {
 		track("map "+name, client.MapClientEventToSimEvent(id, name))
 	}
 	event := func(obj, evt, data uint32, desc string) {
@@ -94,23 +101,43 @@ func main() {
 	fleet := traffic.NewFleet(client)
 
 	var (
-		obj     uint32
-		pts     []airport.LatLon
-		cum     []float64
-		elevFt  float64
-		driving bool
-		startAt time.Time
-		last    monitor
-		haveMon bool
-		cmd     airport.LatLon
-		cmdHdg  float64
-		errSum  float64
-		errMax  float64
-		samples int
-		taxiOn  int
-		agls    []float64
-		lastLog time.Time
+		obj                 uint32
+		pts                 []airport.LatLon
+		cum                 []float64
+		elevFt              float64
+		driving             bool
+		startAt             time.Time
+		last                monitor
+		haveMon             bool
+		cmd                 airport.LatLon
+		cmdHdg              float64
+		errSum              float64
+		errMax              float64
+		samples             int
+		taxiOn              int
+		agls                []float64
+		lastLog             time.Time
+		limits              []float64
+		pos                 float64 // metres along the route
+		vel                 float64 // m/s
+		lastTick, stoppedAt time.Time
+		acc                 float64        // m/s², current
+		gear                airport.LatLon // main gear
 	)
+	const (
+		accel = 0.35 // m/s², pulling away
+		decel = 0.5  // m/s², planned braking
+		jerk  = 0.2  // m/s³, how fast acceleration may change
+	)
+	limitAt := func(s float64) float64 {
+		for i := 1; i < len(cum); i++ {
+			if cum[i] >= s {
+				f := (s - cum[i-1]) / math.Max(cum[i]-cum[i-1], 1e-6)
+				return limits[i-1] + (limits[i]-limits[i-1])*f
+			}
+		}
+		return 0
+	}
 	// along returns the position and heading at distance s along the route.
 	along := func(s float64) (airport.LatLon, float64) {
 		for i := 1; i < len(pts); i++ {
@@ -147,9 +174,40 @@ func main() {
 				continue
 			}
 			t := time.Since(startAt).Seconds()
-			if t > float64(*secs) {
+			dt := 0.0
+			if !lastTick.IsZero() {
+				dt = time.Since(lastTick).Seconds()
+			}
+			lastTick = time.Now()
+			// Chase the allowed speed at the current point and a bit ahead
+			// (the nose must already be slow entering the turn), reaching it
+			// in about 2 s; near the end, brake exactly onto the stop point.
+			// The acceleration itself changes at most jerk m/s³, so every
+			// speed change starts and ends softly.
+			end := cum[len(cum)-1]
+			target := math.Min(limitAt(pos), limitAt(pos+10))
+			want := (target - vel) / 2
+			if rem := end - pos; rem < 40 && rem > 0.05 {
+				want = math.Min(want, -vel*vel/(2*rem))
+			}
+			want = math.Max(-1.5*decel, math.Min(accel, want))
+			if want > acc {
+				acc = math.Min(want, acc+jerk*dt)
+			} else {
+				acc = math.Max(want, acc-jerk*dt)
+			}
+			vel = math.Max(0, vel+acc*dt)
+			pos = math.Min(pos+vel*dt, end)
+			if end-pos < 0.3 && vel < 0.1 {
+				vel, acc, pos = 0, 0, end
+			}
+			if pos >= end-0.05 && vel == 0 && stoppedAt.IsZero() {
+				stoppedAt = time.Now()
+				fmt.Printf("🛑 stopped at the end of the route after %.0f s\n", t)
+			}
+			if t > float64(*secs) || (!stoppedAt.IsZero() && time.Since(stoppedAt) > 5*time.Second) {
 				fmt.Println("\n══ Injection summary ══")
-				fmt.Printf("updates %.0f Hz, speed %.0f kt, driven %.0f m\n", *hz, *kts, math.Min(t**kts*1852/3600, cum[len(cum)-1]))
+				fmt.Printf("updates %.0f Hz, cruise %.0f kt, driven %.0f m in %.0f s\n", *hz, *kts, pos, t)
 				fmt.Printf("tracking error: mean %.2f m, max %.2f m over %d samples\n", errSum/float64(max(samples, 1)), errMax, samples)
 				fmt.Printf("taxi light on in %d/%d samples\n", taxiOn, samples)
 				if len(agls) > 0 {
@@ -163,8 +221,23 @@ func main() {
 				time.Sleep(time.Second)
 				return
 			}
-			s := math.Min(t**kts*1852/3600, cum[len(cum)-1])
-			cmd, cmdHdg = along(s)
+			// The nose wheel follows the path; the main gear trails it on the
+			// wheelbase like a towed trailer (it cuts inside turns), and the
+			// fuselage points from main gear to nose — so the heading eases
+			// into and out of every turn by itself.
+			// Done in local metres around the nose: repeated bearing/displace
+			// round trips are not exact and drift the gear sideways (sliding).
+			nose, _ := along(pos)
+			const mPerDeg = 111319.49
+			kx := mPerDeg * math.Cos(nose.Lat*math.Pi/180)
+			dx, dy := (gear.Lon-nose.Lon)*kx, (gear.Lat-nose.Lat)*mPerDeg // nose → gear
+			if d := math.Hypot(dx, dy); d > 1e-6 {
+				dx, dy = dx/d**wheelbase, dy/d**wheelbase
+			}
+			gear = airport.LatLon{Lat: nose.Lat + dy/mPerDeg, Lon: nose.Lon + dx/kx}
+			cmdHdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+			f := 1 - *cgAhead / *wheelbase // reference point, from the nose
+			cmd = airport.LatLon{Lat: nose.Lat + dy*f/mPerDeg, Lon: nose.Lon + dx*f/kx}
 			place(cmd, cmdHdg)
 		case msg := <-stream:
 			if msg.SIMCONNECT_RECV == nil || msg.Err != nil {
@@ -184,14 +257,34 @@ func main() {
 					fmt.Println(err)
 					return
 				}
-				pts = r.Points[1:] // from the taxiway junction
+				pts = chaikin(r.Points[1:], *smooth) // from the taxiway junction, corners rounded
 				cum = make([]float64, len(pts))
 				for i := 1; i < len(pts); i++ {
 					cum[i] = cum[i-1] + calc.HaversineMeters(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon)
 				}
-				p0, h0 := along(0)
+				if *length > 0 && *length < cum[len(cum)-1] {
+					n := 1
+					for n < len(cum) && cum[n] < *length {
+						n++
+					}
+					pts, cum = pts[:n], cum[:n]
+				}
+				limits = speedLimits(pts, cum, *kts*0.5144, 0.6, 3*0.5144, decel)
+				var turns []string
+				for i := 1; i < len(limits); i++ {
+					if limits[i] < limits[i-1] && (i+1 == len(limits) || limits[i] <= limits[i+1]) && limits[i] < *kts*0.5144-0.5 && i+1 < len(limits) {
+						turns = append(turns, fmt.Sprintf("%.0fm:%.0fkt", cum[i], limits[i]/0.5144))
+					}
+				}
+				fmt.Printf("🐢 turn speeds (distance:kt): %v\n", turns)
+				// Main gear at the route start, nose one wheelbase ahead.
+				gear, _ = along(0)
+				nose, _ := along(*wheelbase)
+				pos = *wheelbase
+				h0 := calc.BearingDegrees(gear.Lat, gear.Lon, nose.Lat, nose.Lon)
+				c0lat, c0lon := calc.DisplaceByHeading(gear.Lat, gear.Lon, h0, *cgAhead)
 				fleet.RequestNonATC(traffic.NonATCOpts{Model: *model, Tail: "INJ1", Position: types.SIMCONNECT_DATA_INITPOSITION{
-					Latitude: p0.Lat, Longitude: p0.Lon, Altitude: elevFt, Heading: h0, OnGround: 1,
+					Latitude: c0lat, Longitude: c0lon, Altitude: elevFt, Heading: h0, OnGround: 1,
 				}}, reqSpawn)
 				fmt.Printf("🗺️  route %s → %s from the junction: %.0f m via %v\n", *stand, *runway, cum[len(cum)-1], r.Taxiways)
 				continue
@@ -213,6 +306,8 @@ func main() {
 				event(obj, evtFrzAtt, 1, "FREEZE_ATTITUDE_SET")
 				event(obj, evtTaxi, 1, "TAXI_LIGHTS_SET")
 				event(obj, evtBeacon, 1, "BEACON_LIGHTS_SET")
+				event(obj, evtNav, 1, "NAV_LIGHTS_SET")
+				event(obj, evtLogo, 1, "LOGO_LIGHTS_SET")
 				track("monitor", client.RequestDataOnSimObject(reqMon, defMon, obj, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0))
 				fmt.Printf("🆔 object %d frozen, lights on; driving in 3 s\n", obj)
 				startAt = time.Now().Add(3 * time.Second)
@@ -224,7 +319,7 @@ func main() {
 				}
 				last, haveMon = *engine.CastDataAs[monitor](&d.DwData), true
 				driving = !startAt.IsZero() && time.Now().After(startAt)
-				if !driving {
+				if !driving || cmd.Lat == 0 {
 					continue
 				}
 				e := calc.HaversineMeters(cmd.Lat, cmd.Lon, last.Lat, last.Lon)
@@ -237,10 +332,63 @@ func main() {
 				agls = append(agls, last.Alt-last.Ground)
 				if time.Since(lastLog) >= time.Second {
 					lastLog = time.Now()
-					fmt.Printf("%5.1fs  err %5.2f m  hdg %5.1f/%5.1f  CG over ground %5.2f ft (static %.2f)  on-ground %.0f  freeze LL/alt/att %.0f/%.0f/%.0f  taxi %.0f beacon %.0f\n",
-						time.Since(startAt).Seconds(), e, last.Heading, cmdHdg, last.Alt-last.Ground, last.CG, last.OnGround, last.FrzLL, last.FrzAlt, last.FrzAtt, last.Taxi, last.Beacon)
+					fmt.Printf("%5.1fs  %4.1f kt  err %5.2f m  hdg %5.1f/%5.1f  CG over ground %5.2f ft (static %.2f)  on-ground %.0f  freeze LL/alt/att %.0f/%.0f/%.0f  taxi %.0f beacon %.0f nav %.0f logo %.0f\n",
+						time.Since(startAt).Seconds(), vel/0.5144, e, last.Heading, cmdHdg, last.Alt-last.Ground, last.CG, last.OnGround, last.FrzLL, last.FrzAlt, last.FrzAtt, last.Taxi, last.Beacon, last.Nav, last.Logo)
 				}
 			}
 		}
 	}
+}
+
+// chaikin rounds the corners of a polyline: each pass replaces every
+// segment by its 1/4 and 3/4 points, keeping the end points.
+func chaikin(p []airport.LatLon, passes int) []airport.LatLon {
+	for ; passes > 0 && len(p) > 2; passes-- {
+		out := []airport.LatLon{p[0]}
+		for i := 0; i+1 < len(p); i++ {
+			a, b := p[i], p[i+1]
+			out = append(out,
+				airport.LatLon{Lat: a.Lat*0.75 + b.Lat*0.25, Lon: a.Lon*0.75 + b.Lon*0.25},
+				airport.LatLon{Lat: a.Lat*0.25 + b.Lat*0.75, Lon: a.Lon*0.25 + b.Lon*0.75})
+		}
+		p = append(out, p[len(p)-1])
+	}
+	return p
+}
+
+// speedLimits returns the allowed speed (m/s) at each route point: cruise,
+// slower where the path curves (lateral acceleration latG on the turn radius),
+// and a braking curve (decel m/s²) down to a stop at the end.
+func speedLimits(pts []airport.LatLon, cum []float64, cruise, latG, minTurn, decel float64) []float64 {
+	n := len(pts)
+	v := make([]float64, n)
+	for i := range v {
+		v[i] = cruise
+	}
+	// Turn radius from the heading change over ±8 m around each point.
+	const win = 8.0
+	j0, j1 := 0, 0
+	for i := 0; i < n; i++ {
+		for j0 < i && cum[i]-cum[j0] > win {
+			j0++
+		}
+		for j1 < n-1 && cum[j1]-cum[i] < win {
+			j1++
+		}
+		if j0 == i || j1 == i {
+			continue
+		}
+		h1 := calc.BearingDegrees(pts[j0].Lat, pts[j0].Lon, pts[i].Lat, pts[i].Lon)
+		h2 := calc.BearingDegrees(pts[i].Lat, pts[i].Lon, pts[j1].Lat, pts[j1].Lon)
+		d := math.Abs(math.Mod(h2-h1+540, 360)-180) * math.Pi / 180
+		if d > 0.01 {
+			r := (cum[j1] - cum[j0]) / d
+			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(latG*r)))
+		}
+	}
+	v[n-1] = 0
+	for i := n - 2; i >= 0; i-- {
+		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*decel*(cum[i+1]-cum[i])))
+	}
+	return v
 }
