@@ -104,7 +104,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if c.plan.Exit.HighSpeed {
 			exitKts = InjectExitHighSpeedKts
 		}
-		path.LimitRange(clear, path.Length(), prof.CruiseKts, prof.Decel)
+		// Both at rollout deceleration: a gentle taxi braking curve would reach
+		// back over the whole runway (live: 1 kt/s from 70 kt, over a km).
+		path.LimitRange(clear, path.Length(), prof.CruiseKts, RolloutDecel)
 		path.LimitRange(onRwy, clear, exitKts, RolloutDecel)
 		moverProf.Decel, moverProf.Jerk = RolloutDecel, RolloutJerk
 		c.clearDist = clear
