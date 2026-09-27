@@ -106,7 +106,9 @@ type ArrivalEvent struct {
 	// meters, once on the ground.
 	Remaining float64
 	Taxiway   string
-	Err       error
+	// Lights is the light state the sim reports.
+	Lights Lights
+	Err    error
 }
 
 // ArrivalOption configures an ArrivalController.
@@ -157,13 +159,16 @@ type ArrivalController struct {
 	lightsAt       time.Time
 
 	// Hybrid ground phase (ArrivalWithInjector).
-	inj       *Injector
-	mover     *GroundMover
-	lastStep  time.Time
-	lights    Lights // injected light state
-	fast      bool   // monitor every sim frame: throttle progress events
-	crossing  bool   // on or near a runway: strobes and landing lights on
-	emittedAt time.Time
+	inj           *Injector
+	mover         *GroundMover
+	lastStep      time.Time
+	lights        Lights // injected light state
+	fast          bool   // monitor every sim frame: throttle progress events
+	crossing      bool   // on or near a runway: strobes and landing lights on
+	touchdownAt   time.Time
+	clearDist     float64 // injected path distance where the aircraft is clear of the runway
+	takeoverTried bool
+	emittedAt     time.Time
 }
 
 const (
@@ -361,6 +366,7 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
+	c.last.Lights = m.currentLights()
 	if c.mover != nil {
 		c.onInjectedFrame()
 		return
@@ -402,6 +408,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		switch {
 		case m.OnGround != 0 && c.airborne:
 			c.last.Touchdown, c.last.TouchdownFpm = past, c.lastVS
+			c.touchdownAt = c.now()
 			// MSFS AI switches its lights at its own state changes, touchdown
 			// among them: set the landing lights again once it has.
 			c.setLights(true, false, true, true, true, "lights rollout")
@@ -413,11 +420,24 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			return
 		}
 	case ArrivalRollout:
+		// Hybrid: take over on the runway once the aircraft has settled and
+		// slowed, well before the exit, and drive the rest of the rollout,
+		// the exit and the ground phase with the lights kept as they should be.
+		if c.inj != nil && !c.takeoverTried && m.OnGround != 0 && m.GroundKts <= TakeoverKts &&
+			c.now().Sub(c.touchdownAt) >= TakeoverAfterTouchdown &&
+			past+c.profile().WheelbaseMeters < c.plan.Exit.Along-TakeoverBeforeExitMeters {
+			c.takeoverTried = true
+			if err := c.takeover(m, pos, true); err == nil {
+				return
+			} else {
+				c.emit(err, true) // carry on with MSFS AI
+			}
+		}
 		// Vacating once off the runway surface, near or past the planned exit.
 		if off > c.plan.Runway.Width/2+RunwayClearMeters && past > c.plan.Exit.Along-100 {
 			c.track.pos = c.exitAlong
 			if c.inj != nil {
-				if err := c.takeover(m, pos); err == nil {
+				if err := c.takeover(m, pos, false); err == nil {
 					c.setState(ArrivalVacating, nil)
 					return
 				} else {

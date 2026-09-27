@@ -6,6 +6,8 @@ package traffic
 import (
 	"errors"
 	"math"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -393,4 +395,80 @@ func TestArrivalControllerHybrid(t *testing.T) {
 		t.Errorf("lights after clearance %v, want %v", ec.events, want)
 	}
 	t.Logf("%d placements", len(all))
+}
+
+// TestArrivalControllerHybridRunwayTakeover: the injector takes over during
+// the rollout, brakes to the high-speed exit speed, keeps landing lights and
+// strobes on while on the runway and switches them off once clear (#309).
+func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA4"}); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	thr := p.End.Threshold
+	onRunway := func(m float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, p.End.Heading, m)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(-300), 120, p.End.Heading, 140, false))
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(700), 12, p.End.Heading, 125, true))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	// MSFS AI brakes: 1.5 m/s² from 125 kt, reported every frame.
+	s, v := 700.0, 125*ktsToMS
+	for ctl.State() == ArrivalRollout && !inj.Driven(77) && s < p.Exit.Along {
+		now = now.Add(time.Second / 60)
+		v = math.Max(v-1.5/60, 0)
+		s += v / 60
+		ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(s), 12, p.End.Heading, v/ktsToMS, true))
+	}
+	if !inj.Driven(77) || ctl.State() != ArrivalRollout {
+		t.Fatalf("not taken over on the runway: state %v at %.0f m, %.0f kt", ctl.State(), s, v/ktsToMS)
+	}
+	if v/ktsToMS > TakeoverKts+0.1 {
+		t.Errorf("taken over at %.0f kt", v/ktsToMS)
+	}
+	lightsAt := func(evts []string, name string) string {
+		for i := len(evts) - 1; i >= 0; i-- {
+			if strings.HasPrefix(evts[i], name) {
+				return evts[i]
+			}
+		}
+		return ""
+	}
+	if lightsAt(ec.events, "LANDING_LIGHTS_SET") != "LANDING_LIGHTS_SET=1" || lightsAt(ec.events, "STROBES_SET") != "STROBES_SET=1" {
+		t.Errorf("runway lights at takeover: %v", ec.events)
+	}
+	exitNode := p.Route.Points[0]
+	var atExit float64
+	for i := 0; i < 60*300 && ctl.State() != ArrivalAwaitingTaxi; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(s), 12, p.End.Heading, 0, true))
+		if atExit == 0 && ctl.last.Position.Lat != 0 && calc.HaversineMeters(exitNode.Lat, exitNode.Lon, ctl.last.Position.Lat, ctl.last.Position.Lon) < 15 {
+			atExit = ctl.last.GroundSpeed
+		}
+		if ctl.State() == ArrivalRollout && lightsAt(ec.events, "LANDING_LIGHTS_SET") == "LANDING_LIGHTS_SET=0" {
+			t.Fatal("landing lights off while still on the runway")
+		}
+	}
+	if ctl.State() != ArrivalAwaitingTaxi {
+		t.Fatalf("state %v, want awaiting taxi", ctl.State())
+	}
+	if atExit < 20 || atExit > InjectExitHighSpeedKts+1 {
+		t.Errorf("%.1f kt at the exit, want about %.0f", atExit, InjectExitHighSpeedKts)
+	}
+	for _, want := range []string{"LANDING_LIGHTS_SET=0", "STROBES_SET=0", "TAXI_LIGHTS_SET=1"} {
+		if !slices.Contains(ec.events, want) {
+			t.Errorf("lights %v, want %s", ec.events, want)
+		}
+	}
+	t.Logf("taken over at %.0f kt %.0f m past the threshold; %.1f kt at the exit; lights %v", v/ktsToMS, s, atExit, ec.events)
 }

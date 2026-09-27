@@ -84,13 +84,19 @@ func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error
 // LimitEnd caps the speed over the last meters of the path at kts (a stand
 // entry), with braking planned down to it.
 func (g *GroundPath) LimitEnd(meters, kts float64) {
+	g.LimitRange(g.Length()-meters, g.Length(), kts, g.decel)
+}
+
+// LimitRange caps the speed between distances from and to at kts, with
+// braking at decel (m/s²) planned before it.
+func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
 	vmax := kts * ktsToMS
-	n := len(g.limit)
-	for i := n - 1; i >= 0 && g.cum[n-1]-g.cum[i] <= meters; i-- {
-		g.limit[i] = math.Min(g.limit[i], vmax)
+	for i, d := range g.cum {
+		if d >= from && d <= to {
+			g.limit[i] = math.Min(g.limit[i], vmax)
+		}
 	}
-	decel := g.decel
-	for i := n - 2; i >= 0; i-- {
+	for i := len(g.limit) - 2; i >= 0; i-- {
 		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decel*(g.cum[i+1]-g.cum[i])))
 	}
 }
@@ -378,3 +384,8 @@ func localBearing(a, b airport.LatLon) float64 {
 
 // headingDiff is the signed heading change from a to b, -180–180°.
 func headingDiff(a, b float64) float64 { return math.Mod(b-a+540, 360) - 180 }
+
+// SetProfile changes the speed behaviour (accelerations, jerk) from now on,
+// e.g. from runway braking to taxiing once clear of the runway. The
+// geometry (wheelbase, reference point) should stay the same.
+func (m *GroundMover) SetProfile(p MotionProfile) { m.p = p }

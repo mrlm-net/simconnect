@@ -184,3 +184,21 @@ const (
 	DefaultInjectEventBase      uint32 = 7900
 	injectMaxAircraft                  = 50
 )
+
+// Hybrid arrival (ArrivalWithInjector): the injector takes over on the
+// runway once the aircraft has been on the ground TakeoverAfterTouchdown and
+// slowed to TakeoverKts, at least TakeoverBeforeExitMeters before the exit
+// (otherwise clear of the runway), and drives the rest of the rollout at
+// RolloutDecel down to the exit speed.
+const (
+	TakeoverKts              = 70.0
+	TakeoverAfterTouchdown   = 2 * time.Second
+	TakeoverBeforeExitMeters = 150.0
+	// RolloutJerk (m/s³) lets runway braking build up quickly.
+	RolloutJerk = 0.6
+	// InjectExitHighSpeedKts and InjectExitKts are the speeds through a
+	// high-speed exit and any other exit when injected (MSFS AI takes every
+	// exit at about 12 kt).
+	InjectExitHighSpeedKts = 30.0
+	InjectExitKts          = 12.0
+)

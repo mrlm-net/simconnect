@@ -58,48 +58,82 @@ func (c *ArrivalController) monitorEvery(p types.SIMCONNECT_PERIOD) {
 // the injector. Nothing visible changes at the switch: the mover starts at
 // the aircraft's nose gear with its heading and speed, and the lights are set
 // to what the sim shows.
-func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon) error {
+func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRunway bool) error {
 	prof := c.profile()
 	nose := NoseGear(pos, m.Heading, prof)
 	route := c.plan.Route.Points
 
-	// The path: from the nose gear on along the route (from the first route
-	// point ahead of it), ending straight along the stand axis with the
-	// reference point on the stop mark.
-	from := c.track.segmentAt(c.track.pos+prof.WheelbaseMeters-prof.RefAheadMeters) + 1
+	// The path: from the nose gear on along the route, ending straight along
+	// the stand axis with the reference point on the stop mark. On the runway
+	// the route starts at the exit's runway node ahead of the nose; clear of
+	// it, at the first route point ahead of the nose.
+	from := 0
+	if !onRunway {
+		from = c.track.segmentAt(c.track.pos+prof.WheelbaseMeters-prof.RefAheadMeters) + 1
+	}
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
 	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
 	pts := []airport.LatLon{nose}
-	hold, vacate := 0.0, c.plan.VacateIndex
+	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
 	for i := from; i < len(route)-1; i++ {
 		// Drop route points on or past the stand axis start.
 		if alongHeading(stopNose, c.standHeading, route[i]) > -standAxisMeters {
 			break
 		}
-		if i == vacate {
-			hold = pathLen(pts) + localDist(pts[len(pts)-1], route[i])
+		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
+		if i == c.plan.VacateIndex {
+			hold = d
+		}
+		if i == len(c.plan.Exit.Path)-1 {
+			clear = d // the exit's first node off the runway surface
 		}
 		pts = append(pts, route[i])
 	}
 	pts = append(pts, axis, stopNose)
-	path, err := NewGroundPath(pts, prof)
+	fast := prof
+	fast.CruiseKts = math.Max(prof.CruiseKts, m.GroundKts+1) // no braking before the planned points
+	path, err := NewGroundPath(pts, fast)
 	if err != nil {
 		return err
 	}
+	moverProf := prof
+	if onRunway {
+		// Taxi speed from clear of the runway, exit speed from the exit's
+		// runway node, braked to at rollout deceleration.
+		exitKts := InjectExitKts
+		if c.plan.Exit.HighSpeed {
+			exitKts = InjectExitHighSpeedKts
+		}
+		path.LimitRange(clear, path.Length(), prof.CruiseKts, prof.Decel)
+		path.LimitRange(onRwy, clear, exitKts, RolloutDecel)
+		moverProf.Decel, moverProf.Jerk = RolloutDecel, RolloutJerk
+		c.clearDist = clear
+	} else {
+		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
+	}
 	// Enter the stand slowly: StandTaxiSpeedKts over the last StandSlowMeters.
 	path.LimitEnd(StandSlowMeters, StandTaxiSpeedKts)
-	c.mover = NewGroundMoverFrom(path, prof, m.Heading, m.GroundKts)
+	c.mover = NewGroundMoverFrom(path, moverProf, m.Heading, m.GroundKts)
 	// Hold at the vacate stop, or as soon as comfortably possible when the
 	// aircraft is already past it.
 	v := m.GroundKts * ktsToMS
-	c.mover.HoldAt(math.Max(hold, v*v/(2*prof.Decel)+2))
+	c.mover.HoldAt(math.Max(hold, v*v/(2*moverProf.Decel)+2))
 
 	if err := c.inj.Takeover(c.objectID); err != nil {
+		c.mover = nil
 		return err
 	}
 	c.note("injector takeover", nil)
 	c.lights = m.currentLights()
-	c.note("injector lights at takeover", c.inj.SetLights(c.objectID, c.lights))
+	if onRunway {
+		// MSFS AI switches the lights off during its rollout: landing
+		// lights and strobes on while on the runway.
+		c.setInjectedLights(lightsRollout, "lights rollout (injected)")
+	} else {
+		// Already clear of the runway: landing lights and strobes off.
+		c.note("injector lights at takeover", c.inj.SetLights(c.objectID, c.lights))
+		c.setInjectedLights(lightsVacated, "lights vacated")
+	}
 	c.lastStep = c.now()
 	c.step()
 	return nil
@@ -138,7 +172,7 @@ func (c *ArrivalController) checkCrossing(pose GroundPose) {
 	nose := NoseGear(pose.Position, pose.Heading, c.profile())
 	on := false
 	for _, p := range []airport.LatLon{nose, pose.Position} {
-		if r := g.RunwayAt(p, RunwayClearMeters); r >= 0 && !(c.state == ArrivalVacating && r == c.plan.Runway.Index) {
+		if r := g.RunwayAt(p, RunwayClearMeters); r >= 0 && !((c.state == ArrivalRollout || c.state == ArrivalVacating) && r == c.plan.Runway.Index) {
 			on = true
 		}
 	}
@@ -176,6 +210,14 @@ func (c *ArrivalController) onInjectedFrame() {
 	}
 	c.checkCrossing(pose)
 	switch c.state {
+	case ArrivalRollout:
+		// Clear of the runway: taxi behaviour, landing lights and strobes off.
+		if pose.Distance >= c.clearDist {
+			c.mover.SetProfile(c.profile())
+			c.setInjectedLights(lightsVacated, "lights vacated")
+			c.setState(ArrivalVacating, nil)
+			return
+		}
 	case ArrivalVacating:
 		// Stopped clear of the runway: after-landing lights, then wait.
 		if pose.Stopped {
@@ -233,3 +275,10 @@ func pathLen(p []airport.LatLon) float64 {
 	}
 	return d
 }
+
+// Lights after landing: landing lights and strobes while on the runway, off
+// once clear of it; the taxi light comes on at the vacate stop (LightsTaxi).
+var (
+	lightsRollout = Lights{Nav: true, Beacon: true, Strobe: true, Landing: true}
+	lightsVacated = Lights{Nav: true, Beacon: true}
+)

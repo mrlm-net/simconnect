@@ -349,3 +349,15 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 	}
 	return false, nil
 }
+
+// String shows the lights as NBSTLOW, a dot for each light that is off:
+// nav, beacon, strobe, taxi, landing, logo, wing.
+func (l Lights) String() string {
+	b := []byte(".......")
+	for i, on := range []bool{l.Nav, l.Beacon, l.Strobe, l.Taxi, l.Landing, l.Logo, l.Wing} {
+		if on {
+			b[i] = "NBSTLOW"[i]
+		}
+	}
+	return string(b)
+}

@@ -148,10 +148,10 @@ func main() {
 				fmt.Printf("✈️  %s: %s%s\n", *tail, ev.State, extra)
 				continue
 			}
-			if time.Since(lastPrint) >= 4*time.Second {
+			if time.Since(lastPrint) >= time.Second {
 				lastPrint = time.Now()
 				if ev.State >= traffic.ArrivalRollout {
-					fmt.Printf("   %-6s %5.0f m to stand · %5.1f kt · hdg %3.0f°\n", orDash(ev.Taxiway), ev.Remaining, ev.GroundSpeed, ev.Heading)
+					fmt.Printf("   %-6s %5.0f m to stand · %5.1f kt · hdg %3.0f° · lights %s\n", orDash(ev.Taxiway), ev.Remaining, ev.GroundSpeed, ev.Heading, ev.Lights)
 				} else {
 					fmt.Printf("   %5.0f ft AGL · %5.1f kt · hdg %3.0f°\n", ev.AGL, ev.GroundSpeed, ev.Heading)
 				}
