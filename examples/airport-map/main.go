@@ -160,14 +160,14 @@ func registerDefinitions(client engine.Client) {
 	add(defTaxiName, "OPEN AIRPORT", "OPEN TAXI_NAME", "NAME", "CLOSE TAXI_NAME", "CLOSE AIRPORT")
 
 	// User aircraft position, polled once per second.
-	for _, v := range []struct{ name, unit string }{
+	for i, v := range []struct{ name, unit string }{
 		{"PLANE LATITUDE", "degrees"},
 		{"PLANE LONGITUDE", "degrees"},
 		{"PLANE HEADING DEGREES TRUE", "degrees"},
 		{"GROUND VELOCITY", "knots"},
 		{"SIM ON GROUND", "bool"},
 	} {
-		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
+		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
 		}
 	}
