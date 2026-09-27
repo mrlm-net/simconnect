@@ -152,3 +152,35 @@ const (
 	// runway before taxiing on when HoldForClearance is off.
 	DefaultAfterLandingDwell = 15 * time.Second
 )
+
+// Injected ground movement (#309), see MotionProfile for the per-aircraft
+// values.
+const (
+	// GroundPathSmoothingPasses rounds route corners (Chaikin passes).
+	GroundPathSmoothingPasses = 6
+	// TurnWindowMeters is the distance either side of a point over which the
+	// turn radius is measured.
+	TurnWindowMeters = 8.0
+	// TurnLookaheadMeters: the aircraft is already at a turn's speed this far
+	// before it.
+	TurnLookaheadMeters = 10.0
+	// SpeedResponseSeconds is how quickly the speed chases the planned speed.
+	SpeedResponseSeconds = 2.0
+	// StopApproachMeters is the distance before a stop point from which the
+	// mover brakes exactly onto it.
+	StopApproachMeters = 40.0
+	// CornerMeters bounds how far from a route corner the rounding starts.
+	CornerMeters = 25.0
+	// InjectHz is the recommended rate for Injector.Place; 60 Hz looked
+	// smooth live, 30 Hz is acceptable.
+	InjectHz = 60
+)
+
+// Default SimConnect IDs used by an Injector: 2 definition IDs, 2 request
+// IDs per aircraft (up to injectMaxAircraft) and injectEventCount event IDs.
+const (
+	DefaultInjectDefinitionBase uint32 = 7700
+	DefaultInjectRequestBase    uint32 = 7800
+	DefaultInjectEventBase      uint32 = 7900
+	injectMaxAircraft                  = 50
+)

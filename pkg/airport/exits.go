@@ -25,9 +25,10 @@ const (
 	// HighSpeedExitAngle is the largest turn-off angle of a high-speed
 	// (rapid) exit, in degrees.
 	HighSpeedExitAngle = 45.0
-	// MaxExitAngle is the largest turn-off angle a landing aircraft can take;
-	// larger angles point back towards the threshold.
-	MaxExitAngle = 100.0
+	// MaxExitAngle is the largest turn-off angle a landing aircraft can take
+	// (and, for entries, the largest turn onto the runway); larger angles point
+	// back along the runway and are skipped.
+	MaxExitAngle = 90.0
 	// exitHoldShortSearch bounds the search for the hold-short behind an exit.
 	exitHoldShortSearch = 300.0
 )
