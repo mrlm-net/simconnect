@@ -64,6 +64,10 @@ type Edge struct {
 	Type   types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE `json:"type"`
 	Name   string                                   `json:"name"` // taxiway name, "" if none
 	Path   int                                      `json:"path"` // index into Layout.TaxiPaths
+	// AlongRunway marks a taxiway edge that lies on a runway surface and runs
+	// along it (MSFS data has such segments). Routes treat it like a RUNWAY
+	// edge: excluded unless RouteOptions.UseRunwayPaths.
+	AlongRunway bool `json:"alongRunway,omitempty"`
 }
 
 // Graph is the routable taxi network of a Layout.
@@ -140,8 +144,9 @@ func BuildGraph(l *Layout) (*Graph, error) {
 		}
 		length := g.distance(g.Nodes[a].Position, g.Nodes[b].Position)
 		name := l.PathName(p)
-		g.Adj[a] = append(g.Adj[a], Edge{To: b, Length: length, Type: p.Type, Name: name, Path: p.Index})
-		g.Adj[b] = append(g.Adj[b], Edge{To: a, Length: length, Type: p.Type, Name: name, Path: p.Index})
+		along := p.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !p.EndsAtParking() && g.alongRunway(g.Nodes[a].Position, g.Nodes[b].Position)
+		g.Adj[a] = append(g.Adj[a], Edge{To: b, Length: length, Type: p.Type, Name: name, Path: p.Index, AlongRunway: along})
+		g.Adj[b] = append(g.Adj[b], Edge{To: a, Length: length, Type: p.Type, Name: name, Path: p.Index, AlongRunway: along})
 		edges++
 	}
 	if edges == 0 {
@@ -226,4 +231,30 @@ func newLocalFrame(lat, lon float64) localFrame {
 
 func (f localFrame) xz(p LatLon) (x, z float64) {
 	return (p.Lon - f.lon0) * f.mPerLon, (p.Lat - f.lat0) * f.mPerLat
+}
+
+// alongRunwayMaxAngle is the largest angle between a taxiway edge and a
+// runway for the edge to count as running along it. High-speed exits leave
+// at 20–45°, so they are not affected.
+const alongRunwayMaxAngle = 10.0
+
+// alongRunway reports whether the segment a–b lies on a runway surface and
+// runs along it.
+func (g *Graph) alongRunway(a, b LatLon) bool {
+	for _, r := range g.Layout.Runways {
+		aAlong, aOff := g.runwayCoords(r, a)
+		bAlong, bOff := g.runwayCoords(r, b)
+		if aOff > r.Width/2 || bOff > r.Width/2 || aAlong < 0 || bAlong < 0 || aAlong > r.Length || bAlong > r.Length {
+			continue
+		}
+		dAlong := math.Abs(bAlong - aAlong)
+		dOff := math.Abs(bOff - aOff)
+		if dAlong < 1e-6 {
+			continue
+		}
+		if math.Atan(dOff/dAlong)*180/math.Pi <= alongRunwayMaxAngle {
+			return true
+		}
+	}
+	return false
 }

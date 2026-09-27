@@ -64,3 +64,61 @@ const (
 	taxiDefinitionCount              = 2
 	taxiRequestCount                 = 4
 )
+
+// Arrival profile. Measured in MSFS 2024 (#289, #301): an FSLTL A320 with its
+// gear down touched down 580–650 m past the threshold at about 130 kt and
+// slowed below 35 kt within about 1,500 m.
+const (
+	// DefaultSpawnNm is the distance out on final where arrivals spawn.
+	DefaultSpawnNm = 5.0
+	// GlidePathFtPerNm is a 3° glide path: 318 ft per nautical mile.
+	GlidePathFtPerNm = 318.0
+	// ThresholdCrossingFt is the height over the threshold.
+	ThresholdCrossingFt = 50.0
+	// ApproachSpeedKts is requested on final. MSFS AI ignores airborne speed
+	// requests (it flew about 164 kt); kept for when it does not.
+	ApproachSpeedKts = 135.0
+	// TouchdownMeters and TouchdownSpeedKts place the touchdown waypoint.
+	TouchdownMeters   = 300.0
+	TouchdownSpeedKts = 125.0
+	// RolloutDecel is the planned braking deceleration in m/s² (autobrake low
+	// to medium), and RolloutSpacingMeters the spacing of rollout waypoints.
+	RolloutDecel         = 1.5
+	RolloutSpacingMeters = 250.0
+	// ExitHighSpeedKts and ExitSpeedKts are the speeds for turning off onto a
+	// high-speed (≤ 45°) or a standard exit.
+	ExitHighSpeedKts = 20.0
+	ExitSpeedKts     = 10.0
+	// StandApproachSpeedKts is the speed along the stand's PARKING path, and
+	// StandOvershootMeters how far past the stand the last waypoint lies:
+	// MSFS AI stops short of its last ground waypoint (46 m in #289).
+	StandApproachSpeedKts = 3.0
+	StandOvershootMeters  = 10.0
+	// StandTaxiSpeedKts is the speed on the PARKING path until
+	// StandSlowMeters before the stand; StandStopMeters is how close to the
+	// stand the controller stops the aircraft with a single waypoint at its
+	// current position (the AI otherwise rolls on towards the overshoot point).
+	StandTaxiSpeedKts = 5.0
+	StandSlowMeters   = 30.0
+	StandStopMeters   = 2.0
+	// ParkedMeters is how close to the stand a stopped aircraft counts as parked.
+	ParkedMeters = 15.0
+)
+
+// Default SimConnect IDs used by an ArrivalController: 3 definition IDs and
+// 4 request IDs from these bases.
+const (
+	DefaultArrivalDefinitionBase uint32 = 7500
+	DefaultArrivalRequestBase    uint32 = 7600
+)
+
+// Exit shaping, tuned after the first live arrivals (#295): closely spaced
+// exit waypoints made the AI overshoot one and loop back.
+const (
+	// MinWaypointSpacingMeters drops taxi-in route points closer than this to
+	// the previous waypoint (except the stand approach).
+	MinWaypointSpacingMeters = 30.0
+	// RunwayClearMeters is how far beyond the runway half-width an aircraft
+	// must be to count as off the runway.
+	RunwayClearMeters = 10.0
+)

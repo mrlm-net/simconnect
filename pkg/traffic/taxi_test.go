@@ -54,6 +54,9 @@ func (f *fakeClient) AIRemoveObject(obj, _ uint32) error {
 	return nil
 }
 func (f *fakeClient) SetDataOnSimObject(_, _ uint32, _ types.SIMCONNECT_DATA_SET_FLAG, n, size uint32, p unsafe.Pointer) error {
+	if n == 0 {
+		n = 1 // SimConnect treats an element count of 0 as one element
+	}
 	f.waypoints = append(f.waypoints, append([]byte(nil), unsafe.Slice((*byte)(p), n*size)...))
 	return nil
 }
@@ -281,10 +284,11 @@ func TestTaxiControllerFullDeparture(t *testing.T) {
 
 	r := ctl.Route()
 	pts := r.Points
-	ctl.Handle(positionMsg(mon, 42, pts[0], 0, 2, true))  // pushing back
-	ctl.Handle(positionMsg(mon, 42, pts[1], 0, 2, true))  // at the junction, still reversing
-	ctl.Handle(positionMsg(mon, 42, pts[4], 0, 12, true)) // moving forward along the route
-	ctl.Handle(positionMsg(mon, 42, pts[len(pts)/2], 0, 15, true))
+	ctl.Handle(positionMsg(mon, 42, pts[0], 0, 2, true)) // pushing back
+	ctl.Handle(positionMsg(mon, 42, pts[1], 0, 2, true)) // at the junction, still reversing
+	for _, q := range pts[2 : len(pts)-1] {              // moving forward along the route, as 1 Hz updates would
+		ctl.Handle(positionMsg(mon, 42, q, 0, 15, true))
+	}
 	if ctl.Handle(positionMsg(mon, 7, pts[3], 0, 15, true)) {
 		t.Error("handled another object's position")
 	}

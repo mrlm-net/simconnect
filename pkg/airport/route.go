@@ -159,7 +159,7 @@ func (g *Graph) RouteToParking(from NodeID, parking int, opts RouteOptions) (*Ro
 
 // usable reports whether a route may traverse e.
 func usable(e Edge, opts RouteOptions) bool {
-	return e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || opts.UseRunwayPaths
+	return (e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway) || opts.UseRunwayPaths
 }
 
 // shortestPaths runs Dijkstra from src. Parking nodes other than src are
