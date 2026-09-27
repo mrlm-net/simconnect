@@ -56,11 +56,13 @@
   <h2>Airport</h2>
   <div id="info" class="note">—</div>
 
-  <h2>Departure route</h2>
-  <div class="note">Click a parking spot, then pick a runway end.</div>
+  <h2>Route</h2>
+  <div class="note">Click a parking spot, pick a runway, then an entry (departure) or exit (arrival) — in the list or on the map.</div>
   <table>
-    <tr><td>From</td><td class="n" id="rFrom">—</td></tr>
-    <tr><td>To runway</td><td class="n"><select id="rTo"></select></td></tr>
+    <tr><td>Mode</td><td class="n"><select id="rMode"><option value="dep">Departure</option><option value="arr">Arrival</option></select></td></tr>
+    <tr><td id="rStandLbl">From stand</td><td class="n" id="rFrom">—</td></tr>
+    <tr><td>Runway</td><td class="n"><select id="rTo"></select></td></tr>
+    <tr><td id="rPickLbl">Entry</td><td class="n"><select id="rPick"></select></td></tr>
   </table>
   <label class="opt"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
   <div id="rInfo" class="note"></div>
@@ -76,11 +78,6 @@
 
   <h2>Taxi points by TYPE</h2>
   <table id="pointTypes"></table>
-
-  <h2>PARKING path endpoints</h2>
-  <label class="opt"><input type="radio" name="pm" value="parking" checked> END = parking index <span class="note">(SDK docs)</span></label>
-  <label class="opt"><input type="radio" name="pm" value="point"> END = taxi point index <span class="note">(manage-traffic)</span></label>
-  <div id="parkingCheck" class="note"></div>
 
   <h2>Options</h2>
   <label class="opt"><input type="checkbox" id="labels" checked> Taxiway name labels</label>
@@ -122,6 +119,7 @@ const groups = {
   labels: L.layerGroup(),
   overlaps: L.layerGroup(),
   route: L.layerGroup(),
+  choices: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -136,7 +134,7 @@ for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.route]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -167,25 +165,22 @@ function kv(obj) { return Object.entries(obj).map(([k, v]) => `${k}: ${esc(v)}`)
 function pointLL(i) { const p = data.taxiPoints[i]; return p ? [p.lat, p.lon] : null; }
 function parkingLL(i) { const p = data.parking[i]; return p ? [p.lat, p.lon] : null; }
 
-// Resolves a path's endpoints. For TYPE=3 (PARKING) paths the END index is
-// interpreted according to the selected mode, so both readings can be compared.
-function endpoints(path, mode) {
+// Resolves a path's endpoints: START is a taxi point; END is a taxi point,
+// or a parking spot for TYPE=3 (PARKING) paths (verified on LKPR, see #247).
+function endpoints(path) {
   const a = pointLL(path.start);
-  const b = path.type === 3 && mode === 'parking' ? parkingLL(path.end) : pointLL(path.end);
+  const b = path.type === 3 ? parkingLL(path.end) : pointLL(path.end);
   return [a, b];
 }
-
-function mode() { return document.querySelector('input[name=pm]:checked').value; }
 
 function drawPaths() {
   for (const g of Object.values(pathGroups)) g.clearLayers();
   groups.labels.clearLayers();
   if (!data) return;
-  const m = mode();
   const labelled = new Set();
   let unresolved = 0;
   for (const p of data.taxiPaths) {
-    const [a, b] = endpoints(p, m);
+    const [a, b] = endpoints(p);
     const [tname, color] = PATH_TYPES[p.type] || [`(${p.type})`, '#ff00ff'];
     const name = data.taxiNames[p.nameIndex] || '';
     const pop = `<b>Taxi path #${p.index}</b><br>` + kv({
@@ -211,27 +206,6 @@ function drawPaths() {
     }
   }
   return unresolved;
-}
-
-// Summarises how PARKING paths resolve under each reading: an index that is out
-// of range, or a segment that is implausibly long, points to the wrong reading.
-function checkParkingPaths() {
-  const pp = data.taxiPaths.filter((p) => p.type === 3);
-  if (!pp.length) { $('parkingCheck').textContent = 'No PARKING paths.'; return; }
-  const stat = (m) => {
-    let ok = 0, lens = [];
-    for (const p of pp) { const [a, b] = endpoints(p, m); if (a && b) { ok++; lens.push(dist(a, b)); } }
-    lens.sort((x, y) => x - y);
-    const med = lens.length ? lens[Math.floor(lens.length / 2)] : NaN;
-    return { ok, med, long: lens.filter((l) => l > 150).length };
-  };
-  const sp = stat('parking'), st = stat('point');
-  const row = (n, s) => `<tr><td>${n}</td><td class="n">${s.ok}/${pp.length}</td><td class="n">${isNaN(s.med) ? '—' : s.med.toFixed(0) + ' m'}</td><td class="n">${s.long}</td></tr>`;
-  $('parkingCheck').innerHTML = `<table><tr><td></td><td class="n">resolved</td><td class="n">median</td><td class="n">&gt;150 m</td></tr>` +
-    row('→ parking', sp) + row('→ point', st) + `</table>` +
-    `<div>END &lt; ${data.parking.length} parking: ${pp.filter((p) => p.end < data.parking.length).length}, ` +
-    `END &lt; ${data.taxiPoints.length} points: ${pp.filter((p) => p.end < data.taxiPoints.length).length}. ` +
-    `Shorter median with everything resolved is the likely correct reading.</div>`;
 }
 
 function histogram(el, items, types, swatch) {
@@ -289,13 +263,12 @@ function draw() {
   const unresolved = drawPaths();
   histogram('pathTypes', data.taxiPaths, PATH_TYPES, 'sw');
   histogram('pointTypes', data.taxiPoints, POINT_TYPES, 'dot');
-  checkParkingPaths();
   $('info').innerHTML = `<b>${esc(data.icao)}</b> ${esc(data.name)}<br>` +
     `${data.runways.length} runways · ${data.parking.length} parking · ${data.taxiPoints.length} points · ` +
     `${data.taxiPaths.length} paths · ${data.taxiNames.length} names` +
     (unresolved ? `<br><span class="warn">${unresolved} paths with an out-of-range endpoint (magenta rings)</span>` : '') +
     `<br><span class="note">Fetched ${new Date(data.fetchedAt).toLocaleString()}</span>`;
-  computeRoute();
+  loadChoices();
 }
 
 // ── Overlapping stands ──
@@ -334,8 +307,10 @@ function drawOverlaps() {
   $('overlapInfo').textContent = `${pairs.length} overlapping pairs, ${stands.size} stands affected.`;
 }
 
-// ── Departure route ──
+// ── Route: departure (stand → runway at entry) or arrival (exit → stand) ──
 let routeFrom = null;
+let choices = []; // entries (departure) or exits (arrival) of the chosen runway
+const arrival = () => $('rMode').value === 'arr';
 
 function fillRunwayEnds() {
   const sel = $('rTo'), keep = sel.value;
@@ -350,29 +325,97 @@ function selectFrom(p) {
   computeRoute();
 }
 
+// loadChoices fetches the entries or exits of the chosen runway end, fills
+// the picker and marks them on the map (click a marker to pick it).
+async function loadChoices() {
+  const rwy = $('rTo').value, arr = arrival();
+  $('rStandLbl').textContent = arr ? 'To stand' : 'From stand';
+  $('rPickLbl').textContent = arr ? 'Exit' : 'Entry';
+  choices = [];
+  $('rPick').innerHTML = `<option value="">${arr ? 'Auto (best exit)' : 'Full length'}</option>`;
+  if (!data || !rwy) return computeRoute();
+  try {
+    const res = await fetch(`/api/${arr ? 'exits' : 'entries'}?${new URLSearchParams({ icao: data.icao, runway: rwy })}`);
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    choices = await res.json();
+  } catch (e) {
+    $('rInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+  const opts = [];
+  if (arr) {
+    choices.forEach((x, i) => opts.push(`<option value="${i}">${esc(x.taxiway || 'unnamed')} · ${x.along.toFixed(0)} m · ${x.angle.toFixed(0)}°${x.highSpeed ? ' rapid' : ''} ${x.side === 0 ? 'L' : 'R'}</option>`));
+  } else {
+    // The API routes to the entry of that name with the most runway ahead.
+    const best = new Map();
+    for (const e of choices) {
+      if (e.taxiway && (!best.has(e.taxiway) || e.remaining > best.get(e.taxiway).remaining)) best.set(e.taxiway, e);
+    }
+    for (const e of best.values()) opts.push(`<option value="${esc(e.taxiway)}">${esc(rwy)} at ${esc(e.taxiway)} · ${e.remaining.toFixed(0)} m ahead · ${e.angle.toFixed(0)}°</option>`);
+  }
+  $('rPick').innerHTML += opts.join('');
+  computeRoute();
+}
+
+function drawChoices() {
+  groups.choices.clearLayers();
+  const arr = arrival(), picked = $('rPick').value;
+  choices.forEach((x, i) => {
+    const key = arr ? String(i) : x.taxiway;
+    if (!arr && !x.taxiway) return;
+    const on = picked !== '' && key === picked;
+    L.circleMarker([x.position.lat, x.position.lon], {
+      renderer, radius: on ? 8 : 6, color: '#fff', weight: 2, fillOpacity: 1,
+      fillColor: on ? '#ff2bd6' : arr ? '#ff9f1a' : '#2ecc71',
+    }).bindTooltip(`${arr ? 'Exit' : 'Entry'} ${esc(x.taxiway || 'unnamed')}`, { permanent: true, direction: 'top', className: 'lbl' })
+      .on('click', () => { $('rPick').value = key; computeRoute(); })
+      .addTo(groups.choices);
+  });
+}
+
 async function computeRoute() {
   groups.route.clearLayers();
+  drawChoices();
   if (!data || !routeFrom) { $('rInfo').textContent = ''; return; }
-  const to = $('rTo').value;
-  $('rInfo').textContent = `Routing ${parkingLabel(routeFrom)} → ${to}…`;
+  const rwy = $('rTo').value, pick = $('rPick').value, arr = arrival();
+  const stand = parkingLabel(routeFrom);
+  $('rInfo').textContent = arr ? `Routing ${rwy} → ${stand}…` : `Routing ${stand} → ${rwy}…`;
   try {
-    const q = new URLSearchParams({ icao: data.icao, from: routeFrom.index, to });
+    const q = new URLSearchParams({ icao: data.icao });
     if ($('rRwyPaths').checked) q.set('runwayPaths', '1');
-    const res = await fetch(`/api/route?${q}`);
+    if (arr) {
+      q.set('runway', rwy); q.set('to', routeFrom.index);
+      if (pick !== '') q.set('exit', pick);
+    } else {
+      q.set('from', routeFrom.index); q.set('to', rwy);
+      if (pick !== '') q.set('entry', pick);
+    }
+    const res = await fetch(`/api/${arr ? 'arrival' : 'route'}?${q}`);
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
-    const r = await res.json();
+    const body = await res.json();
+    const r = arr ? body.route : body;
     const pts = r.points.map((p) => [p.lat, p.lon]);
     L.polyline(pts, { renderer, color: '#fff', weight: 9, opacity: 0.8, interactive: false }).addTo(groups.route);
     L.polyline(pts, { renderer, color: '#ff2bd6', weight: 5 }).addTo(groups.route);
     L.circleMarker(pts[0], { renderer, radius: 7, color: '#fff', fillColor: '#2d6cdf', fillOpacity: 1, weight: 2 }).addTo(groups.route);
-    L.circleMarker(pts[pts.length - 1], { renderer, radius: 9, color: '#fff', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2 })
-      .bindTooltip(`Hold short ${esc(r.runwayEnd)}`, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.route);
-    const h = r.holdShort;
-    $('rInfo').innerHTML =
-      `<b>${esc(parkingLabel(routeFrom))} → ${esc(r.runwayEnd)}</b> · ${r.length.toFixed(0)} m<br>` +
-      `Via ${r.taxiways.length ? esc(r.taxiways.join(' → ')) : '—'}<br>` +
-      `Crossings: ${r.runwayCrossings.length ? esc(r.runwayCrossings.join(', ')) : 'none'}<br>` +
-      (h ? `Hold short ${esc(h.name)}${h.ils ? ' (ILS)' : ''}, ${h.offset.toFixed(0)} m from centreline, taxi point #${r.nodes[r.nodes.length - 1]}` : '');
+    const via = `Via ${r.taxiways.length ? esc(r.taxiways.join(' → ')) : '—'}<br>` +
+      `Crossings: ${r.runwayCrossings.length ? esc(r.runwayCrossings.join(', ')) : 'none'}<br>`;
+    if (arr) {
+      const x = body.exit;
+      L.circleMarker([body.vacate.lat, body.vacate.lon], { renderer, radius: 8, color: '#fff', fillColor: '#ffd23f', fillOpacity: 1, weight: 2 })
+        .bindTooltip('Vacate stop', { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.route);
+      L.circleMarker([body.stop.lat, body.stop.lon], { renderer, radius: 9, color: '#fff', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2 })
+        .bindTooltip(`Stop ${esc(stand)}`, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.route);
+      $('rInfo').innerHTML =
+        `<b>${esc(rwy)} exit ${esc(x.taxiway || 'unnamed')} → ${esc(stand)}</b> · ${r.length.toFixed(0)} m<br>` +
+        `Exit ${x.along.toFixed(0)} m from the threshold, ${x.angle.toFixed(0)}°${x.highSpeed ? ' (rapid)' : ''}${pick === '' ? ' — chosen automatically' : ''}<br>` + via;
+    } else {
+      L.circleMarker(pts[pts.length - 1], { renderer, radius: 9, color: '#fff', fillColor: '#ff3b3b', fillOpacity: 1, weight: 2 })
+        .bindTooltip(`Hold short ${esc(r.runwayEnd)}${r.entry ? ' at ' + esc(r.entry) : ''}`, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.route);
+      const h = r.holdShort;
+      $('rInfo').innerHTML =
+        `<b>${esc(stand)} → ${esc(r.runwayEnd)}${r.entry ? ' at ' + esc(r.entry) : ' full length'}</b> · ${r.length.toFixed(0)} m<br>` + via +
+        (h ? `Hold short ${esc(h.name)}${h.ils ? ' (ILS)' : ''}, ${h.offset.toFixed(0)} m from centreline, taxi point #${r.nodes[r.nodes.length - 1]}` : '');
+    }
   } catch (e) {
     $('rInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
   }
@@ -444,7 +487,7 @@ const trafficIcon = (t) => L.divIcon({
   html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)"><path fill="${t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
 const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.agl.toFixed(0)}ft ${t.groundKts.toFixed(0)}kt` +
-  `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · ${esc(shortState(t.state))}`;
+  `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · ${esc(shortState(t.state))}`;
 async function pollTraffic() {
   if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
   let list = [];
@@ -478,9 +521,10 @@ $('f').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').va
 $('refresh').addEventListener('click', () => load($('icao').value, true));
 $('labels').addEventListener('change', () => { if (data) drawPaths(); });
 $('overlaps').addEventListener('change', drawOverlaps);
-$('rTo').addEventListener('change', computeRoute);
+$('rTo').addEventListener('change', loadChoices);
+$('rMode').addEventListener('change', loadChoices);
+$('rPick').addEventListener('change', computeRoute);
 $('rRwyPaths').addEventListener('change', computeRoute);
-for (const r of document.querySelectorAll('input[name=pm]')) r.addEventListener('change', () => { if (data) draw(); });
 const initial = new URLSearchParams(location.search).get('icao') || 'LKPR';
 $('icao').value = initial;
 load(initial);

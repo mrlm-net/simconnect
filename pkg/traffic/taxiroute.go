@@ -47,37 +47,68 @@ func TaxiWaypoints(g *airport.Graph, r *airport.Route) ([]types.SIMCONNECT_DATA_
 	// at each waypoint is the speed wanted when reaching it, so it reflects
 	// the turn at that point.
 	fwd := turnIn(simplify(pts[1:]))
-	total := routeLength(fwd)
+	return append(wps, groundLegs(fwd, groundAlt{feet: alt}, legOptions{
+		maxKts: TaxiSpeedKts, endKts: HoldShortApproachSpeedKts, endMeters: HoldShortApproachMeters, unsplitFirst: true,
+	})...), nil
+}
+
+// groundAlt is the altitude given to ground waypoints: a fixed MSL altitude,
+// or 0 ft above ground (ALTITUDE_IS_AGL).
+type groundAlt struct {
+	feet float64
+	agl  bool
+}
+
+func (a groundAlt) waypoint(lat, lon, kts float64) types.SIMCONNECT_DATA_WAYPOINT {
+	if a.agl {
+		return types.SIMCONNECT_DATA_WAYPOINT{Latitude: lat, Longitude: lon, KtsSpeed: kts,
+			Flags: uint32(types.SIMCONNECT_WAYPOINT_ON_GROUND | types.SIMCONNECT_WAYPOINT_SPEED_REQUESTED | types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL)}
+	}
+	return TaxiWaypoint(lat, lon, a.feet, kts)
+}
+
+// legOptions shapes groundLegs speeds.
+type legOptions struct {
+	maxKts       float64 // straight-line speed
+	endKts       float64 // speed over the last endMeters
+	endMeters    float64
+	unsplitFirst bool // no waypoint inside the first leg (a turn-in)
+}
+
+// groundLegs turns a polyline into forward ON_GROUND waypoints after pts[0]:
+// legs are split to at most MaxWaypointSpacingMeters, each waypoint's speed
+// is the speed wanted on reaching it (lower before turns, see turnSpeed), and
+// the last endMeters are flown at endKts.
+func groundLegs(pts []airport.LatLon, alt groundAlt, o legOptions) []types.SIMCONNECT_DATA_WAYPOINT {
+	var wps []types.SIMCONNECT_DATA_WAYPOINT
+	total := routeLength(pts)
 	done := 0.0
-	for i := 0; i < len(fwd)-1; i++ {
-		a, b := fwd[i], fwd[i+1]
+	for i := 0; i < len(pts)-1; i++ {
+		a, b := pts[i], pts[i+1]
 		seg := calc.HaversineMeters(a.Lat, a.Lon, b.Lat, b.Lon)
 		n := int(math.Ceil(seg / MaxWaypointSpacingMeters))
-		if i == 0 {
-			n = 1 // the turn-in leg: no waypoint inside the turn
-		}
-		if n < 1 {
+		if n < 1 || (i == 0 && o.unsplitFirst) {
 			n = 1
 		}
 		turn := 0.0
-		if i+2 < len(fwd) {
-			turn = turnAngle(a, b, fwd[i+2])
+		if i+2 < len(pts) {
+			turn = turnAngle(a, b, pts[i+2])
 		}
 		for k := 1; k <= n; k++ {
 			f := float64(k) / float64(n)
 			p := airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}
-			speed := TaxiSpeedKts
+			speed := o.maxKts
 			if k == n {
-				speed = turnSpeed(turn)
+				speed = math.Min(speed, turnSpeed(turn))
 			}
-			if total-(done+seg*f) <= HoldShortApproachMeters {
-				speed = math.Min(speed, HoldShortApproachSpeedKts)
+			if total-(done+seg*f) <= o.endMeters {
+				speed = math.Min(speed, o.endKts)
 			}
-			wps = append(wps, TaxiWaypoint(p.Lat, p.Lon, alt, speed))
+			wps = append(wps, alt.waypoint(p.Lat, p.Lon, speed))
 		}
 		done += seg
 	}
-	return wps, nil
+	return wps
 }
 
 // turnIn drops the forward route points closer than TurnInMeters to the

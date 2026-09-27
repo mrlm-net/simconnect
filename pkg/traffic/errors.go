@@ -20,3 +20,22 @@ var (
 	// zero-length waypoint slice.
 	ErrEmptyWaypoints = errors.New("traffic: waypoints slice must not be empty")
 )
+
+var (
+	// ErrPathTooShort is returned for a ground path with fewer than two
+	// distinct points.
+	ErrPathTooShort = errors.New("traffic: ground path needs at least two distinct points")
+
+	// ErrNotInjected is returned by Injector methods for an object that was
+	// not taken over with Takeover.
+	ErrNotInjected = errors.New("traffic: object is not driven by the injector")
+
+	// ErrGroundUnknown is returned by Injector.Place until the ground height
+	// under the aircraft has been received; the frozen aircraft stays where
+	// it is meanwhile.
+	ErrGroundUnknown = errors.New("traffic: ground height under the aircraft not received yet")
+
+	// ErrInjectorFull is returned by Takeover when injectMaxAircraft aircraft
+	// are already driven.
+	ErrInjectorFull = errors.New("traffic: injector drives the maximum number of aircraft")
+)

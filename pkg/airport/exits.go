@@ -25,9 +25,10 @@ const (
 	// HighSpeedExitAngle is the largest turn-off angle of a high-speed
 	// (rapid) exit, in degrees.
 	HighSpeedExitAngle = 45.0
-	// MaxExitAngle is the largest turn-off angle a landing aircraft can take;
-	// larger angles point back towards the threshold.
-	MaxExitAngle = 100.0
+	// MaxExitAngle is the largest turn-off angle a landing aircraft can take
+	// (and, for entries, the largest turn onto the runway); larger angles point
+	// back along the runway and are skipped.
+	MaxExitAngle = 90.0
 	// exitHoldShortSearch bounds the search for the hold-short behind an exit.
 	exitHoldShortSearch = 300.0
 )
@@ -170,7 +171,16 @@ func (g *Graph) ExitFor(runwayEnd string, rollout float64) (RunwayExit, error) {
 // RouteFromRunway returns a taxi-in route from a runway exit to a parking
 // spot: the exit path off the runway, then the shortest route to the stand.
 func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions) (*Route, error) {
-	in, err := g.RouteToParking(exit.Node, parking, opts)
+	to, ok := g.ParkingNode(parking)
+	if !ok {
+		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
+	}
+	// Continue in the direction the exit leaves the runway.
+	prev := NodeID(-1)
+	if len(exit.Path) > 1 {
+		prev = exit.Path[len(exit.Path)-2]
+	}
+	in, err := g.routeVia(exit.Node, prev, to, opts)
 	if err != nil {
 		return nil, err
 	}
