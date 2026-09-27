@@ -23,6 +23,16 @@ type RouteOptions struct {
 	// the threshold is a candidate, and the shortest route among them wins.
 	// Zero means DefaultIntersectionTolerance.
 	IntersectionTolerance float64
+	// TurnPenalty is the extra cost, in meters of route length, of a 90°
+	// turn at a taxiway junction (proportional above TurnFreeAngle), and
+	// TaxiwayChangePenalty that of turning onto another taxiway: routes with
+	// fewer turns win even when a little longer. Zero means
+	// DefaultTurnPenalty / DefaultTaxiwayChangePenalty; negative disables.
+	TurnPenalty          float64
+	TaxiwayChangePenalty float64
+	// RunwayCrossingPenalty is the extra cost of each runway crossing. Zero
+	// means DefaultRunwayCrossingPenalty; negative disables.
+	RunwayCrossingPenalty float64
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -70,11 +80,17 @@ func (g *Graph) Route(from, to NodeID, opts RouteOptions) (*Route, error) {
 	if !g.valid(from) || !g.valid(to) {
 		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
 	}
-	dist, prev := g.shortestPaths(from, opts)
-	if math.IsInf(dist[to], 1) {
+	return g.routeVia(from, -1, to, opts)
+}
+
+// routeVia is Route for an aircraft that arrived at from via prev (-1 if
+// its heading is free).
+func (g *Graph) routeVia(from, prev, to NodeID, opts RouteOptions) (*Route, error) {
+	s := g.shortestPaths(from, prev, opts)
+	if math.IsInf(s.dist[to], 1) {
 		return nil, fmt.Errorf("%w: node %d to node %d", ErrNoRoute, from, to)
 	}
-	return g.buildRoute(from, to, prev), nil
+	return g.routeFromNodes(s.path(to)), nil
 }
 
 // RouteToRunway returns a departure taxi route from a parking spot to a
@@ -95,7 +111,8 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	if len(holds) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrNoHoldShort, rwy.Name())
 	}
-	dist, prev := g.shortestPaths(from, opts)
+	s := g.shortestPaths(from, -1, opts)
+	dist := s.dist
 
 	type cand struct {
 		id         NodeID
@@ -143,7 +160,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 		}
 	}
 
-	r := g.buildRoute(from, best.id, prev)
+	r := g.routeFromNodes(s.path(best.id))
 	r.Runway, r.RunwayEnd = rwy.Name(), end.Name
 	return r, nil
 }
@@ -162,53 +179,179 @@ func usable(e Edge, opts RouteOptions) bool {
 	return (e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway) || opts.UseRunwayPaths
 }
 
-// shortestPaths runs Dijkstra from src. Parking nodes other than src are
-// dead ends: a route may end at a stand but never pass through one.
-func (g *Graph) shortestPaths(src NodeID, opts RouteOptions) (dist []float64, prev []NodeID) {
-	n := len(g.Nodes)
-	dist = make([]float64, n)
-	prev = make([]NodeID, n)
-	for i := range dist {
-		dist[i] = math.Inf(1)
-		prev[i] = -1
+// Turn costs (#307): pilots and ATC prefer routes with fewer and gentler
+// turns, even when they are a little longer. The route search adds these to
+// the length (Route.Length stays the real length).
+const (
+	// DefaultTurnPenalty is the extra cost, in meters, of a 90° turn at a
+	// taxiway junction, proportional to the angle above TurnFreeAngle.
+	DefaultTurnPenalty = 60.0
+	// DefaultTaxiwayChangePenalty is the extra cost of turning onto a
+	// differently named taxiway (going straight on where the name changes is
+	// free).
+	DefaultTaxiwayChangePenalty = 40.0
+	// TurnFreeAngle is the largest heading change at a junction that costs
+	// nothing (taxiways bend).
+	TurnFreeAngle = 15.0
+	// UTurnAngle is the smallest heading change counted as turning back;
+	// it costs UTurnPenalty, so a route only turns back when it must.
+	UTurnAngle   = 150.0
+	UTurnPenalty = 2000.0
+	// DefaultRunwayCrossingPenalty is the extra cost of each runway
+	// crossing: a crossing needs a clearance and blocks the runway.
+	DefaultRunwayCrossingPenalty = 1000.0
+)
+
+func (o RouteOptions) turnPenalty() float64 {
+	switch {
+	case o.TurnPenalty < 0:
+		return 0
+	case o.TurnPenalty == 0:
+		return DefaultTurnPenalty
 	}
-	dist[src] = 0
-	pq := &nodeQueue{{id: src}}
-	for pq.Len() > 0 {
-		cur := heap.Pop(pq).(queued)
-		if cur.dist > dist[cur.id] {
-			continue
-		}
-		if cur.id != src && g.Nodes[cur.id].Kind == NodeParking {
-			continue
-		}
-		for _, e := range g.Adj[cur.id] {
-			if !usable(e, opts) {
-				continue
-			}
-			if d := cur.dist + e.Length; d < dist[e.To] {
-				dist[e.To] = d
-				prev[e.To] = cur.id
-				heap.Push(pq, queued{id: e.To, dist: d})
-			}
-		}
-	}
-	return dist, prev
+	return o.TurnPenalty
 }
 
-// buildRoute walks prev back from to and assembles the Route.
-func (g *Graph) buildRoute(from, to NodeID, prev []NodeID) *Route {
+func (o RouteOptions) crossingPenalty() float64 {
+	switch {
+	case o.RunwayCrossingPenalty < 0:
+		return 0
+	case o.RunwayCrossingPenalty == 0:
+		return DefaultRunwayCrossingPenalty
+	}
+	return o.RunwayCrossingPenalty
+}
+
+func (o RouteOptions) changePenalty() float64 {
+	switch {
+	case o.TaxiwayChangePenalty < 0:
+		return 0
+	case o.TaxiwayChangePenalty == 0:
+		return DefaultTaxiwayChangePenalty
+	}
+	return o.TaxiwayChangePenalty
+}
+
+// turnCost is the extra cost of going on from node onto out, having arrived
+// from prev on taxiway inName.
+func (g *Graph) turnCost(prev, node NodeID, inName string, out Edge, opts RouteOptions) float64 {
+	a, b, c := g.Nodes[prev].Position, g.Nodes[node].Position, g.Nodes[out.To].Position
+	ax, az := g.local.xz(a)
+	bx, bz := g.local.xz(b)
+	cx, cz := g.local.xz(c)
+	h1, h2 := math.Atan2(bx-ax, bz-az), math.Atan2(cx-bx, cz-bz)
+	angle := math.Abs(math.Mod(math.Abs(h2-h1)*180/math.Pi+180, 360) - 180)
+	cost := 0.0
+	if angle >= UTurnAngle {
+		cost += UTurnPenalty
+	}
+	junction := len(g.Adj[node]) > 2
+	if junction && angle > TurnFreeAngle {
+		cost += opts.turnPenalty() * (angle - TurnFreeAngle) / 90
+	}
+	if junction && angle > TurnFreeAngle && inName != "" && out.Name != "" && inName != out.Name {
+		cost += opts.changePenalty()
+	}
+	return cost
+}
+
+// search is a turn-aware Dijkstra over (node, arrived-from) states.
+type search struct {
+	dist []float64 // cheapest cost per node
+	best []int     // state with that cost, -1 if unreached
+	node []NodeID  // per state
+	from []int     // per state: previous state, -1 at the source
+	name []string  // per state: taxiway arrived on (unnamed connectors inherit the previous name)
+	cost []float64 // per state
+}
+
+// path returns the node sequence from the source to to.
+func (s *search) path(to NodeID) []NodeID {
 	var nodes []NodeID
-	for n := to; n != -1; n = prev[n] {
-		nodes = append(nodes, n)
-		if n == from {
-			break
-		}
+	for st := s.best[to]; st != -1; st = s.from[st] {
+		nodes = append(nodes, s.node[st])
 	}
 	for i, j := 0, len(nodes)-1; i < j; i, j = i+1, j-1 {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	}
-	return g.routeFromNodes(nodes)
+	return nodes
+}
+
+// shortestPaths runs the search from src; srcPrev, if valid, is the node the
+// aircraft arrived at src from (its heading), otherwise any first direction
+// is free. Parking nodes other than src are dead ends: a route may end at a
+// stand but never pass through one.
+func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
+	n := len(g.Nodes)
+	s := &search{dist: make([]float64, n), best: make([]int, n)}
+	for i := range s.dist {
+		s.dist[i] = math.Inf(1)
+		s.best[i] = -1
+	}
+	index := map[[2]NodeID]int{}
+	crossed := map[[2]NodeID]int{} // runway crossings per edge
+	state := func(node, prev NodeID) int {
+		k := [2]NodeID{node, prev}
+		if id, ok := index[k]; ok {
+			return id
+		}
+		id := len(s.node)
+		index[k] = id
+		s.node, s.from, s.name, s.cost = append(s.node, node), append(s.from, -1), append(s.name, ""), append(s.cost, math.Inf(1))
+		return id
+	}
+	start := state(src, -1)
+	s.cost[start], s.dist[src], s.best[src] = 0, 0, start
+	if g.valid(srcPrev) {
+		s.name[start] = g.edge(srcPrev, src).Name
+	}
+	pq := &nodeQueue{{id: NodeID(start)}}
+	for pq.Len() > 0 {
+		cur := heap.Pop(pq).(queued)
+		st := int(cur.id)
+		if cur.dist > s.cost[st] {
+			continue
+		}
+		node := s.node[st]
+		if node != src && g.Nodes[node].Kind == NodeParking {
+			continue
+		}
+		prev := srcPrev
+		if s.from[st] != -1 {
+			prev = s.node[s.from[st]]
+		}
+		for _, e := range g.Adj[node] {
+			if !usable(e, opts) {
+				continue
+			}
+			d := cur.dist + e.Length
+			if pen := opts.crossingPenalty(); pen > 0 {
+				k := [2]NodeID{node, e.To}
+				c, ok := crossed[k]
+				if !ok {
+					c = g.crossings(node, e.To)
+					crossed[k] = c
+				}
+				d += pen * float64(c)
+			}
+			if g.valid(prev) {
+				d += g.turnCost(prev, node, s.name[st], e, opts)
+			}
+			next := state(e.To, node)
+			if d < s.cost[next] {
+				nm := e.Name
+				if nm == "" {
+					nm = s.name[st]
+				}
+				s.cost[next], s.from[next], s.name[next] = d, st, nm
+				if d < s.dist[e.To] {
+					s.dist[e.To], s.best[e.To] = d, next
+				}
+				heap.Push(pq, queued{id: NodeID(next), dist: d})
+			}
+		}
+	}
+	return s
 }
 
 // routeFromNodes assembles a Route along consecutive, adjacent nodes.
@@ -288,4 +431,28 @@ func (q *nodeQueue) Pop() any {
 	x := old[len(old)-1]
 	*q = old[:len(old)-1]
 	return x
+}
+
+// onRunway returns the index of the runway whose surface contains p, or -1.
+func (g *Graph) onRunway(p LatLon) int {
+	for _, r := range g.Layout.Runways {
+		along, off := g.runwayCoords(r, p)
+		if along >= 0 && along <= r.Length && off <= r.Width/2 {
+			return r.Index
+		}
+	}
+	return -1
+}
+
+// crossings counts the runways the edge a → b enters, other than one a is
+// already on (vacating or lining up is not a crossing).
+func (g *Graph) crossings(a, b NodeID) int {
+	on := g.onRunway(g.Nodes[a].Position)
+	n := 0
+	for _, name := range g.runwayCrossings([]LatLon{g.Nodes[a].Position, g.Nodes[b].Position}) {
+		if on == -1 || name != g.Layout.Runways[on].Name() {
+			n++
+		}
+	}
+	return n
 }

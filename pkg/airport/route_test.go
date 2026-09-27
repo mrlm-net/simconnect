@@ -271,3 +271,67 @@ func BenchmarkRouteToRunwayLKPR(b *testing.B) {
 		}
 	}
 }
+
+// junctionTurns sums the heading changes above TurnFreeAngle at junctions
+// along r, and reports the largest single turn.
+func junctionTurns(g *Graph, r *Route) (sum, largest float64) {
+	for i := 1; i+1 < len(r.Nodes); i++ {
+		a, b, c := r.Points[i-1], r.Points[i], r.Points[i+1]
+		ax, az := g.local.xz(a)
+		bx, bz := g.local.xz(b)
+		cx, cz := g.local.xz(c)
+		h1, h2 := math.Atan2(bx-ax, bz-az), math.Atan2(cx-bx, cz-bz)
+		angle := math.Abs(math.Mod(math.Abs(h2-h1)*180/math.Pi+180, 360) - 180)
+		largest = math.Max(largest, angle)
+		if len(g.Adj[r.Nodes[i]]) > 2 && angle > TurnFreeAngle {
+			sum += angle
+		}
+	}
+	return sum, largest
+}
+
+// TestRouteTurnCosts: with turn costs every LKPR departure turns no more
+// than the plain shortest route, is at most a little longer and never turns
+// back (#307).
+func TestRouteTurnCosts(t *testing.T) {
+	g := lkprGraph(t)
+	plain := RouteOptions{TurnPenalty: -1, TaxiwayChangePenalty: -1, RunwayCrossingPenalty: -1}
+	better, total := 0, 0
+	for _, p := range g.Layout.Parking {
+		if p.Index%7 != 0 { // a sample of stands keeps the test fast
+			continue
+		}
+		for _, end := range []string{"06", "24", "12", "30"} {
+			r, err := g.RouteToRunway(p.Index, end, RouteOptions{})
+			if err != nil {
+				continue
+			}
+			s, err := g.RouteToRunway(p.Index, end, plain)
+			if err != nil {
+				t.Fatalf("%s → %s: plain route failed: %v", p.Label(), end, err)
+			}
+			if r.Nodes[len(r.Nodes)-1] != s.Nodes[len(s.Nodes)-1] {
+				continue // different hold-short chosen; not comparable
+			}
+			total++
+			rt, big := junctionTurns(g, r)
+			st, _ := junctionTurns(g, s)
+			if rt > st+1e-6 {
+				t.Errorf("%s → %s: turns %.0f° with turn costs, %.0f° without", p.Label(), end, rt, st)
+			}
+			if r.Length > s.Length*1.5+50 {
+				t.Errorf("%s → %s: %.0f m with turn costs, shortest %.0f m", p.Label(), end, r.Length, s.Length)
+			}
+			if big >= UTurnAngle {
+				t.Errorf("%s → %s turns back (%.0f°)", p.Label(), end, big)
+			}
+			if rt < st-1e-6 {
+				better++
+			}
+		}
+	}
+	t.Logf("%d of %d routes turn less than the shortest route", better, total)
+	if total == 0 {
+		t.Fatal("no comparable routes")
+	}
+}
