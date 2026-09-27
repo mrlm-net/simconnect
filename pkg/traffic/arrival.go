@@ -34,13 +34,14 @@ const (
 	ArrivalVacating                         // off the runway, rolling clear to the vacate stop
 	ArrivalAwaitingTaxi                     // stopped clear of the runway: after-landing lights, waiting for taxi clearance
 	ArrivalTaxiing                          // taxiing to the stand
+	ArrivalHoldingShort                     // holding short of a runway crossing, waiting for ClearToCross
 	ArrivalParking                          // on the stand's PARKING path
 	ArrivalParked                           // stopped at the stand; the controller no longer moves it
 	ArrivalCancelled                        // Cancel was called
 	ArrivalFailed                           // an error ended the arrival
 )
 
-var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "vacating", "awaiting taxi", "taxiing", "parking", "parked", "cancelled", "failed"}
+var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "vacating", "awaiting taxi", "taxiing", "holding short", "parking", "parked", "cancelled", "failed"}
 
 func (s ArrivalState) String() string {
 	if int(s) < len(arrivalStateNames) {
@@ -92,6 +93,10 @@ type ArrivalRequest struct {
 	// on (a rolling clearance); 0 means DefaultRollThroughChance, negative
 	// never.
 	RollThroughChance float64
+	// HoldAtCrossings (injected arrivals) stops the aircraft short of every
+	// runway it crosses on the way to the stand until ClearToCross; without
+	// it crossings are cleared in advance.
+	HoldAtCrossings bool
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -112,6 +117,9 @@ type ArrivalEvent struct {
 	// meters, once on the ground.
 	Remaining float64
 	Taxiway   string
+	// HoldingShortOf names the runway the aircraft holds short of, waiting
+	// for ClearToCross.
+	HoldingShortOf string
 	// Lights is the light state the sim reports.
 	Lights Lights
 	Err    error
@@ -178,6 +186,8 @@ type ArrivalController struct {
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist    float64 // injected path distance of the vacate stop
 	rng           *rand.Rand
+	nextCross     int // next crossing zone ahead
+	crossClears   int // ClearToCross calls not used yet
 	takeoverTried bool
 	emittedAt     time.Time
 }
@@ -639,6 +649,7 @@ func (c *ArrivalController) startTaxi() {
 			c.setInjectedLights(LightsTaxi, "lights taxi") // never taxi without it
 		}
 		c.mover.ClearHold()
+		c.holdNextCrossing()
 		c.stillFrom, c.warned = c.now(), false
 		c.setState(ArrivalTaxiing, nil)
 		return

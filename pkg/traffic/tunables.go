@@ -224,3 +224,7 @@ const (
 	DefaultRollThroughChance = 0.3
 	RollThroughKts           = 0.5
 )
+
+// HoldShortStopMeters is how far before a hold-short line an injected
+// aircraft stops its nose gear, so the nose stays behind the line.
+const HoldShortStopMeters = 7.0

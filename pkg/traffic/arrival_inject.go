@@ -267,6 +267,13 @@ func (c *ArrivalController) onInjectedFrame() {
 			return
 		}
 	case ArrivalTaxiing:
+		// Stopped at the hold-short line of a crossing not cleared yet.
+		if c.req.HoldAtCrossings && c.nextCross < len(c.crossZones) && pose.Stopped &&
+			pose.Distance >= c.crossZones[c.nextCross].from-HoldShortStopMeters-1 {
+			c.last.HoldingShortOf = c.crossZones[c.nextCross].runway
+			c.setState(ArrivalHoldingShort, nil)
+			return
+		}
 		if c.last.Remaining <= standAxisMeters+StandSlowMeters {
 			c.setState(ArrivalParking, nil)
 			return
@@ -324,7 +331,10 @@ type holdOnPath struct {
 
 // crossZone is a runway crossing between two hold-short lines on the path,
 // in path distance.
-type crossZone struct{ from, to float64 }
+type crossZone struct {
+	from, to float64
+	runway   string
+}
 
 // crossingZones pairs consecutive hold-shorts of the same runway with the
 // route crossing that runway between them: the crossing lights come on at
@@ -343,7 +353,7 @@ func (c *ArrivalController) crossingZones(holds []holdOnPath) []crossZone {
 			crosses = g.RunwayAt(route[j], 0) == a.runway
 		}
 		if crosses {
-			zones = append(zones, crossZone{a.dist, b.dist})
+			zones = append(zones, crossZone{a.dist, b.dist, g.Layout.Runways[a.runway].Name()})
 		}
 	}
 	return zones
@@ -357,4 +367,46 @@ func (c *ArrivalController) dwell() time.Duration {
 		d = DefaultAfterLandingDwell
 	}
 	return time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1)))
+}
+
+// holdNextCrossing sets the hold short of the next runway crossing ahead,
+// skipping crossings already cleared with ClearToCross (HoldAtCrossings).
+func (c *ArrivalController) holdNextCrossing() {
+	if !c.req.HoldAtCrossings {
+		return
+	}
+	for ; c.nextCross < len(c.crossZones); c.nextCross++ {
+		if c.crossClears > 0 {
+			c.crossClears--
+			continue
+		}
+		c.mover.HoldAt(c.crossZones[c.nextCross].from - HoldShortStopMeters)
+		return
+	}
+}
+
+// crossingCleared releases the hold short of the next crossing and sets the
+// one after it.
+func (c *ArrivalController) crossingCleared() {
+	c.nextCross++
+	c.last.HoldingShortOf = ""
+	c.mover.ClearHold()
+	c.holdNextCrossing()
+}
+
+// ClearToCross clears an injected arrival holding short of a runway
+// crossing (HoldAtCrossings) to cross it. Given earlier, it clears the next
+// crossing ahead, so the aircraft does not stop there.
+func (c *ArrivalController) ClearToCross() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case c.state == ArrivalHoldingShort:
+		c.crossingCleared()
+		c.setState(ArrivalTaxiing, nil)
+	case c.mover != nil && c.state == ArrivalTaxiing && c.nextCross < len(c.crossZones):
+		c.crossingCleared() // the hold ahead is already set
+	default:
+		c.crossClears++
+	}
 }

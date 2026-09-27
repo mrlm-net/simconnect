@@ -558,3 +558,81 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 	}
 	t.Logf("slowest %.2f kt, %.1f s below 1 kt; taxi light %v after landing lights off", slowest, float64(crawl)/60, taxiOnAt.Sub(landingOffAt))
 }
+
+// TestArrivalControllerHoldAtCrossings: with HoldAtCrossings the aircraft
+// stops short of runway 12/30 without runway lights until ClearToCross; a
+// clearance given early means it does not stop (#309).
+func TestArrivalControllerHoldAtCrossings(t *testing.T) {
+	for _, early := range []bool{false, true} {
+		g := lkprGraph(t)
+		ec := &eventClient{}
+		inj := NewInjector(ec)
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA6",
+			RollThroughChance: -1, HoldAtCrossings: true, AfterLandingDwell: time.Second}); err != nil {
+			t.Fatal(err)
+		}
+		p := ctl.Plan()
+		mon := DefaultArrivalRequestBase + arrReqMonitor
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		thr := p.End.Threshold
+		at := func(m float64) airport.LatLon {
+			lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, p.End.Heading, m)
+			return airport.LatLon{Lat: lat, Lon: lon}
+		}
+		now := time.Now()
+		ctl.now = func() time.Time { return now }
+		ctl.Handle(arrivalPositionMsg(mon, 77, at(-300), 120, p.End.Heading, 140, false))
+		ctl.Handle(arrivalPositionMsg(mon, 77, at(700), 12, p.End.Heading, 125, true))
+		inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+		s, v := 700.0, 125*ktsToMS
+		frame := func() {
+			now = now.Add(time.Second / 60)
+			if !inj.Driven(77) {
+				v = math.Max(v-1.5/60, 0)
+				s += v / 60
+			}
+			ctl.Handle(arrivalPositionMsg(mon, 77, at(s), 12, p.End.Heading, v/ktsToMS, true))
+		}
+		held := false
+		for i := 0; i < 60*900 && ctl.State() != ArrivalParked; i++ {
+			frame()
+			if early && ctl.State() == ArrivalTaxiing && ctl.nextCross == 0 && len(ctl.crossZones) > 0 {
+				ctl.ClearToCross()
+			}
+			if ctl.State() == ArrivalHoldingShort && !held {
+				held = true
+				if ctl.last.HoldingShortOf != "12/30" {
+					t.Errorf("holding short of %q, want 12/30", ctl.last.HoldingShortOf)
+				}
+				if strings.Contains(strings.Join(ec.events, " "), "STROBES_SET=1 LANDING_LIGHTS_SET=1 STROBES_SET=0") {
+					t.Error("crossing lights before the crossing clearance")
+				}
+				if l := ctl.lights; l.Strobe || l.Landing || ctl.crossing {
+					t.Errorf("runway lights while holding short: %v", l)
+				}
+				stop := ctl.mover.Pose().Distance
+				if z := ctl.crossZones[0]; stop > z.from || stop < z.from-HoldShortStopMeters-2 {
+					t.Errorf("nose gear at %.1f m, hold line at %.1f m", stop, z.from)
+				}
+				for range 60 * 30 {
+					frame()
+				}
+				if ctl.State() != ArrivalHoldingShort || ctl.mover.Pose().Distance != stop {
+					t.Fatal("moved without a crossing clearance")
+				}
+				ctl.ClearToCross()
+			}
+		}
+		if ctl.State() != ArrivalParked {
+			t.Fatalf("early=%v: state %v, want parked", early, ctl.State())
+		}
+		if held == early {
+			t.Errorf("early=%v: held short %v", early, held)
+		}
+		if !slices.Contains(ec.events, "STROBES_SET=1") {
+			t.Errorf("early=%v: no crossing lights: %v", early, ec.events)
+		}
+	}
+}
