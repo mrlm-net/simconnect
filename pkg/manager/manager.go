@@ -325,6 +325,10 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 
+	// GetLastSentPacketID returns the send ID of the last request sent, to
+	// match SIMCONNECT_RECV_EXCEPTION.DwSendID.
+	GetLastSentPacketID() (uint32, error)
+
 	// SubscribeToSystemEvent subscribes to a SimConnect system event.
 	// WARNING: Do not use event IDs in the manager's reserved range (999,999,900 - 999,999,999).
 	// Use IDs from 1 to 999,999,899 for your own subscriptions.

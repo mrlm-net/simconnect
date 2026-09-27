@@ -32,3 +32,14 @@ func (e *Engine) SetSystemEventState(eventID uint32, state types.SIMCONNECT_STAT
 func SystemStateFloat64(recv *types.SIMCONNECT_RECV_SYSTEM_STATE) float64 {
 	return math.Float64frombits(binary.LittleEndian.Uint64(recv.FFloatBytes[:]))
 }
+
+// GetLastSentPacketID returns the send ID of the last request this client
+// sent to SimConnect. SimConnect reports errors asynchronously as
+// SIMCONNECT_RECV_EXCEPTION messages whose DwSendID is this value, so record
+// it right after a call to attribute a later exception to that call.
+//
+// Call it on the same goroutine immediately after the request: a request sent
+// from another goroutine in between would be reported instead.
+func (e *Engine) GetLastSentPacketID() (uint32, error) {
+	return e.api.GetLastSentPacketID()
+}

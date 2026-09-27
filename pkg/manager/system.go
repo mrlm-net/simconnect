@@ -43,3 +43,16 @@ func (m *Instance) UnsubscribeFromSystemEvent(eventID uint32) error {
 	}
 	return m.engine.UnsubscribeFromSystemEvent(eventID)
 }
+
+// GetLastSentPacketID returns the send ID of the last request sent to
+// SimConnect, to match SIMCONNECT_RECV_EXCEPTION.DwSendID. Call it right after
+// the request on the same goroutine.
+// Returns ErrNotConnected if not connected to the simulator.
+func (m *Instance) GetLastSentPacketID() (uint32, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.engine == nil {
+		return 0, ErrNotConnected
+	}
+	return m.engine.GetLastSentPacketID()
+}

@@ -30,6 +30,7 @@ type API interface {
 	Disconnect() error
 
 	GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error)
+	GetLastSentPacketID() (uint32, error)
 	RequestSystemState(requestID uint32, state types.SIMCONNECT_SYSTEM_STATE) error
 	SubscribeToSystemEvent(eventID uint32, eventName string) error
 	UnsubscribeFromSystemEvent(eventID uint32) error

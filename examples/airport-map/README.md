@@ -33,6 +33,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 - **PARKING path endpoints.** The SDK documents `TAXI_PATH.START/END` as "taxiway point *or parking space*" indexes. The side panel switches between reading a PARKING path's `END` as a parking index or a taxi point index, and compares how many resolve and how long the resulting segments are.
 - **Taxi points** by `TYPE`; hold-short types (2, 4, 5, 6) get their own layer.
 - **Parking spots** as circles of their `RADIUS`, labelled from `NAME`, `NUMBER` and `SUFFIX` (e.g. `C22`, `S22A`). Stands whose circles overlap are outlined in orange.
+- **Live traffic:** every aircraft within 20 km (sim AI, injected AI, other clients' aircraft), updated every second, with tail, height, speed, vertical speed, gear and AI state on the map and in a side-panel table.
 - **Departure route:** click a parking spot and pick a runway end to draw the route, its taxiway sequence, length, runway crossings and target hold-short.
 
 ## HTTP API
@@ -43,5 +44,6 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 | `GET /api/geojson?icao=XXXX` | The layout as a GeoJSON FeatureCollection |
 | `GET /api/route?icao=XXXX&from=<parking index>&to=<runway end>` | `airport.Route` from `RouteToRunway` (`&runwayPaths=1` allows taxiing on runway paths) |
 | `GET /api/aircraft` | User aircraft position, or `204` when unavailable |
+| `GET /api/traffic` | Every aircraft within 20 km of the user aircraft: title, tail, AI state, position, height above ground, ground speed, vertical speed, heading, on-ground, gear extension (0–1), `user` flag |
 
 The map page loads Leaflet from cdnjs and map tiles from OpenStreetMap and Esri, so the browser needs internet access.
