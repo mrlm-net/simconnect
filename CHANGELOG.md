@@ -9,6 +9,43 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+#### `pkg/airport` — airport ground layout and taxi routing (#268, #243)
+
+New package that turns SimConnect facility data into a typed model of an airport's ground layout and a routable taxi graph.
+
+| API | Description |
+|-----|-------------|
+| `Layout` | Runways (both ends, headings, thresholds), parking stands (`Label()` → `C22`, `S22A`), taxi points (`IsHoldShort()`), taxi paths, taxiway names; items keep their SimConnect index |
+| `BuildLayout(RawAirport)` | Decode raw facility records; positions resolved from `BIAS_X`/`BIAS_Z` |
+| `Loader` | Request an airport's facility data and assemble it from the application's message loop via `Handle(msg)` / `Expire(now)`; never reads the engine stream. Works with `engine.Client` and `manager` |
+| `Cache` | Layouts per ICAO, each graph built at most once |
+| `BuildGraph(*Layout)` | Taxi graph: TAXI/PATH taxiway edges, PARKING paths to stand nodes, RUNWAY edges flagged; hold-shorts associated with their runway |
+| `Graph.RouteToRunway` / `RouteToParking` / `Route` | Dijkstra routes with taxiway name sequence and runway crossings |
+| `Layout.GeoJSON()`, `Route.Feature()` | GeoJSON export |
+
+Facility data semantics verified against MSFS 2024 (LKPR): PARKING path `END` indexes the parking list; hold-short points are identified by `TAXI_POINT.TYPE`; `SUFFIX` distinguishes stands sharing name and number. See `docs/airport-layout.md`.
+
+#### `pkg/traffic` — departure taxi controller (#243)
+
+| API | Description |
+|-----|-------------|
+| `TaxiController` | Spawn an AI aircraft at a stand, push back, taxi to the hold-short, then line up and take off after `ClearForTakeoff()`; driven by `Handle(msg)`, progress on `Events()`, `Cancel()` removes the aircraft |
+| `TaxiWaypoints`, `LineUpWaypoints` | Build the AI waypoint chains from an `airport.Route` |
+| `tunables.go` | Taxi speeds, turn and hold-short distances, controller IDs |
+
+MSFS AI cannot steer while reversing, so pushback is a single straight reverse leg followed by a forward turn onto the taxiway. See `docs/traffic-taxi.md`.
+
+#### Examples
+
+- `examples/airport-map` — interactive Leaflet map of an airport's layout with raw facility values, departure route viewer and overlapping-stand highlighting; `-dump`/`-file` for offline use (#267, #278)
+- `examples/ai-taxi` — AI departure from LKPR C22 to runway 24 (#254)
+
+#### Docs
+
+- `docs/airport-layout.md` (new **Airport** section on the website) and `docs/traffic-taxi.md` (#279)
+
 ### Changed
 
 - **Breaking:** minimum Go version raised to 1.27.1 (root module and `simvar-cli`). Go 1.25 no longer receives security fixes (#265)

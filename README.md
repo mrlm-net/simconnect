@@ -21,6 +21,12 @@
 - Channel-based and callback-based subscriptions with message type filtering
 - 12 typed system event handlers — Pause, Sim, Crashed, CrashReset, Sound, View, FlightLoaded, AircraftLoaded, FlightPlanActivated, FlightPlanDeactivated, ObjectAdded, ObjectRemoved
 
+### Airport & Ground Traffic
+- Airport ground layout from facility data — runways with both ends, parking stands (`C22`, `S22A`), taxi points with hold-shorts, taxi paths and taxiway names
+- Taxi graph and routing — stand → runway hold-short with taxiway sequence and runway crossings; GeoJSON export
+- Departure taxi controller — spawn an AI aircraft at a stand, push back, taxi, hold short and take off
+- Library components never own the message stream: your loop feeds `Handle(msg)`, so they work alongside the Manager
+
 ### Utilities
 - Great-circle distance (haversine), altitude/distance/speed conversions, ICAO validation, WGS84 coordinate offsets
 - Tiered buffer pooling and pre-allocated handler buffers for zero-allocation dispatching
@@ -58,6 +64,7 @@ go run ./examples/<name>
 - **Manager Interface** — [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events)
 - **Data Operations** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [using-datasets](examples/using-datasets)
 - **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
+- **Airport & Taxi** — [airport-map](examples/airport-map) (interactive layout map and route viewer), [ai-taxi](examples/ai-taxi) (stand → runway departure)
 - **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
 - **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
 
@@ -94,6 +101,9 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - [Manager Usage](https://simconnect.mrlm.net/docs/usage-manager) — Lifecycle management, subscriptions, state handling
 - [Request ID Management](https://simconnect.mrlm.net/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
 - [Event Lifecycle](https://simconnect.mrlm.net/docs/events-lifecycle) — Event lifecycle reference
+- [Airport Layout & Taxi Routing](https://simconnect.mrlm.net/docs/airport-layout) — `pkg/airport` loading, layout model, facility data semantics, routing
+- [Traffic Guide](https://simconnect.mrlm.net/docs/traffic-guide) — AI aircraft with `pkg/traffic`
+- [Departure Taxi](https://simconnect.mrlm.net/docs/traffic-taxi) — Stand → runway taxi controller
 
 ## Packages
 
@@ -102,6 +112,8 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - **[`pkg/manager`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/manager)** — Connection manager with auto-reconnect and state tracking
 - **[`pkg/types`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/types)** — Typed data structures, enums, events
 - **[`pkg/datasets`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/datasets)** — Pre-built dataset definitions (aircraft, environment, facilities, objects, simulator, traffic)
+- **[`pkg/airport`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/airport)** — Airport ground layout, taxi graph, routing, GeoJSON
+- **[`pkg/traffic`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/traffic)** — AI aircraft fleet, waypoint helpers, departure taxi controller
 - **[`pkg/convert`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/convert)** — Unit conversions, ICAO validation, WGS84 coordinate offsets
 - **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Calculation helpers (haversine great-circle distance)
 - **[`pkg/registry`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/registry)** — Cross-platform typed SimVar metadata catalogue (104 entries, no build tags)
@@ -117,7 +129,7 @@ go get github.com/mrlm-net/simconnect
 
 | Requirement | Version |
 |-------------|---------|
-| Go | 1.25+ |
+| Go | 1.27.1+ |
 | Operating system | Windows |
 | Microsoft Flight Simulator | 2020 / 2024 |
 | SimConnect SDK | Bundled with MSFS |

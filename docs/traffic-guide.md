@@ -7,10 +7,10 @@ section: "traffic"
 
 # Traffic Guide
 
-> **MVP notice:** `pkg/traffic` reflects current knowledge of the SimConnect AI aircraft API.
-> Ground routing (taxiway graph, pathfinding) is not yet implemented — callers supply
-> explicit waypoint coordinates. The API surface will grow in later milestones as
-> simulator behaviour is better understood.
+> **Ground routing:** taxi routes between stands and runways come from
+> [pkg/airport](airport-layout.md), and [Departure Taxi](traffic-taxi.md) drives an AI
+> aircraft along them (pushback, taxi, hold short, take-off). This guide covers the
+> underlying `Fleet` and waypoint helpers.
 
 The `pkg/traffic` package provides a typed, thread-safe abstraction over SimConnect's AI
 aircraft creation and management API. It handles the async create→acknowledge lifecycle
