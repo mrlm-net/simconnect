@@ -130,7 +130,22 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── icao-data.go     #   ICAO prefix region/country map
 │   │   ├── position.go      #   Lat/lon conversion
 │   │   └── speed.go         #   Knots/km/h/m/s conversion
-│   └── calc/                # Calculation helpers
+│   ├── calc/                # Calculation helpers
+│   ├── airport/             # Airport ground layout, taxi graph, routing
+│   │   ├── layout.go        #   Layout, Runway(End), Parking, TaxiPoint, TaxiPath
+│   │   ├── build.go         #   RawAirport records → BuildLayout
+│   │   ├── loader.go        #   Loader: facility requests fed by Handle(msg)
+│   │   ├── cache.go         #   Per-ICAO layout + lazily built graph
+│   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
+│   │   ├── route.go         #   Dijkstra, RouteToRunway, RouteToParking
+│   │   ├── geojson.go       #   Layout/Route GeoJSON export
+│   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
+│   └── traffic/             # AI aircraft
+│       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
+│       ├── waypoints.go     #   Pushback/Taxi/Lineup/Climb waypoint helpers
+│       ├── taxi.go          #   TaxiController: stand → runway departure
+│       ├── taxiroute.go     #   Route → AI waypoints, line-up waypoints
+│       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
 │   ├── lifecycle-connection/ #  Connection with lifecycle hooks
@@ -158,6 +173,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── simconnect-facilities/ # Manager facility queries
 │   ├── simconnect-traffic/  #   Manager traffic operations
 │   ├── simconnect-benchmark/ #  Performance benchmarking
+│   ├── airport-map/         #   Leaflet map of airport layout + route viewer
+│   ├── ai-taxi/             #   AI departure taxi (stand → runway)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
@@ -166,7 +183,10 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── usage-client.md      #   Client usage guide
 │   ├── usage-manager.md     #   Manager usage guide
 │   ├── events-lifecycle.md  #   Event lifecycle reference
-│   └── manager-requests-ids.md # ID allocation reference
+│   ├── manager-requests-ids.md # ID allocation reference
+│   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
+│   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
+│   └── traffic-taxi.md      #   Departure taxi controller
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
     ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
