@@ -128,7 +128,7 @@ func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
 			exits = append(exits, RunwayExit{
 				RunwayNode: rn, Node: exitNode, Path: path, Along: math.Max(0, along),
 				Angle: angle, HighSpeed: angle <= HighSpeedExitAngle, Side: side,
-				Taxiway: g.edge(path[len(path)-2], exitNode).Name, HoldShort: g.holdShortBehind(exitNode, rwy.Index),
+				Taxiway: g.exitName(path), HoldShort: g.holdShortBehind(exitNode, rwy.Index),
 			})
 		}
 	}
@@ -245,7 +245,8 @@ func (g *Graph) holdShortBehind(from NodeID, rwy int) NodeID {
 			best, bestD = cur, dist[cur]
 		}
 		for _, e := range g.Adj[cur] {
-			if e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING {
+			// Stay off the runway: back on it the search reaches other exits.
+			if e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING || g.RunwayAt(g.Nodes[e.To].Position, exitSurfaceMargin) == rwy {
 				continue
 			}
 			d := dist[cur] + e.Length
@@ -254,6 +255,33 @@ func (g *Graph) holdShortBehind(from NodeID, rwy int) NodeID {
 			}
 			dist[e.To] = d
 			queue = append(queue, e.To)
+		}
+	}
+	return best
+}
+
+// exitName names an exit (or entry) path off a runway: the last named edge
+// on it, or, when the path is an unnamed connector, the named taxiway it
+// continues onto most straight (EDDM: an unnamed link joins A4 to 08L/26R).
+func (g *Graph) exitName(path []NodeID) string {
+	for i := len(path) - 1; i > 0; i-- {
+		if n := g.edge(path[i-1], path[i]).Name; n != "" {
+			return n
+		}
+	}
+	last, prev := path[len(path)-1], path[len(path)-2]
+	px, pz := g.local.xz(g.Nodes[prev].Position)
+	lx, lz := g.local.xz(g.Nodes[last].Position)
+	in := math.Atan2(lx-px, lz-pz)
+	best, bestTurn := "", math.Inf(1)
+	for _, e := range g.Adj[last] {
+		if e.Name == "" || e.To == prev {
+			continue
+		}
+		nx, nz := g.local.xz(g.Nodes[e.To].Position)
+		turn := math.Abs(math.Mod(math.Abs(math.Atan2(nx-lx, nz-lz)-in)*180/math.Pi+180, 360) - 180)
+		if turn < bestTurn {
+			best, bestTurn = e.Name, turn
 		}
 	}
 	return best
