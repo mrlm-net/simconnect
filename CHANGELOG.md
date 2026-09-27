@@ -16,6 +16,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - `GetLastSentPacketID` on `engine.Client` and `manager.Manager`: record the send ID of a request to attribute a later `SIMCONNECT_RECV_EXCEPTION` (`DwSendID`) to it. See "Attributing Exceptions" in `docs/usage-client.md` (#301). **Breaking** for custom implementations of `engine.Client`.
+- `pkg/traffic` injected ground movement: `GroundPath`, `GroundMover` (turn-radius speed planning, jerk-limited speed, nose-gear steering with a trailing main gear, holds) and `Injector` (takeover and freeze, `Place` on the ground at 60 Hz, `SetLights` with phase presets, `Release`). Lights stay as set, which MSFS AI does not allow. See `docs/traffic-motion.md` (#309)
+- `pkg/airport` turn-aware routing: costs for turns at junctions, taxiway changes, runway crossings and turning back (`RouteOptions.TurnPenalty`, `TaxiwayChangePenalty`, `RunwayCrossingPenalty`), so routes prefer fewer turns even when a little longer (#307)
+- `pkg/airport` runway entries: `RunwayEntries`, `RouteToRunwayEntry` ("24 at B"), `Route.Entry`, `ErrUnknownEntry` (#306)
+- `examples/airport-map`: departure and arrival route modes with an entry/exit picker (panel and map markers)
+
+### Changed
+
+- `airport.MaxExitAngle` is 90° (was 100°): exits and entries pointing back along the runway are left out.
 
 ## [0.7.0] - 2026-09-27
 

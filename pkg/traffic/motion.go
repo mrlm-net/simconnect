@@ -1,0 +1,338 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"math"
+	"sort"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+)
+
+// MotionProfile describes how an aircraft moves on the ground when this
+// package drives it by position injection instead of MSFS AI (#309).
+type MotionProfile struct {
+	// WheelbaseMeters is the distance from the nose gear to the main gear.
+	// The nose gear follows the path; the main gear trails it and cuts
+	// inside turns, so the heading eases into and out of every turn.
+	WheelbaseMeters float64
+	// RefAheadMeters is how far the sim's reference point (the position a
+	// SimConnect write sets) lies ahead of the main gear.
+	RefAheadMeters float64
+	// CruiseKts is the speed on straight taxiway sections.
+	CruiseKts float64
+	// MinTurnKts is the lowest speed a tight turn slows down to.
+	MinTurnKts float64
+	// LateralAccel (m/s²) sets turn speeds: v = √(LateralAccel · radius).
+	LateralAccel float64
+	// Accel and Decel (m/s²) are the largest planned speed changes; Jerk
+	// (m/s³) is how fast the acceleration itself may change, so every speed
+	// change starts and ends softly.
+	Accel, Decel, Jerk float64
+}
+
+// DefaultMotionProfile is tuned for an A320 family aircraft from live runs
+// at LKPR (#309).
+func DefaultMotionProfile() MotionProfile {
+	return MotionProfile{
+		WheelbaseMeters: 12.6,
+		RefAheadMeters:  1.0,
+		CruiseKts:       TaxiSpeedKts,
+		MinTurnKts:      3,
+		LateralAccel:    0.6,
+		Accel:           0.35,
+		Decel:           0.5,
+		Jerk:            0.2,
+	}
+}
+
+// GroundPath is a route for injected ground movement: the route points with
+// their corners rounded, and the allowed speed along it.
+type GroundPath struct {
+	pts   []airport.LatLon
+	cum   []float64 // metres from the start
+	limit []float64 // m/s
+}
+
+// NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
+// Chaikin passes) and plans the allowed speed along it for profile p: the
+// cruise speed, slower in turns, with braking planned ahead of each turn.
+// Stops are not part of the plan; a GroundMover brakes onto the end of the
+// path or a hold point by itself.
+func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error) {
+	pts := make([]airport.LatLon, 0, len(points))
+	for _, q := range points {
+		if len(pts) == 0 || localDist(pts[len(pts)-1], q) > 0.01 {
+			pts = append(pts, q)
+		}
+	}
+	if len(pts) < 2 {
+		return nil, ErrPathTooShort
+	}
+	pts = chaikin(cornerZones(pts, CornerMeters), GroundPathSmoothingPasses)
+	g := &GroundPath{pts: pts, cum: make([]float64, len(pts))}
+	for i := 1; i < len(pts); i++ {
+		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
+	}
+	g.limit = speedLimits(g.pts, g.cum, p)
+	return g, nil
+}
+
+// Length is the path length in metres.
+func (g *GroundPath) Length() float64 { return g.cum[len(g.cum)-1] }
+
+// Points returns the smoothed path.
+func (g *GroundPath) Points() []airport.LatLon { return g.pts }
+
+// segment returns the index i of the segment [i-1, i] containing distance s
+// and the fraction along it.
+func (g *GroundPath) segment(s float64) (int, float64) {
+	i := sort.SearchFloat64s(g.cum, s)
+	switch {
+	case i <= 0:
+		return 1, 0
+	case i >= len(g.cum):
+		return len(g.cum) - 1, 1
+	}
+	return i, (s - g.cum[i-1]) / math.Max(g.cum[i]-g.cum[i-1], 1e-9)
+}
+
+// PointAt returns the point at distance s along the path (clamped).
+func (g *GroundPath) PointAt(s float64) airport.LatLon {
+	i, f := g.segment(s)
+	a, b := g.pts[i-1], g.pts[i]
+	return airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}
+}
+
+// SpeedLimitKts returns the planned speed at distance s.
+func (g *GroundPath) SpeedLimitKts(s float64) float64 { return g.limitAt(s) / ktsToMS }
+
+func (g *GroundPath) limitAt(s float64) float64 {
+	i, f := g.segment(s)
+	return g.limit[i-1] + (g.limit[i]-g.limit[i-1])*f
+}
+
+// GroundPose is where a GroundMover puts the aircraft.
+type GroundPose struct {
+	// Position is the sim reference point; Heading is true degrees.
+	Position airport.LatLon
+	Heading  float64
+	// GroundSpeedKts is the current speed.
+	GroundSpeedKts float64
+	// Distance is how far the nose gear is along the path, in metres.
+	Distance float64
+	// Stopped is set while the aircraft stands still; Arrived once it has
+	// stopped at the end of the path.
+	Stopped, Arrived bool
+}
+
+// GroundMover moves an aircraft along a GroundPath: it accelerates to the
+// planned speed, slows into turns and brakes onto the end of the path or a
+// hold point, with limited jerk. The nose gear follows the path and the main
+// gear trails it at the wheelbase, which gives realistic turns. It is pure
+// computation; an Injector puts the poses into the sim.
+type GroundMover struct {
+	path    *GroundPath
+	p       MotionProfile
+	s, v, a float64
+	gear    airport.LatLon
+	hold    float64 // stop point for the nose; path length when none
+	pose    GroundPose
+
+	placed   bool
+	placedAt float64 // nose distance of the current pose
+}
+
+// NewGroundMover starts at rest with the main gear at the start of path and
+// the nose gear one wheelbase along it (or at the end of a shorter path).
+func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
+	m := &GroundMover{path: path, p: p, gear: path.PointAt(0), hold: path.Length()}
+	m.s = math.Min(p.WheelbaseMeters, path.Length())
+	m.place()
+	return m
+}
+
+// Path returns the path being followed.
+func (m *GroundMover) Path() *GroundPath { return m.path }
+
+// Pose returns the current pose without moving.
+func (m *GroundMover) Pose() GroundPose { return m.pose }
+
+// HoldAt makes the aircraft stop with its nose gear at distance d along the
+// path (a hold-short line, traffic ahead, a stop bar). It brakes as hard as
+// Decel·1.5 allows; a hold behind the aircraft stops it where it is.
+func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.path.Length())) }
+
+// ClearHold lets the aircraft continue to the end of the path.
+func (m *GroundMover) ClearHold() { m.hold = m.path.Length() }
+
+// Step advances the motion by dt seconds and returns the new pose. Long
+// steps are split so a stalled caller does not jump.
+func (m *GroundMover) Step(dt float64) GroundPose {
+	for dt > 0 {
+		h := math.Min(dt, 0.1)
+		m.step(h)
+		dt -= h
+	}
+	m.place()
+	return m.pose
+}
+
+func (m *GroundMover) step(dt float64) {
+	p := m.p
+	// Chase the planned speed here and a little ahead (the nose must already
+	// be slow entering a turn) and the braking curve to the stop point,
+	// reaching it in about SpeedResponseSeconds.
+	rem := m.hold - m.s
+	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+TurnLookaheadMeters))
+	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
+	want := (target - m.v) / SpeedResponseSeconds
+	if rem > 0.05 && rem < StopApproachMeters {
+		want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+	}
+	want = math.Max(-1.5*p.Decel, math.Min(p.Accel, want))
+	if want > m.a {
+		m.a = math.Min(want, m.a+p.Jerk*dt)
+	} else {
+		m.a = math.Max(want, m.a-p.Jerk*dt)
+	}
+	m.v = math.Max(0, m.v+m.a*dt)
+	m.s = math.Min(m.s+m.v*dt, m.hold)
+	if m.hold-m.s < 0.3 && m.v < 0.1 || m.s >= m.hold {
+		m.s, m.v, m.a = math.Max(m.s, math.Min(m.hold, m.s+0.3)), 0, 0
+	}
+}
+
+// place moves the main gear after the nose gear like a towed trailer and
+// derives the pose. The geometry is done in local metres around the nose:
+// repeated bearing/displacement round trips are not exact and drift the gear
+// sideways every frame (seen live as sliding).
+func (m *GroundMover) place() {
+	if m.placed && m.s == m.placedAt {
+		m.pose.GroundSpeedKts, m.pose.Stopped = m.v/ktsToMS, m.v == 0
+		m.pose.Arrived = m.v == 0 && m.s >= m.path.Length()-0.05
+		return // not moved: recomputing would only add rounding noise
+	}
+	m.placed, m.placedAt = true, m.s
+	nose := m.path.PointAt(m.s)
+	kx := metersPerDegree * math.Cos(nose.Lat*math.Pi/180)
+	dx, dy := (m.gear.Lon-nose.Lon)*kx, (m.gear.Lat-nose.Lat)*metersPerDegree // nose → gear
+	wb := m.p.WheelbaseMeters
+	if d := math.Hypot(dx, dy); d > 1e-6 && wb > 0 {
+		dx, dy = dx/d*wb, dy/d*wb
+		m.gear = airport.LatLon{Lat: nose.Lat + dy/metersPerDegree, Lon: nose.Lon + dx/kx}
+	}
+	f := 1.0
+	if wb > 0 {
+		f = 1 - m.p.RefAheadMeters/wb
+	}
+	hdg := m.pose.Heading
+	if dx != 0 || dy != 0 {
+		hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+	}
+	m.pose = GroundPose{
+		Position:       airport.LatLon{Lat: nose.Lat + dy*f/metersPerDegree, Lon: nose.Lon + dx*f/kx},
+		Heading:        hdg,
+		GroundSpeedKts: m.v / ktsToMS,
+		Distance:       m.s,
+		Stopped:        m.v == 0,
+		Arrived:        m.v == 0 && m.s >= m.path.Length()-0.05,
+	}
+}
+
+const (
+	metersPerDegree = 111319.49
+	ktsToMS         = 0.514444
+)
+
+// localDist is the flat-earth distance in metres; exact enough on an airport.
+func localDist(a, b airport.LatLon) float64 {
+	kx := metersPerDegree * math.Cos((a.Lat+b.Lat)/2*math.Pi/180)
+	return math.Hypot((b.Lon-a.Lon)*kx, (b.Lat-a.Lat)*metersPerDegree)
+}
+
+// cornerZones adds a point d metres (at most half the segment) either side
+// of every interior point, so corner rounding stays within d of the corner
+// instead of scaling with the segment length (a long straight would
+// otherwise turn a taxiway corner into a 100 m arc across the grass).
+func cornerZones(p []airport.LatLon, d float64) []airport.LatLon {
+	if len(p) < 3 {
+		return p
+	}
+	lerp := func(a, b airport.LatLon, f float64) airport.LatLon {
+		return airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}
+	}
+	out := []airport.LatLon{p[0]}
+	for i := 0; i+1 < len(p); i++ {
+		a, b := p[i], p[i+1]
+		l := localDist(a, b)
+		c := math.Min(d, l/2) / l
+		if i > 0 && c < 0.5 {
+			out = append(out, lerp(a, b, c))
+		}
+		if i+2 < len(p) && c < 0.5 {
+			out = append(out, lerp(a, b, 1-c))
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+// chaikin rounds the corners of a polyline: each pass replaces every segment
+// by its ¼ and ¾ points, keeping the end points.
+func chaikin(p []airport.LatLon, passes int) []airport.LatLon {
+	for ; passes > 0 && len(p) > 2; passes-- {
+		out := make([]airport.LatLon, 0, 2*len(p))
+		out = append(out, p[0])
+		for i := 0; i+1 < len(p); i++ {
+			a, b := p[i], p[i+1]
+			out = append(out,
+				airport.LatLon{Lat: a.Lat*0.75 + b.Lat*0.25, Lon: a.Lon*0.75 + b.Lon*0.25},
+				airport.LatLon{Lat: a.Lat*0.25 + b.Lat*0.75, Lon: a.Lon*0.25 + b.Lon*0.75})
+		}
+		p = append(out, p[len(p)-1])
+	}
+	return p
+}
+
+// speedLimits plans the allowed speed (m/s) at each point: cruise, slower
+// where the path curves, with Decel braking planned ahead of each turn.
+func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile) []float64 {
+	n := len(pts)
+	cruise, minTurn := p.CruiseKts*ktsToMS, math.Min(p.MinTurnKts, p.CruiseKts)*ktsToMS
+	v := make([]float64, n)
+	for i := range v {
+		v[i] = cruise
+	}
+	// Turn radius from the heading change over ±TurnWindowMeters.
+	j0, j1 := 0, 0
+	for i := 0; i < n; i++ {
+		for j0 < i && cum[i]-cum[j0] > TurnWindowMeters {
+			j0++
+		}
+		for j1 < n-1 && cum[j1]-cum[i] < TurnWindowMeters {
+			j1++
+		}
+		if j0 == i || j1 == i {
+			continue
+		}
+		d := math.Abs(headingDiff(localBearing(pts[j0], pts[i]), localBearing(pts[i], pts[j1]))) * math.Pi / 180
+		if d > 0.01 {
+			r := (cum[j1] - cum[j0]) / d
+			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(p.LateralAccel*r)))
+		}
+	}
+	for i := n - 2; i >= 0; i-- {
+		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*p.Decel*(cum[i+1]-cum[i])))
+	}
+	return v
+}
+
+func localBearing(a, b airport.LatLon) float64 {
+	kx := metersPerDegree * math.Cos((a.Lat+b.Lat)/2*math.Pi/180)
+	return math.Mod(math.Atan2((b.Lon-a.Lon)*kx, (b.Lat-a.Lat)*metersPerDegree)*180/math.Pi+360, 360)
+}
+
+// headingDiff is the signed heading change from a to b, -180–180°.
+func headingDiff(a, b float64) float64 { return math.Mod(b-a+540, 360) - 180 }

@@ -133,12 +133,39 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 | `Route(from, to, opts)` | Shortest route between any two nodes |
 | `RouteToRunway(parking, runwayEnd, opts)` | Stand → hold-short of a runway end (departure) |
 | `RouteToParking(from, parking, opts)` | Any node → stand (taxi-in) |
+| `RouteToRunwayEntry(parking, runwayEnd, entry, opts)` | Stand → hold-short of a runway end at a named entry: "24 at B" (empty entry = `RouteToRunway`) |
+| `RouteFromRunway(exit, parking, opts)` | Runway exit → stand, continuing in the exit's direction |
 
 `RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 
 A route never passes *through* a parking stand, and crossing a runway on a taxiway is allowed but reported in `RunwayCrossings`. Errors: `ErrNoTaxiNetwork`, `ErrUnknownParking`, `ErrAmbiguousParking`, `ErrUnknownRunway`, `ErrNoHoldShort`, `ErrNoRoute` (e.g. vehicle-only stands).
 
-On LKPR, `BuildGraph` takes about 0.2 ms and `RouteToRunway` about 0.2 ms.
+### Route cost: fewer turns, no crossings
+
+Routes are not simply the shortest. Pilots and ATC prefer fewer and gentler turns even when a route is a little longer, so the search tracks which way the aircraft arrives at every node and adds a cost to the length:
+
+| Cost | Default | `RouteOptions` field |
+|---|---|---|
+| Turn at a taxiway junction, per 90° above `TurnFreeAngle` (15°) | 60 m | `TurnPenalty` |
+| Turning onto a differently named taxiway (unnamed connectors inherit the name; going straight on where the name changes is free) | 40 m | `TaxiwayChangePenalty` |
+| Each runway crossing | 1000 m | `RunwayCrossingPenalty` |
+| Turning back (≥ 150°) | 2000 m | — |
+
+Zero selects the default and a negative value disables a cost. `Route.Length` is always the real length.
+
+### Runway entries and exits
+
+`RunwayEntries("24")` lists the taxiways onto a runway end for departures, nearest the threshold first, with the runway remaining ahead of each (`Remaining`) and the turn onto the runway (`Angle`). `RunwayExits("24")` lists the exits for landings on it. Both leave out taxiways that meet the runway at more than `MaxExitAngle` (90°): they point back along the runway. An entry onto 24 is an exit for landings on 06 driven the other way.
+
+```go
+entries, _ := g.RunwayEntries("24") // A (3510 m ahead), B (2406 m), L (1549 m) at LKPR
+route, err := g.RouteToRunwayEntry(idx, "24", "B", airport.RouteOptions{})
+// 954 m via [H1 H JO G B]; route.Entry == "B"
+```
+
+An unknown entry name returns `ErrUnknownEntry`.
+
+On LKPR, `BuildGraph` takes about 0.2 ms and a route a few milliseconds.
 
 ## GeoJSON
 
@@ -152,6 +179,6 @@ Coordinates are `[longitude, latitude]` per RFC 7946. Every feature has a `kind`
 
 ## Seeing it on a map
 
-[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a departure route viewer and overlapping-stand highlighting. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator.
+[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator.
 
 To drive an AI aircraft along a route, see [Departure Taxi](traffic-taxi.md).

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -127,7 +126,7 @@ type TaxiController struct {
 	state     TaxiState
 	objectID  uint32
 	last      TaxiEvent
-	cum       []float64 // cumulative route distance at each route point
+	track     *routeTracker
 	stillFrom time.Time
 	warned    bool
 }
@@ -257,11 +256,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 
 	c.req, c.route = req, route
-	c.cum = make([]float64, len(route.Points))
-	for i := 1; i < len(route.Points); i++ {
-		a, b := route.Points[i-1], route.Points[i]
-		c.cum[i] = c.cum[i-1] + calc.HaversineMeters(a.Lat, a.Lon, b.Lat, b.Lon)
-	}
+	c.track = newRouteTracker(route)
 	c.setState(TaxiSpawning, nil)
 	return nil
 }
@@ -327,9 +322,9 @@ func (c *TaxiController) onSpawned(objectID uint32) {
 func (c *TaxiController) onPosition(m taxiMonitor) {
 	pos := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pos, m.Heading, m.GroundKts, m.OnGround != 0
-	seg, along := c.project(pos)
-	c.last.Remaining = math.Max(0, c.cum[len(c.cum)-1]-along)
-	c.last.Taxiway = c.taxiwayAt(seg)
+	seg, along := c.track.advance(pos)
+	c.last.Remaining = math.Max(0, c.track.total()-along)
+	c.last.Taxiway = c.track.taxiwayAt(seg)
 
 	if m.GroundKts >= StoppedKts {
 		c.stillFrom, c.warned = c.now(), false
@@ -337,7 +332,7 @@ func (c *TaxiController) onPosition(m taxiMonitor) {
 	switch c.state {
 	case TaxiPushback:
 		// Pushback ends once the aircraft moves forward past the junction.
-		if seg >= 1 && along > c.cum[1] && m.GroundKts >= StoppedKts {
+		if seg >= 1 && along > c.track.cum[1] && m.GroundKts >= StoppedKts {
 			c.setState(TaxiTaxiing, nil)
 			return
 		}
@@ -434,40 +429,6 @@ func (c *TaxiController) emit(err error, important bool) {
 		default:
 		}
 	}
-}
-
-// project finds the route segment nearest to p and the distance along the
-// route to p's projection on it.
-func (c *TaxiController) project(p airport.LatLon) (seg int, along float64) {
-	pts := c.route.Points
-	best := math.Inf(1)
-	for i := 1; i < len(pts); i++ {
-		a, b := pts[i-1], pts[i]
-		ax, az := meters(p, a)
-		bx, bz := meters(p, b)
-		dx, dz := bx-ax, bz-az
-		l2 := dx*dx + dz*dz
-		t := 0.0
-		if l2 > 0 {
-			t = math.Max(0, math.Min(1, -(ax*dx+az*dz)/l2))
-		}
-		cx, cz := ax+dx*t, az+dz*t
-		if d := cx*cx + cz*cz; d < best {
-			best, seg, along = d, i-1, c.cum[i-1]+t*(c.cum[i]-c.cum[i-1])
-		}
-	}
-	return seg, along
-}
-
-// taxiwayAt returns the name of route segment seg, or the nearest named
-// segment before it.
-func (c *TaxiController) taxiwayAt(seg int) string {
-	for i := min(seg, len(c.route.Edges)-1); i >= 0; i-- {
-		if n := c.route.Edges[i].Name; n != "" {
-			return n
-		}
-	}
-	return ""
 }
 
 // meters returns q's offset east and north of origin in meters.

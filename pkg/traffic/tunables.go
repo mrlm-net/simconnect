@@ -64,3 +64,123 @@ const (
 	taxiDefinitionCount              = 2
 	taxiRequestCount                 = 4
 )
+
+// Arrival profile. Measured in MSFS 2024 (#289, #301): an FSLTL A320 with its
+// gear down touched down 580–650 m past the threshold at about 130 kt and
+// slowed below 35 kt within about 1,500 m.
+const (
+	// DefaultSpawnNm is the distance out on final where arrivals spawn.
+	DefaultSpawnNm = 5.0
+	// GlidePathFtPerNm is a 3° glide path: 318 ft per nautical mile.
+	GlidePathFtPerNm = 318.0
+	// ThresholdCrossingFt is the height over the threshold.
+	ThresholdCrossingFt = 50.0
+	// ApproachSpeedKts is requested on final. MSFS AI ignores airborne speed
+	// requests (it flew about 164 kt); kept for when it does not.
+	ApproachSpeedKts = 135.0
+	// TouchdownMeters and TouchdownSpeedKts place the touchdown waypoint.
+	TouchdownMeters   = 300.0
+	TouchdownSpeedKts = 125.0
+	// RolloutDecel is the planned braking deceleration in m/s² (autobrake low
+	// to medium), and RolloutSpacingMeters the spacing of rollout waypoints.
+	RolloutDecel         = 1.5
+	RolloutSpacingMeters = 250.0
+	// ExitHighSpeedKts and ExitSpeedKts are the speeds for turning off onto a
+	// high-speed (≤ 45°) or a standard exit.
+	ExitHighSpeedKts = 25.0
+	ExitSpeedKts     = 10.0
+	// StandApproachSpeedKts is the speed along the stand's PARKING path, and
+	// StandOvershootMeters how far past the stand the last waypoint lies:
+	// MSFS AI stops short of its last ground waypoint (46 m in #289).
+	StandApproachSpeedKts = 3.0
+	StandOvershootMeters  = 10.0
+	// StandTaxiSpeedKts is the speed on the PARKING path until
+	// StandSlowMeters before the stand; StandStopMeters is how close to the
+	// stand the controller stops the aircraft with a single waypoint at its
+	// current position (the AI otherwise rolls on towards the overshoot point).
+	StandTaxiSpeedKts = 5.0
+	StandSlowMeters   = 30.0
+	StandStopMeters   = 2.0
+	// ParkedMeters is how close to the stand a stopped aircraft counts as parked.
+	ParkedMeters = 15.0
+)
+
+// Default SimConnect IDs used by an ArrivalController: 3 definition IDs and
+// 4 request IDs from these bases.
+const (
+	DefaultArrivalDefinitionBase uint32 = 7500
+	DefaultArrivalRequestBase    uint32 = 7600
+)
+
+// Exit shaping, tuned after the first live arrivals (#295): closely spaced
+// exit waypoints made the AI overshoot one and loop back.
+const (
+	// MinWaypointSpacingMeters drops taxi-in route points closer than this to
+	// the previous waypoint (except the stand approach).
+	MinWaypointSpacingMeters = 30.0
+	// RunwayClearMeters is how far beyond the runway half-width an aircraft
+	// must be to count as off the runway.
+	RunwayClearMeters = 10.0
+)
+
+// DefaultNoseOffsetMeters is the distance from an aircraft's reference point
+// to its nose, used to stop on a stand with the nose at the front of the
+// parking circle. About right for an A320 family aircraft.
+const DefaultNoseOffsetMeters = 17.0
+
+// Stop detection: MSFS AI keeps reporting its last commanded ground speed
+// after it has stopped (#295), so "stopped" means the position moved less
+// than StationaryMeters over StationarySeconds.
+const (
+	StationaryMeters  = 1.0 // MSFS AI creeps at ~0.4 kt towards its last waypoint
+	StationarySeconds = 3
+)
+
+// After landing: the aircraft rolls clear of the runway, stops, switches
+// to taxi lights and waits for taxi clearance (#295).
+const (
+	// VacateOffsetMeters is how far from the runway centreline the vacate
+	// stop lies when no hold-short is on the route (runway holding positions
+	// are typically 60–90 m from the centreline).
+	VacateOffsetMeters = 100.0
+	// VacateStopKts is the speed over the last meters before the vacate stop.
+	VacateStopKts = 5.0
+	// VacateArriveMeters is how close to the vacate stop (along the route) a
+	// stopped aircraft counts as arrived there.
+	VacateArriveMeters = 40.0
+	// DefaultAfterLandingDwell is how long the aircraft waits clear of the
+	// runway before taxiing on when HoldForClearance is off.
+	DefaultAfterLandingDwell = 15 * time.Second
+)
+
+// Injected ground movement (#309), see MotionProfile for the per-aircraft
+// values.
+const (
+	// GroundPathSmoothingPasses rounds route corners (Chaikin passes).
+	GroundPathSmoothingPasses = 6
+	// TurnWindowMeters is the distance either side of a point over which the
+	// turn radius is measured.
+	TurnWindowMeters = 8.0
+	// TurnLookaheadMeters: the aircraft is already at a turn's speed this far
+	// before it.
+	TurnLookaheadMeters = 10.0
+	// SpeedResponseSeconds is how quickly the speed chases the planned speed.
+	SpeedResponseSeconds = 2.0
+	// StopApproachMeters is the distance before a stop point from which the
+	// mover brakes exactly onto it.
+	StopApproachMeters = 40.0
+	// CornerMeters bounds how far from a route corner the rounding starts.
+	CornerMeters = 25.0
+	// InjectHz is the recommended rate for Injector.Place; 60 Hz looked
+	// smooth live, 30 Hz is acceptable.
+	InjectHz = 60
+)
+
+// Default SimConnect IDs used by an Injector: 2 definition IDs, 2 request
+// IDs per aircraft (up to injectMaxAircraft) and injectEventCount event IDs.
+const (
+	DefaultInjectDefinitionBase uint32 = 7700
+	DefaultInjectRequestBase    uint32 = 7800
+	DefaultInjectEventBase      uint32 = 7900
+	injectMaxAircraft                  = 50
+)
