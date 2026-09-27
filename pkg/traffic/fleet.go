@@ -53,6 +53,13 @@ func (f *Fleet) SetClient(client engine.Client) {
 	f.members = make(map[uint32]*Aircraft)
 }
 
+// clientOrNil returns the current engine client, or nil when disconnected.
+func (f *Fleet) clientOrNil() engine.Client {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.client
+}
+
 // ── Creation requests (async) ─────────────────────────────────────────────
 
 // RequestParked queues a parked ATC aircraft creation.
