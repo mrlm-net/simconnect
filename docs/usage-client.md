@@ -287,6 +287,29 @@ SimConnect returns null-terminated strings. Use `ParseNullTerminatedString` to c
 title := engine.ParseNullTerminatedString(data.SzTitle[:])
 ```
 
+### Attributing Exceptions
+
+SimConnect reports failed requests asynchronously as `SIMCONNECT_RECV_ID_EXCEPTION` messages that carry only the **send ID** of the packet that failed (`DwSendID`) and the index of the bad parameter (`DwIndex`). Record the send ID of each request with `GetLastSentPacketID` right after making it, then look it up when an exception arrives:
+
+```go
+sent := map[uint32]string{}
+track := func(desc string, err error) {
+    if id, idErr := client.GetLastSentPacketID(); idErr == nil {
+        sent[id] = desc
+    }
+}
+
+track("GEAR_DOWN to AI", client.TransmitClientEvent(objectID, evtGearDown, 0,
+    types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY))
+
+// in the message loop
+case types.SIMCONNECT_RECV_ID_EXCEPTION:
+    e := msg.AsException()
+    log.Printf("exception %d in %q (parameter %d)", e.DwException, sent[uint32(e.DwSendID)], e.DwIndex)
+```
+
+Call `GetLastSentPacketID` on the same goroutine immediately after the request; a request sent from another goroutine in between would be reported instead. The method is also available on `manager.Manager`.
+
 ## System State
 
 ### RequestSystemState
