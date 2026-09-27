@@ -86,6 +86,8 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon) error
 	if err != nil {
 		return err
 	}
+	// Enter the stand slowly: StandTaxiSpeedKts over the last StandSlowMeters.
+	path.LimitEnd(StandSlowMeters, StandTaxiSpeedKts)
 	c.mover = NewGroundMoverFrom(path, prof, m.Heading, m.GroundKts)
 	// Hold at the vacate stop, or as soon as comfortably possible when the
 	// aircraft is already past it.

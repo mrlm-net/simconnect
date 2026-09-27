@@ -53,6 +53,7 @@ type GroundPath struct {
 	pts   []airport.LatLon
 	cum   []float64 // metres from the start
 	limit []float64 // m/s
+	decel float64   // planned braking, m/s²
 }
 
 // NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
@@ -76,7 +77,22 @@ func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
 	}
 	g.limit = speedLimits(g.pts, g.cum, p)
+	g.decel = p.Decel
 	return g, nil
+}
+
+// LimitEnd caps the speed over the last meters of the path at kts (a stand
+// entry), with braking planned down to it.
+func (g *GroundPath) LimitEnd(meters, kts float64) {
+	vmax := kts * ktsToMS
+	n := len(g.limit)
+	for i := n - 1; i >= 0 && g.cum[n-1]-g.cum[i] <= meters; i-- {
+		g.limit[i] = math.Min(g.limit[i], vmax)
+	}
+	decel := g.decel
+	for i := n - 2; i >= 0; i-- {
+		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decel*(g.cum[i+1]-g.cum[i])))
+	}
 }
 
 // Length is the path length in metres.

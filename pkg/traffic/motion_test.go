@@ -267,3 +267,18 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+func TestGroundPathLimitEnd(t *testing.T) {
+	prof := DefaultMotionProfile()
+	path, _ := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 400)}, prof)
+	path.LimitEnd(30, 5)
+	poses := drive(NewGroundMover(path, prof), 300)
+	for _, p := range poses {
+		if path.Length()-p.Distance < 30 && p.GroundSpeedKts > 5.3 { // the jerk limit lets speed trail the plan slightly
+			t.Fatalf("%.1f kt %.1f m before the end, want at most 5", p.GroundSpeedKts, path.Length()-p.Distance)
+		}
+	}
+	if !poses[len(poses)-1].Arrived {
+		t.Fatal("did not arrive")
+	}
+}
