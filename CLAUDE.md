@@ -189,7 +189,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── manager-requests-ids.md # ID allocation reference
 │   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
-│   └── traffic-taxi.md      #   Departure taxi controller
+│   ├── traffic-taxi.md      #   Departure taxi controller
+│   └── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
     ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
