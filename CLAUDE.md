@@ -137,7 +137,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── loader.go        #   Loader: facility requests fed by Handle(msg)
 │   │   ├── cache.go         #   Per-ICAO layout + lazily built graph
 │   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
-│   │   ├── route.go         #   Dijkstra, RouteToRunway, RouteToParking
+│   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
+│   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   └── traffic/             # AI aircraft
@@ -145,6 +146,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── waypoints.go     #   Pushback/Taxi/Lineup/Climb waypoint helpers
 │       ├── taxi.go          #   TaxiController: stand → runway departure
 │       ├── taxiroute.go     #   Route → AI waypoints, line-up waypoints
+│       ├── motion.go        #   GroundPath/GroundMover: injected ground motion
+│       ├── inject.go        #   Injector: takeover, Place, SetLights, Release
 │       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
