@@ -131,9 +131,19 @@ func TestParkingLabels(t *testing.T) {
 		p.Type != types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY || !p.IsGate() {
 		t.Errorf("C22 = %+v, want index 18, GATE_C, GATE_HEAVY", p)
 	}
-	// Two separate stands share NAME=S_PARKING, NUMBER=22 at LKPR.
-	if n := len(l.ParkingByLabel("S22")); n != 2 {
-		t.Errorf("ParkingByLabel(S22) = %d spots, want 2", n)
+	// Two stands share NAME=S_PARKING, NUMBER=22 at LKPR; SUFFIX tells them apart.
+	s22, s22a := l.ParkingByLabel("S22"), l.ParkingByLabel("s22a")
+	if len(s22) != 1 || len(s22a) != 1 || s22[0].Index != 66 || s22a[0].Index != 65 {
+		t.Errorf("S22 = %+v, S22A = %+v; want parking 66 and 65", s22, s22a)
+	}
+	labels := map[string]int{}
+	for _, p := range l.Parking {
+		labels[p.Label()]++
+	}
+	for label, n := range labels {
+		if n > 1 {
+			t.Errorf("label %q used by %d stands", label, n)
+		}
 	}
 }
 
