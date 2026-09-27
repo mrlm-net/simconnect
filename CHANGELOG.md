@@ -9,6 +9,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `AddToDataDefinition` now passes `NULL` to SimConnect when `unitsName` is empty, so SimConnect uses the variable's default unit instead of raising `SIMCONNECT_EXCEPTION_UNRECOGNIZED_ID` (#263, thanks @aut0mater)
+- `pkg/registry`: `TRANSPONDER CODE` is now `Indexed` and accepts the `bcd16` unit (#263)
+- `pkg/registry`: `Validate` accepts an empty unit for any known SimVar, matching the SimConnect default-unit behaviour (#263)
+- `internal/simconnect`: fix `unsafe.Pointer` lifetime issue in `stringToBytePtr` (#260)
+
+### Security
+
+- Bump Go to 1.25.8 (root module and `simvar-cli`) to fix GO-2026-4601 (`net/url` IPv6 parsing)
+- Bump Go to 1.25.14 to fix standard-library vulnerabilities in `crypto/tls`, `crypto/x509`, `encoding/asn1`, `net`, `net/http` and `net/textproto` reported by `govulncheck` (GO-2026-4870, GO-2026-4946, GO-2026-4947, GO-2026-4971, GO-2026-5037 and others)
+- Add `govulncheck` CI workflow (#259)
+
 ## [0.6.0] - 2026-03-14
 
 ### Added

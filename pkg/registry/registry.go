@@ -116,10 +116,14 @@ func All() []SimVarMeta {
 //
 // Both name and unit comparisons are case-insensitive.
 // A :N index suffix is stripped from name before lookup.
+// An empty unit is always valid: it requests the SimConnect default unit.
 func Validate(name, unit string) error {
 	sv, ok := Lookup(name)
 	if !ok {
 		return errors.New("registry: unknown SimVar: " + name)
+	}
+	if unit == "" {
+		return nil
 	}
 	u := strings.ToLower(unit)
 	for _, valid := range sv.Units {

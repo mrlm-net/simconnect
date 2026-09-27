@@ -162,6 +162,30 @@ func TestValidateIndexedVar(t *testing.T) {
 	}
 }
 
+// TestValidateEmptyUnit verifies that an empty unit (SimConnect default unit) is accepted for any known SimVar.
+func TestValidateEmptyUnit(t *testing.T) {
+	if err := Validate("PLANE LATITUDE", ""); err != nil {
+		t.Errorf("Validate(\"PLANE LATITUDE\", \"\") returned unexpected error: %v", err)
+	}
+	if err := Validate("BOGUS VAR", ""); err == nil {
+		t.Error("expected non-nil error for unknown SimVar with empty unit")
+	}
+}
+
+// TestTransponderCode verifies TRANSPONDER CODE is indexed and accepts the bcd16 unit (#263).
+func TestTransponderCode(t *testing.T) {
+	sv, ok := Lookup("TRANSPONDER CODE:1")
+	if !ok {
+		t.Fatal("Lookup(\"TRANSPONDER CODE:1\") returned ok=false")
+	}
+	if !sv.Indexed {
+		t.Error("expected Indexed=true for TRANSPONDER CODE")
+	}
+	if err := Validate("TRANSPONDER CODE:1", "BCD16"); err != nil {
+		t.Errorf("Validate(\"TRANSPONDER CODE:1\", \"BCD16\") returned unexpected error: %v", err)
+	}
+}
+
 // TestByUnitDegrees verifies that ByUnit("degrees") includes PLANE LATITUDE and PLANE LONGITUDE.
 func TestByUnitDegrees(t *testing.T) {
 	results := ByUnit("degrees")
