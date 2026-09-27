@@ -46,6 +46,38 @@ const (
 	reqAircraft uint32 = 2001
 )
 
+// Live traffic scan, requested every second.
+const (
+	defTraffic    uint32 = 2002
+	reqTraffic    uint32 = 2003
+	trafficRadius uint32 = 20000 // meters around the user aircraft
+)
+
+// trafficRaw matches the defTraffic data definition.
+type trafficRaw struct {
+	Title                                          [256]byte
+	AtcID                                          [32]byte
+	State                                          [256]byte
+	Lat, Lon, AGL, GS, Heading, VS, OnGround, Gear float64
+}
+
+// Traffic is one aircraft near the user, served at /api/traffic.
+type Traffic struct {
+	ObjectID    uint32  `json:"objectId"`
+	Title       string  `json:"title"`
+	Tail        string  `json:"tail"`
+	State       string  `json:"state"`
+	Latitude    float64 `json:"lat"`
+	Longitude   float64 `json:"lon"`
+	AGL         float64 `json:"agl"`
+	GroundKts   float64 `json:"groundKts"`
+	Heading     float64 `json:"heading"`
+	VerticalFpm float64 `json:"vs"`
+	OnGround    bool    `json:"onGround"`
+	Gear        float64 `json:"gear"`
+	User        bool    `json:"user"`
+}
+
 type aircraftRaw struct {
 	Latitude  float64
 	Longitude float64
@@ -74,11 +106,13 @@ type airportResponse struct {
 type state struct {
 	cache *airport.Cache
 
-	mu       sync.Mutex
-	fetched  map[string]time.Time
-	waiters  map[string][]chan error
-	aircraft *Aircraft
-	live     bool
+	mu        sync.Mutex
+	fetched   map[string]time.Time
+	waiters   map[string][]chan error
+	aircraft  *Aircraft
+	traffic   []Traffic
+	trafficAt time.Time
+	live      bool
 }
 
 func (s *state) setLive(v bool) {
@@ -135,6 +169,22 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		fmt.Fprintf(os.Stderr, "❌ RequestDataOnSimObject: %v\n", err)
 	}
 
+	// Live traffic: title, tail, AI state, position and flight parameters.
+	client.AddToDataDefinition(defTraffic, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
+	client.AddToDataDefinition(defTraffic, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 1)
+	client.AddToDataDefinition(defTraffic, "AI TRAFFIC STATE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 2)
+	for i, v := range []struct{ name, unit string }{
+		{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALT ABOVE GROUND", "feet"},
+		{"GROUND VELOCITY", "knots"}, {"PLANE HEADING DEGREES TRUE", "degrees"}, {"VERTICAL SPEED", "feet per minute"},
+		{"SIM ON GROUND", "bool"}, {"GEAR TOTAL PCT EXTENDED", "percent"}, // native 0–1; "percent" returns it unscaled
+	} {
+		client.AddToDataDefinition(defTraffic, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i+3))
+	}
+	var (
+		scan   []Traffic
+		userID uint32
+	)
+
 	// The loader sends facility requests; this loop hands it every message.
 	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
 
@@ -157,6 +207,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			}
 
 		case now := <-tick.C:
+			// Every aircraft within TrafficRadius of the user aircraft.
+			scan = scan[:0]
+			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 			for _, res := range loader.Expire(now) {
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				st.finish(res.ICAO, res.Err)
@@ -201,10 +254,29 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					continue
 				}
 				a := engine.CastDataAs[aircraftRaw](&d.DwData)
+				userID = uint32(d.DwObjectID) // the user aircraft's real object ID, as by-type scans report it
 				st.mu.Lock()
 				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
 					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, Updated: time.Now()}
 				st.mu.Unlock()
+
+			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
+				d := msg.AsSimObjectDataBType()
+				if uint32(d.DwRequestID) != reqTraffic {
+					continue
+				}
+				t := engine.CastDataAs[trafficRaw](&d.DwData)
+				scan = append(scan, Traffic{
+					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
+					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
+					Heading: t.Heading, VerticalFpm: t.VS, OnGround: t.OnGround != 0, Gear: t.Gear, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+				})
+				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
+					st.mu.Lock()
+					st.traffic, st.trafficAt = scan, time.Now()
+					st.mu.Unlock()
+					scan = nil
+				}
 			}
 		}
 	}
@@ -325,6 +397,20 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			return
 		}
 		writeJSON(w, route)
+	})
+
+	// GET /api/traffic — every aircraft within 20 km of the user aircraft.
+	mux.HandleFunc("GET /api/traffic", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		t, at := st.traffic, st.trafficAt
+		st.mu.Unlock()
+		if time.Since(at) > 5*time.Second {
+			t = nil
+		}
+		if t == nil {
+			t = []Traffic{}
+		}
+		writeJSON(w, t)
 	})
 
 	mux.HandleFunc("GET /api/aircraft", func(w http.ResponseWriter, r *http.Request) {

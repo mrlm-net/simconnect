@@ -67,6 +67,10 @@
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
 
+  <h2>Live traffic</h2>
+  <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
+  <table id="trafficTable" class="note"></table>
+
   <h2>Taxi paths by TYPE</h2>
   <table id="pathTypes"></table>
 
@@ -411,7 +415,7 @@ async function load(icao, refresh) {
 
 // ── User aircraft ──
 const acIcon = (hdg) => L.divIcon({
-  className: 'ac', iconSize: [26, 26],
+  className: 'ac user', iconSize: [26, 26],
   html: `<svg viewBox="0 0 24 24" style="transform:rotate(${hdg}deg)"><path fill="#00e5ff" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
 let acMarker = null;
@@ -430,6 +434,44 @@ async function pollAircraft() {
   } catch { /* server gone; keep polling */ }
 }
 setInterval(pollAircraft, 1000);
+
+// ── Live traffic (every aircraft near the user) ──
+const trafficLayer = L.layerGroup().addTo(map);
+const trafficMarkers = new Map();
+const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
+const trafficIcon = (t) => L.divIcon({
+  className: 'ac traffic', iconSize: [22, 22],
+  html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)"><path fill="${t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
+});
+const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.agl.toFixed(0)}ft ${t.groundKts.toFixed(0)}kt` +
+  `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · ${esc(shortState(t.state))}`;
+async function pollTraffic() {
+  if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
+  let list = [];
+  try { list = await (await fetch('/api/traffic')).json(); } catch { return; }
+  const seen = new Set();
+  for (const t of list) {
+    if (t.user) continue;
+    seen.add(t.objectId);
+    let m = trafficMarkers.get(t.objectId);
+    if (!m) {
+      m = L.marker([t.lat, t.lon], { icon: trafficIcon(t), zIndexOffset: 900 })
+        .bindTooltip('', { permanent: true, direction: 'right', offset: [10, 0], className: 'lbl' }).addTo(trafficLayer);
+      trafficMarkers.set(t.objectId, m);
+    }
+    m.setLatLng([t.lat, t.lon]).setIcon(trafficIcon(t)).setTooltipContent(trafficLabel(t));
+  }
+  for (const [id, m] of trafficMarkers) if (!seen.has(id)) { m.remove(); trafficMarkers.delete(id); }
+  const rows = list.filter((t) => !t.user).sort((a, b) => a.agl - b.agl);
+  $('trafficTable').innerHTML = rows.length
+    ? '<tr><td>tail</td><td class="n">ft</td><td class="n">kt</td><td class="n">fpm</td><td class="n">gear</td></tr>' +
+      rows.map((t) => `<tr title="${esc(t.title)}"><td>${esc(t.tail || t.objectId)}<br><span class="note">${esc(shortState(t.state))}</span></td>` +
+        `<td class="n">${t.agl.toFixed(0)}</td><td class="n">${t.groundKts.toFixed(0)}</td><td class="n">${t.vs.toFixed(0)}</td>` +
+        `<td class="n">${(t.gear * 100).toFixed(0)}%</td></tr>`).join('')
+    : '<tr><td>No other aircraft</td></tr>';
+}
+setInterval(pollTraffic, 1000);
+$('trafficOn').addEventListener('change', pollTraffic);
 
 // ── Wiring ──
 $('f').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').value); });
