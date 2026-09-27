@@ -186,8 +186,9 @@ type ArrivalController struct {
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist    float64 // injected path distance of the vacate stop
 	rng           *rand.Rand
-	nextCross     int // next crossing zone ahead
-	crossClears   int // ClearToCross calls not used yet
+	nextCross     int  // next crossing zone ahead
+	crossClears   int  // ClearToCross calls not used yet
+	lightsChanged bool // the sim reported a light change since the last event
 	takeoverTried bool
 	emittedAt     time.Time
 }
@@ -394,7 +395,9 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
-	c.last.Lights = m.currentLights()
+	if l := m.currentLights(); l != c.last.Lights {
+		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
+	}
 	if c.mover != nil {
 		c.onInjectedFrame()
 		return
@@ -573,10 +576,10 @@ func (c *ArrivalController) setState(s ArrivalState, err error) {
 }
 
 func (c *ArrivalController) emit(err error, important bool) {
-	if !important && err == nil && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+	if !important && err == nil && !c.lightsChanged && c.fast && c.now().Sub(c.emittedAt) < time.Second {
 		return // progress at most once a second while reading every frame
 	}
-	c.emittedAt = c.now()
+	c.emittedAt, c.lightsChanged = c.now(), false
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {

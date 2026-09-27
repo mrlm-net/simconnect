@@ -76,10 +76,11 @@ func main() {
 	}
 
 	var (
-		events    = ctl.Events()
-		lastState traffic.ArrivalState
-		lastPrint time.Time
-		parked    bool
+		events     = ctl.Events()
+		lastState  traffic.ArrivalState
+		lastLights traffic.Lights
+		lastPrint  time.Time
+		parked     bool
 	)
 	enter := make(chan struct{}, 1)
 	go func() {
@@ -135,6 +136,10 @@ func main() {
 			if ev.Err != nil {
 				fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", ev.State, ev.Err)
 			}
+			if ev.Lights != lastLights && ev.State >= traffic.ArrivalRollout {
+				fmt.Printf("💡 %s  %s → %s (%s)\n", time.Now().Format("15:04:05.000"), lastLights, ev.Lights, ev.State)
+			}
+			lastLights = ev.Lights
 			if ev.State != lastState {
 				lastState = ev.State
 				extra := ""
