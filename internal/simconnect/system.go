@@ -91,3 +91,19 @@ func (sc *SimConnect) SetSystemEventState(eventID uint32, state types.SIMCONNECT
 
 	return nil
 }
+
+// https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/General/SimConnect_GetLastSentPacketID.htm
+func (sc *SimConnect) GetLastSentPacketID() (uint32, error) {
+	var id uint32
+	procedure := sc.library.LoadProcedure("SimConnect_GetLastSentPacketID")
+
+	hresult, _, _ := procedure.Call(
+		sc.getConnection(),   // hSimConnect
+		toUnsafePointer(&id), // pdwError
+	)
+
+	if !isHRESULTSuccess(hresult) {
+		return 0, fmt.Errorf("SimConnect_GetLastSentPacketID failed with HRESULT: 0x%08X", uint32(hresult))
+	}
+	return id, nil
+}

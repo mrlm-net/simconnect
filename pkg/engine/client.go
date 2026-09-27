@@ -13,6 +13,9 @@ import (
 type Client interface {
 	Connect() error
 	Disconnect() error
+	// GetLastSentPacketID returns the send ID of the last request sent, to
+	// match SIMCONNECT_RECV_EXCEPTION.DwSendID.
+	GetLastSentPacketID() (uint32, error)
 
 	Stream() <-chan Message
 	RegisterDataset(definitionID uint32, dataset *datasets.DataSet) error
