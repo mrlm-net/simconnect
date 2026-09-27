@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airport Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font: 13px/1.4 system-ui, sans-serif; background: #111; color: #ddd; }
+  #map { position: absolute; inset: 0 320px 0 0; }
+  #side { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; overflow-y: auto; box-sizing: border-box;
+          padding: 12px; background: #1b1d21; border-left: 1px solid #333; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #999; margin: 16px 0 6px; }
+  form { display: flex; gap: 6px; }
+  input[type=text] { flex: 1; min-width: 0; background: #0d0e10; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; text-transform: uppercase; }
+  button { background: #2d6cdf; color: #fff; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+  button.secondary { background: #3a3d44; }
+  #status { margin-top: 6px; color: #aaa; min-height: 1.4em; }
+  #status.err { color: #ff6b6b; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 2px 0; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 18px; height: 4px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+  label.opt { display: block; margin: 4px 0; }
+  .note { color: #999; font-size: 12px; }
+  .warn { color: #ffb347; }
+  .leaflet-popup-content { font: 12px/1.45 ui-monospace, monospace; }
+  .leaflet-popup-content b { font-family: system-ui, sans-serif; }
+  .ac { width: 26px; height: 26px; }
+  .ac svg { width: 26px; height: 26px; filter: drop-shadow(0 0 2px #000); }
+  .lbl { background: none; border: 0; box-shadow: none; color: #ffe066; font: 700 11px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+  .lbl::before { display: none; }
+  @media (max-width: 700px) {
+    #map { inset: 0 0 45% 0; }
+    #side { top: 55%; width: 100%; border-left: 0; border-top: 1px solid #333; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="side">
+  <h1>Airport Map</h1>
+  <form id="f">
+    <input type="text" id="icao" placeholder="ICAO" maxlength="8" autocomplete="off">
+    <button>Load</button>
+    <button type="button" class="secondary" id="refresh" title="Fetch again from the simulator">↻</button>
+  </form>
+  <div id="status"></div>
+
+  <h2>Airport</h2>
+  <div id="info" class="note">—</div>
+
+  <h2>Taxi paths by TYPE</h2>
+  <table id="pathTypes"></table>
+
+  <h2>Taxi points by TYPE</h2>
+  <table id="pointTypes"></table>
+
+  <h2>PARKING path endpoints</h2>
+  <label class="opt"><input type="radio" name="pm" value="parking" checked> END = parking index <span class="note">(SDK docs)</span></label>
+  <label class="opt"><input type="radio" name="pm" value="point"> END = taxi point index <span class="note">(manage-traffic)</span></label>
+  <div id="parkingCheck" class="note"></div>
+
+  <h2>Options</h2>
+  <label class="opt"><input type="checkbox" id="labels" checked> Taxiway name labels</label>
+  <label class="opt"><input type="checkbox" id="follow"> Follow aircraft</label>
+  <div id="acInfo" class="note">Aircraft: —</div>
+</div>
+
+<script>
+const PATH_TYPES = {
+  0: ['NONE', '#666'], 1: ['TAXI', '#f5b700'], 2: ['RUNWAY', '#bbbbbb'], 3: ['PARKING', '#3fa7ff'],
+  4: ['PATH', '#2ecc71'], 5: ['CLOSED', '#e74c3c'], 6: ['VEHICLE', '#b07cd8'], 7: ['ROAD', '#8d99a6'], 8: ['PAINTEDLINE', '#f0f0f0'],
+};
+const POINT_TYPES = {
+  0: ['NONE', '#777'], 1: ['NORMAL', '#cfd8dc'], 2: ['HOLD_SHORT', '#ff3b3b'], 3: ['(3)', '#ff9f1a'],
+  4: ['ILS_HOLD_SHORT', '#ff00cc'], 5: ['HOLD_SHORT_NO_DRAW', '#ff8080'], 6: ['ILS_HOLD_SHORT_NO_DRAW', '#ff80e6'],
+};
+const HOLD_SHORT = new Set([2, 4, 5, 6]);
+// TAXI_PARKING NAME enum as in the BGL spec — shown as a best guess, raw value alongside.
+const PARKING_NAMES = ['', 'P', 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'GATE', 'DOCK'];
+const RWY_DESIG = ['', 'L', 'R', 'C', 'W', 'A', 'B'];
+const RWY_COMPASS = { 37: 'N', 38: 'NE', 39: 'E', 40: 'SE', 41: 'S', 42: 'SW', 43: 'W', 44: 'NW' };
+
+const $ = (id) => document.getElementById(id);
+const renderer = L.canvas({ padding: 0.5, tolerance: 4 });
+const map = L.map('map', { preferCanvas: true, zoomControl: true, maxZoom: 21 }).setView([50.1, 14.26], 14);
+
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 21, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 21, maxNativeZoom: 19, attribution: 'Imagery &copy; Esri',
+});
+
+const groups = {
+  runways: L.layerGroup(),
+  parking: L.layerGroup(),
+  points: L.layerGroup(),
+  hold: L.layerGroup(),
+  labels: L.layerGroup(),
+};
+const pathGroups = {};
+for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
+
+const overlays = {
+  'Runways': groups.runways,
+  'Parking spots': groups.parking,
+  'Taxi points': groups.points,
+  'Hold-short points': groups.hold,
+};
+for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
+  overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
+}
+L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels]) g.addTo(map);
+for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
+
+let data = null;
+
+// Offset in meters (east, north) from a lat/lon — local flat-earth approximation.
+function offset(lat, lon, east, north) {
+  const R = 6378137;
+  return [lat + (north / R) * 180 / Math.PI, lon + (east / (R * Math.cos(lat * Math.PI / 180))) * 180 / Math.PI];
+}
+function dist(a, b) {
+  const R = 6378137, toR = Math.PI / 180;
+  const x = (b[1] - a[1]) * toR * Math.cos((a[0] + b[0]) / 2 * toR), y = (b[0] - a[0]) * toR;
+  return Math.hypot(x, y) * R;
+}
+function rwyEnd(num, des) {
+  const n = RWY_COMPASS[num] || (num > 0 ? String(num).padStart(2, '0') : '?');
+  return n + (RWY_DESIG[des] || '');
+}
+function parkingLabel(p) {
+  let prefix = PARKING_NAMES[p.name];
+  if (prefix === undefined) prefix = p.name >= 12 && p.name <= 37 ? String.fromCharCode(65 + p.name - 12) : `?${p.name}`;
+  if (prefix === 'GATE' || prefix === 'P') prefix = '';
+  return prefix + p.number;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function kv(obj) { return Object.entries(obj).map(([k, v]) => `${k}: ${esc(v)}`).join('<br>'); }
+
+function pointLL(i) { const p = data.taxiPoints[i]; return p ? [p.lat, p.lon] : null; }
+function parkingLL(i) { const p = data.parking[i]; return p ? [p.lat, p.lon] : null; }
+
+// Resolves a path's endpoints. For TYPE=3 (PARKING) paths the END index is
+// interpreted according to the selected mode, so both readings can be compared.
+function endpoints(path, mode) {
+  const a = pointLL(path.start);
+  const b = path.type === 3 && mode === 'parking' ? parkingLL(path.end) : pointLL(path.end);
+  return [a, b];
+}
+
+function mode() { return document.querySelector('input[name=pm]:checked').value; }
+
+function drawPaths() {
+  for (const g of Object.values(pathGroups)) g.clearLayers();
+  groups.labels.clearLayers();
+  if (!data) return;
+  const m = mode();
+  const labelled = new Set();
+  let unresolved = 0;
+  for (const p of data.taxiPaths) {
+    const [a, b] = endpoints(p, m);
+    const [tname, color] = PATH_TYPES[p.type] || [`(${p.type})`, '#ff00ff'];
+    const name = data.taxiNames[p.nameIndex] || '';
+    const pop = `<b>Taxi path #${p.index}</b><br>` + kv({
+      type: `${p.type} ${tname}`, start: p.start, end: p.end, width: p.width.toFixed(1) + ' m',
+      nameIndex: `${p.nameIndex} "${name}"`, runway: p.type === 2 ? rwyEnd(p.runwayNumber, p.runwayDesignator) : '—',
+      length: a && b ? dist(a, b).toFixed(0) + ' m' : 'unresolved',
+    });
+    const group = pathGroups[p.type] || pathGroups[0];
+    if (!a || !b) {
+      unresolved++;
+      const at = a || b;
+      if (at) L.circleMarker(at, { renderer, radius: 5, color: '#ff00ff', weight: 2, fill: false }).bindPopup(pop).addTo(group);
+      continue;
+    }
+    L.polyline([a, b], {
+      renderer, color, weight: p.type === 2 ? 2 : 3, opacity: p.type === 5 ? 0.6 : 0.9,
+      dashArray: p.type === 8 ? '4 4' : p.type === 5 ? '6 6' : null,
+    }).bindPopup(pop).addTo(group);
+    if ($('labels').checked && name && (p.type === 1 || p.type === 4) && !labelled.has(`${name}:${Math.round(a[0] * 400)}:${Math.round(a[1] * 400)}`)) {
+      labelled.add(`${name}:${Math.round(a[0] * 400)}:${Math.round(a[1] * 400)}`);
+      L.tooltip({ permanent: true, direction: 'center', className: 'lbl' })
+        .setLatLng([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]).setContent(esc(name)).addTo(groups.labels);
+    }
+  }
+  return unresolved;
+}
+
+// Summarises how PARKING paths resolve under each reading: an index that is out
+// of range, or a segment that is implausibly long, points to the wrong reading.
+function checkParkingPaths() {
+  const pp = data.taxiPaths.filter((p) => p.type === 3);
+  if (!pp.length) { $('parkingCheck').textContent = 'No PARKING paths.'; return; }
+  const stat = (m) => {
+    let ok = 0, lens = [];
+    for (const p of pp) { const [a, b] = endpoints(p, m); if (a && b) { ok++; lens.push(dist(a, b)); } }
+    lens.sort((x, y) => x - y);
+    const med = lens.length ? lens[Math.floor(lens.length / 2)] : NaN;
+    return { ok, med, long: lens.filter((l) => l > 150).length };
+  };
+  const sp = stat('parking'), st = stat('point');
+  const row = (n, s) => `<tr><td>${n}</td><td class="n">${s.ok}/${pp.length}</td><td class="n">${isNaN(s.med) ? '—' : s.med.toFixed(0) + ' m'}</td><td class="n">${s.long}</td></tr>`;
+  $('parkingCheck').innerHTML = `<table><tr><td></td><td class="n">resolved</td><td class="n">median</td><td class="n">&gt;150 m</td></tr>` +
+    row('→ parking', sp) + row('→ point', st) + `</table>` +
+    `<div>END &lt; ${data.parking.length} parking: ${pp.filter((p) => p.end < data.parking.length).length}, ` +
+    `END &lt; ${data.taxiPoints.length} points: ${pp.filter((p) => p.end < data.taxiPoints.length).length}. ` +
+    `Shorter median with everything resolved is the likely correct reading.</div>`;
+}
+
+function histogram(el, items, types, swatch) {
+  const counts = {};
+  for (const it of items) counts[it.type] = (counts[it.type] || 0) + 1;
+  $(el).innerHTML = Object.keys(counts).sort((a, b) => a - b).map((t) => {
+    const [name, color] = types[t] || [`(${t})`, '#ff00ff'];
+    return `<tr><td><span class="${swatch}" style="background:${color}"></span>${t} ${name}</td><td class="n">${counts[t]}</td></tr>`;
+  }).join('') || '<tr><td class="note">none</td></tr>';
+}
+
+function draw() {
+  for (const g of Object.values(groups)) g.clearLayers();
+  if (!data) return;
+
+  for (const r of data.runways) {
+    const h = r.heading * Math.PI / 180, hl = r.length / 2, hw = r.width / 2;
+    const along = [Math.sin(h), Math.cos(h)], across = [Math.cos(h), -Math.sin(h)];
+    const corner = (s, t) => offset(r.lat, r.lon, along[0] * s * hl + across[0] * t * hw, along[1] * s * hl + across[1] * t * hw);
+    const name = `${rwyEnd(r.primaryNumber, r.primaryDesignator)}/${rwyEnd(r.secondaryNumber, r.secondaryDesignator)}`;
+    L.polygon([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], {
+      renderer, color: '#fff', weight: 1, fillColor: '#444', fillOpacity: 0.7,
+    }).bindPopup(`<b>Runway ${esc(name)}</b><br>` + kv({
+      index: r.index, heading: r.heading.toFixed(1) + '°', length: r.length.toFixed(0) + ' m', width: r.width.toFixed(0) + ' m',
+      primary: `${r.primaryNumber}/${r.primaryDesignator}`, secondary: `${r.secondaryNumber}/${r.secondaryDesignator}`,
+    })).addTo(groups.runways);
+    const ends = [[-1, rwyEnd(r.primaryNumber, r.primaryDesignator)], [1, rwyEnd(r.secondaryNumber, r.secondaryDesignator)]];
+    for (const [s, label] of ends) {
+      L.tooltip({ permanent: true, direction: 'center', className: 'lbl' })
+        .setLatLng(offset(r.lat, r.lon, along[0] * s * (hl - 60), along[1] * s * (hl - 60))).setContent(esc(label)).addTo(groups.runways);
+    }
+  }
+
+  for (const p of data.parking) {
+    L.circle([p.lat, p.lon], {
+      renderer, radius: Math.max(p.radius, 3), color: '#3fa7ff', weight: 1, fillOpacity: 0.15,
+    }).bindPopup(`<b>Parking ${esc(parkingLabel(p))}</b><br>` + kv({
+      index: p.index, name: p.name, number: p.number, type: p.type, heading: p.heading.toFixed(0) + '°',
+      radius: p.radius.toFixed(1) + ' m', biasX: p.biasX.toFixed(1), biasZ: p.biasZ.toFixed(1),
+    })).bindTooltip(esc(parkingLabel(p)), { direction: 'top' }).addTo(groups.parking);
+  }
+
+  for (const p of data.taxiPoints) {
+    const hold = HOLD_SHORT.has(p.type);
+    const [tname, color] = POINT_TYPES[p.type] || [`(${p.type})`, '#ff00ff'];
+    L.circleMarker([p.lat, p.lon], {
+      renderer, radius: hold ? 5 : 2.5, color, weight: hold ? 2 : 1, fillOpacity: hold ? 0.9 : 0.6,
+    }).bindPopup(`<b>Taxi point #${p.index}</b><br>` + kv({
+      type: `${p.type} ${tname}`, orientation: p.orientation, biasX: p.biasX.toFixed(1), biasZ: p.biasZ.toFixed(1),
+    })).addTo(hold ? groups.hold : groups.points);
+  }
+
+  const unresolved = drawPaths();
+  histogram('pathTypes', data.taxiPaths, PATH_TYPES, 'sw');
+  histogram('pointTypes', data.taxiPoints, POINT_TYPES, 'dot');
+  checkParkingPaths();
+  $('info').innerHTML = `<b>${esc(data.icao)}</b> ${esc(data.name)}<br>` +
+    `${data.runways.length} runways · ${data.parking.length} parking · ${data.taxiPoints.length} points · ` +
+    `${data.taxiPaths.length} paths · ${data.taxiNames.length} names` +
+    (unresolved ? `<br><span class="warn">${unresolved} paths with an out-of-range endpoint (magenta rings)</span>` : '') +
+    `<br><span class="note">Fetched ${new Date(data.fetchedAt).toLocaleString()}</span>`;
+}
+
+async function load(icao, refresh) {
+  icao = icao.trim().toUpperCase();
+  if (!icao) return;
+  $('status').className = '';
+  $('status').textContent = `Loading ${icao}…`;
+  try {
+    const res = await fetch(`/api/airport?icao=${encodeURIComponent(icao)}${refresh ? '&refresh=1' : ''}`);
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    data = await res.json();
+    draw();
+    const pts = [...data.taxiPoints, ...data.parking].map((p) => [p.lat, p.lon]);
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.05));
+    else map.setView([data.lat, data.lon], 14);
+    $('status').textContent = '';
+    history.replaceState(null, '', `?icao=${icao}`);
+  } catch (e) {
+    $('status').className = 'err';
+    $('status').textContent = e.message;
+  }
+}
+
+// ── User aircraft ──
+const acIcon = (hdg) => L.divIcon({
+  className: 'ac', iconSize: [26, 26],
+  html: `<svg viewBox="0 0 24 24" style="transform:rotate(${hdg}deg)"><path fill="#00e5ff" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
+});
+let acMarker = null;
+async function pollAircraft() {
+  try {
+    const res = await fetch('/api/aircraft');
+    if (res.status === 200) {
+      const a = await res.json();
+      if (!acMarker) acMarker = L.marker([a.lat, a.lon], { icon: acIcon(a.heading), zIndexOffset: 1000 }).addTo(map);
+      acMarker.setLatLng([a.lat, a.lon]).setIcon(acIcon(a.heading));
+      if ($('follow').checked) map.panTo([a.lat, a.lon], { animate: false });
+      $('acInfo').textContent = `Aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}`;
+    } else if (acMarker) {
+      acMarker.remove(); acMarker = null; $('acInfo').textContent = 'Aircraft: —';
+    }
+  } catch { /* server gone; keep polling */ }
+}
+setInterval(pollAircraft, 1000);
+
+// ── Wiring ──
+$('f').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').value); });
+$('refresh').addEventListener('click', () => load($('icao').value, true));
+$('labels').addEventListener('change', () => { if (data) drawPaths(); });
+for (const r of document.querySelectorAll('input[name=pm]')) r.addEventListener('change', () => { if (data) draw(); });
+const initial = new URLSearchParams(location.search).get('icao') || 'LKPR';
+$('icao').value = initial;
+load(initial);
+</script>
+</body>
+</html>
