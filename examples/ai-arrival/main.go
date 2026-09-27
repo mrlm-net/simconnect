@@ -41,7 +41,8 @@ func main() {
 	nose := flag.Float64("nose", 0, "reference-point-to-nose distance in meters (0 = default)")
 	hold := flag.Bool("hold", false, "hold clear of the runway until Enter (taxi clearance)")
 	dwell := flag.Duration("dwell", 0, "after-landing stop before taxiing on (0 = default)")
-	inject := flag.Bool("inject", false, "hybrid: MSFS AI lands, position injection drives the ground phase from clear of the runway (#309)")
+	inject := flag.Bool("inject", false, "hybrid: MSFS AI lands, position injection takes over during the rollout and drives the ground phase (#309)")
+	rollThrough := flag.Float64("roll-through", 0, "with -inject: chance 0..1 of a rolling clearance at the vacate point (0 = default 0.3, negative = never)")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -175,7 +176,7 @@ func main() {
 					var parking int
 					if parking, err = res.Layout.ParkingIndex(*stand); err == nil {
 						err = ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: *runway, Parking: parking, Model: *model,
-							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell})
+							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell, RollThroughChance: *rollThrough})
 					}
 				}
 				if err != nil {

@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -124,7 +125,15 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	// Hold at the vacate stop, or as soon as comfortably possible when the
 	// aircraft is already past it.
 	v := m.GroundKts * ktsToMS
-	c.mover.HoldAt(math.Max(hold, v*v/(2*moverProf.Decel)+2))
+	hold = math.Max(hold, v*v/(2*moverProf.Decel)+2)
+	c.vacateDist = hold
+	if c.rollThrough {
+		// A rolling clearance: slow to RollThroughKts at the vacate point and
+		// taxi on without stopping.
+		path.LimitRange(hold-RollThroughMeters, hold+RollThroughMeters, RollThroughKts, prof.Decel)
+	} else {
+		c.mover.HoldAt(hold)
+	}
 
 	if err := c.inj.Takeover(c.objectID); err != nil {
 		c.mover = nil
@@ -224,6 +233,10 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.last.Taxiway = c.track.taxiwayAt(seg)
 	}
 	c.checkCrossing(pose)
+	// The taxi light, TaxiLightDelay after the landing lights went off.
+	if !c.taxiLightAt.IsZero() && !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
+		c.setInjectedLights(LightsTaxi, "lights taxi")
+	}
 	switch c.state {
 	case ArrivalRollout:
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
@@ -234,23 +247,20 @@ func (c *ArrivalController) onInjectedFrame() {
 			return
 		}
 	case ArrivalVacating:
-		// Stopped clear of the runway: landing lights off, and a moment
-		// later the taxi light on, then wait for the taxi clearance.
-		if pose.Stopped {
+		// Stopped clear of the runway (or, rolling through, at the slowest
+		// point): landing lights off, and a moment later the taxi light on;
+		// then wait for the taxi clearance, or roll on.
+		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-RollThroughMeters) {
 			c.setInjectedLights(lightsStopped, "lights landing off")
 			c.taxiLightAt = c.now().Add(TaxiLightDelay)
-			dwell := c.req.AfterLandingDwell
-			if dwell <= 0 {
-				dwell = DefaultAfterLandingDwell
-			}
-			c.clearAt = c.now().Add(dwell)
+			c.clearAt = c.now().Add(c.dwell())
 			c.setState(ArrivalAwaitingTaxi, nil)
+			if c.rollThrough {
+				c.startTaxi()
+			}
 			return
 		}
 	case ArrivalAwaitingTaxi:
-		if !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
-			c.setInjectedLights(LightsTaxi, "lights taxi")
-		}
 		if c.cleared || (!c.req.HoldForClearance && !c.now().Before(c.clearAt)) {
 			c.startTaxi()
 			return
@@ -336,4 +346,14 @@ func (c *ArrivalController) crossingZones(holds []holdOnPath) []crossZone {
 		}
 	}
 	return zones
+}
+
+// dwell is how long the aircraft waits clear of the runway: the requested
+// or default after-landing dwell, varied by ±DwellJitter.
+func (c *ArrivalController) dwell() time.Duration {
+	d := c.req.AfterLandingDwell
+	if d <= 0 {
+		d = DefaultAfterLandingDwell
+	}
+	return time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1)))
 }

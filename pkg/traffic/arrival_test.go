@@ -410,7 +410,7 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 	inj := NewInjector(ec)
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
 	c22, _ := g.Layout.ParkingIndex("C22")
-	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA4"}); err != nil {
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA4", RollThroughChance: -1}); err != nil {
 		t.Fatal(err)
 	}
 	p := ctl.Plan()
@@ -488,4 +488,66 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 		}
 	}
 	t.Logf("taken over at %.0f kt %.0f m past the threshold; %.1f kt at the exit; lights %v", v/ktsToMS, s, atExit, ec.events)
+}
+
+// TestArrivalControllerHybridRollThrough: with a rolling clearance the
+// aircraft only slows to about RollThroughKts at the vacate point, switches
+// landing lights off there and the taxi light on while rolling (#309).
+func TestArrivalControllerHybridRollThrough(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA5", RollThroughChance: 1}); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	thr := p.End.Threshold
+	onRunway := func(m float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, p.End.Heading, m)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(-300), 120, p.End.Heading, 140, false))
+	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(700), 12, p.End.Heading, 125, true))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	s, v := 700.0, 125*ktsToMS
+	slowest, taxiOnAt, landingOffAt := math.Inf(1), time.Time{}, time.Time{}
+	for i := 0; i < 60*900 && ctl.State() != ArrivalParked; i++ {
+		now = now.Add(time.Second / 60)
+		if !inj.Driven(77) {
+			v = math.Max(v-1.5/60, 0)
+			s += v / 60
+		}
+		n := len(ec.events)
+		ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(s), 12, p.End.Heading, v/ktsToMS, true))
+		for _, e := range ec.events[n:] {
+			switch {
+			case e == "LANDING_LIGHTS_SET=0" && landingOffAt.IsZero() && ctl.State() >= ArrivalAwaitingTaxi:
+				landingOffAt = now
+			case e == "TAXI_LIGHTS_SET=1" && taxiOnAt.IsZero():
+				taxiOnAt = now
+			}
+		}
+		if ctl.State() >= ArrivalVacating && ctl.State() <= ArrivalTaxiing && inj.Driven(77) {
+			if ctl.last.GroundSpeed == 0 && ctl.State() != ArrivalParking {
+				t.Fatalf("stopped in %v on a rolling clearance", ctl.State())
+			}
+			slowest = math.Min(slowest, ctl.last.GroundSpeed)
+		}
+	}
+	if ctl.State() != ArrivalParked {
+		t.Fatalf("state %v, want parked", ctl.State())
+	}
+	if slowest > RollThroughKts+1 {
+		t.Errorf("slowest %.2f kt at the vacate point, want about %.1f", slowest, RollThroughKts)
+	}
+	if d := taxiOnAt.Sub(landingOffAt); landingOffAt.IsZero() || d < TaxiLightDelay || d > TaxiLightDelay+time.Second {
+		t.Errorf("taxi light %v after the landing lights went off, want %v", d, TaxiLightDelay)
+	}
+	t.Logf("slowest %.2f kt; taxi light %v after landing lights off", slowest, taxiOnAt.Sub(landingOffAt))
 }

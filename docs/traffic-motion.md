@@ -58,6 +58,35 @@ inj.Release(objectID)                   // unfreeze
 
 `Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 2 definition IDs, 2 request IDs per aircraft and 10 event IDs; move them with `InjectorWithIDs`.
 
+## Hybrid arrival
+
+`ArrivalController` combines both approaches with `ArrivalWithInjector(inj)`. Feed every message to both the controller and the injector.
+
+```go
+inj := traffic.NewInjector(client)
+ctl := traffic.NewArrivalController(fleet, traffic.ArrivalWithInjector(inj))
+ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: model})
+// message loop: inj.Handle(msg); ctl.Handle(msg)
+```
+
+1. **MSFS AI flies** the approach, touchdown and the first part of the rollout. From touchdown the aircraft is read every sim frame and the injector watches the ground height under it.
+2. **Takeover on the runway:** once the aircraft has been on the ground for `TakeoverAfterTouchdown` (2 s) and slowed to `TakeoverKts` (70 kt), at least `TakeoverBeforeExitMeters` before the exit. The mover starts at the aircraft's nose gear with its heading and speed, so nothing jumps at the switch. If the aircraft reaches the exit first, the takeover happens once it is clear of the runway.
+3. **Rollout and exit:** braking at `RolloutDecel` to `InjectExitHighSpeedKts` (30 kt) through a high-speed exit (`InjectExitKts`, 12 kt, otherwise), then to taxi speed clear of the runway.
+4. **Vacate stop:** the aircraft stops there and waits for `ClearToTaxi` (`HoldForClearance`) or the after-landing dwell, which varies by ±10 %. With `RollThroughChance` (default 30 %, only without `HoldForClearance`) it only slows to 0.5 kt and taxis on, like a rolling clearance.
+5. **Taxi-in and parking:** the path ends straight along the stand axis, the last 30 m at 5 kt, with the reference point on the stop mark. The aircraft stays frozen on the stand; `Release` hands it back to MSFS AI.
+
+Lights, all set by the controller once it has taken over:
+
+| Phase | Lights |
+|---|---|
+| Rollout on the runway | nav, beacon, strobes, landing |
+| Clear of the runway | strobes off |
+| Vacate stop (or slowest point when rolling through) | landing off, taxi on `TaxiLightDelay` (1.5 s) later |
+| Crossing a runway | strobes and landing on from the hold-short line before it until the tail is past the opposite one |
+| Parked | nav only (beacon and taxi off) |
+
+Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` reports what the sim shows. [`examples/ai-arrival`](../examples/ai-arrival) runs it with `-inject`; `-roll-through 1` forces a rolling clearance.
+
 ## Measured in MSFS 2024
 
 Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):

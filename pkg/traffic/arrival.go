@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"sync"
 	"time"
 	"unsafe"
@@ -86,6 +87,11 @@ type ArrivalRequest struct {
 	// phase is injected (ArrivalWithInjector); zero means
 	// DefaultMotionProfile.
 	Profile MotionProfile
+	// RollThroughChance is the chance that an injected arrival not holding
+	// for clearance only slows to RollThroughKts at the vacate point and taxis
+	// on (a rolling clearance); 0 means DefaultRollThroughChance, negative
+	// never.
+	RollThroughChance float64
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -169,6 +175,9 @@ type ArrivalController struct {
 	clearDist     float64 // injected path distance where the aircraft is clear of the runway
 	crossZones    []crossZone
 	taxiLightAt   time.Time
+	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
+	vacateDist    float64 // injected path distance of the vacate stop
+	rng           *rand.Rand
 	takeoverTried bool
 	emittedAt     time.Time
 }
@@ -206,6 +215,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 	c := &ArrivalController{
 		fleet: fleet, defBase: DefaultArrivalDefinitionBase, reqBase: DefaultArrivalRequestBase,
 		events: make(chan ArrivalEvent, 256), now: time.Now,
+		rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5eed)),
 	}
 	for _, o := range opts {
 		o(c)
@@ -286,6 +296,12 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		return fmt.Errorf("%w: %v", ErrCreationFailed, err)
 	}
 	c.req, c.plan = req, plan
+	if chance := req.RollThroughChance; c.inj != nil && !req.HoldForClearance && chance >= 0 {
+		if chance == 0 {
+			chance = DefaultRollThroughChance
+		}
+		c.rollThrough = c.rng.Float64() < chance
+	}
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex]
@@ -462,11 +478,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		}
 		if stationary && c.track.pos >= c.vacateAlong-VacateArriveMeters {
 			c.setLights(false, true, false, true, true, "lights taxi")
-			dwell := c.req.AfterLandingDwell
-			if dwell <= 0 {
-				dwell = DefaultAfterLandingDwell
-			}
-			c.clearAt = c.now().Add(dwell)
+			c.clearAt = c.now().Add(c.dwell())
 			c.setState(ArrivalAwaitingTaxi, nil)
 			return
 		}
@@ -623,7 +635,7 @@ func (c *ArrivalController) ClearToTaxi() {
 // startTaxi sends the taxi-in chain from the vacate stop to the stand.
 func (c *ArrivalController) startTaxi() {
 	if c.mover != nil {
-		if !c.lights.Taxi {
+		if !c.lights.Taxi && !c.rollThrough {
 			c.setInjectedLights(LightsTaxi, "lights taxi") // never taxi without it
 		}
 		c.mover.ClearHold()
