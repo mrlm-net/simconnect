@@ -115,7 +115,39 @@ func (c *ArrivalController) profile() MotionProfile {
 func (c *ArrivalController) setInjectedLights(l Lights, desc string) {
 	l.Logo, l.Wing = c.lights.Logo, c.lights.Wing
 	c.lights = l
+	c.applyLights(desc)
+}
+
+// applyLights sends the phase lights, with strobes and landing lights on
+// while crossing a runway: the aircraft must be conspicuous on it.
+func (c *ArrivalController) applyLights(desc string) {
+	l := c.lights
+	if c.crossing {
+		l.Strobe, l.Landing = true, true
+	}
 	c.note(desc, c.inj.SetLights(c.objectID, l))
+}
+
+// checkCrossing switches the crossing lights when the nose gear or the
+// reference point comes within RunwayClearMeters of a runway (other than
+// the one just vacated, while vacating) and back once both are clear.
+func (c *ArrivalController) checkCrossing(pose GroundPose) {
+	g := c.req.Graph
+	nose := NoseGear(pose.Position, pose.Heading, c.profile())
+	on := false
+	for _, p := range []airport.LatLon{nose, pose.Position} {
+		if r := g.RunwayAt(p, RunwayClearMeters); r >= 0 && !(c.state == ArrivalVacating && r == c.plan.Runway.Index) {
+			on = true
+		}
+	}
+	if on != c.crossing {
+		c.crossing = on
+		desc := "lights runway crossing off"
+		if on {
+			desc = "lights runway crossing"
+		}
+		c.applyLights(desc)
+	}
 }
 
 // step advances the mover to now and places the aircraft.
@@ -140,6 +172,7 @@ func (c *ArrivalController) onInjectedFrame() {
 	if seg, _ := c.track.advance(pose.Position); seg >= 0 {
 		c.last.Taxiway = c.track.taxiwayAt(seg)
 	}
+	c.checkCrossing(pose)
 	switch c.state {
 	case ArrivalVacating:
 		// Stopped clear of the runway: after-landing lights, then wait.

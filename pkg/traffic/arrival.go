@@ -162,6 +162,7 @@ type ArrivalController struct {
 	lastStep  time.Time
 	lights    Lights // injected light state
 	fast      bool   // monitor every sim frame: throttle progress events
+	crossing  bool   // on or near a runway: strobes and landing lights on
 	emittedAt time.Time
 }
 

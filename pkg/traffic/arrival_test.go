@@ -387,5 +387,10 @@ func TestArrivalControllerHybrid(t *testing.T) {
 	if hd := math.Abs(headingDiff(last.Heading, g.Layout.Parking[c22].Heading)); hd > 3 {
 		t.Errorf("parked %.1f° off the stand heading", hd)
 	}
-	t.Logf("%d placements, lights %v", len(all), ec.events)
+	// Taxi-in from D crosses runway 12/30: strobes and landing lights on
+	// while crossing, off again after it, then taxi and beacon off on the stand.
+	if want := []string{"STROBES_SET=1", "LANDING_LIGHTS_SET=1", "STROBES_SET=0", "LANDING_LIGHTS_SET=0", "BEACON_LIGHTS_SET=0", "TAXI_LIGHTS_SET=0"}; !equalStrings(ec.events, want) {
+		t.Errorf("lights after clearance %v, want %v", ec.events, want)
+	}
+	t.Logf("%d placements", len(all))
 }

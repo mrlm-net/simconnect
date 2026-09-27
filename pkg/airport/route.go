@@ -468,10 +468,14 @@ func (q *nodeQueue) Pop() any {
 }
 
 // onRunway returns the index of the runway whose surface contains p, or -1.
-func (g *Graph) onRunway(p LatLon) int {
+func (g *Graph) onRunway(p LatLon) int { return g.RunwayAt(p, 0) }
+
+// RunwayAt returns the index of the runway whose surface, widened by margin
+// meters on every side, contains p; -1 if none.
+func (g *Graph) RunwayAt(p LatLon, margin float64) int {
 	for _, r := range g.Layout.Runways {
 		along, off := g.runwayCoords(r, p)
-		if along >= 0 && along <= r.Length && off <= r.Width/2 {
+		if along >= -margin && along <= r.Length+margin && off <= r.Width/2+margin {
 			return r.Index
 		}
 	}
