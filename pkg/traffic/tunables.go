@@ -217,11 +217,10 @@ const (
 
 // Variation after landing (injected arrivals): the wait clear of the runway
 // varies by ±DwellJitter, and with DefaultRollThroughChance the aircraft
-// only slows to RollThroughKts over ±RollThroughMeters at the vacate point
+// only slows to RollThroughKts at the vacate point
 // and taxis on (a rolling clearance).
 const (
 	DwellJitter              = 0.1
 	DefaultRollThroughChance = 0.3
 	RollThroughKts           = 0.5
-	RollThroughMeters        = 3.0
 )

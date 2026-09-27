@@ -516,7 +516,7 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 	ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(700), 12, p.End.Heading, 125, true))
 	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
 	s, v := 700.0, 125*ktsToMS
-	slowest, taxiOnAt, landingOffAt := math.Inf(1), time.Time{}, time.Time{}
+	slowest, taxiOnAt, landingOffAt, crawl := math.Inf(1), time.Time{}, time.Time{}, 0
 	for i := 0; i < 60*900 && ctl.State() != ArrivalParked; i++ {
 		now = now.Add(time.Second / 60)
 		if !inj.Driven(77) {
@@ -538,6 +538,9 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 				t.Fatalf("stopped in %v on a rolling clearance", ctl.State())
 			}
 			slowest = math.Min(slowest, ctl.last.GroundSpeed)
+			if ctl.last.GroundSpeed < 1 {
+				crawl++
+			}
 		}
 	}
 	if ctl.State() != ArrivalParked {
@@ -549,5 +552,9 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 	if d := taxiOnAt.Sub(landingOffAt); landingOffAt.IsZero() || d < TaxiLightDelay || d > TaxiLightDelay+time.Second {
 		t.Errorf("taxi light %v after the landing lights went off, want %v", d, TaxiLightDelay)
 	}
-	t.Logf("slowest %.2f kt; taxi light %v after landing lights off", slowest, taxiOnAt.Sub(landingOffAt))
+	// One brief dip, not a crawl (live: twice ~20 s below 1 kt).
+	if s := float64(crawl) / 60; s > 8 {
+		t.Errorf("%.1f s below 1 kt, want a brief dip", s)
+	}
+	t.Logf("slowest %.2f kt, %.1f s below 1 kt; taxi light %v after landing lights off", slowest, float64(crawl)/60, taxiOnAt.Sub(landingOffAt))
 }

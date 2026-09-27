@@ -130,7 +130,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	if c.rollThrough {
 		// A rolling clearance: slow to RollThroughKts at the vacate point and
 		// taxi on without stopping.
-		path.LimitRange(hold-RollThroughMeters, hold+RollThroughMeters, RollThroughKts, prof.Decel)
+		c.mover.SlowAt(hold, RollThroughKts)
 	} else {
 		c.mover.HoldAt(hold)
 	}
@@ -251,7 +251,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		// Stopped clear of the runway (or, rolling through, at the slowest
 		// point): landing lights off, and a moment later the taxi light on;
 		// then wait for the taxi clearance, or roll on.
-		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-RollThroughMeters) {
+		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-0.5) {
 			c.setInjectedLights(lightsStopped, "lights landing off")
 			c.taxiLightAt = c.now().Add(TaxiLightDelay)
 			c.clearAt = c.now().Add(c.dwell())

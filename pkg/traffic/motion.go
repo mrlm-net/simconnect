@@ -160,6 +160,8 @@ type GroundMover struct {
 	s, v, a float64
 	gear    airport.LatLon
 	hold    float64 // stop point for the nose; path length when none
+	slowAt  float64 // SlowAt point and speed; slowKts 0 when none
+	slowKts float64
 	pose    GroundPose
 
 	placed   bool
@@ -215,6 +217,10 @@ func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.p
 // ClearHold lets the aircraft continue to the end of the path.
 func (m *GroundMover) ClearHold() { m.hold = m.path.Length() }
 
+// SlowAt makes the aircraft slow down to kts with its nose gear at distance
+// d along the path and carry on without stopping (a rolling clearance).
+func (m *GroundMover) SlowAt(d, kts float64) { m.slowAt, m.slowKts = d, kts }
+
 // Step advances the motion by dt seconds and returns the new pose. Long
 // steps are split so a stalled caller does not jump.
 func (m *GroundMover) Step(dt float64) GroundPose {
@@ -235,9 +241,19 @@ func (m *GroundMover) step(dt float64) {
 	rem := m.hold - m.s
 	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+TurnLookaheadMeters))
 	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
+	if m.slowKts > 0 && m.s < m.slowAt {
+		v0 := m.slowKts * ktsToMS
+		target = math.Min(target, math.Sqrt(v0*v0+2*p.Decel*(m.slowAt-m.s)))
+	}
 	want := (target - m.v) / SpeedResponseSeconds
 	if rem > 0.05 && rem < StopApproachMeters {
 		want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+	}
+	if r := m.slowAt - m.s; m.slowKts > 0 && r > 0.05 && r < StopApproachMeters {
+		v0 := m.slowKts * ktsToMS
+		if m.v > v0 {
+			want = math.Min(want, (v0*v0-m.v*m.v)/(2*r)) // brake exactly onto the slow point
+		}
 	}
 	want = math.Max(-1.5*p.Decel, math.Min(p.Accel, want))
 	if want > m.a {
@@ -246,6 +262,11 @@ func (m *GroundMover) step(dt float64) {
 		m.a = math.Max(want, m.a-p.Jerk*dt)
 	}
 	m.v = math.Max(0, m.v+m.a*dt)
+	// Around a SlowAt point the aircraft keeps rolling at its slow speed
+	// (braking momentum would otherwise stop it) unless it must hold.
+	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
+		m.v, m.a = v0, math.Max(m.a, 0)
+	}
 	m.s = math.Min(m.s+m.v*dt, m.hold)
 	if m.hold-m.s < 0.3 && m.v < 0.1 || m.s >= m.hold {
 		m.s, m.v, m.a = math.Max(m.s, math.Min(m.hold, m.s+0.3)), 0, 0
