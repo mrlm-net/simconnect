@@ -76,6 +76,7 @@ func main() {
 	model := flag.String("model", "FSLTL A320 Air France SL", "aircraft container title")
 	runway := flag.String("runway", "06", "runway end to taxi to")
 	secs := flag.Int("seconds", 240, "how long to watch")
+	mode := flag.String("mode", "events", "simvar | events (A: priority form, B: registered notification group)")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -99,19 +100,40 @@ func main() {
 		client.AddToDataDefinition(defLights, n, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i))
 	}
 	client.AddToDataDefinition(defState, "AI TRAFFIC STATE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
+	const evtTaxiSet, grp uint32 = 9170, 9171
+	client.MapClientEventToSimEvent(evtTaxiSet, "TAXI_LIGHTS_SET")
+	client.AddClientEventToNotificationGroup(grp, evtTaxiSet, false)
+	client.SetNotificationGroupPriority(grp, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST)
+	sent := map[uint32]string{}
 
 	planes := []*plane{
 		{name: "A measure", stand: "N50"},
 		{name: "B rewrite@wp", stand: "N51", rewrite: true},
+	}
+	if *mode == "events" {
+		planes = []*plane{{name: "A evt priority", stand: "N50"}, {name: "B evt group", stand: "N51"}}
 	}
 	start := time.Now()
 	logf := func(p *plane, format string, a ...any) {
 		fmt.Printf("%7.2fs [%s] %s\n", time.Since(start).Seconds(), p.name, fmt.Sprintf(format, a...))
 	}
 	writeLights := func(p *plane, why string) {
+		p.writes++
+		if *mode == "events" {
+			var err error
+			if strings.HasPrefix(p.name, "A") {
+				err = client.TransmitClientEvent(p.obj, evtTaxiSet, 1, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
+			} else {
+				err = client.TransmitClientEvent(p.obj, evtTaxiSet, 1, grp, types.SIMCONNECT_EVENT_FLAG_DEFAULT)
+			}
+			if id, e := client.GetLastSentPacketID(); e == nil {
+				sent[id] = p.name + " TAXI_LIGHTS_SET"
+			}
+			logf(p, "event TAXI_LIGHTS_SET 1 (%s) err=%v", why, err)
+			return
+		}
 		l := [5]float64{0, 1, 0, 1, 1} // taxi, beacon, nav
 		client.SetDataOnSimObject(defLights, p.obj, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(l)), unsafe.Pointer(&l))
-		p.writes++
 		logf(p, "write lights .TBN (%s)", why)
 	}
 
@@ -167,6 +189,9 @@ func main() {
 				continue
 			}
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
+			case types.SIMCONNECT_RECV_ID_EXCEPTION:
+				e := msg.AsException()
+				fmt.Printf("⚠️  exception %d on %q (parameter %d)\n", e.DwException, sent[uint32(e.DwSendID)], e.DwIndex)
 			case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
 				m := msg.AsAssignedObjectID()
 				r := uint32(m.DwRequestID)
