@@ -41,7 +41,7 @@ func DefaultMotionProfile() MotionProfile {
 		CruiseKts:       TaxiSpeedKts,
 		MinTurnKts:      3,
 		LateralAccel:    0.6,
-		Accel:           0.35,
+		Accel:           0.45, // live: 0.35 pulled away a little slowly
 		Decel:           0.5,
 		Jerk:            0.2,
 	}

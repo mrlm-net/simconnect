@@ -37,7 +37,7 @@ pose := mover.Step(1.0 / 60)                    // every frame
 | `RefAheadMeters` (sim reference point ahead of the main gear) | 1.0 |
 | `CruiseKts` / `MinTurnKts` | 15 / 3 |
 | `LateralAccel` | 0.6 m/s² |
-| `Accel` / `Decel` / `Jerk` | 0.35 m/s² / 0.5 m/s² / 0.2 m/s³ |
+| `Accel` / `Decel` / `Jerk` | 0.45 m/s² / 0.5 m/s² / 0.2 m/s³ |
 
 ## Driving the aircraft
 
