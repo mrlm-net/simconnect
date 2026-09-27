@@ -155,7 +155,7 @@ function parkingLabel(p) {
   let prefix = PARKING_NAMES[p.name];
   if (prefix === undefined) prefix = p.name >= 12 && p.name <= 37 ? String.fromCharCode(65 + p.name - 12) : `?${p.name}`;
   if (prefix === 'GATE' || prefix === 'P') prefix = '';
-  return prefix + p.number;
+  return prefix + p.number + (p.suffix >= 12 && p.suffix <= 37 ? String.fromCharCode(65 + p.suffix - 12) : '');
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function kv(obj) { return Object.entries(obj).map(([k, v]) => `${k}: ${esc(v)}`).join('<br>'); }
@@ -374,6 +374,18 @@ async function computeRoute() {
   }
 }
 
+// normalize flattens a pkg/airport Layout into the shape the drawing code
+// uses: lat/lon on every item and the runway end fields.
+function normalize(d) {
+  for (const p of [...d.parking, ...d.taxiPoints]) { p.lat = p.position.lat; p.lon = p.position.lon; }
+  for (const r of d.runways) {
+    r.lat = r.center.lat; r.lon = r.center.lon;
+    r.primaryNumber = r.primary.number; r.primaryDesignator = r.primary.designator;
+    r.secondaryNumber = r.secondary.number; r.secondaryDesignator = r.secondary.designator;
+  }
+  return d;
+}
+
 async function load(icao, refresh) {
   icao = icao.trim().toUpperCase();
   if (!icao) return;
@@ -383,7 +395,7 @@ async function load(icao, refresh) {
     const res = await fetch(`/api/airport?icao=${encodeURIComponent(icao)}${refresh ? '&refresh=1' : ''}`);
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
     const prev = data && data.icao;
-    data = await res.json();
+    data = normalize(await res.json());
     if (prev !== data.icao) { routeFrom = null; $('rFrom').textContent = '—'; }
     draw();
     const pts = [...data.taxiPoints, ...data.parking].map((p) => [p.lat, p.lon]);

@@ -194,8 +194,9 @@ func TestUseRunwayPathsNeverLonger(t *testing.T) {
 func TestRouteErrors(t *testing.T) {
 	g := lkprGraph(t)
 	c22, _ := g.Layout.ParkingIndex("C22")
-	if _, err := g.Layout.ParkingIndex("S22"); !errors.Is(err, ErrAmbiguousParking) {
-		t.Errorf("ParkingIndex(S22) error = %v, want ErrAmbiguousParking", err)
+	dup := &Layout{Parking: []Parking{{Index: 0, Number: 5}, {Index: 1, Number: 5}}}
+	if _, err := dup.ParkingIndex("5"); !errors.Is(err, ErrAmbiguousParking) {
+		t.Errorf("ParkingIndex(duplicate) error = %v, want ErrAmbiguousParking", err)
 	}
 	if _, err := g.Layout.ParkingIndex("X99"); !errors.Is(err, ErrUnknownParking) {
 		t.Errorf("ParkingIndex(X99) error = %v, want ErrUnknownParking", err)
