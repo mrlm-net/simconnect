@@ -34,6 +34,7 @@ import (
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -391,16 +392,102 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "from must be a parking index", http.StatusBadRequest)
 			return
 		}
-		route, err := g.RouteToRunway(from, q.Get("to"), airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""})
+		route, err := g.RouteToRunwayEntry(from, q.Get("to"), q.Get("entry"), airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""})
 		if err != nil {
-			status := http.StatusBadRequest
-			if errors.Is(err, airport.ErrNoRoute) {
-				status = http.StatusUnprocessableEntity
-			}
-			http.Error(w, err.Error(), status)
+			routeError(w, err)
 			return
 		}
 		writeJSON(w, route)
+	})
+
+	// GET /api/entries?icao=LKPR&runway=24 — entries onto a runway end for
+	// departures ("24 at B"), full length first.
+	mux.HandleFunc("GET /api/entries", func(w http.ResponseWriter, r *http.Request) {
+		g, err := st.cache.Graph(icaoParam(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		entries, err := g.RunwayEntries(r.URL.Query().Get("runway"))
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		type entry struct {
+			airport.RunwayEntry
+			Position airport.LatLon `json:"position"` // where the entry meets the runway
+		}
+		out := make([]entry, len(entries))
+		for i, e := range entries {
+			out[i] = entry{e, g.Nodes[e.RunwayNode].Position}
+		}
+		writeJSON(w, out)
+	})
+
+	// GET /api/exits?icao=LKPR&runway=24 — exits for aircraft landing on a
+	// runway end, nearest the threshold first.
+	mux.HandleFunc("GET /api/exits", func(w http.ResponseWriter, r *http.Request) {
+		g, err := st.cache.Graph(icaoParam(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		exits, err := g.RunwayExits(r.URL.Query().Get("runway"))
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		type exit struct {
+			airport.RunwayExit
+			Position airport.LatLon `json:"position"` // where the exit leaves the runway
+		}
+		out := make([]exit, len(exits))
+		for i, e := range exits {
+			out[i] = exit{e, g.Nodes[e.RunwayNode].Position}
+		}
+		writeJSON(w, out)
+	})
+
+	// GET /api/arrival?icao=LKPR&runway=24&to=18[&exit=3] — taxi-in route from
+	// a runway exit to a parking index. exit is an index into /api/exits;
+	// without it the exit is chosen as the arrival controller would.
+	mux.HandleFunc("GET /api/arrival", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		g, err := st.cache.Graph(icaoParam(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		to, err := strconv.Atoi(q.Get("to"))
+		if err != nil {
+			http.Error(w, "to must be a parking index", http.StatusBadRequest)
+			return
+		}
+		opts := traffic.ArrivalOptions{Route: airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""}}
+		if s := q.Get("exit"); s != "" {
+			exits, err := g.RunwayExits(q.Get("runway"))
+			if err != nil {
+				routeError(w, err)
+				return
+			}
+			i, err := strconv.Atoi(s)
+			if err != nil || i < 0 || i >= len(exits) {
+				http.Error(w, "exit must be an index into /api/exits", http.StatusBadRequest)
+				return
+			}
+			opts.Exit = &exits[i]
+		}
+		plan, err := traffic.PlanArrival(g, q.Get("runway"), to, opts)
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		writeJSON(w, struct {
+			Route  *airport.Route     `json:"route"`
+			Exit   airport.RunwayExit `json:"exit"`
+			Vacate airport.LatLon     `json:"vacate"` // where the aircraft stops clear of the runway
+			Stop   airport.LatLon     `json:"stop"`   // reference point on the stand
+		}{plan.Route, plan.Exit, plan.Route.Points[plan.VacateIndex], plan.Stop})
 	})
 
 	// GET /api/traffic — every aircraft within 20 km of the user aircraft.
@@ -529,4 +616,13 @@ func lights(t *trafficRaw) string {
 		}
 	}
 	return b.String()
+}
+
+// routeError maps pkg/airport routing errors to HTTP statuses.
+func routeError(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, airport.ErrNoRoute) {
+		status = http.StatusUnprocessableEntity
+	}
+	http.Error(w, err.Error(), status)
 }

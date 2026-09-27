@@ -53,6 +53,8 @@ type Route struct {
 	// Runway and RunwayEnd are set by RouteToRunway.
 	Runway    string `json:"runway,omitempty"`
 	RunwayEnd string `json:"runwayEnd,omitempty"`
+	// Entry is the entry taxiway set by RouteToRunwayEntry ("B" in "24 at B").
+	Entry string `json:"entry,omitempty"`
 	// HoldShort is the final node's hold-short data when the route ends at one.
 	HoldShort *HoldShort `json:"holdShort,omitempty"`
 }

@@ -18,6 +18,7 @@ var (
 	ErrUnknownRunway    = errors.New("airport: unknown runway end")
 	ErrNoHoldShort      = errors.New("airport: no hold-short point for runway")
 	ErrNoRoute          = errors.New("airport: no route")
+	ErrUnknownEntry     = errors.New("airport: no runway entry of that name")
 )
 
 // NodeID identifies a graph node. Taxi point i is node i; parking spot k is
