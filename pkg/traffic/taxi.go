@@ -298,6 +298,9 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	if err != nil {
 		return err
 	}
+	if err := entryLongEnough(req, route); err != nil {
+		return err
+	}
 	rwy, end, _ := req.Graph.Layout.RunwayEnd(req.Runway)
 	c.runway, c.end, c.runwayLength = rwy, end, rwy.Length
 	c.sent = map[uint32]string{}
@@ -570,4 +573,33 @@ func meters(origin, q airport.LatLon) (x, z float64) {
 	x = (q.Lon - origin.Lon) * math.Pi / 180 * r * math.Cos(origin.Lat*math.Pi/180)
 	z = (q.Lat - origin.Lat) * math.Pi / 180 * r
 	return x, z
+}
+
+// entryLongEnough refuses an intersection departure (TaxiRequest.Entry)
+// whose runway ahead is shorter than the aircraft needs: RequiredTakeoffRun
+// for its take-off profile at the airport's elevation.
+func entryLongEnough(req TaxiRequest, route *airport.Route) error {
+	if req.Entry == "" || len(route.Nodes) == 0 {
+		return nil
+	}
+	entries, err := req.Graph.RunwayEntries(req.Runway)
+	if err != nil {
+		return nil
+	}
+	last := route.Nodes[len(route.Nodes)-1]
+	for _, e := range entries {
+		if e.HoldShort != last && e.Node != last {
+			continue
+		}
+		p := req.Takeoff
+		if p == (TakeoffProfile{}) {
+			p = DefaultTakeoffProfile()
+		}
+		need := RequiredTakeoffRun(p, TakeoffConditions{ElevationFt: convert.MetersToFeet(req.Graph.Layout.Altitude)})
+		if e.Remaining < need {
+			return fmt.Errorf("%w: runway %s at %s leaves %.0f m, the aircraft needs %.0f m", ErrEntryTooShort, req.Runway, req.Entry, e.Remaining, need)
+		}
+		return nil
+	}
+	return nil
 }

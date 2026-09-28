@@ -368,7 +368,9 @@ async function loadChoices() {
   $('rPick').innerHTML = `<option value="">${arr ? 'Auto (best exit)' : 'Full length'}</option>`;
   if (!data || !rwy) return computeRoute();
   try {
-    const res = await fetch(`/api/${arr ? 'exits' : 'entries'}?${new URLSearchParams({ icao: data.icao, runway: rwy })}`);
+    const q = { icao: data.icao, runway: rwy };
+    if (!arr) q.model = $('cModel').value; // which entries leave enough runway for it
+    const res = await fetch(`/api/${arr ? 'exits' : 'entries'}?${new URLSearchParams(q)}`);
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
     choices = await res.json();
   } catch (e) {
@@ -383,7 +385,12 @@ async function loadChoices() {
     for (const e of choices) {
       if (e.taxiway && (!best.has(e.taxiway) || e.remaining > best.get(e.taxiway).remaining)) best.set(e.taxiway, e);
     }
-    for (const e of best.values()) opts.push(`<option value="${esc(e.taxiway)}">${esc(rwy)} at ${esc(e.taxiway)} · ${e.remaining.toFixed(0)} m ahead · ${e.angle.toFixed(0)}°</option>`);
+    // Entries too short for the model are shown but cannot be picked.
+    for (const e of best.values()) {
+      const short = e.required && !e.ok;
+      opts.push(`<option value="${esc(e.taxiway)}"${short ? ' disabled' : ''}>${esc(rwy)} at ${esc(e.taxiway)} · ${e.remaining.toFixed(0)} m ahead · ${e.angle.toFixed(0)}°` +
+        `${short ? ` · too short (needs ${e.required.toFixed(0)} m)` : ''}</option>`);
+    }
   }
   $('rPick').innerHTML += opts.join('');
   computeRoute();
@@ -730,6 +737,7 @@ function closeModelMenu() { $('modelMenu').hidden = true; }
 function pickModel(m) {
   $('cModel').value = m;
   closeModelMenu();
+  if (!arrival()) loadChoices(); // the entries long enough depend on the type
 }
 
 $('cModel').addEventListener('focus', () => openModelMenu(true));
