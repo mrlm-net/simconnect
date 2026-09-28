@@ -9,6 +9,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -44,6 +45,10 @@ type RouteOptions struct {
 	// default; negative disables.
 	StandTurnAroundPenalty float64
 	PushbackPenalty        float64
+	// OwnApronMeters waives ApronPenalty within this distance of the start:
+	// an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by
+	// JB, the nearest). Zero means DefaultOwnApronMeters; negative disables.
+	OwnApronMeters float64
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -56,6 +61,9 @@ type Route struct {
 	Points []LatLon `json:"points"`
 	Edges  []Edge   `json:"edges"`  // Edges[i] leads from Nodes[i] to Nodes[i+1]
 	Length float64  `json:"length"` // meters
+	// Cost is what the search minimised: length plus the turn, crossing and
+	// apron penalties (RouteOptions); 0 for routes not found by a search.
+	Cost float64 `json:"cost,omitempty"`
 	// Taxiways is the sequence of taxiway names along the route with
 	// consecutive repeats and unnamed segments removed, e.g. ["C", "L", "D"].
 	Taxiways []string `json:"taxiways"`
@@ -103,7 +111,9 @@ func (g *Graph) routeVia(from, prev, to NodeID, opts RouteOptions) (*Route, erro
 	if math.IsInf(s.dist[to], 1) {
 		return nil, fmt.Errorf("%w: node %d to node %d", ErrNoRoute, from, to)
 	}
-	return g.routeFromNodes(s.path(to)), nil
+	r := g.routeFromNodes(s.path(to))
+	r.Cost = s.dist[to]
+	return r, nil
 }
 
 // RouteToRunway returns a departure taxi route from a parking spot to a
@@ -116,6 +126,53 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	if !ok {
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
+	return g.runwayRoute(from, -1, runwayEnd, opts)
+}
+
+// RouteToRunwayFrom is RouteToRunwayEntry for an aircraft at node from that
+// arrived there from prev (-1 if its heading is free): the route does not
+// turn back into prev. A departure pushed back from its stand onto a
+// taxiway branch starts its taxi-out this way, from the junction facing away
+// from that branch. An empty entry means full length.
+func (g *Graph) RouteToRunwayFrom(from, prev NodeID, runwayEnd, entry string, opts RouteOptions) (*Route, error) {
+	if !g.valid(from) || (prev >= 0 && !g.valid(prev)) {
+		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
+	}
+	if entry == "" {
+		return g.runwayRoute(from, prev, runwayEnd, opts)
+	}
+	return g.entryRoute(from, prev, runwayEnd, entry, opts)
+}
+
+// RouteFromNodes assembles a Route along consecutive, adjacent nodes, e.g. to
+// join a pushback onto a taxi-out planned with RouteToRunwayFrom.
+func (g *Graph) RouteFromNodes(nodes []NodeID) (*Route, error) {
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("%w: no nodes", ErrNoRoute)
+	}
+	for i, id := range nodes {
+		if !g.valid(id) {
+			return nil, fmt.Errorf("%w: node %d out of range", ErrNoRoute, id)
+		}
+		if i > 0 && !g.adjacent(nodes[i-1], id) {
+			return nil, fmt.Errorf("%w: nodes %d and %d are not connected", ErrNoRoute, nodes[i-1], id)
+		}
+	}
+	return g.routeFromNodes(nodes), nil
+}
+
+// adjacent reports whether an edge leads from a to b.
+func (g *Graph) adjacent(a, b NodeID) bool {
+	for _, e := range g.Adj[a] {
+		if e.To == b {
+			return true
+		}
+	}
+	return false
+}
+
+// runwayRoute is RouteToRunway from a node reached via prev.
+func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptions) (*Route, error) {
 	rwy, end, ok := g.Layout.RunwayEnd(runwayEnd)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q at %s", ErrUnknownRunway, runwayEnd, g.Layout.ICAO)
@@ -124,7 +181,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	if len(holds) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrNoHoldShort, rwy.Name())
 	}
-	s := g.shortestPaths(from, -1, opts)
+	s := g.shortestPaths(from, prev, opts)
 	dist := s.dist
 
 	type cand struct {
@@ -174,6 +231,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	}
 
 	r := g.routeFromNodes(s.path(best.id))
+	r.Cost = best.route
 	r.Runway, r.RunwayEnd = rwy.Name(), end.Name
 	return r, nil
 }
@@ -223,6 +281,9 @@ const (
 	// DefaultApronPenalty is the extra cost, as a fraction of the length, of
 	// edges at taxi points where a stand connects (apron taxilanes).
 	DefaultApronPenalty = 0.5
+	// DefaultOwnApronMeters is the RouteOptions.OwnApronMeters used when none
+	// is set.
+	DefaultOwnApronMeters = 250.0
 	// DefaultStandTurnAroundPenalty and DefaultPushbackPenalty: see
 	// RouteOptions.
 	DefaultStandTurnAroundPenalty = 3000.0
@@ -321,6 +382,12 @@ func (s *search) path(to NodeID) []NodeID {
 func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 	n := len(g.Nodes)
 	s := &search{dist: make([]float64, n), best: make([]int, n)}
+	own := opts.ownApron()
+	srcPos := g.Nodes[src].Position
+	nearSrc := func(id NodeID) bool {
+		p := g.Nodes[id].Position
+		return own > 0 && calc.HaversineMeters(srcPos.Lat, srcPos.Lon, p.Lat, p.Lon) < own
+	}
 	for i := range s.dist {
 		s.dist[i] = math.Inf(1)
 		s.best[i] = -1
@@ -377,7 +444,9 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			}
 			// Apron taxilanes (a stand connects at either end) cost extra, so
 			// through traffic keeps to taxiways without stands (LROP: N, not M).
-			if pen := opts.apronPenalty(); pen > 0 && g.stands != nil && (g.stands[node] || g.stands[e.To]) {
+			// An aircraft leaving its own apron uses its taxilanes freely
+			// (OwnApronMeters around the start).
+			if pen := opts.apronPenalty(); pen > 0 && g.stands != nil && (g.stands[node] || g.stands[e.To]) && !nearSrc(node) {
 				d += pen * e.Length
 			}
 			if pen := opts.crossingPenalty(); pen > 0 {
@@ -540,4 +609,14 @@ func (g *Graph) LeadInAhead(parkingNode, junction NodeID) bool {
 	jx, jz := g.local.xz(g.Nodes[junction].Position)
 	h := p.Heading * math.Pi / 180
 	return (jx-px)*math.Sin(h)+(jz-pz)*math.Cos(h) > 0
+}
+
+func (o RouteOptions) ownApron() float64 {
+	switch {
+	case o.OwnApronMeters < 0:
+		return 0
+	case o.OwnApronMeters == 0:
+		return DefaultOwnApronMeters
+	}
+	return o.OwnApronMeters
 }

@@ -46,7 +46,13 @@ func pushPlan(g *airport.Graph, own int, gear airport.LatLon, standHdg float64, 
 		}
 	}
 	dir := localBearing(jp, pointAlong(line, cum, run))
+	straight := []airport.LatLon{offsetHeading(gear, standHdg+180, math.Max(10, alongHeading(gear, standHdg+180, jp)))}
 	chord := func() []airport.LatLon { // unfitted: through the junction
+		// A junction well off the stand axis (LKPR B9): straight back to abeam
+		// it, as from a dead end; heading for it would turn on the stand.
+		if math.Abs(alongHeading(gear, standHdg+90, jp)) > pushOffAxisMeters {
+			return straight
+		}
 		return append([]airport.LatLon{jp}, cutLine(line, cum, 0.5, math.Min(total, math.Max(10, math.Min(settle, run))))...)
 	}
 	pushDir := math.Mod(standHdg+180, 360)

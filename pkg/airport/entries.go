@@ -4,6 +4,7 @@
 package airport
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -84,12 +85,21 @@ func (g *Graph) RouteToRunwayEntry(parking int, runwayEnd, entry string, opts Ro
 	if !ok {
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
+	r, err := g.entryRoute(from, -1, runwayEnd, entry, opts)
+	if errors.Is(err, ErrNoRoute) {
+		return nil, fmt.Errorf("%w from parking %d", err, parking)
+	}
+	return r, err
+}
+
+// entryRoute is RouteToRunwayEntry from a node reached via prev.
+func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts RouteOptions) (*Route, error) {
 	rwy, end, _ := g.Layout.RunwayEnd(runwayEnd)
 	entries, err := g.RunwayEntries(runwayEnd)
 	if err != nil {
 		return nil, err
 	}
-	s := g.shortestPaths(from, -1, opts)
+	s := g.shortestPaths(from, prev, opts)
 	var best *RunwayEntry
 	var target NodeID
 	for i := range entries {
@@ -111,12 +121,13 @@ func (g *Graph) RouteToRunwayEntry(parking int, runwayEnd, entry string, opts Ro
 	if best == nil {
 		for _, e := range entries {
 			if strings.EqualFold(e.Taxiway, entry) {
-				return nil, fmt.Errorf("%w: runway %s at %s from parking %d", ErrNoRoute, end.Name, entry, parking)
+				return nil, fmt.Errorf("%w: runway %s at %s", ErrNoRoute, end.Name, entry)
 			}
 		}
 		return nil, fmt.Errorf("%w: %s at %s", ErrUnknownEntry, end.Name, entry)
 	}
 	r := g.routeFromNodes(s.path(target))
+	r.Cost = s.dist[target]
 	r.Runway, r.RunwayEnd, r.Entry = rwy.Name(), end.Name, best.Taxiway
 	return r, nil
 }

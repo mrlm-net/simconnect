@@ -319,17 +319,77 @@ func (c *TaxiController) startPushback() error {
 // pushWalkMeters, taking the straightest continuation at each node
 // (segments can be a few meters long), and returns its centreline, which
 // pushPlan fits the push to; none keeps the push straight (a dead-end stand).
+// pushEdge reports whether a pushback may put the tail onto e: a taxiway,
+// not a stand, runway or a path along a runway.
+func pushEdge(g *airport.Graph, e airport.Edge) bool {
+	return g.Nodes[e.To].Kind != airport.NodeParking && e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING &&
+		e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway
+}
+
+// planPushback chooses the taxiway branch the tail is pushed onto by where
+// the aircraft can go from there: for every branch at the stand's junction
+// the push can swing onto, the taxi-out is planned from the junction facing
+// away from it (RouteToRunwayFrom); the cheapest wins and the route becomes
+// stand → junction → that taxi-out. Without it the pushback guessed from
+// the route planned from the stand, which at LKPR C17 went on straight
+// ahead of the push and left the aircraft facing away from its route.
+func (c *TaxiController) planPushback() {
+	g, r := c.req.Graph, c.route
+	if len(r.Nodes) < 3 || c.facesOut() {
+		return
+	}
+	j := r.Nodes[1]
+	jp := g.Nodes[j].Position
+	stand := g.Layout.Parking[c.req.Parking]
+	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -c.profile().RefAheadMeters)
+	pushDir := localBearing(gear, jp)
+	var best *airport.Route
+	branch := airport.NodeID(-1)
+	for _, e := range g.Adj[j] {
+		if !pushEdge(g, e) || math.Abs(headingDiff(pushDir, localBearing(jp, g.Nodes[e.To].Position))) > maxPushSwingDeg {
+			continue
+		}
+		out, err := g.RouteToRunwayFrom(j, e.To, c.req.Runway, c.req.Entry, c.req.Options)
+		if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
+			continue // no way on, or only back over the branch it was pushed onto
+		}
+		if best == nil || out.Cost < best.Cost {
+			best, branch = out, e.To
+		}
+	}
+	if best == nil {
+		return
+	}
+	full, err := g.RouteFromNodes(append([]airport.NodeID{r.Nodes[0]}, best.Nodes...))
+	if err != nil {
+		return
+	}
+	full.Runway, full.RunwayEnd, full.Entry, full.HoldShort = best.Runway, best.RunwayEnd, best.Entry, best.HoldShort
+	c.route, c.pushBranch, c.havePushBranch = full, branch, true
+}
+
 func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 	g, route := c.req.Graph, c.route
 	j := route.Nodes[1]
 	jp := g.Nodes[j].Position
-	taxiDir := localBearing(jp, g.Nodes[route.Nodes[2]].Position)
-	usableEdge := func(e airport.Edge) bool {
-		return g.Nodes[e.To].Kind != airport.NodeParking && e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING &&
-			e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway
+	// Where the route really goes from the junction: the next node can be a
+	// short connector pointing elsewhere (LKPR C17: 34° to the next node,
+	// the route heads 316°), which pushed the tail the wrong way.
+	far, walked := route.Points[2], 0.0
+	for i := 2; i < len(route.Points) && walked < pushRouteLookMeters; i++ {
+		walked += localDist(route.Points[i-1], route.Points[i])
+		far = route.Points[i]
 	}
+	taxiDir := localBearing(jp, far)
+	usableEdge := func(e airport.Edge) bool { return pushEdge(g, e) }
 	first, bestScore := airport.NodeID(-1), maxNoseOffRouteDeg
+	if c.havePushBranch {
+		first = c.pushBranch // the taxi-out was planned from it (planPushback)
+	}
 	for _, e := range g.Adj[j] {
+		if first >= 0 && c.havePushBranch {
+			break
+		}
 		if !usableEdge(e) {
 			continue
 		}
@@ -389,6 +449,12 @@ const (
 	pushWalkMeters           = 120.0
 	pushLineToleranceMeters  = 1.5
 	pushClearanceSlackMeters = 1.0
+	// pushOffAxisMeters: a junction further off the stand axis than this is
+	// pushed to abeam, straight, when no arc fits.
+	pushOffAxisMeters = 3.0
+	// pushRouteLookMeters is how far along the route from the junction its
+	// direction is judged, to pick the side the tail goes.
+	pushRouteLookMeters = 40.0
 )
 
 // startTaxiOut builds the taxi path from the nose gear to the hold-short

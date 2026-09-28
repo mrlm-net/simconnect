@@ -193,6 +193,8 @@ type TaxiController struct {
 	flaps                                                   surfaceRamp
 	frameAt                                                 time.Time
 	tugAttached                                             bool
+	pushBranch                                              airport.NodeID // taxiway the tail is pushed onto (planPushback)
+	havePushBranch                                          bool
 }
 
 // SimConnect IDs relative to the bases.
@@ -337,7 +339,10 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 
 	c.req, c.route = req, route
-	c.track = newRouteTracker(route)
+	if c.inj != nil {
+		c.planPushback() // may re-plan the route from the push
+	}
+	c.track = newRouteTracker(c.route)
 	c.setState(TaxiSpawning, nil)
 	return nil
 }
