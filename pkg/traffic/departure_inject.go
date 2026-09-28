@@ -265,7 +265,7 @@ func (c *TaxiController) startPushback() error {
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
-	path, err := NewGroundPath(pts, push)
+	path, err := NewArcPath(pts, push, PushbackArcMeters)
 	if err != nil {
 		return err
 	}

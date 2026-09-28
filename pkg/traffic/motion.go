@@ -206,9 +206,10 @@ func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 }
 
 // NewPushbackMover pushes an aircraft back: path runs from its main gear
-// backwards (tail first), the aircraft faces heading at the start, and the
-// nose trails the main gear as a tug steers it. Speeds come from p (use a
-// pushback CruiseKts).
+// backwards (tail first) and the main gear follows it, with the fuselage
+// along the path as the tug swings the nose (see placeReverse). heading is
+// the stand heading at the start. Speeds come from p (use a pushback
+// CruiseKts).
 func NewPushbackMover(path *GroundPath, p MotionProfile, heading float64) *GroundMover {
 	m := &GroundMover{path: path, p: p, hold: path.Length(), reverse: true}
 	gear := path.PointAt(0)
@@ -334,6 +335,10 @@ func (m *GroundMover) place() {
 		return // not moved: recomputing would only add rounding noise
 	}
 	m.placed, m.placedAt = true, m.s
+	if m.reverse {
+		m.placeReverse()
+		return
+	}
 	nose := m.path.PointAt(m.s)
 	kx := metersPerDegree * math.Cos(nose.Lat*math.Pi/180)
 	dx, dy := (m.gear.Lon-nose.Lon)*kx, (m.gear.Lat-nose.Lat)*metersPerDegree // nose → gear
@@ -512,4 +517,91 @@ func mergeClose(p []airport.LatLon, d float64) []airport.LatLon {
 		out = out[:len(out)-1] // keep the end exactly, drop the close one before it
 	}
 	return append(out, last)
+}
+
+// placeReverse places a pushed-back aircraft. The main gear cannot slide
+// sideways: it rolls along the fuselage axis while the tug swings the nose,
+// so the fuselage lies along the main gear's path and the aircraft points
+// against the direction of travel. The main gear traces the path's arcs and
+// the nose swings wide the other way (#304, GSX-style pushbacks).
+func (m *GroundMover) placeReverse() {
+	const d = 1.0 // meters either side for the path direction
+	a := m.path.PointAt(math.Max(0, m.s-d))
+	b := m.path.PointAt(math.Min(m.path.Length(), m.s+d))
+	gear := m.path.PointAt(m.s)
+	hdg := m.pose.Heading
+	if localDist(a, b) > 1e-6 {
+		hdg = localBearing(b, a) // the nose points back along the path
+	}
+	m.pose = GroundPose{
+		Position:       offsetHeading(gear, hdg, m.p.RefAheadMeters),
+		Heading:        hdg,
+		GroundSpeedKts: m.v / ktsToMS,
+		Distance:       m.s,
+		Stopped:        m.v == 0,
+		Arrived:        m.v == 0 && m.s >= m.path.Length()-0.05,
+	}
+}
+
+// NewArcPath is a GroundPath whose corners are circular arcs of radius
+// (smaller where the segments are too short): for pushbacks, where the
+// fuselage follows the path directly and a tug swings the tail through a
+// steady arc.
+func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*GroundPath, error) {
+	pts := mergeClose(points, 1)
+	if len(pts) < 2 {
+		return nil, ErrPathTooShort
+	}
+	g := &GroundPath{pts: fillet(pts, radius)}
+	g.cum = make([]float64, len(g.pts))
+	for i := 1; i < len(g.pts); i++ {
+		g.cum[i] = g.cum[i-1] + localDist(g.pts[i-1], g.pts[i])
+	}
+	decelAt := func(float64) float64 { return p.Decel }
+	g.decelAt = decelAt
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, func(float64) float64 { return p.LateralAccel })
+	return g, nil
+}
+
+// fillet replaces each corner of a polyline by a circular arc of radius r,
+// tangent to both segments (the tangent length is limited to half of each
+// segment), sampled every 1 m.
+func fillet(p []airport.LatLon, r float64) []airport.LatLon {
+	if len(p) < 3 {
+		return p
+	}
+	o := p[0]
+	kx := metersPerDegree * math.Cos(o.Lat*math.Pi/180)
+	xy := func(q airport.LatLon) (float64, float64) {
+		return (q.Lon - o.Lon) * kx, (q.Lat - o.Lat) * metersPerDegree
+	}
+	ll := func(x, y float64) airport.LatLon {
+		return airport.LatLon{Lat: o.Lat + y/metersPerDegree, Lon: o.Lon + x/kx}
+	}
+	out := []airport.LatLon{p[0]}
+	for i := 1; i+1 < len(p); i++ {
+		ax, ay := xy(p[i-1])
+		vx, vy := xy(p[i])
+		bx, by := xy(p[i+1])
+		l1, l2 := math.Hypot(vx-ax, vy-ay), math.Hypot(bx-vx, by-vy)
+		ux, uy := (vx-ax)/l1, (vy-ay)/l1             // in
+		wx, wy := (bx-vx)/l2, (by-vy)/l2             // out
+		turn := math.Atan2(ux*wy-uy*wx, ux*wx+uy*wy) // signed, left positive
+		if math.Abs(turn) < 0.5*math.Pi/180 {
+			out = append(out, p[i])
+			continue
+		}
+		t := math.Min(r*math.Tan(math.Abs(turn)/2), math.Min(l1, l2)/2)
+		rr := t / math.Tan(math.Abs(turn)/2)
+		sx, sy := vx-ux*t, vy-uy*t // arc start
+		side := math.Copysign(1, turn)
+		cx, cy := sx-uy*rr*side, sy+ux*rr*side // centre, left of travel for a left turn
+		a0 := math.Atan2(sy-cy, sx-cx)
+		n := max(2, int(rr*math.Abs(turn)))
+		for k := 0; k <= n; k++ {
+			a := a0 + turn*float64(k)/float64(n)
+			out = append(out, ll(cx+rr*math.Cos(a), cy+rr*math.Sin(a)))
+		}
+	}
+	return append(out, p[len(p)-1])
 }

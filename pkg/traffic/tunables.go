@@ -258,9 +258,11 @@ const (
 	TaxiAfterPushDelay = 15 * time.Second
 	LineUpDelay        = 6 * time.Second
 	TakeoffDelay       = 5 * time.Second
-	PushTailMeters     = 15.0
-	GearUpFt           = 50.0
-	ClimbHandoverFt    = 1500.0
+	PushTailMeters     = 20.0
+	// PushbackArcMeters is the radius the main gear turns on in a pushback.
+	PushbackArcMeters = 25.0
+	GearUpFt          = 50.0
+	ClimbHandoverFt   = 1500.0
 )
 
 // Injected departure configuration: take-off flaps (TakeoffFlapsPct, 1+F on
