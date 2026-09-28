@@ -1064,8 +1064,7 @@ async function pollGame() {
     const mins = g.started && g.on ? Math.floor((Date.now() - Date.parse(g.started)) / 60000) : 0;
     $('gScore').innerHTML = g.icao ? `<b style="font-size:1.4em">${g.score}</b> points · ${g.handled} of ${g.spawned} flights handled${g.on ? ` · ${mins} min · next flight in ${Math.max(0, g.nextInSec).toFixed(0)} s` : ''}` : '';
     const el = $('gLog');
-    el.textContent = (g.events || []).join('
-');
+    el.textContent = (g.events || []).join('\n');
     el.scrollTop = el.scrollHeight;
   } catch { /* server gone */ }
 }
