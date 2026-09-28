@@ -227,6 +227,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// queue commands to it.
 	cc := newControlCenter(client)
 	cc.graph = st.cache.Graph
+	cc.weather = func() *nav.Weather {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		return st.weather
+	}
 	cc.procedures = func(icao string) (airport.Procedures, bool) {
 		st.mu.Lock()
 		defer st.mu.Unlock()

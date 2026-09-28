@@ -216,3 +216,20 @@ func decodeWeather(x *weatherWire, now time.Time) Weather {
 	}
 	return w
 }
+
+// Icing conditions (#323): de-icing before departure is due at or below
+// IcingMaxTempC with visible moisture — precipitation, visibility below
+// IcingVisibilityM (fog, mist) or cloud at the aircraft.
+var (
+	IcingMaxTempC    = 3.0
+	IcingVisibilityM = 1500.0
+)
+
+// IcingConditions reports weather in which departures need de-icing.
+func IcingConditions(w Weather) bool {
+	if w.TempC > IcingMaxTempC {
+		return false
+	}
+	moisture := (w.Precip != "" && w.Precip != PrecipNone) || (w.VisibilityM > 0 && w.VisibilityM < IcingVisibilityM) || w.InCloud
+	return moisture
+}

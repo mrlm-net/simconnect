@@ -114,6 +114,10 @@ type TaxiRequest struct {
 	// ClimbHandoverFt, and TaxiMaxKts and ApronMaxKts cap the injected taxi
 	// speed where the motion profile is faster.
 	Airport *airport.Limits
+	// Deice de-ices the aircraft before it departs (#323): on the stand
+	// before the pushback, or at a pad on the way to the runway. Nil: no
+	// de-icing.
+	Deice *Deicing
 	// Tug shows a pushback tug (injected departures with a pushback): e.g.
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
@@ -140,6 +144,8 @@ type TaxiEvent struct {
 	// for none; AtLimit is set while the aircraft holds there.
 	LimitNode airport.NodeID
 	AtLimit   bool
+	// Deicing is set while the aircraft is being de-iced (#323).
+	Deicing bool
 	// PushbackHeld is set while the pushback waits, or stops, for traffic
 	// behind the stand (#334).
 	PushbackHeld bool
@@ -205,6 +211,10 @@ type TaxiController struct {
 	inj                                                     *Injector
 	rng                                                     *rand.Rand
 	timing                                                  timing // this aircraft's draw of the spreads (#343)
+	// De-icing (#323): the pad's node, the end of the treatment, done.
+	padNode    airport.NodeID
+	deiceUntil time.Time
+	deiced     bool
 	sent                                                    map[uint32]string
 	fast                                                    bool // monitor every frame: throttle progress events
 	emittedAt                                               time.Time
@@ -325,6 +335,16 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 	req.resolveAircraft()
 	req.Options = withSpan(req.Options, req.Profile)
+	c.padNode = -1
+	if d := req.Deice; d != nil && d.Pad != nil {
+		// The route passes the pad; the aircraft stops there.
+		node, ok := req.Graph.NearestNode(d.Pad.Position, DeicingPadReachMeters)
+		if !ok {
+			return fmt.Errorf("%w: de-icing pad %q is not on a taxiway", ErrBadTaxiRequest, d.Pad.Name)
+		}
+		req.Options.Via = append([]airport.NodeID{node}, req.Options.Via...)
+		c.padNode = node
+	}
 	req.Options.OwnStands = append(slices.Clone(req.Options.OwnStands), req.Parking) // not an obstacle to itself
 	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
 	if err != nil {

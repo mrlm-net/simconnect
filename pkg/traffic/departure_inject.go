@@ -140,6 +140,21 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	c.frameAt = now
 	switch c.state {
 	case TaxiAwaitingPushback:
+		// De-icing on the stand: once cleared to push, the treatment first.
+		if d := c.req.Deice; d != nil && d.Pad == nil && !c.deiced {
+			if c.deiceUntil.IsZero() {
+				if !c.gate(c.pushCleared) {
+					c.emit(nil, false)
+					return
+				}
+				c.startDeicing(now)
+			}
+			if now.Before(c.deiceUntil) {
+				c.emit(nil, false)
+				return
+			}
+			c.finishDeicing(LightsParked)
+		}
 		if c.pushAt.IsZero() && c.gate(c.pushCleared) {
 			// Beacon on, and the push starts BeaconLeadTime later.
 			c.lights.Logo = !c.aircraft().Lights.NoLogo // as MSFS AI shows it; aircraft spawn with it off
@@ -229,11 +244,26 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	switch c.state {
 	case TaxiPushback:
 		if pose.Arrived {
+			c.setPushHeld(false) // the push is done: nothing to hold for any more
 			c.openGate(TaxiAfterPushDelay)
 			c.setState(TaxiAwaitingTaxi, nil)
 			return
 		}
 	case TaxiTaxiing:
+		// At the de-icing pad: engines running, taxi light off, treated.
+		if c.hasPad && pose.Stopped && pose.Distance >= c.padStop-0.5 {
+			if c.deiceUntil.IsZero() {
+				c.startDeicing(now)
+				c.setInjectedLights(LightsPushback, "lights de-icing (taxi light off)")
+			}
+			if !now.Before(c.deiceUntil) {
+				c.hasPad = false
+				c.updateHold()
+				c.finishDeicing(LightsTaxi)
+			}
+			c.emit(nil, false)
+			return
+		}
 		if rwy, ok := c.atCrossingHold(pose); ok {
 			c.holdingCrossing = true
 			c.last.HoldingShortOf = rwy
@@ -304,6 +334,27 @@ func (c *TaxiController) updateTug(dt float64) {
 		return
 	}
 	c.tugErr(t.Update(pose, c.state == TaxiAwaitingPushback || c.state == TaxiPushback, dt))
+}
+
+// startDeicing starts the treatment: DefaultDeicingDwell (or the
+// request's), varied by DwellJitter.
+func (c *TaxiController) startDeicing(now time.Time) {
+	d := c.req.Deice.Dwell
+	if d <= 0 {
+		d = DefaultDeicingDwell
+	}
+	c.deiceUntil = now.Add(time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1))))
+	c.last.Deicing = true
+	c.note("de-icing", nil)
+	c.emit(nil, true)
+}
+
+// finishDeicing ends the treatment and sets the lights to go on with.
+func (c *TaxiController) finishDeicing(l Lights) {
+	c.deiced, c.last.Deicing = true, false
+	c.setInjectedLights(l, "lights after de-icing")
+	c.note("de-icing done", nil)
+	c.emit(nil, true)
 }
 
 // tugClear reports that no pushback tug is at the aircraft any more: none
@@ -822,6 +873,13 @@ func (c *TaxiController) startTaxiOut() error {
 	// Start where the aircraft stands (not a wheelbase along the path).
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	c.holdNextCrossing()
+	if c.padNode >= 0 && !c.deiced {
+		// Stop on the de-icing pad, the nose gear on its node.
+		if at, off := path.DistanceTo(c.req.Graph.Nodes[c.padNode].Position); off < 15 {
+			c.padStop, c.hasPad = at, true
+			c.updateHold()
+		}
+	}
 	if c.hasPendingLimit {
 		c.hasPendingLimit = false
 		if err := c.applyPendingLimit(c.pendingLimit); err != nil {
