@@ -356,6 +356,11 @@ const (
 	// half-spans for the paths to conflict.
 	GiveWayLookMeters   = 250.0
 	GiveWayMarginMeters = 10.0
+	// PushClearMarginMeters: a pushback waits (or stops) while another
+	// aircraft's fuselage is within the half-span plus this of the corridor
+	// the push sweeps, or while its taxi path comes within both half-spans
+	// plus GiveWayMarginMeters of it.
+	PushClearMarginMeters = 3.0
 )
 
 // TakeoffRunMargin lengthens the distance to 35 ft into the runway an

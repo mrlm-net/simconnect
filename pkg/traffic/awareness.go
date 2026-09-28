@@ -127,6 +127,52 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	return best
 }
 
+// corridorBlocked reports another aircraft in the way of a pushback along
+// corridor (points the pushing aircraft sweeps, with half its span): its
+// fuselage within half+PushClearMarginMeters of the corridor, or its path
+// ahead within both half-spans plus GiveWayMarginMeters — traffic taxiing
+// behind the stand. Parked neighbours are a stand spacing away and do not
+// count. It returns the first such aircraft's ID.
+func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, half float64, now time.Time) (uint32, bool) {
+	p.mu.Lock()
+	type other struct {
+		id uint32
+		e  groundEntry
+	}
+	var others []other
+	for oid, e := range p.aircraft {
+		if oid != id && now.Sub(e.at) <= TrafficStaleAfter {
+			others = append(others, other{oid, e})
+		}
+	}
+	p.mu.Unlock()
+	near := func(q airport.LatLon, reach float64) bool {
+		for _, c := range corridor {
+			if localDist(q, c) <= reach {
+				return true
+			}
+		}
+		return false
+	}
+	for _, o := range others {
+		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
+			if near(offsetHeading(o.e.pos, o.e.hdg, d), half+PushClearMarginMeters) {
+				return o.id, true
+			}
+		}
+		oh := o.e.half
+		if oh <= 0 {
+			oh = DefaultHalfSpanMeters
+		}
+		for _, r := range o.e.ahead {
+			if near(r, half+oh+GiveWayMarginMeters) {
+				return o.id, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // Forget drops aircraft id (airborne, parked for good, removed).
 func (p *GroundPicture) Forget(id uint32) {
 	p.mu.Lock()

@@ -133,6 +133,10 @@ type state struct {
 	// the airway graph for flight plans (#331), nil for direct routes.
 	requests chan<- string
 	airways  *nav.AirwayGraph
+	// weather is the latest at the user aircraft; atis the information
+	// services by ICAO (#357).
+	weather *nav.Weather
+	atis    map[string]*nav.ATISService
 }
 
 func (s *state) setLive(v bool) {
@@ -213,6 +217,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// The loader sends facility requests; this loop hands it every message.
 	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
 	procLoader := airport.NewProcedureLoader(client)
+	// Weather at the user aircraft, whenever it changes.
+	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
+	if err := weather.Subscribe(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  weather: %v\n", err)
+	}
 
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
@@ -283,6 +292,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				continue
 			}
 
+			if wx, ok := weather.Handle(msg); ok {
+				st.mu.Lock()
+				st.weather = &wx
+				st.mu.Unlock()
+				continue
+			}
 			if p, done := procLoader.Handle(msg); done {
 				fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
 				st.mu.Lock()
@@ -440,6 +455,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerControl(mux, st)
 	registerProcedures(mux, st)
 	registerGame(mux, st)
+	registerAirportInfo(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

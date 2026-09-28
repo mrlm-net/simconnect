@@ -74,6 +74,12 @@
   body.full #hud { left: 50%; }
   /* Zoomed out: no taxiway names, they would cover the airport */
   .far .leaflet-tooltip.twy { display: none; }
+  /* Airport, weather, ATIS */
+  #apInfo table td, #apWx table td { padding: 1px 6px 1px 0; font-size: 12px; }
+  #apInfo td:first-child, #apWx td:first-child { color: #999; white-space: nowrap; }
+  #apAtis .letter { display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 4px; border-radius: 3px; background: #2d6cdf; color: #fff; font-weight: 700; text-align: center; }
+  #apAtis .text { color: #ddd; font-size: 12px; line-height: 1.45; margin-top: 4px; }
+  .use { font-size: 14px; color: #fff; }
   /* Quick reference */
   .tabs button.q { flex: 0 0 34px; }
   .help ol { padding-left: 18px; margin: 4px 0; } .help li { margin: 3px 0; }
@@ -163,6 +169,12 @@
   </section>
 
   <section data-panel="charts" hidden>
+    <h2>Airport</h2>
+    <div id="apInfo" class="note">—</div>
+    <h2>Weather <span class="i" title="SimConnect reports the weather where your aircraft is, not per airport.">ⓘ</span></h2>
+    <div id="apWx" class="note">—</div>
+    <h2>ATIS</h2>
+    <div id="apAtis" class="note">—</div>
     <h2>Procedures <span class="i" title="SIDs, STARs and approaches from the simulator's navigation data. Legs to an altitude or a manual termination are approximated.">ⓘ</span></h2>
     <table class="form">
       <tr><td>Runway</td><td class="n"><select id="pRunway"><option value="">All</option></select></td></tr>
@@ -219,7 +231,7 @@
       <tr><td><span class="tag urgent">Abort take-off</span></td><td>before V1: stops, vacates, back to the holding point. Lined up: cancels the take-off clearance</td></tr>
       <tr><td><span class="tag danger">✕</span></td><td>removes the aircraft (asks first)</td></tr>
     </table>
-    <p class="note">Aircraft keep their distance on the ground by themselves: they queue and give way where routes cross. A departure waits for the tug to drive clear.</p>
+    <p class="note">Aircraft keep their distance on the ground by themselves: they queue and give way where routes cross. A departure waits for the tug to drive clear, and a pushback waits while traffic passes behind the stand.</p>
 
     <h2>Flight options</h2>
     <table class="ref">
@@ -248,7 +260,7 @@
     </table>
 
     <h2>More</h2>
-    <p class="note"><b>Charts</b>: SIDs, STARs and approaches of a runway, one at a time. <b>Layers</b>: airport data, live traffic, safe zones, overlapping stands, raw taxi path and point types.<br>
+    <p class="note"><b>Charts</b>: the airport, weather, runway in use and ATIS (🔊 reads it out); SIDs, STARs and approaches of a runway, one at a time. <b>Layers</b>: airport data, live traffic, safe zones, overlapping stands, raw taxi path and point types.<br>
     Guides: <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/atc-game.md" target="_blank">ATC game</a> ·
     <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/traffic-commands.md" target="_blank">ATC commands</a> ·
     <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/airport-layout.md" target="_blank">Airport layout</a></p>
@@ -541,7 +553,8 @@ function fillProcedurePick() {
     }
     if (group.length) opts.push(`<optgroup label="${title}">${group.join('')}</optgroup>`);
   }
-  sel.innerHTML = opts.length ? opts.join('') : '<option value="">— none for this runway —</option>';
+  const anyKind = $('pSID').checked || $('pSTAR').checked || $('pAPP').checked;
+  sel.innerHTML = opts.length ? opts.join('') : `<option value="">${anyKind ? '— none for this runway —' : '— tick SIDs, STARs or approaches —'}</option>`;
   if ([...sel.options].some((o) => o.value === keep && keep)) sel.value = keep;
   else sel.selectedIndex = 0;
 }
@@ -1045,7 +1058,7 @@ function renderControl() {
   const waits = (v) => !v.done && (WAITING.test(v.state) || v.atLimit);
   const views = [...ctlViews].sort((a, b) => (v => v.done ? 2 : waits(v) ? 0 : 1)(a) - (v => v.done ? 2 : waits(v) ? 0 : 1)(b) || a.id - b.id);
   $('ctlList').innerHTML = views.length ? views.map((v) => {
-    const status = [v.state, v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
+    const status = [v.state, v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
     const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : ''}>${ACTION_LABEL[a] || a}</button>`;
     const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
     const acts = (v.actions || []).filter((a) => a !== 'upto');
@@ -1240,8 +1253,44 @@ $('trafficTable').addEventListener('pointerdown', (e) => { // on press: the tabl
   if (r) locate(Number(r.dataset.lat), Number(r.dataset.lon), r.dataset.name);
 });
 
+// ── Airport, weather, ATIS (#357) ──
+async function pollAirportInfo() {
+  if (!data) return;
+  try {
+    const res = await fetch(`/api/airportinfo?icao=${data.icao}`);
+    if (!res.ok) return;
+    const a = await res.json();
+    const mv = a.magVar ? `${Math.abs(a.magVar).toFixed(0)}° ${a.magVar > 0 ? 'E' : 'W'}` : '—';
+    const rows = (a.runways || []).map((r) => `<tr><td>RWY ${esc(r.name)}</td><td>${r.lengthM.toFixed(0)} × ${r.widthM.toFixed(0)} m${r.approach ? ' · ' + esc(r.approach) : ''}</td></tr>`).join('');
+    const lim = a.limits || {};
+    $('apInfo').innerHTML = `<b>${esc(a.icao)}</b> ${esc(a.name)}<table>` +
+      `<tr><td>Elevation</td><td>${a.elevationFt.toFixed(0)} ft · variation ${mv}</td></tr>${rows}` +
+      `<tr><td>Transition</td><td>altitude ${(lim.TransitionAltitudeFt || 0).toFixed(0)} ft${lim.PreferredRunways && lim.PreferredRunways.length ? ' · preferred ' + esc(lim.PreferredRunways.join(', ')) : ''}</td></tr></table>`;
+    if (a.weather) {
+      const w = a.weather, u = a.use;
+      const wind = w.WindKts < 1 ? 'calm' : `${Math.round(((w.WindDirTrue - a.magVar) % 360 + 360) % 360).toString().padStart(3, '0')}° ${w.WindKts.toFixed(0)} kt${w.GustKts > w.WindKts ? ' G' + w.GustKts.toFixed(0) : ''}`;
+      const vis = w.VisibilityM >= 10000 ? '10 km or more' : `${(w.VisibilityM / 1000).toFixed(1)} km`;
+      $('apWx').innerHTML = (u ? `<div class="use">Runway in use: <b>${esc(u.departure)}${u.arrival !== u.departure ? ' / ' + esc(u.arrival) + ' (arrivals)' : ''}</b></div>` : '') +
+        `<table><tr><td>Wind</td><td>${wind}${u ? ` · headwind ${u.headwindKts.toFixed(0)}, crosswind ${Math.abs(u.crosswindKts).toFixed(0)} kt${u.withinLimits ? '' : ' <span class="warn">(outside limits)</span>'}` : ''}</td></tr>` +
+        `<tr><td>Visibility</td><td>${vis}${w.Precip && w.Precip !== 'none' ? ' · ' + esc(w.Precip) : ''}${w.InCloud ? ' · in cloud' : ''}</td></tr>` +
+        `<tr><td>Temperature</td><td>${w.TempC.toFixed(0)} °C</td></tr><tr><td>QNH</td><td>${w.QNHhPa.toFixed(0)} hPa</td></tr>` +
+        (u ? `<tr><td>Approach</td><td>${esc(u.approach)}</td></tr>` : '') + '</table>' +
+        (w.distanceNM > 20 ? `<div class="warn">Measured at your aircraft, ${w.distanceNM.toFixed(0)} NM from ${esc(a.icao)}.</div>` : '');
+    } else {
+      $('apWx').textContent = 'No weather yet (simulator not connected?).';
+    }
+    $('apAtis').innerHTML = a.atis
+      ? `<span class="letter" title="Information ${esc(a.atis.letter)}">${esc(a.atis.letter[0])}</span>Information ${esc(a.atis.letter)}<div class="text">${esc(a.atis.text)}</div>` +
+        `<button type="button" class="secondary" id="apSpeak" title="Read it aloud (the spoken form, digits spelled)">🔊 Listen</button>`
+      : '—';
+    if (a.atis) $('apSpeak').onclick = () => { try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(a.atis.spoken)); } catch { /* no speech */ } };
+  } catch { /* server gone */ }
+}
+setInterval(pollAirportInfo, 10000);
+
 // ── Tabs: one task at a time; the last one is remembered ──
 function showTab(name) {
+  if (name === 'charts') pollAirportInfo();
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === name);
   for (const sec of document.querySelectorAll('#side section[data-panel]')) sec.hidden = sec.dataset.panel !== name;
   try { localStorage.setItem('airportMapTab', name); } catch { /* private window */ }

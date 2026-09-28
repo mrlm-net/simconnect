@@ -142,6 +142,12 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.pushAt = now.Add(BeaconLeadTime)
 		}
 		if !c.pushAt.IsZero() && !now.Before(c.pushAt) {
+			// Nobody pushes into traffic: wait while the corridor behind
+			// the stand is not clear.
+			if !c.facesOut() && c.pushBlocked(now) {
+				c.emit(nil, false)
+				return
+			}
 			if c.facesOut() {
 				// Self-manoeuvring stand: no pushback — engines start on the
 				// stand and the aircraft taxis straight out.
@@ -194,6 +200,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	}
 	if c.mover == nil {
 		return
+	}
+	if c.state == TaxiPushback {
+		c.holdPushForTraffic(now)
 	}
 	pose, err := c.advance()
 	if err != nil && !errors.Is(err, ErrGroundUnknown) {
@@ -321,6 +330,29 @@ func (c *TaxiController) standInPlace() error {
 // the taxiway junction and on along the taxiway, away from the taxi
 // direction, so the aircraft ends up facing the way it will taxi.
 func (c *TaxiController) startPushback() error {
+	path, err := c.pushPath()
+	if err != nil {
+		return err
+	}
+	c.pushPlanned = nil
+	c.mover = NewPushbackMover(path, c.pushProfile(), c.req.Graph.Layout.Parking[c.req.Parking].Heading)
+	c.lastStep = c.now()
+	return nil
+}
+
+// pushProfile is the aircraft's motion at pushback speed.
+func (c *TaxiController) pushProfile() MotionProfile {
+	push := c.profile()
+	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = c.aircraft().PushbackKts, 1, 0.15, 0.25
+	return push
+}
+
+// pushPath is the path the main gear follows during the pushback (planned
+// once, the first time it is needed).
+func (c *TaxiController) pushPath() (*GroundPath, error) {
+	if c.pushPlanned != nil {
+		return c.pushPlanned, nil
+	}
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
@@ -338,8 +370,7 @@ func (c *TaxiController) startPushback() error {
 			pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[c.pushJunction], tail, prof)...)
 		}
 	}
-	push := prof
-	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = c.aircraft().PushbackKts, 1, 0.15, 0.25
+	push := c.pushProfile()
 	// pushPlan already shaped the arc; the fillet only rounds what is left.
 	// Alley pushes and push-and-turns come smooth already.
 	var path *GroundPath
@@ -350,11 +381,86 @@ func (c *TaxiController) startPushback() error {
 		path, err = NewArcPath(pts, push, PushbackMinArcMeters)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.mover = NewPushbackMover(path, push, stand.Heading)
-	c.lastStep = c.now()
-	return nil
+	c.pushPlanned = path
+	return path, nil
+}
+
+// pushCorridor is what the pushback still sweeps from from meters along
+// the path: the main gear's path, and the tail beyond its end.
+func pushCorridor(path *GroundPath, from float64, prof MotionProfile) []airport.LatLon {
+	var pts []airport.LatLon
+	end := path.Length()
+	for s := math.Max(0, from); s <= end; s += trafficBodyStep {
+		pts = append(pts, path.PointAt(s))
+	}
+	if end > 1 {
+		a, b := path.PointAt(end-1), path.PointAt(end)
+		h := localBearing(a, b)
+		tail := prof.TailMeters
+		if tail <= 0 {
+			tail = 20.5
+		}
+		for d := trafficBodyStep; d <= tail; d += trafficBodyStep {
+			pts = append(pts, offsetHeading(b, h, d))
+		}
+	}
+	return pts
+}
+
+// pushBlocked reports traffic in the corridor of the pushback not started
+// yet, and notes when the hold begins and ends.
+func (c *TaxiController) pushBlocked(now time.Time) bool {
+	if c.picture == nil || now.Sub(c.trafficAt) < TrafficCheckEvery {
+		return c.last.PushbackHeld
+	}
+	c.trafficAt = now
+	path, err := c.pushPath()
+	if err != nil {
+		return false
+	}
+	_, blocked := c.picture.corridorBlocked(c.objectID, pushCorridor(path, 0, c.profile()), c.halfSpan(), now)
+	c.setPushHeld(blocked)
+	return blocked
+}
+
+// holdPushForTraffic stops a pushback under way while traffic is in what
+// it still has to sweep, and lets it go on once clear.
+func (c *TaxiController) holdPushForTraffic(now time.Time) {
+	if c.picture == nil || c.mover == nil || now.Sub(c.trafficAt) < TrafficCheckEvery {
+		return
+	}
+	c.trafficAt = now
+	pose := c.mover.Pose()
+	_, blocked := c.picture.corridorBlocked(c.objectID, pushCorridor(c.mover.Path(), pose.Distance+1, c.profile()), c.halfSpan(), now)
+	if blocked {
+		v := pose.GroundSpeedKts * ktsToMS
+		c.mover.SetTrafficStop(pose.Distance + v*v/(2*0.25) + 0.2)
+	} else {
+		c.mover.ClearTrafficStop()
+	}
+	c.setPushHeld(blocked)
+}
+
+func (c *TaxiController) setPushHeld(held bool) {
+	if held == c.last.PushbackHeld {
+		return
+	}
+	c.last.PushbackHeld = held
+	if held {
+		c.note("pushback holding for traffic behind", nil)
+	} else {
+		c.note("pushback clear of traffic", nil)
+	}
+	c.emit(nil, true)
+}
+
+func (c *TaxiController) halfSpan() float64 {
+	if h := c.profile().SpanMeters / 2; h > 0 {
+		return h
+	}
+	return DefaultHalfSpanMeters
 }
 
 // behindJunction chooses where the tail goes after the stand: of the
