@@ -40,6 +40,8 @@
     #map { inset: 0 0 45% 0; }
     #side { top: 55%; width: 100%; border-left: 0; border-top: 1px solid #333; }
   }
+  .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
+  .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -68,6 +70,20 @@
   <div id="rInfo" class="note"></div>
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
+
+  <h2>Traffic control</h2>
+  <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
+  <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
+  <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
+  <div class="note">Model — type to search <span id="cModelCount"></span></div>
+  <input type="text" id="cModel" list="modelList" value="FSLTL A320 Air France SL" autocomplete="off" style="width: 100%; box-sizing: border-box">
+  <datalist id="modelList"></datalist>
+  <div style="display:flex; gap:6px; margin:4px 0">
+    <button type="button" id="cDeparture">▶ Departure</button>
+    <button type="button" id="cArrival">▶ Arrival</button>
+  </div>
+  <div id="cInfo" class="note"></div>
+  <div id="ctlList"></div>
 
   <h2>Live traffic</h2>
   <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
@@ -120,6 +136,7 @@ const groups = {
   overlaps: L.layerGroup(),
   route: L.layerGroup(),
   choices: L.layerGroup(),
+  control: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -134,7 +151,7 @@ for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -514,6 +531,113 @@ async function pollTraffic() {
     : '<tr><td>No other aircraft</td></tr>';
 }
 setInterval(pollTraffic, 1000);
+// ── Traffic control (#322): spawn controlled aircraft, give clearances,
+// progressive taxi by clicking route points ──
+let ctlSelected = null;
+let ctlViews = [];
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', remove: '✕' };
+
+async function ctlSpawn(kind) {
+  if (!data || !routeFrom) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot).</span>'; return; }
+  const body = {
+    kind, icao: data.icao, stand: routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
+    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked,
+  };
+  if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
+  $('cInfo').textContent = `Spawning ${kind}…`;
+  try {
+    const res = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    const v = await res.json();
+    ctlSelected = v.id;
+    $('cInfo').textContent = `${v.tail}: ${kind} spawned`;
+    pollControl();
+  } catch (e) {
+    $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+}
+
+async function ctlAct(id, action, node) {
+  const q = node !== undefined ? `?node=${node}` : '';
+  try {
+    const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    if (action === 'remove' && ctlSelected === id) ctlSelected = null;
+    pollControl();
+  } catch (e) {
+    $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+}
+
+function drawControl() {
+  groups.control.clearLayers();
+  const v = ctlViews.find((x) => x.id === ctlSelected);
+  if (!v || !v.route) return;
+  const pts = v.route.map((p) => [p.lat, p.lon]);
+  L.polyline(pts, { renderer, color: '#fff', weight: 8, opacity: 0.7, interactive: false }).addTo(groups.control);
+  L.polyline(pts, { renderer, color: '#ff9f1a', weight: 4, interactive: false }).addTo(groups.control);
+  const canUpTo = v.actions && v.actions.includes('upto');
+  v.nodes.forEach((n, i) => {
+    if (i === 0) return;
+    const limit = n === v.limitNode;
+    L.circleMarker(pts[i], {
+      renderer, radius: limit ? 8 : 4, color: '#fff', weight: limit ? 2 : 1, fillOpacity: 1,
+      fillColor: limit ? '#ff2bd6' : '#ff9f1a',
+    }).bindTooltip(limit ? `Cleared up to here (${v.atLimit ? 'holding' : 'taxiing'})` : 'Clear up to here')
+      .on('click', () => { if (canUpTo) ctlAct(v.id, 'upto', n); })
+      .addTo(groups.control);
+  });
+  if (v.position && v.position.lat) {
+    L.circleMarker([v.position.lat, v.position.lon], { renderer, radius: 9, color: '#fff', weight: 2, fillColor: '#2d6cdf', fillOpacity: 1 })
+      .bindTooltip(v.tail, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.control);
+  }
+}
+
+function renderControl() {
+  $('ctlList').innerHTML = ctlViews.length ? ctlViews.map((v) => {
+    const status = [v.state, v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && 'at limit'].filter(Boolean).join(' · ');
+    const buttons = (v.actions || []).filter((a) => a !== 'upto')
+      .concat(v.done ? [] : ['remove'])
+      .map((a) => `<button type="button" data-id="${v.id}" data-act="${a}">${ACTION_LABEL[a] || a}</button>`).join(' ');
+    const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
+    return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br>` +
+      `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}<br>${buttons}</div>`;
+  }).join('') : '<div class="note">No controlled aircraft</div>';
+}
+
+async function pollControl() {
+  try {
+    const res = await fetch('/api/control');
+    if (!res.ok) return;
+    ctlViews = await res.json();
+    ctlViews.sort((a, b) => a.id - b.id);
+    if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id;
+    renderControl();
+    drawControl();
+  } catch (e) { /* server restarting */ }
+}
+setInterval(pollControl, 1000);
+// Model list for the Model field (searchable datalist).
+async function loadModels() {
+  try {
+    const res = await fetch('/api/models');
+    const models = res.ok ? await res.json() : [];
+    if (!models.length) { setTimeout(loadModels, 5000); return; }
+    $('modelList').innerHTML = models.map((m) => `<option value="${esc(m)}">`).join('');
+    $('cModelCount').textContent = `(${models.length} aircraft)`;
+  } catch (e) { setTimeout(loadModels, 5000); }
+}
+loadModels();
+
+$('cDeparture').addEventListener('click', () => ctlSpawn('departure'));
+$('cArrival').addEventListener('click', () => ctlSpawn('arrival'));
+$('ctlList').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
+  const row = e.target.closest('[data-sel]');
+  if (row) { ctlSelected = Number(row.dataset.sel); renderControl(); drawControl(); }
+});
+
 $('trafficOn').addEventListener('change', pollTraffic);
 
 // ── Wiring ──
