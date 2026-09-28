@@ -217,6 +217,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client)
+	cc.graph = st.cache.Graph
 	cc.procedures = func(icao string) (airport.Procedures, bool) {
 		st.mu.Lock()
 		defer st.mu.Unlock()
@@ -438,6 +439,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	// GET /api/geojson?icao=LKPR — the layout as a GeoJSON FeatureCollection.
 	registerControl(mux, st)
 	registerProcedures(mux, st)
+	registerGame(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

@@ -79,6 +79,7 @@ type ControlView struct {
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
 	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround       bool             `json:"onGround"`
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -111,6 +112,12 @@ type controlCenter struct {
 	ticks   int
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
 	procedures func(icao string) (airport.Procedures, bool)
+	// The ATC game (#272): its state, the taxi graphs, the last traffic
+	// scan and when the game last ran.
+	game   *game
+	graph  func(icao string) (*airport.Graph, error)
+	scan   []Traffic
+	gameAt time.Time
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
@@ -120,6 +127,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 		models:  map[string]bool{},
 		stands:  map[string]*traffic.StandAllocator{},
 		picture: traffic.NewGroundPicture(),
+		game:    &game{},
 	}
 }
 
@@ -155,6 +163,10 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 // tick runs every second in the connection goroutine: it scans the stands
 // of every airport with an allocator every standScanTicks.
 func (cc *controlCenter) tick() {
+	if now := time.Now(); now.Sub(cc.gameAt) >= time.Second {
+		cc.gameAt = now
+		cc.gameTick(now)
+	}
 	if cc.ticks++; cc.ticks%standScanTicks != 0 {
 		return
 	}
@@ -410,7 +422,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.logChanges(prev, ev)
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
-		v.Position, v.Heading, v.GroundSpeed, v.Lights = e.Position, e.Heading, e.GroundSpeed, e.Lights.String()
+		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
@@ -427,7 +439,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 	if e := ev.arr; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
-		v.Position, v.Heading, v.GroundSpeed, v.Lights = e.Position, e.Heading, e.GroundSpeed, e.Lights.String()
+		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
@@ -1021,6 +1033,7 @@ func clearanceOf(kind, from, to string) string {
 // too. The controlled ones report themselves.
 func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
+	cc.scan = scan
 	own := map[uint32]bool{}
 	for _, it := range cc.items {
 		if it.dep != nil {

@@ -105,6 +105,13 @@
   <button type="button" id="pFit" class="secondary">Fit procedures in view</button>
   <div id="pInfo" class="note"></div>
 
+  <h2>ATC game</h2>
+  <div class="note">You are ground and tower. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances (below). +10 per flight handled; −1 per 30 s a flight waits over a minute, −50 lost wingtip separation, −100 two aircraft on a runway.</div>
+  <table><tr><td>New flight every</td><td class="n"><input type="number" id="gEvery" value="3" min="1" step="0.5" style="width:4em"> min (runway from Route)</td></tr></table>
+  <button type="button" id="gStart" style="width:100%; margin:4px 0">▶ Start game</button>
+  <div id="gScore" class="note"></div>
+  <div id="gLog" class="tlog" style="max-height:9em"></div>
+
   <h2>Traffic control</h2>
   <div class="note">Spawns what the <b>Route</b> section shows: its mode (departure or arrival), stand and runway. Then give the clearances in the list below; select an aircraft and click a point of its route to clear it up to there.</div>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
@@ -1044,6 +1051,32 @@ $('ctlList').addEventListener('click', (e) => {
 });
 
 $('trafficOn').addEventListener('change', pollTraffic);
+
+// ── ATC game (#272) ──
+let gameOn = false;
+async function pollGame() {
+  try {
+    const res = await fetch('/api/game');
+    if (!res.ok) return;
+    const g = await res.json();
+    gameOn = g.on;
+    $('gStart').textContent = g.on ? '■ Stop game' : '▶ Start game';
+    const mins = g.started && g.on ? Math.floor((Date.now() - Date.parse(g.started)) / 60000) : 0;
+    $('gScore').innerHTML = g.icao ? `<b style="font-size:1.4em">${g.score}</b> points · ${g.handled} of ${g.spawned} flights handled${g.on ? ` · ${mins} min · next flight in ${Math.max(0, g.nextInSec).toFixed(0)} s` : ''}` : '';
+    const el = $('gLog');
+    el.textContent = (g.events || []).join('
+');
+    el.scrollTop = el.scrollHeight;
+  } catch { /* server gone */ }
+}
+setInterval(pollGame, 2000);
+$('gStart').addEventListener('click', async () => {
+  if (!data) return;
+  const body = { on: !gameOn, icao: data.icao, runway: $('rTo').value, intervalSec: Number($('gEvery').value) * 60 || 180 };
+  if (body.on && !$('rTo').value) { $('gScore').textContent = 'Pick a runway in Route first.'; return; }
+  await fetch('/api/game', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  pollGame();
+});
 $('trafficTable').addEventListener('pointerdown', (e) => { // on press: the table re-renders every second
   const r = e.target.closest('tr[data-lat]');
   if (r) locate(Number(r.dataset.lat), Number(r.dataset.lon), r.dataset.name);
