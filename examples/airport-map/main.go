@@ -34,6 +34,7 @@ import (
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -455,10 +456,21 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		type entry struct {
 			airport.RunwayEntry
 			Position airport.LatLon `json:"position"` // where the entry meets the runway
+			// With ?model=: the runway the type needs to take off here
+			// (traffic.RequiredTakeoffRun at this elevation) and whether the
+			// entry leaves enough of it.
+			Required float64 `json:"required,omitempty"`
+			OK       bool    `json:"ok"`
+		}
+		need := 0.0
+		if model := r.URL.Query().Get("model"); model != "" {
+			title, _, _ := strings.Cut(model, liverySep)
+			need = traffic.RequiredTakeoffRun(traffic.TakeoffProfileFor(title),
+				traffic.TakeoffConditions{ElevationFt: convert.MetersToFeet(g.Layout.Altitude)})
 		}
 		out := make([]entry, len(entries))
 		for i, e := range entries {
-			out[i] = entry{e, g.Nodes[e.RunwayNode].Position}
+			out[i] = entry{e, g.Nodes[e.RunwayNode].Position, need, e.Remaining >= need}
 		}
 		writeJSON(w, out)
 	})

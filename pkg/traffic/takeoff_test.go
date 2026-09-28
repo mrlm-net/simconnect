@@ -4,8 +4,11 @@
 package traffic
 
 import (
+	"errors"
 	"math"
 	"testing"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
 // TestTakeoffMover: an A320 take-off from a standing start rotates at Vr,
@@ -136,6 +139,62 @@ func TestMotionProfileForAsoboTitles(t *testing.T) {
 	} {
 		if got := MotionProfileFor(model).WheelbaseMeters; got != wb {
 			t.Errorf("%s: wheelbase %.1f, want %.1f", model, got, wb)
+		}
+	}
+}
+
+// TestRequiredTakeoffRun: computed from the aircraft's take-off, longer for
+// bigger aircraft and at higher, hotter airports.
+func TestRequiredTakeoffRun(t *testing.T) {
+	a320 := RequiredTakeoffRun(DefaultTakeoffProfile(), TakeoffConditions{})
+	b77w := RequiredTakeoffRun(TakeoffProfileFor("B77W"), TakeoffConditions{})
+	high := RequiredTakeoffRun(DefaultTakeoffProfile(), TakeoffConditions{ElevationFt: 5000, ISADeviationC: 15})
+	if a320 < 1600 || a320 > 2600 {
+		t.Errorf("A320 needs %.0f m", a320)
+	}
+	if b77w <= a320 || high <= a320*1.5 {
+		t.Errorf("777 %.0f m, A320 at 5000 ft ISA+15 %.0f m, A320 %.0f m", b77w, high, a320)
+	}
+	t.Logf("A320 %.0f m, 777-300 %.0f m, A320 high and hot %.0f m", a320, b77w, high)
+}
+
+// TestEntryTooShort: an intersection departure is refused when the runway
+// ahead of the entry is shorter than the aircraft needs.
+func TestEntryTooShort(t *testing.T) {
+	g := lkprGraph(t)
+	entries, err := g.RunwayEntries("06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c22, _ := g.Layout.ParkingIndex("C22")
+	need := RequiredTakeoffRun(DefaultTakeoffProfile(), TakeoffConditions{ElevationFt: 1247})
+	var short, long string
+	for _, e := range entries {
+		if e.Taxiway == "" {
+			continue
+		}
+		if e.Remaining < need && short == "" {
+			short = e.Taxiway
+		}
+		if e.Remaining >= need && long == "" {
+			long = e.Taxiway
+		}
+	}
+	if short == "" || long == "" {
+		t.Skipf("LKPR 06 entries not all long or short for an A320 (%.0f m)", need)
+	}
+	for _, c := range []struct {
+		entry string
+		ok    bool
+	}{{short, false}, {long, true}} {
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		err := ctl.Start(TaxiRequest{Graph: g, Parking: c22, Runway: "06", Entry: c.entry, Model: "A320"})
+		if c.ok && err != nil && !errors.Is(err, airport.ErrNoRoute) {
+			t.Errorf("06 at %s: %v", c.entry, err)
+		}
+		if !c.ok && !errors.Is(err, ErrEntryTooShort) {
+			t.Errorf("06 at %s: %v, want ErrEntryTooShort", c.entry, err)
 		}
 	}
 }

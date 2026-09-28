@@ -38,6 +38,10 @@ var (
 	// ErrInjectorFull is returned by Takeover when injectMaxAircraft aircraft
 	// are already driven.
 	ErrInjectorFull = errors.New("traffic: injector drives the maximum number of aircraft")
+
+	// ErrEntryTooShort is returned by TaxiController.Start for a runway entry
+	// with less runway ahead than the aircraft needs (RequiredTakeoffRun).
+	ErrEntryTooShort = errors.New("traffic: not enough runway ahead of the entry for this aircraft")
 )
 
 // ErrNotOnRoute is returned by ClearUpTo for a node that is not ahead on the

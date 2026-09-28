@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/traffic` intersection departures only where the runway ahead is long enough for the type: `RequiredTakeoffRun(profile, TakeoffConditions)` (computed from the take-off to 35 ft, elevation and temperature, 15% margin), `ErrEntryTooShort`; the map offers only the entries long enough for the chosen model (`/api/entries?model=`)
+
 ## [0.8.0] - 2026-09-28
 
 ### Added

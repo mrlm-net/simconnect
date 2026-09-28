@@ -350,3 +350,8 @@ const (
 	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
 	TrafficCheckEvery = 100 * time.Millisecond
 )
+
+// TakeoffRunMargin lengthens the distance to 35 ft into the runway an
+// aircraft needs (RequiredTakeoffRun): the 115% of certified take-off
+// distances.
+const TakeoffRunMargin = 1.15
