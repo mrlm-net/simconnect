@@ -305,7 +305,8 @@ func TestTaxiControllerInjectedFaceOutStand(t *testing.T) {
 		t.Fatalf("%s: states %v, want complete without a pushback", stand.Label(), states)
 	}
 	all := placements(ec)
-	if d := calc.HaversineMeters(all[0].Latitude, all[0].Longitude, stand.Position.Lat, stand.Position.Lon); d > 1 || math.Abs(headingDiff(all[0].Heading, stand.Heading)) > 2 {
+	at := StandPoint(stand, 0)
+	if d := calc.HaversineMeters(all[0].Latitude, all[0].Longitude, at.Lat, at.Lon); d > 1 || math.Abs(headingDiff(all[0].Heading, stand.Heading)) > 2 {
 		t.Errorf("first placement %.1f m from the stand, heading %.0f (stand %.0f)", d, all[0].Heading, stand.Heading)
 	}
 	t.Logf("%s: %v", stand.Label(), states)
@@ -324,4 +325,134 @@ func standFacesOut(g *airport.Graph, parking int) bool {
 		}
 	}
 	return false
+}
+
+// TestTaxiControllerProgressiveTaxi: ClearUpTo stops the aircraft with its
+// nose gear on the chosen route node; a further ClearUpTo moves it on,
+// ClearToTaxi removes the limit; a node behind is refused (#322).
+func TestTaxiControllerProgressiveTaxi(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	if !run(TaxiAwaitingPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*600) {
+		t.Fatal(ctl.State())
+	}
+	route := ctl.Route()
+	first, second := route.Nodes[len(route.Nodes)/3], route.Nodes[2*len(route.Nodes)/3]
+	if err := ctl.ClearUpTo(first); err != nil {
+		t.Fatal(err)
+	}
+	holdAt := func(node airport.NodeID) {
+		t.Helper()
+		for i := 0; i < 60*600 && !(ctl.last.AtLimit && ctl.last.LimitNode == node); i++ {
+			run(TaxiComplete, 1)
+		}
+		if !ctl.last.AtLimit || ctl.last.LimitNode != node {
+			t.Fatalf("not holding at node %d: %+v", node, ctl.last)
+		}
+		pose := ctl.mover.Pose()
+		nose := NoseGear(pose.Position, pose.Heading, DefaultMotionProfile())
+		want := ctl.req.Graph.Nodes[node].Position
+		if d := calc.HaversineMeters(nose.Lat, nose.Lon, want.Lat, want.Lon); d > 3 {
+			t.Errorf("nose gear %.1f m from the clearance limit", d)
+		}
+		*now = now.Add(time.Minute)
+		run(TaxiComplete, 60*20)
+		if !ctl.last.AtLimit || ctl.mover.Pose().Distance != pose.Distance {
+			t.Fatal("moved past the clearance limit")
+		}
+	}
+	holdAt(first)
+	if err := ctl.ClearUpTo(route.Nodes[1]); err == nil {
+		t.Error("a node behind the aircraft was accepted")
+	}
+	if err := ctl.ClearUpTo(second); err != nil {
+		t.Fatal(err)
+	}
+	holdAt(second)
+	ctl.ClearToTaxi()
+	if !run(TaxiHoldingShort, 60*900) || ctl.last.HoldingShortOf != ctl.runway.Name() {
+		t.Fatalf("state %v (%s), want holding short of the runway", ctl.State(), ctl.last.HoldingShortOf)
+	}
+}
+
+// TestPushbackFitsStands: at every LKPR stand with a pushback the push
+// starts straight along the stand axis, turns no tighter than
+// PushbackMinArcMeters and ends facing along the taxiway; the swing
+// reaching into a neighbouring stand is logged.
+func TestPushbackFitsStands(t *testing.T) {
+	g := lkprGraph(t)
+	prof := DefaultMotionProfile()
+	n := 0
+	for _, p := range g.Layout.Parking {
+		if p.Radius < 15 || standFacesOut(g, p.Index) {
+			continue
+		}
+		if _, err := g.RouteToRunway(p.Index, "24", airport.RouteOptions{}); err != nil {
+			continue
+		}
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: p.Index, Runway: "24", Model: "A320"}); err != nil {
+			t.Fatalf("%s: %v", p.Label(), err)
+		}
+		if err := ctl.startPushback(); err != nil {
+			t.Errorf("%s: pushback: %v", p.Label(), err)
+			continue
+		}
+		n++
+		pts := ctl.mover.Path().Points()
+		start := ctl.mover.Pose()
+		if d := math.Abs(headingDiff(start.Heading, p.Heading)); d > 1 {
+			t.Errorf("%s: push starts %.1f° off the stand heading", p.Label(), d)
+		}
+		// Tightest radius from the heading change over 4 m of path.
+		straight, minR, s := -1.0, math.Inf(1), 0.0
+		for i := 1; i+1 < len(pts); i++ {
+			s += localDist(pts[i-1], pts[i])
+			j := i
+			for j+1 < len(pts) && localDist(pts[i], pts[j]) < 4 {
+				j++
+			}
+			turn := math.Abs(headingDiff(localBearing(pts[i-1], pts[i]), localBearing(pts[j-1], pts[j])))
+			if turn > 1 {
+				if straight < 0 {
+					straight = s
+				}
+				minR = math.Min(minR, localDist(pts[i], pts[j])/(turn*math.Pi/180))
+			}
+		}
+		base := standIntrusion(g, p.Index, []airport.LatLon{offsetHeading(pts[0], p.Heading, 1), pts[0]}, prof)
+		in := standIntrusion(g, p.Index, pts, prof)
+		t.Logf("%-4s straight %5.1f m, tightest %5.1f m, length %5.1f m, neighbour intrusion %+.1f m (parked %+.1f)", p.Label(), straight, minR, ctl.mover.Path().Length(), in, base)
+		if minR < PushbackMinArcMeters-3 {
+			t.Errorf("%s: pushback turns on %.1f m", p.Label(), minR)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no pushback stands")
+	}
+}
+
+// TestTaxiControllerCancelAfterComplete: Cancel still removes the aircraft
+// once the departure is complete (handed to MSFS AI), and only once.
+func TestTaxiControllerCancelAfterComplete(t *testing.T) {
+	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	if !run(TaxiComplete, 60*3600) {
+		t.Fatalf("ended %v", ctl.State())
+	}
+	for i := 0; i < 2; i++ {
+		if err := ctl.Cancel(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(ec.removed) != 1 || ec.removed[0] != 77 || ctl.State() != TaxiComplete {
+		t.Errorf("removed=%v state=%v", ec.removed, ctl.State())
+	}
 }

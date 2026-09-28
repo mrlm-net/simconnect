@@ -38,6 +38,7 @@ pose := mover.Step(1.0 / 60)                    // every frame
 | `CruiseKts` / `MinTurnKts` | 15 / 3 |
 | `LateralAccel` | 0.6 m/s² |
 | `Accel` / `Decel` / `Jerk` | 0.45 m/s² / 0.5 m/s² / 0.2 m/s³ |
+| `SpanMeters` / `TailMeters` (main gear to the tail end; clearance checks such as the pushback swing past neighbouring stands) | 35.8 / 20.5 |
 
 ## Driving the aircraft
 
@@ -56,11 +57,26 @@ if ok, err := inj.Handle(msg); ok && err != nil { log.Print(err) }
 inj.Release(objectID)                   // unfreeze
 ```
 
-`Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 2 definition IDs, 2 request IDs per aircraft and 10 event IDs; move them with `InjectorWithIDs`.
+`Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 5 definition IDs, 2 request IDs per aircraft (up to 50 aircraft) and 10 event IDs; move them with `InjectorWithIDs`.
+
+## Pushback
+
+A pushback moves the aircraft tail first, and a tug swings the tail through a steady arc rather than steering by the nose gear:
+
+```go
+push := traffic.DefaultMotionProfile()
+push.CruiseKts = traffic.PushbackSpeedKts             // 3 kt
+path, err := traffic.NewArcPath(points, push, traffic.PushbackMinArcMeters)
+mover := traffic.NewPushbackMover(path, push, standHeading)
+```
+
+- `NewArcPath(points, p, radius)` replaces each corner with a circular arc of `radius` (smaller where the segments are too short), instead of the Chaikin rounding of `NewGroundPath`.
+- `NewPushbackMover(path, p, heading)` starts with the main gear at the start of the path and the nose along `heading` (the stand heading). The main gear follows the path backwards, and the fuselage lies along the path.
+- The injected departure fits the push points to each stand (straight back, the widest arc the distances and the neighbouring stands allow, aligned on the taxiway); see [Injected pushback](traffic-taxi.md#injected-pushback). The clearance check uses `MotionProfile.SpanMeters` and `TailMeters`.
 
 ## Hybrid arrival
 
-`ArrivalController` combines both approaches with `ArrivalWithInjector(inj)`. Feed every message to both the controller and the injector.
+`ArrivalController` combines both approaches with `ArrivalWithInjector(inj)`. Feed every message to both the controller and the injector. [Arrivals & Parking](traffic-arrival.md) is the full guide (exits, clearances, progressive taxi, stands); this section covers the injected ground phase.
 
 ```go
 inj := traffic.NewInjector(client)
@@ -73,7 +89,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: mo
 2. **Takeover on the runway:** once the aircraft has been on the ground for `TakeoverAfterTouchdown` (2 s) and slowed to `TakeoverKts` (70 kt), at least `TakeoverBeforeExitMeters` before the exit. The mover starts at the aircraft's nose gear with its heading and speed, so nothing jumps at the switch. If the aircraft reaches the exit first, the takeover happens once it is clear of the runway.
 3. **Rollout and exit** (`ArrivalRequest.Rollout`, a `RolloutProfile` per aircraft type; A320 defaults). The aircraft brakes hard (2.5 m/s²) to 80 kt, then slows gently and evenly, reaching the exit speed at the exit: 32 kt at a high-speed exit, 12 kt at any other. Clear of the runway it slows to taxi speed. This is how crews fly it.
 4. **Vacate stop:** the aircraft stops there and waits for `ClearToTaxi` (`HoldForClearance`) or the after-landing dwell, which varies by ±10 %. With `RollThroughChance` (default 30 %, only without `HoldForClearance`) it only slows to 0.5 kt and taxis on, like a rolling clearance.
-5. **Runway crossings:** with `HoldAtCrossings` the aircraft stops with its nose gear `HoldShortStopMeters` before the hold-short line of every runway it crosses, reports `ArrivalHoldingShort` (with `ArrivalEvent.HoldingShortOf`), and waits for `ClearToCross()`. Runway lights stay off while it holds. A clearance given earlier means it does not stop. Without `HoldAtCrossings`, crossings count as cleared in advance. Departure gates (pushback, taxi, line-up, take-off) are #320.
+5. **Runway crossings:** with `HoldAtCrossings` the aircraft stops with its nose gear `HoldShortStopMeters` before the hold-short line of every runway it crosses, reports `ArrivalHoldingShort` (with `ArrivalEvent.HoldingShortOf`), and waits for `ClearToCross()`. Runway lights stay off while it holds. A clearance given earlier means it does not stop. Without `HoldAtCrossings`, crossings count as cleared in advance. `ClearUpTo(node)` gives a progressive taxi: the aircraft holds at a route node until cleared further ([Progressive taxi](traffic-arrival.md#progressive-taxi)). Departure gates (pushback, taxi, line-up, take-off) are in [Injected departure](traffic-taxi.md#injected-departure).
 6. **Taxi-in and parking:** the path ends straight along the stand axis, the last 30 m at 5 kt, with the reference point on the stop mark. The aircraft stays frozen on the stand; `Release` hands it back to MSFS AI.
 
 Lights, all set by the controller once it has taken over:

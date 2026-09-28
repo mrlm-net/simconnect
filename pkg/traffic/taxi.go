@@ -89,6 +89,9 @@ type TaxiRequest struct {
 	// straight into the take-off; 0 means DefaultRollingTakeoffChance,
 	// negative never.
 	RollingTakeoffChance float64
+	// NoseOffset is the distance from the aircraft reference point to its nose,
+	// placing it on the stand (StandPoint); 0 means DefaultNoseOffsetMeters.
+	NoseOffset float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
 }
@@ -109,6 +112,10 @@ type TaxiEvent struct {
 	Taxiway string
 	// HoldingShortOf names the runway while holding short.
 	HoldingShortOf string
+	// LimitNode is the clearance limit of a progressive taxi (ClearUpTo), -1
+	// for none; AtLimit is set while the aircraft holds there.
+	LimitNode airport.NodeID
+	AtLimit   bool
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
 	// Lights is the light state the sim reports.
@@ -177,6 +184,8 @@ type TaxiController struct {
 	alignDist                                               float64
 	takeoff                                                 *TakeoffMover
 	gearUp                                                  bool
+	pendingLimit                                            airport.NodeID // ClearUpTo before the taxi starts
+	hasPendingLimit                                         bool
 	flaps                                                   surfaceRamp
 	frameAt                                                 time.Time
 }
@@ -222,7 +231,8 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 		now:     time.Now,
 		rng:     rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xdea)),
 	}
-	c.groundDrive = groundDrive{ignoreRunway: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.last.LimitNode = -1
 	for _, o := range opts {
 		o(c)
 	}
@@ -304,13 +314,14 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 
 	stand := req.Graph.Layout.Parking[req.Parking]
+	standAt := StandPoint(stand, req.NoseOffset) // at the stop mark, as arrivals park
 	err = c.fleet.RequestNonATC(NonATCOpts{
 		Model:  req.Model,
 		Livery: req.Livery,
 		Tail:   req.Tail,
 		Position: types.SIMCONNECT_DATA_INITPOSITION{
-			Latitude:  stand.Position.Lat,
-			Longitude: stand.Position.Lon,
+			Latitude:  standAt.Lat,
+			Longitude: standAt.Lon,
 			Altitude:  convert.MetersToFeet(req.Graph.Layout.Altitude),
 			Heading:   stand.Heading,
 			OnGround:  1,
@@ -461,14 +472,12 @@ func (c *TaxiController) ClearForTakeoff() error {
 	return nil
 }
 
-// Cancel removes the aircraft from the simulation (if it exists) and ends the
-// controller. It is safe to call at any time.
+// Cancel removes the aircraft from the simulation if it still exists, also
+// after the departure completed (handed to MSFS AI), and ends the controller
+// if it is still running. It is safe to call at any time.
 func (c *TaxiController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.state.Terminal() {
-		return nil
-	}
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
@@ -476,8 +485,11 @@ func (c *TaxiController) Cancel() error {
 		if c.inj != nil {
 			c.inj.Forget(c.objectID)
 		}
+		c.objectID = 0
 	}
-	c.setState(TaxiCancelled, nil)
+	if !c.state.Terminal() {
+		c.setState(TaxiCancelled, nil)
+	}
 	return err
 }
 

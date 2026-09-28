@@ -30,6 +30,10 @@ type MotionProfile struct {
 	// (m/s³) is how fast the acceleration itself may change, so every speed
 	// change starts and ends softly.
 	Accel, Decel, Jerk float64
+	// SpanMeters and TailMeters (main gear to the tail end) outline the
+	// airframe for clearance checks, such as the pushback swing past
+	// neighbouring stands; zero uses the A320 figures.
+	SpanMeters, TailMeters float64
 }
 
 // DefaultMotionProfile is tuned for an A320 family aircraft from live runs
@@ -44,6 +48,8 @@ func DefaultMotionProfile() MotionProfile {
 		Accel:           0.45, // live: 0.35 pulled away a little slowly
 		Decel:           0.5,
 		Jerk:            0.2,
+		SpanMeters:      35.8,
+		TailMeters:      20.5,
 	}
 }
 
@@ -91,7 +97,10 @@ func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*Gr
 	if len(pts) < 2 {
 		return nil, ErrPathTooShort
 	}
-	pts = chaikin(cornerZones(pts, CornerMeters), GroundPathSmoothingPasses)
+	// Merge route points a few meters apart first (taxiway nodes near
+	// junctions often are): corner rounding reaches at most half a segment, so
+	// short segments turn corners into pivots on the spot.
+	pts = chaikin(cornerZones(mergeClose(pts, MergeMeters), CornerMeters), GroundPathSmoothingPasses)
 	g := &GroundPath{pts: pts, cum: make([]float64, len(pts))}
 	for i := 1; i < len(pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
@@ -203,9 +212,10 @@ func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 }
 
 // NewPushbackMover pushes an aircraft back: path runs from its main gear
-// backwards (tail first), the aircraft faces heading at the start, and the
-// nose trails the main gear as a tug steers it. Speeds come from p (use a
-// pushback CruiseKts).
+// backwards (tail first) and the main gear follows it, with the fuselage
+// along the path as the tug swings the nose (see placeReverse). heading is
+// the stand heading at the start. Speeds come from p (use a pushback
+// CruiseKts).
 func NewPushbackMover(path *GroundPath, p MotionProfile, heading float64) *GroundMover {
 	m := &GroundMover{path: path, p: p, hold: path.Length(), reverse: true}
 	gear := path.PointAt(0)
@@ -331,6 +341,10 @@ func (m *GroundMover) place() {
 		return // not moved: recomputing would only add rounding noise
 	}
 	m.placed, m.placedAt = true, m.s
+	if m.reverse {
+		m.placeReverse()
+		return
+	}
 	nose := m.path.PointAt(m.s)
 	kx := metersPerDegree * math.Cos(nose.Lat*math.Pi/180)
 	dx, dy := (m.gear.Lon-nose.Lon)*kx, (m.gear.Lat-nose.Lat)*metersPerDegree // nose → gear
@@ -470,3 +484,130 @@ func headingDiff(a, b float64) float64 { return math.Mod(b-a+540, 360) - 180 }
 // e.g. from runway braking to taxiing once clear of the runway. The
 // geometry (wheelbase, reference point) should stay the same.
 func (m *GroundMover) SetProfile(p MotionProfile) { m.p = p }
+
+// DistanceTo projects p onto the path and returns the distance along the
+// path to the nearest point and how far p lies from it, in meters.
+func (g *GroundPath) DistanceTo(p airport.LatLon) (along, off float64) {
+	off = math.Inf(1)
+	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
+	for i := 1; i < len(g.pts); i++ {
+		a, b := g.pts[i-1], g.pts[i]
+		ax, ay := (a.Lon-p.Lon)*kx, (a.Lat-p.Lat)*metersPerDegree
+		bx, by := (b.Lon-p.Lon)*kx, (b.Lat-p.Lat)*metersPerDegree
+		dx, dy := bx-ax, by-ay
+		f := 0.0
+		if l2 := dx*dx + dy*dy; l2 > 0 {
+			f = math.Max(0, math.Min(1, -(ax*dx+ay*dy)/l2))
+		}
+		if d := math.Hypot(ax+dx*f, ay+dy*f); d < off {
+			off, along = d, g.cum[i-1]+f*(g.cum[i]-g.cum[i-1])
+		}
+	}
+	return along, off
+}
+
+// mergeClose drops points closer than d to the last kept point, keeping the
+// first and the last point.
+func mergeClose(p []airport.LatLon, d float64) []airport.LatLon {
+	if len(p) < 3 {
+		return p
+	}
+	out := []airport.LatLon{p[0]}
+	for _, q := range p[1 : len(p)-1] {
+		if localDist(out[len(out)-1], q) >= d {
+			out = append(out, q)
+		}
+	}
+	last := p[len(p)-1]
+	if len(out) > 1 && localDist(out[len(out)-1], last) < d {
+		out = out[:len(out)-1] // keep the end exactly, drop the close one before it
+	}
+	return append(out, last)
+}
+
+// placeReverse places a pushed-back aircraft. The main gear cannot slide
+// sideways: it rolls along the fuselage axis while the tug swings the nose,
+// so the fuselage lies along the main gear's path and the aircraft points
+// against the direction of travel. The main gear traces the path's arcs and
+// the nose swings wide the other way (#304, GSX-style pushbacks).
+func (m *GroundMover) placeReverse() {
+	const d = 1.0 // meters either side for the path direction
+	a := m.path.PointAt(math.Max(0, m.s-d))
+	b := m.path.PointAt(math.Min(m.path.Length(), m.s+d))
+	gear := m.path.PointAt(m.s)
+	hdg := m.pose.Heading
+	if localDist(a, b) > 1e-6 {
+		hdg = localBearing(b, a) // the nose points back along the path
+	}
+	m.pose = GroundPose{
+		Position:       offsetHeading(gear, hdg, m.p.RefAheadMeters),
+		Heading:        hdg,
+		GroundSpeedKts: m.v / ktsToMS,
+		Distance:       m.s,
+		Stopped:        m.v == 0,
+		Arrived:        m.v == 0 && m.s >= m.path.Length()-0.05,
+	}
+}
+
+// NewArcPath is a GroundPath whose corners are circular arcs of radius
+// (smaller where the segments are too short): for pushbacks, where the
+// fuselage follows the path directly and a tug swings the tail through a
+// steady arc.
+func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*GroundPath, error) {
+	pts := mergeClose(points, 1)
+	if len(pts) < 2 {
+		return nil, ErrPathTooShort
+	}
+	g := &GroundPath{pts: fillet(pts, radius)}
+	g.cum = make([]float64, len(g.pts))
+	for i := 1; i < len(g.pts); i++ {
+		g.cum[i] = g.cum[i-1] + localDist(g.pts[i-1], g.pts[i])
+	}
+	decelAt := func(float64) float64 { return p.Decel }
+	g.decelAt = decelAt
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, func(float64) float64 { return p.LateralAccel })
+	return g, nil
+}
+
+// fillet replaces each corner of a polyline by a circular arc of radius r,
+// tangent to both segments (the tangent length is limited to half of each
+// segment), sampled every 1 m.
+func fillet(p []airport.LatLon, r float64) []airport.LatLon {
+	if len(p) < 3 {
+		return p
+	}
+	o := p[0]
+	kx := metersPerDegree * math.Cos(o.Lat*math.Pi/180)
+	xy := func(q airport.LatLon) (float64, float64) {
+		return (q.Lon - o.Lon) * kx, (q.Lat - o.Lat) * metersPerDegree
+	}
+	ll := func(x, y float64) airport.LatLon {
+		return airport.LatLon{Lat: o.Lat + y/metersPerDegree, Lon: o.Lon + x/kx}
+	}
+	out := []airport.LatLon{p[0]}
+	for i := 1; i+1 < len(p); i++ {
+		ax, ay := xy(p[i-1])
+		vx, vy := xy(p[i])
+		bx, by := xy(p[i+1])
+		l1, l2 := math.Hypot(vx-ax, vy-ay), math.Hypot(bx-vx, by-vy)
+		ux, uy := (vx-ax)/l1, (vy-ay)/l1             // in
+		wx, wy := (bx-vx)/l2, (by-vy)/l2             // out
+		turn := math.Atan2(ux*wy-uy*wx, ux*wx+uy*wy) // signed, left positive
+		if math.Abs(turn) < 0.5*math.Pi/180 {
+			out = append(out, p[i])
+			continue
+		}
+		t := math.Min(r*math.Tan(math.Abs(turn)/2), math.Min(l1, l2)/2)
+		rr := t / math.Tan(math.Abs(turn)/2)
+		sx, sy := vx-ux*t, vy-uy*t // arc start
+		side := math.Copysign(1, turn)
+		cx, cy := sx-uy*rr*side, sy+ux*rr*side // centre, left of travel for a left turn
+		a0 := math.Atan2(sy-cy, sx-cx)
+		n := max(2, int(rr*math.Abs(turn)))
+		for k := 0; k <= n; k++ {
+			a := a0 + turn*float64(k)/float64(n)
+			out = append(out, ll(cx+rr*math.Cos(a), cy+rr*math.Sin(a)))
+		}
+	}
+	return append(out, p[len(p)-1])
+}

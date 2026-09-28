@@ -105,7 +105,7 @@ const (
 	ParkedMeters = 15.0
 )
 
-// Default SimConnect IDs used by an ArrivalController: 3 definition IDs and
+// Default SimConnect IDs used by an ArrivalController: 4 definition IDs and
 // 4 request IDs from these bases.
 const (
 	DefaultArrivalDefinitionBase uint32 = 7500
@@ -171,6 +171,8 @@ const (
 	StopApproachMeters = 40.0
 	// CornerMeters bounds how far from a route corner the rounding starts.
 	CornerMeters = 25.0
+	// MergeMeters merges route points closer than this before rounding.
+	MergeMeters = 8.0
 	// InjectHz is the recommended rate for Injector.Place; 60 Hz looked
 	// smooth live, 30 Hz is acceptable.
 	InjectHz = 60
@@ -256,9 +258,18 @@ const (
 	TaxiAfterPushDelay = 15 * time.Second
 	LineUpDelay        = 6 * time.Second
 	TakeoffDelay       = 5 * time.Second
-	PushTailMeters     = 10.0
-	GearUpFt           = 50.0
-	ClimbHandoverFt    = 1500.0
+	PushTailMeters     = 20.0
+	// The pushback is fitted to each stand (pushPlan): the main gear turns
+	// on the widest arc up to PushbackArcMeters that the distances and the
+	// neighbouring stands allow, but not tighter than PushbackMinArcMeters;
+	// it pushes at least PushStraightMeters straight first and ends
+	// PushAlignMeters along the taxiway after the arc.
+	PushbackArcMeters    = 45.0
+	PushbackMinArcMeters = 14.0
+	PushStraightMeters   = 6.0
+	PushAlignMeters      = 10.0
+	GearUpFt             = 50.0
+	ClimbHandoverFt      = 1500.0
 )
 
 // Injected departure configuration: take-off flaps (TakeoffFlapsPct, 1+F on

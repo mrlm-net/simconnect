@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -210,6 +211,14 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.last.Taxiway = c.track.taxiwayAt(seg)
 	}
 	c.checkCrossing(pose)
+	c.last.LimitNode = -1
+	if c.hasLimit {
+		c.last.LimitNode = c.limitNode
+	}
+	if at := c.atLimit(pose); at != c.last.AtLimit {
+		c.last.AtLimit = at
+		c.emit(nil, true) // holding at the clearance limit, or moving on
+	}
 	if !c.flapsUpFrom.IsZero() && c.flapsPct > 0 {
 		c.flapsPct = math.Max(0, 100*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
@@ -472,4 +481,34 @@ func (c *ArrivalController) rolloutProfile() RolloutProfile {
 		return c.req.Rollout
 	}
 	return DefaultRolloutProfile()
+}
+
+// ClearUpTo clears an injected arrival to taxi up to a node of its route and
+// hold there (progressive taxi, #322). Given before the taxi-in starts it is
+// the taxi clearance with a limit; while taxiing it moves the limit.
+// ClearToTaxi removes the limit.
+func (c *ArrivalController) ClearUpTo(node airport.NodeID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inj == nil || c.plan == nil {
+		return ErrNotInjected
+	}
+	if !slices.Contains(c.plan.Route.Nodes, node) {
+		return ErrNotOnRoute
+	}
+	switch c.state {
+	case ArrivalTaxiing, ArrivalHoldingShort:
+		if c.mover == nil {
+			return ErrNotOnRoute
+		}
+		return c.setLimit(node)
+	case ArrivalParking, ArrivalParked:
+		return ErrNotOnRoute
+	}
+	// Before the taxi-in: the vacate stop comes first.
+	c.pendingLimit, c.hasPendingLimit, c.cleared = node, true, true
+	if c.state == ArrivalAwaitingTaxi && c.mover != nil {
+		c.startTaxi()
+	}
+	return nil
 }

@@ -40,6 +40,15 @@
     #map { inset: 0 0 45% 0; }
     #side { top: 55%; width: 100%; border-left: 0; border-top: 1px solid #333; }
   }
+  .combo { position: relative; display: flex; gap: 4px; }
+  .combo input { flex: 1; min-width: 0; }
+  .combo button { padding: 0 8px; }
+  .combo-menu { position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 260px; overflow-y: auto; margin-top: 2px; background: var(--panel, #1f2227); border: 1px solid rgba(127,127,127,0.4); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
+  .combo-item { padding: 4px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .combo-item:hover, .combo-item.active { background: #2d6cdf; color: #fff; }
+  .tlog { font: 11px/1.35 ui-monospace, Consolas, monospace; max-height: 260px; overflow-y: auto; white-space: pre-wrap; background: rgba(127,127,127,0.10); border-radius: 4px; padding: 4px 6px; }
+  .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
+  .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -68,6 +77,25 @@
   <div id="rInfo" class="note"></div>
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
+
+  <h2>Traffic control</h2>
+  <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
+  <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
+  <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
+  <div class="note">Model — type to search <span id="cModelCount"></span></div>
+  <div class="combo">
+    <input type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false">
+    <button type="button" id="cModelOpen" class="secondary" title="Show all models">▾</button>
+    <div id="modelMenu" class="combo-menu" hidden></div>
+  </div>
+  <div style="display:flex; gap:6px; margin:4px 0">
+    <button type="button" id="cDeparture">▶ Departure</button>
+    <button type="button" id="cArrival">▶ Arrival</button>
+  </div>
+  <div id="cInfo" class="note"></div>
+  <div id="ctlList"></div>
+  <h2>Traffic log</h2>
+  <div id="ctlLog" class="tlog"></div>
 
   <h2>Live traffic</h2>
   <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
@@ -120,6 +148,7 @@ const groups = {
   overlaps: L.layerGroup(),
   route: L.layerGroup(),
   choices: L.layerGroup(),
+  control: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -134,7 +163,7 @@ for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -514,6 +543,178 @@ async function pollTraffic() {
     : '<tr><td>No other aircraft</td></tr>';
 }
 setInterval(pollTraffic, 1000);
+// ── Traffic control (#322): spawn controlled aircraft, give clearances,
+// progressive taxi by clicking route points ──
+let ctlSelected = null;
+let ctlViews = [];
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', remove: '✕' };
+
+async function ctlSpawn(kind) {
+  if (!data || !routeFrom) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot).</span>'; return; }
+  const body = {
+    kind, icao: data.icao, stand: routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
+    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked,
+  };
+  if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
+  $('cInfo').textContent = `Spawning ${kind}…`;
+  try {
+    const res = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    const v = await res.json();
+    ctlSelected = v.id;
+    $('cInfo').textContent = `${v.tail}: ${kind} spawned`;
+    pollControl();
+  } catch (e) {
+    $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+}
+
+async function ctlAct(id, action, node) {
+  const q = node !== undefined ? `?node=${node}` : '';
+  try {
+    const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    if (action === 'remove' && ctlSelected === id) ctlSelected = null;
+    pollControl();
+  } catch (e) {
+    $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  }
+}
+
+function drawControl() {
+  groups.control.clearLayers();
+  const v = ctlViews.find((x) => x.id === ctlSelected);
+  if (!v || !v.route) return;
+  const pts = v.route.map((p) => [p.lat, p.lon]);
+  L.polyline(pts, { renderer, color: '#fff', weight: 8, opacity: 0.7, interactive: false }).addTo(groups.control);
+  L.polyline(pts, { renderer, color: '#ff9f1a', weight: 4, interactive: false }).addTo(groups.control);
+  const canUpTo = v.actions && v.actions.includes('upto');
+  v.nodes.forEach((n, i) => {
+    if (i === 0) return;
+    const limit = n === v.limitNode;
+    L.circleMarker(pts[i], {
+      renderer, radius: limit ? 8 : 4, color: '#fff', weight: limit ? 2 : 1, fillOpacity: 1,
+      fillColor: limit ? '#ff2bd6' : '#ff9f1a',
+    }).bindTooltip(limit ? `Cleared up to here (${v.atLimit ? 'holding' : 'taxiing'})` : 'Clear up to here')
+      .on('click', () => { if (canUpTo) ctlAct(v.id, 'upto', n); })
+      .addTo(groups.control);
+  });
+  if (v.position && v.position.lat) {
+    L.circleMarker([v.position.lat, v.position.lon], { renderer, radius: 9, color: '#fff', weight: 2, fillColor: '#2d6cdf', fillOpacity: 1 })
+      .bindTooltip(v.tail, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.control);
+  }
+}
+
+function renderControl() {
+  $('ctlList').innerHTML = ctlViews.length ? ctlViews.map((v) => {
+    const status = [v.state, v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && 'at limit'].filter(Boolean).join(' · ');
+    const buttons = (v.actions || []).filter((a) => a !== 'upto')
+      .concat(['remove'])
+      .map((a) => `<button type="button" data-id="${v.id}" data-act="${a}">${ACTION_LABEL[a] || a}</button>`).join(' ');
+    const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
+    return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +
+      `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}<br>${buttons}</div>`;
+  }).join('') : '<div class="note">No controlled aircraft</div>';
+}
+
+async function pollControl() {
+  try {
+    fetch('/api/control/log').then((r) => r.ok ? r.json() : []).then((lines) => {
+      const el = $('ctlLog'), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+      el.textContent = lines.join('\n');
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }).catch(() => {});
+    const res = await fetch('/api/control');
+    if (!res.ok) return;
+    ctlViews = await res.json();
+    ctlViews.sort((a, b) => a.id - b.id);
+    if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id;
+    renderControl();
+    drawControl();
+  } catch (e) { /* server restarting */ }
+}
+setInterval(pollControl, 1000);
+// Model field: a searchable dropdown of the simulator's aircraft titles.
+// Click the field or ▾ to open it, type to filter (all words must match),
+// click an entry or use ↑/↓ and Enter to pick one.
+let models = [];
+let modelActive = -1;
+async function loadModels() {
+  try {
+    const res = await fetch('/api/models');
+    models = res.ok ? await res.json() : [];
+    if (!models.length) { setTimeout(loadModels, 5000); return; }
+    $('cModelCount').textContent = `(${models.length} aircraft)`;
+  } catch (e) { setTimeout(loadModels, 5000); }
+}
+loadModels();
+
+function modelMatches(showAll) {
+  const words = showAll ? [] : $('cModel').value.toLowerCase().split(/\s+/).filter(Boolean);
+  return models.filter((m) => words.every((w) => m.toLowerCase().includes(w)));
+}
+
+function openModelMenu(showAll) {
+  const menu = $('modelMenu');
+  if (!models.length) {
+    menu.innerHTML = '<div class="note" style="padding:4px 6px">Loading the aircraft list…</div>';
+    menu.hidden = false;
+    return;
+  }
+  const list = modelMatches(showAll);
+  modelActive = -1;
+  menu.innerHTML = list.length
+    ? list.slice(0, 300).map((m) => `<div class="combo-item" data-model="${esc(m)}">${esc(m)}</div>`).join('') +
+      (list.length > 300 ? `<div class="note" style="padding:4px 6px">${list.length - 300} more — type to narrow</div>` : '')
+    : '<div class="note" style="padding:4px 6px">No aircraft match</div>';
+  menu.hidden = false;
+}
+
+function closeModelMenu() { $('modelMenu').hidden = true; }
+
+function pickModel(m) {
+  $('cModel').value = m;
+  closeModelMenu();
+}
+
+$('cModel').addEventListener('focus', () => openModelMenu(true));
+$('cModel').addEventListener('click', () => openModelMenu(true));
+$('cModel').addEventListener('input', () => openModelMenu(false));
+$('cModelOpen').addEventListener('click', () => {
+  if ($('modelMenu').hidden) { openModelMenu(true); $('cModel').focus(); } else closeModelMenu();
+});
+$('cModel').addEventListener('keydown', (e) => {
+  const items = [...$('modelMenu').querySelectorAll('.combo-item')];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if ($('modelMenu').hidden) openModelMenu(false);
+    modelActive = Math.max(0, Math.min(items.length - 1, modelActive + (e.key === 'ArrowDown' ? 1 : -1)));
+    items.forEach((el, i) => el.classList.toggle('active', i === modelActive));
+    items[modelActive]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && modelActive >= 0 && items[modelActive]) {
+    e.preventDefault();
+    pickModel(items[modelActive].dataset.model);
+  } else if (e.key === 'Escape') {
+    closeModelMenu();
+  }
+});
+$('modelMenu').addEventListener('mousedown', (e) => {
+  const item = e.target.closest('.combo-item');
+  if (item) { e.preventDefault(); pickModel(item.dataset.model); }
+});
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('.combo')) closeModelMenu();
+});
+
+$('cDeparture').addEventListener('click', () => ctlSpawn('departure'));
+$('cArrival').addEventListener('click', () => ctlSpawn('arrival'));
+$('ctlList').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
+  const row = e.target.closest('[data-sel]');
+  if (row) { ctlSelected = Number(row.dataset.sel); renderControl(); drawControl(); }
+});
+
 $('trafficOn').addEventListener('change', pollTraffic);
 
 // ── Wiring ──

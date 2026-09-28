@@ -39,3 +39,7 @@ var (
 	// are already driven.
 	ErrInjectorFull = errors.New("traffic: injector drives the maximum number of aircraft")
 )
+
+// ErrNotOnRoute is returned by ClearUpTo for a node that is not ahead on the
+// aircraft's current taxi path.
+var ErrNotOnRoute = errors.New("traffic: clearance limit is not ahead on the taxi route")

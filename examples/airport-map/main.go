@@ -118,6 +118,7 @@ type state struct {
 	traffic   []Traffic
 	trafficAt time.Time
 	live      bool
+	control   *controlCenter // traffic control while connected (#322)
 }
 
 func (s *state) setLive(v bool) {
@@ -197,6 +198,21 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// The loader sends facility requests; this loop hands it every message.
 	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
 
+	// Traffic control: controllers live in this goroutine; HTTP handlers
+	// queue commands to it.
+	cc := newControlCenter(client)
+	if err := cc.requestModels(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
+	}
+	st.mu.Lock()
+	st.control = cc
+	st.mu.Unlock()
+	defer func() {
+		st.mu.Lock()
+		st.control = nil
+		st.mu.Unlock()
+	}()
+
 	st.setLive(true)
 	defer st.setLive(false)
 
@@ -208,6 +224,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+
+		case cmd := <-cc.cmds:
+			cmd()
 
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
@@ -249,6 +268,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					}
 				}
 				st.finish(res.ICAO, res.Err)
+				continue
+			}
+			if cc.handle(msg) {
 				continue
 			}
 
@@ -377,6 +399,8 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	})
 
 	// GET /api/geojson?icao=LKPR — the layout as a GeoJSON FeatureCollection.
+	registerControl(mux, st)
+
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))
 		if !ok {
@@ -556,7 +580,9 @@ func main() {
 	dump := flag.Bool("dump", false, "write each fetched airport's raw facility records to <ICAO>.json")
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
+	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
 	flag.Parse()
+	openTrafficLog(*logDir)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()

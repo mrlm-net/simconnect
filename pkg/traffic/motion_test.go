@@ -291,7 +291,7 @@ func TestPushbackMover(t *testing.T) {
 	prof.CruiseKts, prof.MinTurnKts = PushbackSpeedKts, 1
 	// The aircraft faces north; the tail is pushed 60 m south, then east.
 	gear := offset(lkpr, 0, -prof.RefAheadMeters)
-	path, err := NewGroundPath([]airport.LatLon{gear, offset(gear, 0, -60), offset(gear, 50, -60)}, prof)
+	path, err := NewArcPath([]airport.LatLon{gear, offset(gear, 0, -60), offset(gear, 50, -60)}, prof, PushbackArcMeters)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,12 +315,20 @@ func TestPushbackMover(t *testing.T) {
 		if i > 0 && localDist(poses[i-1].Position, p.Position) > 0.1 {
 			t.Fatalf("pushback jumped %.2f m at frame %d/%d, %.2f m along, %.2f kt, arrived %v", localDist(poses[i-1].Position, p.Position), i, len(poses), p.Distance, p.GroundSpeedKts, p.Arrived)
 		}
-		if p.Distance < 45 && math.Abs(headingDiff(p.Heading, 0)) > 0.5 {
+		if p.Distance < 30 && math.Abs(headingDiff(p.Heading, 0)) > 0.5 { // the arc starts CornerMeters before the corner
 			t.Fatalf("turned during the straight push: %.1f at %.0f m", p.Heading, p.Distance)
 		}
 	}
 	if top > PushbackSpeedKts+0.1 {
 		t.Errorf("pushback at %.1f kt", top)
+	}
+	// An arc, not a pivot: the heading turns gradually (GSX-style pushback).
+	maxRate := 0.0
+	for i := 1; i < len(poses); i++ {
+		maxRate = math.Max(maxRate, math.Abs(headingDiff(poses[i-1].Heading, poses[i].Heading))*60)
+	}
+	if maxRate > 9 {
+		t.Errorf("heading turns up to %.1f°/s during the push: a pivot, not an arc", maxRate)
 	}
 	t.Logf("final heading %.1f after %.0f m", last.Heading, last.Distance)
 }

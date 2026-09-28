@@ -28,13 +28,17 @@ type ParkedOpts struct {
 
 // EnrouteOpts configures an enroute ATC aircraft along a flight plan.
 type EnrouteOpts struct {
-	Model        string  // container title
-	Livery       string  // livery folder name; "" selects the default livery
-	Tail         string  // ATC tail number
-	FlightNumber uint32  // ATC flight number used for ATC comms
-	FlightPlan   string  // path to a .PLN or MSFS flight plan file
-	Phase        float64 // plan start offset — 0.0 = beginning, 1.0 = end
-	TouchAndGo   bool    // enable touch-and-go mode on arrival
+	Model        string // container title
+	Livery       string // livery folder name; "" selects the default livery
+	Tail         string // ATC tail number
+	FlightNumber uint32 // ATC flight number used for ATC comms
+	FlightPlan   string // path to a .PLN or MSFS flight plan file
+	// Phase is where on the plan the aircraft starts: the waypoint index plus
+	// the fraction along the next leg (2.5 = halfway between waypoints 2 and
+	// 3), not 0–1. To spawn airborne, plans commonly start with a user
+	// waypoint at the spawn point and inject at about 0.99 (#300).
+	Phase      float64
+	TouchAndGo bool // enable touch-and-go mode on arrival
 }
 
 // NonATCOpts configures a non-ATC aircraft placed at an explicit initial position.

@@ -38,6 +38,11 @@ type groundDrive struct {
 	nextCross       int  // next crossing zone ahead
 	crossClears     int  // crossing clearances not used yet
 	holdAtCrossings bool // stop short of crossings until cleared
+
+	// Progressive taxi (#322): the clearance limit on the current path.
+	limit     float64
+	hasLimit  bool
+	limitNode airport.NodeID
 }
 
 // advance steps the mover to now and places the aircraft.
@@ -105,24 +110,67 @@ func (d *groundDrive) checkCrossing(pose GroundPose) {
 // holdNextCrossing sets the hold short of the next runway crossing ahead,
 // skipping crossings already cleared (holdAtCrossings).
 func (d *groundDrive) holdNextCrossing() {
-	if !d.holdAtCrossings {
-		return
+	for d.holdAtCrossings && d.nextCross < len(d.crossZones) && d.crossClears > 0 {
+		d.crossClears--
+		d.nextCross++
 	}
-	for ; d.nextCross < len(d.crossZones); d.nextCross++ {
-		if d.crossClears > 0 {
-			d.crossClears--
-			continue
-		}
-		d.mover.HoldAt(d.crossZones[d.nextCross].from - HoldShortStopMeters)
-		return
+	d.updateHold()
+}
+
+// updateHold holds the mover at the nearer of the next uncleared crossing
+// (holdAtCrossings) and the clearance limit, or nowhere.
+func (d *groundDrive) updateHold() {
+	h := math.Inf(1)
+	if d.holdAtCrossings && d.nextCross < len(d.crossZones) {
+		h = d.crossZones[d.nextCross].from - HoldShortStopMeters
 	}
+	if d.hasLimit {
+		h = math.Min(h, d.limit)
+	}
+	if math.IsInf(h, 1) {
+		d.mover.ClearHold()
+	} else {
+		d.mover.HoldAt(h)
+	}
+}
+
+// setLimit clears the aircraft up to a route node on the current path (the
+// nose gear stops on it, or HoldShortStopMeters short of a hold-short
+// line). It fails for a node not ahead on the path.
+func (d *groundDrive) setLimit(node airport.NodeID) error {
+	if d.mover == nil || int(node) < 0 || int(node) >= len(d.graph.Nodes) {
+		return ErrNotOnRoute
+	}
+	n := d.graph.Nodes[node]
+	dist, off := d.mover.Path().DistanceTo(n.Position)
+	if off > 15 || dist <= d.mover.Pose().Distance+1 {
+		return ErrNotOnRoute
+	}
+	if n.HoldShort != nil {
+		dist -= HoldShortStopMeters
+	}
+	d.limit, d.hasLimit, d.limitNode = dist, true, node
+	d.updateHold()
+	return nil
+}
+
+// clearLimit removes the clearance limit.
+func (d *groundDrive) clearLimit() {
+	d.hasLimit, d.limitNode = false, -1
+	if d.mover != nil {
+		d.updateHold()
+	}
+}
+
+// atLimit reports whether the aircraft has stopped at its clearance limit.
+func (d *groundDrive) atLimit(pose GroundPose) bool {
+	return d.hasLimit && pose.Stopped && pose.Distance >= d.limit-0.5
 }
 
 // crossingCleared releases the hold short of the next crossing and sets the
 // one after it.
 func (d *groundDrive) crossingCleared() {
 	d.nextCross++
-	d.mover.ClearHold()
 	d.holdNextCrossing()
 }
 

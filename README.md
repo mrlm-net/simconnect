@@ -64,7 +64,7 @@ go run ./examples/<name>
 - **Manager Interface** — [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events)
 - **Data Operations** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [using-datasets](examples/using-datasets)
 - **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
-- **Airport & Taxi** — [airport-map](examples/airport-map) (interactive layout map and route viewer), [ai-taxi](examples/ai-taxi) (stand → runway departure)
+- **Airport & Taxi** — [airport-map](examples/airport-map) (interactive layout map, route viewer and traffic control), [ai-taxi](examples/ai-taxi) (stand → runway departure, AI or injected), [ai-arrival](examples/ai-arrival) (landing, runway exit, taxi-in and parking)
 - **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
 - **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
 
@@ -104,6 +104,7 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - [Airport Layout & Taxi Routing](https://simconnect.mrlm.net/docs/airport-layout) — `pkg/airport` loading, layout model, facility data semantics, routing
 - [Traffic Guide](https://simconnect.mrlm.net/docs/traffic-guide) — AI aircraft with `pkg/traffic`
 - [Departure Taxi](https://simconnect.mrlm.net/docs/traffic-taxi) — Stand → runway taxi controller
+- [Arrivals](https://simconnect.mrlm.net/docs/traffic-arrival) — Landing, runway exit, taxi-in and parking
 
 ## Packages
 

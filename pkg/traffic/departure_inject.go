@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -83,6 +84,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 		types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		return err
 	}
+	c.last.LimitNode = -1
 	c.fast = true
 	c.openGate(PushbackDelay)
 	c.setState(TaxiAwaitingPushback, nil)
@@ -172,6 +174,14 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	if c.state != TaxiPushback {
 		c.checkCrossing(pose)
 	}
+	c.last.LimitNode = -1
+	if c.hasLimit {
+		c.last.LimitNode = c.limitNode
+	}
+	if at := c.atLimit(pose); at != c.last.AtLimit {
+		c.last.AtLimit = at
+		c.emit(nil, true) // holding at the clearance limit, or moving on
+	}
 	switch c.state {
 	case TaxiPushback:
 		if pose.Arrived {
@@ -225,7 +235,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 func (c *TaxiController) standInPlace() error {
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	nose := NoseGear(stand.Position, stand.Heading, prof)
+	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), stand.Heading, prof)
 	path, err := NewGroundPath([]airport.LatLon{nose, offsetHeading(nose, stand.Heading, 10), route.Points[len(route.Points)-1]}, prof)
 	if err != nil {
 		return err
@@ -241,17 +251,19 @@ func (c *TaxiController) standInPlace() error {
 func (c *TaxiController) startPushback() error {
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	gear := offsetHeading(stand.Position, stand.Heading, -prof.RefAheadMeters)
+	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
 	pts := []airport.LatLon{gear}
 	if len(route.Points) > 1 {
-		pts = append(pts, route.Points[1])
-	}
-	if len(route.Nodes) > 2 {
-		pts = append(pts, c.behindJunction(localBearing(gear, route.Points[1]))...)
+		var tail []airport.LatLon
+		if len(route.Nodes) > 2 {
+			tail = c.behindJunction(localBearing(gear, route.Points[1]))
+		}
+		pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[1], tail, prof)...)
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
-	path, err := NewGroundPath(pts, push)
+	// pushPlan already shaped the arc; the fillet only rounds what is left.
+	path, err := NewArcPath(pts, push, PushbackMinArcMeters)
 	if err != nil {
 		return err
 	}
@@ -264,11 +276,11 @@ func (c *TaxiController) startPushback() error {
 // taxiway branches at the junction the push can swing onto (at most
 // maxPushSwingDeg from the push direction), the one that leaves the nose
 // pointing most nearly along the taxi route. It walks that taxiway for a
-// wheelbase plus PushTailMeters, taking the straightest continuation at
-// each node (segments can be a few meters long), and returns the points the
-// tail is pushed through; none keeps the push straight (a dead-end stand).
+// pushWalkMeters, taking the straightest continuation at each node
+// (segments can be a few meters long), and returns its centreline, which
+// pushPlan fits the push to; none keeps the push straight (a dead-end stand).
 func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
-	g, route, prof := c.req.Graph, c.route, c.profile()
+	g, route := c.req.Graph, c.route
 	j := route.Nodes[1]
 	jp := g.Nodes[j].Position
 	taxiDir := localBearing(jp, g.Nodes[route.Nodes[2]].Position)
@@ -294,7 +306,7 @@ func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 		return nil
 	}
 	prev, cur := j, first
-	left := prof.WheelbaseMeters + PushTailMeters
+	left := pushWalkMeters
 	var pts []airport.LatLon
 	for left > 0 {
 		pp, cp := g.Nodes[prev].Position, g.Nodes[cur].Position
@@ -329,6 +341,14 @@ func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 const (
 	maxPushSwingDeg    = 100.0
 	maxNoseOffRouteDeg = 150.0
+	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
+	// pushLineToleranceMeters how far the taxiway may bend from its first
+	// direction and still count as straight; pushClearanceSlackMeters how
+	// much deeper than the parked aircraft the swing may reach into a
+	// neighbouring stand.
+	pushWalkMeters           = 120.0
+	pushLineToleranceMeters  = 1.5
+	pushClearanceSlackMeters = 1.0
 )
 
 // startTaxiOut builds the taxi path from the nose gear to the hold-short
@@ -372,6 +392,10 @@ func (c *TaxiController) startTaxiOut() error {
 	// Start where the aircraft stands (not a wheelbase along the path).
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	c.holdNextCrossing()
+	if c.hasPendingLimit {
+		c.hasPendingLimit = false
+		c.note("clearance limit", c.setLimit(c.pendingLimit))
+	}
 	c.lastStep = c.now()
 	return nil
 }
@@ -475,11 +499,15 @@ func (c *TaxiController) ClearPushback() {
 	c.pushCleared = true
 }
 
-// ClearToTaxi clears an injected departure to taxi to the runway.
+// ClearToTaxi clears an injected departure to taxi to the runway, without a
+// limit (removing one given with ClearUpTo).
 func (c *TaxiController) ClearToTaxi() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.taxiCleared = true
+	c.taxiCleared, c.hasPendingLimit = true, false
+	if c.state == TaxiTaxiing || c.state == TaxiHoldingShort {
+		c.clearLimit()
+	}
 }
 
 // ClearToLineUp clears an injected departure holding short of the
@@ -537,4 +565,30 @@ func (c *TaxiController) entryPath() []airport.LatLon {
 		return pts
 	}
 	return nil
+}
+
+// ClearUpTo clears an injected departure to taxi up to a node of its route
+// and hold there (progressive taxi, #322): before the taxi starts it is the
+// taxi clearance with a limit, while taxiing it moves the limit. ClearToTaxi
+// removes the limit.
+func (c *TaxiController) ClearUpTo(node airport.NodeID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inj == nil {
+		return ErrNotInjected
+	}
+	if !slices.Contains(c.route.Nodes[1:], node) {
+		return ErrNotOnRoute
+	}
+	switch c.state {
+	case TaxiAwaitingPushback, TaxiPushback, TaxiAwaitingTaxi:
+		c.pendingLimit, c.hasPendingLimit, c.taxiCleared = node, true, true
+		return nil
+	case TaxiTaxiing, TaxiHoldingShort:
+		if c.mover == nil {
+			return ErrNotOnRoute
+		}
+		return c.setLimit(node)
+	}
+	return ErrNotOnRoute
 }
