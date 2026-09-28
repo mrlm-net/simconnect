@@ -1,0 +1,120 @@
+---
+title: "Weather, Runway in Use & ATIS"
+description: "Read the weather with pkg/nav, choose the runway in use from the wind and broadcast an ICAO style ATIS."
+order: 1
+section: "nav"
+---
+
+# Weather, Runway in Use & ATIS
+
+`pkg/nav` holds the navigation side of an airport environment: navigation data, weather and ATIS, flight plans. This page covers weather, the runway in use and the ATIS.
+
+```go
+import "github.com/mrlm-net/simconnect/pkg/nav"
+```
+
+| Type / function | What it is |
+|-----------------|-----------|
+| `Weather` | Surface weather: wind, gusts, visibility, ceiling, temperature, dewpoint, QNH, precipitation |
+| `WeatherReader` | Reads the ambient weather at the user aircraft from your message loop |
+| `StaticWeather` | Weather set by the application (tests, fixed scenarios) |
+| `ActiveRunways` | Departure and arrival runway ends for the wind, with an approach hint |
+| `ATIS` | One broadcast: `Text()` with digits, `Spoken()` spelled for a voice |
+| `ATISService` | Keeps the current ATIS and advances its letter on significant changes |
+
+## Reading the weather
+
+`WeatherReader` follows the `airport.Loader` pattern: it never reads `client.Stream()` itself. Call `Request` (once) or `Subscribe` (every second, only when changed), and pass every message to `Handle`:
+
+```go
+wx := nav.NewWeatherReader(client, 7400, 7401) // data definition ID, request ID
+wx.Request()
+for msg := range client.Stream() {
+    if w, ok := wx.Handle(msg); ok {
+        fmt.Printf("wind %03.0f°T %.0f kt, QNH %.0f\n", w.WindDirTrue, w.WindKts, w.QNHhPa)
+    }
+}
+```
+
+It reads these SimVars of the user aircraft (`SIMCONNECT_OBJECT_ID_USER`):
+
+| SimVar | Unit | Weather field |
+|--------|------|---------------|
+| `AMBIENT WIND DIRECTION` | degrees (true) | `WindDirTrue` |
+| `AMBIENT WIND VELOCITY` | knots | `WindKts` |
+| `AMBIENT VISIBILITY` | meters | `VisibilityM` |
+| `AMBIENT TEMPERATURE` | celsius | `TempC` |
+| `SEA LEVEL PRESSURE` | millibars | `QNHhPa` |
+| `AMBIENT PRECIP STATE` | mask | `Precip` (`none`, `rain`, `snow`) |
+| `AMBIENT IN CLOUD` | bool | `InCloud` |
+
+**Limitation:** SimConnect gives the ambient weather where the user aircraft is, not per airport. That is the airport's weather while the user is on the ground there or close by, which is the case when the airport is the world centre around the user; for other airports it is only an approximation. Gusts, ceiling and dewpoint have no SimVar: the reader leaves `GustKts` and `CeilingFt` at 0 and `DewpointC` NaN, and the ATIS leaves them out. Set them yourself (or build the whole `Weather` with `StaticWeather`) when you have them from elsewhere.
+
+## Runway in use
+
+```go
+lim := nav.RunwayLimits{
+    Preferred: []string{"24", "06"}, // LKPR's preferential runways
+    // MaxTailwindKts: 5 (default), MaxCrosswindKts: 25 (default), MinLengthM: 0
+}
+use := nav.ActiveRunways(layout, w, lim)
+fmt.Println(use.Departure.Name, use.Arrival.Name, use.Approach)
+```
+
+For every runway end of the layout (at least `MinLengthM` long), the headwind and crosswind components come from the end's true heading and the true wind; the limits are checked with the gusts when they are stronger than the mean wind. Then:
+
+1. The first `Preferred` end within the limits wins, even when another end has more headwind. That is how preferential runway systems work: LKPR keeps 24 in calm wind and with up to 5 kt of tailwind.
+2. Otherwise the end with the most headwind among those within the limits, ties (within 1 kt) going to the longer runway.
+3. When no end is within the limits, the one with the most headwind is taken and `WithinLimits` is false.
+
+`PreferredArrival` gives arrivals their own preference list, for split operations (`RunwayUse.Single()` is then false). `Approach` is `ApproachILS` when visibility is below 5000 m or the ceiling below 1500 ft, else `ApproachVisual` ("visual/RNAV"); pick the actual procedure from `airport.Procedures`.
+
+## ATIS
+
+```go
+svc := nav.NewATISService("Ruzyne", layout, lim, 5000, nav.ATISWithMagVar(procs.MagVar))
+a, changed := svc.Update(w, time.Now())
+if changed {
+    fmt.Println(a.Text())
+    speak(a.Spoken())
+}
+```
+
+`Text()` gives the broadcast in ICAO phraseology:
+
+```text
+Ruzyne information Alpha, time 1320, runway in use 24, wind 240 degrees 8 knots, visibility 10 kilometers or more, temperature 15, dewpoint 8, QNH 1013, transition level 70, advise on initial contact you have information Alpha.
+```
+
+`Spoken()` spells the numbers for a voice library: digits one by one with "niner", whole hundreds and thousands as words and runway suffixes as words:
+
+```text
+Ruzyne information Alpha, time one three two zero, runway in use two four, wind two four zero degrees eight knots, visibility one zero kilometers or more, temperature one five, dewpoint eight, QNH one zero one three, transition level seven zero, advise on initial contact you have information Alpha.
+```
+
+The broadcast includes, when known: split landing/departure runways, "expect ILS approach", gusts (10 kt or more above the mean wind), visibility in kilometers from 5 km and in meters below, rain or snow, the ceiling, and a negative temperature as "minus". The wind is reported magnetic when a magnetic variation is given, in the facility data convention of `airport.Procedures.MagVar` (magnetic = true + MagVar; LKPR 356).
+
+**QNH and transition level.** QNH is rounded down to a whole hPa. `TransitionLevel(ta, qnh)` is the lowest flight level in tens at least 1000 ft above the transition altitude at that QNH (27 ft per hPa); at LKPR (TA 5000 ft) that is FL 60 from QNH 1014 up, FL 70 from 1013 down to 977, FL 80 below.
+
+**Letters.** `ATISService` starts at Alpha (`ATISWithLetter` changes it) and wraps from Zulu to Alpha. `Update` issues the next letter when:
+
+- the departure or arrival runway, the approach hint, the QNH or the transition level changes;
+- the wind turns 60° or more with 10 kt or more, or the wind or gust speed changes by 10 kt or more;
+- visibility crosses 800, 1500, 3000 or 5000 m, or precipitation starts or stops;
+- the broadcast is older than `DefaultATISMaxAge` (1 hour; `ATISWithMaxAge`).
+
+Smaller changes keep the current broadcast, as a real ATIS does between reports.
+
+## Example
+
+[`examples/atis`](https://github.com/mrlm-net/simconnect/tree/main/examples/atis) connects, reads the weather at the user aircraft, loads the airport layout and prints the ATIS once:
+
+```sh
+go run ./examples/atis -icao LKPR -name Ruzyne -prefer 24,06 -ta 5000 -magvar 356
+```
+
+```text
+Ruzyne information Alpha, time 1646, runway in use 24, wind 120 degrees 6 knots, visibility 10 kilometers or more, temperature 21, QNH 1023, transition level 60, advise on initial contact you have information Alpha.
+```
+
+With the wind from 120° at 6 kt the preferred 24 has 3.6 kt of tailwind, within the 5 kt limit, so it stays in use.
