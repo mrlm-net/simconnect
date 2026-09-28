@@ -103,6 +103,9 @@ type ArrivalRequest struct {
 	// and a soft touchdown (see ApproachProfile), then the rollout, exit and
 	// taxi-in. Without it MSFS AI flies until the rollout.
 	InjectApproach bool
+	// Rollout is the injected rollout and exit; zero means
+	// DefaultRolloutProfile.
+	Rollout RolloutProfile
 	// Approach is the injected approach; zero means DefaultApproachProfile.
 	Approach ApproachProfile
 }

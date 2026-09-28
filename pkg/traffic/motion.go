@@ -50,10 +50,10 @@ func DefaultMotionProfile() MotionProfile {
 // GroundPath is a route for injected ground movement: the route points with
 // their corners rounded, and the allowed speed along it.
 type GroundPath struct {
-	pts   []airport.LatLon
-	cum   []float64 // metres from the start
-	limit []float64 // m/s
-	decel float64   // planned braking, m/s²
+	pts     []airport.LatLon
+	cum     []float64             // metres from the start
+	limit   []float64             // m/s
+	decelAt func(float64) float64 // planned braking (m/s²) at a distance
 }
 
 // NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
@@ -62,6 +62,26 @@ type GroundPath struct {
 // Stops are not part of the plan; a GroundMover brakes onto the end of the
 // path or a hold point by itself.
 func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error) {
+	return newGroundPath(points, p, firmZone{})
+}
+
+// firmZone is the start of a path (a runway) where braking and cornering are
+// planned firmer than taxiing.
+type firmZone struct{ meters, decel, lateral float64 }
+
+func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*GroundPath, error) {
+	decelAt := func(d float64) float64 {
+		if d < firm.meters {
+			return math.Max(firm.decel, p.Decel)
+		}
+		return p.Decel
+	}
+	lateralAt := func(d float64) float64 {
+		if d < firm.meters {
+			return math.Max(firm.lateral, p.LateralAccel)
+		}
+		return p.LateralAccel
+	}
 	pts := make([]airport.LatLon, 0, len(points))
 	for _, q := range points {
 		if len(pts) == 0 || localDist(pts[len(pts)-1], q) > 0.01 {
@@ -76,20 +96,24 @@ func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error
 	for i := 1; i < len(pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
 	}
-	g.limit = speedLimits(g.pts, g.cum, p)
-	g.decel = p.Decel
+	g.decelAt = decelAt
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, lateralAt)
 	return g, nil
 }
 
 // LimitEnd caps the speed over the last meters of the path at kts (a stand
 // entry), with braking planned down to it.
 func (g *GroundPath) LimitEnd(meters, kts float64) {
-	g.LimitRange(g.Length()-meters, g.Length(), kts, g.decel)
+	g.limitRange(g.Length()-meters, g.Length(), kts, g.decelAt)
 }
 
 // LimitRange caps the speed between distances from and to at kts, with
 // braking at decel (m/s²) planned before it.
 func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
+	g.limitRange(from, to, kts, func(float64) float64 { return decel })
+}
+
+func (g *GroundPath) limitRange(from, to, kts float64, decelAt func(float64) float64) {
 	vmax := kts * ktsToMS
 	for i, d := range g.cum {
 		if d >= from && d <= to {
@@ -97,7 +121,7 @@ func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
 		}
 	}
 	for i := len(g.limit) - 2; i >= 0; i-- {
-		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decel*(g.cum[i+1]-g.cum[i])))
+		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decelAt(g.cum[i])*(g.cum[i+1]-g.cum[i])))
 	}
 }
 
@@ -399,7 +423,7 @@ func chaikin(p []airport.LatLon, passes int) []airport.LatLon {
 
 // speedLimits plans the allowed speed (m/s) at each point: cruise, slower
 // where the path curves, with Decel braking planned ahead of each turn.
-func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile) []float64 {
+func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile, decelAt, lateralAt func(float64) float64) []float64 {
 	n := len(pts)
 	cruise, minTurn := p.CruiseKts*ktsToMS, math.Min(p.MinTurnKts, p.CruiseKts)*ktsToMS
 	v := make([]float64, n)
@@ -421,11 +445,11 @@ func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile) []float64
 		d := math.Abs(headingDiff(localBearing(pts[j0], pts[i]), localBearing(pts[i], pts[j1]))) * math.Pi / 180
 		if d > 0.01 {
 			r := (cum[j1] - cum[j0]) / d
-			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(p.LateralAccel*r)))
+			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(lateralAt(cum[i])*r)))
 		}
 	}
 	for i := n - 2; i >= 0; i-- {
-		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*p.Decel*(cum[i+1]-cum[i])))
+		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*decelAt(cum[i])*(cum[i+1]-cum[i])))
 	}
 	return v
 }

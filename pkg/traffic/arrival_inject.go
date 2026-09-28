@@ -109,23 +109,32 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	c.crossZones = crossingZones(c.req.Graph, route, holds)
 	fast := prof
 	fast.CruiseKts = math.Max(prof.CruiseKts, m.GroundKts+1) // no braking before the planned points
-	path, err := NewGroundPath(pts, fast)
+	firm := 0.0
+	if onRunway {
+		firm = clear // on the runway, plan braking firmly (the turns after the exit must not reach back over the rollout)
+	}
+	ro := c.rolloutProfile()
+	path, err := newGroundPath(pts, fast, firmZone{meters: firm, decel: ro.BrakeDecel, lateral: ro.ExitLateralAccel})
 	if err != nil {
 		return err
 	}
 	moverProf := prof
 	if onRunway {
-		// Taxi speed from clear of the runway, exit speed from the exit's
-		// runway node, braked to at rollout deceleration.
-		exitKts := InjectExitKts
+		// Rollout (live feedback): hard braking to SlowKts, then slowing
+		// gently and evenly all the way to the exit speed at the exit.
+		exitKts := ro.ExitKts
 		if c.plan.Exit.HighSpeed {
-			exitKts = InjectExitHighSpeedKts
+			exitKts = ro.HighSpeedExitKts
 		}
-		// Both at rollout deceleration: a gentle taxi braking curve would reach
-		// back over the whole runway (live: 1 kt/s from 70 kt, over a km).
-		path.LimitRange(clear, path.Length(), prof.CruiseKts, RolloutDecel)
-		path.LimitRange(onRwy, clear, exitKts, RolloutDecel)
-		moverProf.Decel, moverProf.Jerk = RolloutDecel, RolloutJerk
+		v0, vs, ve := m.GroundKts*ktsToMS, ro.SlowKts*ktsToMS, exitKts*ktsToMS
+		slowAt := math.Max(0, (v0*v0-vs*vs)/(2*ro.BrakeDecel))
+		gentle := math.Max(0.2, (vs*vs-ve*ve)/(2*math.Max(onRwy-slowAt, 1)))
+		path.LimitRange(onRwy, clear, exitKts, gentle)
+		path.LimitRange(slowAt, onRwy, ro.SlowKts, ro.BrakeDecel)
+		// Off the exit to taxi speed, planned firmly so it does not reach
+		// back over the rollout.
+		path.LimitRange(clear, path.Length(), prof.CruiseKts, ro.BrakeDecel)
+		moverProf.Decel, moverProf.Jerk = ro.BrakeDecel, RolloutJerk
 		c.clearDist = clear
 	} else {
 		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
@@ -437,4 +446,30 @@ func (c *ArrivalController) roomySide() float64 {
 		return -1
 	}
 	return 1
+}
+
+// RolloutProfile is how an injected landing rolls out and leaves the runway
+// (per aircraft type; A320 defaults): hard braking to SlowKts, then slowing
+// gently and evenly to the exit speed at the exit.
+type RolloutProfile struct {
+	// BrakeDecel (m/s²) is the braking after touchdown down to SlowKts.
+	BrakeDecel float64
+	SlowKts    float64
+	// HighSpeedExitKts and ExitKts are the speeds at a high-speed exit and
+	// at any other exit.
+	HighSpeedExitKts, ExitKts float64
+	// ExitLateralAccel (m/s²) is the cornering allowed through the exit.
+	ExitLateralAccel float64
+}
+
+// DefaultRolloutProfile is an A320 family rollout.
+func DefaultRolloutProfile() RolloutProfile {
+	return RolloutProfile{BrakeDecel: 2.5, SlowKts: 80, HighSpeedExitKts: 32, ExitKts: 12, ExitLateralAccel: 1.5}
+}
+
+func (c *ArrivalController) rolloutProfile() RolloutProfile {
+	if c.req.Rollout != (RolloutProfile{}) {
+		return c.req.Rollout
+	}
+	return DefaultRolloutProfile()
 }

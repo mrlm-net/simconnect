@@ -470,8 +470,8 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 	if ctl.State() != ArrivalAwaitingTaxi {
 		t.Fatalf("state %v, want awaiting taxi", ctl.State())
 	}
-	if atExit < 20 || atExit > InjectExitHighSpeedKts+1 {
-		t.Errorf("%.1f kt at the exit, want about %.0f", atExit, InjectExitHighSpeedKts)
+	if want := DefaultRolloutProfile().HighSpeedExitKts; atExit < 20 || atExit > want+3 {
+		t.Errorf("%.1f kt at the exit, want about %.0f", atExit, want)
 	}
 	// The taxi light TaxiLightDelay after the landing lights went off.
 	stopped := len(ec.events)

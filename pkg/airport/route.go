@@ -37,6 +37,13 @@ type RouteOptions struct {
 	// at taxi points where a stand connects, so routes keep to taxiways
 	// without stands. Zero means DefaultApronPenalty; negative disables.
 	ApronPenalty float64
+	// StandTurnAroundPenalty is the extra cost of entering a stand through a
+	// lead-in ahead of it (turning round on the apron) and PushbackPenalty of
+	// leaving through one behind it (a pushback), so arrivals enter nose-in
+	// and departures leave forward where the stand allows. Zero means the
+	// default; negative disables.
+	StandTurnAroundPenalty float64
+	PushbackPenalty        float64
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -216,6 +223,10 @@ const (
 	// DefaultApronPenalty is the extra cost, as a fraction of the length, of
 	// edges at taxi points where a stand connects (apron taxilanes).
 	DefaultApronPenalty = 0.5
+	// DefaultStandTurnAroundPenalty and DefaultPushbackPenalty: see
+	// RouteOptions.
+	DefaultStandTurnAroundPenalty = 3000.0
+	DefaultPushbackPenalty        = 200.0
 )
 
 func (o RouteOptions) turnPenalty() float64 {
@@ -353,6 +364,16 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			d := cur.dist + e.Length
 			if e.AlongRunway && !opts.UseRunwayPaths {
 				d += (AlongRunwayFactor - 1) * e.Length
+			}
+			// Stands: enter nose-in through a lead-in behind the stand; one
+			// ahead of it means turning round on the apron. Leave forward
+			// through a lead-in ahead when there is one; one behind means a
+			// pushback.
+			if e.To != src && g.Nodes[e.To].Kind == NodeParking && g.LeadInAhead(e.To, node) {
+				d += penalty(opts.StandTurnAroundPenalty, DefaultStandTurnAroundPenalty)
+			}
+			if node == src && g.Nodes[src].Kind == NodeParking && !g.LeadInAhead(src, e.To) {
+				d += penalty(opts.PushbackPenalty, DefaultPushbackPenalty)
 			}
 			// Apron taxilanes (a stand connects at either end) cost extra, so
 			// through traffic keeps to taxiways without stands (LROP: N, not M).
@@ -493,4 +514,30 @@ func (g *Graph) crossings(a, b NodeID) int {
 		}
 	}
 	return n
+}
+
+// penalty resolves an optional cost: zero means def, negative disables.
+func penalty(v, def float64) float64 {
+	switch {
+	case v < 0:
+		return 0
+	case v == 0:
+		return def
+	}
+	return v
+}
+
+// LeadInAhead reports whether the lead-in junction of a stand (a neighbour
+// of its parking node) lies ahead of an aircraft parked there, i.e. on the
+// side it faces. Such a stand is left forward without a pushback and
+// entered by turning round on the apron.
+func (g *Graph) LeadInAhead(parkingNode, junction NodeID) bool {
+	if !g.valid(parkingNode) || !g.valid(junction) || g.Nodes[parkingNode].Kind != NodeParking {
+		return false
+	}
+	p := g.Layout.Parking[g.Nodes[parkingNode].Index]
+	px, pz := g.local.xz(p.Position)
+	jx, jz := g.local.xz(g.Nodes[junction].Position)
+	h := p.Heading * math.Pi / 180
+	return (jx-px)*math.Sin(h)+(jz-pz)*math.Cos(h) > 0
 }

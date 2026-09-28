@@ -196,11 +196,6 @@ const (
 	TakeoverBeforeExitMeters = 150.0
 	// RolloutJerk (m/s³) lets runway braking build up quickly.
 	RolloutJerk = 0.6
-	// InjectExitHighSpeedKts and InjectExitKts are the speeds through a
-	// high-speed exit and any other exit when injected (MSFS AI takes every
-	// exit at about 12 kt).
-	InjectExitHighSpeedKts = 30.0
-	InjectExitKts          = 12.0
 )
 
 // Injected lights after landing: the taxi light comes on TaxiLightDelay

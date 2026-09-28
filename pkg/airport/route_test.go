@@ -335,3 +335,35 @@ func TestRouteTurnCosts(t *testing.T) {
 		t.Fatal("no comparable routes")
 	}
 }
+
+// TestDriveThroughStand: LKPR N52 has a lead-in from G behind it and one
+// ahead of it towards H. Arrivals enter nose-in from G; departures leave
+// forward towards H without a pushback.
+func TestDriveThroughStand(t *testing.T) {
+	g := lkprGraph(t)
+	n52, err := g.Layout.ParkingIndex("N52")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stand, _ := g.ParkingNode(n52)
+	exits, _ := g.RunwayExits("24")
+	for _, x := range exits {
+		r, err := g.RouteFromRunway(x, n52, RouteOptions{})
+		if err != nil {
+			continue
+		}
+		lead := r.Nodes[len(r.Nodes)-2]
+		if g.LeadInAhead(stand, lead) {
+			t.Errorf("24 exit %s → N52 enters through the lead-in ahead (%d), want nose-in from G", x.Taxiway, lead)
+		}
+	}
+	for _, end := range []string{"06", "24", "12", "30"} {
+		r, err := g.RouteToRunway(n52, end, RouteOptions{})
+		if err != nil {
+			continue
+		}
+		if !g.LeadInAhead(stand, r.Nodes[1]) {
+			t.Errorf("N52 → %s leaves through the lead-in behind (pushback), want forward", end)
+		}
+	}
+}
