@@ -9,9 +9,52 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-28
+
+Milestones v0.9 to v0.13 were built and released together: procedures, navigation data, weather, flight plans, aircraft profiles and the ATC game build on each other.
+
 ### Added
 
-- `pkg/traffic` intersection departures only where the runway ahead is long enough for the type: `RequiredTakeoffRun(profile, TakeoffConditions)` (computed from the take-off to 35 ft, elevation and temperature, 15% margin), `ErrEntryTooShort`; the map offers only the entries long enough for the chosen model (`/api/entries?model=`)
+#### Procedures — v0.11 (#312–#316)
+
+- `pkg/airport` `ProcedureLoader`: SIDs, STARs and approaches with their runway, enroute and approach transitions and every leg (ARINC 424 type, fix and position, turn direction, course, distance, altitude and speed constraints, IAF/FAF/MAP), plus the airport's MAGVAR. `Leg.Constraint()` gives chart text (`≥4000`, `FL070`, `≤210KT`)
+- `pkg/airport` `ProcedurePath` (map geometry: straight between fixes, Dubins turns where flown by heading) and `navlegs.go`: `ResolveSID`, `ResolveSTAR`, `ResolveApproach`, `MissedApproach` → `[]NavPoint` with altitude and speed limits; ATC-style selection `SIDsFor`, `STARsFor`, `ApproachesFor`, `SIDToward`, `STARFrom`, `BestApproach` (ILS > RNAV > LOC > VOR > NDB), and `Arrival(runway, entryFix)`: the STAR plus the best approach through the transition where it ends
+- `pkg/calc` `Dubins`: shortest path at a turn radius, with an optional first-turn direction
+- `pkg/traffic` flying procedures: `TaxiRequest.Departure` — MSFS AI flies the SID (and the rest of a plan) after the injected climb (`DepartureWaypoints`); `ArrivalRequest.Procedure` — the aircraft appears at the STAR's entry, MSFS AI flies STAR and approach transition to a join point on the centreline, and the injected approach takes over there with the offset blended out (`PlanArrivalProcedure`, `ProcedureJoinNm`, `JoinBlendSeconds`)
+- `examples/airport-map`: procedures panel drawn as charts (one procedure at a time, grouped by kind; VOR/NDB/waypoint symbols, constraints, tracks and distances, direction arrows, radar-vector endings, missed approaches); a multi-runway procedure shows only the chosen runway's transition
+
+#### Navigation, weather, flight plans — v0.13 (#328–#332)
+
+- `pkg/nav` (new): `NavLoader` and `AirwayCrawler` (WAYPOINT/ROUTE, VOR, NDB facility data within a radius) → `AirwayGraph` with `Route` (A*), `RouteOrDirect`, JSON cache; a captured LKPR-area graph in `pkg/nav/testdata`; `examples/spike-airways`
+- `pkg/nav` weather and ATIS: `WeatherReader` (ambient SimVars at the user aircraft), `ActiveRunways` (wind components, tailwind/crosswind limits, preferential runways), `ATIS` `Text()` and `Spoken()` (digits for a voice), `TransitionLevel`, `ATISService` (information letters); `examples/atis`
+- `pkg/nav` flight plans: `Plan(FlightPlanRequest, *AirwayGraph)` — runways from the weather, SID, airways (or direct), STAR and approach, cruise level (semicircular rule, capped for short hops), TOC/TOD, ETE and fuel (`PerformanceFor` per type); `FlightPlan.PLN()` writes an MSFS .pln; `examples/flight-plan`
+- `examples/airport-map`: traffic flies generated flight plans — a departure with a destination flies the SID, airways and levels; an arrival from an origin flies the STAR and approach that plan chooses (`-airways`)
+
+#### Aircraft profiles — v0.12 (#308, #324–#326)
+
+- `pkg/traffic` `AircraftProfile` and `ProfileFor(model)`: one profile per type (airframe, ICAO code letter, motion, take-off, approach, rollout, nose offset, flaps, pushback speed) for 30 types with a size-based fallback; `TaxiRequest.Aircraft` / `ArrivalRequest.Aircraft` fill whatever the request leaves zero
+- `pkg/traffic` `ProfileReader` and `Refine`: SimVars of a spawned aircraft (span, design speeds, weights, engines, CG height; AI objects report only some reliably); `Recorder`: movement telemetry as JSON lines and per-type summaries
+
+#### Flight plans and command helpers — v0.9 (#270, #281, #293, #296, #334, #337, #338, #340)
+
+- `pkg/traffic` ATC commands: `HoldPosition` (departures and arrivals), `ArrivalController.GoAround` (climb-out and a circuit back to the join point for another approach), `TaxiController.AbortTakeoff` (before V1: stop, vacate at the next exit, back to the holding point); `ErrTooLate`, `ErrNotTaxiing`, `ErrNotApplicable`. See `docs/traffic-commands.md`
+- `pkg/traffic` turnaround: `TaxiRequest.ObjectID` adopts an aircraft already on its stand; the map departs a parked arrival again after its dwell
+- `pkg/traffic` give way: where taxi routes cross or merge, the aircraft further from the conflict stops short of it (`GroundPicture`, `GiveWayLookMeters`)
+- `pkg/traffic` a departure waits for the pushback tug to drive clear before it taxis
+- `pkg/airport` custom routes: `RouteOptions.Via` (nodes to pass, no turning back there) and `RouteOptions.Taxiways` (names to follow in order), always within the aircraft's size; `RouteError`, `ValidateRouteOptions`, `TaxiwayNames`, `RemainingOptions`
+- `pkg/traffic` intersection departures only where the runway ahead is long enough for the type: `RequiredTakeoffRun(profile, TakeoffConditions)`, `ErrEntryTooShort`; the map offers only long-enough entries (`/api/entries?model=`)
+- `examples/airport-map`: custom taxi routes (via points picked on the map, taxiways), the picked arrival exit used when spawning, locate buttons (✈ your aircraft, 📍 traffic and controlled aircraft), the remove button apart with a confirmation, clearance phraseology for procedures, hold position, go around and abort take-off
+
+#### ATC game — v0.10 (#272, #282)
+
+- `examples/airport-map` ATC game: departures on SIDs and arrivals on STARs appear on a timer, every one holding for each clearance; scored (+10 per flight, −1 per 30 s of waiting over a minute, −50 lost wingtip separation, −100 two aircraft on a runway). See `docs/atc-game.md`
+
+### Fixed
+
+- `pkg/traffic`: a `ClearUpTo` limit already behind the aircraft when the taxi starts holds it and reports `ErrNotOnRoute` instead of being dropped (#337)
+- `pkg/traffic`: injected departures report their position from the first frame, before they move
+- `docs/traffic-guide.md`: the known limitations no longer claim there is no ground routing
+
 
 ## [0.8.0] - 2026-09-28
 
