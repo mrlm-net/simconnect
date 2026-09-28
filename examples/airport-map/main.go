@@ -22,10 +22,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,10 +36,10 @@ import (
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -460,12 +463,35 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "from must be a parking index", http.StatusBadRequest)
 			return
 		}
-		route, err := g.RouteToRunwayEntry(from, q.Get("to"), q.Get("entry"), airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""})
+		opts, err := routeOptions(g, q)
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		route, err := g.RouteToRunwayEntry(from, q.Get("to"), q.Get("entry"), opts)
 		if err != nil {
 			routeError(w, err)
 			return
 		}
 		writeJSON(w, route)
+	})
+
+	// GET /api/node?icao=LKPR&lat=..&lon=.. — the taxi node nearest to a
+	// point, for picking via points of a custom route (#340).
+	mux.HandleFunc("GET /api/node", func(w http.ResponseWriter, r *http.Request) {
+		g, err := st.cache.Graph(icaoParam(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		lat, _ := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+		lon, _ := strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
+		n, names, d := nearestNode(g, airport.LatLon{Lat: lat, Lon: lon})
+		if n.ID < 0 || d > 150 {
+			http.Error(w, "no taxiway near this point", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]any{"id": n.ID, "position": n.Position, "taxiways": names, "distance": d})
 	})
 
 	// GET /api/entries?icao=LKPR&runway=24 — entries onto a runway end for
@@ -542,7 +568,12 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "to must be a parking index", http.StatusBadRequest)
 			return
 		}
-		opts := traffic.ArrivalOptions{Route: airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""}}
+		ro, err := routeOptions(g, q)
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		opts := traffic.ArrivalOptions{Route: ro}
 		if s := q.Get("exit"); s != "" {
 			exits, err := g.RunwayExits(q.Get("runway"))
 			if err != nil {
@@ -710,6 +741,57 @@ func lights(t *trafficRaw) string {
 }
 
 // routeError maps pkg/airport routing errors to HTTP statuses.
+// routeOptions are the route query's options (#340): runwayPaths, the
+// custom route (via=node,node… and taxiways=A,B…, checked against the
+// airport) and the aircraft's size from model=, so a custom route never
+// takes it where it does not fit.
+func routeOptions(g *airport.Graph, q url.Values) (airport.RouteOptions, error) {
+	o := airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""}
+	for _, v := range strings.Split(q.Get("via"), ",") {
+		if v = strings.TrimSpace(v); v == "" {
+			continue
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return o, fmt.Errorf("via: %q is not a node", v)
+		}
+		o.Via = append(o.Via, airport.NodeID(n))
+	}
+	for _, t := range strings.Split(q.Get("taxiways"), ",") {
+		if t = strings.ToUpper(strings.TrimSpace(t)); t != "" {
+			o.Taxiways = append(o.Taxiways, t)
+		}
+	}
+	if m := q.Get("model"); m != "" {
+		model, _, _ := strings.Cut(m, liverySep)
+		o.HalfSpan = traffic.MotionProfileFor(model).SpanMeters / 2
+	}
+	return o, g.ValidateRouteOptions(o)
+}
+
+// nearestNode is the taxi node nearest to p (stands excluded), with the
+// names of the taxiways meeting there.
+func nearestNode(g *airport.Graph, p airport.LatLon) (airport.Node, []string, float64) {
+	best, bd := airport.Node{ID: -1}, math.Inf(1)
+	for _, n := range g.Nodes {
+		if n.Kind == airport.NodeParking {
+			continue
+		}
+		if d := calc.HaversineMeters(p.Lat, p.Lon, n.Position.Lat, n.Position.Lon); d < bd {
+			best, bd = n, d
+		}
+	}
+	var names []string
+	if best.ID >= 0 {
+		for _, e := range g.Adj[best.ID] {
+			if e.Name != "" && !slices.Contains(names, e.Name) {
+				names = append(names, e.Name)
+			}
+		}
+	}
+	return best, names, bd
+}
+
 func routeError(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
 	if errors.Is(err, airport.ErrNoRoute) {

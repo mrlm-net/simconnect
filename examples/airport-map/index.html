@@ -82,6 +82,11 @@
     <tr><td id="rPickLbl">Entry</td><td class="n"><select id="rPick"></select></td></tr>
   </table>
   <label class="opt"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
+  <div class="note"><b>Custom route</b> — the route must pass these, in order; the aircraft (Model below) must fit.</div>
+  <label class="opt"><input type="checkbox" id="rViaPick"> Pick via points: click the map on a taxiway</label>
+  <div id="rVia" class="note"></div>
+  <table><tr><td>Taxiways</td><td class="n"><input id="rTaxiways" placeholder="e.g. A, L" style="width:9em;text-transform:uppercase"></td></tr></table>
+  <button type="button" id="rCustomClear">Clear custom route</button>
   <div id="rInfo" class="note"></div>
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
@@ -577,6 +582,39 @@ function drawChoices() {
   });
 }
 
+// ── Custom route (#340): via points picked on the map, named taxiways ──
+let viaPoints = []; // {id, position, taxiways}
+const viaLayer = L.layerGroup().addTo(map);
+function customRoute() {
+  const taxiways = $('rTaxiways').value.split(/[,s]+/).map((t) => t.trim().toUpperCase()).filter(Boolean);
+  return { via: viaPoints.map((v) => v.id), taxiways };
+}
+function drawVia() {
+  viaLayer.clearLayers();
+  viaPoints.forEach((v, i) => {
+    L.marker([v.position.lat, v.position.lon], { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+      html: `<div style="width:20px;height:20px;border-radius:50%;background:#ff2bd6;color:#fff;font:700 11px system-ui;display:flex;align-items:center;justify-content:center;border:2px solid #fff">${i + 1}</div>` }) })
+      .bindTooltip(`Via ${i + 1}: ${esc(v.taxiways.join('/') || 'node ' + v.id)} — click to remove`, { direction: 'top' })
+      .on('click', () => { viaPoints.splice(i, 1); drawVia(); computeRoute(); })
+      .addTo(viaLayer);
+  });
+  $('rVia').innerHTML = viaPoints.length ? 'Via ' + viaPoints.map((v, i) => `${i + 1}. ${esc(v.taxiways.join('/') || '#' + v.id)}`).join(' → ') : '';
+}
+map.on('click', async (e) => {
+  if (!$('rViaPick').checked || !data) return;
+  try {
+    const res = await fetch(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
+    if (!res.ok) throw new Error((await res.text()).trim());
+    viaPoints.push(await res.json());
+    drawVia();
+    computeRoute();
+  } catch (err) {
+    $('rInfo').innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+  }
+});
+$('rTaxiways').addEventListener('change', computeRoute);
+$('rCustomClear').addEventListener('click', () => { viaPoints = []; $('rTaxiways').value = ''; drawVia(); computeRoute(); });
+
 async function computeRoute() {
   updateSpawn();
   groups.route.clearLayers();
@@ -588,6 +626,8 @@ async function computeRoute() {
   try {
     const q = new URLSearchParams({ icao: data.icao });
     if ($('rRwyPaths').checked) q.set('runwayPaths', '1');
+    for (const [k, v] of Object.entries(customRoute())) if (v.length) q.set(k, v.join(','));
+    if ($('cModel').value) q.set('model', $('cModel').value); // the route must fit the aircraft
     if (arr) {
       q.set('runway', rwy); q.set('to', routeFrom.index);
       if (pick !== '') q.set('exit', pick);
@@ -784,6 +824,7 @@ async function ctlSpawn(kind) {
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
     other: $('cOther').value.trim().toUpperCase(),
+    ...customRoute(), // the custom taxi route, if any
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer

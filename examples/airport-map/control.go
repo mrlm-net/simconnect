@@ -239,6 +239,10 @@ type SpawnRequest struct {
 	// Other is the destination of a departure or the origin of an arrival
 	// (ICAO): the flight follows a generated flight plan (#331).
 	Other string `json:"other"`
+	// Via and Taxiways shape the taxi route (#340): route nodes to pass
+	// and taxiways to follow, in order.
+	Via      []airport.NodeID `json:"via"`
+	Taxiways []string         `json:"taxiways"`
 
 	planned *planned // Other's flight plan, resolved before the spawn
 
@@ -305,7 +309,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
-			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Takeoff: traffic.TakeoffProfileFor(model), Departure: procRoute}); err != nil {
 			return nil, err
 		}
@@ -323,6 +328,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			exit = &exits[*r.Exit]
 		}
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
+			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
 			Procedure: procRoute}); err != nil {
 			return nil, err
@@ -331,6 +337,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Turnaround {
 			d := r
 			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName, d.Other, d.planned = "departure", false, "", nil, "", "", nil
+			d.Via, d.Taxiways = nil, nil // the custom route was the taxi-in's
 			dwell := defaultDwell
 			if r.DwellSec > 0 {
 				dwell = time.Duration(r.DwellSec * float64(time.Second))
