@@ -90,17 +90,33 @@ for _, hs := range l.HoldShortPoints() {
 }
 ```
 
-Every slice is indexed by SimConnect list index (`TaxiPoints[i].Index == i`), and positions carry both the raw `BiasX`/`BiasZ` offsets and the resolved `LatLon`. Enumerations use the existing `pkg/types` facility enums (`SIMCONNECT_FACILITY_TAXI_PATH_TYPE`, `…_TAXI_POINT_TYPE`, `…_TAXI_PARKING_TYPE`, `…_TAXI_PARKING_NAME`, `…_RUNWAY_DESIGNATOR`).
+Every slice is indexed by SimConnect list index (`TaxiPoints[i].Index == i`), and positions carry both the raw `BiasX`/`BiasZ` offsets and the resolved `LatLon`. Enumerations use the existing `pkg/types` facility enums (`SIMCONNECT_FACILITY_TAXI_PATH_TYPE`, `â¦_TAXI_POINT_TYPE`, `â¦_TAXI_PARKING_TYPE`, `â¦_TAXI_PARKING_NAME`, `â¦_RUNWAY_DESIGNATOR`).
 
 Runways expose both ends (`Primary`, `Secondary`) with name, heading and threshold. Thresholds are the ends of the runway surface; displaced thresholds are not applied.
 
-Parking labels combine `NAME`, `NUMBER` and `SUFFIX`: `GATE_C` + 22 → `C22`, `S_PARKING` + 22 + suffix `GATE_A` → `S22A`. Labels are usually but not guaranteed unique, which is why `ParkingByLabel` returns every match.
+Parking labels combine `NAME`, `NUMBER` and `SUFFIX`: `GATE_C` + 22 â `C22`, `S_PARKING` + 22 + suffix `GATE_A` â `S22A`. Labels are usually but not guaranteed unique, which is why `ParkingByLabel` returns every match.
+
+### Stands: size, conflicts, airlines
+
+```go
+for _, i := range l.SuitableStands(18) {   // RADIUS ≥ 18 m: an A320 (half span 17.9 m)
+    p := l.Parking[i]
+    fmt.Println(p.Label(), p.Size(), p.Airlines, l.ParkingConflicts(i))
+}
+heavy := l.SuitableStands(30, types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY)
+ok := l.Parking[heavy[0]].ServesAirline("DLH")
+```
+
+- **`Parking.Size()`** classes a spot as `StandSmall`, `StandMedium` or `StandHeavy`: by `TYPE` where the scenery names a size (`GATE_SMALL`/`MEDIUM`/`HEAVY`, `RAMP_GA_SMALL`/`MEDIUM`/`LARGE`), otherwise by `RADIUS` (below 15 m small, below 25 m medium). Fuel and vehicle spots are `StandNone`.
+- **`Layout.SuitableStands(minRadius, types...)`** lists the spots with at least that `RADIUS` and, if given, one of the `TYPE`s; never fuel or vehicle spots. `RADIUS` is half the space the spot offers, so pass half the aircraft span plus a margin.
+- **`Layout.ParkingConflicts(i)`** lists the spots whose `RADIUS` circles overlap spot `i` by more than half a meter: split and alternate stands (LKPR `S22`/`S22A`) and tightly packed gates. At LKPR 20 pairs overlap (two more only touch), at EDDM 4, at LROP 38. Whether two aircraft actually clash depends on their spans; the stand allocator (#292) decides that.
+- **`Parking.Airlines`** are the airline codes the scenery assigns to the stand (`TAXI_PARKING_AIRLINE` child records; EDDM assigns 10â23 airlines to 119 of its 175 stands, LKPR none). `ServesAirline(code)` is true for a listed code (case-insensitive) and for stands without airlines.
 
 ### Facility data semantics
 
 These were verified against MSFS 2024 data for LKPR (the fixture in `pkg/airport/testdata`) and differ from what older code in this repository assumed:
 
-- **`TAXI_PATH.START` / `END` index the taxi point list, except for `PARKING` paths, whose `END` indexes the parking list.** At LKPR all 133 parking paths resolve that way (median 43 m); read as taxi points they would be 0.5–3.3 km phantom segments. `Layout.PathEndpoints` and `TaxiPath.EndsAtParking` apply this.
+- **`TAXI_PATH.START` / `END` index the taxi point list, except for `PARKING` paths, whose `END` indexes the parking list.** At LKPR all 133 parking paths resolve that way (median 43 m); read as taxi points they would be 0.5â3.3 km phantom segments. `Layout.PathEndpoints` and `TaxiPath.EndsAtParking` apply this.
 - **Hold-short points are identified by `TAXI_POINT.TYPE`**: `HOLD_SHORT` (2), `ILS_HOLD_SHORT` (4) and their `_NO_DRAW` variants (5, 6). LKPR uses only the `NO_DRAW` types. They sit on taxiways, never on runway paths.
 - **Taxiways are `TAXI` (1) and `PATH` (4) paths**, and an airport may use only one of them: LKPR has no `TAXI` paths at all.
 - **Parking `SUFFIX`** tells apart stands that share `NAME` and `NUMBER` (LKPR: `S22` and `S22A`).
@@ -131,10 +147,10 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 | Method | Route |
 |---|---|
 | `Route(from, to, opts)` | Shortest route between any two nodes |
-| `RouteToRunway(parking, runwayEnd, opts)` | Stand → hold-short of a runway end (departure) |
-| `RouteToParking(from, parking, opts)` | Any node → stand (taxi-in) |
-| `RouteToRunwayEntry(parking, runwayEnd, entry, opts)` | Stand → hold-short of a runway end at a named entry: "24 at B" (empty entry = `RouteToRunway`) |
-| `RouteFromRunway(exit, parking, opts)` | Runway exit → stand, continuing in the exit's direction |
+| `RouteToRunway(parking, runwayEnd, opts)` | Stand â hold-short of a runway end (departure) |
+| `RouteToParking(from, parking, opts)` | Any node â stand (taxi-in) |
+| `RouteToRunwayEntry(parking, runwayEnd, entry, opts)` | Stand â hold-short of a runway end at a named entry: "24 at B" (empty entry = `RouteToRunway`) |
+| `RouteFromRunway(exit, parking, opts)` | Runway exit â stand, continuing in the exit's direction |
 
 `RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 
@@ -146,18 +162,18 @@ Routes are not simply the shortest. Pilots and ATC prefer fewer and gentler turn
 
 | Cost | Default | `RouteOptions` field |
 |---|---|---|
-| Turn at a taxiway junction, per 90° above `TurnFreeAngle` (15°) | 60 m | `TurnPenalty` |
+| Turn at a taxiway junction, per 90Â° above `TurnFreeAngle` (15Â°) | 60 m | `TurnPenalty` |
 | Turning onto a differently named taxiway (unnamed connectors inherit the name; going straight on where the name changes is free) | 40 m | `TaxiwayChangePenalty` |
 | Each runway crossing | 1000 m | `RunwayCrossingPenalty` |
-| Taxiway edge running along a runway surface (e.g. crossing at a runway end, LROP) | ×20 its length | `UseRunwayPaths` removes it |
+| Taxiway edge running along a runway surface (e.g. crossing at a runway end, LROP) | Ã20 its length | `UseRunwayPaths` removes it |
 | Edge at a taxi point where a stand connects (apron taxilane), so through traffic keeps to taxiways without stands | +50 % of its length | `ApronPenalty` |
-| Turning back (≥ 150°) | 2000 m | — |
+| Turning back (â¥ 150Â°) | 2000 m | â |
 
 Zero selects the default and a negative value disables a cost. `Route.Length` is always the real length.
 
 ### Runway entries and exits
 
-`RunwayEntries("24")` lists the taxiways onto a runway end for departures, nearest the threshold first, with the runway remaining ahead of each (`Remaining`) and the turn onto the runway (`Angle`). `RunwayExits("24")` lists the exits for landings on it. Both leave out taxiways that meet the runway at more than `MaxExitAngle` (90°): they point back along the runway. An entry onto 24 is an exit for landings on 06 driven the other way.
+`RunwayEntries("24")` lists the taxiways onto a runway end for departures, nearest the threshold first, with the runway remaining ahead of each (`Remaining`) and the turn onto the runway (`Angle`). `RunwayExits("24")` lists the exits for landings on it. Both leave out taxiways that meet the runway at more than `MaxExitAngle` (90Â°): they point back along the runway. An entry onto 24 is an exit for landings on 06 driven the other way.
 
 ```go
 entries, _ := g.RunwayEntries("24") // A (3510 m ahead), B (2406 m), L (1549 m) at LKPR
@@ -181,6 +197,6 @@ Coordinates are `[longitude, latitude]` per RFC 7946. Every feature has a `kind`
 
 ## Seeing it on a map
 
-[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator.
+[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand â runway, full length or at an entry) and an arrival mode (runway exit â stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator.
 
 To drive an AI aircraft along a route, see [Departure Taxi](traffic-taxi.md).

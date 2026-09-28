@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/airport` stands: `Parking.Size()` (`StandSmall`/`Medium`/`Heavy` from TYPE and RADIUS), `Layout.SuitableStands(minRadius, types...)`, `Layout.ParkingConflicts(i)` (overlapping RADIUS circles, e.g. split stands) and `Parking.Airlines` / `ServesAirline` from the `TAXI_PARKING_AIRLINE` records the loader now requests (#291)
+- `pkg/types`: `SIMCONNECT_FACILITY_DATA_VDGS`, `_HOLDING_PATTERN`, `_TAXI_PARKING_AIRLINE`
+
+### Fixed
+
+- `pkg/airport`: `TaxiPath.RunwayNumber` / `RunwayDesignator` are zero on non-runway paths; MSFS leaves them uninitialised there
+
 ## [0.8.0] - 2026-09-28
 
 ### Fixed

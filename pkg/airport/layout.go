@@ -73,6 +73,9 @@ type Parking struct {
 	BiasX    float64                                     `json:"biasX"`   // meters east of the airport reference point
 	BiasZ    float64                                     `json:"biasZ"`   // meters north of the airport reference point
 	Position LatLon                                      `json:"position"`
+	// Airlines are the codes of the airlines the stand is assigned to (ICAO
+	// or IATA, as the scenery defines them); empty for any airline.
+	Airlines []string `json:"airlines,omitempty"`
 }
 
 // Label returns the parking spot's short name as shown to pilots: a gate
