@@ -46,7 +46,13 @@ func pushPlan(g *airport.Graph, own int, gear airport.LatLon, standHdg float64, 
 		}
 	}
 	dir := localBearing(jp, pointAlong(line, cum, run))
+	straight := []airport.LatLon{offsetHeading(gear, standHdg+180, math.Max(10, alongHeading(gear, standHdg+180, jp)))}
 	chord := func() []airport.LatLon { // unfitted: through the junction
+		// A junction well off the stand axis (LKPR B9): straight back to abeam
+		// it, as from a dead end; heading for it would turn on the stand.
+		if math.Abs(alongHeading(gear, standHdg+90, jp)) > pushOffAxisMeters {
+			return straight
+		}
 		return append([]airport.LatLon{jp}, cutLine(line, cum, 0.5, math.Min(total, math.Max(10, math.Min(settle, run))))...)
 	}
 	pushDir := math.Mod(standHdg+180, 360)
@@ -116,19 +122,36 @@ func standIntrusion(g *airport.Graph, own int, pts []airport.LatLon, prof Motion
 	if tailLen <= 0 {
 		tailLen = 20.5
 	}
-	var near []airport.Parking
+	noseLen := prof.WheelbaseMeters * pushNoseFactor // main gear to the nose
+	var near, gates []airport.Parking
 	for _, p := range g.Layout.Parking {
-		if p.Index != own && localDist(p.Position, pts[0]) < 200 {
+		if localDist(p.Position, pts[0]) >= 200 {
+			continue
+		}
+		if p.Index != own {
 			near = append(near, p)
+		}
+		if p.IsGate() {
+			gates = append(gates, p) // the terminal lies ahead of their noses
 		}
 	}
 	worst := math.Inf(-1)
 	for i := 1; i < len(pts); i++ {
 		gear, hdg := pts[i], localBearing(pts[i], pts[i-1])
 		wing := offsetHeading(gear, hdg, 2)
-		for _, q := range []airport.LatLon{offsetHeading(gear, hdg+180, tailLen), offsetHeading(wing, hdg-90, span/2), offsetHeading(wing, hdg+90, span/2)} {
+		tail, nose := offsetHeading(gear, hdg+180, tailLen), offsetHeading(gear, hdg, noseLen)
+		for _, q := range []airport.LatLon{tail, offsetHeading(wing, hdg-90, span/2), offsetHeading(wing, hdg+90, span/2), nose} {
 			for _, p := range near {
 				worst = math.Max(worst, p.Radius-localDist(q, p.Position))
+			}
+			// Terminal: beyond a gate's parked nose, within its width. Gates
+			// face the building nose-in; the scenery has no buildings.
+			for _, p := range gates {
+				mark := offsetHeading(StandPoint(p, 0), p.Heading, DefaultNoseOffsetMeters)
+				ahead := alongHeading(mark, p.Heading, q)
+				if ahead > -pushTerminalMarginMeters && ahead < pushTerminalDepthMeters && math.Abs(alongHeading(mark, p.Heading+90, q)) <= p.Radius {
+					worst = math.Max(worst, ahead+pushTerminalMarginMeters)
+				}
 			}
 		}
 	}

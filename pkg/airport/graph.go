@@ -69,6 +69,71 @@ type Edge struct {
 	// along it (MSFS data has such segments, e.g. where a taxiway crosses at a
 	// runway end). Routes may use it at AlongRunwayFactor times its length.
 	AlongRunway bool `json:"alongRunway,omitempty"`
+	// Clearance is the free half-width beside the edge: the distance from
+	// its centreline to the nearest stand circle (Parking.Radius, the space
+	// of the largest aircraft the stand takes), in meters; ClearanceStand is
+	// that stand (-1: none) and Clearance2 the same without it. A route for
+	// an aircraft (RouteOptions.HalfSpan) keeps to edges it fits: LKPR JO has
+	// 17.8 m, JB 21.5 m, J 35.9 m, so a 777 leaves B14 by J. Stand lead-ins
+	// and runways are not limited (+Inf).
+	Clearance      float64 `json:"-"`
+	Clearance2     float64 `json:"-"`
+	ClearanceStand int     `json:"-"`
+}
+
+// clearanceHorizon caps the stand search: stands further than this from an
+// edge never limit it.
+const clearanceHorizon = 150.0
+
+// setClearances fills Edge.Clearance for every taxiway edge.
+func (g *Graph) setClearances() {
+	type stand struct {
+		x, z, r float64
+		i       int
+	}
+	var stands []stand
+	for _, p := range g.Layout.Parking {
+		if p.Size() == StandNone {
+			continue
+		}
+		x, z := g.local.xz(p.Position)
+		stands = append(stands, stand{x, z, p.Radius, p.Index})
+	}
+	for a := range g.Adj {
+		ax, az := g.local.xz(g.Nodes[a].Position)
+		for k := range g.Adj[a] {
+			e := &g.Adj[a][k]
+			e.Clearance, e.Clearance2, e.ClearanceStand = math.Inf(1), math.Inf(1), -1
+			if e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY ||
+				g.Nodes[a].Kind == NodeParking || g.Nodes[e.To].Kind == NodeParking {
+				continue
+			}
+			bx, bz := g.local.xz(g.Nodes[e.To].Position)
+			for _, s := range stands {
+				d := segmentDistance(ax, az, bx, bz, s.x, s.z)
+				if d > clearanceHorizon+s.r {
+					continue
+				}
+				free := d - s.r
+				switch {
+				case free < e.Clearance:
+					e.Clearance2, e.Clearance, e.ClearanceStand = e.Clearance, free, s.i
+				case free < e.Clearance2:
+					e.Clearance2 = free
+				}
+			}
+		}
+	}
+}
+
+// segmentDistance is the distance from (px, pz) to the segment a–b.
+func segmentDistance(ax, az, bx, bz, px, pz float64) float64 {
+	dx, dz := bx-ax, bz-az
+	u := 0.0
+	if l2 := dx*dx + dz*dz; l2 > 0 {
+		u = math.Max(0, math.Min(1, ((px-ax)*dx+(pz-az)*dz)/l2))
+	}
+	return math.Hypot(px-ax-u*dx, pz-az-u*dz)
 }
 
 // Graph is the routable taxi network of a Layout.
@@ -164,6 +229,7 @@ func BuildGraph(l *Layout) (*Graph, error) {
 			}
 		}
 	}
+	g.setClearances()
 	return g, nil
 }
 

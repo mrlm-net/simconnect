@@ -456,3 +456,119 @@ func TestTaxiControllerCancelAfterComplete(t *testing.T) {
 		t.Errorf("removed=%v state=%v", ec.removed, ctl.State())
 	}
 }
+
+// TestPushbackFacesRoute: after the pushback the aircraft never faces away
+// from its taxi-out — at every LKPR pushback stand, the way on from the nose
+// is at most a turn onto the taxiway (LKPR C17 used to end facing opposite:
+// the tail went onto the branch the route continued on).
+func TestPushbackFacesRoute(t *testing.T) {
+	g := lkprGraph(t)
+	n := 0
+	for _, p := range g.Layout.Parking {
+		if p.Radius < 15 || standFacesOut(g, p.Index) {
+			continue
+		}
+		if _, err := g.RouteToRunway(p.Index, "24", airport.RouteOptions{}); err != nil {
+			continue
+		}
+		ec := &eventClient{}
+		inj := NewInjector(ec)
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: p.Index, Runway: "24", Model: "A320", RollingTakeoffChance: -1}); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		ctl.now = func() time.Time { return now }
+		ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+		inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		for i := 0; i < 60*1200 && ctl.State() != TaxiTaxiing && !ctl.State().Terminal(); i++ {
+			now = now.Add(time.Second / 60)
+			ctl.Handle(positionMsg(DefaultTaxiRequestBase+reqOffMonitor, 77, p.Position, 0, 0, true))
+		}
+		if ctl.State() != TaxiTaxiing {
+			t.Errorf("%s: %v", p.Label(), ctl.State())
+			continue
+		}
+		n++
+		pose := ctl.mover.Pose()
+		nose := NoseGear(pose.Position, pose.Heading, DefaultMotionProfile())
+		ahead := ctl.mover.Path().PointAt(math.Min(25, ctl.mover.Path().Length()))
+		if d := math.Abs(headingDiff(pose.Heading, localBearing(nose, ahead))); d > 110 {
+			if knownBesideJunction[p.Label()] {
+				t.Logf("%s: after the push the taxi-out lies %.0f° off the nose (known, #341)", p.Label(), d)
+				continue
+			}
+			t.Errorf("%s: after the push the taxi-out lies %.0f° off the nose", p.Label(), d)
+		}
+	}
+	if n < 20 {
+		t.Fatalf("only %d stands checked", n)
+	}
+}
+
+// knownBesideJunction are LKPR stands whose junction lies beside the stand:
+// the push cannot yet leave them facing the taxi-out (#341).
+var knownBesideJunction = map[string]bool{}
+
+// TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
+// from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
+// an A320 from C17 is pushed onto JB's side and leaves by JB, the nearest.
+func TestDepartureRoutesBySize(t *testing.T) {
+	g := lkprGraph(t)
+	for _, c := range []struct {
+		stand, model string
+		want, not    string
+	}{
+		{"B14", "FSLTL B77W Emirates", "J", "JO"},
+		{"C17", "FSLTL A320 Air France SL", "JB", ""},
+	} {
+		pi, _ := g.Layout.ParkingIndex(c.stand)
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: pi, Runway: "24", Model: c.model, Profile: MotionProfileFor(c.model)}); err != nil {
+			t.Fatal(err)
+		}
+		tw := ctl.Route().Taxiways
+		if !slices.Contains(tw, c.want) || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
+			t.Errorf("%s %s via %v, want %s", c.model, c.stand, tw, c.want)
+		}
+		t.Logf("%s from %s via %v (tight %v)", c.model, c.stand, tw, ctl.Route().Tight)
+	}
+}
+
+// TestPushbackFitsAircraft: a 777 at LKPR B14 is not pushed onto JO (code C)
+// but on straight back to J, and leaves along it.
+func TestPushbackFitsAircraft(t *testing.T) {
+	g := lkprGraph(t)
+	pi, _ := g.Layout.ParkingIndex("B14")
+	model := "Asobo PassiveAircraft B777-300ER"
+	ec := &eventClient{}
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: pi, Runway: "24", Model: model, Profile: MotionProfileFor(model)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ctl.route.Edges[:ctl.pushJunction+1] {
+		if e.Name == "JO" || e.Name == "JB" {
+			t.Fatalf("pushed along %s", e.Name)
+		}
+	}
+	if ctl.pushTurn || !ctl.havePushBranch {
+		t.Fatalf("push plan: turn %v branch %v", ctl.pushTurn, ctl.havePushBranch)
+	}
+	if err := ctl.startPushback(); err != nil {
+		t.Fatal(err)
+	}
+	pose := ctl.mover.Pose()
+	for !pose.Arrived {
+		pose = ctl.mover.Step(0.5)
+	}
+	nose := NoseGear(pose.Position, pose.Heading, MotionProfileFor(model))
+	ahead := ctl.route.Points[min(len(ctl.route.Points)-1, ctl.pushJunction+3)]
+	if d := math.Abs(headingDiff(pose.Heading, localBearing(nose, ahead))); d > 45 {
+		t.Errorf("after the push the route lies %.0f° off the nose", d)
+	}
+}

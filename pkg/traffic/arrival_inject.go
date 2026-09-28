@@ -25,6 +25,13 @@ func ArrivalWithInjector(inj *Injector) ArrivalOption {
 	return func(c *ArrivalController) { c.inj = inj }
 }
 
+// ArrivalWithGroundPicture shares the ground picture with the other aircraft
+// at the airport: the injected arrival reports itself on the ground and,
+// off the runway, stops behind the traffic ahead (#334).
+func ArrivalWithGroundPicture(p *GroundPicture) ArrivalOption {
+	return func(c *ArrivalController) { c.picture = p }
+}
+
 // Stand axis: the injected path ends with standAxisMeters straight along
 // the stand heading, so the aircraft stops aligned with the stand.
 const standAxisMeters = 25.0
@@ -203,6 +210,8 @@ func (c *ArrivalController) initDrive() {
 // onInjectedFrame runs the ground phase once the injector has the aircraft:
 // every sim frame the mover steps and the aircraft is placed.
 func (c *ArrivalController) onInjectedFrame() {
+	// Off the runway the arrival follows the traffic ahead (#334).
+	c.followTraffic = c.state == ArrivalVacating || c.state == ArrivalTaxiing || c.state == ArrivalParking
 	pose := c.step()
 	path := c.mover.Path()
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true

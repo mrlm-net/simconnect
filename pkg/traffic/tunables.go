@@ -250,8 +250,9 @@ const (
 // each clears itself after about these waits (±DwellJitter). The beacon
 // comes on BeaconLeadTime before the push; the tail is pushed
 // PushTailMeters past a wheelbase beyond the taxiway junction. The gear
-// comes up above GearUpFt, and the aircraft is handed to MSFS AI for the
-// climb-out at ClimbHandoverFt.
+// comes up on a positive climb: above GearUpFt, GearUpDelaySeconds after
+// lift-off and climbing at GearUpFpm or more. The aircraft is handed to
+// MSFS AI for the climb-out at ClimbHandoverFt.
 const (
 	PushbackDelay      = 5 * time.Second
 	BeaconLeadTime     = 3 * time.Second
@@ -269,6 +270,8 @@ const (
 	PushStraightMeters   = 6.0
 	PushAlignMeters      = 10.0
 	GearUpFt             = 50.0
+	GearUpDelaySeconds   = 4.5
+	GearUpFpm            = 500.0
 	ClimbHandoverFt      = 1500.0
 )
 
@@ -287,3 +290,63 @@ const (
 // TurnAroundMeters scales the turn-around loop onto a self-manoeuvring
 // (face-out) stand; an A320 turns on about 15-20 m radius.
 const TurnAroundMeters = 18.0
+
+// Stand allocation (StandAllocator). DefaultHalfSpanMeters is half an A320's
+// span; two aircraft on overlapping stands need StandWingtipClearanceMeters
+// between their wingtips. A scanned aircraft on the ground below
+// StandDetectKts holds the stand it stands on. Assign routes the
+// standRankCandidates stands nearest the runway to rank them by taxi-in.
+const (
+	DefaultStandDefinitionBase uint32 = 8200
+	DefaultStandRequestBase    uint32 = 8300
+
+	DefaultHalfSpanMeters       = 17.9
+	StandWingtipClearanceMeters = 3.0
+	StandDetectKts              = 2.0
+	standRankCandidates         = 12
+)
+
+// Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters
+// ahead of the aircraft's nose gear, turned TugYawDeg from the aircraft
+// heading (180: facing the aircraft, towbar to the nose wheel). After the
+// push it waits TugDisconnectSeconds, backs TugBackOffMeters away from the
+// nose, then drives off turning TugDriveOffTurnDeg for TugDriveOffMeters at
+// up to TugDriveOffKts and is removed. DefaultTugTitle is GSX's classic
+// towbar tug, checked live against an A320.
+const (
+	DefaultTugTitle      = "FSDT_Pushback_03"
+	TugAheadMeters       = 3.0
+	TugYawDeg            = 180.0
+	TugDisconnectSeconds = 8.0
+	TugBackOffMeters     = 15.0 // more than the mover's 10 m look-ahead, or it never starts
+	TugDriveOffMeters    = 35.0
+	TugDriveOffTurnDeg   = 90.0
+	TugDriveOffKts       = 8.0
+	TugMaxBarDeg         = 80.0 // tow bar angle off the aircraft axis, at most
+	TugBarSeconds        = 0.6  // how quickly the bar follows the nose wheel
+)
+
+// Take-off pitch (TakeoffMover): on the runway the pitch stays
+// TailstrikeMarginDeg below TakeoffProfile.TailstrikePitch. After lift-off
+// it is held until the main wheels are PositiveClimbFt up, then may rise
+// one degree per TailClearFtPerDeg of height (the tail rises with the
+// aircraft) up to the climb pitch.
+const (
+	TailstrikeMarginDeg = 2.0
+	PositiveClimbFt     = 15.0
+	TailClearFtPerDeg   = 3.0
+)
+
+// Ground traffic (GroundPicture, #334): a taxiing aircraft looks
+// TrafficLookMeters ahead along its path for another aircraft's body within
+// its wingspan corridor and stops with its nose TrafficGapMeters behind it.
+// Reports older than TrafficStaleAfter are ignored; bodies are sampled every
+// trafficBodyStep meters.
+const (
+	TrafficLookMeters = 150.0
+	TrafficGapMeters  = 15.0
+	TrafficStaleAfter = 3 * time.Second
+	trafficBodyStep   = 5.0
+	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
+	TrafficCheckEvery = 100 * time.Millisecond
+)

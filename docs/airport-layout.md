@@ -96,6 +96,22 @@ Runways expose both ends (`Primary`, `Secondary`) with name, heading and thresho
 
 Parking labels combine `NAME`, `NUMBER` and `SUFFIX`: `GATE_C` + 22 → `C22`, `S_PARKING` + 22 + suffix `GATE_A` → `S22A`. Labels are usually but not guaranteed unique, which is why `ParkingByLabel` returns every match.
 
+### Stands: size, conflicts, airlines
+
+```go
+for _, i := range l.SuitableStands(18) {   // RADIUS ≥ 18 m: an A320 (half span 17.9 m)
+    p := l.Parking[i]
+    fmt.Println(p.Label(), p.Size(), p.Airlines, l.ParkingConflicts(i))
+}
+heavy := l.SuitableStands(30, types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY)
+ok := l.Parking[heavy[0]].ServesAirline("DLH")
+```
+
+- **`Parking.Size()`** classes a spot as `StandSmall`, `StandMedium` or `StandHeavy`: by `TYPE` where the scenery names a size (`GATE_SMALL`/`MEDIUM`/`HEAVY`, `RAMP_GA_SMALL`/`MEDIUM`/`LARGE`), otherwise by `RADIUS` (below 15 m small, below 25 m medium). Fuel and vehicle spots are `StandNone`.
+- **`Layout.SuitableStands(minRadius, types...)`** lists the spots with at least that `RADIUS` and, if given, one of the `TYPE`s; never fuel or vehicle spots. `RADIUS` is half the space the spot offers, so pass half the aircraft span plus a margin.
+- **`Layout.ParkingConflicts(i)`** lists the spots whose `RADIUS` circles overlap spot `i` by more than half a meter: split and alternate stands (LKPR `S22`/`S22A`) and tightly packed gates. At LKPR 20 pairs overlap (two more only touch), at EDDM 4, at LROP 38. Whether two aircraft actually clash depends on their spans; the stand allocator (#292) decides that.
+- **`Parking.Airlines`** are the airline codes the scenery assigns to the stand (`TAXI_PARKING_AIRLINE` child records; EDDM assigns 10–23 airlines to 119 of its 175 stands, LKPR none). `ServesAirline(code)` is true for a listed code (case-insensitive) and for stands without airlines.
+
 ### Facility data semantics
 
 These were verified against MSFS 2024 data for LKPR (the fixture in `pkg/airport/testdata`) and differ from what older code in this repository assumed:
@@ -135,6 +151,18 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 | `RouteToParking(from, parking, opts)` | Any node → stand (taxi-in) |
 | `RouteToRunwayEntry(parking, runwayEnd, entry, opts)` | Stand → hold-short of a runway end at a named entry: "24 at B" (empty entry = `RouteToRunway`) |
 | `RouteFromRunway(exit, parking, opts)` | Runway exit → stand, continuing in the exit's direction |
+| `RouteToRunwayFrom(from, prev, runwayEnd, entry, opts)` | From a node reached via `prev` (no turning back into it) → hold-short: a taxi-out after a pushback onto `prev` |
+| `RouteFromNodes(nodes)` | A route along given adjacent nodes, e.g. a pushback joined to its taxi-out |
+
+`Route.Cost` is what the search minimised (length plus turn, crossing and apron penalties), to compare alternatives. `RouteOptions.OwnApronMeters` (default 250 m) waives the apron penalty around the start: an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by JB, the nearest), while through traffic still keeps off them.
+
+**Aircraft size.** With `RouteOptions.HalfSpan` (half the wing span, meters) a route keeps to taxiway edges the aircraft fits:
+
+- `Edge.Clearance` is the free half-width beside each taxiway edge: the distance from its centreline to the nearest stand circle (`Parking.Radius`, the space of the largest aircraft the stand takes). An edge fits with `WingtipMargin` (default 3 m) to spare. `OwnStands`, the stands the aircraft leaves or enters, are not obstacles; the stand-based routing functions add theirs.
+- `TaxiwayMaxSpan` limits taxiways by name to a largest span, for published restrictions the scenery does not carry. It defaults to the airport's entry in `KnownTaxiwayMaxSpan` (a first seed of the airport limits, #335): LKPR's apron taxilanes JO and JB are code C (36 m), so a 777 leaves B14 by J while an A320 from C17 takes JB.
+- When no route fits, the route is found without the size check and marked `Route.Tight`.
+
+`pkg/traffic` controllers set `HalfSpan` from the aircraft's `MotionProfile`.
 
 `RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 

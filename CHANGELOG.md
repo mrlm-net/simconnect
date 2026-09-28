@@ -11,17 +11,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.8.0] - 2026-09-28
 
-### Fixed
-
-- `traffic.EnrouteOpts.Phase` doc: `dFlightPlanPosition` is the waypoint index plus the fraction along the next leg, not 0–1 (#300)
-- `examples/read-objects`, `examples/airport-map`: simobject and livery enumeration read entries at the wrong offset (the list header is 28 bytes; entries are a fixed 512), which garbled titles and liveries
-- `pkg/traffic`: `ArrivalController.Cancel` and `TaxiController.Cancel` also remove the aircraft after the controller finished (parked, or handed to MSFS AI); the airport map can remove finished aircraft
-- `pkg/traffic`: departures start on the stand's stop mark, not the stand circle centre; pushbacks follow an arc instead of pivoting (#304)
-- `SIMCONNECT_EVENT_FLAG_*` had sequential (`iota`) values instead of the SimConnect bit flags. `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` was 3 (both repeat timers) instead of `0x10`, so `TransmitClientEvent` with a priority as group ID failed with `SIMCONNECT_EXCEPTION_ERROR` (parameter 5); `FAST_REPEAT_TIMER` and `SLOW_REPEAT_TIMER` were swapped. Affected `simvar-cli emit` and the REPL too (#310)
-- `pkg/airport`: taxiway edges along a runway surface were excluded from routing, which cut off every runway at LROP, where the taxiways cross 08R/26L along its end. They are now allowed at `AlongRunwayFactor` × their length.
-
 ### Added
 
+- `pkg/airport` stands: `Parking.Size()` (`StandSmall`/`Medium`/`Heavy` from TYPE and RADIUS), `Layout.SuitableStands(minRadius, types...)`, `Layout.ParkingConflicts(i)` (overlapping RADIUS circles, e.g. split stands) and `Parking.Airlines` / `ServesAirline` from the `TAXI_PARKING_AIRLINE` records the loader now requests (#291)
+- `pkg/traffic` `StandAllocator`: stand reservations with span-aware blocking of overlapping stands, detection of aircraft standing on stands (AI and user, real wing span), `Assign` by span, TYPE, airline and taxi-in length, warning-only taxi route reservation (#292)
+- `examples/airport-map`: spawn onto a free stand (**Assign a free stand**), refuse taken stands, **Occupied stands** layer, `GET /api/stands` (#292)
+- `pkg/traffic` pushback tug (#304): `TaxiRequest.Tug` takes a `PushbackTug`; `SimObjectTug` spawns a ground vehicle model (default `DefaultTugTitle`, GSX's towbarless `FSDT_Pushback_Trepel_280`) at the nose gear when the pushback is cleared, moves it with the aircraft, then drives it off and removes it. The interface lets a third-party integration (e.g. GSX) take its place. Map: **Pushback tug** option
+- `pkg/traffic` ground traffic: `GroundPicture` shared by injected departures and arrivals (`TaxiWithGroundPicture`, `ArrivalWithGroundPicture`); a taxiing aircraft stops `TrafficGapMeters` behind another aircraft's body on its path, so aircraft queue at holding points and follow at a safe gap; the map adds the sim's AI and the user's aircraft (#334)
+- `pkg/traffic` push up the alley: from a dead-end stand (LKPR A7, B9, C26) the tug pushes the aircraft back out along its taxilane to the next taxiway and swings the tail there; the turn from the stand onto the lane is a Dubins curve onto its first straight stretch. Pushes stay on the pavement (stand circles and taxi path strips: no buildings or grass) and out of the terminal zone ahead of the gates. Push-and-turn on the apron remains the last resort, ending past the junction on the taxi-out. `NewSmoothPath`
+- `pkg/traffic` pushback fits the aircraft: the tail only goes onto taxiways the aircraft fits (`Graph.Fits`), and the push may continue straight back past the first junction to a later one on the stand axis (a 777 at LKPR B14 is pushed back to J, not onto JO)
+- `pkg/traffic` push and turn: stands whose only taxiway at the junction is the way out (LKPR A7, B9) turn the aircraft on the apron along a Dubins path, ending short of the junction facing the taxi-out (#341)
+- `pkg/traffic` pushback direction: the tail goes onto the branch from which the taxi-out is cheapest (`planPushback`: each branch's taxi-out planned from the junction), and the route becomes stand → junction → that taxi-out; LKPR C17 no longer ends facing away from its route. `TestPushbackFacesRoute` checks every LKPR pushback stand (A7, B9: #341)
+- `pkg/airport` routes by aircraft size: `RouteOptions.HalfSpan`, `WingtipMargin`, `OwnStands`, `TaxiwayMaxSpan` (default `KnownTaxiwayMaxSpan`, LKPR JO/JB code C), `Edge.Clearance` (free half-width to the nearest stand circle), `Route.Tight`; `pkg/traffic` controllers route with their aircraft's span, so a 777 leaves LKPR B14 by J
+- `pkg/airport`: `Graph.RouteToRunwayFrom(from, prev, …)`, `Graph.RouteFromNodes`, `Route.Cost`, `RouteOptions.OwnApronMeters` (the apron penalty is waived around the start)
+- `pkg/traffic` tug, live-tuned: default `FSDT_Pushback_03` (GSX's classic towbar tug), facing the aircraft (`TugYawDeg` 180) with the bar on the nose wheel; it connects while the aircraft waits for pushback; the bar swings with the nose wheel's travel through the arc (`TugMaxBarDeg`, `TugBarSeconds`); after the push it backs off the nose, then turns away. `MotionProfileFor(model)` gives the airframe per family (wheelbase, span, tail) since MSFS 2024 reports no gear contact points; the map uses it for departures, arrivals, the tug and stand spans
+- `pkg/traffic` `Injector.PlaceMoving`: places an object with its ground speed as its speed, so vehicles animate their wheels; the pushback tug uses it (checked live)
+- `pkg/traffic` `GroundMover`: a move that starts from a standstill within `StopApproachMeters` of its stop point (short hops, a tug backing off) pulls away instead of standing still forever
+- `pkg/traffic` take-off without tail strikes: `TakeoffProfile.TailstrikePitch`; on the runway the pitch stays `TailstrikeMarginDeg` below it (a small pull to lift off), after lift-off it is held until a positive climb (`PositiveClimbFt`) and then rises no faster than the tail clears the runway. Gear up on a positive climb (`GearUpDelaySeconds`, `GearUpFpm`). `TakeoffProfileFor(model)` picks figures by family (777-300, 777, 787, 747, A380, A350, A330, A321, 737, regional jets, turboprops); the map uses it
+- `examples/airport-map`: a completed departure (handed to MSFS AI) no longer leaves a marker at its hand-over point
+- `examples/airport-map`: the traffic log gives clearances in ATC phraseology, with the taxiways ("AFR1383, taxi to holding point runway 24 via B2, H, A"), also those the controller gives itself with gates off; **Safe zones** checkbox: half the wing span plus 3 m around every aircraft on the ground, red where two overlap; `/api/traffic` reports the span
+- `examples/airport-map`: one **▶ Spawn** button that follows the route mode and names what it spawns ("▶ Spawn departure: C22 → runway 24 at B"), with only that mode's options
+- `examples/airport-map`: the occupied-stands layer is drawn on the shared canvas and not interactive; as a separate SVG layer it swallowed clicks on the stands
+- `pkg/types`: `SIMCONNECT_FACILITY_DATA_VDGS`, `_HOLDING_PATTERN`, `_TAXI_PARKING_AIRLINE`
 - `GetLastSentPacketID` on `engine.Client` and `manager.Manager`: record the send ID of a request to attribute a later `SIMCONNECT_RECV_EXCEPTION` (`DwSendID`) to it. See "Attributing Exceptions" in `docs/usage-client.md` (#301). **Breaking** for custom implementations of `engine.Client`.
 - `pkg/traffic` injected ground movement: `GroundPath`, `GroundMover` (turn-radius speed planning, jerk-limited speed, nose-gear steering with a trailing main gear, holds) and `Injector` (takeover and freeze, `Place` on the ground at 60 Hz, `SetLights` with phase presets, `Release`). Lights stay as set, which MSFS AI does not allow. See `docs/traffic-motion.md` (#309)
 - `pkg/airport` turn-aware routing: costs for turns at junctions, taxiway changes, runway crossings, turning back and apron taxilanes (`RouteOptions.TurnPenalty`, `TaxiwayChangePenalty`, `RunwayCrossingPenalty`, `ApronPenalty`), so routes prefer fewer turns and taxiways without stands even when a little longer (#307)
@@ -40,6 +51,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - `airport.MaxExitAngle` is 90° (was 100°): exits and entries pointing back along the runway are left out.
+
+### Fixed
+
+- `pkg/airport`: `TaxiPath.RunwayNumber` / `RunwayDesignator` are zero on non-runway paths; MSFS leaves them uninitialised there
+- `traffic.EnrouteOpts.Phase` doc: `dFlightPlanPosition` is the waypoint index plus the fraction along the next leg, not 0–1 (#300)
+- `examples/read-objects`, `examples/airport-map`: simobject and livery enumeration read entries at the wrong offset (the list header is 28 bytes; entries are a fixed 512), which garbled titles and liveries
+- `pkg/traffic`: `ArrivalController.Cancel` and `TaxiController.Cancel` also remove the aircraft after the controller finished (parked, or handed to MSFS AI); the airport map can remove finished aircraft
+- `pkg/traffic`: departures start on the stand's stop mark, not the stand circle centre; pushbacks follow an arc instead of pivoting (#304)
+- `SIMCONNECT_EVENT_FLAG_*` had sequential (`iota`) values instead of the SimConnect bit flags. `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` was 3 (both repeat timers) instead of `0x10`, so `TransmitClientEvent` with a priority as group ID failed with `SIMCONNECT_EXCEPTION_ERROR` (parameter 5); `FAST_REPEAT_TIMER` and `SLOW_REPEAT_TIMER` were swapped. Affected `simvar-cli emit` and the REPL too (#310)
+- `pkg/airport`: taxiway edges along a runway surface were excluded from routing, which cut off every runway at LROP, where the taxiways cross 08R/26L along its end. They are now allowed at `AlongRunwayFactor` × their length.
 
 ## [0.7.0] - 2026-09-27
 

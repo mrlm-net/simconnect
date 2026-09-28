@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
+  [hidden] { display: none !important; }
+  button:disabled { opacity: 0.55; cursor: default; }
   html, body { margin: 0; height: 100%; font: 13px/1.4 system-ui, sans-serif; background: #111; color: #ddd; }
   #map { position: absolute; inset: 0 320px 0 0; }
   #side { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; overflow-y: auto; box-sizing: border-box;
@@ -79,19 +81,18 @@
   <div id="overlapInfo" class="note"></div>
 
   <h2>Traffic control</h2>
-  <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
-  <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
-  <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
+  <div class="note">Spawns what the <b>Route</b> section shows: its mode (departure or arrival), stand and runway. Then give the clearances in the list below; select an aircraft and click a point of its route to clear it up to there.</div>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
   <div class="combo">
     <input type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false">
     <button type="button" id="cModelOpen" class="secondary" title="Show all models">▾</button>
     <div id="modelMenu" class="combo-menu" hidden></div>
   </div>
-  <div style="display:flex; gap:6px; margin:4px 0">
-    <button type="button" id="cDeparture">▶ Departure</button>
-    <button type="button" id="cArrival">▶ Arrival</button>
-  </div>
+  <label class="opt"><input type="checkbox" id="cAutoStand"> Assign a free stand instead (airline from the callsign)</label>
+  <label class="opt"><input type="checkbox" id="cGates" checked> <span id="cGatesLbl">Hold at every clearance</span></label>
+  <label class="opt dep-only"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
+  <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
+  <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
   <h2>Traffic log</h2>
@@ -99,6 +100,7 @@
 
   <h2>Live traffic</h2>
   <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
+  <label class="opt"><input type="checkbox" id="safeOn"> Safe zones: wing span + 3 m (red where two overlap)</label>
   <table id="trafficTable" class="note"></table>
 
   <h2>Taxi paths by TYPE</h2>
@@ -149,6 +151,7 @@ const groups = {
   route: L.layerGroup(),
   choices: L.layerGroup(),
   control: L.layerGroup(),
+  stands: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -158,12 +161,13 @@ const overlays = {
   'Parking spots': groups.parking,
   'Taxi points': groups.points,
   'Hold-short points': groups.hold,
+  'Occupied stands': groups.stands,
 };
 for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control, groups.stands]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -402,6 +406,7 @@ function drawChoices() {
 }
 
 async function computeRoute() {
+  updateSpawn();
   groups.route.clearLayers();
   drawChoices();
   if (!data || !routeFrom) { $('rInfo').textContent = ''; return; }
@@ -518,9 +523,12 @@ const trafficIcon = (t) => L.divIcon({
 const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.agl.toFixed(0)}ft ${t.groundKts.toFixed(0)}kt` +
   `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · ${esc(shortState(t.state))}`;
 async function pollTraffic() {
-  if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
+  const safe = $('safeOn').checked;
+  if (!$('trafficOn').checked && !safe) { trafficLayer.clearLayers(); trafficMarkers.clear(); safeLayer.clearLayers(); $('trafficTable').innerHTML = ''; return; }
   let list = [];
   try { list = await (await fetch('/api/traffic')).json(); } catch { return; }
+  drawSafeZones(safe ? list : []);
+  if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
   const seen = new Set();
   for (const t of list) {
     if (t.user) continue;
@@ -543,6 +551,28 @@ async function pollTraffic() {
     : '<tr><td>No other aircraft</td></tr>';
 }
 setInterval(pollTraffic, 1000);
+// Safe zones: a circle of half the wing span plus SAFE_MARGIN around every
+// aircraft (ours, MSFS AI and the user's); red where two overlap — wingtips
+// that could touch.
+const SAFE_MARGIN = 3;
+const safeLayer = L.layerGroup().addTo(map);
+function drawSafeZones(list) {
+  safeLayer.clearLayers();
+  const zones = list.filter((t) => t.onGround && t.span > 0)
+    .map((t) => ({ t, at: L.latLng(t.lat, t.lon), r: t.span / 2 + SAFE_MARGIN, clash: false }));
+  for (let i = 0; i < zones.length; i++) {
+    for (let j = i + 1; j < zones.length; j++) {
+      if (zones[i].at.distanceTo(zones[j].at) < zones[i].r + zones[j].r) zones[i].clash = zones[j].clash = true;
+    }
+  }
+  for (const z of zones) {
+    const color = z.clash ? '#ff3b3b' : '#2ecc71';
+    L.circle(z.at, { renderer, radius: z.r, color, weight: z.clash ? 2 : 1, fillColor: color, fillOpacity: 0.12, interactive: false })
+      .bindTooltip(`${esc(z.t.tail || z.t.objectId)} · span ${z.t.span.toFixed(0)} m`, { direction: 'top' })
+      .addTo(safeLayer);
+  }
+}
+$('safeOn').addEventListener('change', pollTraffic);
 // ── Traffic control (#322): spawn controlled aircraft, give clearances,
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
@@ -550,10 +580,11 @@ let ctlViews = [];
 const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', remove: '✕' };
 
 async function ctlSpawn(kind) {
-  if (!data || !routeFrom) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot).</span>'; return; }
+  const auto = $('cAutoStand').checked;
+  if (!data || (!routeFrom && !auto)) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot), or tick "Assign a free stand".</span>'; return; }
   const body = {
-    kind, icao: data.icao, stand: routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
-    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked,
+    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
+    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   $('cInfo').textContent = `Spawning ${kind}…`;
@@ -562,7 +593,7 @@ async function ctlSpawn(kind) {
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
     const v = await res.json();
     ctlSelected = v.id;
-    $('cInfo').textContent = `${v.tail}: ${kind} spawned`;
+    $('cInfo').textContent = `${v.tail}: ${kind} spawned at ${v.stand}`;
     pollControl();
   } catch (e) {
     $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
@@ -584,7 +615,9 @@ async function ctlAct(id, action, node) {
 function drawControl() {
   groups.control.clearLayers();
   const v = ctlViews.find((x) => x.id === ctlSelected);
-  if (!v || !v.route) return;
+  // A completed departure flies on under MSFS AI: its last injected position
+  // (the hand-over at 1500 ft) would be a stale marker.
+  if (!v || !v.route || v.state === 'complete') return;
   const pts = v.route.map((p) => [p.lat, p.lon]);
   L.polyline(pts, { renderer, color: '#fff', weight: 8, opacity: 0.7, interactive: false }).addTo(groups.control);
   L.polyline(pts, { renderer, color: '#ff9f1a', weight: 4, interactive: false }).addTo(groups.control);
@@ -631,9 +664,31 @@ async function pollControl() {
     if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id;
     renderControl();
     drawControl();
+    drawStands();
   } catch (e) { /* server restarting */ }
 }
 setInterval(pollControl, 1000);
+// Stands held by controlled traffic (blue) or found occupied by a scan of
+// the sim's aircraft (red), refreshed with the control list.
+async function drawStands() {
+  if (!data) return;
+  const res = await fetch(`/api/stands?icao=${encodeURIComponent(data.icao)}`);
+  if (!res.ok) return;
+  const held = await res.json();
+  groups.stands.clearLayers();
+  for (const s of held) {
+    const p = data.parking[s.index];
+    if (!p) continue;
+    // On the shared canvas and not interactive, so clicks still reach the
+    // parking spots (a separate SVG layer on top would swallow them).
+    const ring = L.circle([p.position.lat, p.position.lon], {
+      renderer, radius: p.radius, color: s.detected && !s.owner ? '#ff3b3b' : '#2d6cdf', weight: 2, fillOpacity: 0.15, interactive: false,
+    }).addTo(groups.stands);
+    if (s.owner) {
+      ring.bindTooltip(`${esc(s.owner)} · span ${(2 * s.halfSpan).toFixed(0)} m`, { permanent: true, direction: 'bottom', className: 'lbl' });
+    }
+  }
+}
 // Model field: a searchable dropdown of the simulator's aircraft titles.
 // Click the field or ▾ to open it, type to filter (all words must match),
 // click an entry or use ↑/↓ and Enter to pick one.
@@ -706,8 +761,27 @@ document.addEventListener('mousedown', (e) => {
   if (!e.target.closest('.combo')) closeModelMenu();
 });
 
-$('cDeparture').addEventListener('click', () => ctlSpawn('departure'));
-$('cArrival').addEventListener('click', () => ctlSpawn('arrival'));
+$('cSpawn').addEventListener('click', () => ctlSpawn(arrival() ? 'arrival' : 'departure'));
+$('cAutoStand').addEventListener('change', updateSpawn);
+// updateSpawn labels the one spawn button with what it will do, and shows
+// only the options of the route mode.
+function updateSpawn() {
+  const arr = arrival(), auto = $('cAutoStand').checked, rwy = $('rTo').value || '?';
+  const stand = auto ? 'a free stand' : routeFrom ? parkingLabel(routeFrom) : null;
+  const entry = !arr && $('rPick').value ? ` at ${$('rPick').value}` : '';
+  for (const el of document.querySelectorAll('.dep-only')) el.hidden = arr;
+  for (const el of document.querySelectorAll('.arr-only')) el.hidden = !arr;
+  $('cGatesLbl').textContent = arr
+    ? 'Hold for clearances (taxi after landing, runway crossings)'
+    : 'Hold for clearances (pushback, taxi, crossings, line-up, take-off)';
+  const b = $('cSpawn');
+  b.disabled = !data || !stand;
+  b.textContent = !stand
+    ? 'Pick a stand on the map (or assign a free one)'
+    : arr ? `▶ Spawn arrival: runway ${rwy} → ${stand}` : `▶ Spawn departure: ${stand} → runway ${rwy}${entry}`;
+}
+for (const id of ['rMode', 'rTo', 'rPick']) $(id).addEventListener('change', updateSpawn);
+updateSpawn();
 $('ctlList').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }

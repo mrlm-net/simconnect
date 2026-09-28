@@ -102,6 +102,9 @@ type loadState struct {
 	deadline time.Time
 	pending  int
 	raw      RawAirport
+	// parkingByID maps a parking record's unique request ID to its index,
+	// for the airline records that follow it as children.
+	parkingByID map[uint32]int
 }
 
 // loaderDefinitions are the facility definitions, in request order. The
@@ -111,7 +114,7 @@ var loaderDefinitions = [][]string{
 	{"OPEN AIRPORT", "OPEN RUNWAY", "LATITUDE", "LONGITUDE", "ALTITUDE", "HEADING", "LENGTH", "WIDTH",
 		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR", "CLOSE RUNWAY", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_PARKING", "NAME", "SUFFIX", "NUMBER", "TYPE", "HEADING", "RADIUS", "BIAS_X", "BIAS_Z",
-		"CLOSE TAXI_PARKING", "CLOSE AIRPORT"},
+		"OPEN AIRLINE", "NAME", "CLOSE AIRLINE", "CLOSE TAXI_PARKING", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_POINT", "TYPE", "ORIENTATION", "BIAS_X", "BIAS_Z", "CLOSE TAXI_POINT", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_PATH", "TYPE", "WIDTH", "RUNWAY_NUMBER", "RUNWAY_DESIGNATOR", "START", "END", "NAME_INDEX",
 		"CLOSE TAXI_PATH", "CLOSE AIRPORT"},
@@ -311,8 +314,25 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 			s.raw.Runways = setAt(s.raw.Runways, i, decodeRunway(data))
 		}
 	case partParking:
-		if m.Type == types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING {
+		switch m.Type {
+		case types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING:
 			s.raw.Parking = setAt(s.raw.Parking, i, *engine.CastDataAs[RawParking](data))
+			if s.parkingByID == nil {
+				s.parkingByID = map[uint32]int{}
+			}
+			s.parkingByID[uint32(m.UniqueRequestId)] = i
+		case types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING_AIRLINE:
+			p, ok := s.parkingByID[uint32(m.ParentUniqueRequestId)]
+			n := int(m.DwSize) - int(unsafe.Offsetof(m.Data))
+			if !ok || n <= 0 {
+				break
+			}
+			if code := engine.BytesToString(unsafe.Slice((*byte)(unsafe.Pointer(data)), min(n, 32))); code != "" {
+				if s.raw.ParkingAirlines == nil {
+					s.raw.ParkingAirlines = map[int][]string{}
+				}
+				s.raw.ParkingAirlines[p] = append(s.raw.ParkingAirlines[p], code)
+			}
 		}
 	case partTaxiPoint:
 		if m.Type == types.SIMCONNECT_FACILITY_DATA_TAXI_POINT {

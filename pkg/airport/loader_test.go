@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 	"unsafe"
@@ -114,9 +115,24 @@ func simulate(raw RawAirport, base uint32, reverseItems bool) []engine.Message {
 	for i, r := range raw.Runways {
 		parts[partRunway] = append(parts[partRunway], facilityMsg(base+partRunway, types.SIMCONNECT_FACILITY_DATA_RUNWAY, i, runwayBytes(r)))
 	}
+	// A parking record is followed by its airline records, which name it as
+	// their parent; reversing keeps each group together.
+	var parkingGroups [][]engine.Message
 	for i := range raw.Parking {
-		parts[partParking] = append(parts[partParking], facilityMsg(base+partParking, types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING, i, bytesOf(&raw.Parking[i])))
+		m := facilityMsg(base+partParking, types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING, i, bytesOf(&raw.Parking[i]))
+		m.AsFacilityData().UniqueRequestId = types.DWORD(5000 + i)
+		group := []engine.Message{m}
+		for k, code := range raw.ParkingAirlines[i] {
+			c := facilityMsg(base+partParking, types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING_AIRLINE, k, []byte(code))
+			c.AsFacilityData().ParentUniqueRequestId = types.DWORD(5000 + i)
+			group = append(group, c)
+		}
+		parkingGroups = append(parkingGroups, group)
 	}
+	if reverseItems {
+		slices.Reverse(parkingGroups)
+	}
+	parts[partParking] = slices.Concat(parkingGroups...)
 	for i := range raw.TaxiPoints {
 		parts[partTaxiPoint] = append(parts[partTaxiPoint], facilityMsg(base+partTaxiPoint, types.SIMCONNECT_FACILITY_DATA_TAXI_POINT, i, bytesOf(&raw.TaxiPoints[i])))
 	}
@@ -130,7 +146,7 @@ func simulate(raw RawAirport, base uint32, reverseItems bool) []engine.Message {
 	}
 	for p := range parts {
 		items := parts[p]
-		if reverseItems {
+		if reverseItems && p != partParking {
 			for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 				items[i], items[j] = items[j], items[i]
 			}
@@ -313,5 +329,33 @@ func TestLoaderSlotsAndErrors(t *testing.T) {
 	}
 	if len(c.defs[DefaultLoaderDefinitionBase]) != 2*len(loaderDefinitions[0]) {
 		t.Error("Reset did not re-register definitions")
+	}
+}
+
+// TestLoaderParkingAirlines: airline records that follow a parking record
+// as its children end up on that stand, in order.
+func TestLoaderParkingAirlines(t *testing.T) {
+	raw := lkprRaw(t)
+	raw.ParkingAirlines = map[int][]string{18: {"CSA", "AFR"}, 3: {"DLH"}}
+	want, err := BuildLayout(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reverse := range []bool{false, true} {
+		l := NewLoader(&fakeClient{})
+		if err := l.Request("LKPR"); err != nil {
+			t.Fatal(err)
+		}
+		res := feed(t, l, simulate(raw, DefaultLoaderRequestBase, reverse))
+		if len(res) != 1 || res[0].Err != nil {
+			t.Fatalf("reverse=%v: results %+v", reverse, res)
+		}
+		got := res[0].Layout
+		if !slices.Equal(got.Parking[18].Airlines, []string{"CSA", "AFR"}) || !slices.Equal(got.Parking[3].Airlines, []string{"DLH"}) || got.Parking[4].Airlines != nil {
+			t.Errorf("reverse=%v: airlines C22 %v, 3 %v, 4 %v", reverse, got.Parking[18].Airlines, got.Parking[3].Airlines, got.Parking[4].Airlines)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("reverse=%v: loaded layout differs from BuildLayout of the same records", reverse)
+		}
 	}
 }

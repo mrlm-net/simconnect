@@ -20,6 +20,12 @@ type TakeoffProfile struct {
 	// ClimbKts is the initial climb speed (V2 + 10–15); ClimbFpm the climb
 	// rate reached ClimbRampSeconds after lift-off.
 	ClimbKts, ClimbFpm, ClimbRampSeconds float64
+	// TailstrikePitch is the pitch (°) at which the tail touches the runway
+	// with the main gear on it; 0 means 11.5 (A320). On the runway the pitch
+	// stays TailstrikeMarginDeg below it, lift-off included; after lift-off
+	// it is held until a positive climb (PositiveClimbFt), then rises no
+	// faster than the tail clears the runway (TailClearFtPerDeg).
+	TailstrikePitch float64
 }
 
 // DefaultTakeoffProfile is an A320 family take-off.
@@ -27,7 +33,7 @@ func DefaultTakeoffProfile() TakeoffProfile {
 	return TakeoffProfile{
 		RollAccel: 2.4, // live: 2.0 lifted off after ~1875 m, long for an A320
 		RotateKts: 138, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15,
-		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 5,
+		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 5, TailstrikePitch: 11.5,
 	}
 }
 
@@ -50,6 +56,8 @@ type TakeoffPose struct {
 	VerticalFpm    float64
 	Distance       float64 // meters from the start of the roll
 	Phase          TakeoffPhase
+	// AirborneSeconds is the time since lift-off.
+	AirborneSeconds float64
 	// LiftoffDistance is where the wheels left the runway, once airborne.
 	LiftoffDistance float64
 }
@@ -88,8 +96,17 @@ func (m *TakeoffMover) Pose() TakeoffPose {
 	return TakeoffPose{
 		Position: offsetHeading(m.start, m.heading, m.x), Heading: m.heading,
 		HeightFt: m.h, PitchDeg: m.pitch, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
-		Distance: m.x, Phase: m.phase, LiftoffDistance: m.liftoffX,
+		Distance: m.x, Phase: m.phase, LiftoffDistance: m.liftoffX, AirborneSeconds: m.airborneFor,
 	}
+}
+
+// groundPitchLimit is the highest pitch with the main gear on the runway.
+func (m *TakeoffMover) groundPitchLimit() float64 {
+	tail := m.p.TailstrikePitch
+	if tail <= 0 {
+		tail = 11.5
+	}
+	return tail - TailstrikeMarginDeg
 }
 
 // Step advances by dt seconds.
@@ -113,14 +130,21 @@ func (m *TakeoffMover) step(dt float64) {
 			m.phase = TakeoffRotate
 		}
 		if m.phase == TakeoffRotate {
-			m.pitch = math.Min(p.ClimbPitch, m.pitch+p.RotateRate*dt)
-			if m.pitch >= p.LiftoffPitch {
+			// A small pull: the lift-off pitch, well clear of a tail strike.
+			lift := math.Min(p.LiftoffPitch, m.groundPitchLimit())
+			m.pitch = math.Min(lift, m.pitch+p.RotateRate*dt)
+			if m.pitch >= lift-1e-9 {
 				m.phase, m.liftoffX = TakeoffAirborne, m.x
 			}
 		}
 	case TakeoffAirborne:
 		m.airborneFor += dt
-		m.pitch = math.Min(p.ClimbPitch, m.pitch+p.RotateRate*dt)
+		// Held until a positive climb, then up to the climb pitch no faster
+		// than the rising tail allows.
+		if m.h >= PositiveClimbFt {
+			limit := m.groundPitchLimit() + m.h/TailClearFtPerDeg
+			m.pitch = math.Max(m.pitch, math.Min(math.Min(p.ClimbPitch, limit), m.pitch+p.RotateRate*dt))
+		}
 		f := math.Min(1, m.airborneFor/math.Max(p.ClimbRampSeconds, 0.01))
 		m.vs = p.ClimbFpm * f * f * (3 - 2*f) // eases into the climb
 		m.h += m.vs / 60 * dt

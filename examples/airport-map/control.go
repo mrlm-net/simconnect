@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,14 +34,29 @@ const (
 	controlIDBlock uint32 = 10
 )
 
+// Stand allocator ID bases, one block per airport, and how often (in
+// connection ticks of a second) the stands are scanned for sim aircraft.
+const (
+	standDefBase   uint32 = 8200
+	standReqBase   uint32 = 8300
+	standIDBlock   uint32 = 4
+	standScanTicks        = 10
+)
+
 type controlled struct {
-	ID    int    `json:"id"`
-	Kind  string `json:"kind"` // departure | arrival
-	Tail  string `json:"tail"`
-	ICAO  string `json:"icao"`
-	dep   *traffic.TaxiController
-	arr   *traffic.ArrivalController
-	graph *airport.Graph
+	ID     int    `json:"id"`
+	Kind   string `json:"kind"` // departure | arrival
+	Tail   string `json:"tail"`
+	ICAO   string `json:"icao"`
+	dep    *traffic.TaxiController
+	arr    *traffic.ArrivalController
+	graph  *airport.Graph
+	stands *traffic.StandAllocator
+	stand  int  // parking index held for this aircraft
+	left   bool // a departure has left its stand (released)
+	// spoken marks clearances already in the log (given on the map), so
+	// the state change they cause does not log them again.
+	spoken map[string]bool
 
 	mu   sync.Mutex
 	view ControlView
@@ -78,14 +94,21 @@ type controlCenter struct {
 	mu     sync.Mutex
 	next   int
 	items  map[int]*controlled
-	models map[string]bool // aircraft titles the simulator offers
+	models map[string]bool                    // aircraft titles the simulator offers
+	stands map[string]*traffic.StandAllocator // by ICAO
+	// picture is what the controlled aircraft know of each other and of the
+	// sim's other aircraft on the ground (#334).
+	picture *traffic.GroundPicture
+	ticks   int
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
 	return &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models: map[string]bool{},
+		models:  map[string]bool{},
+		stands:  map[string]*traffic.StandAllocator{},
+		picture: traffic.NewGroundPicture(),
 	}
 }
 
@@ -105,8 +128,51 @@ func (cc *controlCenter) do(f func() error) error {
 	}
 }
 
+// allocator returns the stand allocator of g's airport, creating it.
+func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if a := cc.stands[g.Layout.ICAO]; a != nil {
+		return a
+	}
+	k := uint32(len(cc.stands))
+	a := traffic.NewStandAllocator(cc.client, g, traffic.StandWithIDs(standDefBase+k*standIDBlock, standReqBase+k*standIDBlock))
+	cc.stands[g.Layout.ICAO] = a
+	return a
+}
+
+// tick runs every second in the connection goroutine: it scans the stands
+// of every airport with an allocator every standScanTicks.
+func (cc *controlCenter) tick() {
+	if cc.ticks++; cc.ticks%standScanTicks != 0 {
+		return
+	}
+	cc.mu.Lock()
+	all := make([]*traffic.StandAllocator, 0, len(cc.stands))
+	for _, a := range cc.stands {
+		all = append(all, a)
+	}
+	cc.mu.Unlock()
+	for _, a := range all {
+		if err := a.Scan(); err != nil {
+			fmt.Printf("⚠️  stand scan: %v\n", err)
+		}
+	}
+}
+
 // handle passes a message to the injector and every controller.
 func (cc *controlCenter) handle(msg engine.Message) bool {
+	cc.mu.Lock()
+	allocs := make([]*traffic.StandAllocator, 0, len(cc.stands))
+	for _, a := range cc.stands {
+		allocs = append(allocs, a)
+	}
+	cc.mu.Unlock()
+	for _, a := range allocs {
+		if a.Handle(msg) {
+			return true
+		}
+	}
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
 		if e := msg.AsSimObjectAndLiveryEnumeration(); uint32(e.DwRequestID) == reqModels {
 			cc.addModels(msg)
@@ -135,15 +201,19 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 
 // SpawnRequest asks for a controlled departure or arrival.
 type SpawnRequest struct {
-	Kind           string `json:"kind"` // departure | arrival
-	ICAO           string `json:"icao"`
-	Stand          int    `json:"stand"` // parking index
-	Runway         string `json:"runway"`
-	Entry          string `json:"entry"` // departure: runway entry taxiway
-	Model          string `json:"model"`
-	Tail           string `json:"tail"`
-	Gates          bool   `json:"gates"`          // hold at every clearance
-	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection
+	Kind           string   `json:"kind"` // departure | arrival
+	ICAO           string   `json:"icao"`
+	Stand          int      `json:"stand"` // parking index
+	Runway         string   `json:"runway"`
+	Entry          string   `json:"entry"` // departure: runway entry taxiway
+	Model          string   `json:"model"`
+	Tail           string   `json:"tail"`
+	Gates          bool     `json:"gates"`          // hold at every clearance
+	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
+	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
+	TugTitle       string   `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
+	TugYaw         *float64 `json:"tugYaw"`         // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
+	TugAhead       *float64 `json:"tugAhead"`       // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
 }
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
@@ -155,26 +225,50 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		r.Model = "FSLTL A320 Air France SL"
 	}
 	model, livery, _ := strings.Cut(r.Model, liverySep)
+	// Airframe of the type: wheelbase (where the tug connects), span (stands).
+	prof := traffic.MotionProfileFor(model)
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
+	// The stand: assigned (-1) or the one asked for, if nobody holds it.
+	alloc := cc.allocator(g)
+	if r.Stand < 0 {
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2}
+		if r.Kind == "arrival" {
+			req.Runway = r.Runway
+		}
+		s, err := alloc.Assign(req)
+		if err != nil {
+			return nil, err
+		}
+		r.Stand = s
+	} else if err := alloc.Occupy(r.Stand, r.Tail, prof.SpanMeters/2); err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			alloc.ReleaseOwner(r.Tail)
+		}
+	}()
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
-	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g}
+	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj))
+		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
-			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates}); err != nil {
+			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Takeoff: traffic.TakeoffProfileFor(model)}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj))
+		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail,
-			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach}); err != nil {
+			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach, Profile: prof}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
@@ -186,6 +280,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
+	started = true
+	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
+		tlog.printf("%-6s %s: route overlaps the routes of %s", r.Tail, r.Kind, strings.Join(clash, ", "))
+	}
 	go func() {
 		for {
 			ev, ok := events()
@@ -235,6 +333,15 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		// Off the stand once pushed or taxiing; the route is done when airborne.
+		// (AwaitingTaxi on a face-out stand is still on it.)
+		if !it.left && e.State >= traffic.TaxiPushback && e.State != traffic.TaxiAwaitingTaxi {
+			it.left = true
+			it.stands.Release(it.stand)
+		}
+		if e.State.Terminal() {
+			it.stands.ReleaseRoute(it.Tail)
+		}
 	}
 	if e := ev.arr; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
@@ -243,6 +350,12 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = arrivalActions(e.State)
+		switch e.State {
+		case traffic.ArrivalParked:
+			it.stands.ReleaseRoute(it.Tail)
+		case traffic.ArrivalCancelled, traffic.ArrivalFailed:
+			it.stands.ReleaseOwner(it.Tail)
+		}
 	}
 }
 
@@ -318,6 +431,31 @@ func registerControl(mux *http.ServeMux, st *state) {
 	}
 
 	// GET /api/control — controlled aircraft.
+	// GET /api/stands?icao=X — who holds which stand: reservations of the
+	// controlled traffic and aircraft the scan found on stands.
+	mux.HandleFunc("GET /api/stands", func(w http.ResponseWriter, r *http.Request) {
+		cc := center(w)
+		if cc == nil {
+			return
+		}
+		g, err := st.cache.Graph(r.URL.Query().Get("icao"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		type standView struct {
+			Index int    `json:"index"`
+			Label string `json:"label"`
+			traffic.Occupant
+		}
+		out := []standView{}
+		for i, o := range cc.allocator(g).Occupancy() {
+			out = append(out, standView{Index: i, Label: g.Layout.Parking[i].Label(), Occupant: o})
+		}
+		sort.Slice(out, func(a, b int) bool { return out[a].Index < out[b].Index })
+		writeJSON(w, out)
+	})
+
 	mux.HandleFunc("GET /api/control", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
 		cc := st.control
@@ -412,8 +550,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		tlog.printf("%-6s %s: cleared %s", it.Tail, it.Kind, clr)
 		if action == "remove" {
+			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
+		} else {
+			tlog.printf("%-6s ATC: %s", it.Tail, it.phrase(action, node))
+			it.mu.Lock()
+			it.spoken[action] = true
+			it.mu.Unlock()
+		}
+		if action == "remove" {
+			it.stands.ReleaseOwner(it.Tail)
 			cc.mu.Lock()
 			delete(cc.items, id)
 			cc.mu.Unlock()
@@ -486,6 +632,19 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 		}
 		tlog.printf("%s: %s → %s%s  (%.0f kt, hdg %.0f)", who, prev.State, v.State, extra, v.GroundSpeed, v.Heading)
 	}
+	if action := clearanceOf(v.Kind, prev.State, v.State); action != "" {
+		if it.spoken[action] {
+			delete(it.spoken, action) // said when given
+		} else {
+			var r *airport.Route
+			if it.dep != nil {
+				r = it.dep.Route()
+			} else if p := it.arr.Plan(); p != nil {
+				r = p.Route
+			}
+			tlog.printf("%-6s ATC: %s", it.Tail, it.phraseView(v, r, action, -1))
+		}
+	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
 		tlog.printf("%s: lights %s → %s (%s)", who, prev.Lights, v.Lights, v.State)
 	}
@@ -506,4 +665,169 @@ func entryNote(e string) string {
 		return ""
 	}
 	return " at " + e
+}
+
+// airlineOf reads an airline code from a callsign-style tail ("BAW851" →
+// "BAW"); "" when the tail is not one.
+func airlineOf(tail string) string {
+	if len(tail) < 4 {
+		return ""
+	}
+	for i, c := range tail {
+		switch {
+		case i < 3 && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z'):
+			return ""
+		case i == 3:
+			if c < '0' || c > '9' {
+				return ""
+			}
+			return strings.ToUpper(tail[:3])
+		}
+	}
+	return ""
+}
+
+// tug is the pushback tug of a departure, if asked for: a GSX tug model
+// driven by the injector, created with the last request ID of the
+// aircraft's block.
+func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.MotionProfile) traffic.PushbackTug {
+	if !r.Tug {
+		return nil
+	}
+	title := r.TugTitle
+	if title == "" {
+		title = traffic.DefaultTugTitle
+	}
+	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
+	if r.TugYaw != nil {
+		t.YawDeg = *r.TugYaw
+	}
+	if r.TugAhead != nil {
+		t.AheadMeters = *r.TugAhead
+	}
+	return t
+}
+
+// phrase is the clearance as ATC says it (ICAO phraseology), e.g.
+// "AFR1383, taxi to holding point runway 24 via B2, H, A".
+func (it *controlled) phrase(action string, node airport.NodeID) string {
+	var r *airport.Route
+	if it.dep != nil {
+		r = it.dep.Route()
+	} else if p := it.arr.Plan(); p != nil {
+		r = p.Route
+	}
+	it.mu.Lock()
+	v := it.view
+	it.mu.Unlock()
+	return it.phraseView(v, r, action, node)
+}
+
+// phraseView is phrase for a view the caller holds.
+func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) string {
+	call, rwy := it.Tail, v.Runway
+	switch action {
+	case "pushback":
+		return call + ", push back and start-up approved"
+	case "taxi":
+		if it.dep != nil {
+			return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", call, entryPoint(r), rwy, via(r, len(r.Edges)))
+		}
+		return fmt.Sprintf("%s, taxi to stand %s%s", call, v.Stand, via(r, len(r.Edges)))
+	case "upto":
+		if r != nil {
+			if i := slices.Index(r.Nodes, node); i > 0 {
+				limit := r.Edges[i-1].Name
+				if i < len(r.Edges) && r.Edges[i].Name != "" && r.Edges[i].Name != limit {
+					limit = r.Edges[i].Name // hold short of the taxiway joined there
+				}
+				if limit == "" {
+					return fmt.Sprintf("%s, taxi%s, hold position at the marked point", call, via(r, i))
+				}
+				return fmt.Sprintf("%s, taxi%s, hold short of %s", call, via(r, i), limit)
+			}
+		}
+		return call + ", taxi to the marked point and hold"
+	case "cross":
+		return fmt.Sprintf("%s, cross runway %s", call, v.HoldingShortOf)
+	case "lineup":
+		return fmt.Sprintf("%s, runway %s, line up and wait", call, rwy)
+	case "takeoff":
+		return fmt.Sprintf("%s, runway %s, cleared for take-off", call, rwy)
+	}
+	return call + ", " + action
+}
+
+// via names the taxiways of the first n edges of a route: " via B2, H, A".
+func via(r *airport.Route, n int) string {
+	if r == nil {
+		return ""
+	}
+	var names []string
+	for _, e := range r.Edges[:min(n, len(r.Edges))] {
+		if e.Name != "" && (len(names) == 0 || names[len(names)-1] != e.Name) {
+			names = append(names, e.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return " via " + strings.Join(names, ", ")
+}
+
+// entryPoint is the named holding point of an intersection departure
+// (" B" in "holding point B runway 24"), "" for full length.
+func entryPoint(r *airport.Route) string {
+	if r == nil || r.Entry == "" {
+		return ""
+	}
+	return " " + r.Entry
+}
+
+// clearanceOf names the clearance a state change carries out ("" none):
+// with gates off the controller clears itself, and the log still shows
+// what ATC said.
+func clearanceOf(kind, from, to string) string {
+	switch {
+	case from == to:
+		return ""
+	case to == traffic.TaxiPushback.String() && kind == "departure":
+		return "pushback"
+	case to == traffic.TaxiLiningUp.String() && kind == "departure":
+		return "lineup"
+	case to == traffic.TaxiDeparting.String() && kind == "departure":
+		return "takeoff"
+	case from == traffic.TaxiHoldingShort.String() && to == traffic.TaxiTaxiing.String():
+		return "cross" // arrivals share the state names
+	case to == traffic.TaxiTaxiing.String():
+		return "taxi"
+	}
+	return ""
+}
+
+// reportTraffic puts the sim's other aircraft on the ground (MSFS AI, the
+// user) into the ground picture, so the controlled aircraft stop for them
+// too. The controlled ones report themselves.
+func (cc *controlCenter) reportTraffic(scan []Traffic) {
+	cc.mu.Lock()
+	own := map[uint32]bool{}
+	for _, it := range cc.items {
+		if it.dep != nil {
+			own[it.dep.ObjectID()] = true
+		} else if it.arr != nil {
+			own[it.arr.ObjectID()] = true
+		}
+	}
+	cc.mu.Unlock()
+	now := time.Now()
+	for _, t := range scan {
+		if !t.OnGround || own[t.ObjectID] {
+			continue
+		}
+		p := traffic.DefaultMotionProfile()
+		if t.Span > 0 {
+			p.SpanMeters = t.Span
+		}
+		cc.picture.Report(t.ObjectID, airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Heading, p, now)
+	}
 }

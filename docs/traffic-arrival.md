@@ -197,6 +197,24 @@ Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fp
 
 The sweep tests fly 44 injected arrivals across LKPR stands and runways; all park within 3° of the stand heading and 1 m of the stop mark.
 
+### Stand allocation
+
+`StandAllocator` assigns stands at one airport and tracks who is on them (#292):
+
+```go
+stands := traffic.NewStandAllocator(client, g)          // feed stands.Handle(msg); call stands.Scan() every ~10 s
+s, err := stands.Assign(traffic.StandRequirements{
+    Owner: "DLH1394", Airline: "DLH", Runway: "24",     // HalfSpan 0 = A320
+})
+// … ArrivalRequest{Parking: s, …}; stands.ReleaseOwner("DLH1394") when the aircraft is gone
+```
+
+- **Reservations:** `Occupy(stand, owner, halfSpan)` fails with `ErrStandTaken` when someone else holds the stand or an aircraft on an overlapping stand (`Layout.ParkingConflicts`) is in the way: two aircraft clash when their half spans plus `StandWingtipClearanceMeters` (3 m) exceed the distance between the stand centres. `Release`, `ReleaseOwner`.
+- **Detection:** `Scan` requests every aircraft around the airport (AI and the user). One on the ground below `StandDetectKts` within a stand's RADIUS holds that stand, with its real `WING SPAN`. A reservation and a detection on the same stand merge (the owner stays, the object ID and span come from the scan).
+- **Assign:** suitable stands (`Layout.SuitableStands` for the span, optional `Types`), the airline's own stands first, then stands open to every airline; ranked by taxi-in length from the arrival runway's best exit. `ErrNoStand` when none is free.
+- **Taxi routes:** `ReserveRoute(owner, nodes)` returns the owners whose reserved routes share a node (a warning; spacing on the ground is #334). `ReleaseRoute`.
+- `Occupancy()` is a snapshot for maps and ATC.
+
 ## Lights
 
 Injected (hybrid after the takeover, injected throughout):

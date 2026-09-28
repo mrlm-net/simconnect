@@ -287,6 +287,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}
+	req.Options = withSpan(req.Options, req.Profile)
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
 	})
@@ -429,6 +430,14 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
+	if m.AGL < 15 { // on the ground: in the ground picture (#334)
+		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
+		if c.mover != nil && c.state >= ArrivalVacating { // injected: where it is placed
+			p := c.mover.Pose()
+			pos, hdg = p.Position, p.Heading
+		}
+		c.reportGround(c.objectID, pos, hdg, c.now())
+	}
 	if l := m.currentLights(); l != c.last.Lights {
 		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
 	}
@@ -579,6 +588,9 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 func (c *ArrivalController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.picture != nil {
+		c.picture.Forget(c.objectID)
+	}
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()

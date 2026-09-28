@@ -139,6 +139,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
 │   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
 │   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
+│   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   └── traffic/             # AI aircraft
@@ -153,7 +154,12 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── takeoff.go       #   TakeoffMover: injected take-off roll, rotation, climb
 │       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected)
 │       ├── departure_inject.go # Injected departure with clearance gates
-│       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours
+│       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours, terminal
+│       ├── pushturn.go      #   Dubins push-and-turn, alley entry, pavement check
+│       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
+│       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
+│       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
+│       ├── aircraft_types.go #  Per-type take-off and airframe (TakeoffProfileFor, MotionProfileFor)
 │       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect

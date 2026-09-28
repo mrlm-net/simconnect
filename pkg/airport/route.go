@@ -5,10 +5,13 @@ package airport
 
 import (
 	"container/heap"
+	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -44,6 +47,24 @@ type RouteOptions struct {
 	// default; negative disables.
 	StandTurnAroundPenalty float64
 	PushbackPenalty        float64
+	// HalfSpan is half the aircraft's wing span in meters: the route keeps
+	// to taxiway edges whose Clearance leaves WingtipMargin (zero:
+	// DefaultWingtipMargin) beyond it, so a large aircraft stays off apron
+	// taxilanes it does not fit. OwnStands (the stands the aircraft leaves or
+	// enters) do not count as obstacles. When no route fits, the route is
+	// found without the check and marked Route.Tight. Zero disables.
+	HalfSpan      float64
+	WingtipMargin float64
+	OwnStands     []int
+	// TaxiwayMaxSpan limits taxiways by the largest wing span allowed on
+	// them, in meters (published restrictions the scenery does not carry,
+	// e.g. code C taxilanes: 36 m), by taxiway name; nil uses the airport's
+	// entry in KnownTaxiwayMaxSpan. Applies with HalfSpan.
+	TaxiwayMaxSpan map[string]float64
+	// OwnApronMeters waives ApronPenalty within this distance of the start:
+	// an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by
+	// JB, the nearest). Zero means DefaultOwnApronMeters; negative disables.
+	OwnApronMeters float64
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -56,6 +77,9 @@ type Route struct {
 	Points []LatLon `json:"points"`
 	Edges  []Edge   `json:"edges"`  // Edges[i] leads from Nodes[i] to Nodes[i+1]
 	Length float64  `json:"length"` // meters
+	// Cost is what the search minimised: length plus the turn, crossing and
+	// apron penalties (RouteOptions); 0 for routes not found by a search.
+	Cost float64 `json:"cost,omitempty"`
 	// Taxiways is the sequence of taxiway names along the route with
 	// consecutive repeats and unnamed segments removed, e.g. ["C", "L", "D"].
 	Taxiways []string `json:"taxiways"`
@@ -66,6 +90,9 @@ type Route struct {
 	RunwayEnd string `json:"runwayEnd,omitempty"`
 	// Entry is the entry taxiway set by RouteToRunwayEntry ("B" in "24 at B").
 	Entry string `json:"entry,omitempty"`
+	// Tight is set when no route fits the aircraft (RouteOptions.HalfSpan)
+	// and this one was found without the span check.
+	Tight bool `json:"tight,omitempty"`
 	// HoldShort is the final node's hold-short data when the route ends at one.
 	HoldShort *HoldShort `json:"holdShort,omitempty"`
 }
@@ -93,7 +120,7 @@ func (g *Graph) Route(from, to NodeID, opts RouteOptions) (*Route, error) {
 	if !g.valid(from) || !g.valid(to) {
 		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
 	}
-	return g.routeVia(from, -1, to, opts)
+	return fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(from, -1, to, o) })
 }
 
 // routeVia is Route for an aircraft that arrived at from via prev (-1 if
@@ -103,7 +130,9 @@ func (g *Graph) routeVia(from, prev, to NodeID, opts RouteOptions) (*Route, erro
 	if math.IsInf(s.dist[to], 1) {
 		return nil, fmt.Errorf("%w: node %d to node %d", ErrNoRoute, from, to)
 	}
-	return g.routeFromNodes(s.path(to)), nil
+	r := g.routeFromNodes(s.path(to))
+	r.Cost = s.dist[to]
+	return r, nil
 }
 
 // RouteToRunway returns a departure taxi route from a parking spot to a
@@ -116,6 +145,56 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	if !ok {
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
+	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
+	return fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.runwayRoute(from, -1, runwayEnd, o) })
+}
+
+// RouteToRunwayFrom is RouteToRunwayEntry for an aircraft at node from that
+// arrived there from prev (-1 if its heading is free): the route does not
+// turn back into prev. A departure pushed back from its stand onto a
+// taxiway branch starts its taxi-out this way, from the junction facing away
+// from that branch. An empty entry means full length.
+func (g *Graph) RouteToRunwayFrom(from, prev NodeID, runwayEnd, entry string, opts RouteOptions) (*Route, error) {
+	if !g.valid(from) || (prev >= 0 && !g.valid(prev)) {
+		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
+	}
+	return fitOrTight(opts, func(o RouteOptions) (*Route, error) {
+		if entry == "" {
+			return g.runwayRoute(from, prev, runwayEnd, o)
+		}
+		return g.entryRoute(from, prev, runwayEnd, entry, o)
+	})
+}
+
+// RouteFromNodes assembles a Route along consecutive, adjacent nodes, e.g. to
+// join a pushback onto a taxi-out planned with RouteToRunwayFrom.
+func (g *Graph) RouteFromNodes(nodes []NodeID) (*Route, error) {
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("%w: no nodes", ErrNoRoute)
+	}
+	for i, id := range nodes {
+		if !g.valid(id) {
+			return nil, fmt.Errorf("%w: node %d out of range", ErrNoRoute, id)
+		}
+		if i > 0 && !g.adjacent(nodes[i-1], id) {
+			return nil, fmt.Errorf("%w: nodes %d and %d are not connected", ErrNoRoute, nodes[i-1], id)
+		}
+	}
+	return g.routeFromNodes(nodes), nil
+}
+
+// adjacent reports whether an edge leads from a to b.
+func (g *Graph) adjacent(a, b NodeID) bool {
+	for _, e := range g.Adj[a] {
+		if e.To == b {
+			return true
+		}
+	}
+	return false
+}
+
+// runwayRoute is RouteToRunway from a node reached via prev.
+func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptions) (*Route, error) {
 	rwy, end, ok := g.Layout.RunwayEnd(runwayEnd)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q at %s", ErrUnknownRunway, runwayEnd, g.Layout.ICAO)
@@ -124,7 +203,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	if len(holds) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrNoHoldShort, rwy.Name())
 	}
-	s := g.shortestPaths(from, -1, opts)
+	s := g.shortestPaths(from, prev, opts)
 	dist := s.dist
 
 	type cand struct {
@@ -174,6 +253,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 	}
 
 	r := g.routeFromNodes(s.path(best.id))
+	r.Cost = best.route
 	r.Runway, r.RunwayEnd = rwy.Name(), end.Name
 	return r, nil
 }
@@ -184,6 +264,7 @@ func (g *Graph) RouteToParking(from NodeID, parking int, opts RouteOptions) (*Ro
 	if !ok {
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
+	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
 	return g.Route(from, to, opts)
 }
 
@@ -223,6 +304,9 @@ const (
 	// DefaultApronPenalty is the extra cost, as a fraction of the length, of
 	// edges at taxi points where a stand connects (apron taxilanes).
 	DefaultApronPenalty = 0.5
+	// DefaultOwnApronMeters is the RouteOptions.OwnApronMeters used when none
+	// is set.
+	DefaultOwnApronMeters = 250.0
 	// DefaultStandTurnAroundPenalty and DefaultPushbackPenalty: see
 	// RouteOptions.
 	DefaultStandTurnAroundPenalty = 3000.0
@@ -319,8 +403,17 @@ func (s *search) path(to NodeID) []NodeID {
 // is free. Parking nodes other than src are dead ends: a route may end at a
 // stand but never pass through one.
 func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
+	if opts.TaxiwayMaxSpan == nil {
+		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
+	}
 	n := len(g.Nodes)
 	s := &search{dist: make([]float64, n), best: make([]int, n)}
+	own := opts.ownApron()
+	srcPos := g.Nodes[src].Position
+	nearSrc := func(id NodeID) bool {
+		p := g.Nodes[id].Position
+		return own > 0 && calc.HaversineMeters(srcPos.Lat, srcPos.Lon, p.Lat, p.Lon) < own
+	}
 	for i := range s.dist {
 		s.dist[i] = math.Inf(1)
 		s.best[i] = -1
@@ -358,7 +451,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			prev = s.node[s.from[st]]
 		}
 		for _, e := range g.Adj[node] {
-			if !usable(e, opts) {
+			if !usable(e, opts) || !opts.fits(e) {
 				continue
 			}
 			d := cur.dist + e.Length
@@ -377,7 +470,9 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			}
 			// Apron taxilanes (a stand connects at either end) cost extra, so
 			// through traffic keeps to taxiways without stands (LROP: N, not M).
-			if pen := opts.apronPenalty(); pen > 0 && g.stands != nil && (g.stands[node] || g.stands[e.To]) {
+			// An aircraft leaving its own apron uses its taxilanes freely
+			// (OwnApronMeters around the start).
+			if pen := opts.apronPenalty(); pen > 0 && g.stands != nil && (g.stands[node] || g.stands[e.To]) && !nearSrc(node) {
 				d += pen * e.Length
 			}
 			if pen := opts.crossingPenalty(); pen > 0 {
@@ -540,4 +635,74 @@ func (g *Graph) LeadInAhead(parkingNode, junction NodeID) bool {
 	jx, jz := g.local.xz(g.Nodes[junction].Position)
 	h := p.Heading * math.Pi / 180
 	return (jx-px)*math.Sin(h)+(jz-pz)*math.Cos(h) > 0
+}
+
+func (o RouteOptions) ownApron() float64 {
+	switch {
+	case o.OwnApronMeters < 0:
+		return 0
+	case o.OwnApronMeters == 0:
+		return DefaultOwnApronMeters
+	}
+	return o.OwnApronMeters
+}
+
+// DefaultWingtipMargin is the RouteOptions.WingtipMargin used when none is
+// set: the wingtip clearance to a stand's circle, in meters.
+const DefaultWingtipMargin = 3.0
+
+// fits reports whether the aircraft (HalfSpan) fits beside e.
+func (o RouteOptions) fits(e Edge) bool {
+	if o.HalfSpan <= 0 {
+		return true
+	}
+	if max, ok := o.TaxiwayMaxSpan[e.Name]; ok && e.Name != "" && 2*o.HalfSpan > max {
+		return false
+	}
+	free := e.Clearance
+	if e.ClearanceStand >= 0 && slices.Contains(o.OwnStands, e.ClearanceStand) {
+		free = e.Clearance2
+	}
+	margin := o.WingtipMargin
+	switch {
+	case margin < 0:
+		margin = 0
+	case margin == 0:
+		margin = DefaultWingtipMargin
+	}
+	return free >= o.HalfSpan+margin
+}
+
+// fitOrTight runs a route search with the span check and, when no route
+// fits, again without it, marking the result Tight.
+func fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, error)) (*Route, error) {
+	r, err := find(opts)
+	if err == nil || opts.HalfSpan <= 0 || !errors.Is(err, ErrNoRoute) {
+		return r, err
+	}
+	loose := opts
+	loose.HalfSpan = 0
+	if r2, err2 := find(loose); err2 == nil {
+		r2.Tight = true
+		return r2, nil
+	}
+	return r, err
+}
+
+// KnownTaxiwayMaxSpan are published taxiway span limits by airport ICAO and
+// taxiway name, in meters: a first seed of the airport limits (#335).
+var KnownTaxiwayMaxSpan = map[string]map[string]float64{
+	// Apron taxilanes of the B/C apron: code C (A320, B737) only; wide-bodies
+	// use J.
+	"LKPR": {"JO": 36, "JB": 36},
+}
+
+// Fits reports whether an aircraft routed with opts (HalfSpan, OwnStands,
+// TaxiwayMaxSpan — the airport's KnownTaxiwayMaxSpan when nil) fits beside
+// e, as a route search would check it: e.g. before pushing a tail onto e.
+func (g *Graph) Fits(e Edge, opts RouteOptions) bool {
+	if opts.TaxiwayMaxSpan == nil {
+		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
+	}
+	return opts.fits(e)
 }

@@ -29,6 +29,9 @@ type RawAirport struct {
 	TaxiPoints []RawTaxiPoint `json:"taxiPoints"`
 	TaxiPaths  []RawTaxiPath  `json:"taxiPaths"`
 	TaxiNames  []string       `json:"taxiNames"`
+	// ParkingAirlines are the airline codes assigned to parking spots, by
+	// parking index (TAXI_PARKING_AIRLINE child records).
+	ParkingAirlines map[int][]string `json:"parkingAirlines,omitempty"`
 }
 
 // RawRunway is a RUNWAY record: LATITUDE, LONGITUDE, ALTITUDE, HEADING,
@@ -116,6 +119,7 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 			BiasX:    float64(p.BiasX),
 			BiasZ:    float64(p.BiasZ),
 			Position: offset(p.BiasX, p.BiasZ),
+			Airlines: raw.ParkingAirlines[i],
 		})
 	}
 	for i, t := range raw.TaxiPoints {
@@ -129,6 +133,11 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 		})
 	}
 	for i, p := range raw.TaxiPaths {
+		// Only runway paths carry a runway; MSFS leaves the fields
+		// uninitialised on the others.
+		if types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE(p.Type) != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY {
+			p.RunwayNumber, p.RunwayDesignator = 0, 0
+		}
 		l.TaxiPaths = append(l.TaxiPaths, TaxiPath{
 			Index:            i,
 			Type:             types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE(p.Type),

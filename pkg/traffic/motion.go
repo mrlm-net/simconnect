@@ -188,15 +188,18 @@ type GroundPose struct {
 // gear trails it at the wheelbase, which gives realistic turns. It is pure
 // computation; an Injector puts the poses into the sim.
 type GroundMover struct {
-	path    *GroundPath
-	p       MotionProfile
-	s, v, a float64
-	gear    airport.LatLon // the trailing gear: main gear, or nose gear in reverse
-	reverse bool           // pushed back: the main gear follows the path
-	hold    float64        // stop point on the path; path length when none
-	slowAt  float64        // SlowAt point and speed; slowKts 0 when none
-	slowKts float64
-	pose    GroundPose
+	path       *GroundPath
+	p          MotionProfile
+	s, v, a    float64
+	gear       airport.LatLon // the trailing gear: main gear, or nose gear in reverse
+	reverse    bool           // pushed back: the main gear follows the path
+	hold       float64        // stop point on the path; path length when none
+	shortStart bool           // started from a standstill within StopApproachMeters of the stop
+	trafficAt  float64        // stop behind traffic ahead (SetTrafficStop), when hasTraffic
+	hasTraffic bool
+	slowAt     float64 // SlowAt point and speed; slowKts 0 when none
+	slowKts    float64
+	pose       GroundPose
 
 	placed   bool
 	placedAt float64 // nose distance of the current pose
@@ -261,6 +264,22 @@ func (m *GroundMover) Pose() GroundPose { return m.pose }
 // Decel·1.5 allows; a hold behind the aircraft stops it where it is.
 func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.path.Length())) }
 
+// SetTrafficStop makes the aircraft stop with its nose gear at distance d
+// along the path behind traffic ahead, besides any HoldAt; it follows as d
+// moves on. ClearTrafficStop lifts it.
+func (m *GroundMover) SetTrafficStop(d float64) { m.trafficAt, m.hasTraffic = d, true }
+
+// ClearTrafficStop lifts the traffic stop.
+func (m *GroundMover) ClearTrafficStop() { m.hasTraffic = false }
+
+// stop is where the aircraft must stop: the hold, or traffic before it.
+func (m *GroundMover) stop() float64 {
+	if m.hasTraffic && m.trafficAt < m.hold {
+		return math.Max(m.s, m.trafficAt)
+	}
+	return m.hold
+}
+
 // ClearHold lets the aircraft continue to the end of the path.
 func (m *GroundMover) ClearHold() { m.hold = m.path.Length() }
 
@@ -285,7 +304,8 @@ func (m *GroundMover) step(dt float64) {
 	// Chase the planned speed here and a little ahead (the nose must already
 	// be slow entering a turn) and the braking curve to the stop point,
 	// reaching it in about SpeedResponseSeconds.
-	rem := m.hold - m.s
+	stop := m.stop()
+	rem := stop - m.s
 	// Look ahead by what the response lag covers (at least
 	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
 	// runs about SpeedResponseSeconds late on every slow-down.
@@ -297,8 +317,20 @@ func (m *GroundMover) step(dt float64) {
 		target = math.Min(target, math.Sqrt(v0*v0+2*p.Decel*(m.slowAt-m.s)))
 	}
 	want := (target - m.v) / SpeedResponseSeconds
+	// Brake exactly onto the stop point. A move that starts from a
+	// standstill already this close to it first pulls away until it meets
+	// the braking curve: the cap of -v²/2r is 0 at a standstill and the
+	// aircraft would never start (short hops, a tug backing off).
 	if rem > 0.05 && rem < StopApproachMeters {
-		want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+		if m.v == 0 {
+			m.shortStart = true
+		}
+		if m.shortStart && m.v*m.v >= 0.8*2*p.Decel*rem {
+			m.shortStart = false
+		}
+		if !m.shortStart {
+			want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+		}
 	}
 	if r := m.slowAt - m.s; m.slowKts > 0 && r > 0.05 && r < StopApproachMeters {
 		v0 := m.slowKts * ktsToMS
@@ -315,18 +347,18 @@ func (m *GroundMover) step(dt float64) {
 	m.v = math.Max(0, m.v+m.a*dt)
 	// Around a SlowAt point the aircraft keeps rolling at its slow speed
 	// (braking momentum would otherwise stop it) unless it must hold.
-	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
+	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && stop-m.s > 1 {
 		m.v, m.a = v0, math.Max(m.a, 0)
 	}
 	step := m.v * dt
 	// Braking stops a hair short of the point: cover the last centimetres at
 	// a creep instead of snapping onto it (the speed stays as braked).
-	if rem := m.hold - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
+	if rem := stop - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
 		step = math.Max(step, finalCreep*dt)
 	}
-	m.s = math.Min(m.s+step, m.hold)
-	if m.s >= m.hold {
-		m.s, m.v, m.a = m.hold, 0, 0
+	m.s = math.Min(m.s+step, stop)
+	if m.s >= stop {
+		m.s, m.v, m.a = stop, 0, 0
 	}
 }
 
@@ -558,7 +590,22 @@ func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*Grou
 	if len(pts) < 2 {
 		return nil, ErrPathTooShort
 	}
-	g := &GroundPath{pts: fillet(pts, radius)}
+	return newPlainPath(fillet(pts, radius), p), nil
+}
+
+// NewSmoothPath is a GroundPath along points that are already smooth (e.g.
+// sampled arcs from NewArcPath or a Dubins path): no merging or rounding,
+// which on metre-spaced samples would leave zero-length kinks.
+func NewSmoothPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error) {
+	pts := mergeClose(points, 0.05)
+	if len(pts) < 2 {
+		return nil, ErrPathTooShort
+	}
+	return newPlainPath(pts, p), nil
+}
+
+func newPlainPath(pts []airport.LatLon, p MotionProfile) *GroundPath {
+	g := &GroundPath{pts: pts}
 	g.cum = make([]float64, len(g.pts))
 	for i := 1; i < len(g.pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(g.pts[i-1], g.pts[i])
@@ -566,7 +613,7 @@ func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*Grou
 	decelAt := func(float64) float64 { return p.Decel }
 	g.decelAt = decelAt
 	g.limit = speedLimits(g.pts, g.cum, p, decelAt, func(float64) float64 { return p.LateralAccel })
-	return g, nil
+	return g
 }
 
 // fillet replaces each corner of a polyline by a circular arc of radius r,

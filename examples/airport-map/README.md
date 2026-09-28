@@ -41,14 +41,19 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 
 While connected to the simulator, the **Traffic control** panel spawns AI aircraft driven by [`pkg/traffic`](../../docs/traffic-arrival.md) with position injection, and gives their clearances.
 
-- **Spawn:** click a stand and pick a runway in the route viewer, then **▶ Departure** (pushback, taxi, line-up, take-off; from the picked entry in departure mode) or **▶ Arrival** (lands on the runway and taxis to the stand; the exit is chosen by the controller).
+- **Spawn:** the panel spawns what the **Route** section shows. Pick the mode (departure or arrival), click a stand and pick a runway (and an entry for departures); the single **▶ Spawn** button says what it will do, e.g. "▶ Spawn departure: C22 → runway 24 at B" or "▶ Spawn arrival: runway 24 → C22". A departure pushes back, taxis, lines up and takes off; an arrival lands and taxis to the stand (the exit is chosen by the controller). Only the options of the mode are shown: **Pushback tug** for departures, **Fly the approach** for arrivals.
 - **Model:** a searchable list of the aircraft the simulator can spawn. Type words to filter, ▾ shows all, arrow keys and Enter pick one. Entries are `Title :: Livery`; the part after ` :: ` is passed as the livery.
 - **Hold at every clearance** (`gates`): departures stop at every gate (`HoldForClearances`); arrivals wait clear of the runway and short of runway crossings (`HoldForClearance`, `HoldAtCrossings`). Unticked, the gates clear themselves after a short wait.
 - **Fly the approach (injected)** (`injectApproach`): arrivals fly the approach, flare and touchdown by injection; unticked, MSFS AI lands and injection takes over on the runway.
+- **Stands:** a stand held by another aircraft (controlled, or found standing there by the stand scan) is refused with the reason. **Assign a free stand** picks one instead: suitable for an A320, the airline's own stands first (the airline is read from a callsign-style tail such as `BAW851`), for arrivals the shortest taxi-in from the runway. The **Occupied stands** layer shows reserved stands in blue and aircraft found on stands in red; departures free their stand when they push back.
 - **Clearances:** each aircraft in the list shows its state, speed, lights and the buttons available now: Pushback, Taxi, Cross, Line up, Take-off, and ✕ to remove it.
 - **Progressive taxi:** select an aircraft to draw its route on the map; click a route point to clear it up to there (`ClearUpTo`). The limit is drawn in magenta, and the list shows *at limit* while the aircraft holds there. **Taxi** removes the limit.
 
 ### Traffic log
+
+Clearances appear as ATC says them, with the taxiways: "AFR1383, push back and start-up approved", "AFR1383, taxi to holding point runway 24 via B2, H, A", "AFR1383, taxi via B2, H, hold short of A" (up to a route point), "AFR1383, runway 24, line up and wait". With gates off the controller clears itself, and the log still shows the clearance.
+
+**Safe zones** (in Live traffic) draws half the wing span plus 3 m around every aircraft on the ground, ours and the sim's; zones turn red where two overlap, i.e. wingtips could touch.
 
 Everything traffic control does is logged: spawns, clearances given or refused, state changes (with the touchdown distance and rate), light changes, arrival at and departure from a clearance limit, and errors. Each line is time-stamped and goes to the console, to the log file in `-log-dir`, and to the **Traffic log** panel (the last 200 lines).
 
@@ -68,6 +73,7 @@ Everything traffic control does is logged: spawns, clearances given or refused, 
 | `POST /api/control` | Spawn a controlled aircraft. JSON body: `kind` (`departure` or `arrival`), `icao`, `stand` (parking index), `runway`, `entry` (departure), `model` (`Title` or `Title :: Livery`; default FSLTL A320 Air France SL), `tail` (default `MAPnn`), `gates`, `injectApproach`. Returns its view; `422` if the controller refuses it, `503` when not connected |
 | `POST /api/control/{id}/{action}[?node=N]` | A clearance: `pushback`, `taxi`, `upto` (with `node`, a graph node ID on the route), `cross`, `lineup`, `takeoff` (departures), `remove`. `204` on success, `422` with the reason when refused, `404` for an unknown id |
 | `GET /api/control/log` | The last 200 traffic log lines, newest last |
+| `GET /api/stands?icao=X` | Held stands: index, label, owner (controlled traffic), detected, object ID, half span |
 | `GET /api/models` | The aircraft titles the simulator can spawn, sorted, as `Title :: Livery` where a livery is known |
 
 The map page loads Leaflet from cdnjs and map tiles from OpenStreetMap and Esri, so the browser needs internet access.
