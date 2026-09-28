@@ -104,3 +104,24 @@ func TestTakeoffProfileFor(t *testing.T) {
 		}
 	}
 }
+
+func TestMotionProfileFor(t *testing.T) {
+	a320 := DefaultMotionProfile()
+	for _, c := range []struct {
+		model     string
+		wheelbase float64
+	}{
+		{"Asobo PassiveAircraft B777-300ER :: B777_300ER_KLM", 31.2},
+		{"FSLTL A21N BAW British Airways", 16.9},
+		{"AIB_B738_BAW-British Airways", 15.6},
+		{"FSLTL A320 Air France SL", a320.WheelbaseMeters},
+	} {
+		p := MotionProfileFor(c.model)
+		if p.WheelbaseMeters != c.wheelbase || p.TailMeters <= 0 || p.SpanMeters <= 0 {
+			t.Errorf("%s: %+v", c.model, p)
+		}
+		if p.CruiseKts != a320.CruiseKts || p.RefAheadMeters != a320.RefAheadMeters {
+			t.Errorf("%s: motion figures changed", c.model)
+		}
+	}
+}

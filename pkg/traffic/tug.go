@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"errors"
+	"math"
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -13,7 +14,7 @@ import (
 )
 
 // PushbackTug shows the tug of an injected pushback (#304). The departure
-// calls Attach when the aircraft is cleared to push, Update on every frame
+// calls Attach while the aircraft waits for pushback, Update on every frame
 // until Done (with the aircraft's pose; pushing is false once the push has
 // ended) and Remove if the departure is cancelled. SimObjectTug is the
 // built-in implementation; a third-party integration (e.g. GSX) can take
@@ -45,13 +46,18 @@ type SimObjectTug struct {
 	// heading (0: the tug faces the way the aircraft does).
 	AheadMeters, YawDeg float64
 
-	mu       sync.Mutex
-	objectID uint32
-	pose     GroundPose // last placed
-	away     *GroundMover
-	waitLeft float64 // seconds to the drive-off after the push
-	err      error   // from the takeover, reported by Update
-	done     bool
+	mu        sync.Mutex
+	objectID  uint32
+	pose      GroundPose // last placed
+	away      *GroundMover
+	reversing bool    // backing off the nose, before driving away
+	bar       float64 // tow bar direction, from the nose wheel to the tug
+	haveBar   bool
+	lastNose  airport.LatLon // nose gear at the last bar update
+	haveNose  bool
+	waitLeft  float64 // seconds to the drive-off after the push
+	err       error   // from the takeover, reported by Update
+	done      bool
 }
 
 // NewSimObjectTug creates a tug of the given ground vehicle title for an
@@ -72,7 +78,32 @@ func (t *SimObjectTug) ObjectID() uint32 {
 // at is where the tug is for an aircraft pose.
 func (t *SimObjectTug) at(pose GroundPose) GroundPose {
 	nose := NoseGear(pose.Position, pose.Heading, t.prof)
-	return GroundPose{Position: offsetHeading(nose, pose.Heading, t.AheadMeters), Heading: normDeg(pose.Heading + t.YawDeg), GroundSpeedKts: pose.GroundSpeedKts}
+	bar := pose.Heading
+	if t.haveBar {
+		bar = t.bar
+	}
+	return GroundPose{Position: offsetHeading(nose, bar, t.AheadMeters), Heading: normDeg(bar + t.YawDeg), GroundSpeedKts: pose.GroundSpeedKts}
+}
+
+// steer turns the tow bar with the push: the tug pushes the nose wheel along
+// the bar, so the bar points against the nose wheel's direction of travel
+// (swinging out in the arc), within TugMaxBarDeg of the aircraft axis and
+// eased over TugBarSeconds.
+func (t *SimObjectTug) steer(pose GroundPose, dt float64) {
+	nose := NoseGear(pose.Position, pose.Heading, t.prof)
+	if !t.haveNose {
+		t.lastNose, t.haveNose = nose, true
+		return
+	}
+	if localDist(t.lastNose, nose) < 0.05 {
+		return // too little movement for a direction
+	}
+	want := localBearing(t.lastNose, nose) + 180
+	rel := math.Max(-TugMaxBarDeg, math.Min(TugMaxBarDeg, headingDiff(pose.Heading, want)))
+	want = pose.Heading + rel
+	k := 1 - math.Exp(-dt/TugBarSeconds)
+	t.bar = normDeg(t.bar + headingDiff(t.bar, want)*k)
+	t.lastNose = nose
 }
 
 func normDeg(d float64) float64 {
@@ -88,6 +119,7 @@ func normDeg(d float64) float64 {
 func (t *SimObjectTug) Attach(pose GroundPose) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.bar, t.haveBar = pose.Heading, true
 	t.pose = t.at(pose)
 	return t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
@@ -122,27 +154,40 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		return err
 	}
 	if pushing {
+		t.steer(pose, dt)
 		t.pose = t.at(pose)
 		return t.place()
 	}
-	// Disconnected: stand a moment, then drive forward and veer off.
+	// Disconnected: stand a moment, back away from the nose (the tug faces
+	// the aircraft), then turn off to the side and leave.
 	if t.away == nil {
 		if t.waitLeft -= dt; t.waitLeft > 0 {
 			return t.place()
 		}
 		p := t.pose.Position
-		ahead := offsetHeading(p, t.pose.Heading, TugDriveOffMeters/3)
-		off := offsetHeading(ahead, t.pose.Heading+TugDriveOffTurnDeg, TugDriveOffMeters)
-		path, err := NewGroundPath([]airport.LatLon{p, ahead, off}, tugProfile())
+		back := offsetHeading(p, t.pose.Heading+180, TugBackOffMeters)
+		path, err := NewArcPath([]airport.LatLon{p, back}, tugProfile(), 6)
 		if err != nil {
 			return t.finish()
 		}
-		t.away = NewGroundMoverFrom(path, tugProfile(), t.pose.Heading, 0)
+		t.away, t.reversing = NewPushbackMover(path, tugProfile(), t.pose.Heading), true
 	}
 	t.pose = t.away.Step(dt)
-	if t.pose.Arrived {
+	if !t.pose.Arrived {
+		return t.place()
+	}
+	if !t.reversing {
 		return t.finish()
 	}
+	// Backed off: drive forward, turning TugDriveOffTurnDeg away.
+	p, h := t.pose.Position, t.pose.Heading
+	ahead := offsetHeading(p, h, 5)
+	off := offsetHeading(ahead, h+TugDriveOffTurnDeg, TugDriveOffMeters)
+	path, err := NewArcPath([]airport.LatLon{p, ahead, off}, tugProfile(), 6)
+	if err != nil {
+		return t.finish()
+	}
+	t.away, t.reversing = NewGroundMoverFrom(path, tugProfile(), h, 0), false
 	return t.place()
 }
 

@@ -308,17 +308,22 @@ const (
 
 // Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters
 // ahead of the aircraft's nose gear, turned TugYawDeg from the aircraft
-// heading. After the push it waits TugDisconnectSeconds, then drives
-// TugDriveOffMeters forward and TugDriveOffTurnDeg to the side at up to
-// TugDriveOffKts and is removed. DefaultTugTitle is GSX's towbarless tug.
+// heading (180: facing the aircraft, towbar to the nose wheel). After the
+// push it waits TugDisconnectSeconds, backs TugBackOffMeters away from the
+// nose, then drives off turning TugDriveOffTurnDeg for TugDriveOffMeters at
+// up to TugDriveOffKts and is removed. DefaultTugTitle is GSX's classic
+// towbar tug, checked live against an A320.
 const (
-	DefaultTugTitle      = "FSDT_Pushback_Trepel_280"
+	DefaultTugTitle      = "FSDT_Pushback_03"
 	TugAheadMeters       = 3.0
-	TugYawDeg            = 0.0
+	TugYawDeg            = 180.0
 	TugDisconnectSeconds = 8.0
-	TugDriveOffMeters    = 40.0
-	TugDriveOffTurnDeg   = 50.0
+	TugBackOffMeters     = 15.0 // more than the mover's 10 m look-ahead, or it never starts
+	TugDriveOffMeters    = 35.0
+	TugDriveOffTurnDeg   = 90.0
 	TugDriveOffKts       = 8.0
+	TugMaxBarDeg         = 80.0 // tow bar angle off the aircraft axis, at most
+	TugBarSeconds        = 0.6  // how quickly the bar follows the nose wheel
 )
 
 // Take-off pitch (TakeoffMover): on the runway the pitch stays

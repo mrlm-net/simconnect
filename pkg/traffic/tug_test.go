@@ -35,8 +35,8 @@ func (f *fakeTug) Update(p GroundPose, pushing bool, _ float64) error {
 	return nil
 }
 
-// TestTaxiControllerTug: the tug is attached once, on the stand, when the
-// pushback is cleared; it follows the aircraft through the push, gets
+// TestTaxiControllerTug: the tug is attached once, on the stand, while the
+// aircraft waits for pushback; it follows it through the push, gets
 // updates after it until Done, and is removed on Cancel.
 func TestTaxiControllerTug(t *testing.T) {
 	tug := &fakeTug{doneAfter: 30}
@@ -48,9 +48,9 @@ func TestTaxiControllerTug(t *testing.T) {
 	if !run(TaxiAwaitingPushback, 600) {
 		t.Fatalf("state %v", ctl.State())
 	}
-	run(TaxiPushback, 120) // held: no push, no tug
-	if len(tug.attached) != 0 {
-		t.Fatal("tug attached before the pushback was cleared")
+	run(TaxiPushback, 120) // held: no push, but the tug is connected
+	if len(tug.attached) != 1 || tug.pushing == 0 {
+		t.Fatalf("waiting for pushback: attached %d, updates %d", len(tug.attached), tug.pushing)
 	}
 	ctl.ClearPushback()
 	if !run(TaxiAwaitingTaxi, 60*600) {
@@ -111,7 +111,7 @@ func TestSimObjectTug(t *testing.T) {
 	}
 	nose := NoseGear(lkpr, 90, prof)
 	at := c.created[0]
-	if d := alongHeading(nose, 90, airport.LatLon{Lat: at.Latitude, Lon: at.Longitude}); math.Abs(d-TugAheadMeters) > 0.1 || at.Heading != 90 || at.OnGround != 1 {
+	if d := alongHeading(nose, 90, airport.LatLon{Lat: at.Latitude, Lon: at.Longitude}); math.Abs(d-TugAheadMeters) > 0.1 || at.Heading != normDeg(90+TugYawDeg) || at.OnGround != 1 {
 		t.Errorf("tug %.2f m ahead of the nose gear, heading %.0f, on ground %d", d, at.Heading, at.OnGround)
 	}
 	if !tug.Handle(assignedMsg(9001, 55)) || tug.ObjectID() != 55 {
@@ -129,9 +129,16 @@ func TestSimObjectTug(t *testing.T) {
 	if len(c.waypoints) != before+1 {
 		t.Fatal("tug not placed while pushing")
 	}
+	// It never comes closer to the nose gear than while connected: it backs
+	// away first (it faces the aircraft), then turns off.
+	moveNose := NoseGear(moved.Position, moved.Heading, prof)
+	start := localDist(tug.at(moved).Position, moveNose)
 	for i := 0; i < 60*120 && !tug.Done(); i++ {
 		if err := tug.Update(moved, false, 1.0/60); err != nil {
 			t.Fatal(err)
+		}
+		if d := localDist(tug.pose.Position, moveNose); d < start-0.2 {
+			t.Fatalf("tug %.1f m from the nose gear, closer than connected (%.1f m)", d, start)
 		}
 	}
 	if !tug.Done() || len(c.removed) != 1 || c.removed[0] != 55 {
@@ -140,4 +147,52 @@ func TestSimObjectTug(t *testing.T) {
 	if err := tug.Remove(); err != nil || len(c.removed) != 1 {
 		t.Errorf("second removal: %v %v", err, c.removed)
 	}
+}
+
+// TestSimObjectTugSteers: through a pushback arc the tow bar swings off the
+// aircraft axis with the nose wheel's travel (not locked on the axis), stays
+// within TugMaxBarDeg and keeps the tug on the bar, AheadMeters from the
+// nose gear.
+func TestSimObjectTugSteers(t *testing.T) {
+	prof := DefaultMotionProfile()
+	prof.CruiseKts, prof.MinTurnKts = PushbackSpeedKts, 1
+	gear := offset(lkpr, 0, -prof.RefAheadMeters)
+	path, err := NewArcPath([]airport.LatLon{gear, offset(gear, 0, -40), offset(gear, 50, -40)}, prof, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewPushbackMover(path, prof, 0)
+	c := &tugClient{}
+	inj := NewInjector(c)
+	tug := NewSimObjectTug(c, inj, DefaultTugTitle, 9001, prof)
+	if err := tug.Attach(m.Pose()); err != nil {
+		t.Fatal(err)
+	}
+	tug.Handle(assignedMsg(9001, 55))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 55, 1200, 3))
+	maxRel := 0.0
+	for i := 0; i < 60*300; i++ {
+		pose := m.Step(1.0 / 60)
+		if err := tug.Update(pose, true, 1.0/60); err != nil {
+			t.Fatal(err)
+		}
+		nose := NoseGear(pose.Position, pose.Heading, prof)
+		if d := localDist(tug.pose.Position, nose); math.Abs(d-TugAheadMeters) > 0.01 {
+			t.Fatalf("tug %.2f m from the nose gear", d)
+		}
+		rel := headingDiff(pose.Heading, normDeg(tug.pose.Heading-TugYawDeg))
+		if math.Abs(rel) > TugMaxBarDeg+1e-9 {
+			t.Fatalf("bar %.1f° off the axis", rel)
+		}
+		if math.Abs(rel) > math.Abs(maxRel) {
+			maxRel = rel
+		}
+		if pose.Arrived {
+			break
+		}
+	}
+	if math.Abs(maxRel) < 10 {
+		t.Errorf("bar at most %.1f° off the axis in the arc: locked on the axis", maxRel)
+	}
+	t.Logf("bar up to %.1f° off the aircraft axis", maxRel)
 }

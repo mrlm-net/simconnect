@@ -240,7 +240,7 @@ func (c *TaxiController) facesOut() bool {
 	return len(c.route.Points) > 1 && leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1])
 }
 
-// updateTug brings the tug once the pushback is cleared (with the beacon)
+// updateTug connects the tug while the aircraft waits for its pushback
 // and moves it with the aircraft until it has driven off.
 func (c *TaxiController) updateTug(dt float64) {
 	t := c.req.Tug
@@ -253,7 +253,7 @@ func (c *TaxiController) updateTug(dt float64) {
 		pose = c.mover.Pose()
 	}
 	if !c.tugAttached {
-		if c.state != TaxiAwaitingPushback || c.pushAt.IsZero() || c.facesOut() {
+		if c.state != TaxiAwaitingPushback || c.facesOut() {
 			return
 		}
 		c.tugAttached = true

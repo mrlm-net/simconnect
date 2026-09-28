@@ -193,17 +193,19 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 
 // SpawnRequest asks for a controlled departure or arrival.
 type SpawnRequest struct {
-	Kind           string `json:"kind"` // departure | arrival
-	ICAO           string `json:"icao"`
-	Stand          int    `json:"stand"` // parking index
-	Runway         string `json:"runway"`
-	Entry          string `json:"entry"` // departure: runway entry taxiway
-	Model          string `json:"model"`
-	Tail           string `json:"tail"`
-	Gates          bool   `json:"gates"`          // hold at every clearance
-	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection
-	Tug            bool   `json:"tug"`            // departure: a pushback tug (GSX model)
-	TugTitle       string `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
+	Kind           string   `json:"kind"` // departure | arrival
+	ICAO           string   `json:"icao"`
+	Stand          int      `json:"stand"` // parking index
+	Runway         string   `json:"runway"`
+	Entry          string   `json:"entry"` // departure: runway entry taxiway
+	Model          string   `json:"model"`
+	Tail           string   `json:"tail"`
+	Gates          bool     `json:"gates"`          // hold at every clearance
+	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
+	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
+	TugTitle       string   `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
+	TugYaw         *float64 `json:"tugYaw"`         // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
+	TugAhead       *float64 `json:"tugAhead"`       // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
 }
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
@@ -215,13 +217,15 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		r.Model = "FSLTL A320 Air France SL"
 	}
 	model, livery, _ := strings.Cut(r.Model, liverySep)
+	// Airframe of the type: wheelbase (where the tug connects), span (stands).
+	prof := traffic.MotionProfileFor(model)
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail)}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2}
 		if r.Kind == "arrival" {
 			req.Runway = r.Runway
 		}
@@ -230,7 +234,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			return nil, err
 		}
 		r.Stand = s
-	} else if err := alloc.Occupy(r.Stand, r.Tail, 0); err != nil {
+	} else if err := alloc.Occupy(r.Stand, r.Tail, prof.SpanMeters/2); err != nil {
 		return nil, err
 	}
 	started := false
@@ -246,7 +250,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
-			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase),
+			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Takeoff: traffic.TakeoffProfileFor(model)}); err != nil {
 			return nil, err
 		}
@@ -256,7 +260,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "arrival":
 		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj))
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail,
-			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach}); err != nil {
+			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach, Profile: prof}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
@@ -658,7 +662,7 @@ func airlineOf(tail string) string {
 // tug is the pushback tug of a departure, if asked for: a GSX tug model
 // driven by the injector, created with the last request ID of the
 // aircraft's block.
-func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32) traffic.PushbackTug {
+func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.MotionProfile) traffic.PushbackTug {
 	if !r.Tug {
 		return nil
 	}
@@ -666,5 +670,12 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32) traffic.PushbackTug
 	if title == "" {
 		title = traffic.DefaultTugTitle
 	}
-	return traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, traffic.DefaultMotionProfile())
+	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
+	if r.TugYaw != nil {
+		t.YawDeg = *r.TugYaw
+	}
+	if r.TugAhead != nil {
+		t.AheadMeters = *r.TugAhead
+	}
+	return t
 }

@@ -188,15 +188,16 @@ type GroundPose struct {
 // gear trails it at the wheelbase, which gives realistic turns. It is pure
 // computation; an Injector puts the poses into the sim.
 type GroundMover struct {
-	path    *GroundPath
-	p       MotionProfile
-	s, v, a float64
-	gear    airport.LatLon // the trailing gear: main gear, or nose gear in reverse
-	reverse bool           // pushed back: the main gear follows the path
-	hold    float64        // stop point on the path; path length when none
-	slowAt  float64        // SlowAt point and speed; slowKts 0 when none
-	slowKts float64
-	pose    GroundPose
+	path       *GroundPath
+	p          MotionProfile
+	s, v, a    float64
+	gear       airport.LatLon // the trailing gear: main gear, or nose gear in reverse
+	reverse    bool           // pushed back: the main gear follows the path
+	hold       float64        // stop point on the path; path length when none
+	shortStart bool           // started from a standstill within StopApproachMeters of the stop
+	slowAt     float64        // SlowAt point and speed; slowKts 0 when none
+	slowKts    float64
+	pose       GroundPose
 
 	placed   bool
 	placedAt float64 // nose distance of the current pose
@@ -297,8 +298,20 @@ func (m *GroundMover) step(dt float64) {
 		target = math.Min(target, math.Sqrt(v0*v0+2*p.Decel*(m.slowAt-m.s)))
 	}
 	want := (target - m.v) / SpeedResponseSeconds
+	// Brake exactly onto the stop point. A move that starts from a
+	// standstill already this close to it first pulls away until it meets
+	// the braking curve: the cap of -v²/2r is 0 at a standstill and the
+	// aircraft would never start (short hops, a tug backing off).
 	if rem > 0.05 && rem < StopApproachMeters {
-		want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+		if m.v == 0 {
+			m.shortStart = true
+		}
+		if m.shortStart && m.v*m.v >= 0.8*2*p.Decel*rem {
+			m.shortStart = false
+		}
+		if !m.shortStart {
+			want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+		}
 	}
 	if r := m.slowAt - m.s; m.slowKts > 0 && r > 0.05 && r < StopApproachMeters {
 		v0 := m.slowKts * ktsToMS
