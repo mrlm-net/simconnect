@@ -41,7 +41,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 
 While connected to the simulator, the **Traffic control** panel spawns AI aircraft driven by [`pkg/traffic`](../../docs/traffic-arrival.md) with position injection, and gives their clearances.
 
-- **Spawn:** click a stand and pick a runway in the route viewer, then **▶ Departure** (pushback, taxi, line-up, take-off; from the picked entry in departure mode) or **▶ Arrival** (lands on the runway and taxis to the stand; the exit is chosen by the controller).
+- **Spawn:** the panel spawns what the **Route** section shows. Pick the mode (departure or arrival), click a stand and pick a runway (and an entry for departures); the single **▶ Spawn** button says what it will do, e.g. "▶ Spawn departure: C22 → runway 24 at B" or "▶ Spawn arrival: runway 24 → C22". A departure pushes back, taxis, lines up and takes off; an arrival lands and taxis to the stand (the exit is chosen by the controller). Only the options of the mode are shown: **Pushback tug** for departures, **Fly the approach** for arrivals.
 - **Model:** a searchable list of the aircraft the simulator can spawn. Type words to filter, ▾ shows all, arrow keys and Enter pick one. Entries are `Title :: Livery`; the part after ` :: ` is passed as the livery.
 - **Hold at every clearance** (`gates`): departures stop at every gate (`HoldForClearances`); arrivals wait clear of the runway and short of runway crossings (`HoldForClearance`, `HoldAtCrossings`). Unticked, the gates clear themselves after a short wait.
 - **Fly the approach (injected)** (`injectApproach`): arrivals fly the approach, flare and touchdown by injection; unticked, MSFS AI lands and injection takes over on the runway.

@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
+  [hidden] { display: none !important; }
+  button:disabled { opacity: 0.55; cursor: default; }
   html, body { margin: 0; height: 100%; font: 13px/1.4 system-ui, sans-serif; background: #111; color: #ddd; }
   #map { position: absolute; inset: 0 320px 0 0; }
   #side { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; overflow-y: auto; box-sizing: border-box;
@@ -79,21 +81,18 @@
   <div id="overlapInfo" class="note"></div>
 
   <h2>Traffic control</h2>
-  <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
-  <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
-  <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
-  <label class="opt"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
-  <label class="opt"><input type="checkbox" id="cAutoStand"> Assign a free stand (airline from the callsign)</label>
+  <div class="note">Spawns what the <b>Route</b> section shows: its mode (departure or arrival), stand and runway. Then give the clearances in the list below; select an aircraft and click a point of its route to clear it up to there.</div>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
   <div class="combo">
     <input type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false">
     <button type="button" id="cModelOpen" class="secondary" title="Show all models">▾</button>
     <div id="modelMenu" class="combo-menu" hidden></div>
   </div>
-  <div style="display:flex; gap:6px; margin:4px 0">
-    <button type="button" id="cDeparture">▶ Departure</button>
-    <button type="button" id="cArrival">▶ Arrival</button>
-  </div>
+  <label class="opt"><input type="checkbox" id="cAutoStand"> Assign a free stand instead (airline from the callsign)</label>
+  <label class="opt"><input type="checkbox" id="cGates" checked> <span id="cGatesLbl">Hold at every clearance</span></label>
+  <label class="opt dep-only"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
+  <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
+  <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
   <h2>Traffic log</h2>
@@ -406,6 +405,7 @@ function drawChoices() {
 }
 
 async function computeRoute() {
+  updateSpawn();
   groups.route.clearLayers();
   drawChoices();
   if (!data || !routeFrom) { $('rInfo').textContent = ''; return; }
@@ -735,8 +735,27 @@ document.addEventListener('mousedown', (e) => {
   if (!e.target.closest('.combo')) closeModelMenu();
 });
 
-$('cDeparture').addEventListener('click', () => ctlSpawn('departure'));
-$('cArrival').addEventListener('click', () => ctlSpawn('arrival'));
+$('cSpawn').addEventListener('click', () => ctlSpawn(arrival() ? 'arrival' : 'departure'));
+$('cAutoStand').addEventListener('change', updateSpawn);
+// updateSpawn labels the one spawn button with what it will do, and shows
+// only the options of the route mode.
+function updateSpawn() {
+  const arr = arrival(), auto = $('cAutoStand').checked, rwy = $('rTo').value || '?';
+  const stand = auto ? 'a free stand' : routeFrom ? parkingLabel(routeFrom) : null;
+  const entry = !arr && $('rPick').value ? ` at ${$('rPick').value}` : '';
+  for (const el of document.querySelectorAll('.dep-only')) el.hidden = arr;
+  for (const el of document.querySelectorAll('.arr-only')) el.hidden = !arr;
+  $('cGatesLbl').textContent = arr
+    ? 'Hold for clearances (taxi after landing, runway crossings)'
+    : 'Hold for clearances (pushback, taxi, crossings, line-up, take-off)';
+  const b = $('cSpawn');
+  b.disabled = !data || !stand;
+  b.textContent = !stand
+    ? 'Pick a stand on the map (or assign a free one)'
+    : arr ? `▶ Spawn arrival: runway ${rwy} → ${stand}` : `▶ Spawn departure: ${stand} → runway ${rwy}${entry}`;
+}
+for (const id of ['rMode', 'rTo', 'rPick']) $(id).addEventListener('change', updateSpawn);
+updateSpawn();
 $('ctlList').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }

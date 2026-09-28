@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` pushback tug (#304): `TaxiRequest.Tug` takes a `PushbackTug`; `SimObjectTug` spawns a ground vehicle model (default `DefaultTugTitle`, GSX's towbarless `FSDT_Pushback_Trepel_280`) at the nose gear when the pushback is cleared, moves it with the aircraft, then drives it off and removes it. The interface lets a third-party integration (e.g. GSX) take its place. Map: **Pushback tug** option
 - `pkg/traffic` take-off without tail strikes: `TakeoffProfile.TailstrikePitch`; on the runway the pitch stays `TailstrikeMarginDeg` below it (a small pull to lift off), after lift-off it is held until a positive climb (`PositiveClimbFt`) and then rises no faster than the tail clears the runway. Gear up on a positive climb (`GearUpDelaySeconds`, `GearUpFpm`). `TakeoffProfileFor(model)` picks figures by family (777-300, 777, 787, 747, A380, A350, A330, A321, 737, regional jets, turboprops); the map uses it
 - `examples/airport-map`: a completed departure (handed to MSFS AI) no longer leaves a marker at its hand-over point
+- `examples/airport-map`: one **▶ Spawn** button that follows the route mode and names what it spawns ("▶ Spawn departure: C22 → runway 24 at B"), with only that mode's options
 - `examples/airport-map`: the occupied-stands layer is drawn on the shared canvas and not interactive; as a separate SVG layer it swallowed clicks on the stands
 - `pkg/types`: `SIMCONNECT_FACILITY_DATA_VDGS`, `_HOLDING_PATTERN`, `_TAXI_PARKING_AIRLINE`
 
