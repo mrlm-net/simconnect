@@ -34,6 +34,7 @@ Milestones v0.9 to v0.13 were built and released together: procedures, navigatio
 
 - `pkg/traffic` `AircraftProfile` and `ProfileFor(model)`: one profile per type (airframe, ICAO code letter, motion, take-off, approach, rollout, nose offset, flaps, pushback speed) for 30 types with a size-based fallback; `TaxiRequest.Aircraft` / `ArrivalRequest.Aircraft` fill whatever the request leaves zero
 - `pkg/traffic` `ProfileReader` and `Refine`: SimVars of a spawned aircraft (span, design speeds, weights, engines, CG height; AI objects report only some reliably); `Recorder`: movement telemetry as JSON lines and per-type summaries
+- `pkg/airport` `Limits` and `LimitsFor(layout, procedures)` (#335): transition altitude, climb-out hand-over from the SIDs' initial climb, taxi and apron speed limits and preferential runways (`KnownLimits` table); `TaxiRequest.Airport` / `ArrivalRequest.Airport` use them, `nav.RunwayLimitsFrom` feeds `ActiveRunways`, `Graph.Apron`
 
 #### Flight plans and command helpers — v0.9 (#270, #281, #293, #296, #334, #337, #338, #340)
 

@@ -267,6 +267,25 @@ arr, _ := p.Arrival("06", "GOLOP")
 
 Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AIP chart has them), and the `HOLDING_PATTERN` fields are rejected by MSFS 2024 — do not request them.
 
+## Airport limits
+
+`LimitsFor(layout, procedures)` returns the values that belong to the airport rather than to the aircraft (#335), taken from the facility data where it has them and from `KnownLimits` (published values, keyed by ICAO code) otherwise:
+
+| Field | Source | Default |
+|-------|--------|---------|
+| `TransitionAltitudeFt` | `KnownLimits` (LKPR 5000, EDDF/EDDM 5000, LOWW 10000, EGLL 6000, LFPG 5000, EHAM 3000, EPWA 6500, LSZH 7000) | 5000; 18000 for K… and C… codes |
+| `ClimbHandoverFt` (above the field) | the SIDs' initial climb: the highest CA/VA/FA leg starting a runway transition, minus the elevation, at least `MinClimbHandoverFt` (1500) | `DefaultClimbHandoverFt` (1500) without procedures |
+| `TaxiMaxKts` / `ApronMaxKts` | `KnownLimits` | 30 / 15 |
+| `PreferredRunways` | `KnownLimits` (LKPR 24, then 06) | none |
+| `MSAFt`, `NoReverseThrust` | `KnownLimits` | unknown / false |
+
+At LKPR the SIDs climb to 1700 ft on the runway heading first; the field is at about 1200 ft, so the hand-over stays at the 1500 ft floor. Pass the limits to `traffic.TaxiRequest.Airport` / `ArrivalRequest.Airport`, and `nav.RunwayLimitsFrom(lim)` gives the preferential runways to `nav.ActiveRunways`. `Graph.Apron(node)` reports a stand's junction with the taxilane, where `ApronMaxKts` applies.
+
+```go
+lim := airport.LimitsFor(layout, &procs) // LKPR: TA 5000, hand-over 1500 ft, 24 then 06
+use := nav.ActiveRunways(layout, weather, nav.RunwayLimitsFrom(lim))
+```
+
 ## Seeing it on a map
 
 [`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.

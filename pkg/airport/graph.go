@@ -241,6 +241,12 @@ func (g *Graph) ParkingNode(parking int) (NodeID, bool) {
 	return NodeID(len(g.Layout.TaxiPoints) + parking), true
 }
 
+// Apron reports whether node id is on an apron taxilane: a taxi point with
+// a parking path to a stand.
+func (g *Graph) Apron(id NodeID) bool {
+	return id >= 0 && int(id) < len(g.stands) && g.stands[id]
+}
+
 // HoldShortNodes returns the hold-short nodes associated with runway index
 // rwy.
 func (g *Graph) HoldShortNodes(rwy int) []NodeID {

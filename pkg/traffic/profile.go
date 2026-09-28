@@ -303,6 +303,7 @@ func (c *ArrivalController) aircraft() *AircraftProfile {
 func (req *TaxiRequest) resolveAircraft() {
 	req.Aircraft = aircraftOf(req.Aircraft, req.Model)
 	req.Aircraft.fill(&req.Profile, &req.Takeoff, nil, nil, &req.NoseOffset)
+	capTaxiSpeed(&req.Profile, req.Airport)
 }
 
 // resolveAircraft sets req.Aircraft (from Model when nil) and fills the
@@ -310,4 +311,5 @@ func (req *TaxiRequest) resolveAircraft() {
 func (req *ArrivalRequest) resolveAircraft() {
 	req.Aircraft = aircraftOf(req.Aircraft, req.Model)
 	req.Aircraft.fill(&req.Profile, nil, &req.Approach, &req.Rollout, &req.NoseOffset)
+	capTaxiSpeed(&req.Profile, req.Airport)
 }

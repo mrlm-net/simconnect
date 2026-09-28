@@ -142,6 +142,8 @@ The push is fitted to each stand's surroundings. The main gear starts at the sta
 
 `TaxiRequest.Departure` (e.g. `airport.Procedures.ResolveSID(name, runway, "", departureEnd, elevation)`, optionally followed by the rest of a flight plan) is flown by MSFS AI after the injected climb hands over at `ClimbHandoverFt` (#315). `DepartureWaypoints` skips points behind the aircraft, climbs `ProcedureClimbFtPerNm` up to `ProcedureTopFt` (or the highest constraint) within every point's constraints at 250 kt, and continues along the last track so MSFS AI does not turn back after the last fix. Without it the aircraft climbs straight ahead (`TakeoffClimb`).
 
+**Airport limits.** `TaxiRequest.Airport` (e.g. `airport.LimitsFor(layout, &procedures)`, see [Airport limits](airport-layout.md#airport-limits)) replaces `ClimbHandoverFt` with the airport's hand-over height from its SIDs' initial climb, and caps the injected taxi speed at `TaxiMaxKts` and at `ApronMaxKts` along the edges at stand junctions where the motion profile is faster; `ArrivalRequest.Airport` does the same for the taxi-in.
+
 ## Turnaround
 
 `TaxiRequest.ObjectID` adopts an aircraft already on the stand instead of spawning one (#293) — e.g. one an `ArrivalController` parked: the departure takes it over from there (pushback, taxi, take-off). The airport map chains both as a turnaround (#296): an arrival with *Turnaround* departs again after its dwell (±20 %) or the *Depart now* action, with the same call sign and stand.

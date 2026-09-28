@@ -315,6 +315,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			return nil, err
 		}
 	}
+	// The airport's limits (#335): climb-out hand-over from the SIDs, taxi speeds.
+	var procs *airport.Procedures
+	if cc.procedures != nil {
+		if p, ok := cc.procedures(g.Layout.ICAO); ok {
+			procs = &p
+		}
+	}
+	lim := airport.LimitsFor(g.Layout, procs)
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
 	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
 	var events func() (TaxiOrArrival, bool)
@@ -324,7 +332,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
-			Aircraft: &ac, Departure: procRoute}); err != nil {
+			Aircraft: &ac, Departure: procRoute, Airport: &lim}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -343,7 +351,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
-			Procedure: procRoute, Aircraft: &ac}); err != nil {
+			Procedure: procRoute, Aircraft: &ac, Airport: &lim}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl

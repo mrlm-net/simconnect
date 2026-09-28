@@ -252,7 +252,8 @@ const (
 // PushTailMeters past a wheelbase beyond the taxiway junction. The gear
 // comes up on a positive climb: above GearUpFt, GearUpDelaySeconds after
 // lift-off and climbing at GearUpFpm or more. The aircraft is handed to
-// MSFS AI for the climb-out at ClimbHandoverFt.
+// MSFS AI for the climb-out at ClimbHandoverFt, or at the airport's
+// (TaxiRequest.Airport, airport.LimitsFor).
 const (
 	PushbackDelay      = 5 * time.Second
 	BeaconLeadTime     = 3 * time.Second
