@@ -42,6 +42,7 @@ func main() {
 	hold := flag.Bool("hold", false, "hold clear of the runway until Enter (taxi clearance)")
 	dwell := flag.Duration("dwell", 0, "after-landing stop before taxiing on (0 = default)")
 	inject := flag.Bool("inject", false, "hybrid: MSFS AI lands, position injection takes over during the rollout and drives the ground phase (#309)")
+	injectApproach := flag.Bool("inject-approach", false, "with -inject: fly the final approach, flare and touchdown by injection too (#318)")
 	holdCrossings := flag.Bool("hold-crossings", false, "with -inject: hold short of runway crossings until cleared (the demo clears after -cross-after)")
 	crossAfter := flag.Duration("cross-after", 15*time.Second, "demo ATC: crossing clearance delay with -hold-crossings")
 	rollThrough := flag.Float64("roll-through", 0, "with -inject: chance 0..1 of a rolling clearance at the vacate point (0 = default 0.3, negative = never)")
@@ -187,7 +188,7 @@ func main() {
 					var parking int
 					if parking, err = res.Layout.ParkingIndex(*stand); err == nil {
 						err = ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: *runway, Parking: parking, Model: *model,
-							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell, RollThroughChance: *rollThrough, HoldAtCrossings: *holdCrossings})
+							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell, RollThroughChance: *rollThrough, HoldAtCrossings: *holdCrossings, InjectApproach: *injectApproach})
 					}
 				}
 				if err != nil {

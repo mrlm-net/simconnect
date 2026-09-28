@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -97,6 +98,13 @@ type ArrivalRequest struct {
 	// runway it crosses on the way to the stand until ClearToCross; without
 	// it crossings are cleared in advance.
 	HoldAtCrossings bool
+	// InjectApproach (with ArrivalWithInjector) flies the whole arrival by
+	// injection: the final approach on a stable glide path with a flare
+	// and a soft touchdown (see ApproachProfile), then the rollout, exit and
+	// taxi-in. Without it MSFS AI flies until the rollout.
+	InjectApproach bool
+	// Approach is the injected approach; zero means DefaultApproachProfile.
+	Approach ApproachProfile
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -186,9 +194,12 @@ type ArrivalController struct {
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist    float64 // injected path distance of the vacate stop
 	rng           *rand.Rand
-	nextCross     int  // next crossing zone ahead
-	crossClears   int  // ClearToCross calls not used yet
-	lightsChanged bool // the sim reported a light change since the last event
+	nextCross     int            // next crossing zone ahead
+	crossClears   int            // ClearToCross calls not used yet
+	lightsChanged bool           // the sim reported a light change since the last event
+	approach      *ApproachMover // injected approach until the rollout hand-over
+	flapsPct      float64        // injected flap setting
+	flapsUpFrom   time.Time      // flaps retracting since
 	takeoverTried bool
 	emittedAt     time.Time
 }
@@ -274,6 +285,16 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	})
 	if err != nil {
 		return err
+	}
+	if req.InjectApproach {
+		if c.inj == nil {
+			return fmt.Errorf("%w: InjectApproach needs ArrivalWithInjector", ErrBadTaxiRequest)
+		}
+		// Appear exactly where the injected approach starts.
+		ap := NewApproachMover(plan.End.Threshold, plan.End.Heading, plan.SpawnNm*1852, approachProfileOf(req)).Pose()
+		plan.Spawn.Latitude, plan.Spawn.Longitude = ap.Position.Lat, ap.Position.Lon
+		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + spawnCGFt
+		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
 	}
 	client := c.fleet.clientOrNil()
 	if client == nil {
@@ -368,6 +389,12 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 		c.fail(ErrNotConnected)
 		return
 	}
+	if c.req.InjectApproach {
+		if err := c.startInjectedApproach(); err != nil {
+			c.fail(err)
+		}
+		return
+	}
 	if err := c.fleet.ReleaseControl(objectID, c.reqBase+arrReqRelease); err != nil {
 		c.fail(err)
 		return
@@ -397,6 +424,10 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	if l := m.currentLights(); l != c.last.Lights {
 		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
+	}
+	if c.approach != nil {
+		c.onApproachFrame(m)
+		return
 	}
 	if c.mover != nil {
 		c.onInjectedFrame()

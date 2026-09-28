@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"unsafe"
 
@@ -62,6 +63,8 @@ type injected struct {
 const (
 	injDefPosition = iota
 	injDefGround
+	injDefGear
+	injDefFlaps
 )
 
 const (
@@ -89,7 +92,7 @@ type injectGround struct{ GroundFt, CGFt float64 }
 // InjectorOption configures an Injector.
 type InjectorOption func(*Injector)
 
-// InjectorWithIDs sets the SimConnect ID bases: 2 definition IDs, 2 request
+// InjectorWithIDs sets the SimConnect ID bases: 4 definition IDs, 2 request
 // IDs per aircraft (up to 50 aircraft) and 10 event IDs are used.
 func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOption {
 	return func(i *Injector) { i.defBase, i.reqBase, i.evtBase = definitionBase, requestBase, eventBase }
@@ -130,6 +133,16 @@ func (i *Injector) register() error {
 	}
 	for k, v := range []string{"GROUND ALTITUDE", "STATIC CG TO GROUND"} {
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefGround, v, "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+			return err
+		}
+	}
+	if err := i.track("define GEAR HANDLE POSITION", c.AddToDataDefinition(i.defBase+injDefGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+		return err
+	}
+	// Flap surfaces directly: MSFS AI objects ignore the flaps handle and
+	// FLAPS_* events (#318).
+	for k, v := range []string{"TRAILING EDGE FLAPS LEFT PERCENT", "TRAILING EDGE FLAPS RIGHT PERCENT", "LEADING EDGE FLAPS LEFT PERCENT", "LEADING EDGE FLAPS RIGHT PERCENT"} {
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefFlaps, v, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
 	}
@@ -360,4 +373,65 @@ func (l Lights) String() string {
 		}
 	}
 	return string(b)
+}
+
+// PlaceAir puts objectID at an approach pose: in the air with the main
+// wheels pose.HeightFt above the ground, pitched nose up pose.PitchDeg, or on
+// the ground from touchdown. Call it at InjectHz.
+func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
+	i.mu.Lock()
+	o, ok := i.objects[objectID]
+	if !ok || !o.taken {
+		i.mu.Unlock()
+		return ErrNotInjected
+	}
+	if !o.haveGround {
+		i.mu.Unlock()
+		return ErrGroundUnknown
+	}
+	onGround := types.DWORD(0)
+	if pose.OnGround {
+		onGround = 1
+	}
+	p := types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude:  pose.Position.Lat,
+		Longitude: pose.Position.Lon,
+		Altitude:  o.groundFt + o.cgFt + math.Max(pose.HeightFt, 0),
+		Pitch:     -pose.PitchDeg, // SimConnect: negative is nose up
+		Heading:   pose.Heading,
+		OnGround:  onGround,
+		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
+	}
+	i.mu.Unlock()
+	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+}
+
+// SetGear moves the gear handle of objectID; the sim animates the gear
+// (about 4 s on an A320) even while the aircraft is frozen.
+func (i *Injector) SetGear(objectID uint32, down bool) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	g := [1]float64{0}
+	if down {
+		g[0] = 1
+	}
+	return i.track(fmt.Sprintf("gear handle object %d", objectID),
+		i.client.SetDataOnSimObject(i.defBase+injDefGear, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g)))
+}
+
+// SetFlaps sets the flap surfaces of objectID to percent (0 up, 100 full);
+// the surfaces move at once, so ramp percent over time for a visible
+// extension or retraction.
+func (i *Injector) SetFlaps(objectID uint32, percent float64) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	s := [4]float64{percent, percent, percent, percent}
+	// Not tracked: callers ramp it every frame.
+	return i.client.SetDataOnSimObject(i.defBase+injDefFlaps, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(s)), unsafe.Pointer(&s))
 }

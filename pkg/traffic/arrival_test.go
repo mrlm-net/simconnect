@@ -636,3 +636,96 @@ func TestArrivalControllerHoldAtCrossings(t *testing.T) {
 		}
 	}
 }
+
+// TestArrivalControllerInjectedApproach: the whole arrival injected — glide
+// path, flare, a soft touchdown, de-rotation, and the hand-over to the
+// injected rollout without a jump (#318).
+func TestArrivalControllerInjectedApproach(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA7",
+		InjectApproach: true, RollThroughChance: -1, AfterLandingDwell: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	type result struct {
+		states []ArrivalState
+		evs    []ArrivalEvent
+	}
+	done := make(chan result)
+	go func() {
+		var r result
+		for ev := range ctl.Events() { // until the controller finishes
+			r.evs = append(r.evs, ev)
+			if len(r.states) == 0 || r.states[len(r.states)-1] != ev.State {
+				r.states = append(r.states, ev.State)
+			}
+		}
+		done <- r
+	}()
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	if !inj.Driven(77) || ctl.State() != ArrivalApproaching {
+		t.Fatalf("not taken over on final: %v", ctl.State())
+	}
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	for i := 0; i < 60*1200 && ctl.State() != ArrivalParked; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 77, p.End.Threshold, 0, 0, 0, false)) // a frame tick
+	}
+	if ctl.State() != ArrivalParked {
+		t.Fatalf("stuck in %v (approach %v, mover %v, pose %+v)", ctl.State(), ctl.approach != nil, ctl.mover != nil, ctl.last)
+	}
+	r := <-done
+	states, evs := r.states, r.evs
+	want := []ArrivalState{ArrivalSpawning, ArrivalApproaching, ArrivalLanding, ArrivalRollout, ArrivalVacating, ArrivalAwaitingTaxi, ArrivalTaxiing, ArrivalParking, ArrivalParked}
+	if !slices.Equal(states, want) {
+		t.Fatalf("states %v, want %v", states, want)
+	}
+	var td ArrivalEvent
+	for _, e := range evs {
+		if e.State == ArrivalRollout && e.Touchdown != 0 {
+			td = e
+			break
+		}
+	}
+	if td.TouchdownFpm > -80 || td.TouchdownFpm < -200 || td.Touchdown < 250 || td.Touchdown > 800 {
+		t.Errorf("touchdown %.0f m past the threshold at %.0f fpm", td.Touchdown, td.TouchdownFpm)
+	}
+	var placed []types.SIMCONNECT_DATA_INITPOSITION
+	for _, b := range ec.waypoints {
+		if len(b) == int(unsafe.Sizeof(types.SIMCONNECT_DATA_INITPOSITION{})) {
+			var q types.SIMCONNECT_DATA_INITPOSITION
+			copy(unsafe.Slice((*byte)(unsafe.Pointer(&q)), len(b)), b)
+			placed = append(placed, q)
+		}
+	}
+	maxPitch, maxJump, maxHdg := 0.0, 0.0, 0.0
+	for i, q := range placed {
+		maxPitch = math.Max(maxPitch, -q.Pitch)
+		if i > 0 {
+			a := placed[i-1]
+			maxJump = math.Max(maxJump, calc.HaversineMeters(a.Latitude, a.Longitude, q.Latitude, q.Longitude))
+			maxHdg = math.Max(maxHdg, math.Abs(headingDiff(a.Heading, q.Heading)))
+		}
+	}
+	if maxJump > 1.5 { // 150 kt at 60 Hz is 1.3 m per frame
+		t.Errorf("largest move between frames %.2f m", maxJump)
+	}
+	if maxHdg > 1 {
+		t.Errorf("heading jumped %.2f° between frames", maxHdg)
+	}
+	if maxPitch < 5 || maxPitch > 6 {
+		t.Errorf("flare pitch %.1f°, want about 5.5", maxPitch)
+	}
+	if ctl.flapsPct != 0 {
+		t.Errorf("flaps %.0f%% on the stand, want retracted", ctl.flapsPct)
+	}
+	t.Logf("touchdown %.0f m at %.0f fpm; %d placements, largest step %.2f m, heading step %.2f°, flare pitch %.1f°",
+		td.Touchdown, td.TouchdownFpm, len(placed), maxJump, maxHdg, maxPitch)
+}
