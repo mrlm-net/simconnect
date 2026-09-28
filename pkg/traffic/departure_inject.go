@@ -112,6 +112,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			pos, hdg = p.Position, p.Heading
 		}
 		c.reportGround(c.objectID, pos, hdg, now)
+		if c.last.Position == (airport.LatLon{}) {
+			c.last.Position, c.last.Heading = pos, hdg // known from the first frame, before it moves
+		}
 	} else if c.picture != nil {
 		c.picture.Forget(c.objectID) // on the take-off roll or airborne
 	}

@@ -38,6 +38,8 @@
   .ac svg { width: 26px; height: 26px; filter: drop-shadow(0 0 2px #000); }
   .lbl { background: none; border: 0; box-shadow: none; color: #ffe066; font: 700 11px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; }
   .lbl::before { display: none; }
+  .locate-btn { display: block; width: 30px; height: 30px; line-height: 30px; text-align: center; font-size: 16px; background: #fff; color: #000; text-decoration: none; }
+  tr.loc { cursor: pointer; } tr.loc:hover { background: #333; }
   .trk { position: absolute; white-space: nowrap; color: #e8e8e8; font: 600 10px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
   @media (max-width: 700px) {
     #map { inset: 0 0 45% 0; }
@@ -52,6 +54,9 @@
   .tlog { font: 11px/1.35 ui-monospace, Consolas, monospace; max-height: 260px; overflow-y: auto; white-space: pre-wrap; background: rgba(127,127,127,0.10); border-radius: 4px; padding: 4px 6px; }
   .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
   .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
+  .ctl .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+  .ctl .acts .sep { flex: 1; } /* keeps the remove button apart, on the right */
+  .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -656,6 +661,29 @@ async function load(icao, refresh) {
   }
 }
 
+// ── Locate: centre the map on an aircraft and mark it briefly ──
+function locate(lat, lon, label) {
+  map.setView([lat, lon], Math.max(map.getZoom(), 15));
+  const ring = L.circleMarker([lat, lon], { radius: 26, color: '#ffe066', weight: 3, fill: false, interactive: false }).addTo(map);
+  if (label) ring.bindTooltip(esc(label), { permanent: true, direction: 'top', className: 'lbl' });
+  setTimeout(() => ring.remove(), 2500);
+}
+let lastOwn = null; // the user's aircraft, from pollAircraft
+const LocateControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd() {
+    const b = L.DomUtil.create('a', 'leaflet-bar locate-btn');
+    b.href = '#'; b.title = 'Locate my aircraft'; b.textContent = '✈';
+    L.DomEvent.on(b, 'click', (e) => {
+      L.DomEvent.stop(e);
+      if (lastOwn) locate(lastOwn.lat, lastOwn.lon, 'You');
+      else $('status').textContent = 'Your aircraft is not reported (simulator not connected?)';
+    });
+    return b;
+  },
+});
+new LocateControl().addTo(map);
+
 // ── User aircraft ──
 const acIcon = (hdg) => L.divIcon({
   className: 'ac user', iconSize: [26, 26],
@@ -667,12 +695,13 @@ async function pollAircraft() {
     const res = await fetch('/api/aircraft');
     if (res.status === 200) {
       const a = await res.json();
+      lastOwn = a;
       if (!acMarker) acMarker = L.marker([a.lat, a.lon], { icon: acIcon(a.heading), zIndexOffset: 1000 }).addTo(map);
       acMarker.setLatLng([a.lat, a.lon]).setIcon(acIcon(a.heading));
       if ($('follow').checked) map.panTo([a.lat, a.lon], { animate: false });
       $('acInfo').textContent = `Aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}`;
     } else if (acMarker) {
-      acMarker.remove(); acMarker = null; $('acInfo').textContent = 'Aircraft: —';
+      acMarker.remove(); acMarker = null; lastOwn = null; $('acInfo').textContent = 'Aircraft: —';
     }
   } catch { /* server gone; keep polling */ }
 }
@@ -711,7 +740,7 @@ async function pollTraffic() {
   const rows = list.filter((t) => !t.user).sort((a, b) => a.agl - b.agl);
   $('trafficTable').innerHTML = rows.length
     ? '<tr><td>tail</td><td class="n">ft</td><td class="n">kt</td><td class="n">fpm</td><td class="n">gear</td></tr>' +
-      rows.map((t) => `<tr title="${esc(t.title)}"><td>${esc(t.tail || t.objectId)}<br><span class="note">${esc(shortState(t.state))}</span></td>` +
+      rows.map((t) => `<tr class="loc" data-lat="${t.lat}" data-lon="${t.lon}" data-name="${esc(t.tail || t.objectId)}" title="${esc(t.title)} — click to locate"><td>${esc(t.tail || t.objectId)}<br><span class="note">${esc(shortState(t.state))}</span></td>` +
         `<td class="n">${t.agl.toFixed(0)}</td><td class="n">${t.groundKts.toFixed(0)}</td><td class="n">${t.vs.toFixed(0)}</td>` +
         `<td class="n">${(t.gear * 100).toFixed(0)}%</td></tr>`).join('')
     : '<tr><td>No other aircraft</td></tr>';
@@ -743,7 +772,7 @@ $('safeOn').addEventListener('change', pollTraffic);
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
 let ctlViews = [];
-const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', remove: '✕' };
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -770,6 +799,10 @@ async function ctlSpawn(kind) {
 }
 
 async function ctlAct(id, action, node) {
+  if (action === 'remove') {
+    const v = ctlViews.find((x) => x.id === id);
+    if (!confirm(`Remove ${v ? v.tail : 'this aircraft'} from the simulator?`)) return;
+  }
   const q = node !== undefined ? `?node=${node}` : '';
   try {
     const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
@@ -810,12 +843,13 @@ function drawControl() {
 function renderControl() {
   $('ctlList').innerHTML = ctlViews.length ? ctlViews.map((v) => {
     const status = [v.state, v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && 'at limit'].filter(Boolean).join(' · ');
-    const buttons = (v.actions || []).filter((a) => a !== 'upto')
-      .concat(['remove'])
-      .map((a) => `<button type="button" data-id="${v.id}" data-act="${a}">${ACTION_LABEL[a] || a}</button>`).join(' ');
+    const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : ''}>${ACTION_LABEL[a] || a}</button>`;
+    const actions = (v.actions || []).filter((a) => a !== 'upto')
+      .concat(v.position && (v.position.lat || v.position.lon) ? ['locate'] : []);
+    const buttons = `<div class="acts">${actions.map((a) => btn(a)).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +
-      `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}<br>${buttons}</div>`;
+      `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}${buttons}</div>`;
   }).join('') : '<div class="note">No controlled aircraft</div>';
 }
 
@@ -954,12 +988,21 @@ for (const id of ['rMode', 'rTo', 'rPick']) $(id).addEventListener('change', upd
 updateSpawn();
 $('ctlList').addEventListener('click', (e) => {
   const b = e.target.closest('button');
+  if (b && b.dataset.act === 'locate') {
+    const v = ctlViews.find((x) => x.id === Number(b.dataset.id));
+    if (v) locate(v.position.lat, v.position.lon, v.tail);
+    return;
+  }
   if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
   const row = e.target.closest('[data-sel]');
   if (row) { ctlSelected = Number(row.dataset.sel); renderControl(); drawControl(); }
 });
 
 $('trafficOn').addEventListener('change', pollTraffic);
+$('trafficTable').addEventListener('pointerdown', (e) => { // on press: the table re-renders every second
+  const r = e.target.closest('tr[data-lat]');
+  if (r) locate(Number(r.dataset.lat), Number(r.dataset.lon), r.dataset.name);
+});
 
 // ── Wiring ──
 $('f').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').value); });
