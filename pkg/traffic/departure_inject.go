@@ -409,7 +409,9 @@ func (c *TaxiController) planPushback() {
 				math.Abs(headingDiff(in, localBearing(kp, g.Nodes[e.To].Position))) > maxPushSwingDeg {
 				continue
 			}
-			out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, c.req.Options)
+			// A custom route (Via, Taxiways) goes on from what the push passed.
+			opts := g.RemainingOptions(c.req.Options, r.Nodes[:i+1])
+			out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, opts)
 			if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
 				continue // no way on, or only back over the branch it was pushed onto
 			}
@@ -851,7 +853,9 @@ func (c *TaxiController) entryPath() []airport.LatLon {
 		}
 		var pts []airport.LatLon
 		if e.Node != hold {
-			r, err := g.Route(hold, e.Node, c.req.Options)
+			opts := c.req.Options
+			opts.Via, opts.Taxiways = nil, nil // the custom route ends at the hold-short
+			r, err := g.Route(hold, e.Node, opts)
 			if err != nil {
 				continue
 			}
