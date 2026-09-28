@@ -113,6 +113,17 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.pushAt = now.Add(BeaconLeadTime)
 		}
 		if !c.pushAt.IsZero() && !now.Before(c.pushAt) {
+			if len(c.route.Points) > 1 && leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1]) {
+				// Self-manoeuvring stand: no pushback — engines start on the
+				// stand and the aircraft taxis straight out.
+				if err := c.standInPlace(); err != nil {
+					c.fail(err)
+					return
+				}
+				c.openGate(TaxiAfterPushDelay)
+				c.setState(TaxiAwaitingTaxi, nil)
+				return
+			}
 			if err := c.startPushback(); err != nil {
 				c.fail(err)
 				return
@@ -207,6 +218,21 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		}
 	}
 	c.emit(nil, false)
+}
+
+// standInPlace gives an aircraft on a self-manoeuvring stand a stationary
+// mover at its parked pose, which the taxi-out starts from.
+func (c *TaxiController) standInPlace() error {
+	g, prof, route := c.req.Graph, c.profile(), c.route
+	stand := g.Layout.Parking[c.req.Parking]
+	nose := NoseGear(stand.Position, stand.Heading, prof)
+	path, err := NewGroundPath([]airport.LatLon{nose, offsetHeading(nose, stand.Heading, 10), route.Points[len(route.Points)-1]}, prof)
+	if err != nil {
+		return err
+	}
+	c.mover = NewGroundMoverFrom(path, prof, stand.Heading, 0)
+	c.lastStep = c.now()
+	return nil
 }
 
 // startPushback builds the push path: the main gear from the stand back to

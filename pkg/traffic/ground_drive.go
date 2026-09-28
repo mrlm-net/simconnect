@@ -210,3 +210,13 @@ func pathLen(p []airport.LatLon) float64 {
 	}
 	return d
 }
+
+// leadInAhead reports whether a route reaches (or leaves) the stand through
+// a lead-in junction ahead of the parked aircraft (it faces the taxilane
+// there): a departure then taxis straight out without a pushback and an
+// arrival has to turn around on the apron to park. Stands can have lead-ins
+// on both sides, so it depends on the route, not the stand alone.
+func leadInAhead(g *airport.Graph, parking int, junction airport.LatLon) bool {
+	p := g.Layout.Parking[parking]
+	return alongHeading(p.Position, p.Heading, junction) > 0
+}

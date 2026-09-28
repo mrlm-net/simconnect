@@ -739,3 +739,71 @@ func TestArrivalControllerInjectedApproach(t *testing.T) {
 	t.Logf("touchdown %.0f m at %.0f fpm; %d placements, largest step %.2f m, heading step %.2f°, flare pitch %.1f°",
 		td.Touchdown, td.TouchdownFpm, len(placed), maxJump, maxHdg, maxPitch)
 }
+
+// TestArrivalControllerInjectedSweep flies fully injected arrivals to a
+// sample of LKPR stands from every runway end: each must park without
+// failing or jumping, aligned with its stand.
+func TestArrivalControllerInjectedSweep(t *testing.T) {
+	g := lkprGraph(t)
+	ok, total := 0, 0
+	for _, p := range g.Layout.Parking {
+		// Only stands an A320 (36 m span) fits; stand suitability is #291.
+		if (p.Index%11 != 0 && !standFacesOut(g, p.Index)) || p.Radius < 18 {
+			continue
+		}
+		for _, end := range []string{"06", "24", "12", "30"} {
+			ec := &eventClient{}
+			inj := NewInjector(ec)
+			ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+			if err := ctl.Start(ArrivalRequest{Graph: g, Runway: end, Parking: p.Index, Model: "A320", InjectApproach: true,
+				RollThroughChance: -1, AfterLandingDwell: time.Second}); err != nil {
+				continue // no route from this runway to the stand
+			}
+			total++
+			now := time.Now()
+			ctl.now = func() time.Time { return now }
+			ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+			inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+			errs := make(chan error, 1)
+			go func() {
+				var last error
+				for ev := range ctl.Events() {
+					if ev.Err != nil {
+						last = ev.Err
+					}
+				}
+				errs <- last
+			}()
+			mon := DefaultArrivalRequestBase + arrReqMonitor
+			for i := 0; i < 60*3600 && !ctl.State().Terminal(); i++ {
+				now = now.Add(time.Second / 60)
+				ctl.Handle(arrivalPositionMsg(mon, 77, p.Position, 0, 0, 0, false))
+			}
+			if ctl.State() != ArrivalParked {
+				var err error
+				if ctl.State().Terminal() {
+					err = <-errs
+				}
+				t.Errorf("%s → %s: ended %v (%v)", end, p.Label(), ctl.State(), err)
+				continue
+			}
+			all := placements(ec)
+			for i := 1; i < len(all); i++ {
+				if d := calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude); d > 1.5 {
+					t.Errorf("%s → %s: jumped %.2f m at placement %d/%d", end, p.Label(), d, i, len(all))
+					break
+				}
+			}
+			last := all[len(all)-1]
+			if hd := math.Abs(headingDiff(last.Heading, p.Heading)); hd > 3 {
+				t.Errorf("%s → %s: parked %.1f° off the stand heading", end, p.Label(), hd)
+			}
+			stop := ctl.Plan().Stop
+			if d := calc.HaversineMeters(stop.Lat, stop.Lon, last.Latitude, last.Longitude); d > 1 {
+				t.Errorf("%s → %s: parked %.1f m from the stop mark", end, p.Label(), d)
+			}
+			ok++
+		}
+	}
+	t.Logf("%d of %d arrivals parked", ok, total)
+}

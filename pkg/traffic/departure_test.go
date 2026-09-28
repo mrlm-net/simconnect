@@ -259,3 +259,69 @@ func TestTaxiControllerInjectedDepartureSweep(t *testing.T) {
 	}
 	t.Logf("%d of %d departures complete", ok, total)
 }
+
+// TestTaxiControllerInjectedFaceOutStand: from a self-manoeuvring stand the
+// departure starts without a pushback and taxis straight out.
+func TestTaxiControllerInjectedFaceOutStand(t *testing.T) {
+	g := lkprGraph(t)
+	var stand airport.Parking
+	for _, p := range g.Layout.Parking {
+		if standFacesOut(g, p.Index) && p.Radius >= 15 {
+			if r, err := g.RouteToRunway(p.Index, "24", airport.RouteOptions{}); err == nil && leadInAhead(g, p.Index, r.Points[1]) {
+				stand = p
+				break
+			}
+		}
+	}
+	if stand.Radius == 0 {
+		t.Skip("no face-out stand routable to 24")
+	}
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: stand.Index, Runway: "24", Model: "A320", RollingTakeoffChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	var states []TaxiState
+	done := make(chan struct{})
+	go func() {
+		for ev := range ctl.Events() {
+			if len(states) == 0 || states[len(states)-1] != ev.State {
+				states = append(states, ev.State)
+			}
+		}
+		close(done)
+	}()
+	for i := 0; i < 60*3600 && !ctl.State().Terminal(); i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(positionMsg(DefaultTaxiRequestBase+reqOffMonitor, 77, stand.Position, 0, 0, true))
+	}
+	<-done
+	if ctl.State() != TaxiComplete || slices.Contains(states, TaxiPushback) {
+		t.Fatalf("%s: states %v, want complete without a pushback", stand.Label(), states)
+	}
+	all := placements(ec)
+	if d := calc.HaversineMeters(all[0].Latitude, all[0].Longitude, stand.Position.Lat, stand.Position.Lon); d > 1 || math.Abs(headingDiff(all[0].Heading, stand.Heading)) > 2 {
+		t.Errorf("first placement %.1f m from the stand, heading %.0f (stand %.0f)", d, all[0].Heading, stand.Heading)
+	}
+	t.Logf("%s: %v", stand.Label(), states)
+}
+
+// standFacesOut reports whether any lead-in of a stand lies ahead of it
+// (candidates for turn-around arrivals and push-less departures).
+func standFacesOut(g *airport.Graph, parking int) bool {
+	n, ok := g.ParkingNode(parking)
+	if !ok {
+		return false
+	}
+	for _, e := range g.Adj[n] {
+		if leadInAhead(g, parking, g.Nodes[e.To].Position) {
+			return true
+		}
+	}
+	return false
+}

@@ -77,11 +77,18 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	pts := []airport.LatLon{nose}
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
 	var holds []holdOnPath
+	// Keep the route up to its last point before the stand axis start: the
+	// final stretch onto the stand is replaced by the axis. (Earlier points
+	// may lie in front of the stand; the route can pass it before looping
+	// round to its lead-in.)
+	faceOut := len(route) > 1 && leadInAhead(c.req.Graph, c.req.Parking, route[len(route)-2])
+	last := from - 1
 	for i := from; i < len(route)-1; i++ {
-		// Drop route points on or past the stand axis start.
-		if alongHeading(stopNose, c.standHeading, route[i]) > -standAxisMeters {
-			break
+		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
+			last = i // face-out stands keep the route to the lead-in junction
 		}
+	}
+	for i := from; i <= last; i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
 		if i == c.plan.VacateIndex {
 			hold = d
@@ -94,7 +101,11 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		}
 		pts = append(pts, route[i])
 	}
-	pts = append(pts, axis, stopNose)
+	if faceOut {
+		pts = append(pts, c.turnAround(stopNose)...) // self-manoeuvring stand
+	} else {
+		pts = append(pts, axis, stopNose)
+	}
 	c.crossZones = crossingZones(c.req.Graph, route, holds)
 	fast := prof
 	fast.CruiseKts = math.Max(prof.CruiseKts, m.GroundKts+1) // no braking before the planned points
@@ -386,4 +397,44 @@ func (c *ArrivalController) stepSurfaces(dt float64) {
 	if c.spoilers.step(dt) {
 		c.note("spoilers", c.inj.SetSpoilers(c.objectID, c.spoilers.pct))
 	}
+}
+
+// turnAround is the custom route onto a self-manoeuvring (face-out) stand:
+// from the lead-in junction ahead of the stand the aircraft swings out to
+// the side with fewer neighbouring stands, loops round behind the stop mark
+// and comes back along the stand centreline, facing out, to stop with its
+// nose gear at stopNose.
+func (c *ArrivalController) turnAround(stopNose airport.LatLon) []airport.LatLon {
+	h := c.standHeading
+	side := c.roomySide()
+	r := TurnAroundMeters
+	at := func(u, v float64) airport.LatLon {
+		return offsetHeading(offsetHeading(stopNose, h, u*r), h+90, v*r*side)
+	}
+	return []airport.LatLon{
+		at(-0.3, 0.6), // swing out to the side
+		at(-1.6, 1.0), // round behind the stop mark
+		at(-3.0, 0.6),
+		at(-3.3, -0.05), // joining the centreline almost parallel
+		at(-2.8, 0),     // on the centreline, facing out: about three
+		stopNose,        // wheelbases of straight for the main gear to line up
+	}
+}
+
+// roomySide is +1 or -1: the side of the stand (right or left of its
+// heading) with fewer other stands within 60 m, for the turn-around loop.
+func (c *ArrivalController) roomySide() float64 {
+	g := c.req.Graph
+	stand := g.Layout.Parking[c.req.Parking]
+	sum := 0.0
+	for _, p := range g.Layout.Parking {
+		if p.Index == stand.Index || localDist(p.Position, stand.Position) > 60 {
+			continue
+		}
+		sum += math.Copysign(1, alongHeading(stand.Position, stand.Heading+90, p.Position))
+	}
+	if sum > 0 {
+		return -1
+	}
+	return 1
 }
