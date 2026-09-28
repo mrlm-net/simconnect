@@ -17,7 +17,7 @@
   h1 { font-size: 15px; margin: 0 0 8px; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #999; margin: 16px 0 6px; }
   form { display: flex; gap: 6px; }
-  select { background: #0d0e10; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; }
+  select { background: #0d0e10; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; max-width: 15em; }
   #rInfo b { color: #ff7ae6; }
   input[type=text] { flex: 1; min-width: 0; background: #0d0e10; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; text-transform: uppercase; }
   button { background: #2d6cdf; color: #fff; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer; }
@@ -38,6 +38,7 @@
   .ac svg { width: 26px; height: 26px; filter: drop-shadow(0 0 2px #000); }
   .lbl { background: none; border: 0; box-shadow: none; color: #ffe066; font: 700 11px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; }
   .lbl::before { display: none; }
+  .trk { position: absolute; white-space: nowrap; color: #e8e8e8; font: 600 10px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
   @media (max-width: 700px) {
     #map { inset: 0 0 45% 0; }
     #side { top: 55%; width: 100%; border-left: 0; border-top: 1px solid #333; }
@@ -79,6 +80,19 @@
   <div id="rInfo" class="note"></div>
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
+
+  <h2>Procedures</h2>
+  <div class="note">SIDs, STARs and approaches from the simulator's navigation data, with their fixes (VOR, NDB, waypoints). Paths are drawn for orientation: legs to an altitude or a manual termination are approximated.</div>
+  <table>
+    <tr><td>Runway</td><td class="n"><select id="pRunway"><option value="">All</option></select></td></tr>
+    <tr><td>Procedure</td><td class="n"><select id="pFilter" style="max-width:14em"><option value="">All (overview)</option></select></td></tr>
+  </table>
+  <label class="opt"><input type="checkbox" id="pSID"> SIDs <span class="sw" style="background:#4fc3f7"></span></label>
+  <label class="opt"><input type="checkbox" id="pSTAR"> STARs <span class="sw" style="background:#ffb74d"></span></label>
+  <label class="opt"><input type="checkbox" id="pAPP"> Approaches <span class="sw" style="background:#e040fb"></span> (missed dashed)</label>
+  <label class="opt"><input type="checkbox" id="pFix" checked> Fixes: VOR, NDB, waypoints</label>
+  <button type="button" id="pFit" class="secondary">Fit procedures in view</button>
+  <div id="pInfo" class="note"></div>
 
   <h2>Traffic control</h2>
   <div class="note">Spawns what the <b>Route</b> section shows: its mode (departure or arrival), stand and runway. Then give the clearances in the list below; select an aircraft and click a point of its route to clear it up to there.</div>
@@ -282,6 +296,7 @@ function draw() {
   }
   drawOverlaps();
   fillRunwayEnds();
+  loadProcedures();
 
   for (const p of data.taxiPoints) {
     const hold = HOLD_SHORT.has(p.type);
@@ -344,6 +359,144 @@ function drawOverlaps() {
 let routeFrom = null;
 let choices = []; // entries (departure) or exits (arrival) of the chosen runway
 const arrival = () => $('rMode').value === 'arr';
+
+// ── Procedures (#314): SIDs, STARs, approaches and their fixes ──
+const procLayer = L.layerGroup().addTo(map);
+let procs = null;
+async function loadProcedures() {
+  procs = null;
+  procLayer.clearLayers();
+  if (!data) return;
+  const ends = data.runways.flatMap((r) => [rwyEnd(r.primaryNumber, r.primaryDesignator), rwyEnd(r.secondaryNumber, r.secondaryDesignator)]);
+  $('pRunway').innerHTML = '<option value="">All</option>' + ends.map((e) => `<option>${esc(e)}</option>`).join('');
+  for (let i = 0; i < 20 && !procs; i++) { // loaded shortly after the layout
+    try {
+      const res = await fetch(`/api/procedures?icao=${encodeURIComponent(data.icao)}`);
+      if (res.ok) procs = await res.json();
+    } catch (e) { /* retry */ }
+    if (!procs) await new Promise((r) => setTimeout(r, 1500));
+  }
+  $('pInfo').textContent = procs
+    ? `${procs.sids.length} SIDs, ${procs.stars.length} STARs, ${procs.approaches.length} approaches, ${procs.fixes.length} fixes`
+    : 'Procedures not available (offline or not loaded).';
+  fillProcedurePick();
+  drawProcedures();
+}
+function procShown(p) {
+  const rwy = $('pRunway').value, pick = $('pFilter').value;
+  return (!rwy || !p.runways.length || p.runways.includes(rwy)) && (!pick || pick === p.key);
+}
+// procLabel says what a procedure is: where a SID leads, where a STAR
+// starts, an approach's transitions.
+function procLabel(kind, p) {
+  const rw = p.runways.length ? `RWY ${p.runways.join('/')}` : 'all runways';
+  // A procedure without fixes: runway heading, then radar vectors.
+  if (kind === 'SID') return `SID ${p.name} · ${rw} → ${p.to || 'runway heading, radar vectors'}`;
+  if (kind === 'STAR') return `STAR ${p.name} · ${p.from || 'radar vectors'} → ${p.to ? p.to + ' → ' : ''}${rw}`;
+  const via = p.paths.slice(1).map((x) => x.label.split(' via ')[1]).filter(Boolean);
+  return `${p.name}${via.length ? ' · via ' + via.join(', ') : ''}`;
+}
+// fillProcedurePick lists the procedures of the checked kinds and runway.
+function fillProcedurePick() {
+  if (!procs) return;
+  const sel = $('pFilter'), keep = sel.value, rwy = $('pRunway').value;
+  const opts = ['<option value="">All (overview)</option>'];
+  for (const [kind, list, on] of [['SID', procs.sids, $('pSID').checked], ['STAR', procs.stars, $('pSTAR').checked], ['APP', procs.approaches, $('pAPP').checked]]) {
+    if (!on) continue;
+    for (const p of list) {
+      p.key = kind + ':' + p.name;
+      if (rwy && p.runways.length && !p.runways.includes(rwy)) continue;
+      opts.push(`<option value="${esc(p.key)}">${esc(procLabel(kind, p))}</option>`);
+    }
+  }
+  sel.innerHTML = opts.join('');
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  else if (sel.options.length > 1) sel.selectedIndex = 1; // one procedure, not a web of all
+}
+const FIX_STYLE = { V: ['#2d9cdb', 7, 'VOR'], N: ['#b5651d', 6, 'NDB'], W: ['#cfcfcf', 3, 'waypoint'], R: ['#ffffff', 3, 'runway'], A: ['#ffffff', 4, 'airport'] };
+function drawProcedures() {
+  procLayer.clearLayers();
+  if (!procs) return;
+  const single = $('pFilter').value !== '';
+  const PALETTE = ['#4fc3f7', '#ffb74d', '#e040fb', '#69f0ae', '#ff5252', '#ffd740', '#40c4ff', '#b388ff', '#ff6e40', '#64ffda', '#eeff41', '#f48fb1'];
+  let colorAt = 0;
+  const arrow = (a, b, color) => {
+    const brg = Math.atan2((b.lon - a.lon) * Math.cos(a.lat * Math.PI / 180), b.lat - a.lat) * 180 / Math.PI;
+    return L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { interactive: false, icon: L.divIcon({ className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+      html: `<svg width="14" height="14" viewBox="-7 -7 14 14" style="transform:rotate(${brg}deg)"><path d="M0,-6 L5,5 L0,2 L-5,5 Z" fill="${color}"/></svg>` }) });
+  };
+  const symbol = (m, color) => {
+    let svg;
+    if (m.kind === 'V') svg = `<polygon points="0,-7 6,-3.5 6,3.5 0,7 -6,3.5 -6,-3.5" fill="none" stroke="#2d9cdb" stroke-width="2"/><circle r="1.5" fill="#2d9cdb"/>`;
+    else if (m.kind === 'N') svg = `<circle r="6" fill="none" stroke="#b5651d" stroke-width="2" stroke-dasharray="2 2"/><circle r="1.5" fill="#b5651d"/>`;
+    else svg = `<polygon points="0,-6 5.5,4 -5.5,4" fill="${m.flyOver ? 'none' : color}" stroke="${color}" stroke-width="1.5"/>` + (m.flyOver ? `<circle r="7.5" fill="none" stroke="${color}" stroke-width="1"/>` : '');
+    const label = `<b>${esc(m.ident)}</b>${m.constraint ? '<br>' + esc(m.constraint) : ''}`;
+    return L.marker([m.position.lat, m.position.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9],
+      html: `<svg width="18" height="18" viewBox="-9 -9 18 18">${svg}</svg>` }) })
+      .bindTooltip(label, { permanent: true, direction: 'right', offset: [8, 0], className: 'lbl' });
+  };
+  const draw = (list, on, kindColor) => {
+    if (!on) return;
+    for (const p of list.filter(procShown)) {
+      const color = single ? kindColor : PALETTE[colorAt++ % PALETTE.length];
+      const paths = [...p.paths.map((x) => [x, false]), ...(p.missed || []).map((x) => [x, true])];
+      const rwy = $('pRunway').value;
+      for (const [path, missed] of paths) {
+        if (path.points.length < 2) continue;
+        if (rwy && path.runway && path.runway !== rwy) continue; // another runway's transition
+        const ll = path.points.map((q) => [q.lat, q.lon]);
+        L.polyline(ll, { renderer, color, weight: single ? 3 : 2, opacity: single ? 0.95 : 0.7, dashArray: missed ? '8 6' : null })
+          .bindTooltip(esc(path.label), { sticky: true }).addTo(procLayer);
+        if (single) {
+          // Direction arrows about every 4 km, and the fixes with constraints.
+          let run = 0;
+          for (let i = 1; i < path.points.length; i++) {
+            const a = path.points[i - 1], b = path.points[i];
+            run += map.distance([a.lat, a.lon], [b.lat, b.lon]);
+            if (run > 4000) { arrow(a, b, color).addTo(procLayer); run = 0; }
+          }
+          for (const m of path.marks || []) symbol(m, color).addTo(procLayer);
+          // Track and distance along each leg, as on charts.
+          for (const t of path.tracks || []) {
+            const rot = ((t.bearing + 270) % 180) - 90; // readable: never upside down
+            L.marker([t.position.lat, t.position.lon], { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0],
+              html: `<div class="trk" style="transform:translate(-50%,-50%) rotate(${rot}deg)">${esc(t.text)}</div>` }) }).addTo(procLayer);
+          }
+        }
+        // A STAR ending in radar vectors: dashed, a row of arrowheads.
+        if (path.vectors && path.vectors.length === 2) {
+          const [a, b] = path.vectors;
+          L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { renderer, color, weight: 2, opacity: 0.9, dashArray: '2 6' })
+            .bindTooltip(esc(path.vectorsLabel), { sticky: true }).addTo(procLayer);
+          if (single) {
+            for (const f of [0.35, 0.55, 0.75, 0.95]) {
+              const q = { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f };
+              arrow(q, { lat: q.lat + (b.lat - a.lat) * 0.01, lon: q.lon + (b.lon - a.lon) * 0.01 }, color).addTo(procLayer);
+            }
+            L.marker([b.lat, b.lon], { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0],
+              html: `<div class="trk">${esc(path.vectorsLabel)}</div>` }) }).addTo(procLayer);
+          }
+        }
+      }
+    }
+  };
+  draw(procs.sids, $('pSID').checked, '#4fc3f7');
+  draw(procs.stars, $('pSTAR').checked, '#ffb74d');
+  draw(procs.approaches, $('pAPP').checked, '#e040fb');
+  if ($('pFix').checked) {
+    // Navaids (VOR, NDB) with chart symbols; waypoints come with the procedures.
+    for (const f of procs.fixes.filter((f) => f.kind === 'V' || f.kind === 'N')) {
+      symbol({ ident: f.ident + (f.kind === 'V' ? ' VOR' : ' NDB'), kind: f.kind, position: f.position }, '#fff').addTo(procLayer);
+    }
+  }
+}
+for (const id of ['pRunway', 'pSID', 'pSTAR', 'pAPP']) $(id).addEventListener('change', () => { fillProcedurePick(); drawProcedures(); });
+for (const id of ['pFix', 'pFilter']) $(id).addEventListener('change', drawProcedures);
+$('pFit').addEventListener('click', () => {
+  const b = L.latLngBounds([]);
+  procLayer.eachLayer((l) => { if (l.getBounds) b.extend(l.getBounds()); else if (l.getLatLng) b.extend(l.getLatLng()); });
+  if (b.isValid()) map.fitBounds(b.pad(0.05));
+});
 
 function fillRunwayEnds() {
   const sel = $('rTo'), keep = sel.value;

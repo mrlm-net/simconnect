@@ -140,6 +140,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
 │   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
 │   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
+│   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
+│   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   └── traffic/             # AI aircraft

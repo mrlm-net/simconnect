@@ -273,10 +273,15 @@ you do not need to call `SetClient` yourself.
 
 ## Known Limitations
 
-- **No ground routing:** Waypoint coordinates must be supplied by the caller.
-  There is no taxiway graph or pathfinding — that is deferred to a later milestone
-  once the full facility dataset for taxiways is understood.
-- **No arrival sequencing:** Enroute aircraft land and park autonomously via ATC;
-  custom arrival sequencing is not yet supported.
+- **The Fleet itself does no routing:** `SetWaypoints` flies the coordinates you
+  give it. Taxi routes come from the taxiway graph in [pkg/airport](airport-layout.md)
+  (sized to the aircraft, runway entries and exits), and the
+  [departure](traffic-taxi.md) and [arrival](traffic-arrival.md) controllers turn
+  them into movement.
+- **Ground traffic awareness is partial:** aircraft queue behind each other at a safe
+  gap (`GroundPicture`), but do not yet give way where routes cross or merge, or hold
+  a pushback while traffic passes behind the stand (#334).
+- **No arrival sequencing in the air:** each arrival flies its own approach; spacing
+  arrivals on final is not yet supported.
 - **ObjectIDs reset on reconnect:** Any aircraft spawned before a disconnect are
   lost. Re-spawn after reconnect if persistence is required.
