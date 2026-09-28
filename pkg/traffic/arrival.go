@@ -157,6 +157,12 @@ type ArrivalEvent struct {
 // ArrivalOption configures an ArrivalController.
 type ArrivalOption func(*ArrivalController)
 
+// ArrivalWithSeed seeds the controller's random choices and timing spreads
+// (#343), so a run can be repeated.
+func ArrivalWithSeed(seed uint64) ArrivalOption {
+	return func(c *ArrivalController) { c.rng = rand.New(rand.NewPCG(seed, 0x5eed)) }
+}
+
 // ArrivalWithIDs sets the first data definition ID and request ID; an
 // ArrivalController uses 4 definition IDs and 4 request IDs from them.
 func ArrivalWithIDs(defBase, reqBase uint32) ArrivalOption {
@@ -211,6 +217,7 @@ type ArrivalController struct {
 	rollThrough       bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist        float64 // injected path distance of the vacate stop
 	rng               *rand.Rand
+	timing            timing // this aircraft's draw of the spreads (#343)
 	lightsChanged     bool           // the sim reported a light change since the last event
 	approach          *ApproachMover // injected approach until the rollout hand-over
 	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
@@ -302,6 +309,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if c.state != ArrivalIdle {
 		return ErrAlreadyStarted
 	}
+	c.timing = drawTiming(c.rng)
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}

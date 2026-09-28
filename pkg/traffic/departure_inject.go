@@ -44,10 +44,15 @@ var (
 )
 
 func (c *TaxiController) profile() MotionProfile {
+	p := DefaultMotionProfile()
 	if c.req.Profile != (MotionProfile{}) {
-		return c.req.Profile
+		p = c.req.Profile
 	}
-	return DefaultMotionProfile()
+	limit := 0.0
+	if c.req.Airport != nil {
+		limit = c.req.Airport.TaxiMaxKts
+	}
+	return taxiSpeed(p, c.timing.taxiSpeed, limit)
 }
 
 func (c *TaxiController) takeoffProfile() TakeoffProfile {
@@ -139,7 +144,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			// Beacon on, and the push starts BeaconLeadTime later.
 			c.lights.Logo = !c.aircraft().Lights.NoLogo // as MSFS AI shows it; aircraft spawn with it off
 			c.setInjectedLights(LightsPushback, "lights beacon (pushback)")
-			c.pushAt = now.Add(BeaconLeadTime)
+			c.pushAt = now.Add(time.Duration(float64(BeaconLeadTime) * f(c.timing.beacon)))
 		}
 		if !c.pushAt.IsZero() && !now.Before(c.pushAt) {
 			// Nobody pushes into traffic: wait while the corridor behind
@@ -175,8 +180,8 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.setInjectedLights(LightsTaxi, "lights taxi")
 			// Take-off flaps set after engine start, while taxiing out.
 			to := c.aircraft().Flaps.TakeoffPct
-			c.flaps = surfaceRamp{target: to, rate: to / FlapsSetSeconds}
-			c.moveAt = now.Add(TaxiLightDelay)
+			c.flaps = surfaceRamp{target: to, rate: to / (FlapsSetSeconds * f(c.timing.flaps))}
+			c.moveAt = now.Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
 		}
 		if !c.moveAt.IsZero() && !now.Before(c.moveAt) {
 			if err := c.startTaxiOut(); err != nil {
@@ -292,6 +297,9 @@ func (c *TaxiController) updateTug(dt float64) {
 			return
 		}
 		c.tugAttached = true
+		if d, ok := t.(disconnectDelayer); ok {
+			d.SetDisconnectDelay(TugDisconnectSeconds * f(c.timing.tug))
+		}
 		c.tugErr(t.Attach(pose))
 		return
 	}
@@ -343,7 +351,7 @@ func (c *TaxiController) startPushback() error {
 // pushProfile is the aircraft's motion at pushback speed.
 func (c *TaxiController) pushProfile() MotionProfile {
 	push := c.profile()
-	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = c.aircraft().PushbackKts, 1, 0.15, 0.25
+	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = c.aircraft().PushbackKts*f(c.timing.pushSpeed), 1, 0.15, 0.25
 	return push
 }
 
@@ -902,9 +910,9 @@ func (c *TaxiController) onTakeoffFrame() {
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt
 	if fl := c.aircraft().Flaps; pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
-		c.flaps.target, c.flaps.rate = 0, fl.TakeoffPct/FlapsRetractClimbSeconds // flaps up in the climb
+		c.flaps.target, c.flaps.rate = 0, fl.TakeoffPct/(FlapsRetractClimbSeconds*f(c.timing.flaps)) // flaps up in the climb
 	}
-	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds && pose.VerticalFpm >= GearUpFpm { // positive climb
+	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds*f(c.timing.gearUp) && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")

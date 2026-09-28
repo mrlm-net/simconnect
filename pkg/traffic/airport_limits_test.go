@@ -41,8 +41,8 @@ func TestTaxiControllerAirportTaxiSpeeds(t *testing.T) {
 		for range ctl.Events() {
 		}
 	}()
-	if got := ctl.profile().CruiseKts; got != lim.TaxiMaxKts {
-		t.Errorf("taxi speed %.1f kt, want %.0f", got, lim.TaxiMaxKts)
+	if got := ctl.profile().CruiseKts; got > lim.TaxiMaxKts || got < lim.TaxiMaxKts*(1-TaxiSpeedSpread)-1e-9 { // capped; a slower crew taxis a little below it (#343)
+		t.Errorf("taxi speed %.1f kt, want at most %.0f", got, lim.TaxiMaxKts)
 	}
 	if !run(TaxiTaxiing, 60*600) {
 		t.Fatalf("state %v, want taxiing", ctl.State())

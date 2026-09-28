@@ -133,6 +133,23 @@ With `ArrivalRequest.InjectApproach` (and `ArrivalWithInjector`) MSFS AI does no
 
 Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fpm. Pitch readback equals the command.
 
+## Natural timing
+
+Every wait and duration with a real-world counterpart varies a little from aircraft to aircraft (#343), so traffic never looks scripted. Each aircraft draws one factor per spread when its controller starts and keeps it for the whole flight — one crew is a little quicker than the next, not erratic. A spread of 0 gives exactly the tunable; `TaxiWithSeed` / `ArrivalWithSeed` make the draws reproducible.
+
+| Spread | Default | Varies |
+|---|---|---|
+| `DwellJitter` | ±10 % | each gate wait (pushback, taxi, line-up, take-off) and the after-landing dwell |
+| `BeaconLeadSpread` | ±30 % | `BeaconLeadTime`: beacon on to the push |
+| `TaxiLightSpread` | ±30 % | `TaxiLightDelay`: taxi light to moving; after landing, landing lights off to taxi light on |
+| `TugDisconnectSpread` | ±30 % | `TugDisconnectSeconds`: push done to the tug backing off (`SetDisconnectDelay`) |
+| `FlapsSpread` | ±20 % | `FlapsSetSeconds`, `FlapsRetractClimbSeconds`, `FlapsRetractSeconds`, `FlapsFullSeconds` |
+| `GearUpSpread` | ±20 % | `GearUpDelaySeconds` after lift-off |
+| `TaxiSpeedSpread` | ±8 % | the taxi speed (never above the airport's `TaxiMaxKts`) |
+| `PushbackSpeedSpread` | ±10 % | the pushback pace |
+
+Rolling take-offs (`DefaultRollingTakeoffChance`) and roll-through vacates (`DefaultRollThroughChance`) are random per flight too; the airport map's turnaround dwell varies ±20 % and the ATC game's traffic interval ±30 %.
+
 ## Measured in MSFS 2024
 
 Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):

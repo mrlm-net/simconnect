@@ -154,6 +154,12 @@ type TaxiEvent struct {
 // TaxiOption configures a TaxiController.
 type TaxiOption func(*TaxiController)
 
+// TaxiWithSeed seeds the controller's random choices and timing spreads
+// (#343), so a run can be repeated.
+func TaxiWithSeed(seed uint64) TaxiOption {
+	return func(c *TaxiController) { c.rng = rand.New(rand.NewPCG(seed, 0xdea)) }
+}
+
 // TaxiWithIDs sets the first data definition ID and request ID. A controller
 // uses 2 definition IDs and 4 request IDs from these bases.
 func TaxiWithIDs(defBase, reqBase uint32) TaxiOption {
@@ -198,6 +204,7 @@ type TaxiController struct {
 	groundDrive
 	inj                                                     *Injector
 	rng                                                     *rand.Rand
+	timing                                                  timing // this aircraft's draw of the spreads (#343)
 	sent                                                    map[uint32]string
 	fast                                                    bool // monitor every frame: throttle progress events
 	emittedAt                                               time.Time
@@ -309,6 +316,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	if c.state != TaxiIdle {
 		return ErrAlreadyStarted
 	}
+	c.timing = drawTiming(c.rng)
 	if req.Graph == nil || req.Model == "" {
 		return fmt.Errorf("%w: Graph and Model are required", ErrBadTaxiRequest)
 	}
