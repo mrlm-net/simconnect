@@ -98,8 +98,11 @@ With `ArrivalRequest.InjectApproach` (and `ArrivalWithInjector`) MSFS AI does no
   - speed easing from `StartKts` to `ApproachKts` by 1 nm;
   - a flare from 30 ft, with the sink rate easing to `TouchdownFpm` (−120) while the pitch rises from 2.5° to 5.5°;
   - after touchdown, the nose coming down over 4 s.
+- Flaps are at `ApproachFlapsPct` (flaps 3) on final and run to full over 5 s when passing `FlapsFullFt` (1000 ft), the stabilised-approach gate.
+- Ground spoilers come out over `SpoilerDeploySeconds` at main-gear touchdown (`Injector.SetSpoilers`).
 - With the nose wheel down, the injected rollout takes over from exactly that pose.
-- Flaps retract over `FlapsRetractSeconds` once clear of the runway.
+- Once clear of the runway the spoilers stow and the flaps retract over `FlapsRetractSeconds`.
+- Thrust reversers cannot be shown on an AI aircraft. The reverser nozzle SimVar is not settable, and the reverse-thrust events are ignored.
 
 `Injector.PlaceAir` places an `ApproachPose`: the main wheels `HeightFt` above the ground, pitched nose up `PitchDeg`, and on the ground from touchdown. MSFS AI objects ignore the flaps handle and `FLAPS_*` events, so `SetFlaps` writes the flap surface positions directly. Ramp the percentage for a visible movement. Gear animates on a frozen aircraft.
 

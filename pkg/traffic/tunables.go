@@ -239,3 +239,12 @@ const FlapsRetractSeconds = 20.0
 const (
 	SpoilerDeploySeconds = 1.0
 )
+
+// Injected approach flaps: ApproachFlapsPct (flaps 3 on an A320) from the
+// start, running to full over FlapsFullSeconds when passing FlapsFullFt,
+// the stabilised-approach gate.
+const (
+	ApproachFlapsPct = 75.0
+	FlapsFullFt      = 1000.0
+	FlapsFullSeconds = 5.0
+)

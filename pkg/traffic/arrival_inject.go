@@ -443,8 +443,8 @@ func (c *ArrivalController) startInjectedApproach() error {
 	}
 	c.note("injector takeover on final", nil)
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
-	c.note("flaps full", c.inj.SetFlaps(c.objectID, 100))
-	c.flapsPct = 100
+	c.note("approach flaps", c.inj.SetFlaps(c.objectID, ApproachFlapsPct))
+	c.flapsPct = ApproachFlapsPct
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
@@ -474,6 +474,12 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.AGL, c.last.OnGround = pose.HeightFt, pose.OnGround
 	c.stepSurfaces(math.Max(dt, 0))
+	// Landing flaps: from the approach setting to full over
+	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
+	if pose.HeightFt < FlapsFullFt && c.flapsPct < 100 && !pose.OnGround {
+		c.flapsPct = math.Min(100, c.flapsPct+(100-ApproachFlapsPct)/FlapsFullSeconds*math.Max(dt, 0))
+		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+	}
 	switch {
 	case c.state == ArrivalApproaching && pose.HeightFt < LandingAGLFt:
 		c.setState(ArrivalLanding, nil)
