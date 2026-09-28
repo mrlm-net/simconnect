@@ -276,7 +276,11 @@ func (m *GroundMover) step(dt float64) {
 	// be slow entering a turn) and the braking curve to the stop point,
 	// reaching it in about SpeedResponseSeconds.
 	rem := m.hold - m.s
-	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+TurnLookaheadMeters))
+	// Look ahead by what the response lag covers (at least
+	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
+	// runs about SpeedResponseSeconds late on every slow-down.
+	ahead := math.Max(TurnLookaheadMeters, m.v*SpeedResponseSeconds)
+	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+ahead))
 	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
 	if m.slowKts > 0 && m.s < m.slowAt {
 		v0 := m.slowKts * ktsToMS
