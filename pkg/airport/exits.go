@@ -182,7 +182,8 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 		prev = exit.Path[len(exit.Path)-2]
 	}
 	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
-	in, err := fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(exit.Node, prev, to, o) })
+	opts = g.RemainingOptions(opts, exit.Path) // via points on the exit path are passed
+	in, err := g.fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(exit.Node, prev, to, o) })
 	if err != nil {
 		return nil, err
 	}

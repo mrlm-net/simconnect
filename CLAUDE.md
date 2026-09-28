@@ -139,6 +139,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
 │   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
 │   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
+│   │   ├── custom.go        #   Custom routes (Via, Taxiways): RouteError, RemainingOptions
 │   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
 │   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)

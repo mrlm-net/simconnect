@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -65,6 +66,22 @@ type RouteOptions struct {
 	// an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by
 	// JB, the nearest). Zero means DefaultOwnApronMeters; negative disables.
 	OwnApronMeters float64
+	// Via makes the route pass through these nodes in order (a custom route,
+	// #340). Each leg is found by the same search and costs, and the route
+	// goes on from a via point the way it arrived: it never turns back there.
+	// A via point the route cannot reach returns a *RouteError wrapping
+	// ErrViaUnreachable.
+	Via []NodeID
+	// Taxiways makes the route follow these taxiways in order ("via A, L"):
+	// the names must appear in Route.Taxiways in this order. Until the last
+	// is joined, other taxiways stay usable to connect them at
+	// OffTaxiwaysFactor times their length. A route that cannot follow them
+	// returns a *RouteError wrapping ErrTaxiwaysNotFollowed. Names match
+	// case-insensitively.
+	//
+	// With Via or Taxiways a route that does not fit the aircraft (HalfSpan)
+	// is never returned Tight: the error wraps ErrTooNarrow instead.
+	Taxiways []string
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -120,7 +137,7 @@ func (g *Graph) Route(from, to NodeID, opts RouteOptions) (*Route, error) {
 	if !g.valid(from) || !g.valid(to) {
 		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
 	}
-	return fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(from, -1, to, o) })
+	return g.fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(from, -1, to, o) })
 }
 
 // routeVia is Route for an aircraft that arrived at from via prev (-1 if
@@ -128,11 +145,12 @@ func (g *Graph) Route(from, to NodeID, opts RouteOptions) (*Route, error) {
 func (g *Graph) routeVia(from, prev, to NodeID, opts RouteOptions) (*Route, error) {
 	s := g.shortestPaths(from, prev, opts)
 	if math.IsInf(s.dist[to], 1) {
+		if err := s.failure(); err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: node %d to node %d", ErrNoRoute, from, to)
 	}
-	r := g.routeFromNodes(s.path(to))
-	r.Cost = s.dist[to]
-	return r, nil
+	return s.route(g, to)
 }
 
 // RouteToRunway returns a departure taxi route from a parking spot to a
@@ -146,7 +164,7 @@ func (g *Graph) RouteToRunway(parking int, runwayEnd string, opts RouteOptions) 
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
 	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
-	return fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.runwayRoute(from, -1, runwayEnd, o) })
+	return g.fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.runwayRoute(from, -1, runwayEnd, o) })
 }
 
 // RouteToRunwayFrom is RouteToRunwayEntry for an aircraft at node from that
@@ -158,7 +176,7 @@ func (g *Graph) RouteToRunwayFrom(from, prev NodeID, runwayEnd, entry string, op
 	if !g.valid(from) || (prev >= 0 && !g.valid(prev)) {
 		return nil, fmt.Errorf("%w: node out of range", ErrNoRoute)
 	}
-	return fitOrTight(opts, func(o RouteOptions) (*Route, error) {
+	return g.fitOrTight(opts, func(o RouteOptions) (*Route, error) {
 		if entry == "" {
 			return g.runwayRoute(from, prev, runwayEnd, o)
 		}
@@ -225,6 +243,9 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		cands = append(cands, cand{id: id, fromThresh: along, route: dist[id], ils: h.ILS})
 	}
 	if len(cands) == 0 {
+		if err := s.failure(); err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: no reachable hold-short for runway %s", ErrNoRoute, end.Name)
 	}
 	// Prefer runway holding points; fall back to ILS holds only if none is reachable.
@@ -252,8 +273,10 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		}
 	}
 
-	r := g.routeFromNodes(s.path(best.id))
-	r.Cost = best.route
+	r, err := s.route(g, best.id)
+	if err != nil {
+		return nil, err
+	}
 	r.Runway, r.RunwayEnd = rwy.Name(), end.Name
 	return r, nil
 }
@@ -356,12 +379,7 @@ func (o RouteOptions) changePenalty() float64 {
 // turnCost is the extra cost of going on from node onto out, having arrived
 // from prev on taxiway inName.
 func (g *Graph) turnCost(prev, node NodeID, inName string, out Edge, opts RouteOptions) float64 {
-	a, b, c := g.Nodes[prev].Position, g.Nodes[node].Position, g.Nodes[out.To].Position
-	ax, az := g.local.xz(a)
-	bx, bz := g.local.xz(b)
-	cx, cz := g.local.xz(c)
-	h1, h2 := math.Atan2(bx-ax, bz-az), math.Atan2(cx-bx, cz-bz)
-	angle := math.Abs(math.Mod(math.Abs(h2-h1)*180/math.Pi+180, 360) - 180)
+	angle := g.turnAngle(prev, node, out.To)
 	cost := 0.0
 	if angle >= UTurnAngle {
 		cost += UTurnPenalty
@@ -376,7 +394,20 @@ func (g *Graph) turnCost(prev, node NodeID, inName string, out Edge, opts RouteO
 	return cost
 }
 
-// search is a turn-aware Dijkstra over (node, arrived-from) states.
+// turnAngle is the heading change, in degrees 0–180, of going on from node
+// to next having arrived from prev.
+func (g *Graph) turnAngle(prev, node, next NodeID) float64 {
+	ax, az := g.local.xz(g.Nodes[prev].Position)
+	bx, bz := g.local.xz(g.Nodes[node].Position)
+	cx, cz := g.local.xz(g.Nodes[next].Position)
+	h1, h2 := math.Atan2(bx-ax, bz-az), math.Atan2(cx-bx, cz-bz)
+	return math.Abs(math.Mod(math.Abs(h2-h1)*180/math.Pi+180, 360) - 180)
+}
+
+// search is a turn-aware Dijkstra over (node, arrived-from) states. With
+// RouteOptions.Via and Taxiways a state also carries how many via points
+// and taxiways the route has passed, and only states that passed them all
+// count towards dist.
 type search struct {
 	dist []float64 // cheapest cost per node
 	best []int     // state with that cost, -1 if unreached
@@ -384,6 +415,84 @@ type search struct {
 	from []int     // per state: previous state, -1 at the source
 	name []string  // per state: taxiway arrived on (unnamed connectors inherit the previous name)
 	cost []float64 // per state
+
+	via      []NodeID // RouteOptions.Via
+	taxiways []string // RouteOptions.Taxiways
+	maxVia   int      // most via points any state passed
+	maxTw    int      // most taxiways any state past all via points followed
+}
+
+// stateKey identifies a search state: the node, the node it was reached
+// from, and the via points and taxiways passed.
+type stateKey struct {
+	node, prev NodeID
+	via, tw    int
+}
+
+// OffTaxiwaysFactor multiplies the cost of named taxiway edges that are
+// neither the taxiway a RouteOptions.Taxiways route is on nor the next one
+// in the list: the route may use them to connect, but only where it must.
+const OffTaxiwaysFactor = 10.0
+
+// route assembles the route to to. With RouteOptions.Taxiways it checks the
+// route names them in order (parallel edges may carry other names than the
+// search followed) and returns ErrTaxiwaysNotFollowed if not.
+func (s *search) route(g *Graph, to NodeID) (*Route, error) {
+	r := g.routeFromNodes(s.path(to))
+	r.Cost = s.dist[to]
+	if n := followedTaxiways(r.Taxiways, s.taxiways); n < len(s.taxiways) {
+		return nil, &RouteError{Err: ErrTaxiwaysNotFollowed, Via: -1, Node: -1, Taxiway: s.taxiways[n]}
+	}
+	return r, nil
+}
+
+// failure explains why a search with RouteOptions.Via or Taxiways reached
+// no destination; nil without them.
+func (s *search) failure() error {
+	switch {
+	case s.maxVia < len(s.via):
+		return &RouteError{Err: ErrViaUnreachable, Via: s.maxVia, Node: s.via[s.maxVia]}
+	case len(s.taxiways) > 0:
+		return &RouteError{Err: ErrTaxiwaysNotFollowed, Via: -1, Node: -1, Taxiway: s.taxiways[min(s.maxTw, len(s.taxiways)-1)]}
+	case len(s.via) > 0:
+		return &RouteError{Err: ErrNoRoute, Via: len(s.via), Node: -1}
+	}
+	return nil
+}
+
+// passVia advances the count of via points passed on arriving at node.
+func passVia(via []NodeID, n int, node NodeID) int {
+	for n < len(via) && via[n] == node {
+		n++
+	}
+	return n
+}
+
+// offTaxiways reports whether e is a named taxiway edge a Taxiways route
+// that followed tw of them should keep off: neither the current nor the next
+// taxiway in the list. Past the last one the route goes on freely to its
+// destination ("via B" ends where B meets the way to the holding point).
+// Runway paths and stand lead-ins never count.
+func offTaxiways(e Edge, taxiways []string, tw int) bool {
+	if tw >= len(taxiways) || e.Name == "" ||
+		e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING {
+		return false
+	}
+	if strings.EqualFold(e.Name, taxiways[tw]) {
+		return false
+	}
+	return tw == 0 || !strings.EqualFold(e.Name, taxiways[tw-1])
+}
+
+// followedTaxiways counts how many of want names contains in order.
+func followedTaxiways(names, want []string) int {
+	i := 0
+	for _, n := range names {
+		if i < len(want) && strings.EqualFold(n, want[i]) {
+			i++
+		}
+	}
+	return i
 }
 
 // path returns the node sequence from the source to to.
@@ -407,7 +516,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
 	n := len(g.Nodes)
-	s := &search{dist: make([]float64, n), best: make([]int, n)}
+	s := &search{dist: make([]float64, n), best: make([]int, n), via: opts.Via, taxiways: opts.Taxiways}
 	own := opts.ownApron()
 	srcPos := g.Nodes[src].Position
 	nearSrc := func(id NodeID) bool {
@@ -418,20 +527,33 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		s.dist[i] = math.Inf(1)
 		s.best[i] = -1
 	}
-	index := map[[2]NodeID]int{}
+	index := map[stateKey]int{}
 	crossed := map[[2]NodeID]int{} // runway crossings per edge
-	state := func(node, prev NodeID) int {
-		k := [2]NodeID{node, prev}
+	var vias, tws []int            // per state: via points passed, taxiways followed
+	state := func(node, prev NodeID, via, tw int) int {
+		k := stateKey{node, prev, via, tw}
 		if id, ok := index[k]; ok {
 			return id
 		}
 		id := len(s.node)
 		index[k] = id
 		s.node, s.from, s.name, s.cost = append(s.node, node), append(s.from, -1), append(s.name, ""), append(s.cost, math.Inf(1))
+		vias, tws = append(vias, via), append(tws, tw)
+		if via > s.maxVia {
+			s.maxVia = via
+		}
+		if via == len(s.via) && tw > s.maxTw {
+			s.maxTw = tw
+		}
 		return id
 	}
-	start := state(src, -1)
-	s.cost[start], s.dist[src], s.best[src] = 0, 0, start
+	// done reports whether a state passed every via point and taxiway.
+	done := func(st int) bool { return vias[st] == len(s.via) && tws[st] == len(s.taxiways) }
+	start := state(src, -1, passVia(s.via, 0, src), 0)
+	s.cost[start] = 0
+	if done(start) {
+		s.dist[src], s.best[src] = 0, start
+	}
 	if g.valid(srcPrev) {
 		s.name[start] = g.edge(srcPrev, src).Name
 	}
@@ -450,11 +572,25 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		if s.from[st] != -1 {
 			prev = s.node[s.from[st]]
 		}
+		// At a via point the route goes on the way it arrived.
+		atVia := vias[st] > 0 && s.via[vias[st]-1] == node && g.valid(prev)
 		for _, e := range g.Adj[node] {
 			if !usable(e, opts) || !opts.fits(e) {
 				continue
 			}
+			if atVia && g.turnAngle(prev, node, e.To) >= UTurnAngle {
+				continue
+			}
 			d := cur.dist + e.Length
+			tw := tws[st]
+			if offTaxiways(e, s.taxiways, tw) {
+				d += (OffTaxiwaysFactor - 1) * e.Length
+			}
+			// A taxiway counts on joining it, as in Route.Taxiways: going on
+			// along it does not follow it again.
+			if tw < len(s.taxiways) && strings.EqualFold(e.Name, s.taxiways[tw]) && (st == start || !strings.EqualFold(e.Name, s.name[st])) {
+				tw++
+			}
 			if e.AlongRunway && !opts.UseRunwayPaths {
 				d += (AlongRunwayFactor - 1) * e.Length
 			}
@@ -487,14 +623,14 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			if g.valid(prev) {
 				d += g.turnCost(prev, node, s.name[st], e, opts)
 			}
-			next := state(e.To, node)
+			next := state(e.To, node, passVia(s.via, vias[st], e.To), tw)
 			if d < s.cost[next] {
 				nm := e.Name
 				if nm == "" {
 					nm = s.name[st]
 				}
 				s.cost[next], s.from[next], s.name[next] = d, st, nm
-				if d < s.dist[e.To] {
+				if done(next) && d < s.dist[e.To] {
 					s.dist[e.To], s.best[e.To] = d, next
 				}
 				heap.Push(pq, queued{id: NodeID(next), dist: d})
@@ -674,17 +810,35 @@ func (o RouteOptions) fits(e Edge) bool {
 }
 
 // fitOrTight runs a route search with the span check and, when no route
-// fits, again without it, marking the result Tight.
-func fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, error)) (*Route, error) {
+// fits, again without it, marking the result Tight. A custom route (Via,
+// Taxiways) is never Tight: when only the loose search finds it, the error
+// names where the aircraft does not fit (ErrTooNarrow).
+func (g *Graph) fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, error)) (*Route, error) {
+	if err := g.ValidateRouteOptions(opts); err != nil {
+		return nil, err
+	}
 	r, err := find(opts)
-	if err == nil || opts.HalfSpan <= 0 || !errors.Is(err, ErrNoRoute) {
+	if err == nil || !errors.Is(err, ErrNoRoute) {
 		return r, err
 	}
-	loose := opts
-	loose.HalfSpan = 0
-	if r2, err2 := find(loose); err2 == nil {
-		r2.Tight = true
-		return r2, nil
+	if opts.HalfSpan > 0 {
+		loose := opts
+		loose.HalfSpan = 0
+		if r2, err2 := find(loose); err2 == nil {
+			if opts.custom() {
+				return nil, g.tooNarrow(r2, opts)
+			}
+			r2.Tight = true
+			return r2, nil
+		}
+	}
+	// Blame Via or Taxiways only when the destination is reachable at all.
+	if opts.custom() {
+		plain := opts
+		plain.Via, plain.Taxiways, plain.HalfSpan = nil, nil, 0
+		if _, perr := find(plain); perr != nil {
+			return nil, perr
+		}
 	}
 	return r, err
 }

@@ -87,7 +87,7 @@ func (g *Graph) RouteToRunwayEntry(parking int, runwayEnd, entry string, opts Ro
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
 	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
-	r, err := fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.entryRoute(from, -1, runwayEnd, entry, o) })
+	r, err := g.fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.entryRoute(from, -1, runwayEnd, entry, o) })
 	if errors.Is(err, ErrNoRoute) {
 		return nil, fmt.Errorf("%w from parking %d", err, parking)
 	}
@@ -121,6 +121,9 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		}
 	}
 	if best == nil {
+		if err := s.failure(); err != nil {
+			return nil, err
+		}
 		for _, e := range entries {
 			if strings.EqualFold(e.Taxiway, entry) {
 				return nil, fmt.Errorf("%w: runway %s at %s", ErrNoRoute, end.Name, entry)
@@ -128,8 +131,10 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		}
 		return nil, fmt.Errorf("%w: %s at %s", ErrUnknownEntry, end.Name, entry)
 	}
-	r := g.routeFromNodes(s.path(target))
-	r.Cost = s.dist[target]
+	r, err := s.route(g, target)
+	if err != nil {
+		return nil, err
+	}
 	r.Runway, r.RunwayEnd, r.Entry = rwy.Name(), end.Name, best.Taxiway
 	return r, nil
 }
