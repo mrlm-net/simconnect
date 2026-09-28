@@ -222,7 +222,7 @@ func TestStandAllocatorScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, m := range []engine.Message{
-		byTypeMsg(ai, 11, 1, 3, standScanData{Lat: lat22, Lon: lon22, OnGround: 1, WingSpanFt: 197}), // a B767 (60 m)
+		byTypeMsg(ai, 11, 1, 3, standScanData{Lat: lat22, Lon: lon22, OnGround: 1, WingSpanFt: 197}),  // a B767 (60 m)
 		byTypeMsg(ai, 12, 2, 3, standScanData{Lat: lat20, Lon: lon20, OnGround: 1, GroundSpeedKt: 8}), // pushing back
 		byTypeMsg(ai, 13, 3, 3, standScanData{Lat: lat20, Lon: lon20, OnGround: 0}),                   // overhead
 		byTypeMsg(user, 1, 1, 1, standScanData{Lat: lat15, Lon: lon15, OnGround: 1, WingSpanFt: 36}),

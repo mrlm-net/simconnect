@@ -315,6 +315,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					st.mu.Lock()
 					st.traffic, st.trafficAt = scan, time.Now()
+					cc.reportTraffic(scan)
 					st.mu.Unlock()
 					scan = nil
 				}

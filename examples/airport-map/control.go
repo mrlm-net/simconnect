@@ -96,15 +96,19 @@ type controlCenter struct {
 	items  map[int]*controlled
 	models map[string]bool                    // aircraft titles the simulator offers
 	stands map[string]*traffic.StandAllocator // by ICAO
-	ticks  int
+	// picture is what the controlled aircraft know of each other and of the
+	// sim's other aircraft on the ground (#334).
+	picture *traffic.GroundPicture
+	ticks   int
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
 	return &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models: map[string]bool{},
-		stands: map[string]*traffic.StandAllocator{},
+		models:  map[string]bool{},
+		stands:  map[string]*traffic.StandAllocator{},
+		picture: traffic.NewGroundPicture(),
 	}
 }
 
@@ -252,7 +256,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj))
+		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
 			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Takeoff: traffic.TakeoffProfileFor(model)}); err != nil {
@@ -262,7 +266,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj))
+		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail,
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach, Profile: prof}); err != nil {
 			return nil, err
@@ -799,4 +803,31 @@ func clearanceOf(kind, from, to string) string {
 		return "taxi"
 	}
 	return ""
+}
+
+// reportTraffic puts the sim's other aircraft on the ground (MSFS AI, the
+// user) into the ground picture, so the controlled aircraft stop for them
+// too. The controlled ones report themselves.
+func (cc *controlCenter) reportTraffic(scan []Traffic) {
+	cc.mu.Lock()
+	own := map[uint32]bool{}
+	for _, it := range cc.items {
+		if it.dep != nil {
+			own[it.dep.ObjectID()] = true
+		} else if it.arr != nil {
+			own[it.arr.ObjectID()] = true
+		}
+	}
+	cc.mu.Unlock()
+	now := time.Now()
+	for _, t := range scan {
+		if !t.OnGround || own[t.ObjectID] {
+			continue
+		}
+		p := traffic.DefaultMotionProfile()
+		if t.Span > 0 {
+			p.SpanMeters = t.Span
+		}
+		cc.picture.Report(t.ObjectID, airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Heading, p, now)
+	}
 }

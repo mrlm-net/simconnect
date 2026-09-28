@@ -500,6 +500,9 @@ func (c *TaxiController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.removeTug()
+	if c.picture != nil {
+		c.picture.Forget(c.objectID)
+	}
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()

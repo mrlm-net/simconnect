@@ -195,7 +195,9 @@ type GroundMover struct {
 	reverse    bool           // pushed back: the main gear follows the path
 	hold       float64        // stop point on the path; path length when none
 	shortStart bool           // started from a standstill within StopApproachMeters of the stop
-	slowAt     float64        // SlowAt point and speed; slowKts 0 when none
+	trafficAt  float64        // stop behind traffic ahead (SetTrafficStop), when hasTraffic
+	hasTraffic bool
+	slowAt     float64 // SlowAt point and speed; slowKts 0 when none
 	slowKts    float64
 	pose       GroundPose
 
@@ -262,6 +264,22 @@ func (m *GroundMover) Pose() GroundPose { return m.pose }
 // Decel·1.5 allows; a hold behind the aircraft stops it where it is.
 func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.path.Length())) }
 
+// SetTrafficStop makes the aircraft stop with its nose gear at distance d
+// along the path behind traffic ahead, besides any HoldAt; it follows as d
+// moves on. ClearTrafficStop lifts it.
+func (m *GroundMover) SetTrafficStop(d float64) { m.trafficAt, m.hasTraffic = d, true }
+
+// ClearTrafficStop lifts the traffic stop.
+func (m *GroundMover) ClearTrafficStop() { m.hasTraffic = false }
+
+// stop is where the aircraft must stop: the hold, or traffic before it.
+func (m *GroundMover) stop() float64 {
+	if m.hasTraffic && m.trafficAt < m.hold {
+		return math.Max(m.s, m.trafficAt)
+	}
+	return m.hold
+}
+
 // ClearHold lets the aircraft continue to the end of the path.
 func (m *GroundMover) ClearHold() { m.hold = m.path.Length() }
 
@@ -286,7 +304,8 @@ func (m *GroundMover) step(dt float64) {
 	// Chase the planned speed here and a little ahead (the nose must already
 	// be slow entering a turn) and the braking curve to the stop point,
 	// reaching it in about SpeedResponseSeconds.
-	rem := m.hold - m.s
+	stop := m.stop()
+	rem := stop - m.s
 	// Look ahead by what the response lag covers (at least
 	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
 	// runs about SpeedResponseSeconds late on every slow-down.
@@ -328,18 +347,18 @@ func (m *GroundMover) step(dt float64) {
 	m.v = math.Max(0, m.v+m.a*dt)
 	// Around a SlowAt point the aircraft keeps rolling at its slow speed
 	// (braking momentum would otherwise stop it) unless it must hold.
-	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
+	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && stop-m.s > 1 {
 		m.v, m.a = v0, math.Max(m.a, 0)
 	}
 	step := m.v * dt
 	// Braking stops a hair short of the point: cover the last centimetres at
 	// a creep instead of snapping onto it (the speed stays as braked).
-	if rem := m.hold - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
+	if rem := stop - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
 		step = math.Max(step, finalCreep*dt)
 	}
-	m.s = math.Min(m.s+step, m.hold)
-	if m.s >= m.hold {
-		m.s, m.v, m.a = m.hold, 0, 0
+	m.s = math.Min(m.s+step, stop)
+	if m.s >= stop {
+		m.s, m.v, m.a = stop, 0, 0
 	}
 }
 

@@ -25,6 +25,13 @@ func TaxiWithInjector(inj *Injector) TaxiOption {
 	return func(c *TaxiController) { c.inj = inj }
 }
 
+// TaxiWithGroundPicture shares the ground picture with the other aircraft at
+// the airport: the injected departure reports itself and, while taxiing,
+// stops behind the traffic ahead (#334).
+func TaxiWithGroundPicture(p *GroundPicture) TaxiOption {
+	return func(c *TaxiController) { c.picture = p }
+}
+
 // Departure lights by phase: parked with nav lights, beacon on from the
 // pushback clearance, taxi light for taxiing, strobes when entering the
 // runway, landing lights with the take-off clearance, taxi light off once
@@ -95,6 +102,18 @@ func (c *TaxiController) startInjectedDeparture() error {
 // onDepartureFrame runs the injected departure one sim frame.
 func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	now := c.now()
+	// While taxiing the departure follows the traffic ahead (#334).
+	c.followTraffic = c.state == TaxiTaxiing
+	if c.state < TaxiDeparting {
+		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
+		if c.mover != nil { // injected: where it is placed
+			p := c.mover.Pose()
+			pos, hdg = p.Position, p.Heading
+		}
+		c.reportGround(c.objectID, pos, hdg, now)
+	} else if c.picture != nil {
+		c.picture.Forget(c.objectID) // on the take-off roll or airborne
+	}
 	if !c.lightsSet {
 		// Parked: nav lights, logo and wing as the aircraft has them.
 		c.lightsSet = true

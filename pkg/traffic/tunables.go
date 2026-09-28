@@ -336,3 +336,17 @@ const (
 	PositiveClimbFt     = 15.0
 	TailClearFtPerDeg   = 3.0
 )
+
+// Ground traffic (GroundPicture, #334): a taxiing aircraft looks
+// TrafficLookMeters ahead along its path for another aircraft's body within
+// its wingspan corridor and stops with its nose TrafficGapMeters behind it.
+// Reports older than TrafficStaleAfter are ignored; bodies are sampled every
+// trafficBodyStep meters.
+const (
+	TrafficLookMeters = 150.0
+	TrafficGapMeters  = 15.0
+	TrafficStaleAfter = 3 * time.Second
+	trafficBodyStep   = 5.0
+	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
+	TrafficCheckEvery = 100 * time.Millisecond
+)

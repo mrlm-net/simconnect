@@ -39,6 +39,12 @@ type groundDrive struct {
 	crossClears     int  // crossing clearances not used yet
 	holdAtCrossings bool // stop short of crossings until cleared
 
+	// Ground traffic (#334): the picture shared with the other aircraft,
+	// and whether this one follows the traffic ahead (while taxiing).
+	picture       *GroundPicture
+	followTraffic bool
+	trafficAt     time.Time // last look ahead (every TrafficCheckEvery)
+
 	// Progressive taxi (#322): the clearance limit on the current path.
 	limit     float64
 	hasLimit  bool
@@ -50,6 +56,7 @@ func (d *groundDrive) advance() (GroundPose, error) {
 	now := d.clock()
 	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), 0.25))
 	d.lastStep, d.frameDt = now, dt
+	d.followAhead(now)
 	pose := d.mover.Step(dt)
 	return pose, d.injector.Place(d.object, pose)
 }
@@ -267,4 +274,38 @@ func pathLen(p []airport.LatLon) float64 {
 func leadInAhead(g *airport.Graph, parking int, junction airport.LatLon) bool {
 	p := g.Layout.Parking[parking]
 	return alongHeading(p.Position, p.Heading, junction) > 0
+}
+
+// followAhead stops the mover behind the traffic ahead on its path, at a
+// safe gap from its body, while taxiing (#334).
+func (d *groundDrive) followAhead(now time.Time) {
+	if d.picture == nil || !d.followTraffic || d.mover == nil || d.mover.reverse {
+		if d.mover != nil {
+			d.mover.ClearTrafficStop()
+		}
+		return
+	}
+	if now.Sub(d.trafficAt) < TrafficCheckEvery {
+		return // the stop is a place on the path: it holds until the next look
+	}
+	d.trafficAt = now
+	half := d.prof.SpanMeters / 2
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	s0 := d.mover.Pose().Distance
+	body := d.picture.blocking(d.object, d.mover.Path(), s0, TrafficLookMeters, half, now)
+	if math.IsInf(body, 1) {
+		d.mover.ClearTrafficStop()
+		return
+	}
+	// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
+	d.mover.SetTrafficStop(body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters)
+}
+
+// reportGround puts this aircraft in the ground picture.
+func (d *groundDrive) reportGround(id uint32, pos airport.LatLon, hdg float64, now time.Time) {
+	if d.picture != nil && id != 0 {
+		d.picture.Report(id, pos, hdg, d.prof, now)
+	}
 }
