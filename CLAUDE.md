@@ -148,6 +148,11 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── taxiroute.go     #   Route → AI waypoints, line-up waypoints
 │       ├── motion.go        #   GroundPath/GroundMover: injected ground motion
 │       ├── inject.go        #   Injector: takeover, Place, SetLights, Release
+│       ├── ground_drive.go  #   Shared injected ground driving: lights, crossings, gates
+│       ├── approach.go      #   ApproachMover: injected approach, flare, touchdown
+│       ├── takeoff.go       #   TakeoffMover: injected take-off roll, rotation, climb
+│       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected)
+│       ├── departure_inject.go # Injected departure with clearance gates
 │       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
@@ -189,7 +194,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── manager-requests-ids.md # ID allocation reference
 │   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
-│   ├── traffic-taxi.md      #   Departure taxi controller
+│   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   └── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts

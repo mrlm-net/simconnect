@@ -91,6 +91,39 @@ Found by running the controller in MSFS 2024 at LKPR:
 - **The spawn heading** is the stand's own `HEADING`, so the aircraft appears correctly parked.
 - The line-up enters the runway abeam the hold-short, which is an intersection departure when the hold-short is down the runway.
 
+## Injected departure
+
+With `TaxiWithInjector(inj)` the controller drives the whole departure by position injection instead of MSFS AI waypoints: pushback, taxi, line-up, take-off and the initial climb. It uses the same injected ground driving as arrivals ([Injected Ground Movement](traffic-motion.md)), so turns, speeds, runway-crossing holds and lights follow the same rules. Feed every message to both the injector and the controller.
+
+```go
+inj := traffic.NewInjector(client)
+ctl := traffic.NewTaxiController(fleet, traffic.TaxiWithInjector(inj))
+ctl.Start(traffic.TaxiRequest{Graph: g, Parking: c22, Runway: "24", Entry: "B", Model: model})
+// message loop: inj.Handle(msg); ctl.Handle(msg)
+```
+
+| State | What happens | Gate |
+|---|---|---|
+| `TaxiAwaitingPushback` | parked on the stand (nav lights) | `ClearPushback` |
+| `TaxiPushback` | beacon on, then pushed tail first 3 s later: to the taxiway junction and on along the taxiway away from the taxi direction, so it ends facing the way it will taxi | |
+| `TaxiAwaitingTaxi` | pushed back, engines starting | `ClearToTaxi` |
+| `TaxiTaxiing` | taxi light on, moving 1.5 s later; take-off flaps set; stops short of runway crossings (`ClearToCross`) | |
+| `TaxiHoldingShort` | nose 7 m before the departure runway's hold-short line, no strobes (`HoldingShortOf`) | `ClearToLineUp`, `ClearForTakeoff` |
+| `TaxiLiningUp` | strobes on; along the entry taxiway's own path onto the runway, aligned 80 m down the centreline | |
+| `TaxiLinedUp` | line up and wait | `ClearForTakeoff` |
+| `TaxiDeparting` | landing lights on; take-off roll, rotation at Vr, lift-off, climb; gear up above 50 ft (taxi light off); flaps retract from 1000 ft | |
+| `TaxiComplete` | handed to MSFS AI at 1500 ft with climb waypoints | |
+
+- **Gates:** with `HoldForClearances` every gate holds until its clearance. Without it, each gate clears itself after a short, varied wait (`PushbackDelay`, `TaxiAfterPushDelay`, `LineUpDelay`, `TakeoffDelay`). A clearance given before its gate means no stop: `ClearForTakeoff` while taxiing gives a rolling take-off.
+- **Rolling take-off:** without held gates, `RollingTakeoffChance` (default 30%) of departures get line-up and take-off together.
+- **Runway entry:** `TaxiRequest.Entry` departs from a runway entry ("24 at B", see [runway entries](airport-layout.md)); empty means full length.
+- **Take-off model:** `TakeoffMover` (`TakeoffProfile`; A320 defaults lift off after about 1550 m at 146 kt).
+
 ## Example
 
-[`examples/ai-taxi`](../examples/ai-taxi) runs the whole sequence (LKPR C22 → runway 24 by default) and prints progress; press Enter or pass `-takeoff-after` to clear the aircraft for take-off.
+[`examples/ai-taxi`](../examples/ai-taxi) runs the whole sequence (LKPR C22 → runway 24 by default) and prints progress. Press Enter or pass `-takeoff-after` to clear the aircraft for take-off.
+
+Options:
+- `-inject` drives it by injection.
+- `-gates` holds at every gate; Enter gives the next clearance.
+- `-entry B` departs from an entry.
