@@ -257,7 +257,11 @@ func (c *TaxiController) startPushback() error {
 		pts = append(pts, route.Points[1])
 	}
 	if len(route.Nodes) > 2 {
-		pts = append(pts, c.behindJunction(localBearing(gear, route.Points[1]))...)
+		// Only where the tail ends: one long segment lets the tug swing the
+		// tail round in an arc (short taxiway segments made it pivot).
+		if tail := c.behindJunction(localBearing(gear, route.Points[1])); len(tail) > 0 {
+			pts = append(pts, tail[len(tail)-1])
+		}
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25

@@ -171,6 +171,8 @@ const (
 	StopApproachMeters = 40.0
 	// CornerMeters bounds how far from a route corner the rounding starts.
 	CornerMeters = 25.0
+	// MergeMeters merges route points closer than this before rounding.
+	MergeMeters = 8.0
 	// InjectHz is the recommended rate for Injector.Place; 60 Hz looked
 	// smooth live, 30 Hz is acceptable.
 	InjectHz = 60
@@ -256,7 +258,7 @@ const (
 	TaxiAfterPushDelay = 15 * time.Second
 	LineUpDelay        = 6 * time.Second
 	TakeoffDelay       = 5 * time.Second
-	PushTailMeters     = 10.0
+	PushTailMeters     = 15.0
 	GearUpFt           = 50.0
 	ClimbHandoverFt    = 1500.0
 )

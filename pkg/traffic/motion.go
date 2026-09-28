@@ -91,7 +91,10 @@ func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*Gr
 	if len(pts) < 2 {
 		return nil, ErrPathTooShort
 	}
-	pts = chaikin(cornerZones(pts, CornerMeters), GroundPathSmoothingPasses)
+	// Merge route points a few meters apart first (taxiway nodes near
+	// junctions often are): corner rounding reaches at most half a segment, so
+	// short segments turn corners into pivots on the spot.
+	pts = chaikin(cornerZones(mergeClose(pts, MergeMeters), CornerMeters), GroundPathSmoothingPasses)
 	g := &GroundPath{pts: pts, cum: make([]float64, len(pts))}
 	for i := 1; i < len(pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
@@ -490,4 +493,23 @@ func (g *GroundPath) DistanceTo(p airport.LatLon) (along, off float64) {
 		}
 	}
 	return along, off
+}
+
+// mergeClose drops points closer than d to the last kept point, keeping the
+// first and the last point.
+func mergeClose(p []airport.LatLon, d float64) []airport.LatLon {
+	if len(p) < 3 {
+		return p
+	}
+	out := []airport.LatLon{p[0]}
+	for _, q := range p[1 : len(p)-1] {
+		if localDist(out[len(out)-1], q) >= d {
+			out = append(out, q)
+		}
+	}
+	last := p[len(p)-1]
+	if len(out) > 1 && localDist(out[len(out)-1], last) < d {
+		out = out[:len(out)-1] // keep the end exactly, drop the close one before it
+	}
+	return append(out, last)
 }
