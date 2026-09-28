@@ -517,7 +517,7 @@ async function loadProcedures() {
   }
   const navaidCount = () => procs.fixes.filter((f) => f.kind === 'V' || f.kind === 'N').length;
   $('pInfo').textContent = procs
-    ? `${procs.sids.length} SIDs, ${procs.stars.length} STARs, ${procs.approaches.length} approaches · ${navaidCount()} VOR/NDB shown; ${procs.fixes.length - navaidCount()} waypoints appear with their procedure`
+    ? `${procs.sids.length} SIDs, ${procs.stars.length} STARs, ${procs.approaches.filter((x) => x.from === 'vectors').length} approaches (${procs.approaches.length} entries) · ${navaidCount()} VOR/NDB shown; ${procs.fixes.length - navaidCount()} waypoints appear with their procedure`
     : 'Procedures not available (offline or not loaded).';
   fillProcedurePick();
   drawProcedures();
@@ -533,8 +533,8 @@ function procLabel(kind, p) {
   // A procedure without fixes: runway heading, then radar vectors.
   if (kind === 'SID') return `SID ${p.name} · ${rw} → ${p.to || 'runway heading, radar vectors'}`;
   if (kind === 'STAR') return `STAR ${p.name} · ${p.from || 'radar vectors'} → ${p.to ? p.to + ' → ' : ''}${rw}`;
-  const via = p.paths.slice(1).map((x) => x.label.split(' via ')[1]).filter(Boolean);
-  return `${p.name}${via.length ? ' · via ' + via.join(', ') : ''}`;
+  // An approach entry: via a transition, or direct (radar vectors to the final).
+  return p.from === 'vectors' ? `${p.name} · direct, vectors to ${p.to || 'the final'}` : p.name;
 }
 // fillProcedurePick lists the procedures of the checked kinds and runway.
 function fillProcedurePick() {
@@ -916,9 +916,11 @@ setInterval(pollAircraft, 1000);
 const trafficLayer = L.layerGroup().addTo(map);
 const trafficMarkers = new Map();
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
-const trafficIcon = (t) => L.divIcon({
+// The selected aircraft (a card clicked) is drawn yellow with a glow.
+const selectedTail = () => (ctlViews.find((x) => x.id === ctlSelected) || {}).tail;
+const trafficIcon = (t, sel = t.tail && t.tail === selectedTail()) => L.divIcon({
   className: 'ac traffic', iconSize: [22, 22],
-  html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)"><path fill="${t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
+  html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)${sel ? ';filter:drop-shadow(0 0 4px #ffe066) drop-shadow(0 0 2px #fff)' : ''}"><path fill="${sel ? '#ffe066' : t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
 // On the map: call sign and speed (and height when airborne); the rest on
 // click.
@@ -1026,6 +1028,10 @@ async function ctlAct(id, action, node) {
 
 function drawControl() {
   groups.control.clearLayers();
+  if (drawControl.sel !== ctlSelected) { // highlight the newly selected icon at once
+    drawControl.sel = ctlSelected;
+    pollTraffic();
+  }
   const v = ctlViews.find((x) => x.id === ctlSelected);
   // A completed departure flies on under MSFS AI: its last injected position
   // (the hand-over at 1500 ft) would be a stale marker.
@@ -1044,10 +1050,6 @@ function drawControl() {
       .on('click', () => { if (canUpTo) ctlAct(v.id, 'upto', n); })
       .addTo(groups.control);
   });
-  if (v.position && v.position.lat) {
-    L.circleMarker([v.position.lat, v.position.lon], { renderer, radius: 9, color: '#fff', weight: 2, fillColor: '#2d6cdf', fillOpacity: 1 })
-      .bindTooltip(v.tail, { permanent: true, direction: 'right', className: 'lbl' }).addTo(groups.control);
-  }
 }
 
 // renderControl draws the aircraft cards: who waits for a clearance comes

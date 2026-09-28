@@ -255,19 +255,23 @@ func buildProcedures(l *airport.Layout, p airport.Procedures) proceduresView {
 		v.From, v.To = endFixes(all)
 		out.STARs = append(out.STARs, v)
 	}
+	// An approach is flown from one entry: each transition ("ILS 24 via
+	// ERASU") or direct, radar vectors to the final. Every entry is its own
+	// procedure on the map; the final and missed approach are the same.
 	for _, ap := range p.Approaches {
-		v := procView{Name: ap.Name, Runways: []string{ap.Runway}}
-		finalPath := mkPath(ap.Name, ap.Final, airport.LatLon{}, 1000, p.MagVar, airport.TurnRadiusApproach, false)
-		final := finalPath.Points
-		v.Paths = append(v.Paths, finalPath)
+		final := mkPath(ap.Name, ap.Final, airport.LatLon{}, 1000, p.MagVar, airport.TurnRadiusApproach, false)
+		missed := []procPath{mkPath(ap.Name+" missed", ap.Missed, last(final.Points), l.Altitude+100, p.MagVar, airport.TurnRadiusApproach, false)}
+		first, _ := endFixes(ap.Final)
+		direct := procView{Name: ap.Name, Runways: []string{ap.Runway}, Paths: []procPath{final}, Missed: missed, From: "vectors", To: first}
+		out.Approaches = append(out.Approaches, direct)
 		for _, tr := range ap.Transitions {
-			v.Paths = append(v.Paths, mkPath(ap.Name+" via "+tr.Name, append(slices.Clone(tr.Legs), ap.Final...), airport.LatLon{}, 1500, p.MagVar, airport.TurnRadiusApproach, false))
+			path := mkPath(ap.Name+" via "+tr.Name, append(slices.Clone(tr.Legs), ap.Final...), airport.LatLon{}, 1500, p.MagVar, airport.TurnRadiusApproach, false)
+			out.Approaches = append(out.Approaches, procView{Name: ap.Name + " via " + tr.Name, Runways: []string{ap.Runway},
+				Paths: []procPath{path}, Missed: missed, From: tr.Name, To: first})
 			addFixes(tr.Legs)
 		}
-		v.Missed = []procPath{mkPath(ap.Name+" missed", ap.Missed, last(final), l.Altitude+100, p.MagVar, airport.TurnRadiusApproach, false)}
 		addFixes(ap.Final)
 		addFixes(ap.Missed)
-		out.Approaches = append(out.Approaches, v)
 	}
 	for _, f := range fixes {
 		out.Fixes = append(out.Fixes, *f)
