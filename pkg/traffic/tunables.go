@@ -176,7 +176,7 @@ const (
 	InjectHz = 60
 )
 
-// Default SimConnect IDs used by an Injector: 2 definition IDs, 2 request
+// Default SimConnect IDs used by an Injector: 5 definition IDs, 2 request
 // IDs per aircraft (up to injectMaxAircraft) and injectEventCount event IDs.
 const (
 	DefaultInjectDefinitionBase uint32 = 7700
@@ -228,3 +228,23 @@ const (
 // HoldShortStopMeters is how far before a hold-short line an injected
 // aircraft stops its nose gear, so the nose stays behind the line.
 const HoldShortStopMeters = 7.0
+
+// FlapsRetractSeconds is how long an injected arrival takes to retract its
+// flaps once clear of the runway.
+const FlapsRetractSeconds = 20.0
+
+// Injected landing (InjectApproach): ground spoilers deploy over
+// SpoilerDeploySeconds at main gear touchdown and stow once clear of the
+// runway.
+const (
+	SpoilerDeploySeconds = 1.0
+)
+
+// Injected approach flaps: ApproachFlapsPct (flaps 3 on an A320) from the
+// start, running to full over FlapsFullSeconds when passing FlapsFullFt,
+// the stabilised-approach gate.
+const (
+	ApproachFlapsPct = 75.0
+	FlapsFullFt      = 1000.0
+	FlapsFullSeconds = 5.0
+)

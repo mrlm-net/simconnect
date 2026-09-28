@@ -216,6 +216,7 @@ func (c *ArrivalController) step() GroundPose {
 	now := c.now()
 	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
 	c.lastStep = now
+	c.frameDt = math.Max(dt, 0)
 	pose := c.mover.Step(math.Max(dt, 0))
 	if err := c.inj.Place(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
@@ -234,6 +235,11 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.last.Taxiway = c.track.taxiwayAt(seg)
 	}
 	c.checkCrossing(pose)
+	if !c.flapsUpFrom.IsZero() && c.flapsPct > 0 {
+		c.flapsPct = math.Max(0, 100*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
+		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+	}
+	c.stepSurfaces(c.frameDt)
 	// The taxi light, TaxiLightDelay after the landing lights went off.
 	if !c.taxiLightAt.IsZero() && !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
 		c.setInjectedLights(LightsTaxi, "lights taxi")
@@ -244,6 +250,10 @@ func (c *ArrivalController) onInjectedFrame() {
 		if pose.Distance >= c.clearDist {
 			c.mover.SetProfile(c.profile())
 			c.setInjectedLights(lightsVacated, "lights vacated")
+			if c.req.InjectApproach {
+				c.flapsUpFrom = c.now() // after-landing flaps up once clear
+				c.spoilers.target = 0
+			}
 			c.setState(ArrivalVacating, nil)
 			return
 		}
@@ -408,5 +418,119 @@ func (c *ArrivalController) ClearToCross() {
 		c.crossingCleared() // the hold ahead is already set
 	default:
 		c.crossClears++
+	}
+}
+
+// spawnCGFt is the reference point's height above the wheels used for the
+// spawn altitude before the sim reports the aircraft's own.
+const spawnCGFt = 12.0
+
+func approachProfileOf(req ArrivalRequest) ApproachProfile {
+	if req.Approach != (ApproachProfile{}) {
+		return req.Approach
+	}
+	return DefaultApproachProfile()
+}
+
+func (c *ArrivalController) approachProfile() ApproachProfile { return approachProfileOf(c.req) }
+
+// startInjectedApproach takes the aircraft over as soon as it exists
+// (InjectApproach): frozen, gear down, flaps full, approach lights, read
+// every frame; the ApproachMover flies it from here.
+func (c *ArrivalController) startInjectedApproach() error {
+	if err := c.inj.Takeover(c.objectID); err != nil {
+		return err
+	}
+	c.note("injector takeover on final", nil)
+	c.note("gear down", c.inj.SetGear(c.objectID, true))
+	c.note("approach flaps", c.inj.SetFlaps(c.objectID, ApproachFlapsPct))
+	c.flapsPct = ApproachFlapsPct
+	// Approach lights on the first frame, once the sim has reported the
+	// aircraft's own logo and wing lights (see onApproachFrame).
+	c.approachLightsSet = false
+	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, c.plan.SpawnNm*1852, c.approachProfile())
+	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
+	c.fast = true
+	c.lastStep = c.now()
+	c.setState(ArrivalApproaching, nil)
+	return nil
+}
+
+// onApproachFrame flies the injected approach one frame and hands over to
+// the injected rollout once the nose wheel is down.
+func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
+	now := c.now()
+	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
+	c.lastStep = now
+	if !c.approachLightsSet {
+		c.approachLightsSet = true
+		c.lights = m.currentLights()
+		// The aircraft spawns with its logo light off; MSFS AI switches it on
+		// on approach, so the injected approach does too (consistent look).
+		c.lights.Logo = true
+		c.setInjectedLights(lightsRollout, "lights approach (injected)")
+	}
+	pose := c.approach.Step(math.Max(dt, 0))
+	if err := c.inj.PlaceAir(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
+		c.emit(err, true)
+	}
+	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
+	c.last.AGL, c.last.OnGround = pose.HeightFt, pose.OnGround
+	c.stepSurfaces(math.Max(dt, 0))
+	// Landing flaps: from the approach setting to full over
+	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
+	if pose.HeightFt < FlapsFullFt && c.flapsPct < 100 && !pose.OnGround {
+		c.flapsPct = math.Min(100, c.flapsPct+(100-ApproachFlapsPct)/FlapsFullSeconds*math.Max(dt, 0))
+		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+	}
+	switch {
+	case c.state == ArrivalApproaching && pose.HeightFt < LandingAGLFt:
+		c.setState(ArrivalLanding, nil)
+		return
+	case c.state == ArrivalLanding && pose.OnGround:
+		c.last.Touchdown, c.last.TouchdownFpm = pose.Touchdown, pose.TouchdownFpm
+		c.touchdownAt = now
+		// Main wheels down: ground spoilers out. (Thrust reversers cannot be
+		// animated on an AI aircraft: the nozzle SimVar is not settable and
+		// the reverse thrust events are ignored, #318.)
+		c.spoilers = surfaceRamp{target: 100, rate: 100 / SpoilerDeploySeconds}
+		c.setState(ArrivalRollout, nil)
+		return
+	case pose.Phase == ApproachDone:
+		// Nose wheel down: the injected rollout, exit and taxi-in take over,
+		// continuing from exactly this pose.
+		at := m
+		at.Latitude, at.Longitude, at.Heading, at.GroundKts = pose.Position.Lat, pose.Position.Lon, pose.Heading, pose.GroundSpeedKts
+		c.approach = nil
+		c.takeoverTried = true
+		if err := c.takeover(at, pose.Position, true); err != nil {
+			c.fail(err)
+		}
+		return
+	}
+	c.emit(nil, false)
+}
+
+// surfaceRamp moves a control surface (percent) towards target at rate
+// percent per second.
+type surfaceRamp struct{ pct, target, rate float64 }
+
+// step moves the surface and reports whether it moved.
+func (r *surfaceRamp) step(dt float64) bool {
+	if r.pct == r.target || r.rate <= 0 {
+		return false
+	}
+	if r.pct < r.target {
+		r.pct = math.Min(r.target, r.pct+r.rate*dt)
+	} else {
+		r.pct = math.Max(r.target, r.pct-r.rate*dt)
+	}
+	return true
+}
+
+// stepSurfaces moves the ground spoilers of an injected arrival.
+func (c *ArrivalController) stepSurfaces(dt float64) {
+	if c.spoilers.step(dt) {
+		c.note("spoilers", c.inj.SetSpoilers(c.objectID, c.spoilers.pct))
 	}
 }

@@ -22,6 +22,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` hybrid arrival: `ArrivalWithInjector` — MSFS AI lands, the injector takes over clear of the runway without a jump and drives vacate stop, taxi-in and parking with consistent lights; `Injector.Watch`, `NewGroundMoverFrom`, `NoseGear`; `ai-arrival -inject` (#309)
 - `pkg/airport` runway entries: `RunwayEntries`, `RouteToRunwayEntry` ("24 at B"), `Route.Entry`, `ErrUnknownEntry` (#306)
 - `examples/airport-map`: departure and arrival route modes with an entry/exit picker (panel and map markers)
+- `pkg/traffic` injected approach: `ApproachMover` (glide path, speed schedule, flare, touchdown rate, de-rotation), `ArrivalRequest.InjectApproach`, `Injector.PlaceAir`, `SetGear`, `SetFlaps`; `ai-arrival -inject-approach` (#318)
+- `pkg/traffic` arrival details: runway-crossing clearance gate (`HoldAtCrossings`, `ClearToCross`, `ArrivalHoldingShort`), rolling clearance (`RollThroughChance`), dwell variation, crossing lights between hold-short lines, slow stand entry (#309)
 
 ### Changed
 

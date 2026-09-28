@@ -1,0 +1,186 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"math"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+)
+
+// ApproachProfile describes how an aircraft flies the final approach,
+// flare and touchdown when injected (#318). MSFS AI flies finals at a fixed
+// ~165 kt with no pitch or flare, and its touchdowns ranged from -54 to
+// -1214 fpm.
+type ApproachProfile struct {
+	// GlideSlopeDeg and ThresholdHeightFt set the glide path: the main
+	// wheels cross the threshold ThresholdHeightFt high.
+	GlideSlopeDeg     float64
+	ThresholdHeightFt float64
+	// StartKts is the speed where the approach starts, ApproachKts the speed
+	// from ApproachSpeedNm out, TouchdownKts the speed at touchdown; the
+	// speed follows the schedule with SpeedTimeSeconds lag.
+	StartKts, ApproachKts, TouchdownKts float64
+	ApproachSpeedNm                     float64
+	SpeedTimeSeconds                    float64
+	// FlareFt is the wheel height where the flare starts; the sink rate
+	// eases to TouchdownFpm (negative) at touchdown.
+	FlareFt      float64
+	TouchdownFpm float64
+	// ApproachPitchDeg and FlarePitchDeg are nose-up attitudes; the pitch
+	// rises from one to the other through the flare.
+	ApproachPitchDeg, FlarePitchDeg float64
+	// DerotateSeconds is how long the nose takes to come down after
+	// touchdown; the speed falls at DerotateDecel meanwhile.
+	DerotateSeconds float64
+	DerotateDecel   float64
+}
+
+// DefaultApproachProfile is an A320 family approach, tried live at LKPR
+// (#318).
+func DefaultApproachProfile() ApproachProfile {
+	return ApproachProfile{
+		GlideSlopeDeg: 3, ThresholdHeightFt: 50,
+		StartKts: 150, ApproachKts: 135, TouchdownKts: 130, ApproachSpeedNm: 1, SpeedTimeSeconds: 3,
+		FlareFt: 30, TouchdownFpm: -120,
+		ApproachPitchDeg: 2.5, FlarePitchDeg: 5.5,
+		DerotateSeconds: 4, DerotateDecel: 0.5,
+	}
+}
+
+// ApproachPhase is the phase of an injected approach.
+type ApproachPhase uint8
+
+const (
+	ApproachFinal    ApproachPhase = iota // on the glide path
+	ApproachFlare                         // below FlareFt
+	ApproachDerotate                      // on the main wheels, nose coming down
+	ApproachDone                          // all wheels on the runway: hand over to a GroundMover
+)
+
+var approachPhaseNames = [...]string{"final", "flare", "derotate", "done"}
+
+func (p ApproachPhase) String() string {
+	if int(p) < len(approachPhaseNames) {
+		return approachPhaseNames[p]
+	}
+	return "unknown"
+}
+
+// ApproachPose is where an ApproachMover puts the aircraft.
+type ApproachPose struct {
+	// Position is on the extended runway centreline; Heading is the runway
+	// heading (true degrees).
+	Position airport.LatLon
+	Heading  float64
+	// HeightFt is the main wheels' height above the runway; PitchDeg is
+	// nose-up attitude.
+	HeightFt float64
+	PitchDeg float64
+	// GroundSpeedKts and VerticalFpm are the current speeds.
+	GroundSpeedKts float64
+	VerticalFpm    float64
+	// Distance is meters past the threshold (negative before it).
+	Distance float64
+	Phase    ApproachPhase
+	// OnGround is set from touchdown on.
+	OnGround bool
+	// Touchdown and TouchdownFpm describe the touchdown once it happened.
+	Touchdown    float64
+	TouchdownFpm float64
+}
+
+// ApproachMover flies an aircraft down the glide path to a touchdown with a
+// flare and lowers the nose. It is pure computation; an Injector puts the
+// poses into the sim.
+type ApproachMover struct {
+	p           ApproachProfile
+	thr         airport.LatLon
+	heading     float64
+	x, h, v, vs float64 // m past the threshold, ft, m/s, fpm
+	pitch       float64
+	phase       ApproachPhase
+	derotateT   float64
+	touchX      float64
+	touchFpm    float64
+	startNm     float64
+}
+
+// NewApproachMover starts startMeters before the threshold of a runway end
+// (threshold position, true heading), on the glide path at StartKts.
+func NewApproachMover(threshold airport.LatLon, heading, startMeters float64, p ApproachProfile) *ApproachMover {
+	m := &ApproachMover{p: p, thr: threshold, heading: heading, x: -startMeters, v: p.StartKts * ktsToMS, pitch: p.ApproachPitchDeg, startNm: startMeters / 1852}
+	m.h = p.ThresholdHeightFt + startMeters*math.Tan(p.GlideSlopeDeg*math.Pi/180)/0.3048
+	return m
+}
+
+// Pose returns the current pose.
+func (m *ApproachMover) Pose() ApproachPose {
+	return ApproachPose{
+		Position: offsetHeading(m.thr, m.heading, m.x), Heading: m.heading,
+		HeightFt: m.h, PitchDeg: m.pitch, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
+		Distance: m.x, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
+		Touchdown: m.touchX, TouchdownFpm: m.touchFpm,
+	}
+}
+
+// Step advances by dt seconds.
+func (m *ApproachMover) Step(dt float64) ApproachPose {
+	for dt > 0 {
+		h := math.Min(dt, 0.05)
+		m.step(h)
+		dt -= h
+	}
+	return m.Pose()
+}
+
+// speedAt is the scheduled speed (m/s) at distance x: StartKts at the start,
+// falling linearly to ApproachKts at ApproachSpeedNm, TouchdownKts past the
+// threshold.
+func (m *ApproachMover) speedAt(x float64) float64 {
+	p := m.p
+	d := -x / 1852
+	switch {
+	case x >= 0:
+		return p.TouchdownKts * ktsToMS
+	case d <= p.ApproachSpeedNm || m.startNm <= p.ApproachSpeedNm:
+		return p.ApproachKts * ktsToMS
+	}
+	f := math.Min(1, (d-p.ApproachSpeedNm)/(m.startNm-p.ApproachSpeedNm))
+	return (p.ApproachKts + (p.StartKts-p.ApproachKts)*f) * ktsToMS
+}
+
+func (m *ApproachMover) step(dt float64) {
+	p := m.p
+	switch m.phase {
+	case ApproachFinal, ApproachFlare:
+		target := m.speedAt(m.x)
+		m.v += (target - m.v) * math.Min(1, dt/math.Max(p.SpeedTimeSeconds, 0.01))
+		onGS := -m.v * math.Tan(p.GlideSlopeDeg*math.Pi/180) / 0.3048 * 60
+		m.vs, m.pitch = onGS, p.ApproachPitchDeg
+		if m.h <= p.FlareFt {
+			m.phase = ApproachFlare
+			f := math.Max(0, m.h/p.FlareFt)
+			m.vs = p.TouchdownFpm + (onGS-p.TouchdownFpm)*f
+			m.pitch = p.FlarePitchDeg + (p.ApproachPitchDeg-p.FlarePitchDeg)*f
+		}
+		m.h += m.vs / 60 * dt
+		m.x += m.v * dt
+		if m.h <= 0 {
+			m.h, m.phase, m.touchX, m.touchFpm = 0, ApproachDerotate, m.x, m.vs
+		}
+	case ApproachDerotate:
+		m.derotateT += dt
+		f := math.Min(1, m.derotateT/math.Max(p.DerotateSeconds, 0.01))
+		m.pitch = p.FlarePitchDeg * (1 - f*f*(3-2*f)) // smoothstep to 0
+		m.vs = 0
+		m.v = math.Max(0, m.v-p.DerotateDecel*dt)
+		m.x += m.v * dt
+		if f >= 1 {
+			m.phase = ApproachDone
+		}
+	case ApproachDone:
+		m.x += m.v * dt // keeps rolling until the caller hands over
+	}
+}
