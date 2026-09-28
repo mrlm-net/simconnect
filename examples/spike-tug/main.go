@@ -58,7 +58,10 @@ func main() {
 				continue
 			}
 			header := uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
-			size := (uint32(msg.DwSize) - header) / n
+			size := uint32(unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})) // 512 bytes
+			if n*size > uint32(msg.DwSize)-header {
+				continue
+			}
 			base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 			for i := uint32(0); i < n; i++ {
 				entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))

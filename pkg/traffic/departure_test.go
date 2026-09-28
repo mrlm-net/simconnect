@@ -435,3 +435,24 @@ func TestPushbackFitsStands(t *testing.T) {
 		t.Fatal("no pushback stands")
 	}
 }
+
+// TestTaxiControllerCancelAfterComplete: Cancel still removes the aircraft
+// once the departure is complete (handed to MSFS AI), and only once.
+func TestTaxiControllerCancelAfterComplete(t *testing.T) {
+	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	if !run(TaxiComplete, 60*3600) {
+		t.Fatalf("ended %v", ctl.State())
+	}
+	for i := 0; i < 2; i++ {
+		if err := ctl.Cancel(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(ec.removed) != 1 || ec.removed[0] != 77 || ctl.State() != TaxiComplete {
+		t.Errorf("removed=%v state=%v", ec.removed, ctl.State())
+	}
+}

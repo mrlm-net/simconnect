@@ -574,13 +574,11 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	c.emit(nil, false)
 }
 
-// Cancel removes the aircraft (if it exists) and ends the controller.
+// Cancel removes the aircraft if it still exists, also once it is parked,
+// and ends the controller if it is still running.
 func (c *ArrivalController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.state.Terminal() {
-		return nil
-	}
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
@@ -588,8 +586,11 @@ func (c *ArrivalController) Cancel() error {
 		if c.inj != nil {
 			c.inj.Forget(c.objectID)
 		}
+		c.objectID = 0
 	}
-	c.setState(ArrivalCancelled, nil)
+	if !c.state.Terminal() {
+		c.setState(ArrivalCancelled, nil)
+	}
 	return err
 }
 

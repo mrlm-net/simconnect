@@ -131,6 +131,8 @@ err := mgr.TrafficSetFlightPlan(objectID, "C:/Plans/EIDW-EGLL.pln", 5003)
 
 Enroute aircraft follow a `.PLN` flight plan file from a given phase offset.
 
+`Phase` (the SDK's `dFlightPlanPosition`) is the waypoint index plus the fraction along the next leg: `2.5` starts halfway between waypoints 2 and 3. It is not a 0–1 fraction of the route. To spawn an aircraft airborne, a common workaround (used by FSLTL) is a plan whose first waypoint is a user waypoint at the spawn point, injected at about `0.99`.
+
 ```go
 err := mgr.TrafficEnroute(traffic.EnrouteOpts{
     Model:        "FSLTL A321 Iberia SL",
@@ -138,7 +140,7 @@ err := mgr.TrafficEnroute(traffic.EnrouteOpts{
     Tail:         "IBE001",
     FlightNumber: 1,
     FlightPlan:   "C:/Plans/LEMD-LEBL.pln",
-    Phase:        0.0,   // 0.0 = start, 1.0 = end
+    Phase:        0.0,   // waypoint index + fraction along the next leg
     TouchAndGo:   false,
 }, 5010)
 ```

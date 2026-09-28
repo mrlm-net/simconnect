@@ -9,8 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-28
+
 ### Fixed
 
+- `traffic.EnrouteOpts.Phase` doc: `dFlightPlanPosition` is the waypoint index plus the fraction along the next leg, not 0–1 (#300)
+- `examples/read-objects`, `examples/airport-map`: simobject and livery enumeration read entries at the wrong offset (the list header is 28 bytes; entries are a fixed 512), which garbled titles and liveries
+- `pkg/traffic`: `ArrivalController.Cancel` and `TaxiController.Cancel` also remove the aircraft after the controller finished (parked, or handed to MSFS AI); the airport map can remove finished aircraft
+- `pkg/traffic`: departures start on the stand's stop mark, not the stand circle centre; pushbacks follow an arc instead of pivoting (#304)
 - `SIMCONNECT_EVENT_FLAG_*` had sequential (`iota`) values instead of the SimConnect bit flags. `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` was 3 (both repeat timers) instead of `0x10`, so `TransmitClientEvent` with a priority as group ID failed with `SIMCONNECT_EXCEPTION_ERROR` (parameter 5); `FAST_REPEAT_TIMER` and `SLOW_REPEAT_TIMER` were swapped. Affected `simvar-cli emit` and the REPL too (#310)
 - `pkg/airport`: taxiway edges along a runway surface were excluded from routing, which cut off every runway at LROP, where the taxiways cross 08R/26L along its end. They are now allowed at `AlongRunwayFactor` × their length.
 
@@ -26,6 +32,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` injected departure: `TaxiWithInjector` drives pushback (tail first onto the taxiway, `NewPushbackMover`), taxi out, line-up along the entry taxiway, take-off (`TakeoffMover`) and the initial climb, handing over to MSFS AI at 1500 ft. Clearance gates `ClearPushback`, `ClearToTaxi`, `ClearToCross`, `ClearToLineUp`, `ClearForTakeoff` (`HoldForClearances`, otherwise automatic), rolling take-offs, take-off flaps, lights by phase; `TaxiRequest.Entry` ("24 at B"); `ai-taxi -inject -gates -entry` (#320)
 - `pkg/traffic` ground spoilers at touchdown (`Injector.SetSpoilers`) and approach flaps 3, running to full at 1000 ft, on injected landings (#318)
 - `pkg/traffic` arrival details: runway-crossing clearance gate (`HoldAtCrossings`, `ClearToCross`, `ArrivalHoldingShort`), rolling clearance (`RollThroughChance`), dwell variation, crossing lights between hold-short lines, slow stand entry (#309)
+- `pkg/traffic` progressive taxi: `ClearUpTo` a route node for departures and arrivals; the aircraft holds with its nose gear on the node (`TaxiEvent.LimitNode`, `AtLimit`) (#322)
+- `pkg/traffic` pushback fitted to each stand: straight back along the stand axis, then the widest arc (`PushbackMinArcMeters`–`PushbackArcMeters`) the distance to the taxiway and its straight run allow, tighter where the tail or a wingtip would swing into a neighbouring stand; it ends aligned on the taxiway, never in a bend. `MotionProfile.SpanMeters`, `TailMeters` (#322, #304)
+- `examples/airport-map` traffic control: spawn departures and arrivals at stands with a searchable model and livery list, clearance buttons and progressive taxi from the map; `/api/control`, `/api/models`, `/api/control/log`; a traffic log panel and file (`-log-dir`) with every spawn, state and light change (#322)
+- `docs/traffic-arrival.md`: arrivals guide — AI, hybrid and injected approach, runway exits, rollout, crossings, stands (#280)
 
 ### Changed
 

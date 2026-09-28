@@ -105,7 +105,7 @@ const (
 	ParkedMeters = 15.0
 )
 
-// Default SimConnect IDs used by an ArrivalController: 3 definition IDs and
+// Default SimConnect IDs used by an ArrivalController: 4 definition IDs and
 // 4 request IDs from these bases.
 const (
 	DefaultArrivalDefinitionBase uint32 = 7500

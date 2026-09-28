@@ -609,7 +609,7 @@ function renderControl() {
   $('ctlList').innerHTML = ctlViews.length ? ctlViews.map((v) => {
     const status = [v.state, v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && 'at limit'].filter(Boolean).join(' · ');
     const buttons = (v.actions || []).filter((a) => a !== 'upto')
-      .concat(v.done ? [] : ['remove'])
+      .concat(['remove'])
       .map((a) => `<button type="button" data-id="${v.id}" data-act="${a}">${ACTION_LABEL[a] || a}</button>`).join(' ');
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +

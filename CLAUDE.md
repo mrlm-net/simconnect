@@ -153,6 +153,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── takeoff.go       #   TakeoffMover: injected take-off roll, rotation, climb
 │       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected)
 │       ├── departure_inject.go # Injected departure with clearance gates
+│       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours
 │       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
@@ -183,6 +184,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── simconnect-benchmark/ #  Performance benchmarking
 │   ├── airport-map/         #   Leaflet map of airport layout + route viewer
 │   ├── ai-taxi/             #   AI departure taxi (stand → runway)
+│   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
+│   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
@@ -195,6 +198,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
+│   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
 │   └── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
@@ -211,7 +215,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
         │   │   ├── rehype-slug.js       # Heading ID generation
         │   │   └── rehype-rewrite-links.js # .md link rewriting
         │   ├── content/     #   Build-time content pipeline
-        │   │   ├── pipeline.ts  # Reads docs/*.md, extracts frontmatter
+        │   │   ├── pipeline.server.ts # Reads docs/*.md, extracts frontmatter
         │   │   └── toc.ts       # Table of contents extraction
         │   ├── components/
         │   │   └── layout/  #   Layout components

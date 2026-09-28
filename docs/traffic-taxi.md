@@ -7,7 +7,7 @@ section: "traffic"
 
 # Departure Taxi
 
-`traffic.TaxiController` drives one AI aircraft from a parking stand to a runway: spawn, pushback, taxi along a route from [`pkg/airport`](airport-layout.md) to the hold-short point, and — once cleared — line-up and take-off.
+`traffic.TaxiController` drives one AI aircraft from a parking stand to a runway: spawn, pushback, taxi along a route from [`pkg/airport`](airport-layout.md) to the hold-short point, and — once cleared — line-up and take-off. The way back in is [Arrivals & Parking](traffic-arrival.md).
 
 ## Lifecycle
 
@@ -69,9 +69,9 @@ ctl := traffic.NewTaxiController(mgr.Fleet())
 mgr.OnMessage(func(msg engine.Message) { ctl.Handle(msg) })
 ```
 
-`TaxiEvent` carries the state, object ID, position, heading, ground speed, on-ground flag, distance `Remaining` to the hold-short along the route, the current `Taxiway` name, and `Err` for failures and warnings. Progress updates are dropped rather than blocking `Handle` if you stop reading `Events()`; state changes use reserved buffer space. A warning event with `ErrTaxiStuck` is sent if the aircraft stands still for `StuckTimeout` (90 s) during pushback or taxi.
+`TaxiEvent` carries the state, object ID, position, heading, ground speed, on-ground flag, distance `Remaining` to the hold-short along the route, the current `Taxiway` name, `HoldingShortOf`, the progressive-taxi `LimitNode` / `AtLimit`, `HeightFt` during the take-off, the `Lights` the sim reports, and `Err` for failures and warnings. Progress updates are dropped rather than blocking `Handle` if you stop reading `Events()`; state changes use reserved buffer space. A warning event with `ErrTaxiStuck` is sent if the aircraft stands still for `StuckTimeout` (90 s) during pushback or taxi.
 
-`Cancel()` removes the aircraft at any point. A controller is single use; run several aircraft with one controller each and distinct IDs via `TaxiWithIDs(defBase, reqBase)` (each uses 2 definition IDs and 4 request IDs; defaults 7300 / 7400).
+`Cancel()` removes the aircraft at any point, also after the departure completed and MSFS AI flies it. A controller is single use; run several aircraft with one controller each and distinct IDs via `TaxiWithIDs(defBase, reqBase)` (each uses 2 definition IDs and 4 request IDs; defaults 7300 / 7400).
 
 ## Waypoints
 
@@ -105,7 +105,7 @@ ctl.Start(traffic.TaxiRequest{Graph: g, Parking: c22, Runway: "24", Entry: "B", 
 | State | What happens | Gate |
 |---|---|---|
 | `TaxiAwaitingPushback` | parked on the stand (nav lights) | `ClearPushback` |
-| `TaxiPushback` | beacon on, then pushed tail first 3 s later: to the taxiway junction and on along the taxiway away from the taxi direction, so it ends facing the way it will taxi | |
+| `TaxiPushback` | beacon on, then pushed tail first 3 s later on a push [fitted to the stand](#injected-pushback), ending aligned on the taxiway and facing the way it will taxi; face-out stands skip it | |
 | `TaxiAwaitingTaxi` | pushed back, engines starting | `ClearToTaxi` |
 | `TaxiTaxiing` | taxi light on, moving 1.5 s later; take-off flaps set; stops short of runway crossings (`ClearToCross`) | |
 | `TaxiHoldingShort` | nose 7 m before the departure runway's hold-short line, no strobes (`HoldingShortOf`) | `ClearToLineUp`, `ClearForTakeoff` |
@@ -118,6 +118,37 @@ ctl.Start(traffic.TaxiRequest{Graph: g, Parking: c22, Runway: "24", Entry: "B", 
 - **Rolling take-off:** without held gates, `RollingTakeoffChance` (default 30%) of departures get line-up and take-off together.
 - **Runway entry:** `TaxiRequest.Entry` departs from a runway entry ("24 at B", see [runway entries](airport-layout.md)); empty means full length.
 - **Take-off model:** `TakeoffMover` (`TakeoffProfile`; A320 defaults lift off after about 1550 m at 146 kt).
+- **Face-out stands:** when the route's lead-in junction lies ahead of the parked aircraft, there is no pushback: after `ClearPushback` (the start-up approval) the aircraft taxis straight out.
+
+### Injected pushback
+
+The push is fitted to each stand's surroundings. The main gear starts at the stand's stop mark (`StandPoint`), goes straight back along the stand axis, turns onto the taxiway on an arc and follows the taxiway centreline until the aircraft is aligned. It moves at a tug's walking pace (`PushbackSpeedKts`, 3 kt) with gentle speed changes, the fuselage along the path (`NewArcPath`, `NewPushbackMover`, see [Injected Ground Movement](traffic-motion.md#pushback)).
+
+- **Which way the tail goes:** of the taxiway branches at the junction the push can swing onto (at most 100° off the push direction), the one that leaves the nose pointing most nearly along the taxi route. Up to 120 m of that taxiway is used, following its straightest continuation.
+- **Straight part:** at least `PushStraightMeters` (6 m) straight back along the stand axis before the turn.
+- **Arc:** the widest radius between `PushbackMinArcMeters` (14 m) and `PushbackArcMeters` (45 m) that both the push line up to the taxiway and the straight run of the taxiway beyond the junction allow. The straight run is the longest stretch the centreline stays within 1.5 m of a straight line, so a jog at the junction does not hide a long straight taxiway.
+- **Neighbouring stands:** the tail (`MotionProfile.TailMeters` behind the main gear) and the wingtips (`SpanMeters` / 2 either side) are checked against every other stand's circle along the push. While the swing would reach more than 1 m deeper into a neighbouring stand than the parked aircraft already does, the arc tightens in 2 m steps; if no radius clears, the least intrusive one is used.
+- **End:** aligned on the straight taxiway, `PushAlignMeters` (10 m) past the arc and at least a wheelbase plus `PushTailMeters` (20 m) beyond the junction, but never into the bend after the straight run.
+- **Dead-end stands** (no branch behind the junction to swing onto) push straight back along the stand axis to abeam the junction; the taxi then starts with the turn onto the taxiway.
+- A push turning less than 3°, or a corner that does not fit (the stand axis meets the taxiway line less than 2 m or more than 150 m behind the gear, or beyond the straight run), goes through the junction and on along the taxiway.
+
+## Progressive taxi
+
+`ClearUpTo(node airport.NodeID) error` clears an injected departure to taxi up to a node of its route and hold there ("taxi via A, hold short of B"). [Arrivals](traffic-arrival.md#progressive-taxi) have the same call.
+
+- The node must be on `Route().Nodes` after the stand; otherwise `ErrNotOnRoute`. Without `TaxiWithInjector`: `ErrNotInjected`.
+- **Before the taxi starts** (`TaxiAwaitingPushback`, `TaxiPushback`, `TaxiAwaitingTaxi`) it is the taxi clearance with a limit. A node that is no longer ahead when the taxi starts is dropped, and the aircraft taxis without a limit.
+- **While taxiing or holding short** it moves the limit. The node must lie ahead on the current path; a node behind the aircraft returns `ErrNotOnRoute`.
+- The nose gear stops on the node, or `HoldShortStopMeters` (7 m) before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared runway crossing. The state stays `TaxiTaxiing`.
+- `TaxiEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
+- A later `ClearUpTo` moves the limit on; `ClearToTaxi()` removes it and clears the aircraft to the runway.
+
+```go
+r := ctl.Route()
+ctl.ClearUpTo(r.Nodes[5]) // taxi, hold at the 5th route node
+// ... later
+ctl.ClearToTaxi()        // on to the departure runway
+```
 
 ## Example
 

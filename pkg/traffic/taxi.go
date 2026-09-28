@@ -472,14 +472,12 @@ func (c *TaxiController) ClearForTakeoff() error {
 	return nil
 }
 
-// Cancel removes the aircraft from the simulation (if it exists) and ends the
-// controller. It is safe to call at any time.
+// Cancel removes the aircraft from the simulation if it still exists, also
+// after the departure completed (handed to MSFS AI), and ends the controller
+// if it is still running. It is safe to call at any time.
 func (c *TaxiController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.state.Terminal() {
-		return nil
-	}
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
@@ -487,8 +485,11 @@ func (c *TaxiController) Cancel() error {
 		if c.inj != nil {
 			c.inj.Forget(c.objectID)
 		}
+		c.objectID = 0
 	}
-	c.setState(TaxiCancelled, nil)
+	if !c.state.Terminal() {
+		c.setState(TaxiCancelled, nil)
+	}
 	return err
 }
 

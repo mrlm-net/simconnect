@@ -145,7 +145,7 @@ func (e *Engine) AICreateEnrouteATCAircraft(
     szTailNumber      string,  // Tail / registration number
     iFlightNumber     uint32,  // ATC flight number (numeric part)
     szFlightPlanPath  string,  // Absolute path to an MSFS .pln file
-    dFlightPlanPosition float64, // Route progress: 0.0 = start, 1.0 = destination
+    dFlightPlanPosition float64, // Waypoint index + fraction along the next leg (2.5 = halfway 2→3)
     bTouchAndGo      bool,    // Whether the aircraft performs touch-and-go landings
     RequestID        uint32,  // Your request ID
 ) error

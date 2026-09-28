@@ -237,7 +237,7 @@ type ArrivalPlan struct {
 //     slowing at RolloutDecel to the exit speed at the exit's runway node;
 //   - TaxiInWaypoints from the exit to the stand.
 //
-// exit may be nil to choose one with ExitFor for the required rollout. The
+// exit may be nil to choose the cheapest exit for the stand (bestExit). The
 // aircraft must have its gear down (SetDataOnSimObject GEAR HANDLE POSITION = 1)
 // or MSFS AI never touches down.
 func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptions) (*ArrivalPlan, error) {
