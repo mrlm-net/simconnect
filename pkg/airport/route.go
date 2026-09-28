@@ -696,3 +696,13 @@ var KnownTaxiwayMaxSpan = map[string]map[string]float64{
 	// use J.
 	"LKPR": {"JO": 36, "JB": 36},
 }
+
+// Fits reports whether an aircraft routed with opts (HalfSpan, OwnStands,
+// TaxiwayMaxSpan — the airport's KnownTaxiwayMaxSpan when nil) fits beside
+// e, as a route search would check it: e.g. before pushing a tail onto e.
+func (g *Graph) Fits(e Edge, opts RouteOptions) bool {
+	if opts.TaxiwayMaxSpan == nil {
+		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
+	}
+	return opts.fits(e)
+}

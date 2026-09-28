@@ -196,6 +196,7 @@ type TaxiController struct {
 	tugAttached                                             bool
 	pushBranch                                              airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch                                          bool
+	pushJunction                                            int     // route index of the junction the tail swings at (planPushback; 1: the first)
 	pushTurn                                                bool    // push and turn on the apron (only taxiway at the junction is the way out)
 	pushTurnDir                                             float64 // the way out from the junction
 }
@@ -344,6 +345,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 
 	c.req, c.route = req, route
+	c.pushJunction = 1
 	if c.inj != nil {
 		c.planPushback() // may re-plan the route from the push
 	}

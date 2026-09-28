@@ -539,3 +539,36 @@ func TestDepartureRoutesBySize(t *testing.T) {
 		t.Logf("%s from %s via %v (tight %v)", c.model, c.stand, tw, ctl.Route().Tight)
 	}
 }
+
+// TestPushbackFitsAircraft: a 777 at LKPR B14 is not pushed onto JO (code C)
+// but on straight back to J, and leaves along it.
+func TestPushbackFitsAircraft(t *testing.T) {
+	g := lkprGraph(t)
+	pi, _ := g.Layout.ParkingIndex("B14")
+	model := "Asobo PassiveAircraft B777-300ER"
+	ec := &eventClient{}
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: pi, Runway: "24", Model: model, Profile: MotionProfileFor(model)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ctl.route.Edges[:ctl.pushJunction+1] {
+		if e.Name == "JO" || e.Name == "JB" {
+			t.Fatalf("pushed along %s", e.Name)
+		}
+	}
+	if ctl.pushTurn || !ctl.havePushBranch {
+		t.Fatalf("push plan: turn %v branch %v", ctl.pushTurn, ctl.havePushBranch)
+	}
+	if err := ctl.startPushback(); err != nil {
+		t.Fatal(err)
+	}
+	pose := ctl.mover.Pose()
+	for !pose.Arrived {
+		pose = ctl.mover.Step(0.5)
+	}
+	nose := NoseGear(pose.Position, pose.Heading, MotionProfileFor(model))
+	ahead := ctl.route.Points[min(len(ctl.route.Points)-1, ctl.pushJunction+3)]
+	if d := math.Abs(headingDiff(pose.Heading, localBearing(nose, ahead))); d > 45 {
+		t.Errorf("after the push the route lies %.0f° off the nose", d)
+	}
+}

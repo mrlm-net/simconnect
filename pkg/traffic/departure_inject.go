@@ -295,13 +295,13 @@ func (c *TaxiController) startPushback() error {
 	pts := []airport.LatLon{gear}
 	if len(route.Points) > 1 {
 		var tail []airport.LatLon
-		if len(route.Nodes) > 2 {
-			tail = c.behindJunction(localBearing(gear, route.Points[1]))
+		if len(route.Nodes) > c.pushJunction+1 {
+			tail = c.behindJunction(localBearing(gear, route.Points[c.pushJunction]))
 		}
 		if turn := c.pushTurnPoints(gear); turn != nil {
 			pts = turn // push and turn on the apron (#341)
 		} else {
-			pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[1], tail, prof)...)
+			pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[c.pushJunction], tail, prof)...)
 		}
 	}
 	push := prof
@@ -347,18 +347,44 @@ func (c *TaxiController) planPushback() {
 	stand := g.Layout.Parking[c.req.Parking]
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -c.profile().RefAheadMeters)
 	pushDir := localBearing(gear, jp)
-	var best *airport.Route
-	branch := airport.NodeID(-1)
-	for _, e := range g.Adj[j] {
-		if !pushEdge(g, e) || math.Abs(headingDiff(pushDir, localBearing(jp, g.Nodes[e.To].Position))) > maxPushSwingDeg {
+	// Junctions the tail may swing at: the first, and on along the route
+	// while it runs straight back behind the stand (LKPR B14: a connector
+	// from the junction on JO, which a 777 does not fit, straight back to J).
+	cands := []int{1}
+	for i, along := 2, localDist(gear, jp); i < len(r.Points)-1; i++ {
+		along += localDist(r.Points[i-1], r.Points[i])
+		if along > pushCorridorMeters || math.Abs(headingDiff(pushDir, localBearing(r.Points[i-1], r.Points[i]))) > pushCorridorDeg {
+			break
+		}
+		// Only junctions still behind the stand, on its axis: the push goes
+		// straight back to them.
+		if math.Abs(alongHeading(gear, pushDir+90, r.Points[i])) > pushOffAxisMeters {
 			continue
 		}
-		out, err := g.RouteToRunwayFrom(j, e.To, c.req.Runway, c.req.Entry, c.req.Options)
-		if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
-			continue // no way on, or only back over the branch it was pushed onto
+		cands = append(cands, i)
+	}
+	var best *airport.Route
+	branch, at, bestCost := airport.NodeID(-1), 1, math.Inf(1)
+	for _, i := range cands {
+		k, kp := r.Nodes[i], r.Points[i]
+		in := localBearing(r.Points[i-1], kp) // the push arriving at k
+		pushed := localDist(gear, jp)
+		for n := 2; n <= i; n++ {
+			pushed += localDist(r.Points[n-1], r.Points[n])
 		}
-		if best == nil || out.Cost < best.Cost {
-			best, branch = out, e.To
+		for _, e := range g.Adj[k] {
+			if e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) ||
+				math.Abs(headingDiff(in, localBearing(kp, g.Nodes[e.To].Position))) > maxPushSwingDeg {
+				continue
+			}
+			out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, c.req.Options)
+			if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
+				continue // no way on, or only back over the branch it was pushed onto
+			}
+			// Pushing further back costs its length, like taxiing it.
+			if cost := out.Cost + pushed; cost < bestCost {
+				best, branch, at, bestCost = out, e.To, i, cost
+			}
 		}
 	}
 	if best == nil {
@@ -372,23 +398,23 @@ func (c *TaxiController) planPushback() {
 		c.pushTurn, c.pushTurnDir = true, localBearing(jp, far)
 		return
 	}
-	full, err := g.RouteFromNodes(append([]airport.NodeID{r.Nodes[0]}, best.Nodes...))
+	full, err := g.RouteFromNodes(append(slices.Clone(r.Nodes[:at]), best.Nodes...))
 	if err != nil {
 		return
 	}
 	full.Runway, full.RunwayEnd, full.Entry, full.HoldShort = best.Runway, best.RunwayEnd, best.Entry, best.HoldShort
-	c.route, c.pushBranch, c.havePushBranch = full, branch, true
+	c.route, c.pushBranch, c.havePushBranch, c.pushJunction = full, branch, true, at
 }
 
 func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 	g, route := c.req.Graph, c.route
-	j := route.Nodes[1]
+	j := route.Nodes[c.pushJunction]
 	jp := g.Nodes[j].Position
 	// Where the route really goes from the junction: the next node can be a
 	// short connector pointing elsewhere (LKPR C17: 34° to the next node,
 	// the route heads 316°), which pushed the tail the wrong way.
-	far, walked := route.Points[2], 0.0
-	for i := 2; i < len(route.Points) && walked < pushRouteLookMeters; i++ {
+	far, walked := route.Points[c.pushJunction+1], 0.0
+	for i := c.pushJunction + 1; i < len(route.Points) && walked < pushRouteLookMeters; i++ {
 		walked += localDist(route.Points[i-1], route.Points[i])
 		far = route.Points[i]
 	}
@@ -471,6 +497,11 @@ const (
 	// pushTurnRadiusCost is what a meter of turn radius below
 	// PushbackArcMeters is worth in meters of push, choosing a push-and-turn.
 	pushTurnRadiusCost = 1.5
+	// A pushback may continue straight back past the first junction to a
+	// later one, while the route stays within pushCorridorDeg of the push
+	// direction, up to pushCorridorMeters from the stand.
+	pushCorridorMeters = 150.0
+	pushCorridorDeg    = 25.0
 	// pushRouteLookMeters is how far along the route from the junction its
 	// direction is judged, to pick the side the tail goes.
 	pushRouteLookMeters = 40.0
@@ -487,8 +518,8 @@ func (c *TaxiController) startTaxiOut() error {
 	// Start at the first of the next few route points ahead of the nose; after
 	// a straight push from a dead-end stand none is, and the path starts with
 	// a sharp turn onto the taxiway (after the junction).
-	start := min(2, len(route.Points)-1)
-	for i := 1; i < min(4, len(route.Points)); i++ {
+	start := min(c.pushJunction+1, len(route.Points)-1)
+	for i := c.pushJunction; i < min(c.pushJunction+3, len(route.Points)); i++ {
 		if alongHeading(nose, pose.Heading, route.Points[i]) > 1 {
 			start = i
 			break
