@@ -152,7 +152,7 @@ Injected aircraft share a `GroundPicture` (#334): `TaxiWithGroundPicture(p)` and
 
 While taxiing (a departure) or off the runway (an arrival), an aircraft looks `TrafficLookMeters` (150 m) ahead along its path every `TrafficCheckEvery` (0.1 s). When another aircraft's body (nose to tail, sampled every 5 m) lies within its half span of the path, it brakes to a stop with its nose `TrafficGapMeters` (15 m) behind that body, and moves on as the other moves. So aircraft queue at a holding point one behind the other instead of on top of each other, follow slower traffic at a gap, and wait for an aircraft pushed back onto their taxiway. Reports older than `TrafficStaleAfter` (3 s) are ignored; a departure leaves the picture on its take-off roll, a cancelled one at once.
 
-Not yet: giving way where routes cross or merge (both would stop), and holding a pushback while traffic passes behind the stand (#334).
+Where two taxi routes cross or merge, each aircraft reports where it will drive next (up to its next stop, `GiveWayLookMeters`); where the paths come within both half-spans plus `GiveWayMarginMeters`, the aircraft closer to the conflict goes and the other stops short of it. Not yet: holding a pushback while traffic passes behind the stand (#334).
 
 ## Progressive taxi
 
