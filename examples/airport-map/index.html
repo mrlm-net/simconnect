@@ -40,6 +40,12 @@
     #map { inset: 0 0 45% 0; }
     #side { top: 55%; width: 100%; border-left: 0; border-top: 1px solid #333; }
   }
+  .combo { position: relative; display: flex; gap: 4px; }
+  .combo input { flex: 1; min-width: 0; }
+  .combo button { padding: 0 8px; }
+  .combo-menu { position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 260px; overflow-y: auto; margin-top: 2px; background: var(--panel, #1f2227); border: 1px solid rgba(127,127,127,0.4); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
+  .combo-item { padding: 4px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .combo-item:hover, .combo-item.active { background: #2d6cdf; color: #fff; }
   .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
   .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
 </style>
@@ -76,8 +82,11 @@
   <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
   <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
-  <input type="text" id="cModel" list="modelList" value="FSLTL A320 Air France SL" autocomplete="off" style="width: 100%; box-sizing: border-box">
-  <datalist id="modelList"></datalist>
+  <div class="combo">
+    <input type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false">
+    <button type="button" id="cModelOpen" class="secondary" title="Show all models">▾</button>
+    <div id="modelMenu" class="combo-menu" hidden></div>
+  </div>
   <div style="display:flex; gap:6px; margin:4px 0">
     <button type="button" id="cDeparture">▶ Departure</button>
     <button type="button" id="cArrival">▶ Arrival</button>
@@ -617,17 +626,77 @@ async function pollControl() {
   } catch (e) { /* server restarting */ }
 }
 setInterval(pollControl, 1000);
-// Model list for the Model field (searchable datalist).
+// Model field: a searchable dropdown of the simulator's aircraft titles.
+// Click the field or ▾ to open it, type to filter (all words must match),
+// click an entry or use ↑/↓ and Enter to pick one.
+let models = [];
+let modelActive = -1;
 async function loadModels() {
   try {
     const res = await fetch('/api/models');
-    const models = res.ok ? await res.json() : [];
+    models = res.ok ? await res.json() : [];
     if (!models.length) { setTimeout(loadModels, 5000); return; }
-    $('modelList').innerHTML = models.map((m) => `<option value="${esc(m)}">`).join('');
     $('cModelCount').textContent = `(${models.length} aircraft)`;
   } catch (e) { setTimeout(loadModels, 5000); }
 }
 loadModels();
+
+function modelMatches(showAll) {
+  const words = showAll ? [] : $('cModel').value.toLowerCase().split(/\s+/).filter(Boolean);
+  return models.filter((m) => words.every((w) => m.toLowerCase().includes(w)));
+}
+
+function openModelMenu(showAll) {
+  const menu = $('modelMenu');
+  if (!models.length) {
+    menu.innerHTML = '<div class="note" style="padding:4px 6px">Loading the aircraft list…</div>';
+    menu.hidden = false;
+    return;
+  }
+  const list = modelMatches(showAll);
+  modelActive = -1;
+  menu.innerHTML = list.length
+    ? list.slice(0, 300).map((m) => `<div class="combo-item" data-model="${esc(m)}">${esc(m)}</div>`).join('') +
+      (list.length > 300 ? `<div class="note" style="padding:4px 6px">${list.length - 300} more — type to narrow</div>` : '')
+    : '<div class="note" style="padding:4px 6px">No aircraft match</div>';
+  menu.hidden = false;
+}
+
+function closeModelMenu() { $('modelMenu').hidden = true; }
+
+function pickModel(m) {
+  $('cModel').value = m;
+  closeModelMenu();
+}
+
+$('cModel').addEventListener('focus', () => openModelMenu(true));
+$('cModel').addEventListener('click', () => openModelMenu(true));
+$('cModel').addEventListener('input', () => openModelMenu(false));
+$('cModelOpen').addEventListener('click', () => {
+  if ($('modelMenu').hidden) { openModelMenu(true); $('cModel').focus(); } else closeModelMenu();
+});
+$('cModel').addEventListener('keydown', (e) => {
+  const items = [...$('modelMenu').querySelectorAll('.combo-item')];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if ($('modelMenu').hidden) openModelMenu(false);
+    modelActive = Math.max(0, Math.min(items.length - 1, modelActive + (e.key === 'ArrowDown' ? 1 : -1)));
+    items.forEach((el, i) => el.classList.toggle('active', i === modelActive));
+    items[modelActive]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && modelActive >= 0 && items[modelActive]) {
+    e.preventDefault();
+    pickModel(items[modelActive].dataset.model);
+  } else if (e.key === 'Escape') {
+    closeModelMenu();
+  }
+});
+$('modelMenu').addEventListener('mousedown', (e) => {
+  const item = e.target.closest('.combo-item');
+  if (item) { e.preventDefault(); pickModel(item.dataset.model); }
+});
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('.combo')) closeModelMenu();
+});
 
 $('cDeparture').addEventListener('click', () => ctlSpawn('departure'));
 $('cArrival').addEventListener('click', () => ctlSpawn('arrival'));

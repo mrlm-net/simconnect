@@ -57,9 +57,9 @@ func main() {
 			if n == 0 {
 				continue
 			}
-			const header = 32
+			header := uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
 			size := (uint32(msg.DwSize) - header) / n
-			base := uintptr(unsafe.Pointer(e)) + header
+			base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 			for i := uint32(0); i < n; i++ {
 				entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))
 				titles[engine.BytesToString(entry.AircraftTitle[:])] = true

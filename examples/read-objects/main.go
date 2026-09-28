@@ -100,7 +100,7 @@ connected:
 				fmt.Printf("  Message size: %d bytes\n", msg.DwSize)
 
 				// Calculate actual entry size from the message
-				headerSize := types.DWORD(32)
+				headerSize := types.DWORD(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
 				actualDataSize := msg.DwSize - headerSize
 				actualEntrySize := actualDataSize / types.DWORD(enumMsg.DwArraySize)
 

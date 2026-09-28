@@ -417,9 +417,9 @@ func (cc *controlCenter) addModels(msg engine.Message) {
 	if n == 0 {
 		return
 	}
-	const header = 32
+	header := uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
 	size := (uint32(msg.DwSize) - header) / n
-	base := uintptr(unsafe.Pointer(e)) + header
+	base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	for i := uint32(0); i < n; i++ {
