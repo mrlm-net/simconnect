@@ -96,8 +96,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 			last = i // face-out stands keep the route to the lead-in junction
 		}
 	}
+	apron := apronSpans{g: c.req.Graph}
 	for i := from; i <= last; i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
+		apron.add(c.plan.Route.Nodes[i], d)
 		if i == c.plan.VacateIndex {
 			hold = d
 		}
@@ -147,6 +149,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	} else {
 		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
 	}
+	apron.limit(path, c.req.Airport, prof.Decel)
 	// Enter the stand slowly: StandTaxiSpeedKts over the last StandSlowMeters.
 	path.LimitEnd(StandSlowMeters, StandTaxiSpeedKts)
 	c.mover = NewGroundMoverFrom(path, moverProf, m.Heading, m.GroundKts)

@@ -118,6 +118,10 @@ type ArrivalRequest struct {
 	// Model (ProfileFor). It fills Profile, Approach, Rollout and
 	// NoseOffset where those are zero and sets the flaps and lights.
 	Aircraft *AircraftProfile
+	// Airport is the airport's limits (#335), e.g. airport.LimitsFor; nil
+	// uses the global defaults. Its TaxiMaxKts and ApronMaxKts cap the
+	// injected taxi-in speed where the motion profile is faster.
+	Airport *airport.Limits
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.

@@ -47,6 +47,13 @@ type RunwayLimits struct {
 	MinLengthM float64
 }
 
+// RunwayLimitsFrom returns runway limits with the airport's preferential
+// runways (airport.LimitsFor) for departures and arrivals and the default
+// wind limits.
+func RunwayLimitsFrom(l airport.Limits) RunwayLimits {
+	return RunwayLimits{Preferred: slices.Clone(l.PreferredRunways)}
+}
+
 // RunwayUse is the runway configuration of an airport.
 type RunwayUse struct {
 	Departure airport.RunwayEnd

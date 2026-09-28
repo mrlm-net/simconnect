@@ -101,7 +101,7 @@ type TaxiRequest struct {
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
 	// Departure is flown by MSFS AI after the injected take-off hands over
-	// at ClimbHandoverFt: the SID (e.g. airport.Procedures.ResolveSID) and
+	// at ClimbHandoverFt (or Airport.ClimbHandoverFt): the SID (e.g. airport.Procedures.ResolveSID) and
 	// optionally the rest of the flight plan (#315). Empty climbs straight
 	// ahead (TakeoffClimb).
 	Departure []airport.NavPoint
@@ -109,6 +109,11 @@ type TaxiRequest struct {
 	// Model (ProfileFor). It fills Profile, Takeoff and NoseOffset where
 	// those are zero and sets the flaps and pushback speed.
 	Aircraft *AircraftProfile
+	// Airport is the airport's limits (#335), e.g. airport.LimitsFor; nil
+	// uses the global defaults. Its ClimbHandoverFt replaces
+	// ClimbHandoverFt, and TaxiMaxKts and ApronMaxKts cap the injected taxi
+	// speed where the motion profile is faster.
+	Airport *airport.Limits
 	// Tug shows a pushback tug (injected departures with a pushback): e.g.
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.

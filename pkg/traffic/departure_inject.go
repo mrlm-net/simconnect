@@ -682,8 +682,10 @@ func (c *TaxiController) startTaxiOut() error {
 			break
 		}
 	}
+	apron := apronSpans{g: c.req.Graph}
 	for i := start; i < len(route.Points); i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route.Points[i])
+		apron.add(route.Nodes[i], d)
 		if hs := c.req.Graph.Nodes[route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.runway.Index {
 			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
 		}
@@ -702,6 +704,7 @@ func (c *TaxiController) startTaxiOut() error {
 	if err != nil {
 		return err
 	}
+	apron.limit(path, c.req.Airport, prof.Decel)
 	// Start where the aircraft stands (not a wheelbase along the path).
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	c.holdNextCrossing()
@@ -800,7 +803,7 @@ func (c *TaxiController) onTakeoffFrame() {
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")
 	}
-	if pose.HeightFt >= ClimbHandoverFt {
+	if pose.HeightFt >= c.handoverFt() {
 		c.handOverClimb(pose)
 		return
 	}
