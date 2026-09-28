@@ -114,6 +114,10 @@ type ArrivalRequest struct {
 	// extended centreline (ProcedureJoinNm out), and the injected approach
 	// takes over there (#315).
 	Procedure []airport.NavPoint
+	// Aircraft is the aircraft's profile (#324); nil resolves it from
+	// Model (ProfileFor). It fills Profile, Approach, Rollout and
+	// NoseOffset where those are zero and sets the flaps and lights.
+	Aircraft *AircraftProfile
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -297,6 +301,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}
+	req.resolveAircraft()
 	req.Options = withSpan(req.Options, req.Profile)
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
@@ -311,7 +316,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		// Appear exactly where the injected approach starts.
 		ap := NewApproachMover(plan.End.Threshold, plan.End.Heading, plan.SpawnNm*1852, approachProfileOf(req)).Pose()
 		plan.Spawn.Latitude, plan.Spawn.Longitude = ap.Position.Lat, ap.Position.Lon
-		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + spawnCGFt
+		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + convert.MetersToFeet(req.Aircraft.CGHeightM)
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
 		if len(req.Procedure) > 0 {
 			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852

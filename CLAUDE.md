@@ -175,7 +175,10 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
 │       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
 │       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
-│       ├── aircraft_types.go #  Per-type take-off and airframe (TakeoffProfileFor, MotionProfileFor)
+│       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling
+│       ├── aircraft_types.go #  Known-type table (A20N…B77W…AT76), TakeoffProfileFor, MotionProfileFor
+│       ├── profile_simvars.go # ProfileReader (type SimVars fed by Handle(msg)), Refine
+│       ├── telemetry.go     #   Recorder: per-movement JSON lines, Summary per type
 │       └── tunables.go      #   Taxi speeds, distances, IDs
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
@@ -226,6 +229,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
 │   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
+│   ├── traffic-profiles.md  #   Aircraft profiles per type, SimVar refinement, telemetry Recorder
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)

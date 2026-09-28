@@ -277,7 +277,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}
 	model, livery, _ := strings.Cut(r.Model, liverySep)
 	// Airframe of the type: wheelbase (where the tug connects), span (stands).
-	prof := traffic.MotionProfileFor(model)
+	ac := traffic.ProfileFor(model)
+	prof := ac.Motion
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
@@ -323,7 +324,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
-			Takeoff: traffic.TakeoffProfileFor(model), Departure: procRoute}); err != nil {
+			Aircraft: &ac, Departure: procRoute}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -342,7 +343,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
-			Procedure: procRoute}); err != nil {
+			Procedure: procRoute, Aircraft: &ac}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
