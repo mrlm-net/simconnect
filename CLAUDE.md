@@ -144,6 +144,12 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
+│   ├── nav/                 # Enroute navigation data: fixes, airways, routing
+│   │   ├── navdata.go       #   FixKey, Fix, WaypointType, AirwayType, RouteLink
+│   │   ├── navloader.go     #   NavLoader: WAYPOINT/ROUTE, VOR, NDB requests fed by Handle(msg)
+│   │   ├── crawl.go         #   AirwayCrawler: breadth-first airway crawl within a radius
+│   │   ├── airways.go       #   AirwayGraph: Route (A*), DirectTo, JSON cache
+│   │   └── testdata/        #   LKPR-area airway graph captured from MSFS 2024
 │   └── traffic/             # AI aircraft
 │       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
 │       ├── waypoints.go     #   Pushback/Taxi/Lineup/Climb waypoint helpers
@@ -193,6 +199,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── airport-map/         #   Leaflet map of airport layout + route viewer
 │   ├── ai-taxi/             #   AI departure taxi (stand → runway)
 │   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
+│   ├── spike-airways/       #   Airway crawl → JSON (or raw WAYPOINT/ROUTE/VOR/NDB dump)
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
@@ -204,6 +211,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── events-lifecycle.md  #   Event lifecycle reference
 │   ├── manager-requests-ids.md # ID allocation reference
 │   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
+│   ├── nav-airways.md       #   pkg/nav: airway crawl, fixes, enroute routing
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
