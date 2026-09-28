@@ -674,7 +674,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if node >= 0 {
 			clr = fmt.Sprintf("%s node %d", action, node)
 		}
+		// Marked as said before it is given: the state change it causes can
+		// arrive before cc.do returns, and would log it a second time.
+		it.mu.Lock()
+		it.spoken[action] = action != "remove"
+		it.mu.Unlock()
 		if err := cc.do(func() error { return it.act(action, node) }); err != nil {
+			it.mu.Lock()
+			delete(it.spoken, action)
+			it.mu.Unlock()
 			tlog.printf("%-6s %s: clearance %s refused: %v", it.Tail, it.Kind, clr, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
@@ -683,9 +691,6 @@ func registerControl(mux *http.ServeMux, st *state) {
 			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
 		} else {
 			tlog.printf("%-6s ATC: %s", it.Tail, it.phrase(action, node))
-			it.mu.Lock()
-			it.spoken[action] = true
-			it.mu.Unlock()
 		}
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
