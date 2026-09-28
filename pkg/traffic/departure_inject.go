@@ -235,7 +235,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 func (c *TaxiController) standInPlace() error {
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	nose := NoseGear(stand.Position, stand.Heading, prof)
+	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), stand.Heading, prof)
 	path, err := NewGroundPath([]airport.LatLon{nose, offsetHeading(nose, stand.Heading, 10), route.Points[len(route.Points)-1]}, prof)
 	if err != nil {
 		return err
@@ -251,7 +251,7 @@ func (c *TaxiController) standInPlace() error {
 func (c *TaxiController) startPushback() error {
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	gear := offsetHeading(stand.Position, stand.Heading, -prof.RefAheadMeters)
+	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
 	pts := []airport.LatLon{gear}
 	if len(route.Points) > 1 {
 		pts = append(pts, route.Points[1])

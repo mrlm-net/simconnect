@@ -305,7 +305,8 @@ func TestTaxiControllerInjectedFaceOutStand(t *testing.T) {
 		t.Fatalf("%s: states %v, want complete without a pushback", stand.Label(), states)
 	}
 	all := placements(ec)
-	if d := calc.HaversineMeters(all[0].Latitude, all[0].Longitude, stand.Position.Lat, stand.Position.Lon); d > 1 || math.Abs(headingDiff(all[0].Heading, stand.Heading)) > 2 {
+	at := StandPoint(stand, 0)
+	if d := calc.HaversineMeters(all[0].Latitude, all[0].Longitude, at.Lat, at.Lon); d > 1 || math.Abs(headingDiff(all[0].Heading, stand.Heading)) > 2 {
 		t.Errorf("first placement %.1f m from the stand, heading %.0f (stand %.0f)", d, all[0].Heading, stand.Heading)
 	}
 	t.Logf("%s: %v", stand.Label(), states)

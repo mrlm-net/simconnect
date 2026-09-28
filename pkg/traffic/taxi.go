@@ -89,6 +89,9 @@ type TaxiRequest struct {
 	// straight into the take-off; 0 means DefaultRollingTakeoffChance,
 	// negative never.
 	RollingTakeoffChance float64
+	// NoseOffset is the distance from the aircraft reference point to its nose,
+	// placing it on the stand (StandPoint); 0 means DefaultNoseOffsetMeters.
+	NoseOffset float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
 }
@@ -311,13 +314,14 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	}
 
 	stand := req.Graph.Layout.Parking[req.Parking]
+	standAt := StandPoint(stand, req.NoseOffset) // at the stop mark, as arrivals park
 	err = c.fleet.RequestNonATC(NonATCOpts{
 		Model:  req.Model,
 		Livery: req.Livery,
 		Tail:   req.Tail,
 		Position: types.SIMCONNECT_DATA_INITPOSITION{
-			Latitude:  stand.Position.Lat,
-			Longitude: stand.Position.Lon,
+			Latitude:  standAt.Lat,
+			Longitude: standAt.Lon,
 			Altitude:  convert.MetersToFeet(req.Graph.Layout.Altitude),
 			Heading:   stand.Heading,
 			OnGround:  1,

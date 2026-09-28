@@ -54,10 +54,19 @@ func StandStop(g *airport.Graph, r *airport.Route, noseOffset float64) (airport.
 	if n < 2 || g.Nodes[r.Nodes[n-1]].Kind != airport.NodeParking {
 		return airport.LatLon{}, ErrNotStandRoute
 	}
-	p := g.Layout.Parking[g.Nodes[r.Nodes[n-1]].Index]
-	ahead := math.Max(0, p.Radius-noseOffset)
-	lat, lon := calc.DisplaceByHeading(p.Position.Lat, p.Position.Lon, p.Heading, ahead)
-	return airport.LatLon{Lat: lat, Lon: lon}, nil
+	return StandPoint(g.Layout.Parking[g.Nodes[r.Nodes[n-1]].Index], noseOffset), nil
+}
+
+// StandPoint is where an aircraft stands on a parking spot: its reference
+// point with the nose at the front of the parking circle (by the jetway and
+// stop mark), noseOffset meters from the nose — not the circle's centre.
+// Arrivals park and departures spawn there.
+func StandPoint(p airport.Parking, noseOffset float64) airport.LatLon {
+	if noseOffset <= 0 {
+		noseOffset = DefaultNoseOffsetMeters
+	}
+	lat, lon := calc.DisplaceByHeading(p.Position.Lat, p.Position.Lon, p.Heading, math.Max(0, p.Radius-noseOffset))
+	return airport.LatLon{Lat: lat, Lon: lon}
 }
 
 func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset float64, from int) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
