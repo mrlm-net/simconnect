@@ -6,6 +6,7 @@ package airport
 import (
 	"errors"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -366,4 +367,40 @@ func TestDriveThroughStand(t *testing.T) {
 			t.Errorf("N52 → %s leaves through the lead-in behind (pushback), want forward", end)
 		}
 	}
+}
+
+// TestRouteFitsSpan: a 777 (half span 32.4 m) keeps off LKPR's apron
+// taxilanes JO and JB (17.8 m and 21.5 m free beside them) and leaves B14 by
+// J; an A320 (17.9 m) still takes JB, the nearest, from C17.
+func TestRouteFitsSpan(t *testing.T) {
+	l := loadLKPR(t)
+	g, err := BuildGraph(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b14, _ := l.ParkingIndex("B14")
+	r, err := g.RouteToRunway(b14, "24", RouteOptions{HalfSpan: 32.4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Tight || slices.Contains(r.Taxiways, "JO") || slices.Contains(r.Taxiways, "JB") {
+		t.Errorf("777 from B14 via %v (tight %v)", r.Taxiways, r.Tight)
+	}
+	t.Logf("777 B14 → 24 via %v", r.Taxiways)
+	c17, _ := l.ParkingIndex("C17")
+	a320, err := g.RouteToRunway(c17, "24", RouteOptions{HalfSpan: 17.9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("A320 C17 → 24 via %v", a320.Taxiways)
+	tight := 0
+	for _, p := range l.Parking {
+		if p.Size() == StandNone {
+			continue
+		}
+		if r, err := g.RouteToRunway(p.Index, "24", RouteOptions{HalfSpan: 32.4}); err == nil && r.Tight {
+			tight++
+		}
+	}
+	t.Logf("%d stands have no 777-wide route to 24", tight)
 }

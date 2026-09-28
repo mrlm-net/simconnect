@@ -6,6 +6,7 @@ package airport
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -180,12 +181,14 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 	if len(exit.Path) > 1 {
 		prev = exit.Path[len(exit.Path)-2]
 	}
-	in, err := g.routeVia(exit.Node, prev, to, opts)
+	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
+	in, err := fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(exit.Node, prev, to, o) })
 	if err != nil {
 		return nil, err
 	}
 	nodes := append(append([]NodeID(nil), exit.Path...), in.Nodes[1:]...)
 	r := g.routeFromNodes(nodes)
+	r.Tight = in.Tight
 	// The runway being vacated is not a crossing.
 	r.RunwayCrossings = g.runwayCrossings(r.Points[len(exit.Path)-1:])
 	return r, nil

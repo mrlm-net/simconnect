@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -85,7 +86,8 @@ func (g *Graph) RouteToRunwayEntry(parking int, runwayEnd, entry string, opts Ro
 	if !ok {
 		return nil, fmt.Errorf("%w: index %d", ErrUnknownParking, parking)
 	}
-	r, err := g.entryRoute(from, -1, runwayEnd, entry, opts)
+	opts.OwnStands = append(slices.Clone(opts.OwnStands), parking)
+	r, err := fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.entryRoute(from, -1, runwayEnd, entry, o) })
 	if errors.Is(err, ErrNoRoute) {
 		return nil, fmt.Errorf("%w from parking %d", err, parking)
 	}

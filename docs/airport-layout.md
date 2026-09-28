@@ -156,6 +156,14 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 
 `Route.Cost` is what the search minimised (length plus turn, crossing and apron penalties), to compare alternatives. `RouteOptions.OwnApronMeters` (default 250 m) waives the apron penalty around the start: an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by JB, the nearest), while through traffic still keeps off them.
 
+**Aircraft size.** With `RouteOptions.HalfSpan` (half the wing span, meters) a route keeps to taxiway edges the aircraft fits:
+
+- `Edge.Clearance` is the free half-width beside each taxiway edge: the distance from its centreline to the nearest stand circle (`Parking.Radius`, the space of the largest aircraft the stand takes). An edge fits with `WingtipMargin` (default 3 m) to spare. `OwnStands`, the stands the aircraft leaves or enters, are not obstacles; the stand-based routing functions add theirs.
+- `TaxiwayMaxSpan` limits taxiways by name to a largest span, for published restrictions the scenery does not carry. It defaults to the airport's entry in `KnownTaxiwayMaxSpan` (a first seed of the airport limits, #335): LKPR's apron taxilanes JO and JB are code C (36 m), so a 777 leaves B14 by J while an A320 from C17 takes JB.
+- When no route fits, the route is found without the size check and marked `Route.Tight`.
+
+`pkg/traffic` controllers set `HalfSpan` from the aircraft's `MotionProfile`.
+
 `RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 
 A route never passes *through* a parking stand, and crossing a runway on a taxiway is allowed but reported in `RunwayCrossings`. Errors: `ErrNoTaxiNetwork`, `ErrUnknownParking`, `ErrAmbiguousParking`, `ErrUnknownRunway`, `ErrNoHoldShort`, `ErrNoRoute` (e.g. vehicle-only stands).

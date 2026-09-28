@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -287,6 +288,8 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	if req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: parking index %d", ErrBadTaxiRequest, req.Parking)
 	}
+	req.Options = withSpan(req.Options, req.Profile)
+	req.Options.OwnStands = append(slices.Clone(req.Options.OwnStands), req.Parking) // not an obstacle to itself
 	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
 	if err != nil {
 		return err

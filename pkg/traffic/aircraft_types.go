@@ -3,7 +3,11 @@
 
 package traffic
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+)
 
 // takeoffTypes are take-off figures by aircraft family, matched against the
 // model title (type designators such as B77W or names such as 777-300), the
@@ -98,4 +102,18 @@ func MotionProfileFor(model string) MotionProfile {
 		}
 	}
 	return p
+}
+
+// withSpan routes for the aircraft's size: RouteOptions.HalfSpan from the
+// profile's span (DefaultMotionProfile's when the profile is zero), unless
+// the caller set one.
+func withSpan(o airport.RouteOptions, p MotionProfile) airport.RouteOptions {
+	if o.HalfSpan != 0 {
+		return o
+	}
+	if p == (MotionProfile{}) {
+		p = DefaultMotionProfile()
+	}
+	o.HalfSpan = p.SpanMeters / 2
+	return o
 }

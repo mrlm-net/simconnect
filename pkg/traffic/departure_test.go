@@ -513,3 +513,29 @@ func TestPushbackFacesRoute(t *testing.T) {
 // knownBesideJunction are LKPR stands whose junction lies beside the stand:
 // the push cannot yet leave them facing the taxi-out (#341).
 var knownBesideJunction = map[string]bool{"A7": true, "B9": true}
+
+// TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
+// from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
+// an A320 from C17 is pushed onto JB's side and leaves by JB, the nearest.
+func TestDepartureRoutesBySize(t *testing.T) {
+	g := lkprGraph(t)
+	for _, c := range []struct {
+		stand, model string
+		want, not    string
+	}{
+		{"B14", "FSLTL B77W Emirates", "J", "JO"},
+		{"C17", "FSLTL A320 Air France SL", "JB", ""},
+	} {
+		pi, _ := g.Layout.ParkingIndex(c.stand)
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: pi, Runway: "24", Model: c.model, Profile: MotionProfileFor(c.model)}); err != nil {
+			t.Fatal(err)
+		}
+		tw := ctl.Route().Taxiways
+		if !slices.Contains(tw, c.want) || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
+			t.Errorf("%s %s via %v, want %s", c.model, c.stand, tw, c.want)
+		}
+		t.Logf("%s from %s via %v (tight %v)", c.model, c.stand, tw, ctl.Route().Tight)
+	}
+}

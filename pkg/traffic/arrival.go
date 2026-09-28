@@ -287,6 +287,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}
+	req.Options = withSpan(req.Options, req.Profile)
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
 	})
