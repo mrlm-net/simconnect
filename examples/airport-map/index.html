@@ -653,12 +653,14 @@ async function drawStands() {
   for (const s of held) {
     const p = data.parking[s.index];
     if (!p) continue;
-    const who = s.owner || (s.objectId ? `aircraft ${s.objectId}` : 'aircraft');
-    L.circle([p.position.lat, p.position.lon], {
-      radius: p.radius, color: s.detected && !s.owner ? '#ff3b3b' : '#2d6cdf', weight: 2, fillOpacity: 0.15, interactive: false,
+    // On the shared canvas and not interactive, so clicks still reach the
+    // parking spots (a separate SVG layer on top would swallow them).
+    const ring = L.circle([p.position.lat, p.position.lon], {
+      renderer, radius: p.radius, color: s.detected && !s.owner ? '#ff3b3b' : '#2d6cdf', weight: 2, fillOpacity: 0.15, interactive: false,
     }).addTo(groups.stands);
-    L.circleMarker([p.position.lat, p.position.lon], { radius: 0, opacity: 0 })
-      .bindTooltip(`${esc(s.label)}: ${esc(who)} · span ${(2 * s.halfSpan).toFixed(0)} m`, { direction: 'bottom' }).addTo(groups.stands);
+    if (s.owner) {
+      ring.bindTooltip(`${esc(s.owner)} · span ${(2 * s.halfSpan).toFixed(0)} m`, { permanent: true, direction: 'bottom', className: 'lbl' });
+    }
   }
 }
 // Model field: a searchable dropdown of the simulator's aircraft titles.
