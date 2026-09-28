@@ -123,7 +123,8 @@ func TestMotionProfileFor(t *testing.T) {
 		if p.WheelbaseMeters != c.wheelbase || p.TailMeters <= 0 || p.SpanMeters <= 0 {
 			t.Errorf("%s: %+v", c.model, p)
 		}
-		if p.CruiseKts != a320.CruiseKts || p.RefAheadMeters != a320.RefAheadMeters {
+		// Widebodies taxi a little slower and softer (#324).
+		if p.CruiseKts < a320.CruiseKts-1 || p.CruiseKts > a320.CruiseKts || p.RefAheadMeters != a320.RefAheadMeters {
 			t.Errorf("%s: motion figures changed", c.model)
 		}
 	}

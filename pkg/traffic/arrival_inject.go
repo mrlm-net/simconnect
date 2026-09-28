@@ -229,7 +229,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.emit(nil, true) // holding at the clearance limit, or moving on
 	}
 	if !c.flapsUpFrom.IsZero() && c.flapsPct > 0 {
-		c.flapsPct = math.Max(0, 100*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
+		c.flapsPct = math.Max(0, c.aircraft().Flaps.LandingPct*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	c.stepSurfaces(c.frameDt)
@@ -328,8 +328,9 @@ func (c *ArrivalController) ClearToCross() {
 	}
 }
 
-// spawnCGFt is the reference point's height above the wheels used for the
-// spawn altitude before the sim reports the aircraft's own.
+// spawnCGFt is the A320's reference point height above the wheels, used
+// (as AircraftProfile.CGHeightM) for the spawn altitude before the sim
+// reports the aircraft's own.
 const spawnCGFt = 12.0
 
 func approachProfileOf(req ArrivalRequest) ApproachProfile {
@@ -351,8 +352,8 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.note("injector takeover on final", nil)
 	c.initDrive()
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
-	c.note("approach flaps", c.inj.SetFlaps(c.objectID, ApproachFlapsPct))
-	c.flapsPct = ApproachFlapsPct
+	c.flapsPct = c.aircraft().Flaps.ApproachPct
+	c.note("approach flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
@@ -375,7 +376,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		c.lights = m.currentLights()
 		// The aircraft spawns with its logo light off; MSFS AI switches it on
 		// on approach, so the injected approach does too (consistent look).
-		c.lights.Logo = true
+		c.lights.Logo = !c.aircraft().Lights.NoLogo
 		c.setInjectedLights(lightsRollout, "lights approach (injected)")
 	}
 	pose := c.blend.apply(c.approach.Step(math.Max(dt, 0)), math.Max(dt, 0))
@@ -387,8 +388,8 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	c.stepSurfaces(math.Max(dt, 0))
 	// Landing flaps: from the approach setting to full over
 	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
-	if pose.HeightFt < FlapsFullFt && c.flapsPct < 100 && !pose.OnGround {
-		c.flapsPct = math.Min(100, c.flapsPct+(100-ApproachFlapsPct)/FlapsFullSeconds*math.Max(dt, 0))
+	if fl := c.aircraft().Flaps; pose.HeightFt < fl.FullFt && c.flapsPct < fl.LandingPct && !pose.OnGround {
+		c.flapsPct = math.Min(fl.LandingPct, c.flapsPct+(fl.LandingPct-fl.ApproachPct)/FlapsFullSeconds*math.Max(dt, 0))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	switch {
@@ -434,7 +435,8 @@ func (c *ArrivalController) stepSurfaces(dt float64) {
 func (c *ArrivalController) turnAround(stopNose airport.LatLon) []airport.LatLon {
 	h := c.standHeading
 	side := c.roomySide()
-	r := TurnAroundMeters
+	// Scaled for longer aircraft: TurnAroundMeters suits an A320's wheelbase.
+	r := TurnAroundMeters * math.Max(1, c.profile().WheelbaseMeters/DefaultMotionProfile().WheelbaseMeters)
 	at := func(u, v float64) airport.LatLon {
 		return offsetHeading(offsetHeading(stopNose, h, u*r), h+90, v*r*side)
 	}

@@ -137,7 +137,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	case TaxiAwaitingPushback:
 		if c.pushAt.IsZero() && c.gate(c.pushCleared) {
 			// Beacon on, and the push starts BeaconLeadTime later.
-			c.lights.Logo = true // as MSFS AI shows it; aircraft spawn with it off
+			c.lights.Logo = !c.aircraft().Lights.NoLogo // as MSFS AI shows it; aircraft spawn with it off
 			c.setInjectedLights(LightsPushback, "lights beacon (pushback)")
 			c.pushAt = now.Add(BeaconLeadTime)
 		}
@@ -166,7 +166,8 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			// Taxi light on, then release the brakes TaxiLightDelay later.
 			c.setInjectedLights(LightsTaxi, "lights taxi")
 			// Take-off flaps set after engine start, while taxiing out.
-			c.flaps = surfaceRamp{target: TakeoffFlapsPct, rate: TakeoffFlapsPct / FlapsSetSeconds}
+			to := c.aircraft().Flaps.TakeoffPct
+			c.flaps = surfaceRamp{target: to, rate: to / FlapsSetSeconds}
 			c.moveAt = now.Add(TaxiLightDelay)
 		}
 		if !c.moveAt.IsZero() && !now.Before(c.moveAt) {
@@ -330,7 +331,7 @@ func (c *TaxiController) startPushback() error {
 		}
 	}
 	push := prof
-	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
+	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = c.aircraft().PushbackKts, 1, 0.15, 0.25
 	// pushPlan already shaped the arc; the fillet only rounds what is left.
 	// Alley pushes and push-and-turns come smooth already.
 	var path *GroundPath
@@ -772,8 +773,8 @@ func (c *TaxiController) onTakeoffFrame() {
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt
-	if pose.HeightFt > FlapsRetractFt && c.flaps.target > 0 {
-		c.flaps.target, c.flaps.rate = 0, TakeoffFlapsPct/FlapsRetractClimbSeconds // flaps up in the climb
+	if fl := c.aircraft().Flaps; pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
+		c.flaps.target, c.flaps.rate = 0, fl.TakeoffPct/FlapsRetractClimbSeconds // flaps up in the climb
 	}
 	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
