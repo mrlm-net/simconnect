@@ -160,7 +160,7 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 
 - `Edge.Clearance` is the free half-width beside each taxiway edge: the distance from its centreline to the nearest stand circle (`Parking.Radius`, the space of the largest aircraft the stand takes). An edge fits with `WingtipMargin` (default 3 m) to spare. `OwnStands`, the stands the aircraft leaves or enters, are not obstacles; the stand-based routing functions add theirs.
 - `TaxiwayMaxSpan` limits taxiways by name to a largest span, for published restrictions the scenery does not carry. It defaults to the airport's entry in `KnownTaxiwayMaxSpan` (a first seed of the airport limits, #335): LKPR's apron taxilanes JO and JB are code C (36 m), so a 777 leaves B14 by J while an A320 from C17 takes JB.
-- When no route fits, the route is found without the size check and marked `Route.Tight`.
+- When no route fits, the route is found without the size check and marked `Route.Tight`. A [custom route](#custom-routes-via-points-and-taxiways) returns `ErrTooNarrow` instead.
 
 `pkg/traffic` controllers set `HalfSpan` from the aircraft's `MotionProfile`.
 
@@ -182,6 +182,36 @@ Routes are not simply the shortest. Pilots and ATC prefer fewer and gentler turn
 | Turning back (≥ 150°) | 2000 m | — |
 
 Zero selects the default and a negative value disables a cost. `Route.Length` is always the real length.
+
+### Custom routes: via points and taxiways
+
+Two `RouteOptions` fields shape the route itself (#340). Every routing function honours them (`Route`, `RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`, `RouteToParking`, `RouteFromRunway`):
+
+- `Via []NodeID`: the route passes these nodes in order. Every leg uses the same search and costs, and at a via point the route goes on the way it arrived. It never turns back there, so a via point at a dead end cannot be passed.
+- `Taxiways []string` ("via F, L"): the names must appear in `Route.Taxiways` in this order, matched case-insensitively. Until the last one is joined, other named taxiways cost `OffTaxiwaysFactor` (×10) their length, so they serve only as connectors. After the last one the route goes on freely to its destination.
+
+```go
+route, err := g.RouteToRunway(c22, "30", airport.RouteOptions{Taxiways: []string{"F", "L"}})
+// 2503 m via [F L] (the default is [H1 K L])
+
+var re *airport.RouteError
+_, err = g.RouteToRunway(b14, "24", airport.RouteOptions{Taxiways: []string{"JO"}, HalfSpan: 32.4})
+if errors.As(err, &re) && errors.Is(err, airport.ErrTooNarrow) {
+    fmt.Println("aircraft too big for", re.Taxiway) // JO
+}
+```
+
+A custom route never skips the size check. Where only a route the aircraft does not fit would follow the request, the error is `ErrTooNarrow` and the route is not returned `Tight`. Failures come as a `*RouteError` naming the via point (`Via` index and `Node`) or the taxiway (`Taxiway`), so a UI can say "does not connect" or "too big for JO":
+
+| Error | Meaning |
+|---|---|
+| `ErrViaUnreachable` | Via point `Via` cannot be reached in order without turning back at the previous one (or the node does not exist) |
+| `ErrNoRoute` with `Via == len(opts.Via)` | The destination cannot be reached from the last via point |
+| `ErrTaxiwaysNotFollowed` | No route follows the taxiways in order; `Taxiway` is the first one it cannot reach |
+| `ErrTooNarrow` | Only a route the aircraft does not fit would work; `Taxiway` is where it does not fit |
+| `ErrUnknownTaxiway` | The airport has no taxiway of that name (`TaxiwayNames()` lists them) |
+
+All except `ErrUnknownTaxiway` wrap `ErrNoRoute`. These errors appear only when the request is at fault: a destination that cannot be reached at all returns the plain error. `ValidateRouteOptions(opts)` checks via nodes and taxiway names before routing. `RemainingOptions(opts, walked)` drops the via points and taxiways that a walk (a pushback, a runway exit) already passed, so a search can continue from the walk's end.
 
 ### Runway entries and exits
 
@@ -224,6 +254,16 @@ for msg := range client.Stream() {
 A SID is flown runway transition → `Legs` → enroute transition; a STAR enroute transition → `Legs` → runway transition. Courses are magnetic; `Procedures.MagVar` is the facility's MAGVAR (356 = 4° east, true = magnetic + 4).
 
 `ProcedurePath(legs, start, startAlt, magVar, turnRadius)` turns legs into points for a map: straight between fixes, turns (Dubins, in the charted direction) where the aircraft turns by heading (a charted turn, a course intercept, a course reversal), open legs (to an altitude, DME distance, manual termination) approximated from the climb gradient. `Leg.Constraint()` prints a leg's constraint as charts do (`≥4000`, `FL070`, `≤210KT`).
+
+To fly a procedure rather than draw it, resolve it into `NavPoint`s: one per fix (ident, kind, position, IAF/FAF/MAP, fly-over) plus a computed point where a leg without a fix ends (a climb to an altitude at 5%, a DME distance, an intercept of the next course, or a heading to radar vectors, `Vectors`). Each carries its altitude window in meters (`AltMin`/`AltMax`, 0 = none: AT sets both, at-or-above the minimum, at-or-below the maximum, between `Alt2`–`Alt1`), `SpeedMax` and the true `Course` flown to it; the same fix twice in a row (a STAR ending at the approach's IAF) is merged. `ResolveSID(name, runway, enroute, start, startAlt)`, `ResolveSTAR(name, enroute, runway)`, `ResolveApproach(name, transition)` and `MissedApproach(name)` return `ErrNoProcedure` or `ErrNoTransition` when a name is unknown. For ATC-style assignment, `SIDsFor`, `STARsFor` and `ApproachesFor` list a runway's procedures, `SIDToward(runway, exitFix)` and `STARFrom(runway, entryFix)` pick one by the flight plan's first or last fix, `BestApproach(runway)` prefers ILS, then RNAV, LOC, VOR, NDB, and `Arrival(runway, entryFix)` chains the STAR and the best approach through the transition where the STAR ends:
+
+```go
+sid, enroute, _ := p.SIDToward("24", "VOZ")
+dep, _ := p.ResolveSID(sid.Name, "24", enroute, der, elevation) // VOZ4A: PR402 PR403 PR404 VOZ
+arr, _ := p.Arrival("06", "GOLOP")
+// GOLO4T + ILS 06 via KUVIX: GOLOP PR711 PR712 PR513 KUVIX PR741 PR742 CI06 FF06 RW06,
+// at or above 1219 m (4000 ft) from PR741 to FF06, the threshold RW06 the MAP.
+```
 
 Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AIP chart has them), and the `HOLDING_PATTERN` fields are rejected by MSFS 2024 — do not request them.
 
