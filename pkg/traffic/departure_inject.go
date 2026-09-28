@@ -162,7 +162,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.emit(nil, false)
 		return
 	case TaxiAwaitingTaxi:
-		if c.moveAt.IsZero() && c.gate(c.taxiCleared) {
+		// Never taxi into the tug: it disconnects, backs off and drives
+		// clear first, whatever the clearance says.
+		if c.moveAt.IsZero() && c.tugClear() && c.gate(c.taxiCleared) {
 			// Taxi light on, then release the brakes TaxiLightDelay later.
 			c.setInjectedLights(LightsTaxi, "lights taxi")
 			// Take-off flaps set after engine start, while taxiing out.
@@ -285,6 +287,12 @@ func (c *TaxiController) updateTug(dt float64) {
 		return
 	}
 	c.tugErr(t.Update(pose, c.state == TaxiAwaitingPushback || c.state == TaxiPushback, dt))
+}
+
+// tugClear reports that no pushback tug is at the aircraft any more: none
+// was used, or it has driven off.
+func (c *TaxiController) tugClear() bool {
+	return c.req.Tug == nil || !c.tugAttached || c.req.Tug.Done()
 }
 
 // tugErr reports a tug error as an event; the departure goes on without it.
@@ -770,6 +778,17 @@ func (c *TaxiController) onTakeoffFrame() {
 	pose := c.takeoff.Step(dt)
 	if err := c.inj.PlaceAir(c.objectID, pose.ApproachPose()); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
+	}
+	if c.takeoff.Rejected() {
+		c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
+		if c.takeoff.Stopped() {
+			if err := c.vacateAfterReject(pose); err != nil {
+				c.fail(err)
+			}
+			return
+		}
+		c.emit(nil, false)
+		return
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt

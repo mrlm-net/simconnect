@@ -196,3 +196,30 @@ func TestSimObjectTugSteers(t *testing.T) {
 	}
 	t.Logf("bar up to %.1f° off the aircraft axis", maxRel)
 }
+
+// TestTaxiWaitsForTug: cleared to taxi right after the push, the aircraft
+// stays put until the tug has driven off.
+func TestTaxiWaitsForTug(t *testing.T) {
+	tug := &fakeTug{doneAfter: 600} // ten seconds of driving off
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{Tug: tug, HoldForClearances: true})
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	run(TaxiAwaitingPushback, 600)
+	run(TaxiPushback, 120)
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*600) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	ctl.ClearToTaxi()
+	for i := 0; i < 60*60 && ctl.State() == TaxiAwaitingTaxi; i++ {
+		run(TaxiTaxiing, 1)
+		if ctl.State() != TaxiAwaitingTaxi && !tug.Done() {
+			t.Fatalf("taxiing with the tug still there (%d of %d updates)", tug.after, tug.doneAfter)
+		}
+	}
+	if ctl.State() != TaxiTaxiing || !tug.Done() {
+		t.Fatalf("state %v, tug done %v", ctl.State(), tug.Done())
+	}
+}

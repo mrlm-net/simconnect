@@ -1,7 +1,7 @@
 ---
 title: "Aircraft Profiles and Telemetry"
 description: "One profile per aircraft type for injected traffic: airframe, taxi, take-off, approach, rollout, flaps and stand stop; refined from SimVars and tuned from recorded movements."
-order: 5
+order: 7
 section: "traffic"
 ---
 

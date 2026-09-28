@@ -57,6 +57,7 @@
   .ctl .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
   .ctl .acts .sep { flex: 1; } /* keeps the remove button apart, on the right */
   .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
+  .ctl button.urgent { background: #b36b00; color: #fff; }
 </style>
 </head>
 <body>
@@ -82,6 +83,11 @@
     <tr><td id="rPickLbl">Entry</td><td class="n"><select id="rPick"></select></td></tr>
   </table>
   <label class="opt"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
+  <div class="note"><b>Custom route</b> — the route must pass these, in order; the aircraft (Model below) must fit.</div>
+  <label class="opt"><input type="checkbox" id="rViaPick"> Pick via points: click the map on a taxiway</label>
+  <div id="rVia" class="note"></div>
+  <table><tr><td>Taxiways</td><td class="n"><input id="rTaxiways" placeholder="e.g. A, L" style="width:9em;text-transform:uppercase"></td></tr></table>
+  <button type="button" id="rCustomClear">Clear custom route</button>
   <div id="rInfo" class="note"></div>
   <label class="opt"><input type="checkbox" id="overlaps" checked> Highlight overlapping stands</label>
   <div id="overlapInfo" class="note"></div>
@@ -99,6 +105,13 @@
   <button type="button" id="pFit" class="secondary">Fit procedures in view</button>
   <div id="pInfo" class="note"></div>
 
+  <h2>ATC game</h2>
+  <div class="note">You are ground and tower. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances (below). +10 per flight handled; −1 per 30 s a flight waits over a minute, −50 lost wingtip separation, −100 two aircraft on a runway.</div>
+  <table><tr><td>New flight every</td><td class="n"><input type="number" id="gEvery" value="3" min="1" step="0.5" style="width:4em"> min (runway from Route)</td></tr></table>
+  <button type="button" id="gStart" style="width:100%; margin:4px 0">▶ Start game</button>
+  <div id="gScore" class="note"></div>
+  <div id="gLog" class="tlog" style="max-height:9em"></div>
+
   <h2>Traffic control</h2>
   <div class="note">Spawns what the <b>Route</b> section shows: its mode (departure or arrival), stand and runway. Then give the clearances in the list below; select an aircraft and click a point of its route to clear it up to there.</div>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
@@ -113,6 +126,7 @@
   <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
   <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround: depart again after <input type="number" id="cDwell" value="90" min="10" step="10" style="width:4em"> s</label>
   <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures: SID after take-off / STAR → approach (spawns at the STAR entry)</label>
+  <label class="opt">Flight plan <span class="dep-only">to</span><span class="arr-only">from</span> <input id="cOther" placeholder="ICAO, e.g. LOWW" maxlength="4" style="width:8em;text-transform:uppercase"> <span class="note">(generated: SID, airways, STAR, approach)</span></label>
   <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
@@ -576,6 +590,39 @@ function drawChoices() {
   });
 }
 
+// ── Custom route (#340): via points picked on the map, named taxiways ──
+let viaPoints = []; // {id, position, taxiways}
+const viaLayer = L.layerGroup().addTo(map);
+function customRoute() {
+  const taxiways = $('rTaxiways').value.split(/[,s]+/).map((t) => t.trim().toUpperCase()).filter(Boolean);
+  return { via: viaPoints.map((v) => v.id), taxiways };
+}
+function drawVia() {
+  viaLayer.clearLayers();
+  viaPoints.forEach((v, i) => {
+    L.marker([v.position.lat, v.position.lon], { icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+      html: `<div style="width:20px;height:20px;border-radius:50%;background:#ff2bd6;color:#fff;font:700 11px system-ui;display:flex;align-items:center;justify-content:center;border:2px solid #fff">${i + 1}</div>` }) })
+      .bindTooltip(`Via ${i + 1}: ${esc(v.taxiways.join('/') || 'node ' + v.id)} — click to remove`, { direction: 'top' })
+      .on('click', () => { viaPoints.splice(i, 1); drawVia(); computeRoute(); })
+      .addTo(viaLayer);
+  });
+  $('rVia').innerHTML = viaPoints.length ? 'Via ' + viaPoints.map((v, i) => `${i + 1}. ${esc(v.taxiways.join('/') || '#' + v.id)}`).join(' → ') : '';
+}
+map.on('click', async (e) => {
+  if (!$('rViaPick').checked || !data) return;
+  try {
+    const res = await fetch(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
+    if (!res.ok) throw new Error((await res.text()).trim());
+    viaPoints.push(await res.json());
+    drawVia();
+    computeRoute();
+  } catch (err) {
+    $('rInfo').innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+  }
+});
+$('rTaxiways').addEventListener('change', computeRoute);
+$('rCustomClear').addEventListener('click', () => { viaPoints = []; $('rTaxiways').value = ''; drawVia(); computeRoute(); });
+
 async function computeRoute() {
   updateSpawn();
   groups.route.clearLayers();
@@ -587,6 +634,8 @@ async function computeRoute() {
   try {
     const q = new URLSearchParams({ icao: data.icao });
     if ($('rRwyPaths').checked) q.set('runwayPaths', '1');
+    for (const [k, v] of Object.entries(customRoute())) if (v.length) q.set(k, v.join(','));
+    if ($('cModel').value) q.set('model', $('cModel').value); // the route must fit the aircraft
     if (arr) {
       q.set('runway', rwy); q.set('to', routeFrom.index);
       if (pick !== '') q.set('exit', pick);
@@ -772,7 +821,7 @@ $('safeOn').addEventListener('change', pollTraffic);
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
 let ctlViews = [];
-const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', locate: '📍', remove: '✕' };
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -782,6 +831,8 @@ async function ctlSpawn(kind) {
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
+    other: $('cOther').value.trim().toUpperCase(),
+    ...customRoute(), // the custom taxi route, if any
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer
@@ -846,7 +897,8 @@ function renderControl() {
     const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : ''}>${ACTION_LABEL[a] || a}</button>`;
     const actions = (v.actions || []).filter((a) => a !== 'upto')
       .concat(v.position && (v.position.lat || v.position.lon) ? ['locate'] : []);
-    const buttons = `<div class="acts">${actions.map((a) => btn(a)).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
+    const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
+    const buttons = `<div class="acts">${actions.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +
       `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}${buttons}</div>`;
@@ -999,6 +1051,32 @@ $('ctlList').addEventListener('click', (e) => {
 });
 
 $('trafficOn').addEventListener('change', pollTraffic);
+
+// ── ATC game (#272) ──
+let gameOn = false;
+async function pollGame() {
+  try {
+    const res = await fetch('/api/game');
+    if (!res.ok) return;
+    const g = await res.json();
+    gameOn = g.on;
+    $('gStart').textContent = g.on ? '■ Stop game' : '▶ Start game';
+    const mins = g.started && g.on ? Math.floor((Date.now() - Date.parse(g.started)) / 60000) : 0;
+    $('gScore').innerHTML = g.icao ? `<b style="font-size:1.4em">${g.score}</b> points · ${g.handled} of ${g.spawned} flights handled${g.on ? ` · ${mins} min · next flight in ${Math.max(0, g.nextInSec).toFixed(0)} s` : ''}` : '';
+    const el = $('gLog');
+    el.textContent = (g.events || []).join('
+');
+    el.scrollTop = el.scrollHeight;
+  } catch { /* server gone */ }
+}
+setInterval(pollGame, 2000);
+$('gStart').addEventListener('click', async () => {
+  if (!data) return;
+  const body = { on: !gameOn, icao: data.icao, runway: $('rTo').value, intervalSec: Number($('gEvery').value) * 60 || 180 };
+  if (body.on && !$('rTo').value) { $('gScore').textContent = 'Pick a runway in Route first.'; return; }
+  await fetch('/api/game', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  pollGame();
+});
 $('trafficTable').addEventListener('pointerdown', (e) => { // on press: the table re-renders every second
   const r = e.target.closest('tr[data-lat]');
   if (r) locate(Number(r.dataset.lat), Number(r.dataset.lon), r.dataset.name);

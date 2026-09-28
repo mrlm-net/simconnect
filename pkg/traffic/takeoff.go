@@ -83,7 +83,31 @@ type TakeoffMover struct {
 	phase       TakeoffPhase
 	airborneFor float64
 	liftoffX    float64
+	rejected    bool // braking to a stop (Reject)
 }
+
+// RejectDecel (m/s²) is the braking of a rejected take-off (maximum
+// autobrake); V1MarginKts puts V1 that far below Vr: a take-off is
+// rejected only before V1.
+var (
+	RejectDecel = 3.0
+	V1MarginKts = 5.0
+)
+
+// Reject aborts the take-off: before V1 on the roll the aircraft brakes to
+// a stop on the runway (Rejected, then Stopped). It reports false past V1
+// or once rotating, when the take-off has to continue.
+func (m *TakeoffMover) Reject() bool {
+	if m.phase != TakeoffRoll || m.v >= (m.p.RotateKts-V1MarginKts)*ktsToMS {
+		return false
+	}
+	m.rejected = true
+	return true
+}
+
+// Rejected reports a rejected take-off; Stopped once it has come to a stop.
+func (m *TakeoffMover) Rejected() bool { return m.rejected }
+func (m *TakeoffMover) Stopped() bool  { return m.rejected && m.v == 0 }
 
 // NewTakeoffMover starts the roll at start (the reference point on the
 // runway centreline) along heading, at speedKts (0 from a standing start).
@@ -122,6 +146,12 @@ func (m *TakeoffMover) Step(dt float64) TakeoffPose {
 func (m *TakeoffMover) step(dt float64) {
 	p := m.p
 	vr := p.RotateKts * ktsToMS
+	if m.rejected {
+		m.v = math.Max(0, m.v-RejectDecel*dt)
+		m.pitch = 0
+		m.x += m.v * dt
+		return
+	}
 	switch m.phase {
 	case TakeoffRoll, TakeoffRotate:
 		// Acceleration falls off by a third towards Vr as drag builds up.

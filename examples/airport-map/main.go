@@ -22,10 +22,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +39,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -125,6 +129,10 @@ type state struct {
 	control   *controlCenter // traffic control while connected (#322)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
+	// requests asks the connection to load an airport (load); airways is
+	// the airway graph for flight plans (#331), nil for direct routes.
+	requests chan<- string
+	airways  *nav.AirwayGraph
 }
 
 func (s *state) setLive(v bool) {
@@ -209,6 +217,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client)
+	cc.graph = st.cache.Graph
 	cc.procedures = func(icao string) (airport.Procedures, bool) {
 		st.mu.Lock()
 		defer st.mu.Unlock()
@@ -430,6 +439,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	// GET /api/geojson?icao=LKPR — the layout as a GeoJSON FeatureCollection.
 	registerControl(mux, st)
 	registerProcedures(mux, st)
+	registerGame(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))
@@ -455,12 +465,35 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "from must be a parking index", http.StatusBadRequest)
 			return
 		}
-		route, err := g.RouteToRunwayEntry(from, q.Get("to"), q.Get("entry"), airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""})
+		opts, err := routeOptions(g, q)
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		route, err := g.RouteToRunwayEntry(from, q.Get("to"), q.Get("entry"), opts)
 		if err != nil {
 			routeError(w, err)
 			return
 		}
 		writeJSON(w, route)
+	})
+
+	// GET /api/node?icao=LKPR&lat=..&lon=.. — the taxi node nearest to a
+	// point, for picking via points of a custom route (#340).
+	mux.HandleFunc("GET /api/node", func(w http.ResponseWriter, r *http.Request) {
+		g, err := st.cache.Graph(icaoParam(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		lat, _ := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+		lon, _ := strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
+		n, names, d := nearestNode(g, airport.LatLon{Lat: lat, Lon: lon})
+		if n.ID < 0 || d > 150 {
+			http.Error(w, "no taxiway near this point", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]any{"id": n.ID, "position": n.Position, "taxiways": names, "distance": d})
 	})
 
 	// GET /api/entries?icao=LKPR&runway=24 — entries onto a runway end for
@@ -537,7 +570,12 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "to must be a parking index", http.StatusBadRequest)
 			return
 		}
-		opts := traffic.ArrivalOptions{Route: airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""}}
+		ro, err := routeOptions(g, q)
+		if err != nil {
+			routeError(w, err)
+			return
+		}
+		opts := traffic.ArrivalOptions{Route: ro}
 		if s := q.Get("exit"); s != "" {
 			exits, err := g.RunwayExits(q.Get("runway"))
 			if err != nil {
@@ -622,6 +660,7 @@ func main() {
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
+	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
 	flag.Parse()
 	openTrafficLog(*logDir)
 
@@ -630,6 +669,15 @@ func main() {
 
 	st := &state{cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
 	requests := make(chan string)
+	st.requests = requests
+	if *airways != "" {
+		if g, err := nav.LoadAirwayGraph(*airways); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  airways: %v (flight plans fly direct)\n", err)
+		} else {
+			st.airways = g
+			fmt.Printf("🛣️  airways: %d fixes, %d airways\n", len(g.Fixes), len(g.Airways))
+		}
+	}
 
 	if *file != "" {
 		b, err := os.ReadFile(*file)
@@ -695,6 +743,57 @@ func lights(t *trafficRaw) string {
 }
 
 // routeError maps pkg/airport routing errors to HTTP statuses.
+// routeOptions are the route query's options (#340): runwayPaths, the
+// custom route (via=node,node… and taxiways=A,B…, checked against the
+// airport) and the aircraft's size from model=, so a custom route never
+// takes it where it does not fit.
+func routeOptions(g *airport.Graph, q url.Values) (airport.RouteOptions, error) {
+	o := airport.RouteOptions{UseRunwayPaths: q.Get("runwayPaths") != ""}
+	for _, v := range strings.Split(q.Get("via"), ",") {
+		if v = strings.TrimSpace(v); v == "" {
+			continue
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return o, fmt.Errorf("via: %q is not a node", v)
+		}
+		o.Via = append(o.Via, airport.NodeID(n))
+	}
+	for _, t := range strings.Split(q.Get("taxiways"), ",") {
+		if t = strings.ToUpper(strings.TrimSpace(t)); t != "" {
+			o.Taxiways = append(o.Taxiways, t)
+		}
+	}
+	if m := q.Get("model"); m != "" {
+		model, _, _ := strings.Cut(m, liverySep)
+		o.HalfSpan = traffic.MotionProfileFor(model).SpanMeters / 2
+	}
+	return o, g.ValidateRouteOptions(o)
+}
+
+// nearestNode is the taxi node nearest to p (stands excluded), with the
+// names of the taxiways meeting there.
+func nearestNode(g *airport.Graph, p airport.LatLon) (airport.Node, []string, float64) {
+	best, bd := airport.Node{ID: -1}, math.Inf(1)
+	for _, n := range g.Nodes {
+		if n.Kind == airport.NodeParking {
+			continue
+		}
+		if d := calc.HaversineMeters(p.Lat, p.Lon, n.Position.Lat, n.Position.Lon); d < bd {
+			best, bd = n, d
+		}
+	}
+	var names []string
+	if best.ID >= 0 {
+		for _, e := range g.Adj[best.ID] {
+			if e.Name != "" && !slices.Contains(names, e.Name) {
+				names = append(names, e.Name)
+			}
+		}
+	}
+	return best, names, bd
+}
+
 func routeError(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
 	if errors.Is(err, airport.ErrNoRoute) {

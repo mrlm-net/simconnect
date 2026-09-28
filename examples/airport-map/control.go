@@ -79,6 +79,7 @@ type ControlView struct {
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
 	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround       bool             `json:"onGround"`
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -111,6 +112,12 @@ type controlCenter struct {
 	ticks   int
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
 	procedures func(icao string) (airport.Procedures, bool)
+	// The ATC game (#272): its state, the taxi graphs, the last traffic
+	// scan and when the game last ran.
+	game   *game
+	graph  func(icao string) (*airport.Graph, error)
+	scan   []Traffic
+	gameAt time.Time
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
@@ -120,6 +127,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 		models:  map[string]bool{},
 		stands:  map[string]*traffic.StandAllocator{},
 		picture: traffic.NewGroundPicture(),
+		game:    &game{},
 	}
 }
 
@@ -155,6 +163,10 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 // tick runs every second in the connection goroutine: it scans the stands
 // of every airport with an allocator every standScanTicks.
 func (cc *controlCenter) tick() {
+	if now := time.Now(); now.Sub(cc.gameAt) >= time.Second {
+		cc.gameAt = now
+		cc.gameTick(now)
+	}
 	if cc.ticks++; cc.ticks%standScanTicks != 0 {
 		return
 	}
@@ -236,6 +248,15 @@ type SpawnRequest struct {
 	// ProcName picks the SID or STAR; "" picks one for the runway.
 	Procedure bool   `json:"procedure"`
 	ProcName  string `json:"procName"`
+	// Other is the destination of a departure or the origin of an arrival
+	// (ICAO): the flight follows a generated flight plan (#331).
+	Other string `json:"other"`
+	// Via and Taxiways shape the taxi route (#340): route nodes to pass
+	// and taxiways to follow, in order.
+	Via      []airport.NodeID `json:"via"`
+	Taxiways []string         `json:"taxiways"`
+
+	planned *planned // Other's flight plan, resolved before the spawn
 
 	adopt uint32 // departure: the aircraft already on the stand (turnaround)
 }
@@ -284,7 +305,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}()
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
-	if r.Procedure {
+	if r.planned != nil {
+		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
+		tlog.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
+			r.planned.plan.Route, r.planned.plan.CruiseFL, r.planned.plan.DistanceNM)
+	} else if r.Procedure {
 		var err error
 		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
 			return nil, err
@@ -297,7 +322,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
-			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Aircraft: &ac, Departure: procRoute}); err != nil {
 			return nil, err
 		}
@@ -315,6 +341,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			exit = &exits[*r.Exit]
 		}
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
+			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
 			Procedure: procRoute, Aircraft: &ac}); err != nil {
 			return nil, err
@@ -322,7 +349,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		it.arr = ctl
 		if r.Turnaround {
 			d := r
-			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName = "departure", false, "", nil, ""
+			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName, d.Other, d.planned = "departure", false, "", nil, "", "", nil
+			d.Via, d.Taxiways = nil, nil // the custom route was the taxi-in's
 			dwell := defaultDwell
 			if r.DwellSec > 0 {
 				dwell = time.Duration(r.DwellSec * float64(time.Second))
@@ -395,7 +423,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.logChanges(prev, ev)
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
-		v.Position, v.Heading, v.GroundSpeed, v.Lights = e.Position, e.Heading, e.GroundSpeed, e.Lights.String()
+		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
@@ -412,7 +440,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 	if e := ev.arr; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
-		v.Position, v.Heading, v.GroundSpeed, v.Lights = e.Position, e.Heading, e.GroundSpeed, e.Lights.String()
+		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
@@ -435,24 +463,31 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.T
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		return []string{"pushback", "taxi", "upto"}
-	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi, traffic.TaxiTaxiing:
+	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
 		return []string{"taxi", "upto", "takeoff"}
+	case traffic.TaxiTaxiing:
+		return []string{"hold", "taxi", "upto", "takeoff"}
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
 			return []string{"cross", "upto", "taxi"}
 		}
 		return []string{"lineup", "takeoff"}
 	case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
-		return []string{"takeoff"}
+		return []string{"takeoff", "abort"}
+	case traffic.TaxiDeparting:
+		return []string{"abort"}
 	}
 	return nil
 }
 
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
-	case traffic.ArrivalApproaching, traffic.ArrivalLanding, traffic.ArrivalRollout, traffic.ArrivalVacating,
-		traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing:
+	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
+		return []string{"goaround", "taxi", "upto"}
+	case traffic.ArrivalRollout, traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
 		return []string{"taxi", "upto"}
+	case traffic.ArrivalTaxiing:
+		return []string{"hold", "taxi", "upto"}
 	case traffic.ArrivalHoldingShort:
 		return []string{"cross", "upto", "taxi"}
 	}
@@ -476,6 +511,14 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		return d.ClearForTakeoff()
 	case d != nil && action == "remove":
 		return d.Cancel()
+	case d != nil && action == "hold":
+		return d.HoldPosition()
+	case d != nil && action == "abort":
+		return d.AbortTakeoff()
+	case it.arr != nil && action == "hold":
+		return it.arr.HoldPosition()
+	case it.arr != nil && action == "goaround":
+		return it.arr.GoAround()
 	case it.arr != nil && action == "taxi":
 		it.arr.ClearToTaxi()
 	case it.arr != nil && action == "upto":
@@ -582,6 +625,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
+		}
+		if req.Other != "" {
+			p, err := planFor(r.Context(), st, g, req)
+			if err != nil {
+				tlog.printf("%s flight plan with %s failed: %v", req.Kind, req.Other, err)
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			req.planned = p
 		}
 		var it *controlled
 		if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil {
@@ -917,6 +969,15 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return fmt.Sprintf("%s, runway %s, line up and wait", call, rwy)
 	case "takeoff":
 		return fmt.Sprintf("%s, runway %s, cleared for take-off", call, rwy)
+	case "hold":
+		return call + ", hold position"
+	case "goaround":
+		return call + ", go around, I say again, go around"
+	case "abort":
+		if v.State == traffic.TaxiDeparting.String() {
+			return call + ", stop immediately, I say again, stop immediately"
+		}
+		return call + ", hold position, cancel take-off clearance, I say again, cancel take-off clearance"
 	}
 	return call + ", " + action
 }
@@ -973,6 +1034,7 @@ func clearanceOf(kind, from, to string) string {
 // too. The controlled ones report themselves.
 func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
+	cc.scan = scan
 	own := map[uint32]bool{}
 	for _, it := range cc.items {
 		if it.dep != nil {
