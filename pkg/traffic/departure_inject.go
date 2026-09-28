@@ -99,6 +99,11 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.setInjectedLights(LightsParked, "lights parked")
 	}
 	c.last.Lights = m.currentLights()
+	// Flaps move on every frame, whatever the phase.
+	if !c.frameAt.IsZero() && c.flaps.step(math.Min(now.Sub(c.frameAt).Seconds(), 0.25)) {
+		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flaps.pct))
+	}
+	c.frameAt = now
 	switch c.state {
 	case TaxiAwaitingPushback:
 		if c.pushAt.IsZero() && c.gate(c.pushCleared) {
@@ -120,6 +125,8 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if c.moveAt.IsZero() && c.gate(c.taxiCleared) {
 			// Taxi light on, then release the brakes TaxiLightDelay later.
 			c.setInjectedLights(LightsTaxi, "lights taxi")
+			// Take-off flaps set after engine start, while taxiing out.
+			c.flaps = surfaceRamp{target: TakeoffFlapsPct, rate: TakeoffFlapsPct / FlapsSetSeconds}
 			c.moveAt = now.Add(TaxiLightDelay)
 		}
 		if !c.moveAt.IsZero() && !now.Before(c.moveAt) {
@@ -172,6 +179,14 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.holdingCrossing = false
 			c.last.HoldingShortOf = c.runway.Name()
 			c.openGate(LineUpDelay)
+			// Without held gates some departures get line-up and take-off in one
+			// clearance and roll straight into the take-off.
+			if chance := c.req.RollingTakeoffChance; !c.req.HoldForClearances && chance >= 0 {
+				if chance == 0 {
+					chance = DefaultRollingTakeoffChance
+				}
+				c.takeoffCleared = c.takeoffCleared || c.rng.Float64() < chance
+			}
 			c.setState(TaxiHoldingShort, nil)
 			return
 		}
@@ -360,6 +375,9 @@ func (c *TaxiController) onTakeoffFrame() {
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt
+	if pose.HeightFt > FlapsRetractFt && c.flaps.target > 0 {
+		c.flaps.target, c.flaps.rate = 0, TakeoffFlapsPct/FlapsRetractClimbSeconds // flaps up in the climb
+	}
 	if !c.gearUp && pose.HeightFt > GearUpFt {
 		c.gearUp = true
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
@@ -374,6 +392,7 @@ func (c *TaxiController) onTakeoffFrame() {
 
 // handOverClimb releases the aircraft to MSFS AI with climb waypoints.
 func (c *TaxiController) handOverClimb(pose TakeoffPose) {
+	c.note("flaps up", c.inj.SetFlaps(c.objectID, 0)) // clean for MSFS AI
 	c.note("release", c.inj.Release(c.objectID))
 	wps := TakeoffClimb(pose.Position.Lat, pose.Position.Lon, pose.Heading)
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {

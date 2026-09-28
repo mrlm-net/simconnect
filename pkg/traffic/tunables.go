@@ -265,3 +265,15 @@ const (
 	GearUpFt           = 50.0
 	ClimbHandoverFt    = 1500.0
 )
+
+// Injected departure configuration: take-off flaps (TakeoffFlapsPct, 1+F on
+// an A320) set over FlapsSetSeconds when the taxi starts, retracted from
+// FlapsRetractFt over FlapsRetractClimbSeconds; DefaultRollingTakeoffChance
+// of departures without held gates roll straight into the take-off.
+const (
+	TakeoffFlapsPct             = 25.0
+	FlapsSetSeconds             = 8.0
+	FlapsRetractFt              = 1000.0
+	FlapsRetractClimbSeconds    = 10.0
+	DefaultRollingTakeoffChance = 0.3
+)

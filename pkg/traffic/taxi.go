@@ -84,6 +84,11 @@ type TaxiRequest struct {
 	HoldForClearances bool
 	// Profile is the ground motion; zero means DefaultMotionProfile.
 	Profile MotionProfile
+	// RollingTakeoffChance is the chance, without HoldForClearances, that
+	// line-up and take-off are cleared together and the aircraft rolls
+	// straight into the take-off; 0 means DefaultRollingTakeoffChance,
+	// negative never.
+	RollingTakeoffChance float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
 }
@@ -172,6 +177,8 @@ type TaxiController struct {
 	alignDist                                               float64
 	takeoff                                                 *TakeoffMover
 	gearUp                                                  bool
+	flaps                                                   surfaceRamp
+	frameAt                                                 time.Time
 }
 
 // SimConnect IDs relative to the bases.

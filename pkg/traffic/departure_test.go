@@ -58,7 +58,7 @@ func placements(ec *eventClient) []types.SIMCONNECT_DATA_INITPOSITION {
 }
 
 func TestTaxiControllerInjectedDeparture(t *testing.T) {
-	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{})
+	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
 	var states []TaxiState
 	done := make(chan struct{})
 	go func() {
@@ -143,3 +143,39 @@ func TestTaxiControllerInjectedGates(t *testing.T) {
 }
 
 var _ = airport.LatLon{}
+
+// TestTaxiControllerInjectedRollingTakeoff: line-up and take-off cleared
+// together, the aircraft rolls into the take-off without stopping on the
+// runway; take-off flaps are set while taxiing and retracted before the
+// hand-over to MSFS AI.
+func TestTaxiControllerInjectedRollingTakeoff(t *testing.T) {
+	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: 1})
+	var states []TaxiState
+	done := make(chan struct{})
+	go func() {
+		for ev := range ctl.Events() {
+			if len(states) == 0 || states[len(states)-1] != ev.State {
+				states = append(states, ev.State)
+			}
+		}
+		close(done)
+	}()
+	if !run(TaxiComplete, 60*1500) {
+		t.Fatalf("state %v, want complete", ctl.State())
+	}
+	<-done
+	if slices.Contains(states, TaxiLinedUp) {
+		t.Errorf("stopped lined up on a rolling take-off: %v", states)
+	}
+	flapsMax, flapsLast := 0.0, -1.0
+	for _, b := range ec.waypoints {
+		if len(b) == 32 { // four flap surfaces
+			v := *(*float64)(unsafe.Pointer(&b[0]))
+			flapsMax, flapsLast = math.Max(flapsMax, v), v
+		}
+	}
+	if flapsMax != TakeoffFlapsPct || flapsLast != 0 {
+		t.Errorf("flaps up to %.0f%%, last %.0f%%; want %.0f then retracted", flapsMax, flapsLast, TakeoffFlapsPct)
+	}
+	t.Logf("states %v", states)
+}
