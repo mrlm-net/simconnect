@@ -207,6 +207,7 @@ type ArrivalController struct {
 	approach          *ApproachMover // injected approach until the rollout hand-over
 	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc        bool
+	goArounds         int // go-arounds flown (GoAround)
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since

@@ -450,24 +450,31 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.T
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		return []string{"pushback", "taxi", "upto"}
-	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi, traffic.TaxiTaxiing:
+	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
 		return []string{"taxi", "upto", "takeoff"}
+	case traffic.TaxiTaxiing:
+		return []string{"hold", "taxi", "upto", "takeoff"}
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
 			return []string{"cross", "upto", "taxi"}
 		}
 		return []string{"lineup", "takeoff"}
 	case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
-		return []string{"takeoff"}
+		return []string{"takeoff", "abort"}
+	case traffic.TaxiDeparting:
+		return []string{"abort"}
 	}
 	return nil
 }
 
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
-	case traffic.ArrivalApproaching, traffic.ArrivalLanding, traffic.ArrivalRollout, traffic.ArrivalVacating,
-		traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing:
+	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
+		return []string{"goaround", "taxi", "upto"}
+	case traffic.ArrivalRollout, traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
 		return []string{"taxi", "upto"}
+	case traffic.ArrivalTaxiing:
+		return []string{"hold", "taxi", "upto"}
 	case traffic.ArrivalHoldingShort:
 		return []string{"cross", "upto", "taxi"}
 	}
@@ -491,6 +498,14 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		return d.ClearForTakeoff()
 	case d != nil && action == "remove":
 		return d.Cancel()
+	case d != nil && action == "hold":
+		return d.HoldPosition()
+	case d != nil && action == "abort":
+		return d.AbortTakeoff()
+	case it.arr != nil && action == "hold":
+		return it.arr.HoldPosition()
+	case it.arr != nil && action == "goaround":
+		return it.arr.GoAround()
 	case it.arr != nil && action == "taxi":
 		it.arr.ClearToTaxi()
 	case it.arr != nil && action == "upto":
@@ -941,6 +956,15 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return fmt.Sprintf("%s, runway %s, line up and wait", call, rwy)
 	case "takeoff":
 		return fmt.Sprintf("%s, runway %s, cleared for take-off", call, rwy)
+	case "hold":
+		return call + ", hold position"
+	case "goaround":
+		return call + ", go around, I say again, go around"
+	case "abort":
+		if v.State == traffic.TaxiDeparting.String() {
+			return call + ", stop immediately, I say again, stop immediately"
+		}
+		return call + ", hold position, cancel take-off clearance, I say again, cancel take-off clearance"
 	}
 	return call + ", " + action
 }

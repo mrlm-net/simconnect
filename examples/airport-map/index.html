@@ -57,6 +57,7 @@
   .ctl .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
   .ctl .acts .sep { flex: 1; } /* keeps the remove button apart, on the right */
   .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
+  .ctl button.urgent { background: #b36b00; color: #fff; }
 </style>
 </head>
 <body>
@@ -813,7 +814,7 @@ $('safeOn').addEventListener('change', pollTraffic);
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
 let ctlViews = [];
-const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', locate: '📍', remove: '✕' };
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -889,7 +890,8 @@ function renderControl() {
     const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : ''}>${ACTION_LABEL[a] || a}</button>`;
     const actions = (v.actions || []).filter((a) => a !== 'upto')
       .concat(v.position && (v.position.lat || v.position.lon) ? ['locate'] : []);
-    const buttons = `<div class="acts">${actions.map((a) => btn(a)).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
+    const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
+    const buttons = `<div class="acts">${actions.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +
       `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}${buttons}</div>`;

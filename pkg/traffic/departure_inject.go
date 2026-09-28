@@ -770,6 +770,17 @@ func (c *TaxiController) onTakeoffFrame() {
 	if err := c.inj.PlaceAir(c.objectID, pose.ApproachPose()); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
+	if c.takeoff.Rejected() {
+		c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
+		if c.takeoff.Stopped() {
+			if err := c.vacateAfterReject(pose); err != nil {
+				c.fail(err)
+			}
+			return
+		}
+		c.emit(nil, false)
+		return
+	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt
 	if pose.HeightFt > FlapsRetractFt && c.flaps.target > 0 {
