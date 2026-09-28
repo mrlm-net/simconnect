@@ -85,7 +85,7 @@
   <div class="note">SIDs, STARs and approaches from the simulator's navigation data, with their fixes (VOR, NDB, waypoints). Paths are drawn for orientation: legs to an altitude or a manual termination are approximated.</div>
   <table>
     <tr><td>Runway</td><td class="n"><select id="pRunway"><option value="">All</option></select></td></tr>
-    <tr><td>Procedure</td><td class="n"><select id="pFilter" style="max-width:14em"><option value="">All (overview)</option></select></td></tr>
+    <tr><td>Procedure</td><td class="n"><select id="pFilter" style="max-width:14em"></select></td></tr>
   </table>
   <label class="opt"><input type="checkbox" id="pSID"> SIDs <span class="sw" style="background:#4fc3f7"></span></label>
   <label class="opt"><input type="checkbox" id="pSTAR"> STARs <span class="sw" style="background:#ffb74d"></span></label>
@@ -107,6 +107,7 @@
   <label class="opt dep-only"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
   <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
   <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround: depart again after <input type="number" id="cDwell" value="90" min="10" step="10" style="width:4em"> s</label>
+  <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures: SID after take-off / STAR → approach (spawns at the STAR entry)</label>
   <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
@@ -385,7 +386,7 @@ async function loadProcedures() {
 }
 function procShown(p) {
   const rwy = $('pRunway').value, pick = $('pFilter').value;
-  return (!rwy || !p.runways.length || p.runways.includes(rwy)) && (!pick || pick === p.key);
+  return (!rwy || !p.runways.length || p.runways.includes(rwy)) && pick === p.key; // one at a time, as a chart
 }
 // procLabel says what a procedure is: where a SID leads, where a STAR
 // starts, an approach's transitions.
@@ -401,18 +402,22 @@ function procLabel(kind, p) {
 function fillProcedurePick() {
   if (!procs) return;
   const sel = $('pFilter'), keep = sel.value, rwy = $('pRunway').value;
-  const opts = ['<option value="">All (overview)</option>'];
-  for (const [kind, list, on] of [['SID', procs.sids, $('pSID').checked], ['STAR', procs.stars, $('pSTAR').checked], ['APP', procs.approaches, $('pAPP').checked]]) {
+  // One procedure at a time, as a chart shows it, grouped by kind.
+  const opts = [];
+  for (const [kind, title, list, on] of [['SID', 'Departures (SID)', procs.sids, $('pSID').checked], ['STAR', 'Arrivals (STAR)', procs.stars, $('pSTAR').checked],
+    ['APP', 'Approaches', procs.approaches, $('pAPP').checked]]) {
     if (!on) continue;
+    const group = [];
     for (const p of list) {
       p.key = kind + ':' + p.name;
       if (rwy && p.runways.length && !p.runways.includes(rwy)) continue;
-      opts.push(`<option value="${esc(p.key)}">${esc(procLabel(kind, p))}</option>`);
+      group.push(`<option value="${esc(p.key)}">${esc(procLabel(kind, p))}</option>`);
     }
+    if (group.length) opts.push(`<optgroup label="${title}">${group.join('')}</optgroup>`);
   }
-  sel.innerHTML = opts.join('');
-  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
-  else if (sel.options.length > 1) sel.selectedIndex = 1; // one procedure, not a web of all
+  sel.innerHTML = opts.length ? opts.join('') : '<option value="">— none for this runway —</option>';
+  if ([...sel.options].some((o) => o.value === keep && keep)) sel.value = keep;
+  else sel.selectedIndex = 0;
 }
 const FIX_STYLE = { V: ['#2d9cdb', 7, 'VOR'], N: ['#b5651d', 6, 'NDB'], W: ['#cfcfcf', 3, 'waypoint'], R: ['#ffffff', 3, 'runway'], A: ['#ffffff', 4, 'airport'] };
 function drawProcedures() {
@@ -747,6 +752,7 @@ async function ctlSpawn(kind) {
     kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
+    procedure: $('cProc').checked,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer

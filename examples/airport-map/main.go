@@ -209,6 +209,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client)
+	cc.procedures = func(icao string) (airport.Procedures, bool) {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		p, ok := st.procedures[icao]
+		return p, ok
+	}
 	if err := cc.requestModels(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
 	}

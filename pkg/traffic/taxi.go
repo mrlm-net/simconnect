@@ -100,6 +100,11 @@ type TaxiRequest struct {
 	NoseOffset float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
+	// Departure is flown by MSFS AI after the injected take-off hands over
+	// at ClimbHandoverFt: the SID (e.g. airport.Procedures.ResolveSID) and
+	// optionally the rest of the flight plan (#315). Empty climbs straight
+	// ahead (TakeoffClimb).
+	Departure []airport.NavPoint
 	// Tug shows a pushback tug (injected departures with a pushback): e.g.
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.

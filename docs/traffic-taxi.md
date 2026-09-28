@@ -138,6 +138,14 @@ The push is fitted to each stand's surroundings. The main gear starts at the sta
 
 **Tug.** `TaxiRequest.Tug` shows a pushback tug. The departure calls `Attach` while the aircraft waits for its pushback (the tug connects before the clearance), `Update` on every frame (with `pushing` while on the stand and during the push, then with `pushing` false until `Done`) and `Remove` on cancel or failure. `SimObjectTug` is the built-in one: `NewSimObjectTug(client, inj, DefaultTugTitle, reqID, profile)` spawns the ground vehicle model (`FSDT_Pushback_Trepel_280`, GSX's towbarless tug; other `FSDT_Pushback_*` titles and liveries such as `…_CZ` work too) `TugAheadMeters` ahead of the nose gear, lets the injector freeze and place it on the nose gear through the push, waits `TugDisconnectSeconds`, drives off (`TugDriveOffMeters` forward, then `TugDriveOffTurnDeg` to the side) and removes it. Any other implementation of `PushbackTug` (a GSX integration, for example) can take its place.
 
+## SID after take-off
+
+`TaxiRequest.Departure` (e.g. `airport.Procedures.ResolveSID(name, runway, "", departureEnd, elevation)`, optionally followed by the rest of a flight plan) is flown by MSFS AI after the injected climb hands over at `ClimbHandoverFt` (#315). `DepartureWaypoints` skips points behind the aircraft, climbs `ProcedureClimbFtPerNm` up to `ProcedureTopFt` (or the highest constraint) within every point's constraints at 250 kt, and continues along the last track so MSFS AI does not turn back after the last fix. Without it the aircraft climbs straight ahead (`TakeoffClimb`).
+
+## Turnaround
+
+`TaxiRequest.ObjectID` adopts an aircraft already on the stand instead of spawning one (#293) — e.g. one an `ArrivalController` parked: the departure takes it over from there (pushback, taxi, take-off). The airport map chains both as a turnaround (#296): an arrival with *Turnaround* departs again after its dwell (±20 %) or the *Depart now* action, with the same call sign and stand.
+
 ## Ground traffic
 
 Injected aircraft share a `GroundPicture` (#334): `TaxiWithGroundPicture(p)` and `ArrivalWithGroundPicture(p)` with one picture for all the controllers at an airport. Every aircraft reports its reference point, heading and airframe (`MotionProfile`) each frame while on the ground; others can be added with `GroundPicture.Report` (the airport map adds the sim's own AI and the user's aircraft from its traffic scan).

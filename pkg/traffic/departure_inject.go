@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -788,6 +789,10 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 	c.note("flaps up", c.inj.SetFlaps(c.objectID, 0)) // clean for MSFS AI
 	c.note("release", c.inj.Release(c.objectID))
 	wps := TakeoffClimb(pose.Position.Lat, pose.Position.Lon, pose.Heading)
+	if len(c.req.Departure) > 0 {
+		alt := convert.MetersToFeet(c.req.Graph.Layout.Altitude) + pose.HeightFt
+		wps = DepartureWaypoints(pose.Position, pose.Heading, alt, c.req.Departure)
+	}
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {
 		c.emit(err, true)
 	}
