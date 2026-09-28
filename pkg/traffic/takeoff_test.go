@@ -125,3 +125,17 @@ func TestMotionProfileFor(t *testing.T) {
 		}
 	}
 }
+
+func TestMotionProfileForAsoboTitles(t *testing.T) {
+	for model, wb := range map[string]float64{
+		"Asobo PassiveAircraft B787-09":    25.9,
+		"Asobo PassiveAircraft B737-Max8":  15.6,
+		"Asobo PassiveAircraft B737-900ER": 17.2,
+		"Asobo PassiveAircraft A330-200":   22.2,
+		"Asobo PassiveAircraft A321 NEO":   16.9,
+	} {
+		if got := MotionProfileFor(model).WheelbaseMeters; got != wb {
+			t.Errorf("%s: wheelbase %.1f, want %.1f", model, got, wb)
+		}
+	}
+}

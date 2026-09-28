@@ -192,7 +192,7 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 }
 
 func (t *SimObjectTug) place() error {
-	err := t.inj.Place(t.objectID, t.pose)
+	err := t.inj.PlaceMoving(t.objectID, t.pose)
 	if errors.Is(err, ErrGroundUnknown) {
 		return nil
 	}

@@ -246,6 +246,16 @@ func (i *Injector) Driven(objectID uint32) bool {
 // Place puts objectID at pose, on the ground. Call it at InjectHz. It
 // returns ErrGroundUnknown until the first ground height has arrived.
 func (i *Injector) Place(objectID uint32, pose GroundPose) error {
+	return i.place(objectID, pose, false)
+}
+
+// PlaceMoving is Place with the ground speed passed on as the object's
+// speed (whole knots), so vehicles animate their wheels while placed.
+func (i *Injector) PlaceMoving(objectID uint32, pose GroundPose) error {
+	return i.place(objectID, pose, true)
+}
+
+func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	i.mu.Lock()
 	o, ok := i.objects[objectID]
 	if !ok || !o.taken {
@@ -262,6 +272,9 @@ func (i *Injector) Place(objectID uint32, pose GroundPose) error {
 		Altitude:  o.groundFt + o.cgFt,
 		Heading:   pose.Heading,
 		OnGround:  1,
+	}
+	if moving {
+		p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
 	}
 	i.mu.Unlock()
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
