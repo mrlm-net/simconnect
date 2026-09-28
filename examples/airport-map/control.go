@@ -202,6 +202,8 @@ type SpawnRequest struct {
 	Tail           string `json:"tail"`
 	Gates          bool   `json:"gates"`          // hold at every clearance
 	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection
+	Tug            bool   `json:"tug"`            // departure: a pushback tug (GSX model)
+	TugTitle       string `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
 }
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
@@ -244,7 +246,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
-			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates}); err != nil {
+			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase)}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -650,4 +652,18 @@ func airlineOf(tail string) string {
 		}
 	}
 	return ""
+}
+
+// tug is the pushback tug of a departure, if asked for: a GSX tug model
+// driven by the injector, created with the last request ID of the
+// aircraft's block.
+func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32) traffic.PushbackTug {
+	if !r.Tug {
+		return nil
+	}
+	title := r.TugTitle
+	if title == "" {
+		title = traffic.DefaultTugTitle
+	}
+	return traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, traffic.DefaultMotionProfile())
 }

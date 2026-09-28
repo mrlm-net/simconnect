@@ -302,3 +302,18 @@ const (
 	StandDetectKts              = 2.0
 	standRankCandidates         = 12
 )
+
+// Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters
+// ahead of the aircraft's nose gear, turned TugYawDeg from the aircraft
+// heading. After the push it waits TugDisconnectSeconds, then drives
+// TugDriveOffMeters forward and TugDriveOffTurnDeg to the side at up to
+// TugDriveOffKts and is removed. DefaultTugTitle is GSX's towbarless tug.
+const (
+	DefaultTugTitle      = "FSDT_Pushback_Trepel_280"
+	TugAheadMeters       = 3.0
+	TugYawDeg            = 0.0
+	TugDisconnectSeconds = 8.0
+	TugDriveOffMeters    = 40.0
+	TugDriveOffTurnDeg   = 50.0
+	TugDriveOffKts       = 8.0
+)

@@ -82,6 +82,7 @@
   <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
   <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
   <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
+  <label class="opt"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
   <label class="opt"><input type="checkbox" id="cAutoStand"> Assign a free stand (airline from the callsign)</label>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
   <div class="combo">
@@ -557,7 +558,7 @@ async function ctlSpawn(kind) {
   if (!data || (!routeFrom && !auto)) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot), or tick "Assign a free stand".</span>'; return; }
   const body = {
     kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
-    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked,
+    gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   $('cInfo').textContent = `Spawning ${kind}…`;

@@ -94,6 +94,10 @@ type TaxiRequest struct {
 	NoseOffset float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
+	// Tug shows a pushback tug (injected departures with a pushback): e.g.
+	// NewSimObjectTug with a GSX tug title, or a third-party integration.
+	// Nil pushes back without one. The controller passes it its messages.
+	Tug PushbackTug
 }
 
 // TaxiEvent reports a state change or progress of a departure taxi.
@@ -188,6 +192,7 @@ type TaxiController struct {
 	hasPendingLimit                                         bool
 	flaps                                                   surfaceRamp
 	frameAt                                                 time.Time
+	tugAttached                                             bool
 }
 
 // SimConnect IDs relative to the bases.
@@ -348,6 +353,9 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 	if c.state == TaxiIdle || c.state.Terminal() {
 		return false
 	}
+	if c.req.Tug != nil && c.req.Tug.Handle(msg) {
+		return true
+	}
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
 		m := msg.AsAssignedObjectID()
@@ -478,6 +486,7 @@ func (c *TaxiController) ClearForTakeoff() error {
 func (c *TaxiController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.removeTug()
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
@@ -502,7 +511,15 @@ func (c *TaxiController) stopMonitor() {
 
 func (c *TaxiController) fail(err error) {
 	c.stopMonitor()
+	c.removeTug()
 	c.setState(TaxiFailed, err)
+}
+
+// removeTug takes the pushback tug away (cancel, failure).
+func (c *TaxiController) removeTug() {
+	if c.req.Tug != nil {
+		c.note("tug", c.req.Tug.Remove())
+	}
 }
 
 // setState records a state change and publishes it.

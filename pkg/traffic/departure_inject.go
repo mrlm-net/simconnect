@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -105,6 +106,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	if !c.frameAt.IsZero() && c.flaps.step(math.Min(now.Sub(c.frameAt).Seconds(), 0.25)) {
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flaps.pct))
 	}
+	if !c.frameAt.IsZero() {
+		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), 0.25))
+	}
 	c.frameAt = now
 	switch c.state {
 	case TaxiAwaitingPushback:
@@ -115,7 +119,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.pushAt = now.Add(BeaconLeadTime)
 		}
 		if !c.pushAt.IsZero() && !now.Before(c.pushAt) {
-			if len(c.route.Points) > 1 && leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1]) {
+			if c.facesOut() {
 				// Self-manoeuvring stand: no pushback — engines start on the
 				// stand and the aircraft taxis straight out.
 				if err := c.standInPlace(); err != nil {
@@ -228,6 +232,42 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		}
 	}
 	c.emit(nil, false)
+}
+
+// facesOut reports a self-manoeuvring stand: the lead-in junction lies
+// ahead of the parked aircraft, so it taxis out without a pushback.
+func (c *TaxiController) facesOut() bool {
+	return len(c.route.Points) > 1 && leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1])
+}
+
+// updateTug brings the tug once the pushback is cleared (with the beacon)
+// and moves it with the aircraft until it has driven off.
+func (c *TaxiController) updateTug(dt float64) {
+	t := c.req.Tug
+	if t == nil || t.Done() {
+		return
+	}
+	stand := c.req.Graph.Layout.Parking[c.req.Parking]
+	pose := GroundPose{Position: StandPoint(stand, c.req.NoseOffset), Heading: stand.Heading}
+	if c.mover != nil {
+		pose = c.mover.Pose()
+	}
+	if !c.tugAttached {
+		if c.state != TaxiAwaitingPushback || c.pushAt.IsZero() || c.facesOut() {
+			return
+		}
+		c.tugAttached = true
+		c.tugErr(t.Attach(pose))
+		return
+	}
+	c.tugErr(t.Update(pose, c.state == TaxiAwaitingPushback || c.state == TaxiPushback, dt))
+}
+
+// tugErr reports a tug error as an event; the departure goes on without it.
+func (c *TaxiController) tugErr(err error) {
+	if err != nil {
+		c.emit(fmt.Errorf("traffic: pushback tug: %w", err), true)
+	}
 }
 
 // standInPlace gives an aircraft on a self-manoeuvring stand a stationary
