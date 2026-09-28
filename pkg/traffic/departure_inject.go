@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -83,6 +84,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 		types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		return err
 	}
+	c.last.LimitNode = -1
 	c.fast = true
 	c.openGate(PushbackDelay)
 	c.setState(TaxiAwaitingPushback, nil)
@@ -171,6 +173,14 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	c.last.Remaining = math.Max(0, c.mover.Path().Length()-pose.Distance)
 	if c.state != TaxiPushback {
 		c.checkCrossing(pose)
+	}
+	c.last.LimitNode = -1
+	if c.hasLimit {
+		c.last.LimitNode = c.limitNode
+	}
+	if at := c.atLimit(pose); at != c.last.AtLimit {
+		c.last.AtLimit = at
+		c.emit(nil, true) // holding at the clearance limit, or moving on
 	}
 	switch c.state {
 	case TaxiPushback:
@@ -372,6 +382,10 @@ func (c *TaxiController) startTaxiOut() error {
 	// Start where the aircraft stands (not a wheelbase along the path).
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	c.holdNextCrossing()
+	if c.hasPendingLimit {
+		c.hasPendingLimit = false
+		c.note("clearance limit", c.setLimit(c.pendingLimit))
+	}
 	c.lastStep = c.now()
 	return nil
 }
@@ -475,11 +489,15 @@ func (c *TaxiController) ClearPushback() {
 	c.pushCleared = true
 }
 
-// ClearToTaxi clears an injected departure to taxi to the runway.
+// ClearToTaxi clears an injected departure to taxi to the runway, without a
+// limit (removing one given with ClearUpTo).
 func (c *TaxiController) ClearToTaxi() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.taxiCleared = true
+	c.taxiCleared, c.hasPendingLimit = true, false
+	if c.state == TaxiTaxiing || c.state == TaxiHoldingShort {
+		c.clearLimit()
+	}
 }
 
 // ClearToLineUp clears an injected departure holding short of the
@@ -537,4 +555,30 @@ func (c *TaxiController) entryPath() []airport.LatLon {
 		return pts
 	}
 	return nil
+}
+
+// ClearUpTo clears an injected departure to taxi up to a node of its route
+// and hold there (progressive taxi, #322): before the taxi starts it is the
+// taxi clearance with a limit, while taxiing it moves the limit. ClearToTaxi
+// removes the limit.
+func (c *TaxiController) ClearUpTo(node airport.NodeID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inj == nil {
+		return ErrNotInjected
+	}
+	if !slices.Contains(c.route.Nodes[1:], node) {
+		return ErrNotOnRoute
+	}
+	switch c.state {
+	case TaxiAwaitingPushback, TaxiPushback, TaxiAwaitingTaxi:
+		c.pendingLimit, c.hasPendingLimit, c.taxiCleared = node, true, true
+		return nil
+	case TaxiTaxiing, TaxiHoldingShort:
+		if c.mover == nil {
+			return ErrNotOnRoute
+		}
+		return c.setLimit(node)
+	}
+	return ErrNotOnRoute
 }

@@ -131,6 +131,10 @@ type ArrivalEvent struct {
 	// HoldingShortOf names the runway the aircraft holds short of, waiting
 	// for ClearToCross.
 	HoldingShortOf string
+	// LimitNode is the clearance limit of a progressive taxi (ClearUpTo), -1
+	// for none; AtLimit is set while the aircraft holds there.
+	LimitNode airport.NodeID
+	AtLimit   bool
 	// Lights is the light state the sim reports.
 	Lights Lights
 	Err    error
@@ -198,7 +202,9 @@ type ArrivalController struct {
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
 	approachLightsSet bool
-	spoilers          surfaceRamp // injected ground spoilers
+	spoilers          surfaceRamp    // injected ground spoilers
+	pendingLimit      airport.NodeID // ClearUpTo before the taxi-in starts
+	hasPendingLimit   bool
 	takeoverTried     bool
 	emittedAt         time.Time
 }
@@ -238,7 +244,8 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 		events: make(chan ArrivalEvent, 256), now: time.Now,
 		rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5eed)),
 	}
-	c.groundDrive = groundDrive{ignoreRunway: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.last.LimitNode = -1
 	for _, o := range opts {
 		o(c)
 	}
@@ -670,7 +677,10 @@ func (c *ArrivalController) stopHere(m arrivalMonitor, desc string) {
 func (c *ArrivalController) ClearToTaxi() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.cleared = true
+	c.cleared, c.hasPendingLimit = true, false
+	if c.state == ArrivalTaxiing || c.state == ArrivalHoldingShort {
+		c.clearLimit() // no limit any more
+	}
 	if c.state == ArrivalAwaitingTaxi {
 		c.startTaxi()
 	}
@@ -684,6 +694,10 @@ func (c *ArrivalController) startTaxi() {
 		}
 		c.mover.ClearHold()
 		c.holdNextCrossing()
+		if c.hasPendingLimit {
+			c.hasPendingLimit = false
+			c.note("clearance limit", c.setLimit(c.pendingLimit))
+		}
 		c.stillFrom, c.warned = c.now(), false
 		c.setState(ArrivalTaxiing, nil)
 		return

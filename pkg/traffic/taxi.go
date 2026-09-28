@@ -109,6 +109,10 @@ type TaxiEvent struct {
 	Taxiway string
 	// HoldingShortOf names the runway while holding short.
 	HoldingShortOf string
+	// LimitNode is the clearance limit of a progressive taxi (ClearUpTo), -1
+	// for none; AtLimit is set while the aircraft holds there.
+	LimitNode airport.NodeID
+	AtLimit   bool
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
 	// Lights is the light state the sim reports.
@@ -177,6 +181,8 @@ type TaxiController struct {
 	alignDist                                               float64
 	takeoff                                                 *TakeoffMover
 	gearUp                                                  bool
+	pendingLimit                                            airport.NodeID // ClearUpTo before the taxi starts
+	hasPendingLimit                                         bool
 	flaps                                                   surfaceRamp
 	frameAt                                                 time.Time
 }
@@ -222,7 +228,8 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 		now:     time.Now,
 		rng:     rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xdea)),
 	}
-	c.groundDrive = groundDrive{ignoreRunway: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.last.LimitNode = -1
 	for _, o := range opts {
 		o(c)
 	}

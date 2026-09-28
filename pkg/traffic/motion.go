@@ -470,3 +470,24 @@ func headingDiff(a, b float64) float64 { return math.Mod(b-a+540, 360) - 180 }
 // e.g. from runway braking to taxiing once clear of the runway. The
 // geometry (wheelbase, reference point) should stay the same.
 func (m *GroundMover) SetProfile(p MotionProfile) { m.p = p }
+
+// DistanceTo projects p onto the path and returns the distance along the
+// path to the nearest point and how far p lies from it, in meters.
+func (g *GroundPath) DistanceTo(p airport.LatLon) (along, off float64) {
+	off = math.Inf(1)
+	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
+	for i := 1; i < len(g.pts); i++ {
+		a, b := g.pts[i-1], g.pts[i]
+		ax, ay := (a.Lon-p.Lon)*kx, (a.Lat-p.Lat)*metersPerDegree
+		bx, by := (b.Lon-p.Lon)*kx, (b.Lat-p.Lat)*metersPerDegree
+		dx, dy := bx-ax, by-ay
+		f := 0.0
+		if l2 := dx*dx + dy*dy; l2 > 0 {
+			f = math.Max(0, math.Min(1, -(ax*dx+ay*dy)/l2))
+		}
+		if d := math.Hypot(ax+dx*f, ay+dy*f); d < off {
+			off, along = d, g.cum[i-1]+f*(g.cum[i]-g.cum[i-1])
+		}
+	}
+	return along, off
+}

@@ -325,3 +325,54 @@ func standFacesOut(g *airport.Graph, parking int) bool {
 	}
 	return false
 }
+
+// TestTaxiControllerProgressiveTaxi: ClearUpTo stops the aircraft with its
+// nose gear on the chosen route node; a further ClearUpTo moves it on,
+// ClearToTaxi removes the limit; a node behind is refused (#322).
+func TestTaxiControllerProgressiveTaxi(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	if !run(TaxiAwaitingPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*600) {
+		t.Fatal(ctl.State())
+	}
+	route := ctl.Route()
+	first, second := route.Nodes[len(route.Nodes)/3], route.Nodes[2*len(route.Nodes)/3]
+	if err := ctl.ClearUpTo(first); err != nil {
+		t.Fatal(err)
+	}
+	holdAt := func(node airport.NodeID) {
+		t.Helper()
+		for i := 0; i < 60*600 && !(ctl.last.AtLimit && ctl.last.LimitNode == node); i++ {
+			run(TaxiComplete, 1)
+		}
+		if !ctl.last.AtLimit || ctl.last.LimitNode != node {
+			t.Fatalf("not holding at node %d: %+v", node, ctl.last)
+		}
+		pose := ctl.mover.Pose()
+		nose := NoseGear(pose.Position, pose.Heading, DefaultMotionProfile())
+		want := ctl.req.Graph.Nodes[node].Position
+		if d := calc.HaversineMeters(nose.Lat, nose.Lon, want.Lat, want.Lon); d > 3 {
+			t.Errorf("nose gear %.1f m from the clearance limit", d)
+		}
+		*now = now.Add(time.Minute)
+		run(TaxiComplete, 60*20)
+		if !ctl.last.AtLimit || ctl.mover.Pose().Distance != pose.Distance {
+			t.Fatal("moved past the clearance limit")
+		}
+	}
+	holdAt(first)
+	if err := ctl.ClearUpTo(route.Nodes[1]); err == nil {
+		t.Error("a node behind the aircraft was accepted")
+	}
+	if err := ctl.ClearUpTo(second); err != nil {
+		t.Fatal(err)
+	}
+	holdAt(second)
+	ctl.ClearToTaxi()
+	if !run(TaxiHoldingShort, 60*900) || ctl.last.HoldingShortOf != ctl.runway.Name() {
+		t.Fatalf("state %v (%s), want holding short of the runway", ctl.State(), ctl.last.HoldingShortOf)
+	}
+}
