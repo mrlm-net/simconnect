@@ -221,7 +221,7 @@ func (c *TaxiController) startPushback() error {
 		pts = append(pts, route.Points[1])
 	}
 	if len(route.Nodes) > 2 {
-		pts = append(pts, c.behindJunction()...)
+		pts = append(pts, c.behindJunction(localBearing(gear, route.Points[1]))...)
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
@@ -234,22 +234,55 @@ func (c *TaxiController) startPushback() error {
 	return nil
 }
 
-// behindJunction walks the taxiway from the junction away from the taxi
-// direction for a wheelbase plus PushTailMeters, taking the straightest
-// continuation at each node (taxiway segments can be a few meters long),
-// and returns the points the tail is pushed through; none when no taxiway
-// leads away from the taxi direction.
-func (c *TaxiController) behindJunction() []airport.LatLon {
+// behindJunction chooses where the tail goes after the stand: of the
+// taxiway branches at the junction the push can swing onto (at most
+// maxPushSwingDeg from the push direction), the one that leaves the nose
+// pointing most nearly along the taxi route. It walks that taxiway for a
+// wheelbase plus PushTailMeters, taking the straightest continuation at
+// each node (segments can be a few meters long), and returns the points the
+// tail is pushed through; none keeps the push straight (a dead-end stand).
+func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 	g, route, prof := c.req.Graph, c.route, c.profile()
-	prev, cur := route.Nodes[2], route.Nodes[1] // as if arriving from the taxi direction
+	j := route.Nodes[1]
+	jp := g.Nodes[j].Position
+	taxiDir := localBearing(jp, g.Nodes[route.Nodes[2]].Position)
+	usableEdge := func(e airport.Edge) bool {
+		return g.Nodes[e.To].Kind != airport.NodeParking && e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING &&
+			e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway
+	}
+	first, bestScore := airport.NodeID(-1), maxNoseOffRouteDeg
+	for _, e := range g.Adj[j] {
+		if !usableEdge(e) {
+			continue
+		}
+		tailDir := localBearing(jp, g.Nodes[e.To].Position)
+		if math.Abs(headingDiff(pushDir, tailDir)) > maxPushSwingDeg {
+			continue
+		}
+		// The nose ends up facing away from the tail.
+		if score := math.Abs(headingDiff(tailDir+180, taxiDir)); score < bestScore {
+			first, bestScore = e.To, score
+		}
+	}
+	if first < 0 {
+		return nil
+	}
+	prev, cur := j, first
 	left := prof.WheelbaseMeters + PushTailMeters
 	var pts []airport.LatLon
 	for left > 0 {
-		cp := g.Nodes[cur].Position
-		in := localBearing(g.Nodes[prev].Position, cp)
+		pp, cp := g.Nodes[prev].Position, g.Nodes[cur].Position
+		if d := localDist(pp, cp); d >= left {
+			pts = append(pts, offsetHeading(pp, localBearing(pp, cp), left))
+			break
+		} else {
+			pts = append(pts, cp)
+			left -= d
+		}
+		in := localBearing(pp, cp)
 		next, bestTurn := airport.NodeID(-1), 60.0 // at most a 60° bend
 		for _, e := range g.Adj[cur] {
-			if e.To == prev || g.Nodes[e.To].Kind == airport.NodeParking || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING || e.AlongRunway {
+			if e.To == prev || !usableEdge(e) {
 				continue
 			}
 			if turn := math.Abs(headingDiff(in, localBearing(cp, g.Nodes[e.To].Position))); turn < bestTurn {
@@ -259,18 +292,18 @@ func (c *TaxiController) behindJunction() []airport.LatLon {
 		if next < 0 {
 			break
 		}
-		np := g.Nodes[next].Position
-		if d := localDist(cp, np); d >= left {
-			pts = append(pts, offsetHeading(cp, localBearing(cp, np), left))
-			break
-		} else {
-			pts = append(pts, np)
-			left -= d
-		}
 		prev, cur = cur, next
 	}
 	return pts
 }
+
+// Pushback geometry: the tail can swing at most maxPushSwingDeg off the
+// straight push, and a branch leaving the nose more than maxNoseOffRouteDeg
+// off the taxi route is not worth the swing.
+const (
+	maxPushSwingDeg    = 100.0
+	maxNoseOffRouteDeg = 150.0
+)
 
 // startTaxiOut builds the taxi path from the nose gear to the hold-short
 // of the departure runway, with holds short of runway crossings.
@@ -280,10 +313,17 @@ func (c *TaxiController) startTaxiOut() error {
 	nose := NoseGear(pose.Position, pose.Heading, prof)
 	pts := []airport.LatLon{nose}
 	var holds []holdOnPath
-	for i := 1; i < len(route.Points); i++ {
-		if len(pts) == 1 && alongHeading(nose, pose.Heading, route.Points[i]) <= 1 {
-			continue // behind the nose after the push
+	// Start at the first of the next few route points ahead of the nose; after
+	// a straight push from a dead-end stand none is, and the path starts with
+	// a sharp turn onto the taxiway (after the junction).
+	start := min(2, len(route.Points)-1)
+	for i := 1; i < min(4, len(route.Points)); i++ {
+		if alongHeading(nose, pose.Heading, route.Points[i]) > 1 {
+			start = i
+			break
 		}
+	}
+	for i := start; i < len(route.Points); i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route.Points[i])
 		if hs := c.req.Graph.Nodes[route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.runway.Index {
 			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})

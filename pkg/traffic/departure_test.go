@@ -25,7 +25,10 @@ func injectedDeparture(t *testing.T, req TaxiRequest) (*TaxiController, *eventCl
 	inj := NewInjector(ec)
 	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
 	c22, _ := g.Layout.ParkingIndex("C22")
-	req.Graph, req.Parking, req.Runway, req.Model, req.Tail = g, c22, "24", "FSLTL A320 Air France SL", "CSA8"
+	if req.Runway == "" {
+		req.Runway = "24"
+	}
+	req.Graph, req.Parking, req.Model, req.Tail = g, c22, "FSLTL A320 Air France SL", "CSA8"
 	if err := ctl.Start(req); err != nil {
 		t.Fatal(err)
 	}
@@ -178,4 +181,81 @@ func TestTaxiControllerInjectedRollingTakeoff(t *testing.T) {
 		t.Errorf("flaps up to %.0f%%, last %.0f%%; want %.0f then retracted", flapsMax, flapsLast, TakeoffFlapsPct)
 	}
 	t.Logf("states %v", states)
+}
+
+// TestTaxiControllerInjectedDepartureSweep runs injected departures from a
+// sample of LKPR stands to every runway end: each must reach the climb-out
+// without failing or jumping.
+func TestTaxiControllerInjectedDepartureSweep(t *testing.T) {
+	g := lkprGraph(t)
+	ok, total := 0, 0
+	for _, p := range g.Layout.Parking {
+		if p.Index%9 != 0 || p.Radius < 15 {
+			continue
+		}
+		for _, end := range []string{"06", "24", "12", "30"} {
+			if _, err := g.RouteToRunway(p.Index, end, airport.RouteOptions{}); err != nil {
+				continue
+			}
+			total++
+			ec := &eventClient{}
+			inj := NewInjector(ec)
+			ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+			if err := ctl.Start(TaxiRequest{Graph: g, Parking: p.Index, Runway: end, Model: "A320", RollingTakeoffChance: -1}); err != nil {
+				t.Errorf("%s → %s: start: %v", p.Label(), end, err)
+				continue
+			}
+			now := time.Now()
+			ctl.now = func() time.Time { return now }
+			ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+			inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+			errs := make(chan error, 1)
+			go func() {
+				var last error
+				for ev := range ctl.Events() {
+					if ev.Err != nil {
+						last = ev.Err
+					}
+				}
+				errs <- last
+			}()
+			checked := map[TaxiState]bool{}
+			for i := 0; i < 60*3600 && !ctl.State().Terminal(); i++ {
+				now = now.Add(time.Second / 60)
+				ctl.Handle(positionMsg(DefaultTaxiRequestBase+reqOffMonitor, 77, p.Position, 0, 0, true))
+				switch s := ctl.State(); {
+				case s == TaxiLinedUp && !checked[s]:
+					checked[s] = true
+					if hd := math.Abs(headingDiff(ctl.mover.Pose().Heading, ctl.end.Heading)); hd > 3 {
+						t.Errorf("%s → %s: lined up %.1f° off the runway", p.Label(), end, hd)
+					}
+				case s == TaxiTaxiing && !checked[s]:
+					checked[s] = true
+					path := ctl.mover.Path().Points()
+					start := ctl.mover.Pose()
+					ahead := path[min(len(path)-1, len(path)/20+1)]
+					if d := math.Abs(headingDiff(start.Heading, localBearing(NoseGear(start.Position, start.Heading, DefaultMotionProfile()), ahead))); d > 120 { // a 90° turn off the junction is normal
+						t.Errorf("%s → %s: after the push facing %.0f° off the way to taxi", p.Label(), end, d)
+					}
+				}
+			}
+			if ctl.State() != TaxiComplete {
+				var err error
+				if ctl.State().Terminal() {
+					err = <-errs
+				}
+				t.Errorf("%s → %s: ended %v (%v)", p.Label(), end, ctl.State(), err)
+				continue
+			}
+			all := placements(ec)
+			for i := 1; i < len(all); i++ {
+				if d := calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude); d > 1.5 {
+					t.Errorf("%s → %s: jumped %.2f m at placement %d/%d", p.Label(), end, d, i, len(all))
+					break
+				}
+			}
+			ok++
+		}
+	}
+	t.Logf("%d of %d departures complete", ok, total)
 }
