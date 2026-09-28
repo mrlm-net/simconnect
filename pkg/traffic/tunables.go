@@ -248,3 +248,20 @@ const (
 	FlapsFullFt      = 1000.0
 	FlapsFullSeconds = 5.0
 )
+
+// Injected departure gates (TaxiWithInjector, without HoldForClearances):
+// each clears itself after about these waits (±DwellJitter). The beacon
+// comes on BeaconLeadTime before the push; the tail is pushed
+// PushTailMeters past a wheelbase beyond the taxiway junction. The gear
+// comes up above GearUpFt, and the aircraft is handed to MSFS AI for the
+// climb-out at ClimbHandoverFt.
+const (
+	PushbackDelay      = 5 * time.Second
+	BeaconLeadTime     = 3 * time.Second
+	TaxiAfterPushDelay = 15 * time.Second
+	LineUpDelay        = 6 * time.Second
+	TakeoffDelay       = 5 * time.Second
+	PushTailMeters     = 10.0
+	GearUpFt           = 50.0
+	ClimbHandoverFt    = 1500.0
+)

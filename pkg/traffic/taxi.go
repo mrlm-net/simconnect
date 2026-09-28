@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -28,19 +29,22 @@ var (
 type TaxiState uint8
 
 const (
-	TaxiIdle         TaxiState = iota // not started
-	TaxiSpawning                      // waiting for the simulator to create the aircraft
-	TaxiPushback                      // being pushed back from the stand
-	TaxiTaxiing                       // taxiing to the hold-short point
-	TaxiHoldingShort                  // stopped at the hold-short point, waiting for ClearForTakeoff
-	TaxiLiningUp                      // entering the runway
-	TaxiDeparting                     // take-off roll
-	TaxiComplete                      // airborne; the controller no longer tracks the aircraft
-	TaxiCancelled                     // Cancel was called
-	TaxiFailed                        // an error ended the taxi
+	TaxiIdle             TaxiState = iota // not started
+	TaxiSpawning                          // waiting for the simulator to create the aircraft
+	TaxiAwaitingPushback                  // injected: on the stand, waiting for ClearPushback
+	TaxiPushback                          // being pushed back from the stand
+	TaxiAwaitingTaxi                      // injected: pushed back, waiting for ClearToTaxi
+	TaxiTaxiing                           // taxiing to the hold-short point
+	TaxiHoldingShort                      // stopped at a hold-short point: of the departure runway (ClearToLineUp, ClearForTakeoff) or of a crossing (ClearToCross)
+	TaxiLiningUp                          // entering the runway
+	TaxiLinedUp                           // injected: lined up and waiting for ClearForTakeoff
+	TaxiDeparting                         // take-off roll and initial climb
+	TaxiComplete                          // airborne; the controller no longer tracks the aircraft
+	TaxiCancelled                         // Cancel was called
+	TaxiFailed                            // an error ended the taxi
 )
 
-var taxiStateNames = [...]string{"idle", "spawning", "pushback", "taxiing", "holding short", "lining up", "departing", "complete", "cancelled", "failed"}
+var taxiStateNames = [...]string{"idle", "spawning", "awaiting pushback", "pushback", "awaiting taxi", "taxiing", "holding short", "lining up", "lined up", "departing", "complete", "cancelled", "failed"}
 
 func (s TaxiState) String() string {
 	if int(s) < len(taxiStateNames) {
@@ -68,6 +72,20 @@ type TaxiRequest struct {
 	Tail string
 	// Options control route selection.
 	Options airport.RouteOptions
+	// Entry is the runway entry taxiway assigned by ATC ("24 at B"); ""
+	// departs from the full length (airport.Graph.RouteToRunwayEntry).
+	Entry string
+
+	// Injected departure (TaxiWithInjector): HoldForClearances stops at
+	// every gate until its clearance — ClearPushback, ClearToTaxi,
+	// ClearToCross, ClearToLineUp, ClearForTakeoff; without it each gate
+	// clears itself after a short, varied wait. A clearance given before
+	// its gate means no stop there.
+	HoldForClearances bool
+	// Profile is the ground motion; zero means DefaultMotionProfile.
+	Profile MotionProfile
+	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
+	Takeoff TakeoffProfile
 }
 
 // TaxiEvent reports a state change or progress of a departure taxi.
@@ -84,6 +102,12 @@ type TaxiEvent struct {
 	Remaining float64
 	// Taxiway is the name of the taxiway the aircraft is on, "" if unnamed.
 	Taxiway string
+	// HoldingShortOf names the runway while holding short.
+	HoldingShortOf string
+	// HeightFt is the height above the runway during the take-off.
+	HeightFt float64
+	// Lights is the light state the sim reports.
+	Lights Lights
 	// Err is set for TaxiFailed and for non-fatal warnings such as ErrTaxiStuck.
 	Err error
 }
@@ -129,6 +153,25 @@ type TaxiController struct {
 	track     *routeTracker
 	stillFrom time.Time
 	warned    bool
+
+	// Injected departure (TaxiWithInjector): the shared injected ground
+	// driving and the departure specifics.
+	groundDrive
+	inj                                                     *Injector
+	rng                                                     *rand.Rand
+	sent                                                    map[uint32]string
+	fast                                                    bool // monitor every frame: throttle progress events
+	emittedAt                                               time.Time
+	runway                                                  airport.Runway
+	end                                                     airport.RunwayEnd
+	runwayLength                                            float64
+	lightsSet                                               bool
+	gateAt, pushAt, moveAt                                  time.Time
+	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
+	holdingCrossing                                         bool
+	alignDist                                               float64
+	takeoff                                                 *TakeoffMover
+	gearUp                                                  bool
 }
 
 // SimConnect IDs relative to the bases.
@@ -151,6 +194,14 @@ type taxiMonitor struct {
 	Heading   float64
 	GroundKts float64
 	OnGround  float64
+	// LIGHT LANDING, TAXI, STROBE, BEACON, NAV, LOGO, WING
+	Lights [7]float64
+}
+
+// currentLights is the light state the sim reports.
+func (m taxiMonitor) currentLights() Lights {
+	on := func(i int) bool { return m.Lights[i] != 0 }
+	return Lights{Landing: on(0), Taxi: on(1), Strobe: on(2), Beacon: on(3), Nav: on(4), Logo: on(5), Wing: on(6)}
 }
 
 // NewTaxiController creates a controller that spawns and moves its aircraft
@@ -162,7 +213,9 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 		reqBase: DefaultTaxiRequestBase,
 		events:  make(chan TaxiEvent, 256),
 		now:     time.Now,
+		rng:     rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xdea)),
 	}
+	c.groundDrive = groundDrive{ignoreRunway: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	for _, o := range opts {
 		o(c)
 	}
@@ -210,10 +263,13 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	if req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: parking index %d", ErrBadTaxiRequest, req.Parking)
 	}
-	route, err := req.Graph.RouteToRunway(req.Parking, req.Runway, req.Options)
+	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
 	if err != nil {
 		return err
 	}
+	rwy, end, _ := req.Graph.Layout.RunwayEnd(req.Runway)
+	c.runway, c.end, c.runwayLength = rwy, end, rwy.Length
+	c.sent = map[uint32]string{}
 	if _, err := TaxiWaypoints(req.Graph, route); err != nil {
 		return err
 	}
@@ -232,6 +288,8 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		{"PLANE HEADING DEGREES TRUE", "degrees"},
 		{"GROUND VELOCITY", "knots"},
 		{"SIM ON GROUND", "bool"},
+		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"},
+		{"LIGHT NAV", "bool"}, {"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+defOffMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -295,6 +353,12 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 func (c *TaxiController) onSpawned(objectID uint32) {
 	c.objectID = objectID
 	c.fleet.Acknowledge(c.reqBase+reqOffSpawn, objectID)
+	if c.inj != nil {
+		if err := c.startInjectedDeparture(); err != nil {
+			c.fail(err)
+		}
+		return
+	}
 	wps, _ := TaxiWaypoints(c.req.Graph, c.route) // validated in Start
 	if err := c.fleet.ReleaseControl(objectID, c.reqBase+reqOffRelease); err != nil {
 		c.fail(err)
@@ -320,6 +384,10 @@ func (c *TaxiController) onSpawned(objectID uint32) {
 
 // onPosition advances the state machine from a position report.
 func (c *TaxiController) onPosition(m taxiMonitor) {
+	if c.inj != nil {
+		c.onDepartureFrame(m)
+		return
+	}
 	pos := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pos, m.Heading, m.GroundKts, m.OnGround != 0
 	seg, along := c.track.advance(pos)
@@ -366,6 +434,12 @@ func (c *TaxiController) onPosition(m taxiMonitor) {
 func (c *TaxiController) ClearForTakeoff() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.inj != nil {
+		// Injected: takes effect at the runway hold-short, during the line-up
+		// (a rolling take-off) or lined up; given earlier it waits.
+		c.takeoffCleared = true
+		return nil
+	}
 	if c.state != TaxiHoldingShort {
 		return ErrNotHoldingShort
 	}
@@ -392,6 +466,9 @@ func (c *TaxiController) Cancel() error {
 	if c.objectID != 0 {
 		c.stopMonitor()
 		err = c.fleet.Remove(c.objectID, c.reqBase+reqOffRemove)
+		if c.inj != nil {
+			c.inj.Forget(c.objectID)
+		}
 	}
 	c.setState(TaxiCancelled, nil)
 	return err
@@ -421,6 +498,10 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 // emit publishes the current state. Progress updates (important=false) are
 // dropped when the channel is full so Handle never blocks the message loop.
 func (c *TaxiController) emit(err error, important bool) {
+	if !important && err == nil && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+		return // progress at most once a second while reading every frame
+	}
+	c.emittedAt = c.now()
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {

@@ -217,7 +217,7 @@ func positionMsg(req, obj uint32, p airport.LatLon, hdg, kts float64, ground boo
 	if ground {
 		g = 1
 	}
-	*(*taxiMonitor)(unsafe.Pointer(&buf[off])) = taxiMonitor{p.Lat, p.Lon, hdg, kts, g}
+	*(*taxiMonitor)(unsafe.Pointer(&buf[off])) = taxiMonitor{Latitude: p.Lat, Longitude: p.Lon, Heading: hdg, GroundKts: kts, OnGround: g}
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 
@@ -265,7 +265,7 @@ func TestTaxiControllerFullDeparture(t *testing.T) {
 		math.Abs(fc.spawned[0].Latitude-stand.Position.Lat) > 1e-9 {
 		t.Fatalf("spawn = %+v, want stand C22", fc.spawned)
 	}
-	if len(fc.defs[DefaultTaxiDefinitionBase]) != 1 || len(fc.defs[DefaultTaxiDefinitionBase+1]) != 5 {
+	if len(fc.defs[DefaultTaxiDefinitionBase]) != 1 || len(fc.defs[DefaultTaxiDefinitionBase+1]) != 12 {
 		t.Fatalf("definitions = %v", fc.defs)
 	}
 	req, mon := DefaultTaxiRequestBase, DefaultTaxiRequestBase+reqOffMonitor
