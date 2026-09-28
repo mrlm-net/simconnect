@@ -274,15 +274,15 @@ Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AI
 | Field | Source | Default |
 |-------|--------|---------|
 | `TransitionAltitudeFt` | `KnownLimits` (LKPR 5000, EDDF/EDDM 5000, LOWW 10000, EGLL 6000, LFPG 5000, EHAM 3000, EPWA 6500, LSZH 7000) | 5000; 18000 for K… and C… codes |
-| `ClimbHandoverFt` (above the field) | the SIDs' initial climb: the highest CA/VA/FA leg starting a runway transition, minus the elevation, at least `MinClimbHandoverFt` (1000) | `DefaultClimbHandoverFt` (1500) without procedures |
+| `ClimbHandoverFt` (above the field) | the SIDs' initial climb: the highest CA/VA/FA leg starting a runway transition, minus the elevation, at least `MinClimbHandoverFt` (1500) | `DefaultClimbHandoverFt` (1500) without procedures |
 | `TaxiMaxKts` / `ApronMaxKts` | `KnownLimits` | 30 / 15 |
 | `PreferredRunways` | `KnownLimits` (LKPR 24, then 06) | none |
 | `MSAFt`, `NoReverseThrust` | `KnownLimits` | unknown / false |
 
-At LKPR the SIDs climb to 1700 ft on the runway heading first; the field is at about 1200 ft, so the hand-over is at the 1000 ft floor. Pass the limits to `traffic.TaxiRequest.Airport` / `ArrivalRequest.Airport`, and `nav.RunwayLimitsFrom(lim)` gives the preferential runways to `nav.ActiveRunways`. `Graph.Apron(node)` reports a stand's junction with the taxilane, where `ApronMaxKts` applies.
+At LKPR the SIDs climb to 1700 ft on the runway heading first; the field is at about 1200 ft, so the hand-over stays at the 1500 ft floor. Pass the limits to `traffic.TaxiRequest.Airport` / `ArrivalRequest.Airport`, and `nav.RunwayLimitsFrom(lim)` gives the preferential runways to `nav.ActiveRunways`. `Graph.Apron(node)` reports a stand's junction with the taxilane, where `ApronMaxKts` applies.
 
 ```go
-lim := airport.LimitsFor(layout, &procs) // LKPR: TA 5000, hand-over 1000 ft, 24 then 06
+lim := airport.LimitsFor(layout, &procs) // LKPR: TA 5000, hand-over 1500 ft, 24 then 06
 use := nav.ActiveRunways(layout, weather, nav.RunwayLimitsFrom(lim))
 ```
 

@@ -9,15 +9,16 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
-// TestTaxiControllerAirportHandover: with LKPR's limits the injected
-// take-off hands over at the airport's height (from the SIDs' 1700 ft
-// initial climb), below the global ClimbHandoverFt.
+// TestTaxiControllerAirportHandover: the injected take-off hands over at
+// the airport's height; LKPR's SIDs climb to 1700 ft only, so the floor
+// applies; an airport whose SID climbs higher hands over higher.
 func TestTaxiControllerAirportHandover(t *testing.T) {
 	procs := lkprProcedures(t)
 	lim := airport.LimitsFor(lkprGraph(t).Layout, &procs)
-	if lim.ClimbHandoverFt >= ClimbHandoverFt {
-		t.Fatalf("LKPR hand-over %.0f ft, want below %.0f", lim.ClimbHandoverFt, ClimbHandoverFt)
+	if lim.ClimbHandoverFt != airport.MinClimbHandoverFt {
+		t.Fatalf("LKPR hand-over %.0f ft, want the %.0f ft floor", lim.ClimbHandoverFt, airport.MinClimbHandoverFt)
 	}
+	lim.ClimbHandoverFt = 2500 // as a SID climbing to about 3700 ft would give
 	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1, Airport: &lim})
 	go func() {
 		for range ctl.Events() {

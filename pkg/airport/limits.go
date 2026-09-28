@@ -20,9 +20,11 @@ const (
 	USTransitionAltitudeFt      = 18000.0
 	// DefaultClimbHandoverFt is the climb-out hand-over height above the
 	// field when no SID gives an initial climb; MinClimbHandoverFt is the
-	// lowest one taken from a SID.
+	// lowest one taken from a SID: a SID climbing higher first raises it,
+	// one that levels off lower does not bring MSFS AI in earlier than the
+	// live-tested hand-over.
 	DefaultClimbHandoverFt = 1500.0
-	MinClimbHandoverFt     = 1000.0
+	MinClimbHandoverFt     = 1500.0
 	// DefaultTaxiMaxKts and DefaultApronMaxKts cap the taxi speed on
 	// taxiways and on apron taxilanes.
 	DefaultTaxiMaxKts  = 30.0
