@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"errors"
 	"math"
 	"slices"
 	"strings"
@@ -375,6 +376,79 @@ func TestTaxiControllerProgressiveTaxi(t *testing.T) {
 	ctl.ClearToTaxi()
 	if !run(TaxiHoldingShort, 60*900) || ctl.last.HoldingShortOf != ctl.runway.Name() {
 		t.Fatalf("state %v (%s), want holding short of the runway", ctl.State(), ctl.last.HoldingShortOf)
+	}
+}
+
+// TestTaxiControllerLimitPassedDuringPush: a clearance limit given during
+// the pushback that is behind the aircraft when the taxi starts is reported with ErrNotOnRoute when
+// the taxi starts, and the aircraft holds there instead of taxiing on
+// without a limit; ClearToTaxi releases it (#337).
+func TestTaxiControllerLimitPassedDuringPush(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	if !run(TaxiAwaitingPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	// A limit the aircraft is past when the taxi starts: the stand's own
+	// node (ClearUpTo refuses it up front; a limit given before the push
+	// can end up behind the same way on stands where the push passes
+	// route nodes).
+	passed := ctl.Route().Nodes[0]
+	ctl.mu.Lock()
+	ctl.pendingLimit, ctl.hasPendingLimit, ctl.taxiCleared = passed, true, true
+	ctl.mu.Unlock()
+	var got error
+	for i := 0; i < 60*900 && got == nil; i++ {
+		run(TaxiComplete, 1)
+		for len(ctl.Events()) > 0 {
+			if ev := <-ctl.Events(); ev.Err != nil {
+				got = ev.Err
+			}
+		}
+	}
+	if !errors.Is(got, ErrNotOnRoute) {
+		t.Fatalf("no ErrNotOnRoute event (state %v, err %v)", ctl.State(), got)
+	}
+	at := ctl.mover.Pose().Distance
+	*now = now.Add(time.Minute)
+	run(TaxiComplete, 60*30)
+	if moved := ctl.mover.Pose().Distance - at; moved > 1 {
+		t.Fatalf("taxied %.0f m without a clearance limit", moved)
+	}
+	ctl.ClearToTaxi()
+	if !run(TaxiHoldingShort, 60*900) {
+		t.Fatalf("state %v, want holding short after ClearToTaxi", ctl.State())
+	}
+}
+
+// TestTaxiControllerAdopts: with TaxiRequest.ObjectID the controller spawns
+// nothing and departs the aircraft already on the stand: pushback, taxi,
+// hold short (#293).
+func TestTaxiControllerAdopts(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: c22, Runway: "24", Model: "FSLTL A320 Air France SL", Tail: "CSA9", ObjectID: 88}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ec.spawned) != 0 || ctl.ObjectID() != 88 || ctl.State() != TaxiAwaitingPushback {
+		t.Fatalf("spawned %d, object %d, state %v", len(ec.spawned), ctl.ObjectID(), ctl.State())
+	}
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 88, 1200, 12))
+	stand := g.Layout.Parking[c22]
+	for i := 0; i < 60*1200 && ctl.State() != TaxiHoldingShort && !ctl.State().Terminal(); i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(positionMsg(DefaultTaxiRequestBase+reqOffMonitor, 88, stand.Position, 0, 0, true))
+	}
+	if ctl.State() != TaxiHoldingShort {
+		t.Fatalf("state %v, want holding short", ctl.State())
 	}
 }
 

@@ -106,6 +106,7 @@
   <label class="opt"><input type="checkbox" id="cGates" checked> <span id="cGatesLbl">Hold at every clearance</span></label>
   <label class="opt dep-only"><input type="checkbox" id="cTug" checked> Pushback tug (GSX model)</label>
   <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
+  <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround: depart again after <input type="number" id="cDwell" value="90" min="10" step="10" style="width:4em"> s</label>
   <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
@@ -737,7 +738,7 @@ $('safeOn').addEventListener('change', pollTraffic);
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
 let ctlViews = [];
-const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', remove: '✕' };
+const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -745,8 +746,10 @@ async function ctlSpawn(kind) {
   const body = {
     kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
+    turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
+  if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer
   $('cInfo').textContent = `Spawning ${kind}…`;
   try {
     const res = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

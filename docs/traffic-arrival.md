@@ -186,6 +186,7 @@ Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fp
 - The nose gear stops on the node, or `HoldShortStopMeters` before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared crossing.
 - `ArrivalEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
 - A later `ClearUpTo` moves the limit on; `ClearToTaxi()` removes it.
+- A limit given before the taxi-in starts (during the approach or rollout) that is behind the aircraft by then (on the exit path) holds it clear of the runway and is reported as an `ArrivalEvent` with `Err` wrapping `ErrNotOnRoute`.
 
 ## Stands
 

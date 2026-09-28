@@ -155,6 +155,7 @@ Not yet: giving way where routes cross or merge (both would stop), and holding a
 - The nose gear stops on the node, or `HoldShortStopMeters` (7 m) before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared runway crossing. The state stays `TaxiTaxiing`.
 - `TaxiEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
 - A later `ClearUpTo` moves the limit on; `ClearToTaxi()` removes it and clears the aircraft to the runway.
+- A limit given before the taxi starts (during the pushback) that is no longer ahead when it starts holds the aircraft where it is and is reported as a `TaxiEvent` with `Err` wrapping `ErrNotOnRoute`: give a new `ClearUpTo` or `ClearToTaxi`.
 
 ```go
 r := ctl.Route()

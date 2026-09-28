@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -308,4 +309,19 @@ func (d *groundDrive) reportGround(id uint32, pos airport.LatLon, hdg float64, n
 	if d.picture != nil && id != 0 {
 		d.picture.Report(id, pos, hdg, d.prof, now)
 	}
+}
+
+// applyPendingLimit sets a clearance limit given before the taxi path
+// existed (during the pushback, the approach or the rollout). A limit no
+// longer ahead (passed during the push or on the runway exit) holds the
+// aircraft where it is, never beyond its clearance, and returns
+// ErrNotOnRoute for the caller to report: it waits for a new clearance.
+func (d *groundDrive) applyPendingLimit(node airport.NodeID) error {
+	err := d.setLimit(node)
+	if err == nil || d.mover == nil {
+		return err
+	}
+	d.limit, d.hasLimit, d.limitNode = d.mover.Pose().Distance, true, node
+	d.updateHold()
+	return fmt.Errorf("%w: node %d was passed before the taxi started; holding for a new clearance", ErrNotOnRoute, node)
 }

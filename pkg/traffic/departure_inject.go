@@ -692,7 +692,10 @@ func (c *TaxiController) startTaxiOut() error {
 	c.holdNextCrossing()
 	if c.hasPendingLimit {
 		c.hasPendingLimit = false
-		c.note("clearance limit", c.setLimit(c.pendingLimit))
+		if err := c.applyPendingLimit(c.pendingLimit); err != nil {
+			c.note("clearance limit", err)
+			c.emit(err, true) // #337: the caller learns the limit was not applied
+		}
 	}
 	c.lastStep = c.now()
 	return nil
