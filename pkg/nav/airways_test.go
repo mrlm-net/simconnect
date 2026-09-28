@@ -12,7 +12,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
-func loadLKPR(t *testing.T) *AirwayGraph {
+func loadLKPRAirways(t *testing.T) *AirwayGraph {
 	t.Helper()
 	g, err := LoadAirwayGraph("testdata/LKPR-airways.json")
 	if err != nil {
@@ -22,7 +22,7 @@ func loadLKPR(t *testing.T) *AirwayGraph {
 }
 
 func TestLKPRGraphSize(t *testing.T) {
-	g := loadLKPR(t)
+	g := loadLKPRAirways(t)
 	kinds := map[FixKind]int{}
 	types := map[AirwayType]int{}
 	for _, f := range g.Fixes {
@@ -61,7 +61,7 @@ func TestLKPRGraphSize(t *testing.T) {
 }
 
 func TestLKPRSegmentsFromData(t *testing.T) {
-	g := loadLKPR(t)
+	g := loadLKPRAirways(t)
 	// Checked live: TABEM's M725 runs VOZ -> TABEM -> OKF.
 	var m725 *Airway
 	for i := range g.Airways {
@@ -88,7 +88,7 @@ func TestLKPRSegmentsFromData(t *testing.T) {
 }
 
 func TestLKPRRoute(t *testing.T) {
-	g := loadLKPR(t)
+	g := loadLKPRAirways(t)
 	cases := []struct{ from, to FixKey }{
 		{Key("VOZ", "LK", KindVOR), Key("GOLOP", "LK", KindWaypoint)},
 		{Key("VOZ", "LK", KindVOR), Key("LOMKI", "LK", KindWaypoint)},
@@ -127,7 +127,7 @@ func TestLKPRRoute(t *testing.T) {
 
 // TestLKPRRouteAbroad routes from VOZ to fixes in Germany and Austria.
 func TestLKPRRouteAbroad(t *testing.T) {
-	g := loadLKPR(t)
+	g := loadLKPRAirways(t)
 	voz := Key("VOZ", "LK", KindVOR)
 	for _, region := range []string{"ED", "LO"} {
 		// The loaded fix of the region farthest from VOZ.

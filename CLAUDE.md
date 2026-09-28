@@ -139,16 +139,21 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
 │   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
 │   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
+│   │   ├── custom.go        #   Custom routes (Via, Taxiways): RouteError, RemainingOptions
 │   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
 │   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
+│   │   ├── navlegs.go       #   Procedures → NavPoints (SID/STAR/approach), ATC selection, Arrival
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
-│   ├── nav/                 # Enroute navigation data: fixes, airways, routing
+│   ├── nav/                 # Navigation: fixes, airways, routing, weather and ATIS, flight plans
 │   │   ├── navdata.go       #   FixKey, Fix, WaypointType, AirwayType, RouteLink
 │   │   ├── navloader.go     #   NavLoader: WAYPOINT/ROUTE, VOR, NDB requests fed by Handle(msg)
 │   │   ├── crawl.go         #   AirwayCrawler: breadth-first airway crawl within a radius
 │   │   ├── airways.go       #   AirwayGraph: Route (A*), DirectTo, JSON cache
+│   │   ├── weather.go       #   Weather, StaticWeather, WeatherReader (ambient SimVars at the user aircraft)
+│   │   ├── runway.go        #   ActiveRunways: runway in use from wind, limits, preferential runways
+│   │   ├── atis.go          #   ATIS Text/Spoken, TransitionLevel, ATISService (letters)
 │   │   └── testdata/        #   LKPR-area airway graph captured from MSFS 2024
 │   └── traffic/             # AI aircraft
 │       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
@@ -200,6 +205,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── ai-taxi/             #   AI departure taxi (stand → runway)
 │   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
 │   ├── spike-airways/       #   Airway crawl → JSON (or raw WAYPOINT/ROUTE/VOR/NDB dump)
+│   ├── atis/                #   Weather at the user aircraft → runway in use → ATIS text
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
@@ -215,7 +221,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
-│   └── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
+│   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
+│   └── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
     ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
