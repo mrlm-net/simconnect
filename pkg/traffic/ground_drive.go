@@ -46,6 +46,11 @@ type groundDrive struct {
 	followTraffic bool
 	trafficAt     time.Time // last look ahead (every TrafficCheckEvery)
 
+	// A stop of its own on the path (a de-icing pad, #323), apart from the
+	// clearance limit: no taxi clearance takes it away.
+	padStop float64
+	hasPad  bool
+
 	// Progressive taxi (#322): the clearance limit on the current path.
 	limit     float64
 	hasLimit  bool
@@ -134,6 +139,9 @@ func (d *groundDrive) updateHold() {
 	}
 	if d.hasLimit {
 		h = math.Min(h, d.limit)
+	}
+	if d.hasPad {
+		h = math.Min(h, d.padStop)
 	}
 	if math.IsInf(h, 1) {
 		d.mover.ClearHold()

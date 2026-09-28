@@ -6,6 +6,9 @@ package traffic
 import (
 	"math"
 	"math/rand/v2"
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
 // Natural timing (#343): every wait and duration with a real-world
@@ -87,4 +90,21 @@ func (t *SimObjectTug) SetDisconnectDelay(seconds float64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.waitLeft = seconds
+}
+
+// De-icing (#323): the treatment takes DefaultDeicingDwell (varied by
+// DwellJitter); a pad must lie within DeicingPadReachMeters of a taxi node.
+var (
+	DefaultDeicingDwell   = 6 * 60 * time.Second
+	DeicingPadReachMeters = 60.0
+)
+
+// Deicing asks for a de-icing before departure (#323).
+type Deicing struct {
+	// Pad is where: a remote pad the route passes, where the aircraft
+	// stops with engines running; nil de-ices on the stand after the
+	// pushback clearance, before the push.
+	Pad *airport.DeicingPad
+	// Dwell is how long the treatment takes; 0 means DefaultDeicingDwell.
+	Dwell time.Duration
 }

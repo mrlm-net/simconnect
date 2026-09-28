@@ -19,6 +19,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -81,6 +82,7 @@ type ControlView struct {
 	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
 	OnGround       bool             `json:"onGround"`
 	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -111,6 +113,8 @@ type controlCenter struct {
 	// sim's other aircraft on the ground (#334).
 	picture *traffic.GroundPicture
 	ticks   int
+	// weather is the latest at the user aircraft (automatic de-icing, #323).
+	weather func() *nav.Weather
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
 	procedures func(icao string) (airport.Procedures, bool)
 	// The ATC game (#272): its state, the taxi graphs, the last traffic
@@ -256,6 +260,10 @@ type SpawnRequest struct {
 	// and taxiways to follow, in order.
 	Via      []airport.NodeID `json:"via"`
 	Taxiways []string         `json:"taxiways"`
+	// Deice (departure, #323): "" none, "auto" when the weather calls for
+	// it, "stand", or "pad" (the first via point, else the airport's pad).
+	Deice    string  `json:"deice"`
+	DeiceSec float64 `json:"deiceSec"`
 
 	planned *planned // Other's flight plan, resolved before the spawn
 
@@ -324,6 +332,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	lim := airport.LimitsFor(g.Layout, procs)
+	var deice *traffic.Deicing
+	if r.Kind == "departure" {
+		var err error
+		if deice, r.Via, err = cc.deicingFor(g, r); err != nil {
+			return nil, err
+		}
+	}
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
 	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
 	var events func() (TaxiOrArrival, bool)
@@ -333,7 +348,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
-			Aircraft: &ac, Departure: procRoute, Airport: &lim}); err != nil {
+			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -437,6 +452,14 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		if e.Deicing != v.Deicing {
+			v.Deicing = e.Deicing
+			if e.Deicing {
+				tlog.printf("%-6s %s: de-icing", v.Tail, v.Kind)
+			} else {
+				tlog.printf("%-6s %s: de-icing done", v.Tail, v.Kind)
+			}
+		}
 		if e.PushbackHeld != v.PushbackHeld {
 			v.PushbackHeld = e.PushbackHeld
 			if e.PushbackHeld {
@@ -717,6 +740,45 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// deicingFor is the de-icing a departure asks for (#323): on the stand, at
+// a pad (the first via point, taken off the via list, else the airport's
+// first pad), or with "auto" whatever icing weather calls for. It returns
+// the via points left.
+func (cc *controlCenter) deicingFor(g *airport.Graph, r SpawnRequest) (*traffic.Deicing, []airport.NodeID, error) {
+	mode, via := r.Deice, r.Via
+	pads := airport.LimitsFor(g.Layout, nil).DeicingPads
+	if mode == "auto" {
+		mode = ""
+		if cc.weather != nil {
+			if w := cc.weather(); w != nil && nav.IcingConditions(*w) {
+				mode = "stand"
+				if len(pads) > 0 {
+					mode = "pad"
+				}
+			}
+		}
+	}
+	d := &traffic.Deicing{Dwell: time.Duration(r.DeiceSec * float64(time.Second))}
+	switch mode {
+	case "":
+		return nil, via, nil
+	case "stand":
+		return d, via, nil
+	case "pad":
+		switch {
+		case len(via) > 0:
+			d.Pad = &airport.DeicingPad{Name: "via point 1", Position: g.Nodes[via[0]].Position}
+			via = via[1:]
+		case len(pads) > 0:
+			d.Pad = &pads[0]
+		default:
+			return nil, via, errors.New("no de-icing pad: pick one as the first via point of a custom route")
+		}
+		return d, via, nil
+	}
+	return nil, via, fmt.Errorf("de-icing %q: want auto, stand or pad", r.Deice)
 }
 
 // procedureFor resolves the SID (departure) or the STAR and approach

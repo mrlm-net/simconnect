@@ -52,6 +52,7 @@ type weatherInfo struct {
 	QNHhPa                        float64
 	Precip                        string
 	InCloud                       bool
+	Icing                         bool // de-icing required (nav.IcingConditions)
 	// DistanceNM is how far from the airport the user aircraft is, where
 	// SimConnect measures the weather.
 	DistanceNM float64 `json:"distanceNM"`
@@ -116,7 +117,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 		}
 		if wx != nil {
 			wi := &weatherInfo{WindDirTrue: wx.WindDirTrue, WindKts: wx.WindKts, GustKts: wx.GustKts, VisibilityM: wx.VisibilityM,
-				CeilingFt: wx.CeilingFt, TempC: wx.TempC, QNHhPa: wx.QNHhPa, Precip: wx.Precip, InCloud: wx.InCloud}
+				CeilingFt: wx.CeilingFt, TempC: wx.TempC, QNHhPa: wx.QNHhPa, Precip: wx.Precip, InCloud: wx.InCloud, Icing: nav.IcingConditions(*wx)}
 			if !math.IsNaN(wx.DewpointC) {
 				d := wx.DewpointC
 				wi.DewpointC = &d

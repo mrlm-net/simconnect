@@ -277,4 +277,10 @@ func TestPushbackStopsForTraffic(t *testing.T) {
 	if ctl.last.PushbackHeld || ctl.mover == nil || ctl.mover.Pose().Distance <= held.Distance+0.5 {
 		t.Fatal("did not go on once clear")
 	}
+	for i := 0; i < 60*120 && ctl.State() == TaxiPushback; i++ {
+		frames(1)
+	}
+	if ctl.State() != TaxiAwaitingTaxi || ctl.last.PushbackHeld {
+		t.Fatalf("after the push: state %v, still held %v", ctl.State(), ctl.last.PushbackHeld)
+	}
 }

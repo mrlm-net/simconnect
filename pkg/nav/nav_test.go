@@ -266,3 +266,23 @@ func TestWeatherReader(t *testing.T) {
 		t.Error("foreign request handled")
 	}
 }
+
+// TestIcingConditions: de-icing is due at or below +3 °C with visible
+// moisture, not in dry cold or wet warmth (#323).
+func TestIcingConditions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		w    Weather
+		want bool
+	}{
+		{"cold and snowing", Weather{TempC: -2, VisibilityM: 4000, Precip: PrecipSnow}, true},
+		{"fog near zero", Weather{TempC: 1, VisibilityM: 800, Precip: PrecipNone}, true},
+		{"in cloud", Weather{TempC: 3, VisibilityM: 9999, InCloud: true}, true},
+		{"cold and dry", Weather{TempC: -5, VisibilityM: 10000, Precip: PrecipNone}, false},
+		{"warm rain", Weather{TempC: 12, VisibilityM: 3000, Precip: PrecipRain}, false},
+	} {
+		if got := IcingConditions(tc.w); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

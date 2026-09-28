@@ -148,6 +148,15 @@ The push is fitted to each stand's surroundings. The main gear starts at the sta
 
 `TaxiRequest.ObjectID` adopts an aircraft already on the stand instead of spawning one (#293) — e.g. one an `ArrivalController` parked: the departure takes it over from there (pushback, taxi, take-off). The airport map chains both as a turnaround (#296): an arrival with *Turnaround* departs again after its dwell (±20 %) or the *Depart now* action, with the same call sign and stand.
 
+## De-icing
+
+`TaxiRequest.Deice` de-ices the departure (#323):
+
+- **On the stand** (`Deicing{}` without a pad): once cleared to push, the aircraft is treated on the stand first (`TaxiEvent.Deicing`), then the beacon comes on and it pushes back.
+- **At a pad** (`Deicing{Pad: &airport.DeicingPad{…}}`): the route passes the pad's taxi node (a via point); the aircraft stops there with engines running and the taxi light off, is treated, and taxis on. The stop is its own hold: a taxi clearance does not skip it.
+
+The treatment takes `Dwell` (default `DefaultDeicingDwell`, 6 min, varied by `DwellJitter`). MSFS facility data has no de-icing pads, so they come from `airport.Limits.DeicingPads`; `nav.IcingConditions(weather)` says when de-icing is due (at or below +3 °C with visible moisture).
+
 ## Ground traffic
 
 Injected aircraft share a `GroundPicture` (#334): `TaxiWithGroundPicture(p)` and `ArrivalWithGroundPicture(p)` with one picture for all the controllers at an airport. Every aircraft reports its reference point, heading and airframe (`MotionProfile`) each frame while on the ground; others can be added with `GroundPicture.Report` (the airport map adds the sim's own AI and the user's aircraft from its traffic scan).

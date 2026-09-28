@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `pkg/traffic` de-icing (#323): `TaxiRequest.Deice` — on the stand before the push, or at a pad the route passes (stop with engines running, taxi light off, then on); `Deicing`, `DefaultDeicingDwell`, `TaxiEvent.Deicing`; `airport.DeicingPad`, `Limits.DeicingPads`, `Graph.NearestNode`; `nav.IcingConditions`; the map's De-icing option (automatic from the weather in the game) and ❄ pads
+
 - `pkg/traffic` natural timing (#343): each aircraft draws its own factor for the beacon lead, taxi-light delay, tug disconnect, flap timing, gear-up delay, taxi speed and pushback pace (`BeaconLeadSpread`, `TaxiLightSpread`, `TugDisconnectSpread`, `FlapsSpread`, `GearUpSpread`, `TaxiSpeedSpread`, `PushbackSpeedSpread`; 0 gives the tunable), `TaxiWithSeed` / `ArrivalWithSeed` for reproducible runs, `SimObjectTug.SetDisconnectDelay`
 - `pkg/traffic` pushback and traffic behind the stand: a cleared pushback waits while traffic is in, or taxiing through, the corridor it sweeps, and stops under way for traffic moving into it (`PushClearMarginMeters`, `TaxiEvent.PushbackHeld`); the map shows *waiting for traffic behind* (#334)
 - `examples/airport-map` Charts: the airport (elevation, variation, runways with their best approaches, transition altitude, preferred runways), the weather at the user aircraft with the runway in use and wind components, and the ATIS with a Listen button (spoken form); `GET /api/airportinfo`

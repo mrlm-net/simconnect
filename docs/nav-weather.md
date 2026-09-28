@@ -118,3 +118,7 @@ Ruzyne information Alpha, time 1646, runway in use 24, wind 120 degrees 6 knots,
 ```
 
 With the wind from 120° at 6 kt the preferred 24 has 3.6 kt of tailwind, within the 5 kt limit, so it stays in use.
+
+## Icing
+
+`IcingConditions(w)` reports weather in which departures need de-icing: at or below `IcingMaxTempC` (+3 °C) with visible moisture — precipitation, visibility below `IcingVisibilityM` (1500 m) or cloud at the aircraft. See [De-icing](traffic-taxi.md#de-icing).

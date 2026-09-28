@@ -150,6 +150,7 @@
       <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (off: MSFS AI lands)</label>
       <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input type="number" id="cDwell" value="90" min="10" step="10"> s</label>
       <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures <span class="i" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach.">ⓘ</span></label>
+      <label class="opt dep-only">De-icing <select id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad (via point 1)</option></select> <input type="number" id="cDeiceSec" value="120" min="10" step="10"> s</label>
       <label class="opt">Flight plan <span class="dep-only">to</span><span class="arr-only">from</span> <input id="cOther" placeholder="ICAO" maxlength="4" class="icao"> <span class="i" title="A generated flight plan: SID, airways, STAR and approach.">ⓘ</span></label>
     </details>
     <details class="more"><summary>Custom taxi route</summary>
@@ -239,6 +240,7 @@
       <tr><td>Fly the procedures</td><td>SID after take-off; arrivals start at a STAR entry</td></tr>
       <tr><td>Flight plan to/from</td><td>a generated plan with the other airport: SID, airways, STAR, approach</td></tr>
       <tr><td>Turnaround</td><td>an arrival departs again after the dwell</td></tr>
+      <tr><td>De-icing</td><td>on the stand before the push, or at a pad (via point 1); automatic when the weather is icing (the game uses automatic)</td></tr>
       <tr><td>Custom taxi route</td><td>via points (click taxiways) and taxiway names, in order; never where the aircraft does not fit</td></tr>
     </table>
 
@@ -994,6 +996,7 @@ async function ctlSpawn(kind) {
     procedure: $('cProc').checked,
     other: $('cOther').value.trim().toUpperCase(),
     ...customRoute(), // the custom taxi route, if any
+    deice: kind === 'departure' ? $('cDeice').value : '', deiceSec: Number($('cDeiceSec').value) || 0,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer
@@ -1060,7 +1063,7 @@ function renderControl() {
   const waits = (v) => !v.done && (WAITING.test(v.state) || v.atLimit);
   const views = [...ctlViews].sort((a, b) => (v => v.done ? 2 : waits(v) ? 0 : 1)(a) - (v => v.done ? 2 : waits(v) ? 0 : 1)(b) || a.id - b.id);
   $('ctlList').innerHTML = views.length ? views.map((v) => {
-    const status = [v.state, v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
+    const status = [v.state, v.deicing && 'de-icing ❄', v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
     const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : ''}>${ACTION_LABEL[a] || a}</button>`;
     const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
     const acts = (v.actions || []).filter((a) => a !== 'upto');
@@ -1256,6 +1259,7 @@ $('trafficTable').addEventListener('pointerdown', (e) => { // on press: the tabl
 });
 
 // ── Airport, weather, ATIS (#357) ──
+const padLayer = L.layerGroup().addTo(map);
 async function pollAirportInfo() {
   if (!data) return;
   try {
@@ -1265,6 +1269,12 @@ async function pollAirportInfo() {
     const mv = a.magVar ? `${Math.abs(a.magVar).toFixed(0)}° ${a.magVar > 0 ? 'E' : 'W'}` : '—';
     const rows = (a.runways || []).map((r) => `<tr><td>RWY ${esc(r.name)}</td><td>${r.lengthM.toFixed(0)} × ${r.widthM.toFixed(0)} m${r.approach ? ' · ' + esc(r.approach) : ''}</td></tr>`).join('');
     const lim = a.limits || {};
+    // De-icing pads (#323) on the map.
+    padLayer.clearLayers();
+    for (const pad of lim.DeicingPads || []) {
+      L.marker([pad.position.lat, pad.position.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div style="font-size:16px;text-shadow:0 0 3px #000">❄</div>' }) })
+        .bindTooltip(`De-icing pad ${esc(pad.name)}`, { direction: 'top' }).addTo(padLayer);
+    }
     $('apInfo').innerHTML = `<b>${esc(a.icao)}</b> ${esc(a.name)}<table>` +
       `<tr><td>Elevation</td><td>${a.elevationFt.toFixed(0)} ft · variation ${mv}</td></tr>${rows}` +
       `<tr><td>Transition</td><td>altitude ${(lim.TransitionAltitudeFt || 0).toFixed(0)} ft${lim.PreferredRunways && lim.PreferredRunways.length ? ' · preferred ' + esc(lim.PreferredRunways.join(', ')) : ''}</td></tr></table>`;
@@ -1275,7 +1285,7 @@ async function pollAirportInfo() {
       $('apWx').innerHTML = (u ? `<div class="use">Runway in use: <b>${esc(u.departure)}${u.arrival !== u.departure ? ' / ' + esc(u.arrival) + ' (arrivals)' : ''}</b></div>` : '') +
         `<table><tr><td>Wind</td><td>${wind}${u ? ` · headwind ${u.headwindKts.toFixed(0)}, crosswind ${Math.abs(u.crosswindKts).toFixed(0)} kt${u.withinLimits ? '' : ' <span class="warn">(outside limits)</span>'}` : ''}</td></tr>` +
         `<tr><td>Visibility</td><td>${vis}${w.Precip && w.Precip !== 'none' ? ' · ' + esc(w.Precip) : ''}${w.InCloud ? ' · in cloud' : ''}</td></tr>` +
-        `<tr><td>Temperature</td><td>${w.TempC.toFixed(0)} °C</td></tr><tr><td>QNH</td><td>${w.QNHhPa.toFixed(0)} hPa</td></tr>` +
+        `<tr><td>Temperature</td><td>${w.TempC.toFixed(0)} °C${w.Icing ? ' · <span class="warn">icing: de-icing required</span>' : ''}</td></tr><tr><td>QNH</td><td>${w.QNHhPa.toFixed(0)} hPa</td></tr>` +
         (u ? `<tr><td>Approach</td><td>${esc(u.approach)}</td></tr>` : '') + '</table>' +
         (w.distanceNM > 20 ? `<div class="warn">Measured at your aircraft, ${w.distanceNM.toFixed(0)} NM from ${esc(a.icao)}.</div>` : '');
     } else {

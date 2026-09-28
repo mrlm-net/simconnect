@@ -52,6 +52,9 @@ type Limits struct {
 	PreferredRunways []string
 	// NoReverseThrust restricts reverse thrust to idle (noise).
 	NoReverseThrust bool
+	// DeicingPads are the remote de-icing positions (#323); none: aircraft
+	// are de-iced on their stands.
+	DeicingPads []DeicingPad
 }
 
 // KnownLimits are published values of airports, keyed by ICAO code. Zero
@@ -83,6 +86,7 @@ func LimitsFor(l *Layout, p *Procedures) Limits {
 	lim := KnownLimits[icao]
 	lim.ICAO = icao
 	lim.PreferredRunways = slices.Clone(lim.PreferredRunways)
+	lim.DeicingPads = slices.Clone(lim.DeicingPads)
 	if lim.TransitionAltitudeFt == 0 {
 		lim.TransitionAltitudeFt = DefaultTransitionAltitudeFt
 		if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
