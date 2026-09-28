@@ -38,6 +38,9 @@ func main() {
 	livery := flag.String("livery", "", "livery folder name (default livery if empty)")
 	tail := flag.String("tail", "CSA123", "tail number / call sign")
 	after := flag.Duration("takeoff-after", 0, "clear for take-off automatically this long after holding short (0 = wait for Enter)")
+	inject := flag.Bool("inject", false, "drive the whole departure by position injection: pushback, taxi, line-up, take-off (#320)")
+	gates := flag.Bool("gates", false, "with -inject: hold at every clearance gate; Enter gives the next clearance")
+	entry := flag.String("entry", "", "runway entry taxiway assigned by ATC, e.g. B for \"24 at B\" (default full length)")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -58,7 +61,12 @@ func main() {
 	cache := airport.NewCache()
 	loader := airport.NewLoader(client, airport.LoaderWithCache(cache))
 	fleet := traffic.NewFleet(client)
-	ctl := traffic.NewTaxiController(fleet)
+	inj := traffic.NewInjector(client)
+	var opts []traffic.TaxiOption
+	if *inject {
+		opts = append(opts, traffic.TaxiWithInjector(inj))
+	}
+	ctl := traffic.NewTaxiController(fleet, opts...)
 	if err := loader.Request(*icao); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		return
@@ -77,10 +85,12 @@ func main() {
 	}()
 
 	var (
-		clearTimer <-chan time.Time
-		lastPrint  time.Time
-		lastState  traffic.TaxiState
-		events     = ctl.Events()
+		clearTimer      <-chan time.Time
+		lastPrint       time.Time
+		lastState       traffic.TaxiState
+		lastLights      traffic.Lights
+		lastHoldShortOf string
+		events          = ctl.Events()
 	)
 	clearForTakeoff := func() {
 		if err := ctl.ClearForTakeoff(); err != nil {
@@ -109,7 +119,20 @@ func main() {
 			}
 
 		case <-enter:
-			if ctl.State() == traffic.TaxiHoldingShort {
+			switch s := ctl.State(); {
+			case *inject && s == traffic.TaxiAwaitingPushback:
+				fmt.Println("🟢 Pushback approved")
+				ctl.ClearPushback()
+			case *inject && s == traffic.TaxiAwaitingTaxi:
+				fmt.Println("🟢 Cleared to taxi")
+				ctl.ClearToTaxi()
+			case *inject && s == traffic.TaxiHoldingShort && lastHoldShortOf != ctl.Route().Runway:
+				fmt.Printf("🟢 Cleared to cross %s\n", lastHoldShortOf)
+				ctl.ClearToCross()
+			case *inject && s == traffic.TaxiHoldingShort:
+				fmt.Println("🟢 Line up and wait")
+				ctl.ClearToLineUp()
+			case s == traffic.TaxiHoldingShort || s == traffic.TaxiLinedUp:
 				clearForTakeoff()
 			}
 
@@ -125,9 +148,25 @@ func main() {
 			if ev.Err != nil {
 				fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", ev.State, ev.Err)
 			}
+			if ev.Lights != lastLights && lastState >= traffic.TaxiAwaitingPushback {
+				fmt.Printf("💡 %s  %s → %s (%s)\n", time.Now().Format("15:04:05.000"), lastLights, ev.Lights, ev.State)
+			}
+			lastLights = ev.Lights
 			if ev.State != lastState {
 				lastState = ev.State
-				fmt.Printf("✈️  %s: %s\n", *tail, ev.State)
+				lastHoldShortOf = ev.HoldingShortOf
+				extra := ""
+				if ev.HoldingShortOf != "" {
+					extra = " " + ev.HoldingShortOf
+				}
+				fmt.Printf("✈️  %s: %s%s\n", *tail, ev.State, extra)
+				if *inject {
+					if *gates && (ev.State == traffic.TaxiAwaitingPushback || ev.State == traffic.TaxiAwaitingTaxi ||
+						ev.State == traffic.TaxiHoldingShort || ev.State == traffic.TaxiLinedUp) {
+						fmt.Println("⏎  Press Enter for the clearance")
+					}
+					continue
+				}
 				if ev.State == traffic.TaxiHoldingShort {
 					if *after > 0 {
 						fmt.Printf("⏱️  Clearing for take-off in %s\n", *after)
@@ -157,9 +196,17 @@ func main() {
 					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 					return
 				}
-				if err := start(ctl, cache, res.Layout, *stand, *runway, *model, *livery, *tail); err != nil {
+				if err := start(ctl, cache, res.Layout, *stand, traffic.TaxiRequest{
+					Runway: *runway, Entry: *entry, Model: *model, Livery: *livery, Tail: *tail, HoldForClearances: *gates,
+				}); err != nil {
 					fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 					return
+				}
+				continue
+			}
+			if ok, err := inj.Handle(msg); ok {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
 				}
 				continue
 			}
@@ -179,7 +226,7 @@ func main() {
 }
 
 // start plans the route and spawns the aircraft once the layout is loaded.
-func start(ctl *traffic.TaxiController, cache *airport.Cache, l *airport.Layout, stand, runway, model, livery, tail string) error {
+func start(ctl *traffic.TaxiController, cache *airport.Cache, l *airport.Layout, stand string, req traffic.TaxiRequest) error {
 	g, err := cache.Graph(l.ICAO)
 	if err != nil {
 		return err
@@ -188,10 +235,8 @@ func start(ctl *traffic.TaxiController, cache *airport.Cache, l *airport.Layout,
 	if err != nil {
 		return err
 	}
-	if err := ctl.Start(traffic.TaxiRequest{
-		Graph: g, Parking: parking, Runway: runway,
-		Model: model, Livery: livery, Tail: tail,
-	}); err != nil {
+	req.Graph, req.Parking = g, parking
+	if err := ctl.Start(req); err != nil {
 		return err
 	}
 	r := ctl.Route()
@@ -208,4 +253,11 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+func atEntry(e string) string {
+	if e == "" {
+		return ""
+	}
+	return " at " + e
 }

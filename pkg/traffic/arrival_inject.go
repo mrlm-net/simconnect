@@ -77,11 +77,18 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	pts := []airport.LatLon{nose}
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
 	var holds []holdOnPath
+	// Keep the route up to its last point before the stand axis start: the
+	// final stretch onto the stand is replaced by the axis. (Earlier points
+	// may lie in front of the stand; the route can pass it before looping
+	// round to its lead-in.)
+	faceOut := len(route) > 1 && leadInAhead(c.req.Graph, c.req.Parking, route[len(route)-2])
+	last := from - 1
 	for i := from; i < len(route)-1; i++ {
-		// Drop route points on or past the stand axis start.
-		if alongHeading(stopNose, c.standHeading, route[i]) > -standAxisMeters {
-			break
+		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
+			last = i // face-out stands keep the route to the lead-in junction
 		}
+	}
+	for i := from; i <= last; i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
 		if i == c.plan.VacateIndex {
 			hold = d
@@ -94,27 +101,40 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		}
 		pts = append(pts, route[i])
 	}
-	pts = append(pts, axis, stopNose)
-	c.crossZones = c.crossingZones(holds)
+	if faceOut {
+		pts = append(pts, c.turnAround(stopNose)...) // self-manoeuvring stand
+	} else {
+		pts = append(pts, axis, stopNose)
+	}
+	c.crossZones = crossingZones(c.req.Graph, route, holds)
 	fast := prof
 	fast.CruiseKts = math.Max(prof.CruiseKts, m.GroundKts+1) // no braking before the planned points
-	path, err := NewGroundPath(pts, fast)
+	firm := 0.0
+	if onRunway {
+		firm = clear // on the runway, plan braking firmly (the turns after the exit must not reach back over the rollout)
+	}
+	ro := c.rolloutProfile()
+	path, err := newGroundPath(pts, fast, firmZone{meters: firm, decel: ro.BrakeDecel, lateral: ro.ExitLateralAccel})
 	if err != nil {
 		return err
 	}
 	moverProf := prof
 	if onRunway {
-		// Taxi speed from clear of the runway, exit speed from the exit's
-		// runway node, braked to at rollout deceleration.
-		exitKts := InjectExitKts
+		// Rollout (live feedback): hard braking to SlowKts, then slowing
+		// gently and evenly all the way to the exit speed at the exit.
+		exitKts := ro.ExitKts
 		if c.plan.Exit.HighSpeed {
-			exitKts = InjectExitHighSpeedKts
+			exitKts = ro.HighSpeedExitKts
 		}
-		// Both at rollout deceleration: a gentle taxi braking curve would reach
-		// back over the whole runway (live: 1 kt/s from 70 kt, over a km).
-		path.LimitRange(clear, path.Length(), prof.CruiseKts, RolloutDecel)
-		path.LimitRange(onRwy, clear, exitKts, RolloutDecel)
-		moverProf.Decel, moverProf.Jerk = RolloutDecel, RolloutJerk
+		v0, vs, ve := m.GroundKts*ktsToMS, ro.SlowKts*ktsToMS, exitKts*ktsToMS
+		slowAt := math.Max(0, (v0*v0-vs*vs)/(2*ro.BrakeDecel))
+		gentle := math.Max(0.2, (vs*vs-ve*ve)/(2*math.Max(onRwy-slowAt, 1)))
+		path.LimitRange(onRwy, clear, exitKts, gentle)
+		path.LimitRange(slowAt, onRwy, ro.SlowKts, ro.BrakeDecel)
+		// Off the exit to taxi speed, planned firmly so it does not reach
+		// back over the rollout.
+		path.LimitRange(clear, path.Length(), prof.CruiseKts, ro.BrakeDecel)
+		moverProf.Decel, moverProf.Jerk = ro.BrakeDecel, RolloutJerk
 		c.clearDist = clear
 	} else {
 		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
@@ -140,6 +160,8 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		return err
 	}
 	c.note("injector takeover", nil)
+	c.initDrive()
+	c.ignoreRunway = c.plan.Runway.Index // runway lights come from the phase until vacated
 	c.lights = m.currentLights()
 	if onRunway {
 		// MSFS AI switches the lights off during its rollout: landing
@@ -162,66 +184,19 @@ func (c *ArrivalController) profile() MotionProfile {
 	return DefaultMotionProfile()
 }
 
-// setInjectedLights changes the lights of the injected aircraft; logo and
-// wing lights stay as the aircraft had them.
-func (c *ArrivalController) setInjectedLights(l Lights, desc string) {
-	l.Logo, l.Wing = c.lights.Logo, c.lights.Wing
-	c.lights = l
-	c.applyLights(desc)
-}
-
-// applyLights sends the phase lights, with strobes and landing lights on
-// while crossing a runway: the aircraft must be conspicuous on it.
-func (c *ArrivalController) applyLights(desc string) {
-	l := c.lights
-	if c.crossing {
-		l.Strobe, l.Landing = true, true
-	}
-	c.note(desc, c.inj.SetLights(c.objectID, l))
-}
-
-// checkCrossing switches the crossing lights when the nose gear or the
-// reference point comes within RunwayClearMeters of a runway (other than
-// the one just vacated, while vacating) and back once both are clear.
-func (c *ArrivalController) checkCrossing(pose GroundPose) {
-	g := c.req.Graph
-	nose := NoseGear(pose.Position, pose.Heading, c.profile())
-	// Between the hold-short lines of a crossing: from just after the nose
-	// gear crosses the first until a moment after the tail has passed the
-	// opposite one.
-	on := false
-	prof := c.profile()
-	for _, z := range c.crossZones {
-		if pose.Distance >= z.from+CrossingOnMeters && pose.Distance-prof.WheelbaseMeters-CrossingTailMeters <= z.to {
-			on = true
-		}
-	}
-	for _, p := range []airport.LatLon{nose, pose.Position} {
-		if r := g.RunwayAt(p, RunwayClearMeters); r >= 0 && !((c.state == ArrivalRollout || c.state == ArrivalVacating) && r == c.plan.Runway.Index) {
-			on = true
-		}
-	}
-	if on != c.crossing {
-		c.crossing = on
-		desc := "lights runway crossing off"
-		if on {
-			desc = "lights runway crossing"
-		}
-		c.applyLights(desc)
-	}
-}
-
 // step advances the mover to now and places the aircraft.
 func (c *ArrivalController) step() GroundPose {
-	now := c.now()
-	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
-	c.lastStep = now
-	c.frameDt = math.Max(dt, 0)
-	pose := c.mover.Step(math.Max(dt, 0))
-	if err := c.inj.Place(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
+	pose, err := c.advance()
+	if err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
 	return pose
+}
+
+// initDrive points the shared ground driving at this arrival's aircraft.
+func (c *ArrivalController) initDrive() {
+	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
+	c.holdAtCrossings = c.req.HoldAtCrossings
 }
 
 // onInjectedFrame runs the ground phase once the injector has the aircraft:
@@ -240,10 +215,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	c.stepSurfaces(c.frameDt)
-	// The taxi light, TaxiLightDelay after the landing lights went off.
-	if !c.taxiLightAt.IsZero() && !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
-		c.setInjectedLights(LightsTaxi, "lights taxi")
-	}
+	c.taxiLightDue() // TaxiLightDelay after the landing lights went off
 	switch c.state {
 	case ArrivalRollout:
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
@@ -265,6 +237,7 @@ func (c *ArrivalController) onInjectedFrame() {
 			c.setInjectedLights(lightsStopped, "lights landing off")
 			c.taxiLightAt = c.now().Add(TaxiLightDelay)
 			c.clearAt = c.now().Add(c.dwell())
+			c.ignoreRunway = -1 // clear of the landing runway now
 			c.setState(ArrivalAwaitingTaxi, nil)
 			if c.rollThrough {
 				c.startTaxi()
@@ -278,9 +251,8 @@ func (c *ArrivalController) onInjectedFrame() {
 		}
 	case ArrivalTaxiing:
 		// Stopped at the hold-short line of a crossing not cleared yet.
-		if c.req.HoldAtCrossings && c.nextCross < len(c.crossZones) && pose.Stopped &&
-			pose.Distance >= c.crossZones[c.nextCross].from-HoldShortStopMeters-1 {
-			c.last.HoldingShortOf = c.crossZones[c.nextCross].runway
+		if rwy, ok := c.atCrossingHold(pose); ok {
+			c.last.HoldingShortOf = rwy
 			c.setState(ArrivalHoldingShort, nil)
 			return
 		}
@@ -301,29 +273,6 @@ func (c *ArrivalController) onInjectedFrame() {
 	c.emit(nil, false)
 }
 
-// offsetHeading returns the point d meters from p along heading (true
-// degrees), in local meters.
-func offsetHeading(p airport.LatLon, heading, d float64) airport.LatLon {
-	h := heading * math.Pi / 180
-	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
-	return airport.LatLon{Lat: p.Lat + math.Cos(h)*d/metersPerDegree, Lon: p.Lon + math.Sin(h)*d/kx}
-}
-
-// alongHeading is how far q lies from p along heading (negative behind).
-func alongHeading(p airport.LatLon, heading float64, q airport.LatLon) float64 {
-	h := heading * math.Pi / 180
-	kx := metersPerDegree * math.Cos(p.Lat*math.Pi/180)
-	return (q.Lon-p.Lon)*kx*math.Sin(h) + (q.Lat-p.Lat)*metersPerDegree*math.Cos(h)
-}
-
-func pathLen(p []airport.LatLon) float64 {
-	d := 0.0
-	for i := 1; i < len(p); i++ {
-		d += localDist(p[i-1], p[i])
-	}
-	return d
-}
-
 // Lights after landing: landing lights and strobes while on the runway;
 // strobes off once clear of it, landing lights off at the vacate stop and
 // the taxi light on TaxiLightDelay later (LightsTaxi).
@@ -332,42 +281,6 @@ var (
 	lightsVacated = Lights{Nav: true, Beacon: true, Landing: true}
 	lightsStopped = Lights{Nav: true, Beacon: true}
 )
-
-// holdOnPath is a hold-short node on the injected path.
-type holdOnPath struct {
-	runway, index int
-	dist          float64
-}
-
-// crossZone is a runway crossing between two hold-short lines on the path,
-// in path distance.
-type crossZone struct {
-	from, to float64
-	runway   string
-}
-
-// crossingZones pairs consecutive hold-shorts of the same runway with the
-// route crossing that runway between them: the crossing lights come on at
-// the first and go off once the aircraft is past the second (#309).
-func (c *ArrivalController) crossingZones(holds []holdOnPath) []crossZone {
-	g, route := c.req.Graph, c.plan.Route.Points
-	var zones []crossZone
-	for k := 1; k < len(holds); k++ {
-		a, b := holds[k-1], holds[k]
-		if a.runway != b.runway {
-			continue
-		}
-		mid := airport.LatLon{Lat: (route[a.index].Lat + route[b.index].Lat) / 2, Lon: (route[a.index].Lon + route[b.index].Lon) / 2}
-		crosses := g.RunwayAt(mid, 0) == a.runway
-		for j := a.index + 1; j < b.index && !crosses; j++ {
-			crosses = g.RunwayAt(route[j], 0) == a.runway
-		}
-		if crosses {
-			zones = append(zones, crossZone{a.dist, b.dist, g.Layout.Runways[a.runway].Name()})
-		}
-	}
-	return zones
-}
 
 // dwell is how long the aircraft waits clear of the runway: the requested
 // or default after-landing dwell, varied by ±DwellJitter.
@@ -379,31 +292,6 @@ func (c *ArrivalController) dwell() time.Duration {
 	return time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1)))
 }
 
-// holdNextCrossing sets the hold short of the next runway crossing ahead,
-// skipping crossings already cleared with ClearToCross (HoldAtCrossings).
-func (c *ArrivalController) holdNextCrossing() {
-	if !c.req.HoldAtCrossings {
-		return
-	}
-	for ; c.nextCross < len(c.crossZones); c.nextCross++ {
-		if c.crossClears > 0 {
-			c.crossClears--
-			continue
-		}
-		c.mover.HoldAt(c.crossZones[c.nextCross].from - HoldShortStopMeters)
-		return
-	}
-}
-
-// crossingCleared releases the hold short of the next crossing and sets the
-// one after it.
-func (c *ArrivalController) crossingCleared() {
-	c.nextCross++
-	c.last.HoldingShortOf = ""
-	c.mover.ClearHold()
-	c.holdNextCrossing()
-}
-
 // ClearToCross clears an injected arrival holding short of a runway
 // crossing (HoldAtCrossings) to cross it. Given earlier, it clears the next
 // crossing ahead, so the aircraft does not stop there.
@@ -413,6 +301,7 @@ func (c *ArrivalController) ClearToCross() {
 	switch {
 	case c.state == ArrivalHoldingShort:
 		c.crossingCleared()
+		c.last.HoldingShortOf = ""
 		c.setState(ArrivalTaxiing, nil)
 	case c.mover != nil && c.state == ArrivalTaxiing && c.nextCross < len(c.crossZones):
 		c.crossingCleared() // the hold ahead is already set
@@ -442,6 +331,7 @@ func (c *ArrivalController) startInjectedApproach() error {
 		return err
 	}
 	c.note("injector takeover on final", nil)
+	c.initDrive()
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
 	c.note("approach flaps", c.inj.SetFlaps(c.objectID, ApproachFlapsPct))
 	c.flapsPct = ApproachFlapsPct
@@ -511,26 +401,75 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	c.emit(nil, false)
 }
 
-// surfaceRamp moves a control surface (percent) towards target at rate
-// percent per second.
-type surfaceRamp struct{ pct, target, rate float64 }
-
-// step moves the surface and reports whether it moved.
-func (r *surfaceRamp) step(dt float64) bool {
-	if r.pct == r.target || r.rate <= 0 {
-		return false
-	}
-	if r.pct < r.target {
-		r.pct = math.Min(r.target, r.pct+r.rate*dt)
-	} else {
-		r.pct = math.Max(r.target, r.pct-r.rate*dt)
-	}
-	return true
-}
-
 // stepSurfaces moves the ground spoilers of an injected arrival.
 func (c *ArrivalController) stepSurfaces(dt float64) {
 	if c.spoilers.step(dt) {
 		c.note("spoilers", c.inj.SetSpoilers(c.objectID, c.spoilers.pct))
 	}
+}
+
+// turnAround is the custom route onto a self-manoeuvring (face-out) stand:
+// from the lead-in junction ahead of the stand the aircraft swings out to
+// the side with fewer neighbouring stands, loops round behind the stop mark
+// and comes back along the stand centreline, facing out, to stop with its
+// nose gear at stopNose.
+func (c *ArrivalController) turnAround(stopNose airport.LatLon) []airport.LatLon {
+	h := c.standHeading
+	side := c.roomySide()
+	r := TurnAroundMeters
+	at := func(u, v float64) airport.LatLon {
+		return offsetHeading(offsetHeading(stopNose, h, u*r), h+90, v*r*side)
+	}
+	return []airport.LatLon{
+		at(-0.3, 0.6), // swing out to the side
+		at(-1.6, 1.0), // round behind the stop mark
+		at(-3.0, 0.6),
+		at(-3.3, -0.05), // joining the centreline almost parallel
+		at(-2.8, 0),     // on the centreline, facing out: about three
+		stopNose,        // wheelbases of straight for the main gear to line up
+	}
+}
+
+// roomySide is +1 or -1: the side of the stand (right or left of its
+// heading) with fewer other stands within 60 m, for the turn-around loop.
+func (c *ArrivalController) roomySide() float64 {
+	g := c.req.Graph
+	stand := g.Layout.Parking[c.req.Parking]
+	sum := 0.0
+	for _, p := range g.Layout.Parking {
+		if p.Index == stand.Index || localDist(p.Position, stand.Position) > 60 {
+			continue
+		}
+		sum += math.Copysign(1, alongHeading(stand.Position, stand.Heading+90, p.Position))
+	}
+	if sum > 0 {
+		return -1
+	}
+	return 1
+}
+
+// RolloutProfile is how an injected landing rolls out and leaves the runway
+// (per aircraft type; A320 defaults): hard braking to SlowKts, then slowing
+// gently and evenly to the exit speed at the exit.
+type RolloutProfile struct {
+	// BrakeDecel (m/s²) is the braking after touchdown down to SlowKts.
+	BrakeDecel float64
+	SlowKts    float64
+	// HighSpeedExitKts and ExitKts are the speeds at a high-speed exit and
+	// at any other exit.
+	HighSpeedExitKts, ExitKts float64
+	// ExitLateralAccel (m/s²) is the cornering allowed through the exit.
+	ExitLateralAccel float64
+}
+
+// DefaultRolloutProfile is an A320 family rollout.
+func DefaultRolloutProfile() RolloutProfile {
+	return RolloutProfile{BrakeDecel: 2.5, SlowKts: 80, HighSpeedExitKts: 32, ExitKts: 12, ExitLateralAccel: 1.5}
+}
+
+func (c *ArrivalController) rolloutProfile() RolloutProfile {
+	if c.req.Rollout != (RolloutProfile{}) {
+		return c.req.Rollout
+	}
+	return DefaultRolloutProfile()
 }

@@ -196,11 +196,6 @@ const (
 	TakeoverBeforeExitMeters = 150.0
 	// RolloutJerk (m/s³) lets runway braking build up quickly.
 	RolloutJerk = 0.6
-	// InjectExitHighSpeedKts and InjectExitKts are the speeds through a
-	// high-speed exit and any other exit when injected (MSFS AI takes every
-	// exit at about 12 kt).
-	InjectExitHighSpeedKts = 30.0
-	InjectExitKts          = 12.0
 )
 
 // Injected lights after landing: the taxi light comes on TaxiLightDelay
@@ -248,3 +243,36 @@ const (
 	FlapsFullFt      = 1000.0
 	FlapsFullSeconds = 5.0
 )
+
+// Injected departure gates (TaxiWithInjector, without HoldForClearances):
+// each clears itself after about these waits (±DwellJitter). The beacon
+// comes on BeaconLeadTime before the push; the tail is pushed
+// PushTailMeters past a wheelbase beyond the taxiway junction. The gear
+// comes up above GearUpFt, and the aircraft is handed to MSFS AI for the
+// climb-out at ClimbHandoverFt.
+const (
+	PushbackDelay      = 5 * time.Second
+	BeaconLeadTime     = 3 * time.Second
+	TaxiAfterPushDelay = 15 * time.Second
+	LineUpDelay        = 6 * time.Second
+	TakeoffDelay       = 5 * time.Second
+	PushTailMeters     = 10.0
+	GearUpFt           = 50.0
+	ClimbHandoverFt    = 1500.0
+)
+
+// Injected departure configuration: take-off flaps (TakeoffFlapsPct, 1+F on
+// an A320) set over FlapsSetSeconds when the taxi starts, retracted from
+// FlapsRetractFt over FlapsRetractClimbSeconds; DefaultRollingTakeoffChance
+// of departures without held gates roll straight into the take-off.
+const (
+	TakeoffFlapsPct             = 25.0
+	FlapsSetSeconds             = 8.0
+	FlapsRetractFt              = 1000.0
+	FlapsRetractClimbSeconds    = 10.0
+	DefaultRollingTakeoffChance = 0.3
+)
+
+// TurnAroundMeters scales the turn-around loop onto a self-manoeuvring
+// (face-out) stand; an A320 turns on about 15-20 m radius.
+const TurnAroundMeters = 18.0

@@ -50,10 +50,10 @@ func DefaultMotionProfile() MotionProfile {
 // GroundPath is a route for injected ground movement: the route points with
 // their corners rounded, and the allowed speed along it.
 type GroundPath struct {
-	pts   []airport.LatLon
-	cum   []float64 // metres from the start
-	limit []float64 // m/s
-	decel float64   // planned braking, m/s²
+	pts     []airport.LatLon
+	cum     []float64             // metres from the start
+	limit   []float64             // m/s
+	decelAt func(float64) float64 // planned braking (m/s²) at a distance
 }
 
 // NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
@@ -62,6 +62,26 @@ type GroundPath struct {
 // Stops are not part of the plan; a GroundMover brakes onto the end of the
 // path or a hold point by itself.
 func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error) {
+	return newGroundPath(points, p, firmZone{})
+}
+
+// firmZone is the start of a path (a runway) where braking and cornering are
+// planned firmer than taxiing.
+type firmZone struct{ meters, decel, lateral float64 }
+
+func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*GroundPath, error) {
+	decelAt := func(d float64) float64 {
+		if d < firm.meters {
+			return math.Max(firm.decel, p.Decel)
+		}
+		return p.Decel
+	}
+	lateralAt := func(d float64) float64 {
+		if d < firm.meters {
+			return math.Max(firm.lateral, p.LateralAccel)
+		}
+		return p.LateralAccel
+	}
 	pts := make([]airport.LatLon, 0, len(points))
 	for _, q := range points {
 		if len(pts) == 0 || localDist(pts[len(pts)-1], q) > 0.01 {
@@ -76,20 +96,24 @@ func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error
 	for i := 1; i < len(pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
 	}
-	g.limit = speedLimits(g.pts, g.cum, p)
-	g.decel = p.Decel
+	g.decelAt = decelAt
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, lateralAt)
 	return g, nil
 }
 
 // LimitEnd caps the speed over the last meters of the path at kts (a stand
 // entry), with braking planned down to it.
 func (g *GroundPath) LimitEnd(meters, kts float64) {
-	g.LimitRange(g.Length()-meters, g.Length(), kts, g.decel)
+	g.limitRange(g.Length()-meters, g.Length(), kts, g.decelAt)
 }
 
 // LimitRange caps the speed between distances from and to at kts, with
 // braking at decel (m/s²) planned before it.
 func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
+	g.limitRange(from, to, kts, func(float64) float64 { return decel })
+}
+
+func (g *GroundPath) limitRange(from, to, kts float64, decelAt func(float64) float64) {
 	vmax := kts * ktsToMS
 	for i, d := range g.cum {
 		if d >= from && d <= to {
@@ -97,7 +121,7 @@ func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
 		}
 	}
 	for i := len(g.limit) - 2; i >= 0; i-- {
-		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decel*(g.cum[i+1]-g.cum[i])))
+		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decelAt(g.cum[i])*(g.cum[i+1]-g.cum[i])))
 	}
 }
 
@@ -158,9 +182,10 @@ type GroundMover struct {
 	path    *GroundPath
 	p       MotionProfile
 	s, v, a float64
-	gear    airport.LatLon
-	hold    float64 // stop point for the nose; path length when none
-	slowAt  float64 // SlowAt point and speed; slowKts 0 when none
+	gear    airport.LatLon // the trailing gear: main gear, or nose gear in reverse
+	reverse bool           // pushed back: the main gear follows the path
+	hold    float64        // stop point on the path; path length when none
+	slowAt  float64        // SlowAt point and speed; slowKts 0 when none
 	slowKts float64
 	pose    GroundPose
 
@@ -173,6 +198,18 @@ type GroundMover struct {
 func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 	m := &GroundMover{path: path, p: p, gear: path.PointAt(0), hold: path.Length()}
 	m.s = math.Min(p.WheelbaseMeters, path.Length())
+	m.place()
+	return m
+}
+
+// NewPushbackMover pushes an aircraft back: path runs from its main gear
+// backwards (tail first), the aircraft faces heading at the start, and the
+// nose trails the main gear as a tug steers it. Speeds come from p (use a
+// pushback CruiseKts).
+func NewPushbackMover(path *GroundPath, p MotionProfile, heading float64) *GroundMover {
+	m := &GroundMover{path: path, p: p, hold: path.Length(), reverse: true}
+	gear := path.PointAt(0)
+	m.gear = offsetHeading(gear, heading, p.WheelbaseMeters) // the nose, trailing
 	m.place()
 	return m
 }
@@ -239,7 +276,11 @@ func (m *GroundMover) step(dt float64) {
 	// be slow entering a turn) and the braking curve to the stop point,
 	// reaching it in about SpeedResponseSeconds.
 	rem := m.hold - m.s
-	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+TurnLookaheadMeters))
+	// Look ahead by what the response lag covers (at least
+	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
+	// runs about SpeedResponseSeconds late on every slow-down.
+	ahead := math.Max(TurnLookaheadMeters, m.v*SpeedResponseSeconds)
+	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+ahead))
 	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
 	if m.slowKts > 0 && m.s < m.slowAt {
 		v0 := m.slowKts * ktsToMS
@@ -267,9 +308,15 @@ func (m *GroundMover) step(dt float64) {
 	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
 		m.v, m.a = v0, math.Max(m.a, 0)
 	}
-	m.s = math.Min(m.s+m.v*dt, m.hold)
-	if m.hold-m.s < 0.3 && m.v < 0.1 || m.s >= m.hold {
-		m.s, m.v, m.a = math.Max(m.s, math.Min(m.hold, m.s+0.3)), 0, 0
+	step := m.v * dt
+	// Braking stops a hair short of the point: cover the last centimetres at
+	// a creep instead of snapping onto it (the speed stays as braked).
+	if rem := m.hold - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
+		step = math.Max(step, finalCreep*dt)
+	}
+	m.s = math.Min(m.s+step, m.hold)
+	if m.s >= m.hold {
+		m.s, m.v, m.a = m.hold, 0, 0
 	}
 }
 
@@ -292,13 +339,24 @@ func (m *GroundMover) place() {
 		dx, dy = dx/d*wb, dy/d*wb
 		m.gear = airport.LatLon{Lat: nose.Lat + dy/metersPerDegree, Lon: nose.Lon + dx/kx}
 	}
+	// Forward the path point is the nose gear and the main gear trails; the
+	// reference point lies RefAheadMeters ahead of the main gear. Pushed back
+	// (reverse) the path point is the main gear and the nose trails, steered
+	// by the tug.
 	f := 1.0
 	if wb > 0 {
 		f = 1 - m.p.RefAheadMeters/wb
+		if m.reverse {
+			f = m.p.RefAheadMeters / wb
+		}
 	}
 	hdg := m.pose.Heading
 	if dx != 0 || dy != 0 {
-		hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+		if m.reverse {
+			hdg = math.Mod(math.Atan2(dx, dy)*180/math.Pi+360, 360)
+		} else {
+			hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+		}
 	}
 	m.pose = GroundPose{
 		Position:       airport.LatLon{Lat: nose.Lat + dy*f/metersPerDegree, Lon: nose.Lon + dx*f/kx},
@@ -313,6 +371,8 @@ func (m *GroundMover) place() {
 const (
 	metersPerDegree = 111319.49
 	ktsToMS         = 0.514444
+	// finalCreep (m/s) covers the last centimetres onto a stop point.
+	finalCreep = 0.05
 )
 
 // localDist is the flat-earth distance in metres; exact enough on an airport.
@@ -367,7 +427,7 @@ func chaikin(p []airport.LatLon, passes int) []airport.LatLon {
 
 // speedLimits plans the allowed speed (m/s) at each point: cruise, slower
 // where the path curves, with Decel braking planned ahead of each turn.
-func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile) []float64 {
+func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile, decelAt, lateralAt func(float64) float64) []float64 {
 	n := len(pts)
 	cruise, minTurn := p.CruiseKts*ktsToMS, math.Min(p.MinTurnKts, p.CruiseKts)*ktsToMS
 	v := make([]float64, n)
@@ -389,11 +449,11 @@ func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile) []float64
 		d := math.Abs(headingDiff(localBearing(pts[j0], pts[i]), localBearing(pts[i], pts[j1]))) * math.Pi / 180
 		if d > 0.01 {
 			r := (cum[j1] - cum[j0]) / d
-			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(p.LateralAccel*r)))
+			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(lateralAt(cum[i])*r)))
 		}
 	}
 	for i := n - 2; i >= 0; i-- {
-		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*p.Decel*(cum[i+1]-cum[i])))
+		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*decelAt(cum[i])*(cum[i+1]-cum[i])))
 	}
 	return v
 }

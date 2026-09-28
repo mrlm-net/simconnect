@@ -71,7 +71,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: mo
 
 1. **MSFS AI flies** the approach, touchdown and the first part of the rollout. From touchdown the aircraft is read every sim frame and the injector watches the ground height under it.
 2. **Takeover on the runway:** once the aircraft has been on the ground for `TakeoverAfterTouchdown` (2 s) and slowed to `TakeoverKts` (70 kt), at least `TakeoverBeforeExitMeters` before the exit. The mover starts at the aircraft's nose gear with its heading and speed, so nothing jumps at the switch. If the aircraft reaches the exit first, the takeover happens once it is clear of the runway.
-3. **Rollout and exit:** braking at `RolloutDecel` to `InjectExitHighSpeedKts` (30 kt) through a high-speed exit (`InjectExitKts`, 12 kt, otherwise), then to taxi speed clear of the runway.
+3. **Rollout and exit** (`ArrivalRequest.Rollout`, a `RolloutProfile` per aircraft type; A320 defaults). The aircraft brakes hard (2.5 m/s²) to 80 kt, then slows gently and evenly, reaching the exit speed at the exit: 32 kt at a high-speed exit, 12 kt at any other. Clear of the runway it slows to taxi speed. This is how crews fly it.
 4. **Vacate stop:** the aircraft stops there and waits for `ClearToTaxi` (`HoldForClearance`) or the after-landing dwell, which varies by ±10 %. With `RollThroughChance` (default 30 %, only without `HoldForClearance`) it only slows to 0.5 kt and taxis on, like a rolling clearance.
 5. **Runway crossings:** with `HoldAtCrossings` the aircraft stops with its nose gear `HoldShortStopMeters` before the hold-short line of every runway it crosses, reports `ArrivalHoldingShort` (with `ArrivalEvent.HoldingShortOf`), and waits for `ClearToCross()`. Runway lights stay off while it holds. A clearance given earlier means it does not stop. Without `HoldAtCrossings`, crossings count as cleared in advance. Departure gates (pushback, taxi, line-up, take-off) are #320.
 6. **Taxi-in and parking:** the path ends straight along the stand axis, the last 30 m at 5 kt, with the reference point on the stop mark. The aircraft stays frozen on the stand; `Release` hands it back to MSFS AI.
@@ -87,6 +87,15 @@ Lights, all set by the controller once it has taken over:
 | Parked | nav only (beacon and taxi off) |
 
 Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` reports what the sim shows. [`examples/ai-arrival`](../examples/ai-arrival) runs it with `-inject`; `-roll-through 1` forces a rolling clearance.
+
+### Self-manoeuvring stands
+
+Some stands face the taxilane: the lead-in junction the route uses lies *ahead* of the parked aircraft (LKPR N50–N58 and the S stands). A stand can have lead-ins on both sides, so this is decided per route.
+
+- **Arrivals** take a custom turn-around route: they come in off the lead-in and swing out to the side with fewer neighbouring stands. They loop round behind the stop mark (scaled by `TurnAroundMeters`) and come back along the centreline, facing out, with about three wheelbases of straight so the main gear lines up.
+- **Departures** from such stands start without a pushback: after the start-up approval (`ClearPushback`) the aircraft taxis straight out.
+
+The sweep tests fly 44 injected arrivals across LKPR stands and runways. All park within 3° of the stand heading and 1 m of the stop mark.
 
 ## Injected approach
 

@@ -103,6 +103,9 @@ type ArrivalRequest struct {
 	// and a soft touchdown (see ApproachProfile), then the rollout, exit and
 	// taxi-in. Without it MSFS AI flies until the rollout.
 	InjectApproach bool
+	// Rollout is the injected rollout and exit; zero means
+	// DefaultRolloutProfile.
+	Rollout RolloutProfile
 	// Approach is the injected approach; zero means DefaultApproachProfile.
 	Approach ApproachProfile
 }
@@ -180,29 +183,22 @@ type ArrivalController struct {
 	wantLights     [5]float64
 	lightsAt       time.Time
 
-	// Hybrid ground phase (ArrivalWithInjector).
+	// Hybrid ground phase (ArrivalWithInjector): the shared injected ground
+	// driving (mover, lights, crossings) and the arrival specifics.
+	groundDrive
 	inj               *Injector
-	mover             *GroundMover
-	lastStep          time.Time
-	lights            Lights // injected light state
-	fast              bool   // monitor every sim frame: throttle progress events
-	crossing          bool   // on or near a runway: strobes and landing lights on
+	fast              bool // monitor every sim frame: throttle progress events
 	touchdownAt       time.Time
 	clearDist         float64 // injected path distance where the aircraft is clear of the runway
-	crossZones        []crossZone
-	taxiLightAt       time.Time
 	rollThrough       bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist        float64 // injected path distance of the vacate stop
 	rng               *rand.Rand
-	nextCross         int            // next crossing zone ahead
-	crossClears       int            // ClearToCross calls not used yet
 	lightsChanged     bool           // the sim reported a light change since the last event
 	approach          *ApproachMover // injected approach until the rollout hand-over
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
 	approachLightsSet bool
 	spoilers          surfaceRamp // injected ground spoilers
-	frameDt           float64     // seconds since the previous injected frame
 	takeoverTried     bool
 	emittedAt         time.Time
 }
@@ -242,6 +238,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 		events: make(chan ArrivalEvent, 256), now: time.Now,
 		rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5eed)),
 	}
+	c.groundDrive = groundDrive{ignoreRunway: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	for _, o := range opts {
 		o(c)
 	}
