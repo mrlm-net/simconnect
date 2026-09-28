@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -153,6 +154,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Model == "" {
 		r.Model = "FSLTL A320 Air France SL"
 	}
+	model, livery, _ := strings.Cut(r.Model, liverySep)
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
@@ -163,7 +165,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
-			Model: r.Model, Tail: r.Tail, HoldForClearances: r.Gates}); err != nil {
+			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -171,7 +173,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
 		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj))
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: r.Model, Tail: r.Tail,
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail,
 			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach}); err != nil {
 			return nil, err
 		}
@@ -423,6 +425,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 // reqModels asks the simulator for its aircraft titles (the model list).
 const reqModels uint32 = 2004
 
+// liverySep joins an aircraft title and its livery in the model list (MSFS
+// 2024 spawns a title with an explicit livery).
+const liverySep = " :: "
+
 // requestModels enumerates the aircraft the simulator can spawn.
 func (cc *controlCenter) requestModels() error {
 	return cc.client.EnumerateSimObjectsAndLiveries(reqModels, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
@@ -436,13 +442,19 @@ func (cc *controlCenter) addModels(msg engine.Message) {
 		return
 	}
 	header := uint32(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
-	size := (uint32(msg.DwSize) - header) / n
+	size := uint32(unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{}))
+	if n*size > uint32(msg.DwSize)-header {
+		return
+	}
 	base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	for i := uint32(0); i < n; i++ {
 		entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))
 		if t := engine.BytesToString(entry.AircraftTitle[:]); t != "" {
+			if l := engine.BytesToString(entry.LiveryName[:]); l != "" {
+				t += liverySep + l
+			}
 			cc.models[t] = true
 		}
 	}

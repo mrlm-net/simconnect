@@ -621,8 +621,7 @@ async function pollControl() {
   try {
     fetch('/api/control/log').then((r) => r.ok ? r.json() : []).then((lines) => {
       const el = $('ctlLog'), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
-      el.textContent = lines.join('
-');
+      el.textContent = lines.join('\n');
       if (atBottom) el.scrollTop = el.scrollHeight;
     }).catch(() => {});
     const res = await fetch('/api/control');
