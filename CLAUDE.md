@@ -144,6 +144,10 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
+│   ├── nav/                 # Navigation data, weather and ATIS, flight plans
+│   │   ├── weather.go       #   Weather, StaticWeather, WeatherReader (ambient SimVars at the user aircraft)
+│   │   ├── runway.go        #   ActiveRunways: runway in use from wind, limits, preferential runways
+│   │   └── atis.go          #   ATIS Text/Spoken, TransitionLevel, ATISService (letters)
 │   └── traffic/             # AI aircraft
 │       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
 │       ├── waypoints.go     #   Pushback/Taxi/Lineup/Climb waypoint helpers
@@ -193,6 +197,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── airport-map/         #   Leaflet map of airport layout + route viewer
 │   ├── ai-taxi/             #   AI departure taxi (stand → runway)
 │   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
+│   ├── atis/                #   Weather at the user aircraft → runway in use → ATIS text
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
@@ -207,7 +212,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
-│   └── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
+│   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
+│   └── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
     ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
