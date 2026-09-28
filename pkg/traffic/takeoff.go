@@ -25,8 +25,8 @@ type TakeoffProfile struct {
 // DefaultTakeoffProfile is an A320 family take-off.
 func DefaultTakeoffProfile() TakeoffProfile {
 	return TakeoffProfile{
-		RollAccel: 2.0,
-		RotateKts: 140, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15,
+		RollAccel: 2.4, // live: 2.0 lifted off after ~1875 m, long for an A320
+		RotateKts: 138, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15,
 		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 5,
 	}
 }

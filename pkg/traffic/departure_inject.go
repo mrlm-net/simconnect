@@ -302,11 +302,23 @@ func (c *TaxiController) startLineUp() {
 	pose := c.mover.Pose()
 	nose := NoseGear(pose.Position, pose.Heading, prof)
 	thr, hdg := c.end.Threshold, c.end.Heading
-	along := math.Max(0, alongHeading(thr, hdg, nose))
-	abeam := offsetHeading(thr, hdg, along)
+	// Onto the runway along the entry taxiway's own geometry (entries are
+	// often angled, not 90°), then aligned down the centreline.
+	pts := []airport.LatLon{nose}
+	entry := c.entryPath()
+	pts = append(pts, entry...)
+	onRunway := nose
+	if len(entry) > 0 {
+		onRunway = entry[len(entry)-1]
+	}
+	along := math.Max(0, alongHeading(thr, hdg, onRunway))
+	if len(entry) == 0 {
+		pts = append(pts, offsetHeading(thr, hdg, along)) // abeam, straight across
+	}
 	align := offsetHeading(thr, hdg, along+LineUpAlignMeters)
 	far := offsetHeading(thr, hdg, math.Max(along+LineUpAlignMeters+50, c.runwayLength))
-	path, err := NewGroundPath([]airport.LatLon{nose, abeam, align, far}, prof)
+	pts = append(pts, align, far)
+	path, err := NewGroundPath(pts, prof)
 	if err != nil {
 		c.fail(err)
 		return
@@ -315,7 +327,7 @@ func (c *TaxiController) startLineUp() {
 	lineUp.CruiseKts = LineUpSpeedKts
 	path.LimitRange(0, path.Length(), LineUpSpeedKts, prof.Decel)
 	c.mover = NewGroundMoverFrom(path, lineUp, pose.Heading, 0)
-	c.alignDist = localDist(nose, abeam) + LineUpAlignMeters
+	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
 	}
@@ -409,4 +421,35 @@ func (c *TaxiController) ClearToCross() {
 	default:
 		c.crossClears++
 	}
+}
+
+// entryPath is the taxiway from the departure hold-short onto the runway
+// centreline: to the entry's first node off the runway and along the
+// entry's path to its runway node. Nil when no entry of the runway end
+// starts at the hold-short.
+func (c *TaxiController) entryPath() []airport.LatLon {
+	g := c.req.Graph
+	hold := c.route.Nodes[len(c.route.Nodes)-1]
+	entries, err := g.RunwayEntries(c.end.Name)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if e.HoldShort != hold {
+			continue
+		}
+		var pts []airport.LatLon
+		if e.Node != hold {
+			r, err := g.Route(hold, e.Node, c.req.Options)
+			if err != nil {
+				continue
+			}
+			pts = append(pts, r.Points[1:]...)
+		}
+		for _, id := range e.Path[1:] {
+			pts = append(pts, g.Nodes[id].Position)
+		}
+		return pts
+	}
+	return nil
 }

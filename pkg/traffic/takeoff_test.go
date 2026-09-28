@@ -29,8 +29,8 @@ func TestTakeoffMover(t *testing.T) {
 	if liftoff.Phase != TakeoffAirborne {
 		t.Fatal("never lifted off")
 	}
-	if liftoff.LiftoffDistance < 1000 || liftoff.LiftoffDistance > 2200 {
-		t.Errorf("lift-off after %.0f m, want an A320-like 1000-2200 m", liftoff.LiftoffDistance)
+	if liftoff.LiftoffDistance < 1200 || liftoff.LiftoffDistance > 1700 {
+		t.Errorf("lift-off after %.0f m, want an A320-like 1200-1700 m", liftoff.LiftoffDistance)
 	}
 	if liftoff.GroundSpeedKts < p.RotateKts || liftoff.GroundSpeedKts > p.RotateKts+15 {
 		t.Errorf("lift-off at %.0f kt", liftoff.GroundSpeedKts)
