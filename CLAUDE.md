@@ -154,6 +154,9 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── weather.go       #   Weather, StaticWeather, WeatherReader (ambient SimVars at the user aircraft)
 │   │   ├── runway.go        #   ActiveRunways: runway in use from wind, limits, preferential runways
 │   │   ├── atis.go          #   ATIS Text/Spoken, TransitionLevel, ATISService (letters)
+│   │   ├── flightplan.go    #   Plan: runways, SID/airways/STAR/approach, CruiseLevel, profile, fuel
+│   │   ├── pln.go           #   FlightPlan.PLN: MSFS .pln (AceXML) export, FormatLLA
+│   │   ├── performance.go   #   Performance, PerformanceFor (per-type planning data)
 │   │   └── testdata/        #   LKPR-area airway graph captured from MSFS 2024
 │   └── traffic/             # AI aircraft
 │       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
@@ -206,6 +209,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
 │   ├── spike-airways/       #   Airway crawl → JSON (or raw WAYPOINT/ROUTE/VOR/NDB dump)
 │   ├── atis/                #   Weather at the user aircraft → runway in use → ATIS text
+│   ├── flight-plan/         #   Plan a flight between two loaded airports, write .pln
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
@@ -222,7 +226,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
 │   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
-│   └── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
+│   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
+│   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
     ├── package.json         #   Dependencies & scripts
     ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
