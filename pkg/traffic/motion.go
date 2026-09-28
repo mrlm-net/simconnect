@@ -158,9 +158,10 @@ type GroundMover struct {
 	path    *GroundPath
 	p       MotionProfile
 	s, v, a float64
-	gear    airport.LatLon
-	hold    float64 // stop point for the nose; path length when none
-	slowAt  float64 // SlowAt point and speed; slowKts 0 when none
+	gear    airport.LatLon // the trailing gear: main gear, or nose gear in reverse
+	reverse bool           // pushed back: the main gear follows the path
+	hold    float64        // stop point on the path; path length when none
+	slowAt  float64        // SlowAt point and speed; slowKts 0 when none
 	slowKts float64
 	pose    GroundPose
 
@@ -173,6 +174,18 @@ type GroundMover struct {
 func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 	m := &GroundMover{path: path, p: p, gear: path.PointAt(0), hold: path.Length()}
 	m.s = math.Min(p.WheelbaseMeters, path.Length())
+	m.place()
+	return m
+}
+
+// NewPushbackMover pushes an aircraft back: path runs from its main gear
+// backwards (tail first), the aircraft faces heading at the start, and the
+// nose trails the main gear as a tug steers it. Speeds come from p (use a
+// pushback CruiseKts).
+func NewPushbackMover(path *GroundPath, p MotionProfile, heading float64) *GroundMover {
+	m := &GroundMover{path: path, p: p, hold: path.Length(), reverse: true}
+	gear := path.PointAt(0)
+	m.gear = offsetHeading(gear, heading, p.WheelbaseMeters) // the nose, trailing
 	m.place()
 	return m
 }
@@ -267,9 +280,15 @@ func (m *GroundMover) step(dt float64) {
 	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
 		m.v, m.a = v0, math.Max(m.a, 0)
 	}
-	m.s = math.Min(m.s+m.v*dt, m.hold)
-	if m.hold-m.s < 0.3 && m.v < 0.1 || m.s >= m.hold {
-		m.s, m.v, m.a = math.Max(m.s, math.Min(m.hold, m.s+0.3)), 0, 0
+	step := m.v * dt
+	// Braking stops a hair short of the point: cover the last centimetres at
+	// a creep instead of snapping onto it (the speed stays as braked).
+	if rem := m.hold - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
+		step = math.Max(step, finalCreep*dt)
+	}
+	m.s = math.Min(m.s+step, m.hold)
+	if m.s >= m.hold {
+		m.s, m.v, m.a = m.hold, 0, 0
 	}
 }
 
@@ -292,13 +311,24 @@ func (m *GroundMover) place() {
 		dx, dy = dx/d*wb, dy/d*wb
 		m.gear = airport.LatLon{Lat: nose.Lat + dy/metersPerDegree, Lon: nose.Lon + dx/kx}
 	}
+	// Forward the path point is the nose gear and the main gear trails; the
+	// reference point lies RefAheadMeters ahead of the main gear. Pushed back
+	// (reverse) the path point is the main gear and the nose trails, steered
+	// by the tug.
 	f := 1.0
 	if wb > 0 {
 		f = 1 - m.p.RefAheadMeters/wb
+		if m.reverse {
+			f = m.p.RefAheadMeters / wb
+		}
 	}
 	hdg := m.pose.Heading
 	if dx != 0 || dy != 0 {
-		hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+		if m.reverse {
+			hdg = math.Mod(math.Atan2(dx, dy)*180/math.Pi+360, 360)
+		} else {
+			hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
+		}
 	}
 	m.pose = GroundPose{
 		Position:       airport.LatLon{Lat: nose.Lat + dy*f/metersPerDegree, Lon: nose.Lon + dx*f/kx},
@@ -313,6 +343,8 @@ func (m *GroundMover) place() {
 const (
 	metersPerDegree = 111319.49
 	ktsToMS         = 0.514444
+	// finalCreep (m/s) covers the last centimetres onto a stop point.
+	finalCreep = 0.05
 )
 
 // localDist is the flat-earth distance in metres; exact enough on an airport.

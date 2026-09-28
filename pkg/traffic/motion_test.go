@@ -282,3 +282,45 @@ func TestGroundPathLimitEnd(t *testing.T) {
 		t.Fatal("did not arrive")
 	}
 }
+
+// TestPushbackMover: pushed straight back then onto a taxiway to the east,
+// the aircraft keeps facing the stand direction while straight and ends
+// facing away from the turn (nose west of the tail), without jumps.
+func TestPushbackMover(t *testing.T) {
+	prof := DefaultMotionProfile()
+	prof.CruiseKts, prof.MinTurnKts = PushbackSpeedKts, 1
+	// The aircraft faces north; the tail is pushed 60 m south, then east.
+	gear := offset(lkpr, 0, -prof.RefAheadMeters)
+	path, err := NewGroundPath([]airport.LatLon{gear, offset(gear, 0, -60), offset(gear, 50, -60)}, prof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewPushbackMover(path, prof, 0)
+	start := m.Pose()
+	if localDist(start.Position, lkpr) > 0.01 || math.Abs(headingDiff(start.Heading, 0)) > 0.01 {
+		t.Fatalf("start %+v, want at the stand facing north", start)
+	}
+	poses := drive(m, 600)
+	last := poses[len(poses)-1]
+	if !last.Arrived {
+		t.Fatalf("pushback did not finish: %+v", last)
+	}
+	// Tail went east, so the nose points west (heading ~270).
+	if hd := headingDiff(last.Heading, 270); math.Abs(hd) > 25 {
+		t.Errorf("heading after the push %.1f, want about 270", last.Heading)
+	}
+	top := 0.0
+	for i, p := range poses {
+		top = math.Max(top, p.GroundSpeedKts)
+		if i > 0 && localDist(poses[i-1].Position, p.Position) > 0.1 {
+			t.Fatalf("pushback jumped %.2f m at frame %d/%d, %.2f m along, %.2f kt, arrived %v", localDist(poses[i-1].Position, p.Position), i, len(poses), p.Distance, p.GroundSpeedKts, p.Arrived)
+		}
+		if p.Distance < 45 && math.Abs(headingDiff(p.Heading, 0)) > 0.5 {
+			t.Fatalf("turned during the straight push: %.1f at %.0f m", p.Heading, p.Distance)
+		}
+	}
+	if top > PushbackSpeedKts+0.1 {
+		t.Errorf("pushback at %.1f kt", top)
+	}
+	t.Logf("final heading %.1f after %.0f m", last.Heading, last.Distance)
+}
