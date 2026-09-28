@@ -88,6 +88,23 @@ Lights, all set by the controller once it has taken over:
 
 Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` reports what the sim shows. [`examples/ai-arrival`](../examples/ai-arrival) runs it with `-inject`; `-roll-through 1` forces a rolling clearance.
 
+## Injected approach
+
+With `ArrivalRequest.InjectApproach` (and `ArrivalWithInjector`) MSFS AI does not fly at all. MSFS AI flies finals at a fixed ~165 kt, with no pitch and no flare, and its touchdowns measured −54 to −1214 fpm.
+
+- The aircraft spawns on the injected glide path and is taken over at once, with gear down (`Injector.SetGear`), flaps full (`Injector.SetFlaps`) and approach lights.
+- `ApproachMover` flies it:
+  - a 3° glide path crossing the threshold at 50 ft;
+  - speed easing from `StartKts` to `ApproachKts` by 1 nm;
+  - a flare from 30 ft, with the sink rate easing to `TouchdownFpm` (−120) while the pitch rises from 2.5° to 5.5°;
+  - after touchdown, the nose coming down over 4 s.
+- With the nose wheel down, the injected rollout takes over from exactly that pose.
+- Flaps retract over `FlapsRetractSeconds` once clear of the runway.
+
+`Injector.PlaceAir` places an `ApproachPose`: the main wheels `HeightFt` above the ground, pitched nose up `PitchDeg`, and on the ground from touchdown. MSFS AI objects ignore the flaps handle and `FLAPS_*` events, so `SetFlaps` writes the flap surface positions directly. Ramp the percentage for a visible movement. Gear animates on a frozen aircraft.
+
+Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fpm. Pitch readback equals the command.
+
 ## Measured in MSFS 2024
 
 Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):

@@ -181,27 +181,28 @@ type ArrivalController struct {
 	lightsAt       time.Time
 
 	// Hybrid ground phase (ArrivalWithInjector).
-	inj           *Injector
-	mover         *GroundMover
-	lastStep      time.Time
-	lights        Lights // injected light state
-	fast          bool   // monitor every sim frame: throttle progress events
-	crossing      bool   // on or near a runway: strobes and landing lights on
-	touchdownAt   time.Time
-	clearDist     float64 // injected path distance where the aircraft is clear of the runway
-	crossZones    []crossZone
-	taxiLightAt   time.Time
-	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
-	vacateDist    float64 // injected path distance of the vacate stop
-	rng           *rand.Rand
-	nextCross     int            // next crossing zone ahead
-	crossClears   int            // ClearToCross calls not used yet
-	lightsChanged bool           // the sim reported a light change since the last event
-	approach      *ApproachMover // injected approach until the rollout hand-over
-	flapsPct      float64        // injected flap setting
-	flapsUpFrom   time.Time      // flaps retracting since
-	takeoverTried bool
-	emittedAt     time.Time
+	inj               *Injector
+	mover             *GroundMover
+	lastStep          time.Time
+	lights            Lights // injected light state
+	fast              bool   // monitor every sim frame: throttle progress events
+	crossing          bool   // on or near a runway: strobes and landing lights on
+	touchdownAt       time.Time
+	clearDist         float64 // injected path distance where the aircraft is clear of the runway
+	crossZones        []crossZone
+	taxiLightAt       time.Time
+	rollThrough       bool    // rolling clearance: slow at the vacate point, do not stop
+	vacateDist        float64 // injected path distance of the vacate stop
+	rng               *rand.Rand
+	nextCross         int            // next crossing zone ahead
+	crossClears       int            // ClearToCross calls not used yet
+	lightsChanged     bool           // the sim reported a light change since the last event
+	approach          *ApproachMover // injected approach until the rollout hand-over
+	flapsPct          float64        // injected flap setting
+	flapsUpFrom       time.Time      // flaps retracting since
+	approachLightsSet bool
+	takeoverTried     bool
+	emittedAt         time.Time
 }
 
 const (

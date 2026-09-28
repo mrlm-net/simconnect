@@ -442,8 +442,9 @@ func (c *ArrivalController) startInjectedApproach() error {
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
 	c.note("flaps full", c.inj.SetFlaps(c.objectID, 100))
 	c.flapsPct = 100
-	c.lights = lightsRollout
-	c.applyLights("lights approach (injected)")
+	// Approach lights on the first frame, once the sim has reported the
+	// aircraft's own logo and wing lights (see onApproachFrame).
+	c.approachLightsSet = false
 	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, c.plan.SpawnNm*1852, c.approachProfile())
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
 	c.fast = true
@@ -458,6 +459,11 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	now := c.now()
 	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
 	c.lastStep = now
+	if !c.approachLightsSet {
+		c.approachLightsSet = true
+		c.lights = m.currentLights()
+		c.setInjectedLights(lightsRollout, "lights approach (injected)")
+	}
 	pose := c.approach.Step(math.Max(dt, 0))
 	if err := c.inj.PlaceAir(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
