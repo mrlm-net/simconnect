@@ -51,6 +51,10 @@ While connected to the simulator, the **Traffic control** panel spawns AI aircra
 
 ### Traffic log
 
+Clearances appear as ATC says them, with the taxiways: "AFR1383, push back and start-up approved", "AFR1383, taxi to holding point runway 24 via B2, H, A", "AFR1383, taxi via B2, H, hold short of A" (up to a route point), "AFR1383, runway 24, line up and wait". With gates off the controller clears itself, and the log still shows the clearance.
+
+**Safe zones** (in Live traffic) draws half the wing span plus 3 m around every aircraft on the ground, ours and the sim's; zones turn red where two overlap, i.e. wingtips could touch.
+
 Everything traffic control does is logged: spawns, clearances given or refused, state changes (with the touchdown distance and rate), light changes, arrival at and departure from a clearance limit, and errors. Each line is time-stamped and goes to the console, to the log file in `-log-dir`, and to the **Traffic log** panel (the last 200 lines).
 
 ## HTTP API

@@ -100,6 +100,7 @@
 
   <h2>Live traffic</h2>
   <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
+  <label class="opt"><input type="checkbox" id="safeOn"> Safe zones: wing span + 3 m (red where two overlap)</label>
   <table id="trafficTable" class="note"></table>
 
   <h2>Taxi paths by TYPE</h2>
@@ -522,9 +523,12 @@ const trafficIcon = (t) => L.divIcon({
 const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.agl.toFixed(0)}ft ${t.groundKts.toFixed(0)}kt` +
   `<br>${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)}fpm · gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · ${esc(shortState(t.state))}`;
 async function pollTraffic() {
-  if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
+  const safe = $('safeOn').checked;
+  if (!$('trafficOn').checked && !safe) { trafficLayer.clearLayers(); trafficMarkers.clear(); safeLayer.clearLayers(); $('trafficTable').innerHTML = ''; return; }
   let list = [];
   try { list = await (await fetch('/api/traffic')).json(); } catch { return; }
+  drawSafeZones(safe ? list : []);
+  if (!$('trafficOn').checked) { trafficLayer.clearLayers(); trafficMarkers.clear(); $('trafficTable').innerHTML = ''; return; }
   const seen = new Set();
   for (const t of list) {
     if (t.user) continue;
@@ -547,6 +551,28 @@ async function pollTraffic() {
     : '<tr><td>No other aircraft</td></tr>';
 }
 setInterval(pollTraffic, 1000);
+// Safe zones: a circle of half the wing span plus SAFE_MARGIN around every
+// aircraft (ours, MSFS AI and the user's); red where two overlap — wingtips
+// that could touch.
+const SAFE_MARGIN = 3;
+const safeLayer = L.layerGroup().addTo(map);
+function drawSafeZones(list) {
+  safeLayer.clearLayers();
+  const zones = list.filter((t) => t.onGround && t.span > 0)
+    .map((t) => ({ t, at: L.latLng(t.lat, t.lon), r: t.span / 2 + SAFE_MARGIN, clash: false }));
+  for (let i = 0; i < zones.length; i++) {
+    for (let j = i + 1; j < zones.length; j++) {
+      if (zones[i].at.distanceTo(zones[j].at) < zones[i].r + zones[j].r) zones[i].clash = zones[j].clash = true;
+    }
+  }
+  for (const z of zones) {
+    const color = z.clash ? '#ff3b3b' : '#2ecc71';
+    L.circle(z.at, { renderer, radius: z.r, color, weight: z.clash ? 2 : 1, fillColor: color, fillOpacity: 0.12, interactive: false })
+      .bindTooltip(`${esc(z.t.tail || z.t.objectId)} · span ${z.t.span.toFixed(0)} m`, { direction: 'top' })
+      .addTo(safeLayer);
+  }
+}
+$('safeOn').addEventListener('change', pollTraffic);
 // ── Traffic control (#322): spawn controlled aircraft, give clearances,
 // progressive taxi by clicking route points ──
 let ctlSelected = null;

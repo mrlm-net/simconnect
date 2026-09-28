@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,6 +54,9 @@ type controlled struct {
 	stands *traffic.StandAllocator
 	stand  int  // parking index held for this aircraft
 	left   bool // a departure has left its stand (released)
+	// spoken marks clearances already in the log (given on the map), so
+	// the state change they cause does not log them again.
+	spoken map[string]bool
 
 	mu   sync.Mutex
 	view ControlView
@@ -244,7 +248,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}()
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
-	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand}
+	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -542,7 +546,14 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		tlog.printf("%-6s %s: cleared %s", it.Tail, it.Kind, clr)
+		if action == "remove" {
+			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
+		} else {
+			tlog.printf("%-6s ATC: %s", it.Tail, it.phrase(action, node))
+			it.mu.Lock()
+			it.spoken[action] = true
+			it.mu.Unlock()
+		}
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
 			cc.mu.Lock()
@@ -617,6 +628,19 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 		}
 		tlog.printf("%s: %s → %s%s  (%.0f kt, hdg %.0f)", who, prev.State, v.State, extra, v.GroundSpeed, v.Heading)
 	}
+	if action := clearanceOf(v.Kind, prev.State, v.State); action != "" {
+		if it.spoken[action] {
+			delete(it.spoken, action) // said when given
+		} else {
+			var r *airport.Route
+			if it.dep != nil {
+				r = it.dep.Route()
+			} else if p := it.arr.Plan(); p != nil {
+				r = p.Route
+			}
+			tlog.printf("%-6s ATC: %s", it.Tail, it.phraseView(v, r, action, -1))
+		}
+	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
 		tlog.printf("%s: lights %s → %s (%s)", who, prev.Lights, v.Lights, v.State)
 	}
@@ -678,4 +702,101 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 		t.AheadMeters = *r.TugAhead
 	}
 	return t
+}
+
+// phrase is the clearance as ATC says it (ICAO phraseology), e.g.
+// "AFR1383, taxi to holding point runway 24 via B2, H, A".
+func (it *controlled) phrase(action string, node airport.NodeID) string {
+	var r *airport.Route
+	if it.dep != nil {
+		r = it.dep.Route()
+	} else if p := it.arr.Plan(); p != nil {
+		r = p.Route
+	}
+	it.mu.Lock()
+	v := it.view
+	it.mu.Unlock()
+	return it.phraseView(v, r, action, node)
+}
+
+// phraseView is phrase for a view the caller holds.
+func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) string {
+	call, rwy := it.Tail, v.Runway
+	switch action {
+	case "pushback":
+		return call + ", push back and start-up approved"
+	case "taxi":
+		if it.dep != nil {
+			return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", call, entryPoint(r), rwy, via(r, len(r.Edges)))
+		}
+		return fmt.Sprintf("%s, taxi to stand %s%s", call, v.Stand, via(r, len(r.Edges)))
+	case "upto":
+		if r != nil {
+			if i := slices.Index(r.Nodes, node); i > 0 {
+				limit := r.Edges[i-1].Name
+				if i < len(r.Edges) && r.Edges[i].Name != "" && r.Edges[i].Name != limit {
+					limit = r.Edges[i].Name // hold short of the taxiway joined there
+				}
+				if limit == "" {
+					return fmt.Sprintf("%s, taxi%s, hold position at the marked point", call, via(r, i))
+				}
+				return fmt.Sprintf("%s, taxi%s, hold short of %s", call, via(r, i), limit)
+			}
+		}
+		return call + ", taxi to the marked point and hold"
+	case "cross":
+		return fmt.Sprintf("%s, cross runway %s", call, v.HoldingShortOf)
+	case "lineup":
+		return fmt.Sprintf("%s, runway %s, line up and wait", call, rwy)
+	case "takeoff":
+		return fmt.Sprintf("%s, runway %s, cleared for take-off", call, rwy)
+	}
+	return call + ", " + action
+}
+
+// via names the taxiways of the first n edges of a route: " via B2, H, A".
+func via(r *airport.Route, n int) string {
+	if r == nil {
+		return ""
+	}
+	var names []string
+	for _, e := range r.Edges[:min(n, len(r.Edges))] {
+		if e.Name != "" && (len(names) == 0 || names[len(names)-1] != e.Name) {
+			names = append(names, e.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return " via " + strings.Join(names, ", ")
+}
+
+// entryPoint is the named holding point of an intersection departure
+// (" B" in "holding point B runway 24"), "" for full length.
+func entryPoint(r *airport.Route) string {
+	if r == nil || r.Entry == "" {
+		return ""
+	}
+	return " " + r.Entry
+}
+
+// clearanceOf names the clearance a state change carries out ("" none):
+// with gates off the controller clears itself, and the log still shows
+// what ATC said.
+func clearanceOf(kind, from, to string) string {
+	switch {
+	case from == to:
+		return ""
+	case to == traffic.TaxiPushback.String() && kind == "departure":
+		return "pushback"
+	case to == traffic.TaxiLiningUp.String() && kind == "departure":
+		return "lineup"
+	case to == traffic.TaxiDeparting.String() && kind == "departure":
+		return "takeoff"
+	case from == traffic.TaxiHoldingShort.String() && to == traffic.TaxiTaxiing.String():
+		return "cross" // arrivals share the state names
+	case to == traffic.TaxiTaxiing.String():
+		return "taxi"
+	}
+	return ""
 }
