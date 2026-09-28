@@ -140,6 +140,9 @@ type TaxiEvent struct {
 	// for none; AtLimit is set while the aircraft holds there.
 	LimitNode airport.NodeID
 	AtLimit   bool
+	// PushbackHeld is set while the pushback waits, or stops, for traffic
+	// behind the stand (#334).
+	PushbackHeld bool
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
 	// Lights is the light state the sim reports.
@@ -218,6 +221,7 @@ type TaxiController struct {
 	pushJunction                                            int              // route index of the junction the tail swings at (planPushback; 1: the first)
 	pushPts                                                 []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
 	pushTurn                                                bool             // push and turn on the apron (only taxiway at the junction is the way out)
+	pushPlanned                                             *GroundPath      // the push path, planned before it starts (pushPath)
 	pushTurnDir                                             float64          // the way out from the junction
 }
 

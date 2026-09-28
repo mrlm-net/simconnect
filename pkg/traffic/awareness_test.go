@@ -180,3 +180,101 @@ func TestGroundPictureGivesWay(t *testing.T) {
 	}
 	t.Logf("closest %.1f m, lowest speeds %v", minDist, slowest)
 }
+
+// pushbackWithPicture is an injected departure from LKPR C22 sharing
+// picture, held for its clearances.
+func pushbackWithPicture(t *testing.T, picture *GroundPicture) (*TaxiController, func(int), *time.Time) {
+	t.Helper()
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj), TaxiWithGroundPicture(picture))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: c22, Runway: "24", Model: "FSLTL A320 Air France SL", Tail: "CSA1", HoldForClearances: true}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	stand := g.Layout.Parking[c22]
+	frames := func(n int) {
+		for i := 0; i < n; i++ {
+			now = now.Add(time.Second / 60)
+			ctl.Handle(positionMsg(DefaultTaxiRequestBase+reqOffMonitor, 77, stand.Position, 0, 0, true))
+		}
+	}
+	return ctl, frames, &now
+}
+
+// TestPushbackWaitsForTrafficBehind: cleared to push while another
+// aircraft taxis along the lane behind the stand, the pushback does not
+// start until that aircraft's path is clear of the corridor (#334).
+func TestPushbackWaitsForTrafficBehind(t *testing.T) {
+	picture := NewGroundPicture()
+	ctl, frames, now := pushbackWithPicture(t, picture)
+	frames(60)
+	path, err := ctl.pushPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	corridor := pushCorridor(path, 0, ctl.profile())
+	// Traffic 150 m away whose taxi path runs through the corridor.
+	far := offsetHeading(corridor[len(corridor)-1], 90, 150)
+	report := func(ahead []airport.LatLon) {
+		picture.Report(99, far, 270, DefaultMotionProfile(), *now)
+		picture.ReportPath(99, ahead, 17.9)
+	}
+	report(corridor[len(corridor)/2:])
+	ctl.ClearPushback()
+	for i := 0; i < 60*20; i++ {
+		report(corridor[len(corridor)/2:])
+		frames(1)
+	}
+	if ctl.State() != TaxiAwaitingPushback || !ctl.last.PushbackHeld {
+		t.Fatalf("state %v, held %v: pushed into traffic", ctl.State(), ctl.last.PushbackHeld)
+	}
+	// The traffic has passed: nothing ahead of it crosses the corridor.
+	for i := 0; i < 60*10 && ctl.State() == TaxiAwaitingPushback; i++ {
+		report(nil)
+		frames(1)
+	}
+	if ctl.State() != TaxiPushback || ctl.last.PushbackHeld {
+		t.Fatalf("state %v, held %v: want pushing once clear", ctl.State(), ctl.last.PushbackHeld)
+	}
+}
+
+// TestPushbackStopsForTraffic: an aircraft moving into what the push still
+// sweeps stops it; the push goes on once it is gone.
+func TestPushbackStopsForTraffic(t *testing.T) {
+	picture := NewGroundPicture()
+	ctl, frames, now := pushbackWithPicture(t, picture)
+	frames(60)
+	ctl.ClearPushback()
+	for i := 0; i < 60*60 && ctl.State() != TaxiPushback; i++ {
+		frames(1)
+	}
+	frames(60 * 8) // under way
+	if ctl.mover == nil || ctl.mover.Pose().GroundSpeedKts < 0.5 {
+		t.Fatal("not pushing")
+	}
+	rest := pushCorridor(ctl.mover.Path(), ctl.mover.Pose().Distance, ctl.profile())
+	intruder := rest[len(rest)-1]
+	for i := 0; i < 60*20; i++ {
+		picture.Report(99, intruder, 0, DefaultMotionProfile(), *now)
+		frames(1)
+	}
+	held := ctl.mover.Pose()
+	if !ctl.last.PushbackHeld || held.GroundSpeedKts > 0.1 {
+		t.Fatalf("held %v at %.1f kt", ctl.last.PushbackHeld, held.GroundSpeedKts)
+	}
+	picture.Forget(99)
+	frames(60 * 10)
+	if ctl.last.PushbackHeld || ctl.mover == nil || ctl.mover.Pose().Distance <= held.Distance+0.5 {
+		t.Fatal("did not go on once clear")
+	}
+}

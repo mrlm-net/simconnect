@@ -80,6 +80,7 @@ type ControlView struct {
 	Runway         string           `json:"runway"`
 	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
 	OnGround       bool             `json:"onGround"`
+	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -436,6 +437,14 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		if e.PushbackHeld != v.PushbackHeld {
+			v.PushbackHeld = e.PushbackHeld
+			if e.PushbackHeld {
+				tlog.printf("%-6s %s: pushback holding for traffic behind the stand", v.Tail, v.Kind)
+			} else {
+				tlog.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
+			}
+		}
 		// Off the stand once pushed or taxiing; the route is done when airborne.
 		// (AwaitingTaxi on a face-out stand is still on it.)
 		if !it.left && e.State >= traffic.TaxiPushback && e.State != traffic.TaxiAwaitingTaxi {

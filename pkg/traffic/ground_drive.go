@@ -280,7 +280,10 @@ func leadInAhead(g *airport.Graph, parking int, junction airport.LatLon) bool {
 // followAhead stops the mover behind the traffic ahead on its path, at a
 // safe gap from its body, while taxiing (#334).
 func (d *groundDrive) followAhead(now time.Time) {
-	if d.picture == nil || !d.followTraffic || d.mover == nil || d.mover.reverse {
+	if d.mover != nil && d.mover.reverse {
+		return // a pushback keeps its own traffic stop (holdPushForTraffic)
+	}
+	if d.picture == nil || !d.followTraffic || d.mover == nil {
 		if d.mover != nil {
 			d.mover.ClearTrafficStop()
 		}
