@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"time"
 
@@ -196,6 +196,8 @@ type TaxiController struct {
 	tugAttached                                             bool
 	pushBranch                                              airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch                                          bool
+	pushTurn                                                bool    // push and turn on the apron (only taxiway at the junction is the way out)
+	pushTurnDir                                             float64 // the way out from the junction
 }
 
 // SimConnect IDs relative to the bases.

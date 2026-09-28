@@ -298,7 +298,11 @@ func (c *TaxiController) startPushback() error {
 		if len(route.Nodes) > 2 {
 			tail = c.behindJunction(localBearing(gear, route.Points[1]))
 		}
-		pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[1], tail, prof)...)
+		if turn := c.pushTurnPoints(gear); turn != nil {
+			pts = turn // push and turn on the apron (#341)
+		} else {
+			pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[1], tail, prof)...)
+		}
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
@@ -358,6 +362,14 @@ func (c *TaxiController) planPushback() {
 		}
 	}
 	if best == nil {
+		// No branch to push the tail onto: the only taxiway at the junction
+		// is the way out (LKPR A7, B9). Push and turn on the apron to face it.
+		far, walked := r.Points[2], 0.0
+		for i := 2; i < len(r.Points) && walked < pushRouteLookMeters; i++ {
+			walked += localDist(r.Points[i-1], r.Points[i])
+			far = r.Points[i]
+		}
+		c.pushTurn, c.pushTurnDir = true, localBearing(jp, far)
 		return
 	}
 	full, err := g.RouteFromNodes(append([]airport.NodeID{r.Nodes[0]}, best.Nodes...))
@@ -452,6 +464,13 @@ const (
 	// pushOffAxisMeters: a junction further off the stand axis than this is
 	// pushed to abeam, straight, when no arc fits.
 	pushOffAxisMeters = 3.0
+	// A push-and-turn (pushTurnPlan) stops at most pushTurnBackMeters short
+	// of the junction and is at most pushTurnMaxMeters long.
+	pushTurnBackMeters = 40.0
+	pushTurnMaxMeters  = 160.0
+	// pushTurnRadiusCost is what a meter of turn radius below
+	// PushbackArcMeters is worth in meters of push, choosing a push-and-turn.
+	pushTurnRadiusCost = 1.5
 	// pushRouteLookMeters is how far along the route from the junction its
 	// direction is judged, to pick the side the tail goes.
 	pushRouteLookMeters = 40.0
@@ -697,4 +716,14 @@ func (c *TaxiController) ClearUpTo(node airport.NodeID) error {
 		return c.setLimit(node)
 	}
 	return ErrNotOnRoute
+}
+
+// pushTurnPoints is the push-and-turn of a stand whose only taxiway at the
+// junction is the way out (planPushback), nil otherwise.
+func (c *TaxiController) pushTurnPoints(gear airport.LatLon) []airport.LatLon {
+	if !c.pushTurn {
+		return nil
+	}
+	stand := c.req.Graph.Layout.Parking[c.req.Parking]
+	return pushTurnPlan(c.req.Graph, c.req.Parking, gear, stand.Heading+180, c.route.Points[1], c.pushTurnDir, c.profile())
 }

@@ -512,7 +512,7 @@ func TestPushbackFacesRoute(t *testing.T) {
 
 // knownBesideJunction are LKPR stands whose junction lies beside the stand:
 // the push cannot yet leave them facing the taxi-out (#341).
-var knownBesideJunction = map[string]bool{"A7": true, "B9": true}
+var knownBesideJunction = map[string]bool{}
 
 // TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
 // from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
