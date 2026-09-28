@@ -28,6 +28,10 @@ type groundEntry struct {
 	hdg        float64
 	nose, tail float64 // meters ahead of and behind the reference point
 	at         time.Time
+	// Where it will drive next, up to its next stop, every trafficBodyStep
+	// meters (ReportPath), and its half-span.
+	ahead []airport.LatLon
+	half  float64
 }
 
 // NewGroundPicture creates an empty picture.
@@ -48,10 +52,79 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
-		pos: pos, hdg: hdg, at: now,
+		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half,
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
+}
+
+// ReportPath records where aircraft id will drive next: its path ahead up
+// to its next stop, sampled every trafficBodyStep meters (nil when it is
+// not taxiing), and its half-span, for giving way (#334).
+func (p *GroundPicture) ReportPath(id uint32, ahead []airport.LatLon, half float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.ahead, e.half = ahead, half
+		p.aircraft[id] = e
+	}
+}
+
+// giveWay is where along path (after from) this aircraft stops to give
+// way: the first point within look where its path comes within both
+// half-spans (plus GiveWayMarginMeters) of another aircraft's path ahead,
+// when the other is closer to that point (a tie goes to the lower ID).
+// The one further away waits, the other goes, so exactly one of them
+// stops; an aircraft stopping before the point (holding short, at its
+// clearance limit, giving way itself) reports no path there and takes no
+// priority. +Inf when there is nobody to give way to.
+func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half float64, now time.Time) float64 {
+	type other struct {
+		id uint32
+		e  groundEntry
+	}
+	p.mu.Lock()
+	var others []other
+	for oid, e := range p.aircraft {
+		if oid != id && len(e.ahead) > 0 && now.Sub(e.at) <= TrafficStaleAfter {
+			others = append(others, other{oid, e})
+		}
+	}
+	p.mu.Unlock()
+	best := math.Inf(1)
+	if len(others) == 0 {
+		return best
+	}
+	end := math.Min(path.Length(), from+look)
+	var mine []airport.LatLon // this aircraft's path ahead
+	for s := from; s <= end; s += trafficBodyStep {
+		mine = append(mine, path.PointAt(s))
+	}
+	// first is how far along a the first point within reach of b lies
+	// (-1 for none): measured the same way for both aircraft, so both
+	// come to the same decision.
+	first := func(a, b []airport.LatLon, reach float64) float64 {
+		for i, q := range a {
+			for _, r := range b {
+				if localDist(q, r) <= reach {
+					return float64(i) * trafficBodyStep
+				}
+			}
+		}
+		return -1
+	}
+	for _, o := range others {
+		reach := half + o.e.half + GiveWayMarginMeters
+		mineTo := first(mine, o.e.ahead, reach)
+		if mineTo < 0 || mineTo < half {
+			continue // no conflict, or already in it: go on through
+		}
+		theirsTo := first(o.e.ahead, mine, reach)
+		if theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
+			best = math.Min(best, from+mineTo)
+		}
+	}
+	return best
 }
 
 // Forget drops aircraft id (airborne, parked for good, removed).

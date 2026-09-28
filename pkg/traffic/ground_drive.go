@@ -284,6 +284,9 @@ func (d *groundDrive) followAhead(now time.Time) {
 		if d.mover != nil {
 			d.mover.ClearTrafficStop()
 		}
+		if d.picture != nil && d.object != 0 {
+			d.picture.ReportPath(d.object, nil, 0)
+		}
 		return
 	}
 	if now.Sub(d.trafficAt) < TrafficCheckEvery {
@@ -295,13 +298,30 @@ func (d *groundDrive) followAhead(now time.Time) {
 		half = DefaultHalfSpanMeters
 	}
 	s0 := d.mover.Pose().Distance
-	body := d.picture.blocking(d.object, d.mover.Path(), s0, TrafficLookMeters, half, now)
-	if math.IsInf(body, 1) {
-		d.mover.ClearTrafficStop()
-		return
+	path := d.mover.Path()
+	body := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
+	stop := math.Inf(1)
+	if !math.IsInf(body, 1) {
+		// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
+		stop = body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters
 	}
-	// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
-	d.mover.SetTrafficStop(body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters)
+	// Give way where routes cross or merge: stop short of the conflict
+	// (its first point is already a half-span away from the other path).
+	if gw := d.picture.giveWay(d.object, path, s0, GiveWayLookMeters, half, now); !math.IsInf(gw, 1) {
+		stop = math.Min(stop, gw-(pushNoseFactor-1)*d.prof.WheelbaseMeters-TrafficGapMeters)
+	}
+	if math.IsInf(stop, 1) {
+		d.mover.ClearTrafficStop()
+	} else {
+		d.mover.SetTrafficStop(stop)
+	}
+	// Where this aircraft will drive next, for the others to give way.
+	to := math.Min(math.Min(d.mover.stop(), path.Length()), s0+GiveWayLookMeters)
+	var ahead []airport.LatLon
+	for s := s0; s <= to; s += trafficBodyStep {
+		ahead = append(ahead, path.PointAt(s))
+	}
+	d.picture.ReportPath(d.object, ahead, half)
 }
 
 // reportGround puts this aircraft in the ground picture.
