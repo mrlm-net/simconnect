@@ -113,6 +113,7 @@
   <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected; off: MSFS AI lands)</label>
   <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround: depart again after <input type="number" id="cDwell" value="90" min="10" step="10" style="width:4em"> s</label>
   <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures: SID after take-off / STAR → approach (spawns at the STAR entry)</label>
+  <label class="opt">Flight plan <span class="dep-only">to</span><span class="arr-only">from</span> <input id="cOther" placeholder="ICAO, e.g. LOWW" maxlength="4" style="width:8em;text-transform:uppercase"> <span class="note">(generated: SID, airways, STAR, approach)</span></label>
   <button type="button" id="cSpawn" style="width:100%; margin:4px 0">▶ Spawn</button>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
@@ -782,6 +783,7 @@ async function ctlSpawn(kind) {
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
+    other: $('cOther').value.trim().toUpperCase(),
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
   if (kind === 'arrival' && arrival() && $('rPick').value !== '') body.exit = Number($('rPick').value); // the exit picked in the route viewer

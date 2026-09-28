@@ -236,6 +236,11 @@ type SpawnRequest struct {
 	// ProcName picks the SID or STAR; "" picks one for the runway.
 	Procedure bool   `json:"procedure"`
 	ProcName  string `json:"procName"`
+	// Other is the destination of a departure or the origin of an arrival
+	// (ICAO): the flight follows a generated flight plan (#331).
+	Other string `json:"other"`
+
+	planned *planned // Other's flight plan, resolved before the spawn
 
 	adopt uint32 // departure: the aircraft already on the stand (turnaround)
 }
@@ -283,7 +288,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}()
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
-	if r.Procedure {
+	if r.planned != nil {
+		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
+		tlog.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
+			r.planned.plan.Route, r.planned.plan.CruiseFL, r.planned.plan.DistanceNM)
+	} else if r.Procedure {
 		var err error
 		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
 			return nil, err
@@ -321,7 +330,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		it.arr = ctl
 		if r.Turnaround {
 			d := r
-			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName = "departure", false, "", nil, ""
+			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName, d.Other, d.planned = "departure", false, "", nil, "", "", nil
 			dwell := defaultDwell
 			if r.DwellSec > 0 {
 				dwell = time.Duration(r.DwellSec * float64(time.Second))
@@ -581,6 +590,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
+		}
+		if req.Other != "" {
+			p, err := planFor(r.Context(), st, g, req)
+			if err != nil {
+				tlog.printf("%s flight plan with %s failed: %v", req.Kind, req.Other, err)
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			req.planned = p
 		}
 		var it *controlled
 		if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil {

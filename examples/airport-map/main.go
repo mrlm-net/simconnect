@@ -33,6 +33,7 @@ import (
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -125,6 +126,10 @@ type state struct {
 	control   *controlCenter // traffic control while connected (#322)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
+	// requests asks the connection to load an airport (load); airways is
+	// the airway graph for flight plans (#331), nil for direct routes.
+	requests chan<- string
+	airways  *nav.AirwayGraph
 }
 
 func (s *state) setLive(v bool) {
@@ -622,6 +627,7 @@ func main() {
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
+	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
 	flag.Parse()
 	openTrafficLog(*logDir)
 
@@ -630,6 +636,15 @@ func main() {
 
 	st := &state{cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
 	requests := make(chan string)
+	st.requests = requests
+	if *airways != "" {
+		if g, err := nav.LoadAirwayGraph(*airways); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  airways: %v (flight plans fly direct)\n", err)
+		} else {
+			st.airways = g
+			fmt.Printf("🛣️  airways: %d fixes, %d airways\n", len(g.Fixes), len(g.Airways))
+		}
+	}
 
 	if *file != "" {
 		b, err := os.ReadFile(*file)
