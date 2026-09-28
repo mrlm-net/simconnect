@@ -465,6 +465,9 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	if !c.approachLightsSet {
 		c.approachLightsSet = true
 		c.lights = m.currentLights()
+		// The aircraft spawns with its logo light off; MSFS AI switches it on
+		// on approach, so the injected approach does too (consistent look).
+		c.lights.Logo = true
 		c.setInjectedLights(lightsRollout, "lights approach (injected)")
 	}
 	pose := c.approach.Step(math.Max(dt, 0))
