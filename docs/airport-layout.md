@@ -207,8 +207,28 @@ f := route.Feature()             // a route as a LineString Feature
 
 Coordinates are `[longitude, latitude]` per RFC 7946. Every feature has a `kind` property (`runway`, `taxiPath`, `parking`, `taxiPoint`, `route`).
 
+## Procedures: SIDs, STARs, approaches
+
+`ProcedureLoader` reads an airport's departures, arrivals and approaches with their runway, enroute and approach transitions and every leg (ARINC 424 leg type, fix and position, turn direction, course, distance, altitude and speed constraints, IAF/FAF/MAP). Feed it messages like the layout `Loader`:
+
+```go
+pl := airport.NewProcedureLoader(client)
+pl.Request("LKPR")
+for msg := range client.Stream() {
+    if p, ok := pl.Handle(msg); ok {
+        fmt.Println(len(p.Departures), "SIDs", len(p.Arrivals), "STARs", len(p.Approaches), "approaches")
+    }
+}
+```
+
+A SID is flown runway transition → `Legs` → enroute transition; a STAR enroute transition → `Legs` → runway transition. Courses are magnetic; `Procedures.MagVar` is the facility's MAGVAR (356 = 4° east, true = magnetic + 4).
+
+`ProcedurePath(legs, start, startAlt, magVar, turnRadius)` turns legs into points for a map: straight between fixes, turns (Dubins, in the charted direction) where the aircraft turns by heading (a charted turn, a course intercept, a course reversal), open legs (to an altitude, DME distance, manual termination) approximated from the climb gradient. `Leg.Constraint()` prints a leg's constraint as charts do (`≥4000`, `FL070`, `≤210KT`).
+
+Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AIP chart has them), and the `HOLDING_PATTERN` fields are rejected by MSFS 2024 — do not request them.
+
 ## Seeing it on a map
 
-[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator.
+[`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.
 
 To drive an AI aircraft along a route, see [Departure Taxi](traffic-taxi.md).

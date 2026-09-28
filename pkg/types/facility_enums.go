@@ -216,3 +216,57 @@ const (
 	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_ROAD                                                   // 7
 	SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PAINTED_LINE                                           // 8
 )
+
+// SIMCONNECT_FACILITY_LEG_TYPE is a procedure leg's ARINC 424 path
+// terminator (APPROACH_LEG TYPE), e.g. TF track to a fix, CA course to an
+// altitude.
+type SIMCONNECT_FACILITY_LEG_TYPE DWORD
+
+const (
+	SIMCONNECT_FACILITY_LEG_TYPE_NONE SIMCONNECT_FACILITY_LEG_TYPE = iota // 0
+	SIMCONNECT_FACILITY_LEG_TYPE_AF                                       // 1 arc to a fix (DME arc)
+	SIMCONNECT_FACILITY_LEG_TYPE_CA                                       // 2 course to an altitude
+	SIMCONNECT_FACILITY_LEG_TYPE_CD                                       // 3 course to a DME distance
+	SIMCONNECT_FACILITY_LEG_TYPE_CF                                       // 4 course to a fix
+	SIMCONNECT_FACILITY_LEG_TYPE_CI                                       // 5 course to intercept
+	SIMCONNECT_FACILITY_LEG_TYPE_CR                                       // 6 course to a radial
+	SIMCONNECT_FACILITY_LEG_TYPE_DF                                       // 7 direct to a fix
+	SIMCONNECT_FACILITY_LEG_TYPE_FA                                       // 8 fix to an altitude
+	SIMCONNECT_FACILITY_LEG_TYPE_FC                                       // 9 track from a fix for a distance
+	SIMCONNECT_FACILITY_LEG_TYPE_FD                                       // 10 track from a fix to a DME distance
+	SIMCONNECT_FACILITY_LEG_TYPE_FM                                       // 11 from a fix to a manual termination
+	SIMCONNECT_FACILITY_LEG_TYPE_HA                                       // 12 hold to an altitude
+	SIMCONNECT_FACILITY_LEG_TYPE_HF                                       // 13 hold, one circuit
+	SIMCONNECT_FACILITY_LEG_TYPE_HM                                       // 14 hold to a manual termination
+	SIMCONNECT_FACILITY_LEG_TYPE_IF                                       // 15 initial fix
+	SIMCONNECT_FACILITY_LEG_TYPE_PI                                       // 16 procedure turn
+	SIMCONNECT_FACILITY_LEG_TYPE_RF                                       // 17 radius to a fix
+	SIMCONNECT_FACILITY_LEG_TYPE_TF                                       // 18 track to a fix
+	SIMCONNECT_FACILITY_LEG_TYPE_VA                                       // 19 heading to an altitude
+	SIMCONNECT_FACILITY_LEG_TYPE_VD                                       // 20 heading to a DME distance
+	SIMCONNECT_FACILITY_LEG_TYPE_VI                                       // 21 heading to intercept
+	SIMCONNECT_FACILITY_LEG_TYPE_VM                                       // 22 heading to a manual termination
+	SIMCONNECT_FACILITY_LEG_TYPE_VR                                       // 23 heading to a radial
+)
+
+var legTypeNames = [...]string{"", "AF", "CA", "CD", "CF", "CI", "CR", "DF", "FA", "FC", "FD", "FM", "HA", "HF", "HM", "IF", "PI", "RF", "TF", "VA", "VD", "VI", "VM", "VR"}
+
+// String is the ARINC 424 code, e.g. "TF".
+func (t SIMCONNECT_FACILITY_LEG_TYPE) String() string {
+	if int(t) < len(legTypeNames) {
+		return legTypeNames[t]
+	}
+	return "?"
+}
+
+// SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR is a leg's altitude constraint
+// (APPROACH_LEG APPROACH_ALT_DESC) on ALTITUDE1 and ALTITUDE2.
+type SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR DWORD
+
+const (
+	SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_NONE        SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR = iota // 0
+	SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT                                                         // 1 at ALTITUDE1
+	SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT_OR_ABOVE                                                // 2 at or above ALTITUDE1
+	SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT_OR_BELOW                                                // 3 at or below ALTITUDE1
+	SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_BETWEEN                                                    // 4 between ALTITUDE2 and ALTITUDE1
+)

@@ -1,0 +1,6642 @@
+{
+ "icao": "LKPR",
+ "magVar": 356,
+ "departures": [
+  {
+   "name": "ARTU4H",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR860",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9557751044631,
+        "lon": 14.558722078800201
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR861",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.17821405082941,
+        "lon": 14.816299974918365
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "ARTU4N",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR840",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.178708247840405,
+        "lon": 14.25619438290596
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR818",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.37462215870619,
+        "lon": 14.171005636453629
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR819",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.431994274258614,
+        "lon": 14.654433131217957
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "ARTU5A",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR402",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.03828052431345,
+        "lon": 14.015469253063202
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR405",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19938338547945,
+        "lon": 13.84220838546753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR406",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.31100820749998,
+        "lon": 13.933269381523132
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR407",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.34348875284195,
+        "lon": 14.041163921356201
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BAGRU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.43183904141188,
+        "lon": 14.337091594934464
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR409",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.56318614631891,
+        "lon": 14.7838693857193
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "ARTU5B",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR815",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23049432784319,
+        "lon": 13.990511298179626
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR816",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.351561196148396,
+        "lon": 13.981633186340332
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR818",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.37462215870619,
+        "lon": 14.171005636453629
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR819",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.431994274258614,
+        "lon": 14.654433131217957
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "ARTU5E",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR637",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.26128876954317,
+        "lon": 14.763447046279907
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "ARTU6M",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR407",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.34348875284195,
+        "lon": 14.041163921356201
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BAGRU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.43183904141188,
+        "lon": 14.337091594934464
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR409",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.56318614631891,
+        "lon": 14.7838693857193
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARTUP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.68523604422808,
+        "lon": 14.905102998018265
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "BALT4B",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR815",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23049432784319,
+        "lon": 13.990511298179626
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BALTU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08946109563112,
+        "lon": 13.326522409915924
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "BALT5A",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR402",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.03828052431345,
+        "lon": 14.015469253063202
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR405",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19938338547945,
+        "lon": 13.84220838546753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BALTU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08946109563112,
+        "lon": 13.326522409915924
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "BALT6H",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR856",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.126238875091076,
+        "lon": 14.6589195728302
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "UTORO",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.276641733944416,
+        "lon": 14.551158249378204
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR858",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.33711951225996,
+        "lon": 14.507616609334946
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BALTU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08946109563112,
+        "lon": 13.326522409915924
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "BALT7D",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR619",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.144039019942284,
+        "lon": 14.367311149835587
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR621",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.36597236990929,
+        "lon": 14.139916598796844
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BALTU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08946109563112,
+        "lon": 13.326522409915924
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "BALT8E",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR631",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.18684707581997,
+        "lon": 14.511222392320633
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR632",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.40914990007877,
+        "lon": 14.284286051988602
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR621",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.36597236990929,
+        "lon": 14.139916598796844
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BALTU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08946109563112,
+        "lon": 13.326522409915924
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE4A",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR402",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.03828052431345,
+        "lon": 14.015469253063202
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE4G",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR854",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95621934533119,
+        "lon": 14.138561189174652
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR855",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.907275065779686,
+        "lon": 13.882994502782822
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE5B",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR813",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19724432379007,
+        "lon": 14.059947431087494
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR814",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.12307487428188,
+        "lon": 13.973799794912338
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR817",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.96833320707083,
+        "lon": 13.980833441019058
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE6H",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR856",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.126238875091076,
+        "lon": 14.6589195728302
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "UTORO",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.276641733944416,
+        "lon": 14.551158249378204
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR858",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.33711951225996,
+        "lon": 14.507616609334946
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE7D",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR619",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.144039019942284,
+        "lon": 14.367311149835587
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR621",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.36597236990929,
+        "lon": 14.139916598796844
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "DOBE8E",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR631",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.18684707581997,
+        "lon": 14.511222392320633
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR632",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.40914990007877,
+        "lon": 14.284286051988602
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR621",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.36597236990929,
+        "lon": 14.139916598796844
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR634",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.22891651839018,
+        "lon": 13.687233477830887
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "DOBEN",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.773338958621025,
+        "lon": 13.561541587114334
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "OMNI",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO4B",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR815",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23049432784319,
+        "lon": 13.990511298179626
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR816",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.351561196148396,
+        "lon": 13.981633186340332
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO4E",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR631",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.18684707581997,
+        "lon": 14.511222392320633
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR632",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.40914990007877,
+        "lon": 14.284286051988602
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO4H",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR856",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.126238875091076,
+        "lon": 14.6589195728302
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "UTORO",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.276641733944416,
+        "lon": 14.551158249378204
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR858",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.33711951225996,
+        "lon": 14.507616609334946
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO4M",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR407",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.34348875284195,
+        "lon": 14.041163921356201
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO5A",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR402",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.03828052431345,
+        "lon": 14.015469253063202
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR405",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19938338547945,
+        "lon": 13.84220838546753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR406",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.31100820749998,
+        "lon": 13.933269381523132
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO5N",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR840",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.178708247840405,
+        "lon": 14.25619438290596
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR818",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.37462215870619,
+        "lon": 14.171005636453629
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VENO7D",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR619",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.144039019942284,
+        "lon": 14.367311149835587
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR621",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.36597236990929,
+        "lon": 14.139916598796844
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR622",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.40610559284687,
+        "lon": 14.098527878522873
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VENOX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.55498596280813,
+        "lon": 14.133991599082947
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ1L",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR627",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.61480833590031,
+        "lon": 14.673930555582047
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ4A",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR402",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.03828052431345,
+        "lon": 14.015469253063202
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR403",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85651928931475,
+        "lon": 14.159344285726547
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR404",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.66749429702759,
+        "lon": 14.544947147369385
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ4B",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR813",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19724432379007,
+        "lon": 14.059947431087494
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR814",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.12307487428188,
+        "lon": 13.973799794912338
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR403",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85651928931475,
+        "lon": 14.159344285726547
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR404",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.66749429702759,
+        "lon": 14.544947147369385
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ4E",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR633",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.21814174950123,
+        "lon": 14.61695283651352
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR635",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.98508594930172,
+        "lon": 14.6608167886734
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ4H",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR412",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.7152054309845,
+        "lon": 14.723360985517502
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ5D",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 7,
+       "fix": "PR625",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.17204161733389,
+        "lon": 14.461355656385422
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR626",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9859194457531,
+        "lon": 14.49696958065033
+       },
+       "turnRight": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR627",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.61480833590031,
+        "lon": 14.673930555582047
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ5G",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR411",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.975391775369644,
+        "lon": 14.264369308948517
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR404",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.66749429702759,
+        "lon": 14.544947147369385
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR627",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.61480833590031,
+        "lon": 14.673930555582047
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ5M",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR411",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.975391775369644,
+        "lon": 14.264369308948517
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR412",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.7152054309845,
+        "lon": 14.723360985517502
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ5N",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR807",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.86403618007898,
+        "lon": 14.272238910198212
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR808",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.69233054667711,
+        "lon": 14.621724933385849
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VOZ5Q",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 2,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "altDesc": 2,
+       "alt1": 518.1599731445312,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 7,
+       "fix": "PR411",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.975391775369644,
+        "lon": 14.264369308948517
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR412",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.7152054309845,
+        "lon": 14.723360985517502
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "VOZ",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.532327726483345,
+        "lon": 14.874663949012756
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  }
+ ],
+ "arrivals": [
+  {
+   "name": "APRA2P",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "APRAQ",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.64833326637745,
+        "lon": 14.122500121593475
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR953",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.97908618301153,
+        "lon": 14.296597391366959
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR954",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.09888872504234,
+        "lon": 14.048386216163635
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "SOMIS",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.14404438436031,
+        "lon": 13.954216539859772
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "APRA2R",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "APRAQ",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.64833326637745,
+        "lon": 14.122500121593475
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR901",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.86224714666605,
+        "lon": 14.190385937690735
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR902",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.93007484823465,
+        "lon": 14.39939171075821
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR913",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.86642234027386,
+        "lon": 14.527886062860489
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR903",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.731894470751286,
+        "lon": 14.801433384418488
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR904",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.7979499027133,
+        "lon": 14.879666715860367
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "KENOK",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85722504556179,
+        "lon": 14.759444296360016
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "APRA2S",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "APRAQ",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.64833326637745,
+        "lon": 14.122500121593475
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR521",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.011338740587234,
+        "lon": 14.230391532182693
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR574",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.06694998592138,
+        "lon": 14.416519403457642
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "RATEV",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.11758875101805,
+        "lon": 14.58684727549553
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "APRA2T",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "APRAQ",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.64833326637745,
+        "lon": 14.122500121593475
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR718",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.84462771564722,
+        "lon": 14.400311261415482
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR719",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95434984564781,
+        "lon": 14.34735283255577
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR521",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.011338740587234,
+        "lon": 14.230391532182693
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "AKEVA",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95487790554762,
+        "lon": 14.043775051832199
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "GOLO4P",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "GOLOP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.585760958492756,
+        "lon": 14.49573040008545
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR957",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.37042483687401,
+        "lon": 14.447294622659683
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR958",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.20725265145302,
+        "lon": 14.255427718162537
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "EVEMI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.277461148798466,
+        "lon": 14.1094109416008
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "GOLO4S",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "GOLOP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.585760958492756,
+        "lon": 14.49573040008545
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR516",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.375475101172924,
+        "lon": 14.529124796390533
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR517",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.293461196124554,
+        "lon": 14.252483546733856
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR518",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.217994563281536,
+        "lon": 14.307285994291306
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ERASU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.26875268667936,
+        "lon": 14.478141814470291
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "GOLO4T",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "GOLOP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.585760958492756,
+        "lon": 14.49573040008545
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR711",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.386244505643845,
+        "lon": 14.63939979672432
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR712",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.28328623622656,
+        "lon": 14.525558352470398
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR513",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.18282778561115,
+        "lon": 14.189733266830444
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "KUVIX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.10553054511547,
+        "lon": 13.933741450309753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "GOLO5R",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "GOLOP",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.585760958492756,
+        "lon": 14.49573040008545
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BAGRU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.43183904141188,
+        "lon": 14.337091594934464
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR914",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.13952787965536,
+        "lon": 14.395505636930466
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR915",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.054452903568745,
+        "lon": 14.570527821779251
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARVEG",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9989915266633,
+        "lon": 14.683958441019058
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "LOMK7P",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "LOMKI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.909336008131504,
+        "lon": 13.241222351789474
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR707",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.89787492901087,
+        "lon": 13.556027859449387
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR956",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.00142227858305,
+        "lon": 13.808505535125732
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR954",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.09888872504234,
+        "lon": 14.048386216163635
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "SOMIS",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.14404438436031,
+        "lon": 13.954216539859772
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "LOMK8S",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "LOMKI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.909336008131504,
+        "lon": 13.241222351789474
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR511",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.900644309818745,
+        "lon": 13.482049852609634
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR512",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.07723055779934,
+        "lon": 13.84012520313263
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR513",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.18282778561115,
+        "lon": 14.189733266830444
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR518",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.217994563281536,
+        "lon": 14.307285994291306
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ERASU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.26875268667936,
+        "lon": 14.478141814470291
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "LOMK8T",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "LOMKI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.909336008131504,
+        "lon": 13.241222351789474
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR707",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.89787492901087,
+        "lon": 13.556027859449387
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "BAROX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.94854722172022,
+        "lon": 13.720850050449371
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "LOMK9R",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "LOMKI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.909336008131504,
+        "lon": 13.241222351789474
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR511",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.900644309818745,
+        "lon": 13.482049852609634
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR512",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.07723055779934,
+        "lon": 13.84012520313263
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR914",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.13952787965536,
+        "lon": 14.395505636930466
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR915",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.054452903568745,
+        "lon": 14.570527821779251
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "ARVEG",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9989915266633,
+        "lon": 14.683958441019058
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 122,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VLM5S",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "24",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "VLM",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.70427207648754,
+        "lon": 15.066741853952408
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR522",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.81588885188103,
+        "lon": 14.843386262655258
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR571",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.99731682240963,
+        "lon": 14.799802601337433
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR572",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.0730137899518,
+        "lon": 14.746005535125732
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR573",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.99140556901693,
+        "lon": 14.4708251953125
+       },
+       "turnLeft": true,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR574",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.06694998592138,
+        "lon": 14.416519403457642
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "RATEV",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.11758875101805,
+        "lon": 14.58684727549553
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 60,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VLM6P",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "12",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "VLM",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.70427207648754,
+        "lon": 15.066741853952408
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR950",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.84723046422005,
+        "lon": 14.877052903175354
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR951",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.013272278010845,
+        "lon": 14.654688835144043
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR952",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.11202786117792,
+        "lon": 14.452213793992996
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR958",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.20725265145302,
+        "lon": 14.255427718162537
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "EVEMI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.277461148798466,
+        "lon": 14.1094109416008
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 302,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VLM6R",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "30",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "VLM",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.70427207648754,
+        "lon": 15.066741853952408
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR904",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.7979499027133,
+        "lon": 14.879666715860367
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "KENOK",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85722504556179,
+        "lon": 14.759444296360016
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  },
+  {
+   "name": "VLM6T",
+   "legs": [],
+   "runwayTransitions": [
+    {
+     "runway": "06",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "VLM",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 49.70427207648754,
+        "lon": 15.066741853952408
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR721",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.761333391070366,
+        "lon": 14.952516853809357
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR722",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.86140560358763,
+        "lon": 14.89041656255722
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR723",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.06950277835131,
+        "lon": 14.76021096110344
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR523",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.051005594432354,
+        "lon": 14.363138973712921
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR521",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.011338740587234,
+        "lon": 14.230391532182693
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "AKEVA",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95487790554762,
+        "lon": 14.043775051832199
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 22,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 240,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "enrouteTransitions": []
+  }
+ ],
+ "approaches": [
+  {
+   "type": 8,
+   "name": "VOR/DME 12",
+   "runway": "12",
+   "transitions": [
+    {
+     "name": "EVEMI",
+     "legs": [
+      {
+       "type": 10,
+       "fix": "EVEMI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.277461148798466,
+        "lon": 14.1094109416008
+       },
+       "course": 302,
+       "distance": 26298.400390625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "speed": 210,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23150,
+       "iaf": true
+      },
+      {
+       "type": 6,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 212,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CD12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23649711161852,
+        "lon": 14.01288315653801
+       },
+       "course": 126,
+       "distance": 3704,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23890.80078125
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 4,
+       "fix": "FD12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.20275291055441,
+        "lon": 14.073752760887146
+       },
+       "course": 306,
+       "distance": 18149.599609375,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 18149.599609375
+      },
+      {
+       "type": 9,
+       "fix": "FD12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.20275291055441,
+        "lon": 14.073752760887146
+       },
+       "flyOver": true,
+       "course": 351,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 18149.599609375
+      },
+      {
+       "type": 4,
+       "fix": "CD12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23649711161852,
+        "lon": 14.01288315653801
+       },
+       "turnLeft": true,
+       "course": 126,
+       "distance": 3704,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23890.80078125
+      }
+     ]
+    },
+    {
+     "name": "SOMIS",
+     "legs": [
+      {
+       "type": 10,
+       "fix": "SOMIS",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.14404438436031,
+        "lon": 13.954216539859772
+       },
+       "course": 302,
+       "distance": 25742.80078125,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 22964.80078125,
+       "iaf": true
+      },
+      {
+       "type": 6,
+       "position": {
+        "lat": 0,
+        "lon": 0
+       },
+       "course": 32,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CD12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.23649711161852,
+        "lon": 14.01288315653801
+       },
+       "turnRight": true,
+       "course": 126,
+       "distance": 1852,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23890.80078125
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "CD12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.23649711161852,
+      "lon": 14.01288315653801
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 4,
+     "fix": "FD12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.20275291055441,
+      "lon": 14.073752760887146
+     },
+     "course": 126,
+     "distance": 5741.2001953125,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 18149.599609375,
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "50VOR",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.1504360884428,
+      "lon": 14.167833477258682
+     },
+     "course": 126,
+     "distance": 8889.599609375,
+     "altDesc": 2,
+     "alt1": 749.8079833984375,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 9260
+    },
+    {
+     "type": 4,
+     "fix": "MD12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.11551674455404,
+      "lon": 14.23043891787529
+     },
+     "course": 126,
+     "distance": 5926.39990234375,
+     "altDesc": 1,
+     "alt1": 441.04559326171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 3333.60009765625,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "MD12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.11551674455404,
+      "lon": 14.23043891787529
+     },
+     "course": 122,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 3333.60009765625
+    }
+   ]
+  },
+  {
+   "type": 8,
+   "name": "VOR/DME 30",
+   "runway": "30",
+   "transitions": [
+    {
+     "name": "ARVEG",
+     "legs": [
+      {
+       "type": 10,
+       "fix": "ARVEG",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9989915266633,
+        "lon": 14.683958441019058
+       },
+       "course": 122,
+       "distance": 35743.6015625,
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 31854.400390625,
+       "iaf": true
+      },
+      {
+       "type": 4,
+       "fix": "D118N",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.973077699542046,
+        "lon": 14.557899981737137
+       },
+       "turnRight": true,
+       "course": 298,
+       "distance": 11112,
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 25002
+      },
+      {
+       "type": 4,
+       "fix": "FD30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.01135818660259,
+        "lon": 14.46712240576744
+       },
+       "course": 298,
+       "distance": 7778.39990234375,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17223.599609375
+      }
+     ]
+    },
+    {
+     "name": "KENOK",
+     "legs": [
+      {
+       "type": 10,
+       "fix": "KENOK",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85722504556179,
+        "lon": 14.759444296360016
+       },
+       "course": 342,
+       "distance": 40373.6015625,
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 37040,
+       "iaf": true
+      },
+      {
+       "type": 4,
+       "fix": "D118N",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.973077699542046,
+        "lon": 14.557899981737137
+       },
+       "course": 298,
+       "distance": 16668,
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 25002
+      },
+      {
+       "type": 4,
+       "fix": "FD30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.01135818660259,
+        "lon": 14.46712240576744
+       },
+       "course": 298,
+       "distance": 7778.39990234375,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17223.599609375
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 4,
+       "fix": "FD30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.01135818660259,
+        "lon": 14.46712240576744
+       },
+       "course": 118,
+       "distance": 17223.599609375,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17223.599609375
+      },
+      {
+       "type": 9,
+       "fix": "FD30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.01135818660259,
+        "lon": 14.46712240576744
+       },
+       "flyOver": true,
+       "course": 163,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17223.599609375
+      },
+      {
+       "type": 4,
+       "fix": "FD30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.01135818660259,
+        "lon": 14.46712240576744
+       },
+       "turnLeft": true,
+       "course": 298,
+       "distance": 9260,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17223.599609375
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "FD30",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.01135818660259,
+      "lon": 14.46712240576744
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "MD30",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.082263723015785,
+      "lon": 14.29814726114273
+     },
+     "flyOver": true,
+     "course": 298,
+     "distance": 14445.599609375,
+     "altDesc": 1,
+     "alt1": 471.2207946777344,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2778,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "MD30",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.082263723015785,
+      "lon": 14.29814726114273
+     },
+     "course": 302,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2778
+    }
+   ]
+  },
+  {
+   "type": 4,
+   "name": "ILS 06",
+   "runway": "06",
+   "transitions": [
+    {
+     "name": "AKEVA",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "AKEVA",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95487790554762,
+        "lon": 14.043775051832199
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR740",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.93023041635752,
+        "lon": 13.962552845478058
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.02696394920349,
+        "lon": 13.978116810321808
+       },
+       "course": 60,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23705.599609375
+      }
+     ]
+    },
+    {
+     "name": "BAROX",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "BAROX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.94854722172022,
+        "lon": 13.720850050449371
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.02696394920349,
+        "lon": 13.978116810321808
+       },
+       "course": 60,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23705.599609375
+      }
+     ]
+    },
+    {
+     "name": "KUVIX",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "KUVIX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.10553054511547,
+        "lon": 13.933741450309753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR741",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08080292493105,
+        "lon": 13.852324783802032
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.02696394920349,
+        "lon": 13.978116810321808
+       },
+       "course": 60,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23705.599609375
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "FF06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.04113607108593,
+        "lon": 14.024902582168579
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 9,
+       "fix": "FF06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.04113607108593,
+        "lon": 14.024902582168579
+       },
+       "flyOver": true,
+       "course": 285,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 18334.80078125
+      },
+      {
+       "type": 4,
+       "fix": "CI06",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.02696394920349,
+        "lon": 13.978116810321808
+       },
+       "turnLeft": true,
+       "course": 60,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23705.599609375
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "CI06",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.02696394920349,
+      "lon": 13.978116810321808
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 4,
+     "fix": "FF06",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.04113607108593,
+      "lon": 14.024902582168579
+     },
+     "course": 60,
+     "distance": 3704,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 20001.599609375,
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "RW06",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "flyOver": true,
+     "course": 60,
+     "distance": 15927.2001953125,
+     "altDesc": 1,
+     "alt1": 382.82879638671875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 4074.39990234375,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW06",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 60,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2963.199951171875
+    }
+   ]
+  },
+  {
+   "type": 4,
+   "name": "ILS 12",
+   "runway": "12",
+   "transitions": [
+    {
+     "name": "EVEMI",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "EVEMI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.277461148798466,
+        "lon": 14.1094109416008
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR961",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.311839021742344,
+        "lon": 14.03758317232132
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR962",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.24510834366083,
+        "lon": 13.959939032793045
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.215172208845615,
+        "lon": 14.022549837827682
+       },
+       "course": 122,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23520.400390625
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "FI12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19524708390236,
+        "lon": 14.064122289419174
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 9,
+       "fix": "FI12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19524708390236,
+        "lon": 14.064122289419174
+       },
+       "flyOver": true,
+       "course": 347,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 18149.599609375
+      },
+      {
+       "type": 4,
+       "fix": "CI12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.215172208845615,
+        "lon": 14.022549837827682
+       },
+       "turnLeft": true,
+       "course": 122,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23520.400390625
+      }
+     ]
+    },
+    {
+     "name": "SOMIS",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "SOMIS",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.14404438436031,
+        "lon": 13.954216539859772
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR960",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.178319327533245,
+        "lon": 13.882502764463425
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR962",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.24510834366083,
+        "lon": 13.959939032793045
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI12",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.215172208845615,
+        "lon": 14.022549837827682
+       },
+       "course": 122,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23520.400390625
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "CI12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.215172208845615,
+      "lon": 14.022549837827682
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 4,
+     "fix": "FI12",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.19524708390236,
+      "lon": 14.064122289419174
+     },
+     "course": 122,
+     "distance": 3704,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 19816.400390625,
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "RW12",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "flyOver": true,
+     "course": 122,
+     "distance": 16112.400390625,
+     "altDesc": 1,
+     "alt1": 370.0271911621094,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 3518.800048828125,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW12",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 122,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2037.199951171875
+    }
+   ]
+  },
+  {
+   "type": 4,
+   "name": "ILS 24",
+   "runway": "24",
+   "transitions": [
+    {
+     "name": "ERASU",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "ERASU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.26875268667936,
+        "lon": 14.478141814470291
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR531",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.28776954859495,
+        "lon": 14.542372226715088
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR532",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.21217215806246,
+        "lon": 14.596730768680573
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI24",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19115570932627,
+        "lon": 14.525730460882187
+       },
+       "course": 240,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 24076
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "FF24",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.17718609422445,
+        "lon": 14.478652775287628
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 9,
+       "fix": "FF24",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.17718609422445,
+        "lon": 14.478652775287628
+       },
+       "flyOver": true,
+       "course": 15,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17779.19921875
+      },
+      {
+       "type": 4,
+       "fix": "CI24",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19115570932627,
+        "lon": 14.525730460882187
+       },
+       "turnRight": true,
+       "course": 240,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 24076
+      }
+     ]
+    },
+    {
+     "name": "RATEV",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "RATEV",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.11758875101805,
+        "lon": 14.58684727549553
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR530",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.13654459267855,
+        "lon": 14.650919437408447
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR532",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.21217215806246,
+        "lon": 14.596730768680573
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI24",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.19115570932627,
+        "lon": 14.525730460882187
+       },
+       "course": 240,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 24076
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "CI24",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.19115570932627,
+      "lon": 14.525730460882187
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 4,
+     "fix": "FF24",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.17718609422445,
+      "lon": 14.478652775287628
+     },
+     "course": 240,
+     "distance": 3704,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 20372,
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "RW24",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "flyOver": true,
+     "course": 240,
+     "distance": 16112.400390625,
+     "altDesc": 1,
+     "alt1": 369.4176025390625,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 4074.39990234375,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW24",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 240,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2222.39990234375
+    }
+   ]
+  },
+  {
+   "type": 4,
+   "name": "ILS 30",
+   "runway": "30",
+   "transitions": [
+    {
+     "name": "ARVEG",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "ARVEG",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9989915266633,
+        "lon": 14.683958441019058
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR905",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95496105402708,
+        "lon": 14.773664027452469
+       },
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR906",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.88868601620197,
+        "lon": 14.69548612833023
+       },
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR912",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9540501087904,
+        "lon": 14.562372118234634
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.98516105115414,
+        "lon": 14.498475193977356
+       },
+       "course": 302,
+       "distance": 5741.2001953125,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23150
+      }
+     ]
+    },
+    {
+     "name": "KENOK",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "KENOK",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85722504556179,
+        "lon": 14.759444296360016
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR906",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.88868601620197,
+        "lon": 14.69548612833023
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR912",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9540501087904,
+        "lon": 14.562372118234634
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 4,
+       "fix": "CI30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.98516105115414,
+        "lon": 14.498475193977356
+       },
+       "course": 302,
+       "distance": 5741.2001953125,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23150
+      }
+     ]
+    },
+    {
+     "name": "OKL",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "OKL",
+       "region": "LK",
+       "fixKind": "V",
+       "position": {
+        "lat": 50.09586654603481,
+        "lon": 14.265608489513397
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "FI30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.00524174422026,
+        "lon": 14.457266628742218
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 9,
+       "fix": "FI30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.00524174422026,
+        "lon": 14.457266628742218
+       },
+       "flyOver": true,
+       "course": 166,
+       "distance": 7963.60009765625,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 17038.400390625
+      },
+      {
+       "type": 4,
+       "fix": "CI30",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.98516105115414,
+        "lon": 14.498475193977356
+       },
+       "turnLeft": true,
+       "course": 302,
+       "distance": 5556,
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "rho": 23150
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "CI30",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 49.98516105115414,
+      "lon": 14.498475193977356
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 4,
+     "fix": "FI30",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.00524174422026,
+      "lon": 14.457266628742218
+     },
+     "course": 302,
+     "distance": 3704,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "alt2": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 19446,
+     "faf": true
+    },
+    {
+     "type": 4,
+     "fix": "RW30",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "flyOver": true,
+     "course": 302,
+     "distance": 15742,
+     "altDesc": 1,
+     "alt1": 393.4967956542969,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 3704,
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW30",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 302,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 1296.4000244140625
+    }
+   ]
+  },
+  {
+   "type": 10,
+   "name": "RNAV 06",
+   "runway": "06",
+   "transitions": [
+    {
+     "name": "AKEVA",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "AKEVA",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95487790554762,
+        "lon": 14.043775051832199
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR740",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.93023041635752,
+        "lon": 13.962552845478058
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "name": "BAROX",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "BAROX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.94854722172022,
+        "lon": 13.720850050449371
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "name": "KUVIX",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "KUVIX",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.10553054511547,
+        "lon": 13.933741450309753
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR741",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.08080292493105,
+        "lon": 13.852324783802032
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR742",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.005530416965485,
+        "lon": 13.907527774572372
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "PR742",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.005530416965485,
+      "lon": 13.907527774572372
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 18,
+     "fix": "PR06F",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.04088595509529,
+      "lon": 14.02408629655838
+     },
+     "course": 60,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "faf": true
+    },
+    {
+     "type": 18,
+     "fix": "RW06",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 60,
+     "altDesc": 1,
+     "alt1": 381.3048095703125,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW06",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 60,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2963.199951171875
+    }
+   ]
+  },
+  {
+   "type": 10,
+   "name": "RNAV 12",
+   "runway": "12",
+   "transitions": [
+    {
+     "name": "EVEMI",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "EVEMI",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.277461148798466,
+        "lon": 14.1094109416008
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR961",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.311839021742344,
+        "lon": 14.03758317232132
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR962",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.24510834366083,
+        "lon": 13.959939032793045
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "name": "SOMIS",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "SOMIS",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.14404438436031,
+        "lon": 13.954216539859772
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR960",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.178319327533245,
+        "lon": 13.882502764463425
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR962",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.24510834366083,
+        "lon": 13.959939032793045
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "PR962",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.24510834366083,
+      "lon": 13.959939032793045
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 18,
+     "fix": "PR12F",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.19560281187296,
+      "lon": 14.063694477081299
+     },
+     "course": 122,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "faf": true
+    },
+    {
+     "type": 18,
+     "fix": "RW12",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 122,
+     "altDesc": 1,
+     "alt1": 368.5032043457031,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW12",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 122,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2037.199951171875
+    }
+   ]
+  },
+  {
+   "type": 10,
+   "name": "RNAV 24",
+   "runway": "24",
+   "transitions": [
+    {
+     "name": "ERASU",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "ERASU",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.26875268667936,
+        "lon": 14.478141814470291
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR531",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.28776954859495,
+        "lon": 14.542372226715088
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR532",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.21217215806246,
+        "lon": 14.596730768680573
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "name": "RATEV",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "RATEV",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.11758875101805,
+        "lon": 14.58684727549553
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR530",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.13654459267855,
+        "lon": 14.650919437408447
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR532",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 50.21217215806246,
+        "lon": 14.596730768680573
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "PR532",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.21217215806246,
+      "lon": 14.596730768680573
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 18,
+     "fix": "PR24F",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.17744157463312,
+      "lon": 14.479519575834274
+     },
+     "course": 240,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "faf": true
+    },
+    {
+     "type": 18,
+     "fix": "RW24",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 240,
+     "altDesc": 1,
+     "alt1": 367.8935852050781,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW24",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.10888263583183,
+      "lon": 14.24980491399765
+     },
+     "course": 240,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 2222.39990234375
+    }
+   ]
+  },
+  {
+   "type": 10,
+   "name": "RNAV 30",
+   "runway": "30",
+   "transitions": [
+    {
+     "name": "ARVEG",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "ARVEG",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9989915266633,
+        "lon": 14.683958441019058
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR905",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.95496105402708,
+        "lon": 14.773664027452469
+       },
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR906",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.88868601620197,
+        "lon": 14.69548612833023
+       },
+       "altDesc": 2,
+       "alt1": 1524,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR912",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9540501087904,
+        "lon": 14.562372118234634
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    },
+    {
+     "name": "KENOK",
+     "legs": [
+      {
+       "type": 15,
+       "fix": "KENOK",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.85722504556179,
+        "lon": 14.759444296360016
+       },
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       },
+       "iaf": true
+      },
+      {
+       "type": 18,
+       "fix": "PR906",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.88868601620197,
+        "lon": 14.69548612833023
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      },
+      {
+       "type": 18,
+       "fix": "PR912",
+       "region": "LK",
+       "fixKind": "W",
+       "position": {
+        "lat": 49.9540501087904,
+        "lon": 14.562372118234634
+       },
+       "altDesc": 2,
+       "alt1": 1219.199951171875,
+       "arcCenter": {
+        "lat": 0,
+        "lon": 0
+       }
+      }
+     ]
+    }
+   ],
+   "final": [
+    {
+     "type": 15,
+     "fix": "PR912",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 49.9540501087904,
+      "lon": 14.562372118234634
+     },
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     }
+    },
+    {
+     "type": 18,
+     "fix": "PR30F",
+     "region": "LK",
+     "fixKind": "W",
+     "position": {
+      "lat": 50.00501945614815,
+      "lon": 14.458119571208954
+     },
+     "course": 302,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "faf": true
+    },
+    {
+     "type": 18,
+     "fix": "RW30",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 302,
+     "altDesc": 1,
+     "alt1": 390.44879150390625,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "map": true
+    }
+   ],
+   "missed": [
+    {
+     "type": 11,
+     "fix": "RW30",
+     "region": "LK",
+     "fixKind": "R",
+     "position": {
+      "lat": 50.09921595454216,
+      "lon": 14.263558387756348
+     },
+     "course": 302,
+     "altDesc": 2,
+     "alt1": 1219.199951171875,
+     "arcCenter": {
+      "lat": 0,
+      "lon": 0
+     },
+     "rho": 1296.4000244140625
+    }
+   ]
+  }
+ ]
+}

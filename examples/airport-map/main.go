@@ -123,6 +123,8 @@ type state struct {
 	trafficAt time.Time
 	live      bool
 	control   *controlCenter // traffic control while connected (#322)
+	// procedures are the SIDs, STARs and approaches by ICAO (#312).
+	procedures map[string]airport.Procedures
 }
 
 func (s *state) setLive(v bool) {
@@ -202,6 +204,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 
 	// The loader sends facility requests; this loop hands it every message.
 	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
+	procLoader := airport.NewProcedureLoader(client)
 
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
@@ -238,6 +241,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			if err := loader.Request(icao); err != nil {
 				st.finish(icao, err)
 			}
+			if err := procLoader.Request(icao); err != nil {
+				fmt.Fprintf(os.Stderr, "❌ procedures of %s: %v\n", icao, err)
+			}
 
 		case now := <-tick.C:
 			cc.tick()
@@ -262,6 +268,16 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				continue
 			}
 
+			if p, done := procLoader.Handle(msg); done {
+				fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
+				st.mu.Lock()
+				if st.procedures == nil {
+					st.procedures = map[string]airport.Procedures{}
+				}
+				st.procedures[p.ICAO] = p
+				st.mu.Unlock()
+				continue
+			}
 			if res, done := loader.Handle(msg); done {
 				if res.Err != nil {
 					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
@@ -407,6 +423,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 
 	// GET /api/geojson?icao=LKPR — the layout as a GeoJSON FeatureCollection.
 	registerControl(mux, st)
+	registerProcedures(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))
