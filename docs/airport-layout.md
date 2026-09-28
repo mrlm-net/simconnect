@@ -225,6 +225,16 @@ A SID is flown runway transition → `Legs` → enroute transition; a STAR enrou
 
 `ProcedurePath(legs, start, startAlt, magVar, turnRadius)` turns legs into points for a map: straight between fixes, turns (Dubins, in the charted direction) where the aircraft turns by heading (a charted turn, a course intercept, a course reversal), open legs (to an altitude, DME distance, manual termination) approximated from the climb gradient. `Leg.Constraint()` prints a leg's constraint as charts do (`≥4000`, `FL070`, `≤210KT`).
 
+To fly a procedure rather than draw it, resolve it into `NavPoint`s: one per fix (ident, kind, position, IAF/FAF/MAP, fly-over) plus a computed point where a leg without a fix ends (a climb to an altitude at 5%, a DME distance, an intercept of the next course, or a heading to radar vectors, `Vectors`). Each carries its altitude window in meters (`AltMin`/`AltMax`, 0 = none: AT sets both, at-or-above the minimum, at-or-below the maximum, between `Alt2`–`Alt1`), `SpeedMax` and the true `Course` flown to it; the same fix twice in a row (a STAR ending at the approach's IAF) is merged. `ResolveSID(name, runway, enroute, start, startAlt)`, `ResolveSTAR(name, enroute, runway)`, `ResolveApproach(name, transition)` and `MissedApproach(name)` return `ErrNoProcedure` or `ErrNoTransition` when a name is unknown. For ATC-style assignment, `SIDsFor`, `STARsFor` and `ApproachesFor` list a runway's procedures, `SIDToward(runway, exitFix)` and `STARFrom(runway, entryFix)` pick one by the flight plan's first or last fix, `BestApproach(runway)` prefers ILS, then RNAV, LOC, VOR, NDB, and `Arrival(runway, entryFix)` chains the STAR and the best approach through the transition where the STAR ends:
+
+```go
+sid, enroute, _ := p.SIDToward("24", "VOZ")
+dep, _ := p.ResolveSID(sid.Name, "24", enroute, der, elevation) // VOZ4A: PR402 PR403 PR404 VOZ
+arr, _ := p.Arrival("06", "GOLOP")
+// GOLO4T + ILS 06 via KUVIX: GOLOP PR711 PR712 PR513 KUVIX PR741 PR742 CI06 FF06 RW06,
+// at or above 1219 m (4000 ft) from PR741 to FF06, the threshold RW06 the MAP.
+```
+
 Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AIP chart has them), and the `HOLDING_PATTERN` fields are rejected by MSFS 2024 — do not request them.
 
 ## Seeing it on a map

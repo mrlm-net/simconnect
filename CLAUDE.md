@@ -142,6 +142,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
 │   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
+│   │   ├── navlegs.go       #   Procedures → NavPoints (SID/STAR/approach), ATC selection, Arrival
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   ├── nav/                 # Navigation data, weather and ATIS, flight plans
