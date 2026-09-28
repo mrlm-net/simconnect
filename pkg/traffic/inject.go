@@ -55,6 +55,7 @@ type injected struct {
 	haveGround     bool
 	lights         Lights
 	lightsSent     bool
+	taken          bool // taken over (released and frozen), not just watched
 }
 
 // Injector definition, request and event offsets.
@@ -157,11 +158,40 @@ func (i *Injector) event(obj uint32, evt int, on bool) error {
 func (i *Injector) Takeover(objectID uint32) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if _, ok := i.objects[objectID]; ok {
-		return nil
+	o, err := i.watch(objectID)
+	if err != nil || o.taken {
+		return err
+	}
+	req := i.reqBase + 2*uint32(o.slot)
+	if err := i.track(fmt.Sprintf("AIReleaseControl object %d", objectID), i.client.AIReleaseControl(objectID, req)); err != nil {
+		return err
+	}
+	for _, e := range []int{injEvtFreezeLatLon, injEvtFreezeAlt, injEvtFreezeAtt} {
+		if err := i.event(objectID, e, true); err != nil {
+			return err
+		}
+	}
+	o.taken = true
+	return nil
+}
+
+// Watch starts requesting the ground height under objectID without taking
+// it over, so a later Takeover can place the aircraft on its first frame
+// (a moving aircraft taken over before the ground height arrives would stand
+// still for a frame or two). Takeover watches by itself.
+func (i *Injector) Watch(objectID uint32) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	_, err := i.watch(objectID)
+	return err
+}
+
+func (i *Injector) watch(objectID uint32) (*injected, error) {
+	if o, ok := i.objects[objectID]; ok {
+		return o, nil
 	}
 	if err := i.register(); err != nil {
-		return err
+		return nil, err
 	}
 	slot := -1
 	for k, used := range i.slots {
@@ -171,33 +201,27 @@ func (i *Injector) Takeover(objectID uint32) error {
 		}
 	}
 	if slot < 0 {
-		return ErrInjectorFull
+		return nil, ErrInjectorFull
 	}
 	req := i.reqBase + 2*uint32(slot)
-	if err := i.track(fmt.Sprintf("AIReleaseControl object %d", objectID), i.client.AIReleaseControl(objectID, req)); err != nil {
-		return err
-	}
-	for _, e := range []int{injEvtFreezeLatLon, injEvtFreezeAlt, injEvtFreezeAtt} {
-		if err := i.event(objectID, e, true); err != nil {
-			return err
-		}
-	}
 	if err := i.track(fmt.Sprintf("request ground height object %d", objectID),
 		i.client.RequestDataOnSimObject(req+1, i.defBase+injDefGround, objectID, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)); err != nil {
-		return err
+		return nil, err
 	}
+	o := &injected{slot: slot}
 	i.slots[slot] = true
-	i.objects[objectID] = &injected{slot: slot}
+	i.objects[objectID] = o
 	i.byRequest[req+1] = objectID
-	return nil
+	return o, nil
 }
 
-// Driven reports whether objectID is driven by the injector.
+// Driven reports whether objectID has been taken over and is driven by the
+// injector.
 func (i *Injector) Driven(objectID uint32) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	_, ok := i.objects[objectID]
-	return ok
+	o, ok := i.objects[objectID]
+	return ok && o.taken
 }
 
 // Place puts objectID at pose, on the ground. Call it at InjectHz. It
@@ -205,7 +229,7 @@ func (i *Injector) Driven(objectID uint32) bool {
 func (i *Injector) Place(objectID uint32, pose GroundPose) error {
 	i.mu.Lock()
 	o, ok := i.objects[objectID]
-	if !ok {
+	if !ok || !o.taken {
 		i.mu.Unlock()
 		return ErrNotInjected
 	}
@@ -231,7 +255,7 @@ func (i *Injector) SetLights(objectID uint32, l Lights) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	o, ok := i.objects[objectID]
-	if !ok {
+	if !ok || !o.taken {
 		return ErrNotInjected
 	}
 	cur, first := o.lights, !o.lightsSent
@@ -253,7 +277,7 @@ func (i *Injector) SetLights(objectID uint32, l Lights) error {
 	return nil
 }
 
-// Release unfreezes objectID and stops driving it. The aircraft stays where
+// Release unfreezes objectID and stops driving (or watching) it. The aircraft stays where
 // it is; give it waypoints to hand it back to MSFS AI.
 func (i *Injector) Release(objectID uint32) error {
 	i.mu.Lock()
@@ -275,6 +299,9 @@ func (i *Injector) Release(objectID uint32) error {
 	keep(i.track(fmt.Sprintf("stop ground height object %d", objectID),
 		i.client.RequestDataOnSimObject(req+1, i.defBase+injDefGround, objectID, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)))
 	for _, e := range []int{injEvtFreezeLatLon, injEvtFreezeAlt, injEvtFreezeAtt} {
+		if !o.taken {
+			break // only watched: nothing to unfreeze
+		}
 		keep(i.event(objectID, e, false))
 	}
 	return first
@@ -321,4 +348,16 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		return true, fmt.Errorf("traffic: SimConnect exception %d on %s (parameter %d)", e.DwException, call, e.DwIndex)
 	}
 	return false, nil
+}
+
+// String shows the lights as NBSTLOW, a dot for each light that is off:
+// nav, beacon, strobe, taxi, landing, logo, wing.
+func (l Lights) String() string {
+	b := []byte(".......")
+	for i, on := range []bool{l.Nav, l.Beacon, l.Strobe, l.Taxi, l.Landing, l.Logo, l.Wing} {
+		if on {
+			b[i] = "NBSTLOW"[i]
+		}
+	}
+	return string(b)
 }

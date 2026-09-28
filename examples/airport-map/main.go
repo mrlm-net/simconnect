@@ -33,6 +33,7 @@ import (
 
 	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -188,6 +189,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	var (
 		scan   []Traffic
 		userID uint32
+		// Last position per object: aircraft moved by position injection
+		// (pkg/traffic Injector) report 0 kt, so their speed is derived.
+		lastPos = map[uint32]fix{}
 	)
 
 	// The loader sends facility requests; this loop hands it every message.
@@ -271,6 +275,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					continue
 				}
 				t := engine.CastDataAs[trafficRaw](&d.DwData)
+				id, now := uint32(d.DwObjectID), time.Now()
+				if t.GS < 0.5 {
+					t.GS = derivedKts(lastPos[id], t.Lat, t.Lon, now)
+				}
+				lastPos[id] = fix{t.Lat, t.Lon, now}
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
 					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
@@ -625,4 +634,20 @@ func routeError(w http.ResponseWriter, err error) {
 		status = http.StatusUnprocessableEntity
 	}
 	http.Error(w, err.Error(), status)
+}
+
+// fix is an aircraft position at a time.
+type fix struct {
+	lat, lon float64
+	at       time.Time
+}
+
+// derivedKts is the ground speed from the distance moved since the last
+// fix, in knots; 0 without a usable previous fix.
+func derivedKts(prev fix, lat, lon float64, now time.Time) float64 {
+	dt := now.Sub(prev.at).Seconds()
+	if prev.at.IsZero() || dt < 0.2 || dt > 10 {
+		return 0
+	}
+	return calc.HaversineMeters(prev.lat, prev.lon, lat, lon) / dt / 0.514444
 }

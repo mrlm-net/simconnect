@@ -41,6 +41,10 @@ func main() {
 	nose := flag.Float64("nose", 0, "reference-point-to-nose distance in meters (0 = default)")
 	hold := flag.Bool("hold", false, "hold clear of the runway until Enter (taxi clearance)")
 	dwell := flag.Duration("dwell", 0, "after-landing stop before taxiing on (0 = default)")
+	inject := flag.Bool("inject", false, "hybrid: MSFS AI lands, position injection takes over during the rollout and drives the ground phase (#309)")
+	holdCrossings := flag.Bool("hold-crossings", false, "with -inject: hold short of runway crossings until cleared (the demo clears after -cross-after)")
+	crossAfter := flag.Duration("cross-after", 15*time.Second, "demo ATC: crossing clearance delay with -hold-crossings")
+	rollThrough := flag.Float64("roll-through", 0, "with -inject: chance 0..1 of a rolling clearance at the vacate point (0 = default 0.3, negative = never)")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -60,17 +64,23 @@ func main() {
 
 	cache := airport.NewCache()
 	loader := airport.NewLoader(client, airport.LoaderWithCache(cache))
-	ctl := traffic.NewArrivalController(traffic.NewFleet(client))
+	inj := traffic.NewInjector(client)
+	var opts []traffic.ArrivalOption
+	if *inject {
+		opts = append(opts, traffic.ArrivalWithInjector(inj))
+	}
+	ctl := traffic.NewArrivalController(traffic.NewFleet(client), opts...)
 	if err := loader.Request(*icao); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		return
 	}
 
 	var (
-		events    = ctl.Events()
-		lastState traffic.ArrivalState
-		lastPrint time.Time
-		parked    bool
+		events     = ctl.Events()
+		lastState  traffic.ArrivalState
+		lastLights traffic.Lights
+		lastPrint  time.Time
+		parked     bool
 	)
 	enter := make(chan struct{}, 1)
 	go func() {
@@ -126,6 +136,10 @@ func main() {
 			if ev.Err != nil {
 				fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", ev.State, ev.Err)
 			}
+			if ev.Lights != lastLights && ev.State >= traffic.ArrivalRollout {
+				fmt.Printf("💡 %s  %s → %s (%s)\n", time.Now().Format("15:04:05.000"), lastLights, ev.Lights, ev.State)
+			}
+			lastLights = ev.Lights
 			if ev.State != lastState {
 				lastState = ev.State
 				extra := ""
@@ -136,16 +150,20 @@ func main() {
 					if *hold {
 						extra = " — holding clear of the runway, press Enter to clear to taxi"
 					}
+				case traffic.ArrivalHoldingShort:
+					// The demo's ATC: cleared to cross after a short wait.
+					extra = fmt.Sprintf(" %s — cleared to cross in %s", ev.HoldingShortOf, *crossAfter)
+					time.AfterFunc(*crossAfter, ctl.ClearToCross)
 				case traffic.ArrivalParked:
 					parked = true
 				}
 				fmt.Printf("✈️  %s: %s%s\n", *tail, ev.State, extra)
 				continue
 			}
-			if time.Since(lastPrint) >= 4*time.Second {
+			if time.Since(lastPrint) >= time.Second {
 				lastPrint = time.Now()
 				if ev.State >= traffic.ArrivalRollout {
-					fmt.Printf("   %-6s %5.0f m to stand · %5.1f kt · hdg %3.0f°\n", orDash(ev.Taxiway), ev.Remaining, ev.GroundSpeed, ev.Heading)
+					fmt.Printf("   %-6s %5.0f m to stand · %5.1f kt · hdg %3.0f° · lights %s\n", orDash(ev.Taxiway), ev.Remaining, ev.GroundSpeed, ev.Heading, ev.Lights)
 				} else {
 					fmt.Printf("   %5.0f ft AGL · %5.1f kt · hdg %3.0f°\n", ev.AGL, ev.GroundSpeed, ev.Heading)
 				}
@@ -169,7 +187,7 @@ func main() {
 					var parking int
 					if parking, err = res.Layout.ParkingIndex(*stand); err == nil {
 						err = ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: *runway, Parking: parking, Model: *model,
-							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell})
+							Livery: *livery, Tail: *tail, SpawnNm: *spawnNm, GroundAGL: *groundAGL, NoStopWaypoint: *noStop, NoseOffset: *nose, HoldForClearance: *hold, AfterLandingDwell: *dwell, RollThroughChance: *rollThrough, HoldAtCrossings: *holdCrossings})
 					}
 				}
 				if err != nil {
@@ -184,6 +202,12 @@ func main() {
 					fmt.Printf(", crossing %s", strings.Join(p.Route.RunwayCrossings, ", "))
 				}
 				fmt.Printf(" (%d waypoints)\n", len(p.Waypoints))
+				continue
+			}
+			if ok, err := inj.Handle(msg); ok {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
+				}
 				continue
 			}
 			if ctl.Handle(msg) {

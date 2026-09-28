@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"sync"
 	"time"
 	"unsafe"
@@ -33,13 +34,14 @@ const (
 	ArrivalVacating                         // off the runway, rolling clear to the vacate stop
 	ArrivalAwaitingTaxi                     // stopped clear of the runway: after-landing lights, waiting for taxi clearance
 	ArrivalTaxiing                          // taxiing to the stand
+	ArrivalHoldingShort                     // holding short of a runway crossing, waiting for ClearToCross
 	ArrivalParking                          // on the stand's PARKING path
 	ArrivalParked                           // stopped at the stand; the controller no longer moves it
 	ArrivalCancelled                        // Cancel was called
 	ArrivalFailed                           // an error ended the arrival
 )
 
-var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "vacating", "awaiting taxi", "taxiing", "parking", "parked", "cancelled", "failed"}
+var arrivalStateNames = [...]string{"idle", "spawning", "approaching", "landing", "rollout", "vacating", "awaiting taxi", "taxiing", "holding short", "parking", "parked", "cancelled", "failed"}
 
 func (s ArrivalState) String() string {
 	if int(s) < len(arrivalStateNames) {
@@ -82,6 +84,19 @@ type ArrivalRequest struct {
 	// AfterLandingDwell is how long the aircraft stays stopped clear of the
 	// runway before taxiing on; 0 means DefaultAfterLandingDwell.
 	AfterLandingDwell time.Duration
+	// Profile is the ground motion of the aircraft type when the ground
+	// phase is injected (ArrivalWithInjector); zero means
+	// DefaultMotionProfile.
+	Profile MotionProfile
+	// RollThroughChance is the chance that an injected arrival not holding
+	// for clearance only slows to RollThroughKts at the vacate point and taxis
+	// on (a rolling clearance); 0 means DefaultRollThroughChance, negative
+	// never.
+	RollThroughChance float64
+	// HoldAtCrossings (injected arrivals) stops the aircraft short of every
+	// runway it crosses on the way to the stand until ClearToCross; without
+	// it crossings are cleared in advance.
+	HoldAtCrossings bool
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -102,7 +117,12 @@ type ArrivalEvent struct {
 	// meters, once on the ground.
 	Remaining float64
 	Taxiway   string
-	Err       error
+	// HoldingShortOf names the runway the aircraft holds short of, waiting
+	// for ClearToCross.
+	HoldingShortOf string
+	// Lights is the light state the sim reports.
+	Lights Lights
+	Err    error
 }
 
 // ArrivalOption configures an ArrivalController.
@@ -151,6 +171,26 @@ type ArrivalController struct {
 	cleared        bool
 	wantLights     [5]float64
 	lightsAt       time.Time
+
+	// Hybrid ground phase (ArrivalWithInjector).
+	inj           *Injector
+	mover         *GroundMover
+	lastStep      time.Time
+	lights        Lights // injected light state
+	fast          bool   // monitor every sim frame: throttle progress events
+	crossing      bool   // on or near a runway: strobes and landing lights on
+	touchdownAt   time.Time
+	clearDist     float64 // injected path distance where the aircraft is clear of the runway
+	crossZones    []crossZone
+	taxiLightAt   time.Time
+	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
+	vacateDist    float64 // injected path distance of the vacate stop
+	rng           *rand.Rand
+	nextCross     int  // next crossing zone ahead
+	crossClears   int  // ClearToCross calls not used yet
+	lightsChanged bool // the sim reported a light change since the last event
+	takeoverTried bool
+	emittedAt     time.Time
 }
 
 const (
@@ -176,6 +216,8 @@ type arrivalMonitor struct {
 	OnGround  float64
 	VS        float64
 	Lights    [5]float64 // LIGHT LANDING, TAXI, STROBE, BEACON, NAV
+	Logo      float64
+	Wing      float64
 }
 
 // NewArrivalController creates a controller that spawns its aircraft through
@@ -184,6 +226,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 	c := &ArrivalController{
 		fleet: fleet, defBase: DefaultArrivalDefinitionBase, reqBase: DefaultArrivalRequestBase,
 		events: make(chan ArrivalEvent, 256), now: time.Now,
+		rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5eed)),
 	}
 	for _, o := range opts {
 		o(c)
@@ -244,6 +287,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		{"PLANE HEADING DEGREES TRUE", "degrees"}, {"GROUND VELOCITY", "knots"}, {"SIM ON GROUND", "bool"},
 		{"VERTICAL SPEED", "feet per minute"},
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
+		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -263,6 +307,12 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		return fmt.Errorf("%w: %v", ErrCreationFailed, err)
 	}
 	c.req, c.plan = req, plan
+	if chance := req.RollThroughChance; c.inj != nil && !req.HoldForClearance && chance >= 0 {
+		if chance == 0 {
+			chance = DefaultRollThroughChance
+		}
+		c.rollThrough = c.rng.Float64() < chance
+	}
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex]
@@ -345,6 +395,13 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
+	if l := m.currentLights(); l != c.last.Lights {
+		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
+	}
+	if c.mover != nil {
+		c.onInjectedFrame()
+		return
+	}
 	pos := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}
 	c.last.Position, c.last.AGL, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pos, m.AGL, m.Heading, m.GroundKts, m.OnGround != 0
 	t := c.plan.End.Threshold
@@ -382,9 +439,11 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		switch {
 		case m.OnGround != 0 && c.airborne:
 			c.last.Touchdown, c.last.TouchdownFpm = past, c.lastVS
+			c.touchdownAt = c.now()
 			// MSFS AI switches its lights at its own state changes, touchdown
 			// among them: set the landing lights again once it has.
 			c.setLights(true, false, true, true, true, "lights rollout")
+			c.watchGround()
 			c.setState(ArrivalRollout, nil)
 			return
 		case past > c.plan.Runway.Length+300:
@@ -392,9 +451,32 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			return
 		}
 	case ArrivalRollout:
+		// Hybrid: take over on the runway once the aircraft has settled and
+		// slowed, well before the exit, and drive the rest of the rollout,
+		// the exit and the ground phase with the lights kept as they should be.
+		if c.inj != nil && !c.takeoverTried && m.OnGround != 0 && m.GroundKts <= TakeoverKts &&
+			c.now().Sub(c.touchdownAt) >= TakeoverAfterTouchdown &&
+			past+c.profile().WheelbaseMeters < c.plan.Exit.Along-TakeoverBeforeExitMeters {
+			c.takeoverTried = true
+			if err := c.takeover(m, pos, true); err == nil {
+				return
+			} else {
+				c.emit(err, true) // carry on with MSFS AI
+			}
+		}
 		// Vacating once off the runway surface, near or past the planned exit.
 		if off > c.plan.Runway.Width/2+RunwayClearMeters && past > c.plan.Exit.Along-100 {
 			c.track.pos = c.exitAlong
+			if c.inj != nil {
+				if err := c.takeover(m, pos, false); err == nil {
+					c.setState(ArrivalVacating, nil)
+					return
+				} else {
+					// Carry on with MSFS AI rather than fail the arrival.
+					c.mover = nil
+					c.emit(err, true)
+				}
+			}
 			c.setLights(true, false, true, true, true, "lights vacating")
 			c.setState(ArrivalVacating, nil)
 			return
@@ -409,11 +491,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		}
 		if stationary && c.track.pos >= c.vacateAlong-VacateArriveMeters {
 			c.setLights(false, true, false, true, true, "lights taxi")
-			dwell := c.req.AfterLandingDwell
-			if dwell <= 0 {
-				dwell = DefaultAfterLandingDwell
-			}
-			c.clearAt = c.now().Add(dwell)
+			c.clearAt = c.now().Add(c.dwell())
 			c.setState(ArrivalAwaitingTaxi, nil)
 			return
 		}
@@ -469,6 +547,9 @@ func (c *ArrivalController) Cancel() error {
 	if c.objectID != 0 {
 		c.stopMonitor()
 		err = c.fleet.Remove(c.objectID, c.reqBase+arrReqRemove)
+		if c.inj != nil {
+			c.inj.Forget(c.objectID)
+		}
 	}
 	c.setState(ArrivalCancelled, nil)
 	return err
@@ -495,6 +576,10 @@ func (c *ArrivalController) setState(s ArrivalState, err error) {
 }
 
 func (c *ArrivalController) emit(err error, important bool) {
+	if !important && err == nil && !c.lightsChanged && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+		return // progress at most once a second while reading every frame
+	}
+	c.emittedAt, c.lightsChanged = c.now(), false
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {
@@ -562,6 +647,16 @@ func (c *ArrivalController) ClearToTaxi() {
 
 // startTaxi sends the taxi-in chain from the vacate stop to the stand.
 func (c *ArrivalController) startTaxi() {
+	if c.mover != nil {
+		if !c.lights.Taxi && !c.rollThrough {
+			c.setInjectedLights(LightsTaxi, "lights taxi") // never taxi without it
+		}
+		c.mover.ClearHold()
+		c.holdNextCrossing()
+		c.stillFrom, c.warned = c.now(), false
+		c.setState(ArrivalTaxiing, nil)
+		return
+	}
 	err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.plan.TaxiWaypoints)
 	c.note("SetWaypoints taxi-in", err)
 	if err != nil {

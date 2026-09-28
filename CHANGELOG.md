@@ -12,12 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - `SIMCONNECT_EVENT_FLAG_*` had sequential (`iota`) values instead of the SimConnect bit flags. `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` was 3 (both repeat timers) instead of `0x10`, so `TransmitClientEvent` with a priority as group ID failed with `SIMCONNECT_EXCEPTION_ERROR` (parameter 5); `FAST_REPEAT_TIMER` and `SLOW_REPEAT_TIMER` were swapped. Affected `simvar-cli emit` and the REPL too (#310)
+- `pkg/airport`: taxiway edges along a runway surface were excluded from routing, which cut off every runway at LROP, where the taxiways cross 08R/26L along its end. They are now allowed at `AlongRunwayFactor` × their length.
 
 ### Added
 
 - `GetLastSentPacketID` on `engine.Client` and `manager.Manager`: record the send ID of a request to attribute a later `SIMCONNECT_RECV_EXCEPTION` (`DwSendID`) to it. See "Attributing Exceptions" in `docs/usage-client.md` (#301). **Breaking** for custom implementations of `engine.Client`.
 - `pkg/traffic` injected ground movement: `GroundPath`, `GroundMover` (turn-radius speed planning, jerk-limited speed, nose-gear steering with a trailing main gear, holds) and `Injector` (takeover and freeze, `Place` on the ground at 60 Hz, `SetLights` with phase presets, `Release`). Lights stay as set, which MSFS AI does not allow. See `docs/traffic-motion.md` (#309)
-- `pkg/airport` turn-aware routing: costs for turns at junctions, taxiway changes, runway crossings and turning back (`RouteOptions.TurnPenalty`, `TaxiwayChangePenalty`, `RunwayCrossingPenalty`), so routes prefer fewer turns even when a little longer (#307)
+- `pkg/airport` turn-aware routing: costs for turns at junctions, taxiway changes, runway crossings, turning back and apron taxilanes (`RouteOptions.TurnPenalty`, `TaxiwayChangePenalty`, `RunwayCrossingPenalty`, `ApronPenalty`), so routes prefer fewer turns and taxiways without stands even when a little longer (#307)
+- `pkg/traffic` hybrid arrival: `ArrivalWithInjector` — MSFS AI lands, the injector takes over clear of the runway without a jump and drives vacate stop, taxi-in and parking with consistent lights; `Injector.Watch`, `NewGroundMoverFrom`, `NoseGear`; `ai-arrival -inject` (#309)
 - `pkg/airport` runway entries: `RunwayEntries`, `RouteToRunwayEntry` ("24 at B"), `Route.Entry`, `ErrUnknownEntry` (#306)
 - `examples/airport-map`: departure and arrival route modes with an entry/exit picker (panel and map markers)
 

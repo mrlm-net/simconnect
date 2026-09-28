@@ -184,3 +184,47 @@ const (
 	DefaultInjectEventBase      uint32 = 7900
 	injectMaxAircraft                  = 50
 )
+
+// Hybrid arrival (ArrivalWithInjector): the injector takes over on the
+// runway once the aircraft has been on the ground TakeoverAfterTouchdown and
+// slowed to TakeoverKts, at least TakeoverBeforeExitMeters before the exit
+// (otherwise clear of the runway), and drives the rest of the rollout at
+// RolloutDecel down to the exit speed.
+const (
+	TakeoverKts              = 70.0
+	TakeoverAfterTouchdown   = 2 * time.Second
+	TakeoverBeforeExitMeters = 150.0
+	// RolloutJerk (m/s³) lets runway braking build up quickly.
+	RolloutJerk = 0.6
+	// InjectExitHighSpeedKts and InjectExitKts are the speeds through a
+	// high-speed exit and any other exit when injected (MSFS AI takes every
+	// exit at about 12 kt).
+	InjectExitHighSpeedKts = 30.0
+	InjectExitKts          = 12.0
+)
+
+// Injected lights after landing: the taxi light comes on TaxiLightDelay
+// after the landing lights go off at the vacate stop; crossing lights stay
+// on until the main gear is CrossingTailMeters past the far hold-short line,
+// a moment after the tail has cleared it.
+const (
+	TaxiLightDelay     = 1500 * time.Millisecond
+	CrossingTailMeters = 40.0
+	// CrossingOnMeters: the crossing lights come on once the nose gear is
+	// this far past the first hold-short line.
+	CrossingOnMeters = 10.0
+)
+
+// Variation after landing (injected arrivals): the wait clear of the runway
+// varies by ±DwellJitter, and with DefaultRollThroughChance the aircraft
+// only slows to RollThroughKts at the vacate point
+// and taxis on (a rolling clearance).
+const (
+	DwellJitter              = 0.1
+	DefaultRollThroughChance = 0.3
+	RollThroughKts           = 0.5
+)
+
+// HoldShortStopMeters is how far before a hold-short line an injected
+// aircraft stops its nose gear, so the nose stays behind the line.
+const HoldShortStopMeters = 7.0

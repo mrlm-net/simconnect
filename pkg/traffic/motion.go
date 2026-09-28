@@ -41,7 +41,7 @@ func DefaultMotionProfile() MotionProfile {
 		CruiseKts:       TaxiSpeedKts,
 		MinTurnKts:      3,
 		LateralAccel:    0.6,
-		Accel:           0.35,
+		Accel:           0.45, // live: 0.35 pulled away a little slowly
 		Decel:           0.5,
 		Jerk:            0.2,
 	}
@@ -53,6 +53,7 @@ type GroundPath struct {
 	pts   []airport.LatLon
 	cum   []float64 // metres from the start
 	limit []float64 // m/s
+	decel float64   // planned braking, m/s²
 }
 
 // NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
@@ -76,7 +77,28 @@ func NewGroundPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
 	}
 	g.limit = speedLimits(g.pts, g.cum, p)
+	g.decel = p.Decel
 	return g, nil
+}
+
+// LimitEnd caps the speed over the last meters of the path at kts (a stand
+// entry), with braking planned down to it.
+func (g *GroundPath) LimitEnd(meters, kts float64) {
+	g.LimitRange(g.Length()-meters, g.Length(), kts, g.decel)
+}
+
+// LimitRange caps the speed between distances from and to at kts, with
+// braking at decel (m/s²) planned before it.
+func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
+	vmax := kts * ktsToMS
+	for i, d := range g.cum {
+		if d >= from && d <= to {
+			g.limit[i] = math.Min(g.limit[i], vmax)
+		}
+	}
+	for i := len(g.limit) - 2; i >= 0; i-- {
+		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decel*(g.cum[i+1]-g.cum[i])))
+	}
 }
 
 // Length is the path length in metres.
@@ -138,6 +160,8 @@ type GroundMover struct {
 	s, v, a float64
 	gear    airport.LatLon
 	hold    float64 // stop point for the nose; path length when none
+	slowAt  float64 // SlowAt point and speed; slowKts 0 when none
+	slowKts float64
 	pose    GroundPose
 
 	placed   bool
@@ -153,6 +177,32 @@ func NewGroundMover(path *GroundPath, p MotionProfile) *GroundMover {
 	return m
 }
 
+// NewGroundMoverFrom takes over an aircraft that is already moving: the
+// nose gear at the start of path, the main gear one wheelbase behind it
+// along heading (true degrees), at speedKts.
+func NewGroundMoverFrom(path *GroundPath, p MotionProfile, heading, speedKts float64) *GroundMover {
+	m := &GroundMover{path: path, p: p, hold: path.Length(), v: math.Max(0, speedKts) * ktsToMS}
+	nose := path.PointAt(0)
+	kx := metersPerDegree * math.Cos(nose.Lat*math.Pi/180)
+	h := heading * math.Pi / 180
+	m.gear = airport.LatLon{
+		Lat: nose.Lat - math.Cos(h)*p.WheelbaseMeters/metersPerDegree,
+		Lon: nose.Lon - math.Sin(h)*p.WheelbaseMeters/kx,
+	}
+	m.place()
+	return m
+}
+
+// NoseGear returns where the nose gear of an aircraft is whose sim
+// reference point is at ref, heading true degrees: profile p's wheelbase
+// minus RefAheadMeters ahead.
+func NoseGear(ref airport.LatLon, heading float64, p MotionProfile) airport.LatLon {
+	d := p.WheelbaseMeters - p.RefAheadMeters
+	kx := metersPerDegree * math.Cos(ref.Lat*math.Pi/180)
+	h := heading * math.Pi / 180
+	return airport.LatLon{Lat: ref.Lat + math.Cos(h)*d/metersPerDegree, Lon: ref.Lon + math.Sin(h)*d/kx}
+}
+
 // Path returns the path being followed.
 func (m *GroundMover) Path() *GroundPath { return m.path }
 
@@ -166,6 +216,10 @@ func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.p
 
 // ClearHold lets the aircraft continue to the end of the path.
 func (m *GroundMover) ClearHold() { m.hold = m.path.Length() }
+
+// SlowAt makes the aircraft slow down to kts with its nose gear at distance
+// d along the path and carry on without stopping (a rolling clearance).
+func (m *GroundMover) SlowAt(d, kts float64) { m.slowAt, m.slowKts = d, kts }
 
 // Step advances the motion by dt seconds and returns the new pose. Long
 // steps are split so a stalled caller does not jump.
@@ -187,9 +241,19 @@ func (m *GroundMover) step(dt float64) {
 	rem := m.hold - m.s
 	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+TurnLookaheadMeters))
 	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
+	if m.slowKts > 0 && m.s < m.slowAt {
+		v0 := m.slowKts * ktsToMS
+		target = math.Min(target, math.Sqrt(v0*v0+2*p.Decel*(m.slowAt-m.s)))
+	}
 	want := (target - m.v) / SpeedResponseSeconds
 	if rem > 0.05 && rem < StopApproachMeters {
 		want = math.Min(want, -m.v*m.v/(2*rem)) // brake exactly onto the stop point
+	}
+	if r := m.slowAt - m.s; m.slowKts > 0 && r > 0.05 && r < StopApproachMeters {
+		v0 := m.slowKts * ktsToMS
+		if m.v > v0 {
+			want = math.Min(want, (v0*v0-m.v*m.v)/(2*r)) // brake exactly onto the slow point
+		}
 	}
 	want = math.Max(-1.5*p.Decel, math.Min(p.Accel, want))
 	if want > m.a {
@@ -198,6 +262,11 @@ func (m *GroundMover) step(dt float64) {
 		m.a = math.Max(want, m.a-p.Jerk*dt)
 	}
 	m.v = math.Max(0, m.v+m.a*dt)
+	// Around a SlowAt point the aircraft keeps rolling at its slow speed
+	// (braking momentum would otherwise stop it) unless it must hold.
+	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && m.hold-m.s > 1 {
+		m.v, m.a = v0, math.Max(m.a, 0)
+	}
 	m.s = math.Min(m.s+m.v*dt, m.hold)
 	if m.hold-m.s < 0.3 && m.v < 0.1 || m.s >= m.hold {
 		m.s, m.v, m.a = math.Max(m.s, math.Min(m.hold, m.s+0.3)), 0, 0
@@ -336,3 +405,8 @@ func localBearing(a, b airport.LatLon) float64 {
 
 // headingDiff is the signed heading change from a to b, -180–180°.
 func headingDiff(a, b float64) float64 { return math.Mod(b-a+540, 360) - 180 }
+
+// SetProfile changes the speed behaviour (accelerations, jerk) from now on,
+// e.g. from runway braking to taxiing once clear of the runway. The
+// geometry (wheelbase, reference point) should stay the same.
+func (m *GroundMover) SetProfile(p MotionProfile) { m.p = p }

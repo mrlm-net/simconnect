@@ -149,6 +149,8 @@ Routes are not simply the shortest. Pilots and ATC prefer fewer and gentler turn
 | Turn at a taxiway junction, per 90° above `TurnFreeAngle` (15°) | 60 m | `TurnPenalty` |
 | Turning onto a differently named taxiway (unnamed connectors inherit the name; going straight on where the name changes is free) | 40 m | `TaxiwayChangePenalty` |
 | Each runway crossing | 1000 m | `RunwayCrossingPenalty` |
+| Taxiway edge running along a runway surface (e.g. crossing at a runway end, LROP) | ×20 its length | `UseRunwayPaths` removes it |
+| Edge at a taxi point where a stand connects (apron taxilane), so through traffic keeps to taxiways without stands | +50 % of its length | `ApronPenalty` |
 | Turning back (≥ 150°) | 2000 m | — |
 
 Zero selects the default and a negative value disables a cost. `Route.Length` is always the real length.
