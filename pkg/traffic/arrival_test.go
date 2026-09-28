@@ -549,7 +549,8 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 	if slowest > RollThroughKts+1 {
 		t.Errorf("slowest %.2f kt at the vacate point, want about %.1f", slowest, RollThroughKts)
 	}
-	if d := taxiOnAt.Sub(landingOffAt); landingOffAt.IsZero() || d < TaxiLightDelay || d > TaxiLightDelay+time.Second {
+	lo, hi := time.Duration(float64(TaxiLightDelay)*(1-TaxiLightSpread)), time.Duration(float64(TaxiLightDelay)*(1+TaxiLightSpread)) // #343
+	if d := taxiOnAt.Sub(landingOffAt); landingOffAt.IsZero() || d < lo-time.Millisecond || d > hi+time.Second {
 		t.Errorf("taxi light %v after the landing lights went off, want %v", d, TaxiLightDelay)
 	}
 	// One brief dip, not a crawl (live: twice ~20 s below 1 kt).

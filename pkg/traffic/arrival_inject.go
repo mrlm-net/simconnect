@@ -189,10 +189,15 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 }
 
 func (c *ArrivalController) profile() MotionProfile {
+	p := DefaultMotionProfile()
 	if c.req.Profile != (MotionProfile{}) {
-		return c.req.Profile
+		p = c.req.Profile
 	}
-	return DefaultMotionProfile()
+	limit := 0.0
+	if c.req.Airport != nil {
+		limit = c.req.Airport.TaxiMaxKts
+	}
+	return taxiSpeed(p, c.timing.taxiSpeed, limit)
 }
 
 // step advances the mover to now and places the aircraft.
@@ -232,7 +237,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.emit(nil, true) // holding at the clearance limit, or moving on
 	}
 	if !c.flapsUpFrom.IsZero() && c.flapsPct > 0 {
-		c.flapsPct = math.Max(0, c.aircraft().Flaps.LandingPct*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
+		c.flapsPct = math.Max(0, c.aircraft().Flaps.LandingPct*(1-c.now().Sub(c.flapsUpFrom).Seconds()/(FlapsRetractSeconds*f(c.timing.flaps))))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	c.stepSurfaces(c.frameDt)
@@ -256,7 +261,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		// then wait for the taxi clearance, or roll on.
 		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-0.5) {
 			c.setInjectedLights(lightsStopped, "lights landing off")
-			c.taxiLightAt = c.now().Add(TaxiLightDelay)
+			c.taxiLightAt = c.now().Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
 			c.clearAt = c.now().Add(c.dwell())
 			c.ignoreRunway = -1 // clear of the landing runway now
 			c.setState(ArrivalAwaitingTaxi, nil)
@@ -392,7 +397,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	// Landing flaps: from the approach setting to full over
 	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
 	if fl := c.aircraft().Flaps; pose.HeightFt < fl.FullFt && c.flapsPct < fl.LandingPct && !pose.OnGround {
-		c.flapsPct = math.Min(fl.LandingPct, c.flapsPct+(fl.LandingPct-fl.ApproachPct)/FlapsFullSeconds*math.Max(dt, 0))
+		c.flapsPct = math.Min(fl.LandingPct, c.flapsPct+(fl.LandingPct-fl.ApproachPct)/(FlapsFullSeconds*f(c.timing.flaps))*math.Max(dt, 0))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	switch {
