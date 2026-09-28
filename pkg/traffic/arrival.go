@@ -201,6 +201,8 @@ type ArrivalController struct {
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
 	approachLightsSet bool
+	spoilers          surfaceRamp // injected ground spoilers
+	frameDt           float64     // seconds since the previous injected frame
 	takeoverTried     bool
 	emittedAt         time.Time
 }

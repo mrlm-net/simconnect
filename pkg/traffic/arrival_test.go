@@ -723,6 +723,16 @@ func TestArrivalControllerInjectedApproach(t *testing.T) {
 	if maxPitch < 5 || maxPitch > 6 {
 		t.Errorf("flare pitch %.1f°, want about 5.5", maxPitch)
 	}
+	spoilMax := 0.0
+	for _, b := range ec.waypoints {
+		switch len(b) {
+		case 24:
+			spoilMax = math.Max(spoilMax, *(*float64)(unsafe.Pointer(&b[0])))
+		}
+	}
+	if spoilMax != 100 || ctl.spoilers.pct != 0 {
+		t.Errorf("spoilers max %.0f now %.0f; want 100 then stowed", spoilMax, ctl.spoilers.pct)
+	}
 	if ctl.flapsPct != 0 {
 		t.Errorf("flaps %.0f%% on the stand, want retracted", ctl.flapsPct)
 	}

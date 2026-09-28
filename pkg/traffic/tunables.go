@@ -176,7 +176,7 @@ const (
 	InjectHz = 60
 )
 
-// Default SimConnect IDs used by an Injector: 4 definition IDs, 2 request
+// Default SimConnect IDs used by an Injector: 5 definition IDs, 2 request
 // IDs per aircraft (up to injectMaxAircraft) and injectEventCount event IDs.
 const (
 	DefaultInjectDefinitionBase uint32 = 7700
@@ -232,3 +232,10 @@ const HoldShortStopMeters = 7.0
 // FlapsRetractSeconds is how long an injected arrival takes to retract its
 // flaps once clear of the runway.
 const FlapsRetractSeconds = 20.0
+
+// Injected landing (InjectApproach): ground spoilers deploy over
+// SpoilerDeploySeconds at main gear touchdown and stow once clear of the
+// runway.
+const (
+	SpoilerDeploySeconds = 1.0
+)

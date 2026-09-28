@@ -216,6 +216,7 @@ func (c *ArrivalController) step() GroundPose {
 	now := c.now()
 	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
 	c.lastStep = now
+	c.frameDt = math.Max(dt, 0)
 	pose := c.mover.Step(math.Max(dt, 0))
 	if err := c.inj.Place(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
@@ -238,6 +239,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.flapsPct = math.Max(0, 100*(1-c.now().Sub(c.flapsUpFrom).Seconds()/FlapsRetractSeconds))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
+	c.stepSurfaces(c.frameDt)
 	// The taxi light, TaxiLightDelay after the landing lights went off.
 	if !c.taxiLightAt.IsZero() && !c.lights.Taxi && !c.now().Before(c.taxiLightAt) {
 		c.setInjectedLights(LightsTaxi, "lights taxi")
@@ -250,6 +252,7 @@ func (c *ArrivalController) onInjectedFrame() {
 			c.setInjectedLights(lightsVacated, "lights vacated")
 			if c.req.InjectApproach {
 				c.flapsUpFrom = c.now() // after-landing flaps up once clear
+				c.spoilers.target = 0
 			}
 			c.setState(ArrivalVacating, nil)
 			return
@@ -470,6 +473,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.AGL, c.last.OnGround = pose.HeightFt, pose.OnGround
+	c.stepSurfaces(math.Max(dt, 0))
 	switch {
 	case c.state == ArrivalApproaching && pose.HeightFt < LandingAGLFt:
 		c.setState(ArrivalLanding, nil)
@@ -477,6 +481,10 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	case c.state == ArrivalLanding && pose.OnGround:
 		c.last.Touchdown, c.last.TouchdownFpm = pose.Touchdown, pose.TouchdownFpm
 		c.touchdownAt = now
+		// Main wheels down: ground spoilers out. (Thrust reversers cannot be
+		// animated on an AI aircraft: the nozzle SimVar is not settable and
+		// the reverse thrust events are ignored, #318.)
+		c.spoilers = surfaceRamp{target: 100, rate: 100 / SpoilerDeploySeconds}
 		c.setState(ArrivalRollout, nil)
 		return
 	case pose.Phase == ApproachDone:
@@ -492,4 +500,28 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		return
 	}
 	c.emit(nil, false)
+}
+
+// surfaceRamp moves a control surface (percent) towards target at rate
+// percent per second.
+type surfaceRamp struct{ pct, target, rate float64 }
+
+// step moves the surface and reports whether it moved.
+func (r *surfaceRamp) step(dt float64) bool {
+	if r.pct == r.target || r.rate <= 0 {
+		return false
+	}
+	if r.pct < r.target {
+		r.pct = math.Min(r.target, r.pct+r.rate*dt)
+	} else {
+		r.pct = math.Max(r.target, r.pct-r.rate*dt)
+	}
+	return true
+}
+
+// stepSurfaces moves the ground spoilers of an injected arrival.
+func (c *ArrivalController) stepSurfaces(dt float64) {
+	if c.spoilers.step(dt) {
+		c.note("spoilers", c.inj.SetSpoilers(c.objectID, c.spoilers.pct))
+	}
 }

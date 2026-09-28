@@ -42,9 +42,15 @@ const (
 
 type monitor struct {
 	Lat, Lon, Alt, Ground, CG, AGL, Pitch, Bank, Heading, OnGround, GearPct, GearHandle, FlapsPct, FlapsIdx, Landing float64
+	SpoilHandle, SpoilLeft, Rev1                                                                                   float64
 }
 
-var events = []string{"FREEZE_LATITUDE_LONGITUDE_SET", "FREEZE_ALTITUDE_SET", "FREEZE_ATTITUDE_SET", "GEAR_DOWN", "FLAPS_DOWN", "FLAPS_SET", "FLAPS_INCR", "LANDING_LIGHTS_SET", "STROBES_SET", "NAV_LIGHTS_SET", "BEACON_LIGHTS_SET"}
+const (
+	defSpoil uint32 = 9195
+	defRev   uint32 = 9196
+)
+
+var events = []string{"FREEZE_LATITUDE_LONGITUDE_SET", "FREEZE_ALTITUDE_SET", "FREEZE_ATTITUDE_SET", "GEAR_DOWN", "FLAPS_DOWN", "FLAPS_SET", "FLAPS_INCR", "LANDING_LIGHTS_SET", "STROBES_SET", "NAV_LIGHTS_SET", "BEACON_LIGHTS_SET", "THROTTLE_REVERSE_THRUST_TOGGLE", "THROTTLE_REVERSE_THRUST_HOLD"}
 
 func main() {
 	model := flag.String("model", "FSLTL A320 Air France SL", "aircraft container title")
@@ -81,11 +87,18 @@ func main() {
 		{"PLANE PITCH DEGREES", "degrees"}, {"PLANE BANK DEGREES", "degrees"}, {"PLANE HEADING DEGREES TRUE", "degrees"},
 		{"SIM ON GROUND", "bool"}, {"GEAR CENTER POSITION", "percent"}, {"GEAR HANDLE POSITION", "bool"},
 		{"TRAILING EDGE FLAPS LEFT PERCENT", "percent"}, {"FLAPS HANDLE INDEX", "number"}, {"LIGHT LANDING", "bool"},
+		{"SPOILERS HANDLE POSITION", "percent"}, {"SPOILERS LEFT POSITION", "percent"}, {"TURB ENG REVERSE NOZZLE PERCENT:1", "percent"},
 	} {
 		track("def "+v.n, client.AddToDataDefinition(defMon, v.n, v.u, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)))
 	}
 	track("def gear", client.AddToDataDefinition(defGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0))
 	track("def flaps", client.AddToDataDefinition(defFlaps, "FLAPS HANDLE INDEX", "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0))
+	for i, n := range []string{"SPOILERS HANDLE POSITION", "SPOILERS LEFT POSITION", "SPOILERS RIGHT POSITION"} {
+		track("def "+n, client.AddToDataDefinition(defSpoil, n, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)))
+	}
+	for i, n := range []string{"TURB ENG REVERSE NOZZLE PERCENT:1", "TURB ENG REVERSE NOZZLE PERCENT:2"} {
+		track("def "+n, client.AddToDataDefinition(defRev, n, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)))
+	}
 	for i, n := range []string{"TRAILING EDGE FLAPS LEFT PERCENT", "TRAILING EDGE FLAPS RIGHT PERCENT", "LEADING EDGE FLAPS LEFT PERCENT", "LEADING EDGE FLAPS RIGHT PERCENT"} {
 		track("def "+n, client.AddToDataDefinition(defSurf, n, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)))
 	}
@@ -202,6 +215,12 @@ func main() {
 				if h <= 0 {
 					h, phase, touchX, touchV, touchAt = 0, "derotate", x, vs, now
 					fmt.Printf("🛬 touchdown %.0f m past the threshold at %.0f kt, %.0f fpm\n", x, v/kt, vs)
+					sp := [3]float64{100, 100, 100}
+					track("spoilers", client.SetDataOnSimObject(defSpoil, obj, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 24, unsafe.Pointer(&sp)))
+					rv := [2]float64{100, 100}
+					_ = rv
+					event(obj, "THROTTLE_REVERSE_THRUST_TOGGLE", 0)
+					event(obj, "THROTTLE_REVERSE_THRUST_HOLD", 1)
 				}
 			case "derotate":
 				f := math.Min(1, now.Sub(touchAt).Seconds()/derotS)
@@ -224,8 +243,8 @@ func main() {
 			place()
 			if now.Sub(lastLog) >= 500*time.Millisecond && haveMon {
 				lastLog = now
-				fmt.Printf("%5.1fs %-8s x %6.0f m  h %5.1f ft (AGL read %5.1f)  %5.1f kt  pitch cmd %4.1f read %5.1f  gear %3.0f%% (handle %.0f)  flaps %3.0f%% (idx %.0f)  ground %.0f  L %.0f\n",
-					now.Sub(start).Seconds(), phase, x, h, mon.AGL, v/kt, pitch, mon.Pitch, mon.GearPct, mon.GearHandle, mon.FlapsPct, mon.FlapsIdx, mon.OnGround, mon.Landing)
+				fmt.Printf("%5.1fs %-8s x %6.0f m  h %5.1f ft (AGL read %5.1f)  %5.1f kt  pitch cmd %4.1f read %5.1f  gear %3.0f%% (handle %.0f)  flaps %3.0f%% (idx %.0f)  ground %.0f  L %.0f  spoilers handle %.0f surface %.0f  rev %.0f\n",
+					now.Sub(start).Seconds(), phase, x, h, mon.AGL, v/kt, pitch, mon.Pitch, mon.GearPct, mon.GearHandle, mon.FlapsPct, mon.FlapsIdx, mon.OnGround, mon.Landing, mon.SpoilHandle, mon.SpoilLeft, mon.Rev1)
 			}
 		case msg := <-stream:
 			if msg.SIMCONNECT_RECV == nil || msg.Err != nil {

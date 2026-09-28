@@ -65,6 +65,7 @@ const (
 	injDefGround
 	injDefGear
 	injDefFlaps
+	injDefSpoilers
 )
 
 const (
@@ -92,7 +93,7 @@ type injectGround struct{ GroundFt, CGFt float64 }
 // InjectorOption configures an Injector.
 type InjectorOption func(*Injector)
 
-// InjectorWithIDs sets the SimConnect ID bases: 4 definition IDs, 2 request
+// InjectorWithIDs sets the SimConnect ID bases: 5 definition IDs, 2 request
 // IDs per aircraft (up to 50 aircraft) and 10 event IDs are used.
 func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOption {
 	return func(i *Injector) { i.defBase, i.reqBase, i.evtBase = definitionBase, requestBase, eventBase }
@@ -143,6 +144,11 @@ func (i *Injector) register() error {
 	// FLAPS_* events (#318).
 	for k, v := range []string{"TRAILING EDGE FLAPS LEFT PERCENT", "TRAILING EDGE FLAPS RIGHT PERCENT", "LEADING EDGE FLAPS LEFT PERCENT", "LEADING EDGE FLAPS RIGHT PERCENT"} {
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefFlaps, v, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+			return err
+		}
+	}
+	for k, v := range []string{"SPOILERS HANDLE POSITION", "SPOILERS LEFT POSITION", "SPOILERS RIGHT POSITION"} {
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefSpoilers, v, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
 	}
@@ -434,4 +440,16 @@ func (i *Injector) SetFlaps(objectID uint32, percent float64) error {
 	s := [4]float64{percent, percent, percent, percent}
 	// Not tracked: callers ramp it every frame.
 	return i.client.SetDataOnSimObject(i.defBase+injDefFlaps, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(s)), unsafe.Pointer(&s))
+}
+
+// SetSpoilers sets the spoiler handle and surfaces of objectID to percent
+// (100 ground spoilers fully out); ramp it for a visible movement.
+func (i *Injector) SetSpoilers(objectID uint32, percent float64) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	s := [3]float64{percent, percent, percent}
+	return i.client.SetDataOnSimObject(i.defBase+injDefSpoilers, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(s)), unsafe.Pointer(&s))
 }
