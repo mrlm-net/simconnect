@@ -103,6 +103,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	case TaxiAwaitingPushback:
 		if c.pushAt.IsZero() && c.gate(c.pushCleared) {
 			// Beacon on, and the push starts BeaconLeadTime later.
+			c.lights.Logo = true // as MSFS AI shows it; aircraft spawn with it off
 			c.setInjectedLights(LightsPushback, "lights beacon (pushback)")
 			c.pushAt = now.Add(BeaconLeadTime)
 		}
@@ -323,11 +324,10 @@ func (c *TaxiController) startLineUp() {
 		c.fail(err)
 		return
 	}
-	lineUp := prof
-	lineUp.CruiseKts = LineUpSpeedKts
-	path.LimitRange(0, path.Length(), LineUpSpeedKts, prof.Decel)
-	c.mover = NewGroundMoverFrom(path, lineUp, pose.Heading, 0)
+	// Taxi speed through the entry, LineUpSpeedKts over the alignment.
 	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
+	path.LimitRange(c.alignDist-LineUpAlignMeters, path.Length(), LineUpSpeedKts, prof.Decel)
+	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
 	}
