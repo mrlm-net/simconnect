@@ -349,6 +349,12 @@ const (
 	trafficBodyStep   = 5.0
 	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
 	TrafficCheckEvery = 100 * time.Millisecond
+	// GiveWayLookMeters is how far ahead a taxiing aircraft reports where
+	// it will drive (up to its next stop) and checks for routes crossing
+	// or merging with its own; GiveWayMarginMeters is added to both
+	// half-spans for the paths to conflict.
+	GiveWayLookMeters   = 250.0
+	GiveWayMarginMeters = 10.0
 )
 
 // TakeoffRunMargin lengthens the distance to 35 ft into the runway an

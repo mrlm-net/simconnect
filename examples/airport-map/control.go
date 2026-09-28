@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"sort"
@@ -54,6 +55,13 @@ type controlled struct {
 	stands *traffic.StandAllocator
 	stand  int  // parking index held for this aircraft
 	left   bool // a departure has left its stand (released)
+	// Turnaround (arrival): the departure to start once parked, and
+	// departNow to start it before the dwell is over.
+	cc        *controlCenter
+	turn      *SpawnRequest
+	dwell     time.Duration
+	departNow chan struct{}
+	turned    bool
 	// spoken marks clearances already in the log (given on the map), so
 	// the state change they cause does not log them again.
 	spoken map[string]bool
@@ -70,6 +78,7 @@ type ControlView struct {
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
+	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -100,6 +109,8 @@ type controlCenter struct {
 	// sim's other aircraft on the ground (#334).
 	picture *traffic.GroundPicture
 	ticks   int
+	// procedures gives an airport's SIDs, STARs and approaches (#315).
+	procedures func(icao string) (airport.Procedures, bool)
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
@@ -206,6 +217,7 @@ type SpawnRequest struct {
 	Stand          int      `json:"stand"` // parking index
 	Runway         string   `json:"runway"`
 	Entry          string   `json:"entry"` // departure: runway entry taxiway
+	Exit           *int     `json:"exit"`  // arrival: runway exit, an index into /api/exits; nil = the controller's choice
 	Model          string   `json:"model"`
 	Tail           string   `json:"tail"`
 	Gates          bool     `json:"gates"`          // hold at every clearance
@@ -214,7 +226,25 @@ type SpawnRequest struct {
 	TugTitle       string   `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
 	TugYaw         *float64 `json:"tugYaw"`         // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
 	TugAhead       *float64 `json:"tugAhead"`       // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
+	// Turnaround (arrival): once parked the same aircraft departs again
+	// from its stand after DwellSec (±20 %, default 90 s; the "depart"
+	// action skips the wait), from the same runway (#296).
+	Turnaround bool    `json:"turnaround"`
+	DwellSec   float64 `json:"dwellSec"`
+	// Procedure: a departure flies a SID after the take-off, an arrival
+	// appears at a STAR's first fix and flies it and the approach (#315).
+	// ProcName picks the SID or STAR; "" picks one for the runway.
+	Procedure bool   `json:"procedure"`
+	ProcName  string `json:"procName"`
+
+	adopt uint32 // departure: the aircraft already on the stand (turnaround)
 }
+
+// Turnaround dwell when none is given, and its spread.
+const (
+	defaultDwell = 90 * time.Second
+	dwellSpread  = 0.2
+)
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
 	cc.mu.Lock()
@@ -251,15 +281,23 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			alloc.ReleaseOwner(r.Tail)
 		}
 	}()
+	var procRoute []airport.NavPoint
+	procName, expect := "", ""
+	if r.Procedure {
+		var err error
+		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
+			return nil, err
+		}
+	}
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
 	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
-		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry,
+		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
 			Model: model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
-			Takeoff: traffic.TakeoffProfileFor(model)}); err != nil {
+			Takeoff: traffic.TakeoffProfileFor(model), Departure: procRoute}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl
@@ -267,11 +305,30 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
 		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.picture))
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail,
-			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach, Profile: prof}); err != nil {
+		var exit *airport.RunwayExit
+		if r.Exit != nil {
+			exits, err := g.RunwayExits(r.Runway)
+			if err != nil || *r.Exit < 0 || *r.Exit >= len(exits) {
+				return nil, fmt.Errorf("exit must be an index into /api/exits for runway %s", r.Runway)
+			}
+			exit = &exits[*r.Exit]
+		}
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
+			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
+			Procedure: procRoute}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
+		if r.Turnaround {
+			d := r
+			d.Kind, d.Turnaround, d.Entry, d.Exit, d.ProcName = "departure", false, "", nil, ""
+			dwell := defaultDwell
+			if r.DwellSec > 0 {
+				dwell = time.Duration(r.DwellSec * float64(time.Second))
+			}
+			it.cc, it.turn, it.departNow = cc, &d, make(chan struct{}, 1)
+			it.dwell = time.Duration(float64(dwell) * (1 + dwellSpread*(2*rand.Float64()-1)))
+		}
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{arr: &ev}, ok }
 	default:
@@ -280,6 +337,15 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
+	if procName != "" {
+		it.view.Procedure = procName
+		if r.Kind == "departure" {
+			tlog.printf("%-6s ATC: %s, cleared %s departure, runway %s", r.Tail, r.Tail, procName, r.Runway)
+		} else {
+			tlog.printf("%-6s ATC: %s, cleared %s arrival, expect %s approach runway %s", r.Tail, r.Tail, procName, expect, r.Runway)
+			it.view.Procedure += " → " + expect
+		}
+	}
 	started = true
 	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
 		tlog.printf("%-6s %s: route overlaps the routes of %s", r.Tail, r.Kind, strings.Join(clash, ", "))
@@ -353,6 +419,11 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		switch e.State {
 		case traffic.ArrivalParked:
 			it.stands.ReleaseRoute(it.Tail)
+			if it.turn != nil && !it.turned {
+				it.turned = true
+				v.Actions = []string{"depart"}
+				go it.cc.turnaround(it, e.ObjectID)
+			}
 		case traffic.ArrivalCancelled, traffic.ArrivalFailed:
 			it.stands.ReleaseOwner(it.Tail)
 		}
@@ -412,6 +483,11 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		it.arr.ClearToCross()
 	case it.arr != nil && action == "remove":
 		return it.arr.Cancel()
+	case it.arr != nil && action == "depart" && it.departNow != nil:
+		select {
+		case it.departNow <- struct{}{}:
+		default:
+		}
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}
@@ -566,6 +642,92 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// procedureFor resolves the SID (departure) or the STAR and approach
+// (arrival) of r's runway: r.ProcName, or one picked at random. It returns
+// the points, the procedure's name and, for an arrival, the approach
+// type to expect ("ILS").
+func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airport.NavPoint, string, string, error) {
+	if cc.procedures == nil {
+		return nil, "", "", errors.New("procedures not available")
+	}
+	p, ok := cc.procedures(g.Layout.ICAO)
+	if !ok {
+		return nil, "", "", fmt.Errorf("procedures of %s not loaded (yet)", g.Layout.ICAO)
+	}
+	pick := func(list []airport.Procedure) (airport.Procedure, error) {
+		for _, x := range list {
+			if strings.EqualFold(x.Name, r.ProcName) {
+				return x, nil
+			}
+		}
+		if r.ProcName != "" || len(list) == 0 {
+			return airport.Procedure{}, fmt.Errorf("no procedure %q for runway %s", r.ProcName, r.Runway)
+		}
+		return list[rand.IntN(len(list))], nil
+	}
+	if r.Kind == "departure" {
+		sid, err := pick(p.SIDsFor(r.Runway))
+		if err != nil {
+			return nil, "", "", err
+		}
+		start, alt := departureEnd(g.Layout, r.Runway)
+		pts, err := p.ResolveSID(sid.Name, r.Runway, "", start, alt)
+		return pts, sid.Name, "", err
+	}
+	star, err := pick(p.STARsFor(r.Runway))
+	if err != nil {
+		return nil, "", "", err
+	}
+	first := ""
+	for _, t := range star.RunwayTransitions {
+		for _, l := range t.Legs {
+			if l.HasFix() && first == "" {
+				first = l.Fix
+			}
+		}
+	}
+	for _, l := range star.Legs {
+		if l.HasFix() && first == "" {
+			first = l.Fix
+		}
+	}
+	pts, err := p.Arrival(r.Runway, first)
+	if err != nil {
+		return nil, "", "", err
+	}
+	app, _ := p.BestApproach(r.Runway)
+	kind, _, _ := strings.Cut(app.Name, " ")
+	return pts, star.Name, kind, nil
+}
+
+// turnaround departs a parked arrival again (#296): after the dwell (or
+// the "depart" action) a departure adopts the same aircraft on its stand,
+// with the same call sign, stand reservation and runway; the arrival's
+// entry leaves the list.
+func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
+	tlog.printf("%-6s turnaround: parked, departing in %s", it.Tail, it.dwell.Round(time.Second))
+	select {
+	case <-time.After(it.dwell):
+	case <-it.departNow:
+	}
+	d := *it.turn
+	d.adopt = objectID
+	var dep *controlled
+	err := cc.do(func() error {
+		var err error
+		dep, err = cc.spawn(it.graph, d)
+		return err
+	})
+	if err != nil {
+		tlog.printf("%-6s turnaround: departure failed: %v", it.Tail, err)
+		return
+	}
+	tlog.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, dep.view.Stand, d.Runway, dep.ID)
+	cc.mu.Lock()
+	delete(cc.items, it.ID)
+	cc.mu.Unlock()
 }
 
 // reqModels asks the simulator for its aircraft titles (the model list).

@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -283,6 +284,9 @@ func (d *groundDrive) followAhead(now time.Time) {
 		if d.mover != nil {
 			d.mover.ClearTrafficStop()
 		}
+		if d.picture != nil && d.object != 0 {
+			d.picture.ReportPath(d.object, nil, 0)
+		}
 		return
 	}
 	if now.Sub(d.trafficAt) < TrafficCheckEvery {
@@ -294,13 +298,30 @@ func (d *groundDrive) followAhead(now time.Time) {
 		half = DefaultHalfSpanMeters
 	}
 	s0 := d.mover.Pose().Distance
-	body := d.picture.blocking(d.object, d.mover.Path(), s0, TrafficLookMeters, half, now)
-	if math.IsInf(body, 1) {
-		d.mover.ClearTrafficStop()
-		return
+	path := d.mover.Path()
+	body := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
+	stop := math.Inf(1)
+	if !math.IsInf(body, 1) {
+		// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
+		stop = body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters
 	}
-	// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
-	d.mover.SetTrafficStop(body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters)
+	// Give way where routes cross or merge: stop short of the conflict
+	// (its first point is already a half-span away from the other path).
+	if gw := d.picture.giveWay(d.object, path, s0, GiveWayLookMeters, half, now); !math.IsInf(gw, 1) {
+		stop = math.Min(stop, gw-(pushNoseFactor-1)*d.prof.WheelbaseMeters-TrafficGapMeters)
+	}
+	if math.IsInf(stop, 1) {
+		d.mover.ClearTrafficStop()
+	} else {
+		d.mover.SetTrafficStop(stop)
+	}
+	// Where this aircraft will drive next, for the others to give way.
+	to := math.Min(math.Min(d.mover.stop(), path.Length()), s0+GiveWayLookMeters)
+	var ahead []airport.LatLon
+	for s := s0; s <= to; s += trafficBodyStep {
+		ahead = append(ahead, path.PointAt(s))
+	}
+	d.picture.ReportPath(d.object, ahead, half)
 }
 
 // reportGround puts this aircraft in the ground picture.
@@ -308,4 +329,19 @@ func (d *groundDrive) reportGround(id uint32, pos airport.LatLon, hdg float64, n
 	if d.picture != nil && id != 0 {
 		d.picture.Report(id, pos, hdg, d.prof, now)
 	}
+}
+
+// applyPendingLimit sets a clearance limit given before the taxi path
+// existed (during the pushback, the approach or the rollout). A limit no
+// longer ahead (passed during the push or on the runway exit) holds the
+// aircraft where it is, never beyond its clearance, and returns
+// ErrNotOnRoute for the caller to report: it waits for a new clearance.
+func (d *groundDrive) applyPendingLimit(node airport.NodeID) error {
+	err := d.setLimit(node)
+	if err == nil || d.mover == nil {
+		return err
+	}
+	d.limit, d.hasLimit, d.limitNode = d.mover.Pose().Distance, true, node
+	d.updateHold()
+	return fmt.Errorf("%w: node %d was passed before the taxi started; holding for a new clearance", ErrNotOnRoute, node)
 }

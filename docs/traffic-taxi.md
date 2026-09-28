@@ -138,13 +138,21 @@ The push is fitted to each stand's surroundings. The main gear starts at the sta
 
 **Tug.** `TaxiRequest.Tug` shows a pushback tug. The departure calls `Attach` while the aircraft waits for its pushback (the tug connects before the clearance), `Update` on every frame (with `pushing` while on the stand and during the push, then with `pushing` false until `Done`) and `Remove` on cancel or failure. `SimObjectTug` is the built-in one: `NewSimObjectTug(client, inj, DefaultTugTitle, reqID, profile)` spawns the ground vehicle model (`FSDT_Pushback_Trepel_280`, GSX's towbarless tug; other `FSDT_Pushback_*` titles and liveries such as `…_CZ` work too) `TugAheadMeters` ahead of the nose gear, lets the injector freeze and place it on the nose gear through the push, waits `TugDisconnectSeconds`, drives off (`TugDriveOffMeters` forward, then `TugDriveOffTurnDeg` to the side) and removes it. Any other implementation of `PushbackTug` (a GSX integration, for example) can take its place.
 
+## SID after take-off
+
+`TaxiRequest.Departure` (e.g. `airport.Procedures.ResolveSID(name, runway, "", departureEnd, elevation)`, optionally followed by the rest of a flight plan) is flown by MSFS AI after the injected climb hands over at `ClimbHandoverFt` (#315). `DepartureWaypoints` skips points behind the aircraft, climbs `ProcedureClimbFtPerNm` up to `ProcedureTopFt` (or the highest constraint) within every point's constraints at 250 kt, and continues along the last track so MSFS AI does not turn back after the last fix. Without it the aircraft climbs straight ahead (`TakeoffClimb`).
+
+## Turnaround
+
+`TaxiRequest.ObjectID` adopts an aircraft already on the stand instead of spawning one (#293) — e.g. one an `ArrivalController` parked: the departure takes it over from there (pushback, taxi, take-off). The airport map chains both as a turnaround (#296): an arrival with *Turnaround* departs again after its dwell (±20 %) or the *Depart now* action, with the same call sign and stand.
+
 ## Ground traffic
 
 Injected aircraft share a `GroundPicture` (#334): `TaxiWithGroundPicture(p)` and `ArrivalWithGroundPicture(p)` with one picture for all the controllers at an airport. Every aircraft reports its reference point, heading and airframe (`MotionProfile`) each frame while on the ground; others can be added with `GroundPicture.Report` (the airport map adds the sim's own AI and the user's aircraft from its traffic scan).
 
 While taxiing (a departure) or off the runway (an arrival), an aircraft looks `TrafficLookMeters` (150 m) ahead along its path every `TrafficCheckEvery` (0.1 s). When another aircraft's body (nose to tail, sampled every 5 m) lies within its half span of the path, it brakes to a stop with its nose `TrafficGapMeters` (15 m) behind that body, and moves on as the other moves. So aircraft queue at a holding point one behind the other instead of on top of each other, follow slower traffic at a gap, and wait for an aircraft pushed back onto their taxiway. Reports older than `TrafficStaleAfter` (3 s) are ignored; a departure leaves the picture on its take-off roll, a cancelled one at once.
 
-Not yet: giving way where routes cross or merge (both would stop), and holding a pushback while traffic passes behind the stand (#334).
+Where two taxi routes cross or merge, each aircraft reports where it will drive next (up to its next stop, `GiveWayLookMeters`); where the paths come within both half-spans plus `GiveWayMarginMeters`, the aircraft closer to the conflict goes and the other stops short of it. Not yet: holding a pushback while traffic passes behind the stand (#334).
 
 ## Progressive taxi
 
@@ -156,6 +164,7 @@ Not yet: giving way where routes cross or merge (both would stop), and holding a
 - The nose gear stops on the node, or `HoldShortStopMeters` (7 m) before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared runway crossing. The state stays `TaxiTaxiing`.
 - `TaxiEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
 - A later `ClearUpTo` moves the limit on; `ClearToTaxi()` removes it and clears the aircraft to the runway.
+- A limit given before the taxi starts (during the pushback) that is no longer ahead when it starts holds the aircraft where it is and is reported as a `TaxiEvent` with `Err` wrapping `ErrNotOnRoute`: give a new `ClearUpTo` or `ClearToTaxi`.
 
 ```go
 r := ctl.Route()

@@ -71,6 +71,11 @@ type TaxiRequest struct {
 	Livery string
 	// Tail is the tail number or call sign shown on the aircraft.
 	Tail string
+	// ObjectID adopts an aircraft already standing at Parking instead of
+	// spawning one (#293), e.g. one an ArrivalController parked there for
+	// a turnaround. The controller takes it over from where it stands;
+	// Model is still needed for its profile.
+	ObjectID uint32
 	// Options control route selection.
 	Options airport.RouteOptions
 	// Entry is the runway entry taxiway assigned by ATC ("24 at B"); ""
@@ -95,6 +100,11 @@ type TaxiRequest struct {
 	NoseOffset float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
+	// Departure is flown by MSFS AI after the injected take-off hands over
+	// at ClimbHandoverFt: the SID (e.g. airport.Procedures.ResolveSID) and
+	// optionally the rest of the flight plan (#315). Empty climbs straight
+	// ahead (TakeoffClimb).
+	Departure []airport.NavPoint
 	// Tug shows a pushback tug (injected departures with a pushback): e.g.
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
@@ -330,6 +340,18 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		}
 	}
 
+	if req.ObjectID != 0 {
+		// Adopted: no spawn; the aircraft is already on the stand.
+		c.req, c.route = req, route
+		c.pushJunction = 1
+		if c.inj != nil {
+			c.planPushback()
+		}
+		c.track = newRouteTracker(c.route)
+		c.setState(TaxiSpawning, nil)
+		c.onSpawned(req.ObjectID)
+		return nil
+	}
 	stand := req.Graph.Layout.Parking[req.Parking]
 	standAt := StandPoint(stand, req.NoseOffset) // at the stop mark, as arrivals park
 	err = c.fleet.RequestNonATC(NonATCOpts{
@@ -394,7 +416,7 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 // onSpawned hands the new aircraft its waypoints and starts monitoring it.
 func (c *TaxiController) onSpawned(objectID uint32) {
 	c.objectID = objectID
-	c.fleet.Acknowledge(c.reqBase+reqOffSpawn, objectID)
+	c.fleet.Acknowledge(c.reqBase+reqOffSpawn, objectID) // no-op for an adopted aircraft
 	if c.inj != nil {
 		if err := c.startInjectedDeparture(); err != nil {
 			c.fail(err)

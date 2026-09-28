@@ -159,6 +159,21 @@ With `InjectApproach` the aircraft spawns exactly where the injected approach st
 
 Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fpm.
 
+## STAR and approach
+
+With `InjectApproach` and `Procedure` (e.g. `airport.Procedures.Arrival(runway, entryFix)`: the STAR from its entry fix and the best approach via the transition where the STAR ends) the arrival starts in the terminal area (#315):
+
+```go
+route, _ := procs.Arrival("06", "GOLOP") // GOLO4T → ILS 06 via KUVIX
+ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "06", Parking: stand, Model: model,
+    InjectApproach: true, Procedure: route})
+```
+
+- The aircraft appears at the STAR's first fix at 250 kt and MSFS AI flies the procedure as waypoints. Altitudes descend 3° (`ProcedureDescentFtPerNm`) back from the join point, at most `ProcedureTopFt` (10 000 ft) unless the procedure asks for more, within every point's constraints (the approach's 4000 ft minimums at LKPR). Speed 250 kt, 180 kt from the IAF.
+- The procedure's points on the final are replaced by two centreline points: aligned `ProcedureAlignNm` before the join point, and the join point `ProcedureJoinNm` (8 NM) out.
+- At the join point (within `JoinCaptureMeters`, or established on the centreline abeam it) the injected approach takes over from where the aircraft is; the offset between MSFS AI's position and the injected glide path fades out over `JoinBlendSeconds`, so nothing jumps.
+- From there on it is the injected approach below.
+
 ## Rollout and exit
 
 `ArrivalRequest.Rollout` is a `RolloutProfile` per aircraft type (zero = `DefaultRolloutProfile()`, A320). The aircraft brakes hard to `SlowKts`, then slows gently and evenly, reaching the exit speed exactly at the exit; clear of the runway it slows to taxi speed.
@@ -186,6 +201,7 @@ Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fp
 - The nose gear stops on the node, or `HoldShortStopMeters` before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared crossing.
 - `ArrivalEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
 - A later `ClearUpTo` moves the limit on; `ClearToTaxi()` removes it.
+- A limit given before the taxi-in starts (during the approach or rollout) that is behind the aircraft by then (on the exit path) holds it clear of the runway and is reported as an `ArrivalEvent` with `Err` wrapping `ErrNotOnRoute`.
 
 ## Stands
 

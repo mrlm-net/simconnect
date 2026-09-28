@@ -344,7 +344,7 @@ func (c *ArrivalController) approachProfile() ApproachProfile { return approachP
 // startInjectedApproach takes the aircraft over as soon as it exists
 // (InjectApproach): frozen, gear down, flaps full, approach lights, read
 // every frame; the ApproachMover flies it from here.
-func (c *ArrivalController) startInjectedApproach() error {
+func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	if err := c.inj.Takeover(c.objectID); err != nil {
 		return err
 	}
@@ -356,7 +356,7 @@ func (c *ArrivalController) startInjectedApproach() error {
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
-	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, c.plan.SpawnNm*1852, c.approachProfile())
+	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, startMeters, c.approachProfile())
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
 	c.fast = true
 	c.lastStep = c.now()
@@ -378,7 +378,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		c.lights.Logo = true
 		c.setInjectedLights(lightsRollout, "lights approach (injected)")
 	}
-	pose := c.approach.Step(math.Max(dt, 0))
+	pose := c.blend.apply(c.approach.Step(math.Max(dt, 0)), math.Max(dt, 0))
 	if err := c.inj.PlaceAir(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}

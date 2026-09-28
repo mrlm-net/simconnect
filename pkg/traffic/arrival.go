@@ -108,6 +108,12 @@ type ArrivalRequest struct {
 	Rollout RolloutProfile
 	// Approach is the injected approach; zero means DefaultApproachProfile.
 	Approach ApproachProfile
+	// Procedure (with InjectApproach) is the STAR and approach to fly
+	// before the final, e.g. from airport.Procedures.Arrival: the aircraft
+	// appears at its first point, MSFS AI flies it to a join point on the
+	// extended centreline (ProcedureJoinNm out), and the injected approach
+	// takes over there (#315).
+	Procedure []airport.NavPoint
 }
 
 // ArrivalEvent reports a state change or progress of an arrival.
@@ -199,6 +205,9 @@ type ArrivalController struct {
 	rng               *rand.Rand
 	lightsChanged     bool           // the sim reported a light change since the last event
 	approach          *ApproachMover // injected approach until the rollout hand-over
+	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
+	flyingProc        bool
+	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
 	approachLightsSet bool
@@ -303,6 +312,18 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		plan.Spawn.Latitude, plan.Spawn.Longitude = ap.Position.Lat, ap.Position.Lon
 		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + spawnCGFt
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
+		if len(req.Procedure) > 0 {
+			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
+			jp := NewApproachMover(plan.End.Threshold, plan.End.Heading, join, approachProfileOf(req)).Pose()
+			proc, err := PlanArrivalProcedure(req.Procedure, plan.End, join, convert.MetersToFeet(req.Graph.Layout.Altitude)+jp.HeightFt)
+			if err != nil {
+				return err
+			}
+			plan.Spawn = proc.Spawn
+			c.proc = proc
+		}
+	} else if len(req.Procedure) > 0 {
+		return fmt.Errorf("%w: Procedure needs InjectApproach", ErrBadTaxiRequest)
 	}
 	client := c.fleet.clientOrNil()
 	if client == nil {
@@ -397,8 +418,14 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 		c.fail(ErrNotConnected)
 		return
 	}
+	if c.proc != nil {
+		if err := c.startProcedure(); err != nil {
+			c.fail(err)
+		}
+		return
+	}
 	if c.req.InjectApproach {
-		if err := c.startInjectedApproach(); err != nil {
+		if err := c.startInjectedApproach(c.plan.SpawnNm * 1852); err != nil {
 			c.fail(err)
 		}
 		return
@@ -440,6 +467,10 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	}
 	if l := m.currentLights(); l != c.last.Lights {
 		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
+	}
+	if c.flyingProc {
+		c.onProcedureFrame(m)
+		return
 	}
 	if c.approach != nil {
 		c.onApproachFrame(m)
@@ -709,7 +740,10 @@ func (c *ArrivalController) startTaxi() {
 		c.holdNextCrossing()
 		if c.hasPendingLimit {
 			c.hasPendingLimit = false
-			c.note("clearance limit", c.setLimit(c.pendingLimit))
+			if err := c.applyPendingLimit(c.pendingLimit); err != nil {
+				c.note("clearance limit", err)
+				c.emit(err, true) // #337: the caller learns the limit was not applied
+			}
 		}
 		c.stillFrom, c.warned = c.now(), false
 		c.setState(ArrivalTaxiing, nil)
