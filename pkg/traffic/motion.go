@@ -571,7 +571,22 @@ func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*Grou
 	if len(pts) < 2 {
 		return nil, ErrPathTooShort
 	}
-	g := &GroundPath{pts: fillet(pts, radius)}
+	return newPlainPath(fillet(pts, radius), p), nil
+}
+
+// NewSmoothPath is a GroundPath along points that are already smooth (e.g.
+// sampled arcs from NewArcPath or a Dubins path): no merging or rounding,
+// which on metre-spaced samples would leave zero-length kinks.
+func NewSmoothPath(points []airport.LatLon, p MotionProfile) (*GroundPath, error) {
+	pts := mergeClose(points, 0.05)
+	if len(pts) < 2 {
+		return nil, ErrPathTooShort
+	}
+	return newPlainPath(pts, p), nil
+}
+
+func newPlainPath(pts []airport.LatLon, p MotionProfile) *GroundPath {
+	g := &GroundPath{pts: pts}
 	g.cum = make([]float64, len(g.pts))
 	for i := 1; i < len(g.pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(g.pts[i-1], g.pts[i])
@@ -579,7 +594,7 @@ func NewArcPath(points []airport.LatLon, p MotionProfile, radius float64) (*Grou
 	decelAt := func(float64) float64 { return p.Decel }
 	g.decelAt = decelAt
 	g.limit = speedLimits(g.pts, g.cum, p, decelAt, func(float64) float64 { return p.LateralAccel })
-	return g, nil
+	return g
 }
 
 // fillet replaces each corner of a polyline by a circular arc of radius r,

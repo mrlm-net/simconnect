@@ -196,9 +196,10 @@ type TaxiController struct {
 	tugAttached                                             bool
 	pushBranch                                              airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch                                          bool
-	pushJunction                                            int     // route index of the junction the tail swings at (planPushback; 1: the first)
-	pushTurn                                                bool    // push and turn on the apron (only taxiway at the junction is the way out)
-	pushTurnDir                                             float64 // the way out from the junction
+	pushJunction                                            int              // route index of the junction the tail swings at (planPushback; 1: the first)
+	pushPts                                                 []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
+	pushTurn                                                bool             // push and turn on the apron (only taxiway at the junction is the way out)
+	pushTurnDir                                             float64          // the way out from the junction
 }
 
 // SimConnect IDs relative to the bases.
