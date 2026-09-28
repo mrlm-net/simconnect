@@ -290,4 +290,6 @@ use := nav.ActiveRunways(layout, weather, nav.RunwayLimitsFrom(lim))
 
 [`examples/airport-map`](../examples/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.
 
+The sidebar has one tab per task: **Traffic** (new flights, aircraft cards with their clearances, the [ATC game](atc-game.md)), **Charts** (procedures), **Layers** (airport data, live traffic, safe zones, raw TYPE tables) and **?** (a quick reference). Map buttons: ✈ your aircraft, ⛶ full screen with the panel, ◨ hide or show the panel.
+
 To drive an AI aircraft along a route, see [Departure Taxi](traffic-taxi.md).

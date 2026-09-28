@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- `examples/airport-map` GUI revision (#357): one tab per task (Traffic, Charts, Layers, ? quick reference), options and custom routes folded away, one-line hints with details behind ⓘ; aircraft cards show who waits for a clearance first, the state and the commands (urgent first), with the model and lights on hover; compact aircraft labels (details on click); taxiway names only when zoomed in; the game score over the map while playing; ⛶ full screen with the panel, ◨ hides or shows the panel; the Charts summary counts what it draws (VOR/NDB, and waypoints with their procedure)
+
 ## [0.13.0] - 2026-09-28
 
 Milestones v0.9 to v0.13 were built and released together: procedures, navigation data, weather, flight plans, aircraft profiles and the ATC game build on each other.
