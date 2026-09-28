@@ -250,8 +250,9 @@ const (
 // each clears itself after about these waits (±DwellJitter). The beacon
 // comes on BeaconLeadTime before the push; the tail is pushed
 // PushTailMeters past a wheelbase beyond the taxiway junction. The gear
-// comes up above GearUpFt, and the aircraft is handed to MSFS AI for the
-// climb-out at ClimbHandoverFt.
+// comes up on a positive climb: above GearUpFt, GearUpDelaySeconds after
+// lift-off and climbing at GearUpFpm or more. The aircraft is handed to
+// MSFS AI for the climb-out at ClimbHandoverFt.
 const (
 	PushbackDelay      = 5 * time.Second
 	BeaconLeadTime     = 3 * time.Second
@@ -269,6 +270,8 @@ const (
 	PushStraightMeters   = 6.0
 	PushAlignMeters      = 10.0
 	GearUpFt             = 50.0
+	GearUpDelaySeconds   = 4.5
+	GearUpFpm            = 500.0
 	ClimbHandoverFt      = 1500.0
 )
 
@@ -316,4 +319,15 @@ const (
 	TugDriveOffMeters    = 40.0
 	TugDriveOffTurnDeg   = 50.0
 	TugDriveOffKts       = 8.0
+)
+
+// Take-off pitch (TakeoffMover): on the runway the pitch stays
+// TailstrikeMarginDeg below TakeoffProfile.TailstrikePitch. After lift-off
+// it is held until the main wheels are PositiveClimbFt up, then may rise
+// one degree per TailClearFtPerDeg of height (the tail rises with the
+// aircraft) up to the climb pitch.
+const (
+	TailstrikeMarginDeg = 2.0
+	PositiveClimbFt     = 15.0
+	TailClearFtPerDeg   = 3.0
 )

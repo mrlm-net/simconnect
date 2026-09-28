@@ -508,7 +508,7 @@ func (c *TaxiController) onTakeoffFrame() {
 	if pose.HeightFt > FlapsRetractFt && c.flaps.target > 0 {
 		c.flaps.target, c.flaps.rate = 0, TakeoffFlapsPct/FlapsRetractClimbSeconds // flaps up in the climb
 	}
-	if !c.gearUp && pose.HeightFt > GearUpFt {
+	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")

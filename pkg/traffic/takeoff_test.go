@@ -47,3 +47,60 @@ func TestTakeoffMover(t *testing.T) {
 	}
 	t.Logf("lift-off %.0f m at %.0f kt; 1500 ft after %.0f m at %.0f kt", liftoff.LiftoffDistance, liftoff.GroundSpeedKts, final.Distance, final.GroundSpeedKts)
 }
+
+// TestTakeoffNoTailstrike: a 777-300 (tail strike at 8.5°) lifts off with a
+// small pull, holds that pitch until a positive climb and only then pitches
+// up to its climb pitch, never faster than the tail clears the runway.
+func TestTakeoffNoTailstrike(t *testing.T) {
+	p := TakeoffProfileFor("FSLTL B77W Emirates")
+	if p.TailstrikePitch != 8.5 {
+		t.Fatalf("777-300 profile %+v", p)
+	}
+	ground := p.TailstrikePitch - TailstrikeMarginDeg
+	m := NewTakeoffMover(lkpr, 244, 0, p)
+	var liftPitch float64
+	for i := 0; i < 60*120; i++ {
+		pose := m.Step(1.0 / 60)
+		switch {
+		case pose.Phase != TakeoffAirborne:
+			if pose.PitchDeg > ground+1e-9 {
+				t.Fatalf("pitch %.2f° on the runway, tail strikes at %.1f°", pose.PitchDeg, p.TailstrikePitch)
+			}
+		case liftPitch == 0:
+			liftPitch = pose.PitchDeg
+		case pose.HeightFt < PositiveClimbFt && pose.PitchDeg != liftPitch:
+			t.Fatalf("pitch %.2f° at %.0f ft, before a positive climb", pose.PitchDeg, pose.HeightFt)
+		case pose.PitchDeg > ground+pose.HeightFt/TailClearFtPerDeg+1e-9:
+			t.Fatalf("pitch %.2f° at %.1f ft", pose.PitchDeg, pose.HeightFt)
+		}
+		if pose.HeightFt > 1500 {
+			break
+		}
+	}
+	if liftPitch == 0 || liftPitch > ground+1e-9 {
+		t.Errorf("lift-off pitch %.2f°", liftPitch)
+	}
+	if final := m.Pose(); final.PitchDeg != p.ClimbPitch {
+		t.Errorf("climb pitch %.1f°, want %.1f°", final.PitchDeg, p.ClimbPitch)
+	}
+}
+
+func TestTakeoffProfileFor(t *testing.T) {
+	for _, c := range []struct {
+		model string
+		tail  float64
+	}{
+		{"FSLTL B77W Emirates", 8.5},
+		{"Boeing 777-300ER", 8.5},
+		{"FSLTL B772 British Airways", 10.5},
+		{"FSLTL A21N BAW British Airways", 9.5},
+		{"FSLTL A20N MBU Marabu Airlines", 11.5},
+		{"AIB_B738_BAW-British Airways", 11},
+		{"FSLTL A320 Air France SL", 11.5},
+		{"Something unknown", 11.5},
+	} {
+		if got := TakeoffProfileFor(c.model).TailstrikePitch; got != c.tail {
+			t.Errorf("%s: tail strike %.1f°, want %.1f°", c.model, got, c.tail)
+		}
+	}
+}

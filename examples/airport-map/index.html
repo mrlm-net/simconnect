@@ -589,7 +589,9 @@ async function ctlAct(id, action, node) {
 function drawControl() {
   groups.control.clearLayers();
   const v = ctlViews.find((x) => x.id === ctlSelected);
-  if (!v || !v.route) return;
+  // A completed departure flies on under MSFS AI: its last injected position
+  // (the hand-over at 1500 ft) would be a stale marker.
+  if (!v || !v.route || v.state === 'complete') return;
   const pts = v.route.map((p) => [p.lat, p.lon]);
   L.polyline(pts, { renderer, color: '#fff', weight: 8, opacity: 0.7, interactive: false }).addTo(groups.control);
   L.polyline(pts, { renderer, color: '#ff9f1a', weight: 4, interactive: false }).addTo(groups.control);

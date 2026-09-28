@@ -111,7 +111,7 @@ ctl.Start(traffic.TaxiRequest{Graph: g, Parking: c22, Runway: "24", Entry: "B", 
 | `TaxiHoldingShort` | nose 7 m before the departure runway's hold-short line, no strobes (`HoldingShortOf`) | `ClearToLineUp`, `ClearForTakeoff` |
 | `TaxiLiningUp` | strobes on; along the entry taxiway's own path onto the runway, aligned 80 m down the centreline | |
 | `TaxiLinedUp` | line up and wait | `ClearForTakeoff` |
-| `TaxiDeparting` | landing lights on; take-off roll, rotation at Vr, lift-off, climb; gear up above 50 ft (taxi light off); flaps retract from 1000 ft | |
+| `TaxiDeparting` | landing lights on; take-off roll, rotation at Vr with a small pull (the pitch stays `TailstrikeMarginDeg` below `TakeoffProfile.TailstrikePitch` on the runway), lift-off, pitch held until a positive climb (`PositiveClimbFt`) then up to the climb pitch no faster than the tail clears the runway; gear up on a positive climb (above 50 ft, `GearUpDelaySeconds` after lift-off, climbing at `GearUpFpm`; taxi light off); flaps retract from 1000 ft. `TakeoffProfileFor(model)` gives per-family figures (777-300 tail strike 8.5°, A320 11.5°, …) | |
 | `TaxiComplete` | handed to MSFS AI at 1500 ft with climb waypoints | |
 
 - **Gates:** with `HoldForClearances` every gate holds until its clearance. Without it, each gate clears itself after a short, varied wait (`PushbackDelay`, `TaxiAfterPushDelay`, `LineUpDelay`, `TakeoffDelay`). A clearance given before its gate means no stop: `ClearForTakeoff` while taxiing gives a rolling take-off.
