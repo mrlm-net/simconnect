@@ -82,6 +82,7 @@
   <div class="note">Spawn using the stand and runway picked above; give clearances here. Select an aircraft, then click a point of its route to clear it up to there.</div>
   <label class="opt"><input type="checkbox" id="cGates" checked> Hold at every clearance</label>
   <label class="opt"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (injected)</label>
+  <label class="opt"><input type="checkbox" id="cAutoStand"> Assign a free stand (airline from the callsign)</label>
   <div class="note">Model — type to search <span id="cModelCount"></span></div>
   <div class="combo">
     <input type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false">
@@ -149,6 +150,7 @@ const groups = {
   route: L.layerGroup(),
   choices: L.layerGroup(),
   control: L.layerGroup(),
+  stands: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -158,12 +160,13 @@ const overlays = {
   'Parking spots': groups.parking,
   'Taxi points': groups.points,
   'Hold-short points': groups.hold,
+  'Occupied stands': groups.stands,
 };
 for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control, groups.stands]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -550,9 +553,10 @@ let ctlViews = [];
 const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', remove: '✕' };
 
 async function ctlSpawn(kind) {
-  if (!data || !routeFrom) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot).</span>'; return; }
+  const auto = $('cAutoStand').checked;
+  if (!data || (!routeFrom && !auto)) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot), or tick "Assign a free stand".</span>'; return; }
   const body = {
-    kind, icao: data.icao, stand: routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
+    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked,
   };
   if (kind === 'departure' && !arrival() && $('rPick').value) body.entry = $('rPick').value;
@@ -562,7 +566,7 @@ async function ctlSpawn(kind) {
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
     const v = await res.json();
     ctlSelected = v.id;
-    $('cInfo').textContent = `${v.tail}: ${kind} spawned`;
+    $('cInfo').textContent = `${v.tail}: ${kind} spawned at ${v.stand}`;
     pollControl();
   } catch (e) {
     $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
@@ -631,9 +635,29 @@ async function pollControl() {
     if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id;
     renderControl();
     drawControl();
+    drawStands();
   } catch (e) { /* server restarting */ }
 }
 setInterval(pollControl, 1000);
+// Stands held by controlled traffic (blue) or found occupied by a scan of
+// the sim's aircraft (red), refreshed with the control list.
+async function drawStands() {
+  if (!data) return;
+  const res = await fetch(`/api/stands?icao=${encodeURIComponent(data.icao)}`);
+  if (!res.ok) return;
+  const held = await res.json();
+  groups.stands.clearLayers();
+  for (const s of held) {
+    const p = data.parking[s.index];
+    if (!p) continue;
+    const who = s.owner || (s.objectId ? `aircraft ${s.objectId}` : 'aircraft');
+    L.circle([p.position.lat, p.position.lon], {
+      radius: p.radius, color: s.detected && !s.owner ? '#ff3b3b' : '#2d6cdf', weight: 2, fillOpacity: 0.15, interactive: false,
+    }).addTo(groups.stands);
+    L.circleMarker([p.position.lat, p.position.lon], { radius: 0, opacity: 0 })
+      .bindTooltip(`${esc(s.label)}: ${esc(who)} · span ${(2 * s.halfSpan).toFixed(0)} m`, { direction: 'bottom' }).addTo(groups.stands);
+  }
+}
 // Model field: a searchable dropdown of the simulator's aircraft titles.
 // Click the field or ▾ to open it, type to filter (all words must match),
 // click an entry or use ↑/↓ and Enter to pick one.

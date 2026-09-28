@@ -1,0 +1,428 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"sort"
+	"sync"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
+
+var (
+	// ErrStandTaken is returned by Occupy for a stand that is occupied, or
+	// blocked by an aircraft on an overlapping stand.
+	ErrStandTaken = errors.New("traffic: stand is taken")
+	// ErrNoStand is returned by Assign when no free stand fits.
+	ErrNoStand = errors.New("traffic: no free suitable stand")
+)
+
+// Occupant is who holds a stand: a reservation made through the allocator
+// (Owner set) or an aircraft found standing on it by Scan (Detected).
+type Occupant struct {
+	Owner    string  `json:"owner,omitempty"`
+	HalfSpan float64 `json:"halfSpan"` // meters
+	Detected bool    `json:"detected"`
+	ObjectID uint32  `json:"objectId,omitempty"` // detected aircraft
+}
+
+// StandRequirements describe the aircraft a stand is wanted for.
+type StandRequirements struct {
+	// Owner names who takes the stand, e.g. the tail number.
+	Owner string
+	// HalfSpan is half the wing span in meters; 0 uses DefaultHalfSpanMeters.
+	HalfSpan float64
+	// Airline prefers the stands assigned to this airline code; when none of
+	// them is free, any stand that serves every airline is taken.
+	Airline string
+	// Types limits the parking TYPEs, e.g. gates only; empty allows all.
+	Types []types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE
+	// Runway is the arrival runway end: the stand with the shortest taxi-in
+	// from its best exit wins. Empty ranks by stand index.
+	Runway string
+}
+
+// StandAllocator assigns stands at one airport and keeps track of who is on
+// them (#292): reservations made with Occupy or Assign, and aircraft that
+// Scan finds standing on stands (the user and MSFS AI traffic). An
+// aircraft on a stand blocks the stands that overlap it
+// (airport.Layout.ParkingConflicts) when the two aircraft's half spans and
+// StandWingtipClearanceMeters do not fit between the stand centres.
+//
+// Feed every message to Handle from the message loop; call Scan
+// periodically (e.g. every 10 s) to refresh the detected aircraft.
+type StandAllocator struct {
+	client           engine.Client
+	g                *airport.Graph
+	defBase, reqBase uint32
+	radius           uint32 // scan radius, meters
+	registered       bool
+
+	mu       sync.Mutex
+	reserved map[int]Occupant
+	detected map[int]Occupant
+	partial  map[uint32][]scanned // per scan request, until its last entry
+	lastScan map[uint32][]scanned
+	routes   map[string][]airport.NodeID
+}
+
+type scanned struct {
+	object uint32
+	data   standScanData
+}
+
+// standScanData is one aircraft of a scan, in definition order.
+type standScanData struct {
+	Lat, Lon      float64 // degrees
+	OnGround      float64
+	GroundSpeedKt float64
+	WingSpanFt    float64
+}
+
+// StandOption configures a StandAllocator.
+type StandOption func(*StandAllocator)
+
+// StandWithIDs sets the SimConnect definition and request ID bases (one
+// definition ID and two request IDs are used).
+func StandWithIDs(defBase, reqBase uint32) StandOption {
+	return func(a *StandAllocator) { a.defBase, a.reqBase = defBase, reqBase }
+}
+
+const (
+	standReqAircraft = iota
+	standReqUser
+)
+
+// NewStandAllocator creates an allocator for the airport of g. client may be
+// nil when only reservations are used (no Scan).
+func NewStandAllocator(client engine.Client, g *airport.Graph, opts ...StandOption) *StandAllocator {
+	a := &StandAllocator{
+		client: client, g: g,
+		defBase: DefaultStandDefinitionBase, reqBase: DefaultStandRequestBase,
+		reserved: map[int]Occupant{}, detected: map[int]Occupant{},
+		partial: map[uint32][]scanned{}, lastScan: map[uint32][]scanned{},
+		routes: map[string][]airport.NodeID{},
+	}
+	for _, o := range opts {
+		o(a)
+	}
+	// Scan out to the farthest stand from the airport reference, plus margin.
+	far := 0.0
+	ref := airport.LatLon{Lat: g.Layout.Latitude, Lon: g.Layout.Longitude}
+	for _, p := range g.Layout.Parking {
+		far = math.Max(far, localDist(ref, p.Position))
+	}
+	a.radius = uint32(far + 500)
+	return a
+}
+
+func (a *StandAllocator) valid(stand int) bool {
+	return stand >= 0 && stand < len(a.g.Layout.Parking)
+}
+
+// Occupant returns who holds the stand: a reservation first, else a
+// detected aircraft.
+func (a *StandAllocator) Occupant(stand int) (Occupant, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.occupant(stand)
+}
+
+// occupant merges a reservation with an aircraft detected on the same
+// stand: the owner stays, the object ID and the measured span come from the
+// scan.
+func (a *StandAllocator) occupant(stand int) (Occupant, bool) {
+	o, reserved := a.reserved[stand]
+	d, detected := a.detected[stand]
+	switch {
+	case reserved && detected:
+		o.Detected, o.ObjectID, o.HalfSpan = true, d.ObjectID, d.HalfSpan
+		return o, true
+	case reserved:
+		return o, true
+	}
+	return d, detected
+}
+
+// Occupancy is a snapshot of every held stand, by parking index.
+func (a *StandAllocator) Occupancy() map[int]Occupant {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make(map[int]Occupant, len(a.reserved)+len(a.detected))
+	for i := range a.detected {
+		out[i], _ = a.occupant(i)
+	}
+	for i := range a.reserved {
+		out[i], _ = a.occupant(i)
+	}
+	return out
+}
+
+// Free reports whether an aircraft of halfSpan meters can use the stand:
+// nobody holds it and no aircraft on an overlapping stand is in the way.
+func (a *StandAllocator) Free(stand int, halfSpan float64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.blockedBy(stand, halfSpan, "") == ""
+}
+
+// blockedBy names what keeps an aircraft of halfSpan off the stand ("" if
+// nothing): its occupant, or an aircraft on an overlapping stand. A
+// reservation by owner itself does not block.
+func (a *StandAllocator) blockedBy(stand int, halfSpan float64, owner string) string {
+	if halfSpan <= 0 {
+		halfSpan = DefaultHalfSpanMeters
+	}
+	l := a.g.Layout
+	if o, ok := a.occupant(stand); ok && (owner == "" || o.Owner != owner) {
+		return fmt.Sprintf("%s holds %s", o.describe(), l.Parking[stand].Label())
+	}
+	for _, c := range l.ParkingConflicts(stand) {
+		o, ok := a.occupant(c)
+		if !ok || (owner != "" && o.Owner == owner) {
+			continue
+		}
+		if halfSpan+o.HalfSpan+StandWingtipClearanceMeters > localDist(l.Parking[stand].Position, l.Parking[c].Position) {
+			return fmt.Sprintf("%s on %s is in the way", o.describe(), l.Parking[c].Label())
+		}
+	}
+	return ""
+}
+
+func (o Occupant) describe() string {
+	switch {
+	case o.Owner != "":
+		return o.Owner
+	case o.ObjectID != 0:
+		return fmt.Sprintf("aircraft %d", o.ObjectID)
+	}
+	return "an aircraft"
+}
+
+// Occupy reserves the stand for owner, whose aircraft has halfSpan meters
+// (0: DefaultHalfSpanMeters). It fails with ErrStandTaken if the stand is
+// held by someone else or an aircraft on an overlapping stand is in the way,
+// and with airport.ErrUnknownParking for an unknown stand. Occupying again
+// for the same owner updates the reservation.
+func (a *StandAllocator) Occupy(stand int, owner string, halfSpan float64) error {
+	if !a.valid(stand) {
+		return fmt.Errorf("%w: index %d", airport.ErrUnknownParking, stand)
+	}
+	if halfSpan <= 0 {
+		halfSpan = DefaultHalfSpanMeters
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if why := a.blockedBy(stand, halfSpan, owner); why != "" {
+		return fmt.Errorf("%w: %s", ErrStandTaken, why)
+	}
+	a.reserved[stand] = Occupant{Owner: owner, HalfSpan: halfSpan}
+	return nil
+}
+
+// Release frees a reservation (detected aircraft stay until the next scan
+// no longer finds them).
+func (a *StandAllocator) Release(stand int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.reserved, stand)
+}
+
+// ReleaseOwner frees every stand and taxi route reserved by owner.
+func (a *StandAllocator) ReleaseOwner(owner string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, o := range a.reserved {
+		if o.Owner == owner {
+			delete(a.reserved, i)
+		}
+	}
+	delete(a.routes, owner)
+}
+
+// Assign reserves the best free stand for the requirements and returns its
+// parking index: suitable for the span (airport.Layout.SuitableStands) and
+// the TYPEs, the airline's own stands before stands open to any airline,
+// then the shortest taxi-in from the arrival runway. ErrNoStand if none.
+func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
+	half := req.HalfSpan
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	l := a.g.Layout
+	a.mu.Lock()
+	var own, open []int
+	for _, i := range l.SuitableStands(half, req.Types...) {
+		if a.blockedBy(i, half, req.Owner) != "" {
+			continue
+		}
+		p := l.Parking[i]
+		switch {
+		case req.Airline != "" && len(p.Airlines) > 0 && p.ServesAirline(req.Airline):
+			own = append(own, i)
+		case len(p.Airlines) == 0 || req.Airline == "":
+			open = append(open, i)
+		}
+	}
+	a.mu.Unlock()
+	for _, group := range [][]int{own, open} {
+		if len(group) == 0 {
+			continue
+		}
+		for _, i := range a.rank(group, req.Runway) {
+			if err := a.Occupy(i, req.Owner, half); err == nil {
+				return i, nil
+			}
+		}
+	}
+	return -1, ErrNoStand
+}
+
+// rank orders stands by taxi-in length from the runway's best exit. Only
+// the standRankCandidates nearest the runway are routed; the rest follow by
+// distance. Without a runway the order is by index.
+func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
+	out := slices.Clone(stands)
+	if runwayEnd == "" {
+		return out
+	}
+	l := a.g.Layout
+	rwy, _, ok := l.RunwayEnd(runwayEnd)
+	if !ok {
+		return out
+	}
+	mid := airport.LatLon{Lat: (rwy.Primary.Threshold.Lat + rwy.Secondary.Threshold.Lat) / 2, Lon: (rwy.Primary.Threshold.Lon + rwy.Secondary.Threshold.Lon) / 2}
+	cost := map[int]float64{}
+	for _, i := range out {
+		cost[i] = 1e7 + localDist(mid, l.Parking[i].Position)
+	}
+	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
+	for _, i := range out[:min(len(out), standRankCandidates)] {
+		if _, r, err := bestExit(a.g, runwayEnd, i, airport.RouteOptions{}); err == nil && r != nil {
+			cost[i] = r.Length
+		}
+	}
+	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
+	return out
+}
+
+// ReserveRoute records the taxi route owner is about to follow and returns
+// the other owners whose reserved routes share a node with it (a first,
+// warning-only version of segment reservation). A new reservation replaces
+// the owner's previous one.
+func (a *StandAllocator) ReserveRoute(owner string, nodes []airport.NodeID) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	mine := map[airport.NodeID]bool{}
+	for _, n := range nodes {
+		mine[n] = true
+	}
+	var clash []string
+	for other, route := range a.routes {
+		if other == owner {
+			continue
+		}
+		if slices.ContainsFunc(route, func(n airport.NodeID) bool { return mine[n] }) {
+			clash = append(clash, other)
+		}
+	}
+	sort.Strings(clash)
+	a.routes[owner] = slices.Clone(nodes)
+	return clash
+}
+
+// ReleaseRoute drops owner's taxi route reservation.
+func (a *StandAllocator) ReleaseRoute(owner string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.routes, owner)
+}
+
+// Scan asks the simulator for every aircraft (AI and the user) around the
+// airport; Handle turns the answers into detected stand occupants.
+func (a *StandAllocator) Scan() error {
+	if a.client == nil {
+		return ErrNotConnected
+	}
+	if !a.registered {
+		for i, v := range []struct{ name, unit string }{
+			{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"SIM ON GROUND", "bool"},
+			{"GROUND VELOCITY", "knots"}, {"WING SPAN", "feet"},
+		} {
+			if err := a.client.AddToDataDefinition(a.defBase, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
+				return err
+			}
+		}
+		a.registered = true
+	}
+	if err := a.client.RequestDataOnSimObjectType(a.reqBase+standReqAircraft, a.defBase, a.radius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT); err != nil {
+		return err
+	}
+	return a.client.RequestDataOnSimObjectType(a.reqBase+standReqUser, a.defBase, 0, types.SIMCONNECT_SIMOBJECT_TYPE_USER)
+}
+
+// Handle consumes the allocator's scan answers; it reports whether msg was
+// one of them.
+func (a *StandAllocator) Handle(msg engine.Message) bool {
+	if msg.SIMCONNECT_RECV == nil || types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE {
+		return false
+	}
+	d := msg.AsSimObjectDataBType()
+	req := uint32(d.DwRequestID)
+	if req != a.reqBase+standReqAircraft && req != a.reqBase+standReqUser {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if d.DwOutOf > 0 {
+		a.partial[req] = append(a.partial[req], scanned{object: uint32(d.DwObjectID), data: *engine.CastDataAs[standScanData](&d.DwData)})
+	}
+	if d.DwOutOf == 0 || d.DwEntryNumber >= d.DwOutOf { // entries count from 1
+		a.lastScan[req] = a.partial[req]
+		delete(a.partial, req)
+		a.detect()
+	}
+	return true
+}
+
+// detect rebuilds the detected occupants from the latest scans: an aircraft
+// on the ground, below StandDetectKts, within a stand's RADIUS of it holds
+// the nearest such stand.
+func (a *StandAllocator) detect() {
+	l := a.g.Layout
+	a.detected = map[int]Occupant{}
+	seen := map[uint32]bool{}
+	for _, list := range a.lastScan {
+		for _, s := range list {
+			if seen[s.object] || s.data.OnGround < 0.5 || s.data.GroundSpeedKt > StandDetectKts {
+				continue
+			}
+			seen[s.object] = true
+			pos := airport.LatLon{Lat: s.data.Lat, Lon: s.data.Lon}
+			best, bestD := -1, math.Inf(1)
+			for _, p := range l.Parking {
+				if p.Size() == airport.StandNone {
+					continue
+				}
+				if d := localDist(pos, p.Position); d < p.Radius && d < bestD {
+					best, bestD = p.Index, d
+				}
+			}
+			if best < 0 {
+				continue
+			}
+			half := s.data.WingSpanFt * 0.3048 / 2
+			if half <= 0 {
+				half = DefaultHalfSpanMeters
+			}
+			a.detected[best] = Occupant{Detected: true, ObjectID: s.object, HalfSpan: half}
+		}
+	}
+}

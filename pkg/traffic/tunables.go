@@ -287,3 +287,18 @@ const (
 // TurnAroundMeters scales the turn-around loop onto a self-manoeuvring
 // (face-out) stand; an A320 turns on about 15-20 m radius.
 const TurnAroundMeters = 18.0
+
+// Stand allocation (StandAllocator). DefaultHalfSpanMeters is half an A320's
+// span; two aircraft on overlapping stands need StandWingtipClearanceMeters
+// between their wingtips. A scanned aircraft on the ground below
+// StandDetectKts holds the stand it stands on. Assign routes the
+// standRankCandidates stands nearest the runway to rank them by taxi-in.
+const (
+	DefaultStandDefinitionBase uint32 = 8200
+	DefaultStandRequestBase    uint32 = 8300
+
+	DefaultHalfSpanMeters       = 17.9
+	StandWingtipClearanceMeters = 3.0
+	StandDetectKts              = 2.0
+	standRankCandidates         = 12
+)

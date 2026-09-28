@@ -235,6 +235,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			}
 
 		case now := <-tick.C:
+			cc.tick()
 			// Every aircraft within TrafficRadius of the user aircraft.
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
