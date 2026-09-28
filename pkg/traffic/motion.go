@@ -30,6 +30,10 @@ type MotionProfile struct {
 	// (m/s³) is how fast the acceleration itself may change, so every speed
 	// change starts and ends softly.
 	Accel, Decel, Jerk float64
+	// SpanMeters and TailMeters (main gear to the tail end) outline the
+	// airframe for clearance checks, such as the pushback swing past
+	// neighbouring stands; zero uses the A320 figures.
+	SpanMeters, TailMeters float64
 }
 
 // DefaultMotionProfile is tuned for an A320 family aircraft from live runs
@@ -44,6 +48,8 @@ func DefaultMotionProfile() MotionProfile {
 		Accel:           0.45, // live: 0.35 pulled away a little slowly
 		Decel:           0.5,
 		Jerk:            0.2,
+		SpanMeters:      35.8,
+		TailMeters:      20.5,
 	}
 }
 

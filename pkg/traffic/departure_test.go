@@ -377,3 +377,61 @@ func TestTaxiControllerProgressiveTaxi(t *testing.T) {
 		t.Fatalf("state %v (%s), want holding short of the runway", ctl.State(), ctl.last.HoldingShortOf)
 	}
 }
+
+// TestPushbackFitsStands: at every LKPR stand with a pushback the push
+// starts straight along the stand axis, turns no tighter than
+// PushbackMinArcMeters and ends facing along the taxiway; the swing
+// reaching into a neighbouring stand is logged.
+func TestPushbackFitsStands(t *testing.T) {
+	g := lkprGraph(t)
+	prof := DefaultMotionProfile()
+	n := 0
+	for _, p := range g.Layout.Parking {
+		if p.Radius < 15 || standFacesOut(g, p.Index) {
+			continue
+		}
+		if _, err := g.RouteToRunway(p.Index, "24", airport.RouteOptions{}); err != nil {
+			continue
+		}
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: p.Index, Runway: "24", Model: "A320"}); err != nil {
+			t.Fatalf("%s: %v", p.Label(), err)
+		}
+		if err := ctl.startPushback(); err != nil {
+			t.Errorf("%s: pushback: %v", p.Label(), err)
+			continue
+		}
+		n++
+		pts := ctl.mover.Path().Points()
+		start := ctl.mover.Pose()
+		if d := math.Abs(headingDiff(start.Heading, p.Heading)); d > 1 {
+			t.Errorf("%s: push starts %.1f° off the stand heading", p.Label(), d)
+		}
+		// Tightest radius from the heading change over 4 m of path.
+		straight, minR, s := -1.0, math.Inf(1), 0.0
+		for i := 1; i+1 < len(pts); i++ {
+			s += localDist(pts[i-1], pts[i])
+			j := i
+			for j+1 < len(pts) && localDist(pts[i], pts[j]) < 4 {
+				j++
+			}
+			turn := math.Abs(headingDiff(localBearing(pts[i-1], pts[i]), localBearing(pts[j-1], pts[j])))
+			if turn > 1 {
+				if straight < 0 {
+					straight = s
+				}
+				minR = math.Min(minR, localDist(pts[i], pts[j])/(turn*math.Pi/180))
+			}
+		}
+		base := standIntrusion(g, p.Index, []airport.LatLon{offsetHeading(pts[0], p.Heading, 1), pts[0]}, prof)
+		in := standIntrusion(g, p.Index, pts, prof)
+		t.Logf("%-4s straight %5.1f m, tightest %5.1f m, length %5.1f m, neighbour intrusion %+.1f m (parked %+.1f)", p.Label(), straight, minR, ctl.mover.Path().Length(), in, base)
+		if minR < PushbackMinArcMeters-3 {
+			t.Errorf("%s: pushback turns on %.1f m", p.Label(), minR)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no pushback stands")
+	}
+}

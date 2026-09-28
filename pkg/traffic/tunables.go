@@ -259,10 +259,17 @@ const (
 	LineUpDelay        = 6 * time.Second
 	TakeoffDelay       = 5 * time.Second
 	PushTailMeters     = 20.0
-	// PushbackArcMeters is the radius the main gear turns on in a pushback.
-	PushbackArcMeters = 25.0
-	GearUpFt          = 50.0
-	ClimbHandoverFt   = 1500.0
+	// The pushback is fitted to each stand (pushPlan): the main gear turns
+	// on the widest arc up to PushbackArcMeters that the distances and the
+	// neighbouring stands allow, but not tighter than PushbackMinArcMeters;
+	// it pushes at least PushStraightMeters straight first and ends
+	// PushAlignMeters along the taxiway after the arc.
+	PushbackArcMeters    = 45.0
+	PushbackMinArcMeters = 14.0
+	PushStraightMeters   = 6.0
+	PushAlignMeters      = 10.0
+	GearUpFt             = 50.0
+	ClimbHandoverFt      = 1500.0
 )
 
 // Injected departure configuration: take-off flaps (TakeoffFlapsPct, 1+F on

@@ -254,18 +254,16 @@ func (c *TaxiController) startPushback() error {
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
 	pts := []airport.LatLon{gear}
 	if len(route.Points) > 1 {
-		pts = append(pts, route.Points[1])
-	}
-	if len(route.Nodes) > 2 {
-		// Only where the tail ends: one long segment lets the tug swing the
-		// tail round in an arc (short taxiway segments made it pivot).
-		if tail := c.behindJunction(localBearing(gear, route.Points[1])); len(tail) > 0 {
-			pts = append(pts, tail[len(tail)-1])
+		var tail []airport.LatLon
+		if len(route.Nodes) > 2 {
+			tail = c.behindJunction(localBearing(gear, route.Points[1]))
 		}
+		pts = append(pts, pushPlan(g, c.req.Parking, gear, stand.Heading, route.Points[1], tail, prof)...)
 	}
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = PushbackSpeedKts, 1, 0.15, 0.25
-	path, err := NewArcPath(pts, push, PushbackArcMeters)
+	// pushPlan already shaped the arc; the fillet only rounds what is left.
+	path, err := NewArcPath(pts, push, PushbackMinArcMeters)
 	if err != nil {
 		return err
 	}
@@ -278,11 +276,11 @@ func (c *TaxiController) startPushback() error {
 // taxiway branches at the junction the push can swing onto (at most
 // maxPushSwingDeg from the push direction), the one that leaves the nose
 // pointing most nearly along the taxi route. It walks that taxiway for a
-// wheelbase plus PushTailMeters, taking the straightest continuation at
-// each node (segments can be a few meters long), and returns the points the
-// tail is pushed through; none keeps the push straight (a dead-end stand).
+// pushWalkMeters, taking the straightest continuation at each node
+// (segments can be a few meters long), and returns its centreline, which
+// pushPlan fits the push to; none keeps the push straight (a dead-end stand).
 func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
-	g, route, prof := c.req.Graph, c.route, c.profile()
+	g, route := c.req.Graph, c.route
 	j := route.Nodes[1]
 	jp := g.Nodes[j].Position
 	taxiDir := localBearing(jp, g.Nodes[route.Nodes[2]].Position)
@@ -308,7 +306,7 @@ func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 		return nil
 	}
 	prev, cur := j, first
-	left := prof.WheelbaseMeters + PushTailMeters
+	left := pushWalkMeters
 	var pts []airport.LatLon
 	for left > 0 {
 		pp, cp := g.Nodes[prev].Position, g.Nodes[cur].Position
@@ -343,6 +341,14 @@ func (c *TaxiController) behindJunction(pushDir float64) []airport.LatLon {
 const (
 	maxPushSwingDeg    = 100.0
 	maxNoseOffRouteDeg = 150.0
+	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
+	// pushLineToleranceMeters how far the taxiway may bend from its first
+	// direction and still count as straight; pushClearanceSlackMeters how
+	// much deeper than the parked aircraft the swing may reach into a
+	// neighbouring stand.
+	pushWalkMeters           = 120.0
+	pushLineToleranceMeters  = 1.5
+	pushClearanceSlackMeters = 1.0
 )
 
 // startTaxiOut builds the taxi path from the nose gear to the hold-short
