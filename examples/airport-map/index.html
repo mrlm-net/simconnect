@@ -46,6 +46,7 @@
   .combo-menu { position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 260px; overflow-y: auto; margin-top: 2px; background: var(--panel, #1f2227); border: 1px solid rgba(127,127,127,0.4); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
   .combo-item { padding: 4px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .combo-item:hover, .combo-item.active { background: #2d6cdf; color: #fff; }
+  .tlog { font: 11px/1.35 ui-monospace, Consolas, monospace; max-height: 260px; overflow-y: auto; white-space: pre-wrap; background: rgba(127,127,127,0.10); border-radius: 4px; padding: 4px 6px; }
   .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
   .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
 </style>
@@ -93,6 +94,8 @@
   </div>
   <div id="cInfo" class="note"></div>
   <div id="ctlList"></div>
+  <h2>Traffic log</h2>
+  <div id="ctlLog" class="tlog"></div>
 
   <h2>Live traffic</h2>
   <label class="opt"><input type="checkbox" id="trafficOn" checked> Show aircraft within 20 km</label>
@@ -609,13 +612,19 @@ function renderControl() {
       .concat(v.done ? [] : ['remove'])
       .map((a) => `<button type="button" data-id="${v.id}" data-act="${a}">${ACTION_LABEL[a] || a}</button>`).join(' ');
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
-    return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br>` +
+    return `<div class="ctl" data-sel="${v.id}"${sel}><b>${esc(v.tail)}</b> ${esc(v.kind)} · ${esc(v.stand)} · RWY ${esc(v.runway)} · ${v.groundSpeed.toFixed(0)} kt · lights ${esc(v.lights || '')}<br><span class="note">${esc(v.model)}</span><br>` +
       `<span class="note">${esc(status)}</span>${v.error ? `<br><span class="warn">${esc(v.error)}</span>` : ''}<br>${buttons}</div>`;
   }).join('') : '<div class="note">No controlled aircraft</div>';
 }
 
 async function pollControl() {
   try {
+    fetch('/api/control/log').then((r) => r.ok ? r.json() : []).then((lines) => {
+      const el = $('ctlLog'), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+      el.textContent = lines.join('
+');
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }).catch(() => {});
     const res = await fetch('/api/control');
     if (!res.ok) return;
     ctlViews = await res.json();

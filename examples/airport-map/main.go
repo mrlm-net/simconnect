@@ -580,7 +580,9 @@ func main() {
 	dump := flag.Bool("dump", false, "write each fetched airport's raw facility records to <ICAO>.json")
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
+	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
 	flag.Parse()
+	openTrafficLog(*logDir)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()

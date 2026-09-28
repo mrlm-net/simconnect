@@ -50,6 +50,9 @@ type ControlView struct {
 	ID             int              `json:"id"`
 	Kind           string           `json:"kind"`
 	Tail           string           `json:"tail"`
+	Model          string           `json:"model"`
+	Stand          string           `json:"stand"`
+	Runway         string           `json:"runway"`
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -178,7 +181,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
-	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, State: "spawning", LimitNode: -1}
+	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	go func() {
 		for {
@@ -220,6 +224,8 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 	v := &it.view
+	prev := *v
+	defer it.logChanges(prev, ev)
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
 		v.Position, v.Heading, v.GroundSpeed, v.Lights = e.Position, e.Heading, e.GroundSpeed, e.Lights.String()
@@ -327,6 +333,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 		writeJSON(w, out)
 	})
 
+	// GET /api/control/log — the recent traffic log, newest last.
+	mux.HandleFunc("GET /api/control/log", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, tlog.recent(200))
+	})
+
 	// GET /api/models — the aircraft titles the simulator can spawn.
 	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
@@ -357,6 +368,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		var it *controlled
 		if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil {
+			tlog.printf("%s spawn at stand %d, runway %s failed: %v", req.Kind, req.Stand, req.Runway, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
@@ -389,10 +401,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 			node = airport.NodeID(n)
 		}
 		action := r.PathValue("action")
+		clr := action
+		if node >= 0 {
+			clr = fmt.Sprintf("%s node %d", action, node)
+		}
 		if err := cc.do(func() error { return it.act(action, node) }); err != nil {
+			tlog.printf("%-6s %s: clearance %s refused: %v", it.Tail, it.Kind, clr, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
+		tlog.printf("%-6s %s: cleared %s", it.Tail, it.Kind, clr)
 		if action == "remove" {
 			cc.mu.Lock()
 			delete(cc.items, id)
@@ -440,4 +458,40 @@ func (cc *controlCenter) modelList() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// logChanges logs what an event changed about the aircraft.
+func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
+	v := it.view
+	who := fmt.Sprintf("%-6s %s", v.Tail, v.Kind)
+	if v.State != prev.State {
+		extra := ""
+		if e := ev.arr; e != nil && e.State == traffic.ArrivalRollout && e.Touchdown != 0 {
+			extra = fmt.Sprintf(" — touchdown %.0f m past the threshold, %.0f fpm, %.0f kt", e.Touchdown, e.TouchdownFpm, e.GroundSpeed)
+		}
+		if v.HoldingShortOf != "" {
+			extra += " of " + v.HoldingShortOf
+		}
+		tlog.printf("%s: %s → %s%s  (%.0f kt, hdg %.0f)", who, prev.State, v.State, extra, v.GroundSpeed, v.Heading)
+	}
+	if v.Lights != prev.Lights && prev.Lights != "" {
+		tlog.printf("%s: lights %s → %s (%s)", who, prev.Lights, v.Lights, v.State)
+	}
+	if v.AtLimit != prev.AtLimit {
+		if v.AtLimit {
+			tlog.printf("%s: holding at the clearance limit (node %d)", who, v.LimitNode)
+		} else {
+			tlog.printf("%s: moving on from the clearance limit", who)
+		}
+	}
+	if v.Error != "" && v.Error != prev.Error {
+		tlog.printf("%s: ⚠️ %s", who, v.Error)
+	}
+}
+
+func entryNote(e string) string {
+	if e == "" {
+		return ""
+	}
+	return " at " + e
 }
