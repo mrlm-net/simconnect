@@ -862,10 +862,13 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 						hold[a.Key] = a.Reason
 					}
 				case AdviceEstimate:
-					if !f.Estimated.Equal(a.Until) {
+					// An estimate moves by whole minutes: a prediction that drifts
+					// by seconds each tick is not news.
+					if f.Estimated.IsZero() || absDuration(f.Estimated.Sub(a.Until)) >= time.Minute {
+						f.Estimated = a.Until.Truncate(time.Minute)
 						defer m.emit(EventEstimated, f, now, a.Reason) // with the new time
 					}
-					f.Estimated, estimated[a.Key] = a.Until, true
+					estimated[a.Key] = true
 					if a.Reason != "" {
 						f.Note = a.Reason
 					}

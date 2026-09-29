@@ -56,3 +56,41 @@ A type not in the table takes the category of its wing span: below 15 m light, b
 - `RunwayOccupancy(wake, landing)` is a typical time on the runway. Landing, it runs from the threshold until clear: 45–70 s by category. Departing, it runs from lining up until lift-off: 40–60 s.
 
 The figures come from ICAO Doc 4444 (PANS-ATM) and EUROCONTROL RECAT-EU (2018). The assignments of types to RECAT-EU categories follow its tables where they list a type, and its weight and span criteria otherwise.
+
+## The landing sequence
+
+`traffic.ApproachSequencer` is the approach controller of one runway (#390).
+
+- **Predicted landing:** for each arrival it predicts when it would land flying on as it is: the distance to go at its ground speed now, with the last `FinalNM` (10 NM) at its final speed.
+- **Order:** first come, first served by predicted landing.
+- **Landing time:** the earliest time that keeps the wake spacing behind the one before (`ArrivalSeparationNM`, as time at the follower's final speed) and leaves the runway free (`RunwayOccupancy`). The difference from the prediction is the arrival's **delay**, for speed control, path stretching and holding to absorb.
+- **Fixed arrivals:** some keep their place and are never delayed; the others fit around them. These are arrivals inside `FreezeNM` (8 NM, about the final approach fix), which are established, and arrivals marked `Fixed`, such as other traffic, which is not ours to delay.
+
+```go
+seq := traffic.NewApproachSequencer("24", traffic.SequencerOptions{
+    Scheme:   traffic.SchemeICAO, // or SchemeRecat
+    OnChange: func(c traffic.SequenceChange) { log.Println(c.Entry.Callsign, c.Entry.Number, c.Entry.Delay) },
+})
+entries := seq.Update(time.Now(), []traffic.ApproachAircraft{{
+    Callsign:       "CSA880",
+    Wake:           traffic.WakeFor("A320"),
+    DistanceToGoNM: traffic.DistanceToGo(pos, starAndApproach, threshold),
+    GroundKts:      280, FinalKts: 140,
+}})
+```
+
+Each `SequenceEntry` has:
+- its place: `Number`, `Leader`, `SpacingNM`;
+- its times: `ETA`, `Landing`, `Delay`;
+- `Fixed` and `DistanceToGoNM`.
+
+`OnChange` reports a new arrival, a new number, a delay change of at least `DelayStep` (30 s), and an arrival leaving the sequence.
+
+`DistanceToGo(pos, route, threshold)` is the track distance from a position along the route still ahead to the threshold. Before the route, it counts from the route's first point.
+
+On the airport map, a sequencer runs per airport and arrival runway. It is fed every second with:
+- our arrivals on their STAR and approach;
+- our arrivals en route to the STAR entry;
+- when respected, the other traffic arriving there, as fixed.
+
+Changes go to the traffic log, and `GET /api/sequence?icao=` returns the runways and their sequences.

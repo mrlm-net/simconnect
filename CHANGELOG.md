@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - `pkg/traffic` wake turbulence separation (#389): `WakeFor` (ICAO L/M/H/J and RECAT-EU A–F by type, else by span), `ArrivalSeparationNM` (ICAO Doc 4444 and RECAT-EU minima on final, at least `MinRadarSeparationNM`), `SeparationTime`, `DepartureInterval` (wake and same-route intervals), `RunwayOccupancy`. See `docs/traffic-separation.md`.
+- `pkg/traffic` `ApproachSequencer` (#390): the landing sequence of a runway, with predicted and sequenced landing times, wake spacing and runway occupancy, and each arrival's delay. Established arrivals (`FreezeNM`) and other traffic are fixed; `OnChange` reports changes. `DistanceToGo`.
+- `examples/airport-map`: landing sequences per airport and runway, fed with our arrivals (controlled and en route) and respected other traffic; changes in the traffic log; `GET /api/sequence`.
+
+### Fixed
+
+- `pkg/traffic`: a flight's estimate moves by whole minutes; the manager no longer reported the same estimate again every tick as the prediction drifted by seconds.
+- `pkg/traffic` `CheckLandingFlow`: with departures waiting, one gap is opened in the arrival stream instead of doubling every gap; at density 2 the doubled gaps had pushed estimates hours out.
 
 ## [0.15.0] - 2026-09-29
 
