@@ -94,3 +94,22 @@ On the airport map, a sequencer runs per airport and arrival runway. It is fed e
 - when respected, the other traffic arriving there, as fixed.
 
 Changes go to the traffic log, and `GET /api/sequence?icao=` returns the runways and their sequences.
+
+## Weather on final
+
+Spacing on final follows the weather, as it does in life. `ConditionsFrom(weather, runwayHeadingTrue)` gives the `ApproachConditions`: visibility, ceiling, the headwind on final and the runway surface. Rain makes the runway wet; snow, or precipitation at or below 0 °C, makes it contaminated. `ArrivalSpacing(leader, follower, scheme, conditions, allowReduced)` applies them, in this order:
+
+| Conditions | Spacing |
+|---|---|
+| minimum radar separation applies; visibility ≥ 5 km, ceiling ≥ 1000 ft, dry runway, and the airport approved (`AllowReduced`) | **2.5 NM** reduced separation (Doc 4444 §8.7.3.2) |
+| contaminated runway | **+1 NM** (poor braking, longer on the runway) |
+| low visibility procedures: visibility < 550 m (RVR, CAT II/III) or ceiling < 200 ft | at least **6 NM**, so the aircraft ahead is clear of the ILS sensitive area |
+
+- **Runway occupancy** grows on the surface (`RunwayOccupancyIn`): 15 % wet, 40 % contaminated.
+- **Wind:** a headwind slows the ground speed on final (`FinalGroundKts`). By default the sequencer keeps the distance, so the time between landings grows into the wind. With `TimeBased` it keeps the calm-wind time instead: time-based separation, where the distance shrinks in a headwind and the landing rate holds.
+
+Call `SetConditions` on the sequencer with the conditions of its runway. Each `SequenceEntry` says why its spacing differs from the wake minimum (`SpacingWhy`).
+
+The traffic manager spaces its arrival spawns the same way (`ManagerOptions.Conditions`): twice as far apart in low visibility, a third more on a contaminated runway.
+
+The airport map takes the weather at the user aircraft (SimConnect reports no other), on the runway in use. It logs a change of conditions for each runway, and `GET /api/sequence` includes the conditions and `lvp`.

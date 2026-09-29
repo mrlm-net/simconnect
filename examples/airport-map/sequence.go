@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -26,12 +27,13 @@ type sequences struct {
 	cc *controlCenter
 	s  *scheduler
 
-	mu  sync.Mutex
-	seq map[string]*traffic.ApproachSequencer // by "ICAO runway"
+	mu   sync.Mutex
+	seq  map[string]*traffic.ApproachSequencer // by "ICAO runway"
+	cond map[string]string                     // the conditions last logged, by sequencer
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
-	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}}
+	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]string{}}
 }
 
 // sequencer is the sequencer of an airport's runway, created on first use.
@@ -61,7 +63,11 @@ func behind(e traffic.SequenceEntry) string {
 	if e.Leader == "" {
 		return ""
 	}
-	return fmt.Sprintf(" behind %s, %g NM", e.Leader, e.SpacingNM)
+	why := ""
+	if e.SpacingWhy != "" {
+		why = " (" + e.SpacingWhy + ")"
+	}
+	return fmt.Sprintf(" behind %s, %g NM%s", e.Leader, e.SpacingNM, why)
 }
 
 // tick feeds every sequencer with the arrivals now.
@@ -171,11 +177,37 @@ func (q *sequences) tick(now time.Time) {
 		}
 	}
 	q.mu.Unlock()
+	var wx *nav.Weather
+	if q.cc.weather != nil {
+		wx = q.cc.weather()
+	}
 	for k, list := range feed {
 		if k.rwy == "" {
 			continue
 		}
-		q.sequencer(k.icao, k.rwy).Update(now, list)
+		s := q.sequencer(k.icao, k.rwy)
+		if wx != nil {
+			if g, err := q.cc.graph(k.icao); err == nil {
+				if _, end, ok := g.Layout.RunwayEnd(k.rwy); ok {
+					c := traffic.ConditionsFrom(*wx, end.Heading)
+					s.SetConditions(c)
+					// Logged when what matters for spacing changes.
+					sig := fmt.Sprintf("%v %v %s %.0f", c.LowVisibility(), c.ReducedAllowed(), c.Surface, c.HeadwindKts/10)
+					q.mu.Lock()
+					changed := q.cond[k.icao+" "+k.rwy] != sig
+					q.cond[k.icao+" "+k.rwy] = sig
+					q.mu.Unlock()
+					if changed {
+						lvp := ""
+						if c.LowVisibility() {
+							lvp = ", low visibility procedures"
+						}
+						tlog.printf("sequence %s %s: %s%s", k.icao, k.rwy, c, lvp)
+					}
+				}
+			}
+		}
+		s.Update(now, list)
 	}
 }
 
@@ -207,8 +239,10 @@ func dist(a, b airport.LatLon) float64 {
 }
 
 type sequenceView struct {
-	Runway string                  `json:"runway"`
-	Arrive []traffic.SequenceEntry `json:"sequence"`
+	Runway     string                     `json:"runway"`
+	Conditions traffic.ApproachConditions `json:"conditions"`
+	LVP        bool                       `json:"lvp"`
+	Arrive     []traffic.SequenceEntry    `json:"sequence"`
 }
 
 func registerSequence(mux *http.ServeMux, st *state) {
@@ -226,7 +260,8 @@ func registerSequence(mux *http.ServeMux, st *state) {
 		for k, s := range q.seq {
 			if i, rwy, _ := strings.Cut(k, " "); i == icao {
 				if seq := s.Sequence(); len(seq) > 0 {
-					out = append(out, sequenceView{Runway: rwy, Arrive: seq})
+					c := s.Conditions()
+					out = append(out, sequenceView{Runway: rwy, Conditions: c, LVP: c.LowVisibility(), Arrive: seq})
 				}
 			}
 		}
