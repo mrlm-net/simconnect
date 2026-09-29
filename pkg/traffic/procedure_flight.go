@@ -259,8 +259,13 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	p := c.approach.Pose()
 	// Heights above the runway on both sides: MSL (ground under it plus its
 	// height above it) less the runway's elevation.
+	// (From its MSL altitude: the ground the injector last saw under it may
+	// be from elsewhere while MSFS AI flew it — live, a 341 ft step at the
+	// takeover.)
 	above := m.AGL
-	if g, ok := c.inj.GroundFt(c.objectID); ok {
+	if m.AltFt != 0 {
+		above = m.AltFt - c.plan.Runway.Altitude/0.3048
+	} else if g, ok := c.inj.GroundFt(c.objectID); ok {
 		above = g + m.AGL - c.plan.Runway.Altitude/0.3048
 	}
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,

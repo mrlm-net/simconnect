@@ -112,8 +112,9 @@ type ControlView struct {
 	Route          []airport.LatLon `json:"route"`
 	Nodes          []airport.NodeID `json:"nodes"`
 	Actions        []string         `json:"actions"` // clearances available now
-	// AirRoute is an arrival's STAR and approach still to fly (with any
-	// dog-leg), Hold its hold when holding (#391, #392).
+	// AirRoute is what it still flies in the air: an arrival's STAR and
+	// approach (with any dog-leg), a departure's SID once handed to MSFS AI;
+	// Hold its hold when holding (#391, #392).
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
 	Hold     *holdView        `json:"hold,omitempty"`
 	Done     bool             `json:"done"`
@@ -146,8 +147,10 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
-	// rejoin sequences an arrival afresh after a go-around (#394).
-	rejoin func(icao, tail string)
+	// rejoin sequences an arrival afresh after a go-around (#394);
+	// sequencesAt gives an airport's landing sequences by runway (#396).
+	rejoin      func(icao, tail string)
+	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
 	world *traffic.TrafficPicture
@@ -726,6 +729,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 		st.mu.Unlock()
 		out := []ControlView{}
 		if cc != nil {
+			// Where departures handed to MSFS AI are now: the world scan.
+			air := map[uint32]traffic.TrackedAircraft{}
+			for _, a := range cc.world.Aircraft() {
+				air[a.ObjectID] = a
+			}
 			cc.mu.Lock()
 			for _, it := range cc.items {
 				it.mu.Lock()
@@ -735,6 +743,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 					v.AirRoute = it.arr.ProcedureRoute()
 					if h, alt, ok := it.arr.Holding(); ok {
 						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
+					}
+				}
+				// A departure in the air: its SID still to fly, like a STAR.
+				if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
+					if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
+						v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
 					}
 				}
 				out = append(out, v)

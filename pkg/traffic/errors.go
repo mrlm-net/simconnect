@@ -9,6 +9,13 @@ var (
 	// ErrNotConnected is returned when the fleet's engine client is nil.
 	ErrNotConnected = errors.New("traffic: not connected to simulator")
 
+	// ErrNotSequenced: the arrival is not in the landing sequence.
+	ErrNotSequenced = errors.New("traffic: not in the landing sequence")
+
+	// ErrEstablished: the arrival is established on the approach (inside
+	// FreezeNM) and keeps its place.
+	ErrEstablished = errors.New("traffic: established on the approach")
+
 	// ErrObjectNotFound is returned when an operation targets an ObjectID that
 	// is not tracked in the fleet.
 	ErrObjectNotFound = errors.New("traffic: object ID not found in fleet")

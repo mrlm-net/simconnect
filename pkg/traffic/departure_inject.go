@@ -123,8 +123,10 @@ func (c *TaxiController) startInjectedDeparture() error {
 }
 
 // frameDetail sets how often the departure is driven (#370): moving (the
-// push, the tug driving in, taxiing) by its distance from the viewer, on
-// the runway every frame, otherwise standing still.
+// push, taxiing) by its distance from the viewer, on the runway every
+// frame, otherwise standing still. A tug driving (in, pushing, backing off
+// and away) is moved on these frames too: every frame, wherever it is — at
+// fewer its drive-off after the push stuttered at a still aircraft's rate.
 func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	if c.detail == nil {
 		return
@@ -133,9 +135,10 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	if c.mover != nil {
 		speed = c.mover.Pose().GroundSpeedKts
 	}
-	moving := c.state == TaxiPushback || speed > 0.5 ||
-		c.state == TaxiAwaitingPushback && c.req.Tug != nil && (!c.tugAttached || !c.pushAt.IsZero())
-	full := c.state >= TaxiLiningUp
+	tugDriving := c.req.Tug != nil && !c.req.Tug.Done() &&
+		(c.state == TaxiAwaitingPushback && (!c.tugAttached || !c.pushAt.IsZero()) || c.state >= TaxiPushback && c.tugAttached)
+	moving := c.state == TaxiPushback || speed > 0.5 || tugDriving
+	full := c.state >= TaxiLiningUp || tugDriving
 	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
 			c.note("monitor detail", requestFrames(client, c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID, n))
@@ -1046,10 +1049,14 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 	if len(c.req.Departure) > 0 {
 		alt := convert.MetersToFeet(c.req.Graph.Layout.Altitude) + pose.HeightFt
 		wps = DepartureWaypoints(pose.Position, pose.Heading, alt, c.req.Departure)
+		// Its corners are the aircraft's turns (roundCorners).
+		here := types.SIMCONNECT_DATA_WAYPOINT{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, KtsSpeed: ProcedureSpeedKts}
+		wps = roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), MaxBankDeg(*c.aircraft()))[1:]
 	}
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {
 		c.emit(err, true)
 	}
+	c.climb = wps
 	c.stopMonitor()
 	c.setState(TaxiComplete, nil)
 }
@@ -1221,4 +1228,20 @@ func (c *TaxiController) pushTurnPoints(gear airport.LatLon) []airport.LatLon {
 	}
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
 	return pushTurnPlan(c.req.Graph, c.req.Parking, gear, stand.Heading+180, c.route.Points[1:], c.profile())
+}
+
+// ClimbRoute is what a departure handed to MSFS AI still flies — its SID
+// and the climb out — from pos (where it is now: the controller no longer
+// follows it), for a map; nil before the hand-over.
+func (c *TaxiController) ClimbRoute(pos airport.LatLon) []airport.LatLon {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.climb) == 0 {
+		return nil
+	}
+	var out []airport.LatLon
+	for _, w := range c.climb[nextWaypoint(pos, c.climb):] {
+		out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
+	}
+	return out
 }

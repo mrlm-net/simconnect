@@ -130,9 +130,12 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	for _, o := range others {
 		reach := half + o.e.half + GiveWayMarginMeters
 		mineTo := first(mine, o.e.ahead, reach)
-		if mineTo < 0 || mineTo < half {
+		if mineTo < 0 || mineTo < half && (!o.e.pushing || mineTo == 0) {
 			continue // no conflict, or already in it: go on through
 		}
+		// (Beside a push under way it waits where it is unless already in its
+		// corridor: at LKPR DLH977, waiting at the edge of TVS1960's push,
+		// drove into it; each then stopped for the other for 8 minutes.)
 		theirsTo := first(o.e.ahead, mine, reach)
 		if !o.e.pushing {
 			theirsTo += trafficBodyStep // their path starts a step ahead of them (ReportPath)

@@ -48,8 +48,10 @@ type enrouteAC struct {
 	objectID uint32
 	model    string
 	arrive   *planned // arrival: the STAR and approach from the entry
-	// waypoints: the rest of the flight, flown by MSFS AI once released.
+	// waypoints: the rest of the flight, flown by MSFS AI once released;
+	// route: the same as planned, which conflict resolutions change (#395).
 	waypoints []types.SIMCONNECT_DATA_WAYPOINT
+	route     []traffic.RoutePoint
 	handing   bool
 }
 
@@ -126,7 +128,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	if err != nil {
 		return err
 	}
-	e.waypoints = wps
+	e.waypoints, e.route = wps, route
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
 	s.nextReq = (s.nextReq + 1) % enrouteReqCount

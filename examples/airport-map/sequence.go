@@ -42,6 +42,19 @@ func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{}}
 }
 
+// at is icao's landing sequences by runway.
+func (q *sequences) at(icao string) map[string][]traffic.SequenceEntry {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	out := map[string][]traffic.SequenceEntry{}
+	for k, s := range q.seq {
+		if i, rwy, _ := strings.Cut(k, " "); i == icao {
+			out[rwy] = s.Sequence()
+		}
+	}
+	return out
+}
+
 // rejoin sequences an arrival at icao afresh after a go-around (#394).
 func (q *sequences) rejoin(icao, tail string) {
 	q.mu.Lock()

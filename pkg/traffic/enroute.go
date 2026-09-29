@@ -49,6 +49,16 @@ const EnrouteContinueMeters = 60 * 1852
 // waypoint chain it flies from there, ending EnrouteContinueMeters on
 // along the last track.
 func EnrouteStart(route []RoutePoint) (types.SIMCONNECT_DATA_INITPOSITION, []types.SIMCONNECT_DATA_WAYPOINT, error) {
+	spawn, wps, err := enrouteChain(route)
+	if err != nil || len(wps) == 0 {
+		return spawn, wps, err
+	}
+	// Its corners are turns (from the spawn on), a jet's (TurnBankDeg).
+	here := types.SIMCONNECT_DATA_WAYPOINT{Latitude: spawn.Latitude, Longitude: spawn.Longitude, KtsSpeed: wps[0].KtsSpeed}
+	return spawn, roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), TurnBankDeg)[1:], nil
+}
+
+func enrouteChain(route []RoutePoint) (types.SIMCONNECT_DATA_INITPOSITION, []types.SIMCONNECT_DATA_WAYPOINT, error) {
 	if len(route) < 2 {
 		return types.SIMCONNECT_DATA_INITPOSITION{}, nil, errors.New("traffic: an enroute flight needs two points")
 	}

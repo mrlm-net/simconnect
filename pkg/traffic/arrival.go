@@ -279,6 +279,7 @@ type arrivalMonitor struct {
 	Lights    [5]float64 // LIGHT LANDING, TAXI, STROBE, BEACON, NAV
 	Logo      float64
 	Wing      float64
+	AltFt     float64 // MSL: the height to join the final from (0: unknown)
 }
 
 // NewArrivalController creates a controller that spawns its aircraft through
@@ -358,6 +359,8 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 				return err
 			}
 			plan.Spawn = proc.Spawn
+			// Its corners are the aircraft's turns (roundCorners).
+			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
 			c.proc, c.procNext = proc, -1
 		}
 	} else if len(req.Procedure) > 0 {
@@ -376,7 +379,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		{"PLANE HEADING DEGREES TRUE", "degrees"}, {"GROUND VELOCITY", "knots"}, {"SIM ON GROUND", "bool"},
 		{"VERTICAL SPEED", "feet per minute"},
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
-		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"},
+		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"}, {"PLANE ALTITUDE", "feet"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err

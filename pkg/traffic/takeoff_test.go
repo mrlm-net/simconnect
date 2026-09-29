@@ -199,3 +199,32 @@ func TestEntryTooShort(t *testing.T) {
 		}
 	}
 }
+
+// The take-off roll builds up as the engines spool: little speed in the
+// first second, a lot more once at take-off thrust; the A320 still lifts
+// off within a normal distance.
+func TestTakeoffSpoolUp(t *testing.T) {
+	m := NewTakeoffMover(airport.LatLon{Lat: 50.1, Lon: 14.26}, 245, 0, DefaultTakeoffProfile())
+	kts := func() float64 { return m.Pose().GroundSpeedKts }
+	second := func() float64 {
+		v := kts()
+		for i := 0; i < 60; i++ {
+			m.Step(1.0 / 60)
+		}
+		return kts() - v
+	}
+	first := second()
+	for i := 0; i < 6; i++ {
+		second()
+	}
+	eighth := second()
+	if first > eighth/3 || eighth < 3.5 {
+		t.Errorf("gained %.1f kt in the first second, %.1f in the eighth", first, eighth)
+	}
+	for i := 0; i < 60*120 && m.Pose().LiftoffDistance == 0; i++ {
+		m.Step(1.0 / 60)
+	}
+	if d := m.Pose().LiftoffDistance; d < 1200 || d > 2000 {
+		t.Errorf("lift-off after %.0f m", d)
+	}
+}

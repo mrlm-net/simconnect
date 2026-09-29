@@ -304,14 +304,26 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	sort.Strings(names)
 	for _, cs := range names {
 		why := c.Waiting[cs]
+		kind := waitKind(why) // "1m20s behind QTR1" counting down is the same wait
 		t.mu.Lock()
-		changed := t.waiting[cs] != why
-		t.waiting[cs] = why
+		changed := t.waiting[cs] != kind
+		t.waiting[cs] = kind
 		t.mu.Unlock()
 		if changed && ours[cs] != nil && !ours[cs].gates && !slices.Contains(c.GoAround, cs) {
 			tlog.printf("%-6s tower %s: waits — %s", cs, rwy, why)
 		}
 	}
+}
+
+// waitKind is a wait reason without its numbers: the same wait while its
+// time or distance counts down.
+func waitKind(why string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' || r == '.' {
+			return -1
+		}
+		return r
+	}, why)
 }
 
 // forgetGoAround lets an arrival be sent around again on its next approach.

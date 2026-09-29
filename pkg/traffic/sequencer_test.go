@@ -4,7 +4,9 @@
 package traffic
 
 import (
+	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,5 +168,45 @@ func TestSequencerMinSpacing(t *testing.T) {
 	}
 	if gap := seq[2].Landing.Sub(seq[1].Landing); gap < SeparationTime(5, 140)-time.Second {
 		t.Errorf("5 NM kept as %v", gap)
+	}
+}
+
+// A controller moves arrivals in the landing order; they keep the new
+// place, and the established ones cannot be moved.
+func TestSequencerMove(t *testing.T) {
+	s := NewApproachSequencer("06", SequencerOptions{MinSpacingNM: 5})
+	now := time.Now()
+	a := func(cs string, nm float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: 250}
+	}
+	list := []ApproachAircraft{a("EST1", 5), a("AAA", 20), a("BBB", 30), a("CCC", 40)}
+	order := func(seq []SequenceEntry) string {
+		var out []string
+		for _, e := range seq {
+			out = append(out, e.Callsign)
+		}
+		return strings.Join(out, " ")
+	}
+	s.Update(now, list)
+	if err := s.Move("CCC", -2); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ { // kept over updates
+		now = now.Add(time.Second)
+		if got := order(s.Update(now, list)); got != "EST1 CCC AAA BBB" {
+			t.Fatalf("CCC moved up two: %s", got)
+		}
+	}
+	if err := s.Move("CCC", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(s.Update(now.Add(time.Second), list)); got != "EST1 AAA CCC BBB" {
+		t.Fatalf("CCC moved down one: %s", got)
+	}
+	if err := s.Move("EST1", 1); !errors.Is(err, ErrEstablished) {
+		t.Errorf("established: %v", err)
+	}
+	if err := s.Move("ZZZ", 1); !errors.Is(err, ErrNotSequenced) {
+		t.Errorf("unknown: %v", err)
 	}
 }

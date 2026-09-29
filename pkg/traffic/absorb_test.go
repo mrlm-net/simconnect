@@ -110,3 +110,38 @@ func pathNM(pts []airport.LatLon) float64 {
 	}
 	return d
 }
+
+// Direct to the join point: the rest of the STAR is left out; the final is
+// kept.
+func TestDirectToJoin(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA8",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, 9000, 90, 250, false))
+	before := append(ctl.proc.Waypoints[:0:0], ctl.proc.Waypoints...)
+	sets := len(ec.waypoints)
+	if err := ctl.DirectToJoin(); err != nil {
+		t.Fatal(err)
+	}
+	after := ctl.proc.Waypoints
+	if len(after) != 2 || after[0] != before[len(before)-2] || after[1] != before[len(before)-1] || len(ec.waypoints) == sets {
+		t.Fatalf("direct: %d points (sent %v)", len(after), len(ec.waypoints) > sets)
+	}
+	if r := ctl.ProcedureRoute(); len(r) != 2 {
+		t.Errorf("still to fly: %d points", len(r))
+	}
+}

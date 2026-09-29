@@ -23,13 +23,28 @@ const (
 	VerticalSeparationFt = 1000.0
 )
 
+// TowerBelowFt: below this height above the ground at their airport,
+// departures and arrivals are separated by the tower — on the runway, by
+// the departure interval and the arrival's distance (RunwayController) —
+// not by the radar minima.
+const TowerBelowFt = 2500.0
+
+// TowerPair reports two aircraft the tower separates: at the same airport,
+// one of them below TowerBelowFt (a departure just airborne ahead of an
+// arrival on final is mixed-mode runway use, not a loss of separation).
+func TowerPair(a, b TrackedAircraft) bool {
+	return a.Airport != "" && a.Airport == b.Airport && (a.AGLFt < TowerBelowFt || b.AGLFt < TowerBelowFt)
+}
+
 // SeparationPair is two airborne aircraft and how far apart they are.
 type SeparationPair struct {
 	A, B       string  // call signs (tail, else title)
 	LateralNM  float64 `json:"lateralNM"`
 	VerticalFt float64 `json:"verticalFt"`
-	// Loss: closer than the minima in both.
+	// Loss: closer than the minima in both, and not a TowerPair.
 	Loss bool `json:"loss"`
+	// Tower: the tower separates them (TowerPair).
+	Tower bool `json:"tower,omitempty"`
 }
 
 // AirborneSeparation lists the pairs of airborne aircraft, closest first,
@@ -53,7 +68,8 @@ func AirborneSeparation(aircraft []TrackedAircraft, minNM, minFt float64) []Sepa
 			a, b := air[i], air[j]
 			l := calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
 			v := math.Abs(a.AltFt - b.AltFt)
-			out = append(out, SeparationPair{A: name(a), B: name(b), LateralNM: l, VerticalFt: v, Loss: l < minNM && v < minFt})
+			loss := l < minNM && v < minFt && !TowerPair(a, b)
+			out = append(out, SeparationPair{A: name(a), B: name(b), LateralNM: l, VerticalFt: v, Loss: loss, Tower: TowerPair(a, b)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LateralNM < out[j].LateralNM })

@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -160,5 +161,24 @@ func TestPictureOwnAndFeeds(t *testing.T) {
 	}
 	if o, ok := alloc.Occupant(c22); !ok || !o.Detected || o.ObjectID != 21 {
 		t.Errorf("C22 occupant %+v %v, want the AI aircraft detected", o, ok)
+	}
+}
+
+// The vertical speed of ours is measured from the altitude between scans:
+// an injected aircraft's is meaningless (live, +560 fpm descending on the
+// glide path).
+func TestPictureMeasuresOurVerticalSpeed(t *testing.T) {
+	p := NewTrafficPicture(PictureOptions{Centre: Centre{ICAO: "LKPR"}, RadiusNM: 160})
+	p.SetAirports([]AirportRef{pictureLKPR})
+	p.SetOwn(7, PhaseArriving, "LKPR")
+	now := time.Now()
+	for i := 0; i < 10; i++ {
+		p.Observe(now.Add(time.Duration(i)*time.Second), []Observation{{ObjectID: 7, Tail: "ENT464", Position: pictureLKPR.Position,
+			AltFt: 4000 - float64(i)*1000.0/60, VSFpm: 560}})
+	}
+	for _, a := range p.Aircraft() {
+		if a.ObjectID == 7 && math.Abs(a.VSFpm+1000) > 30 {
+			t.Errorf("vertical speed %.0f fpm, want -1000", a.VSFpm)
+		}
 	}
 }

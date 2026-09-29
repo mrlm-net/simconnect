@@ -117,6 +117,16 @@
   .ctl .acts .sep { flex: 1; } /* keeps the remove button apart, on the right */
   .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
   .ctl button.urgent { background: #b36b00; color: #fff; }
+  /* Approach panel (#396) */
+  .ap { width: 100%; border-collapse: collapse; font: 11px/1.5 ui-monospace, Consolas, monospace; margin-bottom: 8px; }
+  .ap td { padding: 1px 3px; white-space: nowrap; }
+  .ap td.st { white-space: normal; color: #bbb; }
+  .ap tr.fix td { color: #9ccc65; }
+  .ap tr.other td { color: #7fb3d5; }
+  .ap tr.short td.nm { color: #ff6b6b; font-weight: 600; }
+  .ap td.acts { white-space: normal; padding-bottom: 3px; }
+  .ap td.acts button { padding: 0 5px; margin: 0 2px 0 0; font-size: 11px; }
+  .ap caption { text-align: left; color: #fff; font-weight: 600; padding: 2px 0; }
 </style>
 </head>
 <body>
@@ -131,6 +141,7 @@
   <div id="status"></div>
   <nav class="tabs">
     <button type="button" data-tab="traffic">Traffic</button>
+    <button type="button" data-tab="approach">Approach</button>
     <button type="button" data-tab="charts">Charts</button>
     <button type="button" data-tab="layers">Layers</button>
     <button type="button" data-tab="help" class="q" title="Quick reference">?</button>
@@ -140,7 +151,7 @@
     <div class="bar">
       <button type="button" id="gStart">▶ Start game</button>
       <label class="note">every <input type="number" id="gEvery" value="3" min="1" step="0.5"> min</label>
-      <span class="i" title="You are ground and tower on the runway picked below. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances.&#10;+10 per flight handled&#10;−1 per 30 s a flight waits over a minute&#10;−50 lost wingtip separation&#10;−100 two aircraft on a runway">ⓘ</span>
+      <span class="i" title="You are ground and tower on the runway picked below. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances.&#10;+10 per flight handled&#10;−1 per 30 s a flight waits over a minute&#10;−50 lost wingtip separation&#10;−100 two aircraft on a runway&#10;−25 spacing on final below the minimum (within 10 NM)&#10;The Approach tab works the arrivals' sequence.">ⓘ</span>
     </div>
     <div id="gScore" class="note"></div>
     <details id="gLogBox"><summary>Game events</summary><div id="gLog" class="tlog"></div></details>
@@ -197,6 +208,15 @@
     <h2>Aircraft</h2>
     <div id="ctlList"></div>
     <details><summary>Traffic log</summary><div id="ctlLog" class="tlog"></div></details>
+  </section>
+
+  <section data-panel="approach" hidden>
+    <h2>Landing sequence <span class="i" title="Per runway, first to land first: the wake category, the distance still to fly, the delay to lose and what the aircraft is doing. ▲▼ change the order (kept), ⤳ direct to the final, 🐢 lose a minute (speed, then a dog-leg), ⟳ hold at the STAR fix, ⏵ leave the hold, ↺ go around. Green on final: the spacing to the one ahead is kept; red: below it.">ⓘ</span></h2>
+    <div id="apMsg" class="note"></div>
+    <div id="apSeq"></div>
+    <h2>Tower</h2>
+    <div id="apTower" class="note"></div>
+    <details id="apConfBox"><summary>Conflicts</summary><div id="apConf" class="note"></div></details>
   </section>
 
   <section data-panel="charts" hidden>
@@ -307,6 +327,7 @@
       <tr><td>◨</td><td>hide the panel for the map alone, and show it again</td></tr>
       <tr><td>card</td><td>click an aircraft's card to select it (yellow on the map); click it again, or Esc, to deselect. An arrival in the air shows the route it still flies (dashed) and its hold</td></tr>
       <tr><td>colours</td><td>our aircraft: orange/magenta under our control (a card), teal arriving en route, purple overflying, green departed; other traffic blue-grey (Layers)</td></tr>
+      <tr><td>Approach</td><td>the landing sequence per runway with its controls (▲▼ order, ⤳ direct, 🐢 slow, ⟳ hold, ⏵ leave the hold, ↺ go around), the tower and the conflicts; the final's spacing on the map, green kept, red short</td></tr>
       <tr><td>🎯</td><td>follow the aircraft: the map keeps it in the middle (again, or Esc: stop)</td></tr>
       <tr><td>🌐</td><td>world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
       <tr><td>📍</td><td>on a card, or a row of Layers → Live traffic: show that aircraft</td></tr>
@@ -367,6 +388,7 @@ const groups = {
   choices: L.layerGroup(),
   control: L.layerGroup(),
   stands: L.layerGroup(),
+  approach: L.layerGroup(),
 };
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
@@ -382,7 +404,7 @@ for (const [t, [name, color]] of Object.entries(PATH_TYPES)) {
   overlays[`<span class="sw" style="background:${color}"></span>Path ${t} ${name}`] = pathGroups[t];
 }
 L.control.layers({ 'OpenStreetMap': osm, 'Satellite (Esri)': sat }, overlays, { collapsed: true }).addTo(map);
-for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control, groups.stands]) g.addTo(map);
+for (const g of [groups.runways, groups.parking, groups.hold, groups.labels, groups.overlaps, groups.choices, groups.route, groups.control, groups.stands, groups.approach]) g.addTo(map);
 for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
@@ -1136,6 +1158,7 @@ async function pollTraffic() {
       trafficMarkers.set(t.objectId, m);
     }
     m.setLatLng([t.lat, t.lon]).setIcon(trafficIcon(t)).setTooltipContent(trafficLabel(t)).setPopupContent(trafficDetail(t));
+    m._dr = { lat: t.lat, lon: t.lon, hdg: t.heading, kts: t.groundKts, at: performance.now() };
   }
   for (const [id, m] of trafficMarkers) if (!seen.has(id)) { m.remove(); trafficMarkers.delete(id); }
   const rows = list.filter((t) => !t.user && !t.ours).sort((a, b) => a.agl - b.agl);
@@ -1148,6 +1171,22 @@ async function pollTraffic() {
     : '<tr><td>No other aircraft</td></tr>';
 }
 setInterval(pollTraffic, 1000);
+// Between the polls (1 s) the markers are dead-reckoned on their heading and
+// speed, so movement and turns look continuous instead of stepping every
+// second (at 180 kt a step was 90 m; a standard-rate turn bends the reckoned
+// line by only a few metres a second, corrected at the next poll).
+function glideTraffic() {
+  const now = performance.now();
+  for (const m of trafficMarkers.values()) {
+    const d = m._dr;
+    if (!d || d.kts < 1) continue;
+    const meters = Math.min(1.5, (now - d.at) / 1000) * d.kts * 0.514444;
+    const h = d.hdg * Math.PI / 180;
+    m.setLatLng(offset(d.lat, d.lon, Math.sin(h) * meters, Math.cos(h) * meters));
+  }
+  requestAnimationFrame(glideTraffic);
+}
+requestAnimationFrame(glideTraffic);
 // Safe zones: a circle of half the wing span plus SAFE_MARGIN around every
 // aircraft (ours, MSFS AI and the user's); red where two overlap — wingtips
 // that could touch.
@@ -1630,12 +1669,100 @@ $('sDensity').addEventListener('change', () => setSchedule({ density: Number($('
 $('sBoard').addEventListener('change', pollSchedule);
 $('sMax').addEventListener('change', () => setSchedule({ maxAircraft: Number($('sMax').value) }));
 
+// ── Approach (#396): the landing sequence per runway, the tower, and the
+// spacing on final drawn along the extended centreline ──
+const AP_ACTS = { up: ['▲', 'Earlier in the sequence'], down: ['▼', 'Later in the sequence'], direct: ['⤳', 'Direct to the final'],
+  slow: ['🐢', 'Lose a minute: speed, then a dog-leg'], hold: ['⟳', 'Hold at the STAR fix'], release: ['⏵', 'Leave the hold'], goaround: ['↺', 'Go around'] };
+let apSeqs = [];
+const apOpen = () => !document.querySelector('#side section[data-panel="approach"]').hidden;
+// The runway end of a sequence ("06"): its threshold and heading.
+function apEnd(name) {
+  for (const r of (data && data.runways) || []) {
+    for (const e of [r.primary, r.secondary]) if (e && e.name === name) return e;
+  }
+  return null;
+}
+async function pollApproach() {
+  if (!data || !apOpen()) return;
+  try {
+    const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const [seq, tower, sep] = await Promise.all([get('/api/sequence?icao=' + data.icao), get('/api/runways?icao=' + data.icao), get('/api/separation')]);
+    apSeqs = seq || [];
+    renderApproach(tower || {}, sep);
+    drawFinal();
+  } catch { /* server gone */ }
+}
+function renderApproach(tower, sep) {
+  const byTail = Object.fromEntries(ctlViews.filter((v) => !v.done).map((v) => [v.tail, v]));
+  $('apSeq').innerHTML = apSeqs.filter((r) => r.sequence.length).map((r) => {
+    const rows = r.sequence.map((e, i) => {
+      const v = byTail[e.callsign];
+      const lead = i > 0 ? r.sequence[i - 1] : null;
+      const gap = lead ? e.distanceToGoNM - lead.distanceToGoNM : null;
+      const short = lead && e.distanceToGoNM < 20 && gap < (e.spacingNM || 0) - 0.3;
+      const sf = !v && typeof schedFlight === 'function' ? schedFlight(e.callsign) : null;
+      let what = v ? v.state : sf ? `en route from ${sf.origin}` : 'other traffic';
+      if (v && v.hold) what = `holding at ${v.hold.ident} ${Math.round(v.hold.altFt)} ft`;
+      const acts = !v ? [] : e.fixed ? ['goaround'] : [...(i > 0 ? ['up'] : []), ...(i < r.sequence.length - 1 ? ['down'] : []), 'direct', 'slow', v.hold ? 'release' : 'hold', 'goaround'];
+      return `<tr class="${e.fixed ? 'fix' : ''} ${v || sf ? '' : 'other'} ${short ? 'short' : ''}">
+        <td>${e.number}</td><td title="${esc(v ? v.model || '' : '')}">${esc(e.callsign)}</td><td title="wake ${e.wake.icao}, RECAT-EU ${e.wake.recat}">${e.wake.icao}/${e.wake.recat}</td>
+        <td class="nm" title="${lead ? `${gap.toFixed(1)} NM behind ${lead.callsign}, ${e.spacingNM} NM needed${e.spacingWhy ? ' — ' + e.spacingWhy : ''}` : ''}">${e.distanceToGoNM.toFixed(1)}</td>
+        <td>${e.delay > 0 ? '+' + Math.round(e.delay / 6e10) + 'm' : ''}</td><td class="st">${esc(what)}</td></tr>${acts.length ? `
+        <tr class="acts"><td></td><td colspan="5" class="acts">${acts.map((a) => `<button type="button" data-ap="${a}" data-cs="${esc(e.callsign)}" title="${AP_ACTS[a][1]}">${AP_ACTS[a][0]}</button>`).join('')}</td></tr>` : ''}`;
+    }).join('');
+    const c = r.conditions || {};
+    return `<table class="ap"><caption>RWY ${esc(r.runway)}${r.lvp ? ' — LVP' : ''} <span class="note">${c.visibilityM ? Math.round(c.visibilityM / 100) / 10 + ' km, ' : ''}${c.surface || ''}</span></caption>
+      <tr class="note"><td>#</td><td>call sign</td><td>wake</td><td>NM</td><td>delay</td><td>doing</td></tr>${rows}</table>`;
+  }).join('') || '<div class="note">No arrivals in the sequence.</div>';
+  $('apTower').innerHTML = Object.entries(tower).map(([rwy, us]) => `<b>${esc(rwy)}</b>: ${us.map((u) => `${esc(u.callsign)} ${esc(u.phase)}${u.waiting ? ' <i>(' + esc(u.waiting) + ')</i>' : ''}`).join(', ')}`).join('<br>') || 'Nobody at the runways.';
+  if (sep) {
+    const cs = (sep.conflicts || []).map((c) => `${esc(c.A)}–${esc(c.B)}: ${c.closestNM.toFixed(1)} NM, ${Math.round(c.verticalFt)} ft in ${Math.round(c.closestIn / 1e9)} s`);
+    const rs = (sep.resolutions || []).slice(-5).reverse().map((r) => esc(r.said));
+    $('apConf').innerHTML = (cs.length ? cs.join('<br>') : 'No conflicts predicted.') + (rs.length ? '<br><b>Resolved</b><br>' + rs.join('<br>') : '');
+    $('apConfBox').querySelector('summary').textContent = `Conflicts (${cs.length})`;
+  }
+}
+// The final: the extended centreline to 15 NM with a tick every mile, and
+// each arrival within 20 NM at its distance to go.
+function drawFinal() {
+  groups.approach.clearLayers();
+  if (!apOpen()) return;
+  for (const r of apSeqs) {
+    const end = apEnd(r.runway);
+    if (!end || !r.sequence.length) continue;
+    const back = (end.heading + 180) * Math.PI / 180;
+    const at = (nm) => offset(end.threshold.lat, end.threshold.lon, Math.sin(back) * nm * 1852, Math.cos(back) * nm * 1852);
+    L.polyline([at(0), at(15)], { renderer, color: '#fff', weight: 5, opacity: 0.7, interactive: false }).addTo(groups.approach);
+    L.polyline([at(0), at(15)], { renderer, color: '#2d6cdf', weight: 2, dashArray: '6 6', interactive: false }).addTo(groups.approach);
+    for (let nm = 1; nm <= 15; nm++) L.circleMarker(at(nm), { renderer, radius: nm % 5 ? 2 : 4, color: '#fff', weight: 1, fillColor: '#2d6cdf', fillOpacity: 1, interactive: false }).addTo(groups.approach);
+    r.sequence.forEach((e, i) => {
+      if (e.distanceToGoNM > 20) return;
+      const lead = i > 0 ? r.sequence[i - 1] : null;
+      const short = lead && e.distanceToGoNM - lead.distanceToGoNM < (e.spacingNM || 0) - 0.3;
+      const color = short ? '#ff6b6b' : '#9ccc65';
+      L.circleMarker(at(e.distanceToGoNM), { renderer, radius: 5, color, fillOpacity: 0.8, interactive: false }).addTo(groups.approach);
+      L.marker(at(e.distanceToGoNM), { icon: L.divIcon({ className: 'lbl', html: `${esc(e.callsign)} ${e.distanceToGoNM.toFixed(1)}${lead ? ' (' + (e.distanceToGoNM - lead.distanceToGoNM).toFixed(1) + '/' + e.spacingNM + ')' : ''}`, iconSize: null, iconAnchor: [-8, 6] }), interactive: false }).addTo(groups.approach);
+    });
+  }
+}
+$('apSeq').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-ap]');
+  if (!b || !data) return;
+  b.disabled = true;
+  const res = await fetch(`/api/approach/${data.icao}/${encodeURIComponent(b.dataset.cs)}/${b.dataset.ap}`, { method: 'POST' });
+  $('apMsg').textContent = res.ok ? `${b.dataset.cs}: ${AP_ACTS[b.dataset.ap][1].toLowerCase()}` : `${b.dataset.cs}: ${(await res.text()).trim()}`;
+  pollApproach();
+});
+setInterval(pollApproach, 2000);
+
 // ── Tabs: one task at a time; the last one is remembered ──
 function showTab(name) {
   if (name === 'charts') pollAirportInfo();
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === name);
   for (const sec of document.querySelectorAll('#side section[data-panel]')) sec.hidden = sec.dataset.panel !== name;
   try { localStorage.setItem('airportMapTab', name); } catch { /* private window */ }
+  if (name === 'approach') pollApproach();
+  else groups.approach.clearLayers();
 }
 for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => showTab(b.dataset.tab));
 {

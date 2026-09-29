@@ -274,11 +274,12 @@ func (c *ArrivalController) HoldFix(minFromThresholdNM float64) (Hold, bool) {
 		if i > 0 && i > next {
 			from = airport.LatLon{Lat: wps[i-1].Latitude, Lon: wps[i-1].Longitude}
 		}
-		// Named after the STAR fix there, when it has one.
+		// At the STAR fix there, when it has one: a corner's fix is off the
+		// chain, whose arc turns inside it (roundCorners), by up to a mile.
 		ident := fmt.Sprintf("WP%d", i)
 		for _, n := range c.req.Procedure {
-			if n.Ident != "" && calc.HaversineNM(n.Position.Lat, n.Position.Lon, fix.Lat, fix.Lon) < 0.3 {
-				ident = n.Ident
+			if n.Ident != "" && calc.HaversineNM(n.Position.Lat, n.Position.Lon, fix.Lat, fix.Lon) < 1.5 {
+				ident, fix = n.Ident, n.Position
 				break
 			}
 		}

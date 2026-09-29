@@ -184,7 +184,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			out = append(out[:at-1], append([]types.SIMCONNECT_DATA_WAYPOINT{wp}, out[at-1:]...)...)
 		}
 	}
-	out = append(out, wps[final:]...)
+	out = roundedChain(pos, append(out, wps[final:]...), MaxBankDeg(*c.aircraft()))
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return Absorption{}, err
 	}
@@ -261,4 +261,31 @@ func nextWaypoint(pos airport.LatLon, wps []types.SIMCONNECT_DATA_WAYPOINT) int 
 		}
 	}
 	return nearest
+}
+
+// DirectToJoin sends an arrival on its procedure straight to the join point
+// on the final, leaving out the rest of its STAR (a shortcut a controller
+// gives to fill a gap): its waypoints become the align and join points.
+// It returns ErrNotOnProcedure on the final or off a procedure and
+// ErrHolding while holding (LeaveHold first).
+func (c *ArrivalController) DirectToJoin() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 2 {
+		return ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return ErrHolding
+	}
+	wps := c.proc.Waypoints
+	final := wps[len(wps)-2:]
+	if c.procWaypoint(wps) >= len(wps)-2 {
+		return nil // already on its way to the final
+	}
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, final); err != nil {
+		return err
+	}
+	c.proc.Waypoints, c.procNext = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), final...), 0
+	c.note("direct to the join point", nil)
+	return nil
 }
