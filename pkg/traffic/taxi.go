@@ -193,6 +193,9 @@ func TaxiWithIDs(defBase, reqBase uint32) TaxiOption {
 //	    }
 //	}
 type TaxiController struct {
+	// Level of detail (#370): how often the injected aircraft is driven.
+	detail  *Detail
+	detailS detailState
 	mu      sync.Mutex
 	fleet   *Fleet
 	defBase uint32
@@ -370,7 +373,9 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		return ErrNotConnected
 	}
 
-	// Waypoint list and position monitor definitions.
+	// Waypoint list and position monitor definitions (cleared first when
+	// the ID block is reused).
+	c.fleet.redefine(client, c.defBase+defOffWaypoints, c.defBase+defOffMonitor)
 	if err := client.AddToDataDefinition(c.defBase+defOffWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
 		return err
 	}
@@ -579,6 +584,7 @@ func (c *TaxiController) Cancel() error {
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
+		c.detail.forget(c.objectID)
 		err = c.fleet.Remove(c.objectID, c.reqBase+reqOffRemove)
 		if c.inj != nil {
 			c.inj.Forget(c.objectID)
@@ -616,6 +622,7 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 	c.state = s
 	c.emit(err, true)
 	if s.Terminal() {
+		c.detail.forget(c.objectID)
 		close(c.events)
 	}
 }

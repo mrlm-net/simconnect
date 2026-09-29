@@ -34,6 +34,9 @@ const (
 	controlDefBase uint32 = 20000
 	controlReqBase uint32 = 30000
 	controlIDBlock uint32 = 10
+	// controlBlocks: controlled aircraft at once; their ID blocks are
+	// reused once they are gone (#370).
+	controlBlocks uint32 = 128
 )
 
 // Stand allocator ID bases, one block per airport, and how often (in
@@ -72,6 +75,7 @@ type controlled struct {
 	// hears the controller's progress. objectID is the aircraft once known.
 	managed  *traffic.TrafficManager
 	objectID uint32
+	defBase  uint32 // its ID block (cc.ids)
 
 	mu   sync.Mutex
 	view ControlView
@@ -117,6 +121,10 @@ type controlCenter struct {
 	stands map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
+	// ids hands out the controllers' ID blocks and takes them back (#370);
+	// detail drives far and standing aircraft on fewer frames.
+	ids    *traffic.IDBlocks
+	detail *traffic.Detail
 	// own are aircraft of ours not driven by a controller: enroute and
 	// overflying MSFS AI of the scheduled traffic (#369). extra handles
 	// the scheduler's messages.
@@ -146,6 +154,8 @@ func newControlCenter(client engine.Client) *controlCenter {
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models: map[string]bool{},
 		own:    map[uint32]bool{},
+		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
+		detail: traffic.NewDetail(),
 		stands: map[string]*traffic.StandAllocator{},
 		world:  traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:   &game{},
@@ -351,12 +361,20 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			return nil, err
 		}
 	}
-	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
-	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	defBase, reqBase, err := cc.ids.Acquire()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !started {
+			cc.ids.Release(defBase)
+		}
+	}()
+	it := &controlled{defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
+		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
@@ -367,7 +385,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
+		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithDetail(cc.detail), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
 		var exit *airport.RunwayExit
 		if r.Exit != nil {
 			exits, err := g.RunwayExits(r.Runway)
@@ -1054,6 +1072,7 @@ func (cc *controlCenter) forget(it *controlled) {
 	defer cc.mu.Unlock()
 	if cc.items[it.ID] == it {
 		delete(cc.items, it.ID)
+		cc.ids.Release(it.defBase) // its controller is done: the IDs are free
 	}
 }
 
@@ -1323,6 +1342,11 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
 	cc.scan = scan
 	cc.mu.Unlock()
+	for _, t := range scan {
+		if t.User {
+			cc.detail.SetViewer(airport.LatLon{Lat: t.Latitude, Lon: t.Longitude})
+		}
+	}
 	obs := make([]traffic.Observation, 0, len(scan))
 	for _, t := range scan {
 		obs = append(obs, traffic.Observation{ObjectID: t.ObjectID, Title: t.Title, Tail: t.Tail,

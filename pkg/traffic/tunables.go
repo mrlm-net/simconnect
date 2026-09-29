@@ -179,12 +179,13 @@ const (
 )
 
 // Default SimConnect IDs used by an Injector: 5 definition IDs, 2 request
-// IDs per aircraft (up to injectMaxAircraft) and injectEventCount event IDs.
+// IDs per aircraft (up to injectMaxAircraft: aircraft and their tugs, 40+
+// aircraft at once, #370) and injectEventCount event IDs.
 const (
 	DefaultInjectDefinitionBase uint32 = 7700
 	DefaultInjectRequestBase    uint32 = 7800
 	DefaultInjectEventBase      uint32 = 7900
-	injectMaxAircraft                  = 50
+	injectMaxAircraft                  = 96
 )
 
 // Hybrid arrival (ArrivalWithInjector): the injector takes over on the

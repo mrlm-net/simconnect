@@ -19,12 +19,12 @@ import (
 
 // injectedDeparture starts an injected departure from C22 to runway 24 and
 // returns a function that runs sim frames until a state (or a frame limit).
-func injectedDeparture(t *testing.T, req TaxiRequest) (*TaxiController, *eventClient, func(until TaxiState, maxFrames int) bool, *time.Time) {
+func injectedDeparture(t *testing.T, req TaxiRequest, opts ...TaxiOption) (*TaxiController, *eventClient, func(until TaxiState, maxFrames int) bool, *time.Time) {
 	t.Helper()
 	g := lkprGraph(t)
 	ec := &eventClient{}
 	inj := NewInjector(ec)
-	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	ctl := NewTaxiController(NewFleet(ec), append([]TaxiOption{TaxiWithInjector(inj)}, opts...)...)
 	c22, _ := g.Layout.ParkingIndex("C22")
 	if req.Runway == "" {
 		req.Runway = "24"

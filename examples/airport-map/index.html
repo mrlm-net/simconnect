@@ -1441,7 +1441,8 @@ async function pollWorld() {
     for (const a of w.aircraft) phases[a.phase] = (phases[a.phase] || 0) + 1;
     const where = w.follow ? 'following your aircraft' : `around ${esc(w.icao || 'a position')}`;
     $('wInfo').innerHTML = `${where}, ${w.radiusNM.toFixed(0)} NM: <b>${w.airports.length}</b> airports, <b>${w.aircraft.length}</b> aircraft` +
-      (w.aircraft.length ? '<br>' + Object.entries(phases).map(([k, n]) => `${n} ${esc(k)}`).join(' · ') : '');
+      (w.aircraft.length ? '<br>' + Object.entries(phases).map(([k, n]) => `${n} ${esc(k)}`).join(' · ') : '') +
+      (w.load && w.load.driven ? `<br><span title="Injected aircraft we drive: far away or standing still they get fewer updates (level of detail)">driving ${w.load.driven}: ${w.load.perSecond.toFixed(0)} updates/s, ${w.load.everyFrame} every frame</span>` : '');
     if (document.activeElement !== $('wCentre')) $('wCentre').value = w.follow ? 'follow' : 'airport';
     if (document.activeElement !== $('wRadius')) $('wRadius').value = String(w.radiusNM);
   } catch { /* server gone */ }

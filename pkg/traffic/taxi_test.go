@@ -29,7 +29,17 @@ type fakeClient struct {
 	waypoints [][]byte
 	periods   []types.SIMCONNECT_PERIOD
 	sendID    uint32
+	clears    int
+	intervals []uint32 // of RequestDataOnSimObject
 }
+
+func (f *fakeClient) ClearDataDefinition(def uint32) error {
+	delete(f.defs, def)
+	f.clears++
+	return nil
+}
+
+func (f *fakeClient) cleared() int { return f.clears }
 
 func (f *fakeClient) AddToDataDefinition(def uint32, name, unit string, _ types.SIMCONNECT_DATATYPE, _ float32, _ uint32) error {
 	if f.defs == nil {
@@ -62,8 +72,9 @@ func (f *fakeClient) SetDataOnSimObject(_, _ uint32, _ types.SIMCONNECT_DATA_SET
 	f.waypoints = append(f.waypoints, append([]byte(nil), unsafe.Slice((*byte)(p), n*size)...))
 	return nil
 }
-func (f *fakeClient) RequestDataOnSimObject(_, _, _ uint32, period types.SIMCONNECT_PERIOD, _ types.SIMCONNECT_DATA_REQUEST_FLAG, _, _, _ uint32) error {
+func (f *fakeClient) RequestDataOnSimObject(_, _, _ uint32, period types.SIMCONNECT_PERIOD, _ types.SIMCONNECT_DATA_REQUEST_FLAG, _, interval, _ uint32) error {
 	f.periods = append(f.periods, period)
+	f.intervals = append(f.intervals, interval)
 	return nil
 }
 

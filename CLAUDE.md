@@ -185,6 +185,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
 │       ├── manager_enroute.go # Enroute arrivals, overflights, leaving the area, Attach
 │       ├── enroute.go       #   EnrouteStart: airborne spawn + waypoint chain (NonATC)
+│       ├── detail.go        #   Detail: level of detail (frames per aircraft by distance/motion), Load
+│       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers
 │       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
 │       ├── models.go        #   ModelsFor: aircraft titles for an airline and type
 │       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling

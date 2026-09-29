@@ -25,6 +25,13 @@ func ArrivalWithInjector(inj *Injector) ArrivalOption {
 	return func(c *ArrivalController) { c.inj = inj }
 }
 
+// ArrivalWithDetail drives the injected taxi-in on fewer sim frames when it
+// is far from the viewer or standing still (#370); on the runway always on
+// every frame.
+func ArrivalWithDetail(d *Detail) ArrivalOption {
+	return func(c *ArrivalController) { c.detail = d }
+}
+
 // ArrivalWithGroundPicture shares the ground picture with the other aircraft
 // at the airport: the injected arrival reports itself on the ground and,
 // off the runway, stops behind the traffic ahead (#334).
@@ -215,12 +222,29 @@ func (c *ArrivalController) initDrive() {
 	c.holdAtCrossings = c.req.HoldAtCrossings
 }
 
+// frameDetail sets how often the taxi-in is driven (#370): on the runway
+// every frame, moving by its distance from the viewer, otherwise standing
+// still.
+func (c *ArrivalController) frameDetail(pose GroundPose) {
+	if c.detail == nil {
+		return
+	}
+	full := c.state <= ArrivalVacating
+	if n, changed := c.detailS.want(c.detail, c.now(), pose.Position, pose.GroundSpeedKts > 0.5, full); changed {
+		if client := c.fleet.clientOrNil(); client != nil {
+			c.note("monitor detail", requestFrames(client, c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID, n))
+		}
+	}
+	c.detail.report(c.objectID, c.detailS.interval)
+}
+
 // onInjectedFrame runs the ground phase once the injector has the aircraft:
 // every sim frame the mover steps and the aircraft is placed.
 func (c *ArrivalController) onInjectedFrame() {
 	// Off the runway the arrival follows the traffic ahead (#334).
 	c.followTraffic = c.state == ArrivalVacating || c.state == ArrivalTaxiing || c.state == ArrivalParking
 	pose := c.step()
+	c.frameDetail(pose)
 	path := c.mover.Path()
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
 	c.last.Remaining = math.Max(0, path.Length()-pose.Distance)

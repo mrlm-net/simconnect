@@ -27,8 +27,8 @@ import (
 
 // Request IDs of enroute creations, and of their removal.
 const (
-	enrouteReqBase      uint32 = 7100
-	enrouteReqCount     uint32 = 800
+	enrouteReqBase      uint32 = 41000 // clear of the library's 7300–7999 and the controllers' blocks
+	enrouteReqCount     uint32 = 1000
 	reqRemoveEnroute    uint32 = 2007
 	reqReleaseEnroute   uint32 = 2008
 	enrouteDefWaypoints uint32 = 2009

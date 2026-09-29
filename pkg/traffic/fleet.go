@@ -29,6 +29,9 @@ type Fleet struct {
 	pending map[uint32]*Pending  // reqID → pending creation
 	members map[uint32]*Aircraft // objectID → active aircraft
 	client  engine.Client
+	// defined are the data definitions controllers registered with this
+	// client: a reused ID block clears them first (IDBlocks, #370).
+	defined map[uint32]bool
 }
 
 // NewFleet constructs a Fleet bound to the given engine client.
@@ -51,9 +54,26 @@ func (f *Fleet) SetClient(client engine.Client) {
 	f.client = client
 	f.pending = make(map[uint32]*Pending)
 	f.members = make(map[uint32]*Aircraft)
+	f.defined = nil // a new connection defines afresh
 }
 
 // clientOrNil returns the current engine client, or nil when disconnected.
+// redefine prepares definition IDs to be registered: those registered
+// before on this client are cleared (AddToDataDefinition appends).
+func (f *Fleet) redefine(client engine.Client, ids ...uint32) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.defined == nil {
+		f.defined = map[uint32]bool{}
+	}
+	for _, id := range ids {
+		if f.defined[id] {
+			client.ClearDataDefinition(id)
+		}
+		f.defined[id] = true
+	}
+}
+
 func (f *Fleet) clientOrNil() engine.Client {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -304,4 +324,5 @@ func (f *Fleet) Clear() {
 	defer f.mu.Unlock()
 	f.pending = make(map[uint32]*Pending)
 	f.members = make(map[uint32]*Aircraft)
+	f.defined = nil // a new connection defines afresh
 }
