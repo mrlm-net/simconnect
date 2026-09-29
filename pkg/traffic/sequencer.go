@@ -39,8 +39,11 @@ type SequenceEntry struct {
 	Number   int    `json:"number"`           // 1 lands first
 	Leader   string `json:"leader,omitempty"` // the one landing before
 	Wake     Wake   `json:"wake"`
-	// SpacingNM is the spacing it keeps behind its leader on final.
-	SpacingNM float64 `json:"spacingNM,omitempty"`
+	// SpacingNM is the spacing it keeps behind its leader on final, and
+	// SpacingWhy why it differs from the wake minimum (low visibility
+	// procedures, contaminated runway, reduced separation, runway occupancy).
+	SpacingNM  float64 `json:"spacingNM,omitempty"`
+	SpacingWhy string  `json:"spacingWhy,omitempty"`
 	// ETA is when it would land flying on as it is; Landing when it lands
 	// in the sequence; Delay the difference it must absorb.
 	ETA     time.Time     `json:"eta"`
@@ -70,6 +73,13 @@ type SequencerOptions struct {
 	FinalNM float64
 	// DelayStep: a delay change smaller than this is not reported (30 s).
 	DelayStep time.Duration
+	// AllowReduced uses the reduced radar separation (2.5 NM) where the
+	// conditions allow it (and the airport is approved for it).
+	AllowReduced bool
+	// TimeBased keeps the spacing's time instead of its distance: in a
+	// headwind the distance shrinks (time-based separation, TBS); the
+	// default keeps the distance, which takes longer to fly into the wind.
+	TimeBased bool
 	// OnChange is called with every change of place or delay.
 	OnChange func(SequenceChange)
 }
@@ -82,6 +92,7 @@ type ApproachSequencer struct {
 	mu   sync.Mutex
 	last map[string]SequenceEntry
 	seq  []SequenceEntry
+	cond ApproachConditions
 }
 
 // NewApproachSequencer creates the sequencer of a runway end ("24").
@@ -109,11 +120,8 @@ func (s *ApproachSequencer) Sequence() []SequenceEntry {
 }
 
 // eta predicts when an arrival lands flying on as it is.
-func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft) time.Time {
-	final := a.FinalKts
-	if final <= 0 {
-		final = 140
-	}
+func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachConditions) time.Time {
+	final := c.FinalGroundKts(a.FinalKts) // on final, into the wind
 	gs := math.Max(a.GroundKts, final)
 	outer := math.Max(0, a.DistanceToGoNM-s.opts.FinalNM)
 	inner := math.Min(a.DistanceToGoNM, s.opts.FinalNM)
@@ -124,19 +132,40 @@ func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft) time.Time {
 	return now.Add(time.Duration(h * float64(time.Hour)))
 }
 
-// gap is the time between two landings: the follower's wake spacing on
-// final at its final speed, and at least the leader's runway occupancy.
-func (s *ApproachSequencer) gap(lead, follow ApproachAircraft) (time.Duration, float64) {
-	nm := ArrivalSeparationNM(lead.Wake, follow.Wake, s.opts.Scheme)
-	final := follow.FinalKts
-	if final <= 0 {
-		final = 140
+// gap is the time between two landings in the conditions: the follower's
+// spacing on final (ArrivalSpacing) flown at its ground speed on final —
+// or, time-based, at its airspeed — and at least the leader's runway
+// occupancy on the surface. It returns the time, the spacing and why the
+// spacing differs from the wake minimum.
+func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditions) (time.Duration, float64, string) {
+	nm, why := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced)
+	kts := c.FinalGroundKts(follow.FinalKts)
+	if s.opts.TimeBased {
+		kts = ApproachConditions{}.FinalGroundKts(follow.FinalKts) // the time, not the distance, is kept
 	}
-	g := SeparationTime(nm, final)
-	if occ := RunwayOccupancy(lead.Wake, true); occ > g {
+	g := SeparationTime(nm, kts)
+	if occ := RunwayOccupancyIn(lead.Wake, true, c.Surface); occ > g {
 		g = occ
+		if why == "" {
+			why = "runway occupancy"
+		}
 	}
-	return g, nm
+	return g, nm, why
+}
+
+// SetConditions sets the weather on final the spacing follows
+// (ConditionsFrom); until set, calm and good visibility on a dry runway.
+func (s *ApproachSequencer) SetConditions(c ApproachConditions) {
+	s.mu.Lock()
+	s.cond = c
+	s.mu.Unlock()
+}
+
+// Conditions are the conditions in use.
+func (s *ApproachSequencer) Conditions() ApproachConditions {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cond
 }
 
 // Update sequences the arrivals at now and returns the sequence. Fixed
@@ -144,6 +173,7 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft) (time.Duration, f
 // predicted times, take the earliest landing time that keeps the gap to
 // the one before and the one after.
 func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) []SequenceEntry {
+	c := s.Conditions()
 	type slot struct {
 		a   ApproachAircraft
 		eta time.Time
@@ -151,7 +181,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	}
 	var fixed, free []slot
 	for _, a := range arrivals {
-		sl := slot{a: a, eta: s.eta(now, a)}
+		sl := slot{a: a, eta: s.eta(now, a, c)}
 		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM {
 			sl.a.Fixed, sl.at = true, sl.eta
 			fixed = append(fixed, sl)
@@ -176,8 +206,8 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			moved := false
 			for _, p := range planned {
 				// Before p: f must land a gap before it; after: a gap after.
-				gapAfter, _ := s.gap(p.a, f.a)
-				gapBefore, _ := s.gap(f.a, p.a)
+				gapAfter, _, _ := s.gap(p.a, f.a, c)
+				gapBefore, _, _ := s.gap(f.a, p.a, c)
 				if at.Before(p.at.Add(gapAfter)) && at.After(p.at.Add(-gapBefore)) {
 					at = p.at.Add(gapAfter) // behind p
 					moved = true
@@ -197,7 +227,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			Delay: p.at.Sub(p.eta), Fixed: p.a.Fixed, DistanceToGoNM: p.a.DistanceToGoNM}
 		if i > 0 {
 			e.Leader = planned[i-1].a.Callsign
-			_, e.SpacingNM = s.gap(planned[i-1].a, p.a)
+			_, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
 		}
 		out[i] = e
 	}

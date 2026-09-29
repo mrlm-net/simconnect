@@ -53,9 +53,28 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 		s.airlines[a.ICAO] = a
 	}
 	s.mgr = traffic.NewTrafficManager(s, traffic.ManagerOptions{Source: s.source, MaxAircraft: 12, MaxPerAirport: 12, OnEvent: s.event,
-		Picture: cc.world, Overflights: s.overflights}) // other traffic respected by default
+		Picture: cc.world, Overflights: s.overflights, Conditions: s.conditions}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
 	return s
+}
+
+// conditions are the weather on final of an airport's arrival runway: the
+// weather at the user aircraft (SimConnect reports no other), on the runway
+// in use (#389).
+func (s *scheduler) conditions(icao string) (traffic.ApproachConditions, bool) {
+	if s.cc.weather == nil {
+		return traffic.ApproachConditions{}, false
+	}
+	wx := s.cc.weather()
+	g, err := s.st.cache.Graph(icao)
+	if wx == nil || err != nil {
+		return traffic.ApproachConditions{}, false
+	}
+	_, end, ok := g.Layout.RunwayEnd(s.cc.activeRunway(g, true))
+	if !ok {
+		return traffic.ApproachConditions{}, false
+	}
+	return traffic.ConditionsFrom(*wx, end.Heading), true
 }
 
 // source is the schedule of an hour for the managed airports; the seed per

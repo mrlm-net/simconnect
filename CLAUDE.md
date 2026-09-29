@@ -188,6 +188,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── detail.go        #   Detail: level of detail (frames per aircraft by distance/motion), Load
 │       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers
 │       ├── wake.go          #   WakeFor (ICAO/RECAT-EU), ArrivalSeparationNM, DepartureInterval, RunwayOccupancy
+│       ├── conditions.go    #   ApproachConditions: weather on final → spacing (LVP, reduced, contaminated, wind)
 │       ├── sequencer.go     #   ApproachSequencer: landing order, spacing and delays per runway; DistanceToGo
 │       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
 │       ├── models.go        #   ModelsFor: aircraft titles for an airline and type

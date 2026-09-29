@@ -14,6 +14,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` wake turbulence separation (#389): `WakeFor` (ICAO L/M/H/J and RECAT-EU A–F by type, else by span), `ArrivalSeparationNM` (ICAO Doc 4444 and RECAT-EU minima on final, at least `MinRadarSeparationNM`), `SeparationTime`, `DepartureInterval` (wake and same-route intervals), `RunwayOccupancy`. See `docs/traffic-separation.md`.
 - `pkg/traffic` `ApproachSequencer` (#390): the landing sequence of a runway, with predicted and sequenced landing times, wake spacing and runway occupancy, and each arrival's delay. Established arrivals (`FreezeNM`) and other traffic are fixed; `OnChange` reports changes. `DistanceToGo`.
 - `examples/airport-map`: landing sequences per airport and runway, fed with our arrivals (controlled and en route) and respected other traffic; changes in the traffic log; `GET /api/sequence`.
+- `pkg/traffic` spacing follows the weather:
+  - `ApproachConditions` and `ConditionsFrom` (visibility, ceiling, headwind on final, runway dry, wet or contaminated);
+  - `ArrivalSpacing`: reduced 2.5 NM only in good conditions on a dry runway, +1 NM contaminated, at least 6 NM in low visibility procedures;
+  - `RunwayOccupancyIn` and `FinalGroundKts`;
+  - the sequencer's `SetConditions`, `AllowReduced`, `TimeBased` and `SpacingWhy`;
+  - `ManagerOptions.Conditions` spaces arrival spawns likewise;
+  - the map feeds the weather at the user aircraft.
 
 ### Fixed
 

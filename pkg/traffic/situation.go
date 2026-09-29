@@ -40,6 +40,8 @@ type Situation struct {
 	// airport's, when the picture knows it.
 	Others   []TrackedAircraft
 	Position airport.LatLon
+	// Conditions are the weather on final (ManagerOptions.Conditions).
+	Conditions ApproachConditions
 }
 
 // AdviceAction is what a check advises for a flight.
@@ -195,25 +197,38 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 		// One gap is opened for the departures waiting — the first one the
 		// scheduled arrivals can give — not one between every two arrivals.
 		gapFor := waiting >= queue
+		// The weather stretches the gaps as it stretches the spacing on
+		// final: twice in low visibility, a third more on a contaminated
+		// runway.
+		base := gap
+		medium := Wake{WakeMedium, RecatD}
+		if nm, _ := ArrivalSpacing(medium, medium, SchemeICAO, s.Conditions, false); nm > MinRadarSeparationNM {
+			base = time.Duration(float64(gap) * nm / MinRadarSeparationNM)
+		}
 		var out []Advice
 		var prev time.Time
 		for _, l := range ls {
 			eta := l.eta
-			need := gap
+			need := base
 			if gapFor && l.f.Status == FlightScheduled && !prev.IsZero() {
-				need = 2 * gap
+				need = 2 * base
 			}
 			if !prev.IsZero() && eta.Sub(prev) < need && l.f.Status == FlightScheduled {
 				shift := need - eta.Sub(prev)
 				eta = eta.Add(shift)
 				why := "landing flow"
-				if need > gap {
+				switch {
+				case need > base:
 					why = fmt.Sprintf("landing flow, gap for %d departures", waiting)
+				case base > gap && s.Conditions.LowVisibility():
+					why = "landing flow, low visibility procedures"
+				case base > gap:
+					why = "landing flow, " + s.Conditions.Surface.String() + " runway"
 				}
 				spawn := eta.Add(-(s.Options.ArrivalLead - LandingBeforeSTA))
 				out = append(out, Advice{Key: l.f.Key(), Action: AdviceDelay, Until: spawn, Reason: why})
 			}
-			if need > gap {
+			if need > base {
 				gapFor = false // opened
 			}
 			if l.f.Kind != "other" && (l.f.Status == FlightScheduled || l.f.Status == FlightApproaching) {

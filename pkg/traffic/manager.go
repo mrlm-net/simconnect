@@ -179,6 +179,10 @@ type ManagerOptions struct {
 	// add-ons, the user — at each managed airport (Situation.Others).
 	Picture *TrafficPicture
 	Others  OtherTrafficMode
+	// Conditions gives the weather on final of an airport's arrival runway
+	// (ConditionsFrom): the checks space arrivals by it (#389). nil: calm,
+	// good visibility, dry.
+	Conditions func(icao string) (ApproachConditions, bool)
 	// OnEvent is called with every lifecycle event, in order, outside the
 	// manager's lock (it may call the manager); see also Events.
 	OnEvent func(ManagerEvent)
@@ -838,6 +842,9 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 	for icao, fs := range by {
 		sort.Slice(fs, func(i, j int) bool { return lessFlight(fs[i].focusTime(), fs[i].Key(), fs[j].focusTime(), fs[j].Key()) })
 		sit := Situation{Now: now, Airport: icao, Flights: fs, Options: m.opts, Others: othersAt(m.opts.Picture, m.opts.Others, icao)}
+		if m.opts.Conditions != nil && icao != "" {
+			sit.Conditions, _ = m.opts.Conditions(icao)
+		}
 		if p := m.opts.Picture; p != nil {
 			for _, a := range p.Airports() {
 				if a.ICAO == icao {
