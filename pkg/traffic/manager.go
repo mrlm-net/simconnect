@@ -148,7 +148,8 @@ type ManagerOptions struct {
 	MaxAttempts              int
 	RetryAfter, SpawnTimeout time.Duration
 	// RemoveDepartedAfter: a departed aircraft is removed this long after
-	// it left the controllers (default 5 min); RemoveParkedAfter: a parked
+	// it left the controllers (default 30 min; with a Picture it goes once it
+	// leaves the area, LeftAfter); RemoveParkedAfter: a parked
 	// arrival not turning around (default 20 min).
 	RemoveDepartedAfter, RemoveParkedAfter time.Duration
 	// Turnarounds: an arrival turns into a departure of the same airline
@@ -861,8 +862,12 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 				switch a.Action {
 				case AdviceDelay:
 					if f.Status == FlightScheduled && a.Until.After(f.retryAt) {
+						// Announced when it moves a minute or more (the prediction
+						// drifts by seconds each tick).
+						if a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason {
+							defer m.emit(EventDelayed, f, now, a.Reason)
+						}
 						f.retryAt, f.Note = a.Until, a.Reason
-						m.emit(EventDelayed, f, now, a.Reason)
 					}
 				case AdviceHold:
 					if f.Status == FlightBoarding {

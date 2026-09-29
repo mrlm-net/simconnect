@@ -379,3 +379,33 @@ func TestHoldingAircraftTakesNoPriority(t *testing.T) {
 		t.Fatalf("slowed to %.1f kt for an aircraft holding beside its path", slowest)
 	}
 }
+
+// A pushback not started waits for a neighbour's push under way through
+// the same corridor (at LKPR A1 and A3 pushed at once and each stopped for
+// the other's body for good); the push under way does not wait for it.
+func TestPushWaitsForNeighbourPush(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	at := func(east, north float64) airport.LatLon { return offsetHeading(offsetHeading(base, 90, east), 0, north) }
+	line := func(e0, n0, e1, n1 float64) []airport.LatLon {
+		var out []airport.LatLon
+		for i := 0; i <= 20; i++ {
+			f := float64(i) / 20
+			out = append(out, at(e0+(e1-e0)*f, n0+(n1-n0)*f))
+		}
+		return out
+	}
+	// Stand 1 at x=0, stand 2 at x=80 (bodies far apart), both pushing south
+	// onto the same taxiway lane at y=-60: 1 already pushing east along it.
+	p.Report(1, at(0, -60), 0, MotionProfile{}, now)
+	p.ReportPush(1, line(0, -60, 90, -60), 18)
+	p.Report(2, at(80, 0), 180, MotionProfile{}, now)
+	mine := line(80, 0, 80, -60)
+	if _, blocked := p.corridorBlocked(2, mine, 18, true, now); !blocked {
+		t.Error("a push starts into a neighbour's push under way")
+	}
+	if _, blocked := p.corridorBlocked(1, line(0, -60, 90, -60), 18, false, now); blocked {
+		t.Error("the push under way stops for a neighbour still on its stand, clear of its corridor")
+	}
+}

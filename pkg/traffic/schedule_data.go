@@ -24,6 +24,7 @@ func DefaultScheduleConfig() ScheduleConfig {
 			"DH8D": {MinNM: 50, MaxNM: 900, RunwayM: 1500},
 			"CRJ9": {MinNM: 100, MaxNM: 1400, RunwayM: 1800},
 			"E190": {MinNM: 100, MaxNM: 2000, RunwayM: 1800},
+			"BCS3": {MinNM: 100, MaxNM: 3000, RunwayM: 1900},
 			"A20N": {MinNM: 150, MaxNM: 3200, RunwayM: 2000},
 			"A320": {MinNM: 150, MaxNM: 3000, RunwayM: 2000},
 			"A321": {MinNM: 200, MaxNM: 3200, RunwayM: 2200},
@@ -39,7 +40,7 @@ func defaultAirlines() []Airline {
 	eu := []string{"LK", "LO", "LZ", "LH", "LJ", "LD", "LB", "LR", "LY", "LI", "LF", "LE", "LP", "LS", "LG", "LC", "LT", "LM", "ED", "EH", "EB", "EG", "EI", "EK", "EN", "ES", "EF", "EP", "EY", "EV", "EE", "EL", "BI"}
 	central := []string{"LK", "LO", "LZ", "LH", "EP", "ED", "LJ", "LD"}
 	return []Airline{
-		{ICAO: "CSA", Name: "Czech Airlines", Telephony: "CSA", Fleet: map[string]float64{"A320": 1, "AT76": 1}, Bases: []string{"LKPR"}, Regions: eu, Weight: 1},
+		{ICAO: "CSA", Name: "Czech Airlines", Telephony: "CSA", Fleet: map[string]float64{"A320": 1, "BCS3": 1}, Bases: []string{"LKPR"}, Regions: eu, Weight: 1},
 		{ICAO: "TVS", Name: "Smartwings", Telephony: "SKYTRAVEL", Fleet: map[string]float64{"B738": 3, "B38M": 2}, Bases: []string{"LKPR", "LKTB", "LKMT"}, Regions: append([]string{"HE", "GC", "DT", "OJ"}, eu...), Weight: 1.5},
 		{ICAO: "DLH", Name: "Lufthansa", Telephony: "LUFTHANSA", Fleet: map[string]float64{"A20N": 3, "A320": 2, "A321": 2, "CRJ9": 1, "B789": 0.5}, Bases: []string{"EDDF", "EDDM"}, Regions: []string{"*"}, Weight: 2},
 		{ICAO: "AUA", Name: "Austrian", Telephony: "AUSTRIAN", Fleet: map[string]float64{"A320": 2, "E190": 1, "DH8D": 1}, Bases: []string{"LOWW"}, Regions: eu, Weight: 1},

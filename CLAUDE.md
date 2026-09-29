@@ -189,6 +189,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers
 │       ├── wake.go          #   WakeFor (ICAO/RECAT-EU), ArrivalSeparationNM, DepartureInterval, RunwayOccupancy
 │       ├── conditions.go    #   ApproachConditions: weather on final → spacing (LVP, reduced, contaminated, wind)
+│       ├── runway_control.go #  RunwayController: line-up, take-off, crossing clearances (#393)
+│       ├── separation.go    #   AirborneSeparation and minima (#395)
 │       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
 │       ├── absorb.go        #   AbsorbDelay: speed control and path stretching on the STAR (#391)
 │       ├── sequencer.go     #   ApproachSequencer: landing order, spacing and delays per runway; DistanceToGo

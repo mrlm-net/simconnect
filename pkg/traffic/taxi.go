@@ -88,6 +88,10 @@ type TaxiRequest struct {
 	// clears itself after a short, varied wait. A clearance given before
 	// its gate means no stop there.
 	HoldForClearances bool
+	// HoldForRunway (injected) stops at the gates onto a runway only —
+	// line-up, take-off and runway crossings — until their clearance, for a
+	// runway controller (#393); pushback and taxi go by themselves.
+	HoldForRunway bool
 	// PushbackAt (injected, without HoldForClearances) keeps the aircraft
 	// on its stand until then, e.g. its scheduled departure time; zero
 	// pushes after the usual short wait.
@@ -215,13 +219,13 @@ type TaxiController struct {
 	// Injected departure (TaxiWithInjector): the shared injected ground
 	// driving and the departure specifics.
 	groundDrive
-	inj                                                     *Injector
-	rng                                                     *rand.Rand
-	timing                                                  timing // this aircraft's draw of the spreads (#343)
+	inj    *Injector
+	rng    *rand.Rand
+	timing timing // this aircraft's draw of the spreads (#343)
 	// De-icing (#323): the pad's node, the end of the treatment, done.
-	padNode    airport.NodeID
-	deiceUntil time.Time
-	deiced     bool
+	padNode                                                 airport.NodeID
+	deiceUntil                                              time.Time
+	deiced                                                  bool
 	sent                                                    map[uint32]string
 	fast                                                    bool // monitor every frame: throttle progress events
 	emittedAt                                               time.Time
@@ -231,7 +235,7 @@ type TaxiController struct {
 	lightsSet                                               bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
-	pushStopped bool // HoldPushback: stay on the stand
+	pushStopped                                             bool // HoldPushback: stay on the stand
 	takeoffHeld                                             bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
 	holdingCrossing                                         bool
 	alignDist                                               float64

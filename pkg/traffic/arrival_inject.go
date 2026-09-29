@@ -412,6 +412,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		c.setInjectedLights(lightsRollout, "lights approach (injected)")
 	}
 	pose := c.blend.apply(c.approach.Step(math.Max(dt, 0)), math.Max(dt, 0))
+	pose.RunwayFt = c.plan.Runway.Altitude / 0.3048 // a steady glide path over any terrain
 	if err := c.inj.PlaceAir(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}

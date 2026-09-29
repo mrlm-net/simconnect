@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"hash/fnv"
 	"sort"
 	"strings"
 )
@@ -11,7 +12,9 @@ import (
 // ModelsFor ranks the simulator's aircraft titles for a flight of airline
 // (ICAO code, name) in type (ICAO designator), best first:
 //
-//  1. the type in the airline's livery,
+//  1. the type in the airline's livery — its ICAO code in the title before
+//     only its name ("TVS-Smartwings" before "TVP-Smartwings Poland", a
+//     sister airline),
 //  2. another type of the same size (ICAO code letter) in the airline's
 //     livery, the same maker first,
 //  3. the type in any livery, airline liveries before house and white ones.
@@ -21,12 +24,50 @@ import (
 // business-jet and freighter versions are left out. The type of a title is
 // what ProfileFor makes of it. At most max titles (0: all).
 func ModelsFor(models []string, airline, name, typ string, max int) []string {
+	return pickTitles(rankModels(models, airline, name, typ), "", max)
+}
+
+// ModelsForFlight is ModelsFor with the best titles taken in turn by
+// callsign: of equally good titles (several liveries or versions of the
+// airline's type) each flight gets one of its own — the same one every time
+// it is asked for — so a fleet shows its variety instead of one aircraft.
+func ModelsForFlight(models []string, airline, name, typ, callsign string, max int) []string {
+	return pickTitles(rankModels(models, airline, name, typ), callsign, max)
+}
+
+type rankedModel struct {
+	title string
+	rank  int
+}
+
+// pickTitles returns the titles best first, the best group rotated by key.
+func pickTitles(out []rankedModel, key string, max int) []string {
+	if key != "" && len(out) > 1 {
+		n := 1
+		for n < len(out) && out[n].rank == out[0].rank {
+			n++
+		}
+		h := fnv.New32a()
+		h.Write([]byte(key))
+		k := int(h.Sum32() % uint32(n))
+		best := append(append([]rankedModel{}, out[k:n]...), out[:k]...)
+		out = append(best, out[n:]...)
+	}
+	if max > 0 && len(out) > max {
+		out = out[:max]
+	}
+	titles := make([]string, len(out))
+	for i, c := range out {
+		titles[i] = c.title
+	}
+	return titles
+}
+
+// rankModels ranks the titles for ModelsFor, best first.
+func rankModels(models []string, airline, name, typ string) []rankedModel {
 	want := ProfileFor(typ)
 	size := want.ICAOCode
-	type cand struct {
-		title string
-		rank  int
-	}
+	type cand = rankedModel
 	var out []cand
 	for _, t := range models {
 		if skipModel(t) {
@@ -36,20 +77,27 @@ func ModelsFor(models []string, airline, name, typ string, max int) []string {
 		if p.Type == "" {
 			continue
 		}
-		ours := liveryOf(t, airline, name)
+		code := airline != "" && hasToken(t, strings.ToUpper(airline))
+		ours := code || liveryOf(t, airline, name)
+		// In the airline's livery by name only it may be a sister
+		// airline's: after those with its code.
+		byName := 0
+		if !code {
+			byName = 1
+		}
 		switch {
 		case p.Type == typ && ours:
-			out = append(out, cand{t, 0})
+			out = append(out, cand{t, 0 + byName})
 		case ours && p.ICAOCode == size && p.Category == want.Category && p.Type[:1] == typ[:1]:
-			out = append(out, cand{t, 1}) // same maker first
+			out = append(out, cand{t, 2 + byName}) // same maker first
 		case ours && p.ICAOCode == size && p.Category == want.Category:
-			out = append(out, cand{t, 2})
+			out = append(out, cand{t, 4 + byName})
 		case p.Type == typ && genericLivery(t):
-			out = append(out, cand{t, 5})
+			out = append(out, cand{t, 8})
 		case p.Type == typ && hasToken(t, typ):
-			out = append(out, cand{t, 3}) // named by its designator
+			out = append(out, cand{t, 6}) // named by its designator
 		case p.Type == typ:
-			out = append(out, cand{t, 4})
+			out = append(out, cand{t, 7})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -58,14 +106,7 @@ func ModelsFor(models []string, airline, name, typ string, max int) []string {
 		}
 		return out[i].title < out[j].title
 	})
-	if max > 0 && len(out) > max {
-		out = out[:max]
-	}
-	titles := make([]string, len(out))
-	for i, c := range out {
-		titles[i] = c.title
-	}
-	return titles
+	return out
 }
 
 // modelTokens splits a title into its words: "FSLTL_FAIB_B738_TVS-Smartwings"

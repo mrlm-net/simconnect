@@ -18,7 +18,7 @@ func TestRunwayEntries(t *testing.T) {
 		rwy, _, _ := g.Layout.RunwayEnd(end)
 		var names []string
 		for i, e := range entries {
-			if e.Angle > MaxExitAngle {
+			if e.Angle > MaxEntryAngle {
 				t.Errorf("%s at %s: turn %.0f° onto the runway", end, e.Taxiway, e.Angle)
 			}
 			if d := e.FromThreshold + e.Remaining - rwy.Length; d > 1 || d < -1 {
@@ -69,5 +69,29 @@ func TestRouteToRunwayEntry(t *testing.T) {
 	}
 	if _, err := g.RouteToRunwayEntry(c22, "24", "ZZZ", RouteOptions{}); !errors.Is(err, ErrUnknownEntry) {
 		t.Errorf("unknown entry: %v", err)
+	}
+}
+
+// Threshold entries at LKPR: F onto 06 ends on the centreline beside the
+// runway node (joined), L onto 12 meets it at 120° (MaxEntryAngle).
+func TestRunwayEntriesAtThresholds(t *testing.T) {
+	g := lkprGraph(t)
+	for _, c := range []struct {
+		end, taxiway string
+		maxFrom      float64
+	}{{"06", "F", 250}, {"12", "L", 100}} {
+		entries, err := g.RunwayEntries(c.end)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, e := range entries {
+			if e.Taxiway == c.taxiway && e.FromThreshold < c.maxFrom {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no entry onto %s at %s within %.0f m of the threshold: %+v", c.end, c.taxiway, c.maxFrom, entries)
+		}
 	}
 }

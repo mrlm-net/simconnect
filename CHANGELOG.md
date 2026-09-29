@@ -33,8 +33,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - `ArrivalController.HoldFix`, `EnterHold`, `HoldAltitude`, `LeaveHold`, `Holding`;
   - on the map, arrivals hold with what speed and stretching cannot absorb, and are released by the sequencer.
 - `examples/airport-map`: a selected arrival in the air shows the route it still flies (dashed, with any dog-leg) and its hold with the level. 🎯 follows an aircraft: the map keeps it in the middle. `/api/control` has `airRoute` and `hold`.
+- `pkg/traffic` `RunwayController` (#393): take-off, line-up and crossing clearances by the runway free, the wake/route interval after the last departure, and the next arrival far enough out (mixed mode). First come first served, and `Waiting` reasons. `TaxiRequest.HoldForRunway`: pushback and taxi go by themselves, and the runway gates wait for clearances. The map runs a tower per runway (`GET /api/runways`).
+- `pkg/traffic` `ModelsForFlight`: equally good titles for a flight's airline and type are taken in turn by call sign, so a fleet shows its liveries (each flight keeps its own). `ModelsFor` puts titles carrying the airline's ICAO code before those matching only its name (a sister airline: TVS before "TVP-Smartwings Poland"). The A220-300 (`BCS3`) is a known type; Czech Airlines flies A320s and A220s instead of ATR 72s.
+- `examples/airport-map`: our aircraft are coloured by what they are — under our control (a card), arriving en route, overflying, departed — with a legend, labels and popups saying so.
+- `pkg/traffic` `AirborneSeparation` and the minima (`TerminalSeparationNM`, `EnrouteSeparationNM`, `VerticalSeparationFt`); the sequencer's `MinSpacingNM`. The map keeps 5 NM (sequencers at 5 NM, spawns 6 NM clear) and logs every pair under 5 NM and 1000 ft (`GET /api/separation`).
 
 ### Fixed
+
+- `pkg/airport`: entries onto a runway may turn up to `MaxEntryAngle` (135°) — threshold entries often meet the runway square or slightly back (LKPR 12 at L, 120°), which the 90° exit limit left out. A taxiway dead end on another node (within 3 m) is joined to it: at LKPR the F lead-in ends on the 06 centreline beside the runway node without sharing it, so 06 had no full-length entry.
+- `pkg/traffic`: an injected line-up follows the painted lead-in from the hold-short onto the runway also where no listed entry starts (a breadth-first walk of the taxi graph to the centreline), instead of turning straight at the runway.
+- `pkg/traffic`: injected approaches fly the glide path over the runway elevation, not the terrain below; over hills and valleys the aircraft had bumped up and down before the threshold. The last 100 ft blend to the ground.
+- `pkg/traffic`: a pushback waits while a neighbour's pushback under way sweeps its corridor. At LKPR A1 and A3 pushed at once and each stopped for the other's body for good.
+- `examples/airport-map`: a departure's stand is freed once it taxis, not when its pushback starts; a push held for traffic had new departures spawned on top of it (two aircraft on A1 and A3).
+- `examples/airport-map`: a tower clearance is logged once (a take-off clearance is also the line-up).
+- `pkg/traffic`: the manager reports a flight delayed again only when its retry moves by a minute or its reason changes.
 
 - `pkg/traffic` `ApproachSequencer`: first come, first served by the unconstrained time. Each arrival keeps the prediction it had when it joined, so losing a delay (slower, longer, holding) no longer costs it its place to a newcomer. Live, four newcomers had been sequenced ahead of eight delayed arrivals.
 - `examples/airport-map`: nobody appears on top of other traffic. Every arrival spawned at a STAR entry (by hand, scheduled or handed over from en route) waits while an airborne aircraft is within 5 NM and 2000 ft of it, or one appeared there in the last minute. Live, arrivals spawned by hand at one fix within seconds had flown on top of each other.

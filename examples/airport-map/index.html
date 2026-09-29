@@ -232,7 +232,8 @@
     </table>
     <div id="wInfo" class="note">—</div>
     <h2>Live traffic</h2>
-    <label class="opt"><input type="checkbox" id="trafficOn" checked> Our aircraft <span class="sw" style="background:#ffb347"></span><span class="sw" style="background:#ff2bd6"></span></label>
+    <label class="opt"><input type="checkbox" id="trafficOn" checked> Our aircraft</label>
+    <div class="note legend"><span class="sw" style="background:#ffb347"></span><span class="sw" style="background:#ff2bd6"></span> controlled (a card) · <span class="sw" style="background:#26c6da"></span> arrival en route · <span class="sw" style="background:#b388ff"></span> overflight · <span class="sw" style="background:#9ccc65"></span> departed</div>
     <label class="opt"><input type="checkbox" id="othersOn"> Other traffic (not ours) <span class="sw" style="background:#7fb3d5"></span> <span class="i" title="MSFS AI and other add-ons, up to 200 km: hidden unless you want to see it. The scheduled traffic respects it (it fills taxiways, takes landing slots, blocks spawn points) or ignores it.">ⓘ</span></label>
     <label class="opt"><input type="checkbox" id="safeOn"> Safe zones <span class="i" title="Half the wing span plus 3 m around every aircraft on the ground; red where two overlap.">ⓘ</span></label>
     <details id="othersBox"><summary>Other traffic</summary>
@@ -305,6 +306,7 @@
       <tr><td>⛶</td><td>full screen, panel included (Esc leaves)</td></tr>
       <tr><td>◨</td><td>hide the panel for the map alone, and show it again</td></tr>
       <tr><td>card</td><td>click an aircraft's card to select it (yellow on the map); click it again, or Esc, to deselect. An arrival in the air shows the route it still flies (dashed) and its hold</td></tr>
+      <tr><td>colours</td><td>our aircraft: orange/magenta under our control (a card), teal arriving en route, purple overflying, green departed; other traffic blue-grey (Layers)</td></tr>
       <tr><td>🎯</td><td>follow the aircraft: the map keeps it in the middle (again, or Esc: stop)</td></tr>
       <tr><td>🌐</td><td>world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
       <tr><td>📍</td><td>on a card, or a row of Layers → Live traffic: show that aircraft</td></tr>
@@ -1086,9 +1088,24 @@ const trafficMarkers = new Map();
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
 // The selected aircraft (a card clicked) is drawn yellow with a glow.
 const selectedTail = () => (ctlViews.find((x) => x.id === ctlSelected) || {}).tail;
+// What an aircraft of ours is: under a controller of ours (it has a card),
+// an arrival en route to its STAR entry, an overflight, or a departure
+// flying on after its SID — the last three flown by MSFS AI on their plans.
+function trafficKind(t) {
+  if (!t.ours) return 'other';
+  if (ctlViews.some((v) => v.tail === t.tail && !v.done && v.state !== 'complete')) return 'controlled';
+  let f = null;
+  try { f = schedFlight(t.tail); } catch { /* the schedule code is not set up yet (first draw) */ }
+  if (f && f.kind === 'overflight') return 'overflight';
+  if (f && f.kind === 'arrival') return 'enroute';
+  if (f && f.kind === 'departure') return 'departed';
+  return 'controlled';
+}
+const KIND_COLOR = { enroute: '#26c6da', overflight: '#b388ff', departed: '#9ccc65' };
+const KIND_NOTE = { enroute: 'arrival en route (MSFS AI on its plan, handed over at the STAR entry)', overflight: 'overflight (MSFS AI on its plan, crossing the area)', departed: 'departed (MSFS AI on its plan after the SID)', controlled: 'under our control', other: 'other traffic (not ours)' };
 const trafficIcon = (t, sel = t.tail && t.tail === selectedTail()) => L.divIcon({
   className: 'ac traffic', iconSize: [22, 22],
-  html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)${sel ? ';filter:drop-shadow(0 0 4px #ffe066) drop-shadow(0 0 2px #fff)' : ''}"><path fill="${sel ? '#ffe066' : !t.ours ? (t.onGround ? '#7fb3d5' : '#5d8fb8') : t.onGround ? '#ffb347' : '#ff2bd6'}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
+  html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)${sel ? ';filter:drop-shadow(0 0 4px #ffe066) drop-shadow(0 0 2px #fff)' : ''}"><path fill="${sel ? '#ffe066' : !t.ours ? (t.onGround ? '#7fb3d5' : '#5d8fb8') : KIND_COLOR[trafficKind(t)] || (t.onGround ? '#ffb347' : '#ff2bd6')}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
 // On the map: call sign and speed (and height when airborne); the rest on
 // click.
@@ -1096,10 +1113,10 @@ const schedFlight = (tail) => sched && tail ? (sched.flights || []).find((f) => 
 const flightLevel = (t) => t.alt >= 5500 ? 'FL' + String(Math.round(t.alt / 100)).padStart(3, '0') : `${Math.round(t.alt / 100) * 100}ft`;
 const trafficLabel = (t) => {
   const f = t.ours && !t.onGround ? schedFlight(t.tail) : null;
-  if (f) return `${esc(t.tail)} ${flightLevel(t)} →${esc(f.destination)}`; // en route: call sign, level, destination (#369)
+  if (f) return `${esc(t.tail)} ${flightLevel(t)} ${f.kind === 'overflight' ? '✈ ' + esc(f.origin) + '→' : '→'}${esc(f.destination)}`; // en route: call sign, level, destination (#369)
   return `${esc(t.tail || t.objectId)} ${t.groundKts.toFixed(0)}kt${t.onGround ? '' : ` ${t.agl.toFixed(0)}ft`}`;
 };
-const trafficDetail = (t) => `<b>${esc(t.tail || t.objectId)}</b> ${esc(t.title)}<br>${t.agl.toFixed(0)} ft · ${t.groundKts.toFixed(0)} kt · ` +
+const trafficDetail = (t) => `<b>${esc(t.tail || t.objectId)}</b> ${esc(t.title)}<br><i>${esc(KIND_NOTE[trafficKind(t)] || '')}</i><br>${t.agl.toFixed(0)} ft · ${t.groundKts.toFixed(0)} kt · ` +
   `${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)} fpm<br>gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · span ${t.span.toFixed(0)} m<br>${esc(shortState(t.state))}`;
 async function pollTraffic() {
   const safe = $('safeOn').checked;

@@ -26,9 +26,10 @@ import (
 // Within each SDK root, both "SimConnect SDK/lib/SimConnect.dll" and
 // "lib/SimConnect.dll" layouts are checked.
 //
-// When using [ClientWithAutoDetect] or [WithAutoDetect] options, an explicit
-// path via [ClientWithDLLPath] or [WithDLLPath] takes precedence over
-// auto-detection, which in turn overrides the default path.
+// With [ClientWithAutoDetect] or [WithAutoDetect], the detected path
+// overrides the configured one — the default or an explicit
+// [ClientWithDLLPath] / [WithDLLPath] — which stays the fallback when
+// detection fails.
 func DetectDLLPath() (string, error) {
 	return dll.Detect()
 }

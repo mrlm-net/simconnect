@@ -221,6 +221,7 @@ func BuildGraph(l *Layout) (*Graph, error) {
 	if edges == 0 {
 		return nil, ErrNoTaxiNetwork
 	}
+	g.joinDeadEnds()
 	g.stands = make([]bool, len(g.Nodes))
 	for id, es := range g.Adj {
 		for _, e := range es {
@@ -231,6 +232,45 @@ func BuildGraph(l *Layout) (*Graph, error) {
 	}
 	g.setClearances()
 	return g, nil
+}
+
+// deadEndJoinMeters: a dead-end taxi node this close to another node is the
+// same spot in the scenery, joined to it.
+const deadEndJoinMeters = 3.0
+
+// joinDeadEnds joins each taxiway dead end to the nearest other node within
+// deadEndJoinMeters: scenery data draws some lead-ins ending on a runway
+// node without sharing it (LKPR: F ends on the 06 centreline beside the
+// runway node), which would leave the lead-in cut off from the runway.
+func (g *Graph) joinDeadEnds() {
+	np := len(g.Layout.TaxiPoints)
+	for a := 0; a < np; a++ {
+		if len(g.Adj[a]) != 1 {
+			continue
+		}
+		e0 := g.Adj[a][0]
+		if g.Nodes[e0.To].Kind == NodeParking {
+			continue
+		}
+		best, bestD := NodeID(-1), deadEndJoinMeters
+		for b := 0; b < np; b++ {
+			if b == a || NodeID(b) == e0.To || len(g.Adj[b]) == 0 {
+				continue
+			}
+			if d := g.distance(g.Nodes[a].Position, g.Nodes[b].Position); d < bestD {
+				best, bestD = NodeID(b), d
+			}
+		}
+		if best < 0 {
+			continue
+		}
+		t := e0.Type
+		if t == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY {
+			t = types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI
+		}
+		g.Adj[a] = append(g.Adj[a], Edge{To: best, Length: bestD, Type: t, Name: e0.Name, Path: e0.Path})
+		g.Adj[best] = append(g.Adj[best], Edge{To: NodeID(a), Length: bestD, Type: t, Name: e0.Name, Path: e0.Path})
+	}
 }
 
 // ParkingNode returns the node of a parking index.

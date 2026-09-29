@@ -26,10 +26,13 @@ const (
 	// HighSpeedExitAngle is the largest turn-off angle of a high-speed
 	// (rapid) exit, in degrees.
 	HighSpeedExitAngle = 45.0
-	// MaxExitAngle is the largest turn-off angle a landing aircraft can take
-	// (and, for entries, the largest turn onto the runway); larger angles point
-	// back along the runway and are skipped.
+	// MaxExitAngle is the largest turn-off angle a landing aircraft can take;
+	// larger angles point back along the runway and are skipped.
 	MaxExitAngle = 90.0
+	// MaxEntryAngle is the largest turn onto the runway a departure takes at
+	// taxi speed: sharper than any exit — threshold entries are often at 90°
+	// or more (LKPR 12 at L, 120°) — but not a U-turn.
+	MaxEntryAngle = 135.0
 	// exitHoldShortSearch bounds the search for the hold-short behind an exit.
 	exitHoldShortSearch = 300.0
 )
@@ -77,6 +80,12 @@ type RunwayExit struct {
 // sorted by distance from the landing threshold. Exits turning back towards
 // the threshold (Angle > MaxExitAngle) are left out.
 func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
+	return g.turnoffs(runwayEnd, MaxExitAngle)
+}
+
+// turnoffs are the ways off the runway for aircraft rolling along
+// runwayEnd, turning at most maxAngle.
+func (g *Graph) turnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, error) {
 	rwy, end, ok := g.Layout.RunwayEnd(runwayEnd)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q at %s", ErrUnknownRunway, runwayEnd, g.Layout.ICAO)
@@ -119,7 +128,7 @@ func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
 			brg := math.Mod(math.Atan2(bx-ax, bz-az)*180/math.Pi+360, 360)
 			rel := math.Mod(brg-end.Heading+540, 360) - 180 // -180..180, positive = right
 			angle := math.Abs(rel)
-			if angle > MaxExitAngle {
+			if angle > maxAngle {
 				continue
 			}
 			side := ExitRight

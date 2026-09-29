@@ -124,16 +124,18 @@ type airportResponse struct {
 type state struct {
 	cache *airport.Cache
 
-	mu        sync.Mutex
-	fetched   map[string]time.Time
-	waiters   map[string][]chan error
-	aircraft  *Aircraft
-	traffic   []Traffic
-	trafficAt time.Time
-	live      bool
-	control   *controlCenter // traffic control while connected (#322)
-	schedule  *scheduler     // scheduled traffic while connected (#368)
-	sequences *sequences     // landing sequences while connected (#390)
+	mu         sync.Mutex
+	fetched    map[string]time.Time
+	waiters    map[string][]chan error
+	aircraft   *Aircraft
+	traffic    []Traffic
+	trafficAt  time.Time
+	live       bool
+	control    *controlCenter // traffic control while connected (#322)
+	schedule   *scheduler     // scheduled traffic while connected (#368)
+	sequences  *sequences     // landing sequences while connected (#390)
+	separation *sepMonitor    // airborne separation (#395)
+	towers     *towers        // runway controllers (#393)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// requests asks the connection to load an airport (load); airways is
@@ -260,6 +262,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	sched := newScheduler(st, cc)
 	cc.extra = sched.handle
 	seqs := newSequences(cc, sched)
+	sep := newSepMonitor()
+	tw := newTowers(cc, sched)
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
@@ -272,15 +276,17 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			case now := <-t.C:
 				sched.tick(now)
 				seqs.tick(now)
+				sep.tick(now, cc.world.Aircraft())
+				tw.tick(now)
 			}
 		}
 	}()
 	st.mu.Lock()
-	st.control, st.schedule, st.sequences = cc, sched, seqs
+	st.control, st.schedule, st.sequences, st.separation, st.towers = cc, sched, seqs, sep, tw
 	st.mu.Unlock()
 	defer func() {
 		st.mu.Lock()
-		st.control, st.schedule, st.sequences = nil, nil, nil
+		st.control, st.schedule, st.sequences, st.separation, st.towers = nil, nil, nil, nil, nil
 		st.mu.Unlock()
 	}()
 
@@ -506,6 +512,8 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
 	registerSequence(mux, st)
+	registerSeparation(mux, st)
+	registerRunways(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

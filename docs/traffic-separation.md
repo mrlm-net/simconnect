@@ -178,3 +178,35 @@ err = arrival.LeaveHold()             // on along the STAR from the fix
 ```
 
 On the airport map, an arrival that still has a minute or more left after speed control and path stretching holds. It uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when its sequencer delay is down to a minute, and those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".
+
+## The runway
+
+`traffic.RunwayController` is the tower of one runway (#393). Each time, give it the users of the runway (`RunwayUser`) and it hands out clearances:
+
+- arrivals on final, with the distance to the threshold and the ground speed;
+- aircraft on the runway: rolling for take-off, on the landing roll, or crossing;
+- departures lined up;
+- departures and crossings at the holding points;
+- other traffic (`Other`), which is counted but never cleared.
+
+| Clearance | When |
+|---|---|
+| take-off | the runway is free; the interval after the last departure has run (`DepartureInterval`: wake, same SID); the next arrival is farther than `MinArrivalNM` (4 NM) and lands later than this departure's runway occupancy plus `Margin` (30 s) |
+| line up and go | the take-off is clear from the holding point |
+| line up and wait | only the interval or the traffic ahead still runs, and the next arrival leaves room |
+| cross | the runway is free and the next arrival lands later than `CrossTime` (40 s) plus the margin |
+
+Departures and crossings are first come, first served at the holding points, one on the runway at a time. `Waiting` says why each still waits: "DLH2 on a 3.0 NM final", "1m20s behind QTR1", "number 2 for departure", "DLH2 on the runway". Departures go in the gaps between arrivals, which is mixed-mode use.
+
+A departure the controller works needs `TaxiRequest.HoldForRunway`. Its pushback and taxi go by themselves, but it stops at the line-up, take-off and runway-crossing gates until `ClearToLineUp`, `ClearForTakeoff` and `ClearToCross`. Arrivals stop at crossings with `ArrivalRequest.HoldAtCrossings`.
+
+On the airport map, every airport runway has a controller, fed every second with our traffic and respected other traffic. It clears our departures and crossings and logs it as ATC would ("runway 06, line up and wait", "cleared for take-off", "cross runway 12/30"), with who waits and why. Aircraft spawned with *hold at every clearance* are the user's: the tower counts them but never clears them. `GET /api/runways?icao=` lists each runway's users.
+
+## Keeping apart
+
+`AirborneSeparation(aircraft, minNM, minFt)` lists every pair of airborne aircraft, closest first, marking those closer than both minima at once: `TerminalSeparationNM` (3), `EnrouteSeparationNM` (5), `VerticalSeparationFt` (1000).
+
+The airport map keeps 5 NM:
+- **On final:** its sequencers use `MinSpacingNM` 5, whatever the wake minimum is below it.
+- **At the STAR entry:** arrivals appear only 6 NM clear of other aircraft, leaving a mile for the one ahead slowing down.
+- **Watched:** a monitor logs every pair under 5 NM and 1000 ft when it starts and when it ends, with its closest distance. `GET /api/separation` returns the closest pairs now and the losses so far.

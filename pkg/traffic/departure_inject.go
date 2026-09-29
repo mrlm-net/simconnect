@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -85,6 +86,12 @@ func (c *TaxiController) gate(cleared bool) bool {
 	return cleared || (!c.req.HoldForClearances && !c.now().Before(c.gateAt))
 }
 
+// runwayGate is a gate onto the runway (line-up, take-off): with
+// HoldForRunway only its clearance passes it (#393).
+func (c *TaxiController) runwayGate(cleared bool) bool {
+	return cleared || !c.req.HoldForRunway && c.gate(false)
+}
+
 // openGate starts a gate's automatic wait of about d.
 func (c *TaxiController) openGate(d time.Duration) {
 	c.gateAt = c.now().Add(time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1))))
@@ -96,7 +103,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 		return err
 	}
 	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
-	c.holdAtCrossings = c.req.HoldForClearances
+	c.holdAtCrossings = c.req.HoldForClearances || c.req.HoldForRunway
 	client := c.fleet.clientOrNil()
 	if client == nil {
 		return ErrNotConnected
@@ -243,7 +250,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	case TaxiLinedUp:
 		// A cancelled take-off clearance holds it lined up until the next
 		// ClearForTakeoff, even without held gates.
-		if c.gate(c.takeoffCleared) && (c.takeoffCleared || !c.takeoffHeld) {
+		if c.runwayGate(c.takeoffCleared) && (c.takeoffCleared || !c.takeoffHeld) {
 			c.startTakeoff()
 			return
 		}
@@ -314,7 +321,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.openGate(LineUpDelay)
 			// Without held gates some departures get line-up and take-off in one
 			// clearance and roll straight into the take-off.
-			if chance := c.req.RollingTakeoffChance; !c.req.HoldForClearances && chance >= 0 {
+			if chance := c.req.RollingTakeoffChance; !c.req.HoldForClearances && !c.req.HoldForRunway && chance >= 0 {
 				if chance == 0 {
 					chance = DefaultRollingTakeoffChance
 				}
@@ -324,7 +331,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			return
 		}
 	case TaxiHoldingShort:
-		if !c.holdingCrossing && c.gate(c.lineUpCleared || c.takeoffCleared) {
+		if !c.holdingCrossing && c.runwayGate(c.lineUpCleared || c.takeoffCleared) {
 			c.startLineUp()
 			return
 		}
@@ -998,7 +1005,9 @@ func (c *TaxiController) onTakeoffFrame() {
 	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), 0.25))
 	c.lastStep = now
 	pose := c.takeoff.Step(dt)
-	if err := c.inj.PlaceAir(c.objectID, pose.ApproachPose()); err != nil && !errors.Is(err, ErrGroundUnknown) {
+	ap := pose.ApproachPose()
+	ap.RunwayFt = c.runway.Altitude / 0.3048 // the climb over any terrain
+	if err := c.inj.PlaceAir(c.objectID, ap); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
 	if c.takeoff.Rejected() {
@@ -1129,8 +1138,54 @@ func (c *TaxiController) entryPath() []airport.LatLon {
 		}
 		return pts
 	}
+	// No listed entry starts here (a turn past MaxEntryAngle, e.g. a
+	// taxiway meeting the runway end square or slightly back): the taxi
+	// path itself from the hold-short onto the runway.
+	return c.entryPathByGraph(hold)
+}
+
+// entryPathByGraph is the taxi path from the hold-short node to the first
+// node on the departure runway's centreline (breadth first along the taxi
+// graph, at most EntrySearchMeters), so the line-up follows the painted
+// lead-in; nil when none is found.
+func (c *TaxiController) entryPathByGraph(hold airport.NodeID) []airport.LatLon {
+	g := c.req.Graph
+	a, b := c.runway.Primary.Threshold, c.runway.Secondary.Threshold
+	onRunway := func(p airport.LatLon) bool {
+		along := calc.AlongTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon)
+		cross := math.Abs(calc.CrossTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon))
+		return along > -30 && along < c.runway.Length+30 && cross < 6 // on the centreline
+	}
+	type step struct {
+		node airport.NodeID
+		dist float64
+	}
+	prev := map[airport.NodeID]airport.NodeID{hold: -1}
+	queue := []step{{hold, 0}}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur.node != hold && onRunway(g.Nodes[cur.node].Position) {
+			var rev []airport.LatLon
+			for n := cur.node; n != hold; n = prev[n] {
+				rev = append(rev, g.Nodes[n].Position)
+			}
+			slices.Reverse(rev)
+			return rev
+		}
+		for _, e := range g.Adj[cur.node] {
+			if _, seen := prev[e.To]; seen || cur.dist+e.Length > EntrySearchMeters {
+				continue
+			}
+			prev[e.To] = cur.node
+			queue = append(queue, step{e.To, cur.dist + e.Length})
+		}
+	}
 	return nil
 }
+
+// EntrySearchMeters bounds the search for a runway entry from a hold-short.
+const EntrySearchMeters = 400.0
 
 // ClearUpTo clears an injected departure to taxi up to a node of its route
 // and hold there (progressive taxi, #322): before the taxi starts it is the
