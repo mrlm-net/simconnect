@@ -113,6 +113,8 @@ type controlCenter struct {
 	// sim's other aircraft on the ground (#334).
 	picture *traffic.GroundPicture
 	ticks   int
+	// pads are an airport's de-icing pads (picked on the map, #323).
+	pads func(l *airport.Layout) []airport.DeicingPad
 	// weather is the latest at the user aircraft (automatic de-icing, #323).
 	weather func() *nav.Weather
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
@@ -749,6 +751,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 func (cc *controlCenter) deicingFor(g *airport.Graph, r SpawnRequest) (*traffic.Deicing, []airport.NodeID, error) {
 	mode, via := r.Deice, r.Via
 	pads := airport.LimitsFor(g.Layout, nil).DeicingPads
+	if cc.pads != nil {
+		pads = cc.pads(g.Layout)
+	}
 	if mode == "auto" {
 		mode = ""
 		if cc.weather != nil {
@@ -774,7 +779,7 @@ func (cc *controlCenter) deicingFor(g *airport.Graph, r SpawnRequest) (*traffic.
 		case len(pads) > 0:
 			d.Pad = &pads[0]
 		default:
-			return nil, via, errors.New("no de-icing pad: pick one as the first via point of a custom route")
+			return nil, via, errors.New("no de-icing pad: pick pads in Charts → De-icing pads, or make one the first via point of a custom route")
 		}
 		return d, via, nil
 	}

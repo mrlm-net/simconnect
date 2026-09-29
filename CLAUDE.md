@@ -145,6 +145,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
 │   │   ├── navlegs.go       #   Procedures → NavPoints (SID/STAR/approach), ATC selection, Arrival
 │   │   ├── limits.go        #   Limits, LimitsFor, KnownLimits: TA, climb hand-over, taxi limits, preferential runways
+│   │   ├── deicing.go       #   DeicingPad, Graph.NearestNode
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   ├── nav/                 # Navigation: fixes, airways, routing, weather and ATIS, flight plans
