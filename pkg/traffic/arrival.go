@@ -234,6 +234,11 @@ type ArrivalController struct {
 	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc        bool
 	goArounds         int // go-arounds flown (GoAround)
+	// procNext is the waypoint of proc flown to, tracked forward from a
+	// known start: after a go-around (whose circuit loops back past the
+	// final, where the nearest waypoint is the wrong one), a delay absorbed
+	// or a hold left. -1: the nearest (a STAR does not loop).
+	procNext int
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
@@ -349,7 +354,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 				return err
 			}
 			plan.Spawn = proc.Spawn
-			c.proc = proc
+			c.proc, c.procNext = proc, -1
 		}
 	} else if len(req.Procedure) > 0 {
 		return fmt.Errorf("%w: Procedure needs InjectApproach", ErrBadTaxiRequest)

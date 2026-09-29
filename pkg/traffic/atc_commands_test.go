@@ -147,6 +147,11 @@ func TestGoAround(t *testing.T) {
 	if inj.Driven(77) || !ctl.flyingProc || ctl.goArounds != 1 {
 		t.Fatal("not released for the circuit")
 	}
+	// Still to fly: the whole circuit from its first point, not from the
+	// circuit point nearest the short final (the sequencer's distance to go).
+	if r := ctl.ProcedureRoute(); len(r) != len(ctl.proc.Waypoints) || DistanceVia(p.End.Threshold, r, p.End.Threshold) < 15 {
+		t.Fatalf("after the go-around %d of %d points to fly, %.1f NM", len(r), len(ctl.proc.Waypoints), DistanceVia(p.End.Threshold, r, p.End.Threshold))
+	}
 	// MSFS AI back on the final at the join point.
 	out := math.Mod(p.End.Heading+180, 360)
 	lat, lon := calc.DisplaceByHeading(p.End.Threshold.Lat, p.End.Threshold.Lon, out, ctl.proc.JoinMeters-100)

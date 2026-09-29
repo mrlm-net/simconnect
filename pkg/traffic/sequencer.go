@@ -342,6 +342,20 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
+// DistanceVia is the track distance in NM from pos to each point of route
+// in turn, then to the threshold: for a route that starts at the point the
+// aircraft flies to, as ArrivalController.ProcedureRoute gives it. Unlike
+// DistanceToGo it does not look for the leg the aircraft is on, which a
+// go-around's circuit — looping back past the final — would mislead.
+func DistanceVia(pos airport.LatLon, route []airport.LatLon, threshold airport.LatLon) float64 {
+	d, at := 0.0, pos
+	for _, p := range append(append([]airport.LatLon(nil), route...), threshold) {
+		d += calc.HaversineNM(at.Lat, at.Lon, p.Lat, p.Lon)
+		at = p
+	}
+	return d
+}
+
 // DistanceToGo is the track distance in NM from pos along route (the
 // points still to fly, in order) to the threshold: from pos to the point
 // of the route it is heading for — the one after the leg it is nearest —

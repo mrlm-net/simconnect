@@ -44,8 +44,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - `ApproachSequencer.Rejoin` sequences the go-around afresh;
   - on the map, the tower sends our arrivals around, and both the tower and the button re-sequence them; our aircraft taxiing across a runway count as on it.
 
+
 ### Fixed
 
+- `examples/airport-map`, `pkg/traffic`: a go-around is sequenced by the circuit it still flies. The map measured every arrival along its planned approach from its nearest point, ignoring dog-legs and holds too. The controller's next waypoint was the nearest one, which on a circuit looping back past the final is the wrong one. Live, an arrival that had just gone around stayed number 1 with 4 NM to go. The map now uses `ProcedureRoute` with `DistanceVia`, and the controller tracks its waypoints forward.
 - `pkg/airport`: entries onto a runway may turn up to `MaxEntryAngle` (135°) — threshold entries often meet the runway square or slightly back (LKPR 12 at L, 120°), which the 90° exit limit left out. A taxiway dead end on another node (within 3 m) is joined to it: at LKPR the F lead-in ends on the 06 centreline beside the runway node without sharing it, so 06 had no full-length entry.
 - `pkg/traffic`: an injected line-up follows the painted lead-in from the hold-short onto the runway also where no listed entry starts (a breadth-first walk of the taxi graph to the centreline), instead of turning straight at the runway.
 - `pkg/traffic`: injected approaches fly the glide path over the runway elevation, not the terrain below; over hills and valleys the aircraft had bumped up and down before the threshold. The last 100 ft blend to the ground.

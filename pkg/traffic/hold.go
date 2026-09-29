@@ -259,7 +259,7 @@ func (c *ArrivalController) HoldFix(minFromThresholdNM float64) (Hold, bool) {
 	}
 	wps := c.proc.Waypoints
 	final := len(wps) - 2
-	next := nextWaypoint(c.last.Position, wps[:max(final, 1)])
+	next := c.procWaypoint(wps[:max(final, 1)])
 	thr := c.plan.End.Threshold
 	for i := next; i < final; i++ {
 		var route []airport.LatLon
@@ -344,7 +344,7 @@ func (c *ArrivalController) LeaveHold() error {
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, chain); err != nil {
 		return err
 	}
-	c.proc.Waypoints = chain
+	c.proc.Waypoints, c.procNext = chain, 0
 	c.holding = nil
 	c.note(fmt.Sprintf("leaving the hold at %s after %s", h.hold.Ident, c.now().Sub(h.since).Round(time.Second)), nil)
 	return nil
