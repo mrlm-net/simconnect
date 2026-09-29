@@ -243,11 +243,14 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	cross := math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon))
 	near := calc.HaversineMeters(pos.Lat, pos.Lon, far.Lat, far.Lon) < JoinCaptureMeters
 	established := along > 2*1852 && along <= c.proc.JoinMeters+300 && cross < 2000 && math.Abs(headingDiff(m.Heading, c.plan.End.Heading)) < 45
+	if c.circuit && c.procWaypoint(c.proc.Waypoints) < len(c.proc.Waypoints)-2 {
+		near, established = false, false // still going around
+	}
 	if !near && !established {
 		c.emit(nil, false)
 		return
 	}
-	c.flyingProc = false
+	c.flyingProc, c.circuit = false, false
 	start := math.Max(2*1852, math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
 	if err := c.startInjectedApproach(start); err != nil {
 		c.fail(err)

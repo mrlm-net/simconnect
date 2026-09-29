@@ -239,6 +239,10 @@ type ArrivalController struct {
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
 	// or a hold left. -1: the nearest (a STAR does not loop).
 	procNext int
+	// circuit: flying a go-around's missed approach and circuit; the final
+	// is joined again only from its last two points (align, join) — climbing
+	// out along the centreline it would look established at once.
+	circuit bool
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since

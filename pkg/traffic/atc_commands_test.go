@@ -152,8 +152,22 @@ func TestGoAround(t *testing.T) {
 	if r := ctl.ProcedureRoute(); len(r) != len(ctl.proc.Waypoints) || DistanceVia(p.End.Threshold, r, p.End.Threshold) < 15 {
 		t.Fatalf("after the go-around %d of %d points to fly, %.1f NM", len(r), len(ctl.proc.Waypoints), DistanceVia(p.End.Threshold, r, p.End.Threshold))
 	}
-	// MSFS AI back on the final at the join point.
 	out := math.Mod(p.End.Heading+180, 360)
+	// Going around 3 NM out, on the centreline and runway heading: it looks
+	// established, but flies the circuit first (live, TVS1986 was taken
+	// straight back onto the final and landed).
+	lat3, lon3 := calc.DisplaceByHeading(p.End.Threshold.Lat, p.End.Threshold.Lon, out, 3*1852)
+	ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(lat3, lon3), 2000, p.End.Heading, 150, false))
+	if !ctl.flyingProc {
+		t.Fatal("taken back onto the final at once")
+	}
+	// Round the circuit, then MSFS AI back on the final at the join point.
+	for _, w := range ctl.proc.Waypoints[:len(ctl.proc.Waypoints)-2] {
+		ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(w.Latitude, w.Longitude), w.Altitude, 0, 180, false))
+		if !ctl.flyingProc {
+			t.Fatal("taken over on the circuit")
+		}
+	}
 	lat, lon := calc.DisplaceByHeading(p.End.Threshold.Lat, p.End.Threshold.Lon, out, ctl.proc.JoinMeters-100)
 	ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(lat, lon), 2500, p.End.Heading, 160, false))
 	if ctl.flyingProc || ctl.approach == nil {
