@@ -115,6 +115,9 @@ func (g *Graph) RemainingOptions(opts RouteOptions, walked []NodeID) RouteOption
 			tw++
 		}
 	}
+	if tw > 0 && strings.EqualFold(last, opts.Taxiways[tw-1]) {
+		opts.CurrentTaxiway = last // still on it: going on along it is on the route
+	}
 	opts.Via, opts.Taxiways = opts.Via[via:], opts.Taxiways[tw:]
 	return opts
 }

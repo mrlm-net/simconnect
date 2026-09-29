@@ -326,10 +326,12 @@ func (d *groundDrive) followAhead(now time.Time) {
 	} else {
 		d.mover.SetTrafficStop(stop)
 	}
-	// Where this aircraft will drive next, for the others to give way.
+	// Where this aircraft will drive next, for the others to give way: the
+	// points ahead of it, none when it is not going anywhere (holding at a
+	// limit or a hold-short takes no priority over moving traffic).
 	to := math.Min(math.Min(d.mover.stop(), path.Length()), s0+GiveWayLookMeters)
 	var ahead []airport.LatLon
-	for s := s0; s <= to; s += trafficBodyStep {
+	for s := s0 + trafficBodyStep; s <= to; s += trafficBodyStep {
 		ahead = append(ahead, path.PointAt(s))
 	}
 	d.picture.ReportPath(d.object, ahead, half)

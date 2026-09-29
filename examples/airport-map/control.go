@@ -58,11 +58,13 @@ type controlled struct {
 	left   bool // a departure has left its stand (released)
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
-	cc        *controlCenter
-	turn      *SpawnRequest
-	dwell     time.Duration
-	departNow chan struct{}
-	turned    bool
+	cc         *controlCenter
+	turn       *SpawnRequest
+	dwell      time.Duration
+	departNow  chan struct{}
+	turned     bool
+	removed    chan struct{} // closed when the aircraft is removed: no turnaround any more
+	removeOnce sync.Once
 	// spoken marks clearances already in the log (given on the map), so
 	// the state change they cause does not log them again.
 	spoken map[string]bool
@@ -342,7 +344,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
-	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}}
+	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{})}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -736,6 +738,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
+			it.removeOnce.Do(func() { close(it.removed) })
 			cc.mu.Lock()
 			delete(cc.items, id)
 			cc.mu.Unlock()
@@ -822,15 +825,18 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 	if err != nil {
 		return nil, "", "", err
 	}
+	// Where it is entered: a STAR is flown enroute transition → common
+	// route → runway transition, so its first fix is on the common route,
+	// else on this runway's transition.
 	first := ""
+	legs := slices.Clone(star.Legs)
 	for _, t := range star.RunwayTransitions {
-		for _, l := range t.Legs {
-			if l.HasFix() && first == "" {
-				first = l.Fix
-			}
+		if strings.TrimLeft(t.Runway, "0") == strings.TrimLeft(r.Runway, "0") || t.Runway == "ALL" {
+			legs = append(legs, t.Legs...)
+			break
 		}
 	}
-	for _, l := range star.Legs {
+	for _, l := range legs {
 		if l.HasFix() && first == "" {
 			first = l.Fix
 		}
@@ -853,6 +859,8 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 	select {
 	case <-time.After(it.dwell):
 	case <-it.departNow:
+	case <-it.removed:
+		return // removed while parked: nothing to depart
 	}
 	d := *it.turn
 	d.adopt = objectID

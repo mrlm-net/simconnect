@@ -45,3 +45,6 @@ website/sbom-npm.json
 examples/**/*.gpx
 examples/**/*.csv
 examples/**/*.json
+
+# Traffic control logs (examples/airport-map -log-dir .)
+traffic-*.log

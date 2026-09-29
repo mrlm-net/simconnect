@@ -82,6 +82,10 @@ type RouteOptions struct {
 	// With Via or Taxiways a route that does not fit the aircraft (HalfSpan)
 	// is never returned Tight: the error wraps ErrTooNarrow instead.
 	Taxiways []string
+	// CurrentTaxiway is the listed taxiway the route starts on, already
+	// followed (RemainingOptions sets it after a pushback or runway exit
+	// onto it): going on along it costs no penalty.
+	CurrentTaxiway string
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -418,6 +422,7 @@ type search struct {
 
 	via      []NodeID // RouteOptions.Via
 	taxiways []string // RouteOptions.Taxiways
+	current  string   // RouteOptions.CurrentTaxiway
 	maxVia   int      // most via points any state passed
 	maxTw    int      // most taxiways any state past all via points followed
 }
@@ -473,7 +478,7 @@ func passVia(via []NodeID, n int, node NodeID) int {
 // taxiway in the list. Past the last one the route goes on freely to its
 // destination ("via B" ends where B meets the way to the holding point).
 // Runway paths and stand lead-ins never count.
-func offTaxiways(e Edge, taxiways []string, tw int) bool {
+func offTaxiways(e Edge, taxiways []string, tw int, current string) bool {
 	if tw >= len(taxiways) || e.Name == "" ||
 		e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING {
 		return false
@@ -481,7 +486,10 @@ func offTaxiways(e Edge, taxiways []string, tw int) bool {
 	if strings.EqualFold(e.Name, taxiways[tw]) {
 		return false
 	}
-	return tw == 0 || !strings.EqualFold(e.Name, taxiways[tw-1])
+	if tw > 0 {
+		current = taxiways[tw-1]
+	}
+	return current == "" || !strings.EqualFold(e.Name, current)
 }
 
 // followedTaxiways counts how many of want names contains in order.
@@ -516,7 +524,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
 	n := len(g.Nodes)
-	s := &search{dist: make([]float64, n), best: make([]int, n), via: opts.Via, taxiways: opts.Taxiways}
+	s := &search{dist: make([]float64, n), best: make([]int, n), via: opts.Via, taxiways: opts.Taxiways, current: opts.CurrentTaxiway}
 	own := opts.ownApron()
 	srcPos := g.Nodes[src].Position
 	nearSrc := func(id NodeID) bool {
@@ -583,7 +591,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 			}
 			d := cur.dist + e.Length
 			tw := tws[st]
-			if offTaxiways(e, s.taxiways, tw) {
+			if offTaxiways(e, s.taxiways, tw, s.current) {
 				d += (OffTaxiwaysFactor - 1) * e.Length
 			}
 			// A taxiway counts on joining it, as in Route.Taxiways: going on

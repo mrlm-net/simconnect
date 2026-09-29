@@ -9,6 +9,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `pkg/traffic`: an aircraft holding at a limit or hold-short reports no path ahead, so it no longer makes nearby moving traffic brake to a stop for it (give-way).
+- `pkg/traffic`: `AbortTakeoff` while lining up or lined up holds the aircraft until the next `ClearForTakeoff`, also without held gates; `HoldPosition` is refused while lining up (it could not be lifted there).
+- `pkg/traffic`: after a rejected take-off the vacate path gets its own runway crossings and no old limit.
+- `pkg/traffic`: a de-icing pad not on the taxi path (passed during the pushback) de-ices in place instead of being skipped.
+- `pkg/traffic`: a partly filled `FlapSchedule` gets the missing values from the defaults field by field.
+- `pkg/airport`: a custom route with `Taxiways` keeps following the listed taxiway it is already on after a pushback or runway exit (`RouteOptions.CurrentTaxiway`, set by `RemainingOptions`).
+- `examples/airport-map`: a STAR is entered at the first fix of its common route (else of its runway transition); a removed arrival no longer departs on its turnaround.
+- Two traffic log files committed by mistake are removed; `traffic-*.log` is ignored.
+
 ## [0.14.0] - 2026-09-29
 
 Fine tuning after live sessions at LKPR: ground traffic that behaves like real traffic, natural timing, de-icing, and an airport map built for playing.

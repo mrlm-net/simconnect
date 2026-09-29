@@ -208,7 +208,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.emit(nil, false)
 		return
 	case TaxiLinedUp:
-		if c.gate(c.takeoffCleared) {
+		// A cancelled take-off clearance holds it lined up until the next
+		// ClearForTakeoff, even without held gates.
+		if c.gate(c.takeoffCleared) && (c.takeoffCleared || !c.takeoffHeld) {
 			c.startTakeoff()
 			return
 		}
@@ -882,10 +884,15 @@ func (c *TaxiController) startTaxiOut() error {
 	c.holdNextCrossing()
 	if c.padNode >= 0 && !c.deiced {
 		// Stop on the de-icing pad, the nose gear on its node.
-		if at, off := path.DistanceTo(c.req.Graph.Nodes[c.padNode].Position); off < 15 {
-			c.padStop, c.hasPad = at, true
-			c.updateHold()
+		at, off := path.DistanceTo(c.req.Graph.Nodes[c.padNode].Position)
+		if off >= 15 {
+			// Not on the way any more (passed during the pushback): de-iced
+			// here before taxiing, never skipped.
+			at = 0
+			c.note("de-icing pad not on the taxi path: de-icing here", nil)
 		}
+		c.padStop, c.hasPad = at, true
+		c.updateHold()
 	}
 	if c.hasPendingLimit {
 		c.hasPendingLimit = false

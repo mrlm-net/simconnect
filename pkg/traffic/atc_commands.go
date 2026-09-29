@@ -49,7 +49,10 @@ func (c *TaxiController) HoldPosition() error {
 	if c.inj == nil {
 		return ErrNotInjected
 	}
-	if c.mover == nil || (c.state != TaxiTaxiing && c.state != TaxiLiningUp) {
+	// Not while lining up: stopped part-way onto the runway it would have no
+	// way on (the line-up clearances do not lift a limit); AbortTakeoff
+	// cancels a take-off there.
+	if c.mover == nil || c.state != TaxiTaxiing {
 		return ErrNotTaxiing
 	}
 	c.holdPosition()
@@ -84,7 +87,9 @@ func (c *TaxiController) AbortTakeoff() error {
 		return ErrNotInjected
 	}
 	if c.state == TaxiLiningUp || c.state == TaxiLinedUp {
-		c.takeoffCleared = false // not rolling yet: the clearance is cancelled
+		// Not rolling yet: the clearance is cancelled and the aircraft holds
+		// lined up (or lines up and holds) until the next ClearForTakeoff.
+		c.takeoffCleared, c.takeoffHeld = false, true
 		return nil
 	}
 	if c.state != TaxiDeparting || c.takeoff == nil {
@@ -148,6 +153,19 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
 	c.route, c.pushJunction = route, 0
 	c.lineUpCleared, c.takeoffCleared, c.gearUp = false, false, false
+	// The crossings and limits of the old taxi-out do not apply to this
+	// path: its own crossings (not of the departure runway), held until
+	// cleared, and no limit.
+	var holds []holdOnPath
+	for i, n := range route.Nodes {
+		if hs := g.Nodes[n].HoldShort; hs != nil && hs.Runway != c.runway.Index {
+			at, _ := path.DistanceTo(route.Points[i])
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: at})
+		}
+	}
+	c.crossZones, c.nextCross, c.crossClears = crossingZones(g, route.Points, holds), 0, 0
+	c.hasLimit, c.limitNode, c.hasPad = false, -1, false
+	c.holdNextCrossing()
 	c.lastStep = c.now()
 	c.setInjectedLights(LightsTaxi, "lights taxi (vacating after the rejected take-off)")
 	c.note(fmt.Sprintf("vacating via %s", ex.Taxiway), nil)
