@@ -125,8 +125,10 @@ type controlCenter struct {
 	// sim's other aircraft on the ground (#334).
 	// ids hands out the controllers' ID blocks and takes them back (#370);
 	// detail drives far and standing aircraft on fewer frames.
-	ids    *traffic.IDBlocks
-	detail *traffic.Detail
+	ids *traffic.IDBlocks
+	// runways keep each airport's runway in use.
+	runways map[string]*nav.RunwaySelector
+	detail  *traffic.Detail
 	// own are aircraft of ours not driven by a controller: enroute and
 	// overflying MSFS AI of the scheduled traffic (#369). extra handles
 	// the scheduler's messages.
@@ -154,13 +156,14 @@ func newControlCenter(client engine.Client) *controlCenter {
 	return &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models: map[string]bool{},
-		own:    map[uint32]bool{},
-		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
-		detail: traffic.NewDetail(),
-		stands: map[string]*traffic.StandAllocator{},
-		world:  traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
-		game:   &game{},
+		models:  map[string]bool{},
+		own:     map[uint32]bool{},
+		runways: map[string]*nav.RunwaySelector{},
+		ids:     traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
+		detail:  traffic.NewDetail(),
+		stands:  map[string]*traffic.StandAllocator{},
+		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
+		game:    &game{},
 	}
 }
 
@@ -832,7 +835,15 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 	lim := airport.LimitsFor(g.Layout, procs)
 	if cc.weather != nil {
 		if w := cc.weather(); w != nil {
-			use := nav.ActiveRunways(g.Layout, *w, nav.RunwayLimitsFrom(lim))
+			// The runway in use holds through wind shifts near a limit (#391).
+			cc.mu.Lock()
+			sel := cc.runways[g.Layout.ICAO]
+			if sel == nil {
+				sel = &nav.RunwaySelector{}
+				cc.runways[g.Layout.ICAO] = sel
+			}
+			cc.mu.Unlock()
+			use := sel.Choose(time.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
 			end := use.Departure
 			if arrival {
 				end = use.Arrival

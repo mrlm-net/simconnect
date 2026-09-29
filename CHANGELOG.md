@@ -21,9 +21,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - the sequencer's `SetConditions`, `AllowReduced`, `TimeBased` and `SpacingWhy`;
   - `ManagerOptions.Conditions` spaces arrival spawns likewise;
   - the map feeds the weather at the user aircraft.
+- `pkg/traffic` delay absorption (#391):
+  - `ArrivalController.AbsorbDelay` slows an arrival on its STAR down to `MinProcedureSpeedKts`, then adds a dog-leg of at most `MaxStretchNM`, and returns what is left for the hold; the final is never changed;
+  - `PlanAbsorption`, `StretchLeg`, `ProcedureRoute`;
+  - the map has arrivals absorb their sequencer delays and logs it as ATC would.
+- `pkg/nav` `RunwaySelector`: the runway in use holds through wind shifts. It changes when out of limits (gusts included), or when another has been better for `RunwayChangeAfter` (10 min). The map uses it for traffic and the Charts panel.
 
 ### Fixed
 
+- `pkg/traffic` `ApproachSequencer`: arrivals already in the sequence keep their order unless their predictions part by more than `SwapMargin` (90 s), and never land before the one ahead. Live, three arrivals appearing together swapped places every second.
+- `pkg/nav` tests: an import cycle (nav tests → manager → traffic → nav, since `traffic.ConditionsFrom`) broke them. The manager check moves to an external test package.
 - `examples/airport-map`: an aircraft can be deselected (click its card again, or Esc); nothing selects one back by itself, and removing the selected one leaves none selected.
 - `pkg/traffic`: a flight's estimate moves by whole minutes; the manager no longer reported the same estimate again every tick as the prediction drifted by seconds.
 - `pkg/traffic` `CheckLandingFlow`: with departures waiting, one gap is opened in the arrival stream instead of doubling every gap; at density 2 the doubled gaps had pushed estimates hours out.

@@ -73,6 +73,9 @@ type SequencerOptions struct {
 	FinalNM float64
 	// DelayStep: a delay change smaller than this is not reported (30 s).
 	DelayStep time.Duration
+	// SwapMargin: arrivals in the sequence change places only when their
+	// predicted landings part by more than this (default 90 s).
+	SwapMargin time.Duration
 	// AllowReduced uses the reduced radar separation (2.5 NM) where the
 	// conditions allow it (and the airport is approved for it).
 	AllowReduced bool
@@ -105,6 +108,9 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	}
 	if opts.DelayStep == 0 {
 		opts.DelayStep = 30 * time.Second
+	}
+	if opts.SwapMargin == 0 {
+		opts.SwapMargin = 90 * time.Second
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}}
 }
@@ -199,9 +205,33 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	}
 	byETA(fixed)
 	byETA(free)
+	// A sequence once given is kept: arrivals already in it keep their
+	// order unless their predictions part by more than SwapMargin.
+	s.mu.Lock()
+	prev := map[string]int{}
+	for cs, e := range s.last {
+		prev[cs] = e.Number
+	}
+	s.mu.Unlock()
+	sort.SliceStable(free, func(i, j int) bool {
+		pi, oki := prev[free[i].a.Callsign]
+		pj, okj := prev[free[j].a.Callsign]
+		if oki && okj && absDuration(free[i].eta.Sub(free[j].eta)) <= s.opts.SwapMargin {
+			return pi < pj
+		}
+		return free[i].eta.Before(free[j].eta)
+	})
 	planned := fixed // sorted by landing time
-	for _, f := range free {
+	var lastFree *slot
+	for k := range free {
+		f := free[k]
 		at := f.eta
+		// Never before the one ahead of it in the order.
+		if lastFree != nil {
+			if g, _, _ := s.gap(lastFree.a, f.a, c); at.Before(lastFree.at.Add(g)) {
+				at = lastFree.at.Add(g)
+			}
+		}
 		for {
 			moved := false
 			for _, p := range planned {
@@ -218,6 +248,8 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			}
 		}
 		f.at = at
+		free[k].at = at
+		lastFree = &free[k]
 		planned = append(planned, f)
 		sort.SliceStable(planned, func(i, j int) bool { return planned[i].at.Before(planned[j].at) })
 	}

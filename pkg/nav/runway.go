@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -175,3 +177,78 @@ func normalizeEnd(s string) string {
 }
 
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+// RunwayChangeAfter is how long another runway must be the better choice
+// before a RunwaySelector changes the runway in use.
+const RunwayChangeAfter = 10 * time.Minute
+
+// RunwaySelector keeps the runway in use as an airport does: it changes
+// only when the runway in use is out of its wind limits (gusts included),
+// or when another has been the better choice for ChangeAfter — not with
+// every wind shift near a limit.
+type RunwaySelector struct {
+	// ChangeAfter: 0 means RunwayChangeAfter.
+	ChangeAfter time.Duration
+
+	mu        sync.Mutex
+	use       RunwayUse
+	have      bool
+	since     time.Time // when the choice first differed
+	pendingDp string
+	pendingAr string
+}
+
+// Choose is the runway in use at now: ActiveRunways, held as above.
+func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
+	fresh := ActiveRunways(l, w, lim)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	after := s.ChangeAfter
+	if after == 0 {
+		after = RunwayChangeAfter
+	}
+	if !s.have || fresh.Departure.Name == "" {
+		s.use, s.have = fresh, fresh.Departure.Name != ""
+		return fresh
+	}
+	if fresh.Departure.Name == s.use.Departure.Name && fresh.Arrival.Name == s.use.Arrival.Name {
+		s.since, s.use = time.Time{}, fresh // the same runways: current wind figures
+		return fresh
+	}
+	// Out of limits: change now.
+	if !endWithin(s.use.Departure, w, lim) || !endWithin(s.use.Arrival, w, lim) {
+		s.use, s.since = fresh, time.Time{}
+		return fresh
+	}
+	// A better choice: only once it has held.
+	if s.since.IsZero() || fresh.Departure.Name != s.pendingDp || fresh.Arrival.Name != s.pendingAr {
+		s.since, s.pendingDp, s.pendingAr = now, fresh.Departure.Name, fresh.Arrival.Name
+	}
+	if now.Sub(s.since) >= after {
+		s.use, s.since = fresh, time.Time{}
+		return fresh
+	}
+	kept := s.use
+	kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
+	kept.Approach = ApproachFor(w)
+	return kept
+}
+
+// endWithin reports whether a runway end is within the wind limits in w,
+// gusts included.
+func endWithin(e airport.RunwayEnd, w Weather, lim RunwayLimits) bool {
+	maxTail, maxCross := lim.MaxTailwindKts, lim.MaxCrosswindKts
+	switch {
+	case maxTail == 0:
+		maxTail = DefaultMaxTailwindKts
+	case maxTail < 0:
+		maxTail = 0
+	}
+	if maxCross <= 0 {
+		maxCross = DefaultMaxCrosswindKts
+	}
+	g := w
+	g.WindKts = max(w.WindKts, w.GustKts)
+	h, x := g.Components(e.Heading)
+	return -h <= maxTail+1e-9 && x <= maxCross+1e-9
+}

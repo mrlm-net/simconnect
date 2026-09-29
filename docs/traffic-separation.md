@@ -113,3 +113,25 @@ Call `SetConditions` on the sequencer with the conditions of its runway. Each `S
 The traffic manager spaces its arrival spawns the same way (`ManagerOptions.Conditions`): twice as far apart in low visibility, a third more on a contaminated runway.
 
 The airport map takes the weather at the user aircraft (SimConnect reports no other), on the runway in use. It logs a change of conditions for each runway, and `GET /api/sequence` includes the conditions and `lvp`.
+
+## Losing a delay
+
+An arrival the sequencer delays loses the time in the air before it would hold (#391), the way approach control does it:
+
+1. **Speed control.** It flies slower on the rest of its STAR, down to `MinProcedureSpeedKts` (210 kt, clean) or `MinProcedureSpeedTurbopropKts` (170 kt).
+2. **Path stretching.** What slowing down cannot absorb, a longer path does: a dog-leg off the longest leg ahead, as radar vectors would give. It sits on the side away from the runway's centreline and adds at most `MaxStretchNM` (30 NM).
+3. **Holding.** Whatever is still left goes to the hold (#392).
+
+The final part of the approach, the align and join points on the centreline, is never changed.
+
+```go
+a, err := arrival.AbsorbDelay(entry.Delay) // an ArrivalController flying its STAR
+// a.SpeedKts, a.ExtraNM, a.Left (for the hold)
+route := arrival.ProcedureRoute()          // the rest of the STAR as flown now, dog-leg included
+```
+
+- `PlanAbsorption(delay, starNM, speedKts, minKts)` is the plan on its own, and `StretchLeg(a, b, extraNM, side)` the apex of a dog-leg that makes a leg `extraNM` longer.
+- `AbsorbDelay` sends MSFS AI the new waypoints. A later call adds to what was absorbed: the sequencer sees the slower, longer flight and asks only for the rest.
+- On the final, or when not flying a STAR, it returns `ErrNotOnProcedure`.
+
+On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM".
