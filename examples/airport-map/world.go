@@ -86,4 +86,40 @@ func registerWorld(mux *http.ServeMux, st *state) {
 		tlog.printf("traffic picture: centre %+v, radius %.0f NM", cc.world.Options().Centre, cc.world.Options().RadiusNM)
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// POST /api/world/remove {"objectId":N} — take an aircraft that is not
+	// ours out of the simulator (MSFS AI, other add-ons). SimConnect may
+	// refuse objects another client created; the log says so.
+	mux.HandleFunc("POST /api/world/remove", func(w http.ResponseWriter, r *http.Request) {
+		cc := center(w)
+		if cc == nil {
+			return
+		}
+		var req struct {
+			ObjectID uint32 `json:"objectId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ObjectID == 0 {
+			http.Error(w, "objectId required", http.StatusBadRequest)
+			return
+		}
+		if cc.ownIDs()[req.ObjectID] {
+			http.Error(w, "that is ours: remove it from its card", http.StatusConflict)
+			return
+		}
+		for _, a := range cc.world.Aircraft() {
+			if a.ObjectID == req.ObjectID && a.User {
+				http.Error(w, "that is your aircraft", http.StatusConflict)
+				return
+			}
+		}
+		if err := cc.do(func() error { return cc.client.AIRemoveObject(req.ObjectID, reqRemoveOther) }); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		tlog.printf("other traffic: removing object %d", req.ObjectID)
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
+
+// reqRemoveOther is the request ID of removing other traffic.
+const reqRemoveOther uint32 = 2006

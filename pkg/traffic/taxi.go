@@ -88,6 +88,10 @@ type TaxiRequest struct {
 	// clears itself after a short, varied wait. A clearance given before
 	// its gate means no stop there.
 	HoldForClearances bool
+	// PushbackAt (injected, without HoldForClearances) keeps the aircraft
+	// on its stand until then, e.g. its scheduled departure time; zero
+	// pushes after the usual short wait.
+	PushbackAt time.Time
 	// Profile is the ground motion; zero means DefaultMotionProfile.
 	Profile MotionProfile
 	// RollingTakeoffChance is the chance, without HoldForClearances, that
@@ -224,6 +228,7 @@ type TaxiController struct {
 	lightsSet                                               bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
+	pushStopped bool // HoldPushback: stay on the stand
 	takeoffHeld                                             bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
 	holdingCrossing                                         bool
 	alignDist                                               float64

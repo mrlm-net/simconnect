@@ -101,6 +101,9 @@ func (c *TaxiController) startInjectedDeparture() error {
 	c.last.LimitNode = -1
 	c.fast = true
 	c.openGate(PushbackDelay)
+	if at := c.req.PushbackAt; at.After(c.gateAt) {
+		c.gateAt = at // boarding until the STD
+	}
 	c.setState(TaxiAwaitingPushback, nil)
 	return nil
 }
@@ -155,7 +158,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			}
 			c.finishDeicing(LightsParked)
 		}
-		if c.pushAt.IsZero() && c.gate(c.pushCleared) {
+		if c.pushAt.IsZero() && c.gate(c.pushCleared) && !c.pushStopped {
 			// Beacon on, and the push starts BeaconLeadTime later.
 			c.lights.Logo = !c.aircraft().Lights.NoLogo // as MSFS AI shows it; aircraft spawn with it off
 			c.setInjectedLights(LightsPushback, "lights beacon (pushback)")
@@ -1017,6 +1020,16 @@ func (c *TaxiController) ClearPushback() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.pushCleared = true
+}
+
+// HoldPushback keeps an injected departure on its stand (on) — a ground
+// stop, e.g. by a traffic manager's situation check — until released
+// (off). It stops a pushback not yet begun (beacon not on), even a
+// cleared one; once the beacon is on the push goes ahead.
+func (c *TaxiController) HoldPushback(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pushStopped = on
 }
 
 // ClearToTaxi clears an injected departure to taxi to the runway, without a

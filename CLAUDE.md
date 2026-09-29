@@ -181,6 +181,10 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── picture_airports.go # AirportLister: airports around (facilities list)
 │       ├── schedule.go      #   Schedule: flights (airlines, fleets, routes, waves), ScheduleConfig JSON
 │       ├── schedule_data.go #   DefaultScheduleConfig: built-in airlines, airports, waves, type limits
+│       ├── manager.go       #   TrafficManager: schedule → spawn/remove, turnarounds, limits, retries, boards, other traffic
+│       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
+│       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
+│       ├── models.go        #   ModelsFor: aircraft titles for an airline and type
 │       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling
 │       ├── aircraft_types.go #  Known-type table (A20N…B77W…AT76), TakeoffProfileFor, MotionProfileFor
 │       ├── profile_simvars.go # ProfileReader (type SimVars fed by Handle(msg)), Refine
@@ -238,6 +242,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-profiles.md  #   Aircraft profiles per type, SimVar refinement, telemetry Recorder
 │   ├── traffic-picture.md   #   TrafficPicture: world traffic around a centre, airports in range
 │   ├── traffic-schedules.md #   Schedule: timetables for the focus airports
+│   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
