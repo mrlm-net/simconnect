@@ -5,6 +5,8 @@ package traffic
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -232,7 +234,11 @@ func TestModelsFor(t *testing.T) {
 		{"LOT", "LOT", "E190", []string{"FSLTL_E190_LOT", "FSLTL_E170_LOT_RETROJET"}},
 	}
 	for _, c := range cases {
-		got := ModelsFor(models, c.airline, c.name, c.typ, 0)
+		got := ModelsFor(append([]string{"FSLTL_FAIB_B738_TVP-Smartwings Poland"}, models...), c.airline, c.name, c.typ, 0)
+		if c.airline == "TVS" {
+			// The sister airline's livery (by name only) after the own one.
+			c.want = append(c.want[:1], append([]string{"FSLTL_FAIB_B738_TVP-Smartwings Poland"}, c.want[1:]...)...)
+		}
 		if len(got) != len(c.want) {
 			t.Errorf("%s %s: %q, want %q", c.airline, c.typ, got, c.want)
 			continue
@@ -243,5 +249,29 @@ func TestModelsFor(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// Flights of one airline and type get the airline's liveries in turn, each
+// flight always the same one.
+func TestModelsForFlight(t *testing.T) {
+	models := []string{"FSLTL_FAIB_B738_TVS-Smartwings_NC", "FSLTL_FAIB_B738_TVS-Skytravel_TSOC", "FSLTL_FAIB_B738_TVP-Smartwings Poland", "FSLTL_B738_KLM"}
+	seen := map[string]bool{}
+	for i := 0; i < 20; i++ {
+		cs := fmt.Sprintf("TVS%d", 100+i)
+		got := ModelsForFlight(models, "TVS", "Smartwings", "B738", cs, 0)
+		if again := ModelsForFlight(models, "TVS", "Smartwings", "B738", cs, 0); again[0] != got[0] {
+			t.Fatalf("%s: %s, then %s", cs, got[0], again[0])
+		}
+		if !strings.Contains(got[0], "_TVS-") {
+			t.Errorf("%s: %s, want a TVS livery", cs, got[0])
+		}
+		if len(got) != 4 || got[2] != "FSLTL_FAIB_B738_TVP-Smartwings Poland" {
+			t.Errorf("%s: %q, want both TVS liveries, then the sister airline's", cs, got)
+		}
+		seen[got[0]] = true
+	}
+	if len(seen) != 2 {
+		t.Errorf("liveries used: %v, want both TVS ones", seen)
 	}
 }

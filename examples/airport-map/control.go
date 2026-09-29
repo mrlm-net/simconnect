@@ -78,6 +78,9 @@ type controlled struct {
 	managed  *traffic.TrafficManager
 	objectID uint32
 	defBase  uint32 // its ID block (cc.ids)
+	// gates: the user gives every clearance ("hold at every clearance");
+	// otherwise the tower clears it onto and across runways (#393).
+	gates bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
 
@@ -402,14 +405,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			approach = append(approach, n.Position)
 		}
 	}
-	it := &controlled{approach: approach, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{gates: r.Gates, approach: approach, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
 			return nil, err
 		}
@@ -428,7 +431,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			HoldForClearance: r.Gates, HoldAtCrossings: r.Gates, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
+			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
 			Procedure: procRoute, Aircraft: &ac, Airport: &lim}); err != nil {
 			return nil, err
 		}
@@ -560,9 +563,11 @@ func (it *controlled) update(ev TaxiOrArrival) {
 				tlog.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
 			}
 		}
-		// Off the stand once pushed or taxiing; the route is done when airborne.
-		// (AwaitingTaxi on a face-out stand is still on it.)
-		if !it.left && e.State >= traffic.TaxiPushback && e.State != traffic.TaxiAwaitingTaxi {
+		// Off the stand once taxiing; the route is done when airborne. Not
+		// before: a push held for traffic can sit on the stand for minutes,
+		// and pushed back (AwaitingTaxi) it is still on or just behind it —
+		// the next aircraft would be spawned on top of it.
+		if !it.left && e.State >= traffic.TaxiTaxiing {
 			it.left = true
 			it.stands.Release(it.stand)
 		}
@@ -1128,9 +1133,10 @@ type spawnPoint struct {
 	when  time.Time
 }
 
-// Spawn separation: nobody appears within these of an airborne aircraft.
+// Spawn separation: nobody appears within these of an airborne aircraft
+// (the in-trail minimum is sepMinNM).
 const (
-	entryClearNM = 5.0
+	entryClearNM = 6.0 // 5 NM kept, and a mile for the leader slowing down
 	entryClearFt = 2000.0
 )
 

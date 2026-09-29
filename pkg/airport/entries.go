@@ -27,7 +27,7 @@ type RunwayEntry struct {
 	FromThreshold float64 `json:"fromThreshold"`
 	Remaining     float64 `json:"remaining"`
 	// Angle is the turn from the entry taxiway onto the runway heading,
-	// 0–MaxExitAngle; entries needing a sharper turn are left out.
+	// 0–MaxEntryAngle; entries needing a sharper turn are left out.
 	Angle float64 `json:"angle"`
 	// Taxiway is the entry taxiway name, "" if unnamed.
 	Taxiway string `json:"taxiway"`
@@ -42,8 +42,8 @@ const FullLengthMeters = 150.0
 // RunwayEntries returns the entries onto runwayEnd for departures, nearest
 // the threshold (full length) first. An entry onto runway 24 is an exit for
 // aircraft landing on 06 driven backwards, and its turn onto the runway is
-// that exit's turn-off angle, so entries pointing back along the runway
-// (more than MaxExitAngle) are left out the same way.
+// that exit's turn-off angle; entries pointing back along the runway (more
+// than MaxEntryAngle) are left out.
 func (g *Graph) RunwayEntries(runwayEnd string) ([]RunwayEntry, error) {
 	rwy, end, ok := g.Layout.RunwayEnd(runwayEnd)
 	if !ok {
@@ -53,7 +53,7 @@ func (g *Graph) RunwayEntries(runwayEnd string) ([]RunwayEntry, error) {
 	if end.Name == rwy.Primary.Name {
 		opposite = rwy.Secondary.Name
 	}
-	exits, err := g.RunwayExits(opposite)
+	exits, err := g.turnoffs(opposite, MaxEntryAngle)
 	if err != nil {
 		return nil, err
 	}

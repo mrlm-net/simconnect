@@ -155,3 +155,16 @@ func TestSequencerNewcomersQueueBehind(t *testing.T) {
 		t.Fatalf("order %s, want the newcomer last", order)
 	}
 }
+
+// TestSequencerMinSpacing: a unit's minimum spacing wins over a smaller
+// wake minimum, never over a larger one.
+func TestSequencerMinSpacing(t *testing.T) {
+	s := NewApproachSequencer("06", SequencerOptions{MinSpacingNM: 5})
+	seq := s.Update(time.Now(), []ApproachAircraft{arr("QTR1", "A388", 40), arr("A2", "A320", 40.5), arr("B3", "A320", 41)})
+	if seq[1].SpacingNM != 7 || seq[2].SpacingNM != 5 { // J→M 7 NM stays; M→M 3 → 5
+		t.Fatalf("spacing %.0f and %.0f NM", seq[1].SpacingNM, seq[2].SpacingNM)
+	}
+	if gap := seq[2].Landing.Sub(seq[1].Landing); gap < SeparationTime(5, 140)-time.Second {
+		t.Errorf("5 NM kept as %v", gap)
+	}
+}

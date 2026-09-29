@@ -254,7 +254,13 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		return
 	}
 	p := c.approach.Pose()
-	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: m.AGL - p.HeightFt,
+	// Heights above the runway on both sides: MSL (ground under it plus its
+	// height above it) less the runway's elevation.
+	above := m.AGL
+	if g, ok := c.inj.GroundFt(c.objectID); ok {
+		above = g + m.AGL - c.plan.Runway.Altitude/0.3048
+	}
+	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
 		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds}
 	c.note("joined the final: injected approach", nil)
 }

@@ -50,7 +50,7 @@ func (q *sequences) sequencer(icao, runway string) *traffic.ApproachSequencer {
 	if s := q.seq[k]; s != nil {
 		return s
 	}
-	s := traffic.NewApproachSequencer(runway, traffic.SequencerOptions{OnChange: func(c traffic.SequenceChange) {
+	s := traffic.NewApproachSequencer(runway, traffic.SequencerOptions{MinSpacingNM: sepMinNM, OnChange: func(c traffic.SequenceChange) {
 		e := c.Entry
 		switch {
 		case c.Gone:

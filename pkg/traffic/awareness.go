@@ -181,9 +181,12 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		if oh <= 0 {
 			oh = DefaultHalfSpanMeters
 		}
-		if !withPaths || o.e.pushing {
+		if !withPaths {
 			continue // a push under way stops for bodies only; others give way to it
 		}
+		// Not started yet: it waits for the way ahead of taxiing traffic and
+		// for the rest of a neighbour's push — two pushes into the same
+		// corridor would each stop for the other's body and stay there.
 		for _, r := range o.e.ahead {
 			if near(r, half+oh+GiveWayMarginMeters) {
 				return o.id, true

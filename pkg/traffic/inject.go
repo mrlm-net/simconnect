@@ -94,7 +94,7 @@ type injectGround struct{ GroundFt, CGFt float64 }
 type InjectorOption func(*Injector)
 
 // InjectorWithIDs sets the SimConnect ID bases: 5 definition IDs, 2 request
-// IDs per aircraft (up to 50 aircraft) and 10 event IDs are used.
+// IDs per aircraft (up to 96 aircraft and tugs) and 10 event IDs are used.
 func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOption {
 	return func(i *Injector) { i.defBase, i.reqBase, i.evtBase = definitionBase, requestBase, eventBase }
 }
@@ -395,8 +395,10 @@ func (l Lights) String() string {
 }
 
 // PlaceAir puts objectID at an approach pose: in the air with the main
-// wheels pose.HeightFt above the ground, pitched nose up pose.PitchDeg, or on
-// the ground from touchdown. Call it at InjectHz.
+// wheels pose.HeightFt above the runway (pose.RunwayFt; unknown, above the
+// ground under it), pitched nose up pose.PitchDeg, or on the ground from
+// touchdown. Below AirBlendFt the height eases onto the ground under the
+// aircraft, so the wheels meet the surface there. Call it at InjectHz.
 func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	i.mu.Lock()
 	o, ok := i.objects[objectID]
@@ -415,7 +417,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  o.groundFt + o.cgFt + math.Max(pose.HeightFt, 0),
+		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt,
 		Pitch:     -pose.PitchDeg, // SimConnect: negative is nose up
 		Heading:   pose.Heading,
 		OnGround:  onGround,
@@ -423,6 +425,32 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	}
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+}
+
+// AirBlendFt: below this height an injected aircraft in the air eases from
+// the runway's elevation onto the ground under it.
+const AirBlendFt = 100.0
+
+// airAltitude is the main wheels' altitude MSL for a pose over ground at
+// groundFt: the runway's elevation plus the height (a steady glide path,
+// whatever the terrain below), easing onto the ground below AirBlendFt.
+func airAltitude(pose ApproachPose, groundFt float64) float64 {
+	h := math.Max(pose.HeightFt, 0)
+	if pose.RunwayFt == 0 || pose.OnGround {
+		return groundFt + h
+	}
+	w := math.Min(1, h/AirBlendFt)
+	return w*(pose.RunwayFt+h) + (1-w)*(groundFt+h)
+}
+
+// GroundFt is the ground elevation under an injected object (feet MSL).
+func (i *Injector) GroundFt(objectID uint32) (float64, bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; ok && o.haveGround {
+		return o.groundFt, true
+	}
+	return 0, false
 }
 
 // SetGear moves the gear handle of objectID; the sim animates the gear

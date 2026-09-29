@@ -99,6 +99,8 @@ var knownTypes = []typeSpec{
 	{match: []string{"B738", "B736", "737"}, Type: "B738", Category: CategoryJet, span: 35.8, length: 39.5, wheelbase: 15.6, cg: 3.5, tod: 2300,
 		vapp: 145, pitch: 2, flarePitch: 5, flareFt: 30, tdFpm: -130, takeoff: toB737, brake: 2.5, taxi: 15, flaps: flaps737},
 	// Regional jets and turboprops.
+	{match: []string{"BCS3", "A220-300", "A223", "A220"}, Type: "BCS3", Category: CategoryJet, span: 35.1, length: 38.7, wheelbase: 16.4, cg: 3.3, tod: 1900,
+		vapp: 133, pitch: 3, flarePitch: 5.5, flareFt: 25, tdFpm: -120, takeoff: toE195, brake: 2.5, taxi: 15, flaps: flapsEJet},
 	{match: []string{"E195", "E-195", "ERJ-195", "ERJ195", "E295"}, Type: "E195", Category: CategoryJet, span: 28.7, length: 38.7, wheelbase: 16.3, cg: 3.2, tod: 2180,
 		vapp: 135, pitch: 3, flarePitch: 5.5, flareFt: 25, tdFpm: -120, takeoff: toE195, brake: 2.5, taxi: 15, flaps: flapsEJet},
 	{match: []string{"E190", "E-190", "ERJ-190", "ERJ190", "E290", "E19"}, Type: "E190", Category: CategoryJet, span: 28.7, length: 36.2, wheelbase: 14.7, cg: 3.2, tod: 2050,

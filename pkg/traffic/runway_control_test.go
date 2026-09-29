@@ -1,0 +1,172 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"math"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/calc"
+)
+
+func dep(cs, typ string, p RunwayPhase) RunwayUser {
+	return RunwayUser{Callsign: cs, Wake: WakeFor(typ), Phase: p, Route: "VENO7D"}
+}
+
+func final(cs string, nm float64) RunwayUser {
+	return RunwayUser{Callsign: cs, Wake: WakeFor("A320"), Phase: RunwayFinal, Arrival: true, DistanceNM: nm, GroundKts: 140}
+}
+
+func TestRunwayControllerFreeRunway(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	c := r.Decide(time.Now(), []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort)})
+	if !slices.Contains(c.LineUp, "CSA1") || !slices.Contains(c.Takeoff, "CSA1") {
+		t.Fatalf("a free runway: %+v", c)
+	}
+}
+
+func TestRunwayControllerArrivals(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	// An arrival on a 3 NM final: the departure waits, and so does a crossing at 2 NM.
+	c := r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), final("DLH2", 3)})
+	if len(c.LineUp)+len(c.Takeoff) != 0 || !strings.Contains(c.Waiting["CSA1"], "DLH2") {
+		t.Fatalf("departure ahead of an arrival at 3 NM: %+v", c)
+	}
+	x := RunwayUser{Callsign: "TVS3", Phase: RunwayHoldingShort, Crossing: true}
+	if c := r.Decide(now, []RunwayUser{x, final("DLH2", 1.5)}); len(c.Cross) != 0 {
+		t.Fatal("crossing ahead of an arrival at 1.5 NM")
+	}
+	// At 8 NM: the gap is big enough: line up and go.
+	c = r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), final("DLH2", 8)})
+	if !slices.Contains(c.Takeoff, "CSA1") {
+		t.Fatalf("departure in an 8 NM gap: %+v", c)
+	}
+	// Landing roll: the runway is occupied.
+	roll := final("DLH2", 0)
+	roll.Phase = RunwayRolling
+	c = r.Decide(now, []RunwayUser{dep("CSA4", "A320", RunwayHoldingShort), roll})
+	if len(c.LineUp) != 0 || !strings.Contains(c.Waiting["CSA4"], "on the runway") {
+		t.Fatalf("with an arrival on its landing roll: %+v", c)
+	}
+}
+
+func TestRunwayControllerInterval(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	// A heavy rolls; an A320 behind it lines up and waits 2 min.
+	r.Decide(now, []RunwayUser{dep("QTR1", "B77W", RunwayRolling), dep("CSA2", "A320", RunwayHoldingShort)})
+	c := r.Decide(now.Add(40*time.Second), []RunwayUser{dep("QTR1", "B77W", RunwayAirborne), dep("CSA2", "A320", RunwayHoldingShort)})
+	if !slices.Contains(c.LineUp, "CSA2") || slices.Contains(c.Takeoff, "CSA2") || !strings.Contains(c.Waiting["CSA2"], "QTR1") {
+		t.Fatalf("40 s behind a heavy: %+v", c)
+	}
+	c = r.Decide(now.Add(90*time.Second), []RunwayUser{dep("QTR1", "B77W", RunwayAirborne), dep("CSA2", "A320", RunwayLinedUp)})
+	if slices.Contains(c.Takeoff, "CSA2") {
+		t.Fatal("take-off 90 s behind a heavy")
+	}
+	c = r.Decide(now.Add(2*time.Minute+time.Second), []RunwayUser{dep("QTR1", "B77W", RunwayAirborne), dep("CSA2", "A320", RunwayLinedUp)})
+	if !slices.Contains(c.Takeoff, "CSA2") {
+		t.Fatalf("2 min behind a heavy: %+v", c)
+	}
+}
+
+func TestRunwayControllerQueue(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	r.Decide(now, []RunwayUser{dep("A1", "A320", RunwayHoldingShort)})
+	c := r.Decide(now.Add(time.Second), []RunwayUser{dep("B2", "A320", RunwayHoldingShort), dep("A1", "A320", RunwayHoldingShort)})
+	if !slices.Contains(c.LineUp, "A1") || slices.Contains(c.LineUp, "B2") || c.Waiting["B2"] != "number 2 for departure" {
+		t.Fatalf("first come first: %+v", c)
+	}
+	// Other traffic lined up: ours wait; it is never cleared.
+	other := dep("AI9", "A320", RunwayLinedUp)
+	other.Other = true
+	c = r.Decide(now.Add(2*time.Second), []RunwayUser{other, dep("A1", "A320", RunwayHoldingShort)})
+	if len(c.LineUp) != 0 || slices.Contains(c.Takeoff, "AI9") {
+		t.Fatalf("with other traffic lined up: %+v", c)
+	}
+}
+
+// TestHoldForRunway: pushback and taxi go by themselves; the departure
+// waits at the holding point and lined up for its runway clearances.
+func TestHoldForRunway(t *testing.T) {
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForRunway: true})
+	if !run(TaxiHoldingShort, 60*60*20) {
+		t.Fatalf("state %v: pushback and taxi did not go by themselves", ctl.State())
+	}
+	run(TaxiLiningUp, 60*120)
+	if ctl.State() != TaxiHoldingShort {
+		t.Fatalf("lined up without a clearance: %v", ctl.State())
+	}
+	ctl.ClearToLineUp()
+	if !run(TaxiLinedUp, 60*120) {
+		t.Fatalf("state %v after the line-up clearance", ctl.State())
+	}
+	run(TaxiDeparting, 60*120)
+	if ctl.State() != TaxiLinedUp {
+		t.Fatalf("took off without a clearance: %v", ctl.State())
+	}
+	if err := ctl.ClearForTakeoff(); err != nil {
+		t.Fatal(err)
+	}
+	if !run(TaxiDeparting, 60*30) {
+		t.Fatalf("state %v after the take-off clearance", ctl.State())
+	}
+}
+
+// TestLineupFollowsLeadIn: at LKPR F onto runway 06 (a turn past
+// MaxExitAngle, so no listed entry) the line-up still follows the taxi
+// lead-in from the hold-short onto the runway instead of a turn of its own.
+func TestLineupFollowsLeadIn(t *testing.T) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	a1, err := g.Layout.ParkingIndex("A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: a1, Runway: "06", Model: "FSLTL A320 Air France SL", Tail: "TVS1", HoldForRunway: true}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	mon := DefaultTaxiRequestBase + reqOffMonitor
+	stand := g.Layout.Parking[a1]
+	frame := func() { now = now.Add(time.Second / 60); ctl.Handle(positionMsg(mon, 77, stand.Position, 0, 0, true)) }
+	for i := 0; i < 60*60*30; i++ {
+		frame()
+		if ctl.State() == TaxiHoldingShort {
+			if ctl.last.HoldingShortOf == "06/24" {
+				break
+			}
+			ctl.ClearToCross()
+		}
+	}
+	lead := ctl.entryPath()
+	if len(lead) < 3 {
+		t.Fatalf("no lead-in found from the hold-short (%d points)", len(lead))
+	}
+	start := len(placements(ec))
+	ctl.ClearToLineUp()
+	for i := 0; i < 60*120 && ctl.State() != TaxiLinedUp; i++ {
+		frame()
+	}
+	ps := placements(ec)[start:]
+	// Every lead-in point is passed within a few metres.
+	for _, p := range lead[:len(lead)-1] {
+		best := math.Inf(1)
+		for _, q := range ps {
+			best = math.Min(best, calc.HaversineMeters(p.Lat, p.Lon, q.Latitude, q.Longitude))
+		}
+		if best > 4 {
+			t.Errorf("the line-up passes %.1f m from the lead-in point %v", best, p)
+		}
+	}
+}

@@ -86,6 +86,10 @@ type ApproachPose struct {
 	Phase    ApproachPhase
 	// OnGround is set from touchdown on.
 	OnGround bool
+	// RunwayFt is the runway's elevation (feet MSL) HeightFt is above;
+	// 0 when unknown: the height is then taken above the ground under the
+	// aircraft, which follows the terrain (Injector.PlaceAir).
+	RunwayFt float64
 	// Touchdown and TouchdownFpm describe the touchdown once it happened.
 	Touchdown    float64
 	TouchdownFpm float64

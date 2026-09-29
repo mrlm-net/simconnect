@@ -76,6 +76,9 @@ type SequencerOptions struct {
 	// SwapMargin: arrivals in the sequence change places only when their
 	// predicted landings part by more than this (default 90 s).
 	SwapMargin time.Duration
+	// MinSpacingNM is the least spacing on final whatever the wake (0: the
+	// minimum radar separation, 3 NM); a unit may keep more, e.g. 5 NM.
+	MinSpacingNM float64
 	// AllowReduced uses the reduced radar separation (2.5 NM) where the
 	// conditions allow it (and the airport is approved for it).
 	AllowReduced bool
@@ -146,7 +149,10 @@ func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachCon
 // occupancy on the surface. It returns the time, the spacing and why the
 // spacing differs from the wake minimum.
 func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditions) (time.Duration, float64, string) {
-	nm, why := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced)
+	nm, why := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced && s.opts.MinSpacingNM == 0)
+	if s.opts.MinSpacingNM > nm {
+		nm, why = s.opts.MinSpacingNM, ""
+	}
 	kts := c.FinalGroundKts(follow.FinalKts)
 	if s.opts.TimeBased {
 		kts = ApproachConditions{}.FinalGroundKts(follow.FinalKts) // the time, not the distance, is kept
