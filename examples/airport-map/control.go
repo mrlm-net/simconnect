@@ -335,6 +335,16 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
+	// One aircraft per call sign (a turnaround adopts its own arrival): a
+	// second one would share its stand reservation and its log.
+	if it := cc.byTail(r.Tail); it != nil && r.adopt == 0 {
+		it.mu.Lock()
+		done := it.view.Done
+		it.mu.Unlock()
+		if !done {
+			return nil, fmt.Errorf("%s is already flying", r.Tail)
+		}
+	}
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
@@ -1445,12 +1455,7 @@ func via(r *airport.Route, n int) string {
 	if r == nil {
 		return ""
 	}
-	var names []string
-	for _, e := range r.Edges[:min(n, len(r.Edges))] {
-		if e.Name != "" && (len(names) == 0 || names[len(names)-1] != e.Name) {
-			names = append(names, e.Name)
-		}
-	}
+	names := r.SpokenTaxiways(min(n, len(r.Edges)))
 	if len(names) == 0 {
 		return ""
 	}

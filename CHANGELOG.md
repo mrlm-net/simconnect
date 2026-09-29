@@ -50,6 +50,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `pkg/airport` `Route.SpokenTaxiways`: a taxi clearance names the taxiways as a controller would, leaving out stubs under `SpokenMinMeters` (150 m) that only lead onto the next one. At LKPR from N58 "via H, L, G, F" (270 m of three stubs curving onto F) is now "via F".
+- `examples/airport-map`: a second aircraft with a call sign already flying is refused (a turnaround still adopts its own). It would have shared its stand reservation.
 - `pkg/traffic`: an aircraft beside a pushback under way waits where it is unless it is already in the push corridor. At LKPR DLH977, waiting at the edge of TVS1960's push, drove into it; each then stopped for the other for 8 minutes and they finished too close.
 - `pkg/traffic`: an injected take-off builds up as the engines spool from idle to take-off thrust (`TakeoffProfile.SpoolSeconds`, 7 s), instead of full acceleration from the first frame.
 - `examples/airport-map`: a departure handed to MSFS AI shows the SID it still flies when selected, as an arrival shows its STAR (`TaxiController.ClimbRoute`). The Approach panel's message no longer shares its id with the Charts panel's airport info.
