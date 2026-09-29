@@ -177,6 +177,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
 │       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
 │       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
+│       ├── picture.go       #   TrafficPicture: all traffic around a configurable centre, phases, feeds
+│       ├── picture_airports.go # AirportLister: airports around (facilities list)
 │       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling
 │       ├── aircraft_types.go #  Known-type table (A20N…B77W…AT76), TakeoffProfileFor, MotionProfileFor
 │       ├── profile_simvars.go # ProfileReader (type SimVars fed by Handle(msg)), Refine
@@ -232,6 +234,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
 │   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
 │   ├── traffic-profiles.md  #   Aircraft profiles per type, SimVar refinement, telemetry Recorder
+│   ├── traffic-picture.md   #   TrafficPicture: world traffic around a centre, airports in range
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)

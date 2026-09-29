@@ -113,7 +113,8 @@
 <div id="map"></div>
 <div id="side">
   <form id="f">
-    <input type="text" id="icao" placeholder="ICAO" maxlength="8" autocomplete="off">
+    <input type="text" id="icao" placeholder="ICAO" maxlength="8" autocomplete="off" list="airportList" title="Type an ICAO or pick an airport in range">
+    <datalist id="airportList"></datalist>
     <button>Load</button>
     <button type="button" class="secondary" id="refresh" title="Fetch again from the simulator">↻</button>
   </form>
@@ -141,7 +142,7 @@
       <tr><td>Runway</td><td class="n"><select id="rTo"></select></td></tr>
       <tr><td id="rPickLbl">Entry</td><td class="n"><select id="rPick"></select></td></tr>
       <tr><td>Flight plan <span class="i" title="Optional. The loaded airport is always one end. A departure flies the SID, airways and cruise level to the airport you type; an arrival comes from it and appears at the STAR entry on that side. Empty: no flight plan.">ⓘ</span></td>
-        <td class="n"><span class="dep-only fpHere"></span><span class="dep-only"> → </span><input id="cOther" placeholder="ICAO" maxlength="4" class="icao" title="Destination (departure) or origin (arrival)"><span class="arr-only"> → </span><span class="arr-only fpHere"></span></td></tr>
+        <td class="n"><span class="dep-only fpHere"></span><span class="dep-only"> → </span><input id="cOther" placeholder="ICAO" maxlength="4" class="icao" list="airportList" title="Destination (departure) or origin (arrival): type or pick"><span class="arr-only"> → </span><span class="arr-only fpHere"></span></td></tr>
       <tr><td>Aircraft</td><td class="n"><span id="cModelCount" class="note"></span></td></tr>
     </table>
     <div class="combo">
@@ -199,8 +200,14 @@
   <section data-panel="layers" hidden>
     <h2>Airport</h2>
     <div id="info" class="note">—</div>
+    <h2>Traffic picture <span class="i" title="All traffic around the centre of the world: your aircraft (following it) or an airport. Airports in range feed the airport lists; SimConnect shows MSFS AI up to 200 km away.">ⓘ</span></h2>
+    <table class="form">
+      <tr><td>Centre</td><td class="n"><select id="wCentre"><option value="follow">Follow my aircraft</option><option value="airport">This airport</option></select></td></tr>
+      <tr><td>Radius</td><td class="n"><select id="wRadius"><option>100</option><option>150</option><option selected>250</option><option>350</option><option>500</option></select> NM</td></tr>
+    </table>
+    <div id="wInfo" class="note">—</div>
     <h2>Live traffic</h2>
-    <label class="opt"><input type="checkbox" id="trafficOn" checked> Aircraft within 20 km</label>
+    <label class="opt"><input type="checkbox" id="trafficOn" checked> Aircraft around (up to 200 km)</label>
     <label class="opt"><input type="checkbox" id="safeOn"> Safe zones <span class="i" title="Half the wing span plus 3 m around every aircraft on the ground; red where two overlap.">ⓘ</span></label>
     <table id="trafficTable" class="note"></table>
     <h2>Map</h2>
@@ -1372,6 +1379,32 @@ async function pollAirportInfo() {
   } catch { /* server gone */ }
 }
 setInterval(pollAirportInfo, 10000);
+
+// ── Traffic picture (#366): centre, radius, airports in range ──
+async function pollWorld() {
+  try {
+    const res = await fetch('/api/world');
+    if (!res.ok) { $('wInfo').textContent = (await res.text()).trim(); return; }
+    const w = await res.json();
+    // Airports with a proper ICAO code (not heliports and strips), nearest first.
+    $('airportList').innerHTML = w.airports.filter((a) => /^[A-Z]{4}$/.test(a.icao)).map((a) => `<option value="${esc(a.icao)}">${a.distanceNM.toFixed(0)} NM</option>`).join('');
+    const phases = {};
+    for (const a of w.aircraft) phases[a.phase] = (phases[a.phase] || 0) + 1;
+    const where = w.follow ? 'following your aircraft' : `around ${esc(w.icao || 'a position')}`;
+    $('wInfo').innerHTML = `${where}, ${w.radiusNM.toFixed(0)} NM: <b>${w.airports.length}</b> airports, <b>${w.aircraft.length}</b> aircraft` +
+      (w.aircraft.length ? '<br>' + Object.entries(phases).map(([k, n]) => `${n} ${esc(k)}`).join(' · ') : '');
+    if (document.activeElement !== $('wCentre')) $('wCentre').value = w.follow ? 'follow' : 'airport';
+    if (document.activeElement !== $('wRadius')) $('wRadius').value = String(w.radiusNM);
+  } catch { /* server gone */ }
+}
+setInterval(pollWorld, 5000);
+pollWorld();
+async function setWorld(body) {
+  await fetch('/api/world', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  pollWorld();
+}
+$('wCentre').addEventListener('change', () => setWorld($('wCentre').value === 'follow' ? { follow: true } : { icao: data ? data.icao : '' }));
+$('wRadius').addEventListener('change', () => setWorld({ radiusNM: Number($('wRadius').value) }));
 
 // ── Tabs: one task at a time; the last one is remembered ──
 function showTab(name) {
