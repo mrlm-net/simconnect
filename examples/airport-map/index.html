@@ -38,6 +38,7 @@
   .ac svg { width: 26px; height: 26px; filter: drop-shadow(0 0 2px #000); }
   .lbl { background: none; border: 0; box-shadow: none; color: #ffe066; font: 700 11px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; }
   .lbl::before { display: none; }
+  .view-bar a.view-btn { display: block; width: 30px; height: 30px; line-height: 30px; text-align: center; font-size: 16px; background: #fff; color: #000; text-decoration: none; }
   .locate-btn { display: block; width: 30px; height: 30px; line-height: 30px; text-align: center; font-size: 16px; background: #fff; color: #000; text-decoration: none; }
   tr.loc { cursor: pointer; } tr.loc:hover { background: #333; }
   .trk { position: absolute; white-space: nowrap; color: #e8e8e8; font: 600 10px system-ui; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
@@ -924,17 +925,17 @@ const LocateControl = L.Control.extend({
 new LocateControl().addTo(map);
 // Full screen (browser), with the panel: play without the browser around
 // it. Esc or the button again leaves it.
+// The view buttons (full screen, panel on/off) are one group in the
+// bottom-left corner.
+const viewBar = L.control({ position: 'bottomleft' });
+viewBar.onAdd = () => L.DomUtil.create('div', 'leaflet-bar view-bar');
+viewBar.addTo(map);
 function mapButton(text, title, onClick) {
-  const C = L.Control.extend({
-    options: { position: 'topleft' },
-    onAdd() {
-      const a = L.DomUtil.create('a', 'leaflet-bar locate-btn');
-      a.href = '#'; a.textContent = text; a.title = title;
-      L.DomEvent.on(a, 'click', (ev) => { L.DomEvent.stop(ev); onClick(a); });
-      return a;
-    },
-  });
-  new C().addTo(map);
+  const a = L.DomUtil.create('a', 'view-btn', viewBar.getContainer());
+  a.href = '#'; a.textContent = text; a.title = title;
+  L.DomEvent.on(a, 'click', (ev) => { L.DomEvent.stop(ev); onClick(a); });
+  L.DomEvent.disableClickPropagation(a);
+  return a;
 }
 mapButton('⛶', 'Full screen', () => {
   try {
