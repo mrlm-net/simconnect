@@ -170,3 +170,59 @@ func TestLineupFollowsLeadIn(t *testing.T) {
 		}
 	}
 }
+
+// An arrival on short final goes around for anyone lined up, crossing or
+// still on the runway after landing — not for a departure rolling, and not
+// while still farther out (#394).
+func TestRunwayControllerGoAround(t *testing.T) {
+	now := time.Now()
+	landed := RunwayUser{Callsign: "KLM4", Phase: RunwayRolling, Arrival: true}
+	crossing := RunwayUser{Callsign: "TVS3", Phase: RunwayRolling, Crossing: true}
+	other := RunwayUser{Callsign: "N123", Phase: RunwayRolling, Other: true}
+	for _, c := range []struct {
+		name  string
+		users []RunwayUser
+		want  bool
+	}{
+		{"lined up", []RunwayUser{dep("CSA1", "A320", RunwayLinedUp), final("DLH2", 1)}, true},
+		{"still on it after landing", []RunwayUser{landed, final("DLH2", 1)}, true},
+		{"crossing", []RunwayUser{crossing, final("DLH2", 1)}, true},
+		{"other traffic on it", []RunwayUser{other, final("DLH2", 1)}, true},
+		{"a departure rolling", []RunwayUser{dep("CSA1", "A320", RunwayRolling), final("DLH2", 1)}, false},
+		{"farther out", []RunwayUser{dep("CSA1", "A320", RunwayLinedUp), final("DLH2", 2)}, false},
+		{"runway free", []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), final("DLH2", 1)}, false},
+	} {
+		r := NewRunwayController(RunwayControllerOptions{})
+		got := r.Decide(now, c.users)
+		if slices.Contains(got.GoAround, "DLH2") != c.want {
+			t.Errorf("%s: go around %v, want %v (%+v)", c.name, got.GoAround, c.want, got)
+		}
+		if c.want && got.Waiting["DLH2"] == "" {
+			t.Errorf("%s: no reason given", c.name)
+		}
+	}
+	// Only the first arrival: the one behind is still far out.
+	r := NewRunwayController(RunwayControllerOptions{})
+	got := r.Decide(now, []RunwayUser{landed, final("DLH2", 1), final("AFR5", 1.1)})
+	if !slices.Equal(got.GoAround, []string{"DLH2"}) {
+		t.Errorf("two arrivals: %v, want only the first", got.GoAround)
+	}
+}
+
+// After a go-around the arrival is sequenced again by its new prediction,
+// behind those now ahead of it, instead of keeping its first place.
+func TestSequencerRejoin(t *testing.T) {
+	s := NewApproachSequencer("06", SequencerOptions{MinSpacingNM: 5})
+	now := time.Now()
+	a := func(cs string, nm float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: 250}
+	}
+	s.Update(now, []ApproachAircraft{a("DLH2", 20), a("AFR5", 30)})
+	// DLH2 went around: now 40 NM to go, AFR5 at 15.
+	now = now.Add(2 * time.Minute)
+	s.Rejoin("DLH2")
+	seq := s.Update(now, []ApproachAircraft{a("DLH2", 40), a("AFR5", 15)})
+	if len(seq) != 2 || seq[0].Callsign != "AFR5" || seq[1].Callsign != "DLH2" {
+		t.Fatalf("after the go-around: %+v", seq)
+	}
+}

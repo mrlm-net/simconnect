@@ -17,7 +17,8 @@ import (
 // the runway is doing — the wake and route interval after the previous
 // departure, the runway free, and the next arrival far enough out that
 // the departure is off the runway before it lands (mixed-mode use: the
-// departures go in the gaps between arrivals).
+// departures go in the gaps between arrivals). An arrival on short final
+// with the runway not free is sent around (#394).
 
 // RunwayPhase is what a user of the runway is doing.
 type RunwayPhase uint8
@@ -51,6 +52,9 @@ type RunwayClearances struct {
 	LineUp  []string `json:"lineUp,omitempty"`  // line up and wait
 	Takeoff []string `json:"takeoff,omitempty"` // cleared for take-off (lined up, or holding short: a rolling take-off)
 	Cross   []string `json:"cross,omitempty"`   // cross the runway
+	// GoAround: arrivals on short final with the runway not free (the
+	// reason is in Waiting).
+	GoAround []string `json:"goAround,omitempty"`
 	// Why each departure or crossing still waits.
 	Waiting map[string]string `json:"waiting,omitempty"`
 }
@@ -67,6 +71,10 @@ type RunwayControllerOptions struct {
 	CrossTime time.Duration
 	// Surface: the runway state (longer occupancy wet or contaminated).
 	Surface RunwaySurface
+	// GoAroundAt: an arrival this long before the threshold with the
+	// runway not free goes around (default 30 s, about 1.2 NM at 140 kt).
+	// A departure rolling is not in the way: it is airborne before then.
+	GoAroundAt time.Duration
 }
 
 // RunwayController clears the users of one runway.
@@ -89,6 +97,9 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	}
 	if opts.CrossTime == 0 {
 		opts.CrossTime = 40 * time.Second
+	}
+	if opts.GoAroundAt == 0 {
+		opts.GoAroundAt = 30 * time.Second
 	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
@@ -176,6 +187,21 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			return why
 		}
 		return arrivalClear(RunwayOccupancyIn(u.Wake, false, r.opts.Surface), r.opts.MinArrivalNM)
+	}
+
+	// The next arrival on short final with the runway not free: around.
+	// In the way: anyone lined up, crossing, still on it after landing, or
+	// other traffic on it; not our departure rolling.
+	blocker := ""
+	for _, u := range users {
+		inWay := u.Phase == RunwayLinedUp || u.Phase == RunwayRolling && (u.Arrival || u.Crossing || u.Other)
+		if inWay && blocker == "" {
+			blocker = u.Callsign
+		}
+	}
+	if blocker != "" && nextArrName != "" && nextArrName != blocker && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
+		out.GoAround = append(out.GoAround, nextArrName)
+		out.Waiting[nextArrName] = blocker + " on the runway"
 	}
 
 	// Ours lined up: take-off when it may.

@@ -6,6 +6,7 @@ package main
 import (
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -19,7 +20,8 @@ import (
 // The towers on the map (#393): a runway controller per airport and
 // runway clears our departures to line up and take off, and our traffic
 // to cross, by what the runway is doing — our arrivals, departures and
-// crossings, and respected other traffic. Aircraft spawned with "hold at
+// crossings, and respected other traffic — and sends an arrival around
+// when the runway is not free on short final (#394), to be sequenced again. Aircraft spawned with "hold at
 // every clearance" are the user's: counted, never cleared.
 //
 //	GET /api/runways?icao=LKPR — each runway's users and who waits for what
@@ -109,6 +111,16 @@ func (t *towers) tick(now time.Time) {
 		if !ok {
 			continue
 		}
+		// Taxiing across a runway (cleared, or not waiting to be): on it.
+		if v.State == "taxiing" && v.OnGround {
+			for _, r := range l.Runways {
+				if onRunway(r, v.Position) {
+					u.Phase, u.Crossing = traffic.RunwayRolling, true
+					users[key{it.ICAO, r.Name()}] = append(users[key{it.ICAO, r.Name()}], u)
+				}
+			}
+			continue
+		}
 		rk := key{it.ICAO, own.Name()}
 		switch {
 		case v.State == "holding short" && v.HoldingShortOf != "" && v.HoldingShortOf != own.Name():
@@ -130,6 +142,9 @@ func (t *towers) tick(now time.Time) {
 		case it.arr != nil && (v.State == "approaching" || v.State == "landing") && !v.OnGround:
 			_, end, _ := l.RunwayEnd(v.Runway)
 			d := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)
+			if d > 3 {
+				t.forgetGoAround(v.Tail) // out again: another go-around may follow
+			}
 			if d > 20 {
 				continue
 			}
@@ -181,7 +196,7 @@ func (t *towers) tick(now time.Time) {
 		}
 		t.mu.Unlock()
 		c := rc.Decide(now, list)
-		t.apply(k.rwy, c, ours)
+		t.apply(k.icao, k.rwy, c, ours)
 		var view []runwayUserView
 		for _, u := range list {
 			view = append(view, runwayUserView{Callsign: u.Callsign, Phase: phaseNames[u.Phase], Waiting: c.Waiting[u.Callsign]})
@@ -193,7 +208,7 @@ func (t *towers) tick(now time.Time) {
 }
 
 // apply gives the clearances (once each) and logs who waits for what.
-func (t *towers) apply(rwy string, c traffic.RunwayClearances, ours map[string]*controlled) {
+func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[string]*controlled) {
 	give := func(tail, action, phrase string, f func(it *controlled) error) {
 		it := ours[tail]
 		if it == nil || it.gates {
@@ -266,6 +281,21 @@ func (t *towers) apply(rwy string, c traffic.RunwayClearances, ours map[string]*
 			return nil
 		})
 	}
+	for _, cs := range c.GoAround {
+		why := c.Waiting[cs]
+		give(cs, "goaround", "go around, I say again, go around — "+why, func(it *controlled) error {
+			if it.arr == nil {
+				return nil
+			}
+			if err := it.arr.GoAround(); err != nil {
+				return err
+			}
+			if t.cc.rejoin != nil {
+				t.cc.rejoin(icao, cs)
+			}
+			return nil
+		})
+	}
 	// Who waits, and why: logged when it changes.
 	names := make([]string, 0, len(c.Waiting))
 	for cs := range c.Waiting {
@@ -278,14 +308,21 @@ func (t *towers) apply(rwy string, c traffic.RunwayClearances, ours map[string]*
 		changed := t.waiting[cs] != why
 		t.waiting[cs] = why
 		t.mu.Unlock()
-		if changed && ours[cs] != nil && !ours[cs].gates {
+		if changed && ours[cs] != nil && !ours[cs].gates && !slices.Contains(c.GoAround, cs) {
 			tlog.printf("%-6s tower %s: waits — %s", cs, rwy, why)
 		}
 	}
 }
 
-// forgetCrossing lets a crossing be cleared again at the next holding
-// point once the aircraft moves on.
+// forgetGoAround lets an arrival be sent around again on its next approach.
+func (t *towers) forgetGoAround(tail string) {
+	t.mu.Lock()
+	delete(t.given, tail+" goaround")
+	t.mu.Unlock()
+}
+
+// forget lets a crossing be cleared again at the next holding point once
+// the aircraft moves on.
 func (t *towers) forget(tail string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

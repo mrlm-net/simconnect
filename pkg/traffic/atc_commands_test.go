@@ -192,3 +192,25 @@ func TestAbortTakeoffLinedUpHolds(t *testing.T) {
 		t.Fatalf("state %v, want the take-off after a new clearance", ctl.State())
 	}
 }
+
+// The published missed approach: its points at its highest altitude — at
+// LKPR ILS 06 straight ahead to 4000 ft for vectors.
+func TestMissedWaypoints(t *testing.T) {
+	p := lkprProcedures(t)
+	m, err := p.MissedApproach("ILS 06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wps, top := missedWaypoints(m, 3000)
+	if len(wps) != 1 || math.Abs(top-4000) > 5 || math.Abs(wps[0].Altitude-top) > 1 {
+		t.Errorf("ILS 06: %+v, %.0f ft; want straight ahead to 4000 ft", wps, top)
+	}
+	fix := airport.NavPoint{Ident: "OKL", Position: airport.LatLon{Lat: 50.2, Lon: 14.4}, AltMin: 5000 / ftPerMeter}
+	wps, top = missedWaypoints(append(m, fix), 3000)
+	if len(wps) != 2 || wps[1].Latitude != 50.2 || math.Abs(wps[0].Altitude-5000) > 1 || math.Abs(wps[1].Altitude-5000) > 1 || math.Abs(top-5000) > 1 {
+		t.Errorf("with a fix: %+v, %.0f ft", wps, top)
+	}
+	if wps, top := missedWaypoints(nil, 3000); wps != nil || top != 3000 {
+		t.Errorf("none: %+v, %.0f ft", wps, top)
+	}
+}

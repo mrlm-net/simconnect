@@ -114,6 +114,10 @@ type ArrivalRequest struct {
 	// extended centreline (ProcedureJoinNm out), and the injected approach
 	// takes over there (#315).
 	Procedure []airport.NavPoint
+	// MissedApproach (with InjectApproach) is the published missed approach
+	// flown on a go-around (airport.Procedures.MissedApproach), then back
+	// round to the final; without it the go-around flies a circuit (#394).
+	MissedApproach []airport.NavPoint
 	// Aircraft is the aircraft's profile (#324); nil resolves it from
 	// Model (ProfileFor). It fills Profile, Approach, Rollout and
 	// NoseOffset where those are zero and sets the flaps and lights.

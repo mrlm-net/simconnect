@@ -38,6 +38,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `examples/airport-map`: our aircraft are coloured by what they are — under our control (a card), arriving en route, overflying, departed — with a legend, labels and popups saying so.
 - `pkg/traffic` `AirborneSeparation` and the minima (`TerminalSeparationNM`, `EnrouteSeparationNM`, `VerticalSeparationFt`); the sequencer's `MinSpacingNM`. The map keeps 5 NM (sequencers at 5 NM, spawns 6 NM clear) and logs every pair under 5 NM and 1000 ft (`GET /api/separation`).
 
+- `pkg/traffic` automatic go-around (#394):
+  - `RunwayController` sends the next arrival around when it is `GoAroundAt` (30 s) out and the runway is not free (someone lined up, crossing, still on it after landing, or other traffic on it), and lists it in `GoAround` with the reason;
+  - `GoAround` flies the published missed approach when `ArrivalRequest.MissedApproach` has one, else the circuit;
+  - `ApproachSequencer.Rejoin` sequences the go-around afresh;
+  - on the map, the tower sends our arrivals around, and both the tower and the button re-sequence them; our aircraft taxiing across a runway count as on it.
+
 ### Fixed
 
 - `pkg/airport`: entries onto a runway may turn up to `MaxEntryAngle` (135°) — threshold entries often meet the runway square or slightly back (LKPR 12 at L, 120°), which the 90° exit limit left out. A taxiway dead end on another node (within 3 m) is joined to it: at LKPR the F lead-in ends on the 06 centreline beside the runway node without sharing it, so 06 had no full-length entry.

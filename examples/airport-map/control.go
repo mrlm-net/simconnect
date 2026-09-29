@@ -146,6 +146,8 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
+	// rejoin sequences an arrival afresh after a go-around (#394).
+	rejoin func(icao, tail string)
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
 	world *traffic.TrafficPicture
@@ -432,7 +434,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
-			Procedure: procRoute, Aircraft: &ac, Airport: &lim}); err != nil {
+			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
@@ -655,7 +657,12 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case it.arr != nil && action == "hold":
 		return it.arr.HoldPosition()
 	case it.arr != nil && action == "goaround":
-		return it.arr.GoAround()
+		if err := it.arr.GoAround(); err != nil {
+			return err
+		}
+		if it.cc.rejoin != nil {
+			it.cc.rejoin(it.ICAO, it.Tail)
+		}
 	case it.arr != nil && action == "taxi":
 		it.arr.ClearToTaxi()
 	case it.arr != nil && action == "upto":
@@ -1045,6 +1052,27 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 	return pts, star.Name, kind, nil
 }
 
+// missedFor is the published missed approach of the approach to runway
+// flown on a go-around (#394); nil when unknown (a circuit instead).
+func (cc *controlCenter) missedFor(g *airport.Graph, runway string) []airport.NavPoint {
+	if cc.procedures == nil {
+		return nil
+	}
+	p, ok := cc.procedures(g.Layout.ICAO)
+	if !ok {
+		return nil
+	}
+	app, ok := p.BestApproach(runway)
+	if !ok {
+		return nil
+	}
+	m, err := p.MissedApproach(app.Name)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
 // turnaround departs a parked arrival again (#296): after the dwell (or
 // the "depart" action) a departure adopts the same aircraft on its stand,
 // with the same call sign, stand reservation and runway; the arrival's
@@ -1269,7 +1297,11 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			} else if p := it.arr.Plan(); p != nil {
 				r = p.Route
 			}
-			tlog.printf("%-6s ATC: %s", it.Tail, it.phraseView(v, r, action, -1))
+			said := v
+			if said.HoldingShortOf == "" {
+				said.HoldingShortOf = prev.HoldingShortOf // the runway just crossed
+			}
+			tlog.printf("%-6s ATC: %s", it.Tail, it.phraseView(said, r, action, -1))
 		}
 	}
 	if v.Lights != prev.Lights && prev.Lights != "" {

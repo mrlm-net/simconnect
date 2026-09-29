@@ -264,6 +264,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	seqs := newSequences(cc, sched)
 	sep := newSepMonitor()
 	tw := newTowers(cc, sched)
+	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
