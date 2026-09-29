@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - `pkg/traffic` `TrafficPicture` (#366): all traffic around a configurable centre of the world (an airport, a position, or following the user with `RecentreNM` hysteresis; radius `DefaultPictureRadiusNM` 250 NM). It tracks ours, MSFS AI and the user with phase and airport, knows the airports in range (`AirportLister`), and sends enter/leave/recentre events. It keeps one `GroundPicture` per airport (`Ground`) and feeds `StandAllocator`s (`Allocate`) from a single scan. See `docs/traffic-picture.md`.
+- `pkg/traffic` `Schedule` (#367): scheduled flights (call sign, airline, type, origin, destination, STD/STA) for the focus airports in a time window. Airlines have fleets, bases and regions; home carriers (bases, or the airlines the stands name) get most of the traffic; the type fits the distance and both runways; movements follow time-of-day waves by local solar time, scaled by airport size and `Density`. Deterministic for a seed. `DefaultScheduleConfig` is built in (17 European and long-haul airlines, about 80 airports); `SaveScheduleConfig`/`LoadScheduleConfig` export and read it as JSON to edit. See `docs/traffic-schedules.md`.
 - `examples/airport-map`: the traffic picture in Layers (centre, radius, airports and aircraft by phase); ICAO fields are dropdowns of the airports in range; the aircraft scan reaches SimConnect's 200 km maximum; `GET/POST /api/world`
 
 ### Changed
