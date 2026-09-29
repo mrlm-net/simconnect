@@ -130,6 +130,18 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			use := nav.ActiveRunways(l, *wx, nav.RunwayLimitsFrom(lim))
 			out.Use = &useInfo{Departure: use.Departure.Name, Arrival: use.Arrival.Name, HeadwindKts: use.HeadwindKts,
 				CrosswindKts: use.CrosswindKts, WithinLimits: use.WithinLimits, Approach: use.Approach}
+			// The runway in use as traffic uses it: held through wind shifts.
+			st.mu.Lock()
+			cc := st.control
+			st.mu.Unlock()
+			if cc != nil {
+				if g, err := cc.graph(icao); err == nil {
+					out.Use.Departure, out.Use.Arrival = cc.activeRunway(g, false), cc.activeRunway(g, true)
+					if _, end, ok := l.RunwayEnd(out.Use.Arrival); ok {
+						out.Use.HeadwindKts, out.Use.CrosswindKts = wx.Components(end.Heading)
+					}
+				}
+			}
 			st.mu.Lock()
 			if st.atis == nil {
 				st.atis = map[string]*nav.ATISService{}

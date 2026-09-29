@@ -22,6 +22,7 @@ import "github.com/mrlm-net/simconnect/pkg/nav"
 | `ATIS` | One broadcast: `Text()` with digits, `Spoken()` spelled for a voice |
 | `ATISService` | Keeps the current ATIS and advances its letter on significant changes |
 
+
 ## Reading the weather
 
 `WeatherReader` follows the `airport.Loader` pattern: it never reads `client.Stream()` itself. Call `Request` (once) or `Subscribe` (every second, only when changed), and pass every message to `Handle`:
@@ -68,6 +69,19 @@ For every runway end of the layout (at least `MinLengthM` long), the headwind an
 3. When no end is within the limits, the one with the most headwind is taken and `WithinLimits` is false.
 
 `PreferredArrival` gives arrivals their own preference list, for split operations (`RunwayUse.Single()` is then false). `Approach` is `ApproachILS` when visibility is below 5000 m or the ceiling below 1500 ft, else `ApproachVisual` ("visual/RNAV"); pick the actual procedure from `airport.Procedures`.
+
+### Keeping the runway in use
+
+An airport does not change runways with every wind shift. `RunwaySelector` keeps the runway in use until one of two things happens:
+- the runway in use is out of its tailwind or crosswind limits, gusts included (`MaxTailwindKts`, `MaxCrosswindKts`);
+- another runway has been the better choice for `ChangeAfter` (`RunwayChangeAfter`, 10 min).
+
+```go
+var sel nav.RunwaySelector // one per airport, kept
+use := sel.Choose(time.Now(), layout, weather, limits)
+```
+
+While it holds, the headwind and crosswind it reports are those of the runway kept. The airport map uses a selector per airport for traffic and for the Charts panel. Near a tailwind limit in light, variable wind, the runway had flipped between 06 and 24 from one minute to the next.
 
 ## ATIS
 

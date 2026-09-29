@@ -4,7 +4,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -29,11 +31,13 @@ type sequences struct {
 
 	mu   sync.Mutex
 	seq  map[string]*traffic.ApproachSequencer // by "ICAO runway"
-	cond map[string]string                     // the conditions last logged, by sequencer
+	cond map[string]traffic.ApproachConditions // the conditions last logged, by sequencer
+	// absorbed: when each arrival last got a delay to absorb (#391).
+	absorbed map[string]time.Time
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
-	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]string{}}
+	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}}
 }
 
 // sequencer is the sequencer of an airport's runway, created on first use.
@@ -68,6 +72,53 @@ func behind(e traffic.SequenceEntry) string {
 		why = " (" + e.SpacingWhy + ")"
 	}
 	return fmt.Sprintf(" behind %s, %g NM%s", e.Leader, e.SpacingNM, why)
+}
+
+// Delays: absorbed from 30 s on, at most every absorbEvery per arrival so
+// it has slowed before its delay is looked at again.
+const (
+	absorbFrom  = 30 * time.Second
+	absorbEvery = 90 * time.Second
+)
+
+// absorb has the arrivals of a sequence on their STAR lose their delay:
+// speed, then a dog-leg; what is left waits for the hold (#392).
+func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEntry, items []*controlled) {
+	for _, e := range seq {
+		if e.Fixed || e.Delay < absorbFrom {
+			continue
+		}
+		q.mu.Lock()
+		recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
+		q.mu.Unlock()
+		if recent {
+			continue
+		}
+		for _, it := range items {
+			if it.arr == nil || it.Tail != e.Callsign || it.ICAO != icao {
+				continue
+			}
+			var a traffic.Absorption
+			err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.Delay); return err })
+			if errors.Is(err, traffic.ErrNotOnProcedure) {
+				break // on the final, or not flying a STAR: nothing to change
+			}
+			q.mu.Lock()
+			q.absorbed[e.Callsign] = now
+			q.mu.Unlock()
+			if err != nil {
+				tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, e.Delay.Round(time.Second), err)
+				break
+			}
+			if r := it.arr.ProcedureRoute(); len(r) > 0 {
+				it.mu.Lock()
+				it.approach = r // the route with its dog-leg: the distance to go
+				it.mu.Unlock()
+			}
+			tlog.printf("%-6s ATC: %s, number %d, delay %s: %s", e.Callsign, e.Callsign, e.Number, e.Delay.Round(time.Second), a)
+			break
+		}
+	}
 }
 
 // tick feeds every sequencer with the arrivals now.
@@ -192,10 +243,13 @@ func (q *sequences) tick(now time.Time) {
 					c := traffic.ConditionsFrom(*wx, end.Heading)
 					s.SetConditions(c)
 					// Logged when what matters for spacing changes.
-					sig := fmt.Sprintf("%v %v %s %.0f", c.LowVisibility(), c.ReducedAllowed(), c.Surface, c.HeadwindKts/10)
 					q.mu.Lock()
-					changed := q.cond[k.icao+" "+k.rwy] != sig
-					q.cond[k.icao+" "+k.rwy] = sig
+					last, seen := q.cond[k.icao+" "+k.rwy]
+					changed := !seen || last.LowVisibility() != c.LowVisibility() || last.ReducedAllowed() != c.ReducedAllowed() ||
+						last.Surface != c.Surface || math.Abs(last.HeadwindKts-c.HeadwindKts) >= 5
+					if changed {
+						q.cond[k.icao+" "+k.rwy] = c
+					}
 					q.mu.Unlock()
 					if changed {
 						lvp := ""
@@ -207,7 +261,7 @@ func (q *sequences) tick(now time.Time) {
 				}
 			}
 		}
-		s.Update(now, list)
+		q.absorb(now, k.icao, s.Update(now, list), items)
 	}
 }
 

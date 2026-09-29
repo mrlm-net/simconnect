@@ -10,16 +10,15 @@ import (
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/manager"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-// Both clients satisfy the loader, including exception matching.
+// The engine client satisfies the loader, including exception matching
+// (the manager: navloader_manager_test.go, an external test package —
+// manager imports traffic, which imports nav).
 var (
 	_ FacilityClient = engine.Client(nil)
 	_ sendIDClient   = engine.Client(nil)
-	_ FacilityClient = manager.Manager(nil)
-	_ sendIDClient   = manager.Manager(nil)
 )
 
 type recordWriter struct{ bytes.Buffer }

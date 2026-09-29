@@ -180,6 +180,8 @@ type ArrivalController struct {
 	// Level of detail (#370): how often the injected aircraft is driven.
 	detail  *Detail
 	detailS detailState
+	// procSpeed is the speed assigned on the STAR by AbsorbDelay (#391).
+	procSpeed float64
 	mu      sync.Mutex
 	fleet   *Fleet
 	defBase uint32

@@ -112,3 +112,24 @@ func TestSequencerChanges(t *testing.T) {
 		t.Error("B2 not reported gone")
 	}
 }
+
+// TestSequencerKeepsOrder: arrivals whose predictions are close keep the
+// order they were given; a clear overtake still changes it.
+func TestSequencerKeepsOrder(t *testing.T) {
+	s := NewApproachSequencer("06", SequencerOptions{})
+	now := time.Now()
+	first := s.Update(now, []ApproachAircraft{arr("A1", "A320", 40), arr("B2", "A320", 40.2)})
+	if first[0].Callsign != "A1" {
+		t.Fatalf("order %s %s", first[0].Callsign, first[1].Callsign)
+	}
+	// B2 is now predicted a few seconds earlier: the order stays.
+	seq := s.Update(now.Add(time.Second), []ApproachAircraft{arr("A1", "A320", 40.1), arr("B2", "A320", 39.9)})
+	if seq[0].Callsign != "A1" || seq[1].Landing.Sub(seq[0].Landing) < SeparationTime(3, 140)-time.Second {
+		t.Fatalf("close call swapped or spacing lost: %s first, gap %v", seq[0].Callsign, seq[1].Landing.Sub(seq[0].Landing))
+	}
+	// B2 clearly ahead now (10 NM closer): it goes first.
+	seq = s.Update(now.Add(2*time.Second), []ApproachAircraft{arr("A1", "A320", 40), arr("B2", "A320", 30)})
+	if seq[0].Callsign != "B2" {
+		t.Fatalf("a clear overtake did not change the order")
+	}
+}
