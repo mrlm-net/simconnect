@@ -80,6 +80,8 @@
   #apAtis .letter { display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 4px; border-radius: 3px; background: #2d6cdf; color: #fff; font-weight: 700; text-align: center; }
   #apAtis .text { color: #ddd; font-size: 12px; line-height: 1.45; margin-top: 4px; }
   .use { font-size: 14px; color: #fff; }
+  #dePads .tag { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 6px; border-radius: 3px; background: rgba(127,190,255,0.15); color: #cfe6ff; }
+  #dePads .tag a { color: #ff8a80; text-decoration: none; margin-left: 3px; }
   /* Quick reference */
   .tabs button.q { flex: 0 0 34px; }
   .help ol { padding-left: 18px; margin: 4px 0; } .help li { margin: 3px 0; }
@@ -150,7 +152,7 @@
       <label class="opt arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach (off: MSFS AI lands)</label>
       <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input type="number" id="cDwell" value="90" min="10" step="10"> s</label>
       <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures <span class="i" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach.">ⓘ</span></label>
-      <label class="opt dep-only">De-icing <select id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad (via point 1)</option></select> <input type="number" id="cDeiceSec" value="120" min="10" step="10"> s</label>
+      <label class="opt dep-only">De-icing <select id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad</option></select> <input type="number" id="cDeiceSec" value="120" min="10" step="10"> s</label>
       <label class="opt">Flight plan <span class="dep-only">to</span><span class="arr-only">from</span> <input id="cOther" placeholder="ICAO" maxlength="4" class="icao"> <span class="i" title="A generated flight plan: SID, airways, STAR and approach.">ⓘ</span></label>
     </details>
     <details class="more"><summary>Custom taxi route</summary>
@@ -172,6 +174,9 @@
   <section data-panel="charts" hidden>
     <h2>Airport</h2>
     <div id="apInfo" class="note">—</div>
+    <h2>De-icing pads <span class="i" title="Where departures are de-iced (De-icing: at a pad, or automatic in icing weather). MSFS data has none: pick them from the taxi points. Kept per airport.">ⓘ</span></h2>
+    <label class="opt"><input type="checkbox" id="dePick"> Pick on the map: click a taxiway</label>
+    <div id="dePads" class="note">—</div>
     <h2>Weather <span class="i" title="SimConnect reports the weather where your aircraft is, not per airport.">ⓘ</span></h2>
     <div id="apWx" class="note">—</div>
     <h2>ATIS</h2>
@@ -240,7 +245,7 @@
       <tr><td>Fly the procedures</td><td>SID after take-off; arrivals start at a STAR entry</td></tr>
       <tr><td>Flight plan to/from</td><td>a generated plan with the other airport: SID, airways, STAR, approach</td></tr>
       <tr><td>Turnaround</td><td>an arrival departs again after the dwell</td></tr>
-      <tr><td>De-icing</td><td>on the stand before the push, or at a pad (via point 1); automatic when the weather is icing (the game uses automatic)</td></tr>
+      <tr><td>De-icing</td><td>on the stand before the push, or at a pad (Charts → De-icing pads, or via point 1); automatic when the weather is icing (the game uses automatic)</td></tr>
       <tr><td>Custom taxi route</td><td>via points (click taxiways) and taxiway names, in order; never where the aircraft does not fit</td></tr>
     </table>
 
@@ -730,7 +735,41 @@ function drawVia() {
   });
   $('rVia').innerHTML = viaPoints.length ? 'Via ' + viaPoints.map((v, i) => `${i + 1}. ${esc(v.taxiways.join('/') || '#' + v.id)}`).join(' → ') : '';
 }
+// ── De-icing pads (#323): picked from the taxi points ──
+let deicePads = [];
+function renderPads() {
+  $('dePads').innerHTML = deicePads.length
+    ? deicePads.map((p, i) => `<span class="tag">❄ ${esc(p.name)} <a href="#" data-pad="${i}" title="Remove">✕</a></span>`).join(' ')
+    : 'None yet — tick “Pick on the map” and click a taxiway.';
+}
+async function savePads(pads) {
+  const res = await fetch(`/api/deicing?icao=${data.icao}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pads) });
+  if (!res.ok) throw new Error((await res.text()).trim());
+  deicePads = await res.json();
+  renderPads();
+  pollAirportInfo(); // the ❄ markers
+}
+$('dePads').addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-pad]');
+  if (!a) return;
+  e.preventDefault();
+  savePads(deicePads.filter((_, i) => i !== Number(a.dataset.pad))).catch((err) => { $('dePads').textContent = err.message; });
+});
+
 map.on('click', async (e) => {
+  if ($('dePick').checked && data) {
+    try {
+      const res = await fetch(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
+      if (!res.ok) throw new Error((await res.text()).trim());
+      const n = await res.json();
+      let k = deicePads.length + 1;
+      while (deicePads.some((p) => p.name === `DI ${k}`)) k++;
+      await savePads([...deicePads, { name: `DI ${k}`, position: n.position }]);
+    } catch (err) {
+      $('dePads').textContent = err.message;
+    }
+    return;
+  }
   if (!$('rViaPick').checked || !data) return;
   try {
     const res = await fetch(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
@@ -1269,11 +1308,13 @@ async function pollAirportInfo() {
     const mv = a.magVar ? `${Math.abs(a.magVar).toFixed(0)}° ${a.magVar > 0 ? 'E' : 'W'}` : '—';
     const rows = (a.runways || []).map((r) => `<tr><td>RWY ${esc(r.name)}</td><td>${r.lengthM.toFixed(0)} × ${r.widthM.toFixed(0)} m${r.approach ? ' · ' + esc(r.approach) : ''}</td></tr>`).join('');
     const lim = a.limits || {};
-    // De-icing pads (#323) on the map.
+    // De-icing pads (#323) on the map and in the list.
+    deicePads = lim.DeicingPads || [];
+    renderPads();
     padLayer.clearLayers();
     for (const pad of lim.DeicingPads || []) {
-      L.marker([pad.position.lat, pad.position.lon], { icon: L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9], html: '<div style="font-size:16px;text-shadow:0 0 3px #000">❄</div>' }) })
-        .bindTooltip(`De-icing pad ${esc(pad.name)}`, { direction: 'top' }).addTo(padLayer);
+      L.marker([pad.position.lat, pad.position.lon], { zIndexOffset: 800, icon: L.divIcon({ className: '', html: '<div style="width:22px;height:22px;border-radius:50%;background:#1e88e5;border:2px solid #fff;color:#fff;font:700 14px/22px system-ui;text-align:center;box-shadow:0 0 4px #000">❄</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) })
+        .bindTooltip(`${esc(pad.name)}`, { permanent: true, direction: 'right', offset: [12, 0], className: 'lbl' }).addTo(padLayer);
     }
     $('apInfo').innerHTML = `<b>${esc(a.icao)}</b> ${esc(a.name)}<table>` +
       `<tr><td>Elevation</td><td>${a.elevationFt.toFixed(0)} ft · variation ${mv}</td></tr>${rows}` +

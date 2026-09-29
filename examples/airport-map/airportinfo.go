@@ -101,6 +101,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			procs, mv = &p, magVarEast(p.MagVar)
 		}
 		lim := airport.LimitsFor(l, procs)
+		lim.DeicingPads = st.pads.forAirport(l)
 		out := airportInfo{ICAO: l.ICAO, Name: l.Name, ElevationFt: convert.MetersToFeet(l.Altitude), MagVar: mv, Limits: lim}
 		for _, rw := range l.Runways {
 			ri := runwayInfo{Name: rw.Name(), Heading: math.Mod(rw.Heading-mv+360, 360), LengthM: rw.Length, WidthM: rw.Width}

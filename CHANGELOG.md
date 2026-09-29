@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `examples/airport-map` de-icing pads picked from the taxi points (Charts → De-icing pads; kept per airport in `deicing.json` in the dump directory; `GET/PUT /api/deicing`), used by de-icing at a pad and automatic de-icing, shown as ❄ badges (#323)
+
 ### Fixed
 
 - `pkg/traffic`: a pushback under way has priority. It reports what it still sweeps (`GroundPicture.ReportPush`), taxiing traffic whose path crosses it gives way, and the push stops only for an aircraft actually in the way. Live, the push had been stopping for a departure taxiing behind it, which then went through (#334).

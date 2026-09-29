@@ -137,6 +137,8 @@ type state struct {
 	// services by ICAO (#357).
 	weather *nav.Weather
 	atis    map[string]*nav.ATISService
+	// pads are the de-icing pads picked on the map (#323).
+	pads *padStore
 }
 
 func (s *state) setLive(v bool) {
@@ -227,6 +229,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// queue commands to it.
 	cc := newControlCenter(client)
 	cc.graph = st.cache.Graph
+	cc.pads = st.pads.forAirport
 	cc.weather = func() *nav.Weather {
 		st.mu.Lock()
 		defer st.mu.Unlock()
@@ -461,6 +464,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerProcedures(mux, st)
 	registerGame(mux, st)
 	registerAirportInfo(mux, st)
+	registerDeicing(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))
@@ -691,6 +695,7 @@ func main() {
 	st := &state{cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
 	requests := make(chan string)
 	st.requests = requests
+	st.pads = loadPadStore(filepath.Join(*dumpDir, "deicing.json"))
 	if *airways != "" {
 		if g, err := nav.LoadAirwayGraph(*airways); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠️  airways: %v (flight plans fly direct)\n", err)
