@@ -113,7 +113,9 @@ type controlCenter struct {
 	stands map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
-	picture *traffic.GroundPicture
+	// world is the traffic picture around the centre of the world (#366):
+	// every aircraft, the airports in range, a ground picture per airport.
+	world *traffic.TrafficPicture
 	ticks   int
 	// pads are an airport's de-icing pads (picked on the map, #323).
 	pads func(l *airport.Layout) []airport.DeicingPad
@@ -135,7 +137,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:  map[string]bool{},
 		stands:  map[string]*traffic.StandAllocator{},
-		picture: traffic.NewGroundPicture(),
+		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:    &game{},
 	}
 }
@@ -166,30 +168,19 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 	k := uint32(len(cc.stands))
 	a := traffic.NewStandAllocator(cc.client, g, traffic.StandWithIDs(standDefBase+k*standIDBlock, standReqBase+k*standIDBlock))
 	cc.stands[g.Layout.ICAO] = a
+	cc.world.Allocate(g.Layout.ICAO, a) // fed from the picture's scans
 	return a
 }
 
 // tick runs every second in the connection goroutine: it scans the stands
-// of every airport with an allocator every standScanTicks.
+// the ATC game.
 func (cc *controlCenter) tick() {
 	if now := time.Now(); now.Sub(cc.gameAt) >= time.Second {
 		cc.gameAt = now
 		cc.gameTick(now)
 	}
-	if cc.ticks++; cc.ticks%standScanTicks != 0 {
-		return
-	}
-	cc.mu.Lock()
-	all := make([]*traffic.StandAllocator, 0, len(cc.stands))
-	for _, a := range cc.stands {
-		all = append(all, a)
-	}
-	cc.mu.Unlock()
-	for _, a := range all {
-		if err := a.Scan(); err != nil {
-			fmt.Printf("⚠️  stand scan: %v\n", err)
-		}
-	}
+	// The stand allocators are fed by the traffic picture (Allocate): no
+	// scans of their own.
 }
 
 // handle passes a message to the injector and every controller.
@@ -347,11 +338,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	defBase, reqBase := controlDefBase+uint32(n)*controlIDBlock, controlReqBase+uint32(n)*controlIDBlock
-	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: r.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{})}
+	it := &controlled{ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.picture))
+		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
@@ -362,7 +353,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.picture))
+		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
 		var exit *airport.RunwayExit
 		if r.Exit != nil {
 			exits, err := g.RunwayExits(r.Runway)
@@ -386,7 +377,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if r.DwellSec > 0 {
 				dwell = time.Duration(r.DwellSec * float64(time.Second))
 			}
-			it.cc, it.turn, it.departNow = cc, &d, make(chan struct{}, 1)
+			it.turn, it.departNow = &d, make(chan struct{}, 1)
 			it.dwell = time.Duration(float64(dwell) * (1 + dwellSpread*(2*rand.Float64()-1)))
 		}
 		ch := ctl.Events()
@@ -452,6 +443,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	v := &it.view
 	prev := *v
 	defer it.logChanges(prev, ev)
+	if it.cc != nil {
+		it.cc.reportOwn(it.ICAO, ev)
+	}
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
 		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
@@ -783,6 +777,53 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 		return g.Layout.Runways[0].Primary.Name
 	}
 	return ""
+}
+
+// reportOwn tells the traffic picture what one of our aircraft is doing:
+// its controller knows better than a scan.
+func (cc *controlCenter) reportOwn(icao string, ev TaxiOrArrival) {
+	var id uint32
+	var phase traffic.Phase
+	done := false
+	switch {
+	case ev.dep != nil:
+		e := ev.dep
+		id, done = e.ObjectID, e.State.Terminal()
+		switch e.State {
+		case traffic.TaxiSpawning, traffic.TaxiAwaitingPushback:
+			phase = traffic.PhaseParked
+		case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
+			phase = traffic.PhaseRunway
+		case traffic.TaxiDeparting:
+			phase = traffic.PhaseRunway
+			if !e.OnGround {
+				phase = traffic.PhaseDeparting
+			}
+		default:
+			phase = traffic.PhaseTaxiing
+		}
+	case ev.arr != nil:
+		e := ev.arr
+		id, done = e.ObjectID, e.State.Terminal() && e.State != traffic.ArrivalParked
+		switch e.State {
+		case traffic.ArrivalSpawning, traffic.ArrivalApproaching:
+			phase = traffic.PhaseArriving
+		case traffic.ArrivalLanding, traffic.ArrivalRollout:
+			phase = traffic.PhaseRunway
+		case traffic.ArrivalParked:
+			phase = traffic.PhaseParked
+		default:
+			phase = traffic.PhaseTaxiing
+		}
+	}
+	if id == 0 {
+		return
+	}
+	if done {
+		cc.world.ForgetOwn(id) // handed to MSFS AI, cancelled or failed: a scan tells from here
+		return
+	}
+	cc.world.SetOwn(id, phase, icao)
 }
 
 // deicingFor is the de-icing a departure asks for (#323): on the stand, at
@@ -1170,24 +1211,14 @@ func clearanceOf(kind, from, to string) string {
 func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
 	cc.scan = scan
-	own := map[uint32]bool{}
-	for _, it := range cc.items {
-		if it.dep != nil {
-			own[it.dep.ObjectID()] = true
-		} else if it.arr != nil {
-			own[it.arr.ObjectID()] = true
-		}
-	}
 	cc.mu.Unlock()
-	now := time.Now()
+	obs := make([]traffic.Observation, 0, len(scan))
 	for _, t := range scan {
-		if !t.OnGround || own[t.ObjectID] {
-			continue
-		}
-		p := traffic.DefaultMotionProfile()
-		if t.Span > 0 {
-			p.SpanMeters = t.Span
-		}
-		cc.picture.Report(t.ObjectID, airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Heading, p, now)
+		obs = append(obs, traffic.Observation{ObjectID: t.ObjectID, Title: t.Title, Tail: t.Tail,
+			Position: airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, AGLFt: t.AGL, GroundKts: t.GroundKts,
+			Heading: t.Heading, VSFpm: t.VerticalFpm, OnGround: t.OnGround, User: t.User, SpanM: t.Span})
 	}
+	// Ground pictures and stand allocators get it from here; our own
+	// aircraft report themselves (SetOwn in update).
+	cc.world.Observe(time.Now(), obs)
 }

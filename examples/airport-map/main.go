@@ -57,7 +57,7 @@ const (
 const (
 	defTraffic    uint32 = 2002
 	reqTraffic    uint32 = 2003
-	trafficRadius uint32 = 20000 // meters around the user aircraft
+	trafficRadius uint32 = traffic.MaxScanRadiusMeters // meters around the user aircraft: SimConnect's maximum
 )
 
 // trafficRaw matches the defTraffic data definition.
@@ -241,6 +241,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		p, ok := st.procedures[icao]
 		return p, ok
 	}
+	// The airports around, for the traffic picture: now and every minute.
+	airports := traffic.NewAirportLister(client, 0)
+	if err := airports.Request(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  airport list: %v\n", err)
+	}
 	if err := cc.requestModels(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
 	}
@@ -279,6 +284,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 
 		case now := <-tick.C:
 			cc.tick()
+			if cc.ticks%60 == 0 {
+				airports.Request()
+			}
 			// Every aircraft within TrafficRadius of the user aircraft.
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
@@ -300,6 +308,10 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				continue
 			}
 
+			if list, ok := airports.Handle(msg); ok {
+				cc.world.SetAirports(list)
+				continue
+			}
 			if wx, ok := weather.Handle(msg); ok {
 				st.mu.Lock()
 				st.weather = &wx
@@ -465,6 +477,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerGame(mux, st)
 	registerAirportInfo(mux, st)
 	registerDeicing(mux, st)
+	registerWorld(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

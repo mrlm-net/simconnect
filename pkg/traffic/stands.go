@@ -426,3 +426,12 @@ func (a *StandAllocator) detect() {
 		}
 	}
 }
+
+// observe takes the aircraft on the ground at the airport from a
+// TrafficPicture, in place of a Scan of its own.
+func (a *StandAllocator) observe(list []scanned) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.lastScan = map[uint32][]scanned{a.reqBase + standReqAircraft: list}
+	a.detect()
+}
