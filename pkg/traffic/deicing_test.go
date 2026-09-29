@@ -73,3 +73,30 @@ func TestDeicingAtPad(t *testing.T) {
 		t.Error("not finished, or the taxi light stayed off")
 	}
 }
+
+// TestPushbackAtAndHold: a departure boards until PushbackAt, and a
+// HoldPushback (ground stop) keeps it on the stand past it until released
+// (#368).
+func TestPushbackAtAndHold(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{PushbackAt: time.Now().Add(5 * time.Minute)})
+	if !run(TaxiAwaitingPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	std := ctl.req.PushbackAt
+	run(TaxiPushback, 60*60*4)
+	if ctl.State() != TaxiAwaitingPushback {
+		t.Fatalf("state %v 4 min after the start, before PushbackAt", ctl.State())
+	}
+	ctl.HoldPushback(true)
+	run(TaxiPushback, 60*60*7)
+	if ctl.State() != TaxiAwaitingPushback {
+		t.Fatalf("state %v while held, 7 min after the start", ctl.State())
+	}
+	if !now.After(std) {
+		t.Fatal("the test did not run past PushbackAt")
+	}
+	ctl.HoldPushback(false)
+	if !run(TaxiPushback, 60*60) {
+		t.Fatalf("state %v a minute after the release", ctl.State())
+	}
+}

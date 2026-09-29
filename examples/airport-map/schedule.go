@@ -1,0 +1,384 @@
+//go:build windows
+// +build windows
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
+)
+
+// Scheduled traffic on the map (#367, #368): a schedule for the loaded
+// airport (traffic.Schedule) run by a traffic.TrafficManager, which spawns
+// departures on their stands before their STD and arrivals at their STAR
+// entry before their STA through this spawner. Off until switched on.
+//
+//	GET  /api/schedule             — on/off, settings, every managed flight
+//	POST /api/schedule             — {"enabled":true,"icao":"LKPR","density":1,"maxAircraft":12,"seed":1}
+//	GET  /api/boards?icao=LKPR     — departures and arrivals of an airport
+
+type scheduler struct {
+	st  *state
+	cc  *controlCenter
+	cfg traffic.ScheduleConfig
+	mgr *traffic.TrafficManager
+
+	mu       sync.Mutex
+	density  float64
+	seed     uint64
+	airlines map[string]traffic.Airline
+}
+
+func newScheduler(st *state, cc *controlCenter) *scheduler {
+	s := &scheduler{st: st, cc: cc, cfg: traffic.DefaultScheduleConfig(), density: 1, seed: uint64(time.Now().Unix()), airlines: map[string]traffic.Airline{}}
+	for _, a := range s.cfg.Airlines {
+		s.airlines[a.ICAO] = a
+	}
+	s.mgr = traffic.NewTrafficManager(s, traffic.ManagerOptions{Source: s.source, MaxAircraft: 12, MaxPerAirport: 12, OnEvent: s.event,
+		Picture: cc.world}) // other traffic respected by default
+	s.mgr.SetEnabled(false)
+	return s
+}
+
+// source is the schedule of an hour for the managed airports; the seed per
+// hour keeps it the same when asked again.
+func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight {
+	s.mu.Lock()
+	density, seed := s.density, s.seed
+	s.mu.Unlock()
+	opts := traffic.ScheduleOptions{Focus: focus, Density: density, Seed: seed ^ uint64(from.Unix()/3600)}
+	for _, icao := range focus {
+		if l, ok := s.st.cache.Layout(icao); ok {
+			if opts.Layouts == nil {
+				opts.Layouts = map[string]*airport.Layout{}
+			}
+			opts.Layouts[icao] = l
+		}
+	}
+	return traffic.Schedule(s.cfg, opts, from, to)
+}
+
+// Spawn puts a managed flight into the simulator (traffic.Spawner): the
+// model of its airline and type, a stand, the runway in use, a flight plan
+// from or to the other end (else a SID or STAR of the runway). A
+// turnaround departure adopts its parked arrival.
+func (s *scheduler) Spawn(f traffic.ManagedFlight) {
+	go func() {
+		if err := s.spawn(f); err != nil {
+			tlog.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
+			s.mgr.Failed(f.Callsign, err, time.Now())
+		}
+	}()
+}
+
+func (s *scheduler) spawn(f traffic.ManagedFlight) error {
+	cc, st := s.cc, s.st
+	g, err := st.cache.Graph(f.Airport)
+	if err != nil {
+		return err
+	}
+	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Deice: "auto"}
+	req.Runway = cc.activeRunway(g, !f.Departure())
+	if f.Departure() {
+		req.pushAt = f.STD
+	}
+	// A turnaround: the arrival's aircraft on its stand.
+	if f.TurnFrom != "" {
+		arr := cc.byTail(f.TurnFrom)
+		if arr == nil || arr.objectID == 0 {
+			return fmt.Errorf("turnaround: %s is not on its stand", f.TurnFrom)
+		}
+		req.adopt, req.Stand, req.Model = arr.objectID, arr.stand, arr.view.Model
+		arr.stands.ReleaseOwner(arr.Tail) // the stand passes to the departure
+		cc.forget(arr)
+	} else {
+		a := s.airlines[f.Airline]
+		models := traffic.ModelsFor(cc.modelList(), f.Airline, a.Name, f.Type, 6)
+		if len(models) == 0 {
+			return fmt.Errorf("no model of a %s", f.Type)
+		}
+		req.Model = models[(f.Attempts-1)%len(models)] // another one on each attempt
+	}
+	// The flight plan from or to the other end, else the runway's procedure.
+	req.Other = f.Destination
+	if !f.Departure() {
+		req.Other = f.Origin
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	p, err := planFor(ctx, st, g, req)
+	cancel()
+	var entry []airport.NavPoint
+	if err != nil {
+		tlog.printf("%-6s schedule: no flight plan with %s (%v): the runway's procedure", f.Callsign, req.Other, err)
+		req.Other, req.Procedure = "", true
+		// Picked here, to see where it starts; the spawn flies the same one.
+		if pts, name, _, err := cc.procedureFor(g, req); err == nil {
+			entry, req.ProcName = pts, name
+		}
+	} else {
+		req.planned, entry = p, p.route
+	}
+	// Nobody appears on top of other traffic: an arrival waits while an
+	// aircraft is near its STAR entry (the manager tries again, no attempt).
+	if !f.Departure() && len(entry) > 0 {
+		if who := s.nearEntry(entry[0]); who != "" {
+			return fmt.Errorf("%w: %s near %s", traffic.ErrSpawnBlocked, who, entry[0].Ident)
+		}
+	}
+	var it *controlled
+	if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil && req.Procedure && !f.Departure() {
+		// No STAR for the runway: a straight-in approach.
+		req.Procedure = false
+		if err2 := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err2 != nil {
+			return err
+		}
+	} else if errors.Is(err, traffic.ErrNoStand) || errors.Is(err, traffic.ErrStandTaken) {
+		return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err)
+	} else if err != nil {
+		return err
+	}
+	it.mu.Lock()
+	it.managed = s.mgr
+	stand, runway := it.view.Stand, it.view.Runway
+	it.mu.Unlock()
+	s.mgr.Describe(f.Callsign, req.Model, stand, runway)
+	when := "STD " + f.STD.Local().Format("15:04")
+	if !f.Departure() {
+		when = "STA " + f.STA.Local().Format("15:04")
+	}
+	tlog.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type, when, stand)
+	return nil
+}
+
+// Entry separation: nobody appears within these of an airborne aircraft.
+const (
+	entryClearNM = 5.0
+	entryClearFt = 2000.0
+)
+
+// nearEntry names an airborne aircraft near an arrival's first point, ""
+// when it is clear.
+func (s *scheduler) nearEntry(p airport.NavPoint) string {
+	alt := p.AltMax / 0.3048
+	if alt == 0 {
+		alt = p.AltMin / 0.3048
+	}
+	ignore := s.mgr.Options().Others == traffic.OtherIgnore
+	for _, a := range s.cc.world.Aircraft() {
+		if a.OnGround || ignore && !a.Ours {
+			continue // ignoring other traffic: only ours keeps its distance
+		}
+		if calc.HaversineNM(a.Position.Lat, a.Position.Lon, p.Position.Lat, p.Position.Lon) < entryClearNM &&
+			(alt == 0 || math.Abs(a.AltFt-alt) < entryClearFt) {
+			if a.Title != "" && a.Tail == "" {
+				return a.Title
+			}
+			return a.Tail
+		}
+	}
+	return ""
+}
+
+// Hold keeps a boarding departure on its stand or releases it
+// (traffic.Holder): the manager's ground stop.
+func (s *scheduler) Hold(f traffic.ManagedFlight, on bool) {
+	if it := s.cc.byTail(f.Callsign); it != nil && it.dep != nil {
+		it.dep.HoldPushback(on)
+	}
+}
+
+// event logs the manager's lifecycle (traffic.ManagerOptions.OnEvent):
+// what the app reacts to.
+func (s *scheduler) event(e traffic.ManagerEvent) {
+	f := e.Flight
+	switch e.Kind {
+	case traffic.EventHeld:
+		tlog.printf("%-6s schedule: held on the stand — %s", f.Callsign, e.Reason)
+	case traffic.EventReleased:
+		tlog.printf("%-6s schedule: hold released", f.Callsign)
+	case traffic.EventDelayed:
+		tlog.printf("%-6s schedule: %s delayed — %s", f.Callsign, f.Kind, e.Reason)
+	case traffic.EventEstimated:
+		if f.Estimated.IsZero() {
+			tlog.printf("%-6s schedule: on time", f.Callsign)
+		} else {
+			tlog.printf("%-6s schedule: estimated %s (%s)", f.Callsign, f.Estimated.Local().Format("15:04"), e.Reason)
+		}
+	case traffic.EventBlocked:
+		tlog.printf("%-6s schedule: waiting — %s", f.Callsign, e.Reason)
+	case traffic.EventTurnaround:
+		tlog.printf("schedule: turnaround %s", e.Reason)
+	case traffic.EventStatus:
+		switch f.Status {
+		case traffic.FlightCancelled:
+			tlog.printf("%-6s schedule: cancelled — %s", f.Callsign, f.Err)
+		case traffic.FlightDone:
+			tlog.printf("%-6s schedule: done", f.Callsign)
+		}
+	case traffic.EventEnabled, traffic.EventDisabled:
+		tlog.printf("schedule: %s", e.Kind)
+	}
+}
+
+// Remove takes a managed flight's aircraft out (traffic.Spawner).
+func (s *scheduler) Remove(f traffic.ManagedFlight) {
+	it := s.cc.byTail(f.Callsign)
+	if it == nil {
+		return
+	}
+	s.cc.do(func() error { return s.cc.remove(it) })
+	tlog.printf("%-6s schedule: removed (%s)", f.Callsign, f.Status)
+}
+
+// managedStatus is the manager's status of a controller event; ok false
+// when the event says nothing new.
+func managedStatus(ev TaxiOrArrival) (traffic.FlightStatus, bool, error) {
+	if e := ev.dep; e != nil {
+		switch s := e.State; {
+		case s == traffic.TaxiFailed || s == traffic.TaxiCancelled:
+			return 0, false, orErr(e.Err, s.String())
+		case s == traffic.TaxiAwaitingPushback:
+			return traffic.FlightBoarding, true, nil
+		case s >= traffic.TaxiPushback && s <= traffic.TaxiLinedUp:
+			return traffic.FlightTaxiing, true, nil
+		case s == traffic.TaxiDeparting:
+			return traffic.FlightDeparting, true, nil
+		case s == traffic.TaxiComplete:
+			return traffic.FlightDeparted, true, nil
+		}
+	}
+	if e := ev.arr; e != nil {
+		switch s := e.State; {
+		case s == traffic.ArrivalFailed || s == traffic.ArrivalCancelled:
+			return 0, false, orErr(e.Err, s.String())
+		case s == traffic.ArrivalApproaching || s == traffic.ArrivalLanding:
+			return traffic.FlightApproaching, true, nil
+		case s >= traffic.ArrivalRollout && s < traffic.ArrivalParked:
+			return traffic.FlightLanded, true, nil
+		case s == traffic.ArrivalParked:
+			return traffic.FlightParked, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
+func orErr(err error, state string) error {
+	if err != nil {
+		return err
+	}
+	return errors.New(state)
+}
+
+func (s *scheduler) tick(now time.Time) { s.mgr.Tick(now) }
+
+type scheduleView struct {
+	Enabled     bool                     `json:"enabled"`
+	Airports    []string                 `json:"airports"`
+	Density     float64                  `json:"density"`
+	MaxAircraft int                      `json:"maxAircraft"`
+	Others      traffic.OtherTrafficMode `json:"others"`
+	Seed        uint64                   `json:"seed"`
+	Active      int                      `json:"active"`
+	Flights     []traffic.ManagedFlight  `json:"flights"`
+}
+
+func registerSchedule(mux *http.ServeMux, st *state) {
+	sched := func(w http.ResponseWriter) *scheduler {
+		st.mu.Lock()
+		s := st.schedule
+		st.mu.Unlock()
+		if s == nil {
+			http.Error(w, "simulator not connected", http.StatusServiceUnavailable)
+		}
+		return s
+	}
+	mux.HandleFunc("GET /api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		s := sched(w)
+		if s == nil {
+			return
+		}
+		s.mu.Lock()
+		density, seed := s.density, s.seed
+		s.mu.Unlock() // never held while calling the manager (its Source takes it)
+		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed,
+			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights()}
+		writeJSON(w, v)
+	})
+	mux.HandleFunc("POST /api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		s := sched(w)
+		if s == nil {
+			return
+		}
+		var req struct {
+			Enabled     *bool   `json:"enabled"`
+			ICAO        string  `json:"icao"`
+			Density     float64 `json:"density"`
+			MaxAircraft int     `json:"maxAircraft"`
+			Seed        *uint64 `json:"seed"`
+			Others      string  `json:"others"` // respect | ignore
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		if req.Density > 0 {
+			s.density = req.Density
+		}
+		if req.Seed != nil {
+			s.seed = *req.Seed
+		}
+		s.mu.Unlock()
+		if req.MaxAircraft > 0 {
+			s.mgr.SetLimits(req.MaxAircraft, req.MaxAircraft)
+		}
+		if icao := strings.ToUpper(strings.TrimSpace(req.ICAO)); icao != "" {
+			if _, err := st.cache.Graph(icao); err != nil {
+				http.Error(w, "load "+icao+" first: "+err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			s.mgr.SetAirports(icao)
+		}
+		switch req.Others {
+		case "respect":
+			s.mgr.SetOthers(traffic.OtherRespect)
+		case "ignore":
+			s.mgr.SetOthers(traffic.OtherIgnore)
+		}
+		if req.Enabled != nil {
+			s.mgr.SetEnabled(*req.Enabled)
+		}
+		o := s.mgr.Options()
+		s.mu.Lock()
+		density := s.density
+		s.mu.Unlock()
+		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, other traffic: %s", map[bool]string{true: "on", false: "off"}[s.mgr.Enabled()],
+			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, o.Others)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
+		s := sched(w)
+		if s == nil {
+			return
+		}
+		deps, arrs := s.mgr.Board(strings.ToUpper(r.URL.Query().Get("icao")))
+		if deps == nil {
+			deps = []traffic.ManagedFlight{}
+		}
+		if arrs == nil {
+			arrs = []traffic.ManagedFlight{}
+		}
+		writeJSON(w, map[string]any{"departures": deps, "arrivals": arrs})
+	})
+}

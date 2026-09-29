@@ -68,6 +68,10 @@ type controlled struct {
 	// spoken marks clearances already in the log (given on the map), so
 	// the state change they cause does not log them again.
 	spoken map[string]bool
+	// managed is the traffic manager of a scheduled flight (#368): it
+	// hears the controller's progress. objectID is the aircraft once known.
+	managed  *traffic.TrafficManager
+	objectID uint32
 
 	mu   sync.Mutex
 	view ControlView
@@ -262,7 +266,8 @@ type SpawnRequest struct {
 
 	planned *planned // Other's flight plan, resolved before the spawn
 
-	adopt uint32 // departure: the aircraft already on the stand (turnaround)
+	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
+	pushAt time.Time // departure: stay on the stand until then (its STD)
 }
 
 // Turnaround dwell when none is given, and its spread.
@@ -343,7 +348,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	switch r.Kind {
 	case "departure":
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
-		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt,
+		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
@@ -445,6 +450,25 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.logChanges(prev, ev)
 	if it.cc != nil {
 		it.cc.reportOwn(it.ICAO, ev)
+	}
+	if e := ev.dep; e != nil && e.ObjectID != 0 {
+		it.objectID = e.ObjectID
+	}
+	if e := ev.arr; e != nil && e.ObjectID != 0 {
+		it.objectID = e.ObjectID
+	}
+	if m := it.managed; m != nil {
+		if st, ok, err := managedStatus(ev); err != nil {
+			// Failed or cancelled: out of the sim, and the manager decides
+			// (another attempt, or the flight is over).
+			it.managed = nil
+			go func() {
+				it.cc.do(func() error { return it.cc.remove(it) })
+				m.Failed(it.Tail, err, time.Now())
+			}()
+		} else if ok {
+			m.Update(it.Tail, st, time.Now())
+		}
 	}
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
@@ -722,6 +746,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
 		it.spoken[action] = action != "remove"
+		var m *traffic.TrafficManager
+		if action == "remove" {
+			m, it.managed = it.managed, nil // removed here, not failed
+		}
 		it.mu.Unlock()
 		if err := cc.do(func() error { return it.act(action, node) }); err != nil {
 			it.mu.Lock()
@@ -739,9 +767,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
 			it.removeOnce.Do(func() { close(it.removed) })
-			cc.mu.Lock()
-			delete(cc.items, id)
-			cc.mu.Unlock()
+			cc.forget(it)
+			if m != nil {
+				m.Remove(it.Tail, time.Now()) // off the schedule too
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -957,6 +986,55 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 	cc.mu.Lock()
 	delete(cc.items, it.ID)
 	cc.mu.Unlock()
+}
+
+// byTail is the controlled aircraft of a call sign, nil if none.
+func (cc *controlCenter) byTail(tail string) *controlled {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	for _, it := range cc.items {
+		if it.Tail == tail {
+			return it
+		}
+	}
+	return nil
+}
+
+// ownIDs are the object IDs of the controlled aircraft.
+func (cc *controlCenter) ownIDs() map[uint32]bool {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	out := map[uint32]bool{}
+	for _, it := range cc.items {
+		it.mu.Lock()
+		if it.objectID != 0 {
+			out[it.objectID] = true
+		}
+		it.mu.Unlock()
+	}
+	return out
+}
+
+// forget drops a controlled aircraft from the list (its aircraft stays).
+func (cc *controlCenter) forget(it *controlled) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if cc.items[it.ID] == it {
+		delete(cc.items, it.ID)
+	}
+}
+
+// remove takes a controlled aircraft out of the simulator and the list; in
+// the connection goroutine.
+func (cc *controlCenter) remove(it *controlled) error {
+	it.mu.Lock()
+	it.managed = nil
+	it.mu.Unlock()
+	err := it.act("remove", -1)
+	it.stands.ReleaseOwner(it.Tail)
+	it.removeOnce.Do(func() { close(it.removed) })
+	cc.forget(it)
+	return err
 }
 
 // reqModels asks the simulator for its aircraft titles (the model list).

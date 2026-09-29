@@ -87,6 +87,9 @@ type Traffic struct {
 	// Lights lists the lights that are on: L landing, T taxi, S strobe, B beacon, N nav.
 	Lights string `json:"lights"`
 	User   bool   `json:"user"`
+	// Ours: driven by our controllers (spawned on the map or scheduled);
+	// the rest is other traffic — MSFS AI, other add-ons.
+	Ours bool `json:"ours"`
 	// Span is the wing span in meters.
 	Span float64 `json:"span"`
 }
@@ -127,6 +130,7 @@ type state struct {
 	trafficAt time.Time
 	live      bool
 	control   *controlCenter // traffic control while connected (#322)
+	schedule  *scheduler     // scheduled traffic while connected (#368)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// requests asks the connection to load an airport (load); airways is
@@ -249,12 +253,28 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	if err := cc.requestModels(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
 	}
+	// Scheduled traffic: its own goroutine, as it waits for the connection.
+	sched := newScheduler(st, cc)
+	stop := make(chan struct{})
+	defer close(stop) // this connection only
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-t.C:
+				sched.tick(now)
+			}
+		}
+	}()
 	st.mu.Lock()
-	st.control = cc
+	st.control, st.schedule = cc, sched
 	st.mu.Unlock()
 	defer func() {
 		st.mu.Lock()
-		st.control = nil
+		st.control, st.schedule = nil, nil
 		st.mu.Unlock()
 	}()
 
@@ -478,6 +498,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerAirportInfo(mux, st)
 	registerDeicing(mux, st)
 	registerWorld(mux, st)
+	registerSchedule(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))
@@ -650,6 +671,16 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		}
 		if t == nil {
 			t = []Traffic{}
+		}
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		if cc != nil {
+			ours := cc.ownIDs()
+			t = append([]Traffic(nil), t...)
+			for i := range t {
+				t[i].Ours = ours[t[i].ObjectID]
+			}
 		}
 		writeJSON(w, t)
 	})
