@@ -139,6 +139,8 @@
       <tr><td id="rStandLbl">From stand</td><td class="n"><span id="rFrom">—</span> <label class="note"><input type="checkbox" id="cAutoStand"> free stand</label></td></tr>
       <tr><td>Runway</td><td class="n"><select id="rTo"></select></td></tr>
       <tr><td id="rPickLbl">Entry</td><td class="n"><select id="rPick"></select></td></tr>
+      <tr><td>Flight plan <span class="i" title="Optional. The loaded airport is always one end. A departure flies the SID, airways and cruise level to the airport you type; an arrival comes from it and appears at the STAR entry on that side. Empty: no flight plan.">ⓘ</span></td>
+        <td class="n"><span class="dep-only fpHere"></span><span class="dep-only"> → </span><input id="cOther" placeholder="ICAO" maxlength="4" class="icao" title="Destination (departure) or origin (arrival)"><span class="arr-only"> → </span><span class="arr-only fpHere"></span></td></tr>
       <tr><td>Aircraft</td><td class="n"><span id="cModelCount" class="note"></span></td></tr>
     </table>
     <div class="combo">
@@ -153,7 +155,6 @@
       <label class="opt arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input type="number" id="cDwell" value="90" min="10" step="10"> s</label>
       <label class="opt"><input type="checkbox" id="cProc"> Fly the procedures <span class="i" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach.">ⓘ</span></label>
       <label class="opt dep-only">De-icing <select id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad</option></select> <input type="number" id="cDeiceSec" value="120" min="10" step="10"> s</label>
-      <label class="opt">Flight plan <span class="dep-only">to</span><span class="arr-only">from</span> <input id="cOther" placeholder="ICAO" maxlength="4" class="icao"> <span class="i" title="A generated flight plan: SID, airways, STAR and approach.">ⓘ</span></label>
     </details>
     <details class="more"><summary>Custom taxi route</summary>
       <label class="opt"><input type="checkbox" id="rViaPick"> Pick via points on the map</label>
@@ -243,7 +244,7 @@
     <table class="ref">
       <tr><td>Hold at every clearance</td><td>off: they clear themselves after a short wait</td></tr>
       <tr><td>Fly the procedures</td><td>SID after take-off; arrivals start at a STAR entry</td></tr>
-      <tr><td>Flight plan to/from</td><td>a generated plan with the other airport: SID, airways, STAR, approach</td></tr>
+      <tr><td>Flight plan</td><td>in New flight: LKPR → LOWW for a departure (SID, airways, cruise), LOWW → LKPR for an arrival (appears at the STAR entry on that side)</td></tr>
       <tr><td>Turnaround</td><td>an arrival departs again after the dwell</td></tr>
       <tr><td>De-icing</td><td>on the stand before the push, or at a pad (Charts → De-icing pads, or via point 1); automatic when the weather is icing (the game uses automatic)</td></tr>
       <tr><td>Custom taxi route</td><td>via points (click taxiways) and taxiway names, in order; never where the aircraft does not fit</td></tr>
@@ -1233,6 +1234,7 @@ $('cAutoStand').addEventListener('change', updateSpawn);
 // updateSpawn labels the one spawn button with what it will do, and shows
 // only the options of the route mode.
 function updateSpawn() {
+  for (const el of document.querySelectorAll('.fpHere')) el.textContent = data ? data.icao : '';
   const arr = arrival(), auto = $('cAutoStand').checked, rwy = $('rTo').value || '?';
   const stand = auto ? 'a free stand' : routeFrom ? parkingLabel(routeFrom) : null;
   const entry = !arr && $('rPick').value ? ` at ${$('rPick').value}` : '';
