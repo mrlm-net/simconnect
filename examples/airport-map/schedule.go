@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -350,12 +351,13 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			return
 		}
 		var req struct {
-			Enabled     *bool   `json:"enabled"`
-			ICAO        string  `json:"icao"`
-			Density     float64 `json:"density"`
-			MaxAircraft int     `json:"maxAircraft"`
-			Seed        *uint64 `json:"seed"`
-			Others      string  `json:"others"` // respect | ignore
+			Enabled     *bool    `json:"enabled"`
+			ICAO        string   `json:"icao"`
+			Airports    []string `json:"airports"` // several (#371); icao is one
+			Density     float64  `json:"density"`
+			MaxAircraft int      `json:"maxAircraft"`
+			Seed        *uint64  `json:"seed"`
+			Others      string   `json:"others"` // respect | ignore
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -372,14 +374,31 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		if req.MaxAircraft > 0 {
 			s.mgr.SetLimits(req.MaxAircraft, req.MaxAircraft)
 		}
-		if icao := strings.ToUpper(strings.TrimSpace(req.ICAO)); icao != "" {
-			if _, err := st.cache.Graph(icao); err != nil {
-				http.Error(w, "load "+icao+" first: "+err.Error(), http.StatusUnprocessableEntity)
-				return
+		if req.ICAO != "" {
+			req.Airports = append(req.Airports, req.ICAO)
+		}
+		var airports []string
+		for _, a := range req.Airports {
+			icao := strings.ToUpper(strings.TrimSpace(a))
+			if icao == "" || slices.Contains(airports, icao) {
+				continue
 			}
-			s.mgr.SetAirports(icao)
+			// Loaded now if not yet: its stands, runways and procedures.
+			if _, err := st.cache.Graph(icao); err != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+				_, err = st.load(ctx, icao, false, st.requests)
+				cancel()
+				if err != nil {
+					http.Error(w, "loading "+icao+": "+err.Error(), http.StatusUnprocessableEntity)
+					return
+				}
+			}
+			airports = append(airports, icao)
+		}
+		if len(airports) > 0 {
+			s.mgr.SetAirports(airports...)
 			s.mu.Lock()
-			s.focus = []string{icao}
+			s.focus = airports
 			s.mu.Unlock()
 		}
 		switch req.Others {

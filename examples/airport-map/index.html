@@ -52,6 +52,11 @@
   .combo-menu { position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 260px; overflow-y: auto; margin-top: 2px; background: var(--panel, #1f2227); border: 1px solid rgba(127,127,127,0.4); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
   .combo-item { padding: 4px 6px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .combo-item:hover, .combo-item.active { background: #2d6cdf; color: #fff; }
+  .view-btn.on { background: #1e5a7a; color: #fff; }
+  .world-ac, .world-apt { font-size: 10px; }
+  /* Busy traffic scrolls in its own lists; the panel keeps its size (#371). */
+  #ctlList { max-height: 38vh; overflow-y: auto; }
+  #sDepBox, #sArrBox, #sOvrBox { max-height: 30vh; overflow-y: auto; }
   .board { width: 100%; border-collapse: collapse; font: 11px/1.4 ui-monospace, Consolas, monospace; }
   .board td { padding: 1px 3px; white-space: nowrap; }
   .board tr.late td.t { color: #ffb74d; }
@@ -146,6 +151,10 @@
       <label class="note">density <select id="sDensity"><option value="0.5">½</option><option value="1" selected>1</option><option value="1.5">1½</option><option value="2">2</option></select></label>
       <label class="note">max <input type="number" id="sMax" value="12" min="1" max="40"> aircraft</label>
     </div>
+    <table class="form">
+      <tr><td>Airports <span class="i" title="The airports whose timetables run: the loaded one by default. Others are loaded when you start (the simulator must reach them).">ⓘ</span></td><td class="n"><input id="sAirports" placeholder="LKPR, LKTB" class="icao" list="airportList"></td></tr>
+      <tr><td>Boards</td><td class="n"><select id="sBoard"></select></td></tr>
+    </table>
     <div id="sInfo" class="note"></div>
     <details id="sDepBox"><summary>Departures</summary><table id="sDeps" class="board"></table></details>
     <details id="sArrBox"><summary>Arrivals</summary><table id="sArrs" class="board"></table></details>
@@ -218,7 +227,7 @@
     <div id="info" class="note">—</div>
     <h2>Traffic picture <span class="i" title="All traffic around the centre of the world: your aircraft (following it) or an airport. Airports in range feed the airport lists; SimConnect shows MSFS AI up to 200 km away.">ⓘ</span></h2>
     <table class="form">
-      <tr><td>Centre</td><td class="n"><select id="wCentre"><option value="follow">Follow my aircraft</option><option value="airport">This airport</option></select></td></tr>
+      <tr><td>Centre</td><td class="n"><select id="wCentre"><option value="follow">Follow my aircraft</option><option value="airport">This airport</option><option value="position">Map centre</option></select></td></tr>
       <tr><td>Radius</td><td class="n"><select id="wRadius"><option>100</option><option>150</option><option selected>250</option><option>350</option><option>500</option></select> NM</td></tr>
     </table>
     <div id="wInfo" class="note">—</div>
@@ -295,6 +304,7 @@
       <tr><td>✈</td><td>show my aircraft</td></tr>
       <tr><td>⛶</td><td>full screen, panel included (Esc leaves)</td></tr>
       <tr><td>◨</td><td>hide the panel for the map alone, and show it again</td></tr>
+      <tr><td>🌐</td><td>world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
       <tr><td>📍</td><td>on a card, or a row of Layers → Live traffic: show that aircraft</td></tr>
       <tr><td><i>click</i></td><td>a stand: pick it · an aircraft: details · a taxiway or point: raw data</td></tr>
     </table>
@@ -994,6 +1004,52 @@ mapButton('◨', 'Hide the panel', (btn) => {
   btn.title = hide ? 'Show the panel' : 'Hide the panel';
   setTimeout(() => map.invalidateSize(), 50);
 });
+// ── World view (#371): the centre and radius, the airports in range and
+// every aircraft of the picture with call sign, level and phase; other
+// traffic only with its layer on ──
+let worldOn = false, lastWorld = null, worldBack = null;
+const worldLayer = L.layerGroup();
+const phaseColor = { parked: '#9e9e9e', taxiing: '#ffb347', runway: '#ff5252', departing: '#66bb6a', enroute: '#4fc3f7', arriving: '#ff2bd6' };
+function drawWorld() {
+  worldLayer.clearLayers();
+  const w = lastWorld;
+  if (!w || !w.hasCentre) return;
+  const c = [w.centre.lat, w.centre.lon];
+  L.circle(c, { radius: w.radiusNM * 1852, color: '#7fb3d5', weight: 1, fill: false, dashArray: '6 6', interactive: false }).addTo(worldLayer);
+  L.circleMarker(c, { radius: 3, color: '#7fb3d5', fillOpacity: 1, interactive: false }).addTo(worldLayer);
+  for (const a of w.airports.filter((x) => /^[A-Z]{4}$/.test(x.icao))) {
+    L.circleMarker([a.position.lat, a.position.lon], { radius: 3, color: '#bbb', weight: 1, fillOpacity: 0.6 })
+      .bindTooltip(esc(a.icao), { permanent: true, direction: 'top', className: 'lbl world-apt' }).addTo(worldLayer);
+  }
+  const others = $('othersOn').checked;
+  for (const t of w.aircraft) {
+    if (t.user || (!t.ours && !others)) continue;
+    const lvl = t.onGround ? '' : ' ' + flightLevel({ alt: t.altFt || 0 });
+    const f = t.ours ? schedFlight(t.tail) : null;
+    const lbl = `${esc(t.tail || t.objectId)}${lvl} ${esc(t.phase)}${f ? ' →' + esc(f.destination) : ''}`;
+    L.circleMarker([t.position.lat, t.position.lon], { radius: t.ours ? 5 : 4, color: t.ours ? '#000' : '#5d8fb8', weight: 1, fillColor: phaseColor[t.phase] || '#fff', fillOpacity: 0.9 })
+      .bindTooltip(lbl, { permanent: true, direction: 'right', offset: [6, 0], className: 'lbl world-ac' })
+      .on('click', () => locate(t.position.lat, t.position.lon, t.tail || String(t.objectId)))
+      .addTo(worldLayer);
+  }
+}
+const worldBtn = mapButton('🌐', 'World view', (btn) => {
+  worldOn = !worldOn;
+  btn.classList.toggle('on', worldOn);
+  btn.title = worldOn ? 'Back to the airport' : 'World view';
+  if (worldOn) {
+    worldBack = { center: map.getCenter(), zoom: map.getZoom() };
+    worldLayer.addTo(map);
+    drawWorld();
+    const w = lastWorld;
+    if (w && w.hasCentre) map.fitBounds(L.latLng(w.centre.lat, w.centre.lon).toBounds(w.radiusNM * 1852 * 2));
+  } else {
+    worldLayer.remove();
+    if (worldBack) map.setView(worldBack.center, worldBack.zoom);
+  }
+});
+worldBtn.id = 'worldBtn';
+
 // Taxiway names only when zoomed in enough to read them.
 const zoomLabels = () => map.getContainer().classList.toggle('far', map.getZoom() < 15);
 map.on('zoomend', zoomLabels);
@@ -1443,7 +1499,9 @@ async function pollWorld() {
     $('wInfo').innerHTML = `${where}, ${w.radiusNM.toFixed(0)} NM: <b>${w.airports.length}</b> airports, <b>${w.aircraft.length}</b> aircraft` +
       (w.aircraft.length ? '<br>' + Object.entries(phases).map(([k, n]) => `${n} ${esc(k)}`).join(' · ') : '') +
       (w.load && w.load.driven ? `<br><span title="Injected aircraft we drive: far away or standing still they get fewer updates (level of detail)">driving ${w.load.driven}: ${w.load.perSecond.toFixed(0)} updates/s, ${w.load.everyFrame} every frame</span>` : '');
-    if (document.activeElement !== $('wCentre')) $('wCentre').value = w.follow ? 'follow' : 'airport';
+    if (document.activeElement !== $('wCentre')) $('wCentre').value = w.follow ? 'follow' : w.icao ? 'airport' : 'position';
+    lastWorld = w;
+    if (worldOn) drawWorld();
     if (document.activeElement !== $('wRadius')) $('wRadius').value = String(w.radiusNM);
   } catch { /* server gone */ }
 }
@@ -1453,7 +1511,12 @@ async function setWorld(body) {
   await fetch('/api/world', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   pollWorld();
 }
-$('wCentre').addEventListener('change', () => setWorld($('wCentre').value === 'follow' ? { follow: true } : { icao: data ? data.icao : '' }));
+$('wCentre').addEventListener('change', () => {
+  const v = $('wCentre').value;
+  if (v === 'follow') setWorld({ follow: true });
+  else if (v === 'position') { const c = map.getCenter(); setWorld({ lat: c.lat, lon: c.lng }); }
+  else setWorld({ icao: data ? data.icao : '' });
+});
 $('wRadius').addEventListener('change', () => setWorld({ radiusNM: Number($('wRadius').value) }));
 
 // ── Scheduled traffic (#368): timetable, manager, boards ──
@@ -1481,7 +1544,16 @@ async function pollSchedule() {
     if (document.activeElement !== $('sDensity')) $('sDensity').value = String(sched.density);
     if (document.activeElement !== $('sMax')) $('sMax').value = String(sched.maxAircraft);
     if (document.activeElement !== $('othersMode') && sched.others) $('othersMode').value = sched.others;
-    const icao = data ? data.icao : (sched.airports || [])[0];
+    const ap = sched.airports || [];
+    const bs = $('sBoard');
+    if (bs.options.length !== ap.length || [...bs.options].some((o, i) => o.value !== ap[i])) {
+      const keep = bs.value;
+      bs.innerHTML = ap.map((a) => `<option>${esc(a)}</option>`).join('');
+      if (ap.includes(keep)) bs.value = keep;
+      else if (data && ap.includes(data.icao)) bs.value = data.icao;
+    }
+    if (document.activeElement !== $('sAirports') && ap.length && sched.enabled) $('sAirports').value = ap.join(', ');
+    const icao = bs.value || (data ? data.icao : ap[0]);
     const deps = fs.filter((f) => f.kind === 'departure' && f.airport === icao), arrs = fs.filter((f) => f.kind === 'arrival' && f.airport === icao);
     $('sDeps').innerHTML = boardRows(deps, true);
     $('sArrs').innerHTML = boardRows(arrs, false);
@@ -1502,10 +1574,12 @@ async function setSchedule(body) {
 $('sStart').addEventListener('click', () => {
   if (sched && sched.enabled) { setSchedule({ enabled: false }); return; }
   if (!data) { $('sInfo').textContent = 'load an airport first'; return; }
-  setSchedule({ enabled: true, icao: data.icao, density: Number($('sDensity').value), maxAircraft: Number($('sMax').value) });
+  const airports = $('sAirports').value.toUpperCase().split(/[\s,;]+/).filter((a) => /^[A-Z0-9]{3,4}$/.test(a));
+  setSchedule({ enabled: true, airports: airports.length ? airports : [data.icao], density: Number($('sDensity').value), maxAircraft: Number($('sMax').value) });
   $('sDepBox').open = true;
 });
 $('sDensity').addEventListener('change', () => setSchedule({ density: Number($('sDensity').value) }));
+$('sBoard').addEventListener('change', pollSchedule);
 $('sMax').addEventListener('change', () => setSchedule({ maxAircraft: Number($('sMax').value) }));
 
 // ── Tabs: one task at a time; the last one is remembered ──
