@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `examples/airport-map`: the runway defaults to **Active (…)**, the runway in use from the weather (departures and arrivals may differ). The route follows it when it changes, and picking a runway overrides it. Spawns, flight plans and the ATC game resolve "active" when each flight starts.
+
 - `examples/airport-map`: the flight plan is a row in New flight that reads LKPR → [destination] for a departure and [origin] → LKPR for an arrival, instead of a field hidden under Options
 
 ### Fixed
