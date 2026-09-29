@@ -134,6 +134,9 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 			continue // no conflict, or already in it: go on through
 		}
 		theirsTo := first(o.e.ahead, mine, reach)
+		if !o.e.pushing {
+			theirsTo += trafficBodyStep // their path starts a step ahead of them (ReportPath)
+		}
 		if o.e.pushing || theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
 			best = math.Min(best, from+mineTo)
 		}

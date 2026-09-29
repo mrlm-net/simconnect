@@ -224,6 +224,7 @@ type TaxiController struct {
 	lightsSet                                               bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
+	takeoffHeld                                             bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
 	holdingCrossing                                         bool
 	alignDist                                               float64
 	takeoff                                                 *TakeoffMover
@@ -543,7 +544,7 @@ func (c *TaxiController) ClearForTakeoff() error {
 	if c.inj != nil {
 		// Injected: takes effect at the runway hold-short, during the line-up
 		// (a rolling take-off) or lined up; given earlier it waits.
-		c.takeoffCleared = true
+		c.takeoffCleared, c.takeoffHeld = true, false
 		return nil
 	}
 	if c.state != TaxiHoldingShort {

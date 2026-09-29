@@ -335,3 +335,47 @@ func TestTaxiGivesWayToPushback(t *testing.T) {
 	}
 	t.Logf("closest %.1f m", minGap)
 }
+
+// TestHoldingAircraftTakesNoPriority: an aircraft holding at its limit 40 m
+// beside another's path (a side taxiway at a junction) reports no path
+// ahead, so the moving aircraft keeps going: it used to brake to a near stop
+// for it (theirs 0 m to the conflict) and only crept on once inside it.
+func TestHoldingAircraftTakesNoPriority(t *testing.T) {
+	origin := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	prof := DefaultMotionProfile()
+	picture := NewGroundPicture()
+	now := time.Now()
+	mk := func(id uint32, a, b airport.LatLon, hold bool) *groundDrive {
+		path, err := NewGroundPath([]airport.LatLon{a, b}, prof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := &groundDrive{mover: NewGroundMover(path, prof), picture: picture, followTraffic: true, prof: prof, object: id,
+			clock: func() time.Time { return now }}
+		if hold {
+			d.mover.HoldAt(0) // holding at its clearance limit, here
+		}
+		return d
+	}
+	mover := mk(1, offsetHeading(origin, 270, 200), offsetHeading(origin, 90, 200), false)
+	// On a side taxiway facing the junction, its nose gear 40 m from the
+	// path: its nose clear of the wing, within the give-way reach.
+	side := offsetHeading(origin, 0, 40)
+	holder := mk(2, side, origin, true)
+	slowest := 1e9
+	for i := 0; i < 60*120 && !mover.mover.Pose().Arrived; i++ {
+		now = now.Add(time.Second / 60)
+		for _, d := range []*groundDrive{mover, holder} {
+			p := d.mover.Pose()
+			picture.Report(d.object, p.Position, p.Heading, prof, now)
+			d.followAhead(now)
+			d.mover.Step(1.0 / 60)
+		}
+		if p := mover.mover.Pose(); p.Distance > 80 && p.Distance < 300 {
+			slowest = math.Min(slowest, p.GroundSpeedKts)
+		}
+	}
+	if !mover.mover.Pose().Arrived || slowest < 10 {
+		t.Fatalf("slowed to %.1f kt for an aircraft holding beside its path", slowest)
+	}
+}

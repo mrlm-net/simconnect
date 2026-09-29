@@ -82,6 +82,14 @@ func TestAbortTakeoff(t *testing.T) {
 	if ctl.mover == nil || ctl.last.GroundSpeed > 1 {
 		t.Fatal("not stopped before vacating")
 	}
+	for _, z := range ctl.crossZones {
+		if z.to > ctl.mover.Path().Length() {
+			t.Errorf("crossing zone %.0f–%.0f m beyond the vacate path (%.0f m): left from the taxi-out", z.from, z.to, ctl.mover.Path().Length())
+		}
+	}
+	if ctl.nextCross != 0 || ctl.hasLimit {
+		t.Errorf("vacate path starts past crossing %d, limit %v", ctl.nextCross, ctl.hasLimit)
+	}
 	v := kts * ktsToMS
 	if d := calc.HaversineMeters(stopAt.Position.Lat, stopAt.Position.Lon, ctl.last.Position.Lat, ctl.last.Position.Lon); d > v*v/(2*RejectDecel)+20 {
 		t.Errorf("stopped %.0f m after the abort at %.0f kt", d, kts)
@@ -156,3 +164,31 @@ func TestGoAround(t *testing.T) {
 }
 
 func airportLatLon(lat, lon float64) airport.LatLon { return airport.LatLon{Lat: lat, Lon: lon} }
+
+// TestAbortTakeoffLinedUpHolds: without held gates a lined-up aircraft
+// takes off by itself; AbortTakeoff cancels that and keeps it lined up
+// until the next ClearForTakeoff. Hold position is refused while lining up.
+func TestAbortTakeoffLinedUpHolds(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+	if !run(TaxiLiningUp, 60*1200) {
+		t.Fatal(ctl.State())
+	}
+	if err := ctl.HoldPosition(); !errors.Is(err, ErrNotTaxiing) {
+		t.Errorf("hold position while lining up: %v, want ErrNotTaxiing", err)
+	}
+	if err := ctl.AbortTakeoff(); err != nil {
+		t.Fatal(err)
+	}
+	run(TaxiLinedUp, 60*300)
+	*now = now.Add(2 * time.Minute) // well past the automatic take-off gate
+	run(TaxiDeparting, 60*60)
+	if ctl.State() != TaxiLinedUp {
+		t.Fatalf("state %v after the cancelled take-off clearance, want lined up", ctl.State())
+	}
+	if err := ctl.ClearForTakeoff(); err != nil {
+		t.Fatal(err)
+	}
+	if !run(TaxiDeparting, 60*30) {
+		t.Fatalf("state %v, want the take-off after a new clearance", ctl.State())
+	}
+}

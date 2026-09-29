@@ -271,8 +271,18 @@ func aircraftOf(aircraft *AircraftProfile, model string) *AircraftProfile {
 	}
 	d := DefaultAircraftProfile()
 	d.fill(&p.Motion, &p.Takeoff, &p.Approach, &p.Rollout, &p.NoseOffsetM)
-	if p.Flaps == (FlapSchedule{}) {
-		p.Flaps = d.Flaps
+	// Field by field: a schedule with detents but no heights would retract
+	// the flaps at lift-off (RetractFt 0) and never extend them fully.
+	for _, f := range []struct {
+		v   *float64
+		def float64
+	}{
+		{&p.Flaps.TakeoffPct, d.Flaps.TakeoffPct}, {&p.Flaps.ApproachPct, d.Flaps.ApproachPct}, {&p.Flaps.LandingPct, d.Flaps.LandingPct},
+		{&p.Flaps.RetractFt, d.Flaps.RetractFt}, {&p.Flaps.FullFt, d.Flaps.FullFt},
+	} {
+		if *f.v <= 0 {
+			*f.v = f.def
+		}
 	}
 	if p.PushbackKts <= 0 {
 		p.PushbackKts = d.PushbackKts

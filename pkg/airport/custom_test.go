@@ -250,3 +250,29 @@ func TestRemainingOptions(t *testing.T) {
 		t.Errorf("after 4 nodes of %v: via %v taxiways %v", r.Taxiways, got.Via, got.Taxiways)
 	}
 }
+
+// TestRemainingOptionsKeepsCurrentTaxiway: after a walk onto the first
+// listed taxiway (a pushback onto it), the rest of the route may go on along
+// it without the off-route penalty, and only other names cost extra.
+func TestRemainingOptionsKeepsCurrentTaxiway(t *testing.T) {
+	g := lkprGraph(t)
+	c22, _ := g.Layout.ParkingIndex("C22")
+	r, err := g.RouteToRunway(c22, "30", RouteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := r.Taxiways[0], r.Taxiways[1]
+	// Walk up to the second node of the first taxiway.
+	i := slices.IndexFunc(r.Edges, func(e Edge) bool { return e.Name == first })
+	walked := r.Nodes[:i+2]
+	rest := g.RemainingOptions(RouteOptions{Taxiways: []string{first, second}}, walked)
+	if len(rest.Taxiways) != 1 || rest.Taxiways[0] != second || rest.CurrentTaxiway != first {
+		t.Fatalf("remaining %v, current %q; want [%s], %q", rest.Taxiways, rest.CurrentTaxiway, second, first)
+	}
+	if offTaxiways(Edge{Name: first}, rest.Taxiways, 0, rest.CurrentTaxiway) {
+		t.Errorf("going on along %s counted as off the route", first)
+	}
+	if !offTaxiways(Edge{Name: "ZZ"}, rest.Taxiways, 0, rest.CurrentTaxiway) {
+		t.Error("another taxiway is not penalised")
+	}
+}

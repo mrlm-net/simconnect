@@ -368,3 +368,13 @@ func TestRecorder(t *testing.T) {
 		t.Errorf("failed movement: %s", lines[2])
 	}
 }
+
+// TestPartialFlapScheduleFilled: detents without heights get the default
+// heights, so the flaps neither retract at lift-off nor stay short of full.
+func TestPartialFlapScheduleFilled(t *testing.T) {
+	p := aircraftOf(&AircraftProfile{Flaps: FlapSchedule{TakeoffPct: 25, ApproachPct: 75, LandingPct: 100}}, "A320")
+	d := DefaultAircraftProfile().Flaps
+	if p.Flaps.TakeoffPct != 25 || p.Flaps.RetractFt != d.RetractFt || p.Flaps.FullFt != d.FullFt {
+		t.Errorf("flaps %+v, want the given detents with heights %v/%v", p.Flaps, d.RetractFt, d.FullFt)
+	}
+}
