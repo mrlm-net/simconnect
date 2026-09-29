@@ -76,6 +76,8 @@ type controlled struct {
 	managed  *traffic.TrafficManager
 	objectID uint32
 	defBase  uint32 // its ID block (cc.ids)
+	// approach: an arrival's STAR and approach points (the sequencer, #390).
+	approach []airport.LatLon
 
 	mu   sync.Mutex
 	view ControlView
@@ -370,7 +372,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			cc.ids.Release(defBase)
 		}
 	}()
-	it := &controlled{defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	var approach []airport.LatLon
+	if r.Kind == "arrival" {
+		for _, n := range procRoute {
+			approach = append(approach, n.Position)
+		}
+	}
+	it := &controlled{approach: approach, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":

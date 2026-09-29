@@ -133,6 +133,7 @@ type state struct {
 	live      bool
 	control   *controlCenter // traffic control while connected (#322)
 	schedule  *scheduler     // scheduled traffic while connected (#368)
+	sequences *sequences     // landing sequences while connected (#390)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// requests asks the connection to load an airport (load); airways is
@@ -258,6 +259,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Scheduled traffic: its own goroutine, as it waits for the connection.
 	sched := newScheduler(st, cc)
 	cc.extra = sched.handle
+	seqs := newSequences(cc, sched)
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
@@ -269,15 +271,16 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				return
 			case now := <-t.C:
 				sched.tick(now)
+				seqs.tick(now)
 			}
 		}
 	}()
 	st.mu.Lock()
-	st.control, st.schedule = cc, sched
+	st.control, st.schedule, st.sequences = cc, sched, seqs
 	st.mu.Unlock()
 	defer func() {
 		st.mu.Lock()
-		st.control, st.schedule = nil, nil
+		st.control, st.schedule, st.sequences = nil, nil, nil
 		st.mu.Unlock()
 	}()
 
@@ -502,6 +505,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerDeicing(mux, st)
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
+	registerSequence(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

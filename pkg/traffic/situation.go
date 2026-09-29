@@ -151,8 +151,9 @@ func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 // CheckLandingFlow sequences the arrivals of an airport as approach
 // control does: it predicts every landing and delays the spawn of a
 // scheduled arrival that would land less than gap (0: DefaultLandingGap)
-// behind the one before — doubled while queue (0: DefaultDepartureGapQueue)
-// or more departures wait for the runway — and estimates its ETA.
+// behind the one before — one gap doubled while queue (0:
+// DefaultDepartureGapQueue) or more departures wait for the runway — and
+// estimates its ETA.
 func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 	if gap == 0 {
 		gap = DefaultLandingGap
@@ -191,14 +192,17 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 			}
 		}
 		sort.Slice(ls, func(i, j int) bool { return lessFlight(ls[i].eta, ls[i].f.Callsign, ls[j].eta, ls[j].f.Callsign) })
-		need := gap
-		if waiting >= queue {
-			need = 2 * gap
-		}
+		// One gap is opened for the departures waiting — the first one the
+		// scheduled arrivals can give — not one between every two arrivals.
+		gapFor := waiting >= queue
 		var out []Advice
 		var prev time.Time
 		for _, l := range ls {
 			eta := l.eta
+			need := gap
+			if gapFor && l.f.Status == FlightScheduled && !prev.IsZero() {
+				need = 2 * gap
+			}
 			if !prev.IsZero() && eta.Sub(prev) < need && l.f.Status == FlightScheduled {
 				shift := need - eta.Sub(prev)
 				eta = eta.Add(shift)
@@ -208,6 +212,9 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 				}
 				spawn := eta.Add(-(s.Options.ArrivalLead - LandingBeforeSTA))
 				out = append(out, Advice{Key: l.f.Key(), Action: AdviceDelay, Until: spawn, Reason: why})
+			}
+			if need > gap {
+				gapFor = false // opened
 			}
 			if l.f.Kind != "other" && (l.f.Status == FlightScheduled || l.f.Status == FlightApproaching) {
 				if sta := eta.Add(LandingBeforeSTA); sta.Sub(l.f.STA) >= time.Minute {

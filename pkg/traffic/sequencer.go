@@ -1,0 +1,273 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"math"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
+)
+
+// The approach sequencer (#390) is the approach controller of one runway:
+// it predicts when each arrival would land, puts them in order (first
+// come, first served) and gives each a landing time that keeps the wake
+// spacing on final behind the one before, and the runway free. What an
+// arrival must lose to make its time is its delay, which speed control,
+// path stretching (#391) and holding (#392) absorb.
+
+// ApproachAircraft is an arrival the sequencer plans for.
+type ApproachAircraft struct {
+	Callsign string
+	Wake     Wake
+	// DistanceToGoNM is its track distance to the threshold (DistanceToGo).
+	DistanceToGoNM float64
+	// GroundKts is its speed now; FinalKts its speed on final (0: 140).
+	GroundKts, FinalKts float64
+	// Fixed: it cannot be delayed — other traffic, or already established.
+	// The sequencer also fixes aircraft inside FreezeNM.
+	Fixed bool
+}
+
+// SequenceEntry is an arrival's place in the landing sequence.
+type SequenceEntry struct {
+	Callsign string `json:"callsign"`
+	Number   int    `json:"number"`           // 1 lands first
+	Leader   string `json:"leader,omitempty"` // the one landing before
+	Wake     Wake   `json:"wake"`
+	// SpacingNM is the spacing it keeps behind its leader on final.
+	SpacingNM float64 `json:"spacingNM,omitempty"`
+	// ETA is when it would land flying on as it is; Landing when it lands
+	// in the sequence; Delay the difference it must absorb.
+	ETA     time.Time     `json:"eta"`
+	Landing time.Time     `json:"landing"`
+	Delay   time.Duration `json:"delay"`
+	Fixed   bool          `json:"fixed,omitempty"`
+	// DistanceToGoNM as given.
+	DistanceToGoNM float64 `json:"distanceToGoNM"`
+}
+
+// SequenceChange reports an arrival's new place or delay.
+type SequenceChange struct {
+	Runway   string
+	Entry    SequenceEntry
+	Previous int  // its number before; 0 when new
+	Gone     bool // left the sequence (landed or removed)
+}
+
+// SequencerOptions tune an ApproachSequencer.
+type SequencerOptions struct {
+	Scheme SeparationScheme
+	// FreezeNM: inside this distance to go an arrival is established and
+	// keeps its place (default 8 NM, about the final approach fix).
+	FreezeNM float64
+	// FinalNM: the last part of the approach is flown at the final speed
+	// (default 10 NM) — the rest at the ground speed now.
+	FinalNM float64
+	// DelayStep: a delay change smaller than this is not reported (30 s).
+	DelayStep time.Duration
+	// OnChange is called with every change of place or delay.
+	OnChange func(SequenceChange)
+}
+
+// ApproachSequencer sequences the arrivals of one runway.
+type ApproachSequencer struct {
+	runway string
+	opts   SequencerOptions
+
+	mu   sync.Mutex
+	last map[string]SequenceEntry
+	seq  []SequenceEntry
+}
+
+// NewApproachSequencer creates the sequencer of a runway end ("24").
+func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequencer {
+	if opts.FreezeNM == 0 {
+		opts.FreezeNM = 8
+	}
+	if opts.FinalNM == 0 {
+		opts.FinalNM = 10
+	}
+	if opts.DelayStep == 0 {
+		opts.DelayStep = 30 * time.Second
+	}
+	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}}
+}
+
+// Runway is the sequencer's runway end.
+func (s *ApproachSequencer) Runway() string { return s.runway }
+
+// Sequence is the last sequence, first to land first.
+func (s *ApproachSequencer) Sequence() []SequenceEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]SequenceEntry(nil), s.seq...)
+}
+
+// eta predicts when an arrival lands flying on as it is.
+func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft) time.Time {
+	final := a.FinalKts
+	if final <= 0 {
+		final = 140
+	}
+	gs := math.Max(a.GroundKts, final)
+	outer := math.Max(0, a.DistanceToGoNM-s.opts.FinalNM)
+	inner := math.Min(a.DistanceToGoNM, s.opts.FinalNM)
+	h := outer/gs + inner/((gs+final)/2)
+	if a.DistanceToGoNM <= s.opts.FinalNM {
+		h = a.DistanceToGoNM / final
+	}
+	return now.Add(time.Duration(h * float64(time.Hour)))
+}
+
+// gap is the time between two landings: the follower's wake spacing on
+// final at its final speed, and at least the leader's runway occupancy.
+func (s *ApproachSequencer) gap(lead, follow ApproachAircraft) (time.Duration, float64) {
+	nm := ArrivalSeparationNM(lead.Wake, follow.Wake, s.opts.Scheme)
+	final := follow.FinalKts
+	if final <= 0 {
+		final = 140
+	}
+	g := SeparationTime(nm, final)
+	if occ := RunwayOccupancy(lead.Wake, true); occ > g {
+		g = occ
+	}
+	return g, nm
+}
+
+// Update sequences the arrivals at now and returns the sequence. Fixed
+// arrivals keep their predicted time; the others, in order of their
+// predicted times, take the earliest landing time that keeps the gap to
+// the one before and the one after.
+func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) []SequenceEntry {
+	type slot struct {
+		a   ApproachAircraft
+		eta time.Time
+		at  time.Time
+	}
+	var fixed, free []slot
+	for _, a := range arrivals {
+		sl := slot{a: a, eta: s.eta(now, a)}
+		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM {
+			sl.a.Fixed, sl.at = true, sl.eta
+			fixed = append(fixed, sl)
+		} else {
+			free = append(free, sl)
+		}
+	}
+	byETA := func(l []slot) {
+		sort.SliceStable(l, func(i, j int) bool {
+			if !l[i].eta.Equal(l[j].eta) {
+				return l[i].eta.Before(l[j].eta)
+			}
+			return l[i].a.Callsign < l[j].a.Callsign
+		})
+	}
+	byETA(fixed)
+	byETA(free)
+	planned := fixed // sorted by landing time
+	for _, f := range free {
+		at := f.eta
+		for {
+			moved := false
+			for _, p := range planned {
+				// Before p: f must land a gap before it; after: a gap after.
+				gapAfter, _ := s.gap(p.a, f.a)
+				gapBefore, _ := s.gap(f.a, p.a)
+				if at.Before(p.at.Add(gapAfter)) && at.After(p.at.Add(-gapBefore)) {
+					at = p.at.Add(gapAfter) // behind p
+					moved = true
+				}
+			}
+			if !moved {
+				break
+			}
+		}
+		f.at = at
+		planned = append(planned, f)
+		sort.SliceStable(planned, func(i, j int) bool { return planned[i].at.Before(planned[j].at) })
+	}
+	out := make([]SequenceEntry, len(planned))
+	for i, p := range planned {
+		e := SequenceEntry{Callsign: p.a.Callsign, Number: i + 1, Wake: p.a.Wake, ETA: p.eta, Landing: p.at,
+			Delay: p.at.Sub(p.eta), Fixed: p.a.Fixed, DistanceToGoNM: p.a.DistanceToGoNM}
+		if i > 0 {
+			e.Leader = planned[i-1].a.Callsign
+			_, e.SpacingNM = s.gap(planned[i-1].a, p.a)
+		}
+		out[i] = e
+	}
+	s.report(out)
+	return out
+}
+
+// report remembers the sequence and reports what changed.
+func (s *ApproachSequencer) report(seq []SequenceEntry) {
+	s.mu.Lock()
+	var changes []SequenceChange
+	now := map[string]bool{}
+	for _, e := range seq {
+		now[e.Callsign] = true
+		prev, had := s.last[e.Callsign]
+		switch {
+		case !had:
+			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e})
+		case prev.Number != e.Number || absDuration(prev.Delay-e.Delay) >= s.opts.DelayStep:
+			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: prev.Number})
+		default:
+			continue // unchanged: keep the reported values
+		}
+		s.last[e.Callsign] = e
+	}
+	for cs, e := range s.last {
+		if !now[cs] {
+			delete(s.last, cs)
+			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: e.Number, Gone: true})
+		}
+	}
+	s.seq = seq
+	on := s.opts.OnChange
+	s.mu.Unlock()
+	if on != nil {
+		for _, c := range changes {
+			on(c)
+		}
+	}
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// DistanceToGo is the track distance in NM from pos along route (the
+// points still to fly, in order) to the threshold: from pos to the point
+// of the route it is heading for — the one after the leg it is nearest —
+// then on along the route and to the threshold.
+func DistanceToGo(pos airport.LatLon, route []airport.LatLon, threshold airport.LatLon) float64 {
+	nm := func(a, b airport.LatLon) float64 { return calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon) }
+	pts := append(append([]airport.LatLon(nil), route...), threshold)
+	// The leg it is on: the one it is least off (the detour via pos is
+	// shortest); before the first leg, it flies to the first point.
+	next, best := 0, math.Inf(1)
+	for i := 0; i+1 < len(pts); i++ {
+		excess := nm(pts[i], pos) + nm(pos, pts[i+1]) - nm(pts[i], pts[i+1])
+		if excess < best {
+			best, next = excess, i+1
+		}
+	}
+	if next == 1 && nm(pos, pts[1]) > nm(pts[0], pts[1]) {
+		next = 0 // not at the route yet: to its first point
+	}
+	d := nm(pos, pts[next])
+	for i := next; i+1 < len(pts); i++ {
+		d += nm(pts[i], pts[i+1])
+	}
+	return d
+}

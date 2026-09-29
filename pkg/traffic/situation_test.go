@@ -211,3 +211,67 @@ func TestOtherArrivalTakesSlot(t *testing.T) {
 		t.Fatal("no later ETA")
 	}
 }
+
+// TestEstimateMovesByMinutes: an estimate that drifts by seconds each tick
+// is not announced again.
+func TestEstimateMovesByMinutes(t *testing.T) {
+	n := 0
+	drift := time.Duration(0)
+	check := func(s Situation) []Advice {
+		var out []Advice
+		for _, f := range s.Flights {
+			out = append(out, Advice{Key: f.Key(), Action: AdviceEstimate, Until: f.STA.Add(10*time.Minute + drift)})
+		}
+		return out
+	}
+	m := NewTrafficManager(&fakeSpawner{}, ManagerOptions{MinTurn: -1, Checks: []SituationCheck{check}, OnEvent: func(e ManagerEvent) {
+		if e.Kind == EventEstimated {
+			n++
+		}
+	}}, "LKPR")
+	m.Add([]Flight{flight("DLH1", "EDDF", "LKPR", t0.Add(3*time.Hour), time.Hour)})
+	for i := 0; i < 20; i++ {
+		drift = time.Duration(i) * 2 * time.Second
+		m.Tick(t0.Add(time.Duration(i) * time.Second))
+	}
+	if n != 1 {
+		t.Fatalf("%d estimate events for a 40 s drift, want 1", n)
+	}
+	drift = 2 * time.Minute
+	m.Tick(t0.Add(time.Minute))
+	if n != 2 {
+		t.Fatalf("%d estimate events after a 2 min move, want 2", n)
+	}
+}
+
+// TestLandingFlowOneDepartureGap: with departures waiting, one gap is
+// opened in the arrival stream, not one between every two arrivals.
+func TestLandingFlowOneDepartureGap(t *testing.T) {
+	var fs []ManagedFlight
+	for i := 0; i < 5; i++ {
+		fs = append(fs, ManagedFlight{Flight: flight("DLH"+string(rune('1'+i)), "EDDF", "LKPR", t0.Add(time.Duration(i)*time.Minute), time.Hour), Kind: "arrival", Airport: "LKPR"})
+	}
+	for i := 0; i < 2; i++ {
+		fs = append(fs, ManagedFlight{Flight: flight("CSA"+string(rune('1'+i)), "LKPR", "EDDF", t0, time.Hour), Kind: "departure", Airport: "LKPR", Status: FlightTaxiing})
+	}
+	o := ManagerOptions{}
+	o.defaults()
+	now := t0.Add(-time.Hour)
+	var etas []time.Time
+	for _, a := range CheckLandingFlow(0, 0)(Situation{Now: now, Airport: "LKPR", Flights: fs, Options: o}) {
+		if a.Action == AdviceEstimate {
+			etas = append(etas, a.Until)
+		}
+	}
+	if len(etas) != 4 {
+		t.Fatalf("%d estimates for 4 arrivals behind the first", len(etas))
+	}
+	// Gaps: 6 min (the departure gap) once, then 3 min.
+	sta0 := t0.Add(time.Hour) // DLH1's STA
+	want := []time.Duration{6, 9, 12, 15}
+	for i, e := range etas {
+		if d := e.Sub(sta0); d != want[i]*time.Minute {
+			t.Errorf("arrival %d estimated %v after the first, want %v min", i+2, d, want[i])
+		}
+	}
+}
