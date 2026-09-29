@@ -98,8 +98,12 @@ func StretchLeg(a, b airport.LatLon, extraNM float64, side float64) airport.LatL
 	return airport.LatLon{Lat: lat, Lon: lon}
 }
 
-// ErrNotOnProcedure is returned when an arrival is not flying its STAR.
-var ErrNotOnProcedure = errors.New("traffic: not flying the STAR")
+// ErrNotOnProcedure is returned when an arrival is not flying its STAR;
+// ErrHolding when it is in a hold (it loses its delay there).
+var (
+	ErrNotOnProcedure = errors.New("traffic: not flying the STAR")
+	ErrHolding        = errors.New("traffic: holding")
+)
 
 // AbsorbDelay has an arrival on its STAR (MSFS AI, before the final) lose
 // delay: slower on the rest of the STAR and, if need be, a dog-leg on its
@@ -112,6 +116,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	defer c.mu.Unlock()
 	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 3 {
 		return Absorption{}, ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return Absorption{}, ErrHolding
 	}
 	pos := c.last.Position
 	wps := c.proc.Waypoints
@@ -198,6 +205,13 @@ func (c *ArrivalController) ProcedureRoute() []airport.LatLon {
 		return nil
 	}
 	wps := c.proc.Waypoints
+	if h := c.holding; h != nil { // from the fix on, where it will go on
+		out := []airport.LatLon{h.hold.Fix}
+		for _, w := range wps[min(h.resume, len(wps)):] {
+			out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
+		}
+		return out
+	}
 	next := nextWaypoint(c.last.Position, wps)
 	var out []airport.LatLon
 	for _, w := range wps[next:] {

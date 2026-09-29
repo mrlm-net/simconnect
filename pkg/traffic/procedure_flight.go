@@ -233,6 +233,11 @@ func (c *ArrivalController) startProcedure() error {
 func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	pos := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}
 	c.last.Position, c.last.AGL, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pos, m.AGL, m.Heading, m.GroundKts, false
+	if c.holding != nil { // in a hold: no join until it leaves (#392)
+		c.holdFrame(pos)
+		c.emit(nil, false)
+		return
+	}
 	t, far := c.plan.End.Threshold, c.proc.Join
 	along := calc.AlongTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon)
 	cross := math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon))

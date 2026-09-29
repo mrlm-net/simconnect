@@ -304,7 +304,8 @@
       <tr><td>✈</td><td>show my aircraft</td></tr>
       <tr><td>⛶</td><td>full screen, panel included (Esc leaves)</td></tr>
       <tr><td>◨</td><td>hide the panel for the map alone, and show it again</td></tr>
-      <tr><td>card</td><td>click an aircraft's card to select it (yellow on the map); click it again, or Esc, to deselect</td></tr>
+      <tr><td>card</td><td>click an aircraft's card to select it (yellow on the map); click it again, or Esc, to deselect. An arrival in the air shows the route it still flies (dashed) and its hold</td></tr>
+      <tr><td>🎯</td><td>follow the aircraft: the map keeps it in the middle (again, or Esc: stop)</td></tr>
       <tr><td>🌐</td><td>world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
       <tr><td>📍</td><td>on a card, or a row of Layers → Live traffic: show that aircraft</td></tr>
       <tr><td><i>click</i></td><td>a stand: pick it · an aircraft: details · a taxiway or point: raw data</td></tr>
@@ -1156,7 +1157,9 @@ $('safeOn').addEventListener('change', pollTraffic);
 // progressive taxi by clicking route points ──
 let ctlSelected = null;
 let ctlViews = [];
-const ACTION_LABEL = { pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
+// Follow: the map keeps the aircraft of this id in the middle.
+let ctlFollow = 0;
+const ACTION_LABEL = { follow: '🎯', pushback: 'Pushback', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -1208,6 +1211,20 @@ function drawControl() {
     pollTraffic();
   }
   const v = ctlViews.find((x) => x.id === ctlSelected);
+  // An arrival in the air: the STAR and approach still to fly (with any
+  // dog-leg), dashed, and its hold with the level.
+  if (v && v.airRoute && v.airRoute.length) {
+    const air = [[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])];
+    L.polyline(air, { renderer, color: '#fff', weight: 6, opacity: 0.6, interactive: false }).addTo(groups.control);
+    L.polyline(air, { renderer, color: '#ff2bd6', weight: 3, dashArray: '8 6', interactive: false }).addTo(groups.control);
+    v.airRoute.forEach((p) => L.circleMarker([p.lat, p.lon], { renderer, radius: 3, color: '#ff2bd6', fillOpacity: 1, interactive: false }).addTo(groups.control));
+  }
+  if (v && v.hold) {
+    const rt = v.hold.racetrack.map((p) => [p.lat, p.lon]);
+    L.polyline([...rt, rt[0]], { renderer, color: '#4fc3f7', weight: 3, interactive: false }).addTo(groups.control);
+    L.marker(rt[rt.length - 1], { icon: L.divIcon({ className: 'lbl', html: `hold ${esc(v.hold.ident)} ${Math.round(v.hold.altFt)} ft`, iconSize: null }), interactive: false }).addTo(groups.control);
+  }
+  if (v && ctlFollow === v.id && v.position && (v.position.lat || v.position.lon)) map.panTo([v.position.lat, v.position.lon], { animate: true });
   // A completed departure flies on under MSFS AI: its last injected position
   // (the hand-over at 1500 ft) would be a stale marker.
   if (!v || !v.route || v.state === 'complete') return;
@@ -1236,11 +1253,11 @@ function renderControl() {
   const views = [...ctlViews].sort((a, b) => (v => v.done ? 2 : waits(v) ? 0 : 1)(a) - (v => v.done ? 2 : waits(v) ? 0 : 1)(b) || a.id - b.id);
   $('ctlList').innerHTML = views.length ? views.map((v) => {
     const status = [v.state, v.deicing && 'de-icing ❄', v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
-    const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : ''}>${ACTION_LABEL[a] || a}</button>`;
+    const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : a === 'follow' ? (ctlFollow === v.id ? ' title="Stop following" style="background:#1e5a7a;color:#fff"' : ' title="Follow on the map (and show its route)"') : ''}>${ACTION_LABEL[a] || a}</button>`;
     const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
     const acts = (v.actions || []).filter((a) => a !== 'upto');
     const ordered = [...acts.filter((a) => urgent.includes(a)), ...acts.filter((a) => !urgent.includes(a))]
-      .concat(v.position && (v.position.lat || v.position.lon) ? ['locate'] : []);
+      .concat(v.position && (v.position.lat || v.position.lon) ? ['locate', 'follow'] : []);
     const buttons = `<div class="acts">${ordered.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
     const route = v.kind === 'arrival' ? `arr · RWY ${v.runway} → ${v.stand}` : `dep · ${v.stand} → RWY ${v.runway}`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
@@ -1385,6 +1402,14 @@ for (const id of ['rMode', 'rTo', 'rPick']) $(id).addEventListener('change', upd
 updateSpawn();
 $('ctlList').addEventListener('click', (e) => {
   const b = e.target.closest('button');
+  if (b && b.dataset.act === 'follow') {
+    // Follow selects it too, so its route shows; again: stop following.
+    const id = Number(b.dataset.id);
+    ctlFollow = ctlFollow === id ? 0 : id;
+    if (ctlFollow) ctlSelected = id;
+    renderControl(); drawControl();
+    return;
+  }
   if (b && b.dataset.act === 'locate') {
     const v = ctlViews.find((x) => x.id === Number(b.dataset.id));
     if (v) locate(v.position.lat, v.position.lon, v.tail);
@@ -1393,11 +1418,11 @@ $('ctlList').addEventListener('click', (e) => {
   if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
   const row = e.target.closest('[data-sel]');
   // Clicking the selected card again deselects it (0: none, by choice).
-  if (row) { const id = Number(row.dataset.sel); ctlSelected = ctlSelected === id ? 0 : id; renderControl(); drawControl(); }
+  if (row) { const id = Number(row.dataset.sel); ctlSelected = ctlSelected === id ? 0 : id; if (!ctlSelected) ctlFollow = 0; renderControl(); drawControl(); }
 });
 // Esc deselects the aircraft.
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && ctlSelected) { ctlSelected = 0; renderControl(); drawControl(); }
+  if (e.key === 'Escape' && (ctlSelected || ctlFollow)) { ctlSelected = 0; ctlFollow = 0; renderControl(); drawControl(); }
 });
 
 $('trafficOn').addEventListener('change', pollTraffic);

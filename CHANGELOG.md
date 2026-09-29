@@ -26,9 +26,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - `PlanAbsorption`, `StretchLeg`, `ProcedureRoute`;
   - the map has arrivals absorb their sequencer delays and logs it as ATC would.
 - `pkg/nav` `RunwaySelector`: the runway in use holds through wind shifts. It changes when out of limits (gusts included), or when another has been better for `RunwayChangeAfter` (10 min). The map uses it for traffic and the Charts panel.
+- `pkg/traffic` holding patterns (#392), our own (the sim's data is unusable):
+  - `Hold` with ICAO leg times and speeds, rate-one turns and the direct/teardrop/parallel entry by heading (`Entry`, `EntryPoints`, `Racetrack`);
+  - flown as a waypoint chain that wraps once the entry lap is done;
+  - `HoldStack`: 1000 ft levels, leaving from the bottom, those above stepping down;
+  - `ArrivalController.HoldFix`, `EnterHold`, `HoldAltitude`, `LeaveHold`, `Holding`;
+  - on the map, arrivals hold with what speed and stretching cannot absorb, and are released by the sequencer.
+- `examples/airport-map`: a selected arrival in the air shows the route it still flies (dashed, with any dog-leg) and its hold with the level. 🎯 follows an aircraft: the map keeps it in the middle. `/api/control` has `airRoute` and `hold`.
 
 ### Fixed
 
+- `pkg/traffic` `ApproachSequencer`: first come, first served by the unconstrained time. Each arrival keeps the prediction it had when it joined, so losing a delay (slower, longer, holding) no longer costs it its place to a newcomer. Live, four newcomers had been sequenced ahead of eight delayed arrivals.
+- `examples/airport-map`: nobody appears on top of other traffic. Every arrival spawned at a STAR entry (by hand, scheduled or handed over from en route) waits while an airborne aircraft is within 5 NM and 2000 ft of it, or one appeared there in the last minute. Live, arrivals spawned by hand at one fix within seconds had flown on top of each other.
 - `pkg/traffic` `ApproachSequencer`: arrivals already in the sequence keep their order unless their predictions part by more than `SwapMargin` (90 s), and never land before the one ahead. Live, three arrivals appearing together swapped places every second.
 - `pkg/nav` tests: an import cycle (nav tests → manager → traffic → nav, since `traffic.ConditionsFrom`) broke them. The manager check moves to an external test package.
 - `examples/airport-map`: an aircraft can be deselected (click its card again, or Esc); nothing selects one back by itself, and removing the selected one leaves none selected.

@@ -95,7 +95,9 @@ type ApproachSequencer struct {
 	mu   sync.Mutex
 	last map[string]SequenceEntry
 	seq  []SequenceEntry
-	cond ApproachConditions
+	// first is each arrival's prediction when it joined the sequence.
+	first map[string]time.Time
+	cond  ApproachConditions
 }
 
 // NewApproachSequencer creates the sequencer of a runway end ("24").
@@ -112,7 +114,7 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	if opts.SwapMargin == 0 {
 		opts.SwapMargin = 90 * time.Second
 	}
-	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}}
+	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{}}
 }
 
 // Runway is the sequencer's runway end.
@@ -184,6 +186,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		a   ApproachAircraft
 		eta time.Time
 		at  time.Time
+		key time.Time // the order: first come, first served
 	}
 	var fixed, free []slot
 	for _, a := range arrivals {
@@ -205,21 +208,35 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	}
 	byETA(fixed)
 	byETA(free)
-	// A sequence once given is kept: arrivals already in it keep their
-	// order unless their predictions part by more than SwapMargin.
+	// First come, first served by the unconstrained time: each arrival
+	// keeps the prediction it had when it joined the sequence, so losing a
+	// delay (slower, longer, holding) never costs it its place to a
+	// newcomer. Its key is the earlier of that and its prediction now (a
+	// shortcut still moves it up), a newcomer's its prediction; keys within
+	// SwapMargin keep the order they had.
 	s.mu.Lock()
 	prev := map[string]int{}
 	for cs, e := range s.last {
 		prev[cs] = e.Number
 	}
+	for i, f := range free {
+		first, ok := s.first[f.a.Callsign]
+		if !ok || f.eta.Before(first) {
+			first = f.eta
+		}
+		if !ok {
+			s.first[f.a.Callsign] = f.eta
+		}
+		free[i].key = first
+	}
 	s.mu.Unlock()
 	sort.SliceStable(free, func(i, j int) bool {
 		pi, oki := prev[free[i].a.Callsign]
 		pj, okj := prev[free[j].a.Callsign]
-		if oki && okj && absDuration(free[i].eta.Sub(free[j].eta)) <= s.opts.SwapMargin {
+		if oki && okj && absDuration(free[i].key.Sub(free[j].key)) <= s.opts.SwapMargin {
 			return pi < pj
 		}
-		return free[i].eta.Before(free[j].eta)
+		return free[i].key.Before(free[j].key)
 	})
 	planned := fixed // sorted by landing time
 	var lastFree *slot
@@ -288,6 +305,7 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 	for cs, e := range s.last {
 		if !now[cs] {
 			delete(s.last, cs)
+			delete(s.first, cs)
 			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: e.Number, Gone: true})
 		}
 	}

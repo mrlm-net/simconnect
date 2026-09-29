@@ -204,6 +204,10 @@ func (s *scheduler) handovers(now time.Time) {
 		entry := e.arrive.route[0].Position
 		p, seen := pos[e.objectID]
 		if seen && calc.HaversineNM(p.Lat, p.Lon, entry.Lat, entry.Lon) < handoverNM || now.After(e.f.STA.Add(-lead).Add(handoverAfter)) {
+			// Not onto other traffic at the entry: the handover waits.
+			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" {
+				continue
+			}
 			e.handing = true
 			due = append(due, e)
 		}
@@ -248,17 +252,15 @@ func (s *scheduler) removeEnroute(callsign string) bool {
 // nearPoint names an airborne aircraft near a point, "" when clear (other
 // traffic only when respected).
 func (s *scheduler) nearPoint(p airport.LatLon, altFt float64) string {
-	ignore := s.mgr.Options().Others == traffic.OtherIgnore
-	for _, a := range s.cc.world.Aircraft() {
-		if a.OnGround || ignore && !a.Ours {
-			continue
-		}
-		if calc.HaversineNM(a.Position.Lat, a.Position.Lon, p.Lat, p.Lon) < entryClearNM && (altFt == 0 || math.Abs(a.AltFt-altFt) < entryClearFt) {
-			if a.Tail != "" {
+	if s.mgr.Options().Others == traffic.OtherIgnore {
+		// Ignoring other traffic: only ours keeps its distance.
+		for _, a := range s.cc.world.Aircraft() {
+			if a.Ours && !a.OnGround && calc.HaversineNM(a.Position.Lat, a.Position.Lon, p.Lat, p.Lon) < entryClearNM &&
+				(altFt == 0 || math.Abs(a.AltFt-altFt) < entryClearFt) {
 				return a.Tail
 			}
-			return a.Title
 		}
+		return ""
 	}
-	return ""
+	return s.cc.nearAirborne(p, altFt, "", time.Now())
 }
