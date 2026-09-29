@@ -215,7 +215,7 @@
     <h2>Quick start</h2>
     <ol>
       <li>Type an ICAO and <b>Load</b> (the simulator must be running; ↻ fetches again).</li>
-      <li><b>Traffic</b> tab: pick <b>Kind</b> and <b>Runway</b>, click a stand on the map (or tick <i>free stand</i>); a departure can pick an <b>Entry</b>, an arrival an <b>Exit</b>. The route shows in magenta.</li>
+      <li><b>Traffic</b> tab: pick <b>Kind</b> and <b>Runway</b> (<i>Active</i> follows the runway in use from the weather; pick one to override), click a stand on the map (or tick <i>free stand</i>); a departure can pick an <b>Entry</b>, an arrival an <b>Exit</b>. The route shows in magenta.</li>
       <li><b>▶ Spawn</b>. The aircraft gets a card under <b>Aircraft</b>; give it its clearances there.</li>
       <li>Or press <b>▶ Start game</b> and work all traffic yourself.</li>
     </ol>
@@ -651,11 +651,39 @@ $('pFit').addEventListener('click', () => {
   if (b.isValid()) map.fitBounds(b.pad(0.05));
 });
 
+// The runway: "Active" by default — the runway in use from the weather
+// (departures and arrivals may differ), followed when it changes — or a
+// particular runway end to override it.
+let activeUse = null; // {departure, arrival} from /api/airportinfo
 function fillRunwayEnds() {
-  const sel = $('rTo'), keep = sel.value;
+  const sel = $('rTo'), keep = sel.value || 'active';
   const ends = data.runways.flatMap((r) => [rwyEnd(r.primaryNumber, r.primaryDesignator), rwyEnd(r.secondaryNumber, r.secondaryDesignator)]);
-  sel.innerHTML = ends.map((e) => `<option>${esc(e)}</option>`).join('');
-  if (ends.includes(keep)) sel.value = keep;
+  sel.innerHTML = `<option value="active">${activeLabel()}</option>` + ends.map((e) => `<option>${esc(e)}</option>`).join('');
+  sel.value = keep === 'active' || ends.includes(keep) ? keep : 'active';
+  pollAirportInfo(); // the runway in use
+}
+function activeLabel() {
+  const r = activeUse && (arrival() ? activeUse.arrival : activeUse.departure);
+  return r ? `Active (${r})` : 'Active (runway in use)';
+}
+// selectedRunway is the runway end to route to: the one picked, or the
+// active one now.
+function selectedRunway() {
+  const v = $('rTo').value;
+  if (v !== 'active') return v;
+  const r = activeUse && (arrival() ? activeUse.arrival : activeUse.departure);
+  if (r) return r;
+  const first = $('rTo').options[1];
+  return first ? first.value : '';
+}
+// setActiveUse takes the runway in use; when it changes while "Active" is
+// picked, the route follows.
+function setActiveUse(use) {
+  const before = selectedRunway();
+  activeUse = use;
+  const opt = $('rTo').querySelector('option[value="active"]');
+  if (opt) opt.textContent = activeLabel();
+  if ($('rTo').value === 'active' && selectedRunway() !== before) loadChoices();
 }
 
 function selectFrom(p) {
@@ -667,7 +695,7 @@ function selectFrom(p) {
 // loadChoices fetches the entries or exits of the chosen runway end, fills
 // the picker and marks them on the map (click a marker to pick it).
 async function loadChoices() {
-  const rwy = $('rTo').value, arr = arrival();
+  const rwy = selectedRunway(), arr = arrival();
   $('rStandLbl').textContent = arr ? 'To stand' : 'From stand';
   $('rPickLbl').textContent = arr ? 'Exit' : 'Entry';
   choices = [];
@@ -790,7 +818,7 @@ async function computeRoute() {
   groups.route.clearLayers();
   drawChoices();
   if (!data || !routeFrom) { $('rInfo').textContent = ''; return; }
-  const rwy = $('rTo').value, pick = $('rPick').value, arr = arrival();
+  const rwy = selectedRunway(), pick = $('rPick').value, arr = arrival();
   const stand = parkingLabel(routeFrom);
   $('rInfo').textContent = arr ? `Routing ${rwy} → ${stand}…` : `Routing ${stand} → ${rwy}…`;
   try {
@@ -1030,7 +1058,7 @@ async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
   if (!data || (!routeFrom && !auto)) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot), or tick "Assign a free stand".</span>'; return; }
   const body = {
-    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: $('rTo').value, model: $('cModel').value,
+    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: selectedRunway(), model: $('cModel').value,
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
@@ -1235,7 +1263,7 @@ $('cAutoStand').addEventListener('change', updateSpawn);
 // only the options of the route mode.
 function updateSpawn() {
   for (const el of document.querySelectorAll('.fpHere')) el.textContent = data ? data.icao : '';
-  const arr = arrival(), auto = $('cAutoStand').checked, rwy = $('rTo').value || '?';
+  const arr = arrival(), auto = $('cAutoStand').checked, rwy = selectedRunway() || '?';
   const stand = auto ? 'a free stand' : routeFrom ? parkingLabel(routeFrom) : null;
   const entry = !arr && $('rPick').value ? ` at ${$('rPick').value}` : '';
   for (const el of document.querySelectorAll('.dep-only')) el.hidden = arr;
@@ -1289,8 +1317,8 @@ async function pollGame() {
 setInterval(pollGame, 2000);
 $('gStart').addEventListener('click', async () => {
   if (!data) return;
-  const body = { on: !gameOn, icao: data.icao, runway: $('rTo').value, intervalSec: Number($('gEvery').value) * 60 || 180 };
-  if (body.on && !$('rTo').value) { $('gScore').textContent = 'Pick a runway in Route first.'; return; }
+  // "active": each new flight gets the runway in use when it appears.
+  const body = { on: !gameOn, icao: data.icao, runway: $('rTo').value || 'active', intervalSec: Number($('gEvery').value) * 60 || 180 };
   await fetch('/api/game', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   pollGame();
 });
@@ -1321,6 +1349,7 @@ async function pollAirportInfo() {
     $('apInfo').innerHTML = `<b>${esc(a.icao)}</b> ${esc(a.name)}<table>` +
       `<tr><td>Elevation</td><td>${a.elevationFt.toFixed(0)} ft · variation ${mv}</td></tr>${rows}` +
       `<tr><td>Transition</td><td>altitude ${(lim.TransitionAltitudeFt || 0).toFixed(0)} ft${lim.PreferredRunways && lim.PreferredRunways.length ? ' · preferred ' + esc(lim.PreferredRunways.join(', ')) : ''}</td></tr></table>`;
+    if (a.use) setActiveUse(a.use);
     if (a.weather) {
       const w = a.weather, u = a.use;
       const wind = w.WindKts < 1 ? 'calm' : `${Math.round(((w.WindDirTrue - a.magVar) % 360 + 360) % 360).toString().padStart(3, '0')}° ${w.WindKts.toFixed(0)} kt${w.GustKts > w.WindKts ? ' G' + w.GustKts.toFixed(0) : ''}`;
@@ -1363,7 +1392,11 @@ $('refresh').addEventListener('click', () => load($('icao').value, true));
 $('labels').addEventListener('change', () => { if (data) drawPaths(); });
 $('overlaps').addEventListener('change', drawOverlaps);
 $('rTo').addEventListener('change', loadChoices);
-$('rMode').addEventListener('change', loadChoices);
+$('rMode').addEventListener('change', () => { // arrivals and departures may use different runways
+  const opt = $('rTo').querySelector('option[value="active"]');
+  if (opt) opt.textContent = activeLabel();
+  loadChoices();
+});
 $('rPick').addEventListener('change', computeRoute);
 $('rRwyPaths').addEventListener('change', computeRoute);
 const initial = new URLSearchParams(location.search).get('icao') || 'LKPR';

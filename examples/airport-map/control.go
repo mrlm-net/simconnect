@@ -281,6 +281,9 @@ const (
 )
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
+	if r.Runway == "" || strings.EqualFold(r.Runway, "active") {
+		r.Runway = cc.activeRunway(g, r.Kind == "arrival")
+	}
 	cc.mu.Lock()
 	cc.next++
 	n := cc.next
@@ -670,6 +673,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		if req.Runway == "" || strings.EqualFold(req.Runway, "active") {
+			req.Runway = cc.activeRunway(g, req.Kind == "arrival")
+		}
 		if req.Other != "" {
 			p, err := planFor(r.Context(), st, g, req)
 			if err != nil {
@@ -745,6 +751,38 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// activeRunway is the runway in use at g's airport now: from the weather
+// (wind, limits, preferential runways), else the first preferred runway,
+// else the first runway end. Departures and arrivals may differ.
+func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
+	var procs *airport.Procedures
+	if cc.procedures != nil {
+		if p, ok := cc.procedures(g.Layout.ICAO); ok {
+			procs = &p
+		}
+	}
+	lim := airport.LimitsFor(g.Layout, procs)
+	if cc.weather != nil {
+		if w := cc.weather(); w != nil {
+			use := nav.ActiveRunways(g.Layout, *w, nav.RunwayLimitsFrom(lim))
+			end := use.Departure
+			if arrival {
+				end = use.Arrival
+			}
+			if end.Name != "" {
+				return end.Name
+			}
+		}
+	}
+	if len(lim.PreferredRunways) > 0 {
+		return lim.PreferredRunways[0]
+	}
+	if len(g.Layout.Runways) > 0 {
+		return g.Layout.Runways[0].Primary.Name
+	}
+	return ""
 }
 
 // deicingFor is the de-icing a departure asks for (#323): on the stand, at

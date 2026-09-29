@@ -121,7 +121,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		}
 		g.arrival = !g.arrival
 		tail := fmt.Sprintf("%s%d", gameAirlines[rand.IntN(len(gameAirlines))], 100+rand.IntN(900))
-		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, Model: "FSLTL A320 Air France SL", Tail: tail,
+		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, // "active": the runway in use at spawn time Model: "FSLTL A320 Air France SL", Tail: tail,
 			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto"}
 		if it, err := cc.spawn(graph, r); err != nil {
 			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)
@@ -286,6 +286,9 @@ func registerGame(mux *http.ServeMux, st *state) {
 		defer g.mu.Unlock()
 		if req.On && !g.On {
 			g.ICAO, g.Runway = strings.ToUpper(req.ICAO), req.Runway
+			if g.Runway == "" {
+				g.Runway = "active"
+			}
 			g.Interval = req.Interval
 			if g.Interval <= 0 {
 				g.Interval = gameDefaultInterval.Seconds()
