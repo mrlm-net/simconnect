@@ -9,25 +9,38 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Added
+## [0.14.0] - 2026-09-29
 
-- `examples/airport-map` de-icing pads picked from the taxi points (Charts → De-icing pads; kept per airport in `deicing.json` in the dump directory; `GET/PUT /api/deicing`), used by de-icing at a pad and automatic de-icing, shown as ❄ badges (#323)
-
-### Fixed
-
-- `pkg/traffic`: a pushback under way has priority. It reports what it still sweeps (`GroundPicture.ReportPush`), taxiing traffic whose path crosses it gives way, and the push stops only for an aircraft actually in the way. Live, the push had been stopping for a departure taxiing behind it, which then went through (#334).
+Fine tuning after live sessions at LKPR: ground traffic that behaves like real traffic, natural timing, de-icing, and an airport map built for playing.
 
 ### Added
 
-- `pkg/traffic` de-icing (#323): `TaxiRequest.Deice` — on the stand before the push, or at a pad the route passes (stop with engines running, taxi light off, then on); `Deicing`, `DefaultDeicingDwell`, `TaxiEvent.Deicing`; `airport.DeicingPad`, `Limits.DeicingPads`, `Graph.NearestNode`; `nav.IcingConditions`; the map's De-icing option (automatic from the weather in the game) and ❄ pads
-
-- `pkg/traffic` natural timing (#343): each aircraft draws its own factor for the beacon lead, taxi-light delay, tug disconnect, flap timing, gear-up delay, taxi speed and pushback pace (`BeaconLeadSpread`, `TaxiLightSpread`, `TugDisconnectSpread`, `FlapsSpread`, `GearUpSpread`, `TaxiSpeedSpread`, `PushbackSpeedSpread`; 0 gives the tunable), `TaxiWithSeed` / `ArrivalWithSeed` for reproducible runs, `SimObjectTug.SetDisconnectDelay`
-- `pkg/traffic` pushback and traffic behind the stand: a cleared pushback waits while traffic is in, or taxiing through, the corridor it sweeps, and stops under way for traffic moving into it (`PushClearMarginMeters`, `TaxiEvent.PushbackHeld`); the map shows *waiting for traffic behind* (#334)
-- `examples/airport-map` Charts: the airport (elevation, variation, runways with their best approaches, transition altitude, preferred runways), the weather at the user aircraft with the runway in use and wind components, and the ATIS with a Listen button (spoken form); `GET /api/airportinfo`
+- `pkg/traffic` pushback and traffic behind the stand (#334):
+  - A cleared pushback waits while another aircraft is in, or taxiing through, the corridor it sweeps (`PushClearMarginMeters`, `TaxiEvent.PushbackHeld`).
+  - Under way it has priority: it reports what it still sweeps (`GroundPicture.ReportPush`), taxiing traffic whose path crosses it gives way, and it stops only for an aircraft actually in the way.
+- `pkg/traffic` natural timing (#343): each aircraft draws its own factor for the beacon lead, taxi-light delay, tug disconnect, flap timing, gear-up delay, taxi speed and pushback pace.
+  - Spreads: `BeaconLeadSpread`, `TaxiLightSpread`, `TugDisconnectSpread`, `FlapsSpread`, `GearUpSpread`, `TaxiSpeedSpread`, `PushbackSpeedSpread`; a spread of 0 gives the tunable.
+  - `TaxiWithSeed` / `ArrivalWithSeed` for reproducible runs; `SimObjectTug.SetDisconnectDelay`.
+- `pkg/traffic` de-icing (#323): `TaxiRequest.Deice`, either on the stand before the push, or at a pad the route passes (stop with engines running and the taxi light off, treated, then on).
+  - Types and helpers: `Deicing`, `DefaultDeicingDwell`, `TaxiEvent.Deicing`; `airport.DeicingPad`, `Limits.DeicingPads`, `Graph.NearestNode`; `nav.IcingConditions` (at or below +3 °C with visible moisture).
+- `examples/airport-map`:
+  - De-icing: pads picked from the taxi points (Charts → De-icing pads, kept per airport in `deicing.json`, `GET/PUT /api/deicing`, ❄ badges); a De-icing spawn option (off, automatic from the weather, on the stand, at a pad); the game de-ices automatically.
+  - Charts: the airport (elevation, variation, runways with their best approaches, transition altitude, preferred runways), the weather at the user aircraft with the runway in use and wind components, and the ATIS with a Listen button (`GET /api/airportinfo`).
+  - Locate buttons (✈ your aircraft, 📍 traffic and controlled aircraft); ⛶ full screen with the panel, ◨ hides or shows the panel.
 
 ### Changed
 
-- `examples/airport-map` GUI revision (#357): one tab per task (Traffic, Charts, Layers, ? quick reference), options and custom routes folded away, one-line hints with details behind ⓘ; aircraft cards show who waits for a clearance first, the state and the commands (urgent first), with the model and lights on hover; compact aircraft labels (details on click); taxiway names only when zoomed in; the game score over the map while playing; ⛶ full screen with the panel, ◨ hides or shows the panel; the Charts summary counts what it draws (VOR/NDB, and waypoints with their procedure)
+- `examples/airport-map` GUI revision (#357):
+  - One tab per task: Traffic, Charts, Layers, and ? (a quick reference handbook).
+  - Options and custom routes folded away; one-line hints with details behind ⓘ.
+  - Aircraft cards: who waits for a clearance comes first; state and commands, urgent ones first; the model and lights on hover.
+  - Map: compact aircraft labels (details on click), taxiway names only when zoomed in, the game score over the map while playing.
+- `examples/airport-map` approaches are listed per entry, via each transition and direct (vectors to the final), each with the same final and missed approach; the selected aircraft's own icon is highlighted instead of a dot under it.
+
+### Fixed
+
+- `pkg/traffic`: the pushback-held flag clears once the push is done.
+- `examples/airport-map`: the Charts summary counts what it draws; the procedure list says to tick a kind when none is ticked.
 
 ## [0.13.0] - 2026-09-28
 
