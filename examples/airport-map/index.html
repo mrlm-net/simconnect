@@ -304,6 +304,7 @@
       <tr><td>✈</td><td>show my aircraft</td></tr>
       <tr><td>⛶</td><td>full screen, panel included (Esc leaves)</td></tr>
       <tr><td>◨</td><td>hide the panel for the map alone, and show it again</td></tr>
+      <tr><td>card</td><td>click an aircraft's card to select it (yellow on the map); click it again, or Esc, to deselect</td></tr>
       <tr><td>🌐</td><td>world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
       <tr><td>📍</td><td>on a card, or a row of Layers → Live traffic: show that aircraft</td></tr>
       <tr><td><i>click</i></td><td>a stand: pick it · an aircraft: details · a taxiway or point: raw data</td></tr>
@@ -1193,7 +1194,7 @@ async function ctlAct(id, action, node) {
   try {
     const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
-    if (action === 'remove' && ctlSelected === id) ctlSelected = null;
+    if (action === 'remove' && ctlSelected === id) ctlSelected = 0; // none, not the next one
     pollControl();
   } catch (e) {
     $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
@@ -1262,7 +1263,7 @@ async function pollControl() {
     if (!res.ok) return;
     ctlViews = await res.json();
     ctlViews.sort((a, b) => a.id - b.id);
-    if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id;
+    if (ctlSelected === null && ctlViews.length) ctlSelected = ctlViews[0].id; // first load only: 0 is deselected
     renderControl();
     drawControl();
     drawStands();
@@ -1391,7 +1392,12 @@ $('ctlList').addEventListener('click', (e) => {
   }
   if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
   const row = e.target.closest('[data-sel]');
-  if (row) { ctlSelected = Number(row.dataset.sel); renderControl(); drawControl(); }
+  // Clicking the selected card again deselects it (0: none, by choice).
+  if (row) { const id = Number(row.dataset.sel); ctlSelected = ctlSelected === id ? 0 : id; renderControl(); drawControl(); }
+});
+// Esc deselects the aircraft.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ctlSelected) { ctlSelected = 0; renderControl(); drawControl(); }
 });
 
 $('trafficOn').addEventListener('change', pollTraffic);
