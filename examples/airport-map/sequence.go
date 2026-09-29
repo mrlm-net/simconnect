@@ -42,6 +42,17 @@ func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{}}
 }
 
+// rejoin sequences an arrival at icao afresh after a go-around (#394).
+func (q *sequences) rejoin(icao, tail string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for k, s := range q.seq {
+		if i, _, _ := strings.Cut(k, " "); i == icao {
+			s.Rejoin(tail)
+		}
+	}
+}
+
 // sequencer is the sequencer of an airport's runway, created on first use.
 func (q *sequences) sequencer(icao, runway string) *traffic.ApproachSequencer {
 	q.mu.Lock()
@@ -239,14 +250,20 @@ func (q *sequences) tick(now time.Time) {
 		}
 		return end.Threshold, ok
 	}
-	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, fixed bool) {
+	// flying: route starts at the point it flies to (DistanceVia); else it
+	// is the planned route, found from where the aircraft is (DistanceToGo).
+	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed bool) {
 		t, ok := threshold(icao, rwy)
 		if !ok {
 			return
 		}
+		dtg := traffic.DistanceToGo(p, route, t)
+		if flying {
+			dtg = traffic.DistanceVia(p, route, t)
+		}
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
-			DistanceToGoNM: traffic.DistanceToGo(p, route, t), GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed})
+			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed})
 	}
 	// Controlled arrivals, airborne.
 	q.cc.mu.Lock()
@@ -272,7 +289,13 @@ func (q *sequences) tick(now time.Time) {
 		if p == (airport.LatLon{}) {
 			continue
 		}
-		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false)
+		// On its procedure: what it still flies (dog-legs, a go-around's
+		// circuit); on the final: the planned approach from here.
+		if r := it.arr.ProcedureRoute(); len(r) > 0 {
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
+			continue
+		}
+		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
 	}
 	// Enroute arrivals, on their way to the STAR entry.
 	q.s.mu.Lock()
@@ -296,7 +319,7 @@ func (q *sequences) tick(now time.Time) {
 		if e.arrive.plan != nil {
 			rwy = e.arrive.plan.ArrivalRunway
 		}
-		add(e.f.Airport, rwy, e.f.Callsign, e.model, a.Position, a.GroundKts, route, false)
+		add(e.f.Airport, rwy, e.f.Callsign, e.model, a.Position, a.GroundKts, route, false, false)
 	}
 	// Other traffic arriving, respected: it keeps its slot.
 	if q.s.mgr.Options().Others == traffic.OtherRespect {
@@ -308,7 +331,7 @@ func (q *sequences) tick(now time.Time) {
 			rwy := q.cc.activeRunway(g, true)
 			for _, a := range q.s.mgr.Others(icao) {
 				if a.Phase == traffic.PhaseArriving {
-					add(icao, rwy, nameOf(a), a.Title, a.Position, a.GroundKts, nil, true)
+					add(icao, rwy, nameOf(a), a.Title, a.Position, a.GroundKts, nil, false, true)
 				}
 			}
 		}

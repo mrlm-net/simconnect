@@ -120,6 +120,16 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{}}
 }
 
+// Rejoin puts an arrival back into the sequence afresh, by its prediction
+// from now on — after a go-around it is sequenced again like a newcomer
+// instead of keeping the place its first approach had (#394).
+func (s *ApproachSequencer) Rejoin(callsign string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.first, callsign)
+	delete(s.last, callsign)
+}
+
 // Runway is the sequencer's runway end.
 func (s *ApproachSequencer) Runway() string { return s.runway }
 
@@ -328,6 +338,20 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 func absDuration(d time.Duration) time.Duration {
 	if d < 0 {
 		return -d
+	}
+	return d
+}
+
+// DistanceVia is the track distance in NM from pos to each point of route
+// in turn, then to the threshold: for a route that starts at the point the
+// aircraft flies to, as ArrivalController.ProcedureRoute gives it. Unlike
+// DistanceToGo it does not look for the leg the aircraft is on, which a
+// go-around's circuit — looping back past the final — would mislead.
+func DistanceVia(pos airport.LatLon, route []airport.LatLon, threshold airport.LatLon) float64 {
+	d, at := 0.0, pos
+	for _, p := range append(append([]airport.LatLon(nil), route...), threshold) {
+		d += calc.HaversineNM(at.Lat, at.Lon, p.Lat, p.Lon)
+		at = p
 	}
 	return d
 }

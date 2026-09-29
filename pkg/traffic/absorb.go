@@ -123,7 +123,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	pos := c.last.Position
 	wps := c.proc.Waypoints
 	final := len(wps) - 2 // align and join: never touched
-	next := nextWaypoint(pos, wps[:final])
+	next := c.procWaypoint(wps[:final])
 	if next >= final || pos == (airport.LatLon{}) {
 		return Absorption{}, ErrNotOnProcedure // on the final
 	}
@@ -188,7 +188,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return Absorption{}, err
 	}
-	c.proc.Waypoints = out
+	c.proc.Waypoints, c.procNext = out, 0
 	if a.SpeedKts > 0 {
 		c.procSpeed = a.SpeedKts
 	}
@@ -212,12 +212,33 @@ func (c *ArrivalController) ProcedureRoute() []airport.LatLon {
 		}
 		return out
 	}
-	next := nextWaypoint(c.last.Position, wps)
+	next := c.procWaypoint(wps)
 	var out []airport.LatLon
 	for _, w := range wps[next:] {
 		out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
 	}
 	return out
+}
+
+// procWaypoint is the index in wps (the procedure's waypoints, or the
+// first of them) of the one the aircraft flies to: tracked forward from
+// procNext, else nextWaypoint. c.mu held.
+func (c *ArrivalController) procWaypoint(wps []types.SIMCONNECT_DATA_WAYPOINT) int {
+	if c.procNext < 0 || len(wps) == 0 {
+		return nextWaypoint(c.last.Position, wps)
+	}
+	pos, all := c.last.Position, c.proc.Waypoints
+	i := c.procNext
+	for i+1 < len(all) {
+		n, m := all[i], all[i+1]
+		d := calc.HaversineNM(pos.Lat, pos.Lon, n.Latitude, n.Longitude)
+		if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
+			break // not passed yet
+		}
+		i++
+	}
+	c.procNext = i
+	return min(i, len(wps))
 }
 
 // nextWaypoint is the index of the waypoint the aircraft at pos flies to:

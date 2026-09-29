@@ -147,8 +147,27 @@ func TestGoAround(t *testing.T) {
 	if inj.Driven(77) || !ctl.flyingProc || ctl.goArounds != 1 {
 		t.Fatal("not released for the circuit")
 	}
-	// MSFS AI back on the final at the join point.
+	// Still to fly: the whole circuit from its first point, not from the
+	// circuit point nearest the short final (the sequencer's distance to go).
+	if r := ctl.ProcedureRoute(); len(r) != len(ctl.proc.Waypoints) || DistanceVia(p.End.Threshold, r, p.End.Threshold) < 15 {
+		t.Fatalf("after the go-around %d of %d points to fly, %.1f NM", len(r), len(ctl.proc.Waypoints), DistanceVia(p.End.Threshold, r, p.End.Threshold))
+	}
 	out := math.Mod(p.End.Heading+180, 360)
+	// Going around 3 NM out, on the centreline and runway heading: it looks
+	// established, but flies the circuit first (live, TVS1986 was taken
+	// straight back onto the final and landed).
+	lat3, lon3 := calc.DisplaceByHeading(p.End.Threshold.Lat, p.End.Threshold.Lon, out, 3*1852)
+	ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(lat3, lon3), 2000, p.End.Heading, 150, false))
+	if !ctl.flyingProc {
+		t.Fatal("taken back onto the final at once")
+	}
+	// Round the circuit, then MSFS AI back on the final at the join point.
+	for _, w := range ctl.proc.Waypoints[:len(ctl.proc.Waypoints)-2] {
+		ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(w.Latitude, w.Longitude), w.Altitude, 0, 180, false))
+		if !ctl.flyingProc {
+			t.Fatal("taken over on the circuit")
+		}
+	}
 	lat, lon := calc.DisplaceByHeading(p.End.Threshold.Lat, p.End.Threshold.Lon, out, ctl.proc.JoinMeters-100)
 	ctl.Handle(arrivalPositionMsg(mon, 77, airportLatLon(lat, lon), 2500, p.End.Heading, 160, false))
 	if ctl.flyingProc || ctl.approach == nil {
@@ -190,5 +209,27 @@ func TestAbortTakeoffLinedUpHolds(t *testing.T) {
 	}
 	if !run(TaxiDeparting, 60*30) {
 		t.Fatalf("state %v, want the take-off after a new clearance", ctl.State())
+	}
+}
+
+// The published missed approach: its points at its highest altitude — at
+// LKPR ILS 06 straight ahead to 4000 ft for vectors.
+func TestMissedWaypoints(t *testing.T) {
+	p := lkprProcedures(t)
+	m, err := p.MissedApproach("ILS 06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wps, top := missedWaypoints(m, 3000)
+	if len(wps) != 1 || math.Abs(top-4000) > 5 || math.Abs(wps[0].Altitude-top) > 1 {
+		t.Errorf("ILS 06: %+v, %.0f ft; want straight ahead to 4000 ft", wps, top)
+	}
+	fix := airport.NavPoint{Ident: "OKL", Position: airport.LatLon{Lat: 50.2, Lon: 14.4}, AltMin: 5000 / ftPerMeter}
+	wps, top = missedWaypoints(append(m, fix), 3000)
+	if len(wps) != 2 || wps[1].Latitude != 50.2 || math.Abs(wps[0].Altitude-5000) > 1 || math.Abs(wps[1].Altitude-5000) > 1 || math.Abs(top-5000) > 1 {
+		t.Errorf("with a fix: %+v, %.0f ft", wps, top)
+	}
+	if wps, top := missedWaypoints(nil, 3000); wps != nil || top != 3000 {
+		t.Errorf("none: %+v, %.0f ft", wps, top)
 	}
 }

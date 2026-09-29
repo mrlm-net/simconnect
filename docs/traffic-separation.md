@@ -202,6 +202,23 @@ A departure the controller works needs `TaxiRequest.HoldForRunway`. Its pushback
 
 On the airport map, every airport runway has a controller, fed every second with our traffic and respected other traffic. It clears our departures and crossings and logs it as ATC would ("runway 06, line up and wait", "cleared for take-off", "cross runway 12/30"), with who waits and why. Aircraft spawned with *hold at every clearance* are the user's: the tower counts them but never clears them. `GET /api/runways?icao=` lists each runway's users.
 
+## Going around
+
+The controller also watches the next arrival on short final (#394). When it is `GoAroundAt` (30 s, about 1.2 NM at 140 kt) from the threshold and the runway is not free, it goes on the `GoAround` list with the reason in `Waiting`. The runway is not free when:
+
+- someone is lined up;
+- someone is crossing;
+- an arrival is still on it after landing;
+- other traffic is on it.
+
+A departure already rolling does not count: it is airborne before the arrival arrives.
+
+`ArrivalController.GoAround` releases the injected arrival to MSFS AI. It flies the published missed approach (`ArrivalRequest.MissedApproach`, from `airport.Procedures.MissedApproach`) at its altitude; at LKPR that is straight ahead to 4000 ft for vectors. Without one it flies a circuit instead. Either way it flies round to the join point on the final, where the injected approach takes over again.
+
+`ApproachSequencer.Rejoin` then sequences it afresh by its new prediction, like a newcomer. It does not keep the place its first approach had, which would push everyone behind it.
+
+On the map the tower sends our arrivals around once per approach ("go around, I say again, go around — CSA1 on the runway") and re-sequences them. The *go around* button does the same by hand.
+
 ## Keeping apart
 
 `AirborneSeparation(aircraft, minNM, minFt)` lists every pair of airborne aircraft, closest first, marking those closer than both minima at once: `TerminalSeparationNM` (3), `EnrouteSeparationNM` (5), `VerticalSeparationFt` (1000).

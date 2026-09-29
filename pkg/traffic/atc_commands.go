@@ -184,9 +184,10 @@ var (
 )
 
 // GoAround sends an injected arrival on final around: before touchdown it
-// climbs out and MSFS AI flies a left-hand circuit back to the join point,
-// where the injected approach takes over again. On the runway it returns
-// ErrTooLate.
+// climbs out and MSFS AI flies the published missed approach
+// (ArrivalRequest.MissedApproach), else a left-hand circuit, back to the
+// join point, where the injected approach takes over again. On the runway
+// it returns ErrTooLate.
 func (c *ArrivalController) GoAround() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -209,6 +210,10 @@ func (c *ArrivalController) GoAround() error {
 	fieldFt := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 	joinFt := fieldFt + jp.HeightFt
 	circuitFt := math.Max(joinFt, fieldFt+GoAroundHeightFt)
+	// The published missed approach where known: its points (none when it
+	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
+	// the circuit keeps too; then round the circuit onto the final.
+	missed, circuitFt := missedWaypoints(c.req.MissedApproach, circuitFt)
 	t, hdg := end.Threshold, end.Heading
 	left := hdg - 90 // left-hand circuit
 	at := func(alongNm, sideNm float64) airport.LatLon {
@@ -228,16 +233,36 @@ func (c *ArrivalController) GoAround() error {
 		procedureWaypoint(align, joinFt+ProcedureAlignNm*ProcedureDescentFtPerNm, ProcedureApproachSpeedKts),
 		procedureWaypoint(joinAt, joinFt, ProcedureApproachSpeedKts),
 	}
+	if len(missed) > 0 {
+		wps = append(missed, wps[1:]...) // instead of the climb straight ahead
+	}
 	c.note("go around", nil)
 	c.note("release", c.inj.Release(c.objectID))
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wps); err != nil {
 		return err
 	}
 	c.approach = nil
-	c.proc = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}
+	c.proc, c.procNext, c.circuit = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true
 	c.flyingProc, c.blend = true, joinBlend{}
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++
 	c.setState(ArrivalApproaching, nil)
 	return nil
+}
+
+// missedWaypoints are the points of a published missed approach at its
+// highest altitude (at least minFt), and that altitude.
+func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64) {
+	top := minFt
+	for _, n := range missed {
+		top = math.Max(top, math.Max(n.AltMin, n.AltMax)*ftPerMeter)
+	}
+	var wps []types.SIMCONNECT_DATA_WAYPOINT
+	for _, n := range missed {
+		if n.Position.Lat == 0 && n.Position.Lon == 0 {
+			continue
+		}
+		wps = append(wps, procedureWaypoint(n.Position, top, ProcedureApproachSpeedKts))
+	}
+	return wps, top
 }

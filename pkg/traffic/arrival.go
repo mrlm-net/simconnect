@@ -114,6 +114,10 @@ type ArrivalRequest struct {
 	// extended centreline (ProcedureJoinNm out), and the injected approach
 	// takes over there (#315).
 	Procedure []airport.NavPoint
+	// MissedApproach (with InjectApproach) is the published missed approach
+	// flown on a go-around (airport.Procedures.MissedApproach), then back
+	// round to the final; without it the go-around flies a circuit (#394).
+	MissedApproach []airport.NavPoint
 	// Aircraft is the aircraft's profile (#324); nil resolves it from
 	// Model (ProfileFor). It fills Profile, Approach, Rollout and
 	// NoseOffset where those are zero and sets the flaps and lights.
@@ -230,6 +234,15 @@ type ArrivalController struct {
 	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc        bool
 	goArounds         int // go-arounds flown (GoAround)
+	// procNext is the waypoint of proc flown to, tracked forward from a
+	// known start: after a go-around (whose circuit loops back past the
+	// final, where the nearest waypoint is the wrong one), a delay absorbed
+	// or a hold left. -1: the nearest (a STAR does not loop).
+	procNext int
+	// circuit: flying a go-around's missed approach and circuit; the final
+	// is joined again only from its last two points (align, join) — climbing
+	// out along the centreline it would look established at once.
+	circuit bool
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since
@@ -345,7 +358,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 				return err
 			}
 			plan.Spawn = proc.Spawn
-			c.proc = proc
+			c.proc, c.procNext = proc, -1
 		}
 	} else if len(req.Procedure) > 0 {
 		return fmt.Errorf("%w: Procedure needs InjectApproach", ErrBadTaxiRequest)
