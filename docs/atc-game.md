@@ -36,4 +36,6 @@ The same conflict counts again only after a minute. The panel shows the score, f
 
 ## API
 
-`GET /api/game` returns the state (`on`, `score`, `handled`, `spawned`, `nextInSec`, `events`); `POST /api/game` with `{"on": true, "icao": "LKPR", "runway": "24", "intervalSec": 180}` starts it, `{"on": false}` ends it.
+`GET /api/game` returns the state (`on`, `icao`, `runway`, `intervalSec`, `score`, `handled`, `spawned`, `started`, `nextInSec`, and the last 40 `events`); `POST /api/game` with `{"on": true, "icao": "LKPR", "runway": "24", "intervalSec": 180}` starts it, `{"on": false}` ends it. An empty `runway` means the runway in use.
+
+The game spawns its own flights and gives you every clearance. For traffic that runs by itself from a timetable, see the [Traffic Manager](traffic-manager.md).

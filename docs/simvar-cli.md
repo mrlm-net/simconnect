@@ -21,6 +21,7 @@ The tool lives in `cmd/simvar-cli/` and has its own `go.mod`. It cannot be built
 | `listen` | Monitor client events in real time |
 | `repl` | Interactive session (default when no command is given) |
 | `watch` | Stream a SimVar continuously at a chosen interval |
+| `list` | List SimVar metadata from the built-in [registry](pkg-registry.md) (no simulator needed) |
 
 ## Installation
 
@@ -57,7 +58,7 @@ These flags are accepted before the subcommand name and apply to all commands.
 | `--auto-detect` | `false` | Auto-detect SimConnect.dll location |
 | `--log-level <level>` | `warn` | Log level: `debug`, `info`, `warn`, `error` |
 | `--timeout <seconds>` | `10` | Operation timeout in seconds |
-| `--format <format>` | `table` | Output format: `table`, `json`, or `csv` |
+| `--format <format>` | `table` | Output format of `watch` and `list`: `table`, `json`, or `csv` |
 | `--config <path>` | `""` | Path to a JSON config file |
 
 Flag precedence (highest to lowest): CLI flag > config file value > built-in default. The tool uses `flag.Visit` to detect which flags were explicitly set on the command line, so config values are only applied for flags you did not provide.
@@ -155,6 +156,23 @@ simvar-cli [global flags] watch [--interval second|visual-frame|sim-frame] [--ch
 
 See [watch command](#watch-command) for full details.
 
+### list
+
+List the SimVars in the built-in registry ([SimVar Registry](pkg-registry.md)). It needs no simulator connection.
+
+```
+simvar-cli [global flags] list [--category <name>] [--search <text>]
+```
+
+- `--category` filters by category: `aircraft`, `environment`, `simulator`, `autopilot`, `navigation`.
+- `--search` matches a case-insensitive substring of the name or description.
+- Output follows `--format`: a table (name, category, type, default unit, writable), NDJSON, or CSV.
+
+```
+simvar-cli list --category navigation
+simvar-cli --format json list --search altitude
+```
+
 ## watch command
 
 The `watch` command subscribes to a SimVar using `RequestDataOnSimObject` and streams readings until SIGINT. It accepts two command-specific flags in addition to all global flags.
@@ -203,7 +221,7 @@ Press Ctrl+C to stop. The data definition and simulator connection are cleaned u
 
 ## Output Formats
 
-The `--format` global flag applies to the `get` and `watch` commands. Each reading is one `FormattedValue` struct rendered according to the chosen format.
+The `--format` global flag applies to the `watch` and `list` commands; `get` always prints the raw value. Each `watch` reading is one `FormattedValue` struct rendered according to the chosen format.
 
 ### table (default)
 
@@ -269,7 +287,7 @@ If no file is found at any candidate, the tool starts with built-in defaults and
 | `auto_detect` | bool | `false` | Auto-detect SimConnect.dll location |
 | `timeout` | int | `10` | Operation timeout in seconds |
 | `log_level` | string | `"warn"` | Log level: `debug`, `info`, `warn`, `error` |
-| `format` | string | `"table"` | Output format: `table`, `json`, `csv` |
+| `format` | string | `"table"` | Output format of `watch` and `list`: `table`, `json`, `csv` |
 
 ### Example Config File
 

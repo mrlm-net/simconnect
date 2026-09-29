@@ -1,7 +1,7 @@
 ---
 title: "Weather, Runway in Use & ATIS"
 description: "Read the weather with pkg/nav, choose the runway in use from the wind and broadcast an ICAO style ATIS."
-order: 1
+order: 2
 section: "nav"
 ---
 
@@ -19,6 +19,7 @@ import "github.com/mrlm-net/simconnect/pkg/nav"
 | `WeatherReader` | Reads the ambient weather at the user aircraft from your message loop |
 | `StaticWeather` | Weather set by the application (tests, fixed scenarios) |
 | `ActiveRunways` | Departure and arrival runway ends for the wind, with an approach hint |
+| `RunwaySelector` | Keeps the runway in use until it is out of limits or another has been better for a while |
 | `ATIS` | One broadcast: `Text()` with digits, `Spoken()` spelled for a voice |
 | `ATISService` | Keeps the current ATIS and advances its letter on significant changes |
 
@@ -50,6 +51,8 @@ It reads these SimVars of the user aircraft (`SIMCONNECT_OBJECT_ID_USER`):
 | `AMBIENT IN CLOUD` | bool | `InCloud` |
 
 **Limitation:** SimConnect gives the ambient weather where the user aircraft is, not per airport. That is the airport's weather while the user is on the ground there or close by, which is the case when the airport is the world centre around the user; for other airports it is only an approximation. Gusts, ceiling and dewpoint have no SimVar: the reader leaves `GustKts` and `CeilingFt` at 0 and `DewpointC` NaN, and the ATIS leaves them out. Set them yourself (or build the whole `Weather` with `StaticWeather`) when you have them from elsewhere.
+
+The same `Weather` sets the spacing on final: `traffic.ConditionsFrom(weather, runwayHeadingTrue)` turns it into approach conditions (low visibility, runway surface, headwind), see [Weather on final](traffic-separation.md#weather-on-final).
 
 ## Runway in use
 

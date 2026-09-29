@@ -16,6 +16,7 @@ The [airport map](airport-layout.md#seeing-it-on-a-map) gives all of them from t
 | Command | When | What happens | Events |
 |---|---|---|---|
 | `ClearPushback()` | `TaxiAwaitingPushback` | Pushback (tug if `Tug` is set), tail onto the taxiway the taxi-out leaves by | `TaxiPushback`, then `TaxiAwaitingTaxi` |
+| `HoldPushback(on)` | before the push has begun (beacon not on) | Keeps the aircraft on its stand, even when cleared, until `HoldPushback(false)`: a ground stop, such as the [Traffic Manager's](traffic-manager.md#situation-checks) `AdviceHold` | none |
 | `ClearToTaxi()` | awaiting taxi, taxiing, holding at a crossing | Taxi to the holding point; removes a `ClearUpTo` limit or a hold position | `TaxiTaxiing`, `TaxiHoldingShort` (`HoldingShortOf` = the runway) |
 | `ClearUpTo(node)` | before or during the taxi | Taxi and hold with the nose gear on `node` ("taxi via A, hold short of B"). A limit already behind when the taxi starts holds the aircraft and reports `ErrNotOnRoute` | `AtLimit`, `LimitNode` |
 | `HoldPosition()` | taxiing, lining up | Stops as soon as comfortably possible (`HoldPositionDecel`) and waits for `ClearToTaxi` / `ClearUpTo` | `AtLimit` with `LimitNode` −1 |
@@ -29,6 +30,8 @@ The [airport map](airport-layout.md#seeing-it-on-a-map) gives all of them from t
 
 | Command | When | What happens | Events |
 |---|---|---|---|
+| `AbsorbDelay(delay)` | MSFS AI on the STAR, before the final | Slower on the rest of the STAR, then a dog-leg; returns what is left for a hold ([Losing a delay](traffic-separation.md#losing-a-delay)) | none |
+| `EnterHold(hold, altFt)` / `HoldAltitude(altFt)` / `LeaveHold()` | on the STAR / holding | Enters the hold at a fix (`HoldFix`), changes level in the stack, goes on along the STAR ([Holding](traffic-separation.md#holding)) | none |
 | `GoAround()` | injected final, before touchdown | Climbs out; MSFS AI flies a left-hand circuit (`GoAroundClimbNm`, `GoAroundOffsetNm`, `GoAroundHeightFt`) back to the join point, where the injected approach takes over again. Still on the STAR: nothing to do. On the runway: `ErrTooLate` | `ArrivalApproaching`, then the approach again |
 | `ClearToTaxi()` | after landing, taxiing | Taxi to the stand; removes a limit or a hold position | `ArrivalTaxiing`, `ArrivalParking`, `ArrivalParked` |
 | `ClearUpTo(node)` | after landing, taxiing | Progressive taxi, as for departures | `AtLimit`, `LimitNode` |
@@ -49,3 +52,6 @@ Aircraft keep their distance by themselves: a taxiing aircraft stops behind traf
 | `ErrNotApplicable` | The command does not fit the phase |
 | `ErrTooLate` | Past V1, or already on the runway for a go-around |
 | `ErrNotOnRoute` | A `ClearUpTo` node not ahead on the route |
+| `ErrNotOnProcedure` | `AbsorbDelay` or `EnterHold` for an arrival not flying its STAR |
+| `ErrHolding` | `AbsorbDelay` while the arrival holds |
+| `ErrNotHolding` | `HoldAltitude` or `LeaveHold` for an arrival not in a hold |

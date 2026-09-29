@@ -123,7 +123,7 @@ go func() {
         select {
         case msg := <-sub.Messages():
             cd := msg.AsClientData()
-            if cd == nil || cd.DwRequestID != WeatherReqID {
+            if cd == nil || cd.DwRequestID != types.DWORD(WeatherReqID) {
                 continue
             }
             weather := engine.CastDataAs[SharedWeather](&cd.DwData)
@@ -180,7 +180,6 @@ import (
     "log"
     "os"
     "os/signal"
-    "unsafe"
 
     "github.com/mrlm-net/simconnect"
     "github.com/mrlm-net/simconnect/pkg/engine"
@@ -221,7 +220,7 @@ func main() {
             select {
             case msg := <-sub.Messages():
                 cd := msg.AsClientData()
-                if cd == nil || cd.DwRequestID != WeatherReqID {
+                if cd == nil || cd.DwRequestID != types.DWORD(WeatherReqID) {
                     continue
                 }
                 weather := engine.CastDataAs[SharedWeather](&cd.DwData)
@@ -316,6 +315,8 @@ if !manager.IsValidUserID(WeatherReqID) {
     log.Fatal("ID conflicts with manager reserved range")
 }
 ```
+
+`IsValidUserID` accepts IDs up to 999,999,899, so it does not catch the custom-event range 999,999,850–999,999,886; keep your IDs at or below 999,999,849.
 
 See [Request and ID Management](manager-requests-ids.md) for the complete ID allocation table and validation helpers.
 

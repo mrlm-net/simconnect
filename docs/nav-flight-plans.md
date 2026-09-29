@@ -86,6 +86,8 @@ The magnetic variation comes from the departure's procedures (`Procedures.MagVar
 
 `FlightPlan.Waypoints` runs from the departure runway threshold (or airport) to the arrival threshold (or airport). Each point has a `Phase` (`SID`, `ENROUTE`, `STAR`, `APPROACH`) and the `Airway` it is reached by: an airway name, `DCT`, the SID or STAR name, or the approach name. Constraints are in feet (`AltMinFt`, `AltMaxFt`, both set and equal for an "at") and knots (`SpeedMaxKts`); `Constraint()` formats them as charts do. Computed points of the procedures (the end of a climb, a heading to radar vectors) have no ident.
 
+`PositionAt(distNM)` gives the position, planned altitude and track at a distance along the plan. The [Traffic Manager](traffic-manager.md#appearing-airborne) uses it to make an aircraft appear en route, where its flight would be by then.
+
 `Route` is the ICAO route (item 15): the SID and its last fix, then airway and fix at each change of airway, the STAR's first fix and the STAR — `VOZ5M VOZ M725 LANUX LANU7W`, or `DCT FOLWU L984 SULUS Z650 TONSU Z35 LOMKI LOMK8T` from an airport without procedures.
 
 ## The .pln file

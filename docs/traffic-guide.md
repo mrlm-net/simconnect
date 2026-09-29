@@ -12,6 +12,20 @@ section: "traffic"
 > aircraft along them (pushback, taxi, hold short, take-off). This guide covers the
 > underlying `Fleet` and waypoint helpers.
 
+The rest of `pkg/traffic` builds on the `Fleet`:
+
+| Type | Does | Chapter |
+|---|---|---|
+| `TaxiController` | one departure: stand to take-off | [Departure Taxi](traffic-taxi.md) |
+| `ArrivalController` | one arrival: approach to stand | [Arrivals & Parking](traffic-arrival.md) |
+| `Injector`, `GroundMover`, `Detail`, `IDBlocks` | injected movement, level of detail, IDs for many aircraft | [Injected Ground Movement](traffic-motion.md) |
+| `ApproachSequencer`, `HoldStack` | landing order, spacing, delays and holds | [Airborne Separation](traffic-separation.md) |
+| `TrafficPicture` | all traffic around a centre, ours and the simulator's | [Traffic Picture](traffic-picture.md) |
+| `Schedule`, `Overflights` | timetables for the focus airports, flights crossing the area | [Traffic Schedules](traffic-schedules.md) |
+| `TrafficManager` | runs the timetable through your `Spawner`: spawns, turnarounds, situation checks | [Traffic Manager](traffic-manager.md) |
+
+The runway in use comes from [`nav.RunwaySelector`](nav-weather.md#keeping-the-runway-in-use).
+
 The `pkg/traffic` package provides a typed, thread-safe abstraction over SimConnect's AI
 aircraft creation and management API. It handles the async create→acknowledge lifecycle
 and groups active aircraft into a `Fleet` that can be queried and cleaned up at once.
@@ -278,10 +292,13 @@ you do not need to call `SetClient` yourself.
   (sized to the aircraft, runway entries and exits), and the
   [departure](traffic-taxi.md) and [arrival](traffic-arrival.md) controllers turn
   them into movement.
-- **Ground traffic awareness is partial:** aircraft queue behind each other at a safe
-  gap (`GroundPicture`), but do not yet give way where routes cross or merge, or hold
-  a pushback while traffic passes behind the stand (#334).
-- **No arrival sequencing in the air:** each arrival flies its own approach; spacing
-  arrivals on final is not yet supported.
+- **Ground traffic awareness is for injected aircraft:** they queue behind each other,
+  give way where routes cross or merge and hold a pushback while traffic passes
+  behind the stand (`GroundPicture`, see [Ground traffic](traffic-taxi.md#ground-traffic)).
+  Aircraft MSFS AI taxis do not take part.
+- **Arrival sequencing is opt-in:** `ApproachSequencer` gives each arrival its
+  landing order and delay, and an `ArrivalController` on its STAR loses the delay when
+  told to (`AbsorbDelay`, `EnterHold`; see [Airborne Separation](traffic-separation.md)).
+  A plain `Fleet` aircraft is not sequenced.
 - **ObjectIDs reset on reconnect:** Any aircraft spawned before a disconnect are
   lost. Re-spawn after reconnect if persistence is required.

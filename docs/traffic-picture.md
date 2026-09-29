@@ -54,8 +54,9 @@ An aircraft on the ground belongs to the airport within `AirportNearNM`. `Airpor
 
 ## Feeding the controllers
 
-- **`Ground(icao)`** is the `GroundPicture` of an airport, shared by its controllers (`TaxiWithGroundPicture`, `ArrivalWithGroundPicture`). `Observe` reports the aircraft on the ground there that are not ours; ours report themselves.
-- **`Allocate(icao, allocator)`** feeds a `StandAllocator` from the picture's scans, so it needs no scan of its own.
+- **`Ground(icao)`** is the `GroundPicture` of an airport, shared by its controllers (`TaxiWithGroundPicture`, `ArrivalWithGroundPicture`; see [Ground traffic](traffic-taxi.md#ground-traffic)). `Observe` reports the aircraft on the ground there that are not ours; ours report themselves.
+- **`Allocate(icao, allocator)`** feeds a `StandAllocator` ([Stand allocation](traffic-arrival.md#stand-allocation)) from the picture's scans, so it needs no scan of its own.
+- **`ManagerOptions.Picture`** gives it to the [Traffic Manager](traffic-manager.md#other-traffic), which counts the aircraft that are not ours as other traffic and follows its own airborne flights in it.
 
 ## On the airport map
 

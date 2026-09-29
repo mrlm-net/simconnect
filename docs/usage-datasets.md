@@ -1,6 +1,6 @@
 ---
 title: "Using Datasets"
-description: "Pre-built dataset constructors for aircraft, environment, simulator, objects, and traffic data."
+description: "Pre-built dataset constructors for aircraft, environment, simulator, navigation, objects, and traffic data."
 order: 4
 section: "client"
 ---
@@ -172,6 +172,15 @@ Import path: `github.com/mrlm-net/simconnect/pkg/datasets/simulator`
 
 Camera state values correspond to the constants in `pkg/manager/state-enums.go` (e.g., `CameraStateCockpit = 2`, `CameraStateDrone = 4`). See [Manager Usage](usage-manager.md#camera-states) for the full list.
 
+## navigation
+
+Import path: `github.com/mrlm-net/simconnect/pkg/datasets/navigation`
+
+| Constructor | Companion Struct | Data |
+|---|---|---|
+| `NewRadioDataset()` | `RadioDataset` | COM1 active and standby, NAV1 active and standby (MHz), ADF1 active (Hz) |
+| `NewGPSDataset()` | `GPSDataset` | GPS latitude, longitude (degrees), ground speed (m/s), ground magnetic track (degrees) |
+
 ## objects
 
 Import path: `github.com/mrlm-net/simconnect/pkg/datasets/objects`
@@ -214,7 +223,7 @@ client.RequestDataOnSimObjectType(
 
 for msg := range client.Stream() {
     if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE {
-        data := msg.AsSimObjectDataByType()
+        data := msg.AsSimObjectDataBType()
         if data.DwRequestID == ObjReqID {
             obj := engine.CastDataAs[objects.SimObjectPositionDataset](&data.DwData)
             fmt.Printf("objectID=%d lat=%.4f lon=%.4f\n", data.DwObjectID, obj.Latitude, obj.Longitude)
@@ -235,4 +244,4 @@ This is the original reference implementation. `AircraftDataset` combines identi
 
 ## Alignment note
 
-All numeric fields in the companion structs use `float64`, even for variables that logically carry boolean or enum values. This is intentional: using a uniform 8-byte type for every numeric field eliminates Go struct padding between fields. The byte layout of the struct must match the byte layout that SimConnect writes into the data block, and that layout is determined entirely by the order and type of entries in the `DataSet.Definitions` slice. If you add, remove, or reorder fields in either the struct or the constructor, `CastDataAs[T]` will silently misalign — the compiler cannot catch this.
+All numeric fields in the aircraft, environment, simulator, navigation and objects companion structs use `float64` (`traffic.AircraftDataset` is the exception, see above), even for variables that logically carry boolean or enum values. This is intentional: using a uniform 8-byte type for every numeric field eliminates Go struct padding between fields. The byte layout of the struct must match the byte layout that SimConnect writes into the data block, and that layout is determined entirely by the order and type of entries in the `DataSet.Definitions` slice. If you add, remove, or reorder fields in either the struct or the constructor, `CastDataAs[T]` will silently misalign — the compiler cannot catch this.

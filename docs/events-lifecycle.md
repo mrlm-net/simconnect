@@ -104,8 +104,11 @@ defer sub.Unsubscribe()
 go func() {
     for {
         select {
-        case paused := <-sub.Messages():
-            // process in dedicated goroutine
+        case msg := <-sub.Messages():
+            if ev := msg.AsEvent(); ev != nil {
+                paused := ev.DwData == 1
+                _ = paused // process in dedicated goroutine
+            }
         case <-sub.Done():
             return
         }

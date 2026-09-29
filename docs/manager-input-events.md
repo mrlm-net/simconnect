@@ -65,8 +65,10 @@ go func() {
                 continue
             }
             count := int(recv.DwArraySize)
+            // RgData is a one-element placeholder; the entries follow it in the buffer
+            descs := unsafe.Slice(&recv.RgData[0], count)
             for i := 0; i < count; i++ {
-                desc := recv.RgData[i]
+                desc := descs[i]
                 name := engine.BytesToString(desc.Name[:])
                 log.Printf("Event: %-64s  hash=0x%08X  type=%d", name, desc.Hash, desc.Type)
             }
@@ -166,6 +168,7 @@ import (
     "os"
     "os/signal"
     "sync/atomic"
+    "unsafe"
 
     "github.com/mrlm-net/simconnect"
     "github.com/mrlm-net/simconnect/pkg/engine"
@@ -186,7 +189,7 @@ func main() {
     )
 
     // Enumerate on every (re)connection
-    mgr.OnOpen(func(data *types.SIMCONNECT_RECV_OPEN) {
+    mgr.OnOpen(func(data types.ConnectionOpenData) {
         subscribedHash.Store(0)
         if err := mgr.EnumerateInputEvents(EnumReqID); err != nil {
             if errors.Is(err, manager.ErrNotConnected) {
@@ -232,8 +235,9 @@ func handleMessage(mgr manager.Manager, msg engine.Message) {
             return
         }
         count := int(recv.DwArraySize)
+        descs := unsafe.Slice(&recv.RgData[0], count)
         for i := 0; i < count; i++ {
-            desc := recv.RgData[i]
+            desc := descs[i]
             name := engine.BytesToString(desc.Name[:])
             log.Printf("Event: %-64s  hash=0x%08X  type=%d", name, desc.Hash, desc.Type)
             // Subscribe to the first event found in the first batch
@@ -281,11 +285,11 @@ func handleMessage(mgr manager.Manager, msg engine.Message) {
 
 ## Double vs String
 
-Use `SetInputEventDouble` for the vast majority of sim controls. Most Input Events are numeric — switch states (0.0 or 1.0), throttle positions (0.0–1.0), heading values, and similar. If `SIMCONNECT_INPUT_EVENT_DESCRIPTOR.Type` is `SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE`, use the double setter.
+Use `SetInputEventDouble` for the vast majority of sim controls. Most Input Events are numeric — switch states (0.0 or 1.0), throttle positions (0.0–1.0), heading values, and similar. If the `Type` of the `SIMCONNECT_RECV_GET_INPUT_EVENT` response (or `EType` of the subscribe notification) is `SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE`, use the double setter.
 
-Use `SetInputEventString` only when `Type` is `SIMCONNECT_INPUT_EVENT_TYPE_STRING`. String-typed events are rare and typically represent text-mode commands or named state identifiers in specialised aircraft implementations. Strings longer than 259 bytes are silently truncated on the DLL side to preserve the null terminator.
+Use `SetInputEventString` only when that type is `SIMCONNECT_INPUT_EVENT_TYPE_STRING`. String-typed events are rare and typically represent text-mode commands or named state identifiers in specialised aircraft implementations. Strings longer than 259 bytes are silently truncated on the DLL side to preserve the null terminator.
 
-When in doubt, check the `Type` field from the enumeration descriptor before setting a value.
+When in doubt, read the event with `GetInputEvent` and check its `Type` before setting a value. The enumeration descriptor's `Type` is a `SIMCONNECT_DATATYPE`, not a `SIMCONNECT_INPUT_EVENT_TYPE`.
 
 ## No Auto-Resubscribe on Reconnect
 
@@ -294,7 +298,7 @@ Input Event subscriptions are not restored automatically when the manager reconn
 You must resubscribe in your `OnOpen` handler:
 
 ```go
-mgr.OnOpen(func(data *types.SIMCONNECT_RECV_OPEN) {
+mgr.OnOpen(func(data types.ConnectionOpenData) {
     // Re-enumerate to rediscover hashes for the current session
     if err := mgr.EnumerateInputEvents(EnumReqID); err != nil {
         log.Printf("EnumerateInputEvents: %v", err)

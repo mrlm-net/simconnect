@@ -32,10 +32,10 @@ for now := range time.Tick(time.Second) {
 | STD − `DepartureLead` (10 min) | A departure is **spawned on a stand** and boards; it pushes at its STD (`TaxiRequest.PushbackAt`). |
 | STA − `ArrivalLead` (25 min) | An arrival is **spawned at its STAR entry** and flies the STAR and approach, lands and taxis to a stand. |
 | Arrival parked | If the arrival pairs with a later departure of the same airline and type from that airport (`MinTurn` 40 min – `MaxTurn` 3 h after the STA), that departure **adopts the aircraft on its stand** (turnaround). Otherwise the aircraft is removed after `RemoveParkedAfter`. |
-| Departure airborne | Removed `RemoveDepartedAfter` (5 min) after it leaves the controllers. |
+| Departure airborne | Flies on along its plan and is removed once it leaves the area (see [Leaving](#enroute-traffic-and-overflights)), at the latest `RemoveDepartedAfter` (30 min) after it leaves the controllers. |
 | Too late | A departure is cancelled 15 min after its STD without an aircraft. An arrival is cancelled 10 min after it should have appeared. A departure waits as long as its inbound aircraft is still on its way. |
 
-The limits are `MaxAircraft` in total and `MaxPerAirport`. Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled.
+The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled.
 
 ## The Spawner
 
@@ -67,7 +67,7 @@ Each Tick the manager looks at each airport the way the people there would. It p
 
 | Check | Sees | Advises |
 |---|---|---|
-| `CheckLandingFlow(gap, queue)` | The predicted landing of every arrival: ours, and other traffic arriving (ETA from distance and speed). | **Delay** a scheduled arrival that would land less than `gap` (3 min) behind the one before. The gap doubles while `queue` (2) departures wait. **Estimate** its ETA. |
+| `CheckLandingFlow(gap, queue)` | The predicted landing of every arrival: ours, and other traffic arriving (ETA from distance and speed). | **Delay** a scheduled arrival that would land less than `gap` (3 min) behind the one before. One gap is doubled while `queue` (2) or more departures wait, and the weather on final (`ManagerOptions.Conditions`) stretches every gap: twice in low visibility, a third more on a contaminated runway ([Weather on final](traffic-separation.md#weather-on-final)). **Estimate** its ETA. |
 | `CheckGroundCongestion(max)` | Aircraft taxiing: our departures and arrivals, and other traffic. | **Hold** boarding departures on their stands while `max` (4) or more taxi: a ground stop. |
 | `CheckTurnaround(minGround)` | A turnaround's inbound aircraft: parked, or predicted to land. | **Estimate** the departure late when fewer than `minGround` (25 min) remain on the stand. |
 | `CheckStuck(after)` | How long a flight stays in one status. | **Remove** an aircraft that stopped making progress (e.g. taxiing 30 min). |

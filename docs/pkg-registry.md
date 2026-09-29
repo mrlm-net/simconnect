@@ -9,7 +9,7 @@ order: 10
 
 The `pkg/registry` package is a static, typed metadata store for MSFS SimVar names, accepted unit strings, Go data types, writability, and category information. It gives you a way to validate variable names and units at startup, enumerate all known variables by category or unit, and discover index-aware variables — all without requiring a live SimConnect connection.
 
-The registry contains 104 entries across three categories: `"aircraft"` (46 vars), `"environment"` (16 vars), and `"simulator"` (42 vars). It has no build-tag requirements and no imports from Windows-gated packages, so it compiles and runs on any platform.
+The registry contains 121 entries across five categories: `"aircraft"` (46 vars), `"environment"` (16 vars), `"simulator"` (42 vars), `"autopilot"` (8 vars) and `"navigation"` (9 vars). It has no build-tag requirements and no imports from Windows-gated packages, so it compiles and runs on any platform.
 
 ## Import
 
@@ -30,7 +30,7 @@ type SimVarMeta struct {
     DefaultUnit string   // Recommended unit for new data definitions
     Type        string   // Go numeric type: "float64", "float32", "int32",
                          //   "int64", "bool", "string", "enum"
-    Category    string   // Domain group: "aircraft", "environment", "simulator"
+    Category    string   // Domain group: "aircraft", "environment", "simulator", "autopilot", "navigation"
     Writable    bool     // Whether SimConnect accepts SetDataOnSimObject writes
     Indexed     bool     // Whether the variable accepts a :N suffix
     Description string   // Human-readable summary
@@ -43,7 +43,7 @@ type SimVarMeta struct {
 | `Units` | All unit strings SimConnect accepts for this variable, stored in lowercase. For example: `["feet", "meters"]`. |
 | `DefaultUnit` | The primary unit recommended for new data definitions. Always one of the values in `Units`. |
 | `Type` | The Go numeric type appropriate for reading this variable. Valid values: `"float64"`, `"float32"`, `"int32"`, `"int64"`, `"bool"`, `"string"`, `"enum"`. |
-| `Category` | Domain group. Valid values in this release: `"aircraft"`, `"environment"`, `"simulator"`. |
+| `Category` | Domain group. Valid values in this release: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`. |
 | `Writable` | `true` if SimConnect accepts writes via `SetDataOnSimObject` for this variable. |
 | `Indexed` | `true` if this variable accepts a `:N` suffix to address engine, radio, or other per-instance slots (e.g., `"ENG RPM:1"`). |
 | `Description` | Human-readable summary of what the variable represents. |
@@ -232,7 +232,7 @@ func main() {
 func ByCategory(category string) []SimVarMeta
 ```
 
-Valid categories: `"aircraft"`, `"environment"`, `"simulator"`.
+Valid categories: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`.
 
 ```go
 package main
@@ -270,6 +270,8 @@ func main() {
 | `"aircraft"` | 46 | Position, attitude, speed, altitude, engine, controls, gear, fuel, avionics |
 | `"environment"` | 16 | Weather, wind, temperature, pressure, visibility, precipitation |
 | `"simulator"` | 42 | Simulation state, camera, time, realism, units, VR, avatar |
+| `"autopilot"` | 8 | Heading, altitude, vertical speed and airspeed holds and targets, NAV1 lock, approach hold |
+| `"navigation"` | 9 | COM standby, NAV active/standby and ADF frequencies, ADF radial, GPS ground speed, track and position |
 
 ## Indexed Variables
 
@@ -283,8 +285,14 @@ Indexed variables in this release:
 | `ENG FUEL FLOW GPH` | Fuel flow in gallons/hour for engine N |
 | `GENERAL ENG THROTTLE LEVER POSITION` | Throttle lever position for engine N |
 | `FUEL SELECTED QUANTITY` | Quantity in fuel tank N |
+| `TRANSPONDER CODE` | Squawk code of transponder N |
 | `COM ACTIVE FREQUENCY` | Active frequency for COM radio N |
+| `COM STANDBY FREQUENCY` | Standby frequency for COM radio N |
+| `NAV ACTIVE FREQUENCY` | Active frequency for NAV radio N |
+| `NAV STANDBY FREQUENCY` | Standby frequency for NAV radio N |
 | `NAV OBS` | OBS setting for NAV radio N |
+| `ADF ACTIVE FREQUENCY` | Active frequency for ADF receiver N |
+| `ADF RADIAL` | Radial from the station tuned on ADF N |
 | `CAMERA VIEW TYPE INDEX` | Camera view type index N |
 
 To look up an indexed variable, pass the name with any `:N` suffix — `Lookup` strips it automatically:

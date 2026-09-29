@@ -218,7 +218,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"

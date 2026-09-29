@@ -91,9 +91,9 @@ for {
 
 `ArrivalEvent` carries the state, object ID, position, height above ground (`AGL`), heading, ground speed, on-ground flag, `Touchdown` (metres past the threshold) and `TouchdownFpm`, distance `Remaining` to the stand, the current `Taxiway`, `HoldingShortOf`, the progressive-taxi `LimitNode` / `AtLimit`, the `Lights` the sim reports, and `Err`. From touchdown (hybrid) or from the start (injected) the aircraft is read every sim frame; progress events are then limited to one a second, while state and light changes are always sent. A warning with `ErrTaxiStuck` is sent if the aircraft stands still for `StuckTimeout` (90 s) on the ground.
 
-`ArrivalRequest` options not shown above: `Livery`, `SpawnNm` (default `DefaultSpawnNm`, 5 nm; below 2 nm the default is used), `Exit` (force a `*airport.RunwayExit`), `Options` (`airport.RouteOptions`; `Via` and `Taxiways` give a [custom taxi-in](airport-layout.md#custom-routes-via-points-and-taxiways)), `NoseOffset`, `AfterLandingDwell`, `RollThroughChance`, `Profile` (`MotionProfile`), `Rollout` (`RolloutProfile`), `Approach` (`ApproachProfile`), and for MSFS AI comparisons `GroundAGL` and `NoStopWaypoint`.
+`ArrivalRequest` options not shown above: `Livery`, `SpawnNm` (default `DefaultSpawnNm`, 5 nm; below 2 nm the default is used), `Exit` (force a `*airport.RunwayExit`), `Options` (`airport.RouteOptions`; `Via` and `Taxiways` give a [custom taxi-in](airport-layout.md#custom-routes-via-points-and-taxiways)), `NoseOffset`, `AfterLandingDwell`, `RollThroughChance`, `Profile` (`MotionProfile`), `Rollout` (`RolloutProfile`), `Approach` (`ApproachProfile`), `Procedure` (see [STAR and approach](#star-and-approach)), `Aircraft` (an `AircraftProfile`, see [Aircraft Profiles](traffic-profiles.md)), `Airport` (`airport.Limits`, see [Airport limits](airport-layout.md#airport-limits)), and for MSFS AI comparisons `GroundAGL` and `NoStopWaypoint`.
 
-`Cancel()` removes the aircraft at any point, also once it has parked. A controller is single use; each uses 4 definition IDs and 4 request IDs (`ArrivalWithIDs(defBase, reqBase)`, defaults 7500 / 7600). One `Injector` serves all controllers.
+`Cancel()` removes the aircraft at any point, also once it has parked. A controller is single use; each uses 4 definition IDs and 4 request IDs (`ArrivalWithIDs(defBase, reqBase)`, defaults 7500 / 7600). One `Injector` serves all controllers. The other options are `ArrivalWithSeed` ([Natural timing](traffic-motion.md#natural-timing)), `ArrivalWithGroundPicture` ([Ground traffic](traffic-taxi.md#ground-traffic)) and `ArrivalWithDetail` ([Level of detail](traffic-motion.md#level-of-detail)); for many arrivals, take the ID blocks from `IDBlocks` ([IDs for a long session](traffic-motion.md#ids-for-a-long-session)).
 
 ## Plan
 
@@ -174,6 +174,8 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "06", Parking: stand, Model: 
 - At the join point (within `JoinCaptureMeters`, or established on the centreline abeam it) the injected approach takes over from where the aircraft is; the offset between MSFS AI's position and the injected glide path fades out over `JoinBlendSeconds`, so nothing jumps.
 - From there on it is the injected approach below.
 
+**Sequencing and delays.** On its STAR the arrival can be spaced behind the others: an `ApproachSequencer` gives it a landing time and a delay, `AbsorbDelay(delay)` loses the delay by flying slower and a dog-leg, and `HoldFix` / `EnterHold` / `LeaveHold` send it round a hold for what is left. `GoAround()` sends an injected arrival on final round the circuit ([ATC Commands](traffic-commands.md)). All of this is in [Airborne Separation](traffic-separation.md).
+
 ## Rollout and exit
 
 `ArrivalRequest.Rollout` is a `RolloutProfile` per aircraft type (zero = `DefaultRolloutProfile()`, A320). The aircraft brakes hard to `SlowKts`, then slows gently and evenly, reaching the exit speed exactly at the exit; clear of the runway it slows to taxi speed.
@@ -196,7 +198,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "06", Parking: stand, Model: 
 `ClearUpTo(node airport.NodeID) error` clears an injected arrival to taxi up to a node of its route and hold there, as a controller would give "taxi via A, hold short of B".
 
 - The node must be on `Plan().Route.Nodes`; otherwise `ErrNotOnRoute`. Without an injector: `ErrNotInjected`.
-- **Before the taxi-in** (from the approach to `ArrivalAwaitingTaxi`) it is the taxi clearance with a limit. The vacate stop still comes first; at `ArrivalAwaitingTaxi` the taxi starts at once. A node that is not ahead of the aircraft when the taxi-in starts (for example on the exit path) is dropped, and the aircraft taxis to the stand without a limit.
+- **Before the taxi-in** (from the approach to `ArrivalAwaitingTaxi`) it is the taxi clearance with a limit. The vacate stop still comes first; at `ArrivalAwaitingTaxi` the taxi starts at once. A node that is not ahead of the aircraft when the taxi-in starts (for example on the exit path) holds it where it is (see the last point below).
 - **While taxiing or holding short** it moves the limit. The node must lie ahead on the current path (within 15 m of it); a node behind the aircraft returns `ErrNotOnRoute`. In `ArrivalParking` and later it always does.
 - The nose gear stops on the node, or `HoldShortStopMeters` before it when the node is a hold-short. The aircraft stops at the nearer of the limit and the next uncleared crossing.
 - `ArrivalEvent.LimitNode` is the current limit (−1 for none) and `AtLimit` is set while the aircraft holds there; an event is sent when it arrives and when it moves on.
@@ -228,7 +230,7 @@ s, err := stands.Assign(traffic.StandRequirements{
 - **Reservations:** `Occupy(stand, owner, halfSpan)` fails with `ErrStandTaken` when someone else holds the stand or an aircraft on an overlapping stand (`Layout.ParkingConflicts`) is in the way: two aircraft clash when their half spans plus `StandWingtipClearanceMeters` (3 m) exceed the distance between the stand centres. `Release`, `ReleaseOwner`.
 - **Detection:** `Scan` requests every aircraft around the airport (AI and the user). One on the ground below `StandDetectKts` within a stand's RADIUS holds that stand, with its real `WING SPAN`. A reservation and a detection on the same stand merge (the owner stays, the object ID and span come from the scan).
 - **Assign:** suitable stands (`Layout.SuitableStands` for the span, optional `Types`), the airline's own stands first, then stands open to every airline; ranked by taxi-in length from the arrival runway's best exit. `ErrNoStand` when none is free.
-- **Taxi routes:** `ReserveRoute(owner, nodes)` returns the owners whose reserved routes share a node (a warning; spacing on the ground is #334). `ReleaseRoute`.
+- **Taxi routes:** `ReserveRoute(owner, nodes)` returns the owners whose reserved routes share a node (a warning; spacing on the ground is the `GroundPicture`, see [Ground traffic](traffic-taxi.md#ground-traffic)). `ReleaseRoute`.
 - `Occupancy()` is a snapshot for maps and ATC.
 
 ## Lights
