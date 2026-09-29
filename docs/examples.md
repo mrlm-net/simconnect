@@ -133,9 +133,9 @@ Smaller examples, each showing one part of the API.
 |---------|---------------|------|
 | [ai-taxi](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-taxi) | One departure: pushback, taxi, line-up and take-off with `pkg/traffic` | [Departure Taxi](traffic-taxi.md) |
 | [ai-arrival](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-arrival) | One arrival: final, touchdown, runway exit and taxi-in to a stand | [Arrivals](traffic-arrival.md) |
-| [ai-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-traffic) | Raw SimConnect: parked and en route ATC aircraft from `planes.json` | [Traffic Guide](traffic-guide.md) |
+| [ai-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-traffic) | Raw SimConnect: parked and en route ATC aircraft from `planes.json` (run it from its folder) | [Traffic Guide](traffic-guide.md) |
 | [manage-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/manage-traffic) | Raw SimConnect: parked and airborne aircraft at LKPR driven by waypoints | [Traffic Guide](traffic-guide.md) |
-| [monitor-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/monitor-traffic) | Every aircraft within 25 km, polled every few seconds | [Client API](usage-client.md) |
+| [monitor-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/monitor-traffic) | Every aircraft within 25 km, polled every 5 seconds | [Client API](usage-client.md) |
 | [simconnect-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-traffic) | The manager's traffic fleet: a parked aircraft at LFPG and a non-ATC aircraft at LKPR on waypoints, removed on exit | [Traffic Guide](traffic-guide.md) |
 
 ### Navigation and weather
