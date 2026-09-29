@@ -187,6 +187,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── enroute.go       #   EnrouteStart: airborne spawn + waypoint chain (NonATC)
 │       ├── detail.go        #   Detail: level of detail (frames per aircraft by distance/motion), Load
 │       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers
+│       ├── wake.go          #   WakeFor (ICAO/RECAT-EU), ArrivalSeparationNM, DepartureInterval, RunwayOccupancy
 │       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
 │       ├── models.go        #   ModelsFor: aircraft titles for an airline and type
 │       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling
@@ -247,6 +248,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-picture.md   #   TrafficPicture: world traffic around a centre, airports in range
 │   ├── traffic-schedules.md #   Schedule: timetables for the focus airports
 │   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
+│   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
