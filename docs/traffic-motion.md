@@ -150,6 +150,42 @@ Every wait and duration with a real-world counterpart varies a little from aircr
 
 Rolling take-offs (`DefaultRollingTakeoffChance`) and roll-through vacates (`DefaultRollThroughChance`) are random per flight too; the airport map's turnaround dwell varies ±20 % and the ATC game's traffic interval ±30 %.
 
+## Many aircraft
+
+Dozens of injected aircraft at once (#370) cost little CPU. The load is the message traffic to the simulator: each aircraft answers its monitor and is placed once per frame it is driven.
+
+`BenchmarkDepartureTaxiFrame` measures one sim frame of one taxiing departure: the monitor answer, the mover step, the look at the traffic ahead and the placement. It takes about **0.6 µs and 1.2 SimConnect writes**. At 60 frames a second, 40 aircraft cost 1.4 ms of CPU a second (0.14 % of a core), but make about 5 000 SimConnect messages a second. **Level of detail** cuts the messages.
+
+### Level of detail
+
+`traffic.Detail` decides how often each injected aircraft is driven. Share one Detail between the controllers (`TaxiWithDetail`, `ArrivalWithDetail`), and keep its viewer current with `SetViewer`, e.g. the user aircraft:
+
+| Aircraft | Driven |
+|---|---|
+| on the runway (lining up, take-off, landing roll, vacating) | every frame |
+| moving within `NearMeters` (3 km) of the viewer | every frame |
+| moving within `MidMeters` (10 km) | every 2nd frame (`MidInterval`) |
+| moving farther away | every 4th frame (`FarInterval`, 15 Hz) |
+| standing still (on the stand, holding, lined up to wait) | every 30th frame (`StillInterval`, 2 Hz) |
+
+An aircraft speeds up at once, but only slows down after asking for fewer frames for `SlowerAfter` (2 s). The tug driving in, and the seconds before the push, count as moving. Standing still, an aircraft reacts to a clearance or to traffic ahead within half a second.
+
+`Load()` reports the aircraft driven, their updates a second together, and how many run at every frame. The map shows it in Layers → Traffic picture.
+
+### IDs for a long session
+
+Every controller takes a block of data definition and request IDs. `IDBlocks` hands blocks out and takes them back when the aircraft is gone, so a session of hundreds of flights reuses a fixed range:
+
+```go
+ids := traffic.NewIDBlocks(20000, 30000, 10, 128) // 128 aircraft at once
+def, req, err := ids.Acquire()                  // ErrNoIDs when all are in use
+ctl := traffic.NewTaxiController(fleet, traffic.TaxiWithIDs(def, req), …)
+// … when the aircraft is gone:
+ids.Release(def)
+```
+
+A controller on a reused block clears its definitions before adding to them: the Fleet remembers which it defined on the connection. The injector drives up to 96 aircraft and tugs.
+
 ## Measured in MSFS 2024
 
 Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):

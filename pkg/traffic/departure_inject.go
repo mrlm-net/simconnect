@@ -26,6 +26,13 @@ func TaxiWithInjector(inj *Injector) TaxiOption {
 	return func(c *TaxiController) { c.inj = inj }
 }
 
+// TaxiWithDetail drives the injected departure on fewer sim frames when it
+// is far from the viewer or standing still (#370); on the runway always on
+// every frame.
+func TaxiWithDetail(d *Detail) TaxiOption {
+	return func(c *TaxiController) { c.detail = d }
+}
+
 // TaxiWithGroundPicture shares the ground picture with the other aircraft at
 // the airport: the injected departure reports itself and, while taxiing,
 // stops behind the traffic ahead (#334).
@@ -108,6 +115,28 @@ func (c *TaxiController) startInjectedDeparture() error {
 	return nil
 }
 
+// frameDetail sets how often the departure is driven (#370): moving (the
+// push, the tug driving in, taxiing) by its distance from the viewer, on
+// the runway every frame, otherwise standing still.
+func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
+	if c.detail == nil {
+		return
+	}
+	speed := 0.0
+	if c.mover != nil {
+		speed = c.mover.Pose().GroundSpeedKts
+	}
+	moving := c.state == TaxiPushback || speed > 0.5 ||
+		c.state == TaxiAwaitingPushback && c.req.Tug != nil && (!c.tugAttached || !c.pushAt.IsZero())
+	full := c.state >= TaxiLiningUp
+	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
+		if client := c.fleet.clientOrNil(); client != nil {
+			c.note("monitor detail", requestFrames(client, c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID, n))
+		}
+	}
+	c.detail.report(c.objectID, c.detailS.interval)
+}
+
 // onDepartureFrame runs the injected departure one sim frame.
 func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	now := c.now()
@@ -123,6 +152,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if c.last.Position == (airport.LatLon{}) {
 			c.last.Position, c.last.Heading = pos, hdg // known from the first frame, before it moves
 		}
+		c.frameDetail(now, pos)
 	} else if c.picture != nil {
 		c.picture.Forget(c.objectID) // on the take-off roll or airborne
 	}

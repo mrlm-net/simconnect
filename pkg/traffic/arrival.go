@@ -177,6 +177,9 @@ func ArrivalWithIDs(defBase, reqBase uint32) ArrivalOption {
 // Like TaxiController it never reads the engine stream: pass every message to
 // Handle and read progress from Events. A controller is single use.
 type ArrivalController struct {
+	// Level of detail (#370): how often the injected aircraft is driven.
+	detail  *Detail
+	detailS detailState
 	mu      sync.Mutex
 	fleet   *Fleet
 	defBase uint32
@@ -347,6 +350,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if client == nil {
 		return ErrNotConnected
 	}
+	c.fleet.redefine(client, c.defBase+arrDefWaypoints, c.defBase+arrDefMonitor, c.defBase+arrDefGear, c.defBase+arrDefLights)
 	if err := client.AddToDataDefinition(c.defBase+arrDefWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
 		return err
 	}
@@ -643,6 +647,7 @@ func (c *ArrivalController) Cancel() error {
 	var err error
 	if c.objectID != 0 {
 		c.stopMonitor()
+		c.detail.forget(c.objectID)
 		err = c.fleet.Remove(c.objectID, c.reqBase+arrReqRemove)
 		if c.inj != nil {
 			c.inj.Forget(c.objectID)
@@ -671,6 +676,7 @@ func (c *ArrivalController) setState(s ArrivalState, err error) {
 	c.state = s
 	c.emit(err, true)
 	if s.Terminal() {
+		c.detail.forget(c.objectID)
 		close(c.events)
 	}
 }

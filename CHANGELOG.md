@@ -28,6 +28,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` `EnrouteStart`, `RoutePoint`, `EnrouteSpeedKts`: make an aircraft appear airborne mid-route (`RequestNonATC`) with the rest of its flight as waypoints.
 - `pkg/nav` `FlightPlan.PositionAt`: the point, planned altitude and track at a distance along a plan.
 - `examples/airport-map`: enroute arrivals and overflights, labels with call sign, flight level and destination, an Overflights board, and `alt` (MSL) in `/api/traffic`.
+- `pkg/traffic` level of detail (#370): `Detail` with `TaxiWithDetail` and `ArrivalWithDetail`. An injected aircraft is driven every frame near the viewer and on the runway, every 2nd or 4th frame farther away, and twice a second while standing still. `SetViewer`; `Load()` reports the aircraft driven and their updates a second. `BenchmarkDepartureTaxiFrame`: one aircraft-frame costs about 0.6 µs and 1.2 SimConnect writes.
+- `pkg/traffic` `IDBlocks`: controller ID blocks handed out and taken back, so a long session reuses a fixed range. Controllers on a reused block clear their definitions first (the Fleet remembers them). The injector drives up to 96 aircraft and tugs (was 50).
+- `examples/airport-map`: controllers use 128 reusable ID blocks and level of detail (the viewer is the user aircraft). The traffic picture shows the load. Enroute request IDs move to 41000+ (they overlapped the library's default ranges).
 
 ### Changed
 

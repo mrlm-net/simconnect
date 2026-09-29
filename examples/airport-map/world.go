@@ -25,6 +25,14 @@ type worldView struct {
 	RadiusNM float64                   `json:"radiusNM"`
 	Airports []traffic.AirportRef      `json:"airports"`
 	Aircraft []traffic.TrackedAircraft `json:"aircraft"`
+	// Load (#370): aircraft we drive, their updates a second, how many at
+	// every frame, and the controller ID blocks in use.
+	Load struct {
+		Driven     int     `json:"driven"`
+		PerSecond  float64 `json:"perSecond"`
+		EveryFrame int     `json:"everyFrame"`
+		IDBlocks   int     `json:"idBlocks"`
+	} `json:"load"`
 }
 
 func registerWorld(mux *http.ServeMux, st *state) {
@@ -49,6 +57,8 @@ func registerWorld(mux *http.ServeMux, st *state) {
 		if v.Airports == nil {
 			v.Airports = []traffic.AirportRef{}
 		}
+		v.Load.Driven, v.Load.PerSecond, v.Load.EveryFrame = cc.detail.Load()
+		v.Load.IDBlocks = cc.ids.InUse()
 		writeJSON(w, v)
 	})
 	mux.HandleFunc("POST /api/world", func(w http.ResponseWriter, r *http.Request) {
