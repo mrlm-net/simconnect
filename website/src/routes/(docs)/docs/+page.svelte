@@ -7,6 +7,7 @@
 	let { data }: { data: { docs: DocMeta[] } } = $props();
 
 	const sectionLabels: Record<string, string> = {
+		examples: 'Examples',
 		client: 'Client / Engine',
 		manager: 'Manager',
 		events: 'Events',
@@ -66,8 +67,8 @@
 				},
 				{
 					title: 'Examples',
-					href: `${base}/examples`,
-					description: '25+ example apps',
+					href: `${base}/docs/examples`,
+					description: 'The airport map and 40+ examples',
 					internal: true
 				}
 			]

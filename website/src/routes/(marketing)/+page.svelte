@@ -100,6 +100,11 @@ func main() {
 			href: `${base}/getting-started`
 		},
 		{
+			title: 'Airport Map',
+			description: 'The main example and debugging tool: layout, traffic, approach and tower.',
+			href: `${base}/docs/examples`
+		},
+		{
 			title: 'Client API',
 			description: 'Direct SimConnect communication for maximum control.',
 			href: `${base}/docs/usage-client`
@@ -234,6 +239,39 @@ func main() {
 					<span class="badge-label">upcoming</span><span class="badge-value">{data.milestone.title}</span>
 				</a>
 			{/if}
+		</div>
+	</div>
+</section>
+
+<!-- The airport map: the main example -->
+<section class="pb-20 overflow-hidden" aria-labelledby="map-heading">
+	<div class="mx-auto max-w-5xl px-6">
+		<h2 id="map-heading" class="mb-2 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
+			See it running
+		</h2>
+		<p class="mx-auto mb-8 max-w-2xl text-center" style="color: var(--color-text-secondary);">
+			The airport map is built only on the SDK: an airport's ground layout as SimConnect reports it, taxi routing, AI traffic under your control, scheduled airlines, the landing sequence and the tower.
+		</p>
+		<a href="{base}/docs/examples" class="block overflow-hidden rounded-xl border transition-colors hover:border-[var(--color-text-muted)]" style="border-color: var(--color-border);">
+			<img
+				src="{base}/docs/images/airport-map/traffic.jpg"
+				alt="The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab"
+				class="block w-full"
+				width="1500"
+				height="900"
+				loading="lazy"
+			/>
+		</a>
+		<div class="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
+			<div
+				class="inline-flex items-center gap-3 rounded-lg border px-5 py-3 font-mono text-sm"
+				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
+			>
+				<span style="color: var(--color-text-muted);">$</span>
+				<span style="color: var(--color-text-secondary);">go run ./examples/airport-map</span>
+			</div>
+			<a href="{base}/docs/examples" class="text-sm font-semibold" style="color: var(--color-link);">Tour the map &rarr;</a>
+			<a href="{base}/examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
 		</div>
 	</div>
 </section>
@@ -509,7 +547,7 @@ func main() {
 		<h2 id="quick-links-heading" class="mb-10 text-center text-sm font-semibold uppercase tracking-widest" style="color: var(--color-text-muted);">
 			Explore the docs
 		</h2>
-		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			{#each quickLinks as link}
 				<a
 					href={link.href}
