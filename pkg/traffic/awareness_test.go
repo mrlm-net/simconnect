@@ -284,3 +284,54 @@ func TestPushbackStopsForTraffic(t *testing.T) {
 		t.Fatalf("after the push: state %v, still held %v", ctl.State(), ctl.last.PushbackHeld)
 	}
 }
+
+// TestTaxiGivesWayToPushback: a taxiing aircraft whose path crosses the
+// corridor of a pushback under way waits for it; the push goes on without
+// stopping (#334, live: the push stopped for the taxiing aircraft instead).
+func TestTaxiGivesWayToPushback(t *testing.T) {
+	picture := NewGroundPicture()
+	ctl, frames, now := pushbackWithPicture(t, picture)
+	frames(60)
+	ctl.ClearPushback()
+	for i := 0; i < 60*60 && ctl.State() != TaxiPushback; i++ {
+		frames(1)
+	}
+	frames(60 * 5) // under way
+	rest := pushCorridor(ctl.mover.Path(), ctl.mover.Pose().Distance, ctl.profile())
+	cross := rest[len(rest)-1]
+	// A taxiing aircraft 120 m away, heading across the end of the push.
+	prof := DefaultMotionProfile()
+	a := offsetHeading(cross, 90, 120)
+	b := offsetHeading(cross, 270, 200)
+	path, err := NewGroundPath([]airport.LatLon{a, b}, prof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taxi := &groundDrive{mover: NewGroundMover(path, prof), picture: picture, followTraffic: true, prof: prof, object: 99,
+		clock: func() time.Time { return *now }}
+	minGap, pushStops := 1e9, 0
+	wasMoving := false
+	for i := 0; i < 60*240 && ctl.State() == TaxiPushback; i++ {
+		p := taxi.mover.Pose()
+		picture.Report(99, p.Position, p.Heading, prof, *now)
+		taxi.followAhead(*now)
+		taxi.mover.Step(1.0 / 60)
+		frames(1)
+		pp := ctl.mover.Pose()
+		minGap = math.Min(minGap, localDist(p.Position, pp.Position))
+		if wasMoving && pp.GroundSpeedKts < 0.05 && !pp.Arrived {
+			pushStops++
+		}
+		wasMoving = pp.GroundSpeedKts > 0.5
+	}
+	if ctl.State() != TaxiAwaitingTaxi {
+		t.Fatalf("push did not finish: %v", ctl.State())
+	}
+	if pushStops > 0 || ctl.last.PushbackHeld {
+		t.Errorf("the push stopped %d times for the taxiing aircraft", pushStops)
+	}
+	if minGap < 2*17.9 {
+		t.Errorf("came within %.1f m of the pushing aircraft", minGap)
+	}
+	t.Logf("closest %.1f m", minGap)
+}

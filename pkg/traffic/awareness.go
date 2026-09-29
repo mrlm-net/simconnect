@@ -32,6 +32,9 @@ type groundEntry struct {
 	// meters (ReportPath), and its half-span.
 	ahead []airport.LatLon
 	half  float64
+	// pushing: ahead is a pushback under way, which taxiing traffic gives
+	// way to whatever the distances.
+	pushing bool
 }
 
 // NewGroundPicture creates an empty picture.
@@ -52,7 +55,7 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
-		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half,
+		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing,
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
@@ -65,7 +68,18 @@ func (p *GroundPicture) ReportPath(id uint32, ahead []airport.LatLon, half float
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e, ok := p.aircraft[id]; ok {
-		e.ahead, e.half = ahead, half
+		e.ahead, e.half, e.pushing = ahead, half, false
+		p.aircraft[id] = e
+	}
+}
+
+// ReportPush records the corridor a pushback under way still sweeps
+// (nil once done): taxiing traffic whose path crosses it gives way.
+func (p *GroundPicture) ReportPush(id uint32, corridor []airport.LatLon, half float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.ahead, e.half, e.pushing = corridor, half, len(corridor) > 0
 		p.aircraft[id] = e
 	}
 }
@@ -120,7 +134,7 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 			continue // no conflict, or already in it: go on through
 		}
 		theirsTo := first(o.e.ahead, mine, reach)
-		if theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
+		if o.e.pushing || theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
 			best = math.Min(best, from+mineTo)
 		}
 	}
@@ -133,7 +147,7 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 // ahead within both half-spans plus GiveWayMarginMeters — traffic taxiing
 // behind the stand. Parked neighbours are a stand spacing away and do not
 // count. It returns the first such aircraft's ID.
-func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, half float64, now time.Time) (uint32, bool) {
+func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, half float64, withPaths bool, now time.Time) (uint32, bool) {
 	p.mu.Lock()
 	type other struct {
 		id uint32
@@ -163,6 +177,9 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		oh := o.e.half
 		if oh <= 0 {
 			oh = DefaultHalfSpanMeters
+		}
+		if !withPaths || o.e.pushing {
+			continue // a push under way stops for bodies only; others give way to it
 		}
 		for _, r := range o.e.ahead {
 			if near(r, half+oh+GiveWayMarginMeters) {

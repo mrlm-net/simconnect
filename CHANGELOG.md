@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `pkg/traffic`: a pushback under way has priority. It reports what it still sweeps (`GroundPicture.ReportPush`), taxiing traffic whose path crosses it gives way, and the push stops only for an aircraft actually in the way. Live, the push had been stopping for a departure taxiing behind it, which then went through (#334).
+
 ### Added
 
 - `pkg/traffic` de-icing (#323): `TaxiRequest.Deice` — on the stand before the push, or at a pad the route passes (stop with engines running, taxi light off, then on); `Deicing`, `DefaultDeicingDwell`, `TaxiEvent.Deicing`; `airport.DeicingPad`, `Limits.DeicingPads`, `Graph.NearestNode`; `nav.IcingConditions`; the map's De-icing option (automatic from the weather in the game) and ❄ pads
