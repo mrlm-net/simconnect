@@ -149,6 +149,7 @@
     <div id="sInfo" class="note"></div>
     <details id="sDepBox"><summary>Departures</summary><table id="sDeps" class="board"></table></details>
     <details id="sArrBox"><summary>Arrivals</summary><table id="sArrs" class="board"></table></details>
+    <details id="sOvrBox"><summary>Overflights</summary><table id="sOvrs" class="board"></table></details>
 
     <h2>New flight <span class="i" title="Click a stand on the map (or tick Free stand), pick the runway and an entry or exit. The route is previewed on the map; the button says what it will spawn.">ⓘ</span></h2>
     <table class="form">
@@ -254,6 +255,8 @@
       <tr><td>held</td><td>ground stop: departures stay on the stand while the taxiways are full</td></tr>
       <tr><td>landing flow</td><td>an arrival appears later to keep the gap on final</td></tr>
       <tr><td>waiting</td><td>its STAR entry or stand is taken: it tries again</td></tr>
+      <tr><td>enroute</td><td>an arrival on its way on its flight plan (MSFS AI), handed to the arrival at its STAR entry; label: call sign, level, destination</td></tr>
+      <tr><td>Overflights</td><td>traffic between airports outside the area crossing it at cruise level</td></tr>
       <tr><td>Other traffic</td><td>MSFS AI and other add-ons (Layers, off by default, blue): the schedule <b>respects</b> it (default) or <b>ignores</b> it; ✕ removes one</td></tr>
     </table>
 
@@ -1031,7 +1034,13 @@ const trafficIcon = (t, sel = t.tail && t.tail === selectedTail()) => L.divIcon(
 });
 // On the map: call sign and speed (and height when airborne); the rest on
 // click.
-const trafficLabel = (t) => `${esc(t.tail || t.objectId)} ${t.groundKts.toFixed(0)}kt${t.onGround ? '' : ` ${t.agl.toFixed(0)}ft`}`;
+const schedFlight = (tail) => sched && tail ? (sched.flights || []).find((f) => f.callsign === tail && ['done', 'cancelled', 'scheduled'].indexOf(f.status) < 0) : null;
+const flightLevel = (t) => t.alt >= 5500 ? 'FL' + String(Math.round(t.alt / 100)).padStart(3, '0') : `${Math.round(t.alt / 100) * 100}ft`;
+const trafficLabel = (t) => {
+  const f = t.ours && !t.onGround ? schedFlight(t.tail) : null;
+  if (f) return `${esc(t.tail)} ${flightLevel(t)} →${esc(f.destination)}`; // en route: call sign, level, destination (#369)
+  return `${esc(t.tail || t.objectId)} ${t.groundKts.toFixed(0)}kt${t.onGround ? '' : ` ${t.agl.toFixed(0)}ft`}`;
+};
 const trafficDetail = (t) => `<b>${esc(t.tail || t.objectId)}</b> ${esc(t.title)}<br>${t.agl.toFixed(0)} ft · ${t.groundKts.toFixed(0)} kt · ` +
   `${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)} fpm<br>gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · span ${t.span.toFixed(0)} m<br>${esc(shortState(t.state))}`;
 async function pollTraffic() {
@@ -1475,6 +1484,9 @@ async function pollSchedule() {
     const deps = fs.filter((f) => f.kind === 'departure' && f.airport === icao), arrs = fs.filter((f) => f.kind === 'arrival' && f.airport === icao);
     $('sDeps').innerHTML = boardRows(deps, true);
     $('sArrs').innerHTML = boardRows(arrs, false);
+    const ovrs = fs.filter((f) => f.kind === 'overflight');
+    $('sOvrs').innerHTML = ovrs.map((f) => `<tr class="${f.status === 'done' || f.status === 'cancelled' ? 'gone' : ''}"><td class="t">${hhmm(f.enter)}</td><td>${esc(f.callsign)}</td><td>${esc(f.origin)}→${esc(f.destination)}</td><td>${esc(f.type)}</td><td class="st" title="${esc(f.model || '')}">${esc(f.status + (f.note ? ' — ' + f.note : ''))}</td></tr>`).join('') || '<tr><td class="note">none</td></tr>';
+    $('sOvrBox').querySelector('summary').textContent = `Overflights (${ovrs.length})`;
     $('sDepBox').querySelector('summary').textContent = `Departures (${deps.length})`;
     $('sArrBox').querySelector('summary').textContent = `Arrivals (${arrs.length})`;
   } catch { /* server gone */ }

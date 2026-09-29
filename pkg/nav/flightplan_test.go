@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 func loadLKPRProcedures(t *testing.T) *airport.Procedures {
@@ -256,5 +257,28 @@ func TestFormatLLA(t *testing.T) {
 	}
 	if got := FormatLLA(airport.LatLon{Lat: -33.9461, Lon: -151.1772}, -5); got != "S33° 56' 45.96\",W151° 10' 37.92\",-000005.00" {
 		t.Errorf("%s", got)
+	}
+}
+
+// TestPositionAt: along the plan, at the planned altitude and track.
+func TestPositionAt(t *testing.T) {
+	w := StaticWeather(60, 10, 9999, 15, 5, 1013)
+	fp, err := Plan(FlightPlanRequest{Departure: eddf, Arrival: lkprInfo(t), Type: "B738", ArrWeather: &w}, loadLKPRAirways(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, alt, trk := fp.PositionAt(fp.DistanceNM / 2)
+	if alt < float64(fp.CruiseFL)*100-1000 {
+		t.Errorf("halfway at %.0f ft, cruise FL%d", alt, fp.CruiseFL)
+	}
+	if trk < 45 || trk > 135 { // EDDF → LKPR: about east
+		t.Errorf("track %.0f", trk)
+	}
+	start, _, _ := fp.PositionAt(0)
+	if d := calc.HaversineNM(start.Lat, start.Lon, fp.Waypoints[0].Position.Lat, fp.Waypoints[0].Position.Lon); d > 0.1 {
+		t.Errorf("at 0 NM %.1f NM from the first point", d)
+	}
+	if p == start {
+		t.Error("halfway is the start")
 	}
 }

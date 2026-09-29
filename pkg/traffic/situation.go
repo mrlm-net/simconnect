@@ -83,6 +83,7 @@ var DefaultStuckAfter = map[FlightStatus]time.Duration{
 	FlightBoarding:    75 * time.Minute, // lead, a late inbound, holds
 	FlightTaxiing:     30 * time.Minute,
 	FlightDeparting:   20 * time.Minute,
+	FlightEnroute:     90 * time.Minute,
 	FlightApproaching: 50 * time.Minute,
 	FlightLanded:      25 * time.Minute,
 }
@@ -121,8 +122,12 @@ const (
 func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 	planned := f.STA.Add(-LandingBeforeSTA)
 	fly := o.ArrivalLead - LandingBeforeSTA
+	if f.Stage == "enroute" && (f.Status == FlightEnroute || f.Status == FlightSpawning) {
+		// On its way to the STAR entry, reached EnrouteLead after it appeared.
+		fly += o.EnrouteLead
+	}
 	switch f.Status {
-	case FlightApproaching, FlightSpawning:
+	case FlightApproaching, FlightSpawning, FlightEnroute:
 		if t := f.Since.Add(fly); t.After(planned) {
 			return t
 		}
@@ -166,7 +171,7 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 			if f.Departure() && f.Status == FlightTaxiing {
 				waiting++
 			}
-			if !f.Departure() {
+			if f.Arrival() {
 				if eta := landingETA(f, s.Options, s.Now); !eta.IsZero() {
 					ls = append(ls, landing{f, eta})
 				}
@@ -266,7 +271,7 @@ func CheckTurnaround(minGround time.Duration) SituationCheck {
 	return func(s Situation) []Advice {
 		arr := map[string]ManagedFlight{}
 		for _, f := range s.Flights {
-			if !f.Departure() {
+			if f.Arrival() {
 				arr[f.Callsign] = f
 			}
 		}

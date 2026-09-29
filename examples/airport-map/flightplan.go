@@ -30,35 +30,53 @@ type planned struct {
 // the flight between it and g's airport for r.
 func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (*planned, error) {
 	other := strings.ToUpper(strings.TrimSpace(r.Other))
+	dep, arr, depRwy, arrRwy := g.Layout.ICAO, other, r.Runway, ""
+	if r.Kind != "departure" {
+		dep, arr, depRwy, arrRwy = other, g.Layout.ICAO, "", r.Runway
+	}
+	fp, err := planBetween(ctx, st, dep, arr, depRwy, arrRwy, typeOf(r.Model))
+	if err != nil {
+		return nil, err
+	}
+	return plannedFrom(fp, r.Kind)
+}
+
+// planBetween loads both airports (waiting for the simulator) and plans a
+// flight between them: runways "" are chosen by the plan (#369).
+func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ string) (*nav.FlightPlan, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ol, err := st.load(ctx, other, false, st.requests)
-	if err != nil {
-		return nil, fmt.Errorf("loading %s: %w", other, err)
-	}
-	info := func(l *airport.Layout) nav.AirportInfo {
+	info := func(icao string) (nav.AirportInfo, error) {
+		l, err := st.load(ctx, icao, false, st.requests)
+		if err != nil {
+			return nav.AirportInfo{}, fmt.Errorf("loading %s: %w", icao, err)
+		}
 		a := nav.AirportInfo{ICAO: l.ICAO, Name: l.Name, Layout: l}
 		st.mu.Lock()
 		if p, ok := st.procedures[l.ICAO]; ok {
 			a.Procedures = &p
 		}
 		st.mu.Unlock()
-		return a
+		return a, nil
 	}
-	here, there := info(g.Layout), info(ol)
-	req := nav.FlightPlanRequest{Type: typeOf(r.Model)}
-	if r.Kind == "departure" {
-		req.Departure, req.Arrival, req.DepartureRunway = here, there, r.Runway
-	} else {
-		req.Departure, req.Arrival, req.ArrivalRunway = there, here, r.Runway
+	d, err := info(dep)
+	if err != nil {
+		return nil, err
+	}
+	a, err := info(arr)
+	if err != nil {
+		return nil, err
 	}
 	st.mu.Lock()
 	graph := st.airways
 	st.mu.Unlock()
-	fp, err := nav.Plan(req, graph)
-	if err != nil {
-		return nil, err
-	}
+	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: d, Arrival: a, DepartureRunway: depRwy, ArrivalRunway: arrRwy}, graph)
+}
+
+// plannedFrom is what a spawn flies of a plan: a departure the whole
+// flight at the planned levels, an arrival its STAR and approach (it
+// appears at the STAR entry).
+func plannedFrom(fp *nav.FlightPlan, kind string) (*planned, error) {
 	out := &planned{plan: fp}
 	for _, w := range fp.Waypoints {
 		if w.Kind == nav.PointRunway || w.Kind == nav.PointAirport || w.Kind == nav.PointProfile {
@@ -66,7 +84,7 @@ func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (
 		}
 		n := airport.NavPoint{Ident: w.Ident, Kind: w.Kind, Position: w.Position, IAF: w.IAF, FAF: w.FAF, MAP: w.MAP,
 			Vectors: w.Vectors, FlyOver: w.FlyOver, SpeedMax: w.SpeedMaxKts}
-		if r.Kind == "departure" {
+		if kind == "departure" {
 			// The whole flight: planned levels, held exactly.
 			n.AltMin, n.AltMax = w.AltFt*0.3048, w.AltFt*0.3048
 			out.route = append(out.route, n)
@@ -81,7 +99,7 @@ func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (
 	if len(out.route) == 0 {
 		return nil, fmt.Errorf("the plan %s has no route to fly", fp.Route)
 	}
-	if r.Kind == "departure" {
+	if kind == "departure" {
 		out.name = fp.SID
 	} else {
 		out.name = fp.STAR

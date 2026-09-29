@@ -68,6 +68,7 @@ type trafficRaw struct {
 	Lat, Lon, AGL, GS, Heading, VS, OnGround, Gear float64
 	Landing, Taxi, Strobe, Beacon, Nav             float64
 	SpanFt                                         float64
+	AltFt                                          float64 // MSL
 }
 
 // Traffic is one aircraft near the user, served at /api/traffic.
@@ -90,8 +91,9 @@ type Traffic struct {
 	// Ours: driven by our controllers (spawned on the map or scheduled);
 	// the rest is other traffic — MSFS AI, other add-ons.
 	Ours bool `json:"ours"`
-	// Span is the wing span in meters.
+	// Span is the wing span in meters; Alt the altitude above sea level in feet.
 	Span float64 `json:"span"`
+	Alt  float64 `json:"alt"`
 }
 
 type aircraftRaw struct {
@@ -208,7 +210,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		{"GROUND VELOCITY", "knots"}, {"PLANE HEADING DEGREES TRUE", "degrees"}, {"VERTICAL SPEED", "feet per minute"},
 		{"SIM ON GROUND", "bool"}, {"GEAR TOTAL PCT EXTENDED", "percent"}, // native 0–1; "percent" returns it unscaled
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
-		{"WING SPAN", "feet"},
+		{"WING SPAN", "feet"}, {"PLANE ALTITUDE", "feet"},
 	} {
 		client.AddToDataDefinition(defTraffic, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i+3))
 	}
@@ -255,6 +257,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	}
 	// Scheduled traffic: its own goroutine, as it waits for the connection.
 	sched := newScheduler(st, cc)
+	cc.extra = sched.handle
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
@@ -397,7 +400,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
 					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
-					Heading: t.Heading, VerticalFpm: t.VS, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+					Heading: t.Heading, VerticalFpm: t.VS, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
 				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					st.mu.Lock()

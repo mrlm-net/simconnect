@@ -27,7 +27,8 @@ const (
 	FlightBoarding                        // departure: on its stand before the STD
 	FlightTaxiing                         // departure: pushback, taxi, line-up
 	FlightDeparting                       // departure: take-off and climb-out, still controlled
-	FlightDeparted                        // departure: airborne and on its way; removed after RemoveDepartedAfter
+	FlightDeparted                        // departure: airborne and on its way; removed once it leaves the area
+	FlightEnroute                         // arrival or overflight: airborne on its flight plan (MSFS AI), before the STAR entry
 	FlightApproaching                     // arrival: airborne, STAR and approach
 	FlightLanded                          // arrival: on the runway or taxiing in
 	FlightParked                          // arrival: on its stand
@@ -35,7 +36,7 @@ const (
 	FlightCancelled                       // never flew or ended early; see Err
 )
 
-var flightStatusNames = [...]string{"scheduled", "spawning", "boarding", "taxiing", "departing", "departed", "approaching", "landed", "parked", "done", "cancelled"}
+var flightStatusNames = [...]string{"scheduled", "spawning", "boarding", "taxiing", "departing", "departed", "enroute", "approaching", "landed", "parked", "done", "cancelled"}
 
 func (s FlightStatus) String() string {
 	if int(s) < len(flightStatusNames) {
@@ -78,12 +79,26 @@ type ManagedFlight struct {
 	Estimated time.Time `json:"estimated,omitempty"`
 	Note      string    `json:"note,omitempty"`
 	Held      bool      `json:"held,omitempty"`
+	// Stage "enroute": the spawn is the enroute part of an arrival (MSFS AI
+	// on its flight plan, handed to the arrival controller at the STAR
+	// entry) or an overflight (#369).
+	Stage string `json:"stage,omitempty"`
+	// ObjectID is the aircraft, once the Spawner attached it (Attach).
+	ObjectID uint32 `json:"objectId,omitempty"`
 
-	retryAt time.Time
+	retryAt   time.Time
+	seenAt    time.Time // last seen in the picture
+	noEnroute bool      // the enroute spawn failed: straight to the STAR entry
 }
 
 // Departure reports whether the flight departs from its managed airport.
 func (f *ManagedFlight) Departure() bool { return f.Kind == "departure" }
+
+// Arrival reports whether the flight arrives at its managed airport.
+func (f *ManagedFlight) Arrival() bool { return f.Kind == "arrival" }
+
+// Overflight reports whether the flight only crosses the area (#369).
+func (f *ManagedFlight) Overflight() bool { return f.Kind == "overflight" }
 
 // key identifies a managed flight: a call sign can be both an arrival at
 // one managed airport and a departure from another.
@@ -143,6 +158,19 @@ type ManagerOptions struct {
 	// Keep: done and cancelled flights stay on the boards this long
 	// (default 1 h).
 	Keep time.Duration
+	// EnrouteLead: an arrival appears this long before ArrivalLead, en
+	// route on its flight plan, and is handed to the arrival controller at
+	// its STAR entry (default 20 min; negative: arrivals appear at the STAR
+	// entry) (#369).
+	EnrouteLead time.Duration
+	// Overflights gives the flights crossing the area in a time window
+	// (e.g. traffic.Overflights); they appear when they enter it (Flight.Enter)
+	// and leave with it. MaxOverflights at once (default 4).
+	Overflights    func(from, to time.Time) []Flight
+	MaxOverflights int
+	// LeftAfter: an airborne aircraft of ours the picture has not seen for
+	// this long has left the area and is removed (default 1 min).
+	LeftAfter time.Duration
 	// Checks look at each airport every Tick and advise (situation.go);
 	// nil means DefaultChecks, an empty slice none.
 	Checks []SituationCheck
@@ -171,7 +199,9 @@ func (o *ManagerOptions) defaults() {
 	def(&o.DepartureSpacing, time.Minute)
 	def(&o.RetryAfter, 30*time.Second)
 	def(&o.SpawnTimeout, 2*time.Minute)
-	def(&o.RemoveDepartedAfter, 5*time.Minute)
+	def(&o.RemoveDepartedAfter, 30*time.Minute)
+	def(&o.EnrouteLead, 20*time.Minute)
+	def(&o.LeftAfter, time.Minute)
 	def(&o.RemoveParkedAfter, 20*time.Minute)
 	def(&o.MinTurn, 40*time.Minute)
 	def(&o.MaxTurn, 3*time.Hour)
@@ -184,6 +214,9 @@ func (o *ManagerOptions) defaults() {
 	}
 	if o.MaxAttempts == 0 {
 		o.MaxAttempts = 3
+	}
+	if o.MaxOverflights == 0 {
+		o.MaxOverflights = 4
 	}
 	if o.Checks == nil {
 		o.Checks = DefaultChecks()
@@ -246,13 +279,14 @@ func othersAt(p *TrafficPicture, mode OtherTrafficMode, icao string) []TrackedAi
 type TrafficManager struct {
 	spawner Spawner
 
-	mu       sync.Mutex
-	opts     ManagerOptions
-	airports map[string]bool
-	flights  map[string]*ManagedFlight
-	until    time.Time            // the Source was asked up to here
-	last     map[string]time.Time // last spawn by kind and airport
-	enabled  bool
+	mu        sync.Mutex
+	opts      ManagerOptions
+	airports  map[string]bool
+	flights   map[string]*ManagedFlight
+	until     time.Time            // the Source was asked up to here
+	overUntil time.Time            // the Overflights source too
+	last      map[string]time.Time // last spawn by kind and airport
+	enabled   bool
 
 	// Lifecycle events (#368): collected under mu, delivered after it.
 	pending []ManagerEvent
@@ -441,6 +475,7 @@ func (m *TrafficManager) Tick(now time.Time) {
 
 // extend asks the Source for the hours up to now+Horizon not asked yet.
 func (m *TrafficManager) extend(now time.Time) {
+	m.extendOverflights(now)
 	if m.opts.Source == nil || len(m.airports) == 0 {
 		return
 	}
@@ -468,7 +503,8 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 		switch f.Status {
 		case FlightScheduled:
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
-				!f.Departure() && now.After(later(f.STA, f.Estimated).Add(-o.ArrivalLead).Add(o.ArrivalLate)) {
+				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-o.ArrivalLead).Add(o.ArrivalLate)) ||
+				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
 				f.Err = "too late"
 				m.set(f, FlightCancelled, now)
 				m.unpair(f)
@@ -477,11 +513,8 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 			if now.Sub(f.Since) > o.SpawnTimeout {
 				m.failed(f, errors.New("the simulator did not create it"), now, remove)
 			}
-		case FlightDeparted:
-			if now.Sub(f.Since) >= o.RemoveDepartedAfter {
-				m.set(f, FlightDone, now)
-				*remove = append(*remove, *f)
-			}
+		case FlightDeparted, FlightEnroute:
+			m.leaving(f, now, remove)
 		case FlightParked:
 			if f.TurnTo == "" && now.Sub(f.Since) >= o.RemoveParkedAfter {
 				m.set(f, FlightDone, now)
@@ -543,12 +576,14 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 		if f.Status != FlightScheduled || now.Before(f.retryAt) {
 			continue
 		}
-		start := f.STA.Add(-o.ArrivalLead)
-		if f.Departure() {
-			start = f.STD.Add(-o.DepartureLead)
-		}
-		if !now.Before(start) {
+		if start, _ := m.start(f, now); !now.Before(start) {
 			ready = append(ready, f)
+		}
+	}
+	overflying := 0
+	for _, f := range m.flights {
+		if f.Overflight() && f.Status.active() {
+			overflying++
 		}
 	}
 	sort.Slice(ready, func(i, j int) bool {
@@ -565,6 +600,18 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			default:
 				m.unpair(f) // the arrival never made it: a fresh aircraft
 			}
+		}
+		if f.Overflight() {
+			if overflying >= o.MaxOverflights || total >= o.MaxAircraft {
+				continue
+			}
+			overflying++
+			total++
+			f.Attempts++
+			f.Stage = "enroute"
+			m.set(f, FlightSpawning, now)
+			*spawn = append(*spawn, *f)
+			continue
 		}
 		// The adopted aircraft is already counted, and on its stand.
 		if !adopt {
@@ -583,14 +630,18 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			at[f.Airport]++
 		}
 		f.Attempts++
+		_, f.Stage = m.start(f, now)
 		m.set(f, FlightSpawning, now)
 		*spawn = append(*spawn, *f)
 	}
 }
 
 func (f *ManagedFlight) focusTime() time.Time {
-	if f.Departure() {
+	switch {
+	case f.Departure():
 		return f.STD
+	case f.Overflight():
+		return f.Enter
 	}
 	return f.STA
 }
@@ -607,6 +658,9 @@ func (m *TrafficManager) set(f *ManagedFlight, s FlightStatus, now time.Time) {
 // is both an arrival and a departure.
 func (m *TrafficManager) find(callsign string) *ManagedFlight {
 	d, a := m.flights["departure "+callsign], m.flights["arrival "+callsign]
+	if d == nil && a == nil {
+		return m.flights["overflight "+callsign]
+	}
 	switch {
 	case d == nil:
 		return a
@@ -629,6 +683,9 @@ func (m *TrafficManager) Update(callsign string, s FlightStatus, now time.Time) 
 	}
 	m.set(f, s, now)
 	f.Err = ""
+	if s >= FlightApproaching && f.Arrival() {
+		f.Stage = "" // handed over at the STAR entry
+	}
 	if f.Departure() && s >= FlightBoarding {
 		if a := m.turnFrom(f); a != nil && a.Status == FlightParked {
 			m.set(a, FlightDone, now) // the same aircraft flies on
@@ -663,6 +720,13 @@ func (m *TrafficManager) Failed(callsign string, err error, now time.Time) {
 func (m *TrafficManager) failed(f *ManagedFlight, err error, now time.Time, remove *[]ManagedFlight) {
 	f.Err = err.Error()
 	switch {
+	case f.Status == FlightSpawning && f.Arrival() && f.Stage == "enroute":
+		// No enroute part: the arrival appears at its STAR entry instead,
+		// no attempt lost.
+		m.set(f, FlightScheduled, now)
+		f.noEnroute, f.Stage, f.Attempts = true, "", f.Attempts-1
+		f.retryAt = now.Add(m.opts.RetryAfter)
+		m.emit(EventRetry, f, now, "enroute: "+err.Error()+"; at the STAR entry instead")
 	case f.Status == FlightSpawning && errors.Is(err, ErrSpawnBlocked):
 		// Its place is taken: wait, it is no failed attempt.
 		m.set(f, FlightScheduled, now)
