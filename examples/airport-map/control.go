@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -107,7 +109,11 @@ type ControlView struct {
 	Route          []airport.LatLon `json:"route"`
 	Nodes          []airport.NodeID `json:"nodes"`
 	Actions        []string         `json:"actions"` // clearances available now
-	Done           bool             `json:"done"`
+	// AirRoute is an arrival's STAR and approach still to fly (with any
+	// dog-leg), Hold its hold when holding (#391, #392).
+	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
+	Hold     *holdView        `json:"hold,omitempty"`
+	Done     bool             `json:"done"`
 }
 
 type controlCenter struct {
@@ -126,6 +132,9 @@ type controlCenter struct {
 	// ids hands out the controllers' ID blocks and takes them back (#370);
 	// detail drives far and standing aircraft on fewer frames.
 	ids *traffic.IDBlocks
+	// spawnedAt: where arrivals appeared lately (the scan sees them only a
+	// second later).
+	spawnedAt []spawnPoint
 	// runways keep each airport's runway in use.
 	runways map[string]*nav.RunwaySelector
 	detail  *traffic.Detail
@@ -350,6 +359,18 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
 			return nil, err
 		}
+	}
+	// Nobody appears on top of other traffic: an arrival waits while an
+	// aircraft is near its STAR entry, or appeared there in the last minute.
+	if r.Kind == "arrival" && len(procRoute) > 0 {
+		p := procRoute[0]
+		alt := math.Max(p.AltMax, p.AltMin) / 0.3048
+		if who := cc.nearAirborne(p.Position, alt, r.Tail, time.Now()); who != "" {
+			return nil, fmt.Errorf("%w: %s is near %s; try again in a minute", traffic.ErrSpawnBlocked, who, p.Ident)
+		}
+		cc.mu.Lock()
+		cc.spawnedAt = append(cc.spawnedAt, spawnPoint{tail: r.Tail, at: p.Position, altFt: alt, when: time.Now()})
+		cc.mu.Unlock()
 	}
 	// The airport's limits (#335): climb-out hand-over from the SIDs, taxi speeds.
 	var procs *airport.Procedures
@@ -696,8 +717,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 			cc.mu.Lock()
 			for _, it := range cc.items {
 				it.mu.Lock()
-				out = append(out, it.view)
+				v := it.view
 				it.mu.Unlock()
+				if it.arr != nil && !v.OnGround {
+					v.AirRoute = it.arr.ProcedureRoute()
+					if h, alt, ok := it.arr.Holding(); ok {
+						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
+					}
+				}
+				out = append(out, v)
 			}
 			cc.mu.Unlock()
 		}
@@ -1083,6 +1111,59 @@ func (cc *controlCenter) dropOwn(id uint32) {
 	cc.mu.Lock()
 	delete(cc.own, id)
 	cc.mu.Unlock()
+}
+
+// holdView is a hold on the map: its fix, level and racetrack.
+type holdView struct {
+	Ident     string           `json:"ident"`
+	AltFt     float64          `json:"altFt"`
+	Racetrack []airport.LatLon `json:"racetrack"`
+}
+
+// spawnPoint is where an arrival appeared, and when.
+type spawnPoint struct {
+	tail  string
+	at    airport.LatLon
+	altFt float64
+	when  time.Time
+}
+
+// Spawn separation: nobody appears within these of an airborne aircraft.
+const (
+	entryClearNM = 5.0
+	entryClearFt = 2000.0
+)
+
+// nearAirborne names an airborne aircraft (any: ours or not) near p at
+// altFt (0: any altitude), or one of ours that appeared there in the last
+// minute; "" when clear. The aircraft tail itself does not count.
+func (cc *controlCenter) nearAirborne(p airport.LatLon, altFt float64, tail string, now time.Time) string {
+	near := func(q airport.LatLon, alt float64) bool {
+		return calc.HaversineNM(q.Lat, q.Lon, p.Lat, p.Lon) < entryClearNM && (altFt == 0 || alt == 0 || math.Abs(alt-altFt) < entryClearFt)
+	}
+	for _, a := range cc.world.Aircraft() {
+		if !a.OnGround && a.Tail != tail && near(a.Position, a.AltFt) {
+			if a.Tail != "" {
+				return a.Tail
+			}
+			return a.Title
+		}
+	}
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	keep := cc.spawnedAt[:0]
+	who := ""
+	for _, sp := range cc.spawnedAt {
+		if now.Sub(sp.when) > time.Minute {
+			continue
+		}
+		keep = append(keep, sp)
+		if who == "" && sp.tail != tail && near(sp.at, sp.altFt) {
+			who = sp.tail
+		}
+	}
+	cc.spawnedAt = keep
+	return who
 }
 
 // forget drops a controlled aircraft from the list (its aircraft stays).

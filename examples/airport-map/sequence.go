@@ -34,10 +34,12 @@ type sequences struct {
 	cond map[string]traffic.ApproachConditions // the conditions last logged, by sequencer
 	// absorbed: when each arrival last got a delay to absorb (#391).
 	absorbed map[string]time.Time
+	// stacks: the holding stacks by airport and fix (#392).
+	stacks map[string]*traffic.HoldStack
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
-	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}}
+	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{}}
 }
 
 // sequencer is the sequencer of an airport's runway, created on first use.
@@ -85,7 +87,24 @@ const (
 // speed, then a dog-leg; what is left waits for the hold (#392).
 func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEntry, items []*controlled) {
 	for _, e := range seq {
-		if e.Fixed || e.Delay < absorbFrom {
+		var it *controlled
+		for _, x := range items {
+			if x.arr != nil && x.Tail == e.Callsign && x.ICAO == icao {
+				it = x
+				break
+			}
+		}
+		if it == nil || e.Fixed {
+			continue
+		}
+		// In a hold: released once its delay is down to holdRelease.
+		if h, _, holding := it.arr.Holding(); holding {
+			if e.Delay <= holdRelease {
+				q.leaveHold(icao, it, h, e)
+			}
+			continue
+		}
+		if e.Delay < absorbFrom {
 			continue
 		}
 		q.mu.Lock()
@@ -94,31 +113,106 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if recent {
 			continue
 		}
-		for _, it := range items {
-			if it.arr == nil || it.Tail != e.Callsign || it.ICAO != icao {
-				continue
-			}
-			var a traffic.Absorption
-			err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.Delay); return err })
-			if errors.Is(err, traffic.ErrNotOnProcedure) {
-				break // on the final, or not flying a STAR: nothing to change
-			}
-			q.mu.Lock()
-			q.absorbed[e.Callsign] = now
-			q.mu.Unlock()
-			if err != nil {
-				tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, e.Delay.Round(time.Second), err)
-				break
-			}
-			if r := it.arr.ProcedureRoute(); len(r) > 0 {
-				it.mu.Lock()
-				it.approach = r // the route with its dog-leg: the distance to go
-				it.mu.Unlock()
-			}
-			tlog.printf("%-6s ATC: %s, number %d, delay %s: %s", e.Callsign, e.Callsign, e.Number, e.Delay.Round(time.Second), a)
-			break
+		var a traffic.Absorption
+		err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.Delay); return err })
+		if errors.Is(err, traffic.ErrNotOnProcedure) || errors.Is(err, traffic.ErrHolding) {
+			continue // on the final, not flying a STAR, or holding
+		}
+		q.mu.Lock()
+		q.absorbed[e.Callsign] = now
+		q.mu.Unlock()
+		if err != nil {
+			tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, e.Delay.Round(time.Second), err)
+			continue
+		}
+		if r := it.arr.ProcedureRoute(); len(r) > 0 {
+			it.mu.Lock()
+			it.approach = r // the route with its dog-leg: the distance to go
+			it.mu.Unlock()
+		}
+		tlog.printf("%-6s ATC: %s, number %d, delay %s: %s", e.Callsign, e.Callsign, e.Number, e.Delay.Round(time.Second), a)
+		// Too much for speed and a dog-leg: the rest in the hold.
+		if a.Left >= holdFrom {
+			q.enterHold(now, icao, it, e, a.Left)
 		}
 	}
+}
+
+// Holding (#392): an arrival with holdFrom or more left after speed and
+// path stretching holds at the first STAR point holdFixNM or more from the
+// threshold, in that fix's stack from holdBaseFt; it leaves once its delay
+// is down to holdRelease, and the ones above step down.
+const (
+	holdFrom    = time.Minute
+	holdRelease = time.Minute
+	holdFixNM   = 15.0
+	holdBaseFt  = 6000.0
+)
+
+// stack is the stack at a fix, created on first use.
+func (q *sequences) stack(icao string, h traffic.Hold) *traffic.HoldStack {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	k := fmt.Sprintf("%s %.3f %.3f", icao, h.Fix.Lat, h.Fix.Lon)
+	if st := q.stacks[k]; st != nil {
+		return st
+	}
+	st := &traffic.HoldStack{Hold: h, BaseFt: holdBaseFt}
+	q.stacks[k] = st
+	return st
+}
+
+func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration) {
+	h, ok := it.arr.HoldFix(holdFixNM)
+	if !ok {
+		tlog.printf("%-6s sequence: %s to lose, no fix to hold at", e.Callsign, left.Round(time.Second))
+		return
+	}
+	st := q.stack(icao, h)
+	h = st.Hold // the stack's: the same racetrack for all
+	alt := st.Assign(e.Callsign)
+	var entry traffic.HoldEntry
+	if err := q.cc.do(func() (err error) { entry, err = it.arr.EnterHold(h, alt); return err }); err != nil {
+		st.Release(e.Callsign)
+		tlog.printf("%-6s sequence: hold failed: %v", e.Callsign, err)
+		return
+	}
+	if r := it.arr.ProcedureRoute(); len(r) > 0 {
+		it.mu.Lock()
+		it.approach = r
+		it.mu.Unlock()
+	}
+	tlog.printf("%-6s ATC: %s, hold at %s, %s entry, maintain %.0f ft, expect further clearance %s", e.Callsign, e.Callsign,
+		fixName(h), entry, alt, now.Add(left).Format("15:04"))
+}
+
+func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry) {
+	if err := q.cc.do(it.arr.LeaveHold); err != nil {
+		tlog.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
+		return
+	}
+	tlog.printf("%-6s ATC: %s, leave the hold at %s, number %d, continue the arrival", e.Callsign, e.Callsign, fixName(h), e.Number)
+	if r := it.arr.ProcedureRoute(); len(r) > 0 {
+		it.mu.Lock()
+		it.approach = r
+		it.mu.Unlock()
+	}
+	// The ones above step down.
+	for cs, alt := range q.stack(icao, h).Release(e.Callsign) {
+		if above := q.cc.byTail(cs); above != nil && above.arr != nil {
+			if err := q.cc.do(func() error { return above.arr.HoldAltitude(alt) }); err == nil {
+				tlog.printf("%-6s ATC: %s, descend %.0f ft, hold as published", cs, cs, alt)
+			}
+		}
+	}
+}
+
+// fixName is a hold's name: the STAR fix ident when it has one.
+func fixName(h traffic.Hold) string {
+	if h.Ident != "" {
+		return h.Ident
+	}
+	return fmt.Sprintf("%.3f %.3f", h.Fix.Lat, h.Fix.Lon)
 }
 
 // tick feeds every sequencer with the arrivals now.

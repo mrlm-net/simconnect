@@ -133,3 +133,25 @@ func TestSequencerKeepsOrder(t *testing.T) {
 		t.Fatalf("a clear overtake did not change the order")
 	}
 }
+
+// TestSequencerNewcomersQueueBehind: arrivals that slowed down and flew a
+// longer path to lose their delay keep their places; a newcomer behind
+// them is sequenced behind them, even when its prediction is now earlier.
+func TestSequencerNewcomersQueueBehind(t *testing.T) {
+	s := NewApproachSequencer("06", SequencerOptions{})
+	now := time.Now()
+	s.Update(now, []ApproachAircraft{arr("A1", "A320", 60), arr("B2", "A320", 60.3), arr("C3", "A320", 60.6)})
+	// A minute later B2 and C3 fly slower and longer (they lost delay);
+	// D4 appears at the entry, fast and on the direct route.
+	later := now.Add(time.Minute)
+	b, c := arr("B2", "A320", 62), arr("C3", "A320", 66)
+	b.GroundKts, c.GroundKts = 210, 210
+	seq := s.Update(later, []ApproachAircraft{arr("A1", "A320", 56), b, c, arr("D4", "A320", 60)})
+	order := ""
+	for _, e := range seq {
+		order += e.Callsign + " "
+	}
+	if order != "A1 B2 C3 D4 " {
+		t.Fatalf("order %s, want the newcomer last", order)
+	}
+}

@@ -135,3 +135,46 @@ route := arrival.ProcedureRoute()          // the rest of the STAR as flown now,
 - On the final, or when not flying a STAR, it returns `ErrNotOnProcedure`.
 
 On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM".
+
+## Holding
+
+Beyond what speed and a dog-leg can take, an arrival holds (#392). The holding patterns are ours: the simulator's `HOLDING_PATTERN` facility data is unusable, and probing it crashed MSFS 2024.
+
+**The hold.** A `Hold` is a racetrack on a fix: its inbound course, its turn direction (right unless `LeftTurns`), and legs by time.
+
+| Altitude | Leg (`HoldLegTime`) | Speed (`HoldSpeedKts`, Doc 8168) |
+|---|---|---|
+| up to FL140 | 1 min | 230 kt |
+| FL140–FL200 | 1.5 min | 240 kt |
+| FL200–FL340 | 1.5 min | 265 kt |
+| above | 1.5 min | 280 kt |
+
+The turns are rate one (3°/s, `TurnRadiusNM`).
+
+**The entry.** `Entry(heading)` chooses the ICAO entry from the aircraft's heading to the fix, measured off the inbound course. The sectors are for right turns, mirrored for left:
+
+| Heading off the inbound course | Entry |
+|---|---|
+| 70° on the non-holding side round to 110° on the holding side | direct |
+| the next 70° | teardrop: out 30° off the outbound course, then back in |
+| the remaining 110° | parallel: out on the non-holding side, then back through the holding side |
+
+**Flying it.** `Racetrack(alt)` and `EntryPoints(entry, alt)` are the points; MSFS AI flies them as a waypoint chain:
+1. The entry and one lap, as a plain chain.
+2. Back over the fix, the racetrack alone, sent again with `SIMCONNECT_WAYPOINT_WRAP_TO_FIRST` on its last point, so it circles until released.
+
+**The stack.** `HoldStack` stacks a hold's aircraft at `StepFt` (1000 ft) levels from `BaseFt`, leaving from the bottom:
+- `Assign` gives an aircraft the lowest free level;
+- `Release` takes one out and returns the new altitudes of those above, which step down.
+
+On an `ArrivalController` flying its STAR:
+
+```go
+h, ok := arrival.HoldFix(15)          // the first STAR fix 15 NM or more from the threshold, named after it
+entry, err := arrival.EnterHold(h, stack.Assign(callsign))
+// … while holding: ProcedureRoute starts at the fix; AbsorbDelay returns ErrHolding
+err = arrival.HoldAltitude(6000)      // step down in the stack
+err = arrival.LeaveHold()             // on along the STAR from the fix
+```
+
+On the airport map, an arrival that still has a minute or more left after speed control and path stretching holds. It uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when its sequencer delay is down to a minute, and those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".

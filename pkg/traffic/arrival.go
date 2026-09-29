@@ -182,6 +182,8 @@ type ArrivalController struct {
 	detailS detailState
 	// procSpeed is the speed assigned on the STAR by AbsorbDelay (#391).
 	procSpeed float64
+	// holding is the hold the arrival flies, nil when none (#392).
+	holding *holdState
 	mu      sync.Mutex
 	fleet   *Fleet
 	defBase uint32

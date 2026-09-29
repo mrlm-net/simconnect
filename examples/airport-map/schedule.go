@@ -216,12 +216,6 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	return nil
 }
 
-// Entry separation: nobody appears within these of an airborne aircraft.
-const (
-	entryClearNM = 5.0
-	entryClearFt = 2000.0
-)
-
 // nearEntry names an airborne aircraft near an arrival's first point, ""
 // when it is clear.
 func (s *scheduler) nearEntry(p airport.NavPoint) string {
