@@ -904,3 +904,26 @@ func (fp *FlightPlan) String() string {
 	}
 	return b.String()
 }
+
+// PositionAt is where the plan is distNM along it (clamped to the plan):
+// the position, the planned altitude in feet and the track in degrees
+// (#369: aircraft that appear en route).
+func (fp *FlightPlan) PositionAt(distNM float64) (airport.LatLon, float64, float64) {
+	w := fp.Waypoints
+	if len(w) == 0 {
+		return airport.LatLon{}, 0, 0
+	}
+	for i := 1; i < len(w); i++ {
+		a, b := w[i-1], w[i]
+		if distNM > b.DistanceNM && i < len(w)-1 {
+			continue
+		}
+		t := 1.0
+		if leg := b.DistanceNM - a.DistanceNM; leg > 0 {
+			t = math.Max(0, math.Min(1, (distNM-a.DistanceNM)/leg))
+		}
+		p := airport.LatLon{Lat: a.Position.Lat + t*(b.Position.Lat-a.Position.Lat), Lon: a.Position.Lon + t*(b.Position.Lon-a.Position.Lon)}
+		return p, a.AltFt + t*(b.AltFt-a.AltFt), calc.BearingDegrees(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
+	}
+	return w[0].Position, w[0].AltFt, 0
+}

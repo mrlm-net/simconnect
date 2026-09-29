@@ -32,6 +32,10 @@ type Flight struct {
 	STD         time.Time `json:"std"`
 	STA         time.Time `json:"sta"`
 	DistanceNM  float64   `json:"distanceNM"`
+	// Enter and Exit: when an overflight crosses into and out of the area
+	// (Overflights, #369); zero for other flights.
+	Enter time.Time `json:"enter,omitempty"`
+	Exit  time.Time `json:"exit,omitempty"`
 }
 
 // Airline is an airline the generator schedules.
@@ -313,14 +317,18 @@ func (g *scheduler) callsign(airline string) string {
 // blockTime is gate to gate: 20 minutes of taxi, climb and descent plus the
 // distance at the type's cruise speed (450 kt jets, 300 kt turboprops).
 func blockTime(typ string, distNM float64) time.Duration {
-	kts := 450.0
+	return time.Duration((20.0/60 + distNM/cruiseKts(typ)) * float64(time.Hour)).Round(5 * time.Minute)
+}
+
+// cruiseKts is a type's cruise ground speed for the schedule.
+func cruiseKts(typ string) float64 {
 	switch typ {
 	case "AT76", "AT75", "DH8D", "ATR":
-		kts = 290
+		return 290
 	case "B77W", "B789", "B788", "A359", "A333":
-		kts = 480
+		return 480
 	}
-	return time.Duration((20.0/60 + distNM/kts) * float64(time.Hour)).Round(5 * time.Minute)
+	return 450
 }
 
 func pick(rng *rand.Rand, weights []float64) int {
@@ -366,4 +374,129 @@ func SaveScheduleConfig(path string, c ScheduleConfig) error {
 		return err
 	}
 	return os.WriteFile(path, b, 0o644)
+}
+
+// OverflightOptions steer Overflights.
+type OverflightOptions struct {
+	// Centre and RadiusNM are the area (e.g. the traffic picture's).
+	Centre   airport.LatLon
+	RadiusNM float64
+	// PerHour is the overflights in the peak hour (default 6), scaled by
+	// the waves at the centre's local time and by Density (0: 1).
+	PerHour, Density float64
+	Seed             uint64
+	// Exclude are airports whose own traffic is scheduled (the focus
+	// airports): overflights neither start nor end there.
+	Exclude []string
+}
+
+// Overflights generates flights between the config's airports outside the
+// area whose route crosses it, entering it between from and to (#369).
+// Each has Enter and Exit, when it crosses into and out of the area at its
+// cruise speed. Deterministic for a seed.
+func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []Flight {
+	if o.PerHour <= 0 {
+		o.PerHour = 6
+	}
+	if o.Density <= 0 {
+		o.Density = 1
+	}
+	if o.RadiusNM <= 0 {
+		return nil
+	}
+	rng := rand.New(rand.NewPCG(o.Seed, 0x0f1e))
+	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	var outside []ScheduleAirport
+	var weights []float64
+	for _, a := range cfg.Airports {
+		g.airports[a.ICAO] = a
+		if contains(o.Exclude, a.ICAO) || calc.HaversineNM(o.Centre.Lat, o.Centre.Lon, a.Position.Lat, a.Position.Lon) <= o.RadiusNM {
+			continue
+		}
+		outside = append(outside, a)
+		weights = append(weights, float64(a.Size*a.Size))
+	}
+	if len(outside) < 2 {
+		return nil
+	}
+	offset := time.Duration(o.Centre.Lon / 15 * float64(time.Hour))
+	var out []Flight
+	for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
+		n := g.count(o.PerHour * o.Density * cfg.Waves[h.Add(offset).UTC().Hour()])
+		for i := 0; i < n; i++ {
+			enter := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(time.Minute)
+			if enter.Before(from) || !enter.Before(to) {
+				continue
+			}
+			if f, ok := g.overflight(outside, weights, o, enter); ok {
+				out = append(out, f)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Enter.Before(out[j].Enter) })
+	return out
+}
+
+// overflight draws one flight crossing the area, entering it at enter.
+func (g *scheduler) overflight(outside []ScheduleAirport, weights []float64, o OverflightOptions, enter time.Time) (Flight, bool) {
+	for tries := 0; tries < 30; tries++ {
+		a, b := outside[pick(g.rng, weights)], outside[pick(g.rng, weights)]
+		dist := calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
+		if a.ICAO == b.ICAO || dist < 200 {
+			continue
+		}
+		in, outAt, ok := crossing(a.Position, b.Position, dist, o.Centre, o.RadiusNM)
+		if !ok || outAt-in < o.RadiusNM/2 {
+			continue // misses the area, or only clips it
+		}
+		// An airline serving both ends (a base, or its regions): a base
+		// at either end more often.
+		var ws []float64
+		for _, al := range g.cfg.Airlines {
+			serves := func(x ScheduleAirport) bool {
+				return contains(al.Bases, x.ICAO) || contains(al.Regions, "*") || contains(al.Regions, x.ICAO[:2])
+			}
+			w := al.Weight
+			switch {
+			case !serves(a) || !serves(b):
+				w = 0
+			case contains(al.Bases, a.ICAO) || contains(al.Bases, b.ICAO):
+				w *= 4
+			}
+			ws = append(ws, w)
+		}
+		ai := pick(g.rng, ws)
+		if ai < 0 {
+			continue
+		}
+		al := g.cfg.Airlines[ai]
+		typ, ok := g.fleetType(al, dist, math.Min(a.RunwayM, b.RunwayM))
+		if !ok {
+			continue
+		}
+		kts := cruiseKts(typ)
+		climb := 10 * time.Minute
+		std := enter.Add(-climb - time.Duration(in/kts*float64(time.Hour))).Truncate(time.Minute)
+		return Flight{Callsign: g.callsign(al.ICAO), Airline: al.ICAO, Type: typ, Origin: a.ICAO, Destination: b.ICAO,
+			STD: std, STA: std.Add(blockTime(typ, dist)), DistanceNM: math.Round(dist),
+			Enter: enter, Exit: std.Add(climb + time.Duration(outAt/kts*float64(time.Hour)))}, true
+	}
+	return Flight{}, false
+}
+
+// crossing finds where the route a → b (dist NM) enters and leaves the
+// circle around c: the distances along it, sampled every 5 NM.
+func crossing(a, b airport.LatLon, dist float64, c airport.LatLon, radiusNM float64) (in, out float64, ok bool) {
+	in = -1
+	for d := 0.0; d <= dist; d += 5 {
+		t := d / dist
+		p := airport.LatLon{Lat: a.Lat + t*(b.Lat-a.Lat), Lon: a.Lon + t*(b.Lon-a.Lon)}
+		if calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= radiusNM {
+			if in < 0 {
+				in = d
+			}
+			out = d
+		}
+	}
+	return in, out, in >= 0
 }

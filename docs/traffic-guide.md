@@ -131,7 +131,7 @@ err := mgr.TrafficSetFlightPlan(objectID, "C:/Plans/EIDW-EGLL.pln", 5003)
 
 Enroute aircraft follow a `.PLN` flight plan file from a given phase offset.
 
-`Phase` (the SDK's `dFlightPlanPosition`) is the waypoint index plus the fraction along the next leg: `2.5` starts halfway between waypoints 2 and 3. It is not a 0–1 fraction of the route. To spawn an aircraft airborne, a common workaround (used by FSLTL) is a plan whose first waypoint is a user waypoint at the spawn point, injected at about `0.99`.
+`Phase` (the SDK's `dFlightPlanPosition`) is the waypoint index plus the fraction along the next leg: `2.5` starts halfway between waypoints 2 and 3. It is not a 0–1 fraction of the route. In MSFS 2024 the phase does not take effect: tested live (#369), every enroute ATC aircraft appeared on the ground at its plan's departure airport, whatever the phase, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `RequestNonATC` at the position and give it the rest of the route as waypoints: `traffic.EnrouteStart` (see [Traffic Manager](traffic-manager.md)).
 
 ```go
 err := mgr.TrafficEnroute(traffic.EnrouteOpts{

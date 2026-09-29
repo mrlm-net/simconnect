@@ -117,10 +117,15 @@ type controlCenter struct {
 	stands map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
+	// own are aircraft of ours not driven by a controller: enroute and
+	// overflying MSFS AI of the scheduled traffic (#369). extra handles
+	// the scheduler's messages.
+	own   map[uint32]bool
+	extra func(engine.Message) bool
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
 	world *traffic.TrafficPicture
-	ticks   int
+	ticks int
 	// pads are an airport's de-icing pads (picked on the map, #323).
 	pads func(l *airport.Layout) []airport.DeicingPad
 	// weather is the latest at the user aircraft (automatic de-icing, #323).
@@ -139,10 +144,11 @@ func newControlCenter(client engine.Client) *controlCenter {
 	return &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models:  map[string]bool{},
-		stands:  map[string]*traffic.StandAllocator{},
-		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
-		game:    &game{},
+		models: map[string]bool{},
+		own:    map[uint32]bool{},
+		stands: map[string]*traffic.StandAllocator{},
+		world:  traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
+		game:   &game{},
 	}
 }
 
@@ -199,6 +205,9 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 		if a.Handle(msg) {
 			return true
 		}
+	}
+	if cc.extra != nil && cc.extra(msg) {
+		return true
 	}
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
 		if e := msg.AsSimObjectAndLiveryEnumeration(); uint32(e.DwRequestID) == reqModels {
@@ -451,11 +460,19 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	if it.cc != nil {
 		it.cc.reportOwn(it.ICAO, ev)
 	}
+	first := it.objectID == 0
 	if e := ev.dep; e != nil && e.ObjectID != 0 {
 		it.objectID = e.ObjectID
 	}
 	if e := ev.arr; e != nil && e.ObjectID != 0 {
 		it.objectID = e.ObjectID
+	}
+	if m := it.managed; m != nil && first && it.objectID != 0 {
+		m.Attach(it.Tail, it.objectID)
+	}
+	if e := ev.dep; e != nil && it.managed != nil && e.State == traffic.TaxiComplete && it.objectID != 0 {
+		// On its way, still ours until it leaves the area (#369).
+		it.cc.world.SetOwn(it.objectID, traffic.PhaseEnroute, "")
 	}
 	if m := it.managed; m != nil {
 		if st, ok, err := managedStatus(ev); err != nil {
@@ -1005,6 +1022,9 @@ func (cc *controlCenter) ownIDs() map[uint32]bool {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	out := map[uint32]bool{}
+	for id := range cc.own {
+		out[id] = true
+	}
 	for _, it := range cc.items {
 		it.mu.Lock()
 		if it.objectID != 0 {
@@ -1013,6 +1033,19 @@ func (cc *controlCenter) ownIDs() map[uint32]bool {
 		it.mu.Unlock()
 	}
 	return out
+}
+
+// addOwn and dropOwn mark aircraft of ours without a controller.
+func (cc *controlCenter) addOwn(id uint32) {
+	cc.mu.Lock()
+	cc.own[id] = true
+	cc.mu.Unlock()
+}
+
+func (cc *controlCenter) dropOwn(id uint32) {
+	cc.mu.Lock()
+	delete(cc.own, id)
+	cc.mu.Unlock()
 }
 
 // forget drops a controlled aircraft from the list (its aircraft stays).
@@ -1293,7 +1326,7 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	obs := make([]traffic.Observation, 0, len(scan))
 	for _, t := range scan {
 		obs = append(obs, traffic.Observation{ObjectID: t.ObjectID, Title: t.Title, Tail: t.Tail,
-			Position: airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, AGLFt: t.AGL, GroundKts: t.GroundKts,
+			Position: airport.LatLon{Lat: t.Latitude, Lon: t.Longitude}, AGLFt: t.AGL, AltFt: t.Alt, GroundKts: t.GroundKts,
 			Heading: t.Heading, VSFpm: t.VerticalFpm, OnGround: t.OnGround, User: t.User, SpanM: t.Span})
 	}
 	// Ground pictures and stand allocators get it from here; our own

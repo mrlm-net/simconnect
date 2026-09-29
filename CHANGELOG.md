@@ -20,6 +20,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` manager lifecycle events (`ManagerEvent`: added, turnaround, status, retry, blocked, delayed, estimated, held, released, removed, enabled, disabled) through `ManagerOptions.OnEvent` and `Events()`, for the app's own state machine.
 - `pkg/traffic` `ModelsFor`: ranks the simulator's aircraft titles for an airline and type (the airline's livery first, FSLTL titles understood).
 - `examples/airport-map`: **Scheduled traffic** in the Traffic tab (start/stop, density, max aircraft, departure and arrival boards with estimates, holds and turnarounds). Scheduled flights get generated flight plans and airline liveries. **Other traffic** in Layers is off by default, drawn in blue and listed apart from ours, with respect/ignore and ✕ remove. `GET/POST /api/schedule`, `GET /api/boards`, `POST /api/world/remove`; `/api/traffic` marks `ours`.
+- `pkg/traffic` enroute traffic (#369):
+  - Arrivals appear en route `EnrouteLead` before their STAR entry, flown by MSFS AI on the rest of their plan, and are handed to the arrival controller at the entry (`FlightEnroute`). If the enroute spawn fails, the arrival appears at the entry, with no attempt lost.
+  - Overflights between airports outside the area cross it (`Overflights`, `OverflightOptions`, `Flight.Enter`/`Exit`, `ManagerOptions.Overflights`, `MaxOverflights`).
+  - Departures fly on after their SID.
+  - Airborne aircraft of ours are removed once they leave the area (`LeftAfter`, `Attach`).
+- `pkg/traffic` `EnrouteStart`, `RoutePoint`, `EnrouteSpeedKts`: make an aircraft appear airborne mid-route (`RequestNonATC`) with the rest of its flight as waypoints.
+- `pkg/nav` `FlightPlan.PositionAt`: the point, planned altitude and track at a distance along a plan.
+- `examples/airport-map`: enroute arrivals and overflights, labels with call sign, flight level and destination, an Overflights board, and `alt` (MSL) in `/api/traffic`.
 
 ### Changed
 
@@ -28,6 +36,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `examples/airport-map`: the flight plan is a row in New flight that reads LKPR → [destination] for a departure and [origin] → LKPR for an arrival, instead of a field hidden under Options
 
 ### Fixed
+
+- `docs/traffic-guide.md`, `EnrouteOpts.Phase`: MSFS 2024 ignores the enroute phase (an enroute ATC aircraft appears at its departure airport, which must be loaded). The phase-0.99 workaround does not work there.
 
 - `pkg/traffic`: an aircraft holding at a limit or hold-short reports no path ahead, so it no longer makes nearby moving traffic brake to a stop for it (give-way).
 - `pkg/traffic`: `AbortTakeoff` while lining up or lined up holds the aircraft until the next `ClearForTakeoff`, also without held gates; `HoldPosition` is refused while lining up (it could not be lifted there).

@@ -87,6 +87,27 @@ Write your own checks and add them with `append(traffic.DefaultChecks(), myCheck
 
 Switch between them with `SetOthers`.
 
+## Enroute traffic and overflights
+
+Traffic flies between airports, not only at one (#369).
+
+- **Enroute arrivals:** an arrival appears `EnrouteLead` (20 min) before it would appear at its STAR entry. It shows up **en route** on its flight plan, at the point the plan puts it now, at the planned level. MSFS AI flies it to the entry, where the Spawner **hands it over** to the arrival controller (status `enroute`, then `approaching`). If the enroute spawn fails, the arrival appears at its STAR entry instead, with no attempt lost. A negative `EnrouteLead` turns enroute arrivals off.
+- **Overflights:** `ManagerOptions.Overflights` gives flights between airports outside the area whose route crosses it. `traffic.Overflights(cfg, OverflightOptions{Centre, RadiusNM, PerHour, Density, Seed, Exclude}, from, to)` generates them: airports outside the area, an airline serving both ends, a type that fits, and `Enter`/`Exit` when the flight crosses into and out of the area. Each appears at `Enter`, where its flight is by then, up to `MaxOverflights` (4) at once.
+- **Departures fly on** after their SID along their plan, and stay ours.
+- **Leaving:** an airborne aircraft of ours (departed, en route, overflying) is removed once the picture has not seen it for `LeftAfter` (1 min), i.e. it left the area. `RemoveDepartedAfter` (30 min) and an overflight's `Exit` are the fallbacks.
+
+`Attach(callsign, objectID)` tells the manager which aircraft flies a flight, so that it can follow it in the picture.
+
+### Appearing airborne
+
+`traffic.EnrouteStart(route []RoutePoint)` turns the rest of a flight (points with altitude and speed, `EnrouteSpeedKts`) into two things:
+- where the aircraft appears: at the first point, heading for the second, at its altitude and speed;
+- the waypoint chain it flies from there.
+
+Create the aircraft with `Fleet.RequestNonATC` at that position, then `ReleaseControl` and `SetWaypoints` once it exists. `nav.FlightPlan.PositionAt(distNM)` gives the point, planned altitude and track along a plan.
+
+A flight plan cannot start an aircraft mid-route in MSFS 2024. `AICreateEnrouteATCAircraft` puts it on the ground at the plan's departure airport whatever the phase. It also refuses a plan whose departure airport the simulator has not loaded.
+
 ## Lifecycle events
 
 Every step is an event, for the app's own state machine: logs, boards, sounds, or rules of its own.
@@ -111,7 +132,7 @@ Every step is an event, for the app's own state machine: logs, boards, sounds, o
 
 The Traffic tab has a **Scheduled traffic** section: ▶ Start / ■ Stop for the loaded airport, density and max aircraft, and the **Departures** and **Arrivals** boards.
 
-The spawner for scheduled flights:
+The spawner for scheduled flights (enroute arrivals and overflights appear airborne, see above; their labels show call sign, flight level and destination, and **Overflights** is a third board):
 - picks a model in the airline's livery (`ModelsFor`);
 - plans the flight to or from the other end (SID, airways, level), or falls back to the runway's SID or STAR;
 - uses the runway in use, a free stand, a tug and automatic de-icing.

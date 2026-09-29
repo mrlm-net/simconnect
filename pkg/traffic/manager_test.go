@@ -65,7 +65,7 @@ func TestManagerSpawnsOnTime(t *testing.T) {
 
 func TestManagerLimitsAndSpacing(t *testing.T) {
 	sp := &fakeSpawner{}
-	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 3, DepartureSpacing: 2 * time.Minute}, "LKPR")
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 3, DepartureSpacing: 2 * time.Minute, RemoveDepartedAfter: 5 * time.Minute}, "LKPR")
 	sp.onSpawn = func(f ManagedFlight) { m.Update(f.Callsign, FlightBoarding, f.Since) }
 	var fs []Flight
 	for i := 0; i < 6; i++ {

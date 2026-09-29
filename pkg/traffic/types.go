@@ -35,8 +35,9 @@ type EnrouteOpts struct {
 	FlightPlan   string // path to a .PLN or MSFS flight plan file
 	// Phase is where on the plan the aircraft starts: the waypoint index plus
 	// the fraction along the next leg (2.5 = halfway between waypoints 2 and
-	// 3), not 0–1. To spawn airborne, plans commonly start with a user
-	// waypoint at the spawn point and inject at about 0.99 (#300).
+	// 3), not 0–1. MSFS 2024 ignores it: the aircraft appears at the plan's
+	// departure airport, which must be loaded (#369). To appear airborne use
+	// RequestNonATC and EnrouteStart.
 	Phase      float64
 	TouchAndGo bool // enable touch-and-go mode on arrival
 }
