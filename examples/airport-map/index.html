@@ -1273,7 +1273,12 @@ function drawControl() {
     const air = [[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])];
     L.polyline(air, { renderer, color: '#fff', weight: 6, opacity: 0.6, interactive: false }).addTo(groups.control);
     L.polyline(air, { renderer, color: '#ff2bd6', weight: 3, dashArray: '8 6', interactive: false }).addTo(groups.control);
-    v.airRoute.forEach((p) => L.circleMarker([p.lat, p.lon], { renderer, radius: 3, color: '#ff2bd6', fillOpacity: 1, interactive: false }).addTo(groups.control));
+    // Dots at the procedure's fixes only: the route also runs through the
+    // points of its rounded turns, which are not fixes.
+    (v.airFixes || []).forEach((f) => {
+      L.circleMarker([f.lat, f.lon], { renderer, radius: 3, color: '#ff2bd6', fillOpacity: 1, interactive: false }).addTo(groups.control);
+      L.marker([f.lat, f.lon], { icon: L.divIcon({ className: 'lbl', html: esc(f.ident), iconSize: null, iconAnchor: [-6, 6] }), interactive: false }).addTo(groups.control);
+    });
   }
   if (v && v.hold) {
     const rt = v.hold.racetrack.map((p) => [p.lat, p.lon]);

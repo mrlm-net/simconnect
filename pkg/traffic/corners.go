@@ -64,12 +64,15 @@ func roundCorners(wps []types.SIMCONNECT_DATA_WAYPOINT, maxBank float64) []types
 		legIn := calc.HaversineMeters(a.Latitude, a.Longitude, c.Latitude, c.Longitude)
 		legOut := calc.HaversineMeters(c.Latitude, c.Longitude, b.Latitude, b.Longitude)
 		th := math.Abs(turn) * math.Pi / 180
-		if math.Abs(turn) < 15 || math.Abs(turn) > 170 || legIn < 200 || legOut < 200 {
+		kts := math.Max(c.KtsSpeed, 140)
+		r := turnRadiusMeters(kts, StandardBankDeg(kts, maxBank))
+		// An arc's own point (a chain rounded before: a turn of 45° or less
+		// a short chord away) is not rounded again.
+		arcPoint := math.Abs(turn) <= 46 && math.Min(legIn, legOut) < 0.8*r
+		if math.Abs(turn) < 15 || math.Abs(turn) > 170 || legIn < 200 || legOut < 200 || arcPoint {
 			out = append(out, c)
 			continue
 		}
-		kts := math.Max(c.KtsSpeed, 140)
-		r := turnRadiusMeters(kts, StandardBankDeg(kts, maxBank))
 		d := r * math.Tan(th/2)
 		if lim := 0.45 * math.Min(legIn, legOut); d > lim {
 			d, r = lim, lim/math.Tan(th/2)

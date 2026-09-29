@@ -106,8 +106,10 @@ var (
 )
 
 // AbsorbDelay has an arrival on its STAR (MSFS AI, before the final) lose
-// delay: slower on the rest of the STAR and, if need be, a dog-leg on its
-// longest leg ahead; the waypoints are sent again. It returns how, with
+// delay: slower on the rest of the STAR and, if need be, a longer downwind —
+// on along it past the last STAR point and onto the final that much further
+// out (a trombone, once an approach) — or where the STAR does not end on a
+// downwind, a dog-leg on its longest leg ahead; the waypoints are sent again. It returns how, with
 // what is left for the hold. Call it with the sequencer's delay; a later
 // call adds to what was absorbed (the sequencer sees the slower, longer
 // flight and asks for the rest).
@@ -156,9 +158,25 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		}
 		out = append(out, w)
 	}
+	before := pathNMOf(pos, wps[next:final], wps[final])
+	stretched := false
+	// A longer downwind, the way a controller extends it: on along the
+	// downwind past its last point, the base turn and the final that much
+	// further out (each mile on adds two). Once an approach: more is held.
+	if a.ExtraNM > 0 && len(out) > 0 {
+		if !c.trombone {
+			if ext, ok := extendDownwind(pos, out, wps[final], wps[final+1], a.ExtraNM/2); ok {
+				out, c.trombone = ext, true
+				stretched = true
+			}
+		} else {
+			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+			a.ExtraNM = 0
+		}
+	}
 	// The dog-leg on the longest leg ahead (from here, or between STAR
 	// points), off to the side away from the runway's centreline.
-	if a.ExtraNM > 0 {
+	if a.ExtraNM > 0 && !stretched && !c.trombone {
 		longest, at := 0.0, -1
 		for i := 1; i < len(pts)-1; i++ { // not the leg into the align point
 			if l := calc.HaversineNM(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon); l > longest {
@@ -185,6 +203,10 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		}
 	}
 	out = roundedChain(pos, append(out, wps[final:]...), MaxBankDeg(*c.aircraft()))
+	if a.ExtraNM > 0 {
+		// The track added as flown: the rounded turns included.
+		a.ExtraNM = pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
+	}
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return Absorption{}, err
 	}
@@ -194,6 +216,49 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	}
 	c.note(fmt.Sprintf("absorbing %s: %s", delay.Round(time.Second), a), nil)
 	return a, nil
+}
+
+// extendDownwind is out (the STAR ahead, up to the align point) with its
+// downwind extended by x NM: on along it past its last point, the base turn
+// that much further out and onto the centreline x NM beyond the align point
+// (on the glide path's height there). The downwind is the last point ahead
+// more than a mile beside the centreline reached flying away from the
+// runway (the base turn's arc after it, rounded before, is dropped). False
+// where the STAR does not end on a downwind.
+func extendDownwind(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, align, join types.SIMCONNECT_DATA_WAYPOINT, x float64) ([]types.SIMCONNECT_DATA_WAYPOINT, bool) {
+	ll := func(w types.SIMCONNECT_DATA_WAYPOINT) airport.LatLon { return airport.LatLon{Lat: w.Latitude, Lon: w.Longitude} }
+	a, j := ll(align), ll(join)
+	hOut := calc.BearingDegrees(j.Lat, j.Lon, a.Lat, a.Lon) // away from the runway
+	x = math.Min(x, MaxStretchNM/2)
+	for k := len(out) - 1; k >= 0 && k >= len(out)-6; k-- {
+		d, from := ll(out[k]), pos
+		if k > 0 {
+			from = ll(out[k-1])
+		}
+		leg := calc.BearingDegrees(from.Lat, from.Lon, d.Lat, d.Lon)
+		cross := math.Abs(calc.CrossTrackMeters(j.Lat, j.Lon, a.Lat, a.Lon, d.Lat, d.Lon))
+		if cross < 1852 || math.Abs(headingDiff(leg, hOut)) > 60 {
+			continue
+		}
+		dLat, dLon := calc.DisplaceByHeading(d.Lat, d.Lon, hOut, x*1852)
+		eLat, eLon := calc.DisplaceByHeading(a.Lat, a.Lon, hOut, x*1852)
+		d2, e := out[k], align
+		d2.Latitude, d2.Longitude = dLat, dLon
+		e.Latitude, e.Longitude = eLat, eLon
+		e.Altitude = align.Altitude + x*ProcedureDescentFtPerNm
+		return append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out[:k+1]...), d2, e), true
+	}
+	return nil, false
+}
+
+// pathNMOf is the track from pos along wps to the point to, in NM.
+func pathNMOf(pos airport.LatLon, wps []types.SIMCONNECT_DATA_WAYPOINT, to types.SIMCONNECT_DATA_WAYPOINT) float64 {
+	d, at := 0.0, pos
+	for _, w := range append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), wps...), to) {
+		d += calc.HaversineNM(at.Lat, at.Lon, w.Latitude, w.Longitude)
+		at = airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+	}
+	return d
 }
 
 // ProcedureRoute is the rest of the arrival's STAR and approach as it

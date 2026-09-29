@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func TestPlanAbsorption(t *testing.T) {
@@ -143,5 +144,45 @@ func TestDirectToJoin(t *testing.T) {
 	}
 	if r := ctl.ProcedureRoute(); len(r) != 2 {
 		t.Errorf("still to fly: %d points", len(r))
+	}
+}
+
+// A longer downwind: on along the downwind x NM past its last point, then
+// onto the centreline x NM beyond the align point — about 2x more track;
+// a straight-in arrival has no downwind to extend.
+func TestExtendDownwind(t *testing.T) {
+	thr := airport.LatLon{Lat: 50.1, Lon: 14.23}
+	rwy := 65.0
+	out := rwy + 180 // away from the runway
+	at := func(alongNM, sideNM float64) types.SIMCONNECT_DATA_WAYPOINT {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, out, alongNM*1852)
+		lat, lon = calc.DisplaceByHeading(lat, lon, rwy-90, sideNM*1852) // left of the final
+		return types.SIMCONNECT_DATA_WAYPOINT{Latitude: lat, Longitude: lon, Altitude: 5000, KtsSpeed: 210}
+	}
+	align, join := at(11, 0), at(8, 0)
+	align.Altitude = 4700
+	pos := airport.LatLon{Lat: at(-6, 4).Latitude, Lon: at(-6, 4).Longitude}
+	chain := []types.SIMCONNECT_DATA_WAYPOINT{at(-3, 4), at(0, 4), at(6, 4)} // the downwind, then base to align
+	ext, ok := extendDownwind(pos, chain, align, join, 3)
+	if !ok || len(ext) != len(chain)+2 {
+		t.Fatalf("extended: %v, %d points", ok, len(ext))
+	}
+	d2, e := ext[len(ext)-2], ext[len(ext)-1]
+	near := func(w, want types.SIMCONNECT_DATA_WAYPOINT) float64 {
+		return calc.HaversineNM(w.Latitude, w.Longitude, want.Latitude, want.Longitude)
+	}
+	if near(d2, at(9, 4)) > 0.05 || near(e, at(14, 0)) > 0.05 {
+		t.Errorf("downwind to %.2f NM off 9 NM out, final from %.2f NM off 14 NM out", near(d2, at(9, 4)), near(e, at(14, 0)))
+	}
+	if want := 4700 + 3*ProcedureDescentFtPerNm; math.Abs(e.Altitude-want) > 1 {
+		t.Errorf("onto the final at %.0f ft, want %.0f", e.Altitude, want)
+	}
+	if grown := pathNMOf(pos, ext, align) - pathNMOf(pos, chain, align); math.Abs(grown-6) > 0.5 {
+		t.Errorf("track grew %.1f NM, want about 6", grown)
+	}
+	// Straight in: nothing beside the centreline.
+	straight := []types.SIMCONNECT_DATA_WAYPOINT{at(30, 0), at(20, 0)}
+	if _, ok := extendDownwind(airport.LatLon{Lat: at(35, 0).Latitude, Lon: at(35, 0).Longitude}, straight, align, join, 3); ok {
+		t.Error("extended a straight-in arrival")
 	}
 }

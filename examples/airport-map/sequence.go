@@ -303,12 +303,18 @@ func (q *sequences) tick(now time.Time) {
 			continue
 		}
 		// On its procedure: what it still flies (dog-legs, a go-around's
-		// circuit); on the final: the planned approach from here.
+		// circuit); on the final (flown by injection, or MSFS AI without a
+		// procedure): straight to the threshold — the planned approach from
+		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
 			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
 			continue
 		}
-		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
+		if v.State == "spawning" {
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
+			continue
+		}
+		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, nil, true, false)
 	}
 	// Enroute arrivals, on their way to the STAR entry.
 	q.s.mu.Lock()

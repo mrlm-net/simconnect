@@ -83,6 +83,9 @@ type controlled struct {
 	gates bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
+	// fixes: the named points of its procedure (STAR and approach, or SID),
+	// the dots of its air route on the map — not the points of the turns.
+	fixes []airFix
 
 	mu   sync.Mutex
 	view ControlView
@@ -116,6 +119,9 @@ type ControlView struct {
 	// approach (with any dog-leg), a departure's SID once handed to MSFS AI;
 	// Hold its hold when holding (#391, #392).
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
+	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
+	// route itself also runs through the points of its rounded turns).
+	AirFixes []airFix `json:"airFixes,omitempty"`
 	Hold     *holdView        `json:"hold,omitempty"`
 	Done     bool             `json:"done"`
 }
@@ -420,7 +426,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			approach = append(approach, n.Position)
 		}
 	}
-	it := &controlled{gates: r.Gates, approach: approach, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	var fixes []airFix
+	for _, p := range procRoute {
+		if p.Ident != "" {
+			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
+		}
+	}
+	it := &controlled{gates: r.Gates, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -751,6 +763,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 				it.mu.Unlock()
 				if it.arr != nil && !v.OnGround {
 					v.AirRoute = it.arr.ProcedureRoute()
+					v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
 					if h, alt, ok := it.arr.Holding(); ok {
 						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
 					}
@@ -759,6 +772,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 				if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
 					if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
 						v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
+						v.AirFixes = fixesAhead(it.fixes, r)
 					}
 				}
 				out = append(out, v)
@@ -1448,6 +1462,27 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return call + ", hold position, cancel take-off clearance, I say again, cancel take-off clearance"
 	}
 	return call + ", " + action
+}
+
+// airFix is a named fix of a procedure on an air route.
+type airFix struct {
+	Ident string `json:"ident"`
+	airport.LatLon
+}
+
+// fixesAhead are the fixes near route (within the mile a rounded turn
+// passes inside its fix): those behind the aircraft are off it.
+func fixesAhead(fixes []airFix, route []airport.LatLon) []airFix {
+	var out []airFix
+	for _, f := range fixes {
+		for _, p := range route {
+			if calc.HaversineNM(f.Lat, f.Lon, p.Lat, p.Lon) < 1.5 {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // via names the taxiways of the first n edges of a route: " via B2, H, A".
