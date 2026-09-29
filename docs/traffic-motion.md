@@ -57,7 +57,7 @@ if ok, err := inj.Handle(msg); ok && err != nil { log.Print(err) }
 inj.Release(objectID)                   // unfreeze
 ```
 
-`Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 5 definition IDs, 2 request IDs per aircraft (up to 50 aircraft) and 10 event IDs; move them with `InjectorWithIDs`.
+`Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 5 definition IDs, 2 request IDs per aircraft (up to 96 aircraft and tugs, see [Many aircraft](#many-aircraft)) and 10 event IDs; move them with `InjectorWithIDs`.
 
 ## Pushback
 

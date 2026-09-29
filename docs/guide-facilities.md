@@ -425,7 +425,7 @@ gates := []int32{0, 1, 2}
 client.RequestJetwayData("EGLL", uint32(len(gates)), &gates[0])
 ```
 
-Jetway responses arrive as `SIMCONNECT_RECV_ID_FACILITY_DATA` messages with `Type` equal to `SIMCONNECT_FACILITY_DATA_JETWAY`. Use `msg.AsFacilityData()` and cast `Data` to your jetway struct, or use `NewJetwayFacilityDataset()` to set up the definition first.
+Jetway responses arrive as `SIMCONNECT_RECV_ID_JETWAY_DATA` messages (`types.SIMCONNECT_RECV_JETWAY_DATA`, an array of `SIMCONNECT_JETWAY_DATA`). There is no `As*` helper for them; cast `msg.SIMCONNECT_RECV` yourself. For jetway records inside an airport, add `NewJetwayFacilityDataset()` to a `RequestFacilityData` definition instead; those arrive as `FACILITY_DATA` messages with `Type` equal to `SIMCONNECT_FACILITY_DATA_JETWAY`.
 
 ## Filters
 
@@ -509,7 +509,7 @@ fd := msg.AsFacilityData()
 // fd.UniqueRequestId     — internal SimConnect identifier for this record
 // fd.ParentUniqueRequestId — identifier of the parent record (for nested types)
 // fd.Type                — SIMCONNECT_FACILITY_DATA_TYPE (airport, runway, parking, etc.)
-// fd.IsListItem          — true when the record is part of a child list (e.g., a parking spot)
+// fd.IsListItem          — non-zero (DWORD) when the record is part of a child list (e.g., a parking spot)
 // fd.ItemIndex           — zero-based index within the child list
 // fd.ListSize            — total items in the child list
 // fd.Data                — opaque DWORD; pass to engine.CastDataAs[YourStruct](&fd.Data)
@@ -520,7 +520,8 @@ The `Type` field maps to `SIMCONNECT_FACILITY_DATA_TYPE` constants in `pkg/types
 ## See Also
 
 - [Engine/Client Usage](usage-client.md) — Connection lifecycle, stream setup, and data casting
-- [Manager Usage](usage-manager.md) — Auto-reconnect wrapper with facility helper methods
+- [Manager Usage](usage-manager.md) — Auto-reconnect wrapper; the manager exposes the same facility methods (`pkg/manager/facilities.go`)
+- [Airport Layout & Taxi Routing](airport-layout.md) — `pkg/airport` loader built on these requests
 - [`examples/read-facility`](../examples/read-facility) — Single airport lookup
 - [`examples/airport-details`](../examples/airport-details) — Multi-definition airport inspection including parking and taxiways
 - [`examples/all-facilities`](../examples/all-facilities) — Full airport enumeration with stride arithmetic

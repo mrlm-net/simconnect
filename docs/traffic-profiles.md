@@ -34,6 +34,8 @@ p = traffic.ProfileFor("ATCCOM.AC_MODEL A319.0.text") // ATC MODEL works too
 
 Unknown titles get `DefaultAircraftProfile()` — the A320 family figures every default in the package stands for (`DefaultMotionProfile`, `DefaultTakeoffProfile`, `DefaultApproachProfile`, `DefaultRolloutProfile`, `DefaultNoseOffsetMeters`, the flap tunables). `GenericProfile(span, category)` picks a representative type by size and scales its airframe.
 
+`WakeFor(type)` takes the same titles and designators and gives the type's wake categories for spacing in the air ([Airborne Separation](traffic-separation.md#wake-categories)).
+
 ## Requests
 
 `TaxiRequest` and `ArrivalRequest` have an `Aircraft *AircraftProfile`. `nil` resolves it from `Model`. The profile fills `Profile`, `Takeoff`, `Approach`, `Rollout` and `NoseOffset` where those are zero, so figures set explicitly still win and existing callers keep working. The controllers take the flaps, pushback speed, logo light, spawn height and the turn-around loop size from it.

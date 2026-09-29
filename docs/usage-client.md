@@ -113,7 +113,7 @@ Registers a pre-built dataset from the `datasets` package.
 ```go
 import "github.com/mrlm-net/simconnect/pkg/datasets/aircraft"
 
-client.RegisterDataset(PositionDefID, aircraft.Position)
+client.RegisterDataset(PositionDefID, aircraft.NewPositionDataset())
 ```
 
 ### RegisterFacilityDataset
@@ -214,8 +214,8 @@ client.SetDataOnSimObject(
     types.SIMCONNECT_OBJECT_ID_USER,
     types.SIMCONNECT_DATA_SET_FLAG_DEFAULT,
     0,
-    unsafe.Sizeof(pos),
-    &pos,
+    uint32(unsafe.Sizeof(pos)),
+    unsafe.Pointer(&pos),
 )
 ```
 
@@ -227,12 +227,14 @@ The `Stream()` channel returns `Message` structs containing the raw SimConnect d
 
 ```go
 type Message struct {
-    DwSize    uint32  // Size of the message
-    DwVersion uint32  // Protocol version
-    DwID      uint32  // Message type (SIMCONNECT_RECV_ID)
-    Raw       []byte  // Raw message data
+    *types.SIMCONNECT_RECV  // DwSize, DwVersion, DwID (types.DWORD)
+    Size uint32             // Size of the message
+    Err  error              // Set on a dispatch error
+    // unexported: the pooled buffer
 }
 ```
+
+On a dispatch error the stream sends a `Message` with `Err` set and a nil `SIMCONNECT_RECV`. Check `msg.Err != nil` before reading `msg.DwID`. `Release()` returns the buffer to the pool.
 
 ### Casting Message Data
 
@@ -269,22 +271,22 @@ The `Message` struct provides helper methods to cast to specific types:
 | Method | Returns | Use Case |
 |--------|---------|----------|
 | `AsOpen()` | Connection open data | Initial connection info |
-| `AsQuit()` | Quit notification | Simulator shutdown |
 | `AsException()` | Exception details | Error handling |
 | `AsEvent()` | Event data | System events |
-| `AsEventEx1()` | Extended event data | Extended event info |
 | `AsSimObjectData()` | Object data | Data definition responses |
-| `AsSimObjectDataByType()` | Object type data | Type-based queries |
+| `AsSimObjectDataBType()` | Object type data | Type-based queries |
 | `AsFacilityData()` | Facility data | Airport/waypoint info |
-| `AsFacilitiesList()` | Facilities list | Facility enumerations |
-| `AsAssignedObjectId()` | Assigned ID | AI object creation |
+| `AsFacilityList()` | Facilities list | Facility enumerations |
+| `AsAssignedObjectID()` | Assigned ID | AI object creation |
+
+The full list is in the [Engine API Reference](usage-engine-api.md). There is no helper for the quit message (`SIMCONNECT_RECV_ID_QUIT`); the stream closes after it.
 
 ### Parsing Strings
 
-SimConnect returns null-terminated strings. Use `ParseNullTerminatedString` to convert:
+SimConnect returns null-terminated strings. Use `BytesToString` to convert:
 
 ```go
-title := engine.ParseNullTerminatedString(data.SzTitle[:])
+title := engine.BytesToString(data.SzTitle[:])
 ```
 
 ### Attributing Exceptions
@@ -383,7 +385,7 @@ client.TransmitClientEventEx1(
     eventID,
     types.SIMCONNECT_GROUP_PRIORITY_HIGHEST,
     types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
-    data0, data1, data2, data3, data4,
+    [5]uint32{data0, data1, data2, data3, data4},
 )
 ```
 
@@ -448,7 +450,7 @@ client.AICreateEnrouteATCAircraft(
     0,                    // Flight number
     "KSEA_KLAX.pln",      // Flight plan file
     0.5,                  // Progress (0.0-1.0)
-    false,                // Ground clamped
+    false,                // Touch-and-go
     CreateReqID,
 )
 ```
@@ -533,8 +535,8 @@ Requests a list of facilities (airports, waypoints, etc.).
 
 ```go
 client.RequestFacilitiesList(
-    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
     FacilitiesReqID,
+    types.SIMCONNECT_FACILITY_LIST_AIRPORT,
 )
 ```
 
@@ -548,7 +550,6 @@ client.RequestFacilityData(
     FacilityDataReqID,
     "KSEA",
     "",  // Region (optional)
-    types.SIMCONNECT_FACILITY_DATA_AIRPORT,
 )
 ```
 
@@ -562,7 +563,7 @@ client.RequestFacilityDataEX1(
     FacilityDataReqID,
     "KSEA",
     "",                                        // Region (optional)
-    types.SIMCONNECT_FACILITY_DATA_AIRPORT,    // Explicit facility type
+    byte(types.SIMCONNECT_FACILITY_DATA_AIRPORT), // Explicit facility type
 )
 ```
 
@@ -581,7 +582,7 @@ Requests all facilities of a specific type.
 
 ```go
 client.RequestAllFacilities(
-    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
+    types.SIMCONNECT_FACILITY_LIST_AIRPORT,
     AllFacilitiesReqID,
 )
 ```
@@ -592,7 +593,7 @@ Extended subscription with separate request IDs for facilities entering and leav
 
 ```go
 client.SubscribeToFacilitiesEX1(
-    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
+    types.SIMCONNECT_FACILITY_LIST_AIRPORT,
     NewInRangeReqID,
     OldOutRangeReqID,
 )
@@ -625,7 +626,7 @@ Subscribes to facility updates within a radius.
 
 ```go
 client.SubscribeToFacilities(
-    types.SIMCONNECT_FACILITY_LIST_TYPE_AIRPORT,
+    types.SIMCONNECT_FACILITY_LIST_AIRPORT,
     FacilitySubReqID,
 )
 ```

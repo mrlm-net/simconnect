@@ -7,7 +7,7 @@ section: "client"
 
 # Input Events
 
-> **MSFS 2024 only.** The Input Event API (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEvent`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) is not present in the MSFS 2020 SimConnect SDK. Calling these methods against an MSFS 2020 installation will return an error. The `As*` message helpers (`AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`) will always return `nil` when connected to MSFS 2020 because the simulator never sends the corresponding `DwID` values.
+> **MSFS 2024 only.** The Input Event API (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEvent`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) is not present in the MSFS 2020 SimConnect SDK. Calling these methods with a `SimConnect.dll` that lacks the export panics (the procedure is not found), so check the simulator version before calling them. The `As*` message helpers (`AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`) will always return `nil` when connected to MSFS 2020 because the simulator never sends the corresponding `DwID` values.
 
 > **See also:** [Engine/Client API Reference](usage-engine-api.md) for the full API surface, including the Input Event section with a compact example.
 
@@ -34,6 +34,7 @@ package main
 
 import (
     "fmt"
+    "unsafe"
 
     "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/types"
@@ -61,10 +62,13 @@ func main() {
             continue
         }
         // recv.DwArraySize tells you how many descriptors are in this batch.
-        // Access elements at recv.RgData[0] through recv.RgData[count-1].
+        // RgData is a one-element placeholder: the other descriptors follow it
+        // in the buffer, so step through by element size.
         count := int(recv.DwArraySize)
+        base := unsafe.Pointer(&recv.RgData[0])
+        size := unsafe.Sizeof(types.SIMCONNECT_INPUT_EVENT_DESCRIPTOR{})
         for i := 0; i < count; i++ {
-            desc := recv.RgData[i]
+            desc := (*types.SIMCONNECT_INPUT_EVENT_DESCRIPTOR)(unsafe.Add(base, uintptr(i)*size))
             name := engine.BytesToString(desc.Name[:])
             fmt.Printf("Event: %-64s  hash=0x%08X  type=%d\n", name, desc.Hash, desc.Type)
         }

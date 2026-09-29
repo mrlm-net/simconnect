@@ -23,7 +23,7 @@ Client data areas are named shared memory regions that SimConnect clients use to
 
 > **See also:** [Client Data Areas](client-data-area.md) for a full conceptual guide, field-by-field parameter tables, types reference, and a complete annotated example. This section summarises the API surface and provides a self-contained writer + reader example.
 
-> **Interface note:** `CreateClientData`, `AddToClientDataDefinition`, `RequestClientData`, and `SetClientData` are methods on `*engine.Engine` (returned by `engine.New()`). They are **not** part of the `engine.Client` interface returned by `simconnect.NewClient()`. Use `engine.New()` directly when you need the Client Data Area API.
+> **Interface note:** `CreateClientData`, `AddToClientDataDefinition`, `ClearClientDataDefinition`, `RequestClientData`, `SetClientData` and `MapClientDataNameToID` are part of the `engine.Client` interface, so they are available both from `simconnect.NewClient()` and from `engine.New()`.
 
 ### Setup workflow
 
@@ -158,9 +158,9 @@ type SharedData struct {
 }
 
 const (
-	AreaID  uint32 = 1000
-	DefID   uint32 = 1001
-	ReqID   uint32 = 1002
+	AreaID = 1000
+	DefID  = 1001
+	ReqID  = 1002
 )
 
 // writerSetup creates and writes the area.
@@ -297,7 +297,7 @@ err := client.GetInputEvent(requestID, hash)
 Read the response value using the engine helpers:
 
 ```go
-if recv := msg.AsGetInputEvent(); recv != nil && recv.RequestID == requestID {
+if recv := msg.AsGetInputEvent(); recv != nil && uint32(recv.RequestID) == requestID {
     if f, ok := engine.InputEventValueAsFloat64(recv); ok {
         fmt.Printf("Value: %f\n", f)
     }
@@ -482,7 +482,11 @@ Responses arrive as one or more `SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVE
 
 ```go
 if recv := msg.AsSimObjectAndLiveryEnumeration(); recv != nil {
-    for _, item := range recv.RgData {
+    // The entries follow the list header inline; RgData is not filled in.
+    base := uintptr(unsafe.Pointer(recv)) + unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})
+    size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
+    for i := uintptr(0); i < uintptr(recv.DwArraySize); i++ {
+        item := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
         title := engine.BytesToString(item.AircraftTitle[:])
         livery := engine.BytesToString(item.LiveryName[:])
         fmt.Printf("Model: %s  Livery: %s\n", title, livery)
@@ -498,7 +502,7 @@ if recv := msg.AsSimObjectAndLiveryEnumeration(); recv != nil {
 | `DwArraySize` | `DWORD` | Number of entries in this response batch |
 | `DwEntryNumber` | `DWORD` | Zero-based index of the first entry in this batch |
 | `DwOutOf` | `DWORD` | Total number of entries across all batches |
-| `RgData` | `[]SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` | Entry slice for this batch |
+| `RgData` | `[]SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` | Placeholder, not filled in; `DwArraySize` entries follow the 28-byte header inline |
 
 Each `SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` element has two fields:
 
@@ -520,12 +524,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-const EnumReqID uint32 = 3000
+const EnumReqID = 3000
 
 func main() {
 	client := engine.New("LiveryEnum")
@@ -559,7 +564,10 @@ func main() {
 			if recv == nil || recv.DwRequestID != EnumReqID {
 				continue
 			}
-			for _, item := range recv.RgData {
+			base := uintptr(unsafe.Pointer(recv)) + unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})
+			size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
+			for i := uintptr(0); i < uintptr(recv.DwArraySize); i++ {
+				item := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
 				title := engine.BytesToString(item.AircraftTitle[:])
 				livery := engine.BytesToString(item.LiveryName[:])
 				fmt.Printf("%-60s  %s\n", title, livery)

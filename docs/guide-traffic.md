@@ -9,7 +9,7 @@ section: "client"
 
 This guide covers AI aircraft injection using the Engine client's `AICreate*` methods — thin, typed wrappers over the raw SimConnect DLL. Every call maps directly to a single SimConnect API function with no extra abstraction.
 
-> **Scope:** This guide covers the raw Engine-layer `AICreate*` / `AIRemove*` / `AIRelease*` API. Manager-layer wrappers (`TrafficParked`, `TrafficEnroute`, `TrafficNonATC`, fleet tracking) and the `pkg/traffic.Fleet` abstraction are out of scope — see [traffic-guide.md](traffic-guide.md) for those.
+> **Scope:** This guide covers the raw Engine-layer `AICreate*` / `AIRemove*` / `AIRelease*` API. Manager-layer wrappers (`TrafficParked`, `TrafficEnroute`, `TrafficNonATC`, fleet tracking) and the `pkg/traffic.Fleet` abstraction are out of scope — see [traffic-guide.md](traffic-guide.md) for those. For complete movement built on top of them, see [Departure Taxi](traffic-taxi.md), [Arrivals & Parking](traffic-arrival.md), [Injected Ground Movement](traffic-motion.md), [Traffic Picture](traffic-picture.md) and [Traffic Manager](traffic-manager.md).
 
 ## Aircraft Kinds
 
@@ -18,7 +18,7 @@ SimConnect exposes four creation APIs, each suited to a different role:
 | Kind | Method | When to use |
 |------|--------|-------------|
 | **Parked ATC** | `AICreateParkedATCAircraft` | Static ground traffic at a known airport. SimConnect places the aircraft at a free parking spot. No position required. |
-| **Enroute ATC** | `AICreateEnrouteATCAircraft` | Aircraft mid-flight following an MSFS `.pln` flight plan. SimConnect positions the aircraft along the route at the given progress fraction. |
+| **Enroute ATC** | `AICreateEnrouteATCAircraft` | Aircraft following an MSFS `.pln` flight plan. `dFlightPlanPosition` is a waypoint index plus the fraction along the next leg; in MSFS 2024 it has no effect and the aircraft starts on the ground at the plan's departure airport (see [Enroute Aircraft](traffic-guide.md#enroute-aircraft)). |
 | **Non-ATC** | `AICreateNonATCAircraft` | Aircraft at an explicit world position. Required when you need precise gate/apron placement or airborne injection outside the ATC system. |
 | **Simulated Object** | `AICreateSimulatedObject` | Non-aircraft objects: ground vehicles, boats, or any container title that is not an aircraft. |
 
@@ -135,7 +135,9 @@ func main() {
 
 ## Enroute ATC Aircraft
 
-`AICreateEnrouteATCAircraft` injects an aircraft into the ATC system mid-flight, following an MSFS `.pln` flight plan. SimConnect positions the aircraft at the given fractional position along the route.
+`AICreateEnrouteATCAircraft` injects an aircraft into the ATC system, following an MSFS `.pln` flight plan from the given position along the route (waypoint index plus the fraction along the next leg).
+
+> **MSFS 2024:** the position does not take effect. Tested live (#369), every enroute ATC aircraft appeared on the ground at its plan's departure airport, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `AICreateNonATCAircraft` and give it the rest of the route as waypoints (`traffic.EnrouteStart`, see [Traffic Manager](traffic-manager.md#appearing-airborne)).
 
 **Signature:**
 
@@ -234,7 +236,7 @@ func (e *Engine) AICreateNonATCAircraft(
 | `Bank` | `float64` | Degrees, positive = right wing down |
 | `Heading` | `float64` | True degrees (0–360) |
 | `OnGround` | `DWORD` | 1 = on ground, 0 = airborne |
-| `Airspeed` | `DWORD` | Knots; use `SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE` (-1) for cruise speed |
+| `Airspeed` | `SIMCONNECT_DATA_INITPOSITION_AIRSPEED` (`DWORD`) | Knots. The SDK value for cruise speed is -1 (`0xFFFFFFFF`); the untyped constant `SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE` (-1) cannot be assigned to the field directly in Go |
 
 **Example — spawn an aircraft at a specific gate:**
 
@@ -353,7 +355,7 @@ Call this during shutdown to clean up all spawned objects before disconnecting.
 
 ### Releasing Control
 
-`AIReleaseControl` transfers ownership of an AI object from your add-on back to the simulator's AI system. After release, the simulator drives the object autonomously. You can still send waypoints via `SetDataOnSimObject` before releasing if you want to set an initial route.
+`AIReleaseControl` transfers ownership of an AI object from your add-on back to the simulator's AI system. After release, the simulator drives the object autonomously. To give it a route, release it first, then send the waypoint chain with `SetDataOnSimObject` (pack it with `engine.PackWaypoints(wps)`, unit size `engine.WaypointWireSize`). The simulator ignores waypoints for an aircraft it still holds.
 
 ```go
 //go:build windows
@@ -362,7 +364,7 @@ Call this during shutdown to clean up all spawned objects before disconnecting.
 client.AIReleaseControl(objectID, reqRelease)
 ```
 
-This is the correct sequence when you want the aircraft to taxi and depart autonomously after providing a waypoint set.
+Release, then waypoints, is the correct sequence when you want the aircraft to taxi and depart along your route. `pkg/traffic.Fleet` does this in `ReleaseControl` and `SetWaypoints`.
 
 ### Assigning a Flight Plan
 
@@ -404,14 +406,18 @@ SimConnect returns one or more `SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVER
 case types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST:
     list := msg.AsSimObjectAndLiveryEnumeration()
     // list is *types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST
-    for _, entry := range list.RgData {
+    header := uintptr(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
+    size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
+    base := uintptr(unsafe.Pointer(list)) + header
+    for i := uintptr(0); i < uintptr(list.DwArraySize); i++ {
+        entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
         title := engine.BytesToString(entry.AircraftTitle[:])
         livery := engine.BytesToString(entry.LiveryName[:])
         fmt.Printf("Title: %q  Livery: %q\n", title, livery)
     }
 ```
 
-`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. The `RgData` slice is populated from the wire data and contains all entries in the current batch. SimConnect may send multiple messages for large model sets; collect them all before using the results.
+`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. `RgData` is not populated: the batch's `DwArraySize` entries follow the 28-byte list header in the message buffer, so read them as above (as `addModels` in `examples/airport-map/control.go` does). SimConnect may send multiple messages for large model sets; collect them all before using the results.
 
 **Object type constants** for `EnumerateSimObjectsAndLiveries`:
 
@@ -428,5 +434,8 @@ case types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST:
 - [Engine/Client Usage](usage-client.md) — Connection lifecycle, data definitions, message handling
 - [Client Configuration](config-client.md) — Configuration options for the Engine client
 - [traffic-guide.md](traffic-guide.md) — Higher-level `pkg/traffic.Fleet` abstraction
+- [Departure Taxi](traffic-taxi.md) and [Arrivals & Parking](traffic-arrival.md) — Controllers that drive one aircraft from stand to take-off, or from final to stand
+- [Injected Ground Movement](traffic-motion.md) — Moving aircraft by position injection
+- [Traffic Picture](traffic-picture.md) and [Traffic Manager](traffic-manager.md) — All traffic around the user, and scheduled traffic spawned automatically
 - [examples/ai-traffic](../examples/ai-traffic) — Parked and enroute aircraft injection example
 - [examples/manage-traffic](../examples/manage-traffic) — Full departure sequence with facility data, waypoints, and cleanup

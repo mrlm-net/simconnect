@@ -1,13 +1,13 @@
 ---
 title: "Traffic Schedules"
-description: "Scheduled flights for the airports around the centre of the world: airlines, fleets, routes and time-of-day waves, deterministic for a seed."
+description: "Scheduled flights for the airports around the centre of the world: airlines, fleets, routes and time-of-day waves, and overflights crossing the area; deterministic for a seed."
 order: 9
 section: "traffic"
 ---
 
 # Traffic Schedules
 
-`traffic.Schedule` generates the flights that should exist at the **focus airports**, for example the airports in the traffic picture (#367). It returns a timetable: who departs and arrives where and when. A traffic manager turns the timetable into aircraft (#368).
+`traffic.Schedule` generates the flights that should exist at the **focus airports**, for example the airports in the [traffic picture](traffic-picture.md) (#367). It returns a timetable: who departs and arrives where and when. The [Traffic Manager](traffic-manager.md) turns the timetable into aircraft (#368).
 
 ```go
 cfg := traffic.DefaultScheduleConfig() // or traffic.LoadScheduleConfig("schedule.json")
@@ -37,6 +37,22 @@ Each `Flight` either departs from a focus airport or arrives at one between `fro
 - **Call signs:** the airline ICAO code plus a flight number, each used once in a schedule.
 
 A focus airport that is missing from the config still gets traffic when its layout is passed (as a regional airport). The runway lengths then come from the layout.
+
+## Overflights
+
+`traffic.Overflights(cfg, OverflightOptions{…}, from, to)` generates the flights that only cross the area: between the config's airports outside it, whose route passes through it (#369).
+
+```go
+over := traffic.Overflights(cfg, traffic.OverflightOptions{
+    Centre:   centre,           // e.g. the traffic picture's
+    RadiusNM: 250,
+    PerHour:  6,                // in the peak hour (default 6), scaled by the waves and Density
+    Seed:     42,
+    Exclude:  []string{"LKPR"}, // the focus airports: overflights neither start nor end there
+}, from, to)
+```
+
+Each has `Enter` and `Exit`, when it crosses into and out of the area at its cruise speed; they are zero for other flights. Like `Schedule`, it is deterministic for a seed. The [Traffic Manager](traffic-manager.md#enroute-traffic-and-overflights) spawns both: `ManagerOptions.Source` for the schedule and `ManagerOptions.Overflights` for the overflights.
 
 ## Editing the data
 

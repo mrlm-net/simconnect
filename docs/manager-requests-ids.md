@@ -85,6 +85,8 @@ ViewEventID                  = 999999988 // View camera event (manager reserved 
 FlightPlanDeactivatedEventID = 999999987 // Flight plan deactivated
 ```
 
+The engine's heartbeat subscription also uses an ID in this range: `engine.HEARTBEAT_EVENT_ID = 999999999`.
+
 **Purpose**: These IDs are used to register and track the manager's internal subscriptions to SimConnect system events. Responses may arrive as different `SIMCONNECT_RECV` variants (e.g., `SIMCONNECT_RECV_EVENT`, `SIMCONNECT_RECV_EVENT_FILENAME`, `SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE`).
 
 **Usage**: Internal to the manager. The manager updates `SimState` for Pause/Sim events and provides typed subscription helpers for filename/object events.
@@ -155,7 +157,7 @@ RequestTypeCustom          // User-defined or other request types
 
 ### 1. Choose Your ID Range
 
-Pick a sub-range within 1-999,999,899 for your application:
+Pick a sub-range within 1-999,999,849 for your application:
 
 ```go
 const (
@@ -174,10 +176,12 @@ const (
 Use the provided validation functions:
 
 ```go
-if !manager.IsValidUserID(myID) {
+if !manager.IsValidUserID(myID) || myID >= manager.CustomEventIDMin {
     return fmt.Errorf("invalid user ID: %d (reserved for manager)", myID)
 }
 ```
+
+`IsValidUserID` accepts IDs up to 999,999,899 (`IDRange.UserMax`), so it does not catch the custom-event range 999,999,850–999,999,886. Keep your IDs at or below 999,999,849.
 
 ### 3. Document Your ID Assignments
 
@@ -195,7 +199,7 @@ Keep a clear mapping of your IDs:
 If you need to track user-initiated requests, access the manager's registry via the `Client()` method:
 
 ```go
-client := manager.Client()
+client := mgr.Client()
 // Note: Current implementation doesn't expose registry to users
 // This is a future enhancement point
 ```
@@ -206,7 +210,7 @@ The manager provides utility functions to validate IDs:
 
 ```go
 // Check if an ID is reserved for manager use
-if manager.IsManagerID(999100) {
+if manager.IsManagerID(999999900) {
     fmt.Println("This ID is reserved for the manager")
 }
 
@@ -242,7 +246,7 @@ Potential improvements for request management:
 
 Manager registers internal requests at these points:
 
-1. **On Connection (via `onEngineOpen`)**:
+1. **On OPEN (via `processMessage` → `registerSimStateSubscriptions`)**:
     - Simulator State Definition (999999900) — registers camera state, simulation/time variables, date fields, IS_* flags, environment SimVars, aircraft telemetry, and extended variables
     - Simulator State Request (999999901)
     - Pause Event (999999998)
@@ -260,9 +264,9 @@ Manager registers internal requests at these points:
 ### Cleanup Strategy
 
 When the connection closes or manager stops:
-1. Unsubscribe from pause events
-2. Clear simulator state data definition
+1. Clear the simulator state data definition (if its request was submitted)
+2. Clear custom system events and reset their ID allocator
 3. Clear all entries in request registry
-4. Reset `simStateDataRequestPending` flag
+4. Reset `cameraDataRequestPending` flag
 
 This ensures a clean state for the next connection.

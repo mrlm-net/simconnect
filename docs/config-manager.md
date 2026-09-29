@@ -51,6 +51,7 @@ All manager options are available both via the root `simconnect` package (unpref
 | `WithContext(ctx)` <br> `manager.WithContext(ctx)` | `context.Context` | `context.Background()` | Context for manager lifecycle |
 | `WithLogger(logger)` <br> `manager.WithLogger(logger)` | `*slog.Logger` | Text handler, INFO level | Logger for manager operations |
 | `WithLogLevel(level)` <br> `manager.WithLogLevel(level)` | `slog.Level` | `slog.LevelInfo` | Minimum level for default logger (use `WithLogger` to provide a custom logger) |
+| `WithLogLevelFromString(level)` <br> `manager.WithLogLevelFromString(level)` | `string` | - | Set the manager's default-logger level from a string |
 | `WithRetryInterval(d)` <br> `manager.WithRetryInterval(d)` | `time.Duration` | `15s` | Delay between connection attempts |
 | `WithConnectionTimeout(d)` <br> `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
 | `WithReconnectDelay(d)` <br> `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
@@ -70,7 +71,6 @@ These options configure the underlying engine client:
 | `WithHeartbeat(freq)` <br> `manager.WithHeartbeat(freq)` | `engine.HeartbeatFrequency` | `engine.HEARTBEAT_6HZ` | Heartbeat frequency |
 | `WithEngineOptions(opts...)` <br> `manager.WithEngineOptions(opts...)` | `...engine.Option` | - | Pass any engine options directly |
 | `WithAutoDetect()` <br> `manager.WithAutoDetect()` | - | disabled | Enable automatic DLL path detection (engine pass-through) |
-| `WithLogLevelFromString(level)` <br> `manager.WithLogLevelFromString(level)` | `string` | - | Set log level from string (engine pass-through) |
 
 > **Note:** `Context` and `Logger` passed via `WithEngineOptions()` will be ignored. The manager controls these settings—use `WithContext()` and `WithLogger()` on the manager instead.
 
@@ -235,7 +235,7 @@ mgr := manager.New("MyApp", manager.WithLogLevelFromString("debug"))
 mgr := simconnect.New("MyApp", simconnect.WithLogLevelFromString("debug"))
 ```
 
-Accepted values: `"debug"`, `"info"`, `"warn"`, `"warning"`, `"error"`, `"err"` (case-insensitive). Unknown values default to INFO.
+Accepted values: `"debug"`, `"info"`, `"warn"`, `"warning"`, `"error"`, `"err"`, and the short forms `"d"`, `"i"`, `"w"`, `"e"` (case-insensitive). Unknown values default to INFO.
 
 ## Configuration Getters
 
@@ -264,9 +264,9 @@ The Manager provides access to simulator state through the `SimState()` method, 
 ### Accessing Simulator State
 
 ```go
-if mgr.IsConnected() {
+if mgr.ConnectionState() == manager.StateAvailable {
     state := mgr.SimState()
-    fmt.Printf("Camera State: %d\n", state.CameraState)
+    fmt.Printf("Camera State: %v\n", state.Camera)
     fmt.Printf("Is Paused: %v\n", state.Paused)
 }
 ```

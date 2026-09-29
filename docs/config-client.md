@@ -144,7 +144,7 @@ engine.WithLogLevelFromString("debug")  // Same as WithLogLevel(slog.LevelDebug)
 engine.WithLogLevelFromString("warn")   // Same as WithLogLevel(slog.LevelWarn)
 ```
 
-Accepted values: `"debug"`, `"info"`, `"warn"`, `"warning"`, `"error"`, `"err"` (case-insensitive). Unknown values default to INFO.
+Accepted values: `"debug"`/`"d"`, `"info"`/`"i"`, `"warn"`/`"warning"`/`"w"`, `"error"`/`"err"`/`"e"` (case-insensitive, surrounding spaces ignored). Unknown values default to INFO.
 
 ## Underlying SimConnect Config
 
@@ -155,6 +155,7 @@ The engine embeds the internal SimConnect configuration:
 | `BufferSize` | `int` | Message buffer size |
 | `Context` | `context.Context` | Lifecycle context |
 | `DLLPath` | `string` | Path to SimConnect.dll |
+| `AutoDetect` | `bool` | Enables DLL auto-detection (set by `WithAutoDetect`) |
 
 ## DLL Auto-Detection
 

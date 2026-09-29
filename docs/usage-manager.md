@@ -68,10 +68,10 @@ case manager.StateConnecting:
     fmt.Println("Connecting...")
 case manager.StateConnected:
     fmt.Println("Connected")
+case manager.StateAvailable:
+    fmt.Println("Available (OPEN received)")
 case manager.StateReconnecting:
     fmt.Println("Reconnecting...")
-case manager.StateStopped:
-    fmt.Println("Stopped")
 }
 ```
 
@@ -172,11 +172,11 @@ mgr.RemoveMessage(handlerID)
 Called when the SimConnect connection opens.
 
 ```go
-handlerID := mgr.OnOpen(func(data *types.SIMCONNECT_RECV_OPEN) {
+handlerID := mgr.OnOpen(func(data types.ConnectionOpenData) {
     fmt.Printf("Connected to: %s v%d.%d\n",
-        engine.ParseNullTerminatedString(data.SzApplicationName[:]),
-        data.DwApplicationVersionMajor,
-        data.DwApplicationVersionMinor)
+        data.ApplicationName,
+        data.ApplicationVersionMajor,
+        data.ApplicationVersionMinor)
 })
 
 mgr.RemoveOpen(handlerID)
@@ -187,7 +187,7 @@ mgr.RemoveOpen(handlerID)
 Called when the simulator closes the connection.
 
 ```go
-handlerID := mgr.OnQuit(func() {
+handlerID := mgr.OnQuit(func(data types.ConnectionQuitData) {
     fmt.Println("Simulator disconnected")
 })
 
@@ -320,13 +320,13 @@ deactivatedID := mgr.OnFlightPlanDeactivated(func() {
 mgr.RemoveFlightPlanDeactivated(deactivatedID)
 
 // Object added handler
-addID := mgr.OnObjectAdded(func(objectID uint32, objType uint32) {
+addID := mgr.OnObjectAdded(func(objectID uint32, objType types.SIMCONNECT_SIMOBJECT_TYPE) {
     fmt.Printf("Object added: id=%d type=%d\n", objectID, objType)
 })
 mgr.RemoveObjectAdded(addID)
 
 // Object removed handler
-remID := mgr.OnObjectRemoved(func(objectID uint32, objType uint32) {
+remID := mgr.OnObjectRemoved(func(objectID uint32, objType types.SIMCONNECT_SIMOBJECT_TYPE) {
     fmt.Printf("Object removed: id=%d type=%d\n", objectID, objType)
 })
 mgr.RemoveObjectRemoved(remID)
@@ -336,8 +336,8 @@ mgr.RemoveObjectRemoved(remID)
 
 For more control over event handling (e.g., goroutine-based processing), use channel-based subscriptions. The manager exposes convenience subscriptions for common system events (wrapping message subscriptions and delivering typed payloads):
 
-- `SubscribeOnPause(id, bufferSize)` — delivers `PauseEvent` containing a boolean `Paused` field indicating whether the simulator is paused.
-- `SubscribeOnSimRunning(id, bufferSize)` — delivers `SimRunningEvent` containing a boolean `Running` field indicating whether the simulator is running.
+- `SubscribeOnPause(id, bufferSize)` — delivers raw `engine.Message` for the `Pause` system event (`msg.AsEvent().DwData == 1` means paused).
+- `SubscribeOnSimRunning(id, bufferSize)` — delivers raw `engine.Message` for the `Sim` system event (`msg.AsEvent().DwData == 1` means running).
 - `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
 - `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
 - `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
@@ -356,8 +356,12 @@ pauseSub := mgr.SubscribeOnPause("pause-sub", 5)
 defer pauseSub.Unsubscribe()
 
 go func() {
-    for ev := range pauseSub.Events() {
-        if ev.Paused {
+    for msg := range pauseSub.Messages() {
+        ev := msg.AsEvent()
+        if ev == nil {
+            continue
+        }
+        if ev.DwData == 1 {
             fmt.Println("Simulator paused")
         } else {
             fmt.Println("Simulator unpaused")
@@ -368,8 +372,12 @@ go func() {
 simSub := mgr.SubscribeOnSimRunning("sim-sub", 5)
 defer simSub.Unsubscribe()
 
-for ev := range simSub.Events() {
-    if ev.Running {
+for msg := range simSub.Messages() {
+    ev := msg.AsEvent()
+    if ev == nil {
+        continue
+    }
+    if ev.DwData == 1 {
         fmt.Println("Simulator running")
     } else {
         fmt.Println("Simulator stopped")
@@ -483,10 +491,13 @@ In addition to the built-in system events (Pause, Sim, Crashed, etc.), the manag
 
 ### OnCustomSystemEvent (Callback)
 
-Register a callback handler for a custom system event:
+Register a callback handler for a custom system event. The event must be subscribed first with `SubscribeToCustomSystemEvent`; otherwise `OnCustomSystemEvent` returns `ErrCustomEventNotSubscribed`:
 
 ```go
 // Subscribe to a custom system event (e.g., "6Hz" for high-frequency timer)
+if _, err := mgr.SubscribeToCustomSystemEvent("6Hz", 1); err != nil {
+    log.Printf("Failed to subscribe to custom event: %v", err)
+}
 handlerID, err := mgr.OnCustomSystemEvent("6Hz", func(eventName string, data uint32) {
     fmt.Printf("Custom event '%s' fired: data=%d\n", eventName, data)
 })
@@ -514,8 +525,10 @@ if err != nil {
 defer sub.Unsubscribe()
 
 go func() {
-    for ev := range sub.Events() {
-        fmt.Printf("Custom event '%s': data=%d\n", ev.EventName, ev.Data)
+    for msg := range sub.Messages() {
+        if ev := msg.AsEvent(); ev != nil {
+            fmt.Printf("Custom event: data=%d\n", ev.DwData)
+        }
     }
 }()
 
@@ -537,7 +550,7 @@ Attempting to subscribe to a reserved event name using the custom APIs will retu
 
 ### Custom Event ID Allocation
 
-Custom system events are assigned IDs from the manager-reserved range (999,999,850 - 999,999,886, 37 slots). See [ID Management](#id-management) for details. Custom event subscriptions are automatically cleared on disconnect.
+Custom system events are assigned IDs from a dedicated range (999,999,850 - 999,999,886, 37 slots, `CustomEventIDMin`–`CustomEventIDMax`). See [ID Management](#id-management) for details. Custom event subscriptions are automatically cleared on disconnect.
 
 ### Example: Multiple Custom Events
 
@@ -546,6 +559,10 @@ Custom system events are assigned IDs from the manager-reserved range (999,999,8
 events := []string{"1sec", "4sec", "6Hz"}
 
 for _, eventName := range events {
+    if _, err := mgr.SubscribeToCustomSystemEvent(eventName, 1); err != nil {
+        log.Printf("Failed to subscribe to %s: %v", eventName, err)
+        continue
+    }
     _, err := mgr.OnCustomSystemEvent(eventName, func(name string, data uint32) {
         fmt.Printf("[%s] fired: %d\n", name, data)
     })
@@ -597,7 +614,7 @@ defer sub.Unsubscribe()
 for {
     select {
     case change := <-sub.ConnectionStateChanges():
-        fmt.Printf("Connection: %v → %v\n", change.Old, change.New)
+        fmt.Printf("Connection: %v → %v\n", change.OldState, change.NewState)
     case <-sub.Done():
         return
     }
@@ -613,7 +630,7 @@ defer sub.Unsubscribe()
 for {
     select {
     case change := <-sub.SimStateChanges():
-        if change.New.Paused {
+        if change.NewState.Paused {
             pauseDataCollection()
         } else {
             resumeDataCollection()
@@ -816,7 +833,7 @@ Available helper functions:
 
 ### Camera States
 
-Common camera state values (see `pkg/manager/state.go` for the complete list of 20+ camera states):
+Common camera state values (see `pkg/manager/state-enums.go` for the complete list of 20+ camera states):
 
 | Value | Constant | Description |
 |-------|----------|-------------|
@@ -847,7 +864,7 @@ fmt.Printf("Max retries: %d\n", mgr.MaxRetries())
 
 ## ID Management
 
-The manager reserves IDs 999,999,900-999,999,999 for internal use. See [Request ID Management](manager-requests-ids.md) for details.
+The manager reserves IDs 999,999,850-999,999,999: custom system events use 999,999,850-999,999,886 and internal requests 999,999,900-999,999,999. Keep your IDs at or below 999,999,849. See [Request ID Management](manager-requests-ids.md) for details.
 
 ### Validating User IDs
 
@@ -1143,7 +1160,7 @@ func monitorConnectionState(mgr manager.Manager) {
     for {
         select {
         case change := <-sub.ConnectionStateChanges():
-            fmt.Printf("Connection state: %v → %v\n", change.Old, change.New)
+            fmt.Printf("Connection state: %v → %v\n", change.OldState, change.NewState)
         case <-sub.Done():
             return
         }

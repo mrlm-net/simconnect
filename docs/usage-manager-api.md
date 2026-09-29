@@ -105,7 +105,7 @@ Each call to `Start()` runs the following loop:
 3. On success, enter `StateConnected` and begin dispatching messages.
 4. If the simulator closes the connection (stream channel closes), reset `SimState` to defaults, enter `StateDisconnected`.
 5. If `AutoReconnect` is `true` (default), enter `StateReconnecting`, wait `ReconnectDelay` (default 30s), and restart from step 1.
-6. If the context is cancelled at any point, `Start()` returns `context.Canceled` after draining subscriptions.
+6. If the context is cancelled at any point, `Start()` disconnects and returns `ctx.Err()` (`context.Canceled`). Call `Stop()` to wait for subscriptions to drain.
 
 ### Subscription Behaviour on Reconnect
 
@@ -183,7 +183,7 @@ Key field groups:
 | Crash and sound | `Crashed`, `CrashReset`, `Sound` |
 | Realism | `Realism`, `RealismCrashDetection`, `RealismCrashWithOthers` |
 | Rendering mode | `IsInVR`, `IsUsingMotionControllers`, `IsUsingJoystickThrottle`, `TrackIREnabled` |
-| Session type | `IsInRTC`, `IsAvatar`, `IsAircraft`, `IsOnGround` |
+| Session type | `IsInRTC`, `IsAvatar`, `IsAircraft`, `SimOnGround` |
 | Avatar | `HandAnimState`, `HideAvatarInAircraft`, `ParachuteOpen` |
 | Mission | `MissionScore` |
 | Time (sim) | `SimulationTime`, `LocalTime`, `ZuluTime` |
@@ -425,10 +425,11 @@ import (
     "fmt"
 
     "github.com/mrlm-net/simconnect/pkg/manager"
+    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 func registerQuitHandler(mgr manager.Manager) string {
-    return mgr.OnQuit(func() {
+    return mgr.OnQuit(func(data types.ConnectionQuitData) {
         fmt.Println("Simulator quit")
     })
 }
@@ -486,7 +487,7 @@ Attempting to subscribe to a reserved name returns `ErrReservedEventName`.
 
 ### SubscribeToCustomSystemEvent
 
-Creates a channel subscription for a named SimConnect system event. Returns a `Subscription` that delivers raw `engine.Message` values. Calling this for the same event name a second time returns a new subscription against the already-registered event — the SimConnect subscription is shared.
+Creates a channel subscription for a named SimConnect system event. Returns a `Subscription` that delivers raw `engine.Message` values. Calling this for the same event name a second time reuses the already-registered SimConnect event, but the new channel subscription replaces the first one (they share an internal ID); keep a single subscription per event name.
 
 ```go
 //go:build windows
@@ -525,7 +526,7 @@ func subscribe6Hz(mgr manager.Manager) {
 
 ### OnCustomSystemEvent
 
-Registers a callback handler for a named system event. The event must be subscribed first (either via `SubscribeToCustomSystemEvent` or a prior `OnCustomSystemEvent` call). Returns a handler ID that can be used to remove the handler.
+Registers a callback handler for a named system event. The event must be subscribed first via `SubscribeToCustomSystemEvent`; otherwise it returns `ErrCustomEventNotSubscribed`. Returns a handler ID that can be used to remove the handler.
 
 ```go
 //go:build windows
