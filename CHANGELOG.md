@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-30
+
+Airborne ATC: traffic separated in the air as well as on the ground. Wake separation and spacing on final follow the weather. There is a landing sequence per runway. Arrivals lose their delays by speed, a longer downwind and holding stacks. A tower per runway clears line-ups, take-offs and crossings in mixed mode and sends arrivals around. Conflicts in the air are predicted and resolved. Turns follow the airframe's standard bank, and the map has an Approach tab to work it all by hand.
+
 ### Added
 
 - `pkg/traffic` wake turbulence separation (#389): `WakeFor` (ICAO L/M/H/J and RECAT-EU A–F by type, else by span), `ArrivalSeparationNM` (ICAO Doc 4444 and RECAT-EU minima on final, at least `MinRadarSeparationNM`), `SeparationTime`, `DepartureInterval` (wake and same-route intervals), `RunwayOccupancy`. See `docs/traffic-separation.md`.
@@ -85,6 +89,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `examples/airport-map`: an aircraft can be deselected (click its card again, or Esc); nothing selects one back by itself, and removing the selected one leaves none selected.
 - `pkg/traffic`: a flight's estimate moves by whole minutes; the manager no longer reported the same estimate again every tick as the prediction drifted by seconds.
 - `pkg/traffic` `CheckLandingFlow`: with departures waiting, one gap is opened in the arrival stream instead of doubling every gap; at density 2 the doubled gaps had pushed estimates hours out.
+
+### Known issues
+
+- #395's long-run criterion (no two of our aircraft below the minima over a long busy run) was checked only on light night traffic at LKPR, with no losses.
+- Traffic runs on wall-clock time: a simulation rate other than 1× or a pause puts it out of step (#413).
+- Conflict resolutions steer only our en-route aircraft; our arrivals and departures near the airport are kept apart by the sequencer and the tower.
 
 ## [0.15.0] - 2026-09-29
 
