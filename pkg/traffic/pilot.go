@@ -36,10 +36,16 @@ func pilotTx(pos Position, cs string, in Intent, p map[string]string, text strin
 	return Transmission{Position: pos, Pilot: true, Callsign: cs, Intent: in, Params: p, Text: text}
 }
 
-// RequestPushback is a departure ready on its stand.
-func RequestPushback(cs, stand, info string) Transmission {
-	p := map[string]string{ParamStand: stand, ParamInfo: info}
-	return pilotTx(PosGround, cs, IntentRequestPushback, p, fmt.Sprintf("%s, stand %s, request push and start-up%s", cs, stand, withInfo(info)))
+// RequestPushback is a departure ready on its stand, its first call to
+// ground ("Ruzyne Ground, CSA123, stand A4, information Bravo, request push
+// and start-up"; station "" when already in contact).
+func RequestPushback(station, cs, stand, info string) Transmission {
+	p := map[string]string{ParamStation: station, ParamStand: stand, ParamInfo: info}
+	text := cs
+	if station != "" {
+		text = station + ", " + cs
+	}
+	return pilotTx(PosGround, cs, IntentRequestPushback, p, fmt.Sprintf("%s, stand %s%s, request push and start-up", text, stand, withInfo(info)))
 }
 
 // RequestTaxi is a departure pushed back and ready to taxi.

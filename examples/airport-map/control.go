@@ -87,6 +87,8 @@ type controlled struct {
 	// given the ATIS letter (#418).
 	atc      traffic.Position
 	atisSaid bool
+	// request is what the crew asks for now (TaxiEvent.Request, #462).
+	request string
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -165,6 +167,8 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
+	// pending runs clearances and actions at their traffic time (#462).
+	pending *pending
 	// saidCallsign writes a call sign as said (#462); set once the schedule
 	// exists.
 	saidCallsign func(cs string) string
@@ -204,6 +208,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:    &game{},
 	}
+	cc.pending = newPending()
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		// Call signs as said, in the text and so in the voice (#462).
@@ -473,7 +478,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true, HoldForRunway: !r.Gates, // clearances on request (#462) Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
 			return nil, err
 		}
@@ -570,6 +575,16 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	// What the crew asks for (#462), once the change is logged and handed
+	// off (deferred first: runs last).
+	defer func() {
+		if ev.dep != nil && ev.dep.Request != it.request {
+			it.request = ev.dep.Request
+			if it.request != "" {
+				it.onRequest(it.request)
+			}
+		}
+	}()
 	defer it.handoff(ev) // after the change is logged (deferred: runs last)
 	defer it.logChanges(prev, ev)
 	if it.cc != nil {
@@ -1497,13 +1512,7 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			if said.HoldingShortOf == "" {
 				said.HoldingShortOf = prev.HoldingShortOf // the runway just crossed
 			}
-			// The pilot's request first (#417): push and start, taxi.
-			switch {
-			case action == "pushback":
-				it.say(traffic.RequestPushback(it.Tail, v.Stand, ""))
-			case action == "taxi" && it.dep != nil:
-				it.say(traffic.RequestTaxi(it.Tail))
-			}
+			// (The crew's requests are said when made: onRequest, #462.)
 			it.say(it.phraseView(said, r, action, -1))
 		}
 	}
@@ -1667,6 +1676,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	from := it.atc
 	it.atc = pos
 	it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+	// A departure on its stand makes its first call to ground when it is
+	// ready: the push request (#462).
+	if ev.dep != nil && pos == traffic.PosGround && ev.dep.State == traffic.TaxiAwaitingPushback {
+		return
+	}
 	// The pilot's first call on the new frequency (#417), with the ATIS
 	// letter on the first of all (#418).
 	info := ""

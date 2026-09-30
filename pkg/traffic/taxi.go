@@ -159,6 +159,11 @@ type TaxiEvent struct {
 	PushbackHeld bool
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
+	// Request is what the crew asks for while HoldForClearances holds the
+	// aircraft and it is ready (its own wait is over): "pushback" (push
+	// and start-up), "taxi"; "" when it asks for nothing (#462). A
+	// controller answers with the clearance (ClearPushback, ClearToTaxi).
+	Request string
 	// Lights is the light state the sim reports.
 	Lights Lights
 	// Err is set for TaxiFailed and for non-fatal warnings such as ErrTaxiStuck.
