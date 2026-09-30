@@ -109,3 +109,7 @@ You can be the pilot too. `POST /api/radio/pilot` takes a recognised call `{icao
 Each airport's ATIS (`nav.ATISService`, see [Weather and ATIS](nav-weather.md)) is on the radio too (#418). `ATISInformation(letter, text)` is the broadcast, on the ATIS position and so on the ATIS frequency, and it is not read back. Our pilots give the current letter on their first call of all: "Ruzyne Ground, CSA123, stand A4, information Bravo".
 
 The airport map refreshes the ATIS of its managed airports every minute of traffic time, from the weather at the user's aircraft. A new information goes out on the radio and into the traffic log. `GET /api/radio/atis?icao=LKPR` serves the current one (letter, text, spoken form and frequency) for a voice to loop. The airport panel's 🔊 button reads it in an English voice, whatever the browser's language.
+
+## The radio panel
+
+The airport map's **Radio** tab (#425) shows what is said on the airport's frequencies. Each frequency the scenery lists (Delivery, Ground, Tower, Approach, ATIS…) has a button with the number of transmissions heard on it. Pick one to follow it, or **All** to hear everything with each line's frequency shown. Pilot lines and the ATIS are coloured apart from the controllers'. The choice is remembered.
