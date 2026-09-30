@@ -101,7 +101,7 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 	}
 	p, hasProcs := st.procedures[icao]
 	var procs *airport.Procedures
-	opts := []nav.ATISOption{}
+	opts := []nav.ATISOption{nav.ATISWithSelector(runwaySelector(icao))}
 	if hasProcs {
 		procs = &p
 		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
