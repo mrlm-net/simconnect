@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Pushback: an alley push counts the junctions of other taxiways it passes, and a taxi-out turning back sharply right after the push costs more (#441; LKPR A3 no longer tows 190 m along Z, A5 faces its way out).
 - Ground: facing oncoming traffic, an aircraft keeps the junction before it clear, so the other can turn off there (#444).
 - Pushback: a moving aircraft (pushing, taxiing) must be clear of the push corridor by both half-spans, not only its fuselage (#446).
+- Ground: an aircraft waiting for its taxi clearance shows its planned way, so a neighbour does not push into it; beside a push under way only an aircraft the push stops for goes on (#452).
 
 ### Added
 

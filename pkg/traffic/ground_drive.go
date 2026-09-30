@@ -44,6 +44,9 @@ type groundDrive struct {
 	// and whether this one follows the traffic ahead (while taxiing).
 	picture       *GroundPicture
 	followTraffic bool
+	// planned is the way it will taxi, reported while it waits for its taxi
+	// clearance (#452).
+	planned []airport.LatLon
 	trafficAt     time.Time // last look ahead (every TrafficCheckEvery)
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
@@ -296,7 +299,11 @@ func (d *groundDrive) followAhead(now time.Time) {
 			d.mover.ClearTrafficStop()
 		}
 		if d.picture != nil && d.object != 0 {
-			d.picture.ReportPath(d.object, nil, 0)
+			if len(d.planned) > 0 {
+				d.picture.ReportPlanned(d.object, d.planned, d.prof.SpanMeters/2)
+			} else {
+				d.picture.ReportPath(d.object, nil, 0)
+			}
 		}
 		return
 	}

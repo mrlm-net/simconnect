@@ -35,6 +35,9 @@ type groundEntry struct {
 	// pushing: ahead is a pushback under way, which taxiing traffic gives
 	// way to whatever the distances.
 	pushing bool
+	// waiting: ahead is the way it will taxi once cleared (#452): pushes
+	// do not start into it, but it has no priority over moving traffic.
+	waiting bool
 }
 
 // NewGroundPicture creates an empty picture.
@@ -55,7 +58,7 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
-		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing,
+		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
@@ -68,7 +71,21 @@ func (p *GroundPicture) ReportPath(id uint32, ahead []airport.LatLon, half float
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e, ok := p.aircraft[id]; ok {
-		e.ahead, e.half, e.pushing = ahead, half, false
+		e.ahead, e.half, e.pushing, e.waiting = ahead, half, false, false
+		p.aircraft[id] = e
+	}
+}
+
+// ReportPlanned records the way aircraft id will taxi once cleared, while
+// it waits for the clearance after its push (#452; LKPR, live: TVS706 was
+// cleared to push onto A1 where TVS795, pushed there a moment before, was
+// about to taxi; TVS795 then drove through the push). A push does not
+// start across it; taxiing traffic does not give way to it.
+func (p *GroundPicture) ReportPlanned(id uint32, ahead []airport.LatLon, half float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.ahead, e.half, e.pushing, e.waiting = ahead, half, false, len(ahead) > 0
 		p.aircraft[id] = e
 	}
 }
@@ -79,7 +96,7 @@ func (p *GroundPicture) ReportPush(id uint32, corridor []airport.LatLon, half fl
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e, ok := p.aircraft[id]; ok {
-		e.ahead, e.half, e.pushing = corridor, half, len(corridor) > 0
+		e.ahead, e.half, e.pushing, e.waiting = corridor, half, len(corridor) > 0, false
 		p.aircraft[id] = e
 	}
 }
@@ -100,7 +117,7 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	p.mu.Lock()
 	var others []other
 	for oid, e := range p.aircraft {
-		if oid != id && len(e.ahead) > 0 && now.Sub(e.at) <= TrafficStaleAfter {
+		if oid != id && len(e.ahead) > 0 && !e.waiting && now.Sub(e.at) <= TrafficStaleAfter {
 			others = append(others, other{oid, e})
 		}
 	}
@@ -130,7 +147,13 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	for _, o := range others {
 		reach := half + o.e.half + GiveWayMarginMeters
 		mineTo := first(mine, o.e.ahead, reach)
-		if mineTo < 0 || mineTo < half && (!o.e.pushing || mineTo == 0) {
+		// Beside a push under way only an aircraft already close enough for
+		// the push to stop for it (corridorBlocked: both half-spans and
+		// PushClearMarginMeters) goes on through, or each would wait for the
+		// other; one merely within the margin waits where it is (#452:
+		// TVS795, waiting at the end of TVS706's corridor, drove through it).
+		inIt := mineTo == 0 && (!o.e.pushing || first(mine[:1], o.e.ahead, half+o.e.half+PushClearMarginMeters) == 0)
+		if mineTo < 0 || mineTo < half && (!o.e.pushing || inIt) {
 			continue // no conflict, or already in it: go on through
 		}
 		// (Beside a push under way it waits where it is unless already in its

@@ -414,7 +414,7 @@ func TestPushWaitsForNeighbourPush(t *testing.T) {
 
 // Beside a push under way, an aircraft whose path meets the push corridor
 // within half a span ahead waits where it is; it goes on only when it is
-// already in the corridor (at LKPR one drove into a neighbour's push and
+// already close enough for the push to stop for it (#452) (at LKPR one drove into a neighbour's push and
 // both waited for each other for minutes).
 func TestGiveWayToPushUnderWay(t *testing.T) {
 	p := NewGroundPicture()
@@ -438,7 +438,8 @@ func TestGiveWayToPushUnderWay(t *testing.T) {
 		wait   bool
 	}{
 		{"at the corridor's edge", reach + 5, true},
-		{"already in it", reach - 2, false},
+		{"within the margin, clear of the push", reach - 2, true},
+		{"already in it: the push stops for it", half + 18 + PushClearMarginMeters - 1, false},
 	} {
 		me := at(30, c.startN)
 		path, err := NewGroundPath([]airport.LatLon{me, at(30, -80)}, prof)
@@ -529,5 +530,64 @@ func TestPushWaitsForMovingWing(t *testing.T) {
 		if blocked != moving {
 			t.Errorf("moving %v: blocked %v", moving, blocked)
 		}
+	}
+}
+
+// Pushed and waiting for its taxi clearance, an aircraft's planned way holds
+// a neighbour's push that has not started, but gives it no priority over
+// moving traffic (#452; LKPR, live: TVS706 pushed onto A1 where TVS795 was
+// about to taxi, and TVS795 drove through the push).
+func TestPlannedTaxiHoldsPushNotTraffic(t *testing.T) {
+	now := time.Unix(0, 0)
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	line := func(from airport.LatLon, hdg, length float64) []airport.LatLon {
+		var pts []airport.LatLon
+		for d := trafficBodyStep; d <= length; d += trafficBodyStep {
+			pts = append(pts, offsetHeading(from, hdg, d))
+		}
+		return pts
+	}
+	corridor := line(base, 0, 60)
+	// The waiting aircraft 100 m east, its way on west across the corridor.
+	waiter := offsetHeading(offsetHeading(base, 0, 40), 90, 100)
+	p := NewGroundPicture()
+	p.Report(2, waiter, 270, DefaultMotionProfile(), now)
+	p.ReportPlanned(2, line(waiter, 270, 200), 17)
+	if _, blocked := p.corridorBlocked(1, corridor, 12, true, now); !blocked {
+		t.Error("a push starts across the planned taxi of a waiting aircraft")
+	}
+	// A taxiing aircraft crossing the planned way does not give way to it.
+	p.Report(3, offsetHeading(waiter, 270, 60), 180, DefaultMotionProfile(), now)
+	path, err := NewGroundPath([]airport.LatLon{offsetHeading(offsetHeading(waiter, 270, 60), 0, 80), offsetHeading(offsetHeading(waiter, 270, 60), 180, 80)}, DefaultMotionProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gw := p.giveWay(3, path, 0, GiveWayLookMeters, 17, now); !math.IsInf(gw, 1) {
+		t.Errorf("taxiing traffic gives way at %.0f m to an aircraft not cleared to move", gw)
+	}
+}
+
+// Beside a push under way, an aircraft whose way starts within the margin of
+// the corridor but whose wings do not overlap it waits (#452).
+func TestWaitBesidePushUnderWay(t *testing.T) {
+	now := time.Unix(0, 0)
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	var corridor []airport.LatLon
+	for d := 0.0; d <= 60; d += trafficBodyStep {
+		corridor = append(corridor, offsetHeading(base, 0, d))
+	}
+	p := NewGroundPicture()
+	p.Report(1, base, 180, DefaultMotionProfile(), now)
+	p.ReportPush(1, corridor, 17)
+	// 35 m abeam: within reach (12+17+10) but beyond where the push stops
+	// for it (12+17+3).
+	start := offsetHeading(offsetHeading(base, 0, 30), 90, 35)
+	p.Report(2, start, 0, DefaultMotionProfile(), now)
+	path, err := NewGroundPath([]airport.LatLon{start, offsetHeading(start, 0, 100)}, DefaultMotionProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gw := p.giveWay(2, path, 0, GiveWayLookMeters, 12, now); math.IsInf(gw, 1) {
+		t.Error("drives on beside a push under way, not overlapping it")
 	}
 }
