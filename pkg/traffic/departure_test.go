@@ -73,7 +73,9 @@ func TestTaxiControllerInjectedDeparture(t *testing.T) {
 		}
 		close(done)
 	}()
-	if !run(TaxiAwaitingTaxi, 60*120) {
+	// (The push takes this aircraft's random draw of speeds and pauses,
+	// #343: up to about three minutes.)
+	if !run(TaxiAwaitingTaxi, 60*240) {
 		t.Fatalf("state %v, want awaiting taxi after the push", ctl.State())
 	}
 	pushed := ctl.mover.Pose()
