@@ -661,7 +661,7 @@ func (c *TaxiController) planPushback() {
 	}
 	var best *airport.Route
 	var bestPts []airport.LatLon
-	branch, at, bestCost, bestBlocks := airport.NodeID(-1), 1, math.Inf(1), 0
+	branch, at, bestCost, bestBlocks, bestBad := airport.NodeID(-1), 1, math.Inf(1), 0, false
 	// A wider swing only where no ordinary push leaves the taxiways clear.
 	for pass, maxSwing := range []float64{maxPushSwingDeg, maxPushSwingWideDeg} {
 		if pass == 1 && best != nil && bestBlocks == 0 {
@@ -700,8 +700,16 @@ func (c *TaxiController) planPushback() {
 					blocks += c.alleyBlocks(i)
 				}
 				cost := out.Cost + pushed*pushCostFactor + float64(blocks)*pushBlockPenalty
-				if hairpinAfterPush(out) {
+				// Facing the way out comes first: a push that leaves the nose off
+				// the first leg (a turn from a standstill) or turning back costs
+				// more than the lanes it holds for a minute (#492).
+				backs := hairpinAfterPush(out, g.Nodes[e.To].Position)
+				misaligned := misalignedAfterPush(out, g.Nodes[e.To].Position)
+				if backs {
 					cost += pushHairpinPenalty
+				}
+				if misaligned {
+					cost += pushMisalignPenalty
 				}
 				if swing > maxPushSwingDeg {
 					cost += pushWideSwingPenalty
@@ -715,13 +723,14 @@ func (c *TaxiController) planPushback() {
 						continue // too tight or into the neighbours
 					}
 				}
-				best, bestPts, branch, at, bestCost, bestBlocks = out, pts, e.To, i, cost, blocks
+				best, bestPts, branch, at, bestCost, bestBlocks, bestBad = out, pts, e.To, i, cost, blocks, backs || misaligned
 			}
 		}
 	}
-	if best == nil {
-		// No branch to push the tail onto: the only taxiway at the junction
-		// is the way out (LKPR A7, B9). Push and turn on the apron to face it.
+	// No branch to push the tail onto (the only taxiway at the junction is
+	// the way out: LKPR B9), or none that leaves the nose facing the way out
+	// (#492: LKPR A7): push and turn on the apron to face it, if it fits.
+	if best == nil || bestBad && pushTurnPlan(g, c.req.Parking, gear, stand.Heading+180, r.Points[1:], c.profile()) != nil {
 		far, walked := r.Points[2], 0.0
 		for i := 2; i < len(r.Points) && walked < pushRouteLookMeters; i++ {
 			walked += localDist(r.Points[i-1], r.Points[i])
@@ -888,12 +897,50 @@ func leadsOn(g *airport.Graph, from, to airport.NodeID) bool {
 // crossroadsBranchMeters: a branch this long is a way on, not a stub.
 const crossroadsBranchMeters = 80.0
 
+// goodPushTurn reports whether a push-and-turn fits the stand cleanly: its
+// tightest turn within PushbackMinArcMeters and clear of the neighbours —
+// not the least-bad one pushTurnPlan falls back to (LKPR B9: a 6.6 m kink).
+func (c *TaxiController) goodPushTurn(gear airport.LatLon, pushDir float64) bool {
+	g, prof := c.req.Graph, c.profile()
+	pts := pushTurnPlan(g, c.req.Parking, gear, pushDir, c.route.Points[1:], prof)
+	if pts == nil {
+		return false
+	}
+	base := standIntrusion(g, c.req.Parking, []airport.LatLon{offsetHeading(gear, pushDir+180, 1), gear}, prof)
+	return tightestTurn(pts) >= PushbackMinArcMeters-1 && standIntrusion(g, c.req.Parking, pts, prof) <= base+pushClearanceSlackMeters
+}
+
+// misalignedAfterPush reports a push that leaves the nose off the first
+// leg of the taxi-out: the nose points from the branch it was pushed onto
+// (from) at the junction, and the taxi-out's first pushMisalignMeters turn
+// more than pushMisalignDeg off that line — a turn from a standstill right
+// at the end of the push, where the tug should have swung the tail (#492:
+// LKPR A1, B14, B15, A7).
+func misalignedAfterPush(out *airport.Route, from airport.LatLon) bool {
+	if len(out.Points) < 2 {
+		return false
+	}
+	k := out.Points[0]
+	ahead, walked := out.Points[len(out.Points)-1], 0.0
+	for i := 1; i < len(out.Points); i++ {
+		walked += localDist(out.Points[i-1], out.Points[i])
+		if walked >= pushMisalignMeters {
+			ahead = out.Points[i]
+			break
+		}
+	}
+	return math.Abs(headingDiff(localBearing(from, k), localBearing(k, ahead))) > pushMisalignDeg
+}
+
 // hairpinAfterPush reports a taxi-out that turns back sharply (at least
 // pushHairpinDeg) within pushHairpinMeters of the push: the push left the
 // nose facing away from the way out (LKPR A5, live: KLM594 pushed onto B1
 // facing south-east, taxied 80 m and turned 127° back onto B2).
-func hairpinAfterPush(out *airport.Route) bool {
-	pts := out.Points
+func hairpinAfterPush(out *airport.Route, from airport.LatLon) bool {
+	// From the branch the tail was pushed onto: the nose points from there
+	// at the junction, so the first turn is off that line (#491: LKPR A6
+	// faced 148° with its taxi heading 282°).
+	pts := append([]airport.LatLon{from}, out.Points...)
 	walked := 0.0
 	for i := 1; i+1 < len(pts) && walked < pushHairpinMeters; i++ {
 		walked += localDist(pts[i-1], pts[i])
@@ -1099,7 +1146,13 @@ const (
 	pushHairpinDeg     = 110.0
 	pushHairpinMeters  = 200.0
 	pushHairpinPenalty = 1000.0
-	maxNoseOffRouteDeg = 150.0
+	// The taxi-out's first pushMisalignMeters more than pushMisalignDeg off
+	// the pushed aircraft's nose cost pushMisalignPenalty: a turn from a
+	// standstill is impossible, holding a lane for a minute is not (#492).
+	pushMisalignPenalty = 2000.0
+	pushMisalignDeg     = 60.0
+	pushMisalignMeters  = 20.0
+	maxNoseOffRouteDeg  = 150.0
 	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
 	// pushLineToleranceMeters how far the taxiway may bend from its first
 	// direction and still count as straight; pushClearanceSlackMeters how
@@ -1122,6 +1175,9 @@ const (
 	// The main gear of a push-and-turn stays within pushOffPavementMeters of
 	// the pavement (stand circles, taxi path strips).
 	pushOffPavementMeters = 3.0
+	// pushOffPavementWideMeters: the tolerance tried when no push-and-turn
+	// fits within pushOffPavementMeters (#492).
+	pushOffPavementWideMeters = 8.0
 	// pushTurnRadiusCost is what a meter of turn radius below
 	// PushbackArcMeters is worth in meters of push, choosing a push-and-turn.
 	pushTurnRadiusCost = 1.5
@@ -1165,6 +1221,25 @@ func (c *TaxiController) startTaxiOut() error {
 		if alongHeading(nose, pose.Heading, route.Points[i]) > 1 {
 			start = i
 			break
+		}
+	}
+	// A push-and-turn ends on the taxi-out itself, up to pushTurnPastMeters
+	// past the junction: start on from the route segment nearest the nose,
+	// not from a point behind it (#492: LKPR B9 started with a 5 m leg
+	// backwards).
+	if c.pushTurn {
+		best := math.Inf(1)
+		for i := c.pushJunction + 1; i < len(route.Points); i++ {
+			a, b := route.Points[i-1], route.Points[i]
+			if localDist(nose, a) > pushTurnPastMeters+pushTurnMaxMeters {
+				break
+			}
+			h := localBearing(a, b)
+			seg := localDist(a, b)
+			along := math.Max(0, math.Min(seg, alongHeading(a, h, nose)))
+			if d := localDist(nose, offsetHeading(a, h, along)); d < best && alongHeading(nose, pose.Heading, b) > 1 {
+				best, start = d, i
+			}
 		}
 	}
 	apron := apronSpans{g: c.req.Graph}
