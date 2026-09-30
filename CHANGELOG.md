@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map: the schedule waits for the first weather sample (at most 30 s) before spawning, so the first flights do not take the preferred runway when the wind says the other (#458).
 - ATIS: the runway in use is kept through wind shifts near a limit (`RunwaySelector`), and on the airport map it is the traffic's own (`ATISWithSelector`): no new letter and runway every minute (#454).
 - Pushback: an alley push counts the junctions of other taxiways it passes, and a taxi-out turning back sharply right after the push costs more (#441; LKPR A3 no longer tows 190 m along Z, A5 faces its way out).
 - Ground: facing oncoming traffic, an aircraft keeps the junction before it clear, so the other can turn off there (#444).
