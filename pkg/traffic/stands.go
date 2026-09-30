@@ -435,3 +435,34 @@ func (a *StandAllocator) observe(list []scanned) {
 	a.lastScan = map[uint32][]scanned{a.reqBase + standReqAircraft: list}
 	a.detect()
 }
+
+// TakenFrom is what now keeps owner, whose aircraft is object (0: not yet
+// known), off the stand it holds ("" if nothing): another aircraft detected
+// on it, or on an overlapping stand in the way. A reservation does not stop
+// MSFS AI or the user parking there: an arrival reserves its stand long
+// before it lands (#479).
+func (a *StandAllocator) TakenFrom(stand int, owner string, object uint32) string {
+	if !a.valid(stand) {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	l := a.g.Layout
+	half := DefaultHalfSpanMeters
+	if o, ok := a.reserved[stand]; ok && o.Owner == owner && o.HalfSpan > 0 {
+		half = o.HalfSpan
+	}
+	if d, ok := a.detected[stand]; ok && d.ObjectID != object {
+		return fmt.Sprintf("%s holds %s", d.describe(), l.Parking[stand].Label())
+	}
+	for _, c := range l.ParkingConflicts(stand) {
+		d, ok := a.detected[c]
+		if !ok || d.ObjectID == object {
+			continue
+		}
+		if half+d.HalfSpan+StandWingtipClearanceMeters > localDist(l.Parking[stand].Position, l.Parking[c].Position) {
+			return fmt.Sprintf("%s on %s is in the way", d.describe(), l.Parking[c].Label())
+		}
+	}
+	return ""
+}

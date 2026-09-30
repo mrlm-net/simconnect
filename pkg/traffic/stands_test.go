@@ -279,3 +279,25 @@ func TestStandAllocatorRoutes(t *testing.T) {
 		t.Error("ReleaseOwner kept the stand")
 	}
 }
+
+// A stand reserved for an arrival is taken by an aircraft detected on it
+// (#479); the arrival's own aircraft on it is not another.
+func TestStandTakenFrom(t *testing.T) {
+	g := lkprGraph(t)
+	a := NewStandAllocator(nil, g)
+	a4, _ := g.Layout.ParkingIndex("A4")
+	if err := a.Occupy(a4, "CSA1", 17); err != nil {
+		t.Fatal(err)
+	}
+	if why := a.TakenFrom(a4, "CSA1", 0); why != "" {
+		t.Fatalf("free stand: %q", why)
+	}
+	p := g.Layout.Parking[a4].Position
+	a.observe([]scanned{{object: 900, data: standScanData{Lat: p.Lat, Lon: p.Lon, OnGround: 1, WingSpanFt: 110}}})
+	if why := a.TakenFrom(a4, "CSA1", 0); why == "" {
+		t.Error("an aircraft parked on the reserved stand is not seen")
+	}
+	if why := a.TakenFrom(a4, "CSA1", 900); why != "" {
+		t.Errorf("its own aircraft: %q", why)
+	}
+}

@@ -808,3 +808,29 @@ func TestArrivalControllerInjectedSweep(t *testing.T) {
 	}
 	t.Logf("%d of %d arrivals parked", ok, total)
 }
+
+// An arrival goes to another stand before it lands (#479): the taxi-in is
+// planned to the new stand from the same exit; once landed it is refused.
+func TestArrivalChangeStand(t *testing.T) {
+	ctl, _ := startArrival(t)
+	g := ctl.req.Graph
+	exit := ctl.Plan().Exit
+	a4, _ := g.Layout.ParkingIndex("A4")
+	if err := ctl.ChangeStand(a4); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	stand, _ := g.ParkingNode(a4)
+	if p.Exit.Node != exit.Node || p.Route.Nodes[len(p.Route.Nodes)-1] != stand || ctl.req.Parking != a4 {
+		t.Errorf("exit %v→%v, route ends at %d (stand node %d), parking %d", exit.Node, p.Exit.Node, p.Route.Nodes[len(p.Route.Nodes)-1], stand, ctl.req.Parking)
+	}
+	if err := ctl.ChangeStand(-1); err == nil {
+		t.Error("an unknown stand was taken")
+	}
+	ctl.mu.Lock()
+	ctl.state = ArrivalRollout
+	ctl.mu.Unlock()
+	if err := ctl.ChangeStand(a4); !errors.Is(err, ErrStandFixed) {
+		t.Errorf("after touchdown: %v", err)
+	}
+}

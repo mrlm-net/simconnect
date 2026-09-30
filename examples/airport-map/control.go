@@ -144,6 +144,8 @@ type controlCenter struct {
 	mu     sync.Mutex
 	next   int
 	items  map[int]*controlled
+	// standCheckAt: the last recheckArrivalStands (#479).
+	standCheckAt time.Time
 	models map[string]bool                    // aircraft titles the simulator offers
 	stands map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
@@ -268,6 +270,61 @@ func (cc *controlCenter) tick() {
 	}
 	// The stand allocators are fed by the traffic picture (Allocate): no
 	// scans of their own.
+	if now := cc.clock.Now(); now.Sub(cc.standCheckAt) >= 10*time.Second {
+		cc.standCheckAt = now
+		cc.recheckArrivalStands()
+	}
+}
+
+// recheckArrivalStands moves an arrival that has not landed to another
+// stand when other traffic has parked on its own (#479: reserved when it
+// spawned, 20–40 minutes before; a reservation does not stop MSFS AI or the
+// user). Runs in the connection goroutine.
+func (cc *controlCenter) recheckArrivalStands() {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		if it.arr == nil || it.stands == nil || it.arr.State() > traffic.ArrivalLanding {
+			continue
+		}
+		it.mu.Lock()
+		old, tail, obj, rwy := it.stand, it.Tail, it.objectID, it.view.Runway
+		it.mu.Unlock()
+		why := it.stands.TakenFrom(old, tail, obj)
+		if why == "" {
+			continue
+		}
+		half := traffic.DefaultHalfSpanMeters
+		if o, ok := it.stands.Occupant(old); ok && o.HalfSpan > 0 {
+			half = o.HalfSpan
+		}
+		it.stands.Release(old)
+		l := it.graph.Layout
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy})
+		if err == nil {
+			err = it.arr.ChangeStand(newStand)
+			if err != nil {
+				it.stands.Release(newStand)
+			}
+		}
+		if err != nil {
+			_ = it.stands.Occupy(old, tail, half) // keep what it had; it will wait there
+			tlog.printf("%-6s arrival: stand %s taken (%s), no other: %v", tail, l.Parking[old].Label(), why, err)
+			continue
+		}
+		it.mu.Lock()
+		it.stand, it.view.Stand = newStand, l.Parking[newStand].Label()
+		mgr, model, label := it.managed, it.view.Model, it.view.Stand
+		it.mu.Unlock()
+		if mgr != nil {
+			mgr.Describe(tail, model, label, rwy) // the board shows the new stand
+		}
+		tlog.printf("%-6s arrival: stand %s taken (%s), now %s", tail, l.Parking[old].Label(), why, l.Parking[newStand].Label())
+	}
 }
 
 // handle passes a message to the injector and every controller.

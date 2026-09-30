@@ -895,3 +895,33 @@ func (t *routeTracker) taxiwayAt(seg int) string {
 	}
 	return ""
 }
+
+// ErrStandFixed is returned by ChangeStand once the aircraft has landed:
+// its taxi-in is under way.
+var ErrStandFixed = errors.New("traffic: the arrival has landed; its stand is fixed")
+
+// ChangeStand sends the arrival to another stand (parking index), until it
+// touches down: the landing and exit stay, the taxi-in is planned from the
+// exit to the new stand. For a stand taken meanwhile by other traffic
+// (#479: an arrival's stand is reserved when it spawns, 20–40 minutes
+// before it lands).
+func (c *ArrivalController) ChangeStand(parking int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.plan == nil || c.state > ArrivalLanding {
+		return ErrStandFixed
+	}
+	g := c.req.Graph
+	if parking < 0 || parking >= len(g.Layout.Parking) {
+		return fmt.Errorf("%w: index %d", airport.ErrUnknownParking, parking)
+	}
+	route, err := g.RouteFromRunway(c.plan.Exit, parking, c.req.Options)
+	if err != nil {
+		return err
+	}
+	c.req.Parking = parking
+	c.plan.Route = route
+	c.standHeading = g.Layout.Parking[parking].Heading
+	c.track = newRouteTracker(route)
+	return nil
+}
