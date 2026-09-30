@@ -41,8 +41,11 @@ type RunwayUser struct {
 	Route    string
 	Crossing bool
 	Arrival  bool
-	// An arrival on final: distance to the threshold and ground speed.
+	// An arrival on final: distance to the threshold and ground speed;
+	// Established on the final approach (not still on its STAR or downwind:
+	// only then is it cleared to land, #486).
 	DistanceNM, GroundKts float64
+	Established           bool
 	// Other traffic: counted, never cleared.
 	Other bool
 }
@@ -216,7 +219,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// The next arrival, near enough, with the runway free: cleared to land.
 	// Free means nobody on it, a departure on its roll included (no
 	// reduced runway separation): it is cleared once that one is airborne.
-	if nextArrName != "" && !nextArrUser.Other && occupied == "" && nextArrUser.DistanceNM <= r.opts.ClearToLandNM {
+	if nextArrName != "" && !nextArrUser.Other && nextArrUser.Established && occupied == "" && nextArrUser.DistanceNM <= r.opts.ClearToLandNM {
 		out.Land = append(out.Land, nextArrName)
 	}
 

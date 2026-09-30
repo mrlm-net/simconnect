@@ -95,6 +95,12 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 			return err
 		}
 		it.say(traffic.GoAround(callsign, ""))
+		q.s.st.mu.Lock()
+		tw := q.s.st.towers
+		q.s.st.mu.Unlock()
+		if tw != nil {
+			tw.forgetLanding(callsign) // a new approach, a new landing clearance (#486)
+		}
 	default:
 		return errors.New("unknown action " + action)
 	}

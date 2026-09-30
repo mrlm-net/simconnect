@@ -149,6 +149,8 @@ func (t *towers) tick(now time.Time) {
 				continue
 			}
 			u.Phase, u.Arrival, u.DistanceNM, u.GroundKts = traffic.RunwayFinal, true, d, v.GroundSpeed
+			// Established: its STAR and approach flown, on the final (#486).
+			u.Established = it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
 		case it.arr != nil && (v.State == "landing" || v.State == "rollout" || v.State == "vacating"):
 			u.Phase, u.Arrival = traffic.RunwayRolling, true
 		default:
@@ -288,6 +290,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			if err := it.arr.GoAround(); err != nil {
 				return err
 			}
+			t.forgetLanding(cs) // the next approach is cleared again (#486)
 			if t.cc.rejoin != nil {
 				t.cc.rejoin(icao, cs)
 			}
@@ -324,11 +327,18 @@ func waitKind(why string) string {
 	}, why)
 }
 
+// forgetLanding lets an arrival that went around be cleared to land on its
+// next approach (#486).
+func (t *towers) forgetLanding(tail string) {
+	t.mu.Lock()
+	delete(t.given, tail+" land")
+	t.mu.Unlock()
+}
+
 // forgetGoAround lets an arrival be sent around again on its next approach.
 func (t *towers) forgetGoAround(tail string) {
 	t.mu.Lock()
 	delete(t.given, tail+" goaround")
-	delete(t.given, tail+" land") // a new approach, a new landing clearance
 	t.mu.Unlock()
 }
 
