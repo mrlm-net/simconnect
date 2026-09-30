@@ -667,7 +667,13 @@ func (c *TaxiController) planPushback() {
 				// Pushing is slow: each meter costs pushCostFactor taxi meters; a
 				// wide swing and every other taxiway left blocked cost more.
 				blocks := c.pushBlocks(k, e)
+				if alley[i] {
+					blocks += c.alleyBlocks(i)
+				}
 				cost := out.Cost + pushed*pushCostFactor + float64(blocks)*pushBlockPenalty
+				if hairpinAfterPush(out) {
+					cost += pushHairpinPenalty
+				}
 				if swing > maxPushSwingDeg {
 					cost += pushWideSwingPenalty
 				}
@@ -740,6 +746,54 @@ func (c *TaxiController) pushBlocks(k airport.NodeID, e airport.Edge) int {
 		}
 	}
 	return n
+}
+
+// alleyBlocks counts the junctions of other taxiways a push up the route to
+// its point i passes (LKPR A3, live: an A321 pushed 190 m up A1 and along
+// Z, across the taxi-out of the aircraft pushed before it, and the two met
+// head on): the push holds each of them while it passes, far longer than
+// a push ending on one. A dead-end alley passes none.
+func (c *TaxiController) alleyBlocks(i int) int {
+	g, r := c.req.Graph, c.route
+	n := 0
+	for j := 1; j < i; j++ {
+		id := r.Nodes[j]
+		if len(g.Adj[id]) < 3 {
+			continue
+		}
+		along := map[string]bool{}
+		for _, e := range g.Adj[id] {
+			if e.To == r.Nodes[j-1] || e.To == r.Nodes[j+1] {
+				along[e.Name] = true
+			}
+		}
+		for _, e := range g.Adj[id] {
+			if e.Name != "" && !along[e.Name] && g.Nodes[e.To].Kind != airport.NodeParking {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// hairpinAfterPush reports a taxi-out that turns back sharply (at least
+// pushHairpinDeg) within pushHairpinMeters of the push: the push left the
+// nose facing away from the way out (LKPR A5, live: KLM594 pushed onto B1
+// facing south-east, taxied 80 m and turned 127° back onto B2).
+func hairpinAfterPush(out *airport.Route) bool {
+	pts := out.Points
+	walked := 0.0
+	for i := 1; i+1 < len(pts) && walked < pushHairpinMeters; i++ {
+		walked += localDist(pts[i-1], pts[i])
+		if localDist(pts[i-1], pts[i]) < 0.5 || localDist(pts[i], pts[i+1]) < 0.5 {
+			continue
+		}
+		if math.Abs(headingDiff(localBearing(pts[i-1], pts[i]), localBearing(pts[i], pts[i+1]))) >= pushHairpinDeg {
+			return true
+		}
+	}
+	return false
 }
 
 // laneName is the taxiway a push onto branch e at k goes along: e's name,
@@ -928,7 +982,13 @@ const (
 	minPushSwingDeg      = 45.0
 	pushWideSwingPenalty = 150.0
 	pushBlockPenalty     = 400.0
-	maxNoseOffRouteDeg   = 150.0
+	// A taxi-out turning back by pushHairpinDeg or more within
+	// pushHairpinMeters of the push costs pushHairpinPenalty: the push faced
+	// the wrong way.
+	pushHairpinDeg     = 110.0
+	pushHairpinMeters  = 200.0
+	pushHairpinPenalty = 1000.0
+	maxNoseOffRouteDeg = 150.0
 	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
 	// pushLineToleranceMeters how far the taxiway may bend from its first
 	// direction and still count as straight; pushClearanceSlackMeters how
