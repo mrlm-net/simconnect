@@ -31,6 +31,16 @@
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
   label.opt { display: block; margin: 4px 0; }
   .note { color: #999; font-size: 12px; }
+  .rdfreqs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+  .rdfreqs button { background: #3a3d44; font-size: 12px; padding: 3px 7px; }
+  .rdfreqs button.on { background: #2d6cdf; }
+  .rdfreqs button .n { color: #9ab; margin-left: 4px; }
+  .rdlog { font-size: 12px; max-height: 60vh; overflow-y: auto; }
+  .rdlog div { padding: 3px 0; border-bottom: 1px solid #2a2d33; }
+  .rdlog .t { color: #777; margin-right: 6px; }
+  .rdlog .f { color: #9ab; margin-right: 6px; }
+  .rdlog .pilot { color: #cfc6a0; }
+  .rdlog .atis { color: #8fb3c9; }
   .warn { color: #ffb347; }
   .leaflet-popup-content { font: 12px/1.45 ui-monospace, monospace; }
   .leaflet-popup-content b { font-family: system-ui, sans-serif; }
@@ -142,6 +152,7 @@
   <nav class="tabs">
     <button type="button" data-tab="traffic">Traffic</button>
     <button type="button" data-tab="approach">Approach</button>
+    <button type="button" data-tab="radio">Radio</button>
     <button type="button" data-tab="charts">Charts</button>
     <button type="button" data-tab="layers">Layers</button>
     <button type="button" data-tab="help" class="q" title="Quick reference">?</button>
@@ -208,6 +219,12 @@
     <h2>Aircraft</h2>
     <div id="ctlList"></div>
     <details><summary>Traffic log</summary><div id="ctlLog" class="tlog"></div></details>
+  </section>
+
+  <section data-panel="radio" hidden>
+    <h2>Radio <span class="i" title="What is said on the airport's frequencies: our controllers' clearances and handoffs, the pilots' requests and readbacks, the ATIS. Pick a frequency to follow it, or All.">ⓘ</span></h2>
+    <div id="rdFreqs" class="rdfreqs"></div>
+    <div id="rdLog" class="rdlog"></div>
   </section>
 
   <section data-panel="approach" hidden>
@@ -1795,12 +1812,61 @@ $('apSeq').addEventListener('click', async (ev) => {
 });
 setInterval(pollApproach, 2000);
 
+// ── Radio (#425): the airport's frequencies and what is said on them ──
+let rdFreq = '';
+try { rdFreq = localStorage.getItem('airportMapRadioFreq') || ''; } catch { /* private window */ }
+const rdOpen = () => !document.querySelector('#side section[data-panel="radio"]').hidden;
+// Frequencies as the radio stamps them: 121.910 → "121.91".
+const rdMHz = (mhz) => { let s = mhz.toFixed(3); if (s.endsWith('0')) s = s.slice(0, -1); return s; };
+const rdKinds = { atis: 'ATIS', clearance: 'Delivery', ground: 'Ground', tower: 'Tower', approach: 'Approach', departure: 'Departure', center: 'Centre', ctaf: 'CTAF' };
+async function pollRadio() {
+  if (!data || !rdOpen()) return;
+  let said;
+  try {
+    const res = await fetch(`/api/radio?icao=${encodeURIComponent(data.icao)}&n=200`);
+    if (!res.ok) return;
+    said = await res.json();
+  } catch { return; }
+  // The frequencies: the airport's, then any heard that it does not list.
+  const freqs = [];
+  const seen = new Set();
+  for (const f of data.frequencies || []) {
+    const mhz = rdMHz(f.mhz);
+    if (seen.has(mhz)) continue;
+    seen.add(mhz);
+    freqs.push({ mhz, label: rdKinds[f.kind] || f.kind });
+  }
+  for (const t of said) if (t.frequency && !seen.has(t.frequency)) { seen.add(t.frequency); freqs.push({ mhz: t.frequency, label: t.position }); }
+  const count = {};
+  for (const t of said) count[t.frequency || ''] = (count[t.frequency || ''] || 0) + 1;
+  const btn = (mhz, label) => `<button type="button" data-f="${esc(mhz)}" class="${rdFreq === mhz ? 'on' : ''}">${esc(label)}${mhz ? ' ' + esc(mhz) : ''}<span class="n">${mhz ? count[mhz] || 0 : said.length}</span></button>`;
+  $('rdFreqs').innerHTML = btn('', 'All') + freqs.map((f) => btn(f.mhz, f.label)).join('');
+  const shown = said.filter((t) => !rdFreq || t.frequency === rdFreq);
+  const log = $('rdLog');
+  const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  log.innerHTML = shown.map((t) => {
+    const cls = t.intent === 'atis' ? 'atis' : t.pilot ? 'pilot' : '';
+    const who = t.pilot ? t.callsign : (t.position === 'atis' ? 'ATIS' : t.position);
+    return `<div class="${cls}"><span class="t">${esc((t.at || '').slice(11, 19))}</span>${rdFreq ? '' : `<span class="f">${esc(t.frequency || '')}</span>`}<b>${esc(who)}</b>: ${esc(t.text)}</div>`;
+  }).join('') || '<div class="note">Nothing said yet.</div>';
+  if (atEnd) log.scrollTop = log.scrollHeight;
+}
+$('rdFreqs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-f]');
+  if (!b) return;
+  rdFreq = b.dataset.f;
+  try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
+  pollRadio();
+});
+setInterval(pollRadio, 1000);
+
 // ── Tabs: one task at a time; the last one is remembered ──
 function showTab(name) {
   if (name === 'charts') pollAirportInfo();
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === name);
   for (const sec of document.querySelectorAll('#side section[data-panel]')) sec.hidden = sec.dataset.panel !== name;
   try { localStorage.setItem('airportMapTab', name); } catch { /* private window */ }
+  if (name === 'radio') pollRadio();
   if (name === 'approach') pollApproach();
   else groups.approach.clearLayers();
 }
