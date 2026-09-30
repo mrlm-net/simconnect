@@ -129,3 +129,25 @@ func TestScheduleUnknownFocus(t *testing.T) {
 		t.Fatalf("%d flights at a regional airport", len(f))
 	}
 }
+
+// Overflights cross the area along their great circle (#468): Dublin–Seoul
+// (over Norway) does not cross 100 NM around LKPR — a straight line in
+// latitude and longitude did; Paris–Warsaw (76 NM from Prague at 51.3N
+// 13.8E) and Frankfurt–Warsaw do.
+func TestCrossingGreatCircle(t *testing.T) {
+	lkpr := airport.LatLon{Lat: 50.1008, Lon: 14.2600}
+	pos := map[string]airport.LatLon{}
+	for _, a := range DefaultScheduleConfig().Airports {
+		pos[a.ICAO] = a.Position
+	}
+	for _, c := range []struct {
+		from, to string
+		want     bool
+	}{{"EIDW", "RKSI", false}, {"LFPG", "EPWA", true}, {"EDDF", "EPWA", true}} {
+		a, b := pos[c.from], pos[c.to]
+		dist := calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon)
+		if _, _, ok := crossing(a, b, dist, lkpr, 100); ok != c.want {
+			t.Errorf("%s–%s crosses 100 NM around LKPR: %v, want %v", c.from, c.to, ok, c.want)
+		}
+	}
+}

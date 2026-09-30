@@ -485,12 +485,14 @@ func (g *scheduler) overflight(outside []ScheduleAirport, weights []float64, o O
 }
 
 // crossing finds where the route a → b (dist NM) enters and leaves the
-// circle around c: the distances along it, sampled every 5 NM.
+// circle around c: the distances along it, sampled every 5 NM along the
+// great circle the flight flies (#468: a straight line in latitude and
+// longitude had Dublin–Seoul cross Prague; its great circle is over Norway).
 func crossing(a, b airport.LatLon, dist float64, c airport.LatLon, radiusNM float64) (in, out float64, ok bool) {
 	in = -1
 	for d := 0.0; d <= dist; d += 5 {
-		t := d / dist
-		p := airport.LatLon{Lat: a.Lat + t*(b.Lat-a.Lat), Lon: a.Lon + t*(b.Lon-a.Lon)}
+		lat, lon := calc.IntermediatePoint(a.Lat, a.Lon, b.Lat, b.Lon, d/dist)
+		p := airport.LatLon{Lat: lat, Lon: lon}
 		if calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= radiusNM {
 			if in < 0 {
 				in = d

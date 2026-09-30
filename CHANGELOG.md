@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Overflights cross the area along their great circle, not a straight line in latitude and longitude (`calc.IntermediatePoint`): no Dublin–Seoul over Prague (#468).
 - Ground: a push under way no longer stops for an aircraft giving way to it (the wing clearance of #446 applies before a push starts only), and a finished push shows its planned taxi in the same frame: no mutual wait (#466).
 - `nav.RunwaySelector` chooses a runway only 2 kt within its wind limits (`RunwayChoiceMarginKts`) and keeps it up to the limits: no runway chosen at its tailwind limit and dropped at the next gust (#460).
 - Airport map: the schedule waits for the first weather sample (at most 30 s) before spawning, so the first flights do not take the preferred runway when the wind says the other (#458).
