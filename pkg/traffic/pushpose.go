@@ -20,14 +20,14 @@ import (
 // of the neighbouring stands and on the pavement. A manual pushback
 // ("push onto L facing west") is the same path to a pose given by ATC.
 
-// pushPose is where a push ends: the nose on the taxiway edge from→to,
-// facing to (heading, true degrees); from is -1 for a nose past the end
-// of a lane, to (deadEnds).
+// pushPose is where a push ends: the nose on the taxiway edge from→to (or
+// short of from on its line), facing to (heading, true degrees).
 type pushPose struct {
 	nose     airport.LatLon
 	heading  float64
 	from, to airport.NodeID
 	lane     string
+	tight    bool           // on a lane without wingtip clearance from the stands beside it
 	own      airport.NodeID // the junction of the stand's lead-in (poseBlocks)
 	taxi     float64        // meters on from the nose to the far node
 	lb       float64        // lower bound of the cost of a push to it
@@ -41,8 +41,8 @@ const (
 	pushPoseReachMeters = 120.0
 	// pushPoseStepMeters: poses along a taxiway edge, this apart.
 	pushPoseStepMeters = 5.0
-	// laneEndPoseMeters: a pose's nose up to this far past the end of a lane.
-	laneEndPoseMeters = 10.0
+	// laneEndPoseMeters: a pose's nose up to this far short of its edge.
+	laneEndPoseMeters = 20.0
 	// pushMaxTurnDeg: a tug turns the aircraft at most this in all, and at
 	// most pushMaxSwerveDeg more than from the stand's heading to the pose's.
 	pushMaxTurnDeg   = 200.0
@@ -54,6 +54,12 @@ const (
 	pushTaxiAlignDeg    = 45.0
 	pushTaxiStartMeters = 10.0
 	pushTaxiStartDeg    = 20.0
+	// pushTightPenalty: a pose on a lane whose wingtip clearance from the
+	// stands beside it is short (Graph.Fits) holds those stands while the
+	// engines start; a lane with clearance wins (LKPR A3: onto A1, not the
+	// AA stub beside A2), one without is still taken where nothing else is
+	// (LKPR C31: H1 beside C30).
+	pushTightPenalty = 500.0
 	// pushPoseMaxMeters: the longest push.
 	pushPoseMaxMeters = 150.0
 	// pushPoseRoutes: taxi-outs planned at most, for the cheapest pushes,
@@ -122,13 +128,23 @@ func pushFits(pts []airport.LatLon, prof MotionProfile, pv *flatPave, tol, base 
 }
 
 // pushPoses are the poses a push from gear may end in: along every
-// taxiway edge within pushPoseReachMeters, both ways, each with a lower
+// taxiway edge within pushPoseReachMeters, both ways, and up to
+// laneEndPoseMeters before its start on its line: the nose short of where
+// the lane begins, the tail on the apron behind (LKPR C31, where the lane
+// ends at the stand's junction; C17, where JB turns into a connector
+// there: with the nose on the node the tail has no room to swing). Each
+// has a lower
 // bound of its cost (the push and the taxi straight to the nearest hold of
 // the runway), cheapest first. Their taxi-outs are planned only when
 // needed (poseRoute).
 func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 	g := c.req.Graph
 	toRunway := c.metersToRunway()
+	limits := c.req.Options.TaxiwayMaxSpan
+	if limits == nil {
+		limits = airport.KnownTaxiwayMaxSpan[g.Layout.ICAO]
+	}
+	span := 2 * c.halfSpan()
 	var poses []pushPose
 	for a := range g.Adj {
 		from := airport.NodeID(a)
@@ -137,13 +153,17 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 			continue
 		}
 		for _, e := range g.Adj[a] {
-			if !pushEdge(g, e) || !g.Fits(e, c.req.Options) {
+			// The taxiway's span limit (a 777 not on LKPR JO); the wingtips'
+			// clearance from the stands beside it is the push's own check
+			// (pushFits), as the lane beside the stand's neighbours is where
+			// the push ends (LKPR H1 at C31).
+			if max, ok := limits[e.Name]; !pushEdge(g, e) || ok && e.Name != "" && span > max {
 				continue
 			}
 			pb := g.Nodes[e.To].Position
 			l, h := localDist(pa, pb), localBearing(pa, pb)
-			lane := ""
-			for x := 0.0; x <= l; x += pushPoseStepMeters {
+			lane, tight := "", !g.Fits(e, c.req.Options)
+			for x := -laneEndPoseMeters; x <= l; x += pushPoseStepMeters {
 				nose := offsetHeading(pa, h, x)
 				d := localDist(nose, gear)
 				if d > pushPoseReachMeters {
@@ -157,24 +177,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 					continue // no way to the runway from there
 				}
 				taxi += l - x
-				poses = append(poses, pushPose{nose: nose, heading: h, from: from, to: e.To, lane: lane, taxi: l - x, lbTaxi: taxi, lb: math.Max(0, d-c.profile().WheelbaseMeters)*pushCostFactor + taxi})
-			}
-		}
-	}
-	// Past the end of a lane, facing up it: the nose on the apron beyond
-	// the last stand's lead-in, the taxi-out from the end on (LKPR C31: the
-	// lane ends at its junction; with the nose at the end the tail has no
-	// room to swing).
-	for _, d := range deadEnds(g, gear, pushPoseReachMeters+laneEndPoseMeters) {
-		taxi, ok := toRunway[d.end]
-		if !ok {
-			continue
-		}
-		end := g.Nodes[d.end].Position
-		for x := pushPoseStepMeters; x <= laneEndPoseMeters; x += pushPoseStepMeters {
-			nose := offsetHeading(end, d.out, x)
-			if dist := localDist(nose, gear); dist <= pushPoseReachMeters {
-				poses = append(poses, pushPose{nose: nose, heading: d.out + 180, from: -1, to: d.end, lane: laneName(g, d.end, d.e), taxi: x, lbTaxi: taxi + x, lb: math.Max(0, dist-c.profile().WheelbaseMeters)*pushCostFactor + taxi + x})
+				poses = append(poses, pushPose{nose: nose, heading: h, from: from, to: e.To, lane: lane, tight: tight, taxi: l - x, lbTaxi: taxi, lb: math.Max(0, d-c.profile().WheelbaseMeters)*pushCostFactor + taxi})
 			}
 		}
 	}
@@ -268,51 +271,48 @@ func (c *TaxiController) poseRoute(p pushPose, routes map[[2]airport.NodeID]*air
 // beyond it takes the tail of an aircraft pushed to face up the lane).
 const laneEndMeters = 45.0
 
-// laneEnds is the pavement past the dead ends of the taxiways within
-// radius of center: each lane's line on for laneEndMeters, as wide.
+// laneEnds is the pavement past the ends of the taxilanes within radius of
+// center: each lane's line on for laneEndMeters, as wide, where it does
+// not go on straight (within laneEndDeg) and no other named taxiway meets
+// it — a dead end (LKPR A1, C31), or a lane turning into an unnamed
+// connector (LKPR JB at C17). A lane ending at another taxiway may have
+// grass beyond it.
 func laneEnds(g *airport.Graph, center airport.LatLon, radius float64) []paveSeg {
 	var segs []paveSeg
-	for _, d := range deadEnds(g, center, radius) {
-		end := g.Nodes[d.end].Position
-		segs = append(segs, paveSeg{end, offsetHeading(end, d.out, laneEndMeters), d.half})
-	}
-	return segs
-}
-
-// deadEnd is a taxiway ending at node end: its only taxiway goes on along
-// e; out is the direction on past the end, half the lane's half width.
-type deadEnd struct {
-	end       airport.NodeID
-	e         airport.Edge
-	out, half float64
-}
-
-// deadEnds are the ends of the taxiways within radius of center.
-func deadEnds(g *airport.Graph, center airport.LatLon, radius float64) []deadEnd {
-	var ends []deadEnd
 	for a := range g.Adj {
 		end := g.Nodes[a]
 		if end.Kind == airport.NodeParking || end.HoldShort != nil || localDist(end.Position, center) > radius {
 			continue
 		}
-		var only *airport.Edge
-		n := 0
-		for i, e := range g.Adj[a] {
-			if pushEdge(g, e) {
-				n, only = n+1, &g.Adj[a][i]
+		for _, in := range g.Adj[a] {
+			if !pushEdge(g, in) {
+				continue
 			}
+			out := localBearing(g.Nodes[in.To].Position, end.Position)
+			open := true
+			for _, e := range g.Adj[a] {
+				if e.To == in.To || !pushEdge(g, e) {
+					continue
+				}
+				if e.Name != "" || math.Abs(headingDiff(out, localBearing(end.Position, g.Nodes[e.To].Position))) <= laneEndDeg {
+					open = false
+				}
+			}
+			if !open {
+				continue
+			}
+			half := 12.5
+			if in.Path >= 0 && in.Path < len(g.Layout.TaxiPaths) && g.Layout.TaxiPaths[in.Path].Width > 0 {
+				half = g.Layout.TaxiPaths[in.Path].Width / 2
+			}
+			segs = append(segs, paveSeg{end.Position, offsetHeading(end.Position, out, laneEndMeters), half})
 		}
-		if n != 1 {
-			continue
-		}
-		half := 12.5
-		if only.Path >= 0 && only.Path < len(g.Layout.TaxiPaths) && g.Layout.TaxiPaths[only.Path].Width > 0 {
-			half = g.Layout.TaxiPaths[only.Path].Width / 2
-		}
-		ends = append(ends, deadEnd{airport.NodeID(a), *only, localBearing(g.Nodes[only.To].Position, end.Position), half})
 	}
-	return ends
+	return segs
 }
+
+// laneEndDeg: a lane going on within this of straight does not end.
+const laneEndDeg = 30.0
 
 // flatPave is a pavement in flat meters east and north of a centre, for
 // the many checks of a push plan, with what it found per square meter
@@ -528,8 +528,8 @@ func (c *TaxiController) planPushPose() bool {
 	var cands []cand
 	for i := range poses {
 		p := &poses[i]
-		// The tail where the push ends, on the pavement too.
-		tailOff := pv.off(offsetHeading(p.nose, p.heading+180, prof.WheelbaseMeters*pushNoseFactor+tail))
+		// The nose and the tail where the push ends, on the pavement too.
+		tailOff := math.Max(pv.off(p.nose), pv.off(offsetHeading(p.nose, p.heading+180, prof.WheelbaseMeters*pushNoseFactor+tail)))
 		if tailOff > pushOffPavementWideMeters {
 			continue
 		}
@@ -586,6 +586,9 @@ func (c *TaxiController) planPushPose() bool {
 				if !p.aligned() {
 					p.fixed += pushMisalignPenalty
 				}
+				if p.tight {
+					p.fixed += pushTightPenalty
+				}
 			}
 			if cd.cost = p.fixed + cd.push; best == nil || cd.cost < best.cost {
 				best = cd
@@ -600,11 +603,7 @@ func (c *TaxiController) planPushPose() bool {
 	}
 	p := poses[best.at]
 	p.own = own
-	nodes := p.out.Nodes
-	if p.from >= 0 {
-		nodes = append([]airport.NodeID{p.from}, nodes...)
-	}
-	full, err := g.RouteFromNodes(nodes)
+	full, err := g.RouteFromNodes(append([]airport.NodeID{p.from}, p.out.Nodes...))
 	if err != nil {
 		return false
 	}

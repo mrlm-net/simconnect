@@ -80,7 +80,7 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				if !p.within(pushTaxiStartMeters, pushTaxiStartDeg) {
 					t.Errorf("%s: taxi-out turns off the nose at the start", name)
 				}
-				if p.from < 0 && ctl.route.Nodes[0] != p.to || p.from >= 0 && (ctl.route.Nodes[0] != p.from || ctl.route.Nodes[1] != p.to) {
+				if ctl.route.Nodes[0] != p.from || ctl.route.Nodes[1] != p.to {
 					t.Errorf("%s: route starts %v, not on the pose's edge %d→%d", name, ctl.route.Nodes[:2], p.from, p.to)
 				}
 			}
