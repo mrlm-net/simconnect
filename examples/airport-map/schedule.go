@@ -159,7 +159,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 			return fmt.Errorf("turnaround: %s is not on its stand", f.TurnFrom)
 		}
 		req.adopt, req.Stand, req.Model = arr.objectID, arr.stand, arr.view.Model
-		arr.stands.ReleaseOwner(arr.Tail) // the stand passes to the departure
+		// The stand passes to the departure: its aircraft, detected there, is
+		// then its own and not in the way (#470).
+		arr.stands.Transfer(arr.Tail, f.Callsign)
 		cc.forget(arr)
 	} else if model != "" {
 		req.Model = model

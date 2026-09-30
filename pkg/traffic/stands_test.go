@@ -301,3 +301,32 @@ func TestStandTakenFrom(t *testing.T) {
 		t.Errorf("its own aircraft: %q", why)
 	}
 }
+
+// A turnaround: the arrival's stand passes to the departure, whose own
+// aircraft (detected on it) does not block it (#470).
+func TestStandTransfer(t *testing.T) {
+	g := lkprGraph(t)
+	a := NewStandAllocator(nil, g)
+	a4, _ := g.Layout.ParkingIndex("A4")
+	if err := a.Occupy(a4, "TVS505", 17); err != nil {
+		t.Fatal(err)
+	}
+	p := g.Layout.Parking[a4].Position
+	a.observe([]scanned{{object: 42, data: standScanData{Lat: p.Lat, Lon: p.Lon, OnGround: 1, WingSpanFt: 112}}})
+	// Released and taken again under another owner: the parked aircraft blocks.
+	b := NewStandAllocator(nil, g)
+	_ = b.Occupy(a4, "TVS505", 17)
+	b.observe([]scanned{{object: 42, data: standScanData{Lat: p.Lat, Lon: p.Lon, OnGround: 1, WingSpanFt: 112}}})
+	b.ReleaseOwner("TVS505")
+	if err := b.Occupy(a4, "TVS1753", 17); !errors.Is(err, ErrStandTaken) {
+		t.Fatalf("release then occupy: %v (the case this fixes)", err)
+	}
+	// Transferred: the departure holds it.
+	a.Transfer("TVS505", "TVS1753")
+	if err := a.Occupy(a4, "TVS1753", 17); err != nil {
+		t.Fatalf("after the transfer: %v", err)
+	}
+	if o, _ := a.Occupant(a4); o.Owner != "TVS1753" || !o.Detected {
+		t.Errorf("occupant %+v", o)
+	}
+}

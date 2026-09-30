@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Turnarounds: the arrival's stand passes to the departure (`StandAllocator.Transfer`) instead of being released and taken again, which failed with ErrStandTaken against the parked aircraft itself; on the airport map turnaround departures never spawned (#470).
 - Airport map: an overflight appears where its plan enters the area, moved on by the time since its entry time (not by its STD along the plan: RYR1850 appeared 230 NM out); a plan that never enters the area is not spawned (#469).
 - An arrival whose reserved stand is taken by other traffic before it lands goes to another stand: `StandAllocator.TakenFrom`, `ArrivalController.ChangeStand`; the airport map re-checks every 10 s (#479).
 - Overflights cross the area along their great circle, not a straight line in latitude and longitude (`calc.IntermediatePoint`): no Dublin–Seoul over Prague (#468).
