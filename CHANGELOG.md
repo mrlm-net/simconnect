@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- An arrival whose reserved stand is taken by other traffic before it lands goes to another stand: `StandAllocator.TakenFrom`, `ArrivalController.ChangeStand`; the airport map re-checks every 10 s (#479).
 - Overflights cross the area along their great circle, not a straight line in latitude and longitude (`calc.IntermediatePoint`): no Dublin–Seoul over Prague (#468).
 - Ground: a push under way no longer stops for an aircraft giving way to it (the wing clearance of #446 applies before a push starts only), and a finished push shows its planned taxi in the same frame: no mutual wait (#466).
 - `nav.RunwaySelector` chooses a runway only 2 kt within its wind limits (`RunwayChoiceMarginKts`) and keeps it up to the limits: no runway chosen at its tailwind limit and dropped at the next gust (#460).
