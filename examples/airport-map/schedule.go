@@ -79,6 +79,13 @@ func (s *scheduler) conditions(icao string) (traffic.ApproachConditions, bool) {
 
 // source is the schedule of an hour for the managed airports; the seed per
 // hour keeps it the same when asked again.
+// airports are the managed airports.
+func (s *scheduler) airports() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.focus...)
+}
+
 func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight {
 	s.mu.Lock()
 	density, seed := s.density, s.seed

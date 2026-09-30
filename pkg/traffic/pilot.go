@@ -211,6 +211,16 @@ func sameSaid(a, b string) bool {
 	return norm(a) == norm(b)
 }
 
+// IntentATIS is an ATIS broadcast (#418).
+const IntentATIS Intent = "atis"
+
+// ATISInformation is an airport's ATIS broadcast of information letter
+// (phonetic, "Bravo"), text as broadcast: said on the ATIS frequency when a
+// new information is out (a voice loops the latest).
+func ATISInformation(letter, text string) Transmission {
+	return Transmission{Position: PosATIS, Intent: IntentATIS, Params: map[string]string{ParamInfo: letter}, Text: text}
+}
+
 // SayAgain is the controller asking cs (or whoever called, cs "") to say
 // again.
 func SayAgain(pos Position, cs string) Transmission {

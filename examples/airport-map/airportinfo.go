@@ -13,6 +13,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/nav"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // The loaded airport at a glance (#357): its runways and limits, the
@@ -83,7 +84,93 @@ func magVarEast(v float64) float64 {
 }
 
 // registerAirportInfo serves GET /api/airportinfo?icao=X.
+// atisService is the ATIS of icao, made on first use; ok is false while
+// the airport is not loaded.
+func (st *state) atisService(icao string) (*nav.ATISService, bool) {
+	l, ok := st.cache.Layout(icao)
+	if !ok {
+		return nil, false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.atis == nil {
+		st.atis = map[string]*nav.ATISService{}
+	}
+	if svc := st.atis[icao]; svc != nil {
+		return svc, true
+	}
+	p, hasProcs := st.procedures[icao]
+	var procs *airport.Procedures
+	opts := []nav.ATISOption{}
+	if hasProcs {
+		procs = &p
+		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
+	}
+	lim := airport.LimitsFor(l, procs)
+	svc := nav.NewATISService(l.Name, l, nav.RunwayLimitsFrom(lim), int(lim.TransitionAltitudeFt), opts...)
+	st.atis[icao] = svc
+	return svc, true
+}
+
+// atisTick keeps the ATIS of every airport with traffic of ours current
+// (#418): a new information is broadcast on the radio, on the ATIS
+// frequency, and our pilots give its letter on their first call.
+func (st *state) atisTick(now time.Time, cc *controlCenter, airports []string) {
+	st.mu.Lock()
+	wx := st.weather
+	st.mu.Unlock()
+	if wx == nil {
+		return
+	}
+	for _, icao := range airports {
+		svc, ok := st.atisService(icao)
+		if !ok {
+			continue
+		}
+		if a, isNew := svc.Update(*wx, now); isNew {
+			cc.radio.Transmit(icao, traffic.ATISInformation(nav.Phonetic(a.Letter), a.Text()))
+		}
+	}
+}
+
+// atisLetter is icao's current information letter, phonetic ("" none yet).
+func (st *state) atisLetter(icao string) string {
+	st.mu.Lock()
+	svc := st.atis[icao]
+	st.mu.Unlock()
+	if svc == nil {
+		return ""
+	}
+	if a, ok := svc.Current(); ok {
+		return nav.Phonetic(a.Letter)
+	}
+	return ""
+}
+
 func registerAirportInfo(mux *http.ServeMux, st *state) {
+	// GET /api/radio/atis?icao=LKPR — the current ATIS: letter, text, spoken
+	// form and frequency, for a voice to loop (#418).
+	mux.HandleFunc("GET /api/radio/atis", func(w http.ResponseWriter, r *http.Request) {
+		icao := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("icao")))
+		svc, ok := st.atisService(icao)
+		if !ok {
+			http.Error(w, "airport not loaded", http.StatusNotFound)
+			return
+		}
+		a, have := svc.Current()
+		if !have {
+			http.Error(w, "no ATIS yet", http.StatusNotFound)
+			return
+		}
+		freq := ""
+		if l, ok := st.cache.Layout(icao); ok {
+			if f, ok := l.FrequencyFor(airport.FreqATIS); ok {
+				freq = f.String()
+			}
+		}
+		writeJSON(w, map[string]string{"icao": icao, "letter": nav.Phonetic(a.Letter), "text": a.Text(), "spoken": a.Spoken(), "frequency": freq})
+	})
+
 	mux.HandleFunc("GET /api/airportinfo", func(w http.ResponseWriter, r *http.Request) {
 		icao := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("icao")))
 		l, ok := st.cache.Layout(icao)
@@ -142,20 +229,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 					}
 				}
 			}
-			st.mu.Lock()
-			if st.atis == nil {
-				st.atis = map[string]*nav.ATISService{}
-			}
-			svc := st.atis[icao]
-			if svc == nil {
-				opts := []nav.ATISOption{}
-				if hasProcs {
-					opts = append(opts, nav.ATISWithMagVar(p.MagVar))
-				}
-				svc = nav.NewATISService(l.Name, l, nav.RunwayLimitsFrom(lim), int(lim.TransitionAltitudeFt), opts...)
-				st.atis[icao] = svc
-			}
-			st.mu.Unlock()
+			svc, _ := st.atisService(icao)
 			a, _ := svc.Update(*wx, time.Now())
 			out.ATIS = &atisInfo{Letter: nav.Phonetic(a.Letter), Text: a.Text(), Spoken: a.Spoken()}
 		}
