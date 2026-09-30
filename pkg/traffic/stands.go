@@ -466,3 +466,20 @@ func (a *StandAllocator) TakenFrom(stand int, owner string, object uint32) strin
 	}
 	return ""
 }
+
+// Transfer passes every stand held by fromOwner to toOwner: a turnaround,
+// the arrival's aircraft staying on its stand as the departure (#470). The
+// aircraft detected there is then the new owner's own, not in the way:
+// releasing the arrival's stand and occupying it for the departure failed
+// with ErrStandTaken ("aircraft N holds A4").
+func (a *StandAllocator) Transfer(fromOwner, toOwner string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, o := range a.reserved {
+		if o.Owner == fromOwner {
+			o.Owner = toOwner
+			a.reserved[i] = o
+		}
+	}
+	delete(a.routes, fromOwner)
+}
