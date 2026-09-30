@@ -119,6 +119,7 @@ var loaderDefinitions = [][]string{
 	{"OPEN AIRPORT", "OPEN TAXI_PATH", "TYPE", "WIDTH", "RUNWAY_NUMBER", "RUNWAY_DESIGNATOR", "START", "END", "NAME_INDEX",
 		"CLOSE TAXI_PATH", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_NAME", "NAME", "CLOSE TAXI_NAME", "CLOSE AIRPORT"},
+	{"OPEN AIRPORT", "OPEN FREQUENCY", "TYPE", "FREQUENCY", "NAME", "CLOSE FREQUENCY", "CLOSE AIRPORT"},
 }
 
 // Record kinds by definition position.
@@ -129,7 +130,15 @@ const (
 	partTaxiPoint
 	partTaxiPath
 	partTaxiName
+	partFrequency
 )
+
+// frequencyWire is a FREQUENCY record: TYPE, FREQUENCY (Hz), NAME.
+type frequencyWire struct {
+	Type int32
+	Hz   int32
+	Name [64]byte
+}
 
 // NewLoader creates a Loader that sends requests through client.
 func NewLoader(client FacilityClient, opts ...LoaderOption) *Loader {
@@ -346,6 +355,11 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 		if m.Type == types.SIMCONNECT_FACILITY_DATA_TAXI_NAME {
 			n := engine.CastDataAs[[32]byte](data)
 			s.raw.TaxiNames = setAt(s.raw.TaxiNames, i, engine.BytesToString(n[:]))
+		}
+	case partFrequency:
+		if m.Type == types.SIMCONNECT_FACILITY_DATA_FREQUENCY {
+			f := engine.CastDataAs[frequencyWire](data)
+			s.raw.Frequencies = setAt(s.raw.Frequencies, i, RawFrequency{Type: f.Type, Hz: f.Hz, Name: engine.BytesToString(f.Name[:])})
 		}
 	}
 }

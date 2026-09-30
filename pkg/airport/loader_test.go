@@ -110,7 +110,7 @@ func simulate(raw RawAirport, base uint32, reverseItems bool) []engine.Message {
 	empty := make([]byte, 4)
 	parts := [][]engine.Message{
 		{facilityMsg(base, types.SIMCONNECT_FACILITY_DATA_AIRPORT, 0, bytesOf(&a))},
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	}
 	for i, r := range raw.Runways {
 		parts[partRunway] = append(parts[partRunway], facilityMsg(base+partRunway, types.SIMCONNECT_FACILITY_DATA_RUNWAY, i, runwayBytes(r)))
@@ -143,6 +143,11 @@ func simulate(raw RawAirport, base uint32, reverseItems bool) []engine.Message {
 		var b [32]byte
 		copy(b[:], n)
 		parts[partTaxiName] = append(parts[partTaxiName], facilityMsg(base+partTaxiName, types.SIMCONNECT_FACILITY_DATA_TAXI_NAME, i, b[:]))
+	}
+	for i, fr := range raw.Frequencies {
+		w := frequencyWire{Type: fr.Type, Hz: fr.Hz}
+		copy(w.Name[:], fr.Name)
+		parts[partFrequency] = append(parts[partFrequency], facilityMsg(base+partFrequency, types.SIMCONNECT_FACILITY_DATA_FREQUENCY, i, bytesOf(&w)))
 	}
 	for p := range parts {
 		items := parts[p]
@@ -178,11 +183,11 @@ func TestLoaderRegistersAndRequests(t *testing.T) {
 	if err := l.Request(" lkpr "); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.defs) != 6 || !reflect.DeepEqual(c.defs[500], loaderDefinitions[0]) || !reflect.DeepEqual(c.defs[502], loaderDefinitions[2]) {
+	if len(c.defs) != 7 || !reflect.DeepEqual(c.defs[500], loaderDefinitions[0]) || !reflect.DeepEqual(c.defs[502], loaderDefinitions[2]) {
 		t.Fatalf("definitions = %v", c.defs)
 	}
-	if len(c.requests) != 6 {
-		t.Fatalf("requests = %d, want 6", len(c.requests))
+	if len(c.requests) != 7 {
+		t.Fatalf("requests = %d, want 7", len(c.requests))
 	}
 	for i, r := range c.requests {
 		if r.def != 500+uint32(i) || r.req != 900+uint32(i) || r.icao != "LKPR" {
@@ -202,6 +207,7 @@ func TestLoaderRegistersAndRequests(t *testing.T) {
 
 func TestLoaderBuildsLKPR(t *testing.T) {
 	raw := lkprRaw(t)
+	raw.Frequencies = lkprFrequencies // (the captured data has none)
 	want, err := BuildLayout(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -357,5 +363,40 @@ func TestLoaderParkingAirlines(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("reverse=%v: loaded layout differs from BuildLayout of the same records", reverse)
 		}
+	}
+}
+
+// lkprFrequencies are LKPR's frequencies as FREQUENCY records.
+var lkprFrequencies = []RawFrequency{
+	{Type: int32(types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_ATIS), Hz: 122155000, Name: "PRAHA ATIS"},
+	{Type: int32(types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_CLEARANCE), Hz: 120355000, Name: "PRAHA DELIVERY"},
+	{Type: int32(types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_GROUND), Hz: 121905000, Name: "PRAHA GROUND"},
+	{Type: int32(types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_TOWER), Hz: 118105000, Name: "PRAHA TOWER"},
+	{Type: int32(types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_APPROACH), Hz: 120530000, Name: "PRAHA APPROACH"},
+}
+
+// Frequencies load with the layout; each position finds its own, or the
+// one ATC falls back to.
+func TestFrequencies(t *testing.T) {
+	raw := lkprRaw(t)
+	raw.Frequencies = lkprFrequencies
+	l, err := BuildLayout(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for kind, want := range map[string]string{
+		FreqTower: "118.105", FreqGround: "121.905", FreqClearance: "120.355", FreqATIS: "122.155",
+		FreqApproach: "120.53", FreqDeparture: "120.53", // no departure frequency: approach
+	} {
+		f, ok := l.FrequencyFor(kind)
+		if !ok || f.String() != want {
+			t.Errorf("%s: %v %v, want %s", kind, f, ok, want)
+		}
+	}
+	if _, ok := l.FrequencyFor(FreqCenter); ok {
+		t.Error("a centre frequency at LKPR")
+	}
+	if got := FormatMHz(121.9); got != "121.90" {
+		t.Errorf("FormatMHz(121.9) = %s", got)
 	}
 }

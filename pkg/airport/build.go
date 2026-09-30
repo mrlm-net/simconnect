@@ -32,6 +32,16 @@ type RawAirport struct {
 	// ParkingAirlines are the airline codes assigned to parking spots, by
 	// parking index (TAXI_PARKING_AIRLINE child records).
 	ParkingAirlines map[int][]string `json:"parkingAirlines,omitempty"`
+	// Frequencies are the FREQUENCY records (#416).
+	Frequencies []RawFrequency `json:"frequencies,omitempty"`
+}
+
+// RawFrequency is a FREQUENCY record: TYPE
+// (SIMCONNECT_FACILITY_FREQUENCY_TYPE), FREQUENCY in Hz, NAME.
+type RawFrequency struct {
+	Type int32  `json:"type"`
+	Hz   int32  `json:"hz"`
+	Name string `json:"name"`
 }
 
 // RawRunway is a RUNWAY record: LATITUDE, LONGITUDE, ALTITUDE, HEADING,
@@ -98,6 +108,7 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 		Longitude: raw.Longitude,
 		Altitude:  raw.Altitude,
 		TaxiNames: append([]string(nil), raw.TaxiNames...),
+		Frequencies: frequenciesOf(raw.Frequencies),
 	}
 	offset := func(x, z float32) LatLon {
 		lat, lon := convert.OffsetToLatLon(raw.Latitude, raw.Longitude, float64(x), float64(z))
