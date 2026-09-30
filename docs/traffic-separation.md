@@ -1,13 +1,15 @@
 ---
 title: "Airborne Separation"
-description: "Wake turbulence categories and separation minima: spacing on final, departure intervals and runway occupancy, the basis of the approach sequencer and the runway controller."
+description: "Airborne ATC: wake separation, spacing on final by the weather, the landing sequence, losing a delay, holding, the runway controller, go-arounds, conflicts ahead and working the approach."
 order: 11
 section: "traffic"
 ---
 
 # Airborne Separation
 
-v0.16 separates traffic in the air as well as on the ground. This page grows with it. First come the standards everything else builds on (#389).
+v0.16 separates traffic in the air as well as on the ground: the approach and the tower. This page goes from the standards (wake categories and minima, #389) to the landing sequence and how an arrival loses a delay (#390–#392), the runway (#393, #394), conflicts in the air (#395) and working the approach by hand (#396).
+
+All of it runs on the airport map, which is the place to watch it: see [Examples](examples.md).
 
 ## Wake categories
 
@@ -119,22 +121,25 @@ The airport map takes the weather at the user aircraft (SimConnect reports no ot
 An arrival the sequencer delays loses the time in the air before it would hold (#391), the way approach control does it:
 
 1. **Speed control.** It flies slower on the rest of its STAR, down to `MinProcedureSpeedKts` (210 kt, clean) or `MinProcedureSpeedTurbopropKts` (170 kt).
-2. **Path stretching.** What slowing down cannot absorb, a longer path does: a dog-leg off the longest leg ahead, as radar vectors would give. It sits on the side away from the runway's centreline and adds at most `MaxStretchNM` (30 NM).
-3. **Holding.** Whatever is still left goes to the hold (#392).
+2. **A longer downwind.** What slowing down cannot absorb, a longer path does, the way a controller extends it. The aircraft goes on along its downwind past the STAR's last point there, turns base that much further out, and joins the centreline that far beyond where the STAR joined it (a "trombone"). Each mile on adds about two. The STAR's own base turn may already be far out: LKPR VLM6T to 06 turns base some 16 NM out, and the extension starts beyond it. It extends again as more is asked, up to `MaxStretchNM` (30 NM) of track an approach.
+3. **A dog-leg** is only for a STAR without a downwind to extend (straight in): off the longest leg ahead, on the side away from the centreline. Less than a mile is not worth a turn and goes to the hold.
+4. **Holding.** Whatever is still left goes to the hold (#392).
 
 The final part of the approach, the align and join points on the centreline, is never changed.
+
+The turns are the aircraft's own. Every corner of a chain MSFS AI flies (STAR and approach, go-around, the extended downwind, en route and after the SID) is rounded into a fly-by arc of a standard turn: rate one (3°/s), at most `MaxBankDeg` for the airframe (25° jets, 30° turboprops). That is about 1 NM radius at 180 kt and 2 NM at 250 kt for a jet (`StandardBankDeg`). Without it MSFS AI turned at each point, late and hard.
 
 ```go
 a, err := arrival.AbsorbDelay(entry.Delay) // an ArrivalController flying its STAR
 // a.SpeedKts, a.ExtraNM, a.Left (for the hold)
-route := arrival.ProcedureRoute()          // the rest of the STAR as flown now, dog-leg included
+route := arrival.ProcedureRoute()          // the rest of the STAR as flown now, extension included
 ```
 
 - `PlanAbsorption(delay, starNM, speedKts, minKts)` is the plan on its own, and `StretchLeg(a, b, extraNM, side)` the apex of a dog-leg that makes a leg `extraNM` longer.
 - `AbsorbDelay` sends MSFS AI the new waypoints. A later call adds to what was absorbed: the sequencer sees the slower, longer flight and asks only for the rest.
 - On the final, or when not flying a STAR, it returns `ErrNotOnProcedure`.
 
-On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM".
+On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM". The Approach tab's 🐢 asks for another minute by hand.
 
 ## Holding
 
@@ -213,7 +218,7 @@ The controller also watches the next arrival on short final (#394). When it is `
 
 A departure already rolling does not count: it is airborne before the arrival arrives.
 
-`ArrivalController.GoAround` releases the injected arrival to MSFS AI. It flies the published missed approach (`ArrivalRequest.MissedApproach`, from `airport.Procedures.MissedApproach`) at its altitude; at LKPR that is straight ahead to 4000 ft for vectors. Without one it flies a circuit instead. Either way it flies round to the join point on the final, where the injected approach takes over again.
+`ArrivalController.GoAround` releases the injected arrival to MSFS AI. It flies the published missed approach (`ArrivalRequest.MissedApproach`, from `airport.Procedures.MissedApproach`) at its altitude; at LKPR that is straight ahead to 4000 ft for vectors. Without one it flies a circuit instead. Either way it flies round to the join point on the final, where the injected approach takes over again. It joins only from the circuit's last two points: climbing out along the centreline it would otherwise look established at once.
 
 `ApproachSequencer.Rejoin` then sequences it afresh by its new prediction, like a newcomer. It does not keep the place its first approach had, which would push everyone behind it.
 
