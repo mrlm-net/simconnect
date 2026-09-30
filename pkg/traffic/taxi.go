@@ -263,6 +263,8 @@ type TaxiController struct {
 	pushTurnDir                                             float64          // the way out from the junction
 	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
 	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
+	towing                                                  bool             // the tow after the push is under way
 }
 
 // SimConnect IDs relative to the bases.

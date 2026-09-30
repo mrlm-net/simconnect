@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -28,7 +29,7 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				rw = &l.Runways[i]
 			}
 		}
-		planned, posed := 0, 0
+		planned, posed, towed := 0, 0, 0
 		for i, st := range l.Parking {
 			if i%3 != 0 {
 				continue
@@ -72,8 +73,23 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				if turn := totalTurn(pts); turn > net+pushMaxSwerveDeg+1 {
 					t.Errorf("%s: push turns %.0f° to turn the aircraft %.0f°", name, turn, net)
 				}
-				// The push ends with the aircraft along the pose, the nose on it.
+				// The push (or the tow after it) ends with the aircraft along
+				// the pose, the nose on it.
 				end := localBearing(pts[n-3], pts[n-1]) + 180
+				if tow := ctl.towPts; tow != nil {
+					towed++
+					m := len(tow)
+					end = localBearing(tow[m-3], tow[m-1])
+					if l := pathLen(tow); l > towMaxMeters+1 {
+						t.Errorf("%s: tow %.0f m", name, l)
+					}
+					if r := tightestTurn(tow); r < PushbackMinArcMeters-3 {
+						t.Errorf("%s: tow turns on %.1f m", name, r)
+					}
+					if localDist(tow[m-1], p.nose) > 0.5 {
+						t.Errorf("%s: tow ends %.1f m off the pose", name, localDist(tow[m-1], p.nose))
+					}
+				}
 				if d := math.Abs(headingDiff(end, p.heading)); d > 5 {
 					t.Errorf("%s: push ends %.0f° off the pose", name, d)
 				}
@@ -85,7 +101,7 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				}
 			}
 		}
-		t.Logf("%s: %d of %d pushes to a pose", icao, posed, planned)
+		t.Logf("%s: %d of %d pushes to a pose, %d with a tow", icao, posed, planned, towed)
 		if posed < planned*85/100 {
 			t.Errorf("%s: only %d of %d pushes to a pose", icao, posed, planned)
 		}
@@ -122,5 +138,49 @@ func TestFacesOutFromTheNose(t *testing.T) {
 		if ctl.pushPose != nil && ctl.facesOut() {
 			t.Errorf("%s %s: pushed to a pose, yet faces out", c.icao, c.stand)
 		}
+	}
+}
+
+// Push and pull: where no push alone ends cleanly (KJFK D70 for 04L), the
+// tug pushes the aircraft back and then tows it forward onto the taxiway;
+// the taxi starts from the pose, the nose on it, along its heading.
+func TestPushThenTow(t *testing.T) {
+	g := airportGraph(t, "KJFK")
+	i, err := g.Layout.ParkingIndex("D70")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := g.Layout.Parking[i]
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "04L", Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.pushPose
+	if p == nil || ctl.towPts == nil {
+		t.Fatalf("no push and tow planned (pose %v)", p != nil)
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	mon := DefaultTaxiRequestBase + reqOffMonitor
+	towed := false
+	for f := 0; f < 60*900 && ctl.State() != TaxiTaxiing && !ctl.State().Terminal(); f++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(positionMsg(mon, 77, st.Position, 0, 0, true))
+		towed = towed || ctl.towing
+	}
+	if !towed || ctl.State() != TaxiTaxiing {
+		t.Fatalf("towed %v, state %v", towed, ctl.State())
+	}
+	pose := ctl.mover.Pose()
+	nose := NoseGear(pose.Position, pose.Heading, ctl.profile())
+	if d := localDist(nose, p.nose); d > 2 {
+		t.Errorf("taxi starts %.1f m from the pose", d)
+	}
+	if d := math.Abs(headingDiff(pose.Heading, p.heading)); d > 5 {
+		t.Errorf("taxi starts %.0f° off the pose's heading", d)
 	}
 }

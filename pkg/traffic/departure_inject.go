@@ -318,6 +318,15 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	}
 	switch c.state {
 	case TaxiPushback:
+		if pose.Arrived && c.towPts != nil && !c.towing {
+			// Pushed back: the tug tows the aircraft on forward to where the
+			// push ends (planPushPose).
+			if err := c.startTow(pose); err != nil {
+				c.note("tow after the push", err)
+			} else {
+				return
+			}
+		}
 		if pose.Arrived {
 			c.setPushHeld(false) // the push is done: nothing to hold for any more
 			if c.picture != nil {
@@ -503,6 +512,20 @@ func (c *TaxiController) startPushback() error {
 	return nil
 }
 
+// startTow starts the tow forward after the push: the nose gear along
+// towPts at the tug's pace, from where the push stopped (pose).
+func (c *TaxiController) startTow(pose GroundPose) error {
+	path, err := NewSmoothPath(c.towPts, c.pushProfile())
+	if err != nil {
+		return err
+	}
+	c.mover = NewGroundMoverFrom(path, c.pushProfile(), pose.Heading, 0)
+	c.towing = true
+	c.lastStep = c.now()
+	c.note("pushed back: towing forward onto the taxiway", nil)
+	return nil
+}
+
 // pushProfile is the aircraft's motion at pushback speed.
 func (c *TaxiController) pushProfile() MotionProfile {
 	push := c.profile()
@@ -591,7 +614,7 @@ func (c *TaxiController) pushBlocked(now time.Time) bool {
 	if err != nil {
 		return false
 	}
-	_, blocked := c.picture.corridorBlocked(c.objectID, pushCorridor(path, 0, c.profile()), c.halfSpan(), true, now)
+	_, blocked := c.picture.corridorBlocked(c.objectID, append(pushCorridor(path, 0, c.profile()), c.towPts...), c.halfSpan(), true, now)
 	c.setPushHeld(blocked)
 	return blocked
 }
@@ -604,7 +627,14 @@ func (c *TaxiController) holdPushForTraffic(now time.Time) {
 	}
 	c.trafficAt = now
 	pose := c.mover.Pose()
-	rest := pushCorridor(c.mover.Path(), pose.Distance+1, c.profile())
+	var rest []airport.LatLon
+	if c.towing {
+		for s := pose.Distance + 1; s <= c.mover.Path().Length(); s += trafficBodyStep {
+			rest = append(rest, c.mover.Path().PointAt(s))
+		}
+	} else {
+		rest = append(pushCorridor(c.mover.Path(), pose.Distance+1, c.profile()), c.towPts...)
+	}
 	// Under way the push has priority: taxiing traffic sees where it goes
 	// and gives way; it stops only for an aircraft actually in the way.
 	c.picture.ReportPush(c.objectID, rest, c.halfSpan())
@@ -666,7 +696,7 @@ func (c *TaxiController) planPushback() {
 	excl := map[pushChoice]bool{}
 	for try := 0; try < pushPlanTries; try++ {
 		c.route, c.pushJunction, c.pushPlanned = orig, 1, nil
-		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch, c.pushPts, c.pushPose = false, 0, false, 0, nil, nil
+		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch, c.pushPts, c.pushPose, c.towPts = false, 0, false, 0, nil, nil, nil
 		if try == 0 && len(orig.Nodes) >= 3 && !c.facesOut() && c.planPushPose() {
 			return
 		}
