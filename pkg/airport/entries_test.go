@@ -73,13 +73,15 @@ func TestRouteToRunwayEntry(t *testing.T) {
 }
 
 // Threshold entries at LKPR: F onto 06 ends on the centreline beside the
-// runway node (joined), L onto 12 meets it at 120° (MaxEntryAngle).
+// runway node (joined), L onto 12 meets it at 120° (MaxEntryAngle), Z onto
+// 24 joins A's long lead-in at the runway edge (the way across the surface
+// is bounded, not the edge leaving it).
 func TestRunwayEntriesAtThresholds(t *testing.T) {
 	g := lkprGraph(t)
 	for _, c := range []struct {
 		end, taxiway string
 		maxFrom      float64
-	}{{"06", "F", 250}, {"12", "L", 100}} {
+	}{{"06", "F", 250}, {"12", "L", 100}, {"24", "Z", 250}, {"24", "A", 250}} {
 		entries, err := g.RunwayEntries(c.end)
 		if err != nil {
 			t.Fatal(err)

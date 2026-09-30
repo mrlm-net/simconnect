@@ -230,7 +230,13 @@ func (g *Graph) pathsOffSurface(rn NodeID, onSurface func(NodeID) bool) [][]Node
 		queue = queue[1:]
 		for _, e := range g.Adj[cur.id] {
 			if e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING ||
-				visited[e.To] || cur.dist+e.Length > exitMaxPath {
+				visited[e.To] {
+				continue
+			}
+			// The bound is on the way across the surface; the edge leaving it may
+			// be long (LKPR: Z leaves A's lead-in at the 24 threshold 137 m
+			// from its first node off the runway, 140 m along the lead-in).
+			if onSurface(e.To) && cur.dist+e.Length > exitMaxPath {
 				continue
 			}
 			visited[e.To] = true
