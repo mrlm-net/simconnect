@@ -51,6 +51,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `examples/airport-map`: an air route is drawn smooth. The few waypoints of a rounded turn showed as corners in the dashed line.
 - `examples/airport-map`: an arrival on the final is sequenced by its straight distance to the threshold. The planned approach, measured from its nearest point, put TST2 2 NM further out than it was, which would have spaced the one behind it wrongly.
 - `pkg/traffic` `AbsorbDelay`: after slowing down, a delay is lost the way a controller would: a longer downwind, going on along it past the STAR's last point and joining the final that much further out, once an approach. Only a STAR without a downwind (straight in) gets a dog-leg. Live, TST1 flew a 4.9 NM dog-leg that looked like an artifact. Rounding no longer rounds a rounded chain's arc points again.
 - `examples/airport-map`: a selected aircraft's air route has dots, with names, only at its procedure's fixes still ahead (`airFixes`). The dashed line runs through the points of the rounded turns too, which are not fixes.
