@@ -154,7 +154,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			it.approach = r // the route with its dog-leg: the distance to go
 			it.mu.Unlock()
 		}
-		tlog.printf("%-6s ATC: %s, number %d, delay %s: %s", e.Callsign, e.Callsign, e.Number, e.Delay.Round(time.Second), a)
+		it.say(traffic.Sequenced(e.Callsign, e.Number, e.Delay, a))
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
 			q.enterHold(now, icao, it, e, a.Left)
@@ -206,8 +206,7 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 		it.approach = r
 		it.mu.Unlock()
 	}
-	tlog.printf("%-6s ATC: %s, hold at %s, %s entry, maintain %.0f ft, expect further clearance %s", e.Callsign, e.Callsign,
-		fixName(h), entry, alt, now.Add(left).Format("15:04"))
+	it.say(traffic.HoldAt(e.Callsign, fixName(h), entry, alt, now.Add(left)))
 }
 
 func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry) {
@@ -215,7 +214,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 		tlog.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
 		return
 	}
-	tlog.printf("%-6s ATC: %s, leave the hold at %s, number %d, continue the arrival", e.Callsign, e.Callsign, fixName(h), e.Number)
+	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), e.Number))
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
@@ -225,7 +224,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 	for cs, alt := range q.stack(icao, h).Release(e.Callsign) {
 		if above := q.cc.byTail(cs); above != nil && above.arr != nil {
 			if err := q.cc.do(func() error { return above.arr.HoldAltitude(alt) }); err == nil {
-				tlog.printf("%-6s ATC: %s, descend %.0f ft, hold as published", cs, cs, alt)
+				above.say(traffic.HoldDescend(cs, alt))
 			}
 		}
 	}

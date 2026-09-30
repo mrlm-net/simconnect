@@ -84,17 +84,17 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		if err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(approachSlowBy); return err }); err != nil {
 			return err
 		}
-		tlog.printf("%-6s ATC: %s, number %d, lose a minute: %s", callsign, callsign, e.Number, a)
+		it.say(traffic.Sequenced(callsign, e.Number, 0, a))
 	case "direct":
 		if err := q.cc.do(it.arr.DirectToJoin); err != nil {
 			return err
 		}
-		tlog.printf("%-6s ATC: %s, proceed direct to the final, number %d", callsign, callsign, e.Number)
+		it.say(traffic.DirectToFinal(callsign, e.Number))
 	case "goaround":
 		if err := it.act("goaround", 0); err != nil {
 			return err
 		}
-		tlog.printf("%-6s ATC: %s, go around, I say again, go around", callsign, callsign)
+		it.say(traffic.GoAround(callsign, ""))
 	default:
 		return errors.New("unknown action " + action)
 	}

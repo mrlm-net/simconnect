@@ -4,8 +4,6 @@
 package main
 
 import (
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -108,8 +106,10 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			tlog.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
 		}
-		said := saidResolution(a, r)
-		tlog.printf("%-6s ATC: %s", r.Callsign, said)
+		// Said by the centre: our en route aircraft (#415).
+		tx := traffic.Resolved(traffic.PosCenter, r, a.AltFt, a.Heading, a.GroundKts)
+		w.s.cc.radio.Transmit(e.f.Airport, tx)
+		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said})
@@ -131,34 +131,6 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 	}
 	w.mu.Unlock()
-}
-
-// saidResolution is a resolution as ATC says it.
-func saidResolution(a traffic.TrackedAircraft, r traffic.Resolution) string {
-	switch r.Kind {
-	case traffic.ResolveSpeed:
-		verb := "reduce"
-		if r.Kts > a.GroundKts {
-			verb = "increase"
-		}
-		return fmt.Sprintf("%s, %s speed %.0f knots, %s", r.Callsign, verb, r.Kts, r.Why)
-	case traffic.ResolveLevel:
-		verb := "climb"
-		if r.AltFt < a.AltFt {
-			verb = "descend"
-		}
-		level := fmt.Sprintf("altitude %.0f feet", r.AltFt)
-		if r.AltFt >= 10000 {
-			level = fmt.Sprintf("flight level %03d", int(math.Round(r.AltFt/100)))
-		}
-		return fmt.Sprintf("%s, %s %s, %s", r.Callsign, verb, level, r.Why)
-	default:
-		side := "right"
-		if math.Mod(r.HeadingDeg-a.Heading+540, 360)-180 < 0 {
-			side = "left"
-		}
-		return fmt.Sprintf("%s, turn %s heading %03.0f, %s", r.Callsign, side, r.HeadingDeg, r.Why)
-	}
 }
 
 // view is what the separation API shows of the watch.
