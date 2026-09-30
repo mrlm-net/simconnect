@@ -211,6 +211,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 				who = "pilot"
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
+			speaker.hear(t) // the voice, when on (#419)
 		}})
 	return cc
 }

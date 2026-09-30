@@ -48,3 +48,5 @@ examples/**/*.json
 
 # Traffic control logs (examples/airport-map -log-dir .)
 traffic-*.log
+# piper for the airport map voice
+examples/airport-map/bin/

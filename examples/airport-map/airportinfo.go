@@ -133,6 +133,30 @@ func (st *state) atisTick(now time.Time, cc *controlCenter, airports []string) {
 	}
 }
 
+// atisOn is the current ATIS broadcast on freq, of whichever airport has
+// its ATIS there (the voice loops it while the frequency is followed).
+func (st *state) atisOn(freq string) (icao, text string, ok bool) {
+	st.mu.Lock()
+	svcs := make(map[string]*nav.ATISService, len(st.atis))
+	for k, s := range st.atis {
+		svcs[k] = s
+	}
+	st.mu.Unlock()
+	for k, s := range svcs {
+		l, have := st.cache.Layout(k)
+		if !have {
+			continue
+		}
+		if f, have := l.FrequencyFor(airport.FreqATIS); !have || f.String() != freq {
+			continue
+		}
+		if a, have := s.Current(); have {
+			return k, a.Text(), true
+		}
+	}
+	return "", "", false
+}
+
 // atisLetter is icao's current information letter, phonetic ("" none yet).
 func (st *state) atisLetter(icao string) string {
 	st.mu.Lock()

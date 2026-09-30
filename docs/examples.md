@@ -29,16 +29,16 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 
 ```bash
 # Live: connect to the simulator and open LKPR
-go run ./examples/airport-map
+cd examples/airport-map && go run .
 
 # Another airport
-go run ./examples/airport-map -icao LOWW
+cd examples/airport-map && go run . -icao LOWW
 
 # Also save each fetched airport's raw data to <ICAO>.json
-go run ./examples/airport-map -dump
+cd examples/airport-map && go run . -dump
 
 # Offline: serve a saved dump, no simulator needed (layout and routes only)
-go run ./examples/airport-map -file LKPR.json
+cd examples/airport-map && go run . -file LKPR.json
 ```
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side panel to load it; **↻** fetches it again from the simulator.
