@@ -96,3 +96,49 @@ func TestPushbackDoesNotBlockTaxiways(t *testing.T) {
 	}
 	t.Logf("%d of %d pushes to 06 end on another taxiway", blocking, total)
 }
+
+// No push leaves the nose facing back at the stand: straight on through a
+// junction behind it (LKPR A4, live: an E190 pushed across B1 and faced the
+// dead-end lead-in, where an A320 swung into the B1 alley). Every type
+// from A4 swings south into the alley, nose north-west.
+func TestPushbackDoesNotFaceTheStand(t *testing.T) {
+	g := lkprGraph(t)
+	a4, _ := g.Layout.ParkingIndex("A4")
+	for _, m := range []string{"FSLTL_E190_LOT_GRZESKI", "FSLTL A320 Air France SL", "FSLTL_FAIB_B738_TVS-Smartwings_NC"} {
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: a4, Runway: "06", Model: m, Tail: "T1"}); err != nil {
+			t.Fatal(err)
+		}
+		p, err := ctl.pushPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+		end := p.PointAt(p.Length())
+		nose := localBearing(end, p.PointAt(p.Length()-5))
+		if d := math.Abs(headingDiff(nose, 327)); d > 25 {
+			t.Errorf("%s from A4: nose %.0f°, want about 327° (into the B1 alley)", m, nose)
+		}
+	}
+	// Across the stands, no ordinary push goes straight on across a named
+	// taxiway (straight on along an unnamed lead-in is a push along it).
+	for i := range g.Layout.Parking {
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "06", Model: "FSLTL_E190_LOT_GRZESKI", Tail: "T1"}); err != nil || !ctl.havePushBranch || ctl.pushPts != nil {
+			continue
+		}
+		j := ctl.pushJunction
+		in := localBearing(ctl.route.Points[j-1], ctl.route.Points[j])
+		out := localBearing(ctl.route.Points[j], g.Nodes[ctl.pushBranch].Position)
+		name := ""
+		for _, e := range g.Adj[ctl.route.Nodes[j]] {
+			if e.To == ctl.pushBranch {
+				name = e.Name
+			}
+		}
+		if name != "" && math.Abs(headingDiff(in, out)) < minPushSwingDeg-0.01 {
+			t.Errorf("%s: pushed straight on past the junction (swing %.0f°)", g.Layout.Parking[i].Label(), math.Abs(headingDiff(in, out)))
+		}
+	}
+}

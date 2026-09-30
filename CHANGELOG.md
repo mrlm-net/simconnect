@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `pkg/traffic`: a pushback does not leave the nose facing back at the stand (#436). A branch less than 45° off the straight push is not taken across a named taxiway behind the stand; along an unnamed lead-in it still is. Live, E190s at LKPR A4 were pushed straight across B1 and faced the dead-end lead-in.
 - `pkg/airport`: runway 24 at LKPR lists entry Z (#433). The search for the ways off a runway bounded the whole path, including the edge leaving the surface. Z leaves A's long lead-in at the runway edge 137 m from its first node off the runway, so it was cut and merged into A. The bound is now on the way across the surface only.
 - `pkg/traffic`: a pushback does not leave the aircraft blocking other taxiways (#429). Each junction of another taxiway it would sit on costs 400 m in the choice. A wider swing, up to 125°, is a fallback where no ordinary push is clear. Live, RYR1455 pushed from LKPR A4 stood across H; over all LKPR stands, pushes ending on another taxiway went from 31 of 103 to 9.
 
