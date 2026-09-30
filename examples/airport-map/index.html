@@ -409,6 +409,22 @@ for (const t of [1, 2, 3, 4, 5]) pathGroups[t].addTo(map);
 
 let data = null;
 
+// smoothLine rounds a polyline's corners for drawing (Chaikin: each pass
+// cuts every corner at a quarter of its legs); the ends stay.
+function smoothLine(pts, passes = 3) {
+  for (let n = 0; n < passes && pts.length > 2; n++) {
+    const out = [pts[0]];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [a, b] = [pts[i], pts[i + 1]];
+      if (i > 0) out.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]]);
+      if (i + 2 < pts.length) out.push([0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
 // Offset in meters (east, north) from a lat/lon — local flat-earth approximation.
 function offset(lat, lon, east, north) {
   const R = 6378137;
@@ -1270,7 +1286,9 @@ function drawControl() {
   // An arrival in the air: the STAR and approach still to fly (with any
   // dog-leg), dashed, and its hold with the level.
   if (v && v.airRoute && v.airRoute.length) {
-    const air = [[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])];
+    // Drawn smooth: the waypoints of a rounded turn are few (MSFS AI circles
+    // points set too close), which as a polyline shows as corners.
+    const air = smoothLine([[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])]);
     L.polyline(air, { renderer, color: '#fff', weight: 6, opacity: 0.6, interactive: false }).addTo(groups.control);
     L.polyline(air, { renderer, color: '#ff2bd6', weight: 3, dashArray: '8 6', interactive: false }).addTo(groups.control);
     // Dots at the procedure's fixes only: the route also runs through the

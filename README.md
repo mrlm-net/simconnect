@@ -33,6 +33,14 @@
 - Many aircraft at once — level of detail (fewer frames far away or standing still), reusable ID blocks
 - Library components never own the message stream: your loop feeds `Handle(msg)`, so they work alongside the Manager
 
+### Airborne ATC
+- Wake turbulence separation (ICAO and RECAT-EU) and spacing on final that follows the weather (low visibility, runway state, wind)
+- A landing sequence per runway, first come first served, re-sequencing go-arounds; arrivals lose delays by speed, then a longer downwind, then a hold with its stack
+- A tower per runway: line-up, take-off and crossing clearances in mixed mode; automatic go-arounds on the published missed approach
+- Airborne conflicts predicted five minutes ahead and resolved by the least disturbing speed, level or heading change
+- Standard-rate turns by airframe instead of MSFS AI's hard turns at waypoints; injected take-off with engine spool-up and a stable glide path to touchdown
+- On the airport map: an Approach tab with the sequence, the tower and the final's spacing, and controls to work it by hand
+
 ### Navigation & Weather
 - Airways crawled from the simulator's navigation data and routed (A*); weather at the user aircraft, the runway in use, ATIS
 - Flight plans between airports — SID, airways, STAR and approach, cruise level, vertical profile, fuel; MSFS `.pln` export
@@ -126,7 +134,7 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - [Traffic Picture](https://simconnect.mrlm.net/docs/traffic-picture) — All traffic around a centre of the world
 - [Traffic Schedules](https://simconnect.mrlm.net/docs/traffic-schedules) — Airlines, routes and time-of-day waves
 - [Traffic Manager](https://simconnect.mrlm.net/docs/traffic-manager) — Schedule to traffic, situation checks, other traffic, enroute and overflights, events
-- [Airborne Separation](https://simconnect.mrlm.net/docs/traffic-separation) — Wake categories, spacing on final, landing sequence, delays and holding
+- [Airborne Separation](https://simconnect.mrlm.net/docs/traffic-separation) — Wake categories, spacing on final, landing sequence, delays and holding, the runway controller, go-arounds, conflicts, working the approach
 - [Airways](https://simconnect.mrlm.net/docs/nav-airways), [Weather & ATIS](https://simconnect.mrlm.net/docs/nav-weather), [Flight Plans](https://simconnect.mrlm.net/docs/nav-flight-plans) — `pkg/nav`
 
 ## Packages
