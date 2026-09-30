@@ -678,3 +678,59 @@ func TestClimbRoute(t *testing.T) {
 		t.Errorf("halfway: %d of %d points still to fly", len(later), len(all))
 	}
 }
+
+// TestIntersectionTakeoffCRJ900: a CRJ900 from C22 takes off from an
+// intersection, 06 at E (2,895 m ahead) and 24 at B (2,406 m): it lines up
+// at the entry, not the threshold, and is airborne with runway to spare
+// (requested live; its take-off distance is 1,950 m).
+func TestIntersectionTakeoffCRJ900(t *testing.T) {
+	for _, c := range []struct{ runway, entry string }{{"06", "E"}, {"24", "B"}} {
+		t.Run(c.runway+" at "+c.entry, func(t *testing.T) {
+			g := lkprGraph(t)
+			ec := &eventClient{}
+			inj := NewInjector(ec)
+			ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+			c22, _ := g.Layout.ParkingIndex("C22")
+			if err := ctl.Start(TaxiRequest{Graph: g, Parking: c22, Runway: c.runway, Entry: c.entry,
+				Model: "FSLTL_CRJ7_CLH-Lufthansa CityLine", Tail: "DLH1740", RollingTakeoffChance: -1}); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now()
+			ctl.now = func() time.Time { return now }
+			ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+			inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+			mon := DefaultTaxiRequestBase + reqOffMonitor
+			stand := g.Layout.Parking[c22]
+			rwy, end, _ := g.Layout.RunwayEnd(c.runway)
+			entries, _ := g.RunwayEntries(c.runway)
+			var at airport.RunwayEntry
+			for _, e := range entries {
+				if e.Taxiway == c.entry {
+					at = e
+				}
+			}
+			along := func(p airport.LatLon) float64 { return alongHeading(end.Threshold, end.Heading, p) }
+			rollStart, liftoff := -1.0, -1.0
+			for i := 0; i < 60*60*40 && ctl.State() != TaxiComplete && !ctl.State().Terminal(); i++ {
+				now = now.Add(time.Second / 60)
+				ctl.Handle(positionMsg(mon, 77, stand.Position, 0, 0, true))
+				if ctl.State() == TaxiDeparting && rollStart < 0 && ctl.last.Position != (airport.LatLon{}) {
+					rollStart = along(ctl.last.Position)
+				}
+				if ctl.last.HeightFt > 0 && liftoff < 0 {
+					liftoff = along(ctl.last.Position)
+				}
+			}
+			if ctl.State() != TaxiComplete {
+				t.Fatalf("ended in %v", ctl.State())
+			}
+			if rollStart < at.FromThreshold-80 {
+				t.Errorf("the roll started %.0f m from the threshold: at the threshold, not at %s (%.0f m)", rollStart, c.entry, at.FromThreshold)
+			}
+			if liftoff < 0 || liftoff > rwy.Length-300 {
+				t.Errorf("airborne %.0f m along a %.0f m runway", liftoff, rwy.Length)
+			}
+			t.Logf("roll from %.0f m (entry %s at %.0f m), airborne at %.0f m of %.0f", rollStart, c.entry, at.FromThreshold, liftoff, rwy.Length)
+		})
+	}
+}
