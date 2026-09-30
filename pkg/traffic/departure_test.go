@@ -592,7 +592,9 @@ var knownBesideJunction = map[string]bool{}
 
 // TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
 // from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
-// an A320 from C17 is pushed onto JB's side and leaves by JB, the nearest.
+// an A320 from C17 leaves by J or JB, the parallel lanes beside it (it used
+// to be pushed onto JB's side and turn from a standstill; a push-and-turn
+// now leaves it facing along J: TestTaxiStartsAlongNose).
 func TestDepartureRoutesBySize(t *testing.T) {
 	g := lkprGraph(t)
 	for _, c := range []struct {
@@ -600,7 +602,7 @@ func TestDepartureRoutesBySize(t *testing.T) {
 		want, not    string
 	}{
 		{"B14", "FSLTL B77W Emirates", "J", "JO"},
-		{"C17", "FSLTL A320 Air France SL", "JB", ""},
+		{"C17", "FSLTL A320 Air France SL", "J|JB", ""},
 	} {
 		pi, _ := g.Layout.ParkingIndex(c.stand)
 		ec := &eventClient{}
@@ -609,7 +611,8 @@ func TestDepartureRoutesBySize(t *testing.T) {
 			t.Fatal(err)
 		}
 		tw := ctl.Route().Taxiways
-		if !slices.Contains(tw, c.want) || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
+		want := slices.ContainsFunc(strings.Split(c.want, "|"), func(w string) bool { return slices.Contains(tw, w) })
+		if !want || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
 			t.Errorf("%s %s via %v, want %s", c.model, c.stand, tw, c.want)
 		}
 		t.Logf("%s from %s via %v (tight %v)", c.model, c.stand, tw, ctl.Route().Tight)
