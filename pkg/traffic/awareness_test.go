@@ -452,3 +452,55 @@ func TestGiveWayToPushUnderWay(t *testing.T) {
 		}
 	}
 }
+
+// Facing oncoming traffic, an aircraft keeps the junction it will turn off
+// at clear (#444). LKPR, live: CSA273 taxied west along Z towards WZZ1529,
+// pushed onto Z facing it just beyond the Z junction (20/16 in local
+// meters); CSA273 stopped at the gap behind WZZ1529 with its nose over the
+// junction's north branch, where WZZ1529 was to turn, and neither moved
+// again. The stop now leaves that branch clear by the half-span and margin.
+func TestJunctionStopFacingOncoming(t *testing.T) {
+	g := lkprGraph(t)
+	tp := g.Layout.TaxiPoints
+	var pts []airport.LatLon
+	for _, i := range []int{753, 752, 1877, 751, 1878, 750, 749, 1879, 748, 678, 677, 674} {
+		pts = append(pts, tp[i].Position)
+	}
+	prof := MotionProfileFor("BCS3")
+	path, err := NewGroundPath(pts, prof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// WZZ1529 stood 35 m beyond the junction, facing it.
+	junction := tp[678].Position
+	wzz := offsetHeading(tp[677].Position, localBearing(tp[677].Position, tp[674].Position), 12)
+	sBody := 0.0
+	for s := 0.0; s < path.Length(); s++ {
+		if localDist(path.PointAt(s), wzz) < localDist(path.PointAt(sBody), wzz) {
+			sBody = s
+		}
+	}
+	sBody -= 20 // its tail
+	noseTip := (pushNoseFactor - 1) * prof.WheelbaseMeters
+	gap := sBody - noseTip - TrafficGapMeters
+	clear := DefaultHalfSpanMeters + GiveWayMarginMeters
+	d := &groundDrive{graph: g, prof: prof}
+	stop := d.junctionStop(path, 0, gap, noseTip, clear)
+	if stop >= gap {
+		t.Fatalf("stop %.0f m: not short of the gap stop %.0f m", stop, gap)
+	}
+	// The north branch (Z towards A1) stays clear of the nose.
+	nose := path.PointAt(stop + noseTip)
+	for _, i := range []int{746, 745, 744, 743} {
+		if dist := localDist(nose, tp[i].Position); dist < clear {
+			t.Errorf("nose %.0f m from the branch at node %d, want at least %.0f", dist, i, clear)
+		}
+	}
+	if localDist(path.PointAt(stop), junction) > 80 {
+		t.Errorf("stop %.0f m from the junction: further back than needed", localDist(path.PointAt(stop), junction))
+	}
+	// No junction ahead: the gap stop stands.
+	if s := d.junctionStop(path, 0, 10, noseTip, clear); s != 10 && s > 10 {
+		t.Errorf("stop %.1f beyond the given 10 m", s)
+	}
+}

@@ -167,6 +167,8 @@ While taxiing (a departure) or off the runway (an arrival), an aircraft looks `T
 
 Where two taxi routes cross or merge, each aircraft reports where it will drive next (up to its next stop, `GiveWayLookMeters`); where the paths come within both half-spans plus `GiveWayMarginMeters`, the aircraft closer to the conflict goes and the other stops short of it. A pushback waits, even when cleared, while another aircraft's fuselage is within its half-span plus `PushClearMarginMeters` of the corridor the push sweeps (the push path and the tail beyond its end), or while another aircraft's taxi path crosses it; under way it has priority: it reports what it still has to sweep (`GroundPicture.ReportPush`), taxiing traffic whose path crosses that gives way to it, and the push stops only for an aircraft actually in the way. `TaxiEvent.PushbackHeld` reports it (#334).
 
+Facing an aircraft coming the other way, an aircraft does not queue up to the gap behind it: it stops where its body keeps the last junction before the other aircraft clear, a half-span plus `GiveWayMarginMeters` from the junction's other branches, so the other can turn off there (#444).
+
 ## Progressive taxi
 
 `ClearUpTo(node airport.NodeID) error` clears an injected departure to taxi up to a node of its route and hold there ("taxi via A, hold short of B"). [Arrivals](traffic-arrival.md#progressive-taxi) have the same call.
