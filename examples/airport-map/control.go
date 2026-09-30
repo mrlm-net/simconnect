@@ -148,6 +148,9 @@ type controlCenter struct {
 	// runways keep each airport's runway in use.
 	runways map[string]*nav.RunwaySelector
 	detail  *traffic.Detail
+	// clock is traffic time: the simulation rate, stopped while paused
+	// (#413). Traffic runs on it; logs and data freshness on the wall clock.
+	clock *traffic.SimClock
 	// own are aircraft of ours not driven by a controller: enroute and
 	// overflying MSFS AI of the scheduled traffic (#369). extra handles
 	// the scheduler's messages.
@@ -177,7 +180,7 @@ type controlCenter struct {
 
 func newControlCenter(client engine.Client) *controlCenter {
 	return &controlCenter{
-		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client),
+		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:  map[string]bool{},
 		own:     map[uint32]bool{},
@@ -223,7 +226,7 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 // tick runs every second in the connection goroutine: it scans the stands
 // the ATC game.
 func (cc *controlCenter) tick() {
-	if now := time.Now(); now.Sub(cc.gameAt) >= time.Second {
+	if now := cc.clock.Now(); now.Sub(cc.gameAt) >= time.Second {
 		cc.gameAt = now
 		cc.gameTick(now)
 	}
@@ -389,11 +392,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Kind == "arrival" && len(procRoute) > 0 {
 		p := procRoute[0]
 		alt := math.Max(p.AltMax, p.AltMin) / 0.3048
-		if who := cc.nearAirborne(p.Position, alt, r.Tail, time.Now()); who != "" {
+		if who := cc.nearAirborne(p.Position, alt, r.Tail, cc.clock.Now()); who != "" {
 			return nil, fmt.Errorf("%w: %s is near %s; try again in a minute", traffic.ErrSpawnBlocked, who, p.Ident)
 		}
 		cc.mu.Lock()
-		cc.spawnedAt = append(cc.spawnedAt, spawnPoint{tail: r.Tail, at: p.Position, altFt: alt, when: time.Now()})
+		cc.spawnedAt = append(cc.spawnedAt, spawnPoint{tail: r.Tail, at: p.Position, altFt: alt, when: cc.clock.Now()})
 		cc.mu.Unlock()
 	}
 	// The airport's limits (#335): climb-out hand-over from the SIDs, taxi speeds.
@@ -436,7 +439,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
+		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: r.Gates, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
@@ -447,7 +450,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithDetail(cc.detail), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)))
+		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithDetail(cc.detail), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.ArrivalWithClock(cc.clock.Now))
 		var exit *airport.RunwayExit
 		if r.Exit != nil {
 			exits, err := g.RunwayExits(r.Runway)
@@ -561,10 +564,10 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.managed = nil
 			go func() {
 				it.cc.do(func() error { return it.cc.remove(it) })
-				m.Failed(it.Tail, err, time.Now())
+				m.Failed(it.Tail, err, it.cc.clock.Now())
 			}()
 		} else if ok {
-			m.Update(it.Tail, st, time.Now())
+			m.Update(it.Tail, st, it.cc.clock.Now())
 		}
 	}
 	if e := ev.dep; e != nil {
@@ -893,7 +896,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			it.removeOnce.Do(func() { close(it.removed) })
 			cc.forget(it)
 			if m != nil {
-				m.Remove(it.Tail, time.Now()) // off the schedule too
+				m.Remove(it.Tail, cc.clock.Now()) // off the schedule too
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -921,7 +924,7 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 				cc.runways[g.Layout.ICAO] = sel
 			}
 			cc.mu.Unlock()
-			use := sel.Choose(time.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
+			use := sel.Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
 			end := use.Departure
 			if arrival {
 				end = use.Arrival
@@ -1547,5 +1550,5 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	}
 	// Ground pictures and stand allocators get it from here; our own
 	// aircraft report themselves (SetOwn in update).
-	cc.world.Observe(time.Now(), obs)
+	cc.world.Observe(cc.clock.Now(), obs)
 }

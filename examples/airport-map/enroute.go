@@ -96,12 +96,12 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		}
 		// Where it must be now to reach the entry when the arrival is due there.
 		due := f.STA.Add(-s.mgr.Options().ArrivalLead)
-		dist = entry - time.Until(due).Hours()*kts
+		dist = entry - due.Sub(cc.clock.Now()).Hours()*kts
 		if dist > entry-15 {
 			return fmt.Errorf("only %.0f NM before its STAR entry: it appears there", entry-dist)
 		}
 	} else {
-		dist = time.Since(f.STD.Add(10*time.Minute)).Hours() * kts
+		dist = cc.clock.Now().Sub(f.STD.Add(10*time.Minute)).Hours() * kts
 	}
 	dist = math.Max(10, math.Min(dist, fp.DistanceNM-20))
 	pos, altFt, _ := fp.PositionAt(dist)
@@ -185,7 +185,7 @@ func (s *scheduler) handle(msg engine.Message) bool {
 	cc.world.SetOwn(e.objectID, traffic.PhaseEnroute, "")
 	s.mgr.Attach(e.f.Callsign, e.objectID)
 	s.mgr.Describe(e.f.Callsign, e.model, "", "")
-	s.mgr.Update(e.f.Callsign, traffic.FlightEnroute, time.Now())
+	s.mgr.Update(e.f.Callsign, traffic.FlightEnroute, s.cc.clock.Now())
 	return true
 }
 
@@ -223,7 +223,7 @@ func (s *scheduler) handovers(now time.Time) {
 			tlog.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			if err := s.spawnWith(f, e.arrive, e.model); err != nil {
 				tlog.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
-				s.mgr.Failed(f.Callsign, err, time.Now())
+				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 			}
 		}(e)
 	}
@@ -264,5 +264,5 @@ func (s *scheduler) nearPoint(p airport.LatLon, altFt float64) string {
 		}
 		return ""
 	}
-	return s.cc.nearAirborne(p, altFt, "", time.Now())
+	return s.cc.nearAirborne(p, altFt, "", s.cc.clock.Now())
 }

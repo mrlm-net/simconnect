@@ -47,10 +47,12 @@ import (
 //go:embed index.html
 var web embed.FS
 
-// User aircraft position, polled once per second.
+// User aircraft position (and the simulation rate), polled once per
+// second; the pause state as the simulator reports it (#413).
 const (
 	defAircraft uint32 = 2000
 	reqAircraft uint32 = 2001
+	evPause     uint32 = 2010
 )
 
 // Live traffic scan, requested every second.
@@ -102,6 +104,7 @@ type aircraftRaw struct {
 	Heading   float64
 	GroundKts float64
 	OnGround  float64
+	SimRate   float64 // SIMULATION RATE
 }
 
 // Aircraft is the user aircraft position served at /api/aircraft.
@@ -111,7 +114,11 @@ type Aircraft struct {
 	Heading   float64   `json:"heading"`
 	GroundKts float64   `json:"groundKts"`
 	OnGround  bool      `json:"onGround"`
-	Updated   time.Time `json:"updated"`
+	// SimRate and Paused: the simulator's rate and pause (traffic follows
+	// them, #413).
+	SimRate float64   `json:"simRate"`
+	Paused  bool      `json:"paused"`
+	Updated time.Time `json:"updated"`
 }
 
 // airportResponse is the /api/airport payload: the Layout plus when it was
@@ -189,12 +196,16 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	fmt.Println("✅ Connected to SimConnect")
 	defer client.Disconnect()
 
+	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
+		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Pause):", err)
+	}
 	for i, v := range []struct{ name, unit string }{
 		{"PLANE LATITUDE", "degrees"},
 		{"PLANE LONGITUDE", "degrees"},
 		{"PLANE HEADING DEGREES TRUE", "degrees"},
 		{"GROUND VELOCITY", "knots"},
 		{"SIM ON GROUND", "bool"},
+		{"SIMULATION RATE", "number"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
@@ -277,7 +288,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			select {
 			case <-stop:
 				return
-			case now := <-t.C:
+			case <-t.C:
+				now := cc.clock.Now() // traffic time (#413)
 				sched.tick(now)
 				seqs.tick(now)
 				air := cc.world.Aircraft()
@@ -397,9 +409,22 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				a := engine.CastDataAs[aircraftRaw](&d.DwData)
 				userID = uint32(d.DwObjectID) // the user aircraft's real object ID, as by-type scans report it
 				st.mu.Lock()
+				if a.SimRate > 0 && a.SimRate != cc.clock.Rate() {
+					cc.clock.SetRate(a.SimRate)
+					tlog.printf("simulation rate %g×: traffic follows it", a.SimRate)
+				}
 				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
-					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, Updated: time.Now()}
+					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Updated: time.Now()}
 				st.mu.Unlock()
+
+			case types.SIMCONNECT_RECV_ID_EVENT:
+				if e := msg.AsEvent(); uint32(e.UEventID) == evPause {
+					paused := e.DwData != 0
+					if paused != cc.clock.Paused() {
+						cc.clock.SetPaused(paused)
+						tlog.printf("simulation %s: traffic %s", map[bool]string{true: "paused", false: "resumed"}[paused], map[bool]string{true: "stops", false: "goes on"}[paused])
+					}
+				}
 
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
 				d := msg.AsSimObjectDataBType()

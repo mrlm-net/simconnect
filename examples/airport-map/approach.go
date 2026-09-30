@@ -72,7 +72,7 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		if _, _, holding := it.arr.Holding(); holding {
 			return traffic.ErrHolding
 		}
-		q.enterHold(time.Now(), icao, it, e, max(e.Delay, 2*time.Minute))
+		q.enterHold(q.cc.clock.Now(), icao, it, e, max(e.Delay, 2*time.Minute))
 	case "release":
 		h, _, holding := it.arr.Holding()
 		if !holding {

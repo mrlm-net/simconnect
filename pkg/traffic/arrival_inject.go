@@ -25,6 +25,12 @@ func ArrivalWithInjector(inj *Injector) ArrivalOption {
 	return func(c *ArrivalController) { c.inj = inj }
 }
 
+// ArrivalWithClock runs the arrival on clock (e.g. SimClock.Now: the
+// simulation rate, stopped while paused) instead of the wall clock (#413).
+func ArrivalWithClock(clock func() time.Time) ArrivalOption {
+	return func(c *ArrivalController) { c.now = clock }
+}
+
 // ArrivalWithDetail drives the injected taxi-in on fewer sim frames when it
 // is far from the viewer or standing still (#370); on the runway always on
 // every frame.
@@ -401,7 +407,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 // the injected rollout once the nose wheel is down.
 func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	now := c.now()
-	dt := math.Min(now.Sub(c.lastStep).Seconds(), 0.25)
+	dt := math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds)
 	c.lastStep = now
 	if !c.approachLightsSet {
 		c.approachLightsSet = true

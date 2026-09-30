@@ -60,7 +60,7 @@ type groundDrive struct {
 // advance steps the mover to now and places the aircraft.
 func (d *groundDrive) advance() (GroundPose, error) {
 	now := d.clock()
-	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), 0.25))
+	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), MaxFrameStepSeconds))
 	d.lastStep, d.frameDt = now, dt
 	d.followAhead(now)
 	pose := d.mover.Step(dt)

@@ -1112,7 +1112,7 @@ async function pollAircraft() {
       if (!acMarker) acMarker = L.marker([a.lat, a.lon], { icon: acIcon(a.heading), zIndexOffset: 1000 }).addTo(map);
       acMarker.setLatLng([a.lat, a.lon]).setIcon(acIcon(a.heading));
       if ($('follow').checked) map.panTo([a.lat, a.lon], { animate: false });
-      $('acInfo').textContent = `Aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}`;
+      $('acInfo').textContent = `Aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}${a.paused ? ' · ⏸ sim paused' : a.simRate && a.simRate !== 1 ? ` · sim ${a.simRate}×` : ''}`;
     } else if (acMarker) {
       acMarker.remove(); acMarker = null; lastOwn = null; $('acInfo').textContent = 'Aircraft: —';
     }
@@ -1193,10 +1193,12 @@ setInterval(pollTraffic, 1000);
 // line by only a few metres a second, corrected at the next poll).
 function glideTraffic() {
   const now = performance.now();
+  // (At the simulation rate; not at all while the sim is paused.)
+  const rate = lastOwn ? (lastOwn.paused ? 0 : lastOwn.simRate || 1) : 1;
   for (const m of trafficMarkers.values()) {
     const d = m._dr;
-    if (!d || d.kts < 1) continue;
-    const meters = Math.min(1.5, (now - d.at) / 1000) * d.kts * 0.514444;
+    if (!d || d.kts < 1 || !rate) continue;
+    const meters = Math.min(1.5, (now - d.at) / 1000) * rate * d.kts * 0.514444;
     const h = d.hdg * Math.PI / 180;
     m.setLatLng(offset(d.lat, d.lon, Math.sin(h) * meters, Math.cos(h) * meters));
   }

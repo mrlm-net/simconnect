@@ -124,7 +124,7 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 		}
 		if err := spawn(); err != nil {
 			tlog.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
-			s.mgr.Failed(f.Callsign, err, time.Now())
+			s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 		}
 	}()
 }
