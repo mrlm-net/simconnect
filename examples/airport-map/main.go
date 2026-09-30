@@ -279,6 +279,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	tw := newTowers(cc, sched)
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	cc.sequencesAt = seqs.at
+	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
 	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{})
 	defer close(stop) // this connection only

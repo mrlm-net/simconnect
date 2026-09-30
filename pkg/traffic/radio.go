@@ -445,6 +445,11 @@ type RadioOptions struct {
 	// ReadBack: our pilots read back every clearance to them (#417), on
 	// the same frequency, after it.
 	ReadBack bool
+	// SaidCallsign writes a call sign as said ("DLH1675" → "Lufthansa
+	// 1675", ScheduleConfig.SaidCallsign): the text of each transmission
+	// uses it, so text and voice are the same (#462). Callsign keeps the
+	// ICAO form.
+	SaidCallsign func(cs string) string
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -481,6 +486,11 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	}
 	if t.Text == "" {
 		t = Say(t)
+	}
+	if r.opts.SaidCallsign != nil && t.Callsign != "" {
+		if said := r.opts.SaidCallsign(t.Callsign); said != t.Callsign {
+			t.Text = strings.ReplaceAll(t.Text, t.Callsign, said)
+		}
 	}
 	if t.Frequency == "" && r.opts.FrequencyOf != nil {
 		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)

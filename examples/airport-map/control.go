@@ -165,6 +165,9 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
+	// saidCallsign writes a call sign as said (#462); set once the schedule
+	// exists.
+	saidCallsign func(cs string) string
 	// atisLetter is an airport's current ATIS letter for first calls (#418).
 	atisLetter func(icao string) string
 	// rejoin sequences an arrival afresh after a go-around (#394);
@@ -203,6 +206,13 @@ func newControlCenter(client engine.Client) *controlCenter {
 	}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
+		// Call signs as said, in the text and so in the voice (#462).
+		SaidCallsign: func(cs string) string {
+			if f := cc.saidCallsign; f != nil {
+				return f(cs)
+			}
+			return defaultSchedule.SaidCallsign(cs)
+		},
 		OnTransmission: func(t traffic.Transmission) {
 			who := "ATC"
 			if t.Pilot {
@@ -1006,6 +1016,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
+
+// defaultSchedule is the built-in schedule data: telephony and airport
+// names before the schedule exists.
+var defaultSchedule = traffic.DefaultScheduleConfig()
 
 // runwaySelectors keep each airport's runway in use, one for the traffic
 // and its ATIS (#454), for the life of the process.
