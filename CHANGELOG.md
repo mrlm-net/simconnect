@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Pushback: an alley push counts the crossroads of lanes it passes and ends on, whatever the lanes are called; LKPR A5 for 24 no longer pushes 134 m into the B1 crossroads (#489).
 - Radio flow (#462): pushback first (the first call to ground), start-up with the push under way; the delivery exchange paced (request, clearance, readback, "readback correct", transfer to ground) and the crew's requests after it; arrivals' first call then their clearance; "flight planned route" in the departure clearance; the initial climb FL100 by default, per airport (`Limits.InitialClimbFt`) and per SID (`Limits.InitialClimbs`, `InitialClimbFor`). The radio follows one frequency; the voice shortens pauses rather than dropping calls (60 s), and tuned to the ATIS joins its continuous broadcast where it is.
 - Airport map: conflicts between our arrivals on their STARs are resolved: the one landing later loses time (speed, then a dog-leg), said on the frequency, and holds if the conflict is still predicted 90 s on (#455; before, only en route aircraft were steered).
 - Turnarounds: the arrival's stand passes to the departure (`StandAllocator.Transfer`) instead of being released and taken again, which failed with ErrStandTaken against the parked aircraft itself; on the airport map turnaround departures never spawned (#470).

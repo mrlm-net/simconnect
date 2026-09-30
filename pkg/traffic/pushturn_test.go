@@ -148,7 +148,8 @@ func TestPushbackDoesNotFaceTheStand(t *testing.T) {
 // pushed before it; the two met head on), nor leave the nose facing away
 // from the way out (LKPR A5, live: KLM594 faced south-east on B1 and turned
 // 127° back onto B2): A3 pushes onto A1 nose north, A5 onto B1 nose
-// north-west.
+// north-west — for either runway (#489: for 24 every type was pushed 134 m
+// west into the crossroads of the B1 lanes).
 func TestPushbackNoTowNoHairpin(t *testing.T) {
 	g := lkprGraph(t)
 	for _, c := range []struct {
@@ -156,20 +157,22 @@ func TestPushbackNoTowNoHairpin(t *testing.T) {
 		nose  float64
 	}{{"A3", 334}, {"A5", 326}} {
 		i, _ := g.Layout.ParkingIndex(c.stand)
-		for _, m := range []string{"FSLTL_FAIB_A321_WZZ-Wizz Air", "FSLTL_SBAI_BCS3_CSA-Lines", "FSLTL A320 Air France SL"} {
-			ec := &eventClient{}
-			ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
-			if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "06", Model: m, Tail: "T1"}); err != nil {
-				t.Fatal(err)
-			}
-			p, err := ctl.pushPath()
-			if err != nil {
-				t.Fatal(err)
-			}
-			end := p.PointAt(p.Length())
-			nose := localBearing(end, p.PointAt(p.Length()-5))
-			if d := math.Abs(headingDiff(nose, c.nose)); d > 20 || p.Length() > 150 {
-				t.Errorf("%s from %s: push %.0f m, nose %.0f°, want at most 150 m, nose about %.0f°", m, c.stand, p.Length(), nose, c.nose)
+		for _, m := range []string{"FSLTL_FAIB_A321_WZZ-Wizz Air", "FSLTL_SBAI_BCS3_CSA-Lines", "FSLTL A320 Air France SL", "FSLTL_E190_LOT"} {
+			for _, rwy := range []string{"06", "24"} {
+				ec := &eventClient{}
+				ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+				if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: rwy, Model: m, Tail: "T1"}); err != nil {
+					t.Fatal(err)
+				}
+				p, err := ctl.pushPath()
+				if err != nil {
+					t.Fatal(err)
+				}
+				end := p.PointAt(p.Length())
+				nose := localBearing(end, p.PointAt(p.Length()-5))
+				if d := math.Abs(headingDiff(nose, c.nose)); d > 20 || p.Length() > 150 {
+					t.Errorf("%s from %s for %s: push %.0f m, nose %.0f°, want at most 150 m, nose about %.0f°", m, c.stand, rwy, p.Length(), nose, c.nose)
+				}
 			}
 		}
 	}
