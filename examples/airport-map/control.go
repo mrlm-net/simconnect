@@ -1025,6 +1025,30 @@ func runwaySelector(icao string) *nav.RunwaySelector {
 	return s
 }
 
+// logRunwayChange logs a change of icao's runway in use, with the wind
+// that made it (#465: to see every change, and why, in the traffic log).
+func logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
+	now := use.Departure.Name + "/" + use.Arrival.Name
+	runwaySelectors.Lock()
+	before := runwayInUse[icao]
+	runwayInUse[icao] = now
+	runwaySelectors.Unlock()
+	if before == now {
+		return
+	}
+	head, cross := w.Components(use.Arrival.Heading)
+	tlog.printf("runway in use %s: %s → %s (departures/arrivals), wind %03.0f°/%.0f kt gust %.0f: headwind %.1f kt, crosswind %.1f kt on %s", icao, orNone(before), now, w.WindDirTrue, w.WindKts, w.GustKts, head, cross, use.Arrival.Name)
+}
+
+var runwayInUse = map[string]string{}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
 // activeRunway is the runway in use at g's airport now: from the weather
 // (wind, limits, preferential runways), else the first preferred runway,
 // else the first runway end. Departures and arrivals may differ.
@@ -1041,6 +1065,7 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 			// The runway in use holds through wind shifts near a limit (#391);
 			// the ATIS says the same (#454).
 			use := runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
+			logRunwayChange(g.Layout.ICAO, use, *w)
 			end := use.Departure
 			if arrival {
 				end = use.Arrival
