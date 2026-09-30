@@ -504,3 +504,30 @@ func TestJunctionStopFacingOncoming(t *testing.T) {
 		t.Errorf("stop %.1f beyond the given 10 m", s)
 	}
 }
+
+// A pushback waits while a moving aircraft's wing is over its corridor, not
+// only its fuselage (#446; LKPR, live: DLH1740 pushed from A3 while TVS1823,
+// pushing up A1, was a fuselage and 3 m from the corridor). A parked
+// aircraft at the same distance does not hold it.
+func TestPushWaitsForMovingWing(t *testing.T) {
+	now := time.Unix(0, 0)
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	var corridor []airport.LatLon
+	for d := 0.0; d <= 60; d += trafficBodyStep {
+		corridor = append(corridor, offsetHeading(base, 0, d))
+	}
+	half, oh := 12.0, 17.0
+	// Abeam the corridor, fuselage parallel to it: its wing reaches 5 m in.
+	beside := offsetHeading(offsetHeading(base, 0, 30), 90, half+PushClearMarginMeters+oh-5)
+	for _, moving := range []bool{true, false} {
+		p := NewGroundPicture()
+		p.Report(2, beside, 0, DefaultMotionProfile(), now)
+		if moving {
+			p.ReportPush(2, []airport.LatLon{offsetHeading(beside, 90, 200)}, oh) // its way on, far off
+		}
+		_, blocked := p.corridorBlocked(1, corridor, half, true, now)
+		if blocked != moving {
+			t.Errorf("moving %v: blocked %v", moving, blocked)
+		}
+	}
+}

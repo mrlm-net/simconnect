@@ -175,14 +175,22 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		return false
 	}
 	for _, o := range others {
-		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
-			if near(offsetHeading(o.e.pos, o.e.hdg, d), half+PushClearMarginMeters) {
-				return o.id, true
-			}
-		}
 		oh := o.e.half
 		if oh <= 0 {
 			oh = DefaultHalfSpanMeters
+		}
+		// A moving aircraft (pushing, taxiing) keeps its wings clear too: at
+		// LKPR DLH1740 pushed from A3 while TVS1823, pushed up A1, was a
+		// fuselage and 3 m from its corridor, a wing inside it (#446). A
+		// parked neighbour is a stand spacing away, wing to wing.
+		reach := half + PushClearMarginMeters
+		if len(o.e.ahead) > 0 {
+			reach += oh
+		}
+		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
+			if near(offsetHeading(o.e.pos, o.e.hdg, d), reach) {
+				return o.id, true
+			}
 		}
 		if !withPaths {
 			continue // a push under way stops for bodies only; others give way to it
