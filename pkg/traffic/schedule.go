@@ -56,7 +56,10 @@ type Airline struct {
 
 // ScheduleAirport is an airport flights can go to or come from.
 type ScheduleAirport struct {
-	ICAO     string         `json:"icao"`
+	ICAO string `json:"icao"`
+	// Name is the destination as ATC says it in a clearance ("Frankfurt",
+	// "London Heathrow").
+	Name     string         `json:"name,omitempty"`
 	Position airport.LatLon `json:"position"`
 	// Size: 3 hub, 2 major, 1 regional.
 	Size int `json:"size"`

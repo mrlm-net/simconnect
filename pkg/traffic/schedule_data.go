@@ -40,7 +40,8 @@ func defaultAirlines() []Airline {
 	eu := []string{"LK", "LO", "LZ", "LH", "LJ", "LD", "LB", "LR", "LY", "LI", "LF", "LE", "LP", "LS", "LG", "LC", "LT", "LM", "ED", "EH", "EB", "EG", "EI", "EK", "EN", "ES", "EF", "EP", "EY", "EV", "EE", "EL", "BI"}
 	central := []string{"LK", "LO", "LZ", "LH", "EP", "ED", "LJ", "LD"}
 	return []Airline{
-		{ICAO: "CSA", Name: "Czech Airlines", Telephony: "CSA", Fleet: map[string]float64{"A320": 1, "BCS3": 1}, Bases: []string{"LKPR"}, Regions: eu, Weight: 1},
+		// CSA: CSA-LINES (ICAO Doc 8585 as listed publicly).
+		{ICAO: "CSA", Name: "Czech Airlines", Telephony: "CSA LINES", Fleet: map[string]float64{"A320": 1, "BCS3": 1}, Bases: []string{"LKPR"}, Regions: eu, Weight: 1},
 		{ICAO: "TVS", Name: "Smartwings", Telephony: "SKYTRAVEL", Fleet: map[string]float64{"B738": 3, "B38M": 2}, Bases: []string{"LKPR", "LKTB", "LKMT"}, Regions: append([]string{"HE", "GC", "DT", "OJ"}, eu...), Weight: 1.5},
 		{ICAO: "DLH", Name: "Lufthansa", Telephony: "LUFTHANSA", Fleet: map[string]float64{"A20N": 3, "A320": 2, "A321": 2, "CRJ9": 1, "B789": 0.5}, Bases: []string{"EDDF", "EDDM"}, Regions: []string{"*"}, Weight: 2},
 		{ICAO: "AUA", Name: "Austrian", Telephony: "AUSTRIAN", Fleet: map[string]float64{"A320": 2, "E190": 1, "DH8D": 1}, Bases: []string{"LOWW"}, Regions: eu, Weight: 1},
@@ -48,10 +49,11 @@ func defaultAirlines() []Airline {
 		{ICAO: "KLM", Name: "KLM", Telephony: "KLM", Fleet: map[string]float64{"B738": 2, "E190": 2, "B789": 0.5, "B77W": 0.3}, Bases: []string{"EHAM"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "AFR", Name: "Air France", Telephony: "AIRFRANS", Fleet: map[string]float64{"A320": 2, "A321": 1, "B77W": 0.3}, Bases: []string{"LFPG"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "BAW", Name: "British Airways", Telephony: "SPEEDBIRD", Fleet: map[string]float64{"A320": 2, "A20N": 1, "A321": 1, "B77W": 0.3, "B789": 0.3}, Bases: []string{"EGLL", "EGKK"}, Regions: []string{"*"}, Weight: 1.5},
-		{ICAO: "LOT", Name: "LOT", Telephony: "POLLOT", Fleet: map[string]float64{"B38M": 2, "E190": 2, "DH8D": 1}, Bases: []string{"EPWA"}, Regions: eu, Weight: 1},
+		// LOT: the ICAO designator is POLLOT, but "LOT" is what is said in practice.
+		{ICAO: "LOT", Name: "LOT", Telephony: "LOT", Fleet: map[string]float64{"B38M": 2, "E190": 2, "DH8D": 1}, Bases: []string{"EPWA"}, Regions: eu, Weight: 1},
 		{ICAO: "RYR", Name: "Ryanair", Telephony: "RYANAIR", Fleet: map[string]float64{"B738": 3, "B38M": 1}, Bases: []string{"EIDW", "EGSS", "LIRA", "LEPA", "LPPT"}, Regions: eu, Weight: 3},
 		{ICAO: "EZY", Name: "easyJet", Telephony: "EASY", Fleet: map[string]float64{"A320": 2, "A20N": 2, "A321": 1}, Bases: []string{"EGKK", "EGGW", "LSGG", "LFPG"}, Regions: eu, Weight: 2},
-		{ICAO: "WZZ", Name: "Wizz Air", Telephony: "WIZZ AIR", Fleet: map[string]float64{"A321": 3, "A20N": 1}, Bases: []string{"LHBP", "EPKT", "LROP"}, Regions: eu, Weight: 2},
+		{ICAO: "WZZ", Name: "Wizz Air", Telephony: "WIZZAIR", Fleet: map[string]float64{"A321": 3, "A20N": 1}, Bases: []string{"LHBP", "EPKT", "LROP"}, Regions: eu, Weight: 2},
 		{ICAO: "THY", Name: "Turkish", Telephony: "TURKISH", Fleet: map[string]float64{"A321": 2, "B38M": 1, "B77W": 0.3}, Bases: []string{"LTFM"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "UAE", Name: "Emirates", Telephony: "EMIRATES", Fleet: map[string]float64{"B77W": 1}, Bases: []string{"OMDB"}, Regions: []string{"*"}, Weight: 0.5},
 		{ICAO: "QTR", Name: "Qatar", Telephony: "QATARI", Fleet: map[string]float64{"B789": 1, "B77W": 1}, Bases: []string{"OTHH"}, Regions: []string{"*"}, Weight: 0.5},
@@ -60,9 +62,30 @@ func defaultAirlines() []Airline {
 	}
 }
 
+// scheduleAirportNames are the destinations as ATC says them in a
+// clearance: the city, and the airport where the city has several.
+var scheduleAirportNames = map[string]string{
+	"LKPR": "Prague", "LKTB": "Brno", "LKMT": "Ostrava", "LKKV": "Karlovy Vary",
+	"LOWW": "Vienna", "LOWS": "Salzburg", "LOWI": "Innsbruck", "LZIB": "Bratislava", "LZKZ": "Kosice",
+	"LHBP": "Budapest", "EPWA": "Warsaw", "EPKK": "Krakow", "EPKT": "Katowice", "EPGD": "Gdansk",
+	"EDDF": "Frankfurt", "EDDM": "Munich", "EDDB": "Berlin", "EDDH": "Hamburg", "EDDL": "Dusseldorf", "EDDS": "Stuttgart",
+	"EDDK": "Cologne", "EDDN": "Nuremberg", "EDDP": "Leipzig", "EDDC": "Dresden",
+	"LSZH": "Zurich", "LSGG": "Geneva", "LJLJ": "Ljubljana", "LDZA": "Zagreb", "LDSP": "Split", "LDDU": "Dubrovnik",
+	"EHAM": "Amsterdam", "EBBR": "Brussels", "LFPG": "Paris Charles de Gaulle", "LFPO": "Paris Orly", "LFMN": "Nice",
+	"EGLL": "London Heathrow", "EGKK": "London Gatwick", "EGSS": "London Stansted", "EGGW": "London Luton", "EGCC": "Manchester", "EIDW": "Dublin",
+	"EKCH": "Copenhagen", "ENGM": "Oslo", "ESSA": "Stockholm Arlanda", "EFHK": "Helsinki", "EVRA": "Riga", "EYVI": "Vilnius", "EETN": "Tallinn",
+	"LEMD": "Madrid", "LEBL": "Barcelona", "LEPA": "Palma", "LEMG": "Malaga", "LPPT": "Lisbon", "LPFR": "Faro",
+	"LIRF": "Rome Fiumicino", "LIRA": "Rome Ciampino", "LIMC": "Milan Malpensa", "LIPZ": "Venice", "LICC": "Catania",
+	"LGAV": "Athens", "LGIR": "Heraklion", "LGRP": "Rhodes", "LCLK": "Larnaca",
+	"LBSF": "Sofia", "LBBG": "Burgas", "LROP": "Bucharest", "LYBE": "Belgrade", "LMML": "Malta",
+	"LTFM": "Istanbul", "LTAI": "Antalya", "GCTS": "Tenerife South", "GCLP": "Gran Canaria",
+	"HEGN": "Hurghada", "HESH": "Sharm el Sheikh", "OJAQ": "Aqaba", "DTTJ": "Djerba",
+	"OMDB": "Dubai", "OTHH": "Doha", "RKSI": "Seoul Incheon", "KJFK": "New York Kennedy", "KORD": "Chicago O'Hare", "CYYZ": "Toronto",
+}
+
 func defaultScheduleAirports() []ScheduleAirport {
 	a := func(icao string, lat, lon float64, size int, rwy float64) ScheduleAirport {
-		return ScheduleAirport{ICAO: icao, Position: airport.LatLon{Lat: lat, Lon: lon}, Size: size, RunwayM: rwy}
+		return ScheduleAirport{ICAO: icao, Name: scheduleAirportNames[icao], Position: airport.LatLon{Lat: lat, Lon: lon}, Size: size, RunwayM: rwy}
 	}
 	return []ScheduleAirport{
 		// Czechia and neighbours
