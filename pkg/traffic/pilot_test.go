@@ -16,7 +16,7 @@ func TestReadbacks(t *testing.T) {
 		clr  Transmission
 		want string
 	}{
-		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), "Cleared to Frankfurt, BALTU 7D departure, runway 24, climb via SID to 5000 feet, squawk 4521, CSA1"}, // CAP 413 2.68
+		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), "Cleared to Frankfurt, BALTU 7D departure, flight planned route, runway 24, climb via SID to 5000 feet, squawk 4521, CSA1"}, // CAP 413 2.68
 		{ClearedStartUp("CSA1"), "Start up approved, CSA1"},
 		{ClearedPushback("CSA1"), "Pushback approved, CSA1"},
 		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Taxi to holding point B runway 24 via H, A, CSA1"}, // CAP 413 4.12
@@ -66,8 +66,9 @@ func TestPilotCalls(t *testing.T) {
 		want string
 	}{
 		{RequestClearance("Ruzyne Delivery", "CSA1", "A4", "Bravo", "Frankfurt"), "Ruzyne Delivery, CSA1, stand A4, information Bravo, request clearance to Frankfurt"},
-		{RequestStartUp("Ruzyne Ground", "CSA1", "A4", "Bravo"), "Ruzyne Ground, CSA1, stand A4, information Bravo, request start up"}, // CAP 413 4.9
-		{RequestPushback("CSA1", "A4"), "CSA1, stand A4, request pushback"},                                                            // Doc 4444 12.3.4.4 a
+		{RequestPushback("Ruzyne Ground", "CSA1", "A4", "Bravo"), "Ruzyne Ground, CSA1, stand A4, information Bravo, request pushback"}, // Doc 4444 12.3.4.4 a, CAP 413 4.9 order
+		{RequestStartUp("", "CSA1", "", ""), "CSA1, request start up"},                                                                  // Doc 4444 12.3.4.3 a
+		{ReadbackCorrect(PosDelivery, "CSA1"), "CSA1, readback correct"},
 		{RequestTaxi("CSA1"), "CSA1, request taxi"},
 		{ReadyForDeparture("CSA1", "24"), "CSA1, holding point runway 24, ready for departure"},
 		{CheckIn(PosTower, "Ruzyne Tower", "CSA1", "established ILS runway 06", ""), "Ruzyne Tower, CSA1, established ILS runway 06"},

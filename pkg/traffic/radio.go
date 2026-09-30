@@ -224,14 +224,14 @@ func entryOf(p map[string]string) string {
 }
 
 // departureClearance is a departure clearance after the call sign, which a
-// readback repeats: "cleared to Frankfurt, BALTU 7D departure, runway 24,
-// climb via SID to 5000 feet, squawk 4521".
+// readback repeats: "cleared to Frankfurt, BALTU 7D departure, flight
+// planned route, runway 24, climb via SID to flight level 100, squawk 4521".
 func departureClearance(p map[string]string) string {
 	s := "cleared"
 	if p[ParamDest] != "" {
 		s += " to " + p[ParamDest] + ","
 	}
-	s += " " + p[ParamSID] + " departure"
+	s += " " + p[ParamSID] + " departure, flight planned route" // Doc 4444 12.3.2.2
 	if p[ParamRunway] != "" {
 		s += ", runway " + p[ParamRunway]
 	}

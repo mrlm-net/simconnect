@@ -93,8 +93,11 @@ type controlled struct {
 	procSaid, climbSaid string
 	heightFt            float64
 	vacateSaid          bool
-	// request is what the crew asks for now (TaxiEvent.Request, #462).
-	request string
+	// request is what the crew asks for now (TaxiEvent.Request, #462);
+	// waiting one made before its clearance was done (delivered: the
+	// delivery exchange finished and the aircraft with ground).
+	request, waiting string
+	delivered        bool
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -600,9 +603,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if r.Other != "" {
 				dest = cc.airportName(r.Other)
 			}
-			it.climbSaid = initialClimbSaid(g.Layout, lim)
+			it.climbSaid = initialClimbSaid(lim, procName)
 			it.say(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest))
-			it.say(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+			it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
 				Runway: r.Runway, Level: it.climbSaid, Squawk: squawkFor(r.Tail)}))
 		} else {
 			// The first call to approach with its level, then the STAR.
@@ -612,9 +615,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				level = traffic.LevelSaidAbove(p.Spawn.Altitude, lim.TransitionAltitudeFt)
 			}
 			it.say(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info))
-			it.say(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""))
+			it.firstContact(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""))
 			it.view.Procedure += " → " + expect
 		}
+	}
+	if r.Kind == "departure" && procName == "" {
+		it.delivered = true // no clearance exchange: with ground from the start
 	}
 	started = true
 	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
@@ -1772,6 +1778,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	if pos == it.atc {
 		return
+	}
+	if ev.dep != nil && it.atc == traffic.PosDelivery && !it.delivered {
+		return // delivery transfers it after the clearance (clearance)
 	}
 	from := it.atc
 	it.atc = pos

@@ -88,19 +88,24 @@ func (it *controlled) clearAt(pos traffic.Position) time.Time {
 }
 
 // onRequest is the crew asking (TaxiEvent.Request): the call on the ground
-// frequency and, unless the user is the controller, the answer in turn.
-// it.mu is held.
+// frequency and, unless the user is the controller, the answer in turn. A
+// departure still with delivery asks once its clearance is done. it.mu is
+// held.
 func (it *controlled) onRequest(req string) {
+	if it.dep != nil && !it.delivered {
+		it.waiting = req // after the clearance and the transfer to ground
+		return
+	}
 	switch req {
 	case "pushback":
+		// The first call to ground: pushback first, the start-up with the push
+		// under way (docs/traffic-phraseology.md, Doc 4444 12.3.4.3-4).
 		info := ""
 		if !it.atisSaid && it.cc.atisLetter != nil {
 			info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 		}
-		// The first call to ground: start-up first, then the pushback, two
-		// exchanges (Doc 4444 12.3.4.3, 12.3.4.4; docs/traffic-phraseology.md).
 		station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
-		it.say(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info))
+		it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
 	case "taxi":
 		it.say(traffic.RequestTaxi(it.Tail))
 	default:
@@ -122,24 +127,16 @@ func (it *controlled) answer(req string) {
 		return // answered, or no longer asking
 	}
 	it.spoken[req] = true // said here: the state change is not said again
-	stand := it.view.Stand
 	it.mu.Unlock()
 	if req == "pushback" {
-		// Start up approved; with the engines starting the crew asks for the
-		// pushback, and pushes once it is approved and read back.
-		it.say(traffic.ClearedStartUp(it.Tail))
+		it.say(traffic.ClearedPushback(it.Tail))
+		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
+		// The push under way, the crew asks for the start-up.
 		p := it.cc.pending
-		p.later(it.clearAt(traffic.PosGround).Add(startUpToPush+p.jitter(startUpToPush)), func() {
-			it.mu.Lock()
-			still := it.request == req
-			it.mu.Unlock()
-			if !still {
-				return
-			}
-			it.say(traffic.RequestPushback(it.Tail, stand))
+		p.later(it.clearAt(traffic.PosGround).Add(pushToStartUp+p.jitter(pushToStartUp)), func() {
+			it.say(traffic.RequestStartUp("", it.Tail, "", ""))
 			p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-				it.say(traffic.ClearedPushback(it.Tail))
-				it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
+				it.say(traffic.ClearedStartUp(it.Tail))
 			})
 		})
 		return
@@ -149,9 +146,43 @@ func (it *controlled) answer(req string) {
 	it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 }
 
-// startUpToPush is how long after the start-up approval the crew asks for
-// the pushback, with up to as much again at random.
-const startUpToPush = 10 * time.Second
+// pushToStartUp is how long into the push the crew asks for the start-up,
+// with up to as much again at random.
+const pushToStartUp = 12 * time.Second
+
+// clearance is the delivery exchange of a departure, in radio order: the
+// crew's request (said already), the clearance once it has been heard, the
+// readback, "readback correct" and the transfer to ground; then the
+// crew's waiting request, if any, to ground (#462).
+func (it *controlled) clearance(clr traffic.Transmission) {
+	p := it.cc.pending
+	p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.say(clr) // read back by the crew
+		p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+			it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
+			station, freq := it.cc.stationOf(it.ICAO, traffic.PosGround)
+			it.say(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq))
+			p.later(it.clearAt(traffic.PosDelivery).Add(crewActDelay+p.jitter(crewActJitter)), func() {
+				it.mu.Lock()
+				it.delivered, it.atc = true, traffic.PosGround
+				it.view.ATC, it.view.Frequency = string(traffic.PosGround), freq
+				req := it.waiting
+				it.waiting = ""
+				if req != "" && req == it.request {
+					it.onRequest(req)
+				}
+				it.mu.Unlock()
+			})
+		})
+	})
+}
+
+// firstContact is an arrival's first call to approach (said already), then
+// the approach controller's clearance once it has been heard.
+func (it *controlled) firstContact(clr traffic.Transmission) {
+	p := it.cc.pending
+	p.later(it.clearAt(traffic.PosApproach).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.say(clr) })
+}
 
 // actAfterReadback runs f in the simulator's goroutine once the clearance
 // just said on pos's frequency has been read back and the crew has taken a
