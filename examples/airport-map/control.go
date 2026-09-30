@@ -87,6 +87,12 @@ type controlled struct {
 	// given the ATIS letter (#418).
 	atc      traffic.Position
 	atisSaid bool
+	// procSaid is its SID or STAR as said ("BALTU 7D"), climbSaid a
+	// departure's initial climb ("5000 feet"), heightFt its height on the
+	// climb-out, vacateSaid the tower's "when vacated contact ground" (#462).
+	procSaid, climbSaid string
+	heightFt            float64
+	vacateSaid          bool
 	// request is what the crew asks for now (TaxiEvent.Request, #462).
 	request string
 	// fixes: the named points of its procedure (STAR and approach, or SID),
@@ -99,10 +105,10 @@ type controlled struct {
 
 // ControlView is what the map shows of a controlled aircraft.
 type ControlView struct {
-	ID             int              `json:"id"`
+	ID int `json:"id"`
 	// ATC and Frequency: the position working it and its frequency (#416).
-	ATC       string `json:"atc,omitempty"`
-	Frequency string `json:"frequency,omitempty"`
+	ATC            string           `json:"atc,omitempty"`
+	Frequency      string           `json:"frequency,omitempty"`
 	Kind           string           `json:"kind"`
 	Tail           string           `json:"tail"`
 	Model          string           `json:"model"`
@@ -130,9 +136,9 @@ type ControlView struct {
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
 	// route itself also runs through the points of its rounded turns).
-	AirFixes []airFix `json:"airFixes,omitempty"`
-	Hold     *holdView        `json:"hold,omitempty"`
-	Done     bool             `json:"done"`
+	AirFixes []airFix  `json:"airFixes,omitempty"`
+	Hold     *holdView `json:"hold,omitempty"`
+	Done     bool      `json:"done"`
 }
 
 type controlCenter struct {
@@ -141,13 +147,13 @@ type controlCenter struct {
 	inj    *traffic.Injector
 	cmds   chan func()
 
-	mu     sync.Mutex
-	next   int
-	items  map[int]*controlled
+	mu    sync.Mutex
+	next  int
+	items map[int]*controlled
 	// standCheckAt: the last recheckArrivalStands (#479).
 	standCheckAt time.Time
-	models map[string]bool                    // aircraft titles the simulator offers
-	stands map[string]*traffic.StandAllocator // by ICAO
+	models       map[string]bool                    // aircraft titles the simulator offers
+	stands       map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
 	// ids hands out the controllers' ID blocks and takes them back (#370);
@@ -157,7 +163,7 @@ type controlCenter struct {
 	// second later).
 	spawnedAt []spawnPoint
 	// runways keep each airport's runway in use.
-	detail  *traffic.Detail
+	detail *traffic.Detail
 	// radio carries what our controllers say (#415): logged as ATC, served
 	// at /api/radio.
 	radio *traffic.Radio
@@ -174,6 +180,8 @@ type controlCenter struct {
 	// saidCallsign writes a call sign as said (#462); set once the schedule
 	// exists.
 	saidCallsign func(cs string) string
+	// namedAirport is an airport as a clearance names it (#462).
+	namedAirport func(icao string) string
 	// atisLetter is an airport's current ATIS letter for first calls (#418).
 	atisLetter func(icao string) string
 	// rejoin sequences an arrival afresh after a go-around (#394);
@@ -202,13 +210,13 @@ func newControlCenter(client engine.Client) *controlCenter {
 	cc := &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models:  map[string]bool{},
-		own:     map[uint32]bool{},
-		ids:     traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
-		detail:  traffic.NewDetail(),
-		stands:  map[string]*traffic.StandAllocator{},
-		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
-		game:    &game{},
+		models: map[string]bool{},
+		own:    map[uint32]bool{},
+		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
+		detail: traffic.NewDetail(),
+		stands: map[string]*traffic.StandAllocator{},
+		world:  traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
+		game:   &game{},
 	}
 	cc.pending = newPending()
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
@@ -580,10 +588,31 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	it.setRoute()
 	if procName != "" {
 		it.view.Procedure = procName
+		it.procSaid = procedureSaid(procName, r.planned)
+		info := ""
+		if cc.atisLetter != nil {
+			info, it.atisSaid = cc.atisLetter(g.Layout.ICAO), true
+		}
 		if r.Kind == "departure" {
-			it.say(traffic.ClearedDeparture(r.Tail, procName, r.Runway))
+			// The first call to delivery, then the clearance (#462).
+			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosDelivery)
+			dest := ""
+			if r.Other != "" {
+				dest = cc.airportName(r.Other)
+			}
+			it.climbSaid = initialClimbSaid(g.Layout, lim)
+			it.say(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest))
+			it.say(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+				Runway: r.Runway, Level: it.climbSaid, Squawk: squawkFor(r.Tail)}))
 		} else {
-			it.say(traffic.ClearedArrival(r.Tail, procName, expect, r.Runway))
+			// The first call to approach with its level, then the STAR.
+			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosApproach)
+			level := ""
+			if p := it.arr.Plan(); p != nil && p.Spawn.Altitude > 0 {
+				level = traffic.LevelSaidAbove(p.Spawn.Altitude, lim.TransitionAltitudeFt)
+			}
+			it.say(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info))
+			it.say(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""))
 			it.view.Procedure += " → " + expect
 		}
 	}
@@ -1688,11 +1717,11 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		}
 		return traffic.ClearedTaxiUpTo(call, nil, "")
 	case "cross":
-		return traffic.ClearedCross(call, v.HoldingShortOf)
+		return traffic.ClearedCross(call, oneDesignator(v.HoldingShortOf)) // one designator (#462)
 	case "lineup":
 		return traffic.ClearedLineUp(call, rwy)
 	case "takeoff":
-		return traffic.ClearedTakeoff(call, rwy, false)
+		return traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO))
 	case "hold":
 		return traffic.HoldPosition(call)
 	case "goaround":
@@ -1715,11 +1744,25 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	case ev.dep != nil:
 		own := ev.dep.HoldingShortOf != "" && strings.Contains(ev.dep.HoldingShortOf, it.view.Runway)
 		pos = traffic.DeparturePosition(ev.dep.State, own)
+		it.heightFt = ev.dep.HeightFt
+		// Handed to departure once airborne and climbing away (7110.65 3-9-3:
+		// about half a mile past the runway end), not at the hand-over to
+		// MSFS AI.
+		if ev.dep.State == traffic.TaxiDeparting && ev.dep.HeightFt >= departureHandoffFt {
+			pos = traffic.PosDeparture
+		}
 	case ev.arr != nil:
 		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
 		pos = traffic.ArrivalPosition(ev.arr.State, onFinal)
 	default:
 		return
+	}
+	// On the landing roll the tower tells the crew to call ground when
+	// vacated (Doc 4444 12.3.4.20; #462).
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.vacateSaid && !it.gates && it.atc == traffic.PosTower {
+		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
+		it.say(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf))
+		it.vacateSaid = true
 	}
 	station, freq := it.cc.stationOf(it.ICAO, pos)
 	it.view.ATC, it.view.Frequency = string(pos), freq
@@ -1732,7 +1775,12 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	from := it.atc
 	it.atc = pos
-	it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+	switch {
+	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:
+		// Told on the landing roll: the crew calls ground when vacated.
+	default:
+		it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+	}
 	// A departure on its stand makes its first call to ground when it is
 	// ready: the push request (#462).
 	if ev.dep != nil && pos == traffic.PosGround && ev.dep.State == traffic.TaxiAwaitingPushback {
@@ -1754,13 +1802,22 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 	case it.dep != nil && pos == traffic.PosGround:
 		return "stand " + it.view.Stand
 	case it.dep != nil && pos == traffic.PosTower:
-		return "holding point runway " + rwy + ", ready for departure"
-	case it.dep != nil && pos == traffic.PosDeparture:
-		return "airborne, runway " + rwy
+		return "holding point runway " + rwy + ", ready for departure" // CAP 413 4.20
+	case it.dep != nil && (pos == traffic.PosDeparture || pos == traffic.PosApproach):
+		// Passing and cleared levels, the SID (Doc 4444 4.11.3; CAP 413 6.2).
+		passing := math.Round((it.heightFt+it.graph.Layout.Altitude*3.28084)/100) * 100
+		s := fmt.Sprintf("passing %.0f feet", passing)
+		if it.climbSaid != "" {
+			s += " climbing " + it.climbSaid
+		}
+		if it.procSaid != "" {
+			s += ", " + it.procSaid
+		}
+		return s
 	case it.arr != nil && pos == traffic.PosTower:
-		return "established runway " + rwy
+		return "final runway " + rwy // Doc 4444 7.3: position
 	case it.arr != nil && pos == traffic.PosGround:
-		return "runway " + rwy + " vacated"
+		return "runway vacated" // CAP 413 4.68
 	}
 	return ""
 }
@@ -1778,7 +1835,36 @@ func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, s
 	if !ok {
 		return traffic.PositionName(pos), ""
 	}
-	return traffic.StationName(f.Name, pos), f.String()
+	if name := aipUnitName(icao, f.String()); name != "" {
+		return name, f.String()
+	}
+	// Named for what it is: a departure handed to the approach frequency
+	// talks to approach (there is no "Ruzyne Departure", #462).
+	return traffic.StationName(f.Name, kindPosition(f.Kind, pos)), f.String()
+}
+
+// departureHandoffFt: a departure is handed from tower to departure this
+// high above the runway, climbing away.
+const departureHandoffFt = 800
+
+// kindPosition is the position a frequency of kind is, pos when it is
+// pos's own.
+func kindPosition(kind string, pos traffic.Position) traffic.Position {
+	switch kind {
+	case airport.FreqClearance:
+		return traffic.PosDelivery
+	case airport.FreqGround:
+		return traffic.PosGround
+	case airport.FreqTower:
+		return traffic.PosTower
+	case airport.FreqApproach:
+		return traffic.PosApproach
+	case airport.FreqDeparture:
+		return traffic.PosDeparture
+	case airport.FreqCenter:
+		return traffic.PosCenter
+	}
+	return pos
 }
 
 // freqKind is the airport frequency a position talks on.

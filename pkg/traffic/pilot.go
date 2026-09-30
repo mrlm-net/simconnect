@@ -15,14 +15,16 @@ import (
 
 // Pilot intents.
 const (
-	IntentReadback        Intent = "readback"         // a clearance read back
-	IntentRequestPushback Intent = "request_pushback" // ready for push and start-up
-	IntentRequestTaxi     Intent = "request_taxi"     // ready to taxi
-	IntentReadyDeparture  Intent = "ready_departure"  // ready for departure at the holding point
-	IntentCheckIn         Intent = "check_in"         // first call on a frequency
-	IntentVacated         Intent = "vacated"          // runway vacated
-	IntentCorrection      Intent = "correction"       // controller: negative, the clearance again
-	IntentSayAgain        Intent = "say_again"        // controller: say again
+	IntentReadback         Intent = "readback"          // a clearance read back
+	IntentRequestClearance Intent = "request_clearance" // the departure clearance, first call to delivery
+	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
+	IntentRequestPushback  Intent = "request_pushback"  // ready for push
+	IntentRequestTaxi      Intent = "request_taxi"      // ready to taxi
+	IntentReadyDeparture   Intent = "ready_departure"   // ready for departure at the holding point
+	IntentCheckIn          Intent = "check_in"          // first call on a frequency
+	IntentVacated          Intent = "vacated"           // runway vacated
+	IntentCorrection       Intent = "correction"        // controller: negative, the clearance again
+	IntentSayAgain         Intent = "say_again"         // controller: say again
 )
 
 // Pilot parameters.
@@ -36,16 +38,39 @@ func pilotTx(pos Position, cs string, in Intent, p map[string]string, text strin
 	return Transmission{Position: pos, Pilot: true, Callsign: cs, Intent: in, Params: p, Text: text}
 }
 
-// RequestPushback is a departure ready on its stand, its first call to
-// ground ("Ruzyne Ground, CSA123, stand A4, information Bravo, request push
-// and start-up"; station "" when already in contact).
-func RequestPushback(station, cs, stand, info string) Transmission {
+// RequestClearance is a departure asking delivery for its clearance, its
+// first call: "Ruzyne Delivery, CSA123, stand A4, information Bravo,
+// request clearance to Frankfurt" (the order of CAP 413 4.9; the request
+// wording itself is not in Doc 4444: docs/traffic-phraseology.md).
+func RequestClearance(station, cs, stand, info, destination string) Transmission {
+	p := map[string]string{ParamStation: station, ParamStand: stand, ParamInfo: info, ParamDest: destination}
+	text := cs
+	if station != "" {
+		text = station + ", " + cs
+	}
+	req := "request clearance"
+	if destination != "" {
+		req += " to " + destination
+	}
+	return pilotTx(PosDelivery, cs, IntentRequestClearance, p, fmt.Sprintf("%s, stand %s%s, %s", text, stand, withInfo(info), req))
+}
+
+// RequestStartUp is a departure ready on its stand, its first call to
+// ground: "Ruzyne Ground, CSA123, stand A4, information Bravo, request
+// start up" (Doc 4444 12.3.4.3 b; CAP 413 4.9).
+func RequestStartUp(station, cs, stand, info string) Transmission {
 	p := map[string]string{ParamStation: station, ParamStand: stand, ParamInfo: info}
 	text := cs
 	if station != "" {
 		text = station + ", " + cs
 	}
-	return pilotTx(PosGround, cs, IntentRequestPushback, p, fmt.Sprintf("%s, stand %s%s, request push and start-up", text, stand, withInfo(info)))
+	return pilotTx(PosGround, cs, IntentRequestStartUp, p, fmt.Sprintf("%s, stand %s%s, request start up", text, stand, withInfo(info)))
+}
+
+// RequestPushback is a departure started up and ready to push: "CSA123,
+// stand A4, request pushback" (Doc 4444 12.3.4.4 a).
+func RequestPushback(cs, stand string) Transmission {
+	return pilotTx(PosGround, cs, IntentRequestPushback, map[string]string{ParamStand: stand}, fmt.Sprintf("%s, stand %s, request pushback", cs, stand))
 }
 
 // RequestTaxi is a departure pushed back and ready to taxi.
@@ -59,10 +84,10 @@ func ReadyForDeparture(cs, runway string) Transmission {
 		fmt.Sprintf("%s, holding point runway %s, ready for departure", cs, runway))
 }
 
-// Vacated reports the runway vacated.
+// Vacated reports the runway vacated: "CSA123, runway vacated" (Doc 4444
+// 12.3.4.7 z).
 func Vacated(cs, runway string) Transmission {
-	return pilotTx(PosGround, cs, IntentVacated, map[string]string{ParamRunway: runway},
-		fmt.Sprintf("%s, runway %s vacated", cs, runway))
+	return pilotTx(PosGround, cs, IntentVacated, map[string]string{ParamRunway: runway}, cs+", runway vacated")
 }
 
 // CheckIn is the first call on a new frequency: "Ruzyne Tower, CSA123,
@@ -91,22 +116,22 @@ func Readback(t Transmission) (Transmission, bool) {
 	p := t.Params
 	cs := t.Callsign
 	var s string
+	// The readbacks as docs/traffic-phraseology.md quotes them (Doc 4444
+	// 4.5.7.5, CAP 413 examples): the clearance's items, then the call sign.
 	switch t.Intent {
 	case IntentDepartureClearance:
-		s = fmt.Sprintf("Cleared %s departure, runway %s", p[ParamSID], p[ParamRunway])
+		s = capital(departureClearance(p)) // CAP 413 2.68
 	case IntentArrivalClearance:
-		s = fmt.Sprintf("%s arrival, %s runway %s", p[ParamSTAR], p[ParamApproach], p[ParamRunway])
+		s = capital(arrivalClearance(p))
+	case IntentStartUp:
+		s = "Start up approved"
 	case IntentPushback:
-		s = "Push and start approved"
+		s = "Pushback approved"
 	case IntentTaxi:
 		if p[ParamStand] != "" {
 			s = "Taxi to stand " + p[ParamStand]
 		} else {
-			hp := "Holding point"
-			if p[ParamEntry] != "" {
-				hp += " " + p[ParamEntry]
-			}
-			s = hp + " runway " + p[ParamRunway]
+			s = fmt.Sprintf("Taxi to holding point%s runway %s", entryOf(p), p[ParamRunway]) // CAP 413 4.12
 		}
 		if p[ParamTaxiways] != "" {
 			s += " via " + p[ParamTaxiways]
@@ -115,46 +140,62 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamLimit] == "" {
 			s = "Holding at the marked point"
 		} else {
-			s = "Holding short of " + p[ParamLimit]
+			s = "Holding short of " + p[ParamLimit] // 12.3.4.8 note
 		}
 	case IntentCross:
-		s = "Crossing runway " + p[ParamRunway]
+		s = "Cross runway " + p[ParamRunway]
 	case IntentLineUp:
-		s = fmt.Sprintf("Lining up and waiting runway %s", p[ParamRunway])
+		s = fmt.Sprintf("Runway %s, line up and wait", p[ParamRunway])
 	case IntentTakeoff:
-		s = fmt.Sprintf("Cleared for take-off runway %s", p[ParamRunway])
+		s = fmt.Sprintf("Runway %s, cleared for take-off", p[ParamRunway]) // CAP 413: runway first
+	case IntentLanding:
+		s = fmt.Sprintf("Runway %s, cleared to land", p[ParamRunway])
 	case IntentHoldPosition, IntentCancelTakeoff:
-		s = "Holding position"
+		s = "Holding" // 12.3.4.8 note, 12.3.4.11 c
 	case IntentStop:
 		s = "Stopping"
 	case IntentGoAround:
 		s = "Going around"
 	case IntentSequence:
-		if p[ParamLose] != "" {
-			s = "Number " + p[ParamNumber] + ", " + p[ParamLose]
-		} else {
-			s = "Number " + p[ParamNumber]
+		s = "Number " + p[ParamNumber]
+		if p[ParamSpeed] != "" {
+			s += ", reduce speed to " + p[ParamSpeed] + " knots"
 		}
 	case IntentDirect:
-		s = "Direct to the final"
+		s = "Direct to final"
 	case IntentHold:
-		s = fmt.Sprintf("Hold at %s, maintain %s ft", p[ParamFix], p[ParamAltitude])
+		s = fmt.Sprintf("Hold at %s as published, maintain %s", p[ParamFix], p[ParamLevel])
 	case IntentLeaveHold:
-		s = "Leaving the hold at " + p[ParamFix]
+		s = "Leaving " + p[ParamFix]
 	case IntentHoldLevel:
-		s = "Descend " + p[ParamAltitude] + " ft"
+		s = "Descend to " + p[ParamLevel]
 	case IntentSpeed:
-		s = "Speed " + p[ParamSpeed] + " knots"
+		verb := "Increase"
+		if p[ParamSlower] == "true" {
+			verb = "Reduce"
+		}
+		s = verb + " speed to " + p[ParamSpeed] + " knots"
 	case IntentLevel:
-		s = strings.ToUpper(p[ParamClimb][:1]) + p[ParamClimb][1:] + " " + p[ParamLevel]
+		s = capital(p[ParamClimb]) + " to " + p[ParamLevel]
 	case IntentHeading:
 		s = "Turn " + p[ParamTurn] + " heading " + p[ParamHeading]
 	case IntentContact:
 		s = strings.TrimSpace(p[ParamStation] + " " + p[ParamFreq])
+		if p[ParamWhen] != "" {
+			s = capital(p[ParamWhen]) + " " + s // CAP 413 4.68
+		}
 	default:
 		return Transmission{}, false
 	}
 	return pilotTx(t.Position, cs, IntentReadback, cloneParams(p, ParamIntent, string(t.Intent)), s+", "+cs), true
+}
+
+// capital is s with its first letter a capital.
+func capital(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // ParamIntent on a readback: the intent of the clearance read back.
@@ -170,12 +211,13 @@ func cloneParams(p map[string]string, k, v string) map[string]string {
 
 // readbackKeys are what must be read back right, by clearance.
 var readbackKeys = map[Intent][]string{
-	IntentDepartureClearance: {ParamSID, ParamRunway},
+	IntentDepartureClearance: {ParamSID, ParamRunway, ParamSquawk},
 	IntentTaxi:               {ParamRunway, ParamStand},
 	IntentTaxiLimit:          {ParamLimit},
 	IntentCross:              {ParamRunway},
 	IntentLineUp:             {ParamRunway},
 	IntentTakeoff:            {ParamRunway},
+	IntentLanding:            {ParamRunway},
 	IntentHold:               {ParamFix, ParamAltitude},
 	IntentHoldLevel:          {ParamAltitude},
 	IntentSpeed:              {ParamSpeed},

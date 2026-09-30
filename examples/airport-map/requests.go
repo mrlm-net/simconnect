@@ -97,9 +97,10 @@ func (it *controlled) onRequest(req string) {
 		if !it.atisSaid && it.cc.atisLetter != nil {
 			info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 		}
-		// The first call to ground: the station, the stand, the ATIS.
+		// The first call to ground: start-up first, then the pushback, two
+		// exchanges (Doc 4444 12.3.4.3, 12.3.4.4; docs/traffic-phraseology.md).
 		station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
-		it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
+		it.say(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info))
 	case "taxi":
 		it.say(traffic.RequestTaxi(it.Tail))
 	default:
@@ -121,11 +122,36 @@ func (it *controlled) answer(req string) {
 		return // answered, or no longer asking
 	}
 	it.spoken[req] = true // said here: the state change is not said again
+	stand := it.view.Stand
 	it.mu.Unlock()
+	if req == "pushback" {
+		// Start up approved; with the engines starting the crew asks for the
+		// pushback, and pushes once it is approved and read back.
+		it.say(traffic.ClearedStartUp(it.Tail))
+		p := it.cc.pending
+		p.later(it.clearAt(traffic.PosGround).Add(startUpToPush+p.jitter(startUpToPush)), func() {
+			it.mu.Lock()
+			still := it.request == req
+			it.mu.Unlock()
+			if !still {
+				return
+			}
+			it.say(traffic.RequestPushback(it.Tail, stand))
+			p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+				it.say(traffic.ClearedPushback(it.Tail))
+				it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
+			})
+		})
+		return
+	}
 	tx := it.phrase(req, -1) // takes it.mu itself
 	it.say(tx)
 	it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 }
+
+// startUpToPush is how long after the start-up approval the crew asks for
+// the pushback, with up to as much again at random.
+const startUpToPush = 10 * time.Second
 
 // actAfterReadback runs f in the simulator's goroutine once the clearance
 // just said on pos's frequency has been read back and the crew has taken a
