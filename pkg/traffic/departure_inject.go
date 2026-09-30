@@ -1122,6 +1122,9 @@ const (
 	// The main gear of a push-and-turn stays within pushOffPavementMeters of
 	// the pavement (stand circles, taxi path strips).
 	pushOffPavementMeters = 3.0
+	// pushOffPavementWideMeters: the tolerance tried when no push-and-turn
+	// fits within pushOffPavementMeters.
+	pushOffPavementWideMeters = 8.0
 	// pushTurnRadiusCost is what a meter of turn radius below
 	// PushbackArcMeters is worth in meters of push, choosing a push-and-turn.
 	pushTurnRadiusCost = 1.5
@@ -1165,6 +1168,23 @@ func (c *TaxiController) startTaxiOut() error {
 		if alongHeading(nose, pose.Heading, route.Points[i]) > 1 {
 			start = i
 			break
+		}
+	}
+	// A push-and-turn ends on the taxi-out itself, up to pushTurnPastMeters
+	// past the junction: start on from the route segment nearest the nose,
+	// not from a point behind it (LKPR B9, EDDF: a first leg backwards).
+	if c.pushTurn {
+		best := math.Inf(1)
+		for i := c.pushJunction + 1; i < len(route.Points); i++ {
+			a, b := route.Points[i-1], route.Points[i]
+			if localDist(nose, a) > pushTurnPastMeters+pushTurnMaxMeters {
+				break
+			}
+			h := localBearing(a, b)
+			along := math.Max(0, math.Min(localDist(a, b), alongHeading(a, h, nose)))
+			if d := localDist(nose, offsetHeading(a, h, along)); d < best && alongHeading(nose, pose.Heading, b) > 1 {
+				best, start = d, i
+			}
 		}
 	}
 	apron := apronSpans{g: c.req.Graph}

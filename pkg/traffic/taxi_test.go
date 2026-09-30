@@ -78,9 +78,17 @@ func (f *fakeClient) RequestDataOnSimObject(_, _, _ uint32, period types.SIMCONN
 	return nil
 }
 
-func lkprGraph(t *testing.T) *airport.Graph {
+// testAirports are the airports whose facility data the tests carry
+// (captured from MSFS 2024): the traffic rules must hold at all of them,
+// not only at LKPR.
+var testAirports = []string{"LKPR", "EDDF", "EDDM", "EGLL", "LOWW", "EHAM", "LFPG", "LROP", "KJFK", "LKTB"}
+
+func lkprGraph(t *testing.T) *airport.Graph { return airportGraph(t, "LKPR") }
+
+// airportGraph is the taxi graph of a test airport.
+func airportGraph(t *testing.T, icao string) *airport.Graph {
 	t.Helper()
-	b, err := os.ReadFile("../airport/testdata/LKPR.json")
+	b, err := os.ReadFile("../airport/testdata/" + icao + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
