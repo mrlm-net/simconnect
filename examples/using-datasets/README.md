@@ -2,72 +2,71 @@
 
 ## Overview
 
-This example demonstrates how to register and use a SimConnect dataset to read structured aircraft data from the simulator using the Go wrapper library.
+This example shows the dataset composition and registry APIs of `pkg/datasets`: discovering registered datasets, getting one from the registry, cloning it, building a dataset with the fluent builder, and merging datasets. It prints each step. The simulator is optional: if it is running, the merged dataset is registered once to show it is ready for use; no SimVar data is requested.
 
 ## What It Does
 
-1. **Initializes a SimConnect client** with context and retry logic.
-2. **Registers a dataset** definition for aircraft using the `traffic` dataset helper.
-3. **Requests aircraft data** by object type (aircraft) and periodically refreshes the request.
-4. **Parses dataset payloads** into a Go struct (`AircraftData`) and prints selected fields.
-5. **Shows how to spawn AI traffic** from a JSON config (parked and enroute examples).
+1. **Auto-registers a dataset** — The blank import of `pkg/datasets/traffic` runs its `init()`, which registers `traffic/aircraft` in the `traffic` category
+2. **Discovers the registry** — Prints `datasets.List()`, `datasets.Categories()` and `datasets.ListByCategory("traffic")`
+3. **Gets a dataset** — `datasets.Get("traffic/aircraft")` returns its constructor; calling it gives a fresh `*DataSet`, whose fields are printed
+4. **Clones it** — `Clone()` returns an independent deep copy
+5. **Builds datasets** — `datasets.NewBuilder().AddField(...).Build()` makes a supplementary dataset (ambient temperature and wind, plus `PLANE ALTITUDE` with epsilon 0.5 to overlap the traffic set); a second builder shows that `Build()` can be called again after `Remove`
+6. **Merges them** — `datasets.Merge(clone, supplementary)`: duplicates are removed last-wins, so the builder's `PLANE ALTITUDE` replaces the traffic one
+7. **Registers the result (optional)** — Connects once; if the simulator is running, `client.RegisterDataset(1000, &merged)`, then disconnects and exits. Without the simulator it says so and skips this step
 
 ## Prerequisites
 
 - Windows OS (SimConnect is Windows-only)
-- Microsoft Flight Simulator 2020/2024 running
-- SimConnect SDK available/installed
-- Go 1.18+ and the repository checked out
-
-## Files
-
-- `main.go` — Example application that registers the dataset, requests data and processes incoming messages.
-- `planes.json` — Optional JSON file used to define AI traffic to spawn (create this file locally if you want to spawn aircraft).
-
-## Configuration
-
-The example may read a `planes.json` file in the current working directory to create parked and/or enroute AI aircraft. Use the same format as other AI traffic examples (see `examples/ai-traffic/README.md`). A minimal `planes.json` looks like:
-
-```json
-[
-	{ "airport": "LKPR", "plane": "FSLTL A320 VLG Vueling", "number": "N12345" }
-]
-```
+- Microsoft Flight Simulator 2020/2024 only for the last step
 
 ## Running the Example
 
-Run from the repository root:
-
 ```bash
-go run examples/using-datasets/main.go
+go run ./examples/using-datasets
 ```
 
-The program continuously attempts to connect to the simulator, registers the dataset, and prints dataset fields when `SIMOBJECT_DATA_BYTYPE` messages arrive. Press `Ctrl+C` to stop and disconnect cleanly.
+The program runs once and exits.
 
 ## Expected Output
 
-When connected you will see messages like:
-
 ```
-⏳ Waiting for simulator to start...
-✅ Connected to SimConnect, listening for messages...
-✈️  Ready for plane spotting???
-📨 Message received -  SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE
-		 Aircraft Title: Boeing 747-8i Asobo, Category: Airplane, Livery Name: ..., Lat: 49.0123, Lon: 12.3456, Alt: 1234.000000, ...
+=== Registry ===
+All registered datasets: [traffic/aircraft]
+All categories: [traffic]
+Datasets in 'traffic' category: [traffic/aircraft]
+
+=== traffic/aircraft dataset (20 fields) ===
+  [ 0] TITLE                                     unit=                      type=...
+  ...
+
+=== Clone (20 fields, independent copy) ===
+
+=== Supplementary dataset (Builder, 4 fields) ===
+  [ 0] PLANE ALTITUDE                            epsilon=0.5
+  [ 1] AMBIENT TEMPERATURE                       epsilon=0.0
+  ...
+
+=== Builder: posWithAlt=3 fields, posOnly=2 fields ===
+
+=== Merged dataset (23 fields) ===
+  traffic: 20 + supplementary: 4 - 1 duplicate = 23 expected
+  ...
+
+=== SimConnect (optional) ===
+Registered merged dataset under define ID 1000
+
+Done.
 ```
 
-If you provide a `planes.json` file the example will create parked or enroute AI aircraft as defined.
+The field counts depend on the traffic dataset's current definition.
 
-## Code Notes
+## Files
 
-- The dataset shape is mapped to the `AircraftData` struct in `main.go`. Helper methods convert fixed-length byte arrays into Go strings.
-- The example uses `traffic.NewAircraftDataset("AircraftDataset", 3000)` and registers it via `client.RegisterDataset(...)`.
-- Periodic refreshes are implemented with a `time.Ticker` that calls `client.RequestDataOnSimObjectType(...)` every 5 seconds.
-- The message processing loop reads from `client.Stream()` and switches on `types.SIMCONNECT_RECV_ID(msg.DwID)` to handle dataset messages.
+- `main.go` — The example.
+- `planes.json` and `plans/` — Not used by `main.go`; left over from an earlier version of this example that spawned AI traffic. Spawning from a `planes.json` is shown in [`ai-traffic`](../ai-traffic).
 
-## Tips & Troubleshooting
+## See Also
 
-- Ensure aircraft titles in `planes.json` exactly match installed aircraft titles in MSFS.
-- Flight plan files (if used) must be valid `.pln` files and accessible from the working directory.
-- Adjust the data request radius (third parameter to `RequestDataOnSimObjectType`) to tune which aircraft are returned.
-
+- [Dataset Composition](../../docs/dataset-composition.md) — Registry, builder, clone and merge
+- [Datasets](../../docs/usage-datasets.md) — The ready-made datasets
+- [`pkg/registry`](../../docs/pkg-registry.md)

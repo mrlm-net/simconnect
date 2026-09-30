@@ -10,6 +10,16 @@ export default function rehypeRewriteLinks() {
 
 	return function transformer(tree) {
 		visit(tree, 'element', (node) => {
+			// Images next to the docs: images/x.jpg -> /docs/images/x.jpg,
+			// served from docs/images by routes/(docs)/docs/images.
+			if (node.tagName === 'img') {
+				const src = node.properties?.src;
+				if (typeof src === 'string' && src.startsWith('images/')) {
+					node.properties.src = `/docs/${src}`;
+					node.properties.loading = 'lazy';
+				}
+				return;
+			}
 			if (node.tagName !== 'a') return;
 			const href = node.properties?.href;
 			if (!href || typeof href !== 'string') return;

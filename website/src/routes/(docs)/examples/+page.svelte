@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-clike';
 	import 'prismjs/components/prism-go';
@@ -37,6 +38,9 @@
 	}
 
 	const categoryColors: Record<string, { bg: string; text: string }> = {
+		map: { bg: 'rgba(255, 159, 26, 0.15)', text: '#ff9f1a' },
+		nav: { bg: 'rgba(79, 195, 247, 0.15)', text: '#4fc3f7' },
+		spikes: { bg: 'var(--color-bg-tertiary)', text: 'var(--color-text-muted)' },
 		basics: { bg: 'rgba(56, 139, 253, 0.15)', text: '#58a6ff' },
 		data: { bg: 'rgba(188, 140, 255, 0.15)', text: '#bc8cff' },
 		events: { bg: 'rgba(210, 153, 34, 0.15)', text: '#d2992a' },
@@ -60,16 +64,61 @@
 <SeoHead
 	{siteConfig}
 	title="Examples - SimConnect Go SDK"
-	description="Browse example applications for the SimConnect Go SDK"
+	description="The airport map, the SDK's main example and debugging tool, and example applications for each part of the SimConnect Go SDK"
 	path="/examples"
 />
 
 <div class="px-8 py-6 lg:px-12 lg:py-10">
 	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Examples</h1>
 	<p class="mb-6" style="color: var(--color-text-secondary);">
-		Browse {data.examples.length} example applications covering connections, data reading, events,
-		facilities, traffic, and the manager API.
+		Start with the airport map. The other {data.examples.length - 1} examples each show one part of
+		the API: connections, data, events, facilities, traffic, navigation and the manager.
 	</p>
+
+	<!-- The airport map: the main example -->
+	<div
+		class="mb-10 overflow-hidden rounded-xl border"
+		style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+	>
+		<a href="{base}/docs/examples" class="block">
+			<img
+				src="{base}/docs/images/airport-map/traffic.jpg"
+				alt="The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab"
+				class="block w-full"
+				width="1500"
+				height="900"
+			/>
+		</a>
+		<div class="p-6">
+			<h2 class="mb-2 text-xl font-semibold" style="color: var(--color-text-primary);">
+				Airport Map
+			</h2>
+			<p class="mb-4 text-sm leading-relaxed" style="color: var(--color-text-secondary);">
+				A live map of an airport and its traffic, and the tool the SDK is debugged with: the ground
+				layout as SimConnect reports it, taxi routing, AI traffic under your control, scheduled
+				airline traffic, the landing sequence, the tower, go-arounds, conflicts and the ATC game.
+			</p>
+			<div
+				class="mb-4 inline-flex items-center gap-3 rounded-lg border px-4 py-2 font-mono text-sm"
+				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
+			>
+				<span style="color: var(--color-text-muted);">$</span>
+				<span style="color: var(--color-text-secondary);">go run ./examples/airport-map</span>
+			</div>
+			<div class="flex flex-wrap gap-4 text-sm">
+				<a href="{base}/docs/examples" style="color: var(--color-link);">Tour and screenshots &rarr;</a>
+				<a href="{base}/docs/atc-game" style="color: var(--color-link);">ATC game &rarr;</a>
+				<a
+					href="https://github.com/mrlm-net/simconnect/tree/main/examples/airport-map"
+					target="_blank"
+					rel="noopener noreferrer"
+					style="color: var(--color-link);"
+				>
+					View on GitHub &nearr;
+				</a>
+			</div>
+		</div>
+	</div>
 
 	<!-- Category filter -->
 	<div class="mb-8 flex flex-wrap gap-2">

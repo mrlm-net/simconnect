@@ -123,9 +123,9 @@ func main() {
 		},
 		{
 			title: 'Examples',
-			description: 'Browse 25+ example applications',
-			href: 'https://github.com/mrlm-net/simconnect/tree/main/examples',
-			external: true
+			description: 'Start with the airport map, then 40+ smaller examples',
+			href: `${base}/docs/examples`,
+			external: false
 		}
 	];
 </script>

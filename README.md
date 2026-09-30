@@ -64,19 +64,23 @@ func main() {
 
 ## Examples
 
-All examples include standalone `main` packages with individual READMEs. Browse the [`examples`](examples) folder or run any example directly:
+Start with the **[airport map](examples/airport-map)**, the SDK's main example and the tool it is debugged with. It shows an airport's ground layout as SimConnect reports it, taxi routes, AI traffic under your control, scheduled airline traffic, the landing sequence, the tower and the ATC game, all built on this SDK:
 
 ```shell
-go run ./examples/<name>
+go run ./examples/airport-map
+# open http://127.0.0.1:8080/?icao=LKPR
 ```
 
-- **Getting Started** — [basic-connection](examples/basic-connection), [await-connection](examples/await-connection), [lifecycle-connection](examples/lifecycle-connection)
-- **Manager Interface** — [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events)
-- **Data Operations** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [using-datasets](examples/using-datasets)
-- **Facilities & Navigation** — [subscribe-facilities](examples/subscribe-facilities), [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [read-waypoints](examples/read-waypoints), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [simconnect-facilities](examples/simconnect-facilities)
-- **Airport & Taxi** — [airport-map](examples/airport-map) (interactive layout map, route viewer and traffic control), [ai-taxi](examples/ai-taxi) (stand → runway departure, AI or injected), [ai-arrival](examples/ai-arrival) (landing, runway exit, taxi-in and parking)
-- **AI Traffic** — [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
-- **Performance** — [simconnect-benchmark](examples/simconnect-benchmark)
+![The airport map at LKPR](docs/images/airport-map/traffic.jpg)
+
+[Examples](docs/examples.md) has a tour of the map with screenshots and a line on every other example. Each is a standalone `main` package; run one with `go run ./examples/<name>`:
+
+- **Connection & Manager** — [basic-connection](examples/basic-connection), [await-connection](examples/await-connection), [lifecycle-connection](examples/lifecycle-connection), [simconnect-manager](examples/simconnect-manager), [simconnect-subscribe](examples/simconnect-subscribe), [simconnect-state](examples/simconnect-state), [simconnect-events](examples/simconnect-events), [simconnect-benchmark](examples/simconnect-benchmark)
+- **Data & Events** — [read-messages](examples/read-messages), [read-objects](examples/read-objects), [set-variables](examples/set-variables), [using-datasets](examples/using-datasets), [emit-events](examples/emit-events), [subscribe-events](examples/subscribe-events), [flow-events](examples/flow-events)
+- **Facilities** — [read-facility](examples/read-facility), [read-facilities](examples/read-facilities), [subscribe-facilities](examples/subscribe-facilities), [all-facilities](examples/all-facilities), [airport-details](examples/airport-details), [locate-airport](examples/locate-airport), [read-waypoints](examples/read-waypoints), [simconnect-facilities](examples/simconnect-facilities)
+- **Traffic** — [ai-taxi](examples/ai-taxi) (stand → runway departure), [ai-arrival](examples/ai-arrival) (landing, runway exit, taxi-in), [ai-traffic](examples/ai-traffic), [manage-traffic](examples/manage-traffic), [monitor-traffic](examples/monitor-traffic), [simconnect-traffic](examples/simconnect-traffic)
+- **Navigation & Weather** — [atis](examples/atis), [flight-plan](examples/flight-plan), [spike-airways](examples/spike-airways)
+- **Spikes** — `examples/spike-*`: one-off experiments behind the traffic features
 
 ## CLI Tools
 
@@ -105,6 +109,7 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 
 **[simconnect.mrlm.net](https://simconnect.mrlm.net/)** — Full documentation website with getting started guide, configuration reference, and usage guides.
 
+- [Examples](https://simconnect.mrlm.net/docs/examples) — The airport map and every other example
 - [Client Configuration](https://simconnect.mrlm.net/docs/config-client) — Engine/Client functional options
 - [Client API Reference](https://simconnect.mrlm.net/docs/usage-client) — Complete Engine/Client API
 - [Manager Configuration](https://simconnect.mrlm.net/docs/config-manager) — Manager functional options

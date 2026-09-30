@@ -161,6 +161,15 @@ Use `engine.BytesToString(field[:])` to convert a fixed-size byte array to a Go 
 
 ## Next Steps
 
+To see what the SDK can do, run the airport map. It is the main example and the tool the SDK is debugged with: the ground layout of an airport, taxi routing, AI traffic, the landing sequence and the tower on a live map.
+
+```bash
+go run ./examples/airport-map
+# open http://127.0.0.1:8080/?icao=LKPR
+```
+
+[Examples](examples.md) has a tour of it and a line on every other example.
+
 - [Configuration](config-client.md) — DLL path, heartbeat frequency, buffer size, logging
 - [Engine/Client Usage](usage-client.md) — Full API reference: events, facilities, AI traffic, flight plans
 - [Datasets](usage-datasets.md) — Pre-built variable sets for aircraft position, engine state, weather, and more

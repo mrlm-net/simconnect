@@ -4,6 +4,13 @@
 
 This example demonstrates how to create and manage AI traffic in Microsoft Flight Simulator using the SimConnect SDK. It shows how to spawn parked aircraft at airports and create enroute IFR traffic with flight plans, along with continuous monitoring of all aircraft in the simulation.
 
+> **Run it from its own folder.** `planes.json` is read from the current working directory, and flight plans from `plans/` under it. From the repository root, `go run ./examples/ai-traffic` does not find `planes.json`: the example prints `Error: ...` and exits. Run:
+>
+> ```bash
+> cd examples/ai-traffic
+> go run .
+> ```
+
 ## What It Does
 
 1. **Auto-reconnection** - Continuously attempts to connect to the simulator with retry logic
@@ -54,9 +61,11 @@ The example uses a JSON file to define aircraft to spawn:
 
 ## Running the Example
 
+From the example's folder, so that `planes.json` and `plans/` are found:
+
 ```bash
 cd examples/ai-traffic
-go run main.go
+go run .
 ```
 
 ## Expected Output
