@@ -360,14 +360,23 @@ func PositionName(p Position) string {
 }
 
 // StationName is a frequency's name as said: "PRAHA TOWER" → "Praha
-// Tower"; "" the position's name.
+// Tower"; a name without its position gets it (MSFS names LKPR's tower
+// "RUZYNE": "Ruzyne Tower"); "" the position's name.
 func StationName(name string, p Position) string {
 	if strings.TrimSpace(name) == "" {
 		return PositionName(p)
 	}
 	words := strings.Fields(strings.ToLower(name))
+	named := false
 	for i, w := range words {
+		switch w {
+		case "tower", "ground", "approach", "departure", "delivery", "clearance", "center", "centre", "control", "radar", "director", "information", "atis", "radio", "apron":
+			named = true
+		}
 		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	if !named {
+		words = append(words, PositionName(p))
 	}
 	return strings.Join(words, " ")
 }

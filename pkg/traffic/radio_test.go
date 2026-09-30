@@ -138,6 +138,11 @@ func TestHandoff(t *testing.T) {
 	if h := Handoff("CSA1", PosTower, PosDeparture, "", ""); h.Text != "CSA1, contact Departure" {
 		t.Errorf("without name and frequency: %q", h.Text)
 	}
+	for name, want := range map[string]string{"RUZYNE": "Ruzyne Tower", "PRAGUE INFORMATION": "Prague Information", "": "Tower"} {
+		if got := StationName(name, PosTower); got != want {
+			t.Errorf("StationName(%q) = %q, want %q", name, got, want)
+		}
+	}
 }
 
 // The radio puts a transmission on its position's frequency, and one at a
