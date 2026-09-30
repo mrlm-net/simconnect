@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -37,6 +38,15 @@ const voiceMaxLagSeconds = 20
 // all, one thing at a time, as on a single receiver.
 const voiceQueueKey = "radio"
 
+// The pauses a frequency has (#419; voice-goio waits for each transmission
+// to finish): a reply to the same aircraft follows after voiceReplyGap, a new
+// exchange after voiceExchangeGap, each with up to voiceGapJitter more.
+const (
+	voiceReplyGap    = 800 * time.Millisecond
+	voiceExchangeGap = 2 * time.Second
+	voiceGapJitter   = 1500 * time.Millisecond
+)
+
 type voiceOut struct {
 	mu      sync.Mutex
 	on      bool
@@ -51,6 +61,12 @@ type voiceOut struct {
 	player *audio.Player
 
 	queue chan voiceItem
+	// The pauses between transmissions: when the last one ends and who it
+	// was to or from, so a readback follows its clearance closely and a new
+	// exchange after a breath.
+	lastEnd time.Time
+	lastCS  string
+	rng     *rand.Rand
 	// piper: the piper executable and the voices folder ("" defaults).
 	piperPath, voicesDir string
 	// atis is the current ATIS of the airport broadcasting on freq.
@@ -63,7 +79,7 @@ type voiceItem struct {
 }
 
 func newVoice() *voiceOut {
-	v := &voiceOut{queue: make(chan voiceItem, 64), status: "off"}
+	v := &voiceOut{queue: make(chan voiceItem, 64), status: "off", rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x70ce))}
 	go v.run()
 	return v
 }
@@ -198,6 +214,17 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 		return
 	}
 	out := chain.Apply(pcm, engine.SampleRate(voice), voice.Radio, player.SampleRate(), int64(len(t.Text)))
+	// The pause since the last transmission, synthesis included.
+	v.mu.Lock()
+	gap := voiceExchangeGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
+	if t.Callsign != "" && t.Callsign == v.lastCS { // a reply: short
+		gap = voiceReplyGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter/3)))
+	}
+	wait := time.Until(v.lastEnd.Add(gap))
+	v.mu.Unlock()
+	if wait > 0 {
+		time.Sleep(wait)
+	}
 	who := string(t.Position)
 	if t.Pilot {
 		who = t.Callsign
@@ -206,7 +233,11 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 		return // turned off meanwhile
 	}
 	// Wait while it is said, so the queue stays on the lag it has.
-	time.Sleep(time.Duration(float64(len(out)) / float64(player.SampleRate()) * float64(time.Second)))
+	said := time.Duration(float64(len(out)) / float64(player.SampleRate()) * float64(time.Second))
+	v.mu.Lock()
+	v.lastEnd, v.lastCS = time.Now().Add(said), t.Callsign
+	v.mu.Unlock()
+	time.Sleep(said)
 }
 
 // controllerKind is voice-goio's kind for a position: its voice and radio.
