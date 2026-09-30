@@ -56,3 +56,26 @@ recent := radio.Recent("LKPR", 50) // oldest first
 ```
 
 On the airport map every ATC line of the traffic log comes from its radio: the ground and tower clearances, the tower's automatic ones, the sequencer's delays and holds, the Approach tab's actions and the conflict resolutions. The wording is unchanged. `GET /api/radio?icao=LKPR&n=50` serves the recent transmissions.
+
+## Frequencies and handoffs
+
+An airport's frequencies come with its layout. `Layout.Frequencies` holds each one's kind (`FreqATIS`, `FreqClearance`, `FreqGround`, `FreqTower`, `FreqApproach`, `FreqDeparture`, `FreqCenter`, `FreqCTAF`), its MHz and the name the scenery gives it ("PRAHA TOWER"). `FrequencyFor(kind)` finds a position's frequency and falls back as ATC does where a position isn't staffed on its own:
+
+- clearance to ground;
+- ground to tower;
+- departure to approach;
+- approach to centre;
+- tower to the common traffic frequency.
+
+Who works an aircraft follows its state:
+
+| | Positions |
+|---|---|
+| Departure (`DeparturePosition`) | delivery for the clearance → ground to its runway's holding point → tower for the line-up and take-off → departure once handed to MSFS AI |
+| Arrival (`ArrivalPosition`) | approach on the STAR and approach → tower once established on the final, through the landing roll and vacating → ground to the stand |
+
+Runway crossings stay on the ground frequency, the tower having agreed, as at most airports.
+
+A change of position is a handoff, said by the position handing over. `Handoff` gives "CSA123, contact Praha Tower 118.105" (`StationName` makes "Praha Tower" from the scenery's name). With `RadioOptions.FrequencyOf` the radio puts each transmission on its position's frequency and says one at a time on each frequency. While one transmission is said (`SpeakingTime`: about 160 words a minute), the next is stamped for when it ends, so a voice plays them in turn.
+
+On the airport map each aircraft's card shows who works it and on what frequency ("📻 tower 118.105"), and the traffic log reads as the radio: the clearance on each frequency, then "contact Praha Ground 121.905".

@@ -55,6 +55,7 @@ const (
 	IntentSpeed              Intent = "speed"               // reduce or increase speed
 	IntentLevel              Intent = "level"               // climb or descend
 	IntentHeading            Intent = "heading"             // turn left or right heading
+	IntentContact            Intent = "contact"             // a handoff: contact the next position (#416)
 )
 
 // Parameter keys of a transmission. Values are the text as said (a runway
@@ -84,6 +85,9 @@ const (
 	ParamClimb    = "climb"      // climb, descend
 	ParamSlower   = "slower"     // "true": reduce, else increase
 	ParamTraffic  = "traffic"    // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
+	ParamPosition = "position"   // a handoff's next position
+	ParamStation  = "station"    // … as said: "Praha Tower"
+	ParamFreq     = "frequency"  // … its frequency: "118.105"
 )
 
 // Transmission is one message on the radio.
@@ -177,6 +181,11 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, %s %s, %s", cs, p[ParamClimb], p[ParamLevel], p[ParamTraffic])
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s, %s", cs, p[ParamTurn], p[ParamHeading], p[ParamTraffic])
+	case IntentContact:
+		if p[ParamFreq] == "" {
+			return fmt.Sprintf("%s, contact %s", cs, p[ParamStation])
+		}
+		return fmt.Sprintf("%s, contact %s %s", cs, p[ParamStation], p[ParamFreq])
 	}
 	return cs + ", " + string(in)
 }
@@ -225,9 +234,11 @@ func ClearedTaxiUpTo(cs string, taxiways []string, limit string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentTaxiLimit, Params: map[string]string{ParamTaxiways: strings.Join(taxiways, ", "), ParamLimit: limit}})
 }
 
-// ClearedCross clears crossing runway (a runway name, "12/30").
+// ClearedCross clears crossing runway (a runway name, "12/30"): on the
+// ground frequency, the tower having agreed (the aircraft stays with
+// ground across it, as at most airports).
 func ClearedCross(cs, runway string) Transmission {
-	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentCross, Params: map[string]string{ParamRunway: runway}})
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentCross, Params: map[string]string{ParamRunway: runway}})
 }
 
 // ClearedLineUp is "line up and wait" on runway.
@@ -328,6 +339,97 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 	return Say(t)
 }
 
+// Handoff hands an aircraft from position from to position to: "CSA123,
+// contact Praha Tower 118.105", said by from. station is the next
+// position as said ("" its name: "Tower"), freq its frequency ("" none said).
+func Handoff(cs string, from, to Position, station, freq string) Transmission {
+	if station == "" {
+		station = PositionName(to)
+	}
+	return Say(Transmission{Position: from, Callsign: cs, Intent: IntentContact,
+		Params: map[string]string{ParamPosition: string(to), ParamStation: station, ParamFreq: freq}})
+}
+
+// PositionName is a position as said: "Tower", "Ground", "Delivery".
+func PositionName(p Position) string {
+	s := string(p)
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// StationName is a frequency's name as said: "PRAHA TOWER" → "Praha
+// Tower"; a name without its position gets it (MSFS names LKPR's tower
+// "RUZYNE": "Ruzyne Tower"); "" the position's name.
+func StationName(name string, p Position) string {
+	if strings.TrimSpace(name) == "" {
+		return PositionName(p)
+	}
+	words := strings.Fields(strings.ToLower(name))
+	named := false
+	for i, w := range words {
+		switch w {
+		case "tower", "ground", "approach", "departure", "delivery", "clearance", "center", "centre", "control", "radar", "director", "information", "atis", "radio", "apron":
+			named = true
+		}
+		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	if !named {
+		words = append(words, PositionName(p))
+	}
+	return strings.Join(words, " ")
+}
+
+// DeparturePosition is the position working a departure in state s:
+// delivery while it gets its clearance, ground to its runway's holding
+// point (and across other runways: crossings are on the ground
+// frequency), tower from its runway's holding point to the take-off, and
+// departure once airborne and handed to MSFS AI. atOwnRunway: holding
+// short of the runway it departs from.
+func DeparturePosition(s TaxiState, atOwnRunway bool) Position {
+	switch s {
+	case TaxiIdle, TaxiSpawning:
+		return PosDelivery
+	case TaxiHoldingShort:
+		if atOwnRunway {
+			return PosTower
+		}
+		return PosGround
+	case TaxiLiningUp, TaxiLinedUp, TaxiDeparting:
+		return PosTower
+	case TaxiComplete:
+		return PosDeparture
+	}
+	return PosGround
+}
+
+// ArrivalPosition is the position working an arrival in state s: approach
+// on the STAR and approach, tower once established on the final (onFinal)
+// and through the landing roll and the vacating, ground from there to the
+// stand.
+func ArrivalPosition(s ArrivalState, onFinal bool) Position {
+	switch s {
+	case ArrivalApproaching:
+		if onFinal {
+			return PosTower
+		}
+		return PosApproach
+	case ArrivalLanding, ArrivalRollout, ArrivalVacating:
+		return PosTower
+	}
+	if s < ArrivalApproaching {
+		return PosApproach
+	}
+	return PosGround
+}
+
+// SpeakingTime is how long text takes to say on the radio: a controller's
+// pace, about 160 words a minute, and a breath.
+func SpeakingTime(text string) time.Duration {
+	return time.Duration(len(strings.Fields(text)))*375*time.Millisecond + 500*time.Millisecond
+}
+
 // RadioOptions tune a Radio.
 type RadioOptions struct {
 	// Keep: how many recent transmissions are kept (default 200).
@@ -337,6 +439,9 @@ type RadioOptions struct {
 	Now func() time.Time
 	// OnTransmission is called with every transmission, in order.
 	OnTransmission func(Transmission)
+	// FrequencyOf is the frequency of position pos at airport, as set
+	// ("118.105"; "" none): filled into transmissions without one (#416).
+	FrequencyOf func(airport string, pos Position) string
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -345,6 +450,7 @@ type Radio struct {
 	opts RadioOptions
 	mu   sync.Mutex
 	kept []Transmission
+	busy map[string]time.Time // by frequency: said until
 }
 
 // NewRadio creates a radio.
@@ -355,11 +461,13 @@ func NewRadio(opts RadioOptions) *Radio {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Radio{opts: opts}
+	return &Radio{opts: opts, busy: map[string]time.Time{}}
 }
 
-// Transmit sends t: stamped (when not already) at airport, kept, and
-// handed on.
+// Transmit sends t: stamped (when not already) at airport, on its
+// position's frequency, kept, and handed on. One transmission at a time on
+// a frequency: while one is said, the next is stamped for when it ends
+// (SpeakingTime and a second's pause), so a voice plays them in turn.
 func (r *Radio) Transmit(airport string, t Transmission) {
 	if t.At.IsZero() {
 		t.At = r.opts.Now()
@@ -370,7 +478,17 @@ func (r *Radio) Transmit(airport string, t Transmission) {
 	if t.Text == "" {
 		t = Say(t)
 	}
+	if t.Frequency == "" && r.opts.FrequencyOf != nil {
+		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)
+	}
 	r.mu.Lock()
+	if t.Frequency != "" {
+		key := t.Airport + " " + t.Frequency
+		if until := r.busy[key]; t.At.Before(until) {
+			t.At = until
+		}
+		r.busy[key] = t.At.Add(SpeakingTime(t.Text) + time.Second)
+	}
 	r.kept = append(r.kept, t)
 	if len(r.kept) > r.opts.Keep {
 		r.kept = r.kept[len(r.kept)-r.opts.Keep:]

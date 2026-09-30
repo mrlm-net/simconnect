@@ -28,7 +28,7 @@ func TestTransmissionPhrases(t *testing.T) {
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), PosGround, IntentTaxi, "CSA1, taxi to stand C22 via B, D", ParamStand, "C22"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), PosGround, IntentTaxiLimit, "CSA1, taxi via H, hold short of A", ParamLimit, "A"},
 		{ClearedTaxiUpTo("CSA1", nil, ""), PosGround, IntentTaxiLimit, "CSA1, taxi, hold position at the marked point", "", ""},
-		{ClearedCross("CSA1", "12/30"), PosTower, IntentCross, "CSA1, cross runway 12/30", ParamRunway, "12/30"},
+		{ClearedCross("CSA1", "12/30"), PosGround, IntentCross, "CSA1, cross runway 12/30", ParamRunway, "12/30"},
 		{ClearedLineUp("CSA1", "06"), PosTower, IntentLineUp, "CSA1, runway 06, line up and wait", ParamRunway, "06"},
 		{ClearedTakeoff("CSA1", "06", false), PosTower, IntentTakeoff, "CSA1, runway 06, cleared for take-off", "", ""},
 		{ClearedTakeoff("CSA1", "06", true), PosTower, IntentTakeoff, "CSA1, runway 06, line up, cleared for take-off", ParamLineUp, "true"},
@@ -93,5 +93,77 @@ func TestRadio(t *testing.T) {
 	}
 	if all := r.Recent("", 2); len(all) != 2 || all[1].Callsign != "CSA2" {
 		t.Errorf("recent 2: %+v", all)
+	}
+}
+
+// Who works an aircraft in each state: delivery, ground, tower, departure;
+// approach, tower once on the final, ground after vacating. Crossings stay
+// with ground.
+func TestPositions(t *testing.T) {
+	for _, c := range []struct {
+		s    TaxiState
+		own  bool
+		want Position
+	}{
+		{TaxiSpawning, false, PosDelivery}, {TaxiAwaitingPushback, false, PosGround}, {TaxiTaxiing, false, PosGround},
+		{TaxiHoldingShort, false, PosGround}, {TaxiHoldingShort, true, PosTower}, {TaxiLinedUp, true, PosTower},
+		{TaxiDeparting, true, PosTower}, {TaxiComplete, true, PosDeparture},
+	} {
+		if got := DeparturePosition(c.s, c.own); got != c.want {
+			t.Errorf("departure %v (own runway %v): %s, want %s", c.s, c.own, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		s       ArrivalState
+		onFinal bool
+		want    Position
+	}{
+		{ArrivalSpawning, false, PosApproach}, {ArrivalApproaching, false, PosApproach}, {ArrivalApproaching, true, PosTower},
+		{ArrivalRollout, false, PosTower}, {ArrivalVacating, false, PosTower}, {ArrivalAwaitingTaxi, false, PosGround},
+		{ArrivalHoldingShort, false, PosGround}, {ArrivalParked, false, PosGround},
+	} {
+		if got := ArrivalPosition(c.s, c.onFinal); got != c.want {
+			t.Errorf("arrival %v (on final %v): %s, want %s", c.s, c.onFinal, got, c.want)
+		}
+	}
+}
+
+// A handoff is said by the position handing over, with the next station
+// and its frequency.
+func TestHandoff(t *testing.T) {
+	h := Handoff("CSA1", PosGround, PosTower, StationName("PRAHA TOWER", PosTower), "118.105")
+	if h.Position != PosGround || h.Intent != IntentContact || h.Text != "CSA1, contact Praha Tower 118.105" || h.Params[ParamPosition] != "tower" {
+		t.Errorf("%+v", h)
+	}
+	if h := Handoff("CSA1", PosTower, PosDeparture, "", ""); h.Text != "CSA1, contact Departure" {
+		t.Errorf("without name and frequency: %q", h.Text)
+	}
+	for name, want := range map[string]string{"RUZYNE": "Ruzyne Tower", "PRAGUE INFORMATION": "Prague Information", "": "Tower"} {
+		if got := StationName(name, PosTower); got != want {
+			t.Errorf("StationName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// The radio puts a transmission on its position's frequency, and one at a
+// time: the next on a busy frequency is said when the last has been.
+func TestRadioFrequencies(t *testing.T) {
+	at := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
+	freqs := map[Position]string{PosTower: "118.105", PosGround: "121.905"}
+	var heard []Transmission
+	r := NewRadio(RadioOptions{Now: func() time.Time { return at },
+		FrequencyOf:    func(_ string, p Position) string { return freqs[p] },
+		OnTransmission: func(t Transmission) { heard = append(heard, t) }})
+	r.Transmit("LKPR", ClearedLineUp("CSA1", "24"))
+	r.Transmit("LKPR", ClearedTakeoff("CSA2", "24", false))
+	r.Transmit("LKPR", ClearedPushback("CSA3"))
+	if heard[0].Frequency != "118.105" || heard[2].Frequency != "121.905" {
+		t.Fatalf("frequencies %s %s %s", heard[0].Frequency, heard[1].Frequency, heard[2].Frequency)
+	}
+	if want := at.Add(SpeakingTime(heard[0].Text) + time.Second); !heard[1].At.Equal(want) {
+		t.Errorf("second on tower at %v, want %v (after the first)", heard[1].At, want)
+	}
+	if !heard[2].At.Equal(at) {
+		t.Errorf("ground, not busy: at %v", heard[2].At)
 	}
 }

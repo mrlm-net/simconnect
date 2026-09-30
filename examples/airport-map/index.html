@@ -1345,7 +1345,7 @@ function renderControl() {
     const dim = v.done ? ' style="opacity:.55"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel || dim} title="${esc(v.model)} · lights ${esc(v.lights || '—')}">` +
       `<div class="row1"><b>${esc(v.tail)}</b><span class="st${waits(v) ? ' wait' : ''}">${esc(status)}</span><span class="spd">${v.groundSpeed.toFixed(0)} kt</span></div>` +
-      `<div class="row2">${esc(route)}${v.procedure ? ' · ' + esc(v.procedure) : ''}</div>` +
+      `<div class="row2">${esc(route)}${v.procedure ? ' · ' + esc(v.procedure) : ''}${v.atc ? ` · 📻 ${esc(v.atc)}${v.frequency ? ' ' + esc(v.frequency) : ''}` : ''}</div>` +
       `${v.error ? `<div class="warn">${esc(v.error)}</div>` : ''}${buttons}</div>`;
   }).join('') : '<div class="note">No aircraft yet — spawn one above, or start the game.</div>';
 }

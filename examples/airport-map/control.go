@@ -83,6 +83,8 @@ type controlled struct {
 	gates bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
+	// atc is the position working it now (#416).
+	atc traffic.Position
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -94,6 +96,9 @@ type controlled struct {
 // ControlView is what the map shows of a controlled aircraft.
 type ControlView struct {
 	ID             int              `json:"id"`
+	// ATC and Frequency: the position working it and its frequency (#416).
+	ATC       string `json:"atc,omitempty"`
+	Frequency string `json:"frequency,omitempty"`
 	Kind           string           `json:"kind"`
 	Tail           string           `json:"tail"`
 	Model          string           `json:"model"`
@@ -194,9 +199,11 @@ func newControlCenter(client engine.Client) *controlCenter {
 		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:    &game{},
 	}
-	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, OnTransmission: func(t traffic.Transmission) {
-		tlog.printf("%-6s ATC: %s", t.Callsign, t.Text)
-	}})
+	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now,
+		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
+		OnTransmission: func(t traffic.Transmission) {
+			tlog.printf("%-6s ATC: %s", t.Callsign, t.Text)
+		}})
 	return cc
 }
 
@@ -546,6 +553,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	defer it.handoff(ev) // after the change is logged (deferred: runs last)
 	defer it.logChanges(prev, ev)
 	if it.cc != nil {
 		it.cc.reportOwn(it.ICAO, ev)
@@ -1500,6 +1508,72 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return traffic.CancelTakeoff(call)
 	}
 	return traffic.Say(traffic.Transmission{Position: traffic.PosGround, Callsign: call, Intent: traffic.Intent(action)})
+}
+
+// handoff moves the aircraft to the position working it now (#416): a
+// change is said by the position handing over ("contact Praha Tower
+// 118.105"). it.mu held.
+func (it *controlled) handoff(ev TaxiOrArrival) {
+	var pos traffic.Position
+	switch {
+	case ev.dep != nil:
+		own := ev.dep.HoldingShortOf != "" && strings.Contains(ev.dep.HoldingShortOf, it.view.Runway)
+		pos = traffic.DeparturePosition(ev.dep.State, own)
+	case ev.arr != nil:
+		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
+		pos = traffic.ArrivalPosition(ev.arr.State, onFinal)
+	default:
+		return
+	}
+	station, freq := it.cc.stationOf(it.ICAO, pos)
+	it.view.ATC, it.view.Frequency = string(pos), freq
+	if it.atc == "" || it.view.Done {
+		it.atc = pos
+		return
+	}
+	if pos == it.atc {
+		return
+	}
+	from := it.atc
+	it.atc = pos
+	it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+}
+
+// stationOf is position pos at icao as said, and its frequency ("" none).
+func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, string) {
+	if cc.graph == nil {
+		return traffic.PositionName(pos), ""
+	}
+	g, err := cc.graph(icao)
+	if err != nil {
+		return traffic.PositionName(pos), ""
+	}
+	f, ok := g.Layout.FrequencyFor(freqKind(pos))
+	if !ok {
+		return traffic.PositionName(pos), ""
+	}
+	return traffic.StationName(f.Name, pos), f.String()
+}
+
+// freqKind is the airport frequency a position talks on.
+func freqKind(pos traffic.Position) string {
+	switch pos {
+	case traffic.PosDelivery:
+		return airport.FreqClearance
+	case traffic.PosGround:
+		return airport.FreqGround
+	case traffic.PosTower:
+		return airport.FreqTower
+	case traffic.PosApproach:
+		return airport.FreqApproach
+	case traffic.PosDeparture:
+		return airport.FreqDeparture
+	case traffic.PosCenter:
+		return airport.FreqCenter
+	case traffic.PosATIS:
+		return airport.FreqATIS
+	}
+	return ""
 }
 
 // say sends t on the radio: logged as ATC and kept for /api/radio.

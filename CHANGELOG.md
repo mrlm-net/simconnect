@@ -11,6 +11,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Frequencies and handoffs (#416):
+  - `pkg/airport`: the loader reads the airport's frequencies (`Layout.Frequencies`, `FrequencyFor` with ATC's fallbacks, `FormatMHz`).
+  - `pkg/traffic`: `DeparturePosition` and `ArrivalPosition` give who works an aircraft in each state; `Handoff` gives "contact Praha Tower 118.105" (`StationName`, `PositionName`).
+  - The `Radio` puts each transmission on its position's frequency (`RadioOptions.FrequencyOf`) and says one at a time on each (`SpeakingTime`).
+  - The airport map hands aircraft from position to position and shows who works each and on what frequency.
 - `pkg/traffic` transmissions (#415): what ATC says as a `Transmission` (position, call sign, intent, parameters, and the text as said), built by one phrasebook (`Say`) with a builder per clearance, and carried by a `Radio` (stamped, kept, `OnTransmission`, `Recent`). The airport map's ATC log comes from its radio with unchanged wording, and `GET /api/radio` serves it. See `docs/traffic-radio.md`.
 - `pkg/traffic` `SimClock` (#413): traffic time at the simulation rate, stopped while paused (`SetRate`, `SetPaused`); `TaxiWithClock`, `ArrivalWithClock`; injected motion steps at most `MaxFrameStepSeconds` (1 s) a frame. The airport map runs all its traffic on it, fed by `SIMULATION RATE` and the "Pause" event, and shows the rate.
 

@@ -33,6 +33,8 @@ type Layout struct {
 	TaxiPoints []TaxiPoint `json:"taxiPoints"`
 	TaxiPaths  []TaxiPath  `json:"taxiPaths"`
 	TaxiNames  []string    `json:"taxiNames"`
+	// Frequencies are the airport's radio frequencies (#416).
+	Frequencies []Frequency `json:"frequencies,omitempty"`
 }
 
 // Runway is a runway with both of its ends.
