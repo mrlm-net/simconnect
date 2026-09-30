@@ -206,8 +206,12 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		// LKPR DLH1740 pushed from A3 while TVS1823, pushed up A1, was a
 		// fuselage and 3 m from its corridor, a wing inside it (#446). A
 		// parked neighbour is a stand spacing away, wing to wing.
+		// Only before a push starts (withPaths): under way a push stops for a
+		// body in the way, and an aircraft giving way to it, stopped short
+		// with a little path left, would hold it for ever while it waits for
+		// the push (#466; LKPR, live: AFR657 and AFR1246).
 		reach := half + PushClearMarginMeters
-		if len(o.e.ahead) > 0 {
+		if withPaths && len(o.e.ahead) > 0 {
 			reach += oh
 		}
 		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {

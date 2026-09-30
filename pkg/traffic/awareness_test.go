@@ -591,3 +591,36 @@ func TestWaitBesidePushUnderWay(t *testing.T) {
 		t.Error("drives on beside a push under way, not overlapping it")
 	}
 }
+
+// A push under way does not stop for an aircraft giving way to it (#466;
+// LKPR, live: AFR1246, taxiing, stopped for AFR657's push, and the push
+// stopped for AFR1246's wing — each waited for the other for good). The
+// waiting aircraft stands beside the corridor, its fuselage clear of it, a
+// wing within reach, a little path left before its stop.
+func TestPushUnderWayNotHeldByWaitingTraffic(t *testing.T) {
+	picture := NewGroundPicture()
+	ctl, frames, now := pushbackWithPicture(t, picture)
+	frames(60)
+	ctl.ClearPushback()
+	for i := 0; i < 60*60 && ctl.State() != TaxiPushback; i++ {
+		frames(1)
+	}
+	frames(60 * 5) // under way
+	rest := pushCorridor(ctl.mover.Path(), ctl.mover.Pose().Distance, ctl.profile())
+	end := rest[len(rest)-1]
+	dir := localBearing(rest[len(rest)-2], end)
+	prof := DefaultMotionProfile()
+	oh := 17.0
+	// Parallel to the corridor's end, abeam it: beyond the fuselage reach
+	// (the pusher's half-span and PushClearMarginMeters), within the wing's.
+	off := ctl.halfSpan() + PushClearMarginMeters + oh/2
+	at := offsetHeading(end, dir+90, off)
+	for i := 0; i < 60*300 && ctl.State() == TaxiPushback; i++ {
+		picture.Report(99, at, dir, prof, *now)
+		picture.ReportPath(99, []airport.LatLon{offsetHeading(at, dir, 2), offsetHeading(at, dir, 4)}, oh)
+		frames(1)
+	}
+	if ctl.State() != TaxiAwaitingTaxi {
+		t.Fatalf("the push never finished (%v): held by the aircraft waiting beside it", ctl.State())
+	}
+}
