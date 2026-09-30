@@ -227,3 +227,45 @@ The airport map keeps 5 NM:
 - **On final:** its sequencers use `MinSpacingNM` 5, whatever the wake minimum is below it.
 - **At the STAR entry:** arrivals appear only 6 NM clear of other aircraft, leaving a mile for the one ahead slowing down.
 - **Watched:** a monitor logs every pair under 5 NM and 1000 ft when it starts and when it ends, with its closest distance. `GET /api/separation` returns the closest pairs now and the losses so far.
+
+## Working the approach
+
+A controller can change what the sequencer and the arrivals do:
+
+- `ApproachSequencer.Move(callsign, places)` moves an arrival earlier (negative) or later in the landing order, among those not yet established. It keeps the new place until `Rejoin`. It returns `ErrEstablished` inside `FreezeNM` and `ErrNotSequenced` for an unknown arrival.
+- `ArrivalController.DirectToJoin()` sends an arrival straight to the join point on the final, leaving out the rest of its STAR: a shortcut to fill a gap.
+- `AbsorbDelay`, `EnterHold`/`LeaveHold` and `GoAround` (above) slow it down, hold it or send it around.
+
+The airport map's **Approach** tab shows each runway's landing sequence, first to land first: wake category, distance still to fly, delay, and what the aircraft is doing. It has controls for each of our arrivals:
+
+- ▲▼: order;
+- ⤳: direct to the final;
+- 🐢: lose a minute;
+- ⟳: hold at the STAR fix;
+- ⏵: leave the hold;
+- ↺: go around.
+
+These call `POST /api/approach/{icao}/{callsign}/{action}`. The tab also shows the tower (who is on or at each runway, and why they wait) and the predicted conflicts with the resolutions given. While it is open, the map draws each final: the extended centreline to 15 NM with a tick every mile, and each arrival within 20 NM at its distance to go. The arrival is green when it keeps its spacing to the one ahead, red when it is short.
+
+In the ATC game the player can work approach too, and spacing on final costs: an arrival within 10 NM of the threshold closer to the one ahead than its spacing loses 25 points.
+
+## Conflicts ahead
+
+`PredictConflicts(aircraft, opts)` flies every airborne pair on as it is now, using its track, ground speed and vertical speed (under 300 fpm counts as level). It lists the pairs that lose separation within `LookAhead` (5 min, in 10 s `Step`s), soonest first. For each conflict it gives when the minima are first lost (`In`) and the closest point (`ClosestNM`, `VerticalFt`, `ClosestIn`). The lateral minimum is `MinNM` (5 NM). Where both aircraft are in a terminal area it is `TerminalNM` (3 NM): both are at an airport, arriving or departing, and below `TerminalBelowFt` (10000 ft).
+
+`ResolveConflict(c, aircraft, canSteer, opts)` picks the least disturbing change to one of ours. It tries these in order of cost:
+
+1. **Speed:** a tenth, then a fifth, slower or faster (at most 250 kt below 10000 ft).
+2. **Level:** 1000 ft, then 2000 ft, up or down, predicted at 1500 fpm. Above 10000 ft a level by the semicircular rule (odd thousands eastbound) comes first.
+3. **Heading:** 20°, 30° or 45° off, right before left.
+
+A change is taken only if it keeps the aircraft clear of everyone through the look-ahead, not just of the other of the pair. `canSteer(aircraft, kind)` says which aircraft are ours to move and which changes they can fly. Other traffic is an intruder we avoid, never steer.
+
+`ResolvedRoute(route, aircraft, resolution, lookAhead)` is the rest of a route flown with a change:
+
+- **Speed or level:** applied up to the look-ahead.
+- **Heading:** straight out for half the look-ahead, then back to the route's first point beyond it.
+
+After that the plan resumes.
+
+On the map a watch runs every 5 s at 5 NM. It logs each conflict once ("conflict: CSA1 and DLH2 predicted 0.8 NM, 0 ft apart in 2m40s"). It resolves conflicts for our en-route aircraft, re-sending their waypoints and saying it as ATC would: "CSA1, climb flight level 210, traffic DLH2, 0.8 NM in 2m40s". An aircraft flying a change is not given another until the look-ahead has run. `GET /api/separation` adds `conflicts` and `resolutions`. Our arrivals and departures near the airport are kept apart by the sequencer and the tower.

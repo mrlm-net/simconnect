@@ -409,3 +409,44 @@ func TestPushWaitsForNeighbourPush(t *testing.T) {
 		t.Error("the push under way stops for a neighbour still on its stand, clear of its corridor")
 	}
 }
+
+// Beside a push under way, an aircraft whose path meets the push corridor
+// within half a span ahead waits where it is; it goes on only when it is
+// already in the corridor (at LKPR one drove into a neighbour's push and
+// both waited for each other for minutes).
+func TestGiveWayToPushUnderWay(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	at := func(east, north float64) airport.LatLon { return offsetHeading(offsetHeading(base, 90, east), 0, north) }
+	var corridor []airport.LatLon
+	for x := 0.0; x <= 60; x += trafficBodyStep {
+		corridor = append(corridor, at(x, 0)) // the push sweeps east along y=0
+	}
+	p.Report(1, at(0, 0), 270, MotionProfile{}, now)
+	p.ReportPush(1, corridor, 18)
+	prof := DefaultMotionProfile()
+	// Me: north of the corridor, taxiing south across it; the first point
+	// within reach (both half-spans and the margin) is a few metres ahead.
+	half := 17.0
+	reach := half + 18 + GiveWayMarginMeters
+	for _, c := range []struct {
+		name   string
+		startN float64
+		wait   bool
+	}{
+		{"at the corridor's edge", reach + 5, true},
+		{"already in it", reach - 2, false},
+	} {
+		me := at(30, c.startN)
+		path, err := NewGroundPath([]airport.LatLon{me, at(30, -80)}, prof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.Report(2, me, 180, MotionProfile{}, now)
+		gw := p.giveWay(2, path, 0, GiveWayLookMeters, half, now)
+		if waits := !math.IsInf(gw, 1); waits != c.wait {
+			t.Errorf("%s: gives way %v (at %.1f m), want %v", c.name, waits, gw, c.wait)
+		}
+	}
+}

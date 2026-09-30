@@ -236,13 +236,14 @@ func (c *ArrivalController) GoAround() error {
 	if len(missed) > 0 {
 		wps = append(missed, wps[1:]...) // instead of the climb straight ahead
 	}
+	wps = roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around", nil)
 	c.note("release", c.inj.Release(c.objectID))
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wps); err != nil {
 		return err
 	}
 	c.approach = nil
-	c.proc, c.procNext, c.circuit = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true
+	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, 0
 	c.flyingProc, c.blend = true, joinBlend{}
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++

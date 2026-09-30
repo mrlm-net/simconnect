@@ -22,8 +22,9 @@ import (
 // arrives on STARs and departs on SIDs, every aircraft holding at each
 // clearance; the player gives them all (pushback, taxi, line up, take-off,
 // crossings, hold position, go around, abort take-off). Handling a flight
-// scores, waiting at a clearance, lost separation on the ground and two
-// aircraft on a runway cost.
+// scores, waiting at a clearance, lost separation on the ground, two
+// aircraft on a runway and spacing on final below the minimum cost; the
+// Approach panel works the arrivals' sequence (#396).
 
 // Scoring.
 const (
@@ -33,6 +34,8 @@ const (
 	gameWaitPenalty     = 1
 	gameSeparation      = 50 // wingtip clearance lost on the ground (safe zones overlap)
 	gameIncursion       = 100
+	gameSpacing         = 25   // closer than the sequence's spacing on final (#396)
+	gameFinalNM         = 10.0 // … within this of the threshold
 	gameConflictRepeat  = time.Minute // the same conflict counts again after this
 	gameSafeMarginM     = 3.0
 	gameMaxActive       = 8
@@ -194,6 +197,35 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			if d < a.Span/2+b.Span/2+gameSafeMarginM && (a.GroundKts > 1 || b.GroundKts > 1) &&
 				g.newConflict("sep", a.Tail, b.Tail, now) {
 				g.event(-gameSeparation, "separation lost on the ground: %s and %s %.0f m apart", a.Tail, b.Tail, d)
+			}
+		}
+	}
+	g.finalSpacing(cc, icao, items, now)
+}
+
+// finalSpacing costs each of our arrivals within gameFinalNM of the
+// threshold closer to the one ahead than its spacing in the sequence. g.mu
+// held.
+func (g *game) finalSpacing(cc *controlCenter, icao string, items []*controlled, now time.Time) {
+	if cc.sequencesAt == nil {
+		return
+	}
+	ours := map[string]bool{}
+	for _, it := range items {
+		it.mu.Lock()
+		if !it.view.Done {
+			ours[it.Tail] = true
+		}
+		it.mu.Unlock()
+	}
+	for rwy, seq := range cc.sequencesAt(icao) {
+		for i := 1; i < len(seq); i++ {
+			a, b := seq[i-1], seq[i]
+			if !ours[b.Callsign] || b.DistanceToGoNM > gameFinalNM {
+				continue
+			}
+			if gap := b.DistanceToGoNM - a.DistanceToGoNM; gap < b.SpacingNM-0.3 && g.newConflict("final", a.Callsign, b.Callsign, now) {
+				g.event(-gameSpacing, "spacing on final %s: %s %.1f NM behind %s, %.0f NM needed", rwy, b.Callsign, gap, a.Callsign, b.SpacingNM)
 			}
 		}
 	}

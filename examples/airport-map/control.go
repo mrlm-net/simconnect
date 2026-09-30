@@ -83,6 +83,9 @@ type controlled struct {
 	gates bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
+	// fixes: the named points of its procedure (STAR and approach, or SID),
+	// the dots of its air route on the map — not the points of the turns.
+	fixes []airFix
 
 	mu   sync.Mutex
 	view ControlView
@@ -112,9 +115,13 @@ type ControlView struct {
 	Route          []airport.LatLon `json:"route"`
 	Nodes          []airport.NodeID `json:"nodes"`
 	Actions        []string         `json:"actions"` // clearances available now
-	// AirRoute is an arrival's STAR and approach still to fly (with any
-	// dog-leg), Hold its hold when holding (#391, #392).
+	// AirRoute is what it still flies in the air: an arrival's STAR and
+	// approach (with any dog-leg), a departure's SID once handed to MSFS AI;
+	// Hold its hold when holding (#391, #392).
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
+	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
+	// route itself also runs through the points of its rounded turns).
+	AirFixes []airFix `json:"airFixes,omitempty"`
 	Hold     *holdView        `json:"hold,omitempty"`
 	Done     bool             `json:"done"`
 }
@@ -146,8 +153,10 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
-	// rejoin sequences an arrival afresh after a go-around (#394).
-	rejoin func(icao, tail string)
+	// rejoin sequences an arrival afresh after a go-around (#394);
+	// sequencesAt gives an airport's landing sequences by runway (#396).
+	rejoin      func(icao, tail string)
+	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
 	world *traffic.TrafficPicture
@@ -332,6 +341,16 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
+	// One aircraft per call sign (a turnaround adopts its own arrival): a
+	// second one would share its stand reservation and its log.
+	if it := cc.byTail(r.Tail); it != nil && r.adopt == 0 {
+		it.mu.Lock()
+		done := it.view.Done
+		it.mu.Unlock()
+		if !done {
+			return nil, fmt.Errorf("%s is already flying", r.Tail)
+		}
+	}
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
@@ -407,7 +426,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			approach = append(approach, n.Position)
 		}
 	}
-	it := &controlled{gates: r.Gates, approach: approach, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	var fixes []airFix
+	for _, p := range procRoute {
+		if p.Ident != "" {
+			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
+		}
+	}
+	it := &controlled{gates: r.Gates, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -726,6 +751,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 		st.mu.Unlock()
 		out := []ControlView{}
 		if cc != nil {
+			// Where departures handed to MSFS AI are now: the world scan.
+			air := map[uint32]traffic.TrackedAircraft{}
+			for _, a := range cc.world.Aircraft() {
+				air[a.ObjectID] = a
+			}
 			cc.mu.Lock()
 			for _, it := range cc.items {
 				it.mu.Lock()
@@ -733,8 +763,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 				it.mu.Unlock()
 				if it.arr != nil && !v.OnGround {
 					v.AirRoute = it.arr.ProcedureRoute()
+					v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
 					if h, alt, ok := it.arr.Holding(); ok {
 						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
+					}
+				}
+				// A departure in the air: its SID still to fly, like a STAR.
+				if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
+					if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
+						v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
+						v.AirFixes = fixesAhead(it.fixes, r)
 					}
 				}
 				out = append(out, v)
@@ -1426,17 +1464,33 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	return call + ", " + action
 }
 
+// airFix is a named fix of a procedure on an air route.
+type airFix struct {
+	Ident string `json:"ident"`
+	airport.LatLon
+}
+
+// fixesAhead are the fixes near route (within the mile a rounded turn
+// passes inside its fix): those behind the aircraft are off it.
+func fixesAhead(fixes []airFix, route []airport.LatLon) []airFix {
+	var out []airFix
+	for _, f := range fixes {
+		for _, p := range route {
+			if calc.HaversineNM(f.Lat, f.Lon, p.Lat, p.Lon) < 1.5 {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // via names the taxiways of the first n edges of a route: " via B2, H, A".
 func via(r *airport.Route, n int) string {
 	if r == nil {
 		return ""
 	}
-	var names []string
-	for _, e := range r.Edges[:min(n, len(r.Edges))] {
-		if e.Name != "" && (len(names) == 0 || names[len(names)-1] != e.Name) {
-			names = append(names, e.Name)
-		}
-	}
+	names := r.SpokenTaxiways(min(n, len(r.Edges)))
 	if len(names) == 0 {
 		return ""
 	}

@@ -15,7 +15,8 @@ import (
 // aircraft (ours and other traffic) closer than 5 NM and 1000 ft at once
 // is logged when it starts and when it ends, with its closest distance.
 //
-//	GET /api/separation — the closest pairs now, and the losses so far
+//	GET /api/separation — the closest pairs now, the losses so far, and the
+//	predicted conflicts with the resolutions given (conflicts.go)
 
 // sepMinNM is the lateral minimum watched (TerminalSeparationNM on final is
 // legal; the map keeps 5 NM, EnrouteSeparationNM).
@@ -77,15 +78,22 @@ func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
 func registerSeparation(mux *http.ServeMux, st *state) {
 	mux.HandleFunc("GET /api/separation", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
-		m := st.separation
+		m, cw := st.separation, st.conflicts
 		st.mu.Unlock()
 		type view struct {
 			MinNM   float64                  `json:"minNM"`
 			Closest []traffic.SeparationPair `json:"closest"`
 			Open    []sepLoss                `json:"open"`
 			Losses  []sepLoss                `json:"losses"`
+			// Predicted conflicts and the resolutions given (#395).
+			Conflicts   []traffic.Conflict `json:"conflicts"`
+			Resolutions []resolutionView   `json:"resolutions"`
 		}
 		v := view{MinNM: sepMinNM, Closest: []traffic.SeparationPair{}, Open: []sepLoss{}, Losses: []sepLoss{}}
+		v.Conflicts, v.Resolutions = []traffic.Conflict{}, []resolutionView{}
+		if cw != nil {
+			v.Conflicts, v.Resolutions = cw.view()
+		}
 		if m != nil {
 			m.mu.Lock()
 			if len(m.now) > 10 {

@@ -104,3 +104,30 @@ func BenchmarkDepartureTaxiFrame(b *testing.B) {
 	b.StopTimer()
 	b.ReportMetric(float64(len(ec.waypoints)-sets)/float64(b.N), "sets/frame")
 }
+
+// A departure's tug drives off after the push while the aircraft stands
+// still: every frame, even far from the viewer (at a still aircraft's rate
+// the tug stuttered); once the tug is gone the aircraft slows down again.
+func TestDepartureDetailTug(t *testing.T) {
+	d := NewDetail()
+	tug := &fakeTug{doneAfter: 60 * 20}
+	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true, Tug: tug}, TaxiWithDetail(d))
+	stand := ctl.req.Graph.Layout.Parking[ctl.req.Parking].Position
+	d.SetViewer(offsetHeading(stand, 0, 20000)) // 20 km away
+	if !run(TaxiAwaitingPushback, 60*60) {
+		t.Fatal(ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*300) {
+		t.Fatal(ctl.State())
+	}
+	last := func() uint32 { return ec.intervals[len(ec.intervals)-1] }
+	run(TaxiTaxiing, 60*5) // still waiting for the taxi clearance: the tug drives off
+	if tug.Done() || last() != 0 {
+		t.Fatalf("tug driving off: done %v, interval %d, want every frame", tug.Done(), last())
+	}
+	run(TaxiTaxiing, 60*30) // the tug gone: standing still again
+	if !tug.Done() || last() != DefaultDetailStillInterval {
+		t.Errorf("tug gone: done %v, interval %d, want %d", tug.Done(), last(), DefaultDetailStillInterval)
+	}
+}

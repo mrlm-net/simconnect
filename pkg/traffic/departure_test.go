@@ -73,7 +73,9 @@ func TestTaxiControllerInjectedDeparture(t *testing.T) {
 		}
 		close(done)
 	}()
-	if !run(TaxiAwaitingTaxi, 60*120) {
+	// (The push takes this aircraft's random draw of speeds and pauses,
+	// #343: up to about three minutes.)
+	if !run(TaxiAwaitingTaxi, 60*240) {
 		t.Fatalf("state %v, want awaiting taxi after the push", ctl.State())
 	}
 	pushed := ctl.mover.Pose()
@@ -644,5 +646,35 @@ func TestPushbackFitsAircraft(t *testing.T) {
 	ahead := ctl.route.Points[min(len(ctl.route.Points)-1, ctl.pushJunction+3)]
 	if d := math.Abs(headingDiff(pose.Heading, localBearing(nose, ahead))); d > 45 {
 		t.Errorf("after the push the route lies %.0f° off the nose", d)
+	}
+}
+
+// Handed to MSFS AI after the injected climb, a departure's SID still to
+// fly is its ClimbRoute from where it is: the whole chain from the runway's
+// end, less as it flies on; nothing before the hand-over.
+func TestClimbRoute(t *testing.T) {
+	g := lkprGraph(t)
+	rwy, end, _ := g.Layout.RunwayEnd("24")
+	far := rwy.Primary.Threshold
+	if end.Name == rwy.Primary.Name {
+		far = rwy.Secondary.Threshold
+	}
+	sid, err := lkprProcedures(t).ResolveSID("VOZ4A", "24", "", far, g.Layout.Altitude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{Departure: sid})
+	if ctl.ClimbRoute(far) != nil {
+		t.Fatal("a climb route on the stand")
+	}
+	if !run(TaxiComplete, 60*1500) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	all := ctl.ClimbRoute(far)
+	if len(all) < 3 {
+		t.Fatalf("after the hand-over: %d points", len(all))
+	}
+	if later := ctl.ClimbRoute(all[len(all)/2]); len(later) == 0 || len(later) >= len(all) {
+		t.Errorf("halfway: %d of %d points still to fly", len(later), len(all))
 	}
 }

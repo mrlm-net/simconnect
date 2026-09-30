@@ -235,6 +235,9 @@ type TaxiController struct {
 	lightsSet                                               bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
+	// climb: the waypoints MSFS AI flies after the injected climb (the
+	// SID), for ClimbRoute.
+	climb []types.SIMCONNECT_DATA_WAYPOINT
 	pushStopped                                             bool // HoldPushback: stay on the stand
 	takeoffHeld                                             bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
 	holdingCrossing                                         bool

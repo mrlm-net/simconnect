@@ -349,9 +349,16 @@ func (p *TrafficPicture) Observe(now time.Time, scan []Observation) {
 			p.aircraft[o.ObjectID] = a
 			p.emit(PictureEvent{Kind: AircraftEntered, ObjectID: o.ObjectID, Tail: o.Tail})
 		}
+		prev, prevAt := a.Observation, a.Updated
 		a.Observation, a.Updated = o, now
 		if own, ok := p.own[o.ObjectID]; ok {
 			a.Ours, a.Phase, a.Airport = true, own.phase, own.airport
+			// Ours may be injected, whose vertical speed the sim does not
+			// know (live: +560 fpm descending on the glide path): measured
+			// from the altitude between scans, smoothed.
+			if dt := now.Sub(prevAt).Seconds(); !prevAt.IsZero() && dt >= 0.5 && dt < 10 && prev.ObjectID == o.ObjectID {
+				a.VSFpm = (prev.VSFpm + (o.AltFt-prev.AltFt)/dt*60) / 2
+			}
 		} else {
 			a.Ours = false
 			a.Phase, a.Airport = p.classifyLocked(o)

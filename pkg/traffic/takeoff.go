@@ -11,9 +11,12 @@ import (
 
 // TakeoffProfile describes an injected take-off (#320).
 type TakeoffProfile struct {
-	// RollAccel (m/s²) is the acceleration at the start of the take-off
-	// roll; it falls off towards RotateKts as drag builds up.
-	RollAccel float64
+	// RollAccel (m/s²) is the acceleration at take-off thrust; it falls
+	// off towards RotateKts as drag builds up. SpoolSeconds is how long the
+	// engines take from idle to take-off thrust at the start of the roll:
+	// the acceleration builds from SpoolStartFactor of it (0: 7 s).
+	RollAccel    float64
+	SpoolSeconds float64
 	// RotateKts is Vr; the nose comes up at RotateRate (°/s) to ClimbPitch,
 	// and the main wheels leave the ground at LiftoffPitch.
 	RotateKts, RotateRate, LiftoffPitch, ClimbPitch float64
@@ -82,8 +85,28 @@ type TakeoffMover struct {
 	pitch       float64
 	phase       TakeoffPhase
 	airborneFor float64
+	rollFor     float64 // s since the thrust was set
 	liftoffX    float64
 	rejected    bool // braking to a stop (Reject)
+}
+
+// SpoolStartFactor is the thrust's share of take-off thrust as the roll
+// starts (thrust set from idle); DefaultSpoolSeconds the spool-up to full.
+const (
+	SpoolStartFactor    = 0.15
+	DefaultSpoolSeconds = 7.0
+)
+
+// spool is the share of take-off thrust rollFor into the roll: from
+// SpoolStartFactor to 1, eased at both ends (no jerk).
+func (m *TakeoffMover) spool() float64 {
+	sec := m.p.SpoolSeconds
+	if sec <= 0 {
+		sec = DefaultSpoolSeconds
+	}
+	k := math.Min(1, m.rollFor/sec)
+	k = k * k * (3 - 2*k)
+	return SpoolStartFactor + (1-SpoolStartFactor)*k
 }
 
 // RejectDecel (m/s²) is the braking of a rejected take-off (maximum
@@ -154,8 +177,10 @@ func (m *TakeoffMover) step(dt float64) {
 	}
 	switch m.phase {
 	case TakeoffRoll, TakeoffRotate:
-		// Acceleration falls off by a third towards Vr as drag builds up.
-		m.v += p.RollAccel * (1 - 0.33*math.Min(1, m.v/vr)) * dt
+		// The engines spool up to take-off thrust, then the acceleration falls
+		// off by a third towards Vr as drag builds up.
+		m.rollFor += dt
+		m.v += p.RollAccel * m.spool() * (1 - 0.33*math.Min(1, m.v/vr)) * dt
 		if m.phase == TakeoffRoll && m.v >= vr {
 			m.phase = TakeoffRotate
 		}

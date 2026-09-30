@@ -136,6 +136,7 @@ type state struct {
 	sequences  *sequences     // landing sequences while connected (#390)
 	separation *sepMonitor    // airborne separation (#395)
 	towers     *towers        // runway controllers (#393)
+	conflicts  *conflictWatch // airborne conflicts and resolutions (#395)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// requests asks the connection to load an airport (load); airways is
@@ -263,8 +264,10 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	cc.extra = sched.handle
 	seqs := newSequences(cc, sched)
 	sep := newSepMonitor()
+	cw := newConflictWatch(sched)
 	tw := newTowers(cc, sched)
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
+	cc.sequencesAt = seqs.at
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
@@ -277,17 +280,19 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			case now := <-t.C:
 				sched.tick(now)
 				seqs.tick(now)
-				sep.tick(now, cc.world.Aircraft())
+				air := cc.world.Aircraft()
+				sep.tick(now, air)
+				cw.tick(now, air)
 				tw.tick(now)
 			}
 		}
 	}()
 	st.mu.Lock()
-	st.control, st.schedule, st.sequences, st.separation, st.towers = cc, sched, seqs, sep, tw
+	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = cc, sched, seqs, sep, tw, cw
 	st.mu.Unlock()
 	defer func() {
 		st.mu.Lock()
-		st.control, st.schedule, st.sequences, st.separation, st.towers = nil, nil, nil, nil, nil
+		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = nil, nil, nil, nil, nil, nil
 		st.mu.Unlock()
 	}()
 
@@ -515,6 +520,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerSequence(mux, st)
 	registerSeparation(mux, st)
 	registerRunways(mux, st)
+	registerApproach(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

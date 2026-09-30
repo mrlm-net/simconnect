@@ -98,8 +98,12 @@ type ApproachSequencer struct {
 	mu   sync.Mutex
 	last map[string]SequenceEntry
 	seq  []SequenceEntry
-	// first is each arrival's prediction when it joined the sequence.
-	first map[string]time.Time
+	// first is each arrival's prediction when it joined the sequence; keys
+	// its place in the order at the last Update, and manual the place a
+	// controller gave it (Move), which it keeps.
+	first  map[string]time.Time
+	keys   map[string]time.Time
+	manual map[string]time.Time
 	cond  ApproachConditions
 }
 
@@ -117,7 +121,8 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	if opts.SwapMargin == 0 {
 		opts.SwapMargin = 90 * time.Second
 	}
-	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{}}
+	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
+		keys: map[string]time.Time{}, manual: map[string]time.Time{}}
 }
 
 // Rejoin puts an arrival back into the sequence afresh, by its prediction
@@ -128,6 +133,43 @@ func (s *ApproachSequencer) Rejoin(callsign string) {
 	defer s.mu.Unlock()
 	delete(s.first, callsign)
 	delete(s.last, callsign)
+	delete(s.manual, callsign)
+}
+
+// Move moves an arrival places on in the landing order (negative: earlier)
+// among those not yet established, as a controller would; it keeps its new
+// place (until Rejoin). It returns ErrNotSequenced when the arrival is not
+// in the sequence and ErrEstablished when it is inside FreezeNM.
+func (s *ApproachSequencer) Move(callsign string, places int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var order []SequenceEntry
+	at := -1
+	for _, e := range s.seq {
+		if e.Callsign == callsign && e.Fixed {
+			return ErrEstablished
+		}
+		if !e.Fixed {
+			if e.Callsign == callsign {
+				at = len(order)
+			}
+			order = append(order, e)
+		}
+	}
+	if at < 0 {
+		return ErrNotSequenced
+	}
+	to := max(0, min(len(order)-1, at+places))
+	if to == at {
+		return nil
+	}
+	// Past the one at its new place, by more than the swap margin.
+	margin := s.opts.SwapMargin + time.Second
+	if to < at {
+		margin = -margin
+	}
+	s.manual[callsign] = s.keys[order[to].Callsign].Add(margin)
+	return nil
 }
 
 // Runway is the sequencer's runway end.
@@ -243,7 +285,11 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		if !ok {
 			s.first[f.a.Callsign] = f.eta
 		}
+		if m, ok := s.manual[f.a.Callsign]; ok {
+			first = m // where a controller put it
+		}
 		free[i].key = first
+		s.keys[f.a.Callsign] = first
 	}
 	s.mu.Unlock()
 	sort.SliceStable(free, func(i, j int) bool {

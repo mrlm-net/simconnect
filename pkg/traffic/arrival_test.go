@@ -147,7 +147,7 @@ func arrivalPositionMsg(req, obj uint32, p airport.LatLon, agl, hdg, kts float64
 	if ground {
 		g = 1
 	}
-	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300, [5]float64{}, 0, 0}
+	*(*arrivalMonitor)(unsafe.Pointer(&buf[off])) = arrivalMonitor{p.Lat, p.Lon, agl, hdg, kts, g, -300, [5]float64{}, 0, 0, 0}
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 

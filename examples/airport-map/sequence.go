@@ -42,6 +42,19 @@ func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{}}
 }
 
+// at is icao's landing sequences by runway.
+func (q *sequences) at(icao string) map[string][]traffic.SequenceEntry {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	out := map[string][]traffic.SequenceEntry{}
+	for k, s := range q.seq {
+		if i, rwy, _ := strings.Cut(k, " "); i == icao {
+			out[rwy] = s.Sequence()
+		}
+	}
+	return out
+}
+
 // rejoin sequences an arrival at icao afresh after a go-around (#394).
 func (q *sequences) rejoin(icao, tail string) {
 	q.mu.Lock()
@@ -290,12 +303,18 @@ func (q *sequences) tick(now time.Time) {
 			continue
 		}
 		// On its procedure: what it still flies (dog-legs, a go-around's
-		// circuit); on the final: the planned approach from here.
+		// circuit); on the final (flown by injection, or MSFS AI without a
+		// procedure): straight to the threshold — the planned approach from
+		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
 			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
 			continue
 		}
-		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
+		if v.State == "spawning" {
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
+			continue
+		}
+		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, nil, true, false)
 	}
 	// Enroute arrivals, on their way to the STAR entry.
 	q.s.mu.Lock()

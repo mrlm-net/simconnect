@@ -313,7 +313,9 @@ const (
 	DefaultTurnPenalty = 60.0
 	// DefaultTaxiwayChangePenalty is the extra cost of turning onto a
 	// differently named taxiway (going straight on where the name changes is
-	// free).
+	// free). (100 m saved only 0.03 letters a route at LKPR and made some
+	// turn more than the shortest route; a clearance leaves out short stubs
+	// instead: Route.SpokenTaxiways.)
 	DefaultTaxiwayChangePenalty = 40.0
 	// TurnFreeAngle is the largest heading change at a junction that costs
 	// nothing (taxiways bend).
@@ -867,4 +869,44 @@ func (g *Graph) Fits(e Edge, opts RouteOptions) bool {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
 	return opts.fits(e)
+}
+
+// SpokenMinMeters: a taxiway the route follows for less than this, only
+// to lead onto the next one, is left out of a spoken clearance.
+const SpokenMinMeters = 150.0
+
+// SpokenTaxiways is the route up to edge upto (all when upto < 0) as a
+// controller says it: the taxiways in order, without the short stubs that
+// only lead onto the next one (SpokenMinMeters; at LKPR from N58 "H, L, G,
+// F" is 270 m of three stubs curving onto F: "F"). The last taxiway is kept
+// whatever its length: it is where the aircraft goes.
+func (r *Route) SpokenTaxiways(upto int) []string {
+	edges := r.Edges
+	if upto >= 0 && upto < len(edges) {
+		edges = edges[:upto]
+	}
+	type run struct {
+		name   string
+		meters float64
+	}
+	var runs []run
+	for _, e := range edges {
+		if e.Name == "" {
+			continue
+		}
+		if len(runs) == 0 || runs[len(runs)-1].name != e.Name {
+			runs = append(runs, run{name: e.Name})
+		}
+		runs[len(runs)-1].meters += e.Length
+	}
+	var out []string
+	for i, rn := range runs {
+		if rn.meters < SpokenMinMeters && i < len(runs)-1 {
+			continue
+		}
+		if len(out) == 0 || out[len(out)-1] != rn.name {
+			out = append(out, rn.name)
+		}
+	}
+	return out
 }

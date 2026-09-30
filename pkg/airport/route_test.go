@@ -404,3 +404,31 @@ func TestRouteFitsSpan(t *testing.T) {
 	}
 	t.Logf("%d stands have no 777-wide route to 24", tight)
 }
+
+// The spoken route leaves out short stubs leading onto the next taxiway:
+// from N58 to 06 at LKPR the route is H, L and G for 270 m curving onto F,
+// said "F"; a route of real taxiways keeps them.
+func TestSpokenTaxiways(t *testing.T) {
+	g := lkprGraph(t)
+	n58, err := g.Layout.ParkingIndex("N58")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.RouteToRunway(n58, "06", RouteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.SpokenTaxiways(-1); len(got) != 1 || got[0] != "F" {
+		t.Errorf("N58 → 06: said %v (route %v)", got, r.Taxiways)
+	}
+	c22, _ := g.Layout.ParkingIndex("C22")
+	r, err = g.RouteToRunway(c22, "24", RouteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := r.SpokenTaxiways(-1)
+	if len(said) == 0 || len(said) > len(r.Taxiways) || said[len(said)-1] != r.Taxiways[len(r.Taxiways)-1] {
+		t.Errorf("C22 → 24: said %v, route %v", said, r.Taxiways)
+	}
+	t.Logf("C22 → 24: route %v, said %v", r.Taxiways, said)
+}
