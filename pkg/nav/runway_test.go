@@ -89,3 +89,25 @@ func TestATISHoldsTheRunway(t *testing.T) {
 		}
 	}
 }
+
+// A runway is chosen only with a margin within its wind limits, and kept up
+// to the limits (LKPR, live: at 110°/6 kt, 4.2 kt of tailwind on 24, the
+// selector chose 24 and dropped it at the next gust).
+func TestRunwayChoiceMargin(t *testing.T) {
+	l := lkprInfo(t).Layout
+	lim := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Now()
+	calm, edge := StaticWeather(110, 1, 9999, 18, 10, 1024), StaticWeather(110, 6, 9999, 18, 10, 1024)
+	if ActiveRunways(l, calm, lim).Departure.Name != "24" || ActiveRunways(l, edge, lim).Departure.Name != "24" {
+		t.Skip("24 is not the preferred choice in these winds")
+	}
+	var fresh RunwaySelector
+	if u := fresh.Choose(now, l, edge, lim); u.Departure.Name != "06" {
+		t.Errorf("chose %s at 4.2 kt of tailwind on 24, want 06", u.Departure.Name)
+	}
+	var kept RunwaySelector
+	kept.Choose(now, l, calm, lim) // 24 in calm wind
+	if u := kept.Choose(now.Add(time.Minute), l, edge, lim); u.Departure.Name != "24" {
+		t.Errorf("dropped 24 within its limits for %s", u.Departure.Name)
+	}
+}
