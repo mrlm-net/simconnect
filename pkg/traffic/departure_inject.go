@@ -650,6 +650,14 @@ func (c *TaxiController) planPushback() {
 				if e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) || swing > maxSwing || pass == 1 && swing <= maxPushSwingDeg {
 					continue
 				}
+				// Straight on across a taxiway behind the stand leaves the nose
+				// facing the stand it came from (LKPR A4: E190s pushed across B1
+				// and faced back at the lead-in, a dead end): a tug swings the
+				// tail onto the taxiway. Straight on along the lead-in (unnamed:
+				// LKPR C17's goes on to J) and up an alley are pushes along it.
+				if !alley[i] && swing < minPushSwingDeg && e.Name != "" {
+					continue
+				}
 				// A custom route (Via, Taxiways) goes on from what the push passed.
 				opts := g.RemainingOptions(c.req.Options, r.Nodes[:i+1])
 				out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, opts)
@@ -917,6 +925,7 @@ func walkTaxiway(g *airport.Graph, from, first airport.NodeID, meters float64) [
 const (
 	maxPushSwingDeg      = 100.0
 	maxPushSwingWideDeg  = 125.0
+	minPushSwingDeg      = 45.0
 	pushWideSwingPenalty = 150.0
 	pushBlockPenalty     = 400.0
 	maxNoseOffRouteDeg   = 150.0
