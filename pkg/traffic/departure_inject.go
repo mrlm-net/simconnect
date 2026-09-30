@@ -387,11 +387,32 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	c.emit(nil, false)
 }
 
-// facesOut reports a self-manoeuvring stand: the lead-in junction lies
-// ahead of the parked aircraft, so it taxis out without a pushback.
+// facesOut reports a self-manoeuvring stand (standFacesOut): it taxis out
+// without a pushback.
 func (c *TaxiController) facesOut() bool {
-	return len(c.route.Points) > 1 && leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1])
+	return c.faceOut
 }
+
+// standFacesOut reports whether the lead-in junction of the route planned
+// from the stand lies ahead of the parked aircraft's nose gear, within
+// faceOutMaxDeg of its heading. Ahead of the stand's reference point is not
+// enough: a junction under the aircraft, behind its nose, is taxied to with
+// a turn from a standstill (EDDF B10, KJFK A15: 115°–163°). Decided once,
+// from the route to the stand's junction: a push to a pose re-plans the
+// route from a taxiway, whose nodes say nothing of the stand.
+func (c *TaxiController) standFacesOut() bool {
+	if len(c.route.Points) < 2 || !leadInAhead(c.req.Graph, c.req.Parking, c.route.Points[1]) {
+		return false
+	}
+	stand := c.req.Graph.Layout.Parking[c.req.Parking]
+	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), stand.Heading, c.profile())
+	j := c.route.Points[1]
+	return alongHeading(nose, stand.Heading, j) > 0 && math.Abs(headingDiff(stand.Heading, localBearing(nose, j))) <= faceOutMaxDeg
+}
+
+// faceOutMaxDeg: a self-manoeuvring stand's junction lies at most this
+// off the nose.
+const faceOutMaxDeg = 60.0
 
 // updateTug connects the tug while the aircraft waits for its pushback
 // and moves it with the aircraft until it has driven off.
@@ -499,6 +520,14 @@ func (c *TaxiController) pushPath() (*GroundPath, error) {
 	stand := g.Layout.Parking[c.req.Parking]
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
 	pts := []airport.LatLon{gear}
+	if c.pushPose != nil {
+		path, err := NewSmoothPath(c.pushPts, c.pushProfile())
+		if err != nil {
+			return nil, err
+		}
+		c.pushPlanned = path
+		return path, nil
+	}
 	if len(route.Points) > 1 {
 		var tail []airport.LatLon
 		if len(route.Nodes) > c.pushJunction+1 {
@@ -623,8 +652,10 @@ func pushEdge(g *airport.Graph, e airport.Edge) bool {
 		e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && !e.AlongRunway
 }
 
-// planPushback chooses the taxiway branch the tail is pushed onto by where
-// the aircraft can go from there: for every branch at the stand's junction
+// planPushback plans the push to a pose on a taxiway (planPushPose); where
+// no pose is reachable, it chooses the taxiway branch the tail is pushed
+// onto by where the aircraft can go from there: for every branch at the
+// stand's junction
 // the push can swing onto, the taxi-out is planned from the junction facing
 // away from it (RouteToRunwayFrom); the cheapest wins and the route becomes
 // stand → junction → that taxi-out. Without it the pushback guessed from
@@ -635,7 +666,10 @@ func (c *TaxiController) planPushback() {
 	excl := map[pushChoice]bool{}
 	for try := 0; try < pushPlanTries; try++ {
 		c.route, c.pushJunction, c.pushPlanned = orig, 1, nil
-		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch, c.pushPts = false, 0, false, 0, nil
+		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch, c.pushPts, c.pushPose = false, 0, false, 0, nil, nil
+		if try == 0 && len(orig.Nodes) >= 3 && !c.facesOut() && c.planPushPose() {
+			return
+		}
 		c.choosePushback(excl)
 		if !c.havePushBranch {
 			return // a push-and-turn, or straight back: nothing else to choose
@@ -1269,7 +1303,7 @@ func (c *TaxiController) startTaxiOut() error {
 	// A push-and-turn ends on the taxi-out itself, up to pushTurnPastMeters
 	// past the junction: start on from the route segment nearest the nose,
 	// not from a point behind it (LKPR B9, EDDF: a first leg backwards).
-	if c.pushTurn {
+	if c.pushTurn || c.pushPose != nil {
 		best := math.Inf(1)
 		for i := c.pushJunction + 1; i < len(route.Points); i++ {
 			a, b := route.Points[i-1], route.Points[i]

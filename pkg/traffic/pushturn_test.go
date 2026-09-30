@@ -66,7 +66,13 @@ func TestPushbackDoesNotBlockTaxiways(t *testing.T) {
 		}
 		ec := &eventClient{}
 		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
-		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: rwy, Model: "FSLTL A320 Air France SL", Tail: "T1"}); err != nil || !ctl.havePushBranch {
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: rwy, Model: "FSLTL A320 Air France SL", Tail: "T1"}); err != nil {
+			return -1, false
+		}
+		if p := ctl.pushPose; p != nil {
+			return ctl.poseBlocks(*p, p.own), true
+		}
+		if !ctl.havePushBranch {
 			return -1, false
 		}
 		k := ctl.route.Nodes[ctl.pushJunction]

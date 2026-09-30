@@ -261,6 +261,8 @@ type TaxiController struct {
 	pushTurn                                                bool             // push and turn on the apron (only taxiway at the junction is the way out)
 	pushPlanned                                             *GroundPath      // the push path, planned before it starts (pushPath)
 	pushTurnDir                                             float64          // the way out from the junction
+	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
+	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
 }
 
 // SimConnect IDs relative to the bases.
@@ -409,6 +411,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		// Adopted: no spawn; the aircraft is already on the stand.
 		c.req, c.route = req, route
 		c.pushJunction = 1
+		c.faceOut = c.standFacesOut()
 		if c.inj != nil {
 			c.planPushback()
 		}
@@ -437,6 +440,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 
 	c.req, c.route = req, route
 	c.pushJunction = 1
+	c.faceOut = c.standFacesOut()
 	if c.inj != nil {
 		c.planPushback() // may re-plan the route from the push
 	}

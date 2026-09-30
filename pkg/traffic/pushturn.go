@@ -250,7 +250,7 @@ func pavementAround(g *airport.Graph, center airport.LatLon, radius float64) pav
 	}
 	for a := range g.Adj {
 		pa := g.Nodes[a].Position
-		if localDist(pa, center) > radius+200 {
+		if localDist(pa, center) > radius+2000 {
 			continue
 		}
 		for _, e := range g.Adj[a] {
@@ -260,6 +260,12 @@ func pavementAround(g *airport.Graph, center airport.LatLon, radius float64) pav
 			half := 12.5
 			if e.Path >= 0 && e.Path < len(g.Layout.TaxiPaths) && g.Layout.TaxiPaths[e.Path].Width > 0 {
 				half = g.Layout.TaxiPaths[e.Path].Width / 2
+			}
+			pb := g.Nodes[e.To].Position
+			h := localBearing(pa, pb)
+			along := math.Max(0, math.Min(localDist(pa, pb), alongHeading(pa, h, center)))
+			if localDist(center, offsetHeading(pa, h, along)) > radius+half {
+				continue // nothing within radius comes near it
 			}
 			pv.segs = append(pv.segs, paveSeg{pa, g.Nodes[e.To].Position, half})
 		}
