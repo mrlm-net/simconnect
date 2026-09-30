@@ -32,3 +32,9 @@ jobs:
         working-directory: cmd/simvar-cli
         env:
           GOOS: windows
+
+      - name: Scan airport-map module
+        run: govulncheck .
+        working-directory: examples/airport-map
+        env:
+          GOOS: windows

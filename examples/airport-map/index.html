@@ -223,6 +223,7 @@
 
   <section data-panel="radio" hidden>
     <h2>Radio <span class="i" title="What is said on the airport's frequencies: our controllers' clearances and handoffs, the pilots' requests and readbacks, the ATIS. Pick a frequency to follow it, or All.">ⓘ</span></h2>
+    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <span id="rdVoice" class="note"></span></div>
     <div id="rdFreqs" class="rdfreqs"></div>
     <div id="rdLog" class="rdlog"></div>
   </section>
@@ -1624,7 +1625,15 @@ async function pollAirportInfo() {
       ? `<span class="letter" title="Information ${esc(a.atis.letter)}">${esc(a.atis.letter[0])}</span>Information ${esc(a.atis.letter)}<div class="text">${esc(a.atis.text)}</div>` +
         `<button type="button" class="secondary" id="apSpeak" title="Read it aloud (the spoken form, digits spelled)">🔊 Listen</button>`
       : '—';
-    if (a.atis) $('apSpeak').onclick = () => speakEnglish(a.atis.spoken);
+    if (a.atis) $('apSpeak').onclick = async () => {
+      // Through voice-goio (#419), its ATIS voice and radio; the browser's
+      // English voice only when the map has no voice.
+      try {
+        const res = await fetch(`/api/voice/atis?icao=${encodeURIComponent(data.icao)}`, { method: 'POST' });
+        if (res.ok) return;
+      } catch { /* no voice */ }
+      speakEnglish(a.atis.spoken);
+    };
   } catch { /* server gone */ }
 }
 setInterval(pollAirportInfo, 10000);
@@ -1851,11 +1860,28 @@ async function pollRadio() {
   }).join('') || '<div class="note">Nothing said yet.</div>';
   if (atEnd) log.scrollTop = log.scrollHeight;
 }
+// The voice (#419): on or off, following the frequency picked.
+let rdSoundOn = false;
+function showVoice(v) {
+  rdSoundOn = !!v.on;
+  $('rdSound').textContent = rdSoundOn ? '🔊 Sound on' : '🔇 Sound off';
+  $('rdSound').className = rdSoundOn ? '' : 'secondary';
+  $('rdVoice').textContent = rdSoundOn ? (rdFreq ? `listening on ${rdFreq}` : 'listening on all frequencies') : (v.status && v.status !== 'off' ? v.status : '');
+}
+async function setVoice(on) {
+  try {
+    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq }) });
+    if (res.ok) showVoice(await res.json());
+  } catch { /* server gone */ }
+}
+$('rdSound').addEventListener('click', () => setVoice(!rdSoundOn));
+fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {});
 $('rdFreqs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-f]');
   if (!b) return;
   rdFreq = b.dataset.f;
   try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
+  if (rdSoundOn) setVoice(true);
   pollRadio();
 });
 setInterval(pollRadio, 1000);

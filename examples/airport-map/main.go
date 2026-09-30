@@ -545,6 +545,30 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerProcedures(mux, st)
 	registerGame(mux, st)
 	registerAirportInfo(mux, st)
+	registerVoice(mux, speaker)
+	speaker.atis = st.atisOn
+	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
+	// ATIS said once through the voice.
+	mux.HandleFunc("POST /api/voice/atis", func(w http.ResponseWriter, r *http.Request) {
+		icao := strings.ToUpper(r.URL.Query().Get("icao"))
+		st.mu.Lock()
+		svc := st.atis[icao]
+		st.mu.Unlock()
+		if svc == nil {
+			http.Error(w, "no ATIS yet", http.StatusNotFound)
+			return
+		}
+		a, ok := svc.Current()
+		if !ok {
+			http.Error(w, "no ATIS yet", http.StatusNotFound)
+			return
+		}
+		if !speaker.sayOnce(traffic.Transmission{Airport: icao, Position: traffic.PosATIS, Intent: traffic.IntentATIS, Text: a.Text()}) {
+			http.Error(w, speaker.state().Status, http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	registerDeicing(mux, st)
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
@@ -783,7 +807,17 @@ func main() {
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
 	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
+	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
+	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
 	flag.Parse()
+	speaker.piperPath, speaker.voicesDir = *piperPath, *voicesDir
+	// The default is the repo's graph, from the repo root or from this
+	// example's folder (its own module: go run . here).
+	if *airways == "pkg/nav/testdata/LKPR-airways.json" {
+		if _, err := os.Stat(*airways); err != nil {
+			*airways = "../../pkg/nav/testdata/LKPR-airways.json"
+		}
+	}
 	openTrafficLog(*logDir)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)

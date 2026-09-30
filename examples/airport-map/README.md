@@ -8,15 +8,19 @@ The layout comes from [`pkg/airport`](../../docs/airport-layout.md): `airport.Lo
 
 ## Run
 
+The map is its own module (it speaks through [voice-goio](https://github.com/mrlm-net/voice-goio), and the SDK keeps zero dependencies), so run it from its folder:
+
 ```bash
+cd examples/airport-map
+
 # Live: connect to the simulator and open LKPR
-go run ./examples/airport-map
+go run .
 
 # Also save each fetched airport's raw data to <ICAO>.json
-go run ./examples/airport-map -dump
+go run . -dump
 
 # Offline: serve a saved dump, no simulator needed (layout and routes only)
-go run ./examples/airport-map -file LKPR.json
+go run . -file LKPR.json
 ```
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side panel to load it; **↻** fetches it again from the simulator.
@@ -29,11 +33,24 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 | `-dump-dir` | `.` | Directory for `-dump` files |
 | `-file` | | Serve a `-dump` file instead of connecting to the simulator |
 | `-log-dir` | `.` | Directory for the traffic control log, `traffic-<YYYYMMDD-HHMMSS>.log` (one file per run) |
+| `-piper` | `bin/piper/piper.exe` | piper executable for the voice (see [Voice](#voice)) |
+| `-voices` | | Folder of piper voice models; empty: voice-goio's user data folder |
 | `-airways` | `pkg/nav/testdata/LKPR-airways.json` | Airway graph for flight plans (see [`spike-airways`](../spike-airways)); `""` for direct routes |
 
 The map page loads Leaflet from cdnjs and map tiles from OpenStreetMap and Esri, so the browser needs internet access.
 
 A tour with more screenshots is in [Examples](../../docs/examples.md).
+
+## Voice
+
+The **Radio** tab's **🔇 Sound off** button turns the voice on: what is said on the frequency you follow (or all of them) is spoken through voice-goio. Each controller position has its own voice and radio sound, each crew its own voice, and while you follow the ATIS frequency its broadcast plays on a loop. The airport panel's 🔊 reads the ATIS once. A busy frequency stays live: what could not be said within 20 s is dropped.
+
+The voice needs [piper](https://github.com/rhasspy/piper) and at least one English voice model:
+
+1. Download `piper_windows_amd64.zip` from the [piper releases](https://github.com/rhasspy/piper/releases) and unzip it so that `examples/airport-map/bin/piper/piper.exe` exists (or pass `-piper`).
+2. Download voice models with voice-goio's tool, e.g. `go run github.com/mrlm-net/voice-goio/cmd/voicecheck@v0.3.1 download -model en_GB-alan-medium` (and `en_US-ryan-medium`, `en_GB-vctk-medium` for more voices). `voicecheck voices` lists what is installed.
+
+Without them the button says what is missing and the map stays silent; the ATIS button falls back to the browser's English voice.
 
 ## The panel
 
