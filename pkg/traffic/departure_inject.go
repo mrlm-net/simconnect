@@ -813,10 +813,20 @@ func (c *TaxiController) plannedTaxi(pos airport.LatLon) []airport.LatLon {
 func (c *TaxiController) alleyBlocks(i int) int {
 	g, r := c.req.Graph, c.route
 	n := 0
-	for j := 1; j < i; j++ {
+	for j := 1; j <= i && j+1 < len(r.Nodes); j++ {
 		id := r.Nodes[j]
 		if len(g.Adj[id]) < 3 {
 			continue
+		}
+		// A crossroads of lanes passed or ended on, whatever the branches
+		// are called (#489: LKPR A5 for 24 was pushed 134 m west along the B1
+		// lanes into their crossroads, and waited there for its taxi).
+		if crossroads(g, id) {
+			n++
+			continue
+		}
+		if j == i {
+			break // the end: pushBlocks counts the taxiways there
 		}
 		along := map[string]bool{}
 		for _, e := range g.Adj[id] {
@@ -833,6 +843,50 @@ func (c *TaxiController) alleyBlocks(i int) int {
 	}
 	return n
 }
+
+// crossroads reports a node where three or more taxiway branches meet (the
+// ways to stands and runways aside): traffic crosses there whatever the
+// branches are called.
+func crossroads(g *airport.Graph, id airport.NodeID) bool {
+	n := 0
+	for _, e := range g.Adj[id] {
+		if pushEdge(g, e) && leadsOn(g, id, e.To) {
+			n++
+		}
+	}
+	return n >= 3
+}
+
+// leadsOn reports whether the branch from over to leads somewhere: to
+// another junction or on for crossroadsBranchMeters; a lead-in that ends at
+// a stand does not.
+func leadsOn(g *airport.Graph, from, to airport.NodeID) bool {
+	prev, cur, walked := from, to, 0.0
+	for step := 0; step < 20; step++ {
+		walked += localDist(g.Nodes[prev].Position, g.Nodes[cur].Position)
+		if walked > crossroadsBranchMeters {
+			return true
+		}
+		var next []airport.NodeID
+		for _, e := range g.Adj[cur] {
+			if e.To != prev && pushEdge(g, e) {
+				next = append(next, e.To)
+			}
+		}
+		switch len(next) {
+		case 0:
+			return false // a dead end: a stand's lead-in
+		case 1:
+			prev, cur = cur, next[0]
+		default:
+			return true // another junction
+		}
+	}
+	return true
+}
+
+// crossroadsBranchMeters: a branch this long is a way on, not a stub.
+const crossroadsBranchMeters = 80.0
 
 // hairpinAfterPush reports a taxi-out that turns back sharply (at least
 // pushHairpinDeg) within pushHairpinMeters of the push: the push left the
