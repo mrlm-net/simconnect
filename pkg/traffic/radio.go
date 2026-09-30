@@ -521,6 +521,15 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	return t
 }
 
+// ClearAt is when freq at airport is clear again: the end of what is said
+// on it, readbacks included, and a breath (#462: a crew acts on a
+// clearance once it has read it back).
+func (r *Radio) ClearAt(airport, freq string) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.busy[airport+" "+freq]
+}
+
 // Recent is up to n of the latest transmissions at airport ("" all),
 // oldest first.
 func (r *Radio) Recent(airport string, n int) []Transmission {

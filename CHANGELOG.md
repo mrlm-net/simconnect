@@ -23,6 +23,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Requests and clearances in radio order (#462): `TaxiEvent.Request` (the crew asks when ready), `Radio.ClearAt`; `RequestPushback` takes the station (first call). The airport map answers requests after a pause and acts after the readback; tower clearances too.
 - Airport map: voice (#419). The radio is spoken through voice-goio: a voice per position, each crew its own, the ATIS on a loop; a sound switch on the Radio tab follows the frequency picked. The airport panel reads the ATIS through it. `GET`/`POST /api/voice`, `POST /api/voice/atis`, flags `-piper` and `-voices`. The map is now its own module (`cd examples/airport-map && go run .`).
 - Airport map: a Radio tab (#425) with the airport's frequencies, each with what is said on it; follow one frequency or all.
 - ATIS on its frequency (#418): `pkg/traffic` `ATISInformation`, the broadcast on the ATIS position. The airport map refreshes the ATIS every minute of traffic time, broadcasts a new information, and has our pilots give the letter on their first call. `GET /api/radio/atis` serves the current one for a voice to loop. The airport panel reads the ATIS in an English voice.

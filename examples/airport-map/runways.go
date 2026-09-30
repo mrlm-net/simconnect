@@ -230,22 +230,15 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			it.spoken[k] = true
 		}
 		it.mu.Unlock()
-		if err := t.cc.do(func() error { return f(it) }); err != nil {
-			it.mu.Lock()
-			for _, k := range spoken {
-				delete(it.spoken, k)
-			}
-			it.mu.Unlock()
-			tlog.printf("%-6s tower: %s refused: %v", tail, action, err)
-			return
-		}
 		t.mu.Lock()
 		t.given[tail+" "+action] = true
 		if action == "takeoff" {
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
+		// Said first; the crew acts once it has read it back (#462).
 		it.say(said)
+		it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error { return f(it) })
 	}
 	takeoff := map[string]bool{}
 	for _, cs := range c.Takeoff {

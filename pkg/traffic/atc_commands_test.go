@@ -233,3 +233,34 @@ func TestMissedWaypoints(t *testing.T) {
 		t.Errorf("none: %+v, %.0f ft", wps, top)
 	}
 }
+
+// TestCrewRequests: held for clearances, the crew asks for push and start
+// once ready, then for taxi once pushed and the tug is clear; a clearance
+// ends the request (#462).
+func TestCrewRequests(t *testing.T) {
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	ready := func(want string) bool {
+		for i := 0; i < 60*60*10 && ctl.last.Request != want; i++ {
+			run(TaxiLinedUp, 1)
+		}
+		return ctl.last.Request == want
+	}
+	if !ready("pushback") {
+		t.Fatalf("no push request in %v", ctl.State())
+	}
+	if ctl.State() != TaxiAwaitingPushback {
+		t.Fatalf("asked for push in %v", ctl.State())
+	}
+	ctl.ClearPushback()
+	run(TaxiLinedUp, 2)
+	if ctl.last.Request != "" {
+		t.Errorf("still asks for %q after the clearance", ctl.last.Request)
+	}
+	if !ready("taxi") || ctl.State() != TaxiAwaitingTaxi {
+		t.Fatalf("no taxi request (%q in %v)", ctl.last.Request, ctl.State())
+	}
+	ctl.ClearToTaxi()
+	if !run(TaxiTaxiing, 60*60) || ctl.last.Request != "" {
+		t.Errorf("after the taxi clearance: %v, request %q", ctl.State(), ctl.last.Request)
+	}
+}

@@ -98,6 +98,24 @@ func (c *TaxiController) runwayGate(cleared bool) bool {
 	return cleared || !c.req.HoldForRunway && c.gate(false)
 }
 
+// setRequest updates what the crew asks for (TaxiEvent.Request): held for
+// a clearance and ready — its automatic wait over, the tug clear for taxi.
+func (c *TaxiController) setRequest(now time.Time) {
+	req := ""
+	if c.req.HoldForClearances && !now.Before(c.gateAt) {
+		switch {
+		case c.state == TaxiAwaitingPushback && !c.pushCleared:
+			req = "pushback"
+		case c.state == TaxiAwaitingTaxi && !c.taxiCleared && c.tugClear():
+			req = "taxi"
+		}
+	}
+	if req != c.last.Request {
+		c.last.Request = req
+		c.emit(nil, true)
+	}
+}
+
 // openGate starts a gate's automatic wait of about d.
 func (c *TaxiController) openGate(d time.Duration) {
 	c.gateAt = c.now().Add(time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1))))
@@ -192,6 +210,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 	}
 	c.frameAt = now
+	c.setRequest(now)
 	switch c.state {
 	case TaxiAwaitingPushback:
 		// De-icing on the stand: once cleared to push, the treatment first.

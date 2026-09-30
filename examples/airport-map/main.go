@@ -297,6 +297,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					atisAt = now
 					st.atisTick(now, cc, sched.airports())
 				}
+				cc.pending.run(now) // clearances and actions in radio order (#462)
 				sched.tick(now)
 				seqs.tick(now)
 				air := cc.world.Aircraft()

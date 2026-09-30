@@ -59,7 +59,8 @@ func TestPilotCalls(t *testing.T) {
 		tx   Transmission
 		want string
 	}{
-		{RequestPushback("CSA1", "A4", "B"), "CSA1, stand A4, request push and start-up, information B"},
+		{RequestPushback("Ruzyne Ground", "CSA1", "A4", "Bravo"), "Ruzyne Ground, CSA1, stand A4, information Bravo, request push and start-up"},
+		{RequestPushback("", "CSA1", "A4", ""), "CSA1, stand A4, request push and start-up"},
 		{RequestTaxi("CSA1"), "CSA1, request taxi"},
 		{ReadyForDeparture("CSA1", "24"), "CSA1, holding point runway 24, ready for departure"},
 		{CheckIn(PosTower, "Ruzyne Tower", "CSA1", "established ILS runway 06", ""), "Ruzyne Tower, CSA1, established ILS runway 06"},

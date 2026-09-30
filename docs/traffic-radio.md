@@ -82,6 +82,9 @@ On the airport map each aircraft's card shows who works it and on what frequency
 
 ## The pilot side
 
+Clearances follow requests in radio order (#462). Held for clearances (`TaxiRequest.HoldForClearances`), a departure's crew asks when it is ready: `TaxiEvent.Request` is "pushback" once its own wait is over (boarding, the scheduled time) and "taxi" once pushed with the tug clear. On the airport map the push request is the crew's first call to ground, with the station, stand and ATIS letter. The ground controller answers after the request has been said and a moment (1.5–3 s); the crew reads the clearance back, and the aircraft acts 2–4 s after the readback (`Radio.ClearAt`: when a frequency is clear). The tower's line-up and take-off clearances work the same way. In the ATC game you answer the requests yourself.
+
+
 Our pilots talk too (#417). A pilot's transmission has `Pilot` set, on the same frequency as the controller's.
 
 - **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`.
