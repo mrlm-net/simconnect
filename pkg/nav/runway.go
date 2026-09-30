@@ -198,9 +198,17 @@ type RunwaySelector struct {
 	pendingAr string
 }
 
-// Choose is the runway in use at now: ActiveRunways, held as above.
+// RunwayChoiceMarginKts is how far within its wind limits a runway must be
+// to be chosen; one in use is kept up to the limits themselves. Without it
+// a runway right at its tailwind limit was chosen and dropped at the next
+// gust (LKPR, live: 24 with 4.2 kt of tailwind at the start, 06 a minute
+// later, flights spawned for both).
+const RunwayChoiceMarginKts = 2.0
+
+// Choose is the runway in use at now: ActiveRunways with the wind limits
+// RunwayChoiceMarginKts tighter, held as above.
 func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
-	fresh := ActiveRunways(l, w, lim)
+	fresh := ActiveRunways(l, w, withMargin(lim, RunwayChoiceMarginKts))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	after := s.ChangeAfter
@@ -232,6 +240,28 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
 	kept.Approach = ApproachFor(w)
 	return kept
+}
+
+// withMargin is lim with its wind limits margin knots tighter.
+func withMargin(lim RunwayLimits, margin float64) RunwayLimits {
+	tail := lim.MaxTailwindKts
+	switch {
+	case tail == 0:
+		tail = DefaultMaxTailwindKts
+	case tail < 0:
+		tail = 0
+	}
+	if tail -= margin; tail <= 0 {
+		lim.MaxTailwindKts = -1 // none
+	} else {
+		lim.MaxTailwindKts = tail
+	}
+	cross := lim.MaxCrosswindKts
+	if cross <= 0 {
+		cross = DefaultMaxCrosswindKts
+	}
+	lim.MaxCrosswindKts = max(cross-margin, 1)
+	return lim
 }
 
 // endWithin reports whether a runway end is within the wind limits in w,
