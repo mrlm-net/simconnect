@@ -153,7 +153,6 @@ type controlCenter struct {
 	// second later).
 	spawnedAt []spawnPoint
 	// runways keep each airport's runway in use.
-	runways map[string]*nav.RunwaySelector
 	detail  *traffic.Detail
 	// radio carries what our controllers say (#415): logged as ATC, served
 	// at /api/radio.
@@ -196,7 +195,6 @@ func newControlCenter(client engine.Client) *controlCenter {
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:  map[string]bool{},
 		own:     map[uint32]bool{},
-		runways: map[string]*nav.RunwaySelector{},
 		ids:     traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
 		detail:  traffic.NewDetail(),
 		stands:  map[string]*traffic.StandAllocator{},
@@ -1009,6 +1007,24 @@ func registerControl(mux *http.ServeMux, st *state) {
 	})
 }
 
+// runwaySelectors keep each airport's runway in use, one for the traffic
+// and its ATIS (#454), for the life of the process.
+var runwaySelectors = struct {
+	sync.Mutex
+	m map[string]*nav.RunwaySelector
+}{m: map[string]*nav.RunwaySelector{}}
+
+func runwaySelector(icao string) *nav.RunwaySelector {
+	runwaySelectors.Lock()
+	defer runwaySelectors.Unlock()
+	s := runwaySelectors.m[icao]
+	if s == nil {
+		s = &nav.RunwaySelector{}
+		runwaySelectors.m[icao] = s
+	}
+	return s
+}
+
 // activeRunway is the runway in use at g's airport now: from the weather
 // (wind, limits, preferential runways), else the first preferred runway,
 // else the first runway end. Departures and arrivals may differ.
@@ -1022,15 +1038,9 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 	lim := airport.LimitsFor(g.Layout, procs)
 	if cc.weather != nil {
 		if w := cc.weather(); w != nil {
-			// The runway in use holds through wind shifts near a limit (#391).
-			cc.mu.Lock()
-			sel := cc.runways[g.Layout.ICAO]
-			if sel == nil {
-				sel = &nav.RunwaySelector{}
-				cc.runways[g.Layout.ICAO] = sel
-			}
-			cc.mu.Unlock()
-			use := sel.Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
+			// The runway in use holds through wind shifts near a limit (#391);
+			// the ATIS says the same (#454).
+			use := runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
 			end := use.Departure
 			if arrival {
 				end = use.Arrival

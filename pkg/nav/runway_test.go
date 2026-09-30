@@ -6,6 +6,8 @@ package nav
 import (
 	"testing"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
 // TestRunwaySelectorHolds: the runway in use does not flip with a wind
@@ -41,5 +43,49 @@ func TestRunwaySelectorHolds(t *testing.T) {
 	strong := StaticWeather(300, 20, 9999, 15, 5, 1013) // a strong tailwind on 06/12
 	if u := s2.Choose(now.Add(time.Second), l, strong, RunwayLimits{}); u.Arrival.Name == first {
 		t.Fatalf("kept %s in a 20 kt tailwind", first)
+	}
+}
+
+// The ATIS says the runway the traffic keeps, not a fresh choice at every
+// wind shift (#454; LKPR, live: wind 100° at 5–10 kt, at 24's tailwind
+// limit, and the ATIS broadcast 06, 24, 06, 24… a minute apart while the
+// traffic held 06).
+func TestATISHoldsTheRunway(t *testing.T) {
+	info := lkprInfo(t)
+	l := info.Layout
+	lim := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Date(2026, 9, 30, 10, 39, 0, 0, time.UTC)
+	light, fresh := StaticWeather(100, 5, 9999, 18, 10, 1025), StaticWeather(100, 10, 9999, 18, 10, 1025)
+	if ActiveRunways(l, light, lim).Arrival.Name == ActiveRunways(l, fresh, lim).Arrival.Name {
+		t.Skip("the two winds choose the same runway with these limits")
+	}
+	for _, shared := range []bool{false, true} {
+		var opts []ATISOption
+		sel := &RunwaySelector{}
+		if shared {
+			opts = append(opts, ATISWithSelector(sel))
+		}
+		svc := NewATISService("Ruzyne", l, lim, 5000, opts...)
+		changes, last := 0, ""
+		for i := 0; i < 12; i++ {
+			w := light
+			if i%2 == 1 {
+				w = fresh
+			}
+			at := now.Add(time.Duration(i) * time.Minute)
+			if shared {
+				sel.Choose(at, l, w, lim) // the traffic asks too
+			}
+			a, _ := svc.Update(w, at)
+			if rwy := a.Use.Arrival.Name; rwy != last {
+				if last != "" {
+					changes++
+				}
+				last = rwy
+			}
+		}
+		if changes > 1 {
+			t.Errorf("shared %v: the ATIS changed runway %d times in 12 minutes", shared, changes)
+		}
 	}
 }
