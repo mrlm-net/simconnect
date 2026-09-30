@@ -243,8 +243,9 @@ type ArrivalController struct {
 	// is joined again only from its last two points (align, join) — climbing
 	// out along the centreline it would look established at once.
 	circuit bool
-	// trombone: the downwind was extended on this approach (AbsorbDelay).
-	trombone bool
+	// tromboneNM: how far the downwind was extended on this approach
+	// (AbsorbDelay).
+	tromboneNM float64
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
 	flapsUpFrom       time.Time      // flaps retracting since

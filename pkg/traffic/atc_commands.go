@@ -243,7 +243,7 @@ func (c *ArrivalController) GoAround() error {
 		return err
 	}
 	c.approach = nil
-	c.proc, c.procNext, c.circuit, c.trombone = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, false
+	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, 0
 	c.flyingProc, c.blend = true, joinBlend{}
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++

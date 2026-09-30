@@ -162,21 +162,32 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	stretched := false
 	// A longer downwind, the way a controller extends it: on along the
 	// downwind past its last point, the base turn and the final that much
-	// further out (each mile on adds two). Once an approach: more is held.
+	// further out (each mile on adds two), again as more is asked, up to
+	// MaxStretchNM an approach; beyond that the hold.
 	if a.ExtraNM > 0 && len(out) > 0 {
-		if !c.trombone {
-			if ext, ok := extendDownwind(pos, out, wps[final], wps[final+1], a.ExtraNM/2); ok {
-				out, c.trombone = ext, true
-				stretched = true
+		x := math.Min(a.ExtraNM/2, MaxStretchNM/2-c.tromboneNM)
+		if x > 0.2 {
+			if ext, ok := extendDownwind(pos, out, wps[final], wps[final+1], x); ok {
+				out, c.tromboneNM, stretched = ext, c.tromboneNM+x, true
+				if lost := a.ExtraNM - 2*x; lost > 0 {
+					a.Left += time.Duration(lost / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+				}
 			}
-		} else {
+		}
+		if !stretched && c.tromboneNM > 0 { // extended already, as far as it goes
 			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 			a.ExtraNM = 0
 		}
 	}
+	// Under a mile is not worth a turn: the hold, or the sequencer asks again.
+	if a.ExtraNM > 0 && a.ExtraNM < 1 && !stretched {
+		a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+		a.ExtraNM = 0
+	}
 	// The dog-leg on the longest leg ahead (from here, or between STAR
-	// points), off to the side away from the runway's centreline.
-	if a.ExtraNM > 0 && !stretched && !c.trombone {
+	// points), off to the side away from the runway's centreline: only where
+	// the STAR has no downwind to extend.
+	if a.ExtraNM > 0 && !stretched {
 		longest, at := 0.0, -1
 		for i := 1; i < len(pts)-1; i++ { // not the leg into the align point
 			if l := calc.HaversineNM(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon); l > longest {
@@ -220,17 +231,18 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 
 // extendDownwind is out (the STAR ahead, up to the align point) with its
 // downwind extended by x NM: on along it past its last point, the base turn
-// that much further out and onto the centreline x NM beyond the align point
-// (on the glide path's height there). The downwind is the last point ahead
-// more than a mile beside the centreline reached flying away from the
-// runway (the base turn's arc after it, rounded before, is dropped). False
-// where the STAR does not end on a downwind.
+// that much further out and onto the centreline x NM beyond where the STAR
+// joined it (its own base turn may be well beyond the align point: LKPR
+// VLM6T turns base some 16 NM out), on the glide path's height there. The
+// downwind is the last point ahead more than a mile beside the centreline
+// reached flying away from the runway; the base turn after it is replaced.
+// False where the STAR does not end on a downwind.
 func extendDownwind(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, align, join types.SIMCONNECT_DATA_WAYPOINT, x float64) ([]types.SIMCONNECT_DATA_WAYPOINT, bool) {
 	ll := func(w types.SIMCONNECT_DATA_WAYPOINT) airport.LatLon { return airport.LatLon{Lat: w.Latitude, Lon: w.Longitude} }
 	a, j := ll(align), ll(join)
 	hOut := calc.BearingDegrees(j.Lat, j.Lon, a.Lat, a.Lon) // away from the runway
 	x = math.Min(x, MaxStretchNM/2)
-	for k := len(out) - 1; k >= 0 && k >= len(out)-6; k-- {
+	for k := len(out) - 1; k >= 0 && k >= len(out)-16; k-- { // (a rounded base turn has several points)
 		d, from := ll(out[k]), pos
 		if k > 0 {
 			from = ll(out[k-1])
@@ -240,13 +252,24 @@ func extendDownwind(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, al
 		if cross < 1852 || math.Abs(headingDiff(leg, hOut)) > 60 {
 			continue
 		}
+		// Where the STAR reaches the centreline after the downwind (else the
+		// align point): the new base turn joins x NM beyond it.
+		f, onto := len(out), align
+		for i := k + 1; i < len(out); i++ {
+			p := ll(out[i])
+			if math.Abs(calc.CrossTrackMeters(j.Lat, j.Lon, a.Lat, a.Lon, p.Lat, p.Lon)) < 0.3*1852 {
+				f, onto = i, out[i]
+				break
+			}
+		}
 		dLat, dLon := calc.DisplaceByHeading(d.Lat, d.Lon, hOut, x*1852)
-		eLat, eLon := calc.DisplaceByHeading(a.Lat, a.Lon, hOut, x*1852)
-		d2, e := out[k], align
+		eLat, eLon := calc.DisplaceByHeading(onto.Latitude, onto.Longitude, hOut, x*1852)
+		d2, e := out[k], onto
 		d2.Latitude, d2.Longitude = dLat, dLon
 		e.Latitude, e.Longitude = eLat, eLon
-		e.Altitude = align.Altitude + x*ProcedureDescentFtPerNm
-		return append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out[:k+1]...), d2, e), true
+		e.Altitude = onto.Altitude + x*ProcedureDescentFtPerNm
+		ext := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out[:k+1]...), d2, e)
+		return append(ext, out[f:]...), true
 	}
 	return nil, false
 }
