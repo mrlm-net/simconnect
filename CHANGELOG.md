@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `pkg/traffic` the pilot side (#417):
+  - requests and reports (`RequestPushback`, `RequestTaxi`, `ReadyForDeparture`, `Vacated`), the first call on a frequency (`CheckIn`), `SayAgain`;
+  - `Readback` of every clearance, the ICAO way, and `RadioOptions.ReadBack` has our pilots read back on the frequency;
+  - `CheckReadback` corrects a wrong readback ("negative, …");
+  - `Radio.Transmit` returns the transmission as sent;
+  - on the airport map, the log reads as a conversation, and `POST /api/radio/pilot` lets the user be the pilot (request taxi, readback check, say again).
 - Frequencies and handoffs (#416):
   - `pkg/airport`: the loader reads the airport's frequencies (`Layout.Frequencies`, `FrequencyFor` with ATC's fallbacks, `FormatMHz`).
   - `pkg/traffic`: `DeparturePosition` and `ArrivalPosition` give who works an aircraft in each state; `Handoff` gives "contact Praha Tower 118.105" (`StationName`, `PositionName`).

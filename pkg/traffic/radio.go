@@ -442,6 +442,9 @@ type RadioOptions struct {
 	// FrequencyOf is the frequency of position pos at airport, as set
 	// ("118.105"; "" none): filled into transmissions without one (#416).
 	FrequencyOf func(airport string, pos Position) string
+	// ReadBack: our pilots read back every clearance to them (#417), on
+	// the same frequency, after it.
+	ReadBack bool
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -467,8 +470,9 @@ func NewRadio(opts RadioOptions) *Radio {
 // Transmit sends t: stamped (when not already) at airport, on its
 // position's frequency, kept, and handed on. One transmission at a time on
 // a frequency: while one is said, the next is stamped for when it ends
-// (SpeakingTime and a second's pause), so a voice plays them in turn.
-func (r *Radio) Transmit(airport string, t Transmission) {
+// (SpeakingTime and a second's pause), so a voice plays them in turn. It
+// returns t as sent: stamped, on its frequency.
+func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	if t.At.IsZero() {
 		t.At = r.opts.Now()
 	}
@@ -498,6 +502,13 @@ func (r *Radio) Transmit(airport string, t Transmission) {
 	if on != nil {
 		on(t)
 	}
+	if r.opts.ReadBack && !t.Pilot && t.Callsign != "" {
+		if rb, ok := Readback(t); ok {
+			rb.Airport, rb.Frequency = t.Airport, t.Frequency
+			r.Transmit(t.Airport, rb)
+		}
+	}
+	return t
 }
 
 // Recent is up to n of the latest transmissions at airport ("" all),

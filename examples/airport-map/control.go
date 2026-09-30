@@ -199,10 +199,14 @@ func newControlCenter(client engine.Client) *controlCenter {
 		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:    &game{},
 	}
-	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now,
+	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		OnTransmission: func(t traffic.Transmission) {
-			tlog.printf("%-6s ATC: %s", t.Callsign, t.Text)
+			who := "ATC"
+			if t.Pilot {
+				who = "pilot"
+			}
+			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
 		}})
 	return cc
 }
@@ -817,6 +821,71 @@ func registerControl(mux *http.ServeMux, st *state) {
 		writeJSON(w, out)
 	})
 
+	// POST /api/radio/pilot {icao, callsign, intent, tags} — a call from the
+	// user as pilot (#417), e.g. a voice recogniser's result: "request_taxi"
+	// is answered with a taxi clearance from where the user aircraft is,
+	// "readback" is checked against the last clearance to the call sign (a
+	// wrong one is corrected), anything else gets "say again". Returns what
+	// ATC said.
+	mux.HandleFunc("POST /api/radio/pilot", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		cc, own := st.control, st.aircraft
+		st.mu.Unlock()
+		if cc == nil {
+			http.Error(w, "not connected", http.StatusServiceUnavailable)
+			return
+		}
+		var call struct {
+			ICAO     string            `json:"icao"`
+			Callsign string            `json:"callsign"`
+			Intent   string            `json:"intent"`
+			Tags     map[string]string `json:"tags"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&call); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		icao := strings.ToUpper(call.ICAO)
+		said := []traffic.Transmission{}
+		say := func(t traffic.Transmission) {
+			said = append(said, cc.radio.Transmit(icao, t))
+		}
+		switch call.Intent {
+		case string(traffic.IntentRequestTaxi):
+			g, err := cc.graph(icao)
+			if err != nil || own == nil {
+				say(traffic.SayAgain(traffic.PosGround, call.Callsign))
+				break
+			}
+			from, ok := g.NearestNode(airport.LatLon{Lat: own.Latitude, Lon: own.Longitude}, 200)
+			rwy := cc.activeRunway(g, false)
+			route, err := g.RouteToRunwayFrom(from, -1, rwy, "", airport.RouteOptions{})
+			if !ok || err != nil {
+				say(traffic.SayAgain(traffic.PosGround, call.Callsign))
+				break
+			}
+			say(traffic.ClearedTaxiToRunway(call.Callsign, rwy, route.Entry, route.SpokenTaxiways(-1)))
+		case string(traffic.IntentReadback):
+			var last *traffic.Transmission
+			for _, t := range cc.radio.Recent(icao, 100) {
+				if !t.Pilot && t.Callsign == call.Callsign && t.Intent != traffic.IntentCorrection {
+					t := t
+					last = &t
+				}
+			}
+			if last == nil {
+				say(traffic.SayAgain(traffic.PosTower, call.Callsign))
+				break
+			}
+			if c, ok := traffic.CheckReadback(*last, call.Tags); !ok {
+				say(c)
+			}
+		default:
+			say(traffic.SayAgain(traffic.PosTower, call.Callsign))
+		}
+		writeJSON(w, said)
+	})
+
 	// GET /api/control/log — the recent traffic log, newest last.
 	mux.HandleFunc("GET /api/control/log", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, tlog.recent(200))
@@ -1374,6 +1443,13 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			if said.HoldingShortOf == "" {
 				said.HoldingShortOf = prev.HoldingShortOf // the runway just crossed
 			}
+			// The pilot's request first (#417): push and start, taxi.
+			switch {
+			case action == "pushback":
+				it.say(traffic.RequestPushback(it.Tail, v.Stand, ""))
+			case action == "taxi" && it.dep != nil:
+				it.say(traffic.RequestTaxi(it.Tail))
+			}
 			it.say(it.phraseView(said, r, action, -1))
 		}
 	}
@@ -1537,6 +1613,26 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	from := it.atc
 	it.atc = pos
 	it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+	// The pilot's first call on the new frequency (#417).
+	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), ""))
+}
+
+// checkInReport is what the pilot reports on first calling pos.
+func (it *controlled) checkInReport(pos traffic.Position) string {
+	rwy := it.view.Runway
+	switch {
+	case it.dep != nil && pos == traffic.PosGround:
+		return "stand " + it.view.Stand
+	case it.dep != nil && pos == traffic.PosTower:
+		return "holding point runway " + rwy + ", ready for departure"
+	case it.dep != nil && pos == traffic.PosDeparture:
+		return "airborne, runway " + rwy
+	case it.arr != nil && pos == traffic.PosTower:
+		return "established runway " + rwy
+	case it.arr != nil && pos == traffic.PosGround:
+		return "runway " + rwy + " vacated"
+	}
+	return ""
 }
 
 // stationOf is position pos at icao as said, and its frequency ("" none).

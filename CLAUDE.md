@@ -192,7 +192,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── runway_control.go #  RunwayController: line-up, take-off, crossing clearances (#393)
 │       ├── separation.go    #   AirborneSeparation and minima (#395)
 │       ├── conflict.go      #   PredictConflicts, ResolveConflict, ResolvedRoute, TowerPair (#395)
-│       ├── radio.go         #   Transmission, phrasebook (Say, builders), Radio (#415)
+│       ├── radio.go         #   Transmission, phrasebook (Say, builders), positions, handoffs, Radio (#415, #416)
+│       ├── pilot.go         #   Pilot side: requests, check-ins, Readback, CheckReadback (#417)
 │       ├── clock.go         #   SimClock: traffic time at the simulation rate, stopped while paused (#413)
 │       ├── corners.go       #   Rounded turns: standard bank by airframe, fly-by arcs for MSFS AI chains
 │       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
