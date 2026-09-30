@@ -357,6 +357,9 @@ const (
 	// half-spans for the paths to conflict.
 	GiveWayLookMeters   = 250.0
 	GiveWayMarginMeters = 10.0
+	// junctionBranchMeters is how much of a junction's other branches an
+	// aircraft facing oncoming traffic keeps clear (#444).
+	junctionBranchMeters = 60.0
 	// PushClearMarginMeters: a pushback waits (or stops) while another
 	// aircraft's fuselage is within the half-span plus this of the corridor
 	// the push sweeps, or while its taxi path comes within both half-spans

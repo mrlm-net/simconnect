@@ -208,9 +208,9 @@ func (p *GroundPicture) Forget(id uint32) {
 
 // blocking is how far along path (between from and from+look) the nearest
 // point of another aircraft's body lies within half meters of it: the
-// aircraft to stop behind. +Inf when the way is free. Reports older than
-// TrafficStaleAfter are ignored.
-func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half float64, now time.Time) float64 {
+// aircraft to stop behind, returned too. +Inf when the way is free. Reports
+// older than TrafficStaleAfter are ignored.
+func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half float64, now time.Time) (float64, groundEntry) {
 	p.mu.Lock()
 	others := make([]groundEntry, 0, len(p.aircraft))
 	for oid, e := range p.aircraft {
@@ -220,7 +220,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	}
 	p.mu.Unlock()
 	if len(others) == 0 {
-		return math.Inf(1)
+		return math.Inf(1), groundEntry{}
 	}
 	// The path between from and from+look, as sample points with distances.
 	pts, cum := path.pts, path.cum
@@ -228,7 +228,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	for lo < len(cum)-1 && cum[lo+1] < from {
 		lo++
 	}
-	best := math.Inf(1)
+	best, who := math.Inf(1), groundEntry{}
 	for _, o := range others {
 		// Points along the other aircraft's axis, nose to tail.
 		for d := -o.tail; d <= o.nose+0.01; d += trafficBodyStep {
@@ -242,10 +242,10 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 					continue
 				}
 				if localDist(q, offsetHeading(pts[i], h, along)) <= half {
-					best = s
+					best, who = s, o
 				}
 			}
 		}
 	}
-	return best
+	return best, who
 }

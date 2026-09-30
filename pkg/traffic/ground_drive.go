@@ -310,11 +310,20 @@ func (d *groundDrive) followAhead(now time.Time) {
 	}
 	s0 := d.mover.Pose().Distance
 	path := d.mover.Path()
-	body := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
+	body, who := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
 	stop := math.Inf(1)
+	noseTip := (pushNoseFactor - 1) * d.prof.WheelbaseMeters // ahead of the nose gear
 	if !math.IsInf(body, 1) {
-		// The nose tip is (pushNoseFactor-1) wheelbases ahead of the nose gear.
-		stop = body - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters
+		stop = body - noseTip - TrafficGapMeters
+		// Facing an aircraft coming the other way, keep the last junction
+		// before it clear: it turns off there (#444).
+		if math.Abs(headingDiff(who.hdg, localBearing(path.PointAt(math.Max(s0, body-5)), path.PointAt(body)))) >= oncomingDeg {
+			oh := who.half
+			if oh <= 0 {
+				oh = DefaultHalfSpanMeters
+			}
+			stop = math.Min(stop, d.junctionStop(path, s0, math.Min(stop, body), noseTip, math.Max(half, oh)+GiveWayMarginMeters))
+		}
 	}
 	// Give way where routes cross or merge: stop short of the conflict
 	// (its first point is already a half-span away from the other path).
@@ -335,6 +344,90 @@ func (d *groundDrive) followAhead(now time.Time) {
 		ahead = append(ahead, path.PointAt(s))
 	}
 	d.picture.ReportPath(d.object, ahead, half)
+}
+
+// oncomingDeg is how far from the path's heading an aircraft ahead faces to
+// count as coming the other way.
+const oncomingDeg = 120.0
+
+// junctionStop is where to stop, at most at stop, facing an oncoming
+// aircraft further along path (#444): with the body, nose tip noseTip
+// ahead of the reference, at least clear from every other branch of the
+// last junction on the path before stop, so the oncoming aircraft can turn
+// off there (LKPR, live: CSA273 stopped at the gap behind WZZ1529 with its
+// nose over the Z junction WZZ1529 was to turn through; neither moved
+// again). stop when there is no junction; s0, where it is, when no place
+// behind is clear.
+func (d *groundDrive) junctionStop(path *GroundPath, s0, stop, noseTip, clear float64) float64 {
+	g := d.graph
+	if g == nil || stop <= s0 {
+		return stop
+	}
+	// The last junction on the path between here and the stop (well, within
+	// the nose ahead of it: the stop is where the reference halts).
+	const step = 2.0
+	junction, sJ := airport.NodeID(-1), 0.0
+	from, to := path.PointAt(s0), path.PointAt(stop+noseTip)
+	reach := localDist(from, to) + stop + noseTip - s0 // a bound on how far the path strays
+	for id, n := range g.Nodes {
+		if n.Kind == airport.NodeParking || len(g.Adj[id]) < 3 || localDist(from, n.Position) > reach {
+			continue
+		}
+		for s := s0; s <= stop+noseTip; s += step {
+			if localDist(path.PointAt(s), n.Position) <= 3 {
+				if s > sJ || junction < 0 {
+					junction, sJ = airport.NodeID(id), s
+				}
+				break
+			}
+		}
+	}
+	if junction < 0 {
+		return stop
+	}
+	// Its other branches: those leaving it off the path (not back along it,
+	// not on along it), walked a stretch as an aircraft turning there would.
+	jp := g.Nodes[junction].Position
+	back := localBearing(jp, path.PointAt(math.Max(0, sJ-10)))
+	on := localBearing(jp, path.PointAt(math.Min(path.Length(), sJ+10)))
+	var branch []airport.LatLon
+	for _, e := range g.Adj[junction] {
+		b := localBearing(jp, g.Nodes[e.To].Position)
+		if !pushEdge(g, e) || math.Abs(headingDiff(b, back)) < 20 || math.Abs(headingDiff(b, on)) < 20 {
+			continue
+		}
+		prev := jp
+		for _, q := range walkTaxiway(g, junction, e.To, junctionBranchMeters) {
+			for f := step; f < localDist(prev, q); f += step {
+				branch = append(branch, offsetHeading(prev, localBearing(prev, q), f))
+			}
+			branch = append(branch, q)
+			prev = q
+		}
+	}
+	if len(branch) == 0 {
+		return stop
+	}
+	for s := math.Min(stop, sJ); s > s0; s -= step {
+		free := true
+		for x := s; free; x += step {
+			x = math.Min(x, s+noseTip) // up to the nose tip itself
+			p := path.PointAt(x)
+			for _, q := range branch {
+				if localDist(p, q) < clear {
+					free = false
+					break
+				}
+			}
+			if x >= s+noseTip {
+				break
+			}
+		}
+		if free {
+			return s
+		}
+	}
+	return s0
 }
 
 // reportGround puts this aircraft in the ground picture.
