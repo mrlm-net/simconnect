@@ -156,8 +156,13 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 // onDepartureFrame runs the injected departure one sim frame.
 func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	now := c.now()
-	// While taxiing the departure follows the traffic ahead (#334).
+	// While taxiing the departure follows the traffic ahead (#334); pushed
+	// and waiting for the taxi clearance, it shows where it will go (#452).
 	c.followTraffic = c.state == TaxiTaxiing
+	c.planned = nil
+	if c.state == TaxiAwaitingTaxi && c.picture != nil && c.mover != nil {
+		c.planned = c.plannedTaxi(c.mover.Pose().Position)
+	}
 	if c.state < TaxiDeparting {
 		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
 		if c.mover != nil { // injected: where it is placed
@@ -746,6 +751,34 @@ func (c *TaxiController) pushBlocks(k airport.NodeID, e airport.Edge) int {
 		}
 	}
 	return n
+}
+
+// plannedTaxi is the way the departure will taxi from pos: along its route
+// from the route point nearest to it, sampled every trafficBodyStep up to
+// GiveWayLookMeters.
+func (c *TaxiController) plannedTaxi(pos airport.LatLon) []airport.LatLon {
+	if c.route == nil || len(c.route.Points) < 2 {
+		return nil
+	}
+	pts := c.route.Points
+	near := 1
+	for i := 1; i < len(pts); i++ {
+		if localDist(pts[i], pos) < localDist(pts[near], pos) {
+			near = i
+		}
+	}
+	line := append([]airport.LatLon{pos}, pts[near:]...)
+	var out []airport.LatLon
+	walked := 0.0
+	for i := 1; i < len(line) && walked < GiveWayLookMeters; i++ {
+		seg := localDist(line[i-1], line[i])
+		h := localBearing(line[i-1], line[i])
+		for f := trafficBodyStep; f <= seg && walked+f <= GiveWayLookMeters; f += trafficBodyStep {
+			out = append(out, offsetHeading(line[i-1], h, f))
+		}
+		walked += seg
+	}
+	return out
 }
 
 // alleyBlocks counts the junctions of other taxiways a push up the route to
