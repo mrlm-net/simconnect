@@ -478,7 +478,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true, HoldForRunway: !r.Gates, // clearances on request (#462) Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
 			return nil, err
 		}
