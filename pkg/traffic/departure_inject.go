@@ -302,7 +302,12 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if pose.Arrived {
 			c.setPushHeld(false) // the push is done: nothing to hold for any more
 			if c.picture != nil {
+				// Its way on at once, not a frame later: a neighbour checking
+				// now must not see an empty picture and push into it (#466).
 				c.picture.ReportPush(c.objectID, nil, 0)
+				if planned := c.plannedTaxi(pose.Position); len(planned) > 0 {
+					c.picture.ReportPlanned(c.objectID, planned, c.halfSpan())
+				}
 			}
 			c.openGate(TaxiAfterPushDelay)
 			c.setState(TaxiAwaitingTaxi, nil)
