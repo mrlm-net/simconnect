@@ -20,29 +20,32 @@ func TestTransmissionPhrases(t *testing.T) {
 		param    string
 		paramVal string
 	}{
-		{ClearedDeparture("CSA1", "VOZ5M", "24"), PosDelivery, IntentDepartureClearance, "CSA1, cleared VOZ5M departure, runway 24", ParamSID, "VOZ5M"},
-		{ClearedArrival("CSA1", "GOLO4S", "ILS", "24"), PosApproach, IntentArrivalClearance, "CSA1, cleared GOLO4S arrival, expect ILS approach runway 24", ParamSTAR, "GOLO4S"},
-		{ClearedPushback("CSA1"), PosGround, IntentPushback, "CSA1, push back and start-up approved", "", ""},
+		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared to Frankfurt, BALTU 7D departure, runway 24, climb via SID to 5000 feet, squawk 4521", ParamSquawk, "4521"}, // Doc 4444 6.3.2.3, CAP 413 2.68
+		{ClearedDeparture("CSA1", DepartureClearance{SID: "VOZ 5M", Runway: "24"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared VOZ 5M departure, runway 24", ParamSID, "VOZ 5M"},
+		{ClearedArrival("CSA1", "GOLOP 4S", "ILS", "24", "flight level 100"), PosApproach, IntentArrivalClearance, "CSA1, cleared GOLOP 4S arrival, runway 24, descend to flight level 100, expect ILS approach", ParamSTAR, "GOLOP 4S"}, // Doc 4444 6.5.2.3, 12.3.3.2 a
+		{ClearedStartUp("CSA1"), PosGround, IntentStartUp, "CSA1, start up approved", "", ""},   // Doc 4444 12.3.4.3 c
+		{ClearedPushback("CSA1"), PosGround, IntentPushback, "CSA1, pushback approved", "", ""}, // 12.3.4.4 b
 		{ClearedTaxiToRunway("CSA1", "24", "", []string{"B2", "H", "A"}), PosGround, IntentTaxi, "CSA1, taxi to holding point runway 24 via B2, H, A", ParamTaxiways, "B2, H, A"},
 		{ClearedTaxiToRunway("CSA1", "24", "B", nil), PosGround, IntentTaxi, "CSA1, taxi to holding point B runway 24", ParamEntry, "B"},
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), PosGround, IntentTaxi, "CSA1, taxi to stand C22 via B, D", ParamStand, "C22"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), PosGround, IntentTaxiLimit, "CSA1, taxi via H, hold short of A", ParamLimit, "A"},
 		{ClearedTaxiUpTo("CSA1", nil, ""), PosGround, IntentTaxiLimit, "CSA1, taxi, hold position at the marked point", "", ""},
-		{ClearedCross("CSA1", "12/30"), PosGround, IntentCross, "CSA1, cross runway 12/30", ParamRunway, "12/30"},
+		{ClearedCross("CSA1", "12"), PosGround, IntentCross, "CSA1, cross runway 12", ParamRunway, "12"}, // 12.3.4.9: one designator
 		{ClearedLineUp("CSA1", "06"), PosTower, IntentLineUp, "CSA1, runway 06, line up and wait", ParamRunway, "06"},
-		{ClearedTakeoff("CSA1", "06", false), PosTower, IntentTakeoff, "CSA1, runway 06, cleared for take-off", "", ""},
-		{ClearedTakeoff("CSA1", "06", true), PosTower, IntentTakeoff, "CSA1, runway 06, line up, cleared for take-off", ParamLineUp, "true"},
+		{ClearedTakeoff("CSA1", "06", ""), PosTower, IntentTakeoff, "CSA1, runway 06, cleared for take-off", "", ""},                                                                                  // 12.3.4.11 a
+		{ClearedTakeoff("CSA1", "06", "wind 100 degrees 6 knots"), PosTower, IntentTakeoff, "CSA1, runway 06, cleared for take-off, wind 100 degrees 6 knots", ParamWind, "wind 100 degrees 6 knots"}, // CAP 413 4.27: wind after
+		{ClearedToLand("CSA1", "06", "wind 100 degrees 6 knots"), PosTower, IntentLanding, "CSA1, runway 06, cleared to land, wind 100 degrees 6 knots", ParamRunway, "06"},                           // 12.3.4.16 a, CAP 413 4.51
 		{HoldPosition("CSA1"), PosGround, IntentHoldPosition, "CSA1, hold position", "", ""},
-		{Stop("CSA1"), PosTower, IntentStop, "CSA1, stop immediately, I say again, stop immediately", "", ""},
-		{CancelTakeoff("CSA1"), PosTower, IntentCancelTakeoff, "CSA1, hold position, cancel take-off clearance, I say again, cancel take-off clearance", "", ""},
+		{Stop("CSA1"), PosTower, IntentStop, "CSA1, stop immediately, CSA1, stop immediately", "", ""},                                       // 12.3.4.11 e
+		{CancelTakeoff("CSA1"), PosTower, IntentCancelTakeoff, "CSA1, hold position, cancel take-off, I say again, cancel take-off", "", ""}, // 12.3.4.11 c
 		{GoAround("CSA1", ""), PosTower, IntentGoAround, "CSA1, go around, I say again, go around", "", ""},
-		{GoAround("CSA1", "GAT1 on the runway"), PosTower, IntentGoAround, "CSA1, go around, I say again, go around — GAT1 on the runway", ParamReason, "GAT1 on the runway"},
-		{Sequenced("CSA1", 2, 83*time.Second, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, delay 1m23s: 210 kt, +4.9 NM", ParamNumber, "2"},
-		{Sequenced("CSA1", 1, 0, Absorption{SpeedKts: 233}), PosApproach, IntentSequence, "CSA1, number 1, lose a minute: 233 kt", "", ""},
-		{DirectToFinal("CSA1", 3), PosApproach, IntentDirect, "CSA1, proceed direct to the final, number 3", ParamNumber, "3"},
-		{HoldAt("CSA1", "PR711", EntryTeardrop, 6000, efc), PosApproach, IntentHold, "CSA1, hold at PR711, teardrop entry, maintain 6000 ft, expect further clearance 10:42", ParamFix, "PR711"},
-		{LeaveHoldAt("CSA1", "PR711", 2), PosApproach, IntentLeaveHold, "CSA1, leave the hold at PR711, number 2, continue the arrival", "", ""},
-		{HoldDescend("CSA1", 5000), PosApproach, IntentHoldLevel, "CSA1, descend 5000 ft, hold as published", ParamAltitude, "5000"},
+		{GoAround("CSA1", "traffic on the runway"), PosTower, IntentGoAround, "CSA1, go around, I say again, go around, traffic on the runway", ParamReason, "traffic on the runway"},
+		{Sequenced("CSA1", 2, 3*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots, expect 3 minutes delay", ParamNumber, "2"}, // CAP 413 6.23, 6.24
+		{Sequenced("CSA1", 1, 0, Absorption{SpeedKts: 233}), PosApproach, IntentSequence, "CSA1, number 1, for spacing reduce speed to 233 knots", ParamSpeed, "233"},
+		{DirectToFinal("CSA1", 3), PosApproach, IntentDirect, "CSA1, proceed direct to final, number 3", ParamNumber, "3"},
+		{HoldAt("CSA1", "PR711", EntryTeardrop, 6000, efc), PosApproach, IntentHold, "CSA1, hold at PR711 as published, maintain 6000 feet, expect further clearance at 1042", ParamFix, "PR711"}, // Doc 4444 12.3.3.3 b, CAP 413 6.11
+		{LeaveHoldAt("CSA1", "PR711", 2), PosApproach, IntentLeaveHold, "CSA1, leave PR711, number 2, continue the arrival", "", ""},
+		{HoldDescend("CSA1", 5000), PosApproach, IntentHoldLevel, "CSA1, descend to 5000 feet", ParamAltitude, "5000"}, // 12.3.1.2 a
 	}
 	for _, c := range cases {
 		if c.tx.Position != c.pos || c.tx.Intent != c.intent || c.tx.Text != c.text {
@@ -62,11 +65,11 @@ func TestResolvedPhrases(t *testing.T) {
 		alt, hdg, kt float64
 		want         string
 	}{
-		{Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 21000, Why: why}, 20000, 90, 450, "CSA1, climb flight level 210, " + why},
-		{Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 8000, Why: why}, 9000, 90, 250, "CSA1, descend altitude 8000 feet, " + why},
-		{Resolution{Callsign: "CSA1", Kind: ResolveSpeed, Kts: 384, Why: why}, 30000, 90, 480, "CSA1, reduce speed 384 knots, " + why},
-		{Resolution{Callsign: "CSA1", Kind: ResolveHeading, HeadingDeg: 110, Why: why}, 20000, 90, 450, "CSA1, turn right heading 110, " + why},
-		{Resolution{Callsign: "CSA1", Kind: ResolveHeading, HeadingDeg: 70, Why: why}, 20000, 90, 450, "CSA1, turn left heading 070, " + why},
+		{Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 21000, Why: why}, 20000, 90, 450, "CSA1, climb to flight level 210, due traffic"},
+		{Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 8000, Why: why}, 9000, 90, 250, "CSA1, descend to 8000 feet, due traffic"},
+		{Resolution{Callsign: "CSA1", Kind: ResolveSpeed, Kts: 384, Why: why}, 30000, 90, 480, "CSA1, reduce speed to 384 knots, due traffic"},
+		{Resolution{Callsign: "CSA1", Kind: ResolveHeading, HeadingDeg: 110, Why: why}, 20000, 90, 450, "CSA1, turn right heading 110, due traffic"},
+		{Resolution{Callsign: "CSA1", Kind: ResolveHeading, HeadingDeg: 70, Why: why}, 20000, 90, 450, "CSA1, turn left heading 070, due traffic"},
 	} {
 		if got := Resolved(PosCenter, c.r, c.alt, c.hdg, c.kt); got.Text != c.want || got.Position != PosCenter {
 			t.Errorf("%q, want %q", got.Text, c.want)
@@ -83,7 +86,7 @@ func TestRadio(t *testing.T) {
 	r.Transmit("LKPR", ClearedPushback("CSA1"))
 	r.Transmit("LKPR", ClearedLineUp("CSA2", "24"))
 	r.Transmit("LKTB", ClearedPushback("TVS3"))
-	r.Transmit("LKPR", ClearedTakeoff("CSA2", "24", false))
+	r.Transmit("LKPR", ClearedTakeoff("CSA2", "24", ""))
 	if len(heard) != 4 || heard[0].At != at || heard[0].Airport != "LKPR" {
 		t.Fatalf("heard %+v", heard)
 	}
@@ -155,7 +158,7 @@ func TestRadioFrequencies(t *testing.T) {
 		FrequencyOf:    func(_ string, p Position) string { return freqs[p] },
 		OnTransmission: func(t Transmission) { heard = append(heard, t) }})
 	r.Transmit("LKPR", ClearedLineUp("CSA1", "24"))
-	r.Transmit("LKPR", ClearedTakeoff("CSA2", "24", false))
+	r.Transmit("LKPR", ClearedTakeoff("CSA2", "24", ""))
 	r.Transmit("LKPR", ClearedPushback("CSA3"))
 	if heard[0].Frequency != "118.105" || heard[2].Frequency != "121.905" {
 		t.Fatalf("frequencies %s %s %s", heard[0].Frequency, heard[1].Frequency, heard[2].Frequency)
@@ -165,5 +168,26 @@ func TestRadioFrequencies(t *testing.T) {
 	}
 	if !heard[2].At.Equal(at) {
 		t.Errorf("ground, not busy: at %v", heard[2].At)
+	}
+}
+
+// Wind, procedures and levels as said (docs/traffic-phraseology.md).
+func TestSaidValues(t *testing.T) {
+	for got, want := range map[string]string{
+		WindSaid(104, 6, 0):              "wind 100 degrees 6 knots", // Doc 4444 12.3.1.8 a
+		WindSaid(268, 18, 28):            "wind 270 degrees 18 knots gusting 28 knots",
+		WindSaid(3, 5, 0):                "wind 360 degrees 5 knots",
+		WindSaid(90, 0.4, 0):             "wind calm",
+		SaidProcedure("BALT7D", "BALTU"): "BALTU 7D", // CAP 413 2.68: "Wicken 3 Delta departure"
+		SaidProcedure("VLM6T", ""):       "VLM 6T",
+		SaidProcedure("GOLO4S", "LOMKI"): "GOLO 4S",
+		LevelSaidAbove(5000, 5000):       "5000 feet", // Doc 4444 12.3.1.1 c
+		LevelSaidAbove(7000, 5000):       "flight level 070",
+		LevelSaid(21000):                 "flight level 210",
+		LevelSaid(9000):                  "9000 feet",
+	} {
+		if got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
 	}
 }

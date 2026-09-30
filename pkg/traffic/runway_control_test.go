@@ -226,3 +226,25 @@ func TestSequencerRejoin(t *testing.T) {
 		t.Fatalf("after the go-around: %+v", seq)
 	}
 }
+
+// The next arrival within 6 NM is cleared to land once nothing is in the
+// way; one behind it, or one with a departure lined up or rolling, is not
+// (Doc 4444 12.3.4.16; no reduced runway separation).
+func TestRunwayControllerLandingClearance(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	c := r.Decide(now, []RunwayUser{final("DLH2", 5), final("QTR3", 9)})
+	if len(c.Land) != 1 || c.Land[0] != "DLH2" {
+		t.Errorf("free runway: land %v, want DLH2 only", c.Land)
+	}
+	if c := r.Decide(now, []RunwayUser{final("DLH2", 8)}); len(c.Land) != 0 {
+		t.Errorf("8 NM out: land %v", c.Land)
+	}
+	if c := r.Decide(now, []RunwayUser{final("DLH2", 5), dep("CSA1", "A320", RunwayLinedUp)}); slices.Contains(c.Land, "DLH2") {
+		t.Error("cleared to land with a departure lined up")
+	}
+	rolling := dep("CSA1", "A320", RunwayRolling)
+	if c := r.Decide(now, []RunwayUser{final("DLH2", 5), rolling}); slices.Contains(c.Land, "DLH2") {
+		t.Error("cleared to land with a departure still on its roll")
+	}
+}

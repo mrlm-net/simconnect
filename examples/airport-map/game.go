@@ -34,8 +34,8 @@ const (
 	gameWaitPenalty     = 1
 	gameSeparation      = 50 // wingtip clearance lost on the ground (safe zones overlap)
 	gameIncursion       = 100
-	gameSpacing         = 25   // closer than the sequence's spacing on final (#396)
-	gameFinalNM         = 10.0 // … within this of the threshold
+	gameSpacing         = 25          // closer than the sequence's spacing on final (#396)
+	gameFinalNM         = 10.0        // … within this of the threshold
 	gameConflictRepeat  = time.Minute // the same conflict counts again after this
 	gameSafeMarginM     = 3.0
 	gameMaxActive       = 8

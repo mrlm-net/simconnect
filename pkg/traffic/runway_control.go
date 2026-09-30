@@ -55,6 +55,9 @@ type RunwayClearances struct {
 	// GoAround: arrivals on short final with the runway not free (the
 	// reason is in Waiting).
 	GoAround []string `json:"goAround,omitempty"`
+	// Land: the next arrival, within ClearToLandNM with nothing in the way
+	// on the runway: cleared to land (Doc 4444 12.3.4.16).
+	Land []string `json:"land,omitempty"`
 	// Why each departure or crossing still waits.
 	Waiting map[string]string `json:"waiting,omitempty"`
 }
@@ -75,6 +78,9 @@ type RunwayControllerOptions struct {
 	// runway not free goes around (default 30 s, about 1.2 NM at 140 kt).
 	// A departure rolling is not in the way: it is airborne before then.
 	GoAroundAt time.Duration
+	// ClearToLandNM: the next arrival is cleared to land within this of
+	// the threshold, once nothing is in the way (default 6 NM).
+	ClearToLandNM float64
 }
 
 // RunwayController clears the users of one runway.
@@ -101,6 +107,9 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	if opts.GoAroundAt == 0 {
 		opts.GoAroundAt = 30 * time.Second
 	}
+	if opts.ClearToLandNM == 0 {
+		opts.ClearToLandNM = 6
+	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
 
@@ -121,6 +130,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// the next arrival lands, who waits at the holding points.
 	occupied, linedUp := "", ""
 	nextArr, nextArrName := math.Inf(1), ""
+	var nextArrUser RunwayUser
 	var holding []RunwayUser
 	seen := map[string]bool{}
 	for _, u := range users {
@@ -139,7 +149,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			}
 		case RunwayFinal:
 			if t := u.DistanceNM / math.Max(u.GroundKts, 100) * 3600; t < nextArr {
-				nextArr, nextArrName = t, u.Callsign
+				nextArr, nextArrName, nextArrUser = t, u.Callsign, u
 			}
 		case RunwayHoldingShort:
 			if !u.Other {
@@ -202,6 +212,12 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	if blocker != "" && nextArrName != "" && nextArrName != blocker && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
 		out.GoAround = append(out.GoAround, nextArrName)
 		out.Waiting[nextArrName] = blocker + " on the runway"
+	}
+	// The next arrival, near enough, with the runway free: cleared to land.
+	// Free means nobody on it, a departure on its roll included (no
+	// reduced runway separation): it is cleared once that one is airborne.
+	if nextArrName != "" && !nextArrUser.Other && occupied == "" && nextArrUser.DistanceNM <= r.opts.ClearToLandNM {
+		out.Land = append(out.Land, nextArrName)
 	}
 
 	// Ours lined up: take-off when it may.

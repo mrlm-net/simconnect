@@ -8,24 +8,30 @@ import (
 	"time"
 )
 
-// Each clearance is read back the ICAO way: what matters, then the call
-// sign; on the controller's frequency.
+// Each clearance is read back as docs/traffic-phraseology.md quotes it
+// (Doc 4444 4.5.7.5, CAP 413): its items, then the call sign; on the
+// controller's frequency.
 func TestReadbacks(t *testing.T) {
 	for _, c := range []struct {
 		clr  Transmission
 		want string
 	}{
-		{ClearedDeparture("CSA1", "VOZ5M", "24"), "Cleared VOZ5M departure, runway 24, CSA1"},
-		{ClearedPushback("CSA1"), "Push and start approved, CSA1"},
-		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Holding point B runway 24 via H, A, CSA1"},
+		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), "Cleared to Frankfurt, BALTU 7D departure, runway 24, climb via SID to 5000 feet, squawk 4521, CSA1"}, // CAP 413 2.68
+		{ClearedStartUp("CSA1"), "Start up approved, CSA1"},
+		{ClearedPushback("CSA1"), "Pushback approved, CSA1"},
+		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Taxi to holding point B runway 24 via H, A, CSA1"}, // CAP 413 4.12
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), "Taxi to stand C22 via B, D, CSA1"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), "Holding short of A, CSA1"},
-		{ClearedCross("CSA1", "12/30"), "Crossing runway 12/30, CSA1"},
-		{ClearedLineUp("CSA1", "24"), "Lining up and waiting runway 24, CSA1"},
-		{ClearedTakeoff("CSA1", "24", true), "Cleared for take-off runway 24, CSA1"},
+		{ClearedCross("CSA1", "12"), "Cross runway 12, CSA1"},
+		{ClearedLineUp("CSA1", "24"), "Runway 24, line up and wait, CSA1"},
+		{ClearedTakeoff("CSA1", "24", "wind 100 degrees 6 knots"), "Runway 24, cleared for take-off, CSA1"}, // CAP 413 4.30
+		{ClearedToLand("CSA1", "06", "wind 100 degrees 6 knots"), "Runway 06, cleared to land, CSA1"},
+		{WhenVacatedContact("CSA1", PosTower, PosGround, "Ruzyne Ground", "121.91"), "When vacated Ruzyne Ground 121.91, CSA1"}, // CAP 413 4.68
+		{HoldPosition("CSA1"), "Holding, CSA1"},                                                                                 // Doc 4444 12.3.4.8 note
 		{GoAround("CSA1", "GAT1 on the runway"), "Going around, CSA1"},
 		{Handoff("CSA1", PosGround, PosTower, "Ruzyne Tower", "134.56"), "Ruzyne Tower 134.56, CSA1"},
-		{Resolved(PosCenter, Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 21000}, 20000, 90, 450), "Climb flight level 210, CSA1"},
+		{Resolved(PosCenter, Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 21000}, 20000, 90, 450), "Climb to flight level 210, CSA1"},
+		{Resolved(PosCenter, Resolution{Callsign: "CSA1", Kind: ResolveSpeed, Kts: 250}, 20000, 90, 300), "Reduce speed to 250 knots, CSA1"},
 	} {
 		rb, ok := Readback(c.clr)
 		if !ok || rb.Text != c.want || !rb.Pilot || rb.Position != c.clr.Position || rb.Params[ParamIntent] != string(c.clr.Intent) {
@@ -59,12 +65,13 @@ func TestPilotCalls(t *testing.T) {
 		tx   Transmission
 		want string
 	}{
-		{RequestPushback("Ruzyne Ground", "CSA1", "A4", "Bravo"), "Ruzyne Ground, CSA1, stand A4, information Bravo, request push and start-up"},
-		{RequestPushback("", "CSA1", "A4", ""), "CSA1, stand A4, request push and start-up"},
+		{RequestClearance("Ruzyne Delivery", "CSA1", "A4", "Bravo", "Frankfurt"), "Ruzyne Delivery, CSA1, stand A4, information Bravo, request clearance to Frankfurt"},
+		{RequestStartUp("Ruzyne Ground", "CSA1", "A4", "Bravo"), "Ruzyne Ground, CSA1, stand A4, information Bravo, request start up"}, // CAP 413 4.9
+		{RequestPushback("CSA1", "A4"), "CSA1, stand A4, request pushback"},                                                            // Doc 4444 12.3.4.4 a
 		{RequestTaxi("CSA1"), "CSA1, request taxi"},
 		{ReadyForDeparture("CSA1", "24"), "CSA1, holding point runway 24, ready for departure"},
 		{CheckIn(PosTower, "Ruzyne Tower", "CSA1", "established ILS runway 06", ""), "Ruzyne Tower, CSA1, established ILS runway 06"},
-		{Vacated("CSA1", "06"), "CSA1, runway 06 vacated"},
+		{Vacated("CSA1", "06"), "CSA1, runway vacated"}, // Doc 4444 12.3.4.7 z
 		{SayAgain(PosTower, "CSA1"), "CSA1, say again"},
 		{SayAgain(PosTower, ""), "Station calling, say again your call sign"},
 	} {
@@ -81,7 +88,7 @@ func TestRadioReadsBack(t *testing.T) {
 	r := NewRadio(RadioOptions{ReadBack: true, Now: func() time.Time { return at },
 		FrequencyOf:    func(string, Position) string { return "134.56" },
 		OnTransmission: func(t Transmission) { heard = append(heard, t) }})
-	r.Transmit("LKPR", ClearedTakeoff("CSA1", "24", false))
+	r.Transmit("LKPR", ClearedTakeoff("CSA1", "24", ""))
 	if len(heard) != 2 || !heard[1].Pilot || heard[1].Frequency != "134.56" || !heard[1].At.After(heard[0].At) {
 		t.Fatalf("%+v", heard)
 	}

@@ -42,7 +42,7 @@ func TestRadioSaysCallsign(t *testing.T) {
 	c := DefaultScheduleConfig()
 	var said []Transmission
 	r := NewRadio(RadioOptions{ReadBack: true, SaidCallsign: c.SaidCallsign, OnTransmission: func(tx Transmission) { said = append(said, tx) }})
-	r.Transmit("LKPR", ClearedTakeoff("DLH1675", "24", false))
+	r.Transmit("LKPR", ClearedTakeoff("DLH1675", "24", ""))
 	if len(said) != 2 {
 		t.Fatalf("%d transmissions, want the clearance and its readback", len(said))
 	}

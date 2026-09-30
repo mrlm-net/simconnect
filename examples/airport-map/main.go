@@ -109,11 +109,11 @@ type aircraftRaw struct {
 
 // Aircraft is the user aircraft position served at /api/aircraft.
 type Aircraft struct {
-	Latitude  float64   `json:"lat"`
-	Longitude float64   `json:"lon"`
-	Heading   float64   `json:"heading"`
-	GroundKts float64   `json:"groundKts"`
-	OnGround  bool      `json:"onGround"`
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
+	Heading   float64 `json:"heading"`
+	GroundKts float64 `json:"groundKts"`
+	OnGround  bool    `json:"onGround"`
 	// SimRate and Paused: the simulator's rate and pause (traffic follows
 	// them, #413).
 	SimRate float64   `json:"simRate"`
@@ -280,6 +280,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	cc.sequencesAt = seqs.at
 	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
+	cc.namedAirport = sched.cfg.AirportName
 	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{})
 	defer close(stop) // this connection only

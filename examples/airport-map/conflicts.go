@@ -33,9 +33,9 @@ type conflictWatch struct {
 	// slowed: arrivals told to lose time for a conflict; still in one when
 	// that has had time to work, they hold (#455).
 	slowed map[string]bool
-	seen map[string]bool      // conflicts logged, by pair
-	now  []traffic.Conflict
-	done []resolutionView // the latest last (at most 50)
+	seen   map[string]bool // conflicts logged, by pair
+	now    []traffic.Conflict
+	done   []resolutionView // the latest last (at most 50)
 }
 
 type resolutionView struct {

@@ -252,7 +252,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	for _, cs := range c.LineUp {
 		if takeoff[cs] {
-			give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), true), func(it *controlled) error {
+			give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error {
 				it.dep.ClearToLineUp()
 				return it.dep.ClearForTakeoff()
 			})
@@ -261,11 +261,16 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		give(cs, "lineup", traffic.ClearedLineUp(cs, end(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
 	}
 	for _, cs := range c.Takeoff {
-		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), false), func(it *controlled) error { return it.dep.ClearForTakeoff() })
+		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return it.dep.ClearForTakeoff() })
+	}
+	// The next arrival, the runway free: cleared to land (#462); on the
+	// landing roll it is told to call ground when vacated.
+	for _, cs := range c.Land {
+		give(cs, "land", traffic.ClearedToLand(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return nil })
 	}
 	for _, cs := range c.Cross {
 		// A crossing is cleared once per holding point: forget it once done.
-		give(cs, "cross "+rwy, traffic.ClearedCross(cs, rwy), func(it *controlled) error {
+		give(cs, "cross "+rwy, traffic.ClearedCross(cs, oneDesignator(rwy)), func(it *controlled) error {
 			if it.dep != nil {
 				it.dep.ClearToCross()
 			} else {
@@ -323,6 +328,7 @@ func waitKind(why string) string {
 func (t *towers) forgetGoAround(tail string) {
 	t.mu.Lock()
 	delete(t.given, tail+" goaround")
+	delete(t.given, tail+" land") // a new approach, a new landing clearance
 	t.mu.Unlock()
 }
 

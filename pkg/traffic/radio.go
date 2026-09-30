@@ -37,12 +37,14 @@ type Intent string
 const (
 	IntentDepartureClearance Intent = "departure_clearance" // cleared the SID, runway
 	IntentArrivalClearance   Intent = "arrival_clearance"   // cleared the STAR, expect the approach
-	IntentPushback           Intent = "pushback"            // push back and start-up approved
+	IntentStartUp            Intent = "start_up"            // start up approved
+	IntentPushback           Intent = "pushback"            // pushback approved
 	IntentTaxi               Intent = "taxi"                // taxi to the holding point or the stand
 	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
 	IntentCross              Intent = "cross"               // cross a runway
 	IntentLineUp             Intent = "line_up"             // line up and wait
-	IntentTakeoff            Intent = "takeoff"             // cleared for take-off (ParamLineUp: line up and go)
+	IntentTakeoff            Intent = "takeoff"             // cleared for take-off
+	IntentLanding            Intent = "landing"             // cleared to land
 	IntentHoldPosition       Intent = "hold_position"       // hold position (on the ground)
 	IntentStop               Intent = "stop"                // stop immediately (a take-off roll)
 	IntentCancelTakeoff      Intent = "cancel_takeoff"      // hold position, cancel take-off clearance
@@ -69,25 +71,28 @@ const (
 	ParamSID      = "sid"
 	ParamSTAR     = "star"
 	ParamApproach = "approach" // the approach expected ("ILS")
-	ParamLineUp   = "line_up"  // "true": line up and take off in one
 	ParamReason   = "reason"
 	ParamNumber   = "number" // in the landing sequence
 	ParamDelay    = "delay"
 	ParamLose     = "lose" // how the delay is lost: "210 kt, +3.2 NM"
 	ParamFix      = "fix"
-	ParamHoldIn   = "entry_type" // hold entry: direct, teardrop, parallel
-	ParamAltitude = "altitude"   // feet
-	ParamExpect   = "expect"     // expect further clearance, HH:MM
-	ParamSpeed    = "speed"      // knots
-	ParamLevel    = "level"      // "flight level 210" or "altitude 9000 feet"
-	ParamHeading  = "heading"    // degrees, three digits
-	ParamTurn     = "turn"       // left, right
-	ParamClimb    = "climb"      // climb, descend
-	ParamSlower   = "slower"     // "true": reduce, else increase
-	ParamTraffic  = "traffic"    // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
-	ParamPosition = "position"   // a handoff's next position
-	ParamStation  = "station"    // … as said: "Praha Tower"
-	ParamFreq     = "frequency"  // … its frequency: "118.105"
+	ParamHoldIn   = "entry_type"  // hold entry: direct, teardrop, parallel
+	ParamAltitude = "altitude"    // feet
+	ParamExpect   = "expect"      // expect further clearance, HH:MM
+	ParamSpeed    = "speed"       // knots
+	ParamLevel    = "level"       // "flight level 210" or "altitude 9000 feet"
+	ParamHeading  = "heading"     // degrees, three digits
+	ParamTurn     = "turn"        // left, right
+	ParamClimb    = "climb"       // climb, descend
+	ParamSlower   = "slower"      // "true": reduce, else increase
+	ParamTraffic  = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
+	ParamPosition = "position"    // a handoff's next position
+	ParamStation  = "station"     // … as said: "Praha Tower"
+	ParamFreq     = "frequency"   // … its frequency: "118.105"
+	ParamWhen     = "when"        // … a condition: "when vacated"
+	ParamDest     = "destination" // a clearance limit as said: "Frankfurt"
+	ParamSquawk   = "squawk"      // SSR code: "4521"
+	ParamWind     = "wind"        // as said: "wind 100 degrees 6 knots"
 )
 
 // Transmission is one message on the radio.
@@ -110,109 +115,234 @@ func Say(t Transmission) Transmission {
 	return t
 }
 
-// phrase is the text of a controller's transmission.
+// phrase is the text of a controller's transmission: ICAO phraseology as
+// docs/traffic-phraseology.md quotes it (Doc 4444 chapter 12, CAP 413 for
+// wording and order Doc 4444 leaves open).
 func phrase(cs string, in Intent, p map[string]string) string {
 	via := ""
 	if p[ParamTaxiways] != "" {
 		via = " via " + p[ParamTaxiways]
 	}
-	reason := ""
-	if p[ParamReason] != "" {
-		reason = " — " + p[ParamReason]
+	wind := ""
+	if p[ParamWind] != "" {
+		wind = ", " + p[ParamWind] // after the clearance (CAP 413 4.27, 4.51)
+	}
+	why := ""
+	if p[ParamTraffic] != "" {
+		why = ", due traffic" // Doc 4444 12.4.1.5: the reason, not the numbers
 	}
 	switch in {
 	case IntentDepartureClearance:
-		return fmt.Sprintf("%s, cleared %s departure, runway %s", cs, p[ParamSID], p[ParamRunway])
+		// Identification, limit, route (the SID), runway, level, SSR code
+		// (Doc 4444 6.3.2.3, 11.4.2.6.2.1; CAP 413 2.68).
+		return cs + ", " + departureClearance(p)
 	case IntentArrivalClearance:
-		return fmt.Sprintf("%s, cleared %s arrival, expect %s approach runway %s", cs, p[ParamSTAR], p[ParamApproach], p[ParamRunway])
+		// Identification, STAR, runway in use, cleared level (6.5.2.3);
+		// the approach to expect (CAP 413 6.9).
+		return cs + ", " + arrivalClearance(p)
+	case IntentStartUp:
+		return cs + ", start up approved" // Doc 4444 12.3.4.3 c
 	case IntentPushback:
-		return cs + ", push back and start-up approved"
+		return cs + ", pushback approved" // Doc 4444 12.3.4.4 b
 	case IntentTaxi:
 		if p[ParamStand] != "" {
-			return fmt.Sprintf("%s, taxi to stand %s%s", cs, p[ParamStand], via)
+			return fmt.Sprintf("%s, taxi to stand %s%s", cs, p[ParamStand], via) // CAP 413 4.68
 		}
-		entry := ""
-		if p[ParamEntry] != "" {
-			entry = " " + p[ParamEntry]
-		}
-		return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", cs, entry, p[ParamRunway], via)
+		return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", cs, entryOf(p), p[ParamRunway], via) // Doc 4444 12.3.4.7 e
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			return fmt.Sprintf("%s, taxi%s, hold position at the marked point", cs, via)
 		}
-		return fmt.Sprintf("%s, taxi%s, hold short of %s", cs, via, p[ParamLimit])
+		return fmt.Sprintf("%s, taxi%s, hold short of %s", cs, via, p[ParamLimit]) // 12.3.4.8
 	case IntentCross:
-		return fmt.Sprintf("%s, cross runway %s", cs, p[ParamRunway])
+		return fmt.Sprintf("%s, cross runway %s", cs, p[ParamRunway]) // 12.3.4.9
 	case IntentLineUp:
-		return fmt.Sprintf("%s, runway %s, line up and wait", cs, p[ParamRunway])
+		return fmt.Sprintf("%s, runway %s, line up and wait", cs, p[ParamRunway]) // 12.3.4.10
 	case IntentTakeoff:
-		if p[ParamLineUp] == "true" {
-			return fmt.Sprintf("%s, runway %s, line up, cleared for take-off", cs, p[ParamRunway])
-		}
-		return fmt.Sprintf("%s, runway %s, cleared for take-off", cs, p[ParamRunway])
+		// Its own transmission, never with the line-up (CAP 413 4.29).
+		return fmt.Sprintf("%s, runway %s, cleared for take-off%s", cs, p[ParamRunway], wind) // 12.3.4.11 a
+	case IntentLanding:
+		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
 	case IntentHoldPosition:
-		return cs + ", hold position"
+		return cs + ", hold position" // 12.3.4.8
 	case IntentStop:
-		return cs + ", stop immediately, I say again, stop immediately"
+		return fmt.Sprintf("%s, stop immediately, %s, stop immediately", cs, cs) // 12.3.4.11 e
 	case IntentCancelTakeoff:
-		return cs + ", hold position, cancel take-off clearance, I say again, cancel take-off clearance"
+		return cs + ", hold position, cancel take-off, I say again, cancel take-off" // 12.3.4.11 c
 	case IntentGoAround:
-		return cs + ", go around, I say again, go around" + reason
-	case IntentSequence:
-		if p[ParamDelay] == "" {
-			return fmt.Sprintf("%s, number %s, lose a minute: %s", cs, p[ParamNumber], p[ParamLose])
+		reason := ""
+		if p[ParamReason] != "" {
+			reason = ", " + p[ParamReason]
 		}
-		return fmt.Sprintf("%s, number %s, delay %s: %s", cs, p[ParamNumber], p[ParamDelay], p[ParamLose])
+		return cs + ", go around, I say again, go around" + reason // 12.3.4.18; CAP 413 4.64
+	case IntentSequence:
+		// The number in traffic (CAP 413 6.23) and how it is spaced: a speed
+		// (Doc 4444 12.4.1.6), or the delay it is to expect.
+		s := fmt.Sprintf("%s, number %s", cs, p[ParamNumber])
+		if p[ParamSpeed] != "" {
+			s += fmt.Sprintf(", for spacing reduce speed to %s knots", p[ParamSpeed])
+		}
+		if p[ParamDelay] != "" {
+			s += fmt.Sprintf(", expect %s minutes delay", p[ParamDelay])
+		}
+		return s
 	case IntentDirect:
-		return fmt.Sprintf("%s, proceed direct to the final, number %s", cs, p[ParamNumber])
+		return fmt.Sprintf("%s, proceed direct to final, number %s", cs, p[ParamNumber])
 	case IntentHold:
-		return fmt.Sprintf("%s, hold at %s, %s entry, maintain %s ft, expect further clearance %s", cs, p[ParamFix], p[ParamHoldIn], p[ParamAltitude], p[ParamExpect])
+		// Doc 4444 12.3.3.3 b; CAP 413 6.11.
+		return fmt.Sprintf("%s, hold at %s as published, maintain %s, expect further clearance at %s", cs, p[ParamFix], p[ParamLevel], p[ParamExpect])
 	case IntentLeaveHold:
-		return fmt.Sprintf("%s, leave the hold at %s, number %s, continue the arrival", cs, p[ParamFix], p[ParamNumber])
+		return fmt.Sprintf("%s, leave %s, number %s, continue the arrival", cs, p[ParamFix], p[ParamNumber])
 	case IntentHoldLevel:
-		return fmt.Sprintf("%s, descend %s ft, hold as published", cs, p[ParamAltitude])
+		return fmt.Sprintf("%s, descend to %s", cs, p[ParamLevel]) // 12.3.1.2 a
 	case IntentSpeed:
 		verb := "increase"
 		if p[ParamSlower] == "true" {
 			verb = "reduce"
 		}
-		return fmt.Sprintf("%s, %s speed %s knots, %s", cs, verb, p[ParamSpeed], p[ParamTraffic])
+		return fmt.Sprintf("%s, %s speed to %s knots%s", cs, verb, p[ParamSpeed], why) // 12.4.1.6
 	case IntentLevel:
-		return fmt.Sprintf("%s, %s %s, %s", cs, p[ParamClimb], p[ParamLevel], p[ParamTraffic])
+		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentHeading:
-		return fmt.Sprintf("%s, turn %s heading %s, %s", cs, p[ParamTurn], p[ParamHeading], p[ParamTraffic])
+		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
 	case IntentContact:
-		if p[ParamFreq] == "" {
-			return fmt.Sprintf("%s, contact %s", cs, p[ParamStation])
+		station := strings.TrimSpace(p[ParamStation] + " " + p[ParamFreq])
+		if p[ParamWhen] != "" {
+			return fmt.Sprintf("%s, %s contact %s", cs, p[ParamWhen], station) // 12.3.4.20; CAP 413 4.68
 		}
-		return fmt.Sprintf("%s, contact %s %s", cs, p[ParamStation], p[ParamFreq])
+		return fmt.Sprintf("%s, contact %s", cs, station) // 12.3.1.4 a
 	}
 	return cs + ", " + string(in)
 }
 
-// LevelSaid is a level as ATC says it: "flight level 210" at 10000 ft and
-// above, "altitude 9000 feet" below.
-func LevelSaid(altFt float64) string {
-	if altFt >= 10000 {
+// entryOf is the holding point said in a taxi clearance: " F", "" none.
+func entryOf(p map[string]string) string {
+	if p[ParamEntry] == "" {
+		return ""
+	}
+	return " " + p[ParamEntry]
+}
+
+// departureClearance is a departure clearance after the call sign, which a
+// readback repeats: "cleared to Frankfurt, BALTU 7D departure, runway 24,
+// climb via SID to 5000 feet, squawk 4521".
+func departureClearance(p map[string]string) string {
+	s := "cleared"
+	if p[ParamDest] != "" {
+		s += " to " + p[ParamDest] + ","
+	}
+	s += " " + p[ParamSID] + " departure"
+	if p[ParamRunway] != "" {
+		s += ", runway " + p[ParamRunway]
+	}
+	if p[ParamLevel] != "" {
+		s += ", climb via SID to " + p[ParamLevel] // 12.3.1.2 z
+	}
+	if p[ParamSquawk] != "" {
+		s += ", squawk " + p[ParamSquawk]
+	}
+	return s
+}
+
+// arrivalClearance is an arrival clearance after the call sign: "cleared
+// VLM 6T arrival, runway 06, descend to flight level 100, expect ILS
+// approach".
+func arrivalClearance(p map[string]string) string {
+	s := "cleared " + p[ParamSTAR] + " arrival"
+	if p[ParamRunway] != "" {
+		s += ", runway " + p[ParamRunway]
+	}
+	if p[ParamLevel] != "" {
+		s += ", descend to " + p[ParamLevel]
+	}
+	if p[ParamApproach] != "" {
+		s += ", expect " + p[ParamApproach] + " approach"
+	}
+	return s
+}
+
+// WindSaid is the surface wind as a tower says it, magnetic degrees:
+// "wind 100 degrees 6 knots", "wind 270 degrees 18 knots gusting 28 knots",
+// "wind calm" below a knot (Doc 4444 12.3.1.8 a).
+func WindSaid(dirMag, kts, gustKts float64) string {
+	if kts < 1 {
+		return "wind calm"
+	}
+	dir := int(math.Round(dirMag/10)*10) % 360
+	if dir == 0 {
+		dir = 360
+	}
+	s := fmt.Sprintf("wind %03d degrees %.0f knots", dir, kts)
+	if gustKts >= kts+10 {
+		s += fmt.Sprintf(" gusting %.0f knots", gustKts)
+	}
+	return s
+}
+
+// SaidProcedure is a SID or STAR as said: the designator split before its
+// number ("BALT7D" → "BALT 7D"), with the fix it is named after written
+// out when fix starts with it ("BALT7D", "BALTU" → "BALTU 7D").
+func SaidProcedure(designator, fix string) string {
+	i := strings.IndexFunc(designator, func(r rune) bool { return r >= '0' && r <= '9' })
+	if i <= 0 {
+		return designator
+	}
+	name := designator[:i]
+	if fix != "" && strings.HasPrefix(strings.ToUpper(fix), strings.ToUpper(name)) {
+		name = strings.ToUpper(fix)
+	}
+	return name + " " + designator[i:]
+}
+
+// LevelSaid is a level as ATC says it: "flight level 210" above 10000 ft,
+// "9000 feet" at or below (Doc 4444 12.3.1.1). LevelSaidAbove takes the
+// airport's transition altitude.
+func LevelSaid(altFt float64) string { return LevelSaidAbove(altFt, 10000) }
+
+// LevelSaidAbove is a level as said with flight levels above the transition
+// altitude transitionFt (LKPR: 5000): "flight level 070", "5000 feet".
+func LevelSaidAbove(altFt, transitionFt float64) string {
+	if transitionFt <= 0 {
+		transitionFt = 10000
+	}
+	if altFt > transitionFt {
 		return fmt.Sprintf("flight level %03d", int(math.Round(altFt/100)))
 	}
-	return fmt.Sprintf("altitude %.0f feet", altFt)
+	return fmt.Sprintf("%.0f feet", math.Round(altFt/100)*100)
 }
 
 // Transmission builders: the controller's position, intent and parameters
 // of each clearance, with its text (Say).
 
-// ClearedDeparture clears a departure's SID from runway.
-func ClearedDeparture(cs, sid, runway string) Transmission {
-	return Say(Transmission{Position: PosDelivery, Callsign: cs, Intent: IntentDepartureClearance, Params: map[string]string{ParamSID: sid, ParamRunway: runway}})
+// DepartureClearance is what a departure clearance gives, as said.
+type DepartureClearance struct {
+	Destination string // the clearance limit: "Frankfurt"
+	SID         string // SaidProcedure: "BALTU 7D"
+	Runway      string
+	Level       string // the initial climb, LevelSaid: "5000 feet"
+	Squawk      string // "4521"
 }
 
-// ClearedArrival clears an arrival's STAR, expecting approach to runway.
-func ClearedArrival(cs, star, approach, runway string) Transmission {
-	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentArrivalClearance, Params: map[string]string{ParamSTAR: star, ParamApproach: approach, ParamRunway: runway}})
+// ClearedDeparture is the departure clearance: "CSA123, cleared to
+// Frankfurt, BALTU 7D departure, runway 24, climb via SID to 5000 feet,
+// squawk 4521".
+func ClearedDeparture(cs string, c DepartureClearance) Transmission {
+	return Say(Transmission{Position: PosDelivery, Callsign: cs, Intent: IntentDepartureClearance, Params: map[string]string{
+		ParamDest: c.Destination, ParamSID: c.SID, ParamRunway: c.Runway, ParamLevel: c.Level, ParamSquawk: c.Squawk}})
 }
 
-// ClearedPushback approves the pushback and start-up.
+// ClearedArrival clears an arrival's STAR (SaidProcedure) to runway,
+// descending to level (LevelSaid, "" none), expecting approach ("ILS").
+func ClearedArrival(cs, star, approach, runway, level string) Transmission {
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentArrivalClearance, Params: map[string]string{ParamSTAR: star, ParamApproach: approach, ParamRunway: runway, ParamLevel: level}})
+}
+
+// ClearedStartUp approves the start-up (Doc 4444 12.3.4.3).
+func ClearedStartUp(cs string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentStartUp})
+}
+
+// ClearedPushback approves the pushback (Doc 4444 12.3.4.4).
 func ClearedPushback(cs string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentPushback})
 }
@@ -246,14 +376,16 @@ func ClearedLineUp(cs, runway string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLineUp, Params: map[string]string{ParamRunway: runway}})
 }
 
-// ClearedTakeoff clears the take-off from runway; lineUp: line up and go
-// in one.
-func ClearedTakeoff(cs, runway string, lineUp bool) Transmission {
-	p := map[string]string{ParamRunway: runway}
-	if lineUp {
-		p[ParamLineUp] = "true"
-	}
-	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTakeoff, Params: p})
+// ClearedTakeoff clears the take-off from runway, with the wind (WindSaid,
+// "" none). Given at the holding point it means line up and take off.
+func ClearedTakeoff(cs, runway, wind string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTakeoff, Params: map[string]string{ParamRunway: runway, ParamWind: wind}})
+}
+
+// ClearedToLand clears the landing on runway, with the wind (WindSaid, ""
+// none): "CSA123, runway 06, cleared to land, wind 100 degrees 6 knots".
+func ClearedToLand(cs, runway, wind string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLanding, Params: map[string]string{ParamRunway: runway, ParamWind: wind}})
 }
 
 // HoldPosition, Stop and CancelTakeoff stop an aircraft on the ground;
@@ -278,12 +410,16 @@ func GoAround(cs, reason string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentGoAround, Params: p})
 }
 
-// Sequenced tells an arrival its number and how it loses its delay (delay
-// 0: a minute asked by hand).
+// Sequenced tells an arrival its number and how it is spaced: the speed it
+// is to fly (a.SpeedKts), and the delay to expect, in whole minutes, when
+// more than speed (path stretching, a hold) absorbs it.
 func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmission {
 	p := map[string]string{ParamNumber: fmt.Sprint(number), ParamLose: a.String()}
-	if delay > 0 {
-		p[ParamDelay] = delay.Round(time.Second).String()
+	if a.SpeedKts > 0 {
+		p[ParamSpeed] = fmt.Sprintf("%.0f", a.SpeedKts)
+	}
+	if min := int(math.Round(delay.Minutes())); min >= 1 && (a.ExtraNM > 0 || a.Left > 0) {
+		p[ParamDelay] = fmt.Sprint(min)
 	}
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentSequence, Params: p})
 }
@@ -297,7 +433,7 @@ func DirectToFinal(cs string, number int) Transmission {
 // clearance at efc.
 func HoldAt(cs, fix string, entry HoldEntry, altFt float64, efc time.Time) Transmission {
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHold, Params: map[string]string{
-		ParamFix: fix, ParamHoldIn: entry.String(), ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamExpect: efc.Format("15:04")}})
+		ParamFix: fix, ParamHoldIn: entry.String(), ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: LevelSaid(altFt), ParamExpect: efc.Format("1504")}})
 }
 
 // LeaveHoldAt releases an arrival from the hold at fix as number.
@@ -307,7 +443,7 @@ func LeaveHoldAt(cs, fix string, number int) Transmission {
 
 // HoldDescend steps a holding arrival down to altFt.
 func HoldDescend(cs string, altFt float64) Transmission {
-	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHoldLevel, Params: map[string]string{ParamAltitude: fmt.Sprintf("%.0f", altFt)}})
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHoldLevel, Params: map[string]string{ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: LevelSaid(altFt)}})
 }
 
 // Resolved is a conflict resolution for an aircraft now at altFt, heading
@@ -348,6 +484,14 @@ func Handoff(cs string, from, to Position, station, freq string) Transmission {
 	}
 	return Say(Transmission{Position: from, Callsign: cs, Intent: IntentContact,
 		Params: map[string]string{ParamPosition: string(to), ParamStation: station, ParamFreq: freq}})
+}
+
+// WhenVacatedContact is the tower's transfer of a landing aircraft: "CSA123,
+// when vacated contact Ruzyne Ground 121.91" (Doc 4444 12.3.4.20).
+func WhenVacatedContact(cs string, from, to Position, station, freq string) Transmission {
+	t := Handoff(cs, from, to, station, freq)
+	t.Params[ParamWhen] = "when vacated"
+	return Say(t)
 }
 
 // PositionName is a position as said: "Tower", "Ground", "Delivery".
