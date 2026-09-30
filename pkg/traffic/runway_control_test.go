@@ -18,7 +18,7 @@ func dep(cs, typ string, p RunwayPhase) RunwayUser {
 }
 
 func final(cs string, nm float64) RunwayUser {
-	return RunwayUser{Callsign: cs, Wake: WakeFor("A320"), Phase: RunwayFinal, Arrival: true, DistanceNM: nm, GroundKts: 140}
+	return RunwayUser{Callsign: cs, Wake: WakeFor("A320"), Phase: RunwayFinal, Arrival: true, DistanceNM: nm, GroundKts: 140, Established: true}
 }
 
 func TestRunwayControllerFreeRunway(t *testing.T) {
@@ -239,6 +239,11 @@ func TestRunwayControllerLandingClearance(t *testing.T) {
 	}
 	if c := r.Decide(now, []RunwayUser{final("DLH2", 8)}); len(c.Land) != 0 {
 		t.Errorf("8 NM out: land %v", c.Land)
+	}
+	downwind := final("RYR1590", 4)
+	downwind.Established = false // on the downwind, 4 NM from the threshold (#486)
+	if c := r.Decide(now, []RunwayUser{downwind}); len(c.Land) != 0 {
+		t.Errorf("cleared to land on the downwind: %v", c.Land)
 	}
 	if c := r.Decide(now, []RunwayUser{final("DLH2", 5), dep("CSA1", "A320", RunwayLinedUp)}); slices.Contains(c.Land, "DLH2") {
 		t.Error("cleared to land with a departure lined up")
