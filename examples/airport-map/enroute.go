@@ -57,6 +57,21 @@ type enrouteAC struct {
 
 // spawnEnroute creates an enroute arrival or an overflight where its
 // flight is now.
+// overflightEntry is how far along fp its route first comes within
+// overflightRadiusNM of the traffic picture's centre, every 5 NM.
+func overflightEntry(fp *nav.FlightPlan, cc *controlCenter) (float64, bool) {
+	c, ok := cc.world.Centre()
+	if !ok {
+		return 0, false
+	}
+	for d := 0.0; d <= fp.DistanceNM; d += 5 {
+		if p, _, _ := fp.PositionAt(d); calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= overflightRadiusNM {
+			return d, true
+		}
+	}
+	return 0, false
+}
+
 func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	cc, st := s.cc, s.st
 	arrRwy := ""
@@ -101,7 +116,17 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			return fmt.Errorf("only %.0f NM before its STAR entry: it appears there", entry-dist)
 		}
 	} else {
-		dist = cc.clock.Now().Sub(f.STD.Add(10*time.Minute)).Hours() * kts
+		// Where its plan enters the area, and on from there by the time since
+		// it was due to (#469: placed by its STD along the plan, whose route
+		// and speed differ from the schedule's, RYR1850 appeared 230 NM out).
+		in, ok := overflightEntry(fp, cc)
+		if !ok {
+			return fmt.Errorf("its plan %s → %s never enters the area", f.Origin, f.Destination)
+		}
+		dist = in
+		if !f.Enter.IsZero() {
+			dist += cc.clock.Now().Sub(f.Enter).Hours() * kts
+		}
 	}
 	dist = math.Max(10, math.Min(dist, fp.DistanceNM-20))
 	pos, altFt, _ := fp.PositionAt(dist)
