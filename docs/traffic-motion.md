@@ -186,6 +186,26 @@ ids.Release(def)
 
 A controller on a reused block clears its definitions before adding to them: the Fleet remembers which it defined on the connection. The injector drives up to 96 aircraft and tugs.
 
+## Traffic time
+
+MSFS AI flies its parts of a flight (STAR, SID, en route, holds) in simulator time. That follows the simulation rate (time acceleration, or slower) and stops while the simulator is paused. Injected motion and every timer must run on the same time, or at 2× an injected final lags the STAR before it and the landing sequence's times are wrong (#413).
+
+`SimClock` is that time. It follows the wall clock at the simulation rate and stands still while paused, and a change of either takes effect without a jump:
+
+```go
+clock := traffic.NewSimClock()
+clock.SetRate(rate)     // the simulator's SIMULATION RATE
+clock.SetPaused(paused) // the "Pause" system event
+
+taxi := traffic.NewTaxiController(fleet, traffic.TaxiWithClock(clock.Now) /* , … */)
+arr := traffic.NewArrivalController(fleet, traffic.ArrivalWithClock(clock.Now) /* , … */)
+manager.Tick(clock.Now()) // and the sequencer, the tower, the picture: pass it the same time
+```
+
+A controller moves by the clock's time between frames, at most `MaxFrameStepSeconds` (1 s) a frame. At a high rate with fewer frames far away (level of detail) a frame can be a quarter of a second or more; a longer gap, a stall, is not made up at once.
+
+The airport map reads `SIMULATION RATE` with the user aircraft every second and subscribes to "Pause". All its traffic runs on the clock: controllers, the schedule, sequencing, the tower, conflicts, spawn separation and the runway in use. The aircraft line shows "sim 2×" or "⏸ sim paused", and markers glide at the rate. Logs keep the wall clock.
+
 ## Measured in MSFS 2024
 
 Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):

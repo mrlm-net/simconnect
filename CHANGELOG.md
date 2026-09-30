@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/traffic` `SimClock` (#413): traffic time at the simulation rate, stopped while paused (`SetRate`, `SetPaused`); `TaxiWithClock`, `ArrivalWithClock`; injected motion steps at most `MaxFrameStepSeconds` (1 s) a frame. The airport map runs all its traffic on it, fed by `SIMULATION RATE` and the "Pause" event, and shows the rate.
+
 ## [0.16.0] - 2026-09-30
 
 Airborne ATC: traffic separated in the air as well as on the ground. Wake separation and spacing on final follow the weather. There is a landing sequence per runway. Arrivals lose their delays by speed, a longer downwind and holding stacks. A tower per runway clears line-ups, take-offs and crossings in mixed mode and sends arrivals around. Conflicts in the air are predicted and resolved. Turns follow the airframe's standard bank, and the map has an Approach tab to work it all by hand.

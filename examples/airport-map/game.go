@@ -327,12 +327,12 @@ func registerGame(mux *http.ServeMux, st *state) {
 			}
 			g.Score, g.Handled, g.Spawned, g.Events = 0, 0, 0, nil
 			g.done, g.waitFrom, g.waitPaid, g.conflicts = map[int]bool{}, map[int]time.Time{}, map[int]time.Time{}, map[string]time.Time{}
-			g.Started, g.next = time.Now(), time.Now()
+			g.Started, g.next = cc.clock.Now(), cc.clock.Now()
 			g.On = true
 			g.event(0, "game started at %s, runway %s, traffic every ~%s", g.ICAO, g.Runway, time.Duration(g.Interval*float64(time.Second)))
 		} else if !req.On && g.On {
 			g.On = false
-			g.event(0, "game over: %d points, %d flights handled in %s", g.Score, g.Handled, time.Since(g.Started).Round(time.Second))
+			g.event(0, "game over: %d points, %d flights handled in %s", g.Score, g.Handled, cc.clock.Now().Sub(g.Started).Round(time.Second))
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

@@ -27,6 +27,12 @@ func TaxiWithInjector(inj *Injector) TaxiOption {
 	return func(c *TaxiController) { c.inj = inj }
 }
 
+// TaxiWithClock runs the departure on clock (e.g. SimClock.Now: the
+// simulation rate, stopped while paused) instead of the wall clock (#413).
+func TaxiWithClock(clock func() time.Time) TaxiOption {
+	return func(c *TaxiController) { c.now = clock }
+}
+
 // TaxiWithDetail drives the injected departure on fewer sim frames when it
 // is far from the viewer or standing still (#370); on the runway always on
 // every frame.
@@ -174,11 +180,11 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	}
 	c.last.Lights = m.currentLights()
 	// Flaps move on every frame, whatever the phase.
-	if !c.frameAt.IsZero() && c.flaps.step(math.Min(now.Sub(c.frameAt).Seconds(), 0.25)) {
+	if !c.frameAt.IsZero() && c.flaps.step(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds)) {
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flaps.pct))
 	}
 	if !c.frameAt.IsZero() {
-		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), 0.25))
+		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 	}
 	c.frameAt = now
 	switch c.state {
@@ -1005,7 +1011,7 @@ func (c *TaxiController) startTakeoff() {
 // climb, then hands the aircraft to MSFS AI for the climb-out.
 func (c *TaxiController) onTakeoffFrame() {
 	now := c.now()
-	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), 0.25))
+	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds))
 	c.lastStep = now
 	pose := c.takeoff.Step(dt)
 	ap := pose.ApproachPose()
