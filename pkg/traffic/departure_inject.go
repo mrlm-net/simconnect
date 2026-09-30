@@ -632,37 +632,48 @@ func (c *TaxiController) planPushback() {
 	}
 	var best *airport.Route
 	var bestPts []airport.LatLon
-	branch, at, bestCost := airport.NodeID(-1), 1, math.Inf(1)
-	for _, i := range cands {
-		k, kp := r.Nodes[i], r.Points[i]
-		in := localBearing(r.Points[i-1], kp) // the push arriving at k
-		pushed := localDist(gear, jp)
-		for n := 2; n <= i; n++ {
-			pushed += localDist(r.Points[n-1], r.Points[n])
+	branch, at, bestCost, bestBlocks := airport.NodeID(-1), 1, math.Inf(1), 0
+	// A wider swing only where no ordinary push leaves the taxiways clear.
+	for pass, maxSwing := range []float64{maxPushSwingDeg, maxPushSwingWideDeg} {
+		if pass == 1 && best != nil && bestBlocks == 0 {
+			break
 		}
-		for _, e := range g.Adj[k] {
-			if e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) ||
-				math.Abs(headingDiff(in, localBearing(kp, g.Nodes[e.To].Position))) > maxPushSwingDeg {
-				continue
+		for _, i := range cands {
+			k, kp := r.Nodes[i], r.Points[i]
+			in := localBearing(r.Points[i-1], kp) // the push arriving at k
+			pushed := localDist(gear, jp)
+			for n := 2; n <= i; n++ {
+				pushed += localDist(r.Points[n-1], r.Points[n])
 			}
-			// A custom route (Via, Taxiways) goes on from what the push passed.
-			opts := g.RemainingOptions(c.req.Options, r.Nodes[:i+1])
-			out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, opts)
-			if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
-				continue // no way on, or only back over the branch it was pushed onto
-			}
-			// Pushing is slow: each meter costs pushCostFactor taxi meters.
-			cost := out.Cost + pushed*pushCostFactor
-			if cost >= bestCost {
-				continue
-			}
-			var pts []airport.LatLon
-			if alley[i] {
-				if pts = c.alleyPush(gear, i, e.To); pts == nil {
-					continue // too tight or into the neighbours
+			for _, e := range g.Adj[k] {
+				swing := math.Abs(headingDiff(in, localBearing(kp, g.Nodes[e.To].Position)))
+				if e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) || swing > maxSwing || pass == 1 && swing <= maxPushSwingDeg {
+					continue
 				}
+				// A custom route (Via, Taxiways) goes on from what the push passed.
+				opts := g.RemainingOptions(c.req.Options, r.Nodes[:i+1])
+				out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, opts)
+				if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
+					continue // no way on, or only back over the branch it was pushed onto
+				}
+				// Pushing is slow: each meter costs pushCostFactor taxi meters; a
+				// wide swing and every other taxiway left blocked cost more.
+				blocks := c.pushBlocks(k, e)
+				cost := out.Cost + pushed*pushCostFactor + float64(blocks)*pushBlockPenalty
+				if swing > maxPushSwingDeg {
+					cost += pushWideSwingPenalty
+				}
+				if cost >= bestCost {
+					continue
+				}
+				var pts []airport.LatLon
+				if alley[i] {
+					if pts = c.alleyPush(gear, i, e.To); pts == nil {
+						continue // too tight or into the neighbours
+					}
+				}
+				best, bestPts, branch, at, bestCost, bestBlocks = out, pts, e.To, i, cost, blocks
 			}
-			best, bestPts, branch, at, bestCost = out, pts, e.To, i, cost
 		}
 	}
 	if best == nil {
@@ -682,6 +693,69 @@ func (c *TaxiController) planPushback() {
 	}
 	full.Runway, full.RunwayEnd, full.Entry, full.HoldShort = best.Runway, best.RunwayEnd, best.Entry, best.HoldShort
 	c.route, c.pushBranch, c.havePushBranch, c.pushJunction, c.pushPts = full, branch, true, at, bestPts
+}
+
+// pushBlocks counts the junctions of other taxiways a push onto branch e
+// at junction k would leave the aircraft on: its body where the push ends
+// — along the lane from k the wheelbase and push tail, then its tail —
+// and half its span either side. A junction of the lane itself (named by
+// the first taxiway along it: an unnamed stub off the stand that becomes J
+// is J), or of the stand's lead-in, is not another taxiway.
+func (c *TaxiController) pushBlocks(k airport.NodeID, e airport.Edge) int {
+	g, prof := c.req.Graph, c.profile()
+	tail := prof.TailMeters
+	if tail <= 0 {
+		tail = 20.5
+	}
+	body := walkTaxiway(g, k, e.To, prof.WheelbaseMeters+PushTailMeters+tail)
+	reach := c.halfSpan() + 5
+	lane := laneName(g, k, e)
+	n := 0
+	for id, nd := range g.Nodes {
+		if nd.Kind == airport.NodeParking || airport.NodeID(id) == k || len(g.Adj[id]) < 3 {
+			continue
+		}
+		other := false
+		for _, a := range g.Adj[id] {
+			if a.Name != "" && a.Name != lane && g.Nodes[a.To].Kind != airport.NodeParking {
+				other = true
+			}
+		}
+		if !other {
+			continue
+		}
+		for _, p := range body {
+			if localDist(p, nd.Position) <= reach {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// laneName is the taxiway a push onto branch e at k goes along: e's name,
+// or where e is unnamed, the first name going on straightest from it.
+func laneName(g *airport.Graph, k airport.NodeID, e airport.Edge) string {
+	prev, cur, name := k, e.To, e.Name
+	for step := 0; name == "" && step < 8; step++ {
+		in := localBearing(g.Nodes[prev].Position, g.Nodes[cur].Position)
+		var next *airport.Edge
+		best := math.Inf(1)
+		for i, a := range g.Adj[cur] {
+			if a.To == prev || g.Nodes[a.To].Kind == airport.NodeParking {
+				continue
+			}
+			if d := math.Abs(headingDiff(in, localBearing(g.Nodes[cur].Position, g.Nodes[a.To].Position))); d < best {
+				best, next = d, &g.Adj[cur][i]
+			}
+		}
+		if next == nil {
+			break
+		}
+		prev, cur, name = cur, next.To, next.Name
+	}
+	return name
 }
 
 // alleyPush is the main gear path of a push up an alley: straight back off
@@ -834,10 +908,18 @@ func walkTaxiway(g *airport.Graph, from, first airport.NodeID, meters float64) [
 
 // Pushback geometry: the tail can swing at most maxPushSwingDeg off the
 // straight push, and a branch leaving the nose more than maxNoseOffRouteDeg
-// off the taxi route is not worth the swing.
+// off the taxi route is not worth the swing. A wider swing, up to
+// maxPushSwingWideDeg, costs pushWideSwingPenalty: taken where the others
+// would leave the aircraft blocking other taxiways. Each junction of
+// another taxiway the pushed aircraft would sit on costs pushBlockPenalty
+// (LKPR A4: pushed onto the B1 lane north, it stood across H; south, in
+// the alley, it blocks nothing).
 const (
-	maxPushSwingDeg    = 100.0
-	maxNoseOffRouteDeg = 150.0
+	maxPushSwingDeg      = 100.0
+	maxPushSwingWideDeg  = 125.0
+	pushWideSwingPenalty = 150.0
+	pushBlockPenalty     = 400.0
+	maxNoseOffRouteDeg   = 150.0
 	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
 	// pushLineToleranceMeters how far the taxiway may bend from its first
 	// direction and still count as straight; pushClearanceSlackMeters how

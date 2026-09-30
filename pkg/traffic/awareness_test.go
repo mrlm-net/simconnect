@@ -299,10 +299,12 @@ func TestTaxiGivesWayToPushback(t *testing.T) {
 	frames(60 * 5) // under way
 	rest := pushCorridor(ctl.mover.Path(), ctl.mover.Pose().Distance, ctl.profile())
 	cross := rest[len(rest)-1]
-	// A taxiing aircraft 120 m away, heading across the end of the push.
+	// A taxiing aircraft 120 m away, heading across the end of the push
+	// (square to where the push corridor ends, whichever way the push goes).
 	prof := DefaultMotionProfile()
-	a := offsetHeading(cross, 90, 120)
-	b := offsetHeading(cross, 270, 200)
+	dir := localBearing(rest[len(rest)-2], cross)
+	a := offsetHeading(cross, dir+90, 120)
+	b := offsetHeading(cross, dir-90, 200)
 	path, err := NewGroundPath([]airport.LatLon{a, b}, prof)
 	if err != nil {
 		t.Fatal(err)

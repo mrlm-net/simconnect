@@ -13,6 +13,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `pkg/traffic` `SimClock` (#413): traffic time at the simulation rate, stopped while paused (`SetRate`, `SetPaused`); `TaxiWithClock`, `ArrivalWithClock`; injected motion steps at most `MaxFrameStepSeconds` (1 s) a frame. The airport map runs all its traffic on it, fed by `SIMULATION RATE` and the "Pause" event, and shows the rate.
 
+### Fixed
+
+- `pkg/traffic`: a pushback does not leave the aircraft blocking other taxiways (#429). Each junction of another taxiway it would sit on costs 400 m in the choice. A wider swing, up to 125°, is a fallback where no ordinary push is clear. Live, RYR1455 pushed from LKPR A4 stood across H; over all LKPR stands, pushes ending on another taxiway went from 31 of 103 to 9.
+
 ## [0.16.0] - 2026-09-30
 
 Airborne ATC: traffic separated in the air as well as on the ground. Wake separation and spacing on final follow the weather. There is a landing sequence per runway. Arrivals lose their delays by speed, a longer downwind and holding stacks. A tower per runway clears line-ups, take-offs and crossings in mixed mode and sends arrivals around. Conflicts in the air are predicted and resolved. Turns follow the airframe's standard bank, and the map has an Approach tab to work it all by hand.

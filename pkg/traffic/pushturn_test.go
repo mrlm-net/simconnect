@@ -51,3 +51,48 @@ func TestDubins(t *testing.T) {
 		}
 	}
 }
+
+// A pushback does not leave the aircraft on another taxiway: at LKPR A4 the
+// tail went north on the B1 lane and the aircraft stood across H; it now
+// goes south into the B1 alley (a wider swing) and blocks nothing. Over all
+// stands, far fewer pushes end on another taxiway's junction (31 of 103
+// before).
+func TestPushbackDoesNotBlockTaxiways(t *testing.T) {
+	g := lkprGraph(t)
+	blocks := func(stand, rwy string) (int, bool) {
+		i, err := g.Layout.ParkingIndex(stand)
+		if err != nil {
+			return -1, false
+		}
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: rwy, Model: "FSLTL A320 Air France SL", Tail: "T1"}); err != nil || !ctl.havePushBranch {
+			return -1, false
+		}
+		k := ctl.route.Nodes[ctl.pushJunction]
+		for _, e := range g.Adj[k] {
+			if e.To == ctl.pushBranch {
+				return ctl.pushBlocks(k, e), true
+			}
+		}
+		return -1, false
+	}
+	for _, s := range []string{"A4", "C21"} {
+		if n, ok := blocks(s, "06"); !ok || n != 0 {
+			t.Errorf("%s → 06: blocks %d junctions (planned %v)", s, n, ok)
+		}
+	}
+	total, blocking := 0, 0
+	for _, p := range g.Layout.Parking {
+		if n, ok := blocks(p.Label(), "06"); ok {
+			total++
+			if n > 0 {
+				blocking++
+			}
+		}
+	}
+	if blocking > total/8 {
+		t.Errorf("%d of %d pushes end on another taxiway", blocking, total)
+	}
+	t.Logf("%d of %d pushes to 06 end on another taxiway", blocking, total)
+}
