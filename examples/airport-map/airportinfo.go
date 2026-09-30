@@ -230,7 +230,20 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 				}
 			}
 			svc, _ := st.atisService(icao)
-			a, _ := svc.Update(*wx, time.Now())
+			// The broadcast as the traffic tick keeps it: made here only
+			// before the first tick, on traffic time (wall time here and
+			// traffic time there looked like an ATIS past its age: a new
+			// letter at every look).
+			a, ok := svc.Current()
+			if !ok {
+				now := time.Now()
+				st.mu.Lock()
+				if st.control != nil {
+					now = st.control.clock.Now()
+				}
+				st.mu.Unlock()
+				a, _ = svc.Update(*wx, now)
+			}
 			out.ATIS = &atisInfo{Letter: nav.Phonetic(a.Letter), Text: a.Text(), Spoken: a.Spoken()}
 		}
 		writeJSON(w, out)
