@@ -91,7 +91,10 @@ func TestPushbackDoesNotBlockTaxiways(t *testing.T) {
 			}
 		}
 	}
-	if blocking > total/8 {
+	// Facing the way out comes first: A6, B14 and B15 hold a junction for
+	// their minute on the lane rather than pivot on the spot after the push
+	// (they did: a turn from a standstill); hence 1 in 5, not 1 in 8.
+	if blocking > total/5 {
 		t.Errorf("%d of %d pushes end on another taxiway", blocking, total)
 	}
 	t.Logf("%d of %d pushes to 06 end on another taxiway", blocking, total)

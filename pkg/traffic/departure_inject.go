@@ -631,6 +631,50 @@ func pushEdge(g *airport.Graph, e airport.Edge) bool {
 // the route planned from the stand, which at LKPR C17 went on straight
 // ahead of the push and left the aircraft facing away from its route.
 func (c *TaxiController) planPushback() {
+	orig := c.route
+	excl := map[pushChoice]bool{}
+	for try := 0; try < pushPlanTries; try++ {
+		c.route, c.pushJunction, c.pushPlanned = orig, 1, nil
+		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch, c.pushPts = false, 0, false, 0, nil
+		c.choosePushback(excl)
+		if !c.havePushBranch {
+			return // a push-and-turn, or straight back: nothing else to choose
+		}
+		if p, err := c.pushPath(); err == nil && pushPathFits(p) {
+			return
+		}
+		// Tighter than a tug turns the aircraft: another push (EDDF B42: an
+		// alley push ending in a 121° swing, a 2 m kink).
+		excl[pushChoice{c.pushJunction, c.pushBranch}] = true
+	}
+	c.pushPlanned = nil
+}
+
+// pushChoice is a candidate push: onto branch at the route's junction at.
+type pushChoice struct {
+	at     int
+	branch airport.NodeID
+}
+
+// pushPlanTries bounds how many pushes planPushback builds before it keeps
+// the last.
+const pushPlanTries = 6
+
+// pushPathFits reports whether a tug can push along p: no turn tighter
+// than PushbackMinArcMeters (with the 3 m of slack its test allows).
+func pushPathFits(p *GroundPath) bool {
+	if p.Length() <= 20 {
+		return true
+	}
+	var pts []airport.LatLon
+	for s := 0.0; s <= p.Length(); s += 2 {
+		pts = append(pts, p.PointAt(s))
+	}
+	return tightestTurn(pts) >= PushbackMinArcMeters-3
+}
+
+// choosePushback is planPushback's choice, with the pushes in excl left out.
+func (c *TaxiController) choosePushback(excl map[pushChoice]bool) {
 	g, r := c.req.Graph, c.route
 	if len(r.Nodes) < 3 || c.facesOut() {
 		return
@@ -676,7 +720,7 @@ func (c *TaxiController) planPushback() {
 			}
 			for _, e := range g.Adj[k] {
 				swing := math.Abs(headingDiff(in, localBearing(kp, g.Nodes[e.To].Position)))
-				if e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) || swing > maxSwing || pass == 1 && swing <= maxPushSwingDeg {
+				if excl[pushChoice{i, e.To}] || e.To == r.Nodes[i-1] || !pushEdge(g, e) || !g.Fits(e, c.req.Options) || swing > maxSwing || pass == 1 && swing <= maxPushSwingDeg {
 					continue
 				}
 				// Straight on across a taxiway behind the stand leaves the nose
@@ -702,6 +746,12 @@ func (c *TaxiController) planPushback() {
 				cost := out.Cost + pushed*pushCostFactor + float64(blocks)*pushBlockPenalty
 				if hairpinAfterPush(out) {
 					cost += pushHairpinPenalty
+				}
+				// Facing the way out: a push that leaves the nose off the first leg
+				// of the taxi-out (a turn from a standstill) costs more than the
+				// lanes it holds for a minute.
+				if misalignedAfterPush(out, g.Nodes[e.To].Position) {
+					cost += pushMisalignPenalty
 				}
 				if swing > maxPushSwingDeg {
 					cost += pushWideSwingPenalty
@@ -887,6 +937,28 @@ func leadsOn(g *airport.Graph, from, to airport.NodeID) bool {
 
 // crossroadsBranchMeters: a branch this long is a way on, not a stub.
 const crossroadsBranchMeters = 80.0
+
+// misalignedAfterPush reports a push that leaves the nose off the first
+// leg of the taxi-out: the nose points from the branch it was pushed onto
+// (from) at the junction, and the taxi-out's first pushMisalignMeters turn
+// more than pushMisalignDeg off that line — a turn from a standstill right
+// at the end of the push, where the tug should have swung the tail (LKPR
+// B14, B15; LFPG, KJFK).
+func misalignedAfterPush(out *airport.Route, from airport.LatLon) bool {
+	if len(out.Points) < 2 {
+		return false
+	}
+	k := out.Points[0]
+	ahead, walked := out.Points[len(out.Points)-1], 0.0
+	for i := 1; i < len(out.Points); i++ {
+		walked += localDist(out.Points[i-1], out.Points[i])
+		if walked >= pushMisalignMeters {
+			ahead = out.Points[i]
+			break
+		}
+	}
+	return math.Abs(headingDiff(localBearing(from, k), localBearing(k, ahead))) > pushMisalignDeg
+}
 
 // hairpinAfterPush reports a taxi-out that turns back sharply (at least
 // pushHairpinDeg) within pushHairpinMeters of the push: the push left the
@@ -1099,7 +1171,13 @@ const (
 	pushHairpinDeg     = 110.0
 	pushHairpinMeters  = 200.0
 	pushHairpinPenalty = 1000.0
-	maxNoseOffRouteDeg = 150.0
+	// The taxi-out's first pushMisalignMeters more than pushMisalignDeg off
+	// the pushed aircraft's nose cost pushMisalignPenalty: a turn from a
+	// standstill is impossible, holding a lane for a minute is not.
+	pushMisalignDeg     = 60.0
+	pushMisalignMeters  = 20.0
+	pushMisalignPenalty = 2000.0
+	maxNoseOffRouteDeg  = 150.0
 	// pushWalkMeters is how much taxiway behind the junction pushPlan may use;
 	// pushLineToleranceMeters how far the taxiway may bend from its first
 	// direction and still count as straight; pushClearanceSlackMeters how
