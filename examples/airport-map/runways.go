@@ -209,7 +209,7 @@ func (t *towers) tick(now time.Time) {
 
 // apply gives the clearances (once each) and logs who waits for what.
 func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[string]*controlled) {
-	give := func(tail, action, phrase string, f func(it *controlled) error) {
+	give := func(tail, action string, said traffic.Transmission, f func(it *controlled) error) {
 		it := ours[tail]
 		if it == nil || it.gates {
 			return
@@ -245,7 +245,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
-		tlog.printf("%-6s ATC: %s, %s", tail, tail, phrase)
+		it.say(said)
 	}
 	takeoff := map[string]bool{}
 	for _, cs := range c.Takeoff {
@@ -259,20 +259,20 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	for _, cs := range c.LineUp {
 		if takeoff[cs] {
-			give(cs, "takeoff", "runway "+end(cs)+", line up, cleared for take-off", func(it *controlled) error {
+			give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), true), func(it *controlled) error {
 				it.dep.ClearToLineUp()
 				return it.dep.ClearForTakeoff()
 			})
 			continue
 		}
-		give(cs, "lineup", "runway "+end(cs)+", line up and wait", func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
+		give(cs, "lineup", traffic.ClearedLineUp(cs, end(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
 	}
 	for _, cs := range c.Takeoff {
-		give(cs, "takeoff", "runway "+end(cs)+", cleared for take-off", func(it *controlled) error { return it.dep.ClearForTakeoff() })
+		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), false), func(it *controlled) error { return it.dep.ClearForTakeoff() })
 	}
 	for _, cs := range c.Cross {
 		// A crossing is cleared once per holding point: forget it once done.
-		give(cs, "cross "+rwy, "cross runway "+rwy, func(it *controlled) error {
+		give(cs, "cross "+rwy, traffic.ClearedCross(cs, rwy), func(it *controlled) error {
 			if it.dep != nil {
 				it.dep.ClearToCross()
 			} else {
@@ -283,7 +283,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	for _, cs := range c.GoAround {
 		why := c.Waiting[cs]
-		give(cs, "goaround", "go around, I say again, go around — "+why, func(it *controlled) error {
+		give(cs, "goaround", traffic.GoAround(cs, why), func(it *controlled) error {
 			if it.arr == nil {
 				return nil
 			}

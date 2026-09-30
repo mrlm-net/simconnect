@@ -192,6 +192,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── runway_control.go #  RunwayController: line-up, take-off, crossing clearances (#393)
 │       ├── separation.go    #   AirborneSeparation and minima (#395)
 │       ├── conflict.go      #   PredictConflicts, ResolveConflict, ResolvedRoute, TowerPair (#395)
+│       ├── radio.go         #   Transmission, phrasebook (Say, builders), Radio (#415)
 │       ├── clock.go         #   SimClock: traffic time at the simulation rate, stopped while paused (#413)
 │       ├── corners.go       #   Rounded turns: standard bank by airframe, fly-by arcs for MSFS AI chains
 │       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
@@ -258,6 +259,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-schedules.md #   Schedule: timetables for the focus airports
 │   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
+│   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)

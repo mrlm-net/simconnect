@@ -148,6 +148,9 @@ type controlCenter struct {
 	// runways keep each airport's runway in use.
 	runways map[string]*nav.RunwaySelector
 	detail  *traffic.Detail
+	// radio carries what our controllers say (#415): logged as ATC, served
+	// at /api/radio.
+	radio *traffic.Radio
 	// clock is traffic time: the simulation rate, stopped while paused
 	// (#413). Traffic runs on it; logs and data freshness on the wall clock.
 	clock *traffic.SimClock
@@ -179,7 +182,7 @@ type controlCenter struct {
 }
 
 func newControlCenter(client engine.Client) *controlCenter {
-	return &controlCenter{
+	cc := &controlCenter{
 		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:  map[string]bool{},
@@ -191,6 +194,10 @@ func newControlCenter(client engine.Client) *controlCenter {
 		world:   traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:    &game{},
 	}
+	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, OnTransmission: func(t traffic.Transmission) {
+		tlog.printf("%-6s ATC: %s", t.Callsign, t.Text)
+	}})
+	return cc
 }
 
 // do runs f in the connection goroutine and waits for it.
@@ -488,9 +495,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if procName != "" {
 		it.view.Procedure = procName
 		if r.Kind == "departure" {
-			tlog.printf("%-6s ATC: %s, cleared %s departure, runway %s", r.Tail, r.Tail, procName, r.Runway)
+			it.say(traffic.ClearedDeparture(r.Tail, procName, r.Runway))
 		} else {
-			tlog.printf("%-6s ATC: %s, cleared %s arrival, expect %s approach runway %s", r.Tail, r.Tail, procName, expect, r.Runway)
+			it.say(traffic.ClearedArrival(r.Tail, procName, expect, r.Runway))
 			it.view.Procedure += " → " + expect
 		}
 	}
@@ -785,6 +792,23 @@ func registerControl(mux *http.ServeMux, st *state) {
 		writeJSON(w, out)
 	})
 
+	// GET /api/radio?icao=LKPR&n=50 — what our controllers said (#415):
+	// structured transmissions, oldest first (icao empty: every airport).
+	mux.HandleFunc("GET /api/radio", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		out := []traffic.Transmission{}
+		if cc != nil {
+			n, _ := strconv.Atoi(r.URL.Query().Get("n"))
+			if n <= 0 {
+				n = 50
+			}
+			out = append(out, cc.radio.Recent(strings.ToUpper(r.URL.Query().Get("icao")), n)...)
+		}
+		writeJSON(w, out)
+	})
+
 	// GET /api/control/log — the recent traffic log, newest last.
 	mux.HandleFunc("GET /api/control/log", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, tlog.recent(200))
@@ -889,7 +913,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if action == "remove" {
 			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
 		} else {
-			tlog.printf("%-6s ATC: %s", it.Tail, it.phrase(action, node))
+			it.say(it.phrase(action, node))
 		}
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
@@ -1342,7 +1366,7 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			if said.HoldingShortOf == "" {
 				said.HoldingShortOf = prev.HoldingShortOf // the runway just crossed
 			}
-			tlog.printf("%-6s ATC: %s", it.Tail, it.phraseView(said, r, action, -1))
+			it.say(it.phraseView(said, r, action, -1))
 		}
 	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
@@ -1410,7 +1434,7 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 
 // phrase is the clearance as ATC says it (ICAO phraseology), e.g.
 // "AFR1383, taxi to holding point runway 24 via B2, H, A".
-func (it *controlled) phrase(action string, node airport.NodeID) string {
+func (it *controlled) phrase(action string, node airport.NodeID) traffic.Transmission {
 	var r *airport.Route
 	if it.dep != nil {
 		r = it.dep.Route()
@@ -1424,16 +1448,30 @@ func (it *controlled) phrase(action string, node airport.NodeID) string {
 }
 
 // phraseView is phrase for a view the caller holds.
-func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) string {
+func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) traffic.Transmission {
 	call, rwy := it.Tail, v.Runway
+	spoken := func(n int) []string {
+		if r == nil {
+			return nil
+		}
+		return r.SpokenTaxiways(min(n, len(r.Edges)))
+	}
 	switch action {
 	case "pushback":
-		return call + ", push back and start-up approved"
+		return traffic.ClearedPushback(call)
 	case "taxi":
-		if it.dep != nil {
-			return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", call, entryPoint(r), rwy, via(r, len(r.Edges)))
+		n := 0
+		if r != nil {
+			n = len(r.Edges)
 		}
-		return fmt.Sprintf("%s, taxi to stand %s%s", call, v.Stand, via(r, len(r.Edges)))
+		if it.dep != nil {
+			entry := ""
+			if r != nil {
+				entry = r.Entry
+			}
+			return traffic.ClearedTaxiToRunway(call, rwy, entry, spoken(n))
+		}
+		return traffic.ClearedTaxiToStand(call, v.Stand, spoken(n))
 	case "upto":
 		if r != nil {
 			if i := slices.Index(r.Nodes, node); i > 0 {
@@ -1441,30 +1479,32 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 				if i < len(r.Edges) && r.Edges[i].Name != "" && r.Edges[i].Name != limit {
 					limit = r.Edges[i].Name // hold short of the taxiway joined there
 				}
-				if limit == "" {
-					return fmt.Sprintf("%s, taxi%s, hold position at the marked point", call, via(r, i))
-				}
-				return fmt.Sprintf("%s, taxi%s, hold short of %s", call, via(r, i), limit)
+				return traffic.ClearedTaxiUpTo(call, spoken(i), limit)
 			}
 		}
-		return call + ", taxi to the marked point and hold"
+		return traffic.ClearedTaxiUpTo(call, nil, "")
 	case "cross":
-		return fmt.Sprintf("%s, cross runway %s", call, v.HoldingShortOf)
+		return traffic.ClearedCross(call, v.HoldingShortOf)
 	case "lineup":
-		return fmt.Sprintf("%s, runway %s, line up and wait", call, rwy)
+		return traffic.ClearedLineUp(call, rwy)
 	case "takeoff":
-		return fmt.Sprintf("%s, runway %s, cleared for take-off", call, rwy)
+		return traffic.ClearedTakeoff(call, rwy, false)
 	case "hold":
-		return call + ", hold position"
+		return traffic.HoldPosition(call)
 	case "goaround":
-		return call + ", go around, I say again, go around"
+		return traffic.GoAround(call, "")
 	case "abort":
 		if v.State == traffic.TaxiDeparting.String() {
-			return call + ", stop immediately, I say again, stop immediately"
+			return traffic.Stop(call)
 		}
-		return call + ", hold position, cancel take-off clearance, I say again, cancel take-off clearance"
+		return traffic.CancelTakeoff(call)
 	}
-	return call + ", " + action
+	return traffic.Say(traffic.Transmission{Position: traffic.PosGround, Callsign: call, Intent: traffic.Intent(action)})
+}
+
+// say sends t on the radio: logged as ATC and kept for /api/radio.
+func (it *controlled) say(t traffic.Transmission) {
+	it.cc.radio.Transmit(it.ICAO, t)
 }
 
 // airFix is a named fix of a procedure on an air route.
