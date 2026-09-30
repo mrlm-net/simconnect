@@ -89,3 +89,22 @@ func TestRadioReadsBack(t *testing.T) {
 		t.Errorf("%d transmissions after a pilot's call", len(heard))
 	}
 }
+
+func TestATISInformation(t *testing.T) {
+	tx := ATISInformation("Bravo", "Ruzyne information B, runway 24")
+	if tx.Position != PosATIS || tx.Intent != IntentATIS || tx.Params[ParamInfo] != "Bravo" || tx.Pilot {
+		t.Fatalf("ATIS transmission = %+v", tx)
+	}
+	r := NewRadio(RadioOptions{FrequencyOf: func(_ string, pos Position) string {
+		if pos == PosATIS {
+			return "122.155"
+		}
+		return ""
+	}})
+	if got := r.Transmit("LKPR", tx); got.Frequency != "122.155" {
+		t.Errorf("ATIS on %q, want its frequency", got.Frequency)
+	}
+	if _, ok := Readback(tx); ok {
+		t.Error("an ATIS is not read back")
+	}
+}

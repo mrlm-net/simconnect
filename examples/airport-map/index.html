@@ -411,6 +411,21 @@ let data = null;
 
 // smoothLine rounds a polyline's corners for drawing (Chaikin: each pass
 // cuts every corner at a quarter of its legs); the ends stay.
+// speakEnglish says text in an English voice: ATC's language whatever the
+// browser's locale (a Czech system's default voice reads it as Czech).
+function speakEnglish(text) {
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-GB';
+    const voices = speechSynthesis.getVoices();
+    const v = voices.find(v => v.lang === 'en-GB') || voices.find(v => v.lang === 'en-US') || voices.find(v => /^en/i.test(v.lang));
+    if (v) u.voice = v;
+    u.rate = 0.95;
+    speechSynthesis.speak(u);
+  } catch { /* no speech */ }
+}
+
 function smoothLine(pts, passes = 3) {
   for (let n = 0; n < passes && pts.length > 2; n++) {
     const out = [pts[0]];
@@ -1592,7 +1607,7 @@ async function pollAirportInfo() {
       ? `<span class="letter" title="Information ${esc(a.atis.letter)}">${esc(a.atis.letter[0])}</span>Information ${esc(a.atis.letter)}<div class="text">${esc(a.atis.text)}</div>` +
         `<button type="button" class="secondary" id="apSpeak" title="Read it aloud (the spoken form, digits spelled)">🔊 Listen</button>`
       : '—';
-    if (a.atis) $('apSpeak').onclick = () => { try { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(a.atis.spoken)); } catch { /* no speech */ } };
+    if (a.atis) $('apSpeak').onclick = () => speakEnglish(a.atis.spoken);
   } catch { /* server gone */ }
 }
 setInterval(pollAirportInfo, 10000);

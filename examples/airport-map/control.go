@@ -83,8 +83,10 @@ type controlled struct {
 	gates bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
-	// atc is the position working it now (#416).
-	atc traffic.Position
+	// atc is the position working it now (#416); atisSaid: its pilot has
+	// given the ATIS letter (#418).
+	atc      traffic.Position
+	atisSaid bool
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -164,6 +166,8 @@ type controlCenter struct {
 	// the scheduler's messages.
 	own   map[uint32]bool
 	extra func(engine.Message) bool
+	// atisLetter is an airport's current ATIS letter for first calls (#418).
+	atisLetter func(icao string) string
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin      func(icao, tail string)
@@ -1613,8 +1617,13 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	from := it.atc
 	it.atc = pos
 	it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
-	// The pilot's first call on the new frequency (#417).
-	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), ""))
+	// The pilot's first call on the new frequency (#417), with the ATIS
+	// letter on the first of all (#418).
+	info := ""
+	if !it.atisSaid && it.cc.atisLetter != nil {
+		info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
+	}
+	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info))
 }
 
 // checkInReport is what the pilot reports on first calling pos.

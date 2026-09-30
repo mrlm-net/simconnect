@@ -279,17 +279,23 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	tw := newTowers(cc, sched)
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	cc.sequencesAt = seqs.at
+	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{})
 	defer close(stop) // this connection only
 	go func() {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
+		var atisAt time.Time // the last ATIS refresh (#418)
 		for {
 			select {
 			case <-stop:
 				return
 			case <-t.C:
 				now := cc.clock.Now() // traffic time (#413)
+				if now.Sub(atisAt) >= time.Minute {
+					atisAt = now
+					st.atisTick(now, cc, sched.airports())
+				}
 				sched.tick(now)
 				seqs.tick(now)
 				air := cc.world.Aircraft()

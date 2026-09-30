@@ -103,3 +103,9 @@ AUA1976 pilot: Push and start approved, AUA1976
 ```
 
 You can be the pilot too. `POST /api/radio/pilot` takes a recognised call `{icao, callsign, intent, tags}`, for instance from `voice-goio`. It answers "request_taxi" with a taxi clearance from where your aircraft is to the runway in use. It checks a "readback" against the last clearance to that call sign and corrects a wrong one, and it answers anything else with "say again". It returns what ATC said.
+
+## ATIS on its frequency
+
+Each airport's ATIS (`nav.ATISService`, see [Weather and ATIS](nav-weather.md)) is on the radio too (#418). `ATISInformation(letter, text)` is the broadcast, on the ATIS position and so on the ATIS frequency, and it is not read back. Our pilots give the current letter on their first call of all: "Ruzyne Ground, CSA123, stand A4, information Bravo".
+
+The airport map refreshes the ATIS of its managed airports every minute of traffic time, from the weather at the user's aircraft. A new information goes out on the radio and into the traffic log. `GET /api/radio/atis?icao=LKPR` serves the current one (letter, text, spoken form and frequency) for a voice to loop. The airport panel's 🔊 button reads it in an English voice, whatever the browser's language.

@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- ATIS on its frequency (#418): `pkg/traffic` `ATISInformation`, the broadcast on the ATIS position. The airport map refreshes the ATIS every minute of traffic time, broadcasts a new information, and has our pilots give the letter on their first call. `GET /api/radio/atis` serves the current one for a voice to loop. The airport panel reads the ATIS in an English voice.
 - `pkg/traffic` the pilot side (#417):
   - requests and reports (`RequestPushback`, `RequestTaxi`, `ReadyForDeparture`, `Vacated`), the first call on a frequency (`CheckIn`), `SayAgain`;
   - `Readback` of every clearance, the ICAO way, and `RadioOptions.ReadBack` has our pilots read back on the frequency;
