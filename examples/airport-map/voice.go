@@ -32,7 +32,7 @@ import (
 // voiceMaxLagSeconds: a transmission not yet said this long after it was
 // made is dropped, so a busy frequency stays live rather than minutes
 // behind.
-const voiceMaxLagSeconds = 20
+const voiceMaxLagSeconds = 60
 
 // voiceQueueKey plays everything through one player queue: one frequency or
 // all, one thing at a time, as on a single receiver.
@@ -61,6 +61,10 @@ type voiceOut struct {
 	player *audio.Player
 
 	queue chan voiceItem
+	// The ATIS broadcast: its text, its audio, when its loop started.
+	atisText  string
+	atisPCM   []int16
+	atisStart time.Time
 	// The pauses between transmissions: when the last one ends and who it
 	// was to or from, so a readback follows its clearance closely and a new
 	// exchange after a breath.
@@ -122,6 +126,13 @@ func (v *voiceOut) open() error {
 func (v *voiceOut) set(on bool, freq string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	if freq != v.freq && v.player != nil {
+		v.player.Close() // another frequency: what the last one still had goes
+		v.player = nil
+		for len(v.queue) > 0 {
+			<-v.queue
+		}
+	}
 	v.freq = freq
 	if !on {
 		v.on, v.status = false, "off"
@@ -155,7 +166,8 @@ func (v *voiceOut) state() voiceState {
 // is on the frequency followed. It never blocks the radio.
 func (v *voiceOut) hear(t traffic.Transmission) {
 	v.mu.Lock()
-	skip := !v.on || v.freq != "" && t.Frequency != v.freq || t.Intent == traffic.IntentATIS && v.freq == ""
+	// One frequency, as on a receiver: nothing without one (#462).
+	skip := !v.on || v.freq == "" || t.Frequency != v.freq || t.Intent == traffic.IntentATIS
 	v.mu.Unlock()
 	if skip {
 		return
@@ -184,9 +196,63 @@ func (v *voiceOut) run() {
 				continue
 			}
 			if icao, text, ok := atis(freq); ok {
-				v.say(traffic.Transmission{Airport: icao, Frequency: freq, Position: traffic.PosATIS, Intent: traffic.IntentATIS, Text: text}, false)
-				time.Sleep(3 * time.Second) // between broadcasts
+				v.broadcast(icao, freq, text)
 			}
+		}
+	}
+}
+
+// atisGap is the silence between two runs of an ATIS broadcast.
+const atisGap = 3 * time.Second
+
+// broadcast plays the ATIS on freq as a continuous broadcast (#462): each
+// information is synthesised once and loops from a fixed start, so tuning
+// in joins it where it is, mid-sentence, as on a real receiver. It returns
+// after one run, or when the frequency or the information changes.
+func (v *voiceOut) broadcast(icao, freq, text string) {
+	v.mu.Lock()
+	if !v.on || v.player == nil || v.engine == nil {
+		v.mu.Unlock()
+		return
+	}
+	engine, pool, chain, norm, player := v.engine, v.pool, v.chain, v.norm, v.player
+	cached := v.atisText == text && v.atisPCM != nil
+	v.mu.Unlock()
+	if !cached {
+		voice := pool.Assign(icao, voicegoio.ATIS)
+		pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(text, voicegoio.ICAO))
+		if err != nil {
+			log.Printf("voice: %v", err)
+			return
+		}
+		out := chain.Apply(pcm, engine.SampleRate(voice), voice.Radio, player.SampleRate(), 1)
+		v.mu.Lock()
+		v.atisText, v.atisPCM, v.atisStart = text, out, time.Now()
+		v.mu.Unlock()
+	}
+	v.mu.Lock()
+	out, start := v.atisPCM, v.atisStart
+	v.mu.Unlock()
+	rate := player.SampleRate()
+	length := time.Duration(float64(len(out)) / float64(rate) * float64(time.Second))
+	period := length + atisGap
+	into := time.Since(start) % period
+	if into >= length {
+		time.Sleep(period - into) // between two runs: the next one from its start
+		into = 0
+	}
+	from := int(into.Seconds() * float64(rate))
+	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: "atis", Phraseology: voicegoio.ICAO, Text: text}, out[from:], rate); err != nil {
+		return
+	}
+	// Wait while it plays, but stop listening for it at a change of
+	// frequency (set closes the player).
+	for end := time.Now().Add(length - into); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+		v.mu.Lock()
+		same := v.freq == freq && v.player == player && v.on
+		v.mu.Unlock()
+		if !same {
+			return
 		}
 	}
 }
@@ -219,6 +285,9 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	gap := voiceExchangeGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
 	if t.Callsign != "" && t.Callsign == v.lastCS { // a reply: short
 		gap = voiceReplyGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter/3)))
+	}
+	if len(v.queue) > 2 {
+		gap /= 2 // behind: shorter pauses rather than dropping calls
 	}
 	wait := time.Until(v.lastEnd.Add(gap))
 	v.mu.Unlock()

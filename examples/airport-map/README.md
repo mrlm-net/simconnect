@@ -43,7 +43,7 @@ A tour with more screenshots is in [Examples](../../docs/examples.md).
 
 ## Voice
 
-The **Radio** tab's **🔇 Sound off** button turns the voice on: what is said on the frequency you follow (or all of them) is spoken through voice-goio. Each controller position has its own voice and radio sound, each crew its own voice, and while you follow the ATIS frequency its broadcast plays on a loop. The airport panel's 🔊 reads the ATIS once. A busy frequency stays live: what could not be said within 20 s is dropped.
+The **Radio** tab's **🔇 Sound off** button turns the voice on: what is said on the frequency you follow is spoken through voice-goio, one frequency at a time as on a receiver. Each controller position has its own voice and radio sound, each crew its own voice, and tuned to the ATIS you join its continuous broadcast where it is. The airport panel's 🔊 reads the ATIS once. On a busy frequency the pauses shorten; only what could not be said within 60 s is dropped.
 
 The voice needs [piper](https://github.com/rhasspy/piper) and at least one English voice model:
 

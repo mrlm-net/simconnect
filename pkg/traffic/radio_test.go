@@ -20,8 +20,8 @@ func TestTransmissionPhrases(t *testing.T) {
 		param    string
 		paramVal string
 	}{
-		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared to Frankfurt, BALTU 7D departure, runway 24, climb via SID to 5000 feet, squawk 4521", ParamSquawk, "4521"}, // Doc 4444 6.3.2.3, CAP 413 2.68
-		{ClearedDeparture("CSA1", DepartureClearance{SID: "VOZ 5M", Runway: "24"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared VOZ 5M departure, runway 24", ParamSID, "VOZ 5M"},
+		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared to Frankfurt, BALTU 7D departure, flight planned route, runway 24, climb via SID to 5000 feet, squawk 4521", ParamSquawk, "4521"}, // Doc 4444 6.3.2.3, CAP 413 2.68
+		{ClearedDeparture("CSA1", DepartureClearance{SID: "VOZ 5M", Runway: "24"}), PosDelivery, IntentDepartureClearance, "CSA1, cleared VOZ 5M departure, flight planned route, runway 24", ParamSID, "VOZ 5M"},
 		{ClearedArrival("CSA1", "GOLOP 4S", "ILS", "24", "flight level 100"), PosApproach, IntentArrivalClearance, "CSA1, cleared GOLOP 4S arrival, runway 24, descend to flight level 100, expect ILS approach", ParamSTAR, "GOLOP 4S"}, // Doc 4444 6.5.2.3, 12.3.3.2 a
 		{ClearedStartUp("CSA1"), PosGround, IntentStartUp, "CSA1, start up approved", "", ""},   // Doc 4444 12.3.4.3 c
 		{ClearedPushback("CSA1"), PosGround, IntentPushback, "CSA1, pushback approved", "", ""}, // 12.3.4.4 b

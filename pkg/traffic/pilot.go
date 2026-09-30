@@ -55,22 +55,32 @@ func RequestClearance(station, cs, stand, info, destination string) Transmission
 	return pilotTx(PosDelivery, cs, IntentRequestClearance, p, fmt.Sprintf("%s, stand %s%s, %s", text, stand, withInfo(info), req))
 }
 
-// RequestStartUp is a departure ready on its stand, its first call to
+// RequestPushback is a departure ready on its stand, its first call to
 // ground: "Ruzyne Ground, CSA123, stand A4, information Bravo, request
-// start up" (Doc 4444 12.3.4.3 b; CAP 413 4.9).
+// pushback" (Doc 4444 12.3.4.4 a, the order of CAP 413 4.9); station ""
+// when already in contact.
+func RequestPushback(station, cs, stand, info string) Transmission {
+	return firstCall(IntentRequestPushback, station, cs, stand, info, "request pushback")
+}
+
+// RequestStartUp asks for the start-up, the push under way: "CSA123,
+// request start up" (Doc 4444 12.3.4.3 a); with station and stand as a
+// first call.
 func RequestStartUp(station, cs, stand, info string) Transmission {
+	return firstCall(IntentRequestStartUp, station, cs, stand, info, "request start up")
+}
+
+// firstCall is "[station, ]cs[, stand (stand)][, information (info)], req".
+func firstCall(in Intent, station, cs, stand, info, req string) Transmission {
 	p := map[string]string{ParamStation: station, ParamStand: stand, ParamInfo: info}
 	text := cs
 	if station != "" {
 		text = station + ", " + cs
 	}
-	return pilotTx(PosGround, cs, IntentRequestStartUp, p, fmt.Sprintf("%s, stand %s%s, request start up", text, stand, withInfo(info)))
-}
-
-// RequestPushback is a departure started up and ready to push: "CSA123,
-// stand A4, request pushback" (Doc 4444 12.3.4.4 a).
-func RequestPushback(cs, stand string) Transmission {
-	return pilotTx(PosGround, cs, IntentRequestPushback, map[string]string{ParamStand: stand}, fmt.Sprintf("%s, stand %s, request pushback", cs, stand))
+	if stand != "" {
+		text += ", stand " + stand
+	}
+	return pilotTx(PosGround, cs, in, p, text+withInfo(info)+", "+req)
 }
 
 // RequestTaxi is a departure pushed back and ready to taxi.
@@ -267,6 +277,15 @@ const IntentATIS Intent = "atis"
 // new information is out (a voice loops the latest).
 func ATISInformation(letter, text string) Transmission {
 	return Transmission{Position: PosATIS, Intent: IntentATIS, Params: map[string]string{ParamInfo: letter}, Text: text}
+}
+
+// IntentReadbackCorrect: the controller confirms a readback.
+const IntentReadbackCorrect Intent = "readback_correct"
+
+// ReadbackCorrect is the controller at pos confirming a readback: "CSA123,
+// readback correct" (CAP 413 2.68 shows "BIGJET 347, correct").
+func ReadbackCorrect(pos Position, cs string) Transmission {
+	return Transmission{Position: pos, Callsign: cs, Intent: IntentReadbackCorrect, Text: cs + ", readback correct"}
 }
 
 // SayAgain is the controller asking cs (or whoever called, cs "") to say

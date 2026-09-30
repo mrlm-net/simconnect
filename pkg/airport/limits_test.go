@@ -62,3 +62,27 @@ func TestLimitsForDefaults(t *testing.T) {
 		t.Errorf("hand-over %.0f ft, want 2500", lim.ClimbHandoverFt)
 	}
 }
+
+// The initial climb of a departure clearance: FL100 unless the airport
+// has its own.
+func TestInitialClimb(t *testing.T) {
+	for _, icao := range []string{"LKPR", "LOWW", "KJFK"} {
+		if got := LimitsFor(&Layout{ICAO: icao}, nil).InitialClimbFt; got != 10000 {
+			t.Errorf("%s: %v, want 10000", icao, got)
+		}
+	}
+}
+
+// A SID of its own climb overrides the airport's.
+func TestInitialClimbBySID(t *testing.T) {
+	l := Limits{InitialClimbFt: 7000, InitialClimbs: map[string]float64{"BALT7D": 5000}}
+	if got := l.InitialClimbFor("balt7d"); got != 5000 {
+		t.Errorf("BALT7D: %v", got)
+	}
+	if got := l.InitialClimbFor("VOZ5M"); got != 7000 {
+		t.Errorf("VOZ5M: %v", got)
+	}
+	if got := (Limits{}).InitialClimbFor("X"); got != DefaultInitialClimbFt {
+		t.Errorf("none: %v", got)
+	}
+}

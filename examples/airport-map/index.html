@@ -222,7 +222,7 @@
   </section>
 
   <section data-panel="radio" hidden>
-    <h2>Radio <span class="i" title="What is said on the airport's frequencies: our controllers' clearances and handoffs, the pilots' requests and readbacks, the ATIS. Pick a frequency to follow it, or All.">ⓘ</span></h2>
+    <h2>Radio <span class="i" title="What is said on one of the airport's frequencies, as on a receiver: our controllers' clearances and handoffs, the pilots' requests and readbacks. Tune the ATIS to hear its broadcast.">ⓘ</span></h2>
     <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <span id="rdVoice" class="note"></span></div>
     <div id="rdFreqs" class="rdfreqs"></div>
     <div id="rdLog" class="rdlog"></div>
@@ -1849,8 +1849,16 @@ async function pollRadio() {
   const count = {};
   for (const t of said) count[t.frequency || ''] = (count[t.frequency || ''] || 0) + 1;
   const btn = (mhz, label) => `<button type="button" data-f="${esc(mhz)}" class="${rdFreq === mhz ? 'on' : ''}">${esc(label)}${mhz ? ' ' + esc(mhz) : ''}<span class="n">${mhz ? count[mhz] || 0 : said.length}</span></button>`;
-  $('rdFreqs').innerHTML = btn('', 'All') + freqs.map((f) => btn(f.mhz, f.label)).join('');
-  const shown = said.filter((t) => !rdFreq || t.frequency === rdFreq);
+  // One frequency, as on a receiver (#462): the tower until one is picked.
+  if (!rdFreq || !freqs.some((f) => f.mhz === rdFreq)) {
+    const tower = freqs.find((f) => f.label === 'Tower') || freqs[0];
+    if (tower) {
+      rdFreq = tower.mhz;
+      if (rdSoundOn) setVoice(true);
+    }
+  }
+  $('rdFreqs').innerHTML = freqs.map((f) => btn(f.mhz, f.label)).join('');
+  const shown = said.filter((t) => t.frequency === rdFreq);
   const log = $('rdLog');
   const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
   log.innerHTML = shown.map((t) => {
@@ -1866,7 +1874,7 @@ function showVoice(v) {
   rdSoundOn = !!v.on;
   $('rdSound').textContent = rdSoundOn ? '🔊 Sound on' : '🔇 Sound off';
   $('rdSound').className = rdSoundOn ? '' : 'secondary';
-  $('rdVoice').textContent = rdSoundOn ? (rdFreq ? `listening on ${rdFreq}` : 'listening on all frequencies') : (v.status && v.status !== 'off' ? v.status : '');
+  $('rdVoice').textContent = rdSoundOn ? `listening on ${rdFreq}` : (v.status && v.status !== 'off' ? v.status : '');
 }
 async function setVoice(on) {
   try {

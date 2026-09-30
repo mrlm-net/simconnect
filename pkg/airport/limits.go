@@ -55,7 +55,31 @@ type Limits struct {
 	// DeicingPads are the remote de-icing positions (#323); none: aircraft
 	// are de-iced on their stands.
 	DeicingPads []DeicingPad
+	// InitialClimbFt is the level a departure clearance climbs to ("climb
+	// via SID to flight level 100"); 0 takes DefaultInitialClimbFt (MSFS
+	// SID data carries no usable altitude for it).
+	InitialClimbFt float64
+	// InitialClimbs are initial climbs of single SIDs, by name ("BALT7D"),
+	// where they differ from InitialClimbFt.
+	InitialClimbs map[string]float64
 }
+
+// InitialClimbFor is the initial climb of a departure clearance on sid:
+// its own (InitialClimbs), else the airport's (InitialClimbFt), else
+// DefaultInitialClimbFt.
+func (l Limits) InitialClimbFor(sid string) float64 {
+	if ft := l.InitialClimbs[strings.ToUpper(sid)]; ft > 0 {
+		return ft
+	}
+	if l.InitialClimbFt > 0 {
+		return l.InitialClimbFt
+	}
+	return DefaultInitialClimbFt
+}
+
+// DefaultInitialClimbFt is the initial climb of a departure clearance where
+// an airport has none of its own: FL100.
+const DefaultInitialClimbFt = 10000.0
 
 // KnownLimits are published values of airports, keyed by ICAO code. Zero
 // fields take the defaults (or the facility data); LimitsFor fills the rest.
@@ -98,6 +122,9 @@ func LimitsFor(l *Layout, p *Procedures) Limits {
 		if alt := initialClimbFt(p); alt > 0 && l != nil {
 			lim.ClimbHandoverFt = max(MinClimbHandoverFt, alt-elevFt)
 		}
+	}
+	if lim.InitialClimbFt == 0 {
+		lim.InitialClimbFt = DefaultInitialClimbFt
 	}
 	if lim.TaxiMaxKts == 0 {
 		lim.TaxiMaxKts = DefaultTaxiMaxKts

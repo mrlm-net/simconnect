@@ -61,13 +61,11 @@ func squawkFor(cs string) string {
 	return fmt.Sprintf("4%03o", n)
 }
 
-// initialClimbSaid is the initial climb of a departure from l with limits
-// lim as said: the SID's initial climb (the climb hand-over height above
-// the field), a level against the transition altitude ("5000 feet").
-func initialClimbSaid(l *airport.Layout, lim airport.Limits) string {
-	elevFt := l.Altitude * 3.28084
-	alt := math.Round((lim.ClimbHandoverFt+elevFt)/100) * 100
-	return traffic.LevelSaidAbove(alt, lim.TransitionAltitudeFt)
+// initialClimbSaid is the initial climb of a departure on sid with limits
+// lim as said (Limits.InitialClimbFor: by SID, else the airport's, else
+// FL100), a level against the transition altitude.
+func initialClimbSaid(lim airport.Limits, sid string) string {
+	return traffic.LevelSaidAbove(lim.InitialClimbFor(sid), lim.TransitionAltitudeFt)
 }
 
 // windSaid is the surface wind at icao as the tower says it, magnetic
