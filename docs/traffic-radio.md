@@ -79,3 +79,27 @@ Runway crossings stay on the ground frequency, the tower having agreed, as at mo
 A change of position is a handoff, said by the position handing over. `Handoff` gives "CSA123, contact Praha Tower 118.105" (`StationName` makes "Praha Tower" from the scenery's name). With `RadioOptions.FrequencyOf` the radio puts each transmission on its position's frequency and says one at a time on each frequency. While one transmission is said (`SpeakingTime`: about 160 words a minute), the next is stamped for when it ends, so a voice plays them in turn.
 
 On the airport map each aircraft's card shows who works it and on what frequency ("📻 tower 118.105"), and the traffic log reads as the radio: the clearance on each frequency, then "contact Praha Ground 121.905".
+
+## The pilot side
+
+Our pilots talk too (#417). A pilot's transmission has `Pilot` set, on the same frequency as the controller's.
+
+- **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`.
+- **The first call on a frequency:** `CheckIn`: "Ruzyne Tower, CSA123, holding point runway 24, ready for departure", with the ATIS letter on the first call of all.
+- **Readbacks:** `Readback` reads a clearance back the ICAO way, what must be read back and then the call sign: "Holding point B runway 24 via H, A, CSA123"; "Ruzyne Tower 134.56, CSA123"; "Climb flight level 210, CSA123". With `RadioOptions.ReadBack` the radio has our pilots read back every clearance, after it, on its frequency.
+- **Checking a readback:** `CheckReadback(clearance, heard)` compares what was read back (parameters as recognised, e.g. a voice recogniser's tags) with the clearance. It ignores case, spacing and leading zeros ("6" for "06", "FL210" for "flight level 210"). A wrong or missing item gets the controller's correction: "CSA123, negative, taxi via H, hold short of A". `SayAgain` asks a call sign, or "station calling", to say again.
+
+On the airport map the traffic log reads as the radio, pilot lines marked `pilot:`:
+
+```
+AUA1976 ATC: AUA1976, cleared VOZ5D departure, runway 06
+AUA1976 pilot: Cleared VOZ5D departure, runway 06, AUA1976
+AUA1976 ATC: AUA1976, contact Ruzyne Ground 121.91
+AUA1976 pilot: Ruzyne Ground 121.91, AUA1976
+AUA1976 pilot: Ruzyne Ground, AUA1976, stand A1
+AUA1976 pilot: AUA1976, stand A1, request push and start-up
+AUA1976 ATC: AUA1976, push back and start-up approved
+AUA1976 pilot: Push and start approved, AUA1976
+```
+
+You can be the pilot too. `POST /api/radio/pilot` takes a recognised call `{icao, callsign, intent, tags}`, for instance from `voice-goio`. It answers "request_taxi" with a taxi clearance from where your aircraft is to the runway in use. It checks a "readback" against the last clearance to that call sign and corrects a wrong one, and it answers anything else with "say again". It returns what ATC said.
