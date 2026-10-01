@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -51,6 +52,33 @@ func mayClear(as string, it *controlled) bool {
 		return true
 	}
 	return string(atc) == as
+}
+
+// listenAddr is the address the map serves on (-addr).
+var listenAddr string
+
+// networkURLs are the addresses other devices open the map on: one per
+// network interface when it listens on all of them (-addr :8080), none
+// when it listens on this computer only (127.0.0.1).
+func networkURLs() []string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return nil
+	}
+	if host != "" && host != "0.0.0.0" && host != "::" {
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() || host == "localhost" {
+			return nil
+		}
+		return []string{"http://" + net.JoinHostPort(host, port)}
+	}
+	var out []string
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil && !n.IP.IsLinkLocalUnicast() {
+			out = append(out, "http://"+net.JoinHostPort(n.IP.String(), port))
+		}
+	}
+	return out
 }
 
 // clips caches the WAVs of recent transmissions, by key.
@@ -143,7 +171,7 @@ func registerNetwork(mux *http.ServeMux, st *state) {
 		st.mu.Lock()
 		connected := st.control != nil
 		st.mu.Unlock()
-		writeJSON(w, map[string]bool{"connected": connected})
+		writeJSON(w, map[string]any{"connected": connected, "network": networkURLs(), "addr": listenAddr})
 	})
 	mux.HandleFunc("GET /api/voice/clip", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()

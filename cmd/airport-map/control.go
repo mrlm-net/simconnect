@@ -81,7 +81,7 @@ type controlled struct {
 	defBase  uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
-	gates bool
+	gates atomic.Bool
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
 	// atc is the position working it now (#416); atisSaid: its pilot has
@@ -134,6 +134,7 @@ type ControlView struct {
 	OnGround       bool             `json:"onGround"`
 	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
 	Rush           bool             `json:"rush,omitempty"`         // told to hurry (#510)
+	Manual         bool             `json:"manual,omitempty"`       // the user gives its clearances, no automation
 	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
@@ -568,7 +569,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
 		}
 	}
-	it := &controlled{gates: r.Gates, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it.gates.Store(r.Gates)
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -618,7 +620,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
-	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.view = ControlView{ID: n, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
@@ -886,6 +888,9 @@ func arrivalActions(s traffic.ArrivalState) []string {
 func (it *controlled) act(action string, node airport.NodeID) error {
 	switch d := it.dep; {
 	case d != nil && action == "pushback":
+		d.ClearPushback()
+	case d != nil && action == "pushstart":
+		d.ClearStartUp()
 		d.ClearPushback()
 	case d != nil && action == "startup":
 		d.ClearStartUp()
@@ -1168,6 +1173,23 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, "no such aircraft", http.StatusNotFound)
 			return
 		}
+		// Manual (?on=1) or automatic (?on=0): who gives its clearances. Back to
+		// automatic, a request still waiting is answered.
+		if r.PathValue("action") == "manual" {
+			on := r.URL.Query().Get("on") != "0"
+			it.gates.Store(on)
+			it.mu.Lock()
+			it.view.Manual = on
+			req := it.request
+			it.mu.Unlock()
+			tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])
+			if !on && req != "" {
+				p := it.cc.pending
+				p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.answer(req) })
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		// Rush (#510): ?on=1 or 0; the crew hurries, the clearances say it.
 		if r.PathValue("action") == "rush" {
 			on := r.URL.Query().Get("on") != "0"
@@ -1209,6 +1231,19 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if node >= 0 {
 			clr = fmt.Sprintf("%s node %d", action, node)
 		}
+		// A clearance from the user takes the aircraft over: no automatic
+		// answers or tower clearances for it any more (they would clash).
+		if action != "remove" && action != "locate" && !it.gates.Load() {
+			it.gates.Store(true)
+			it.mu.Lock()
+			it.view.Manual = true
+			it.mu.Unlock()
+			tlog.printf("%-6s under your control", it.Tail)
+		}
+		// Pushback with the start-up in one (?startup=1).
+		if action == "pushback" && r.URL.Query().Get("startup") == "1" {
+			action = "pushstart"
+		}
 		// Marked as said before it is given: the state change it causes can
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
@@ -1224,8 +1259,14 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// A pushback facing a compass direction ("east"): planned again so.
 		facing := r.URL.Query().Get("facing")
 		do := func() error { return it.act(action, node) }
-		if action == "pushback" && facing != "" && it.dep != nil {
-			do = func() error { return it.dep.ClearPushbackFacing(facing) }
+		if (action == "pushback" || action == "pushstart") && facing != "" && it.dep != nil {
+			start := action == "pushstart"
+			do = func() error {
+				if start {
+					it.dep.ClearStartUp()
+				}
+				return it.dep.ClearPushbackFacing(facing)
+			}
 		}
 		if err := cc.do(do); err != nil {
 			it.mu.Lock()
@@ -1950,7 +1991,7 @@ const weatherShare = 0.15
 // askWeather has the crew of it ask pos for the weather now and then, and
 // the controller answer with the wind and QNH.
 func (it *controlled) askWeather(pos traffic.Position) {
-	if rand.Float64() >= weatherShare || it.gates {
+	if rand.Float64() >= weatherShare || it.gates.Load() {
 		return
 	}
 	p := it.cc.pending
@@ -1982,6 +2023,11 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacing())
 		}
 		return traffic.ClearedPushback(call)
+	case "pushstart":
+		if it.dep != nil {
+			return traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacing())
+		}
+		return traffic.ClearedPushbackAndStartUp(call)
 	case "startup":
 		return traffic.ClearedStartUp(call)
 	case "taxi":
@@ -2081,7 +2127,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).
-	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.vacateSaid && !it.gates && it.atc == traffic.PosTower {
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
 		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
 		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true
@@ -2102,7 +2148,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	it.atc = pos
 	// Approach clears the arrival for its approach before handing it to
 	// tower on the final.
-	if ev.arr != nil && from == traffic.PosApproach && pos == traffic.PosTower && !it.gates {
+	if ev.arr != nil && from == traffic.PosApproach && pos == traffic.PosTower && !it.gates.Load() {
 		// With the QNH and "report established"; the crew reports it, then
 		// approach hands it over (Doc 4444 12.4.2.2 e; CAP 413 6.27, 6.28).
 		qnh, _ := it.cc.qnh()
@@ -2128,7 +2174,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info))
 	switch {
-	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates:
+	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates.Load():
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
 		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
@@ -2311,6 +2357,8 @@ func impliedBy(action string) []string {
 	switch action {
 	case "takeoff", "lineupbehind":
 		return []string{"lineup"}
+	case "pushstart":
+		return []string{"pushback", "startup"}
 	case "taxi":
 		return []string{"pushback"}
 	case "upto":

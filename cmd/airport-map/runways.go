@@ -116,7 +116,7 @@ func (t *towers) tick(now time.Time) {
 			t.forget(v.Tail) // the next crossing is cleared afresh
 		}
 		model := v.Model
-		u := traffic.RunwayUser{Callsign: v.Tail, Wake: traffic.WakeFor(model), Route: v.Procedure, Other: it.gates}
+		u := traffic.RunwayUser{Callsign: v.Tail, Wake: traffic.WakeFor(model), Route: v.Procedure, Other: it.gates.Load()}
 		own, ok := runwayOf(l, v.Runway)
 		if !ok {
 			continue
@@ -315,7 +315,7 @@ func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours 
 func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[string]*controlled) {
 	give := func(tail, action string, said traffic.Transmission, f func(it *controlled) error) {
 		it := ours[tail]
-		if it == nil || it.gates {
+		if it == nil || it.gates.Load() {
 			return
 		}
 		said = it.rushed(said)
@@ -368,7 +368,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	// Waiting only for the next arrival: line up behind it once it has
 	// passed (#509).
 	for cs, arr := range c.LineUpBehind {
-		if ours[cs] == nil || ours[cs].gates {
+		if ours[cs] == nil || ours[cs].gates.Load() {
 			continue
 		}
 		arr := arr
@@ -425,7 +425,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		changed := t.waiting[cs] != kind
 		t.waiting[cs] = kind
 		t.mu.Unlock()
-		if changed && ours[cs] != nil && !ours[cs].gates && !slices.Contains(c.GoAround, cs) {
+		if changed && ours[cs] != nil && !ours[cs].gates.Load() && !slices.Contains(c.GoAround, cs) {
 			tlog.printf("%-6s tower %s: waits — %s", cs, rwy, why)
 		}
 	}
