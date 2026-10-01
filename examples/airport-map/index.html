@@ -197,6 +197,7 @@
       <button type="button" id="cModelOpen" class="secondary" title="Show all models">▾</button>
       <div id="modelMenu" class="combo-menu" hidden></div>
     </div>
+    <table class="form"><tr><td>Callsign</td><td class="n"><input type="text" id="cTail" class="icao" placeholder="auto" maxlength="8" autocomplete="off" spellcheck="false" title="The call sign, e.g. CSA123; empty: the next free MAPnn"></td></tr></table>
     <details class="more"><summary>Options</summary>
       <label class="opt"><input type="checkbox" id="cGates" checked> <span id="cGatesLbl">Hold at every clearance</span></label>
       <label class="opt dep-only"><input type="checkbox" id="cTug" checked> Pushback tug</label>
@@ -213,6 +214,7 @@
       <button type="button" id="rCustomClear" class="secondary">Clear</button>
     </details>
     <button type="button" id="cSpawn" class="wide">▶ Spawn</button>
+    <button type="button" id="rHide" class="secondary wide" title="Deselect the stand and hide the planned route (Esc)">Hide route</button>
     <div id="rInfo" class="note"></div>
     <div id="cInfo" class="note"></div>
 
@@ -937,6 +939,14 @@ map.on('click', async (e) => {
 });
 $('rTaxiways').addEventListener('change', computeRoute);
 $('rCustomClear').addEventListener('click', () => { viaPoints = []; $('rTaxiways').value = ''; drawVia(); computeRoute(); });
+// Hide the planned route: no stand picked, nothing drawn (button or Esc).
+function hideRoute() {
+  routeFrom = null;
+  $('rFrom').textContent = '—';
+  computeRoute();
+}
+$('rHide').addEventListener('click', hideRoute);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.target.closest('input, select, textarea')) hideRoute(); });
 
 async function computeRoute() {
   updateSpawn();
@@ -1272,7 +1282,7 @@ async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
   if (!data || (!routeFrom && !auto)) { $('cInfo').innerHTML = '<span class="warn">Pick a stand first (click a parking spot), or tick "Assign a free stand".</span>'; return; }
   const body = {
-    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: selectedRunway(), model: $('cModel').value,
+    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: selectedRunway(), model: $('cModel').value, tail: $('cTail').value.trim().toUpperCase(),
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,

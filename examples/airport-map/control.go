@@ -448,6 +448,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
 	}
+	// A call sign picked on the map: letters and digits, as said on the radio.
+	if len(r.Tail) < 2 || len(r.Tail) > 8 || strings.IndexFunc(r.Tail, func(c rune) bool { return (c < 'A' || c > 'Z') && (c < '0' || c > '9') }) >= 0 {
+		return nil, fmt.Errorf("call sign %q: 2 to 8 letters and digits", r.Tail)
+	}
 	// One aircraft per call sign (a turnaround adopts its own arrival): a
 	// second one would share its stand reservation and its log.
 	if it := cc.byTail(r.Tail); it != nil && r.adopt == 0 {
