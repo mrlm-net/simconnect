@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Radio: the conditional line-up says the runway with the clearance, "behind the landing Airbus A320, line up and wait runway 24, behind" (was "…, runway 24, line up and wait behind"); the readback too.
 - Runway: a departure at its holding point is cleared to line up and take off only with the next arrival its line-up time (RunwayControllerOptions.LineUpTime, 60 s) farther away too; it lines up behind the arrival instead. A departure cleared for take-off is no longer also given a conditional line-up.
 - Airport map: an arrival removed in the air (a scene ending) is no longer handed to ground with "runway vacated".
 - Airport map: on the final, once its procedure is flown, an arrival's line runs to the threshold and down the runway.
