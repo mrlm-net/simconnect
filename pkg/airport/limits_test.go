@@ -66,7 +66,7 @@ func TestLimitsForDefaults(t *testing.T) {
 // The initial climb of a departure clearance: FL100 unless the airport
 // has its own.
 func TestInitialClimb(t *testing.T) {
-	for _, icao := range []string{"LKPR", "LOWW", "KJFK"} {
+	for _, icao := range []string{"LKPR", "LFPG", "KJFK"} {
 		if got := LimitsFor(&Layout{ICAO: icao}, nil).InitialClimbFt; got != 10000 {
 			t.Errorf("%s: %v, want 10000", icao, got)
 		}
@@ -84,5 +84,27 @@ func TestInitialClimbBySID(t *testing.T) {
 	}
 	if got := (Limits{}).InitialClimbFor("X"); got != DefaultInitialClimbFt {
 		t.Errorf("none: %v", got)
+	}
+}
+
+// The published values of the airports validated in #376 (EDDM, LOWW,
+// EGLL; sources in KnownLimits): transition altitude, the SIDs' initial
+// climb, reverse thrust and preferential runways.
+func TestLimitsForValidatedAirports(t *testing.T) {
+	for _, c := range []struct {
+		icao      string
+		ta, climb float64
+		noReverse bool
+		preferred []string
+	}{
+		{"EDDM", 5000, 7000, true, nil},
+		{"LOWW", 10000, 5000, true, nil},
+		{"EGLL", 6000, 6000, false, []string{"27R", "27L"}},
+	} {
+		lim := LimitsFor(&Layout{ICAO: c.icao}, nil)
+		if lim.TransitionAltitudeFt != c.ta || lim.InitialClimbFt != c.climb || lim.NoReverseThrust != c.noReverse || !slices.Equal(lim.PreferredRunways, c.preferred) {
+			t.Errorf("%s: TA %.0f, initial climb %.0f, no reverse %v, preferred %v; want %.0f %.0f %v %v", c.icao,
+				lim.TransitionAltitudeFt, lim.InitialClimbFt, lim.NoReverseThrust, lim.PreferredRunways, c.ta, c.climb, c.noReverse, c.preferred)
+		}
 	}
 }
