@@ -201,11 +201,13 @@ const entriesCache = new Map();
 const ENTRY_STATES = ['spawning', 'awaiting pushback', 'pushback', 'awaiting taxi', 'taxiing', 'holding short'];
 function entryRow(v) {
   if (v.kind !== 'departure' || v.done || !ENTRY_STATES.includes(v.state) || !data) return '';
-  const key = `${data.icao} ${v.runway} ${v.model}`;
+  // Its own airport, not the one on the map (live: EDKG asked for LKPR's 24).
+  const icao = v.icao || data.icao;
+  const key = `${icao} ${v.runway} ${v.model}`;
   const list = entriesCache.get(key);
   if (list === undefined) {
     entriesCache.set(key, null);
-    api(`/api/entries?icao=${encodeURIComponent(data.icao)}&runway=${encodeURIComponent(v.runway)}&model=${encodeURIComponent(v.model)}`).then((r) => {
+    api(`/api/entries?icao=${encodeURIComponent(icao)}&runway=${encodeURIComponent(v.runway)}&model=${encodeURIComponent(v.model)}`).then((r) => {
       entriesCache.set(key, r.ok ? r.data || [] : []);
       renderCtx();
     });

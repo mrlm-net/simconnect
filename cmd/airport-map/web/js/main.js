@@ -102,6 +102,10 @@ function openHelp() {
 // normalize flattens a pkg/airport Layout into the shape the drawing code
 // uses: lat/lon on every item and the runway end fields.
 function normalize(d) {
+  // A small airport may have no parking (or runways) at all: null, not [].
+  d.parking = d.parking || [];
+  d.taxiPoints = d.taxiPoints || [];
+  d.runways = d.runways || [];
   for (const p of [...d.parking, ...d.taxiPoints]) { p.lat = p.position.lat; p.lon = p.position.lon; }
   for (const r of d.runways) {
     r.lat = r.center.lat; r.lon = r.center.lon;
