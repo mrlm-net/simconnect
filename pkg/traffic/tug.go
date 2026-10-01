@@ -286,6 +286,15 @@ func (t *SimObjectTug) finish() error {
 	return t.client.AIRemoveObject(obj, t.reqID)
 }
 
+// Clear reports that the tug is off the aircraft: backed away and driving
+// off or home. The aircraft may start and taxi; the tug may still be on
+// its way to the depot.
+func (t *SimObjectTug) Clear() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.done || t.homing || t.away != nil && !t.reversing
+}
+
 func (t *SimObjectTug) Done() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()

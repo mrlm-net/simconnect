@@ -141,7 +141,7 @@ async function load(icao, refresh) {
   }
   const prev = data && data.icao;
   data = normalize(r.data);
-  if (prev !== data.icao) { routeFrom = null; viaPoints = []; drawVia(); $('rFrom').textContent = '—'; $('rFromHint').textContent = 'click a stand on the map'; }
+  if (prev !== data.icao) { activeUse = null; routeFrom = null; viaPoints = []; drawVia(); $('rFrom').textContent = '—'; $('rFromHint').textContent = 'click a stand on the map'; }
   $('aptCode').textContent = data.icao;
   $('aptName').textContent = data.name;
   $('icao').value = data.icao;
@@ -229,6 +229,7 @@ async function pollHere() {
 }
 const herePoll = poller('here', pollHere, () => ($('rdHere').checked && simLive ? 1000 : 0));
 $('rdHere').addEventListener('change', (e) => {
+  if (voice) showVoice(voice); // the output picker: not for this device
   if (e.target.checked && isLocalHost && rdSoundOn) {
     setVoice(false); // the map's own voice would say it twice here
     toast('Playing in this browser: the map voice on this computer is off (it would echo)');
@@ -237,8 +238,13 @@ $('rdHere').addEventListener('change', (e) => {
     // Made in the click, so the browser lets it play.
     hereAudio = hereAudio || new Audio();
     hereAudio.onended = hereAudio.onerror = () => { herePlaying = false; hereNext(); };
-    hereSince = Date.now();
-    herePoll.now();
+    // What was said before: not played. (The server's times, not this
+    // device's clock, which can be off.)
+    hereSince = 0;
+    api(`/api/radio?icao=${encodeURIComponent(data ? data.icao : '')}&n=20`).then((r) => {
+      for (const t of (r.ok && r.data) || []) herePlayed.add(`${t.at} ${t.callsign} ${t.intent}`);
+      herePoll.now();
+    });
   } else {
     hereQueue.length = 0;
     if (hereAudio) hereAudio.pause();
@@ -373,10 +379,6 @@ function boot() {
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || $('help').open) return;
     if (/^[1-6]$/.test(e.key)) showTab(TABS[Number(e.key) - 1], true);
-    if (e.key === ' ' && !e.target.closest('button, a, summary, [role="button"], [tabindex]')) {
-      e.preventDefault();
-      simAct(lastOwn && lastOwn.paused ? 'resume' : 'pause');
-    }
   });
   window.addEventListener('resize', () => { if (!isPhone()) $('panel').style.height = ''; });
   $('ctlLogBox').addEventListener('toggle', () => { if ($('ctlLogBox').open) controlPoll.now(); });

@@ -420,6 +420,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	procLoader := airport.NewProcedureLoader(client)
 	// The runways' ILS: frequency and name from their navaid records.
 	navLoader := nav.NewNavLoaderWithIDs(client, nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, 8)
+	resetILS() // lookups of a connection before: never answered now
 	// Weather at the user aircraft, whenever it changes.
 	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
 	if err := weather.Subscribe(); err != nil {
@@ -531,7 +532,13 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	var lastFrame time.Time // the simulator's last frame event
 	// A go-around is sequenced again (#394), and cleared to land again on
 	// its next approach (#486).
-	cc.rejoin = func(icao, tail string) { seqs.rejoin(icao, tail); tw.forgetLanding(tail) }
+	cc.rejoin = func(icao, tail string) {
+		seqs.rejoin(icao, tail)
+		tw.forgetLanding(tail)
+		tw.dropBehind(tail) // nobody waits to line up behind an arrival that went around
+	}
+	// A call sign spawned again (a scene replayed): no clearance remembered.
+	cc.forgetTower = tw.forgetTail
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at
@@ -741,8 +748,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					st.mu.Lock()
 					st.traffic, st.trafficAt = scan, time.Now()
-					cc.reportTraffic(scan)
 					st.mu.Unlock()
+					// Not under st.mu: reportTraffic takes cc.mu, and an aircraft
+					// handing off holds its own lock while it reads st (the
+					// weather), with /api/control taking cc.mu then the aircraft's:
+					// three locks in a ring froze the map.
+					cc.reportTraffic(scan)
 					scan = nil
 				}
 			}

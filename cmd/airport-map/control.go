@@ -217,6 +217,8 @@ type controlCenter struct {
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin      func(icao, tail string)
+	// forgetTower drops what the tower gave a call sign (spawned again).
+	forgetTower func(tail string)
 	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
@@ -468,6 +470,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// the less busy one (its stand is then found near it), a departure the
 	// one nearest its stand once that is known.
 	auto := r.Runway == "" || strings.EqualFold(r.Runway, "active")
+	if cc.forgetTower != nil && r.Tail != "" && r.adopt == 0 {
+		cc.forgetTower(r.Tail)
+	}
 	if auto {
 		r.Runway = cc.pickRunway(g, r.Kind == "arrival", r.Stand)
 	}
@@ -940,7 +945,15 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case d != nil && action == "hold":
 		return d.HoldPosition()
 	case d != nil && action == "abort":
-		return d.AbortTakeoff()
+		if err := d.AbortTakeoff(); err != nil {
+			return err
+		}
+		// Lined up again or back at the holding point: the tower clears it
+		// anew, not "given already".
+		if it.cc.forgetTower != nil {
+			it.cc.forgetTower(it.Tail)
+		}
+		return nil
 	case it.arr != nil && action == "land":
 		return nil // said: it lands unless sent around
 	case it.arr != nil && action == "hold":
@@ -1177,7 +1190,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		if req.Runway == "" || strings.EqualFold(req.Runway, "active") {
+		// A departure without its stand yet and no flight plan: spawn picks
+		// the parallel nearest the stand it assigns.
+		if (req.Runway == "" || strings.EqualFold(req.Runway, "active")) && (req.Kind == "arrival" || req.Stand >= 0 || req.Other != "") {
 			req.Runway = cc.pickRunway(g, req.Kind == "arrival", req.Stand)
 		}
 		if req.Other != "" {
@@ -1212,6 +1227,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 		cc.mu.Unlock()
 		if it == nil {
 			http.Error(w, "no such aircraft", http.StatusNotFound)
+			return
+		}
+		// Network play (#511): only the position working it changes it, its
+		// manual control, entry and rush included.
+		if as := positionOf(r); !mayClear(as, it) {
+			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
 			return
 		}
 		// Manual (?on=1) or automatic (?on=0): who gives its clearances. Back to
@@ -1727,9 +1748,7 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 		return
 	}
 	tlog.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, dep.view.Stand, d.Runway, dep.ID)
-	cc.mu.Lock()
-	delete(cc.items, it.ID)
-	cc.mu.Unlock()
+	cc.forget(it) // its ID block released too
 }
 
 // byTail is the controlled aircraft of a call sign, nil if none.

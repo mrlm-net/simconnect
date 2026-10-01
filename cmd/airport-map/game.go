@@ -124,7 +124,8 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		}
 		g.arrival = !g.arrival
 		tail := fmt.Sprintf("%s%d", gameAirlines[rand.IntN(len(gameAirlines))], 100+rand.IntN(900))
-		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, // "active": the runway in use at spawn time Model: "FSLTL A320 Air France SL", Tail: tail,
+		// Runway "active": the runway in use at spawn time.
+		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, Model: "FSLTL A320 Air France SL", Tail: tail,
 			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto"}
 		if it, err := cc.spawn(graph, r); err != nil {
 			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)

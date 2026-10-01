@@ -351,6 +351,9 @@ const (
 	// TugArriveTimeout: a tug not at the nose this long after it was sent
 	// for is given up.
 	TugArriveTimeout = 4 * time.Minute
+	// TugCreateTimeout: a tug the simulator has not created this long after
+	// it was asked for (a model it does not have) is given up.
+	TugCreateTimeout = 20 * time.Second
 )
 
 // Take-off pitch (TakeoffMover): on the runway the pitch stays

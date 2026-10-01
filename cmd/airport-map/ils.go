@@ -34,6 +34,14 @@ var ilsAids = struct {
 
 type ilsRef struct{ icao, runway string }
 
+// resetILS forgets the lookups under way: on a new connection they would
+// never be answered, and an airport asked for again must be asked anew.
+func resetILS() {
+	ilsAids.Lock()
+	ilsAids.pending = map[nav.FixKey][]ilsRef{}
+	ilsAids.Unlock()
+}
+
 // requestILS asks loader for the ILS of every runway end of l. On the
 // connection's goroutine.
 func requestILS(loader *nav.NavLoader, l *airport.Layout) {

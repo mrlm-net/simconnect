@@ -495,7 +495,10 @@ func (c *TaxiController) updateTug(dt float64) {
 		if d, ok := t.(disconnectDelayer); ok {
 			d.SetDisconnectDelay(TugDisconnectSeconds * f(c.timing.tug))
 		}
-		c.tugErr(t.Attach(pose))
+		if err := t.Attach(pose); err != nil {
+			c.tugErr(err)
+			c.tugErr(t.Remove()) // none coming: the push goes on without it
+		}
 		return
 	}
 	c.tugErr(t.Update(pose, c.state == TaxiAwaitingPushback || c.state == TaxiPushback, dt))
@@ -536,9 +539,13 @@ func (c *TaxiController) tugConnected() bool {
 		return true // given up, or gone
 	}
 	if a, ok := t.(interface{ Connected() bool }); ok && !a.Connected() {
-		// Not there after TugArriveTimeout (never created, or stuck on its
-		// way): the push goes on without it.
-		if c.now().Sub(c.tugAttachedAt) < TugArriveTimeout {
+		// Not there after TugArriveTimeout (stuck on its way), or never
+		// created after TugCreateTimeout: the push goes on without it.
+		wait := TugArriveTimeout
+		if o, ok := t.(interface{ ObjectID() uint32 }); ok && o.ObjectID() == 0 {
+			wait = TugCreateTimeout
+		}
+		if c.now().Sub(c.tugAttachedAt) < wait {
 			return false
 		}
 		c.tugErr(errors.New("the tug did not arrive: pushing without it"))
@@ -550,7 +557,15 @@ func (c *TaxiController) tugConnected() bool {
 // tugClear reports that no pushback tug is at the aircraft any more: none
 // was used, or it has driven off.
 func (c *TaxiController) tugClear() bool {
-	return c.req.Tug == nil || !c.tugAttached || c.req.Tug.Done()
+	t := c.req.Tug
+	if t == nil || !c.tugAttached || t.Done() {
+		return true
+	}
+	// Off the aircraft, on its way home: no need to wait for the depot.
+	if a, ok := t.(interface{ Clear() bool }); ok {
+		return a.Clear()
+	}
+	return false
 }
 
 // tugErr reports a tug error as an event; the departure goes on without it.

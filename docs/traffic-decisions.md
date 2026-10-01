@@ -398,19 +398,22 @@ For example, a 90° turn from B1 onto H at a junction costs 50 + 40 = 90 m of ta
 | `CrossTime` | 40 s | how long a crossing takes |
 | `GoAroundAt` | 30 s | an arrival this close with the runway not free goes around |
 | `ClearToLandNM` | 6 NM | the next established arrival is cleared to land within it |
+| `LineUpTime` | 60 s | a departure at a holding point takes this to line up |
 
 **Time to the next arrival** = distance ÷ max(ground speed, 100 kt). A departure **may take off** when all of these hold:
 
-- nobody else is on the runway;
+- nobody else is on the runway (every occupant counts, not only the one listed last);
 - the interval since the last departure began its roll has run (`DepartureInterval`, below);
 - no arrival is inside 4 NM;
-- the next arrival lands later than this departure's runway occupancy plus 30 s.
+- the next arrival lands later than this departure's runway occupancy plus 30 s, and, from a holding point, plus its `LineUpTime` too.
 
-The occupancy is `RunwayOccupancyIn`: departing 40 s (light), 45 s (medium), 50 s (heavy), 60 s (super). It is 15 % longer on a wet runway and 40 % longer on a contaminated one. A medium on a dry runway therefore needs the next arrival 75 s away, about 2.9 NM at 140 kt, so the 4 NM rule decides first.
+The occupancy is `RunwayOccupancyIn`: departing 40 s (light), 45 s (medium), 50 s (heavy), 60 s (super). It is 15 % longer on a wet runway and 40 % longer on a contaminated one. A medium on a dry runway lined up needs the next arrival 75 s away, about 2.9 NM at 140 kt, so the 4 NM rule decides first. From a holding point it needs 135 s, about 5.3 NM at 140 kt.
+
+Only an arrival established on the final is sent around (`GoAround`); one on its procedure passing near the threshold is not. On the airport map, a take-off clearance given to a departure not yet rolling is cancelled ("hold position, cancel take-off") for someone on the runway, or for an arrival inside 3 NM (`cancelInsideNM`), not one just under the 4 NM it was cleared at. A departure told to line up behind an arrival that then goes around is cleared afresh.
 
 At the holding points, departures and crossings go first come, first served, by when each was first seen holding:
 
-- A **departure** that may take off gets line-up and take-off together. If only the interval still runs and the arrival leaves the occupancy plus 30 s plus another 30 s, it gets "line up and wait".
+- A **departure** that may take off gets line-up and take-off together. If only the interval still runs and the arrival leaves the line-up time, the occupancy, 30 s and another 30 s, it gets "line up and wait".
 - If the runway is taken by one of ours lined up, the departure is "number N for departure"; otherwise it waits for "X on the runway".
 - The first departure in turn that waits **only** for the next arrival (the interval has run) gets `LineUpBehind`: line up behind that arrival once it has passed.
 - A **crossing** needs the runway free and the next arrival at least 40 s plus 30 s away. One aircraft crosses at a time.

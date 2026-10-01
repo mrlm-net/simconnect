@@ -108,6 +108,20 @@ func TestAbsorbDelayOnSTAR(t *testing.T) {
 	if grown := pathNM(ctl.ProcedureRoute()) - routeBefore; math.Abs(grown-a.ExtraNM) > 1 {
 		t.Errorf("route grew %.1f NM, stretch %.1f", grown, a.ExtraNM)
 	}
+	// Asked again at the minimum speed already: no 0 kt waypoint, no
+	// infinite or negative time left.
+	a2, err := ctl.AbsorbDelay(4 * time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a2.Left < 0 || math.IsInf(a2.ExtraNM, 0) || math.IsNaN(a2.ExtraNM) {
+		t.Errorf("second absorption %+v", a2)
+	}
+	for _, w := range ctl.proc.Waypoints {
+		if w.KtsSpeed <= 0 {
+			t.Fatalf("a waypoint at %.0f kt after the second absorption", w.KtsSpeed)
+		}
+	}
 }
 
 func pathNM(pts []airport.LatLon) float64 {

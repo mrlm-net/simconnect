@@ -16,6 +16,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map: a lock ring that could freeze the map. The traffic scan held the state lock while it reported traffic, the map's polling held the controller's then an aircraft's, and an aircraft handing off read the weather.
+- Airport map: game aircraft get their call sign and model again; an inline comment had swallowed them (as #477).
+- Airport map: a go-around from the Sequence tab runs on the SimConnect loop. Network play checks the position for manual control, entry, rush and the approach actions too.
+- Runway: a call sign spawned again (a replayed scene) is not taken as cleared already. A departure aborted by hand is cleared again. A departure told to line up behind an arrival that goes around is cleared afresh. A take-off clearance is cancelled only for someone on the runway or an arrival inside 3 NM, not one just under 4 NM. "Go around" goes only to an arrival established on the final.
+- Sequencing: an arrival slowed or broken off is handled afresh on its next approach. A second delay absorption at the minimum speed no longer sets a 0 kt waypoint or an infinite time to hold. A go-around's circuit starts at its first corner, not the nearest (which skipped the upwind and crosswind).
+- Tugs: the departure starts once the tug is off the nose, not once it is home. A tug that fails or is never created costs 20 s, not 4 min.
+- Runway in use: no flip with every gust when no runway is within the wind limits. Departures spawned from the map without a stand take the parallel nearest the stand they are given.
+- Camera: the tower's look plays again after 30 min. Switching to the tower drops the shots queued before. A simulator camera picked right after ours is released is not set back.
+- Airport map: procedures without runway transitions load. "Active" no longer keeps the previous airport's runway. A cancelled "Place on the map" no longer moves the tower on the next click. Play on this device no longer compares this device's clock with the server's. Following an aircraft wins over following your own, so the map no longer jumps. The aircraft card updates after picking an entry, and a failed entry list is asked again. The voice's output picker hides when the voice is off.
+- Checks: a tower placed more than 5 km from its airport is refused, and the tower file is written whole. A COM1 frequency outside 118–137 MHz is refused. A runway record shorter than expected is not read. The debug camera probe is gone.
+- Airport map: Space no longer pauses the simulation. The Pause button asks first, since it stops the simulation for everyone playing.
 - Airport map: the traffic log is readable. One entry per row, newest first, with the time, call sign and kind on one line and the message under them (it was one block of wrapped text).
 
 ---

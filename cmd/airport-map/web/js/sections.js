@@ -48,7 +48,9 @@ function updateLost() {
   if (simLive) { lostSince = 0; lostDismissed = false; el.hidden = true; return; }
   if (!lostSince) lostSince = Date.now();
   // A moment first: on load the simulator answers within a second or two.
+  const was = el.hidden;
   el.hidden = lostDismissed || Date.now() - lostSince < 3000;
+  if (was && !el.hidden) $('lostDismiss').focus(); // a modal: the focus goes in
   const s = Math.floor((Date.now() - lostSince) / 1000);
   $('lostFor').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -127,7 +129,8 @@ async function pollAircraft() {
     </dl>`);
     clockShown = true;
   }
-  if (a && layerOn.follow) map.panTo([a.lat, a.lon], { animate: false });
+  // Following one of ours (its Follow) wins: the two would pull the map apart.
+  if (a && layerOn.follow && !ctlFollow) map.panTo([a.lat, a.lon], { animate: false });
   $('acInfo').textContent = a
     ? `My aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}${a.paused ? ' · sim paused' : a.simRate && a.simRate !== 1 ? ` · sim ${a.simRate}×` : ''}`
     : 'My aircraft: not reported (simulator not connected?)';
@@ -225,7 +228,10 @@ function initDirector() {
   $$('[data-director]').forEach((d) => { d.innerHTML = DIRECTOR_HTML; });
   // Tower look: a step per press, repeated while held.
   let lookTimer = 0;
-  const lookStep = (b) => { const [yaw, tilt, fov] = b.dataset.look.split(',').map(Number); send('/api/camera', { mode: 'look', yaw, tilt, fov }); };
+  // Through queueLook: steps go out together, never piling up on a slow LAN.
+  const lookStep = (b) => { const [yaw, tilt, fov] = b.dataset.look.split(',').map(Number); queueLook(yaw, tilt, fov); };
+  // From the keyboard (Enter, Space): a click without a pointer.
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-look]'); if (b && e.detail === 0) lookStep(b); });
   const lookStop = () => { clearInterval(lookTimer); lookTimer = 0; };
   document.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-look]');
@@ -469,7 +475,7 @@ async function pollAirportInfo() {
     ${(a.runways || []).map((x) => `<dt>RWY ${esc(x.name)}</dt><dd class="mono">${x.lengthM.toFixed(0)} × ${x.widthM.toFixed(0)} m${x.approach ? ` <span class="muted">· ${esc(x.approach)}</span>` : ''}${ilsOn(x.name)}</dd>`).join('')}
     <dt>Transition</dt><dd>altitude ${(lim.TransitionAltitudeFt || 0).toFixed(0)} ft${lim.PreferredRunways && lim.PreferredRunways.length ? ' · preferred ' + esc(lim.PreferredRunways.join(', ')) : ''}</dd>
   </dl>`;
-  if (a.use) setActiveUse(a.use);
+  setActiveUse(a.use || null); // none here (no weather): not the last airport's
   const u = a.use, w = a.weather;
   // Strip: runway in use, ATIS, wind, QNH.
   // Parallels used together: "26L+26R"; segregated: departures / arrivals.
@@ -595,6 +601,12 @@ async function pollProcedures() {
     return procTries >= 20 ? true : false;
   }
   procs = r.data;
+  // Lists the server leaves null (a procedure without runway transitions).
+  for (const p of [...(procs.sids || []), ...(procs.stars || []), ...(procs.approaches || [])]) {
+    p.runways = p.runways || [];
+    p.paths = (p.paths || []).map((x) => ({ ...x, points: x.points || [] }));
+  }
+  procs.fixes = procs.fixes || [];
   const navaids = procs.fixes.filter((f) => f.kind === 'V' || f.kind === 'N').length;
   $('pInfo').textContent = `${procs.sids.length} SIDs, ${procs.stars.length} STARs, ${procs.approaches.filter((x) => x.from === 'vectors').length} approaches (${procs.approaches.length} entries) · ${navaids} VOR/NDB shown; ${procs.fixes.length - navaids} waypoints appear with their procedure`;
   fillProcedurePick();
@@ -870,8 +882,10 @@ function showVoice(v) {
     const opts = v.devices.map((d) => `<option value="${esc(d.ID || '')}">${esc(d.Name)}</option>`).join('');
     if (dev.dataset.opts !== opts && document.activeElement !== dev) { dev.innerHTML = opts; dev.dataset.opts = opts; }
     if (document.activeElement !== dev) dev.value = v.device || '';
-    $('rdDeviceWrap').hidden = false;
   }
+  // The output only while the voice is on and plays here, on the map's
+  // computer (not with Play on this device).
+  $('rdDeviceWrap').hidden = !(rdSoundOn && v.devices && v.devices.length && !$('rdHere').checked);
   const b = $('rdSound');
   b.setAttribute('aria-pressed', String(rdSoundOn));
   b.innerHTML = `${icon(rdSoundOn ? 'i-vol' : 'i-mute')}<span>${rdSoundOn ? 'Voice on' : 'Voice off'}</span>`;
@@ -903,7 +917,13 @@ function tuneTo(freq) {
 
 /* ───────────── Wiring ───────────── */
 function initSections() {
-  $('simPause').addEventListener('click', () => simAct(lastOwn && lastOwn.paused ? 'resume' : 'pause'));
+  // Pausing stops the simulator for everyone playing: asked first (no key
+  // for it, the button only).
+  $('simPause').addEventListener('click', () => {
+    const paused = lastOwn && lastOwn.paused;
+    if (!confirm(paused ? 'Resume the simulation?' : 'Pause the simulation? It stops for everyone playing.')) return;
+    simAct(paused ? 'resume' : 'pause');
+  });
   document.addEventListener('click', (e) => {
     if (e.target.closest('[data-resume]')) simAct('resume');
     const r = e.target.closest('[data-rate]');
@@ -1054,17 +1074,21 @@ function initTower() {
   $('twCab').addEventListener('input', () => { $('twCabVal').textContent = `${$('twCab').value} m`; });
   $('twCab').addEventListener('change', () => saveTower({ cabM: Number($('twCab').value) }));
   $('twReset').addEventListener('click', () => saveTower({ reset: true }));
+  let placing = null; // the pending map click; cancelled when toggled off
   $('twPlace').addEventListener('click', () => {
     const on = $('twPlace').getAttribute('aria-pressed') !== 'true';
     $('twPlace').setAttribute('aria-pressed', String(on));
     map.getContainer().classList.toggle('is-placing', on);
+    if (placing) { map.off('click', placing); placing = null; }
     if (!on) return;
     toast('Click the tower on the map');
-    map.once('click', (e) => {
+    placing = (e) => {
+      placing = null;
       $('twPlace').setAttribute('aria-pressed', 'false');
       map.getContainer().classList.remove('is-placing');
       saveTower({ lat: e.latlng.lat, lon: e.latlng.lng });
-    });
+    };
+    map.once('click', placing);
   });
 }
 
