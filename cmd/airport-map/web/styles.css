@@ -1081,3 +1081,8 @@ select option { background: var(--surface); color: var(--text); }
 @keyframes lost-sweep { to { transform: rotate(360deg); } }
 @keyframes lost-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .lost__sweep, .lost__q { animation: none; } }
+
+/* In the More menu the sim rate spans the menu like its other controls. */
+.popover--more .rate { display: flex; width: 100%; }
+.popover--more .rate .btn { flex: none; width: var(--hit); }
+.popover--more .rate__val { flex: 1; text-align: center; }
