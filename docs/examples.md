@@ -72,9 +72,9 @@ The side panel has one tab per task. The map buttons on the left: **✈** shows 
 
 ![The Approach tab: the landing sequence, the tower, and the final on the map](images/airport-map/approach.jpg)
 
-**Charts** has the airport, de-icing pads, the weather at your aircraft with the runway in use, the ATIS (🔊 reads it out), and the SIDs, STARs and approaches of a runway drawn on the map.
+**Airport** has the airport, de-icing pads, the weather at your aircraft with the runway in use, the ATIS (🔊 reads it out), and the SIDs, STARs and approaches of a runway drawn on the map.
 
-![The Charts tab: weather, ATIS and a STAR of runway 24](images/airport-map/charts.jpg)
+![The Airport tab: weather, ATIS and a STAR of runway 24](images/airport-map/charts.jpg)
 
 **Layers** has the airport data, the traffic picture (its centre and radius), live traffic (our aircraft, other traffic, safe zones), taxiway names, overlapping stands and the taxi paths and points by `TYPE`. **🌐** switches the map to the world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase.
 
