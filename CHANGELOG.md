@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Arrivals: approach clears the approach on the base, before the turn onto the final; the crew reports established on the final and is handed to tower then (before, all three in the same second).
+- Go-around: the circuit climbs to at least the approach's last altitude constraint; the crew checks in with approach "going around, climbing 4000 feet". ArrivalController.CircuitFixes names the circuit's track points (UPWIND or the missed approach's fixes, CROSSWIND, DOWNWIND, BASE, FINAL), shown on the map.
+
 ### Fixed
 
 - Runway: a departure at its holding point is cleared to line up and take off only with the next arrival its line-up time (RunwayControllerOptions.LineUpTime, 60 s) farther away too; it lines up behind the arrival instead. A departure cleared for take-off is no longer also given a conditional line-up.
@@ -16,6 +21,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: on the final, once its procedure is flown, an arrival's line runs to the threshold and down the runway.
 - Airport map: a departure checks in with tower "taxiing to runway 24" ("at Z" for an intersection).
 - Airport map: the radio log shows the newest call first.
+- Arrivals: a delay absorbed on a STAR or a go-around's circuit re-plans from the procedure's corners, not from its already rounded turns: a downwind extended no longer cuts into a turn's arc, and no dog-leg loops are drawn (live, DLH1402 flew loops after its go-around).
+- Airport map: the radio tab fills the panel and only its log scrolls (two scrollbars before).
 
 ---
 

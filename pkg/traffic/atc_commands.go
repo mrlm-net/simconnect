@@ -210,6 +210,14 @@ func (c *ArrivalController) GoAround() error {
 	fieldFt := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 	joinFt := fieldFt + jp.HeightFt
 	circuitFt := math.Max(joinFt, fieldFt+GoAroundHeightFt)
+	// Up to the approach's own altitude: its last constraint before the
+	// runway (the final approach fix's) where it is higher.
+	for _, n := range c.req.Procedure {
+		if n.Kind != "R" && math.Max(n.AltMin, n.AltMax) > 0 {
+			joinAlt := math.Max(n.AltMin, n.AltMax) * ftPerMeter
+			circuitFt = math.Max(math.Max(joinFt, fieldFt+GoAroundHeightFt), joinAlt)
+		}
+	}
 	// The published missed approach where known: its points (none when it
 	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
 	// the circuit keeps too; then round the circuit onto the final.
@@ -233,9 +241,19 @@ func (c *ArrivalController) GoAround() error {
 		procedureWaypoint(align, joinFt+ProcedureAlignNm*ProcedureDescentFtPerNm, ProcedureApproachSpeedKts),
 		procedureWaypoint(joinAt, joinFt, ProcedureApproachSpeedKts),
 	}
+	// Its track points, named for the map and the radio.
+	names := []string{"UPWIND", "CROSSWIND", "DOWNWIND", "BASE", "", "FINAL"}
 	if len(missed) > 0 {
 		wps = append(missed, wps[1:]...) // instead of the climb straight ahead
+		var idents []string
+		for _, n := range c.req.MissedApproach {
+			if n.Position.Lat != 0 || n.Position.Lon != 0 {
+				idents = append(idents, n.Ident)
+			}
+		}
+		names = append(idents, names[1:]...)
 	}
+	c.setCorners(wps, names)
 	wps = roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around", nil)
 	c.note("release", c.inj.Release(c.objectID))
