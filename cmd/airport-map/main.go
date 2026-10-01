@@ -131,6 +131,8 @@ type aircraftRaw struct {
 	OnGround  float64
 	SimRate   float64 // SIMULATION RATE
 	Com1      float64 // COM ACTIVE FREQUENCY:1, MHz
+	Camera    float64 // CAMERA STATE: the simulator's camera now
+	CamView   float64 // CAMERA VIEW TYPE AND INDEX:1: its view
 }
 
 // Aircraft is the user aircraft position served at /api/aircraft.
@@ -144,6 +146,10 @@ type Aircraft struct {
 	// them, #413).
 	SimRate float64   `json:"simRate"`
 	Paused  bool      `json:"paused"`
+	// Camera is the simulator's CAMERA STATE now (its numbering differs
+	// between versions: see simCameraStates).
+	Camera int `json:"camera"`
+	CamView int `json:"cameraView"`
 	Updated time.Time `json:"updated"`
 }
 
@@ -354,6 +360,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		{"SIM ON GROUND", "bool"},
 		{"SIMULATION RATE", "number"},
 		{"COM ACTIVE FREQUENCY:1", "MHz"},
+		{"CAMERA STATE", "number"},
+		{"CAMERA VIEW TYPE AND INDEX:1", "number"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
@@ -388,6 +396,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// The loader sends facility requests; this loop hands it every message.
 	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
 	procLoader := airport.NewProcedureLoader(client)
+	// The runways' ILS: frequency and name from their navaid records.
+	navLoader := nav.NewNavLoaderWithIDs(client, nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, 8)
 	// Weather at the user aircraft, whenever it changes.
 	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
 	if err := weather.Subscribe(); err != nil {
@@ -451,6 +461,23 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		st.mu.Unlock()
 	}()
 	cam := newCameraMan(cc, client)
+	// The view the simulator's camera is on: stepping starts from it.
+	cam.sim.stateNow = func() (int, bool) {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if st.aircraft == nil {
+			return 0, false
+		}
+		return st.aircraft.Camera, true
+	}
+	cam.sim.viewNow = func() (int, bool) {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if st.aircraft == nil {
+			return 0, false
+		}
+		return st.aircraft.CamView, true
+	}
 	cam.frames = func(on bool) {
 		state := types.SIMCONNECT_STATE_OFF
 		if on {
@@ -564,6 +591,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			// Every aircraft within TrafficRadius of the user aircraft.
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+			for _, r := range navLoader.Expire(now) {
+				gotILS(r)
+			}
 			for _, res := range loader.Expire(now) {
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				st.finish(res.ICAO, res.Err)
@@ -592,6 +622,10 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				st.mu.Unlock()
 				continue
 			}
+			if r, done := navLoader.Handle(msg); done {
+				gotILS(r)
+				continue
+			}
 			if p, done := procLoader.Handle(msg); done {
 				fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
 				st.mu.Lock()
@@ -615,6 +649,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					if dumpDir != "" {
 						writeDump(dumpDir, res.Raw)
 					}
+					requestILS(navLoader, l)
 				}
 				st.finish(res.ICAO, res.Err)
 				continue
@@ -649,7 +684,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					tlog.printf("simulation rate %g×: traffic follows it", a.SimRate)
 				}
 				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
-					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Updated: time.Now()}
+					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Camera: int(a.Camera), CamView: int(a.CamView), Updated: time.Now()}
 				st.mu.Unlock()
 				if a.Com1 > 0 {
 					speaker.com1(airport.FormatMHz(a.Com1)) // the voice follows it when synced
@@ -801,6 +836,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	})
 	registerVoice(mux, speaker)
 	registerCamera(mux, st)
+	registerTowers(mux, st)
 	speaker.atis = st.atisOn
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.

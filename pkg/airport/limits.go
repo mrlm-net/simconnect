@@ -62,6 +62,16 @@ type Limits struct {
 	// InitialClimbs are initial climbs of single SIDs, by name ("BALT7D"),
 	// where they differ from InitialClimbFt.
 	InitialClimbs map[string]float64
+	// Tower is where the control tower stands, when the facility data puts
+	// it elsewhere (its TOWER_* fields); nil: the facility's.
+	Tower *TowerSite
+}
+
+// TowerSite is a control tower: its position and the height of its cab
+// above the ground (0: unknown).
+type TowerSite struct {
+	Position LatLon
+	CabM     float64
 }
 
 // InitialClimbFor is the initial climb of a departure clearance on sid:
@@ -84,7 +94,10 @@ const DefaultInitialClimbFt = 10000.0
 // KnownLimits are published values of airports, keyed by ICAO code. Zero
 // fields take the defaults (or the facility data); LimitsFor fills the rest.
 var KnownLimits = map[string]Limits{
-	"LKPR": {TransitionAltitudeFt: 5000, PreferredRunways: []string{"24", "06"}},
+	// LKPR tower: the position the user gave (2026-10-01); the facility's
+	// TOWER_LATITUDE/LONGITUDE (50.10183, 14.25732) is not the tower.
+	"LKPR": {TransitionAltitudeFt: 5000, PreferredRunways: []string{"24", "06"},
+		Tower: &TowerSite{Position: LatLon{Lat: 50.1065908, Lon: 14.2694592}}},
 	"EDDF": {TransitionAltitudeFt: 5000},
 	// EDDM (#376), from AIP Germany (DFS AIP IFR, effective 01 OCT 2026,
 	// read October 2026). No preferential runways: AD 2.20 3.1.4 and 3.2.1

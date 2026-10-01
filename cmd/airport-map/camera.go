@@ -78,6 +78,13 @@ type cameraMan struct {
 	lookAt time.Time
 	// sim switches the simulator's own cameras.
 	sim *simCamera
+	// prevSim: the simulator's CAMERA STATE when our camera took over (0:
+	// none); set back when it is released, so the user's camera is not left
+	// locked where ours was.
+	prevSim int
+	// towerAt: the airport whose tower watches (the one on the map), for
+	// the user's aircraft when none of ours is there to watch.
+	towerAt string
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
@@ -140,13 +147,19 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 		return errors.New("mode: off, follow, auto or view")
 	}
 	m.mu.Lock()
+	if mode != "off" {
+		m.rememberSim()
+	}
 	m.mode, m.follow, m.subject, m.shots, m.err = mode, follow, "", 0, ""
 	m.mu.Unlock()
 	if m.frames != nil {
 		m.frames(mode != "off")
 	}
 	if mode == "off" {
-		return m.cc.do(m.dir.Release)
+		if err := m.cc.do(m.dir.Release); err != nil {
+			return err
+		}
+		return m.restoreSim()
 	}
 	m.dir.Play() // the next tick picks a shot
 	return nil
@@ -157,7 +170,7 @@ var cameraViews = []string{"chase", "cockpit", "wing", "front", "top", "tower"}
 
 // setView puts the camera on view of the aircraft of card id (-1: the
 // user's own aircraft) and holds it there until another view or mode.
-func (m *cameraMan) setView(view string, id int) error {
+func (m *cameraMan) setView(view string, id int, icao string) error {
 	if m.dir == nil {
 		return errors.New("no camera on this connection")
 	}
@@ -183,18 +196,27 @@ func (m *cameraMan) setView(view string, id int) error {
 	// who is on the radio, else the busiest aircraft (next).
 	if view == "tower" && id < 0 {
 		m.mu.Lock()
-		m.mode, m.follow, m.subject, m.shots, m.err = "tower", 0, "", 0, ""
+		m.rememberSim()
+		m.mode, m.follow, m.subject, m.shots, m.err, m.towerAt, m.lookAt = "tower", 0, "", 0, "", strings.ToUpper(icao), time.Time{}
 		m.mu.Unlock()
 		if m.frames != nil {
 			m.frames(true)
 		}
 		return nil
 	}
-	shot, err := viewShot(view, obj, id < 0, size, l)
+	var eye *camera.Point
+	if view == "tower" && l != nil {
+		if g, err := m.cc.graph(l.ICAO); err == nil {
+			e := m.towerEye(g)
+			eye = &e
+		}
+	}
+	shot, err := viewShot(view, obj, id < 0, size, eye)
 	if err != nil {
 		return err
 	}
 	m.mu.Lock()
+	m.rememberSim()
 	m.mode, m.follow, m.subject, m.err = "view", id, name, ""
 	m.mu.Unlock()
 	if m.frames != nil {
@@ -207,7 +229,7 @@ func (m *cameraMan) setView(view string, id int) error {
 // viewShot is a still view of object (user: the user's aircraft, the
 // cockpit from its eyepoint); the camera follows the aircraft, the view
 // holds after the shot.
-func viewShot(view string, o uint32, user bool, s camera.Size, l *airport.Layout) (camera.Shot, error) {
+func viewShot(view string, o uint32, user bool, s camera.Size, tower *camera.Point) (camera.Shot, error) {
 	w, ln := s.Span/2, s.Length
 	if w <= 0 {
 		w, ln = 18, 38
@@ -230,36 +252,94 @@ func viewShot(view string, o uint32, user bool, s camera.Size, l *airport.Layout
 	case "top":
 		p = camera.Pose{Eye: on(0.5, ln*1.8, -ln*0.3), Target: on(0, 0, 0), FovDeg: 55}
 	case "tower":
-		if l == nil {
+		if tower == nil {
 			return nil, errors.New("tower: pick an aircraft at the loaded airport")
 		}
-		// From the tower, turning with the aircraft, zoomed in.
-		p = camera.Pose{Eye: towerEye(l), Target: on(0, 1.5, 0), FovDeg: 30}
+		// From the tower, turning with the aircraft.
+		p = camera.Pose{Eye: *tower, Target: on(0, 1.5, 0), FovDeg: 35}
 	}
 	return camera.Hold(view, p, camera.MaxShot), nil
 }
 
 // towerEye is where the tower controller sees from: the airport's tower
-// (facility data), else a tower-high point over the airport reference
-// point.
-func towerEye(l *airport.Layout) camera.Point {
-	if !l.HasTower {
-		return camera.At(l.Latitude, l.Longitude, l.Altitude+towerHeightM)
-	}
-	// The facility gives the ground at the tower (LKPR, live: 359 m, the
-	// airport 364 m), not the cab: the cab towerHeightM above it.
-	base := l.TowerAltitude
-	if base == 0 {
-		base = l.Altitude
-	}
-	return camera.At(l.Tower.Lat, l.Tower.Lon, base+towerHeightM)
+// (controlCenter.towerAt: yours, known, the simulator's), its cab
+// above the airfield.
+func (m *cameraMan) towerEye(g *airport.Graph) camera.Point {
+	t := m.cc.towerAt(g)
+	return camera.At(t.Lat, t.Lon, g.Layout.Altitude+t.CabM)
 }
+
+// rememberSim notes the simulator's camera before ours takes over (only
+// when ours is off: a switch between our modes keeps the first). m.mu held.
+func (m *cameraMan) rememberSim() {
+	if m.mode != "off" || m.sim == nil || m.sim.stateNow == nil {
+		return
+	}
+	if v, ok := m.sim.stateNow(); ok && v >= 2 && v <= 6 {
+		m.prevSim = v
+	}
+}
+
+// restoreSim sets the simulator's camera back to what it was before ours.
+func (m *cameraMan) restoreSim() error {
+	m.mu.Lock()
+	prev := m.prevSim
+	m.prevSim = 0
+	m.mu.Unlock()
+	if prev == 0 || m.sim == nil {
+		return nil
+	}
+	// The simulator settles its own camera just after the release (live:
+	// drone before, chase after): set it a moment later, and again if it
+	// did not hold.
+	go func() {
+		for i := 0; i < 3; i++ {
+			time.Sleep(restoreSimAfter)
+			if v, ok := m.sim.stateNow(); ok && v == prev {
+				return
+			}
+			m.mu.Lock()
+			ours := m.mode != "off"
+			m.mu.Unlock()
+			if ours {
+				return // taken over again meanwhile
+			}
+			_ = m.cc.do(func() error { return m.sim.setRaw(prev) })
+		}
+	}()
+	return nil
+}
+
+// restoreSimAfter: how long after the release the simulator camera is set
+// back, and checked.
+const restoreSimAfter = 1200 * time.Millisecond
+
+// towerLook has the tower of the airport on the map look round its
+// airfield (lookAround), once: the long shot plays on.
+func (m *cameraMan) towerLook() {
+	m.mu.Lock()
+	icao, subject := m.towerAt, m.subject
+	m.mu.Unlock()
+	if subject == airfieldSubject || icao == "" {
+		return
+	}
+	g, err := m.cc.graph(icao)
+	if err != nil {
+		return
+	}
+	shot := m.lookAround(g)
+	m.mu.Lock()
+	m.subject, m.since = airfieldSubject, time.Now()
+	m.mu.Unlock()
+	m.dir.LockWorld(camera.At(g.Layout.Latitude, g.Layout.Longitude, g.Layout.Altitude))
+	m.dir.Play(shot)
+}
+
+// airfieldSubject names the tower's look round the airfield.
+const airfieldSubject = "the airfield"
 
 // towerLookEvery: how often the tower looks for another aircraft to watch.
 const towerLookEvery = 3 * time.Second
-
-// towerHeightM: the cab's height when the airport gives no tower altitude.
-const towerHeightM = 45
 
 // heard is a call on the radio, as it is heard: in auto and the demo the
 // camera cuts to the aircraft talking or talked to.
@@ -273,7 +353,7 @@ func (m *cameraMan) heard(t traffic.Transmission) {
 		m.scene.heardCall(t.Callsign) // a cue; the scene cuts itself
 	}
 	m.mu.Unlock()
-	if mode != "auto" && mode != "tower" || t.Callsign == subject {
+	if mode != "auto" || t.Callsign == subject {
 		return
 	}
 	now := time.Now()
@@ -306,7 +386,8 @@ func (m *cameraMan) cut(it *controlled, now time.Time) {
 		model := it.view.Model
 		it.mu.Unlock()
 		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
-		if shot, err := viewShot("tower", it.objectID, false, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.graph.Layout); err == nil {
+		eye := m.towerEye(it.graph)
+		if shot, err := viewShot("tower", it.objectID, false, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, &eye); err == nil {
 			m.dir.Play(shot)
 		}
 		return
@@ -361,6 +442,10 @@ func (m *cameraMan) next(now time.Time) {
 		if score > best {
 			best, pick = score, it
 		}
+	}
+	if mode == "tower" {
+		m.towerLook()
+		return
 	}
 	if pick == nil {
 		return
@@ -555,6 +640,8 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			// with none Step through its views.
 			Sim  string `json:"sim"`
 			Step int    `json:"step"`
+			// ICAO: the airport on the map (the tower watching).
+			ICAO string `json:"icao"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -569,7 +656,7 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			return
 		}
 		if strings.EqualFold(req.Mode, "view") {
-			if err := m.setView(strings.ToLower(req.View), req.ID); err != nil {
+			if err := m.setView(strings.ToLower(req.View), req.ID, req.ICAO); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}

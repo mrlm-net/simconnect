@@ -142,6 +142,7 @@ async function load(icao, refresh) {
   $('aptName').textContent = data.name;
   $('icao').value = data.icao;
   drawAirport();
+  loadTower();
   renderTypeTables();
   $('info').innerHTML = `${data.runways.length} runways · ${data.parking.length} parking · ${data.taxiPoints.length} points · ${data.taxiPaths.length} paths · ${data.taxiNames.length} names` +
     (unresolvedPaths ? `<br><span class="err-text">${unresolvedPaths} paths with an out-of-range endpoint (red rings)</span>` : '') +
@@ -280,6 +281,7 @@ function boot() {
   initLayers();
   zoomClasses();
   initDirector();
+  initTower();
   initTraffic();
   initSections();
   initSheet();

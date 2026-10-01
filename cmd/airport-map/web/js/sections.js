@@ -157,13 +157,13 @@ let camView = null; // GET /api/camera; null: not connected
 let scenes = [];
 const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="seg" role="radiogroup" aria-label="Camera mode" title="The simulator's camera on our traffic">
-      <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected whoever is on the radio">Tower</button>
+      <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected a slow look round the airfield">Tower</button>
     </div></div>
   <div class="field"><span class="field__lbl">Simulator camera</span>
-    <div class="director__row" title="The simulator's own cameras, on your aircraft (Traffic: one the simulator picks); ◀ ▶ the camera's views">
+    <div class="director__row" title="The simulator's own cameras, on your aircraft; ◀ ▶ the camera's views">
       <button type="button" class="btn btn--sm" data-sim-step="-1" aria-label="Previous view">◀</button>
       <div class="seg" role="radiogroup" aria-label="Simulator camera">
-        <button type="button" role="radio" data-sim="cockpit">Cockpit</button><button type="button" role="radio" data-sim="chase">Chase</button><button type="button" role="radio" data-sim="fixed" title="Fixed on the plane">Fixed</button><button type="button" role="radio" data-sim="drone">Drone</button><button type="button" role="radio" data-sim="topdown">Top-down</button><button type="button" role="radio" data-sim="showcase" title="The airport's fixed cameras">Showcase</button><button type="button" role="radio" data-sim="traffic" title="Follows air traffic: the simulator picks the aircraft">Traffic</button>
+        <button type="button" role="radio" data-sim="cockpit">Cockpit</button><button type="button" role="radio" data-sim="chase">Chase</button><button type="button" role="radio" data-sim="drone">Drone</button><button type="button" role="radio" data-sim="fixed" title="Fixed on the plane">Fixed</button><button type="button" role="radio" data-sim="environment" title="A free camera">Free</button>
       </div>
       <button type="button" class="btn btn--sm" data-sim-step="1" aria-label="Next view">▶</button>
     </div></div>
@@ -202,7 +202,7 @@ function initDirector() {
   updateDirector();
 }
 // camViewOf puts the camera on a fixed view of aircraft id (-1: the user's).
-function camViewOf(view, id) { camPost('/api/camera', { mode: 'view', view, id }); }
+function camViewOf(view, id) { camPost('/api/camera', { mode: 'view', view, id, icao: data ? data.icao : '' }); }
 async function camPost(path, body) {
   if (!needSim('Camera')) return;
   const r = await send(path, body || {});
@@ -231,7 +231,7 @@ function updateDirector() {
   });
   const info = !v ? (simLive ? 'Camera not available.' : 'The camera needs the simulator (not connected).')
     : v.mode === 'off' ? (v.sim ? `Simulator camera: ${v.sim}${v.simView ? ', view ' + (v.simView + 1) : ''}` : 'The simulator camera is yours.')
-    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? 'Tower: turns to who is on the radio' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
+    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? 'Tower: looking round the airfield' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
   $$('[data-cam-info]').forEach((i) => { i.textContent = info; });
   const chip = $('camBtn');
   chip.classList.toggle('chip--onair', playing);
@@ -396,10 +396,11 @@ async function pollAirportInfo() {
   deicePads = lim.DeicingPads || [];
   renderPads();
   const mv = a.magVar ? `${Math.abs(a.magVar).toFixed(0)}° ${a.magVar > 0 ? 'E' : 'W'}` : '—';
+  const ilsOn = (rwy) => { const i = (a.ils || []).find((x) => x.runway === rwy); return i ? ` <span class="muted">· ILS ${esc(i.ident)} ${i.mhz.toFixed(2)}</span>` : ''; };
   $('apInfo').innerHTML = `<dl class="kv">
     <dt>Name</dt><dd><b>${esc(a.icao)}</b> ${esc(a.name)}</dd>
     <dt>Elevation</dt><dd class="mono">${a.elevationFt.toFixed(0)} ft · var ${mv}</dd>
-    ${(a.runways || []).map((x) => `<dt>RWY ${esc(x.name)}</dt><dd class="mono">${x.lengthM.toFixed(0)} × ${x.widthM.toFixed(0)} m${x.approach ? ` <span class="muted">· ${esc(x.approach)}</span>` : ''}</dd>`).join('')}
+    ${(a.runways || []).map((x) => `<dt>RWY ${esc(x.name)}</dt><dd class="mono">${x.lengthM.toFixed(0)} × ${x.widthM.toFixed(0)} m${x.approach ? ` <span class="muted">· ${esc(x.approach)}</span>` : ''}${ilsOn(x.name)}</dd>`).join('')}
     <dt>Transition</dt><dd>altitude ${(lim.TransitionAltitudeFt || 0).toFixed(0)} ft${lim.PreferredRunways && lim.PreferredRunways.length ? ' · preferred ' + esc(lim.PreferredRunways.join(', ')) : ''}</dd>
   </dl>`;
   if (a.use) setActiveUse(a.use);
@@ -431,8 +432,15 @@ async function pollAirportInfo() {
   // a sign (from 146° at 6 kt on 24: tailwind 0, crosswind 6 — not "-1").
   const along = u ? (u.headwindKts >= 0 ? `headwind ${Math.round(u.headwindKts)}` : `tailwind ${Math.round(-u.headwindKts)}`) : '';
   const across = u ? `crosswind ${Math.round(Math.abs(u.crosswindKts))} kt` : '';
+  // The ILS of the runways landed on, frequencies from the simulator.
+  const ilsRows = (a, u) => {
+    const arr = (u.arrivals && u.arrivals.length ? u.arrivals : [u.arrival]);
+    const rows = (a.ils || []).filter((i) => arr.includes(i.runway));
+    return rows.length ? `<dt>ILS</dt><dd class="mono">${rows.map((i) => `${esc(i.runway)} ${esc(i.ident)} ${i.mhz.toFixed(2)}`).join('<br>')}</dd>` : '';
+  };
   $('useKv').innerHTML = u ? `<dt>On the runway</dt><dd class="mono">${along}, ${across}</dd>
     <dt>Approach</dt><dd>${esc(u.approach || '—')}</dd>
+    ${ilsRows(a, u)}
     <dt>Limits</dt><dd><span class="pill ${u.withinLimits ? 'pill--ok' : 'pill--warn'}">${u.withinLimits ? 'within' : 'outside limits'}</span></dd>` : '';
   // Weather.
   if (w) {
@@ -936,4 +944,50 @@ function renderTypeTables() {
     return `<label class="switch"><input type="checkbox" data-path="${t}"${pathOn[t] ? ' checked' : ''}><span class="switch__ui" aria-hidden="true"></span><span class="sw${dash ? ' sw--dash' : ''}" style="background:var(${tok})"></span>${t} ${PATH_TYPES[t] || '(' + t + ')'} <span class="muted mono small">${pc[t]}</span></label>`;
   }).join('') || '<p class="muted small">none</p>';
   $('pointTypes').innerHTML = '<tbody>' + (Object.keys(qc).sort((a, b) => a - b).map((t) => `<tr><td><span class="dot" style="background:var(${HOLD_SHORT.has(Number(t)) ? '--holdbar' : '--text-3'})"></span> ${t} ${POINT_TYPES[t] || '(' + t + ')'}</td><td class="n mono">${qc[t]}</td></tr>`).join('') || '<tr><td class="muted">none</td></tr>') + '</tbody>';
+}
+
+/* ───────────── Tower: where the tower camera looks from ───────────── */
+let towerInfo = null;     // GET /api/tower
+let towerMarker = null;
+const TOWER_SOURCE = { yours: 'set by you', known: 'known position', simulator: "the simulator's", airport: 'none known: over the airport' };
+async function loadTower() {
+  if (!data) return;
+  const r = await api(`/api/tower?icao=${encodeURIComponent(data.icao)}`);
+  if (r.ok) showTower(r.data);
+}
+function showTower(t) {
+  towerInfo = t;
+  $('twSource').textContent = TOWER_SOURCE[t.source] || t.source;
+  if (document.activeElement !== $('twCab')) $('twCab').value = String(Math.round(t.cabM));
+  $('twCabVal').textContent = `${Math.round(t.cabM)} m`;
+  $('twPos').textContent = `${t.lat.toFixed(5)}, ${t.lon.toFixed(5)}`;
+  const icon = L.divIcon({ className: 'm-tower', html: icon_('i-tower'), iconSize: [26, 26], iconAnchor: [13, 13] });
+  if (!towerMarker) towerMarker = L.marker([t.lat, t.lon], { icon, interactive: false, keyboard: false }).addTo(map);
+  else towerMarker.setLatLng([t.lat, t.lon]);
+}
+function icon_(id) { return `<svg class="ic"><use href="#${id}"/></svg>`; }
+async function saveTower(body) {
+  if (!data) return;
+  const r = await send('/api/tower', { icao: data.icao, ...body });
+  if (!r.ok) { toast(`Tower: ${r.error}`, 'err'); return; }
+  showTower(r.data);
+  // A tower camera on air moves there at once.
+  if (camView && (camView.mode === 'tower' || camView.mode === 'view' && camView.shot === 'tower')) camViewOf('tower', ctlSelected || -1);
+}
+function initTower() {
+  $('twCab').addEventListener('input', () => { $('twCabVal').textContent = `${$('twCab').value} m`; });
+  $('twCab').addEventListener('change', () => saveTower({ cabM: Number($('twCab').value) }));
+  $('twReset').addEventListener('click', () => saveTower({ reset: true }));
+  $('twPlace').addEventListener('click', () => {
+    const on = $('twPlace').getAttribute('aria-pressed') !== 'true';
+    $('twPlace').setAttribute('aria-pressed', String(on));
+    map.getContainer().classList.toggle('is-placing', on);
+    if (!on) return;
+    toast('Click the tower on the map');
+    map.once('click', (e) => {
+      $('twPlace').setAttribute('aria-pressed', 'false');
+      map.getContainer().classList.remove('is-placing');
+      saveTower({ lat: e.latlng.lat, lon: e.latlng.lng });
+    });
+  });
 }
