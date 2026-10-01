@@ -127,6 +127,7 @@ type ControlView struct {
 	ATC            string           `json:"atc,omitempty"`
 	Frequency      string           `json:"frequency,omitempty"`
 	Kind           string           `json:"kind"`
+	ICAO           string           `json:"icao"` // its airport
 	Tail           string           `json:"tail"`
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
@@ -630,7 +631,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
-	it.view = ControlView{ID: n, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,

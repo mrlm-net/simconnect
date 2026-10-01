@@ -26,6 +26,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map: an airport whose layout has no parking, taxi points or runways loads ("d.parking is not iterable"), and an aircraft's entry list asks its own airport, not the one on the map (`ControlView.ICAO`).
 - Website: the examples and home pages show the airport map again (they pointed to a screenshot removed in 0.18.0).
 - Voice: aircraft types are read as crews say them, "Airbus A three twenty-one", not "alpha three two one" (voice-goio).
 - Airport map: the airport picker lists every airport in range, each loadable with a click (the list was cut short).
