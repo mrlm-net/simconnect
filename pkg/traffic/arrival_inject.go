@@ -410,6 +410,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
 	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, startMeters, c.approachProfile())
+	c.approach.SetCrosswind(c.req.CrosswindKts)
 	at := c.approach.Pose()
 	c.seq.add(c.now(), "takeover on final: gear down, approach flaps", at.HeightFt, at.GroundSpeedKts)
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)

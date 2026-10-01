@@ -593,7 +593,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
-			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim}); err != nil {
+			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
+			CrosswindKts: cc.crosswind(g, r.Runway)}); err != nil {
 			return nil, err
 		}
 		it.arr = ctl
@@ -1261,6 +1262,20 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
+}
+
+// crosswind is the crosswind on runway end rwy now, knots, positive from
+// its right (0 without weather): arrivals crab into it on final.
+func (cc *controlCenter) crosswind(g *airport.Graph, rwy string) float64 {
+	if cc.weather == nil {
+		return 0
+	}
+	w := cc.weather()
+	_, end, ok := g.Layout.RunwayEnd(rwy)
+	if w == nil || !ok {
+		return 0
+	}
+	return w.WindKts * math.Sin((w.WindDirTrue-end.Heading)*math.Pi/180)
 }
 
 // activeRunway is the runway in use at g's airport now: from the weather

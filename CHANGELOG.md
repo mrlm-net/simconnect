@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: pause/resume and simulation rate on the map; the sound output picker remembered; "Tune my COM1" (a frequency picked on the map tunes COM1 without following it); pushback facing as a select (auto by default); "Continue taxi" after hold position; "Cleared to land" only on final; buttons disabled while a command is on its way; a wider panel on large screens; controllers change voice at a shift change every 30–60 minutes.
 
 - `pkg/traffic` standard pushback per stand: `PlanStandardPushes(graph, model, stands)` plans, in the background, the push most ends of the two longest runways take from each stand; a departure takes it whatever its runway unless it costs more than `standardPushMargin` extra (LKPR B9 pushes onto B2 for every runway). The airport map plans them when an airport loads.
+- `pkg/traffic` crosswind landings: `ApproachMover.SetCrosswind` / `ArrivalRequest.CrosswindKts` (positive from the right): the injected final is flown crabbed into the wind by the drift angle and straightened through the flare to touch down along the centreline. The airport map passes the wind at the user aircraft.
 - `pkg/traffic` `ContinueTaxi` ("CSA1, continue taxi") after hold position.
 
 ### Changed

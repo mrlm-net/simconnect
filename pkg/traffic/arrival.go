@@ -68,6 +68,10 @@ type ArrivalRequest struct {
 	Tail    string
 	// SpawnNm is how far out on final the aircraft appears; 0 means DefaultSpawnNm.
 	SpawnNm float64
+	// CrosswindKts is the crosswind on the runway, knots, positive from its
+	// right: the injected final is flown crabbed into it
+	// (ApproachMover.SetCrosswind).
+	CrosswindKts float64
 	// Exit forces a runway exit; nil chooses one for the required rollout.
 	Exit *airport.RunwayExit
 	// GroundAGL sends ground waypoints at 0 ft above ground instead of the
