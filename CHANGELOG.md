@@ -9,6 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/traffic` standard pushback per stand: `PlanStandardPushes(graph, model, stands)` plans, in the background, the push most ends of the two longest runways take from each stand; a departure takes it whatever its runway unless it costs more than `standardPushMargin` extra (LKPR B9 pushes onto B2 for every runway). The airport map plans them when an airport loads.
+- `pkg/traffic` `ContinueTaxi` ("CSA1, continue taxi") after hold position.
+
+### Changed
+
+- Hold position is read back as given: "Hold position, CSA1" (the project's choice over Doc 4444's "holding").
+
+### Fixed
+
+- Pushback: a taxi-out turning back right after the push is also caught at the first node from the nose (LKPR B9 for 24 faced east 23 m short of B2's junction, then looped 130 m round onto B1); such a push gets a second look with a larger search, after push-and-tow.
+- A departure cleared for take-off while taxiing does not stop at its holding point or report holding short: it rolls onto the runway at its speed (traffic ahead still stops it).
+
 ---
 
 ## [0.17.1] - 2026-10-01

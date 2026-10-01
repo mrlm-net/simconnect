@@ -280,6 +280,8 @@ type TaxiController struct {
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
 	havePushFacing bool
+	// noStandard: planning a stand's standard push itself (standardPush).
+	noStandard bool
 	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
 	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
 	seq                                                     sequence         // the take-off's steps (Sequence)

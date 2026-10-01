@@ -741,3 +741,33 @@ func TestIntersectionTakeoffCRJ900(t *testing.T) {
 		})
 	}
 }
+
+// Cleared for take-off while taxiing, a departure does not stop at its
+// holding point: it turns onto the runway and rolls (no holding short of
+// its runway on the way).
+func TestTaxiControllerTakeoffClearedWhileTaxiing(t *testing.T) {
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+	held := false
+	done := make(chan struct{})
+	go func() {
+		for ev := range ctl.Events() {
+			if ev.State == TaxiHoldingShort && ev.HoldingShortOf != "" && strings.Contains(ev.HoldingShortOf, "24") {
+				held = true
+			}
+		}
+		close(done)
+	}()
+	if !run(TaxiTaxiing, 60*900) {
+		t.Fatalf("state %v, want taxiing", ctl.State())
+	}
+	if err := ctl.ClearForTakeoff(); err != nil {
+		t.Fatal(err)
+	}
+	if !run(TaxiComplete, 60*1500) {
+		t.Fatalf("state %v, want complete", ctl.State())
+	}
+	<-done
+	if held {
+		t.Error("held short of runway 24 though cleared for take-off")
+	}
+}

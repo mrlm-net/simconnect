@@ -207,7 +207,11 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = fmt.Sprintf("Runway %s, cleared for take-off", p[ParamRunway]) // CAP 413: runway first
 	case IntentLanding:
 		s = fmt.Sprintf("Runway %s, cleared to land", p[ParamRunway])
-	case IntentHoldPosition, IntentCancelTakeoff:
+	case IntentHoldPosition:
+		s = "Hold position" // read back as given (the project's choice over Doc 4444 12.3.4.8 note's "Holding")
+	case IntentContinueTaxi:
+		s = "Continue taxi"
+	case IntentCancelTakeoff:
 		s = "Holding" // 12.3.4.8 note, 12.3.4.11 c
 	case IntentStop:
 		s = "Stopping"

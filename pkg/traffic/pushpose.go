@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"math"
 	"slices"
+	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -707,6 +708,125 @@ func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOff
 	return out
 }
 
+// standardPushMargin: a stand's standard push is taken while it costs at
+// most this much more than the best push for the runway (about meters of
+// taxiing).
+const standardPushMargin = 150.0
+
+// samePose reports two poses on the same edge facing the same way.
+func samePose(a, b pushPose) bool {
+	return a.from == b.from && a.to == b.to && math.Abs(headingDiff(a.heading, b.heading)) < 30
+}
+
+type standardKey struct {
+	g       *airport.Graph
+	parking int
+}
+
+// standardPushes caches each stand's standard push (a nil *pushPose: none),
+// planned by PlanStandardPushes.
+var standardPushes sync.Map
+
+// standardPush is the stand's standard push once PlanStandardPushes has
+// planned it; nil before, or without one.
+func (c *TaxiController) standardPush() *pushPose {
+	if v, ok := standardPushes.Load(standardKey{c.req.Graph, c.req.Parking}); ok {
+		return v.(*pushPose)
+	}
+	return nil
+}
+
+// PlanStandardPushes plans the standard push of stands at g's airport (nil:
+// every stand) for an aircraft of model's size: the push most ends of the
+// airport's two longest runways take from the stand. A departure from the
+// stand then takes it whatever its runway, unless it costs much more
+// (standardPushMargin), so a stand pushes the same way every time. Planning
+// a stand takes a pose search per runway end; run it in the background
+// when an airport loads. Departures planned before it ends plan as usual.
+func PlanStandardPushes(g *airport.Graph, model string, stands []int) {
+	if stands == nil {
+		for i := range g.Layout.Parking {
+			stands = append(stands, i)
+		}
+	}
+	for _, i := range stands {
+		key := standardKey{g, i}
+		if _, ok := standardPushes.Load(key); ok {
+			continue
+		}
+		req := TaxiRequest{Graph: g, Parking: i, Model: model}
+		req.resolveAircraft()
+		req.Options = withSpan(req.Options, req.Profile)
+		req.Options.OwnStands = []int{i}
+		standardPushes.Store(key, planStandardPush(req))
+	}
+}
+
+// planStandardPush is the push most ends of the two longest runways take
+// from req's stand; nil without a majority.
+func planStandardPush(base TaxiRequest) *pushPose {
+	type vote struct {
+		p pushPose
+		n int
+	}
+	var votes []vote
+	ends := 0
+	rwys := slices.Clone(base.Graph.Layout.Runways)
+	slices.SortStableFunc(rwys, func(a, b airport.Runway) int { return cmp.Compare(b.Length, a.Length) })
+	rwys = rwys[:min(2, len(rwys))]
+	for _, r := range rwys {
+		for _, end := range []string{r.Primary.Name, r.Secondary.Name} {
+			req := base
+			req.Runway, req.Entry = end, ""
+			route, err := req.Graph.RouteToRunwayEntry(req.Parking, end, "", req.Options)
+			if err != nil || len(route.Nodes) < 3 {
+				continue
+			}
+			t := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1, noStandard: true}
+			if t.standFacesOut() || !t.planPushPose() || t.pushPose == nil {
+				continue
+			}
+			ends++
+			found := false
+			for i := range votes {
+				if samePose(votes[i].p, *t.pushPose) {
+					votes[i].n++
+					found = true
+					break
+				}
+			}
+			if !found {
+				votes = append(votes, vote{p: *t.pushPose, n: 1})
+			}
+		}
+	}
+	for i := range votes {
+		if votes[i].n*2 > ends && votes[i].n >= 2 {
+			p := votes[i].p
+			return &p
+		}
+	}
+	return nil
+}
+
+// hairpin reports a taxi-out turning back on itself from the pose: its
+// route begins at the node ahead of the pose, so the way from the nose to
+// that node counts too (LKPR B9 for 24: facing east 23 m short of B2's
+// junction, then 127° round onto B1 — a 130 m loop in the sim).
+func (p pushPose) hairpin() bool {
+	if p.out == nil {
+		return false
+	}
+	if hairpinAfterPush(p.out) {
+		return true
+	}
+	// The corner at that first node, from the nose.
+	if len(p.out.Points) < 2 {
+		return false
+	}
+	return hairpinAfterPush(&airport.Route{Points: []airport.LatLon{p.nose, p.out.Points[0], p.out.Points[1]}})
+}
+
 // facingWay keeps the pushes in cands ending within pushFacingDeg of the
 // facing asked for; all of them when none does.
 func (c *TaxiController) facingWay(poses []pushPose, cands []pushCand) []pushCand {
@@ -886,13 +1006,19 @@ func (c *TaxiController) planPushPose() bool {
 	// (the apron is wider than the model).
 	routes := map[[2]airport.NodeID]*airport.Route{}
 	found := 0 // taxi-outs planned (the searches that found none do not count)
+	// The budget: raised for a second look when the best push turns back
+	// on itself or ends misaligned.
+	maxRoutes, maxSearches := pushPoseRoutes, pushPoseSearches
+	// oneTier: pushes near the pavement and on the wider apron compete on
+	// cost alone (the second look), not near ones first.
+	oneTier := false
 	choose := func(cands []pushCand) *pushCand {
 		slices.SortFunc(cands, func(a, b pushCand) int { return cmp.Compare(a.cost, b.cost) })
 		var best *pushCand
 		for _, near := range []bool{true, false} {
 			for i := range cands {
 				cd := &cands[i]
-				if cd.near != near {
+				if cd.near != near && !oneTier {
 					continue
 				}
 				if best != nil && cd.cost >= best.cost {
@@ -900,7 +1026,7 @@ func (c *TaxiController) planPushPose() bool {
 				}
 				p := &poses[cd.at]
 				if p.out == nil {
-					if _, planned := routes[[2]airport.NodeID{p.from, p.to}]; !planned && (found >= pushPoseRoutes || len(routes) >= pushPoseSearches) {
+					if _, planned := routes[[2]airport.NodeID{p.from, p.to}]; !planned && (found >= maxRoutes || len(routes) >= maxSearches) {
 						continue
 					}
 					if p.out = c.poseRoute(*p, routes); p.out == nil {
@@ -908,7 +1034,7 @@ func (c *TaxiController) planPushPose() bool {
 					}
 					found++
 					p.fixed = p.taxi + p.out.Cost + float64(c.poseBlocks(*p, own))*pushBlockPenalty
-					if hairpinAfterPush(p.out) {
+					if p.hairpin() {
 						p.fixed += pushHairpinPenalty
 					}
 					if !p.aligned() {
@@ -942,17 +1068,51 @@ func (c *TaxiController) planPushPose() bool {
 		cands = c.facingWay(poses, cands)
 	}
 	best := choose(cands)
+	all := cands // the pushes, and the push-and-tows once planned
 	// A tow after the push only where no push alone leaves the aircraft
 	// facing its way out: none, or the taxi-out turns off the nose or back
 	// on itself. A push onto the taxiway facing the runway is never turned
 	// round by a tow (EHAM U26).
-	if best == nil || !poses[best.at].aligned() || hairpinAfterPush(poses[best.at].out) {
+	if best == nil || !poses[best.at].aligned() || poses[best.at].hairpin() {
 		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base)
 		if c.havePushFacing {
 			tows = c.facingWay(poses, tows)
 		}
 		if len(tows) > 0 {
-			if b := choose(append(cands, tows...)); b != nil {
+			all = append(cands, tows...)
+			if b := choose(all); b != nil {
+				best = b
+			}
+		}
+	}
+	if best != nil && poses[best.at].aligned() && poses[best.at].hairpin() {
+		// Still turning back on itself, a tow or not: plan more taxi-outs,
+		// on the wider apron too (LKPR B9: the push facing B1's way was
+		// never planned).
+		maxRoutes, maxSearches = found+pushPoseRoutes, len(routes)+pushPoseSearches
+		oneTier = true
+		b := choose(all)
+		oneTier = false
+		if b != nil && b.cost < best.cost {
+			best = b
+		}
+	}
+	// The stand's standard push, the one most runways take, unless it costs
+	// much more here: a stand pushes the same way whatever the runway (LKPR
+	// B9: onto B2 for all four, not onto B1 for 24 alone).
+	if best != nil && !c.havePushFacing && !c.noStandard {
+		if std := c.standardPush(); std != nil && !samePose(poses[best.at], *std) {
+			var same []pushCand
+			for _, cd := range all {
+				if samePose(poses[cd.at], *std) {
+					same = append(same, cd)
+				}
+			}
+			maxRoutes, maxSearches = found+pushPoseRoutes, len(routes)+pushPoseSearches
+			oneTier = true
+			b := choose(same)
+			oneTier = false
+			if b != nil && b.cost <= best.cost+standardPushMargin && !poses[b.at].hairpin() {
 				best = b
 			}
 		}

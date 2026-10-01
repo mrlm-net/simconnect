@@ -91,7 +91,7 @@ Our pilots talk too (#417). A pilot's transmission has `Pilot` set, on the same 
 
 - **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`.
 - **The first call on a frequency:** `CheckIn`: "Ruzyne Tower, CSA123, holding point runway 24, ready for departure", with the ATIS letter on the first call of all.
-- **Readbacks:** `Readback` reads a clearance back the ICAO way, what must be read back and then the call sign: "Holding point B runway 24 via H, A, CSA123"; "Ruzyne Tower 134.56, CSA123"; "Climb flight level 210, CSA123". With `RadioOptions.ReadBack` the radio has our pilots read back every clearance, after it, on its frequency.
+- **Readbacks:** `Readback` reads a clearance back the ICAO way, what must be read back and then the call sign: "Taxi to and hold short of runway 24 at B via H, A, CSA123"; "Ruzyne Tower 134.56, CSA123"; "Climb flight level 210, CSA123"; "Hold position, CSA123" (the project reads hold position back as given, where Doc 4444 has "holding"), and "Continue taxi, CSA123" after it. With `RadioOptions.ReadBack` the radio has our pilots read back every clearance, after it, on its frequency.
 - **Checking a readback:** `CheckReadback(clearance, heard)` compares what was read back (parameters as recognised, e.g. a voice recogniser's tags) with the clearance. It ignores case, spacing and leading zeros ("6" for "06", "FL210" for "flight level 210"). A wrong or missing item gets the controller's correction: "CSA123, negative, taxi via H, hold short of A". `SayAgain` asks a call sign, or "station calling", to say again.
 
 On the airport map the traffic log reads as the radio, pilot lines marked `pilot:`:

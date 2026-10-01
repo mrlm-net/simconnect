@@ -384,6 +384,14 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.setState(TaxiHoldingShort, nil)
 			return
 		}
+		// Cleared for take-off on the way: no stop at the holding point, on
+		// into the line-up at its speed (traffic ahead still stops it: the
+		// mover keeps its gap).
+		if c.takeoffCleared && !c.hasPad && c.runwayGate(true) && c.mover.Path().Length()-pose.Distance <= rollOnMeters {
+			c.holdingCrossing = false
+			c.startLineUp()
+			return
+		}
 		if pose.Arrived {
 			c.holdingCrossing = false
 			c.last.HoldingShortOf = c.runway.Name()
@@ -1469,7 +1477,7 @@ func (c *TaxiController) startLineUp() {
 	// Taxi speed through the entry, LineUpSpeedKts over the alignment.
 	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
 	path.LimitRange(c.alignDist-LineUpAlignMeters, path.Length(), LineUpSpeedKts, prof.Decel)
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
+	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts) // rolling on, or from a stop
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
 	}
@@ -1479,6 +1487,10 @@ func (c *TaxiController) startLineUp() {
 	c.setInjectedLights(lightsLineUp, "lights line-up (strobes)")
 	c.setState(TaxiLiningUp, nil)
 }
+
+// rollOnMeters: cleared for take-off while taxiing, the aircraft turns
+// onto the runway this far before its holding point instead of stopping.
+const rollOnMeters = 40.0
 
 // startTakeoff hands over from the ground mover to the take-off.
 func (c *TaxiController) startTakeoff() {
