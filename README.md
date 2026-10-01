@@ -200,7 +200,7 @@ If this library has saved you time, a one-time or recurring contribution via [Re
 
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+Business Source License 1.1, see [LICENSE](LICENSE), for versions after v0.18.4. Non-commercial use is free: personal and hobby use, the flight-simulation community, education, research and non-profits. Commercial use, such as a paid add-on or product, a paid service or use inside a business, needs a separate licence; [open an issue](https://github.com/mrlm-net/simconnect/issues) to ask. Each version becomes Apache-2.0 four years after it is published, and versions up to and including v0.18.4 remain under Apache-2.0.
 
 ---
 

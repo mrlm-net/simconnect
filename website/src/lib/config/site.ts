@@ -10,5 +10,5 @@ export const siteConfig: SiteConfig = {
 	ogImageWidth: 1057,
 	ogImageHeight: 639,
 	locale: 'en_US',
-	license: 'Apache-2.0'
+	license: 'BUSL-1.1'
 };

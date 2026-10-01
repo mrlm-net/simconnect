@@ -19,6 +19,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: when the map server stops answering, the lost overlay says so and names the address.
 - Website: copy buttons for the airport map's run command on the landing and examples pages, with the links on their own line.
 
+### Changed
+
+- License: new versions are under the Business Source License 1.1 instead of Apache-2.0. Non-commercial use (personal and hobby use, the flight-simulation community, education, research, non-profits) is allowed; commercial use, such as a paid add-on or product, a paid service or use inside a business, needs a separate licence. Each version becomes Apache-2.0 four years after it is published. Versions up to and including v0.18.4 stay under Apache-2.0.
+
 ### Fixed
 
 - Website: the airport map's run command is `cd cmd/airport-map && go run .`, and its GitHub link points to `cmd/airport-map`.
