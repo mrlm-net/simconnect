@@ -2054,6 +2054,9 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 		title = traffic.DefaultTugTitle
 	}
 	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
+	if g, err := cc.graph(r.ICAO); err == nil {
+		t.Layout = g.Layout // from its depot on the vehicle roads, and back
+	}
 	if r.TugYaw != nil {
 		t.YawDeg = *r.TugYaw
 	}

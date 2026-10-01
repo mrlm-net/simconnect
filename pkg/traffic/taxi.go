@@ -267,6 +267,7 @@ type TaxiController struct {
 	flaps           surfaceRamp
 	frameAt         time.Time
 	tugAttached     bool
+	tugAttachedAt   time.Time // when the tug was sent for
 	pushBranch      airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch  bool
 	pushJunction    int              // route index of the junction the tail swings at (planPushback; 1: the first)

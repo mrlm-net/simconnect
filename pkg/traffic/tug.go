@@ -45,6 +45,11 @@ type SimObjectTug struct {
 	// aircraft's nose gear; YawDeg turns the tug against the aircraft
 	// heading (0: the tug faces the way the aircraft does).
 	AheadMeters, YawDeg float64
+	// Layout is the airport, for the tug's way from its depot (the vehicle
+	// parking spot nearest the stand, airport.Layout.VehicleDepots) to the
+	// aircraft and back, on the vehicle roads (VehicleRoute). nil, or no
+	// depot or road: it appears at the nose and drives off to the side.
+	Layout *airport.Layout
 
 	mu        sync.Mutex
 	objectID  uint32
@@ -56,6 +61,10 @@ type SimObjectTug struct {
 	lastNose  airport.LatLon // nose gear at the last bar update
 	haveNose  bool
 	waitLeft  float64 // seconds to the drive-off after the push
+	arrive    *GroundMover   // driving in from the depot; nil once at the nose
+	depot     airport.LatLon // where it came from and goes back to
+	haveDepot bool
+	homing    bool // driving back to the depot
 	err       error   // from the takeover, reported by Update
 	done      bool
 }
@@ -121,9 +130,57 @@ func (t *SimObjectTug) Attach(pose GroundPose) error {
 	defer t.mu.Unlock()
 	t.bar, t.haveBar = pose.Heading, true
 	t.pose = t.at(pose)
+	// From its depot when it has one: it appears there and drives in.
+	if path, depot, ok := t.inbound(pose); ok {
+		t.arrive, t.depot, t.haveDepot = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
+		t.pose = t.arrive.Pose()
+	}
 	return t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
 	}, t.reqID)
+}
+
+// inbound is the tug's way in for an aircraft at pose: from the nearest
+// depot along the vehicle roads to a point TugApproachMeters in front of
+// the nose, then straight on to the nose gear, facing the aircraft.
+func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bool) {
+	if t.Layout == nil {
+		return nil, airport.LatLon{}, false
+	}
+	nose := NoseGear(pose.Position, pose.Heading, t.prof)
+	front := offsetHeading(nose, pose.Heading, TugApproachMeters)
+	depot, ok := nearestDepot(t.Layout, front)
+	if !ok {
+		return nil, airport.LatLon{}, false
+	}
+	route, err := t.Layout.VehicleRoute(depot, front)
+	if err != nil {
+		return nil, airport.LatLon{}, false
+	}
+	path, err := NewArcPath(append(route, t.pose.Position), tugRoadProfile(), 6)
+	if err != nil {
+		return nil, airport.LatLon{}, false
+	}
+	return path, depot, true
+}
+
+// nearestDepot is the vehicle parking spot of l nearest p.
+func nearestDepot(l *airport.Layout, p airport.LatLon) (airport.LatLon, bool) {
+	best, bestD := airport.LatLon{}, math.Inf(1)
+	for _, i := range l.VehicleDepots() {
+		if d := localDist(l.Parking[i].Position, p); d < bestD {
+			best, bestD = l.Parking[i].Position, d
+		}
+	}
+	return best, !math.IsInf(bestD, 1)
+}
+
+// Connected reports that the tug is at the nose: the push may start. A
+// tug without a depot is there as soon as it appears.
+func (t *SimObjectTug) Connected() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.objectID != 0 && t.arrive == nil
 }
 
 func (t *SimObjectTug) Handle(msg engine.Message) bool {
@@ -153,6 +210,14 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		t.err = nil
 		return err
 	}
+	// Driving in from the depot; once there, on the nose.
+	if t.arrive != nil {
+		t.pose = t.arrive.Step(dt)
+		if t.pose.Arrived {
+			t.arrive, t.pose = nil, t.at(pose)
+		}
+		return t.place()
+	}
 	if pushing {
 		t.steer(pose, dt)
 		t.pose = t.at(pose)
@@ -177,7 +242,18 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		return t.place()
 	}
 	if !t.reversing {
-		return t.finish()
+		return t.finish() // driven off, or home at the depot
+	}
+	// Backed off: home to the depot along the vehicle roads, where it has
+	// one (it disappears there).
+	if t.haveDepot && !t.homing {
+		p, h := offsetHeading(t.pose.Position, t.pose.Heading, tugProfile().WheelbaseMeters), t.pose.Heading
+		if route, err := t.Layout.VehicleRoute(p, t.depot); err == nil {
+			if path, err := NewArcPath(route, tugRoadProfile(), 6); err == nil {
+				t.away, t.reversing, t.homing = NewGroundMoverFrom(path, tugRoadProfile(), h, 0), false, true
+				return t.place()
+			}
+		}
 	}
 	// Backed off: drive forward, turning TugDriveOffTurnDeg away.
 	// Forward, the mover places it a wheelbase behind the path's start:
@@ -224,6 +300,13 @@ func (t *SimObjectTug) Remove() error {
 		return nil
 	}
 	return t.finish()
+}
+
+// tugRoadProfile drives a tug on the vehicle roads, to and from its depot.
+func tugRoadProfile() MotionProfile {
+	p := tugProfile()
+	p.CruiseKts = TugRoadKts
+	return p
 }
 
 // tugProfile moves a tug: short wheelbase, brisk but not fast.

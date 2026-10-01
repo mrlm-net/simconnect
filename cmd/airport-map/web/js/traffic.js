@@ -111,7 +111,10 @@ async function ctlAct(id, action, node, facing) {
 }
 async function approachAct(tail, action) {
   if (!data) return;
-  const r = await send(`/api/approach/${data.icao}/${encodeURIComponent(tail)}/${action}`);
+  // Its own airport's sequence, not the one on the map.
+  const own = ctlViews.find((v) => v.tail === tail);
+  const icao = (own && own.icao) || data.icao;
+  const r = await send(`/api/approach/${icao}/${encodeURIComponent(tail)}/${action}`);
   const msg = r.ok ? `${tail}: ${AP_ACT[action].title.toLowerCase()}` : `${tail}: ${r.error}`;
   $('apMsg').textContent = msg;
   toast(msg, r.ok ? '' : 'err');

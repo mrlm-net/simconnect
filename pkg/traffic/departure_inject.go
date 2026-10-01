@@ -277,6 +277,11 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 				c.setState(TaxiAwaitingTaxi, nil)
 				return
 			}
+			// The tug drives in from its depot first.
+			if !c.tugConnected() {
+				c.emit(nil, false)
+				return
+			}
 			if err := c.startPushback(); err != nil {
 				c.fail(err)
 				return
@@ -486,7 +491,7 @@ func (c *TaxiController) updateTug(dt float64) {
 		if c.state != TaxiAwaitingPushback || c.facesOut() {
 			return
 		}
-		c.tugAttached = true
+		c.tugAttached, c.tugAttachedAt = true, c.now()
 		if d, ok := t.(disconnectDelayer); ok {
 			d.SetDisconnectDelay(TugDisconnectSeconds * f(c.timing.tug))
 		}
@@ -515,6 +520,31 @@ func (c *TaxiController) finishDeicing(l Lights) {
 	c.setInjectedLights(l, "lights after de-icing")
 	c.note("de-icing done", nil)
 	c.emit(nil, true)
+}
+
+// tugConnected reports that the pushback tug is at the nose (or there is
+// none): one driving in from its depot (SimObjectTug.Layout) is not yet.
+func (c *TaxiController) tugConnected() bool {
+	t := c.req.Tug
+	if t == nil {
+		return true
+	}
+	if !c.tugAttached {
+		return false
+	}
+	if t.Done() {
+		return true // given up, or gone
+	}
+	if a, ok := t.(interface{ Connected() bool }); ok && !a.Connected() {
+		// Not there after TugArriveTimeout (never created, or stuck on its
+		// way): the push goes on without it.
+		if c.now().Sub(c.tugAttachedAt) < TugArriveTimeout {
+			return false
+		}
+		c.tugErr(errors.New("the tug did not arrive: pushing without it"))
+		c.tugErr(t.Remove())
+	}
+	return true
 }
 
 // tugClear reports that no pushback tug is at the aircraft any more: none

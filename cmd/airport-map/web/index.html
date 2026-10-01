@@ -100,9 +100,15 @@
     <button type="button" class="chip chip--atis" id="atisChip" data-goto="airport" title="ATIS" hidden>
       <span class="atis-letter" aria-hidden="true" id="atisChipLetter">?</span><span class="hide-sm">ATIS</span><span class="sr-only" id="atisChipSr"></span>
     </button>
-    <span class="chip chip--static hide-tab" id="windChip" title="Wind (magnetic), measured at your aircraft" hidden>
-      <svg class="ic ic--sm"><use href="#i-wind"/></svg><span class="mono" id="windChipVal"></span>
-    </span>
+    <div class="pop-anchor hide-tab">
+      <button type="button" class="chip" id="windChip" aria-haspopup="dialog" aria-expanded="false" aria-controls="wxPop" title="Wind (magnetic), measured at your aircraft: the weather" hidden>
+        <svg class="ic ic--sm"><use href="#i-wind"/></svg><span class="mono" id="windChipVal"></span>
+      </button>
+      <div class="popover" id="wxPop" role="dialog" aria-label="Weather" hidden>
+        <div class="card__head"><h3>Weather</h3><span class="muted small">at your aircraft</span></div>
+        <div id="wxPopBody" class="small"></div>
+      </div>
+    </div>
     <span class="chip chip--static hide-xl" id="qnhChip" title="QNH" hidden><span class="chip__k">QNH</span><span class="mono" id="qnhChipVal"></span></span>
   </div>
 
@@ -134,6 +140,13 @@
     </button>
     <label class="chip chip--as hide-tab" title="Network play: the position this device works. Clearances for aircraft on other frequencies are refused."><span class="hide-xl">As</span>
       <select id="asSel" aria-label="Position this device works"><option value="">All positions</option><option value="delivery">Delivery</option><option value="ground">Ground</option><option value="tower">Tower</option><option value="approach">Approach</option></select></label>
+    <div class="pop-anchor hide-sm">
+      <button type="button" class="chip" id="clockChip" aria-haspopup="dialog" aria-expanded="false" aria-controls="clockPop" title="Simulator time: UTC, and local time at your aircraft" hidden><span class="mono strong" id="clockZ">--:--Z</span><span class="chip__sub mono hide-xl" id="clockL"></span></button>
+      <div class="popover popover--right" id="clockPop" role="dialog" aria-label="Time" hidden>
+        <div class="card__head"><h3>Time</h3><span class="muted small">in the simulator</span></div>
+        <div id="clockPopBody" class="small"></div>
+      </div>
+    </div>
     <span class="chip chip--static chip--conn hide-tab" id="connChip" title="Simulator"><span class="dot" id="connDot"></span><span class="hide-xl" id="connLbl">Not connected</span></span>
   </div>
 
