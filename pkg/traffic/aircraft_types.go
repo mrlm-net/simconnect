@@ -11,23 +11,23 @@ import (
 // the runway; rotation and climb figures are typical, not for a given
 // weight.
 var (
-	toB77W  = TakeoffProfile{RollAccel: 1.9, RotateKts: 160, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 175, ClimbFpm: 2000, ClimbRampSeconds: 6, TailstrikePitch: 8.5}
-	toB772  = TakeoffProfile{RollAccel: 1.9, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2000, ClimbRampSeconds: 6, TailstrikePitch: 10.5}
-	toB78X  = TakeoffProfile{RollAccel: 2.0, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2100, ClimbRampSeconds: 6, TailstrikePitch: 8.5}
-	toB787  = TakeoffProfile{RollAccel: 2.1, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2300, ClimbRampSeconds: 6, TailstrikePitch: 9.5}
-	toB747  = TakeoffProfile{RollAccel: 1.8, RotateKts: 160, RotateRate: 2.5, LiftoffPitch: 9, ClimbPitch: 14, ClimbKts: 175, ClimbFpm: 1800, ClimbRampSeconds: 6, TailstrikePitch: 11}
-	toA388  = TakeoffProfile{RollAccel: 1.7, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 9, ClimbPitch: 13, ClimbKts: 170, ClimbFpm: 1700, ClimbRampSeconds: 6, TailstrikePitch: 12.5}
-	toA35K  = TakeoffProfile{RollAccel: 2.0, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2100, ClimbRampSeconds: 6, TailstrikePitch: 9.5}
-	toA359  = TakeoffProfile{RollAccel: 2.1, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2300, ClimbRampSeconds: 6, TailstrikePitch: 10.5}
-	toA330  = TakeoffProfile{RollAccel: 2.0, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 165, ClimbFpm: 2000, ClimbRampSeconds: 6, TailstrikePitch: 10}
-	toA321  = TakeoffProfile{RollAccel: 2.3, RotateKts: 145, RotateRate: 3, LiftoffPitch: 7.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2100, ClimbRampSeconds: 5, TailstrikePitch: 9.5}
-	toA319  = TakeoffProfile{RollAccel: 2.5, RotateKts: 132, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 155, ClimbFpm: 2400, ClimbRampSeconds: 5, TailstrikePitch: 13.5}
-	toB739  = TakeoffProfile{RollAccel: 2.3, RotateKts: 150, RotateRate: 3, LiftoffPitch: 7.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2100, ClimbRampSeconds: 5, TailstrikePitch: 9}
-	toB737  = TakeoffProfile{RollAccel: 2.4, RotateKts: 145, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 5, TailstrikePitch: 11}
-	toEJet  = TakeoffProfile{RollAccel: 2.6, RotateKts: 130, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 150, ClimbFpm: 2300, ClimbRampSeconds: 5, TailstrikePitch: 12}
-	toE195  = TakeoffProfile{RollAccel: 2.5, RotateKts: 135, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 155, ClimbFpm: 2200, ClimbRampSeconds: 5, TailstrikePitch: 11}
-	toCRJ9  = TakeoffProfile{RollAccel: 2.5, RotateKts: 140, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 160, ClimbFpm: 2300, ClimbRampSeconds: 5, TailstrikePitch: 11}
-	toTprop = TakeoffProfile{RollAccel: 2.4, RotateKts: 115, RotateRate: 3, LiftoffPitch: 7, ClimbPitch: 12, ClimbKts: 135, ClimbFpm: 1500, ClimbRampSeconds: 5, TailstrikePitch: 10}
+	toB77W  = TakeoffProfile{RollAccel: 1.9, RotateKts: 160, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 175, ClimbFpm: 2000, ClimbRampSeconds: 3, TailstrikePitch: 8.5}
+	toB772  = TakeoffProfile{RollAccel: 1.9, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2000, ClimbRampSeconds: 3, TailstrikePitch: 10.5}
+	toB78X  = TakeoffProfile{RollAccel: 2.0, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2100, ClimbRampSeconds: 3, TailstrikePitch: 8.5}
+	toB787  = TakeoffProfile{RollAccel: 2.1, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2300, ClimbRampSeconds: 3, TailstrikePitch: 9.5}
+	toB747  = TakeoffProfile{RollAccel: 1.8, RotateKts: 160, RotateRate: 2.5, LiftoffPitch: 9, ClimbPitch: 14, ClimbKts: 175, ClimbFpm: 1800, ClimbRampSeconds: 3, TailstrikePitch: 11}
+	toA388  = TakeoffProfile{RollAccel: 1.7, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 9, ClimbPitch: 13, ClimbKts: 170, ClimbFpm: 1700, ClimbRampSeconds: 3, TailstrikePitch: 12.5}
+	toA35K  = TakeoffProfile{RollAccel: 2.0, RotateKts: 155, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 170, ClimbFpm: 2100, ClimbRampSeconds: 3, TailstrikePitch: 9.5}
+	toA359  = TakeoffProfile{RollAccel: 2.1, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2300, ClimbRampSeconds: 3, TailstrikePitch: 10.5}
+	toA330  = TakeoffProfile{RollAccel: 2.0, RotateKts: 150, RotateRate: 2.5, LiftoffPitch: 8, ClimbPitch: 14, ClimbKts: 165, ClimbFpm: 2000, ClimbRampSeconds: 3, TailstrikePitch: 10}
+	toA321  = TakeoffProfile{RollAccel: 2.3, RotateKts: 145, RotateRate: 3, LiftoffPitch: 7.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2100, ClimbRampSeconds: 2.5, TailstrikePitch: 9.5}
+	toA319  = TakeoffProfile{RollAccel: 2.5, RotateKts: 132, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 155, ClimbFpm: 2400, ClimbRampSeconds: 2.5, TailstrikePitch: 13.5}
+	toB739  = TakeoffProfile{RollAccel: 2.3, RotateKts: 150, RotateRate: 3, LiftoffPitch: 7.5, ClimbPitch: 15, ClimbKts: 165, ClimbFpm: 2100, ClimbRampSeconds: 2.5, TailstrikePitch: 9}
+	toB737  = TakeoffProfile{RollAccel: 2.4, RotateKts: 145, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 2.5, TailstrikePitch: 11}
+	toEJet  = TakeoffProfile{RollAccel: 2.6, RotateKts: 130, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 150, ClimbFpm: 2300, ClimbRampSeconds: 2.5, TailstrikePitch: 12}
+	toE195  = TakeoffProfile{RollAccel: 2.5, RotateKts: 135, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 155, ClimbFpm: 2200, ClimbRampSeconds: 2.5, TailstrikePitch: 11}
+	toCRJ9  = TakeoffProfile{RollAccel: 2.5, RotateKts: 140, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15, ClimbKts: 160, ClimbFpm: 2300, ClimbRampSeconds: 2.5, TailstrikePitch: 11}
+	toTprop = TakeoffProfile{RollAccel: 2.4, RotateKts: 115, RotateRate: 3, LiftoffPitch: 7, ClimbPitch: 12, ClimbKts: 135, ClimbFpm: 1500, ClimbRampSeconds: 2.5, TailstrikePitch: 10}
 )
 
 // Flap schedules as percent of the handle travel: the detent's index over

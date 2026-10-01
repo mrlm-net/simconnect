@@ -243,7 +243,7 @@ const (
 // the stabilised-approach gate.
 const (
 	ApproachFlapsPct = 75.0
-	FlapsFullFt      = 1000.0
+	FlapsFullFt      = 1400.0
 	FlapsFullSeconds = 5.0
 )
 
@@ -285,6 +285,9 @@ const (
 	TakeoffFlapsPct             = 25.0
 	FlapsSetSeconds             = 8.0
 	FlapsRetractFt              = 1000.0
+	// HandoverCleanMarginFt: a take-off is handed to MSFS AI with the
+	// flaps up, at most this far above the hand-over height.
+	HandoverCleanMarginFt = 2500.0
 	FlapsRetractClimbSeconds    = 10.0
 	DefaultRollingTakeoffChance = 0.3
 )

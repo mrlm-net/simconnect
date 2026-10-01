@@ -248,6 +248,10 @@ type ArrivalController struct {
 	tromboneNM float64
 	blend             joinBlend
 	flapsPct          float64        // injected flap setting
+	seq               sequence       // the landing's steps (Sequence)
+	approachPhase     ApproachPhase  // the approach's phase last frame
+	landingFlaps      bool           // landing flaps noted (started, then set)
+	landingFlapsSet   bool
 	flapsUpFrom       time.Time      // flaps retracting since
 	approachLightsSet bool
 	spoilers          surfaceRamp    // injected ground spoilers
@@ -317,6 +321,14 @@ func (c *ArrivalController) Plan() *ArrivalPlan {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.plan
+}
+
+// Sequence is the injected landing step by step, from the takeover on
+// final: gear, flaps, lights, flare, touchdown, spoilers, rollout, vacating.
+func (c *ArrivalController) Sequence() []SequenceStep {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.seq.list()
 }
 
 // ObjectID returns the aircraft's SimConnect object ID, 0 before it exists.

@@ -23,6 +23,12 @@ type TakeoffProfile struct {
 	// ClimbKts is the initial climb speed (V2 + 10–15); ClimbFpm the climb
 	// rate reached ClimbRampSeconds after lift-off.
 	ClimbKts, ClimbFpm, ClimbRampSeconds float64
+	// AccelFt is the acceleration altitude (ft above the runway; 0:
+	// TakeoffAccelFt): the climb speed is held to it, then the aircraft
+	// accelerates to CleanKts (0: ClimbKts + TakeoffCleanAddKts) at
+	// TakeoffAccelKtsPerSecond, climbing at TakeoffAccelClimbFactor of
+	// ClimbFpm meanwhile; the flaps retract on the way (speed, not height).
+	AccelFt, CleanKts float64
 	// TailstrikePitch is the pitch (°) at which the tail touches the runway
 	// with the main gear on it; 0 means 11.5 (A320). On the runway the pitch
 	// stays TailstrikeMarginDeg below it, lift-off included; after lift-off
@@ -36,7 +42,7 @@ func DefaultTakeoffProfile() TakeoffProfile {
 	return TakeoffProfile{
 		RollAccel: 2.4, // live: 2.0 lifted off after ~1875 m, long for an A320
 		RotateKts: 138, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15,
-		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 5, TailstrikePitch: 11.5,
+		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 2.5, TailstrikePitch: 11.5,
 	}
 }
 
@@ -87,7 +93,47 @@ type TakeoffMover struct {
 	airborneFor float64
 	rollFor     float64 // s since the thrust was set
 	liftoffX    float64
-	rejected    bool // braking to a stop (Reject)
+	rejected    bool    // braking to a stop (Reject)
+	accel       bool    // past the acceleration altitude
+	accelFor    float64 // s since
+}
+
+// Acceleration after take-off: held at the climb speed (V2 + 10) to the
+// acceleration altitude, then towards the clean speed, the flaps coming up
+// as the speed passes their schedule (NADP 2: 800–1500 ft).
+const (
+	TakeoffAccelFt           = 1000.0
+	TakeoffCleanAddKts       = 50.0
+	TakeoffAccelKtsPerSecond = 1.5
+	TakeoffAccelClimbFactor  = 0.6
+	TakeoffAccelEaseSeconds  = 5.0
+)
+
+// accelFt and cleanKts are the profile's acceleration altitude and clean
+// speed, the defaults where unset.
+func (p TakeoffProfile) accelFt() float64 {
+	if p.AccelFt > 0 {
+		return p.AccelFt
+	}
+	return TakeoffAccelFt
+}
+
+func (p TakeoffProfile) cleanKts() float64 {
+	if p.CleanKts > 0 {
+		return p.CleanKts
+	}
+	return p.ClimbKts + TakeoffCleanAddKts
+}
+
+// FlapsShare is how much of the take-off flap setting is still out at
+// groundKts: all of it up to the climb speed, none from the clean speed on,
+// in between in proportion (the flaps retract on the speed schedule).
+func (p TakeoffProfile) FlapsShare(groundKts float64) float64 {
+	lo, hi := p.ClimbKts, p.cleanKts()
+	if hi <= lo {
+		return 0
+	}
+	return math.Max(0, math.Min(1, (hi-groundKts)/(hi-lo)))
 }
 
 // SpoolStartFactor is the thrust's share of take-off thrust as the roll
@@ -202,11 +248,21 @@ func (m *TakeoffMover) step(dt float64) {
 		}
 		f := math.Min(1, m.airborneFor/math.Max(p.ClimbRampSeconds, 0.01))
 		m.vs = p.ClimbFpm * f * f * (3 - 2*f) // eases into the climb
-		m.h += m.vs / 60 * dt
-		// Speed builds towards the climb speed.
-		if vc := p.ClimbKts * ktsToMS; m.v < vc {
+		if m.h >= p.accelFt() {
+			m.accel = true
+		}
+		if m.accel {
+			// Past the acceleration altitude: nose down a little (over
+			// TakeoffAccelEaseSeconds), speed up to the clean speed.
+			m.accelFor += dt
+			e := math.Min(1, m.accelFor/TakeoffAccelEaseSeconds)
+			m.vs *= 1 - (1-TakeoffAccelClimbFactor)*e*e*(3-2*e)
+			m.v = math.Min(p.cleanKts()*ktsToMS, m.v+TakeoffAccelKtsPerSecond*ktsToMS*dt)
+		} else if vc := p.ClimbKts * ktsToMS; m.v < vc {
+			// Speed builds towards the climb speed.
 			m.v = math.Min(vc, m.v+0.8*dt)
 		}
+		m.h += m.vs / 60 * dt
 	}
 	m.x += m.v * dt
 }
