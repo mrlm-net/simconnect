@@ -203,17 +203,43 @@ func (s *state) setLive(v bool) {
 // planned for: a narrow-body, the stands' usual user.
 const standardPushModel = "FSLTL_B738_RYR"
 
-// planStandardPushes plans every stand's standard push of icao in the
-// background (traffic.PlanStandardPushes): a stand then pushes the same way
-// whatever the runway.
-func planStandardPushes(st *state, icao string) {
-	g, err := st.cache.Graph(icao)
-	if err != nil {
+// standardPlanner plans every stand's standard push of an airport
+// (traffic.PlanStandardPushes): a stand then pushes the same way whatever
+// the runway. Only airports we push back at — planned when the first
+// departure appears there, not for every airport loaded (destinations
+// included: a minute or two of a core each, all at once) — and one airport
+// at a time, in the background.
+var standardPlanner pushPlanQueue
+
+type pushPlanQueue struct {
+	once sync.Once
+	mu   sync.Mutex
+	seen map[string]bool
+	ch   chan *airport.Graph
+}
+
+// want queues g's airport, once.
+func (q *pushPlanQueue) want(g *airport.Graph) {
+	q.once.Do(func() {
+		q.seen, q.ch = map[string]bool{}, make(chan *airport.Graph, 64)
+		go func() {
+			for g := range q.ch {
+				start := time.Now()
+				traffic.PlanStandardPushes(g, standardPushModel, nil)
+				tlog.printf("%s: standard pushbacks of %d stands planned in %s", g.Layout.ICAO, len(g.Layout.Parking), time.Since(start).Round(time.Second))
+			}
+		}()
+	})
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.seen[g.Layout.ICAO] {
 		return
 	}
-	start := time.Now()
-	traffic.PlanStandardPushes(g, standardPushModel, nil)
-	tlog.printf("%s: standard pushbacks of %d stands planned in %s", icao, len(g.Layout.Parking), time.Since(start).Round(time.Second))
+	q.seen[g.Layout.ICAO] = true
+	select {
+	case q.ch <- g:
+	default:
+	}
 }
 
 func (s *state) finish(icao string, err error) {
@@ -531,9 +557,6 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					}
 				}
 				st.finish(res.ICAO, res.Err)
-				if res.Err == nil {
-					go planStandardPushes(st, res.ICAO)
-				}
 				continue
 			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {
