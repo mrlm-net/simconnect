@@ -272,10 +272,17 @@ func alongHeading(p airport.LatLon, heading float64, q airport.LatLon) float64 {
 	return (q.Lon-p.Lon)*kx*math.Sin(h) + (q.Lat-p.Lat)*metersPerDegree*math.Cos(h)
 }
 
+// pathLen is p's length in meters, at its first point's scale (an
+// airport's paths: the scale changes by less than a part in ten thousand).
 func pathLen(p []airport.LatLon) float64 {
+	if len(p) < 2 {
+		return 0
+	}
+	kx := metersPerDegree * math.Cos(p[0].Lat*math.Pi/180)
 	d := 0.0
 	for i := 1; i < len(p); i++ {
-		d += localDist(p[i-1], p[i])
+		dx, dy := (p[i].Lon-p[i-1].Lon)*kx, (p[i].Lat-p[i-1].Lat)*metersPerDegree
+		d += math.Sqrt(dx*dx + dy*dy)
 	}
 	return d
 }

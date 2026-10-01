@@ -609,7 +609,7 @@ function ladderSVG(r) {
   for (let nm = 0; nm <= 20; nm++) {
     const x = x0 + nm * sc, big = nm % 5 === 0;
     s += `<line class="lad-tick" x1="${x}" y1="${y - (big ? 5 : 3)}" x2="${x}" y2="${y + (big ? 5 : 3)}"/>`;
-    if (big && nm) s += `<text x="${x}" y="${y + 17}" text-anchor="middle">${nm}</text>`;
+    if (big && nm) s += `<text x="${x}" y="${y + 17}" text-anchor="middle">${nm} NM</text>`;
   }
   seq.forEach((e, i) => {
     const d = Math.min(e.distanceToGoNM, 20.5), x = x0 + d * sc;
@@ -619,7 +619,7 @@ function ladderSVG(r) {
       const lead = seq[i - 1], gap = e.distanceToGoNM - lead.distanceToGoNM, xp = x0 + Math.min(lead.distanceToGoNM, 20) * sc;
       const k = gap < (e.spacingNM || 0) - 0.3 ? 'short' : 'ok';
       s += `<line class="lad-gap--${k}" x1="${xp + 7}" y1="${y + 26}" x2="${Math.max(xp + 8, x - 7)}" y2="${y + 26}" stroke-width="2"/>`;
-      s += `<text class="lad-gaptxt--${k}" x="${(x + xp) / 2}" y="${y + 37}" text-anchor="middle">${gap.toFixed(1)}/${e.spacingNM || 0}</text>`;
+      s += `<text class="lad-gaptxt--${k}" x="${(x + xp) / 2}" y="${y + 37}" text-anchor="middle">${gap.toFixed(1)}/${e.spacingNM || 0} NM</text>`;
     }
     if (e.distanceToGoNM <= 20.5) {
       s += `<circle class="lad-ac ${cls}" cx="${x}" cy="${y}" r="6"/>`;

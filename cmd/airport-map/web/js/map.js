@@ -473,8 +473,7 @@ function drawFinal(seqs) {
       const lead = i > 0 ? r.sequence[i - 1] : null;
       const gap = lead ? e.distanceToGoNM - lead.distanceToGoNM : 0;
       const short = lead && gap < (e.spacingNM || 0) - 0.3;
-      L.circleMarker(at(e.distanceToGoNM), { radius: 6, className: short ? 'm-final-ac--short' : 'm-final-ac--ok', interactive: false })
-        .bindTooltip(`${esc(e.callsign)} ${e.distanceToGoNM.toFixed(1)}${lead ? ` (${gap.toFixed(1)}/${e.spacingNM})` : ''}`, { permanent: true, direction: 'right', offset: [8, 0], className: 'map-lbl' })
+      L.circleMarker(at(e.distanceToGoNM), { radius: 6, className: short ? 'm-final-ac--short' : 'm-final-ac--ok', interactive: false })
         .addTo(layers.final);
     });
   }

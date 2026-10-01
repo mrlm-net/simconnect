@@ -447,7 +447,8 @@ const (
 // localDist is the flat-earth distance in metres; exact enough on an airport.
 func localDist(a, b airport.LatLon) float64 {
 	kx := metersPerDegree * math.Cos((a.Lat+b.Lat)/2*math.Pi/180)
-	return math.Hypot((b.Lon-a.Lon)*kx, (b.Lat-a.Lat)*metersPerDegree)
+	dx, dy := (b.Lon-a.Lon)*kx, (b.Lat-a.Lat)*metersPerDegree
+	return math.Sqrt(dx*dx + dy*dy) // not Hypot: no overflow at these sizes, and cheaper
 }
 
 // cornerZones adds a point d metres (at most half the segment) either side
