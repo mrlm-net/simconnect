@@ -54,7 +54,23 @@ const (
 	reqAircraft uint32 = 2001
 	evPause     uint32 = 2010
 	evCom1Set   uint32 = 2011 // COM_RADIO_SET_HZ: the map tunes the user's COM1
+	// The simulation from the map: pause and resume, rate up and down.
+	evPauseOn  uint32 = 2012
+	evPauseOff uint32 = 2013
+	evRateUp   uint32 = 2014
+	evRateDown uint32 = 2015
 )
+
+// simEvents are the simulator events the map's pause and rate buttons send.
+var simEvents = map[string]struct {
+	id    uint32
+	event string
+}{
+	"pause":  {evPauseOn, "PAUSE_ON"},
+	"resume": {evPauseOff, "PAUSE_OFF"},
+	"faster": {evRateUp, "SIM_RATE_INCR"},
+	"slower": {evRateDown, "SIM_RATE_DECR"},
+}
 
 // Live traffic scan, requested every second.
 const (
@@ -135,6 +151,13 @@ type state struct {
 	reviewDir string
 	cache *airport.Cache
 
+	// sim sends a pause or rate event to the simulator (simEvents); nil
+	// while not connected.
+	sim func(action string) error
+
+	// camera is the camera operator of the live connection (nil without).
+	camera *cameraMan
+
 	mu         sync.Mutex
 	fetched    map[string]time.Time
 	waiters    map[string][]chan error
@@ -169,6 +192,23 @@ func (s *state) setLive(v bool) {
 }
 
 // finish records the outcome of a fetch and wakes everyone waiting for it.
+// standardPushModel is the aircraft the stands' standard pushes are
+// planned for: a narrow-body, the stands' usual user.
+const standardPushModel = "FSLTL_B738_RYR"
+
+// planStandardPushes plans every stand's standard push of icao in the
+// background (traffic.PlanStandardPushes): a stand then pushes the same way
+// whatever the runway.
+func planStandardPushes(st *state, icao string) {
+	g, err := st.cache.Graph(icao)
+	if err != nil {
+		return
+	}
+	start := time.Now()
+	traffic.PlanStandardPushes(g, standardPushModel, nil)
+	tlog.printf("%s: standard pushbacks of %d stands planned in %s", icao, len(g.Layout.Parking), time.Since(start).Round(time.Second))
+}
+
 func (s *state) finish(icao string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -206,6 +246,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Following COM1 both ways: a frequency picked on the map tunes it.
 	if err := client.MapClientEventToSimEvent(evCom1Set, "COM_RADIO_SET_HZ"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ MapClientEventToSimEvent(COM_RADIO_SET_HZ):", err)
+	}
+	for _, e := range simEvents {
+		if err := client.MapClientEventToSimEvent(e.id, e.event); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ MapClientEventToSimEvent(%s): %v\n", e.event, err)
+		}
 	}
 	for i, v := range []struct{ name, unit string }{
 		{"PLANE LATITUDE", "degrees"},
@@ -293,6 +338,44 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	sep := newSepMonitor()
 	cw := newConflictWatch(sched)
 	tw := newTowers(cc, sched)
+	// The camera on our traffic: cut to the aircraft on the radio as the
+	// call is heard.
+	st.mu.Lock()
+	st.sim = func(action string) error {
+		e, ok := simEvents[action]
+		if !ok {
+			return fmt.Errorf("action: pause, resume, faster or slower")
+		}
+		return cc.do(func() error {
+			return client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, e.id, 0, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
+		})
+	}
+	st.mu.Unlock()
+	defer func() {
+		st.mu.Lock()
+		st.sim = nil
+		st.mu.Unlock()
+	}()
+	cam := newCameraMan(cc, client)
+	// The camera goes back to the simulator however this connection ends:
+	// a camera left acquired stays stuck for the user.
+	defer func() {
+		if cam.dir != nil {
+			cam.dir.Release()
+		}
+	}()
+	cameraHeard.Store(&cam)
+	defer cameraHeard.Store(nil)
+	st.mu.Lock()
+	st.camera = cam
+	st.mu.Unlock()
+	defer func() {
+		st.mu.Lock()
+		st.camera = nil
+		st.mu.Unlock()
+	}()
+	camTick := time.NewTicker(cameraRate)
+	defer camTick.Stop()
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
@@ -350,6 +433,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 
 		case cmd := <-cc.cmds:
 			cmd()
+
+		case now := <-camTick.C:
+			cam.tick(now)
 
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
@@ -418,6 +504,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					}
 				}
 				st.finish(res.ICAO, res.Err)
+				if res.Err == nil {
+					go planStandardPushes(st, res.ICAO)
+				}
+				continue
+			}
+			if cam.handle(msg) {
 				continue
 			}
 			if cc.handle(msg) {
@@ -588,6 +680,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		w.Write(b)
 	})
 	registerVoice(mux, speaker)
+	registerCamera(mux, st)
 	speaker.atis = st.atisOn
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.
@@ -804,6 +897,23 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		writeJSON(w, t)
 	})
 
+	// POST /api/sim?action=pause|resume|faster|slower — the simulation from
+	// the map; its state comes with /api/aircraft (paused, simRate).
+	mux.HandleFunc("POST /api/sim", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		f := st.sim
+		st.mu.Unlock()
+		if f == nil {
+			http.Error(w, "not connected to the simulator", http.StatusServiceUnavailable)
+			return
+		}
+		if err := f(r.URL.Query().Get("action")); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("GET /api/aircraft", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
 		a := st.aircraft
@@ -845,6 +955,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	icao := flag.String("icao", "LKPR", "airport to open on the map")
 	dump := flag.Bool("dump", false, "write each fetched airport's raw facility records to <ICAO>.json")
+	flag.StringVar(&scenesDir, "scenes", scenesDir, "directory of camera scenes (*.json), read on every play; the built-in ones otherwise")
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")

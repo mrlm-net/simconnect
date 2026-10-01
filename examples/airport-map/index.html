@@ -91,6 +91,11 @@
   button.wide { width: 100%; margin: 8px 0 4px; padding: 7px 10px; }
   /* Panel hidden (◨): the map alone */
   body.full #side { display: none; }
+  /* Large screens: a fifth wider panel. */
+  @media (min-width: 1200px) {
+    #map { inset: 0 384px 0 0; }
+    #side { width: 384px; }
+  }
   body.full #map { inset: 0; }
   body.full #hud { left: 50%; }
   /* Zoomed out: no taxiway names, they would cover the airport */
@@ -124,6 +129,12 @@
   .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
   .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
   .ctl .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+  .simbar { display: flex; gap: 6px; align-items: center; margin: 4px 0 6px; }
+  .camrow { display: grid; grid-template-columns: 84px 1fr auto; gap: 6px; align-items: center; margin: 4px 0; }
+  .camrow select { width: 100%; }
+  .camlbl { font-size: 12px; opacity: .8; }
+  .caminfo { min-height: 1.2em; margin-bottom: 6px; }
+  .simbar button { padding: 2px 8px; }
   .ctl .tune { padding: 0 4px; font: inherit; background: none; border: 1px solid #456; border-radius: 3px; color: inherit; cursor: pointer; }
   .ctl .tune.on { background: #1e5a7a; color: #fff; }
   .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
@@ -150,6 +161,12 @@
     <button type="button" class="secondary" id="refresh" title="Fetch again from the simulator">↻</button>
   </form>
   <div id="status"></div>
+  <div class="bar simbar" title="The simulation: traffic runs on its time — stopped while paused, faster at a higher rate">
+    <button type="button" id="simPause" class="secondary">⏸ Pause</button>
+    <button type="button" id="simSlower" class="secondary" title="Slower">−</button>
+    <span id="simRate" class="note">sim —</span>
+    <button type="button" id="simFaster" class="secondary" title="Faster">+</button>
+  </div>
   <nav class="tabs">
     <button type="button" data-tab="traffic">Traffic</button>
     <button type="button" data-tab="approach">Approach</button>
@@ -165,6 +182,17 @@
       <label class="note">every <input type="number" id="gEvery" value="3" min="1" step="0.5"> min</label>
       <span class="i" title="You are ground and tower on the runway picked below. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances.&#10;+10 per flight handled&#10;−1 per 30 s a flight waits over a minute&#10;−50 lost wingtip separation&#10;−100 two aircraft on a runway&#10;−25 spacing on final below the minimum (within 10 NM)&#10;The Approach tab works the arrivals' sequence.">ⓘ</span>
     </div>
+    <div class="camrow">
+      <span class="camlbl">🎥 Camera</span>
+      <select id="camMode" title="The simulator's camera on our traffic: Auto cuts to the aircraft on the radio as you hear it; Follow stays on the aircraft card selected"><option value="off">Off</option><option value="auto">Auto director</option><option value="follow">Follow selected</option></select>
+    </div>
+    <div class="camrow">
+      <span class="camlbl">🎬 Scene</span>
+      <select id="camScene" title="Scripted films: the scene spawns its aircraft and films them beat by beat with the radio (scenes/*.json, read on every play)"></select>
+      <button type="button" id="camPlay" class="secondary">▶ Play</button>
+    </div>
+    <div id="camInfo" class="note caminfo"></div>
+    <p class="note">🎥 films the traffic already flying (Auto cuts to whoever is on the radio). 🎬 ▶ Play spawns a scene's own aircraft and films them beat by beat; ■ Stop gives the camera back. Changing the view in the sim also takes it back.</p>
     <div id="gScore" class="note"></div>
     <details id="gLogBox"><summary>Game events</summary><div id="gLog" class="tlog"></div></details>
 
@@ -226,7 +254,7 @@
 
   <section data-panel="radio" hidden>
     <h2>Radio <span class="i" title="What is said on one of the airport's frequencies, as on a receiver: our controllers' clearances and handoffs, the pilots' requests and readbacks. Tune the ATIS to hear its broadcast.">ⓘ</span></h2>
-    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <label class="opt" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"> Follow my COM1</label> <select id="rdDevice" title="Where the voice plays" hidden></select> <span id="rdVoice" class="note"></span></div>
+    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <label class="opt" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"> Follow my COM1</label> <label class="opt" title="A frequency picked here (or on an aircraft card) tunes your aircraft's COM1"><input type="checkbox" id="rdTuneCom"> Tune my COM1</label> <select id="rdDevice" title="Where the voice plays" hidden></select> <span id="rdVoice" class="note"></span></div>
     <div id="rdFreqs" class="rdfreqs"></div>
     <div id="rdLog" class="rdlog"></div>
   </section>
@@ -1153,6 +1181,7 @@ async function pollAircraft() {
     if (res.status === 200) {
       const a = await res.json();
       lastOwn = a;
+      showSim(a);
       if (!acMarker) acMarker = L.marker([a.lat, a.lon], { icon: acIcon(a.heading), zIndexOffset: 1000 }).addTo(map);
       acMarker.setLatLng([a.lat, a.lon]).setIcon(acIcon(a.heading));
       if ($('follow').checked) map.panTo([a.lat, a.lon], { animate: false });
@@ -1163,6 +1192,25 @@ async function pollAircraft() {
   } catch { /* server gone; keep polling */ }
 }
 setInterval(pollAircraft, 1000);
+
+// The simulation: paused or running, its rate; buttons to change them.
+let simPaused = false;
+function showSim(a) {
+  simPaused = !!a.paused;
+  $('simPause').textContent = simPaused ? '▶ Resume' : '⏸ Pause';
+  $('simPause').className = simPaused ? 'urgent' : 'secondary';
+  $('simRate').innerHTML = simPaused ? '<span class="warn">sim paused — traffic stopped</span>' : `sim ${a.simRate || 1}×`;
+}
+async function simAct(action) {
+  try {
+    const res = await fetch(`/api/sim?action=${action}`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    setTimeout(pollAircraft, 300);
+  } catch (e) { $('simRate').innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+}
+$('simPause').addEventListener('click', () => simAct(simPaused ? 'resume' : 'pause'));
+$('simFaster').addEventListener('click', () => simAct('faster'));
+$('simSlower').addEventListener('click', () => simAct('slower'));
 
 // ── Live traffic (every aircraft near the user) ──
 const trafficLayer = L.layerGroup().addTo(map);
@@ -1189,11 +1237,15 @@ const trafficIcon = (t, sel = t.tail && t.tail === selectedTail()) => L.divIcon(
   className: 'ac traffic', iconSize: [22, 22],
   html: `<svg viewBox="0 0 24 24" style="width:22px;height:22px;transform:rotate(${t.heading}deg)${sel ? ';filter:drop-shadow(0 0 4px #ffe066) drop-shadow(0 0 2px #fff)' : ''}"><path fill="${sel ? '#ffe066' : !t.ours ? (t.onGround ? '#7fb3d5' : '#5d8fb8') : KIND_COLOR[trafficKind(t)] || (t.onGround ? '#ffb347' : '#ff2bd6')}" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>`,
 });
-// On the map: call sign and speed (and height when airborne); the rest on
-// click.
+// On the map: a climb/descent arrow, call sign and speed (and height when
+// airborne); the rest on click.
 const schedFlight = (tail) => sched && tail ? (sched.flights || []).find((f) => f.callsign === tail && ['done', 'cancelled', 'scheduled'].indexOf(f.status) < 0) : null;
 const flightLevel = (t) => t.alt >= 5500 ? 'FL' + String(Math.round(t.alt / 100)).padStart(3, '0') : `${Math.round(t.alt / 100) * 100}ft`;
-const trafficLabel = (t) => {
+// In front of the call sign when airborne: climbing, descending or level
+// (within ±300 fpm, so wobble in cruise does not flicker the arrow).
+const vsArrow = (t) => t.onGround ? '' : t.vs > 300 ? '<span style="color:#9ccc65">↑</span> ' : t.vs < -300 ? '<span style="color:#ff8a65">↓</span> ' : '<span style="color:#ccc">→</span> ';
+const trafficLabel = (t) => vsArrow(t) + trafficLabelText(t);
+const trafficLabelText = (t) => {
   const f = t.ours && !t.onGround ? schedFlight(t.tail) : null;
   if (f) return `${esc(t.tail)} ${flightLevel(t)} ${f.kind === 'overflight' ? '✈ ' + esc(f.origin) + '→' : '→'}${esc(f.destination)}`; // en route: call sign, level, destination (#369)
   return `${esc(t.tail || t.objectId)} ${t.groundKts.toFixed(0)}kt${t.onGround ? '' : ` ${t.agl.toFixed(0)}ft`}`;
@@ -1306,21 +1358,34 @@ async function ctlSpawn(kind) {
   }
 }
 
+// ctlBusy: the aircraft with a command on its way (their buttons are
+// disabled until it is answered); ctlFacing: the pushback facing picked.
+const ctlBusy = new Set();
+const ctlFacing = new Map();
 async function ctlAct(id, action, node, facing) {
   if (action === 'remove') {
     const v = ctlViews.find((x) => x.id === id);
     if (!confirm(`Remove ${v ? v.tail : 'this aircraft'} from the simulator?`)) return;
   }
+  if (ctlBusy.has(id)) return;
+  ctlBusy.add(id);
+  renderControl();
   const q = node !== undefined ? `?node=${node}` : facing ? `?facing=${facing}` : '';
   try {
     const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
     if (action === 'remove' && ctlSelected === id) ctlSelected = 0; // none, not the next one
-    pollControl();
   } catch (e) {
     $('cInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`;
+  } finally {
+    ctlBusy.delete(id);
+    pollControl();
   }
 }
+$('ctlList').addEventListener('change', (e) => {
+  const s = e.target.closest('select.facing');
+  if (s) ctlFacing.set(Number(s.dataset.id), s.value);
+});
 
 function drawControl() {
   groups.control.clearLayers();
@@ -1374,17 +1439,22 @@ function drawControl() {
 // with the route in one line and the model and lights on hover.
 const WAITING = /awaiting|holding short|lined up/;
 function renderControl() {
+  // Not while a pushback facing is being picked: it would close.
+  if (document.activeElement && document.activeElement.matches('#ctlList select.facing')) return;
   const waits = (v) => !v.done && (WAITING.test(v.state) || v.atLimit);
   const views = [...ctlViews].sort((a, b) => (v => v.done ? 2 : waits(v) ? 0 : 1)(a) - (v => v.done ? 2 : waits(v) ? 0 : 1)(b) || a.id - b.id);
   $('ctlList').innerHTML = views.length ? views.map((v) => {
     const status = [v.state, v.deicing && 'de-icing ❄', v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`, v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
-    const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : a === 'follow' ? (ctlFollow === v.id ? ' title="Stop following" style="background:#1e5a7a;color:#fff"' : ' title="Follow on the map (and show its route)"') : ''}>${ACTION_LABEL[a] || a}</button>`;
+    const label = (a) => a === 'taxi' && v.atLimit && v.limitNode < 0 ? 'Continue taxi' : ACTION_LABEL[a] || a;
+    const btn = (a, cls = '') => `<button type="button" data-id="${v.id}" data-act="${a}"${ctlBusy.has(v.id) && a !== 'locate' && a !== 'follow' ? ' disabled' : ''}${cls ? ` class="${cls}"` : ''}${a === 'remove' ? ' title="Remove this aircraft"' : a === 'locate' ? ' title="Show on the map"' : a === 'follow' ? (ctlFollow === v.id ? ' title="Stop following" style="background:#1e5a7a;color:#fff"' : ' title="Follow on the map (and show its route)"') : ''}>${label(a)}</button>`;
     const urgent = ['hold', 'goaround', 'abort']; // commands that stop or undo a movement
     const acts = (v.actions || []).filter((a) => a !== 'upto');
     const ordered = [...acts.filter((a) => urgent.includes(a)), ...acts.filter((a) => !urgent.includes(a))]
       .concat(v.position && (v.position.lat || v.position.lon) ? ['locate', 'follow'] : []);
-    // Pushback facing a compass direction: the push ends facing it where it can.
-    const facing = acts.includes('pushback') ? ['N', 'E', 'S', 'W'].map((f) => `<button type="button" class="secondary" data-id="${v.id}" data-act="pushback" data-facing="${f.toLowerCase()}" title="Pushback, facing ${({ N: 'north', E: 'east', S: 'south', W: 'west' })[f]}">${f}</button>`).join('') : '';
+    // Pushback facing: auto (the planner's), or a compass direction the push
+    // ends facing where it can.
+    const fv = ctlFacing.get(v.id) || '';
+    const facing = acts.includes('pushback') ? `<select class="facing" data-id="${v.id}" title="Where the push ends facing">${[['', 'Facing auto'], ['n', 'Facing N'], ['e', 'Facing E'], ['s', 'Facing S'], ['w', 'Facing W']].map(([k, t]) => `<option value="${k}"${k === fv ? ' selected' : ''}>${t}</option>`).join('')}</select>` : '';
     const buttons = `<div class="acts">${ordered.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}${facing}${btn('remove', 'danger')}</div>`;
     const route = v.kind === 'arrival' ? `arr · RWY ${v.runway} → ${v.stand}` : `dep · ${v.stand} → RWY ${v.runway}`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
@@ -1414,6 +1484,37 @@ async function pollControl() {
   } catch (e) { /* server restarting */ }
 }
 setInterval(pollControl, 1000);
+
+// The camera (#camera): off, auto director or following the selected card;
+// the demo scene.
+async function camPost(path, body) {
+  try {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+    showCamera(await res.json());
+  } catch (e) { $('camInfo').innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+}
+function showCamera(v) {
+  if (!v) return;
+  if (document.activeElement !== $('camMode') && ['off', 'auto', 'follow'].includes(v.mode)) $('camMode').value = v.mode;
+  const playing = v.mode === 'scene';
+  $('camPlay').textContent = playing ? '■ Stop' : '▶ Play';
+  $('camPlay').className = playing ? 'urgent' : 'secondary';
+  if (playing) $('camPlay').dataset.playing = '1'; else delete $('camPlay').dataset.playing;
+  $('camInfo').textContent = v.mode === 'off' ? '' : [playing ? '🎬 playing' : '🎥 ' + v.mode, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
+}
+$('camMode').addEventListener('change', (e) => camPost('/api/camera', { mode: e.target.value, id: ctlSelected || 0 }));
+$('camPlay').addEventListener('click', () => {
+  const icao = data ? data.icao : '';
+  if (!icao) { $('camInfo').textContent = 'Load an airport first'; return; }
+  if ($('camPlay').dataset.playing) { camPost('/api/camera', { mode: 'off' }); return; }
+  camPost(`/api/camera/scene?name=${encodeURIComponent($('camScene').value)}&icao=${encodeURIComponent(icao)}`);
+});
+// The scenes, for the picker.
+fetch('/api/camera/scenes').then((r) => r.ok ? r.json() : []).then((list) => {
+  $('camScene').innerHTML = list.map((s) => `<option value="${esc(s.key)}" title="${esc(s.description)}">${esc(s.name)}</option>`).join('');
+}).catch(() => {});
+setInterval(() => fetch('/api/camera').then((r) => r.ok ? r.json() : null).then(showCamera).catch(() => {}), 1000);
 // Stands held by controlled traffic (blue) or found occupied by a scan of
 // the sim's aircraft (red), refreshed with the control list.
 async function drawStands() {
@@ -1543,7 +1644,9 @@ $('ctlList').addEventListener('click', (e) => {
     return;
   }
   if (b && b.dataset.tune) { tuneTo(b.dataset.tune); return; }
-  if (b) { ctlAct(Number(b.dataset.id), b.dataset.act, undefined, b.dataset.facing); return; }
+  if (b && b.disabled) return;
+  if (b) { const id = Number(b.dataset.id); ctlAct(id, b.dataset.act, undefined, b.dataset.act === 'pushback' ? ctlFacing.get(id) : undefined); return; }
+  if (e.target.closest('select.facing')) return;
   const row = e.target.closest('[data-sel]');
   // Clicking the selected card again deselects it (0: none, by choice).
   if (row) { const id = Number(row.dataset.sel); ctlSelected = ctlSelected === id ? 0 : id; if (!ctlSelected) ctlFollow = 0; renderControl(); drawControl(); }
@@ -1921,6 +2024,12 @@ $('rdDevice').addEventListener('change', async (e) => {
   if (res.ok) showVoice(await res.json());
 });
 $('rdSync').addEventListener('change', (e) => { rdSync = e.target.checked; setVoice(rdSoundOn); });
+// Tune my COM1: remembered in this browser; on, the frequency followed now is tuned.
+try { $('rdTuneCom').checked = localStorage.getItem('airportMapTuneCom') === '1'; } catch { /* private window */ }
+$('rdTuneCom').addEventListener('change', (e) => {
+  try { localStorage.setItem('airportMapTuneCom', e.target.checked ? '1' : '0'); } catch { /* private window */ }
+  if (e.target.checked && rdFreq) setVoice(rdSoundOn, true);
+});
 // Following COM1: the frequency changes with the radio in the simulator.
 setInterval(() => { if (rdSync) fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {}); }, 1000);
 fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {});
@@ -1928,8 +2037,8 @@ fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {});
 function tuneTo(freq) {
   rdFreq = freq;
   try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
-  // Following COM1, a frequency picked here tunes it (both ways).
-  setVoice(rdSoundOn, rdSync);
+  // Following COM1 or tuning it, a frequency picked here tunes it.
+  setVoice(rdSoundOn, rdSync || $('rdTuneCom').checked);
   pollRadio();
 }
 $('rdFreqs').addEventListener('click', (e) => {

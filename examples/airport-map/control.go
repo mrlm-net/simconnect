@@ -256,6 +256,9 @@ func newControlCenter(client engine.Client) *controlCenter {
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
 			speaker.hear(t) // the voice, when on (#419)
+			if !speaker.state().On {
+				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
+			}
 		}})
 	return cc
 }
@@ -816,6 +819,10 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = arrivalActions(e.State)
+		// Cleared to land only on the final: its STAR and approach flown.
+		if e.State == traffic.ArrivalApproaching && (e.OnGround || it.objectID == 0 || len(it.arr.ProcedureRoute()) > 0) {
+			v.Actions = slices.DeleteFunc(v.Actions, func(a string) bool { return a == "land" })
+		}
 		switch e.State {
 		case traffic.ArrivalParked:
 			it.stands.ReleaseRoute(it.Tail)
@@ -1868,6 +1875,10 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	case "startup":
 		return traffic.ClearedStartUp(call)
 	case "taxi":
+		// Told to hold position: on along the route it was cleared.
+		if v.AtLimit && v.LimitNode < 0 {
+			return traffic.ContinueTaxi(call)
+		}
 		n := 0
 		if r != nil {
 			n = len(r.Edges)

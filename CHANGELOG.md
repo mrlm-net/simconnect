@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- The MSFS 2024 add-on camera (#515): `engine` binds `CameraAcquire`, `CameraSet`, `CameraGet`, `CameraRelease`, the world locker and the rest (`types.SIMCONNECT_DATA_CAMERA`, packed); `pkg/camera` has poses relative to the world, an aircraft or the eyepoint, eased `Move` and spline `Path` shots, drone moves scaled to the aircraft (reveal rise, flyover, spiral descend, lead chase, parallax track, side dolly, head-on pass, top orbit, details of the engines, gear, cockpit, tail and lights) and a `Director` that plays them. Conventions measured live are in `docs/camera.md`.
+- Airport map camera: auto director (cuts to the aircraft on the radio as the call is heard, wide and detail shots for its phase), follow the selected aircraft, and scripted scenes (`-scenes`, JSON: cast, beats, cues such as `dep:pushback` or `dep:lights:B`, the radio following the aircraft that matters) with three to start from.
+- Airport map: pause/resume and simulation rate on the map; the sound output picker remembered; "Tune my COM1" (a frequency picked on the map tunes COM1 without following it); pushback facing as a select (auto by default); "Continue taxi" after hold position; "Cleared to land" only on final; buttons disabled while a command is on its way; a wider panel on large screens; controllers change voice at a shift change every 30–60 minutes.
+
 - `pkg/traffic` standard pushback per stand: `PlanStandardPushes(graph, model, stands)` plans, in the background, the push most ends of the two longest runways take from each stand; a departure takes it whatever its runway unless it costs more than `standardPushMargin` extra (LKPR B9 pushes onto B2 for every runway). The airport map plans them when an airport loads.
 - `pkg/traffic` `ContinueTaxi` ("CSA1, continue taxi") after hold position.
 
