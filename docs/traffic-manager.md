@@ -132,14 +132,14 @@ Every step is an event, for the app's own state machine: logs, boards, sounds, o
 
 ## On the airport map
 
-The Traffic tab has a **Scheduled traffic** section: ▶ Start / ■ Stop, density and max aircraft, the **airports** whose timetables run (the loaded one by default; others are loaded on start), and the **Departures**, **Arrivals** and **Overflights** boards, with a board per managed airport (#371).
+The Schedule section has **Scheduled traffic**: ▶ Start / ■ Stop, density and max aircraft, the **airports** whose timetables run (the loaded one by default; others are loaded on start), and the **Departures**, **Arrivals** and **Overflights** boards, with a board per managed airport (#371).
 
 The spawner for scheduled flights (enroute arrivals and overflights appear airborne, see above; their labels show call sign, flight level and destination, and **Overflights** is a third board):
 - picks a model in the airline's livery (`ModelsFor`);
 - plans the flight to or from the other end (SID, airways, level), or falls back to the runway's SID or STAR;
 - uses the runway in use, a free stand, a tug and automatic de-icing.
 
-Other traffic appears in the Layers tab under **Other traffic**, drawn in blue. It is off by default and listed apart from ours. There you can set whether the schedule respects or ignores it, and ✕ removes one of those aircraft from the simulator.
+Other traffic is a layer in the Map section (**Other traffic**), drawn in blue. It is off by default and listed apart from ours. There you can set whether the schedule respects or ignores it, and ✕ removes one of those aircraft from the simulator.
 
 The API:
 - `GET /api/schedule` returns the settings and every flight.

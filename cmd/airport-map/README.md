@@ -2,7 +2,7 @@
 
 A live map of an airport and its traffic, built only on the SDK. It is the SDK's main example and the tool it is debugged with: the ground layout exactly as SimConnect reports it, taxi routing, AI traffic under your control, scheduled airline traffic, the landing sequence, the tower and the ATC game.
 
-![The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab](../../docs/images/airport-map/traffic.jpg)
+![The airport map at LKPR](../../docs/images/airport-map/ui-traffic.png)
 
 The layout comes from [`pkg/airport`](../../docs/airport-layout.md): `airport.Loader` fetches the facility data from the application's message loop, `airport.Cache` keeps layouts and taxi graphs, and routes come from the `Graph`. Every feature's popup shows its raw facility index and field values, so the taxi graph can be checked against the real data. The traffic is [`pkg/traffic`](../../docs/traffic-guide.md); procedures, weather and flight plans are [`pkg/nav`](../../docs/nav-weather.md).
 
@@ -23,7 +23,7 @@ go run . -dump
 go run . -file LKPR.json
 ```
 
-Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side panel to load it; **↻** fetches it again from the simulator.
+Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -95,7 +95,7 @@ While connected to the simulator, the **Traffic** tab spawns AI aircraft driven 
 - **Clearances:** each card shows the state, speed and the clearances available now: Pushback, Taxi, Cross, Line up, Take-off, Depart now (turnaround), and when something is in the way Hold position, Go around, Abort take-off ([Traffic Commands](../../docs/traffic-commands.md)). ✕ removes the aircraft.
 - **Progressive taxi:** select a card to draw its route; click a route point to clear it up to there. The limit is drawn in magenta. **Taxi** removes the limit. A selected arrival in the air shows the route it still flies (dashed) and its hold.
 
-![A selected aircraft's taxi route](../../docs/images/airport-map/taxi-route.jpg)
+![A selected departure and its route](../../docs/images/airport-map/ui-traffic-light.png)
 
 ### Scheduled traffic
 
@@ -110,7 +110,7 @@ Every runway in use has an approach sequencer and a tower ([Airborne Separation]
 - **Tower:** line-up, take-off and crossing clearances when the runway is free, the interval after the last departure has passed and the next arrival is far enough out.
 - **Separation:** every airborne pair under 5 NM and 1000 ft is logged; pairs predicted to come that close get the least disturbing change to one of our en route aircraft (speed, level or a heading), said as ATC would.
 
-![The Approach tab and the final on the map](../../docs/images/airport-map/approach.jpg)
+![The landing sequence and the final ladder](../../docs/images/airport-map/ui-sequence.png)
 
 ### Traffic log
 

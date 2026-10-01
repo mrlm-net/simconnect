@@ -57,7 +57,7 @@ radio.Transmit("LKPR", traffic.ClearedLineUp("CSA123", "24"))
 recent := radio.Recent("LKPR", 50) // oldest first
 ```
 
-On the airport map every ATC line of the traffic log comes from its radio: the ground and tower clearances, the tower's automatic ones, the sequencer's delays and holds, the Approach tab's actions and the conflict resolutions. The wording is unchanged. `GET /api/radio?icao=LKPR&n=50` serves the recent transmissions.
+On the airport map every ATC line of the traffic log comes from its radio: the ground and tower clearances, the tower's automatic ones, the sequencer's delays and holds, the Sequence section's actions and the conflict resolutions. The wording is unchanged. `GET /api/radio?icao=LKPR&n=50` serves the recent transmissions.
 
 ## Frequencies and handoffs
 

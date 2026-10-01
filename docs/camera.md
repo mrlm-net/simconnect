@@ -76,7 +76,7 @@ The director acquires the camera on the first `Tick`. It sets the current shot's
 
 ## On the airport map
 
-On the Traffic tab:
+The camera button in the status strip opens the director:
 
 - **🎥 Camera**
   - *Auto director* cuts to the aircraft on the radio as you hear the call. It plays a short sequence for what that aircraft is doing: wide, a detail, wide again; on the runway and on final it opens with a camera beside the runway.

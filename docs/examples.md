@@ -13,7 +13,7 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 
 ## The airport map
 
-![The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab](images/airport-map/traffic.jpg)
+![The airport map at LKPR](images/airport-map/ui-traffic-light.png)
 
 [`cmd/airport-map`](https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map) serves a live map of an airport on <http://127.0.0.1:8080>. It shows:
 
@@ -41,7 +41,7 @@ cd cmd/airport-map && go run . -dump
 cd cmd/airport-map && go run . -file LKPR.json
 ```
 
-Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side panel to load it; **↻** fetches it again from the simulator.
+Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -53,36 +53,84 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side pane
 | `-log-dir` | `.` | Directory for the traffic control log, `traffic-<YYYYMMDD-HHMMSS>.log` |
 | `-airways` | `pkg/nav/testdata/LKPR-airways.json` | Airway graph for flight plans (see `spike-airways`); `""` for direct routes |
 
-The page loads Leaflet from cdnjs and map tiles from OpenStreetMap and Esri, so the browser needs internet access.
+The page loads Leaflet from cdnjs, the IBM Plex fonts from Google Fonts and map tiles from Esri and OpenStreetMap, so the browser needs internet access.
 
 ### A tour
 
-The side panel has one tab per task. The map buttons on the left: **✈** shows your aircraft, **⛶** full screen, **◨** hides the panel, **🌐** the world view.
+The interface has three layers: a **status strip** across the top, the **selected aircraft** in its own panel, and the **sections** at the side (a bottom sheet on a phone). Light, dark or the system's theme is picked at the top right.
 
-**Traffic** is where traffic is made and controlled.
+![The airport map at LKPR: the status strip, a departure selected, the traffic list](images/airport-map/ui-traffic.png)
 
-- **▶ Start game** starts the [ATC game](atc-game.md).
-- **Scheduled traffic ▶ Start** runs the timetable at the loaded airport (or several), with a density and a maximum number of aircraft. **Departures**, **Arrivals** and **Overflights** are the boards: STD/STA, estimates, status and why.
-- **New flight** spawns one aircraft: pick the kind, click a stand (or tick *free stand*), pick the runway and an entry or exit; the route is previewed on the map and **▶ Spawn** says what it will do. Options: hold at every clearance, pushback tug, injected approach, turnaround, SIDs and STARs, a flight plan to or from another airport, de-icing, a custom taxi route.
-- **Aircraft** has a card per aircraft with its state and the clearances available now. Select a card to draw its route; click a point of the route to clear it up to there. **Traffic log** shows every clearance as ATC says it.
+The **status strip** shows:
 
-![A selected aircraft's taxi route, drawn from its stand to the runway](images/airport-map/taxi-route.jpg)
+- the airport and the runway in use;
+- the ATIS letter, the wind and the QNH;
+- Pause and the simulation rate;
+- the game score;
+- the camera;
+- the frequency you listen to;
+- the position this device works (**As**, for network play);
+- the connection.
 
-**Approach** shows the landing sequence per runway: call sign, wake category, distance to go, delay and what the aircraft is doing. ▲▼ change the order, ⤳ sends an arrival direct to the final, 🐢 slows it, ⟳ holds it, ⏵ leaves the hold, ↺ is a go-around. Below are the **Tower** (who is at each runway, and what they wait for) and the **Conflicts**. While the tab is open, the final is drawn on the map: the extended centreline to 15 NM and each arrival within 20 NM at its distance to go, red when it is closer than the spacing it needs.
+**The selected aircraft** (click it on the map or in a list) shows:
 
-![The Approach tab: the landing sequence, the tower, and the final on the map](images/airport-map/approach.jpg)
+- its state and how long it has waited;
+- the next clearance as one big button. Pushback has its facing (N, E, S, W) and "with start-up" by it.
+- the other clearances by phase;
+- Hold position, Go around and Abort take-off, always in the same place;
+- its route, procedure, frequency, motion and lights;
+- its last calls on the radio;
+- Show, Follow, Camera, Manual, Rush and Remove.
 
-**Airport** has the airport, de-icing pads, the weather at your aircraft with the runway in use, the ATIS (🔊 reads it out), and the SIDs, STARs and approaches of a runway drawn on the map.
+Click a point of its route on the map to clear it up to there. The first clearance you give an aircraft makes it **Manual**: from then on you give all its clearances. **Manual** off hands it back to ATC automation.
 
-![The Airport tab: weather, ATIS and a STAR of runway 24](images/airport-map/charts.jpg)
+**Traffic** lists the aircraft waiting for you (oldest first), the ones moving, and those airborne or done. **New flight** spawns one aircraft:
 
-**Layers** has the airport data, the traffic picture (its centre and radius), live traffic (our aircraft, other traffic, safe zones), taxiway names, overlapping stands and the taxi paths and points by `TYPE`. **🌐** switches the map to the world view: the traffic picture's circle, airports in range and every aircraft with call sign, level and phase.
+1. Pick the kind, click a stand (or *Free stand*), and pick the runway with an entry or exit. The route is previewed on the map.
+2. Optionally set a flight plan, the model and livery, the call sign, a tug, the procedures, a turnaround, de-icing, or a custom taxi route.
+3. **Spawn** says what it will do.
 
-![The world view: airports in range and traffic around them](images/airport-map/world.jpg)
+The traffic log has every clearance as said.
 
-**?** is the quick reference: every button, clearance and colour on one page.
+**Sequence** has:
 
-The example's [README](https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map) lists its HTTP API, which scripts and tests can use too.
+- the landing sequence per runway: call sign, wake category, distance to go, delay, and what the aircraft is doing;
+- controls to move an arrival up or down, send it direct to the final, slow it, hold it or send it around;
+- a ladder of the final, with the gaps green when kept and red when short;
+- the tower (who is at each runway, and what they wait for) and the predicted conflicts.
+
+![The landing sequence and the final ladder](images/airport-map/ui-sequence.png)
+
+**Schedule** runs the timetable at the airport. It has the departure, arrival and overflight boards, and the [ATC game](atc-game.md).
+
+**Radio** lists the airport's frequencies with the aircraft on each, and the conversation on the one followed. The voice can play:
+
+- on the map's computer, on the output picked;
+- on the device you are using (**Play on this device**).
+
+**Follow my COM1** and **Tune my COM1** link the radio to your aircraft.
+
+![The radio: frequencies and the conversation](images/airport-map/ui-radio.png)
+
+**Airport** has:
+
+- the runway in use, the weather and the ATIS (Listen reads it out);
+- the SIDs, STARs and approaches of a runway, drawn on the map;
+- the de-icing pads.
+
+![Airport: runway in use, weather and ATIS](images/airport-map/ui-airport.png)
+
+**Map** has:
+
+- the base map;
+- the layers: our aircraft, other traffic, safe zones, the final, taxiway names, overlapping and occupied stands, and taxi paths and points by `TYPE`;
+- the traffic picture's centre and radius, and the world view.
+
+On a phone the sections are a bottom sheet over the full-screen map:
+
+![On a phone](images/airport-map/ui-phone.png)
+
+The map's [README](https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map) covers network play (`-addr :8080`, one position per device) and lists the HTTP API, which scripts and tests can use too. The previous interface is at `/classic` while the new one settles.
 
 ## Other examples
 

@@ -183,7 +183,7 @@ function tickWaits() {
 function fillLive() {
   const byId = (id) => ctlViews.find((x) => x.id === Number(id));
   for (const el of $$('[data-gs]')) { const v = byId(el.dataset.gs); if (v) el.textContent = `${v.groundSpeed.toFixed(0)} kt`; }
-  for (const el of $$('[data-motion]')) { const v = byId(el.dataset.motion); if (v) el.textContent = `${v.groundSpeed.toFixed(0)} kt · ${Math.round(v.heading || 0)}°${v.onGround ? ' · on ground' : ' · airborne'}`; }
+  for (const el of $$('[data-motion]')) { const v = byId(el.dataset.motion); if (v) el.textContent = `${v.groundSpeed.toFixed(0)} kt · ${Math.round(v.heading || 0)}°${v.state === 'spawning' ? ' · appearing' : (v.kind === 'departure' ? v.state !== 'departing' || v.onGround : v.onGround) ? ' · on ground' : ' · airborne'}`; }
   tickWaits();
 }
 
