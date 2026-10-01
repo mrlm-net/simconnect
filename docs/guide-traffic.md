@@ -417,7 +417,7 @@ case types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST:
     }
 ```
 
-`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. `RgData` is not populated: the batch's `DwArraySize` entries follow the 28-byte list header in the message buffer, so read them as above (as `addModels` in `examples/airport-map/control.go` does). SimConnect may send multiple messages for large model sets; collect them all before using the results.
+`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. `RgData` is not populated: the batch's `DwArraySize` entries follow the 28-byte list header in the message buffer, so read them as above (as `addModels` in `cmd/airport-map/control.go` does). SimConnect may send multiple messages for large model sets; collect them all before using the results.
 
 **Object type constants** for `EnumerateSimObjectsAndLiveries`:
 

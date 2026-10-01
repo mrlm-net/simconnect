@@ -234,7 +234,6 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── simconnect-facilities/ # Manager facility queries
 │   ├── simconnect-traffic/  #   Manager traffic operations
 │   ├── simconnect-benchmark/ #  Performance benchmarking
-│   ├── airport-map/         #   Leaflet map of airport layout + route viewer (own go.mod: voice via voice-goio)
 │   ├── ai-taxi/             #   AI departure taxi (stand → runway)
 │   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
 │   ├── spike-airways/       #   Airway crawl → JSON (or raw WAYPOINT/ROUTE/VOR/NDB dump)
@@ -242,6 +241,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── flight-plan/         #   Plan a flight between two loaded airports, write .pln
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
+│   ├── airport-map/         #   The airport map: ATC traffic control, radio and voice, camera, debugger (own go.mod: voice-goio)
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
 │   ├── config-client.md     #   Client configuration reference
@@ -319,7 +319,7 @@ go run ./examples/basic-connection
 
 # Examples with own go.mod (have external dependencies)
 cd cmd/simvar-cli && go run .
-cd examples/airport-map && go run .
+cd cmd/airport-map && go run .
 
 # Vet (disable unsafeptr for DLL interop false positives)
 go vet -unsafeptr=false ./...

@@ -271,4 +271,4 @@ go run ./examples/ai-arrival -inject -inject-approach -hold-crossings
 | `-keep` | `false` | Leave the parked aircraft in the sim on exit |
 | `-ground-agl` / `-no-stop` | `false` | MSFS AI comparisons: ground waypoints at 0 ft AGL; no active stop at the stand |
 
-[`examples/airport-map`](../examples/airport-map) spawns arrivals and departures from the map and gives every clearance, including progressive taxi by clicking a route point.
+[`cmd/airport-map`](../cmd/airport-map) spawns arrivals and departures from the map and gives every clearance, including progressive taxi by clicking a route point.

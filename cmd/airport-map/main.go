@@ -10,9 +10,9 @@
 // shows its raw facility index and TYPE value in a popup, so the taxi graph
 // can be checked against what SimConnect actually returns.
 //
-//	go run ./examples/airport-map                      # live, default LKPR
-//	go run ./examples/airport-map -dump                # also save <ICAO>.json
-//	go run ./examples/airport-map -file LKPR.json      # offline, no simulator
+//	go run ./cmd/airport-map                      # live, default LKPR
+//	go run ./cmd/airport-map -dump                # also save <ICAO>.json
+//	go run ./cmd/airport-map -file LKPR.json      # offline, no simulator
 package main
 
 import (
