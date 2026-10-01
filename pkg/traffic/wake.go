@@ -148,16 +148,20 @@ const (
 // landing on the same runway: the wake minimum of the pair, at least
 // MinRadarSeparationNM.
 func ArrivalSeparationNM(leader, follower Wake, scheme SeparationScheme) float64 {
-	d := 0.0
-	if scheme == SchemeRecat && leader.Recat >= RecatA && leader.Recat <= RecatF && follower.Recat >= RecatA && follower.Recat <= RecatF {
-		d = recatArrivalNM[leader.Recat-RecatA][follower.Recat-RecatA]
-	} else {
-		d = icaoArrivalNM[[2]WakeCategory{leader.ICAO, follower.ICAO}]
-	}
+	d := wakeArrivalNM(leader, follower, scheme)
 	if d < MinRadarSeparationNM {
 		return MinRadarSeparationNM
 	}
 	return d
+}
+
+// wakeArrivalNM is the wake turbulence minimum alone for the pair, 0 when
+// none applies (the radar minimum governs).
+func wakeArrivalNM(leader, follower Wake, scheme SeparationScheme) float64 {
+	if scheme == SchemeRecat && leader.Recat >= RecatA && leader.Recat <= RecatF && follower.Recat >= RecatA && follower.Recat <= RecatF {
+		return recatArrivalNM[leader.Recat-RecatA][follower.Recat-RecatA]
+	}
+	return icaoArrivalNM[[2]WakeCategory{leader.ICAO, follower.ICAO}]
 }
 
 // SeparationTime is a distance on final as time at the follower's ground

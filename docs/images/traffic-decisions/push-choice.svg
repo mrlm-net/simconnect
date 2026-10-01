@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="700" viewBox="0 0 820 700" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+  <title>How a pushback is chosen</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#44546a"/>
+    </marker>
+  </defs>
+  <rect width="820" height="700" fill="#ffffff"/>
+  <g stroke="#44546a" stroke-width="1.4" fill="none" marker-end="url(#a)">
+    <line x1="260" y1="60" x2="260" y2="80"/>
+    <line x1="260" y1="128" x2="260" y2="148"/>
+    <line x1="260" y1="196" x2="260" y2="216"/>
+    <line x1="260" y1="264" x2="260" y2="284"/>
+    <line x1="260" y1="324" x2="260" y2="344"/>
+    <line x1="260" y1="400" x2="260" y2="420"/>
+    <line x1="260" y1="468" x2="260" y2="488"/>
+    <line x1="260" y1="528" x2="260" y2="548"/>
+    <line x1="260" y1="596" x2="260" y2="616"/>
+    <line x1="490" y1="104" x2="538" y2="104"/>
+    <line x1="490" y1="240" x2="538" y2="240"/>
+    <line x1="490" y1="444" x2="538" y2="444"/>
+    <line x1="490" y1="508" x2="538" y2="508"/>
+    <line x1="490" y1="572" x2="538" y2="572"/>
+  </g>
+  <g font-size="12" fill="#44546a">
+    <text x="498" y="98">yes</text>
+    <text x="498" y="234">none</text>
+    <text x="498" y="438">yes</text>
+    <text x="498" y="502">yes</text>
+    <text x="498" y="566">yes</text>
+    <text x="268" y="142">no</text>
+    <text x="268" y="482">no</text>
+    <text x="268" y="542">no</text>
+    <text x="268" y="610">no</text>
+  </g>
+  <!-- main column -->
+  <g fill="#eef3fb" stroke="#3b5b8c" stroke-width="1.2">
+    <rect x="30" y="20" width="460" height="40" rx="6"/>
+    <rect x="30" y="148" width="460" height="48" rx="6"/>
+    <rect x="30" y="216" width="460" height="48" rx="6"/>
+    <rect x="30" y="284" width="460" height="40" rx="6"/>
+    <rect x="30" y="344" width="460" height="56" rx="6"/>
+    <rect x="30" y="616" width="460" height="48" rx="6"/>
+  </g>
+  <g fill="#fff4e0" stroke="#b7791f" stroke-width="1.2">
+    <rect x="30" y="80" width="460" height="48" rx="18"/>
+    <rect x="30" y="420" width="460" height="48" rx="18"/>
+    <rect x="30" y="488" width="460" height="40" rx="18"/>
+    <rect x="30" y="548" width="460" height="48" rx="18"/>
+  </g>
+  <g fill="#f3f3f3" stroke="#7a7a7a" stroke-width="1.2">
+    <rect x="540" y="84" width="260" height="40" rx="6"/>
+    <rect x="540" y="216" width="260" height="48" rx="6"/>
+    <rect x="540" y="420" width="260" height="48" rx="6"/>
+    <rect x="540" y="484" width="260" height="48" rx="6"/>
+    <rect x="540" y="548" width="260" height="48" rx="6"/>
+  </g>
+  <g fill="#1f2933">
+    <text x="44" y="45">Departure starts: route from the stand to the runway (Start)</text>
+
+    <text x="44" y="100">Stand faces out? Its lead-in junction ahead of the nose gear,</text>
+    <text x="44" y="117">at most 60° off its heading (standFacesOut, faceOutMaxDeg)</text>
+
+    <text x="44" y="168">Poses (pushPoses): every 5 m along taxiway edges within 150 m,</text>
+    <text x="44" y="185">both ways; the nose up to 20 m short of an edge's start</text>
+
+    <text x="44" y="236">Push per pose (pushTo, pushFits): 6 m straight back, then Dubins</text>
+    <text x="44" y="253">r = 45, 41 … 17 m; the cheapest radius that fits is kept</text>
+
+    <text x="44" y="309">Facing asked (ClearPushbackFacing)? only pushes ending within 45°</text>
+
+    <text x="44" y="364">Choose (planPushPose): pushes within 3 m of the pavement first;</text>
+    <text x="44" y="381">cost = 3 × push m + 1.5 × (45 − r) + taxi-out + penalties</text>
+    <text x="44" y="395" font-size="11" fill="#44546a">(penalties: blocked junctions, hairpin, misaligned, tight lane, stem, early turn)</text>
+
+    <text x="44" y="440">Best push's taxi-out turns off the nose (misaligned),</text>
+    <text x="44" y="457">or back on itself (hairpin)? Or no push at all?</text>
+
+    <text x="44" y="513">Best (push or tow) still a hairpin?</text>
+
+    <text x="44" y="568">The stand's standard push (PlanStandardPushes) is planned</text>
+    <text x="44" y="585">and ends in another pose? (not with a facing asked)</text>
+
+    <text x="44" y="636">Route = the pose's edge + its taxi-out; the push (and tow)</text>
+    <text x="44" y="653">path ends with the nose gear on the pose, along it</text>
+
+    <text x="552" y="109">No push: start-up, then taxi out</text>
+
+    <text x="552" y="236">Older plans: a branch at the junction,</text>
+    <text x="552" y="253">up the alley, or push-and-turn</text>
+
+    <text x="552" y="440">Add push-and-tow (tow ≤ 80 m,</text>
+    <text x="552" y="457">+150 + 3 × tow m) and choose again</text>
+
+    <text x="552" y="504">Second look: +30 taxi-outs, +60 searches,</text>
+    <text x="552" y="521">all pushes in one tier; the cheaper wins</text>
+
+    <text x="552" y="568">Take it if it costs at most best + 150</text>
+    <text x="552" y="585">and its taxi-out is no hairpin</text>
+  </g>
+</svg>

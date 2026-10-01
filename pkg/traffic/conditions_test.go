@@ -120,3 +120,16 @@ func TestLandingFlowInFog(t *testing.T) {
 		t.Fatalf("estimates %v, want 6 min apart", etas)
 	}
 }
+
+// RECAT-EU: a pair whose 3 NM is a wake minimum (C behind C) is not reduced;
+// D behind D, where only the radar minimum applies, is.
+func TestReducedSeparationRecat(t *testing.T) {
+	good := ApproachConditions{VisibilityM: 10000, CeilingFt: 5000}
+	c, d := Wake{Recat: RecatC}, Wake{Recat: RecatD}
+	if nm, _ := ArrivalSpacing(c, c, SchemeRecat, good, true); nm != 3 {
+		t.Errorf("C behind C: %.1f NM, want 3 (a wake minimum)", nm)
+	}
+	if nm, _ := ArrivalSpacing(d, d, SchemeRecat, good, true); nm != ReducedRadarSeparationNM {
+		t.Errorf("D behind D: %.1f NM, want %.1f", nm, ReducedRadarSeparationNM)
+	}
+}

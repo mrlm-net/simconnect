@@ -102,7 +102,9 @@ func (c ApproachConditions) ReducedAllowed() bool {
 func ArrivalSpacing(leader, follower Wake, scheme SeparationScheme, c ApproachConditions, allowReduced bool) (float64, string) {
 	nm := ArrivalSeparationNM(leader, follower, scheme)
 	why := ""
-	if nm == MinRadarSeparationNM && allowReduced && c.ReducedAllowed() {
+	// Only where the radar minimum governs: a wake minimum of 3 NM (RECAT-EU
+	// A→A, C→D …) is not reduced.
+	if nm == MinRadarSeparationNM && wakeArrivalNM(leader, follower, scheme) < MinRadarSeparationNM && allowReduced && c.ReducedAllowed() {
 		nm, why = ReducedRadarSeparationNM, "reduced separation"
 	}
 	if c.Surface == RunwayContaminated {

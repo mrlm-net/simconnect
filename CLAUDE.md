@@ -263,6 +263,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
 │   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
+│   ├── traffic-decisions.md #   How the traffic decides, with the numbers: push choice, give way, routing, runway, sequencing, conflicts
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
