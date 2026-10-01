@@ -150,7 +150,7 @@ func main() {
 		codeRepository: siteConfig.repoUrl,
 		programmingLanguage: 'Go',
 		runtimePlatform: 'Windows',
-		license: `https://opensource.org/licenses/${siteConfig.license}`
+		license: `${siteConfig.repoUrl}/blob/main/LICENSE`
 	}}
 />
 
