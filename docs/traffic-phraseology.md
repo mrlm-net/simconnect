@@ -183,6 +183,7 @@ Taxiway and procedure designators are spoken with the phonetic alphabet (A1 "Alp
 ## Differences at a glance
 
 - Order of runway and taxi route: ICAO "taxi to holding point (x) runway (n) via (route)"; FAA "runway (n), taxi via (route)".
+- **Our taxi clearance** (a project choice, asked for in review): "taxi to and hold short of runway (n) [at (entry)] via (route)", read back the same. It names the clearance limit the way the hold short instructions above do, rather than Doc 4444's "taxi to holding point".
 - Take-off: ICAO "take-off", FAA "takeoff". Both put the runway before "cleared".
 - Wind in a take-off or landing clearance: no position in Doc 4444; after the clearance in CAP 413; not in the FAA civil phrase (military: before "cleared").
 - Levels: ICAO "climb (to) flight level (n)" / "(n) feet"; FAA "climb and maintain (altitude)" with no "feet", flight levels from FL180.

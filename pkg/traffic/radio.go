@@ -148,7 +148,14 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamStand] != "" {
 			return fmt.Sprintf("%s, taxi to stand %s%s", cs, p[ParamStand], via) // CAP 413 4.68
 		}
-		return fmt.Sprintf("%s, taxi to holding point%s runway %s%s", cs, entryOf(p), p[ParamRunway], via) // Doc 4444 12.3.4.7 e
+		// To the runway and hold short of it, as the project uses (the user's
+		// choice over Doc 4444's "taxi to holding point"): an intersection is
+		// "runway 24 at B".
+		entry := ""
+		if p[ParamEntry] != "" {
+			entry = " at " + p[ParamEntry]
+		}
+		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s", cs, p[ParamRunway], entry, via)
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			return fmt.Sprintf("%s, taxi%s, hold position at the marked point", cs, via)
