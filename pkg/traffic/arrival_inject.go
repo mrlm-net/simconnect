@@ -219,6 +219,10 @@ func (c *ArrivalController) step() GroundPose {
 	if err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
+	if c.givingWay != c.last.GivingWayTo {
+		c.last.GivingWayTo = c.givingWay
+		c.emit(nil, true)
+	}
 	return pose
 }
 

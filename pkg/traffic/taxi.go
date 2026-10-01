@@ -168,10 +168,15 @@ type TaxiEvent struct {
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
 	// Request is what the crew asks for while HoldForClearances holds the
-	// aircraft and it is ready (its own wait is over): "pushback" (push
-	// and start-up), "taxi"; "" when it asks for nothing (#462). A
-	// controller answers with the clearance (ClearPushback, ClearToTaxi).
+	// aircraft and it is ready (its own wait is over): "pushback",
+	// "start_up" (once the tug has gone), "taxi"; "" when it asks for
+	// nothing (#462). A controller answers with the clearance
+	// (ClearPushback, ClearStartUp, ClearToTaxi).
 	Request string
+	// GivingWayTo is the aircraft (object ID) it stops to give way to where
+	// their taxi routes cross or merge, 0 for none; a controller may say so
+	// ("give way to the A320 passing left to right").
+	GivingWayTo uint32
 	// Lights is the light state the sim reports.
 	Lights Lights
 	// Err is set for TaxiFailed and for non-fatal warnings such as ErrTaxiStuck.

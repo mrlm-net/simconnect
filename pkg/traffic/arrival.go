@@ -130,8 +130,11 @@ type ArrivalRequest struct {
 
 // ArrivalEvent reports a state change or progress of an arrival.
 type ArrivalEvent struct {
-	State       ArrivalState
-	ObjectID    uint32
+	State    ArrivalState
+	ObjectID uint32
+	// GivingWayTo is the aircraft (object ID) it stops to give way to while
+	// taxiing in, 0 for none (TaxiEvent.GivingWayTo).
+	GivingWayTo uint32
 	Position    airport.LatLon
 	AGL         float64 // feet
 	Heading     float64
@@ -221,19 +224,19 @@ type ArrivalController struct {
 	// Hybrid ground phase (ArrivalWithInjector): the shared injected ground
 	// driving (mover, lights, crossings) and the arrival specifics.
 	groundDrive
-	inj               *Injector
-	fast              bool // monitor every sim frame: throttle progress events
-	touchdownAt       time.Time
-	clearDist         float64 // injected path distance where the aircraft is clear of the runway
-	rollThrough       bool    // rolling clearance: slow at the vacate point, do not stop
-	vacateDist        float64 // injected path distance of the vacate stop
-	rng               *rand.Rand
-	timing            timing // this aircraft's draw of the spreads (#343)
-	lightsChanged     bool           // the sim reported a light change since the last event
-	approach          *ApproachMover // injected approach until the rollout hand-over
-	proc              *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
-	flyingProc        bool
-	goArounds         int // go-arounds flown (GoAround)
+	inj           *Injector
+	fast          bool // monitor every sim frame: throttle progress events
+	touchdownAt   time.Time
+	clearDist     float64 // injected path distance where the aircraft is clear of the runway
+	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
+	vacateDist    float64 // injected path distance of the vacate stop
+	rng           *rand.Rand
+	timing        timing            // this aircraft's draw of the spreads (#343)
+	lightsChanged bool              // the sim reported a light change since the last event
+	approach      *ApproachMover    // injected approach until the rollout hand-over
+	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
+	flyingProc    bool
+	goArounds     int // go-arounds flown (GoAround)
 	// procNext is the waypoint of proc flown to, tracked forward from a
 	// known start: after a go-around (whose circuit loops back past the
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
@@ -245,14 +248,14 @@ type ArrivalController struct {
 	circuit bool
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
-	tromboneNM float64
+	tromboneNM        float64
 	blend             joinBlend
-	flapsPct          float64        // injected flap setting
-	seq               sequence       // the landing's steps (Sequence)
-	approachPhase     ApproachPhase  // the approach's phase last frame
-	landingFlaps      bool           // landing flaps noted (started, then set)
+	flapsPct          float64       // injected flap setting
+	seq               sequence      // the landing's steps (Sequence)
+	approachPhase     ApproachPhase // the approach's phase last frame
+	landingFlaps      bool          // landing flaps noted (started, then set)
 	landingFlapsSet   bool
-	flapsUpFrom       time.Time      // flaps retracting since
+	flapsUpFrom       time.Time // flaps retracting since
 	approachLightsSet bool
 	spoilers          surfaceRamp    // injected ground spoilers
 	pendingLimit      airport.NodeID // ClearUpTo before the taxi-in starts

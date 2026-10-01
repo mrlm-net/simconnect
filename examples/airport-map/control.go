@@ -101,6 +101,9 @@ type controlled struct {
 	// pushAndStart: the crew asked for the pushback and the start-up in one
 	// call, approved together.
 	pushAndStart bool
+	// givingWay is the aircraft it gives way to (TaxiEvent.GivingWayTo),
+	// told by ground once.
+	givingWay uint32
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -598,9 +601,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	it.view = ControlView{ID: n, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
-	if procName != "" {
-		it.view.Procedure = procName
-		it.procSaid = procedureSaid(procName, r.planned)
+	// Every departure starts with delivery, a SID or not: the first call,
+	// then the clearance (#462).
+	if procName != "" || r.Kind == "departure" {
+		if procName != "" {
+			it.view.Procedure = procName
+			it.procSaid = procedureSaid(procName, r.planned)
+		}
 		info := ""
 		if cc.atisLetter != nil {
 			info, it.atisSaid = cc.atisLetter(g.Layout.ICAO), true
@@ -627,9 +634,6 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.firstContact(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""))
 			it.view.Procedure += " → " + expect
 		}
-	}
-	if r.Kind == "departure" && procName == "" {
-		it.delivered = true // no clearance exchange: with ground from the start
 	}
 	started = true
 	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
@@ -683,6 +687,36 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.request = ev.dep.Request
 			if it.request != "" {
 				it.onRequest(it.request)
+			}
+		}
+		// Stopped short of a runway to cross: the crew reports it, "holding
+		// short of runway 12 at F" (the departure's own runway is the ready
+		// call instead).
+		cross, at, holding := "", "", false
+		switch {
+		case ev.dep != nil:
+			holding = ev.dep.State == traffic.TaxiHoldingShort && ev.dep.HoldingShortOf != "" && !strings.Contains(ev.dep.HoldingShortOf, it.view.Runway)
+			cross, at = ev.dep.HoldingShortOf, ev.dep.Taxiway
+		case ev.arr != nil:
+			holding = ev.arr.State == traffic.ArrivalHoldingShort && ev.arr.HoldingShortOf != ""
+			cross, at = ev.arr.HoldingShortOf, ev.arr.Taxiway
+		}
+		if holding && prev.State != v.State {
+			it.say(traffic.HoldingShortReport(it.Tail, oneDesignator(cross), at))
+		}
+		// Giving way where routes cross: ground says so, once (outside the
+		// locks: it looks at the other aircraft).
+		gw := uint32(0)
+		switch {
+		case ev.dep != nil:
+			gw = ev.dep.GivingWayTo
+		case ev.arr != nil:
+			gw = ev.arr.GivingWayTo
+		}
+		if gw != it.givingWay {
+			it.givingWay = gw
+			if gw != 0 && it.cc != nil {
+				it.cc.pending.later(it.cc.clock.Now(), func() { it.tellGiveWay(gw) })
 			}
 		}
 	}()
@@ -1418,6 +1452,84 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 }
 
 // byTail is the controlled aircraft of a call sign, nil if none.
+// byObject is the controlled aircraft with that object ID, nil if none.
+func (cc *controlCenter) byObject(id uint32) *controlled {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		own := it.objectID == id
+		it.mu.Unlock()
+		if own {
+			return it
+		}
+	}
+	return nil
+}
+
+// tellGiveWay is ground telling it to give way to other (by object ID):
+// "CSA1, give way to the Airbus A320 passing left to right" — the other's
+// type, and how it passes relative to this aircraft's heading.
+func (it *controlled) tellGiveWay(other uint32) {
+	o := it.cc.byObject(other)
+	if o == nil || o == it {
+		return
+	}
+	o.mu.Lock()
+	model, oh := o.view.Model, o.view.Heading
+	o.mu.Unlock()
+	it.mu.Lock()
+	still, h := it.givingWay == other, it.view.Heading
+	it.mu.Unlock()
+	if !still {
+		return
+	}
+	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
+	switch d := headingDiff(h, oh); {
+	case d >= 30 && d <= 150:
+		desc += " passing left to right"
+	case d <= -30 && d >= -150:
+		desc += " passing right to left"
+	case d > -30 && d < 30:
+		desc += " ahead"
+	default:
+		desc += " coming the other way"
+	}
+	it.say(traffic.GiveWay(it.Tail, desc))
+}
+
+// typeSaid is an ICAO type designator as a controller says it: "Airbus
+// A320", "Boeing 737", "Embraer 190", "ATR 72"; "aircraft" when unknown.
+func typeSaid(icao string) string {
+	switch {
+	case icao == "":
+		return "aircraft"
+	case len(icao) == 4 && icao[0] == 'A' && icao[3] == 'N':
+		return "Airbus A3" + icao[1:3] + "neo" // A20N: A320neo
+	case strings.HasPrefix(icao, "A3") && len(icao) >= 4:
+		return "Airbus A3" + icao[2:4]
+	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:
+		return "Boeing 7" + icao[2:3] + "7"
+	case strings.HasPrefix(icao, "E1") || strings.HasPrefix(icao, "E7"):
+		return "Embraer " + strings.TrimLeft(icao[1:], "0")
+	case strings.HasPrefix(icao, "AT"):
+		return "ATR " + icao[2:3] + "2"
+	case strings.HasPrefix(icao, "CRJ"):
+		return "CRJ " + icao[3:] + "00"
+	}
+	return icao
+}
+
+// headingDiff is b - a in degrees, within -180..180.
+func headingDiff(a, b float64) float64 {
+	d := math.Mod(b-a+540, 360) - 180
+	return d
+}
+
 func (cc *controlCenter) byTail(tail string) *controlled {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()

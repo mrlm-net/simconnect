@@ -21,6 +21,7 @@ const (
 	IntentRequestPushback  Intent = "request_pushback"  // ready for push
 	IntentRequestTaxi      Intent = "request_taxi"      // ready to taxi
 	IntentReadyDeparture   Intent = "ready_departure"   // ready for departure at the holding point
+	IntentHoldingShort     Intent = "holding_short"     // stopped short of a runway to cross
 	IntentCheckIn          Intent = "check_in"          // first call on a frequency
 	IntentVacated          Intent = "vacated"           // runway vacated
 	IntentCorrection       Intent = "correction"        // controller: negative, the clearance again
@@ -96,6 +97,16 @@ func RequestTaxi(cs string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, nil, cs+", request taxi")
 }
 
+// HoldingShortReport is a crew stopped short of a runway it is to cross,
+// at taxiway at ("" none): "CSA1, holding short of runway 12 at F".
+func HoldingShortReport(cs, runway, at string) Transmission {
+	text := fmt.Sprintf("%s, holding short of runway %s", cs, runway)
+	if at != "" {
+		text += " at " + at
+	}
+	return pilotTx(PosGround, cs, IntentHoldingShort, map[string]string{ParamRunway: runway, ParamEntry: at}, text)
+}
+
 // ReadyForDeparture is a departure at its runway's holding point.
 func ReadyForDeparture(cs, runway string) Transmission {
 	return pilotTx(PosTower, cs, IntentReadyDeparture, map[string]string{ParamRunway: runway},
@@ -157,6 +168,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamTaxiways] != "" {
 			s += " via " + p[ParamTaxiways]
 		}
+	case IntentGiveWay:
+		s = "Giving way to the " + p[ParamGiveWay]
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			s = "Holding at the marked point"

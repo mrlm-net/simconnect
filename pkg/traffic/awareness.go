@@ -110,6 +110,12 @@ func (p *GroundPicture) ReportPush(id uint32, corridor []airport.LatLon, half fl
 // clearance limit, giving way itself) reports no path there and takes no
 // priority. +Inf when there is nobody to give way to.
 func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half float64, now time.Time) float64 {
+	at, _ := p.giveWayTo(id, path, from, look, half, now)
+	return at
+}
+
+// giveWayTo is giveWay and the aircraft given way to (0 for none).
+func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half float64, now time.Time) (float64, uint32) {
 	type other struct {
 		id uint32
 		e  groundEntry
@@ -122,9 +128,9 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 		}
 	}
 	p.mu.Unlock()
-	best := math.Inf(1)
+	best, to := math.Inf(1), uint32(0)
 	if len(others) == 0 {
-		return best
+		return best, 0
 	}
 	end := math.Min(path.Length(), from+look)
 	var mine []airport.LatLon // this aircraft's path ahead
@@ -164,10 +170,12 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 			theirsTo += trafficBodyStep // their path starts a step ahead of them (ReportPath)
 		}
 		if o.e.pushing || theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
-			best = math.Min(best, from+mineTo)
+			if from+mineTo < best {
+				best, to = from+mineTo, o.id
+			}
 		}
 	}
-	return best
+	return best, to
 }
 
 // corridorBlocked reports another aircraft in the way of a pushback along

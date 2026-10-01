@@ -53,6 +53,7 @@ const (
 	defAircraft uint32 = 2000
 	reqAircraft uint32 = 2001
 	evPause     uint32 = 2010
+	evCom1Set   uint32 = 2011 // COM_RADIO_SET_HZ: the map tunes the user's COM1
 )
 
 // Live traffic scan, requested every second.
@@ -202,6 +203,10 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Pause):", err)
 	}
+	// Following COM1 both ways: a frequency picked on the map tunes it.
+	if err := client.MapClientEventToSimEvent(evCom1Set, "COM_RADIO_SET_HZ"); err != nil {
+		fmt.Fprintln(os.Stderr, "❌ MapClientEventToSimEvent(COM_RADIO_SET_HZ):", err)
+	}
 	for i, v := range []struct{ name, unit string }{
 		{"PLANE LATITUDE", "degrees"},
 		{"PLANE LONGITUDE", "degrees"},
@@ -253,6 +258,13 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client)
+	// COM1 tuned from the map, in this connection's goroutine.
+	speaker.setTune(func(mhz float64) error {
+		return cc.do(func() error {
+			return client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, evCom1Set, uint32(math.Round(mhz*1e6)),
+				types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
+		})
+	})
 	cc.graph = st.cache.Graph
 	cc.pads = st.pads.forAirport
 	cc.weather = func() *nav.Weather {

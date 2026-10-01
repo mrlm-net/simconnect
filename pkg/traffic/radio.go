@@ -41,6 +41,7 @@ const (
 	IntentPushback           Intent = "pushback"            // pushback approved
 	IntentTaxi               Intent = "taxi"                // taxi to the holding point or the stand
 	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
+	IntentGiveWay            Intent = "give_way"            // give way to other traffic on the ground
 	IntentCross              Intent = "cross"               // cross a runway
 	IntentLineUp             Intent = "line_up"             // line up and wait
 	IntentTakeoff            Intent = "takeoff"             // cleared for take-off
@@ -66,6 +67,7 @@ const (
 	ParamRunway   = "runway"
 	ParamEntry    = "entry"    // the holding point of an intersection departure ("B")
 	ParamStartUp  = "startup"  // "1": the start-up asked for or approved with the pushback
+	ParamGiveWay  = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways = "taxiways" // as said: "B2, H, A"
 	ParamStand    = "stand"
 	ParamLimit    = "limit" // a taxiway to hold short of; "" a marked point
@@ -160,6 +162,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			entry = " at " + p[ParamEntry]
 		}
 		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s", cs, p[ParamRunway], entry, via)
+	case IntentGiveWay:
+		return fmt.Sprintf("%s, give way to the %s", cs, p[ParamGiveWay])
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			return fmt.Sprintf("%s, taxi%s, hold position at the marked point", cs, via)
@@ -242,12 +246,18 @@ func departureClearance(p map[string]string) string {
 	if p[ParamDest] != "" {
 		s += " to " + p[ParamDest] + ","
 	}
-	s += " " + p[ParamSID] + " departure, flight planned route" // Doc 4444 12.3.2.2
+	if p[ParamSID] != "" {
+		s += " " + p[ParamSID] + " departure,"
+	}
+	s += " flight planned route" // Doc 4444 12.3.2.2
 	if p[ParamRunway] != "" {
 		s += ", runway " + p[ParamRunway]
 	}
-	if p[ParamLevel] != "" {
+	switch {
+	case p[ParamLevel] != "" && p[ParamSID] != "":
 		s += ", climb via SID to " + p[ParamLevel] // 12.3.1.2 z
+	case p[ParamLevel] != "":
+		s += ", climb to " + p[ParamLevel] // no SID: the level alone
 	}
 	if p[ParamSquawk] != "" {
 		s += ", squawk " + p[ParamSquawk]
@@ -372,6 +382,13 @@ func ClearedTaxiToRunway(cs, runway, entry string, taxiways []string) Transmissi
 // ClearedTaxiToStand clears an arrival to its stand via taxiways.
 func ClearedTaxiToStand(cs, stand string, taxiways []string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentTaxi, Params: map[string]string{ParamStand: stand, ParamTaxiways: strings.Join(taxiways, ", ")}})
+}
+
+// GiveWay tells a taxiing aircraft to give way to other traffic,
+// described by type and how it passes: "CSA1, give way to the A320
+// passing left to right".
+func GiveWay(cs, traffic string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentGiveWay, Params: map[string]string{ParamGiveWay: traffic}})
 }
 
 // ClearedTaxiUpTo clears as far as a limit: hold short of taxiway limit
