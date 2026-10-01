@@ -957,7 +957,7 @@ body.full .panel, body.full .ctx { display: none; }
 .combo-item:hover, .combo-item.active { background: var(--accent-soft); color: var(--accent); }
 .combo-note { padding: 8px 10px; color: var(--text-3); font-size: var(--fs-sm); }
 @media (pointer: coarse) { .combo-item { padding: 12px 10px; } }
-.nf > .field { margin-bottom: var(--s-3); }
+.nf > .field, .nf__main > .field { margin-bottom: var(--s-3); }
 .nf__info { color: var(--text-2); margin-bottom: 6px; }
 .nf__info:empty { display: none; }
 .nf__info b { color: var(--text); }
@@ -1110,3 +1110,62 @@ select option { background: var(--surface); color: var(--text); }
 .tlog--pilot .tlog__kind { color: var(--text-2); }
 .tlog--tower .tlog__kind, .tlog--conflict .tlog__kind, .tlog--separation .tlog__kind { color: var(--warn); }
 .tlog__empty { padding: 8px 10px; color: var(--text-3); }
+
+/* ==========================================================================
+   New flight: a window over the blurred map; full screen on a tablet or phone
+   ========================================================================== */
+.nfm { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; padding: 24px;
+  background: color-mix(in srgb, var(--bg) 40%, transparent); backdrop-filter: blur(8px) saturate(115%); -webkit-backdrop-filter: blur(8px) saturate(115%);
+  animation: fade-in var(--t-med) var(--ease); }
+.nfm[hidden] { display: none; }
+.nfm > .nf { width: min(1000px, 100%); max-height: calc(100dvh - 48px); margin: 0; padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-4); box-shadow: var(--shadow-2); animation: pop-in var(--t-med) var(--ease); }
+.nfm .card__head { margin: 0; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.nfm .card__head h3 { font-size: var(--fs-lg); }
+.nf__cols { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px 24px; align-items: start; padding: 14px 18px; }
+.nf__side .disclosure { margin-top: var(--s-1); }
+.nfm .nf__foot { position: static; margin: 0; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-radius: 0; }
+.pickbox #rPickStand { margin-left: auto; }
+body.nf-open { overflow: hidden; }
+/* Picking on the map: a bar over the map instead of the window. */
+.nfpick { position: fixed; z-index: 1300; top: calc(var(--strip-h) + 12px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; max-width: calc(100vw - 24px);
+  background: var(--surface); color: var(--text); border: 1px solid var(--accent); border-radius: var(--r-pill); box-shadow: var(--shadow-2); animation: pop-in var(--t-med) var(--ease); }
+.nfpick[hidden] { display: none; }
+.nfpick span { font-size: var(--fs-sm); font-weight: 500; }
+@media (max-width: 1023px) {
+  .nfm { padding: 0; }
+  .nfm > .nf { width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+  .nfm .card__head { padding-top: calc(12px + env(safe-area-inset-top)); }
+}
+@media (max-width: 699px) {
+  .nf__cols { grid-template-columns: minmax(0, 1fr); padding: 12px var(--s-4); }
+  .nfpick { top: calc(var(--strip-h) + 8px); }
+}
+
+/* ==========================================================================
+   The panel docked left, right (default) or at the bottom (Map → Panel);
+   on a phone it is always the bottom sheet.
+   ========================================================================== */
+:root { --panel-h: clamp(220px, 36vh, 440px); }
+@media (min-width: 1024px) {
+  body[data-dock="left"]:not(.panel-hidden):not(.full) .workspace { grid-template-columns: var(--panel-w) minmax(0, 1fr); }
+  body[data-dock="left"] .panel { order: -1; border-left: 0; border-right: 1px solid var(--border); }
+  body[data-dock="bottom"] .workspace { grid-template-columns: minmax(0, 1fr); }
+  body[data-dock="bottom"]:not(.panel-hidden):not(.full) .workspace { grid-template-rows: minmax(0, 1fr) var(--panel-h); }
+  body[data-dock="bottom"] .panel { border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 1023px) and (min-width: 700px) {
+  body[data-dock="left"] .panel { right: auto; left: var(--s-2); }
+  body[data-dock="left"] .maptools { right: var(--s-3); }
+  body[data-dock="bottom"] .panel { top: auto; left: var(--s-2); right: var(--s-2); width: auto; height: var(--panel-h); }
+  body[data-dock="bottom"] .maptools { right: var(--s-3); }
+  body[data-dock="bottom"]:not(.panel-hidden) .ctx { bottom: calc(var(--panel-h) + var(--s-3)); }
+}
+@media (min-width: 700px) {
+  /* At the bottom the panel is wide: tabs keep their size, strips in columns. */
+  body[data-dock="bottom"] .tabs [role="tab"] { flex: 0 1 112px; }
+  body[data-dock="bottom"] .strips { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; align-items: start; }
+  body[data-dock="bottom"] .strips > :not(.strip-card) { grid-column: 1 / -1; }
+  body[data-dock="bottom"] .strip-card { margin-bottom: 0; }
+  body[data-dock="bottom"]:not(.panel-hidden) .legend { bottom: 12px; }
+}

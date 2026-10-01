@@ -87,6 +87,16 @@ function togglePanel(show) {
   if (!hide) refreshSection();
 }
 
+// setDock docks the panel left, right or at the bottom (Map → Panel), kept
+// on this device. A phone always has the bottom sheet.
+function setDock(d) {
+  if (!['left', 'right', 'bottom'].includes(d)) d = 'right';
+  document.body.dataset.dock = d;
+  store.set('airportMapDock', d);
+  $$('#dockSeg input').forEach((i) => { i.checked = i.value === d; });
+  setTimeout(() => map.invalidateSize(), 50);
+}
+
 /* ───────────── Popovers, help ───────────── */
 function closePopovers(except) {
   $$('.popover').forEach((p) => { if (p !== except) p.hidden = true; });
@@ -352,6 +362,8 @@ function boot() {
   });
   $('worldBtn').addEventListener('click', toggleWorld);
   $('panelBtn').addEventListener('click', () => togglePanel());
+  setDock(store.get('airportMapDock') || 'right');
+  $('dockSeg').addEventListener('change', (e) => setDock(e.target.value));
   // Full screen (browser), with the panel: play without the browser around it.
   $('fsBtn').addEventListener('click', () => {
     try {

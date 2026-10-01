@@ -326,13 +326,45 @@ let choices = [];       // entries (departure) or exits (arrival) of the runway
 let viaPoints = [];     // {id, position, taxiways}
 let activeUse = null;   // {departure, arrival}: the runway in use (airportinfo)
 const arrival = () => nfKind === 'arr';
-const nfOpen = () => !$('newFlight').hidden;
+// New flight is a window over the blurred map (full screen on a tablet or
+// phone). To pick on the map, a stand or via points, it steps aside for a
+// bar on the map and comes back when done.
+let nfPicking = '';     // '' (the window), 'stand' or 'via': picking on the map
+const nfOpen = () => !$('nfModal').hidden || !!nfPicking;
 
 function openNewFlight(open) {
-  $('newFlight').hidden = !open;
+  nfPicking = '';
+  $('nfPick').hidden = true;
+  $('nfModal').hidden = !open;
+  document.body.classList.toggle('nf-open', open);
   $('newFlightBtn').setAttribute('aria-expanded', String(open));
   for (const g of ['choices', 'preview', 'via']) { if (open) layers[g].addTo(map); else layers[g].remove(); }
-  if (open) loadModels();
+  if (open) {
+    loadModels();
+    const k = $('newFlight').querySelector('[data-kind][aria-checked="true"]');
+    if (k) k.focus({ preventScroll: true });
+  } else {
+    $('rViaPick').checked = false;
+  }
+}
+// nfStepAside hides the window for picking on the map: 'stand' comes back
+// with the stand clicked, 'via' when the bar's Done is pressed.
+function nfStepAside(what) {
+  nfPicking = what;
+  $('nfModal').hidden = true;
+  document.body.classList.remove('nf-open');
+  $('nfPickMsg').textContent = what === 'via'
+    ? 'Click taxiways to add via points; click a via point to remove it'
+    : 'Click a stand on the map';
+  $('nfPickBack').textContent = what === 'via' ? 'Done' : 'Back to New flight';
+  $('nfPick').hidden = false;
+}
+function nfBack() {
+  if (nfPicking === 'via') $('rViaPick').checked = false;
+  nfPicking = '';
+  $('nfPick').hidden = true;
+  $('nfModal').hidden = false;
+  document.body.classList.add('nf-open');
 }
 function setKind(k) {
   nfKind = k;
@@ -375,11 +407,8 @@ function pickStand(p) {
   $('rFrom').textContent = `${parkingLabel(p)}`;
   $('rFromHint').textContent = `#${p.index}`;
   markPicked();
-  if (!nfOpen()) {
-    openNewFlight(true);
-    showTab('traffic');
-    if (isPhone() && $('panel').dataset.sheet === 'peek') setSheet('half');
-  }
+  if (nfPicking === 'stand') nfBack();
+  else if (!nfOpen()) openNewFlight(true);
   computeRoute();
 }
 // Hide the planned route: no stand picked, nothing drawn (button or Esc).
@@ -552,6 +581,7 @@ async function ctlSpawn() {
   if (!r.ok) { $('cInfo').innerHTML = `<span class="err-text">${esc(r.error)}</span>`; toast(r.error, 'err'); return; }
   $('cInfo').textContent = `${r.data.tail}: ${kind} spawned at ${r.data.stand}`;
   toast(`${r.data.tail}: ${kind} spawned at ${r.data.stand}`);
+  openNewFlight(false); // back to the map: the new aircraft is selected there
   ctlSelected = r.data.id;
   controlPoll.now();
 }
@@ -611,6 +641,21 @@ function initTraffic() {
     if (k) setKind(k.dataset.kind);
     if (e.target.closest('[data-close-nf]')) openNewFlight(false);
   });
+  $('rPickStand').addEventListener('click', () => nfStepAside('stand'));
+  $('rViaPick').addEventListener('change', () => { if ($('rViaPick').checked) nfStepAside('via'); });
+  $('nfPickBack').addEventListener('click', nfBack);
+  // A click on the blurred backdrop closes the window (pressed and released
+  // there: not a text selection that ends outside).
+  let downOnBackdrop = false;
+  $('nfModal').addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === e.currentTarget; });
+  $('nfModal').addEventListener('click', (e) => { if (downOnBackdrop && e.target === e.currentTarget) openNewFlight(false); });
+  // Esc: the window closes (the stand stays); picking, back to the window.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !nfOpen()) return;
+    if (!$('modelMenu').hidden) return; // the model menu closes first
+    e.stopPropagation();
+    if (nfPicking) nfBack(); else openNewFlight(false);
+  }, true);
   $('rTo').addEventListener('change', loadChoices);
   $('rPick').addEventListener('change', computeRoute);
   $('rRwyPaths').addEventListener('change', computeRoute);
