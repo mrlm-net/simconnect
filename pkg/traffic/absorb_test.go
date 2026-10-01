@@ -19,8 +19,14 @@ func TestPlanAbsorption(t *testing.T) {
 	if a.SpeedKts < 210 || a.ExtraNM != 0 || a.Left != 0 {
 		t.Fatalf("1 min: %+v", a)
 	}
-	if got := 40/a.SpeedKts - 40.0/250; math.Abs(got*60-1) > 0.05 {
-		t.Errorf("1 min absorbed as %.2f min", got*60)
+	// In tens of knots, down to the ten below: a little more than the minute,
+	// less than the next ten would take.
+	if math.Mod(a.SpeedKts, 10) != 0 {
+		t.Errorf("%.0f kt: not in tens", a.SpeedKts)
+	}
+	got, next := 40/a.SpeedKts-40.0/250, 40/(a.SpeedKts+10)-40.0/250
+	if got*60 < 1 || next*60 >= 1 {
+		t.Errorf("1 min absorbed as %.2f min at %.0f kt", got*60, a.SpeedKts)
 	}
 	// 4 min: 210 kt (≈1.8 min) and a stretch for the rest at 210 kt.
 	a = PlanAbsorption(4*time.Minute, 40, 250, 210)

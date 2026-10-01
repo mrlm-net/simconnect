@@ -154,6 +154,12 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			it.approach = r // the route with its dog-leg: the distance to go
 			it.mu.Unlock()
 		}
+		// Nothing changed (at that speed already, stretched as far as it
+		// goes): nothing to say — live, CSA1389 heard "reduce speed to 210
+		// knots" three times.
+		if a == (traffic.Absorption{}) {
+			continue
+		}
 		it.say(traffic.Sequenced(e.Callsign, e.Number, e.Delay, a))
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {

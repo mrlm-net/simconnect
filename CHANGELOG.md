@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Sequencing: speeds are assigned in tens of knots ("reduce speed to 230 knots", not 239), and an arrival already flying the speed is not told it again (live, CSA1389 heard "reduce speed to 210 knots" three times).
 - Runway: a take-off waits for everyone on the runway, not the last listed: a departure lining up as a landing aircraft rolled out was cleared for take-off (live, BAW1272 behind AFR558).
 - Airport map: a departure told to line up behind a landing aircraft gets no other line-up or take-off clearance until that aircraft has passed (live, EZY866 was cleared for take-off 14 s after its conditional line-up).
 - Airport map: a take-off clearance is cancelled ("hold position, cancel take-off, I say again, cancel take-off") when the departure is not rolling yet and the runway is no longer free, someone on it or an arrival inside the minimum; it is cleared again once free.
