@@ -124,7 +124,8 @@
   .ctl { margin: 6px 0; padding: 5px 6px; border-radius: 4px; background: rgba(127,127,127,0.12); cursor: pointer; }
   .ctl button { margin: 3px 2px 0 0; padding: 2px 8px; }
   .ctl .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-  .ctl .acts .sep { flex: 1; } /* keeps the remove button apart, on the right */
+  .ctl .tune { padding: 0 4px; font: inherit; background: none; border: 1px solid #456; border-radius: 3px; color: inherit; cursor: pointer; }
+  .ctl .tune.on { background: #1e5a7a; color: #fff; }
   .ctl button.danger { color: #ff6b6b; border-color: #ff6b6b; }
   .ctl button.urgent { background: #b36b00; color: #fff; }
   /* Approach panel (#396) */
@@ -1276,7 +1277,7 @@ let ctlSelected = null;
 let ctlViews = [];
 // Follow: the map keeps the aircraft of this id in the middle.
 let ctlFollow = 0;
-const ACTION_LABEL = { follow: '🎯', pushback: 'Pushback', startup: 'Start up', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
+const ACTION_LABEL = { follow: '🎯', land: 'Cleared to land', pushback: 'Pushback', startup: 'Start up', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
@@ -1305,12 +1306,12 @@ async function ctlSpawn(kind) {
   }
 }
 
-async function ctlAct(id, action, node) {
+async function ctlAct(id, action, node, facing) {
   if (action === 'remove') {
     const v = ctlViews.find((x) => x.id === id);
     if (!confirm(`Remove ${v ? v.tail : 'this aircraft'} from the simulator?`)) return;
   }
-  const q = node !== undefined ? `?node=${node}` : '';
+  const q = node !== undefined ? `?node=${node}` : facing ? `?facing=${facing}` : '';
   try {
     const res = await fetch(`/api/control/${id}/${action}${q}`, { method: 'POST' });
     if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
@@ -1382,13 +1383,15 @@ function renderControl() {
     const acts = (v.actions || []).filter((a) => a !== 'upto');
     const ordered = [...acts.filter((a) => urgent.includes(a)), ...acts.filter((a) => !urgent.includes(a))]
       .concat(v.position && (v.position.lat || v.position.lon) ? ['locate', 'follow'] : []);
-    const buttons = `<div class="acts">${ordered.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}<span class="sep"></span>${btn('remove', 'danger')}</div>`;
+    // Pushback facing a compass direction: the push ends facing it where it can.
+    const facing = acts.includes('pushback') ? ['N', 'E', 'S', 'W'].map((f) => `<button type="button" class="secondary" data-id="${v.id}" data-act="pushback" data-facing="${f.toLowerCase()}" title="Pushback, facing ${({ N: 'north', E: 'east', S: 'south', W: 'west' })[f]}">${f}</button>`).join('') : '';
+    const buttons = `<div class="acts">${ordered.map((a) => btn(a, urgent.includes(a) ? 'urgent' : '')).join('')}${facing}${btn('remove', 'danger')}</div>`;
     const route = v.kind === 'arrival' ? `arr · RWY ${v.runway} → ${v.stand}` : `dep · ${v.stand} → RWY ${v.runway}`;
     const sel = v.id === ctlSelected ? ' style="outline:1px solid #ff9f1a"' : '';
     const dim = v.done ? ' style="opacity:.55"' : '';
     return `<div class="ctl" data-sel="${v.id}"${sel || dim} title="${esc(v.model)} · lights ${esc(v.lights || '—')}">` +
       `<div class="row1"><b>${esc(v.tail)}</b><span class="st${waits(v) ? ' wait' : ''}">${esc(status)}</span><span class="spd">${v.groundSpeed.toFixed(0)} kt</span></div>` +
-      `<div class="row2">${esc(route)}${v.procedure ? ' · ' + esc(v.procedure) : ''}${v.atc ? ` · 📻 ${esc(v.atc)}${v.frequency ? ' ' + esc(v.frequency) : ''}` : ''}</div>` +
+      `<div class="row2">${esc(route)}${v.procedure ? ' · ' + esc(v.procedure) : ''}${v.atc ? ` · ${v.frequency ? `<button type="button" class="tune${v.frequency === rdFreq ? ' on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.frequency)}">📻 ${esc(v.atc)} ${esc(v.frequency)}</button>` : `📻 ${esc(v.atc)}`}` : ''}</div>` +
       `${v.error ? `<div class="warn">${esc(v.error)}</div>` : ''}${buttons}</div>`;
   }).join('') : '<div class="note">No aircraft yet — spawn one above, or start the game.</div>';
 }
@@ -1539,7 +1542,8 @@ $('ctlList').addEventListener('click', (e) => {
     if (v) locate(v.position.lat, v.position.lon, v.tail);
     return;
   }
-  if (b) { ctlAct(Number(b.dataset.id), b.dataset.act); return; }
+  if (b && b.dataset.tune) { tuneTo(b.dataset.tune); return; }
+  if (b) { ctlAct(Number(b.dataset.id), b.dataset.act, undefined, b.dataset.facing); return; }
   const row = e.target.closest('[data-sel]');
   // Clicking the selected card again deselects it (0: none, by choice).
   if (row) { const id = Number(row.dataset.sel); ctlSelected = ctlSelected === id ? 0 : id; if (!ctlSelected) ctlFollow = 0; renderControl(); drawControl(); }
@@ -1856,9 +1860,10 @@ async function pollRadio() {
     freqs.push({ mhz, label: rdKinds[f.kind] || f.kind });
   }
   for (const t of said) if (t.frequency && !seen.has(t.frequency)) { seen.add(t.frequency); freqs.push({ mhz: t.frequency, label: t.position }); }
+  // The aircraft on each frequency now (our controlled ones), not the calls.
   const count = {};
-  for (const t of said) count[t.frequency || ''] = (count[t.frequency || ''] || 0) + 1;
-  const btn = (mhz, label) => `<button type="button" data-f="${esc(mhz)}" class="${rdFreq === mhz ? 'on' : ''}">${esc(label)}${mhz ? ' ' + esc(mhz) : ''}<span class="n">${mhz ? count[mhz] || 0 : said.length}</span></button>`;
+  for (const v of ctlViews) if (!v.done && v.frequency) count[v.frequency] = (count[v.frequency] || 0) + 1;
+  const btn = (mhz, label) => `<button type="button" data-f="${esc(mhz)}" class="${rdFreq === mhz ? 'on' : ''}" title="${count[mhz] || 0} aircraft on ${esc(mhz)}">${esc(label)}${mhz ? ' ' + esc(mhz) : ''}<span class="n">✈ ${count[mhz] || 0}</span></button>`;
   // One frequency, as on a receiver (#462): the tower until one is picked;
   // following COM1, whatever it is tuned to.
   if (!rdSync && (!rdFreq || !freqs.some((f) => f.mhz === rdFreq))) {
@@ -1902,14 +1907,17 @@ $('rdSync').addEventListener('change', (e) => { rdSync = e.target.checked; setVo
 // Following COM1: the frequency changes with the radio in the simulator.
 setInterval(() => { if (rdSync) fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {}); }, 1000);
 fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {});
-$('rdFreqs').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-f]');
-  if (!b) return;
-  rdFreq = b.dataset.f;
+// tuneTo follows freq: the radio panel's buttons and an aircraft card's 📻.
+function tuneTo(freq) {
+  rdFreq = freq;
   try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
   // Following COM1, a frequency picked here tunes it (both ways).
   setVoice(rdSoundOn, rdSync);
   pollRadio();
+}
+$('rdFreqs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-f]');
+  if (b) tuneTo(b.dataset.f);
 });
 setInterval(pollRadio, 1000);
 

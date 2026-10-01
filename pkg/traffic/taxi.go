@@ -276,6 +276,10 @@ type TaxiController struct {
 	pushTurnDir                                             float64          // the way out from the junction
 	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
 	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	// pushFacing: the heading a push ends facing, asked for with the
+	// pushback (ClearPushbackFacing).
+	pushFacing     float64
+	havePushFacing bool
 	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
 	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
 	seq                                                     sequence         // the take-off's steps (Sequence)

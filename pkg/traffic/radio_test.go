@@ -206,3 +206,26 @@ func TestRunwayChangePhrase(t *testing.T) {
 		t.Errorf("readback: %q", rb.Text)
 	}
 }
+
+func TestPushbackFacingPhrase(t *testing.T) {
+	tx := WithFacing(ClearedPushbackAndStartUp("CSA1"), "east")
+	if tx.Text != "CSA1, pushback and start up approved, facing east" {
+		t.Errorf("%q", tx.Text)
+	}
+	if rb, _ := Readback(tx); !strings.HasPrefix(rb.Text, "Pushback and start up approved, facing east") {
+		t.Errorf("readback %q", rb.Text)
+	}
+	if tx := WithFacing(ClearedStartUp("CSA1"), "east"); strings.Contains(tx.Text, "facing") {
+		t.Errorf("start-up %q", tx.Text)
+	}
+}
+
+func TestApproachClearancePhrase(t *testing.T) {
+	tx := ClearedApproach("CSA1", "ILS", "24")
+	if tx.Text != "CSA1, cleared ILS approach runway 24" || tx.Position != PosApproach {
+		t.Errorf("%q from %s", tx.Text, tx.Position)
+	}
+	if rb, _ := Readback(tx); !strings.HasPrefix(rb.Text, "Cleared ILS approach runway 24") {
+		t.Errorf("readback %q", rb.Text)
+	}
+}

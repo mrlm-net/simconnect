@@ -20,7 +20,7 @@ const (
 	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
 	IntentRequestPushback  Intent = "request_pushback"  // ready for push
 	IntentRequestTaxi      Intent = "request_taxi"      // ready to taxi
-	IntentReadyDeparture   Intent = "ready_departure"   // ready for departure at the holding point
+	IntentReadyDeparture   Intent = "ready_departure"   // holding short of the runway, ready for departure
 	IntentHoldingShort     Intent = "holding_short"     // stopped short of a runway to cross
 	IntentCheckIn          Intent = "check_in"          // first call on a frequency
 	IntentVacated          Intent = "vacated"           // runway vacated
@@ -31,7 +31,7 @@ const (
 // Pilot parameters.
 const (
 	ParamInfo  = "information" // the ATIS letter on a first call
-	ParamState = "report"      // a first call's report as said: "holding point runway 24"
+	ParamState = "report"      // a first call's report as said: "holding short runway 24"
 )
 
 // pilotTx is a transmission said by the pilot of cs to position pos.
@@ -107,10 +107,23 @@ func HoldingShortReport(cs, runway, at string) Transmission {
 	return pilotTx(PosGround, cs, IntentHoldingShort, map[string]string{ParamRunway: runway, ParamEntry: at}, text)
 }
 
-// ReadyForDeparture is a departure at its runway's holding point.
-func ReadyForDeparture(cs, runway string) Transmission {
-	return pilotTx(PosTower, cs, IntentReadyDeparture, map[string]string{ParamRunway: runway},
-		fmt.Sprintf("%s, holding point runway %s, ready for departure", cs, runway))
+// ReadyForDeparture is a departure holding short of its runway, at entry
+// for an intersection departure ("" full length): "CSA1, holding short
+// runway 24 at Z, ready for departure".
+func ReadyForDeparture(cs, runway, entry string) Transmission {
+	return pilotTx(PosTower, cs, IntentReadyDeparture, map[string]string{ParamRunway: runway, ParamEntry: entry},
+		fmt.Sprintf("%s, %s, ready for departure", cs, HoldingShortSaid(runway, entry)))
+}
+
+// HoldingShortSaid is where a departure holds as its crew says it:
+// "holding short runway 24", "holding short runway 24 at Z" for an
+// intersection.
+func HoldingShortSaid(runway, entry string) string {
+	s := "holding short runway " + runway
+	if entry != "" {
+		s += " at " + entry
+	}
+	return s
 }
 
 // Vacated reports the runway vacated: "CSA123, runway vacated" (Doc 4444
@@ -152,12 +165,17 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = capital(departureClearance(p)) // CAP 413 2.68
 	case IntentArrivalClearance:
 		s = capital(arrivalClearance(p))
+	case IntentApproachClearance:
+		s = capital(approachClearance(p))
 	case IntentStartUp:
 		s = "Start up approved"
 	case IntentPushback:
 		s = "Pushback approved"
 		if p[ParamStartUp] != "" {
 			s = "Pushback and start up approved"
+		}
+		if p[ParamFacing] != "" {
+			s += ", facing " + p[ParamFacing]
 		}
 	case IntentTaxi:
 		if p[ParamStand] != "" {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -104,6 +105,8 @@ func (c *TaxiController) setRequest(now time.Time) {
 	req := ""
 	if c.req.HoldForClearances && !now.Before(c.gateAt) {
 		switch {
+		case c.state == TaxiAwaitingPushback && !c.pushCleared && c.facesOut():
+			req = "start_up" // taxis straight out: no pushback to ask for
 		case c.state == TaxiAwaitingPushback && !c.pushCleared:
 			req = "pushback"
 		case c.state == TaxiAwaitingTaxi && !c.startUpCleared && !c.taxiCleared && c.tugClear():
@@ -1589,12 +1592,87 @@ func (c *TaxiController) ClearStartUp() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.startUpCleared = true
+	if c.facesOut() {
+		c.pushCleared = true // no pushback: off the stand under its own power
+	}
+}
+
+// FacesOut reports a stand the aircraft taxis straight out of, without a
+// pushback: its crew asks for start-up, then taxi.
+func (c *TaxiController) FacesOut() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.facesOut()
 }
 
 func (c *TaxiController) ClearPushback() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.pushCleared = true
+}
+
+// ClearPushbackFacing clears the pushback to end facing a compass
+// direction ("north", "east", "south", "west", or "n", "e", "s", "w"):
+// the push is planned again among those ending within 45° of it, if any
+// does. Once the push has begun it is ErrTooLate.
+func (c *TaxiController) ClearPushbackFacing(dir string) error {
+	deg, ok := CompassHeading(dir)
+	if !ok {
+		return fmt.Errorf("facing %q: north, east, south or west", dir)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state > TaxiAwaitingPushback {
+		return ErrTooLate
+	}
+	c.pushFacing, c.havePushFacing = deg, true
+	if c.pushPose != nil || c.pushPlanned != nil {
+		c.route = c.origRoute
+		c.planPushback()
+		c.track = newRouteTracker(c.route)
+		c.note("pushback facing "+CompassName(deg), nil)
+	}
+	c.pushCleared = true
+	c.emit(nil, true)
+	return nil
+}
+
+// PushFacing is the compass direction the planned push ends facing
+// ("east"); "" without a planned push to a pose.
+func (c *TaxiController) PushFacing() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pushPose == nil {
+		return ""
+	}
+	h := c.pushPose.heading
+	if len(c.towPts) > 1 {
+		n := len(c.towPts)
+		h = localBearing(c.towPts[n-2], c.towPts[n-1])
+	}
+	return CompassName(h)
+}
+
+// CompassHeading is the heading of a compass direction: "north" or "n" 0,
+// "east" or "e" 90, "south" or "s" 180, "west" or "w" 270.
+func CompassHeading(dir string) (float64, bool) {
+	switch strings.ToLower(strings.TrimSpace(dir)) {
+	case "north", "n":
+		return 0, true
+	case "east", "e":
+		return 90, true
+	case "south", "s":
+		return 180, true
+	case "west", "w":
+		return 270, true
+	}
+	return 0, false
+}
+
+// CompassName is the nearest of north, east, south and west to heading.
+func CompassName(heading float64) string {
+	i := int(math.Mod(math.Mod(heading, 360)+360+45, 360) / 90)
+	return [...]string{"north", "east", "south", "west"}[i%4]
 }
 
 // HoldPushback keeps an injected departure on its stand (on) — a ground
@@ -1613,6 +1691,9 @@ func (c *TaxiController) ClearToTaxi() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.taxiCleared, c.hasPendingLimit = true, false
+	if c.facesOut() {
+		c.pushCleared = true
+	}
 	if c.state == TaxiTaxiing || c.state == TaxiHoldingShort {
 		c.clearLimit()
 	}

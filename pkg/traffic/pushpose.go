@@ -707,6 +707,24 @@ func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOff
 	return out
 }
 
+// facingWay keeps the pushes in cands ending within pushFacingDeg of the
+// facing asked for; all of them when none does.
+func (c *TaxiController) facingWay(poses []pushPose, cands []pushCand) []pushCand {
+	var out []pushCand
+	for _, cd := range cands {
+		if math.Abs(headingDiff(poses[cd.at].heading, c.pushFacing)) <= pushFacingDeg {
+			out = append(out, cd)
+		}
+	}
+	if len(out) == 0 {
+		return cands
+	}
+	return out
+}
+
+// pushFacingDeg: a push "facing east" ends within this of east.
+const pushFacingDeg = 45.0
+
 // towTo is the nose gear path of a tow forward from pose a to pose b on
 // turns of radius r, ending towAlignMeters straight onto b: towed, the main
 // gear trails the nose gear and lines up only along a straight; nil if none.
@@ -918,13 +936,22 @@ func (c *TaxiController) planPushPose() bool {
 		b := *best
 		return &b
 	}
+	// Facing a direction asked for (ClearPushbackFacing): only the pushes
+	// ending that way, if any does.
+	if c.havePushFacing {
+		cands = c.facingWay(poses, cands)
+	}
 	best := choose(cands)
 	// A tow after the push only where no push alone leaves the aircraft
 	// facing its way out: none, or the taxi-out turns off the nose or back
 	// on itself. A push onto the taxiway facing the runway is never turned
 	// round by a tow (EHAM U26).
 	if best == nil || !poses[best.at].aligned() || hairpinAfterPush(poses[best.at].out) {
-		if tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base); len(tows) > 0 {
+		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base)
+		if c.havePushFacing {
+			tows = c.facingWay(poses, tows)
+		}
+		if len(tows) > 0 {
 			if b := choose(append(cands, tows...)); b != nil {
 				best = b
 			}

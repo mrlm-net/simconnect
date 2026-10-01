@@ -93,6 +93,10 @@ type controlled struct {
 	procSaid, climbSaid string
 	heightFt            float64
 	vacateSaid          bool
+	readySaid           bool // a departure's "ready for departure"
+	// handoffFt and towerAtM: where this departure goes to departure
+	// (height) and to tower (meters short of the runway), varied.
+	handoffFt, towerAtM float64
 	// request is what the crew asks for now (TaxiEvent.Request, #462);
 	// waiting one made before its clearance was done (delivered: the
 	// delivery exchange finished and the aircraft with ground).
@@ -708,6 +712,16 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if holding && prev.State != v.State {
 			it.say(traffic.HoldingShortReport(it.Tail, oneDesignator(cross), at))
 		}
+		// Holding short of its own runway, with tower since the way there:
+		// the ready call.
+		if ev.dep != nil && ev.dep.State == traffic.TaxiHoldingShort && !holding && it.atc == traffic.PosTower && !it.readySaid {
+			it.readySaid = true
+			entry := ""
+			if r := it.dep.Route(); r != nil {
+				entry = r.Entry
+			}
+			it.say(traffic.ReadyForDeparture(it.Tail, it.view.Runway, entry))
+		}
 		// Giving way where routes cross: ground says so, once (outside the
 		// locks: it looks at the other aircraft).
 		gw := uint32(0)
@@ -815,6 +829,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.TaxiController) []string {
 	switch s {
 	case traffic.TaxiAwaitingPushback:
+		if ctl != nil && ctl.FacesOut() {
+			return []string{"startup", "taxi", "upto"} // taxis straight out
+		}
 		return []string{"pushback", "taxi", "upto"}
 	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
 		return []string{"startup", "taxi", "upto", "takeoff"}
@@ -836,7 +853,7 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.T
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
 	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
-		return []string{"goaround", "taxi", "upto"}
+		return []string{"land", "goaround", "taxi", "upto"}
 	case traffic.ArrivalRollout, traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
 		return []string{"taxi", "upto"}
 	case traffic.ArrivalTaxiing:
@@ -870,6 +887,8 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		return d.HoldPosition()
 	case d != nil && action == "abort":
 		return d.AbortTakeoff()
+	case it.arr != nil && action == "land":
+		return nil // said: it lands unless sent around
 	case it.arr != nil && action == "hold":
 		return it.arr.HoldPosition()
 	case it.arr != nil && action == "goaround":
@@ -1143,12 +1162,21 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
 		it.spoken[action] = action != "remove"
+		for _, k := range impliedBy(action) {
+			it.spoken[k] = true
+		}
 		var m *traffic.TrafficManager
 		if action == "remove" {
 			m, it.managed = it.managed, nil // removed here, not failed
 		}
 		it.mu.Unlock()
-		if err := cc.do(func() error { return it.act(action, node) }); err != nil {
+		// A pushback facing a compass direction ("east"): planned again so.
+		facing := r.URL.Query().Get("facing")
+		do := func() error { return it.act(action, node) }
+		if action == "pushback" && facing != "" && it.dep != nil {
+			do = func() error { return it.dep.ClearPushbackFacing(facing) }
+		}
+		if err := cc.do(do); err != nil {
 			it.mu.Lock()
 			delete(it.spoken, action)
 			it.mu.Unlock()
@@ -1824,6 +1852,9 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	}
 	switch action {
 	case "pushback":
+		if it.dep != nil {
+			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacing())
+		}
 		return traffic.ClearedPushback(call)
 	case "startup":
 		return traffic.ClearedStartUp(call)
@@ -1859,6 +1890,8 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO))
 	case "hold":
 		return traffic.HoldPosition(call)
+	case "land":
+		return traffic.ClearedToLand(call, rwy, it.cc.windSaid(it.ICAO))
 	case "goaround":
 		return traffic.GoAround(call, "")
 	case "abort":
@@ -1869,6 +1902,14 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	}
 	return traffic.Say(traffic.Transmission{Position: traffic.PosGround, Callsign: call, Intent: traffic.Intent(action)})
 }
+
+// towerHandoffMeters: a taxiing departure is handed to tower this far
+// from where it holds short of its runway, give or take
+// towerHandoffSpreadM, a different distance for each.
+const (
+	towerHandoffMeters  = 500.0
+	towerHandoffSpreadM = 200.0
+)
 
 // handoff moves the aircraft to the position working it now (#416): a
 // change is said by the position handing over ("contact Praha Tower
@@ -1883,8 +1924,18 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Handed to departure once airborne and climbing away (7110.65 3-9-3:
 		// about half a mile past the runway end), not at the hand-over to
 		// MSFS AI.
-		if ev.dep.State == traffic.TaxiDeparting && ev.dep.HeightFt >= departureHandoffFt {
+		if it.handoffFt == 0 { // each crew its own moment
+			it.handoffFt = departureHandoffFt + rand.Float64()*departureHandoffSpreadFt
+			it.towerAtM = towerHandoffMeters + (2*rand.Float64()-1)*towerHandoffSpreadM
+		}
+		if ev.dep.State == traffic.TaxiDeparting && ev.dep.HeightFt >= it.handoffFt {
 			pos = traffic.PosDeparture
+		}
+		// Handed to tower on the way to the runway, not at its holding point:
+		// the crew calls tower ready as it gets there. Once with tower it
+		// stays (a re-plan does not hand it back).
+		if ev.dep.State == traffic.TaxiTaxiing && (it.atc == traffic.PosTower || ev.dep.Remaining > 0 && ev.dep.Remaining <= it.towerAtM) {
+			pos = traffic.PosTower
 		}
 	case ev.arr != nil:
 		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
@@ -1913,6 +1964,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	from := it.atc
 	it.atc = pos
+	// Approach clears the arrival for its approach before handing it to
+	// tower on the final.
+	if ev.arr != nil && from == traffic.PosApproach && pos == traffic.PosTower && !it.gates {
+		it.say(traffic.ClearedApproach(it.Tail, it.approachKind(), it.view.Runway))
+	}
 	switch {
 	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:
 		// Told on the landing roll: the crew calls ground when vacated.
@@ -1940,7 +1996,17 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 	case it.dep != nil && pos == traffic.PosGround:
 		return "stand " + it.view.Stand
 	case it.dep != nil && pos == traffic.PosTower:
-		return "holding point runway " + rwy + ", ready for departure" // CAP 413 4.20
+		// Handed over on the way (towerHandoffMeters): taxiing, the ready call
+		// once holding short; there already, ready.
+		entry := ""
+		if r := it.dep.Route(); r != nil {
+			entry = r.Entry
+		}
+		if it.view.State != traffic.TaxiHoldingShort.String() {
+			return "taxiing to " + traffic.HoldingShortSaid(rwy, entry)
+		}
+		it.readySaid = true
+		return traffic.HoldingShortSaid(rwy, entry) + ", ready for departure"
 	case it.dep != nil && (pos == traffic.PosDeparture || pos == traffic.PosApproach):
 		// Passing and cleared levels, the SID (Doc 4444 4.11.3; CAP 413 6.2).
 		passing := math.Round((it.heightFt+it.graph.Layout.Altitude*3.28084)/100) * 100
@@ -1953,11 +2019,21 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 		}
 		return s
 	case it.arr != nil && pos == traffic.PosTower:
+		if kind := it.approachKind(); kind != "" {
+			return "established " + kind + " runway " + rwy
+		}
 		return "final runway " + rwy // Doc 4444 7.3: position
 	case it.arr != nil && pos == traffic.PosGround:
 		return "runway vacated" // CAP 413 4.68
 	}
 	return ""
+}
+
+// approachKind is the approach an arrival flies ("ILS"), from its
+// procedure as shown ("GOLOP 2B → ILS"); "" unknown. it.mu held.
+func (it *controlled) approachKind() string {
+	_, kind, _ := strings.Cut(it.view.Procedure, " → ")
+	return kind
 }
 
 // stationOf is position pos at icao as said, and its frequency ("" none).
@@ -1982,8 +2058,12 @@ func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, s
 }
 
 // departureHandoffFt: a departure is handed from tower to departure this
-// high above the runway, climbing away.
-const departureHandoffFt = 800
+// high above the runway, climbing away, and up to departureHandoffSpreadFt
+// higher — a different height for each: 1000 to 2500 ft.
+const (
+	departureHandoffFt       = 1000
+	departureHandoffSpreadFt = 1500
+)
 
 // kindPosition is the position a frequency of kind is, pos when it is
 // pos's own.
@@ -2071,6 +2151,22 @@ func entryPoint(r *airport.Route) string {
 		return ""
 	}
 	return " " + r.Entry
+}
+
+// impliedBy are the clearances a clearance covers, not said on their own
+// when the state changes: a take-off clearance from the holding point is
+// no "line up and wait", a taxi clearance on the stand no "pushback", one
+// up to a limit no "taxi".
+func impliedBy(action string) []string {
+	switch action {
+	case "takeoff":
+		return []string{"lineup"}
+	case "taxi":
+		return []string{"pushback"}
+	case "upto":
+		return []string{"pushback", "taxi"}
+	}
+	return nil
 }
 
 // clearanceOf names the clearance a state change carries out ("" none):
