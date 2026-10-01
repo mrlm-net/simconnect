@@ -28,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: the radio log shows the newest call first.
 - Arrivals: a delay absorbed on a STAR or a go-around's circuit re-plans from the procedure's corners, not from its already rounded turns: a downwind extended no longer cuts into a turn's arc, and no dog-leg loops are drawn (live, DLH1402 flew loops after its go-around).
 - Airport map: the radio tab fills the panel and only its log scrolls (two scrollbars before).
+- Airport map: CPU. Every airport loaded, flight-plan destinations included, planned its stands' standard pushbacks at once, in parallel: 1–2.5 min of a core each, 6 cores at peak. Now only airports where a departure appears, one at a time.
 - Airport map: dropdown lists (the position picker) take the theme's colours in dark mode.
 
 ---
