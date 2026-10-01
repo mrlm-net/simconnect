@@ -35,6 +35,9 @@ const (
 	MaxEntryAngle = 135.0
 	// exitHoldShortSearch bounds the search for the hold-short behind an exit.
 	exitHoldShortSearch = 300.0
+	// exitNameSearch bounds the walk on along an unnamed exit for the
+	// taxiway it leads onto (exitName).
+	exitNameSearch = 300.0
 )
 
 // ExitSide is the side of the runway an exit leaves on, seen in the landing
@@ -282,26 +285,46 @@ func (g *Graph) holdShortBehind(from NodeID, rwy int) NodeID {
 // exitName names an exit (or entry) path off a runway: the last named edge
 // on it, or, when the path is an unnamed connector, the named taxiway it
 // continues onto most straight (EDDM: an unnamed link joins A4 to 08L/26R).
+// Where the connector goes on unnamed beyond the path (LOWW: every exit is
+// a chain of unnamed PATH edges up to the parallel taxiway), it is followed
+// straight on, up to exitNameSearch, to the first named taxiway.
 func (g *Graph) exitName(path []NodeID) string {
 	for i := len(path) - 1; i > 0; i-- {
 		if n := g.edge(path[i-1], path[i]).Name; n != "" {
 			return n
 		}
 	}
-	last, prev := path[len(path)-1], path[len(path)-2]
-	px, pz := g.local.xz(g.Nodes[prev].Position)
-	lx, lz := g.local.xz(g.Nodes[last].Position)
-	in := math.Atan2(lx-px, lz-pz)
-	best, bestTurn := "", math.Inf(1)
-	for _, e := range g.Adj[last] {
-		if e.Name == "" || e.To == prev {
-			continue
+	prev, last := path[len(path)-2], path[len(path)-1]
+	walked := 0.0
+	for range 200 {
+		px, pz := g.local.xz(g.Nodes[prev].Position)
+		lx, lz := g.local.xz(g.Nodes[last].Position)
+		in := math.Atan2(lx-px, lz-pz)
+		best, bestTurn := "", math.Inf(1)
+		var on Edge
+		onTurn := math.Inf(1)
+		for _, e := range g.Adj[last] {
+			if e.To == prev {
+				continue
+			}
+			nx, nz := g.local.xz(g.Nodes[e.To].Position)
+			turn := math.Abs(math.Mod(math.Abs(math.Atan2(nx-lx, nz-lz)-in)*180/math.Pi+180, 360) - 180)
+			switch {
+			case e.Name != "":
+				if turn < bestTurn {
+					best, bestTurn = e.Name, turn
+				}
+			case e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY && e.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING:
+				if turn < onTurn {
+					on, onTurn = e, turn
+				}
+			}
 		}
-		nx, nz := g.local.xz(g.Nodes[e.To].Position)
-		turn := math.Abs(math.Mod(math.Abs(math.Atan2(nx-lx, nz-lz)-in)*180/math.Pi+180, 360) - 180)
-		if turn < bestTurn {
-			best, bestTurn = e.Name, turn
+		if best != "" || math.IsInf(onTurn, 1) || walked+on.Length > exitNameSearch {
+			return best
 		}
+		walked += on.Length
+		prev, last = last, on.To
 	}
-	return best
+	return ""
 }

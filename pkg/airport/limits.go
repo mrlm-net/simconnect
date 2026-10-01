@@ -86,9 +86,33 @@ const DefaultInitialClimbFt = 10000.0
 var KnownLimits = map[string]Limits{
 	"LKPR": {TransitionAltitudeFt: 5000, PreferredRunways: []string{"24", "06"}},
 	"EDDF": {TransitionAltitudeFt: 5000},
-	"EDDM": {TransitionAltitudeFt: 5000},
-	"LOWW": {TransitionAltitudeFt: 10000},
-	"EGLL": {TransitionAltitudeFt: 6000},
+	// EDDM (#376), from AIP Germany (DFS AIP IFR, effective 01 OCT 2026,
+	// read October 2026). No preferential runways: AD 2.20 3.1.4 and 3.2.1
+	// assign runways by the arrival fix and the departure direction; the
+	// de-icing areas are only on charts AD 2 EDDM 2-5 and 2-7 (AD 2.20 8).
+	"EDDM": {
+		TransitionAltitudeFt: 5000, // EDDM AD 2.17 item 5 (AD 2 EDDM 1-11): 5000 ft MSL
+		InitialClimbFt:       7000, // AD 2 EDDM 5-7-1 to 5-7-48, every SID: "Climb to FL 70"
+		NoReverseThrust:      true, // EDDM AD 2.20 2.3: reverse thrust only as needed for safety, idle reverse allowed
+	},
+	// LOWW (#376), from AIP Austria (Austro Control eAIP, effective 01 OCT
+	// 2026, read October 2026). No preferential runways here: AD 2.20 6.2
+	// gives arrival and departure runways by time of day and wind (by day,
+	// westerly: arrivals 34, departures 29), which one list cannot hold.
+	"LOWW": {
+		TransitionAltitudeFt: 10000, // LOWW AD 2.17 item 5: 3050 m (10000 ft) AMSL
+		InitialClimbFt:       5000,  // LOWW AD 2 MAP 9-1-1 to 9-4-2, every SID: "Climb to ..initially 5000 FT MSL"
+		NoReverseThrust:      true,  // LOWW AD 2.21 2.6: no more than idle reverse except for safety/operational reasons
+	},
+	// EGLL (#376), from UK AIP (NATS eAIP, AIRAC 01 OCT 2026, read October
+	// 2026). Reverse thrust is only to be avoided at night (AD 2.21 note 5,
+	// 2330–0600), so NoReverseThrust stays off; the remote de-icing areas
+	// are only on chart AD 2-EGLL-2-8.
+	"EGLL": {
+		TransitionAltitudeFt: 6000,                   // EGLL AD 2.17 item 5: 6000 ft
+		PreferredRunways:     []string{"27R", "27L"}, // EGLL AD 2.20 6: 27R and 27L preferred to 09R/09L (tailwind up to 5 kt, dry)
+		InitialClimbFt:       6000,                   // AD 2-EGLL-6-1 to 6-6, every SID: "do not climb above 6000 until cleared by ATC"
+	},
 	"LFPG": {TransitionAltitudeFt: 5000},
 	"EHAM": {TransitionAltitudeFt: 3000},
 	"EPWA": {TransitionAltitudeFt: 6500},
