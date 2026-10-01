@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"math"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -205,6 +206,27 @@ func (m *ApproachMover) Step(dt float64) ApproachPose {
 		dt -= h
 	}
 	return m.Pose()
+}
+
+// slowNow has the approach fly its approach speed from here on, not the
+// faster StartKts it slows from ("reduce to final approach speed"); it
+// returns the time that adds to the threshold: spacing gained behind a
+// slower leader.
+func (m *ApproachMover) slowNow() time.Duration {
+	before := m.timeToGo()
+	m.p.StartKts = m.p.ApproachKts
+	return m.timeToGo() - before
+}
+
+// timeToGo is how long the approach takes to the threshold on its schedule.
+func (m *ApproachMover) timeToGo() time.Duration {
+	const step = 50.0 // meters
+	t := 0.0
+	for x := m.x; x < 0; x += step {
+		v := math.Max(m.speedAt(x+step/2), 1)
+		t += math.Min(step, -x) / v
+	}
+	return time.Duration(t * float64(time.Second))
 }
 
 // speedAt is the scheduled speed (m/s) at distance x: StartKts at the start,

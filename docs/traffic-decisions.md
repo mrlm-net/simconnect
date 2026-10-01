@@ -468,7 +468,7 @@ The code comments attribute these values to ICAO Doc 4444 and RECAT-EU. The cond
 
 `PlanAbsorption` and `ArrivalController.AbsorbDelay` (`absorb.go`, #391) lose a delay on the STAR, before the final. The align and join points are never changed.
 
-1. **Speed.** The new speed is `STAR NM ÷ (STAR NM ÷ speed + delay)`, if that is not below `MinProcedureSpeedKts` (210 kt, turboprops `MinProcedureSpeedTurbopropKts` 170 kt). For example, 40 NM at 250 kt with a 1 min delay gives 226 kt.
+1. **Speed.** The new speed is `STAR NM ÷ (STAR NM ÷ speed + delay)`, rounded down to tens of knots, if that is not below `MinProcedureSpeedKts` (210 kt, turboprops `MinProcedureSpeedTurbopropKts` 170 kt). For example, 40 NM at 250 kt with a 1 min delay gives 226 kt, assigned as 220 kt. An arrival already flying that speed is not told it again.
 2. **Path.** At the minimum speed, the rest is extra track: `remaining time × minimum speed`, at most `MaxStretchNM` (30 NM). Where the STAR ends on a downwind, the downwind is extended (a trombone, each mile out adds two). Otherwise a dog-leg is flown on the longest leg ahead, away from the centreline, if that leg is at least `MinStretchLegNM` (3 NM). Less than 1 NM is not worth a turn. For example, 40 NM at 250 kt with a 3 min delay: 210 kt absorbs 110 s, and the other 70 s is 4.1 NM of track.
 3. **Hold.** Whatever is left goes to the hold.
 
@@ -477,6 +477,12 @@ On the airport map (`cmd/airport-map/sequence.go`):
 - a delay is absorbed once it reaches 30 s (`absorbFrom`), at most every 90 s per arrival (`absorbEvery`);
 - an arrival holds when 1 min or more is left (`holdFrom`);
 - it leaves the hold when its delay is down to 1 min (`holdRelease`).
+
+**Closing up on the final.** An established arrival keeps its predicted time, so the sequencer cannot delay it. Instead it reports `ShortBy`: how much sooner than its spacing the arrival would land behind its leader. From 10 s short (`spacingActFrom`), the map acts before they meet:
+
+1. Still on its STAR or downwind, the shortfall is absorbed like a delay: speed, then a longer downwind.
+2. On the injected final, the arrival flies its final approach speed from now on, instead of slowing to it on the way: "number 2, for spacing reduce to final approach speed" (`ReduceToFinalSpeed`).
+3. It is sent around early, not on short final, if all of these hold 20 s after it was slowed (`breakOffAfter`): it is still 25 s or more short (`breakOffFrom`), more than 3 NM out (`breakOffNM`), and already inside its spacing behind the leader, measured now along the track. The go-around re-sequences it, and the tower clears its next approach again.
 
 ### Holds
 
