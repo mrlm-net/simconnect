@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"strings"
 )
 
 // Take-off figures by family. Tail-strike pitches are with the main gear on
@@ -121,6 +122,16 @@ var knownTypes = []typeSpec{
 // family).
 func TakeoffProfileFor(model string) TakeoffProfile {
 	return ProfileFor(model).Takeoff
+}
+
+// EngineCount is how many engines the type has: four for the 747, A340
+// and A380 families, two otherwise (twins and the turboprops listed).
+func (p AircraftProfile) EngineCount() int {
+	switch {
+	case strings.HasPrefix(p.Type, "B74"), strings.HasPrefix(p.Type, "A34"), strings.HasPrefix(p.Type, "A38"):
+		return 4
+	}
+	return 2
 }
 
 // MotionProfileFor is the ground motion of an aircraft model title (e.g.

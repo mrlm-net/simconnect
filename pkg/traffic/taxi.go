@@ -274,6 +274,9 @@ type TaxiController struct {
 	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
 	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
 	seq                                                     sequence         // the take-off's steps (Sequence)
+	startUpCleared                                          bool             // ClearStartUp: the engines may start
+	enginesOn                                               bool             // started (combustion on)
+	enginesReadyAt                                          time.Time        // started up, ready to taxi
 	takeoffPhase                                            TakeoffPhase     // the take-off's phase last frame
 	flapsUpNoted                                            bool
 	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none

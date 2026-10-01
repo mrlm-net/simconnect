@@ -234,9 +234,9 @@ func TestMissedWaypoints(t *testing.T) {
 	}
 }
 
-// TestCrewRequests: held for clearances, the crew asks for push and start
-// once ready, then for taxi once pushed and the tug is clear; a clearance
-// ends the request (#462).
+// TestCrewRequests: held for clearances, the crew asks for the push once
+// ready, for the start-up once pushed and the tug is clear, then for taxi
+// once the engines run; a clearance ends the request (#462).
 func TestCrewRequests(t *testing.T) {
 	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
 	ready := func(want string) bool {
@@ -256,8 +256,15 @@ func TestCrewRequests(t *testing.T) {
 	if ctl.last.Request != "" {
 		t.Errorf("still asks for %q after the clearance", ctl.last.Request)
 	}
-	if !ready("taxi") || ctl.State() != TaxiAwaitingTaxi {
-		t.Fatalf("no taxi request (%q in %v)", ctl.last.Request, ctl.State())
+	if !ready("start_up") || ctl.State() != TaxiAwaitingTaxi {
+		t.Fatalf("no start-up request (%q in %v)", ctl.last.Request, ctl.State())
+	}
+	if ctl.enginesOn {
+		t.Fatal("engines started before the start-up was approved")
+	}
+	ctl.ClearStartUp()
+	if !ready("taxi") || ctl.State() != TaxiAwaitingTaxi || !ctl.enginesOn {
+		t.Fatalf("no taxi request (%q in %v, engines %v)", ctl.last.Request, ctl.State(), ctl.enginesOn)
 	}
 	ctl.ClearToTaxi()
 	if !run(TaxiTaxiing, 60*60) || ctl.last.Request != "" {

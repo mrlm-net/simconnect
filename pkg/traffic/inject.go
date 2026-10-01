@@ -66,7 +66,11 @@ const (
 	injDefGear
 	injDefFlaps
 	injDefSpoilers
+	injDefEngine1 // GENERAL ENG COMBUSTION:1, one definition per engine up to injMaxEngines
 )
+
+// injMaxEngines is how many engines SetEngines reaches.
+const injMaxEngines = 4
 
 const (
 	injEvtFreezeLatLon = iota
@@ -149,6 +153,13 @@ func (i *Injector) register() error {
 	}
 	for k, v := range []string{"SPOILERS HANDLE POSITION", "SPOILERS LEFT POSITION", "SPOILERS RIGHT POSITION"} {
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefSpoilers, v, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+			return err
+		}
+	}
+	// Engines one by one: an index the aircraft does not have is never set.
+	for k := 1; k <= injMaxEngines; k++ {
+		v := fmt.Sprintf("GENERAL ENG COMBUSTION:%d", k)
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefEngine1+uint32(k-1), v, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 			return err
 		}
 	}
@@ -467,6 +478,28 @@ func (i *Injector) SetGear(objectID uint32, down bool) error {
 	}
 	return i.track(fmt.Sprintf("gear handle object %d", objectID),
 		i.client.SetDataOnSimObject(i.defBase+injDefGear, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g)))
+}
+
+// SetEngines starts or stops engines 1 to n of objectID (at most
+// injMaxEngines): combustion on or off (GENERAL ENG COMBUSTION, settable;
+// off also sets the RPM to 0).
+func (i *Injector) SetEngines(objectID uint32, n int, on bool) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	v := [1]float64{0}
+	if on {
+		v[0] = 1
+	}
+	for k := 0; k < min(n, injMaxEngines); k++ {
+		if err := i.track(fmt.Sprintf("engine %d object %d", k+1, objectID),
+			i.client.SetDataOnSimObject(i.defBase+injDefEngine1+uint32(k), objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(v)), unsafe.Pointer(&v))); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetFlaps sets the flap surfaces of objectID to percent (0 up, 100 full);

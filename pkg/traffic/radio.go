@@ -65,6 +65,7 @@ const (
 const (
 	ParamRunway   = "runway"
 	ParamEntry    = "entry"    // the holding point of an intersection departure ("B")
+	ParamStartUp  = "startup"  // "1": the start-up asked for or approved with the pushback
 	ParamTaxiways = "taxiways" // as said: "B2, H, A"
 	ParamStand    = "stand"
 	ParamLimit    = "limit" // a taxiway to hold short of; "" a marked point
@@ -143,6 +144,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentStartUp:
 		return cs + ", start up approved" // Doc 4444 12.3.4.3 c
 	case IntentPushback:
+		if p[ParamStartUp] != "" {
+			return cs + ", pushback and start up approved" // both in one
+		}
 		return cs + ", pushback approved" // Doc 4444 12.3.4.4 b
 	case IntentTaxi:
 		if p[ParamStand] != "" {
@@ -347,6 +351,11 @@ func ClearedArrival(cs, star, approach, runway, level string) Transmission {
 // ClearedStartUp approves the start-up (Doc 4444 12.3.4.3).
 func ClearedStartUp(cs string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentStartUp})
+}
+
+// ClearedPushbackAndStartUp approves the pushback and the start-up in one.
+func ClearedPushbackAndStartUp(cs string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentPushback, Params: map[string]string{ParamStartUp: "1"}})
 }
 
 // ClearedPushback approves the pushback (Doc 4444 12.3.4.4).

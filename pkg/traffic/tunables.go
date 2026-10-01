@@ -178,7 +178,11 @@ const (
 	InjectHz = 60
 )
 
-// Default SimConnect IDs used by an Injector: 5 definition IDs, 2 request
+// EngineStartTime is how long one engine takes to start; they start one
+// after the other once the tug has gone, before the taxi.
+const EngineStartTime = 30 * time.Second
+
+// Default SimConnect IDs used by an Injector: 9 definition IDs, 2 request
 // IDs per aircraft (up to injectMaxAircraft: aircraft and their tugs, 40+
 // aircraft at once, #370) and injectEventCount event IDs.
 const (

@@ -98,6 +98,9 @@ type controlled struct {
 	// delivery exchange finished and the aircraft with ground).
 	request, waiting string
 	delivered        bool
+	// pushAndStart: the crew asked for the pushback and the start-up in one
+	// call, approved together.
+	pushAndStart bool
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -776,7 +779,7 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.T
 	case traffic.TaxiAwaitingPushback:
 		return []string{"pushback", "taxi", "upto"}
 	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
-		return []string{"taxi", "upto", "takeoff"}
+		return []string{"startup", "taxi", "upto", "takeoff"}
 	case traffic.TaxiTaxiing:
 		return []string{"hold", "taxi", "upto", "takeoff"}
 	case traffic.TaxiHoldingShort:
@@ -811,6 +814,8 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	switch d := it.dep; {
 	case d != nil && action == "pushback":
 		d.ClearPushback()
+	case d != nil && action == "startup":
+		d.ClearStartUp()
 	case d != nil && action == "taxi":
 		d.ClearToTaxi()
 	case d != nil && action == "upto":
@@ -1704,6 +1709,8 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	switch action {
 	case "pushback":
 		return traffic.ClearedPushback(call)
+	case "startup":
+		return traffic.ClearedStartUp(call)
 	case "taxi":
 		n := 0
 		if r != nil {

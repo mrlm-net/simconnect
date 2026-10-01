@@ -106,7 +106,9 @@ func (c *TaxiController) setRequest(now time.Time) {
 		switch {
 		case c.state == TaxiAwaitingPushback && !c.pushCleared:
 			req = "pushback"
-		case c.state == TaxiAwaitingTaxi && !c.taxiCleared && c.tugClear():
+		case c.state == TaxiAwaitingTaxi && !c.startUpCleared && !c.taxiCleared && c.tugClear():
+			req = "start_up" // the tug gone: the crew asks to start
+		case c.state == TaxiAwaitingTaxi && !c.taxiCleared && c.tugClear() && c.enginesReady(now):
 			req = "taxi"
 		}
 	}
@@ -127,6 +129,9 @@ func (c *TaxiController) startInjectedDeparture() error {
 		return err
 	}
 	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
+	// Cold on the stand: the engines start once the tug has gone.
+	c.note("engines off", c.inj.SetEngines(c.objectID, c.aircraft().EngineCount(), false))
+	c.enginesOn = false
 	c.holdAtCrossings = c.req.HoldForClearances || c.req.HoldForRunway
 	client := c.fleet.clientOrNil()
 	if client == nil {
@@ -261,9 +266,19 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.emit(nil, false)
 		return
 	case TaxiAwaitingTaxi:
+		// The tug gone (or none, on a nose-out stand) and the start-up
+		// approved: the engines start, one after the other.
+		// A taxi clearance given without one covers the start-up too.
+		if !c.enginesOn && c.tugClear() && c.gate(c.startUpCleared || c.taxiCleared) {
+			n := c.aircraft().EngineCount()
+			c.enginesOn = true
+			c.enginesReadyAt = now.Add(time.Duration(float64(n) * float64(EngineStartTime) * f(c.timing.tug)))
+			c.note("engines start", c.inj.SetEngines(c.objectID, n, true))
+		}
 		// Never taxi into the tug: it disconnects, backs off and drives
-		// clear first, whatever the clearance says.
-		if c.moveAt.IsZero() && c.tugClear() && c.gate(c.taxiCleared) {
+		// clear first, whatever the clearance says; nor before the engines
+		// run.
+		if c.moveAt.IsZero() && c.tugClear() && c.enginesReady(now) && c.gate(c.taxiCleared) {
 			// Taxi light on, then release the brakes TaxiLightDelay later.
 			c.setInjectedLights(LightsTaxi, "lights taxi")
 			// Take-off flaps set after engine start, while taxiing out.
@@ -1549,6 +1564,21 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 }
 
 // ClearPushback clears an injected departure to push back.
+// enginesReady reports that the engines are started and running.
+func (c *TaxiController) enginesReady(now time.Time) bool {
+	return c.enginesOn && !now.Before(c.enginesReadyAt)
+}
+
+// ClearStartUp approves the start-up (with HoldForClearances): once the
+// pushback tug has disconnected, the engines start, EngineStartTime each,
+// before the taxi. Given with the pushback, it is used once the tug has
+// gone. A taxi clearance given without it covers the start-up too.
+func (c *TaxiController) ClearStartUp() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.startUpCleared = true
+}
+
 func (c *TaxiController) ClearPushback() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
