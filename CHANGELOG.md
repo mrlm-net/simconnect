@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.3] - 2026-10-02
+
+Several runways at once, and a better view of the airport. Parallel runways are used together, with the mode set by their spacing. The tower camera works from the real tower, at a height you set, and you can turn it yourself. The simulator's own cameras switch from the map. Tugs drive in from their depot on the vehicle roads and drive back. The map shows ILS frequencies, the simulator's clock and a weather popup, and covers itself when the simulator is lost.
+
 ### Added
 
 - Parallel runways used together. `nav.ActiveRunways` adds the parallels of the runway in use (`RunwayUse.Departures`, `Arrivals`, `Parallel`, `SpacingM`), the mode from their spacing (ICAO AN-Conf/11-IP/3):
