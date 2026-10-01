@@ -28,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map: the status strip fits from 1024 to 1279 px wide (it ran off the edge). The theme switch, the weather chip, the help button and the position picker move into the More menu there, the picker as "Working as".
 - Airport map: an arrival's sequence actions (direct, slow, hold, go-around) act on its own airport's sequence, not the one on the map.
 - Airport map: an airport whose layout has no parking, taxi points or runways loads ("d.parking is not iterable"), and an aircraft's entry list asks its own airport, not the one on the map (`ControlView.ICAO`).
 - Website: the examples and home pages show the airport map again (they pointed to a screenshot removed in 0.18.0).
