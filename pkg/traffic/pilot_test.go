@@ -19,7 +19,7 @@ func TestReadbacks(t *testing.T) {
 		{ClearedDeparture("CSA1", DepartureClearance{Destination: "Frankfurt", SID: "BALTU 7D", Runway: "24", Level: "5000 feet", Squawk: "4521"}), "Cleared to Frankfurt, BALTU 7D departure, flight planned route, runway 24, climb via SID to 5000 feet, squawk 4521, CSA1"}, // CAP 413 2.68
 		{ClearedStartUp("CSA1"), "Start up approved, CSA1"},
 		{ClearedPushback("CSA1"), "Pushback approved, CSA1"},
-		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Taxi to holding point B runway 24 via H, A, CSA1"}, // CAP 413 4.12
+		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Taxi to and hold short of runway 24 at B via H, A, CSA1"},
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), "Taxi to stand C22 via B, D, CSA1"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), "Holding short of A, CSA1"},
 		{ClearedCross("CSA1", "12"), "Cross runway 12, CSA1"},

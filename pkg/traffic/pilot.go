@@ -141,7 +141,7 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamStand] != "" {
 			s = "Taxi to stand " + p[ParamStand]
 		} else {
-			s = fmt.Sprintf("Taxi to holding point%s runway %s", entryOf(p), p[ParamRunway]) // CAP 413 4.12
+			s = fmt.Sprintf("Taxi to and hold short of runway %s%s", p[ParamRunway], strings.Replace(entryOf(p), " ", " at ", 1))
 		}
 		if p[ParamTaxiways] != "" {
 			s += " via " + p[ParamTaxiways]

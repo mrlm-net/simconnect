@@ -25,8 +25,8 @@ func TestTransmissionPhrases(t *testing.T) {
 		{ClearedArrival("CSA1", "GOLOP 4S", "ILS", "24", "flight level 100"), PosApproach, IntentArrivalClearance, "CSA1, cleared GOLOP 4S arrival, runway 24, descend to flight level 100, expect ILS approach", ParamSTAR, "GOLOP 4S"}, // Doc 4444 6.5.2.3, 12.3.3.2 a
 		{ClearedStartUp("CSA1"), PosGround, IntentStartUp, "CSA1, start up approved", "", ""},   // Doc 4444 12.3.4.3 c
 		{ClearedPushback("CSA1"), PosGround, IntentPushback, "CSA1, pushback approved", "", ""}, // 12.3.4.4 b
-		{ClearedTaxiToRunway("CSA1", "24", "", []string{"B2", "H", "A"}), PosGround, IntentTaxi, "CSA1, taxi to holding point runway 24 via B2, H, A", ParamTaxiways, "B2, H, A"},
-		{ClearedTaxiToRunway("CSA1", "24", "B", nil), PosGround, IntentTaxi, "CSA1, taxi to holding point B runway 24", ParamEntry, "B"},
+		{ClearedTaxiToRunway("CSA1", "24", "", []string{"B2", "H", "A"}), PosGround, IntentTaxi, "CSA1, taxi to and hold short of runway 24 via B2, H, A", ParamTaxiways, "B2, H, A"},
+		{ClearedTaxiToRunway("CSA1", "24", "B", nil), PosGround, IntentTaxi, "CSA1, taxi to and hold short of runway 24 at B", ParamEntry, "B"},
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), PosGround, IntentTaxi, "CSA1, taxi to stand C22 via B, D", ParamStand, "C22"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), PosGround, IntentTaxiLimit, "CSA1, taxi via H, hold short of A", ParamLimit, "A"},
 		{ClearedTaxiUpTo("CSA1", nil, ""), PosGround, IntentTaxiLimit, "CSA1, taxi, hold position at the marked point", "", ""},
