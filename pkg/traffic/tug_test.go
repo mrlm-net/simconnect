@@ -259,3 +259,64 @@ func TestSimObjectTugLeavesSmoothly(t *testing.T) {
 		t.Errorf("tug moved %.2f m in one frame, want at most %.2f", worst, limit)
 	}
 }
+
+// With the airport known, a tug appears at its depot, drives in along the
+// vehicle roads to the nose (the push waits: Connected), and after the push
+// drives home to the depot, where it is removed.
+func TestSimObjectTugFromDepot(t *testing.T) {
+	g := lkprGraph(t)
+	l := g.Layout
+	i, err := l.ParkingIndex("B9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &tugClient{}
+	inj := NewInjector(c)
+	prof := DefaultMotionProfile()
+	tug := NewSimObjectTug(c, inj, DefaultTugTitle, 9001, prof)
+	tug.Layout = l
+	stand := l.Parking[i]
+	pose := GroundPose{Position: StandPoint(stand, prof.RefAheadMeters), Heading: stand.Heading}
+	if err := tug.Attach(pose); err != nil {
+		t.Fatal(err)
+	}
+	nose := NoseGear(pose.Position, pose.Heading, prof)
+	at := airport.LatLon{Lat: c.created[0].Latitude, Lon: c.created[0].Longitude}
+	if d := localDist(at, nose); d < 50 {
+		t.Fatalf("appeared %.0f m from the nose: not at a depot", d)
+	}
+	depot, _ := nearestDepot(l, nose)
+	if localDist(at, depot) > 15 {
+		t.Errorf("appeared %.0f m from its depot", localDist(at, depot))
+	}
+	if tug.Connected() {
+		t.Fatal("connected before it was even created")
+	}
+	tug.Handle(assignedMsg(9001, 55))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 55, 1200, 3))
+	steps := 0
+	for ; steps < 60*600 && !tug.Connected(); steps++ {
+		if err := tug.Update(pose, true, 1.0/60); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !tug.Connected() {
+		t.Fatal("never reached the nose")
+	}
+	if d := localDist(tug.pose.Position, tug.at(pose).Position); d > 0.5 {
+		t.Errorf("connected %.1f m off the tow point", d)
+	}
+	t.Logf("drove in in %.0f s", float64(steps)/60)
+	// The push done (no movement here): home to the depot, then removed.
+	for i := 0; i < 60*900 && !tug.Done(); i++ {
+		if err := tug.Update(pose, false, 1.0/60); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !tug.Done() || len(c.removed) != 1 {
+		t.Fatalf("done %v, removed %v", tug.Done(), c.removed)
+	}
+	if d := localDist(tug.pose.Position, depot); d > 30 {
+		t.Errorf("removed %.0f m from its depot", d)
+	}
+}

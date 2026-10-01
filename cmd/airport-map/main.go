@@ -133,6 +133,12 @@ type aircraftRaw struct {
 	Com1      float64 // COM ACTIVE FREQUENCY:1, MHz
 	Camera    float64 // CAMERA STATE: the simulator's camera now
 	CamView   float64 // CAMERA VIEW TYPE AND INDEX:1: its view
+	Zulu      float64 // ZULU TIME: seconds since midnight UTC, the simulator's
+	Local     float64 // LOCAL TIME: seconds since local midnight
+	Day       float64 // ZULU DAY OF MONTH
+	Month     float64 // ZULU MONTH OF YEAR
+	Year      float64 // ZULU YEAR
+	DayPart   float64 // TIME OF DAY: 0 dawn, 1 day, 2 dusk, 3 night
 }
 
 // Aircraft is the user aircraft position served at /api/aircraft.
@@ -150,6 +156,16 @@ type Aircraft struct {
 	// between versions: see simCameraStates).
 	Camera int `json:"camera"`
 	CamView int `json:"cameraView"`
+	// ZuluSec and LocalSec: the simulator's time of day, seconds since
+	// midnight UTC and local (at the user's aircraft).
+	ZuluSec  float64 `json:"zuluSec"`
+	LocalSec float64 `json:"localSec"`
+	// The simulator's UTC date, and the part of the day at the aircraft
+	// (0 dawn, 1 day, 2 dusk, 3 night).
+	ZuluDay   int `json:"zuluDay"`
+	ZuluMonth int `json:"zuluMonth"`
+	ZuluYear  int `json:"zuluYear"`
+	DayPart   int `json:"dayPart"`
 	Updated time.Time `json:"updated"`
 }
 
@@ -362,6 +378,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		{"COM ACTIVE FREQUENCY:1", "MHz"},
 		{"CAMERA STATE", "number"},
 		{"CAMERA VIEW TYPE AND INDEX:1", "number"},
+		{"ZULU TIME", "seconds"},
+		{"LOCAL TIME", "seconds"},
+		{"ZULU DAY OF MONTH", "number"},
+		{"ZULU MONTH OF YEAR", "number"},
+		{"ZULU YEAR", "number"},
+		{"TIME OF DAY", "enum"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
@@ -684,7 +706,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					tlog.printf("simulation rate %g×: traffic follows it", a.SimRate)
 				}
 				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
-					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Camera: int(a.Camera), CamView: int(a.CamView), Updated: time.Now()}
+					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Camera: int(a.Camera), CamView: int(a.CamView), ZuluSec: a.Zulu, LocalSec: a.Local,
+					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart), Updated: time.Now()}
 				st.mu.Unlock()
 				if a.Com1 > 0 {
 					speaker.com1(airport.FormatMHz(a.Com1)) // the voice follows it when synced

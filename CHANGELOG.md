@@ -21,11 +21,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: a map button shows the whole airport again, as after loading.
 - Airport map: with the simulator gone, the map blurs behind a dialog: a radar scope with a plane in the hold, a rotating funny line, how long it has been gone, and a way to look at the map anyway.
 - Airport map: the simulator's own cameras: cockpit, chase, drone, fixed and free, with ◀ ▶ through their views (`CAMERA STATE` and `CAMERA VIEW TYPE AND INDEX`, the values measured live). Tower is a camera mode; the add-on fixed views are no longer offered in the director. When our camera is released, the simulator's camera returns to what it was.
-- Airport map: the tower can be placed on the map and its cab height set (Airport tab, saved per airport). With no aircraft selected, the tower camera looks round the airfield in a slow swing. LKPR's tower is known (`airport.Limits.Tower`); the facility puts it elsewhere.
+- Airport map: the tower can be placed on the map and its cab height set (Airport tab, saved per airport). With no aircraft selected, the tower camera stands at the tower and the Tower look buttons turn it (left, right, up, down, zoom; hold to keep turning); Swing makes it look round by itself.
+- Airport map: the simulator's time in the status strip, UTC and local at your aircraft ("14:32Z · 16:32 LT", `ZULU TIME` and `LOCAL TIME`; `/api/aircraft` `zuluSec`, `localSec`).
+- Pushback tugs come from their depot and go back. A tug appears at the vehicle parking spot nearest the stand, drives along the vehicle roads to the nose (the push waits for it), and after the push drives home and disappears there (`SimObjectTug.Layout`, `airport.Layout.VehicleRoute`, `VehicleDepots`). Airports without vehicle roads keep the old drive-off. LKPR's tower is known (`airport.Limits.Tower`); the facility puts it elsewhere.
 - Airport map: the ILS of each runway end, with its frequency, loaded from the simulator. `airport.RunwayEnd.ILS` and `ILSRegion` come from the RUNWAY record, the frequency and name from the navaid record (LKPR: 24 PR 109.10). Shown in the Airport tab, and in `/api/airportinfo` as `ils`.
 
 ### Fixed
 
+- Airport map: an arrival's sequence actions (direct, slow, hold, go-around) act on its own airport's sequence, not the one on the map.
 - Airport map: an airport whose layout has no parking, taxi points or runways loads ("d.parking is not iterable"), and an aircraft's entry list asks its own airport, not the one on the map (`ControlView.ICAO`).
 - Website: the examples and home pages show the airport map again (they pointed to a screenshot removed in 0.18.0).
 - Voice: aircraft types are read as crews say them, "Airbus A three twenty-one", not "alpha three two one" (voice-goio).

@@ -7,6 +7,7 @@ const tabVisible = (name) => currentTab === name && !(isPhone() && $('panel').da
 
 /* ───────────── Simulation, my aircraft, the connection ───────────── */
 let lastOwn = null; // GET /api/aircraft: my aircraft, the pause and the rate
+let clockShown = false; // the clock popup filled once
 let liveAt = 0;     // when the simulator last answered
 let simLive = false;
 function markLive() { liveAt = Date.now(); updateConn(); }
@@ -104,6 +105,28 @@ async function pollAircraft() {
   drawUser(lastOwn);
   showSim();
   const a = lastOwn;
+  // The simulator's time: UTC, and local at the aircraft.
+  const hhmm = (sec) => { const m = Math.floor(((sec % 86400) + 86400) % 86400 / 60); return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+  $('clockChip').hidden = !a || !a.zuluSec;
+  if (a && a.zuluSec) {
+    $('clockZ').textContent = `${hhmm(a.zuluSec)}Z`;
+    $('clockL').textContent = `${hhmm(a.localSec)} LT`;
+    // The popup: the date, both times, the offset, the part of the day.
+    let off = Math.round((a.localSec - a.zuluSec) / 900) * 15; // minutes, to the quarter hour
+    if (off > 720) off -= 1440; else if (off < -720) off += 1440;
+    const offTxt = `UTC${off >= 0 ? '+' : '−'}${Math.floor(Math.abs(off) / 60)}${Math.abs(off) % 60 ? ':' + String(Math.abs(off) % 60).padStart(2, '0') : ''}`;
+    const date = a.zuluYear ? new Date(Date.UTC(a.zuluYear, a.zuluMonth - 1, a.zuluDay)) : null;
+    const dateTxt = date ? date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '—';
+    const part = ['dawn', 'day', 'dusk', 'night'][a.dayPart] || '—';
+    if (!$('clockPop').hidden || !clockShown) setHTML($('clockPopBody'), `<dl class="kv">
+      <dt>Date</dt><dd>${esc(dateTxt)} <span class="muted">(UTC)</span></dd>
+      <dt>UTC</dt><dd class="mono">${hhmm(a.zuluSec)}:${String(Math.floor(a.zuluSec % 60)).padStart(2, '0')}Z</dd>
+      <dt>Local</dt><dd class="mono">${hhmm(a.localSec)} <span class="muted">${offTxt}</span></dd>
+      <dt>Daylight</dt><dd>${part}</dd>
+      <dt>Simulation</dt><dd>${a.paused ? 'paused' : `running${a.simRate && a.simRate !== 1 ? `, ${a.simRate}×` : ''}`}</dd>
+    </dl>`);
+    clockShown = true;
+  }
   if (a && layerOn.follow) map.panTo([a.lat, a.lon], { animate: false });
   $('acInfo').textContent = a
     ? `My aircraft: ${a.lat.toFixed(6)}, ${a.lon.toFixed(6)} · ${a.heading.toFixed(0)}° · ${a.groundKts.toFixed(0)} kt${a.onGround ? ' · on ground' : ''}${a.paused ? ' · sim paused' : a.simRate && a.simRate !== 1 ? ` · sim ${a.simRate}×` : ''}`
@@ -159,6 +182,11 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="seg" role="radiogroup" aria-label="Camera mode" title="The simulator's camera on our traffic">
       <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected a slow look round the airfield">Tower</button>
     </div></div>
+  <div class="field" data-look-row hidden><span class="field__lbl">Tower look</span>
+    <div class="director__row look" title="Turn the tower camera; hold a button to keep turning">
+      <button type="button" class="btn btn--sm" data-look="-4,0,0" aria-label="Turn left">⟲</button><button type="button" class="btn btn--sm" data-look="4,0,0" aria-label="Turn right">⟳</button><button type="button" class="btn btn--sm" data-look="0,1.5,0" aria-label="Look up">▲</button><button type="button" class="btn btn--sm" data-look="0,-1.5,0" aria-label="Look down">▼</button><button type="button" class="btn btn--sm" data-look="0,0,-3" aria-label="Zoom in">+</button><button type="button" class="btn btn--sm" data-look="0,0,3" aria-label="Zoom out">−</button>
+      <button type="button" class="btn btn--sm btn--toggle" data-swing aria-pressed="false" title="Swing slowly from side to side by itself">Swing</button>
+    </div></div>
   <div class="field"><span class="field__lbl">Simulator camera</span>
     <div class="director__row" title="The simulator's own cameras, on your aircraft; ◀ ▶ the camera's views">
       <button type="button" class="btn btn--sm" data-sim-step="-1" aria-label="Previous view">◀</button>
@@ -175,11 +203,26 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
   <div class="director__info" data-cam-info></div>`;
 function initDirector() {
   $$('[data-director]').forEach((d) => { d.innerHTML = DIRECTOR_HTML; });
+  // Tower look: a step per press, repeated while held.
+  let lookTimer = 0;
+  const lookStep = (b) => { const [yaw, tilt, fov] = b.dataset.look.split(',').map(Number); send('/api/camera', { mode: 'look', yaw, tilt, fov }); };
+  const lookStop = () => { clearInterval(lookTimer); lookTimer = 0; };
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('[data-look]');
+    if (!b) return;
+    e.preventDefault();
+    lookStep(b);
+    lookStop();
+    lookTimer = setInterval(() => lookStep(b), 120);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => document.addEventListener(t, lookStop, true));
   document.addEventListener('click', (e) => {
     const c = e.target.closest('[data-cam]');
     if (c && c.dataset.cam === 'tower') { camViewOf('tower', ctlSelected || -1); return; }
     if (c) { camPost('/api/camera', { mode: c.dataset.cam, id: ctlSelected || 0 }); return; }
     // The simulator's own camera, or a step through its views.
+    const sw = e.target.closest('[data-swing]');
+    if (sw) { camPost('/api/camera', { mode: 'look', swing: sw.getAttribute('aria-pressed') !== 'true' }); return; }
     const sb = e.target.closest('[data-sim]');
     if (sb) { camPost('/api/camera', { mode: 'sim', sim: sb.dataset.sim }); return; }
     const st = e.target.closest('[data-sim-step]');
@@ -225,13 +268,16 @@ function updateDirector() {
   const tower = mode === 'tower' || mode === 'view' && !!v && v.shot === 'tower';
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.cam === 'tower' ? tower : b.dataset.cam === mode && !(mode === 'off' && v && v.sim))));
   $$('[data-sim]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'off' && !!v && b.dataset.sim === v.sim)));
+  // The look buttons while the tower looks round (no aircraft selected).
+  $$('[data-look-row]').forEach((r) => { r.hidden = mode !== 'tower'; });
+  $$('[data-swing]').forEach((b) => b.setAttribute('aria-pressed', String(!!(v && v.swing))));
   $$('[data-scene-play]').forEach((b) => {
     b.className = `btn ${playing ? 'btn--danger' : 'btn--primary'}`;
     b.innerHTML = `${icon(playing ? 'i-stop' : 'i-play', 'ic ic--sm')}<span>${playing ? 'Stop' : 'Play'}</span>`;
   });
   const info = !v ? (simLive ? 'Camera not available.' : 'The camera needs the simulator (not connected).')
     : v.mode === 'off' ? (v.sim ? `Simulator camera: ${v.sim}${v.simView ? ', view ' + (v.simView + 1) : ''}` : 'The simulator camera is yours.')
-    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? 'Tower: looking round the airfield' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
+    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? (v.swing ? 'Tower: swinging round the airfield' : 'Tower: turn it with the look buttons') : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
   $$('[data-cam-info]').forEach((i) => { i.textContent = info; });
   const chip = $('camBtn');
   chip.classList.toggle('chip--onair', playing);
@@ -444,17 +490,27 @@ async function pollAirportInfo() {
     <dt>Limits</dt><dd><span class="pill ${u.withinLimits ? 'pill--ok' : 'pill--warn'}">${u.withinLimits ? 'within' : 'outside limits'}</span></dd>` : '';
   // Weather.
   if (w) {
+    $('apWx').className = 'small';
+    $('apWx').innerHTML = wxHTML();
+    // The same in the wind chip's popup, with the runway in use and the ATIS.
+    setHTML($('wxPopBody'), wxHTML() + `<dl class="kv">
+      <dt>Runway</dt><dd class="mono">${u ? esc(dl === al ? dl : dl + ' / ' + al) : '—'}</dd>
+      <dt>ATIS</dt><dd>${a.atis ? 'information ' + esc(a.atis.letter) : '—'}</dd>
+    </dl>`);
+  }
+  function wxHTML() {
     const windTxt = w.WindKts < 1 ? 'calm' : `${String(Math.round(((w.WindDirTrue - a.magVar) % 360 + 360) % 360)).padStart(3, '0')}° ${w.WindKts.toFixed(0)} kt${w.GustKts > w.WindKts ? ' G' + w.GustKts.toFixed(0) : ''}`;
     const vis = w.VisibilityM >= 10000 ? '10 km or more' : `${(w.VisibilityM / 1000).toFixed(1)} km`;
-    $('apWx').className = 'small';
-    $('apWx').innerHTML = `<dl class="kv">
+    return `<dl class="kv">
       <dt>Wind</dt><dd class="mono">${windTxt}${u ? ` <span class="muted">· ${along}, ${across}</span>` : ''}</dd>
       <dt>Visibility</dt><dd>${vis}${w.Precip && w.Precip !== 'none' ? ' · ' + esc(w.Precip) : ''}${w.InCloud ? ' · in cloud' : ''}</dd>
       <dt>Temperature</dt><dd class="mono">${w.TempC.toFixed(0)} °C</dd>
+      ${w.CeilingFt > 0 ? `<dt>Ceiling</dt><dd class="mono">${Math.round(w.CeilingFt / 100) * 100} ft</dd>` : ''}
       <dt>QNH</dt><dd class="mono">${w.QNHhPa.toFixed(0)} hPa</dd>
     </dl>` + (w.Icing ? `<p class="warn-text">${icon('i-snow', 'ic ic--sm')}Icing: de-icing required.</p>` : `<p class="small muted">${icon('i-snow', 'ic ic--xs')} No icing.</p>`) +
       (w.distanceNM > 20 ? `<p class="warn-text">${icon('i-warn', 'ic ic--sm')}Measured at your aircraft, ${w.distanceNM.toFixed(0)} NM from ${esc(a.icao)}.</p>` : '');
-  } else {
+  }
+  if (!w) {
     $('apWx').className = 'small muted';
     $('apWx').textContent = 'No weather yet (simulator not connected?). SimConnect reports the weather where your aircraft is, not per airport.';
   }

@@ -82,6 +82,8 @@ type cameraMan struct {
 	// none); set back when it is released, so the user's camera is not left
 	// locked where ours was.
 	prevSim int
+	// look: the tower's aim when it looks round the airfield (towerPan).
+	look towerLook
 	// towerAt: the airport whose tower watches (the one on the map), for
 	// the user's aircraft when none of ours is there to watch.
 	towerAt string
@@ -197,6 +199,11 @@ func (m *cameraMan) setView(view string, id int, icao string) error {
 	if view == "tower" && id < 0 {
 		m.mu.Lock()
 		m.rememberSim()
+		if !strings.EqualFold(m.towerAt, icao) {
+			m.look.mu.Lock()
+			m.look.set = false // another airport: aimed at its middle again
+			m.look.mu.Unlock()
+		}
 		m.mode, m.follow, m.subject, m.shots, m.err, m.towerAt, m.lookAt = "tower", 0, "", 0, "", strings.ToUpper(icao), time.Time{}
 		m.mu.Unlock()
 		if m.frames != nil {
@@ -596,6 +603,8 @@ type cameraView struct {
 	// its view index.
 	Sim     string `json:"sim,omitempty"`
 	SimView int    `json:"simView,omitempty"`
+	// Swing: the tower looking round by itself (else where it was turned).
+	Swing bool `json:"swing"`
 }
 
 func (m *cameraMan) view() cameraView {
@@ -605,6 +614,9 @@ func (m *cameraMan) view() cameraView {
 	if m.dir != nil {
 		v.Acquired = m.dir.Acquired()
 	}
+	m.look.mu.Lock()
+	v.Swing = m.look.auto
+	m.look.mu.Unlock()
 	if m.sim != nil && m.mode == "off" {
 		v.Sim, v.SimView = m.sim.current()
 	}
@@ -642,9 +654,17 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			Step int    `json:"step"`
 			// ICAO: the airport on the map (the tower watching).
 			ICAO string `json:"icao"`
+			// Mode look: turn the tower (degrees), swing on or off.
+			Yaw, Tilt, Fov float64
+			Swing          *bool `json:"swing"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.EqualFold(req.Mode, "look") {
+			m.look.turn(req.Yaw, req.Tilt, req.Fov, req.Swing)
+			writeJSON(w, m.view())
 			return
 		}
 		if strings.EqualFold(req.Mode, "sim") {

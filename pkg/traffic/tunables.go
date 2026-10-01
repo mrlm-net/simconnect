@@ -344,6 +344,13 @@ const (
 	TugDriveOffKts       = 8.0
 	TugMaxBarDeg         = 80.0 // tow bar angle off the aircraft axis, at most
 	TugBarSeconds        = 0.6  // how quickly the bar follows the nose wheel
+	// From and to its depot (SimObjectTug.Layout): on the vehicle roads at
+	// TugRoadKts, the last TugApproachMeters straight onto the nose gear.
+	TugRoadKts        = 15.0
+	TugApproachMeters = 12.0
+	// TugArriveTimeout: a tug not at the nose this long after it was sent
+	// for is given up.
+	TugArriveTimeout = 4 * time.Minute
 )
 
 // Take-off pitch (TakeoffMover): on the runway the pitch stays
