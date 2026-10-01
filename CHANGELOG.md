@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.4] - 2026-10-02
+
+A validation release: a live sweep and four code reviews, with what they found fixed. That includes a lock ring that could freeze the map, departures that stayed stuck, go-around circuits that started at the wrong corner, and tugs that held departures too long. The traffic log is readable. The squawk can be set. The tower camera turns by keys and the middle mouse button, with its angle shown on the map. Working one position greys out the aircraft on other frequencies.
+
 ### Added
 
 - Airport map: working one position (As), the clearance buttons of aircraft on other frequencies are greyed out and their cards dimmed (the server refuses them anyway).
