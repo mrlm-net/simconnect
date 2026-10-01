@@ -1000,6 +1000,7 @@ func main() {
 	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
 	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
 	flag.Parse()
+	startPprof()
 	speaker.piperPath, speaker.voicesDir = *piperPath, *voicesDir
 	// The default is the repo's graph, from the repo root or from this
 	// example's folder (its own module: go run . here).

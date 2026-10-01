@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Airport map: camera views. A fixed view (chase, cockpit, wing, front, top, tower) of the selected aircraft, or of your own with none selected; ◀ ▶ switch between our aircraft, and selecting another aircraft moves the view to it (POST /api/camera {"mode":"view","view":"chase","id":7}; id -1 is your aircraft).
+- Airport map: -pprof 127.0.0.1:6060 serves Go's profiler (off by default).
+
 ### Changed
 
 - Arrivals: approach clears the approach on the base, before the turn onto the final; the crew reports established on the final and is handed to tower then (before, all three in the same second).
@@ -23,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: the radio log shows the newest call first.
 - Arrivals: a delay absorbed on a STAR or a go-around's circuit re-plans from the procedure's corners, not from its already rounded turns: a downwind extended no longer cuts into a turn's arc, and no dog-leg loops are drawn (live, DLH1402 flew loops after its go-around).
 - Airport map: the radio tab fills the panel and only its log scrolls (two scrollbars before).
+- Airport map: dropdown lists (the position picker) take the theme's colours in dark mode.
 
 ---
 

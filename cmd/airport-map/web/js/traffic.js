@@ -128,6 +128,8 @@ function select(id) {
   refreshSelection();
   // Camera on "Follow selected": it follows the newly selected aircraft.
   if (changed && id && camView && camView.mode === 'follow') camPost('/api/camera', { mode: 'follow', id });
+  // On a fixed view: the same view of the newly selected aircraft.
+  if (changed && id && camView && camView.mode === 'view' && camView.shot) camPost('/api/camera', { mode: 'view', view: camView.shot, id });
   if (id && isPhone() && $('panel').dataset.sheet !== 'peek') setSheet('peek');
 }
 
