@@ -224,3 +224,38 @@ func TestTaxiWaitsForTug(t *testing.T) {
 		t.Fatalf("state %v, tug done %v", ctl.State(), tug.Done())
 	}
 }
+
+// After the push the tug backs away and drives off without a jump: each
+// placement moves it no more than its speed allows in a frame (live it
+// jumped about its wheelbase as it started backing off, and again as it
+// turned away).
+func TestSimObjectTugLeavesSmoothly(t *testing.T) {
+	c := &tugClient{}
+	inj := NewInjector(c)
+	prof := DefaultMotionProfile()
+	tug := NewSimObjectTug(c, inj, DefaultTugTitle, 9001, prof)
+	pose := GroundPose{Position: lkpr, Heading: 90}
+	if err := tug.Attach(pose); err != nil {
+		t.Fatal(err)
+	}
+	tug.Handle(assignedMsg(9001, 55))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 55, 1200, 3))
+	if err := tug.Update(pose, true, 1.0/60); err != nil {
+		t.Fatal(err)
+	}
+	prev := tug.pose.Position
+	worst := 0.0
+	for i := 0; i < 60*120 && !tug.Done(); i++ {
+		if err := tug.Update(pose, false, 1.0/60); err != nil {
+			t.Fatal(err)
+		}
+		if tug.Done() {
+			break
+		}
+		worst = math.Max(worst, localDist(prev, tug.pose.Position))
+		prev = tug.pose.Position
+	}
+	if limit := TugDriveOffKts * ktsToMS / 60 * 1.5; worst > limit {
+		t.Errorf("tug moved %.2f m in one frame, want at most %.2f", worst, limit)
+	}
+}
