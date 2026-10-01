@@ -6,8 +6,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -105,7 +107,7 @@ func (m *cameraMan) tick(now time.Time) {
 	// The next shot is picked off the connection's goroutine: it looks at
 	// the aircraft (their locks), and a goroutine holding one may be
 	// waiting on this one.
-	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && m.picking.CompareAndSwap(false, true) {
+	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "view" && m.picking.CompareAndSwap(false, true) {
 		go func() {
 			defer m.picking.Store(false)
 			m.next(now)
@@ -126,7 +128,7 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 	switch mode {
 	case "off", "follow", "auto", "scene":
 	default:
-		return errors.New("mode: off, follow or auto")
+		return errors.New("mode: off, follow, auto or view")
 	}
 	m.mu.Lock()
 	m.mode, m.follow, m.subject, m.shots, m.err = mode, follow, "", 0, ""
@@ -139,6 +141,82 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 	}
 	m.dir.Play() // the next tick picks a shot
 	return nil
+}
+
+// cameraViews are the fixed views of the camera switcher, by name.
+var cameraViews = []string{"chase", "cockpit", "wing", "front", "top", "tower"}
+
+// setView puts the camera on view of the aircraft of card id (-1: the
+// user's own aircraft) and holds it there until another view or mode.
+func (m *cameraMan) setView(view string, id int) error {
+	if m.dir == nil {
+		return errors.New("no camera on this connection")
+	}
+	if !slices.Contains(cameraViews, view) {
+		return fmt.Errorf("view: one of %s", strings.Join(cameraViews, ", "))
+	}
+	obj, size, name := uint32(0), camera.Size{}, "my aircraft"
+	var l *airport.Layout
+	if id >= 0 {
+		m.cc.mu.Lock()
+		it := m.cc.items[id]
+		m.cc.mu.Unlock()
+		if it == nil || it.objectID == 0 {
+			return errors.New("no such aircraft in the simulator yet")
+		}
+		it.mu.Lock()
+		model := it.view.Model
+		it.mu.Unlock()
+		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
+		obj, size, name, l = it.objectID, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.Tail, it.graph.Layout
+	}
+	shot, err := viewShot(view, obj, id < 0, size, l)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.mode, m.follow, m.subject, m.err = "view", id, name, ""
+	m.mu.Unlock()
+	if m.frames != nil {
+		m.frames(true)
+	}
+	m.dir.Play(shot)
+	return nil
+}
+
+// viewShot is a still view of object (user: the user's aircraft, the
+// cockpit from its eyepoint); the camera follows the aircraft, the view
+// holds after the shot.
+func viewShot(view string, o uint32, user bool, s camera.Size, l *airport.Layout) (camera.Shot, error) {
+	w, ln := s.Span/2, s.Length
+	if w <= 0 {
+		w, ln = 18, 38
+	}
+	on := func(r, u, f float64) camera.Point { return camera.On(o, r, u, f) }
+	var p camera.Pose
+	switch view {
+	case "chase":
+		p = camera.Pose{Eye: on(0, 6+ln*0.12, -ln*2.0), Target: on(0, 2, ln*0.6), FovDeg: 55}
+	case "cockpit":
+		if user {
+			p = camera.Pose{Eye: camera.Point{Frame: camera.Eyepoint}, Target: camera.Point{Frame: camera.Eyepoint, Offset: camera.Offset{Forward: 100}}, FovDeg: 70}
+		} else {
+			p = camera.Pose{Eye: on(-0.6, 2.4, ln*0.44), Target: on(-0.6, 2.0, ln*4), FovDeg: 65}
+		}
+	case "wing":
+		p = camera.Pose{Eye: on(w+1.5, 1.8, -3), Target: on(0, 1, ln*0.2), FovDeg: 60}
+	case "front":
+		p = camera.Pose{Eye: on(0, 3, ln*1.5), Target: on(0, 1.5, 0), FovDeg: 45}
+	case "top":
+		p = camera.Pose{Eye: on(0.5, ln*1.8, -ln*0.3), Target: on(0, 0, 0), FovDeg: 55}
+	case "tower":
+		if l == nil {
+			return nil, errors.New("tower: pick an aircraft at the loaded airport")
+		}
+		// A tower-high camera at the airport reference point, zoomed in.
+		p = camera.Pose{Eye: camera.At(l.Latitude, l.Longitude, l.Altitude+45), Target: on(0, 1.5, 0), FovDeg: 30}
+	}
+	return camera.Hold(view, p, camera.MaxShot), nil
 }
 
 // heard is a call on the radio, as it is heard: in auto and the demo the
@@ -405,9 +483,18 @@ func registerCamera(mux *http.ServeMux, st *state) {
 		var req struct {
 			Mode string `json:"mode"`
 			ID   int    `json:"id"`
+			View string `json:"view"` // mode view: chase, cockpit, wing, front, top, tower; id -1 my aircraft
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.EqualFold(req.Mode, "view") {
+			if err := m.setView(strings.ToLower(req.View), req.ID); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			writeJSON(w, m.view())
 			return
 		}
 		if err := m.setMode(strings.ToLower(req.Mode), req.ID); err != nil {

@@ -467,6 +467,8 @@ button.chip:hover { border-color: var(--border-strong); background: var(--surfac
 .director { display: grid; gap: var(--s-2); }
 .director__row { display: flex; gap: var(--s-2); align-items: center; }
 .director__row select { flex: 1; min-width: 0; }
+.director__row .seg { flex: 1; min-width: 0; flex-wrap: wrap; }
+.director__row .seg > button { flex: 1 0 30%; }
 .director__info { font-size: var(--fs-sm); color: var(--text-3); min-height: 1.4em; }
 
 /* Workspace */
@@ -1044,3 +1046,4 @@ body.full .panel, body.full .ctx { display: none; }
 /* Network play: the position this device works (#511). */
 .chip--as { gap: 4px; }
 .chip--as select { background: transparent; border: 0; color: inherit; font: inherit; padding: 0 2px; cursor: pointer; }
+select option { background: var(--surface); color: var(--text); }

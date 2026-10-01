@@ -128,6 +128,14 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="seg" role="radiogroup" aria-label="Camera mode" title="The simulator's camera on our traffic">
       <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button>
     </div></div>
+  <div class="field"><span class="field__lbl">View</span>
+    <div class="director__row" title="A fixed view of the selected aircraft (none selected: your own); ◀ ▶ switch between aircraft">
+      <button type="button" class="btn btn--sm" data-view-step="-1" aria-label="Previous aircraft">◀</button>
+      <div class="seg" role="radiogroup" aria-label="Camera view">
+        <button type="button" role="radio" data-view="chase">Chase</button><button type="button" role="radio" data-view="cockpit">Cockpit</button><button type="button" role="radio" data-view="wing">Wing</button><button type="button" role="radio" data-view="front">Front</button><button type="button" role="radio" data-view="top">Top</button><button type="button" role="radio" data-view="tower">Tower</button>
+      </div>
+      <button type="button" class="btn btn--sm" data-view-step="1" aria-label="Next aircraft">▶</button>
+    </div></div>
   <div class="field"><span class="field__lbl">Scene</span>
     <div class="director__row">
       <select class="input" data-scene aria-label="Scene" title="Scripted films: the scene spawns its aircraft and films them beat by beat with the radio (scenes/*.json, read on every play)"></select>
@@ -139,6 +147,20 @@ function initDirector() {
   document.addEventListener('click', (e) => {
     const c = e.target.closest('[data-cam]');
     if (c) { camPost('/api/camera', { mode: c.dataset.cam, id: ctlSelected || 0 }); return; }
+    const vb = e.target.closest('[data-view]');
+    if (vb) { camViewOf(vb.dataset.view, ctlSelected || -1); return; }
+    const st = e.target.closest('[data-view-step]');
+    if (st) {
+      // The next or previous of our aircraft in the air or moving, then select it.
+      const list = ctlViews.filter((v) => !v.done);
+      if (!list.length) return;
+      const i = list.findIndex((v) => v.id === ctlSelected);
+      const next = list[(i + Number(st.dataset.viewStep) + list.length) % list.length];
+      const onView = camView && camView.mode === 'view', same = next.id === ctlSelected;
+      select(next.id); // on a view already, a new selection moves it there
+      if (!onView || same) camViewOf(onView && camView.shot ? camView.shot : 'chase', next.id);
+      return;
+    }
     if (e.target.closest('[data-scene-play]')) {
       if (camView && camView.mode === 'scene') { camPost('/api/camera', { mode: 'off' }); return; }
       if (!data) { toast('Load an airport first', 'err'); return; }
@@ -156,6 +178,8 @@ function initDirector() {
   });
   updateDirector();
 }
+// camViewOf puts the camera on a fixed view of aircraft id (-1: the user's).
+function camViewOf(view, id) { camPost('/api/camera', { mode: 'view', view, id }); }
 async function camPost(path, body) {
   if (!needSim('Camera')) return;
   const r = await send(path, body || {});
@@ -175,18 +199,19 @@ async function pollCamera() {
 function updateDirector() {
   const v = camView, mode = v ? v.mode : 'off', playing = mode === 'scene';
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.cam === mode)));
+  $$('[data-view]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'view' && !!v && b.dataset.view === v.shot)));
   $$('[data-scene-play]').forEach((b) => {
     b.className = `btn ${playing ? 'btn--danger' : 'btn--primary'}`;
     b.innerHTML = `${icon(playing ? 'i-stop' : 'i-play', 'ic ic--sm')}<span>${playing ? 'Stop' : 'Play'}</span>`;
   });
   const info = !v ? (simLive ? 'Camera not available.' : 'The camera needs the simulator (not connected).')
     : v.mode === 'off' ? 'The simulator camera is yours.'
-    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
+    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
   $$('[data-cam-info]').forEach((i) => { i.textContent = info; });
   const chip = $('camBtn');
   chip.classList.toggle('chip--onair', playing);
   const scene = playing && scenes.find((s) => s.key === document.querySelector('[data-scene]').value);
-  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : { off: 'Off', auto: 'Auto', follow: 'Follow' }[mode] || mode;
+  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : { off: 'Off', auto: 'Auto', follow: 'Follow', view: 'View' }[mode] || mode;
 }
 
 /* ───────────── ATC game ───────────── */
