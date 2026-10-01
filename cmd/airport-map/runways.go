@@ -321,8 +321,15 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		said = it.rushed(said)
 		t.mu.Lock()
 		done := t.given[tail+" "+action]
+		_, behind := t.behind[tail]
 		t.mu.Unlock()
 		if done {
+			return
+		}
+		// Told to line up behind a landing aircraft: no other line-up or
+		// take-off until it has passed (lineUpBehind) — live, EZY866 was
+		// cleared for take-off 14 s after its conditional line-up.
+		if behind && (action == "takeoff" || action == "lineup") {
 			return
 		}
 		// Said here: the state change it causes is not logged again.
@@ -385,6 +392,33 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	for _, cs := range c.Takeoff {
 		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return it.dep.ClearForTakeoff() })
+	}
+	// Cleared for take-off but not rolling yet, and the runway is no longer
+	// free — someone on it, or an arrival inside the minimum (a slow line-up):
+	// the clearance is cancelled; it is cleared again once free (Doc 4444
+	// 12.3.4.11 c).
+	for cs, why := range c.Waiting {
+		it := ours[cs]
+		if it == nil || it.dep == nil || it.gates.Load() || !strings.Contains(why, "on the runway") && !strings.Contains(why, "NM final") {
+			continue
+		}
+		it.mu.Lock()
+		state := it.view.State
+		it.mu.Unlock()
+		t.mu.Lock()
+		cleared := t.given[cs+" takeoff"]
+		if cleared && (state == "lining up" || state == "lined up") {
+			delete(t.given, cs+" takeoff")
+		}
+		t.mu.Unlock()
+		if !cleared || state != "lining up" && state != "lined up" {
+			continue
+		}
+		it.say(traffic.CancelTakeoff(cs))
+		tlog.printf("%-6s take-off clearance cancelled — %s", cs, why)
+		if err := t.cc.do(func() error { return it.dep.AbortTakeoff() }); err != nil {
+			tlog.printf("%-6s cancel take-off refused: %v", cs, err)
+		}
 	}
 	// The next arrival, the runway free: cleared to land (#462); on the
 	// landing roll it is told to call ground when vacated.
