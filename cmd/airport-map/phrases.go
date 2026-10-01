@@ -61,6 +61,20 @@ func squawkFor(cs string) string {
 	return fmt.Sprintf("4%03o", n)
 }
 
+// validSquawk: four octal digits, not an emergency code (7500 unlawful
+// interference, 7600 radio failure, 7700 emergency).
+func validSquawk(s string) bool {
+	if len(s) != 4 || s == "7500" || s == "7600" || s == "7700" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '7' {
+			return false
+		}
+	}
+	return true
+}
+
 // initialClimbSaid is the initial climb of a departure on sid with limits
 // lim as said (Limits.InitialClimbFor: by SID, else the airport's, else
 // FL100), a level against the transition altitude.

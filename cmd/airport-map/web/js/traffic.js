@@ -283,7 +283,8 @@ function renderCtx() {
   }
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : esc(v.atc)) : '';
   h += `<section class="ctx__sec"><dl class="kv">
-    <dt>Route</dt><dd class="mono">${esc(routeText(v))}</dd>
+    <dt>Route</dt><dd class="mono">${esc(routeText(v))}</dd>${v.squawk ? `
+    <dt>Squawk</dt><dd class="mono">${esc(v.squawk)}</dd>` : ''}
     ${entryRow(v)}
     ${v.procedure ? `<dt>Procedure</dt><dd class="mono">${esc(v.procedure)}</dd>` : ''}
     ${freq ? `<dt>Frequency</dt><dd>${freq}</dd>` : ''}
@@ -517,7 +518,7 @@ async function ctlSpawn() {
   if (!needSim('Spawn')) { $('cInfo').innerHTML = '<span class="err-text">Spawning needs the simulator (not connected).</span>'; return; }
   const num = (id) => { const s = $(id).value.trim(); return s === '' || !isFinite(Number(s)) ? undefined : Number(s); };
   const body = {
-    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: selectedRunway(), model: $('cModel').value, tail: $('cTail').value.trim().toUpperCase(),
+    kind, icao: data.icao, stand: auto ? -1 : routeFrom.index, runway: selectedRunway(), model: $('cModel').value, tail: $('cTail').value.trim().toUpperCase(), squawk: $('cSquawk').value.trim(),
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
