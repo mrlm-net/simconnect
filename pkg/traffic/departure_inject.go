@@ -350,6 +350,13 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
 	c.last.Remaining = math.Max(0, c.mover.Path().Length()-pose.Distance)
 	if c.state != TaxiPushback {
+		// The taxiway it is on: said in its reports ("holding short of
+		// runway 12 at F").
+		if c.track != nil {
+			if seg, _ := c.track.advance(pose.Position); seg >= 0 {
+				c.last.Taxiway = c.track.taxiwayAt(seg)
+			}
+		}
 		c.checkCrossing(pose)
 	}
 	c.last.LimitNode = -1

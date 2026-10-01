@@ -27,6 +27,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Injected departures holding short of a runway they are to cross now name their taxiway ("holding short of runway 12 at F", spoken "at foxtrot"). They reported none, because the injected departure never tracked the taxiway it was on.
 - Tugs no longer drive among the aircraft on the taxiways. After the push, a tug drives back over the stand the aircraft has left and onto the closest point of the vehicle road behind it. Driving in, it leaves the road at the point closest to the aircraft (`airport.Layout.VehicleRoute` joins the nearest vehicle road within `VehicleRoadReachM`, 150 m; `NearVehicleRoad`).
 - Website: the airport map's run command is `cd cmd/airport-map && go run .`, and its GitHub link points to `cmd/airport-map`.
 
