@@ -1051,3 +1051,22 @@ body.full .panel, body.full .ctx { display: none; }
 .chip--as { gap: 4px; }
 .chip--as select { background: transparent; border: 0; color: inherit; font: inherit; padding: 0 2px; cursor: pointer; }
 select option { background: var(--surface); color: var(--text); }
+
+/* The simulator gone: a blurred map and a radar scope with a plane in the hold. */
+.lost { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 16px;
+  background: color-mix(in srgb, var(--bg) 45%, transparent); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
+  animation: fade-in var(--t-med) var(--ease); }
+.lost[hidden] { display: none; }
+.lost__card { width: min(420px, 100%); text-align: center; padding: 28px 24px 22px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-4); box-shadow: var(--shadow-2); }
+.lost__scope { width: 168px; height: 168px; display: block; margin: 0 auto 14px; color: var(--accent); }
+.lost__rings { opacity: .35; stroke-width: 1; }
+.lost__sweep { transform-origin: 100px 100px; animation: lost-sweep 3.2s linear infinite; }
+.lost__plane { color: var(--text); }
+.lost__q { font: 700 22px var(--font-sans); fill: var(--warn); animation: lost-blink 1.6s ease-in-out infinite; }
+.lost__card h2 { font-size: var(--fs-xl); margin-bottom: 6px; }
+.lost__quip { color: var(--text-2); min-height: 2.8em; margin: 0 0 10px; transition: opacity var(--t-med); }
+.lost__quip.is-out { opacity: 0; }
+.lost__meta { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: var(--fs-sm); color: var(--text-3); margin: 0 0 16px; }
+@keyframes lost-sweep { to { transform: rotate(360deg); } }
+@keyframes lost-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lost__sweep, .lost__q { animation: none; } }

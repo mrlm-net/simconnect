@@ -112,6 +112,13 @@ function normalize(d) {
   d.taxiNames = d.taxiNames || [];
   return d;
 }
+// fitAirport shows the whole airport: its taxiways and stands, as on load.
+function fitAirport() {
+  if (!data) return;
+  const pts = [...data.taxiPoints, ...data.parking].map((p) => [p.lat, p.lon]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.05));
+  else map.setView([data.lat, data.lon], 14);
+}
 async function load(icao, refresh) {
   icao = icao.trim().toUpperCase();
   if (!icao) return;
@@ -140,9 +147,7 @@ async function load(icao, refresh) {
     (unresolvedPaths ? `<br><span class="err-text">${unresolvedPaths} paths with an out-of-range endpoint (red rings)</span>` : '') +
     `<br>Fetched ${new Date(data.fetchedAt).toLocaleString()}`;
   st.textContent = `Loaded ${data.icao}: ${data.runways.length} runways, ${data.parking.length} stands, ${data.taxiPoints.length} taxi points`;
-  const pts = [...data.taxiPoints, ...data.parking].map((p) => [p.lat, p.lon]);
-  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.05));
-  else map.setView([data.lat, data.lon], 14);
+  fitAirport();
   history.replaceState(null, '', `?icao=${data.icao}`);
   fillRunwayEnds();
   resetProcedures();
@@ -322,6 +327,8 @@ function boot() {
 
   $('zoomIn').addEventListener('click', () => map.zoomIn());
   $('zoomOut').addEventListener('click', () => map.zoomOut());
+  $('fitAirport').addEventListener('click', fitAirport);
+  $('lostDismiss').addEventListener('click', () => { lostDismissed = true; updateLost(); });
   $('locateMe').addEventListener('click', () => {
     if (lastOwn) locate(lastOwn.lat, lastOwn.lon, 'You');
     else toast('Your aircraft is not reported (simulator not connected?)');

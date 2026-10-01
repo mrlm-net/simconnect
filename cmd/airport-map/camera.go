@@ -76,10 +76,12 @@ type cameraMan struct {
 	// lookAt: in the tower, when to look for another aircraft to watch
 	// (its view holds meanwhile, turning with its aircraft).
 	lookAt time.Time
+	// sim switches the simulator's own cameras.
+	sim *simCamera
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
-	m := &cameraMan{cc: cc, mode: "off"}
+	m := &cameraMan{cc: cc, mode: "off", sim: &simCamera{client: client}}
 	if e, ok := client.(*engine.Engine); ok {
 		m.dir = camera.NewDirector(e, "airport-map")
 		m.dir.OnShot(func(s camera.Shot) {
@@ -505,6 +507,10 @@ type cameraView struct {
 	Shot     string `json:"shot,omitempty"`
 	Acquired bool   `json:"acquired"`
 	Error    string `json:"error,omitempty"`
+	// Sim is the simulator camera last set from the map ("" none), SimView
+	// its view index.
+	Sim     string `json:"sim,omitempty"`
+	SimView int    `json:"simView,omitempty"`
 }
 
 func (m *cameraMan) view() cameraView {
@@ -513,6 +519,9 @@ func (m *cameraMan) view() cameraView {
 	v := cameraView{Mode: m.mode, Subject: m.subject, Shot: m.shot, Error: m.err}
 	if m.dir != nil {
 		v.Acquired = m.dir.Acquired()
+	}
+	if m.sim != nil && m.mode == "off" {
+		v.Sim, v.SimView = m.sim.current()
 	}
 	return v
 }
@@ -542,9 +551,21 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			Mode string `json:"mode"`
 			ID   int    `json:"id"`
 			View string `json:"view"` // mode view: chase, cockpit, wing, front, top, tower; id -1 my aircraft
+			// Mode sim: the simulator's own camera (simCameraStates), or
+			// with none Step through its views.
+			Sim  string `json:"sim"`
+			Step int    `json:"step"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.EqualFold(req.Mode, "sim") {
+			if err := m.setSim(strings.ToLower(req.Sim), req.Step); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			writeJSON(w, m.view())
 			return
 		}
 		if strings.EqualFold(req.Mode, "view") {

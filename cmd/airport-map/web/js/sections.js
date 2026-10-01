@@ -29,6 +29,37 @@ function updateConn() {
   $('moreConn').innerHTML = `<span class="dot ${simLive ? 'dot--ok' : 'dot--off'}"></span> ${simLive ? 'connected' : 'not connected'}`;
   if (was !== simLive) { renderStrips(); updateDirector(); pollers.forEach((p) => p.now()); }
 }
+
+// The simulator gone: the map blurs behind a dialog with a plane in the
+// hold and something to read, until it is back (or dismissed).
+const LOST_QUIPS = [
+  'Holding at LOST, expect further clearance… eventually.',
+  'The tower is calling. Nobody is answering. Classic.',
+  'Your aircraft went for a coffee. We will wait.',
+  'Squawking 7600 with the simulator. Radio failure, both ways.',
+  'Even the ATIS stopped talking. Information Silence.',
+  'Did someone trip over the cable? Asking for a friend.',
+  'Approach is vectoring the simulator back. Expect a long downwind.',
+];
+let lostSince = 0, lostDismissed = false, lostQuip = 0;
+function updateLost() {
+  const el = $('lostOverlay');
+  if (simLive) { lostSince = 0; lostDismissed = false; el.hidden = true; return; }
+  if (!lostSince) lostSince = Date.now();
+  // A moment first: on load the simulator answers within a second or two.
+  el.hidden = lostDismissed || Date.now() - lostSince < 3000;
+  const s = Math.floor((Date.now() - lostSince) / 1000);
+  $('lostFor').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+setInterval(() => {
+  updateLost();
+  // Another line every 7 s, faded.
+  if (!$('lostOverlay').hidden && Math.floor(Date.now() / 1000) % 7 === 0) {
+    const q = $('lostQuip');
+    q.classList.add('is-out');
+    setTimeout(() => { lostQuip = (lostQuip + 1) % LOST_QUIPS.length; q.textContent = LOST_QUIPS[lostQuip]; q.classList.remove('is-out'); }, 250);
+  }
+}, 1000);
 // offlineStates says "not connected" where the simulator is missing, and
 // forgets what came from it.
 function offlineStates() {
@@ -126,15 +157,15 @@ let camView = null; // GET /api/camera; null: not connected
 let scenes = [];
 const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="seg" role="radiogroup" aria-label="Camera mode" title="The simulator's camera on our traffic">
-      <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button>
+      <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected whoever is on the radio">Tower</button>
     </div></div>
-  <div class="field"><span class="field__lbl">View</span>
-    <div class="director__row" title="A fixed view of the selected aircraft (none selected: your own); ◀ ▶ switch between aircraft">
-      <button type="button" class="btn btn--sm" data-view-step="-1" aria-label="Previous aircraft">◀</button>
-      <div class="seg" role="radiogroup" aria-label="Camera view">
-        <button type="button" role="radio" data-view="chase">Chase</button><button type="button" role="radio" data-view="cockpit">Cockpit</button><button type="button" role="radio" data-view="wing">Wing</button><button type="button" role="radio" data-view="front">Front</button><button type="button" role="radio" data-view="top">Top</button><button type="button" role="radio" data-view="tower" title="From the airport's tower: the selected aircraft, or with none selected whoever is on the radio">Tower</button>
+  <div class="field"><span class="field__lbl">Simulator camera</span>
+    <div class="director__row" title="The simulator's own cameras, on your aircraft (Traffic: one the simulator picks); ◀ ▶ the camera's views">
+      <button type="button" class="btn btn--sm" data-sim-step="-1" aria-label="Previous view">◀</button>
+      <div class="seg" role="radiogroup" aria-label="Simulator camera">
+        <button type="button" role="radio" data-sim="cockpit">Cockpit</button><button type="button" role="radio" data-sim="chase">Chase</button><button type="button" role="radio" data-sim="fixed" title="Fixed on the plane">Fixed</button><button type="button" role="radio" data-sim="drone">Drone</button><button type="button" role="radio" data-sim="topdown">Top-down</button><button type="button" role="radio" data-sim="showcase" title="The airport's fixed cameras">Showcase</button><button type="button" role="radio" data-sim="traffic" title="Follows air traffic: the simulator picks the aircraft">Traffic</button>
       </div>
-      <button type="button" class="btn btn--sm" data-view-step="1" aria-label="Next aircraft">▶</button>
+      <button type="button" class="btn btn--sm" data-sim-step="1" aria-label="Next view">▶</button>
     </div></div>
   <div class="field"><span class="field__lbl">Scene</span>
     <div class="director__row">
@@ -146,21 +177,13 @@ function initDirector() {
   $$('[data-director]').forEach((d) => { d.innerHTML = DIRECTOR_HTML; });
   document.addEventListener('click', (e) => {
     const c = e.target.closest('[data-cam]');
+    if (c && c.dataset.cam === 'tower') { camViewOf('tower', ctlSelected || -1); return; }
     if (c) { camPost('/api/camera', { mode: c.dataset.cam, id: ctlSelected || 0 }); return; }
-    const vb = e.target.closest('[data-view]');
-    if (vb) { camViewOf(vb.dataset.view, ctlSelected || -1); return; }
-    const st = e.target.closest('[data-view-step]');
-    if (st) {
-      // The next or previous of our aircraft in the air or moving, then select it.
-      const list = ctlViews.filter((v) => !v.done);
-      if (!list.length) return;
-      const i = list.findIndex((v) => v.id === ctlSelected);
-      const next = list[(i + Number(st.dataset.viewStep) + list.length) % list.length];
-      const onView = camView && camView.mode === 'view', same = next.id === ctlSelected;
-      select(next.id); // on a view already, a new selection moves it there
-      if (!onView || same) camViewOf(onView && camView.shot ? camView.shot : 'chase', next.id);
-      return;
-    }
+    // The simulator's own camera, or a step through its views.
+    const sb = e.target.closest('[data-sim]');
+    if (sb) { camPost('/api/camera', { mode: 'sim', sim: sb.dataset.sim }); return; }
+    const st = e.target.closest('[data-sim-step]');
+    if (st) { camPost('/api/camera', { mode: 'sim', step: Number(st.dataset.simStep) }); return; }
     if (e.target.closest('[data-scene-play]')) {
       if (camView && camView.mode === 'scene') { camPost('/api/camera', { mode: 'off' }); return; }
       if (!data) { toast('Load an airport first', 'err'); return; }
@@ -198,20 +221,22 @@ async function pollCamera() {
 }
 function updateDirector() {
   const v = camView, mode = v ? v.mode : 'off', playing = mode === 'scene';
-  $$('[data-cam]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.cam === mode)));
-  $$('[data-view]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'view' && !!v && b.dataset.view === v.shot || mode === 'tower' && b.dataset.view === 'tower')));
+  // The tower: its own mode with none selected, a held view with one.
+  const tower = mode === 'tower' || mode === 'view' && !!v && v.shot === 'tower';
+  $$('[data-cam]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.cam === 'tower' ? tower : b.dataset.cam === mode && !(mode === 'off' && v && v.sim))));
+  $$('[data-sim]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'off' && !!v && b.dataset.sim === v.sim)));
   $$('[data-scene-play]').forEach((b) => {
     b.className = `btn ${playing ? 'btn--danger' : 'btn--primary'}`;
     b.innerHTML = `${icon(playing ? 'i-stop' : 'i-play', 'ic ic--sm')}<span>${playing ? 'Stop' : 'Play'}</span>`;
   });
   const info = !v ? (simLive ? 'Camera not available.' : 'The camera needs the simulator (not connected).')
-    : v.mode === 'off' ? 'The simulator camera is yours.'
+    : v.mode === 'off' ? (v.sim ? `Simulator camera: ${v.sim}${v.simView ? ', view ' + (v.simView + 1) : ''}` : 'The simulator camera is yours.')
     : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? 'Tower: turns to who is on the radio' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
   $$('[data-cam-info]').forEach((i) => { i.textContent = info; });
   const chip = $('camBtn');
   chip.classList.toggle('chip--onair', playing);
   const scene = playing && scenes.find((s) => s.key === document.querySelector('[data-scene]').value);
-  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : { off: 'Off', auto: 'Auto', follow: 'Follow', view: 'View', tower: 'Tower' }[mode] || mode;
+  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : (mode === 'off' && v && v.sim ? 'Sim' : tower ? 'Tower' : { off: 'Off', auto: 'Auto', follow: 'Follow', view: 'View', tower: 'Tower' }[mode] || mode);
 }
 
 /* ───────────── ATC game ───────────── */
