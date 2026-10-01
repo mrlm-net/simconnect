@@ -250,6 +250,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Frame):", err)
 	}
+	if e, ok := client.(*engine.Engine); ok {
+		e.SetSystemEventState(evFrame, types.SIMCONNECT_STATE_OFF) // on with the camera
+	}
 	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Pause):", err)
 	}
@@ -367,6 +370,15 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		st.mu.Unlock()
 	}()
 	cam := newCameraMan(cc, client)
+	cam.frames = func(on bool) {
+		state := types.SIMCONNECT_STATE_OFF
+		if on {
+			state = types.SIMCONNECT_STATE_ON
+		}
+		if e, ok := client.(*engine.Engine); ok {
+			go cc.do(func() error { return e.SetSystemEventState(evFrame, state) })
+		}
+	}
 	// The camera goes back to the simulator however this connection ends:
 	// a camera left acquired stays stuck for the user.
 	defer func() {

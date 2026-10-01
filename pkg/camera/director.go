@@ -48,6 +48,10 @@ type Director struct {
 	// ours (LockWorld); locked once set.
 	lock   *Point
 	locked bool
+	// settle: a cut was made; settleUntil the new shot holds its first
+	// pose until then.
+	settle      bool
+	settleUntil time.Time
 }
 
 // LockWorld keeps the terrain, scenery and objects around p loaded while
@@ -76,7 +80,14 @@ func (d *Director) Play(shots ...Shot) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.queue, d.cur = append([]Shot(nil), shots...), nil
+	d.settle = true
 }
+
+// CutSettle: after a cut the new shot holds its first pose this long before
+// it moves. The simulator's picture takes about a second to settle on a new
+// view (exposure, temporal smoothing, models loading); the move starts once
+// it has, not through it.
+const CutSettle = 600 * time.Millisecond
 
 // Then queues shots after those queued.
 func (d *Director) Then(shots ...Shot) {
@@ -141,7 +152,18 @@ func (d *Director) Tick(now time.Time) error {
 			break
 		}
 		d.cur, d.queue, d.started = d.queue[0], d.queue[1:], now
+		d.settle, d.settleUntil = true, time.Time{} // every new shot is a cut
 		started = d.cur
+	}
+	if d.cur != nil && d.settle {
+		if d.settleUntil.IsZero() {
+			d.settleUntil = now.Add(CutSettle)
+		}
+		if now.Before(d.settleUntil) {
+			d.started = now // time stands still at the shot's start
+		} else {
+			d.settle, d.settleUntil = false, time.Time{}
+		}
 	}
 	pose, ok := d.last, d.havePose
 	if d.cur != nil {
