@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.5] - 2026-10-02
+
+The airport map on a tablet: install it as an app, keep the screen on, and plan a new flight in a window over the map. The panel docks left, right or at the bottom. Tugs drive back over the stand onto the service road instead of along the taxiways among the aircraft. Crossing reports name the taxiway. This is the first version under the Business Source License 1.1.
+
 ### Added
 
 - Airport map: install it as an app on a tablet or phone (web app manifest, icons, a pass-through service worker). A full install needs HTTPS or localhost. Over plain http on the LAN, browsers add a home-screen shortcut instead; on an iPad it still opens full screen.
