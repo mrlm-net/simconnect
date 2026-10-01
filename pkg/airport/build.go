@@ -17,7 +17,7 @@ import (
 var ErrNoData = errors.New("airport: no facility data")
 
 // RawAirport holds undecoded facility records for one airport, in SimConnect
-// list order. Its JSON form matches the dump written by examples/airport-map.
+// list order. Its JSON form matches the dump written by cmd/airport-map.
 type RawAirport struct {
 	ICAO       string         `json:"icao"`
 	Name       string         `json:"name"`

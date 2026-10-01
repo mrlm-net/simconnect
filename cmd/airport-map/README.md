@@ -11,7 +11,7 @@ The layout comes from [`pkg/airport`](../../docs/airport-layout.md): `airport.Lo
 The map is its own module (it speaks through [voice-goio](https://github.com/mrlm-net/voice-goio), and the SDK keeps zero dependencies), so run it from its folder:
 
 ```bash
-cd examples/airport-map
+cd cmd/airport-map
 
 # Live: connect to the simulator and open LKPR
 go run .
@@ -47,7 +47,7 @@ The **Radio** tab's **🔇 Sound off** button turns the voice on: what is said o
 
 The voice needs [piper](https://github.com/rhasspy/piper) and at least one English voice model:
 
-1. Download `piper_windows_amd64.zip` from the [piper releases](https://github.com/rhasspy/piper/releases) and unzip it so that `examples/airport-map/bin/piper/piper.exe` exists (or pass `-piper`).
+1. Download `piper_windows_amd64.zip` from the [piper releases](https://github.com/rhasspy/piper/releases) and unzip it so that `cmd/airport-map/bin/piper/piper.exe` exists (or pass `-piper`).
 2. Download voice models with voice-goio's tool, e.g. `go run github.com/mrlm-net/voice-goio/cmd/voicecheck@v0.3.1 download -model en_GB-alan-medium` (and `en_US-ryan-medium`, `en_GB-vctk-medium` for more voices). `voicecheck voices` lists what is installed.
 
 Without them the button says what is missing and the map stays silent; the ATIS button falls back to the browser's English voice.

@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- The airport map moved from `examples/airport-map` to its own entry point, `cmd/airport-map` (module `github.com/mrlm-net/simconnect/cmd/airport-map`): it is the traffic control app and the SDK's debugger, not an example. Run it with `cd cmd/airport-map && go run .`.
+
 ### Added
 
 - The MSFS 2024 add-on camera (#515): `engine` binds `CameraAcquire`, `CameraSet`, `CameraGet`, `CameraRelease`, the world locker and the rest (`types.SIMCONNECT_DATA_CAMERA`, packed); `pkg/camera` has poses relative to the world, an aircraft or the eyepoint, eased `Move` and spline `Path` shots, drone moves scaled to the aircraft (reveal rise, flyover, spiral descend, lead chase, parallax track, side dolly, head-on pass, top orbit, details of the engines, gear, cockpit, tail and lights) and a `Director` that plays them. Conventions measured live are in `docs/camera.md`.

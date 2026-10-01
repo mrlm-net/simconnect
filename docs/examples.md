@@ -15,7 +15,7 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 
 ![The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab](images/airport-map/traffic.jpg)
 
-[`examples/airport-map`](https://github.com/mrlm-net/simconnect/tree/main/examples/airport-map) serves a live map of an airport on <http://127.0.0.1:8080>. It shows:
+[`cmd/airport-map`](https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map) serves a live map of an airport on <http://127.0.0.1:8080>. It shows:
 
 - **The ground layout** as SimConnect reports it: runways, taxi paths by `TYPE`, taxi points, hold-short points, taxiway names and parking stands. Every feature's popup shows its raw facility index and field values, so the taxi graph can be checked against the data ([Airport Layout](airport-layout.md)).
 - **Taxi routing:** click a stand and pick a runway to see the departure route, its taxiways and runway crossings, or the taxi-in from a runway exit.
@@ -29,16 +29,16 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 
 ```bash
 # Live: connect to the simulator and open LKPR
-cd examples/airport-map && go run .
+cd cmd/airport-map && go run .
 
 # Another airport
-cd examples/airport-map && go run . -icao LOWW
+cd cmd/airport-map && go run . -icao LOWW
 
 # Also save each fetched airport's raw data to <ICAO>.json
-cd examples/airport-map && go run . -dump
+cd cmd/airport-map && go run . -dump
 
 # Offline: serve a saved dump, no simulator needed (layout and routes only)
-cd examples/airport-map && go run . -file LKPR.json
+cd cmd/airport-map && go run . -file LKPR.json
 ```
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Type another ICAO code in the side panel to load it; **↻** fetches it again from the simulator.
@@ -82,7 +82,7 @@ The side panel has one tab per task. The map buttons on the left: **✈** shows 
 
 **?** is the quick reference: every button, clearance and colour on one page.
 
-The example's [README](https://github.com/mrlm-net/simconnect/tree/main/examples/airport-map) lists its HTTP API, which scripts and tests can use too.
+The example's [README](https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map) lists its HTTP API, which scripts and tests can use too.
 
 ## Other examples
 

@@ -35,6 +35,6 @@ jobs:
 
       - name: Scan airport-map module
         run: govulncheck .
-        working-directory: examples/airport-map
+        working-directory: cmd/airport-map
         env:
           GOOS: windows

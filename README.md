@@ -72,10 +72,10 @@ func main() {
 
 ## Examples
 
-Start with the **[airport map](examples/airport-map)**, the SDK's main example and the tool it is debugged with. It shows an airport's ground layout as SimConnect reports it, taxi routes, AI traffic under your control, scheduled airline traffic, the landing sequence, the tower and the ATC game, all built on this SDK:
+Start with the **[airport map](cmd/airport-map)**, the SDK's main example and the tool it is debugged with. It shows an airport's ground layout as SimConnect reports it, taxi routes, AI traffic under your control, scheduled airline traffic, the landing sequence, the tower and the ATC game, all built on this SDK:
 
 ```shell
-cd examples/airport-map && go run .
+cd cmd/airport-map && go run .
 # open http://127.0.0.1:8080/?icao=LKPR
 ```
 

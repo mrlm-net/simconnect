@@ -45,9 +45,9 @@ website/sbom-npm.json
 examples/**/*.gpx
 examples/**/*.csv
 examples/**/*.json
-!examples/airport-map/scenes/*.json
+!cmd/airport-map/scenes/*.json
 
-# Traffic control logs (examples/airport-map -log-dir .)
+# Traffic control logs (cmd/airport-map -log-dir .)
 traffic-*.log
 # piper for the airport map voice
-examples/airport-map/bin/
+cmd/airport-map/bin/
