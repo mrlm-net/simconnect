@@ -44,6 +44,8 @@ type airportInfo struct {
 	Weather     *weatherInfo   `json:"weather,omitempty"`
 	Use         *useInfo       `json:"use,omitempty"`
 	ATIS        *atisInfo      `json:"atis,omitempty"`
+	// ILS: each runway end's, with its frequency (loaded with the airport).
+	ILS []ilsInfo `json:"ils"`
 }
 
 type weatherInfo struct {
@@ -64,13 +66,13 @@ type useInfo struct {
 	Arrival   string `json:"arrival"`
 	// All the runways in use, with parallels used together, and how
 	// ("independent parallel", "segregated"; "" one runway).
-	Departures []string `json:"departures"`
-	Arrivals   []string `json:"arrivals"`
-	Parallel   string   `json:"parallel,omitempty"`
-	HeadwindKts  float64 `json:"headwindKts"`
-	CrosswindKts float64 `json:"crosswindKts"`
-	WithinLimits bool    `json:"withinLimits"`
-	Approach     string  `json:"approach"`
+	Departures   []string `json:"departures"`
+	Arrivals     []string `json:"arrivals"`
+	Parallel     string   `json:"parallel,omitempty"`
+	HeadwindKts  float64  `json:"headwindKts"`
+	CrosswindKts float64  `json:"crosswindKts"`
+	WithinLimits bool     `json:"withinLimits"`
+	Approach     string   `json:"approach"`
 }
 
 type atisInfo struct {
@@ -279,6 +281,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			}
 			out.ATIS = &atisInfo{Letter: nav.Phonetic(a.Letter), Text: a.Text(), Spoken: a.Spoken()}
 		}
+		out.ILS = ilsOf(icao)
 		writeJSON(w, out)
 	})
 }

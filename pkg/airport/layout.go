@@ -67,6 +67,10 @@ type RunwayEnd struct {
 	// Threshold is the start of the runway surface in this direction. Displaced
 	// thresholds are not taken into account.
 	Threshold LatLon `json:"threshold"`
+	// ILS is the ident of the end's ILS and ILSRegion its region (the
+	// facility's VOR record has the frequency), "" without one.
+	ILS       string `json:"ils,omitempty"`
+	ILSRegion string `json:"ilsRegion,omitempty"`
 }
 
 // Parking is a parking spot (gate, ramp or dock).

@@ -69,6 +69,12 @@ type RawRunway struct {
 	PrimaryDesignator   int32   `json:"primaryDesignator"`
 	SecondaryNumber     int32   `json:"secondaryNumber"`
 	SecondaryDesignator int32   `json:"secondaryDesignator"`
+	// Each end's ILS (PRIMARY_ILS_ICAO, _REGION): its ident and region, ""
+	// without one.
+	PrimaryILS         string `json:"primaryIls,omitempty"`
+	PrimaryILSRegion   string `json:"primaryIlsRegion,omitempty"`
+	SecondaryILS       string `json:"secondaryIls,omitempty"`
+	SecondaryILSRegion string `json:"secondaryIlsRegion,omitempty"`
 }
 
 // RawParking is a TAXI_PARKING record: NAME, SUFFIX, NUMBER, TYPE, HEADING,
@@ -196,11 +202,11 @@ func buildRunway(i int, r RawRunway) Runway {
 		Width:    float64(r.Width),
 		Primary: RunwayEnd{
 			Number: r.PrimaryNumber, Designator: pDes, Name: runwayEndName(r.PrimaryNumber, pDes),
-			Heading: hdg, Threshold: LatLon{Lat: pLat, Lon: pLon},
+			Heading: hdg, Threshold: LatLon{Lat: pLat, Lon: pLon}, ILS: r.PrimaryILS, ILSRegion: r.PrimaryILSRegion,
 		},
 		Secondary: RunwayEnd{
 			Number: r.SecondaryNumber, Designator: sDes, Name: runwayEndName(r.SecondaryNumber, sDes),
-			Heading: math.Mod(hdg+180, 360), Threshold: LatLon{Lat: sLat, Lon: sLon},
+			Heading: math.Mod(hdg+180, 360), Threshold: LatLon{Lat: sLat, Lon: sLon}, ILS: r.SecondaryILS, ILSRegion: r.SecondaryILSRegion,
 		},
 	}
 }

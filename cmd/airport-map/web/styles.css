@@ -469,6 +469,9 @@ button.chip:hover { border-color: var(--border-strong); background: var(--surfac
 .director__row select { flex: 1; min-width: 0; }
 .director__row .seg { flex: 1; min-width: 0; flex-wrap: wrap; }
 .director__row .seg > button { flex: 1 0 30%; }
+/* The camera modes wrap inside the popover, never past its edge. */
+[data-director] .seg { flex-wrap: wrap; min-width: 0; }
+[data-director] .seg > button { flex: 1 0 auto; }
 .director__info { font-size: var(--fs-sm); color: var(--text-3); min-height: 1.4em; }
 
 /* Workspace */
@@ -1051,6 +1054,11 @@ body.full .panel, body.full .ctx { display: none; }
 .chip--as { gap: 4px; }
 .chip--as select { background: transparent; border: 0; color: inherit; font: inherit; padding: 0 2px; cursor: pointer; }
 select option { background: var(--surface); color: var(--text); }
+
+/* The tower on the map, and placing it. */
+.m-tower { display: grid; place-items: center; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text-2); color: var(--text); box-shadow: var(--shadow-1); }
+.m-tower .ic { width: 15px; height: 15px; }
+.leaflet-container.is-placing { cursor: crosshair; }
 
 /* The simulator gone: a blurred map and a radar scope with a plane in the hold. */
 .lost { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 16px;

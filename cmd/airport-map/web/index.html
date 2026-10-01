@@ -485,6 +485,17 @@
         </div>
 
         <div class="card">
+          <div class="card__head"><h3>Tower</h3><span class="muted small" id="twSource"></span></div>
+          <label class="field"><span class="field__lbl">Cab above the airfield</span>
+            <span class="row gap-2"><input type="range" id="twCab" min="10" max="250" step="5" value="70" aria-describedby="twCabVal" style="flex:1"><span class="mono" id="twCabVal">70 m</span></span></label>
+          <div class="row gap-2">
+            <button type="button" class="btn btn--sm btn--toggle" id="twPlace" aria-pressed="false" title="Then click the tower on the map">Place on the map</button>
+            <button type="button" class="btn btn--sm" id="twReset" title="Back to the airport's own tower position and the default height">Reset</button>
+          </div>
+          <p class="small muted" id="twPos"></p>
+        </div>
+
+        <div class="card">
           <div class="card__head"><h3>Weather</h3><span class="muted small">at your aircraft</span></div>
           <div id="apWx" class="small muted">—</div>
         </div>

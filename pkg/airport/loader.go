@@ -4,6 +4,7 @@
 package airport
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -112,7 +113,8 @@ type loadState struct {
 var loaderDefinitions = [][]string{
 	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "TOWER_LATITUDE", "TOWER_LONGITUDE", "TOWER_ALTITUDE", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN RUNWAY", "LATITUDE", "LONGITUDE", "ALTITUDE", "HEADING", "LENGTH", "WIDTH",
-		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR", "CLOSE RUNWAY", "CLOSE AIRPORT"},
+		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR",
+		"PRIMARY_ILS_ICAO", "PRIMARY_ILS_REGION", "SECONDARY_ILS_ICAO", "SECONDARY_ILS_REGION", "CLOSE RUNWAY", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_PARKING", "NAME", "SUFFIX", "NUMBER", "TYPE", "HEADING", "RADIUS", "BIAS_X", "BIAS_Z",
 		"OPEN AIRLINE", "NAME", "CLOSE AIRLINE", "CLOSE TAXI_PARKING", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_POINT", "TYPE", "ORIENTATION", "BIAS_X", "BIAS_Z", "CLOSE TAXI_POINT", "CLOSE AIRPORT"},
@@ -372,8 +374,9 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 	}
 }
 
-// runwayWireSize is the packed RUNWAY record: 3×f64, 3×f32, 4×i32.
-const runwayWireSize = 52
+// runwayWireSize is the packed RUNWAY record: 3×f64, 3×f32, 4×i32, then
+// each end's ILS: ICAO and REGION, 8 characters each.
+const runwayWireSize = 84
 
 // decodeRunway reads the packed RUNWAY record field by field; the 52-byte
 // record would be read past its end by a cast to an 8-byte aligned struct.
@@ -386,7 +389,17 @@ func decodeRunway(data *types.DWORD) RawRunway {
 		Latitude: f64(0), Longitude: f64(8), Altitude: f64(16),
 		Heading: f32(24), Length: f32(28), Width: f32(32),
 		PrimaryNumber: i32(36), PrimaryDesignator: i32(40), SecondaryNumber: i32(44), SecondaryDesignator: i32(48),
+		PrimaryILS: wireString(b[52:60]), PrimaryILSRegion: wireString(b[60:68]),
+		SecondaryILS: wireString(b[68:76]), SecondaryILSRegion: wireString(b[76:84]),
 	}
+}
+
+// wireString is a fixed-size character field: up to its first NUL, trimmed.
+func wireString(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	return strings.TrimSpace(string(b))
 }
 
 // setAt stores v at index i, growing s as needed, so list items land at their

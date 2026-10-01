@@ -18,10 +18,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
   Crossing runways are never used together. `RunwayLimits.Parallel` sets an airport's own mode. The ATIS names every runway in use.
 - Airport map: with parallels in use, a departure takes the runway nearest its stand, and an arrival the one with fewer arrivals in its sequence, with a stand near it. Dependent finals keep 2 NM diagonally (`SequencerOptions.DiagonalNM`, `ApproachAircraft.Runway`). After a runway change, only flights on a runway no longer in use move. The runway chip shows every runway in use ("26L+26R").
-- Airport map: tower view from the airport's real tower (facility `TOWER_*`, now in `airport.Layout`). It follows the selected aircraft or, with none selected, whoever is on the radio.
 - Airport map: a map button shows the whole airport again, as after loading.
 - Airport map: with the simulator gone, the map blurs behind a dialog: a radar scope with a plane in the hold, a rotating funny line, how long it has been gone, and a way to look at the map anyway.
-- Airport map: the simulator's own cameras. Cockpit, chase, fixed, drone, top-down, showcase and traffic, with ◀ ▶ through their views, set with `CAMERA STATE` and `CAMERA VIEW TYPE AND INDEX`. Tower is a camera mode; the add-on fixed views are no longer offered in the director.
+- Airport map: the simulator's own cameras: cockpit, chase, drone, fixed and free, with ◀ ▶ through their views (`CAMERA STATE` and `CAMERA VIEW TYPE AND INDEX`, the values measured live). Tower is a camera mode; the add-on fixed views are no longer offered in the director. When our camera is released, the simulator's camera returns to what it was.
+- Airport map: the tower can be placed on the map and its cab height set (Airport tab, saved per airport). With no aircraft selected, the tower camera looks round the airfield in a slow swing. LKPR's tower is known (`airport.Limits.Tower`); the facility puts it elsewhere.
+- Airport map: the ILS of each runway end, with its frequency, loaded from the simulator. `airport.RunwayEnd.ILS` and `ILSRegion` come from the RUNWAY record, the frequency and name from the navaid record (LKPR: 24 PR 109.10). Shown in the Airport tab, and in `/api/airportinfo` as `ils`.
 
 ### Fixed
 
