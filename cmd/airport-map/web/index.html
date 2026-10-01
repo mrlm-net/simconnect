@@ -304,96 +304,8 @@
             <span class="sr-only">Filter aircraft</span>
             <input type="search" id="stripFilter" placeholder="Filter call sign, stand, runway" autocomplete="off" title="Filters the list; Enter goes to the aircraft (selects it, centres the map)">
           </label>
-          <button type="button" class="btn btn--primary" id="newFlightBtn" aria-expanded="false" aria-controls="newFlight"><svg class="ic"><use href="#i-plus"/></svg>New flight</button>
+          <button type="button" class="btn btn--primary" id="newFlightBtn" aria-expanded="false" aria-controls="nfModal"><svg class="ic"><use href="#i-plus"/></svg>New flight</button>
         </div>
-
-        <form class="card nf dep" id="newFlight" hidden aria-label="New flight" autocomplete="off">
-          <div class="card__head">
-            <h3>New flight</h3>
-            <button type="button" class="btn btn--icon btn--ghost" data-close-nf aria-label="Close" title="Close (the picked stand stays)"><svg class="ic"><use href="#i-x"/></svg></button>
-          </div>
-          <div class="seg" role="radiogroup" aria-label="Kind">
-            <button type="button" role="radio" aria-checked="true" data-kind="dep">Departure</button>
-            <button type="button" role="radio" aria-checked="false" data-kind="arr">Arrival</button>
-          </div>
-          <div class="grid2">
-            <div class="field">
-              <span class="field__lbl" id="rStandLbl">From stand</span>
-              <div class="pickbox"><span class="mono strong" id="rFrom">—</span><span class="muted small" id="rFromHint">click a stand on the map</span></div>
-              <label class="check small"><input type="checkbox" id="cAutoStand"> Free stand</label>
-            </div>
-            <label class="field">
-              <span class="field__lbl">Runway</span>
-              <select class="input" id="rTo" title="Active: the runway in use from the weather, followed when it changes; or pick one"></select>
-            </label>
-            <label class="field">
-              <span class="field__lbl" id="rPickLbl">Entry</span>
-              <select class="input" id="rPick"></select>
-            </label>
-            <label class="field">
-              <span class="field__lbl">Flight plan <span class="muted">(optional)</span></span>
-              <span class="fp" title="Optional. The loaded airport is always one end. A departure flies the SID, airways and cruise level to the airport you type; an arrival comes from it and appears at the STAR entry on that side. Empty: no flight plan.">
-                <span class="mono dep-only fpHere"></span><span class="dep-only" aria-hidden="true">→</span>
-                <input class="input mono upper" id="cOther" placeholder="ICAO" maxlength="4" list="airportList" aria-label="Destination (departure) or origin (arrival)">
-                <span class="arr-only" aria-hidden="true">→</span><span class="mono arr-only fpHere"></span>
-              </span>
-            </label>
-          </div>
-          <div class="field">
-            <span class="field__lbl">Aircraft <span class="muted" id="cModelCount"></span></span>
-            <div class="combo">
-              <input class="input" type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="modelMenu" aria-label="Aircraft model" title="Type to search the simulator's aircraft (all words must match)">
-              <button type="button" class="btn btn--icon" id="cModelOpen" aria-label="Show all models" title="Show all models"><svg class="ic"><use href="#i-chev"/></svg></button>
-              <div id="modelMenu" class="combo-menu" role="listbox" hidden></div>
-            </div>
-          </div>
-          <label class="field">
-            <span class="field__lbl">Call sign</span>
-            <input class="input mono upper" id="cTail" placeholder="auto (next free MAPnn)" maxlength="8" spellcheck="false" title="The call sign, e.g. CSA123; empty: the next free MAPnn">
-          </label>
-          <label class="field">
-            <span class="field__lbl">Squawk</span>
-            <input class="input mono" id="cSquawk" placeholder="auto" maxlength="4" inputmode="numeric" pattern="[0-7]{4}" spellcheck="false" title="The departure's transponder code, four octal digits (0–7); empty: its own">
-          </label>
-          <details class="disclosure">
-            <summary>Options <span class="muted small" id="optSummary"></span></summary>
-            <div class="stack">
-              <label class="check"><input type="checkbox" id="cGates" checked> <span class="check__txt" id="cGatesLbl">Hold at every clearance</span></label>
-              <label class="check dep-only"><input type="checkbox" id="cTug" checked> Pushback tug</label>
-              <div class="tug dep-only" id="tugBox">
-                <label class="field"><span class="field__lbl">Tug model <span class="muted">(empty: default)</span></span><input class="input" id="cTugTitle" placeholder="default GSX tug" spellcheck="false"></label>
-                <div class="grid2 grid2--tight">
-                  <label class="field"><span class="field__lbl">Tug yaw °</span><input class="input mono" type="number" id="cTugYaw" step="1" placeholder="default" title="Tug heading against the aircraft, degrees"></label>
-                  <label class="field"><span class="field__lbl">Ahead of nose gear m</span><input class="input mono" type="number" id="cTugAhead" step="0.1" placeholder="default" title="Tug reference point ahead of the nose gear, meters"></label>
-                </div>
-              </div>
-              <label class="check arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach <span class="muted">(off: MSFS AI lands)</span></label>
-              <label class="check arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input class="input input--num mono" type="number" id="cDwell" value="90" min="10" step="10" aria-label="Dwell seconds"> s</label>
-              <label class="check" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach."><input type="checkbox" id="cProc"> Fly the procedures <span class="muted">(SID / STAR and approach)</span></label>
-              <label class="check dep-only">De-icing
-                <select class="input input--inline" id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad</option></select>
-                <input class="input input--num mono" type="number" id="cDeiceSec" value="120" min="10" step="10" aria-label="De-icing seconds"> s</label>
-            </div>
-          </details>
-          <details class="disclosure" id="customBox">
-            <summary>Custom taxi route <span class="muted small" id="customSummary"></span></summary>
-            <div class="stack">
-              <label class="check"><input type="checkbox" id="rViaPick"> Pick via points on the map <span class="muted small">(click a taxiway; a via point removes on click)</span></label>
-              <div class="small mono" id="rVia"></div>
-              <label class="field"><span class="field__lbl">Taxiways, in order</span><input class="input mono upper" id="rTaxiways" placeholder="A, L" spellcheck="false"></label>
-              <label class="check"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
-              <div><button type="button" class="btn btn--sm" id="rCustomClear">Clear</button></div>
-            </div>
-          </details>
-          <div class="nf__foot">
-            <div class="small nf__info" id="rInfo" aria-live="polite"></div>
-            <div class="small nf__info" id="cInfo" aria-live="polite"></div>
-            <div class="row gap-2">
-              <button type="button" class="btn" id="rHide" title="Deselect the stand and hide the planned route (Esc)">Hide route</button>
-              <button type="button" class="btn btn--primary btn--grow" id="cSpawn"><svg class="ic"><use href="#i-play"/></svg><span id="cSpawnLbl">Spawn</span></button>
-            </div>
-          </div>
-        </form>
 
         <p class="note-box" id="trafficNote" hidden></p>
         <div id="strips" class="strips" aria-live="polite"></div>
@@ -569,6 +481,14 @@
             <label><input type="radio" name="base" value="sat"><span>Satellite</span></label>
           </div>
         </div>
+        <div class="card hide-sm">
+          <div class="card__head"><h3>Panel</h3></div>
+          <div class="seg" role="radiogroup" aria-label="Where the panel is docked" id="dockSeg">
+            <label><input type="radio" name="dock" value="left"><span>Left</span></label>
+            <label><input type="radio" name="dock" value="right"><span>Right</span></label>
+            <label><input type="radio" name="dock" value="bottom"><span>Bottom</span></label>
+          </div>
+        </div>
         <div class="card">
           <div class="card__head"><h3>On the map</h3></div>
           <div class="stack stack--tight">
@@ -614,6 +534,109 @@
     </div>
   </aside>
 </main>
+
+<!-- ───────────── New flight: a window over the blurred map ───────────── -->
+<div class="nfm" id="nfModal" role="dialog" aria-modal="true" aria-labelledby="nfTitle" hidden>
+    <form class="card nf dep" id="newFlight" aria-labelledby="nfTitle" autocomplete="off">
+      <div class="card__head">
+        <h3 id="nfTitle">New flight</h3>
+        <button type="button" class="btn btn--icon btn--ghost" data-close-nf aria-label="Close" title="Close (Esc; the picked stand stays)"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="nf__cols">
+      <div class="nf__main">
+      <div class="seg" role="radiogroup" aria-label="Kind">
+        <button type="button" role="radio" aria-checked="true" data-kind="dep">Departure</button>
+        <button type="button" role="radio" aria-checked="false" data-kind="arr">Arrival</button>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <span class="field__lbl" id="rStandLbl">From stand</span>
+          <div class="pickbox"><span class="mono strong" id="rFrom">—</span><span class="muted small" id="rFromHint">click a stand on the map</span><button type="button" class="btn btn--sm" id="rPickStand" title="Hide this window and click a stand on the map"><svg class="ic ic--sm"><use href="#i-map"/></svg>Pick on map</button></div>
+          <label class="check small"><input type="checkbox" id="cAutoStand"> Free stand</label>
+        </div>
+        <label class="field">
+          <span class="field__lbl">Runway</span>
+          <select class="input" id="rTo" title="Active: the runway in use from the weather, followed when it changes; or pick one"></select>
+        </label>
+        <label class="field">
+          <span class="field__lbl" id="rPickLbl">Entry</span>
+          <select class="input" id="rPick"></select>
+        </label>
+        <label class="field">
+          <span class="field__lbl">Flight plan <span class="muted">(optional)</span></span>
+          <span class="fp" title="Optional. The loaded airport is always one end. A departure flies the SID, airways and cruise level to the airport you type; an arrival comes from it and appears at the STAR entry on that side. Empty: no flight plan.">
+            <span class="mono dep-only fpHere"></span><span class="dep-only" aria-hidden="true">→</span>
+            <input class="input mono upper" id="cOther" placeholder="ICAO" maxlength="4" list="airportList" aria-label="Destination (departure) or origin (arrival)">
+            <span class="arr-only" aria-hidden="true">→</span><span class="mono arr-only fpHere"></span>
+          </span>
+        </label>
+      </div>
+      <div class="field">
+        <span class="field__lbl">Aircraft <span class="muted" id="cModelCount"></span></span>
+        <div class="combo">
+          <input class="input" type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="modelMenu" aria-label="Aircraft model" title="Type to search the simulator's aircraft (all words must match)">
+          <button type="button" class="btn btn--icon" id="cModelOpen" aria-label="Show all models" title="Show all models"><svg class="ic"><use href="#i-chev"/></svg></button>
+          <div id="modelMenu" class="combo-menu" role="listbox" hidden></div>
+        </div>
+      </div>
+      <label class="field">
+        <span class="field__lbl">Call sign</span>
+        <input class="input mono upper" id="cTail" placeholder="auto (next free MAPnn)" maxlength="8" spellcheck="false" title="The call sign, e.g. CSA123; empty: the next free MAPnn">
+      </label>
+      <label class="field">
+        <span class="field__lbl">Squawk</span>
+        <input class="input mono" id="cSquawk" placeholder="auto" maxlength="4" inputmode="numeric" pattern="[0-7]{4}" spellcheck="false" title="The departure's transponder code, four octal digits (0–7); empty: its own">
+      </label>
+      </div>
+      <div class="nf__side">
+      <details class="disclosure" open>
+        <summary>Options <span class="muted small" id="optSummary"></span></summary>
+        <div class="stack">
+          <label class="check"><input type="checkbox" id="cGates" checked> <span class="check__txt" id="cGatesLbl">Hold at every clearance</span></label>
+          <label class="check dep-only"><input type="checkbox" id="cTug" checked> Pushback tug</label>
+          <div class="tug dep-only" id="tugBox">
+            <label class="field"><span class="field__lbl">Tug model <span class="muted">(empty: default)</span></span><input class="input" id="cTugTitle" placeholder="default GSX tug" spellcheck="false"></label>
+            <div class="grid2 grid2--tight">
+              <label class="field"><span class="field__lbl">Tug yaw °</span><input class="input mono" type="number" id="cTugYaw" step="1" placeholder="default" title="Tug heading against the aircraft, degrees"></label>
+              <label class="field"><span class="field__lbl">Ahead of nose gear m</span><input class="input mono" type="number" id="cTugAhead" step="0.1" placeholder="default" title="Tug reference point ahead of the nose gear, meters"></label>
+            </div>
+          </div>
+          <label class="check arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach <span class="muted">(off: MSFS AI lands)</span></label>
+          <label class="check arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input class="input input--num mono" type="number" id="cDwell" value="90" min="10" step="10" aria-label="Dwell seconds"> s</label>
+          <label class="check" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach."><input type="checkbox" id="cProc"> Fly the procedures <span class="muted">(SID / STAR and approach)</span></label>
+          <label class="check dep-only">De-icing
+            <select class="input input--inline" id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad</option></select>
+            <input class="input input--num mono" type="number" id="cDeiceSec" value="120" min="10" step="10" aria-label="De-icing seconds"> s</label>
+        </div>
+      </details>
+      <details class="disclosure" id="customBox">
+        <summary>Custom taxi route <span class="muted small" id="customSummary"></span></summary>
+        <div class="stack">
+          <label class="check"><input type="checkbox" id="rViaPick"> Pick via points on the map <span class="muted small">(click a taxiway; a via point removes on click)</span></label>
+          <div class="small mono" id="rVia"></div>
+          <label class="field"><span class="field__lbl">Taxiways, in order</span><input class="input mono upper" id="rTaxiways" placeholder="A, L" spellcheck="false"></label>
+          <label class="check"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
+          <div><button type="button" class="btn btn--sm" id="rCustomClear">Clear</button></div>
+        </div>
+      </details>
+      </div>
+      </div>
+      <div class="nf__foot">
+        <div class="small nf__info" id="rInfo" aria-live="polite"></div>
+        <div class="small nf__info" id="cInfo" aria-live="polite"></div>
+        <div class="row gap-2">
+          <button type="button" class="btn" id="rHide" title="Deselect the stand and hide the planned route (Esc)">Hide route</button>
+          <button type="button" class="btn btn--primary btn--grow" id="cSpawn"><svg class="ic"><use href="#i-play"/></svg><span id="cSpawnLbl">Spawn</span></button>
+        </div>
+      </div>
+    </form>
+</div>
+<!-- Picking on the map for New flight: the window steps aside. -->
+<div class="nfpick" id="nfPick" role="status" hidden>
+  <svg class="ic"><use href="#i-map"/></svg><span id="nfPickMsg">Click a stand on the map</span>
+  <button type="button" class="btn btn--sm btn--primary" id="nfPickBack">Back to New flight</button>
+</div>
+
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 

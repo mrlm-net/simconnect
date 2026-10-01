@@ -17,6 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: a double click of the middle mouse button locks the tower look to the mouse. Moving the mouse turns the view and the wheel zooms it, with no button held. Another middle click or Esc unlocks it.
 - Airport map: Enter in the strip filter selects the first matching aircraft and centres the map on it.
 - Airport map: when the map server stops answering, the lost overlay says so and names the address.
+- Airport map: New flight opens in a window over the blurred map, full screen on a tablet or phone. *Pick on map* and *Pick via points* move it aside for a bar on the map; it comes back when you pick a stand or press Done. Esc or a click outside closes it (the stand stays), and it closes after a spawn.
+- Airport map: dock the panel left, right or at the bottom (Map → Panel), remembered per device. At the bottom, the strips sit in columns. A phone keeps the bottom sheet.
 - Website: copy buttons for the airport map's run command on the landing and examples pages, with the links on their own line.
 
 ### Changed
@@ -25,6 +27,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Tugs no longer drive among the aircraft on the taxiways. After the push, a tug drives back over the stand the aircraft has left and onto the closest point of the vehicle road behind it. Driving in, it leaves the road at the point closest to the aircraft (`airport.Layout.VehicleRoute` joins the nearest vehicle road within `VehicleRoadReachM`, 150 m; `NearVehicleRoad`).
 - Website: the airport map's run command is `cd cmd/airport-map && go run .`, and its GitHub link points to `cmd/airport-map`.
 
 ---

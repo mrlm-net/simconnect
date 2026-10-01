@@ -64,6 +64,7 @@ type SimObjectTug struct {
 	arrive    *GroundMover   // driving in from the depot; nil once at the nose
 	depot     airport.LatLon // where it came from and goes back to
 	haveDepot bool
+	stand     airport.LatLon // the nose gear on the stand, before the push
 	homing    bool // driving back to the depot
 	err       error   // from the takeover, reported by Update
 	done      bool
@@ -130,6 +131,7 @@ func (t *SimObjectTug) Attach(pose GroundPose) error {
 	defer t.mu.Unlock()
 	t.bar, t.haveBar = pose.Heading, true
 	t.pose = t.at(pose)
+	t.stand = NoseGear(pose.Position, pose.Heading, t.prof)
 	// From its depot when it has one: it appears there and drives in.
 	if path, depot, ok := t.inbound(pose); ok {
 		t.arrive, t.depot, t.haveDepot = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
@@ -245,10 +247,18 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		return t.finish() // driven off, or home at the depot
 	}
 	// Backed off: home to the depot along the vehicle roads, where it has
-	// one (it disappears there).
+	// one (it disappears there). With a road near the stand, back through
+	// the stand the aircraft has left and onto the road: not along the
+	// taxiway among the aircraft.
 	if t.haveDepot && !t.homing {
 		p, h := offsetHeading(t.pose.Position, t.pose.Heading, tugProfile().WheelbaseMeters), t.pose.Heading
-		if route, err := t.Layout.VehicleRoute(p, t.depot); err == nil {
+		route, err := t.Layout.VehicleRoute(p, t.depot)
+		if t.Layout.NearVehicleRoad(t.stand) {
+			if via, verr := t.Layout.VehicleRoute(t.stand, t.depot); verr == nil {
+				route, err = append([]airport.LatLon{p}, via...), nil
+			}
+		}
+		if err == nil {
 			if path, err := NewArcPath(route, tugRoadProfile(), 6); err == nil {
 				t.away, t.reversing, t.homing = NewGroundMoverFrom(path, tugRoadProfile(), h, 0), false, true
 				return t.place()

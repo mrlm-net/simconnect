@@ -74,3 +74,39 @@ func onRunwayStrip(r Runway, p LatLon) bool {
 	h := 2 * math.Sqrt(area) / ab
 	return h < r.Width/2
 }
+
+// From a stand with a service road behind it, the way out joins the road
+// straight from the stand: its first leg reaches a vehicle road, not the
+// taxiway in front.
+func TestVehicleRouteJoinsRoad(t *testing.T) {
+	l := loadLKPR(t)
+	g := l.vehicleGraph()
+	if len(g.roads) == 0 {
+		t.Fatal("LKPR has vehicle roads")
+	}
+	joined := 0
+	for i, p := range l.Parking {
+		if p.Type == types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_VEHICLE || !l.NearVehicleRoad(p.Position) {
+			continue
+		}
+		depots := l.VehicleDepots()
+		route, err := l.VehicleRoute(p.Position, l.Parking[depots[0]].Position)
+		if err != nil {
+			continue
+		}
+		onRoad := false
+		for _, r := range g.roads {
+			if distM(route[1], closestOnSegment(route[1], g.pos[r[0]], g.pos[r[1]])) < 1 {
+				onRoad = true
+			}
+		}
+		if !onRoad {
+			t.Errorf("stand %d (%s): the first leg ends off the roads at %v", i, p.Label(), route[1])
+		}
+		joined++
+	}
+	if joined == 0 {
+		t.Error("no stand near a vehicle road")
+	}
+	t.Logf("%d stands join a road", joined)
+}
