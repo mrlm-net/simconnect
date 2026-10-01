@@ -270,10 +270,10 @@ func TestRunwayControllerLineUpBehind(t *testing.T) {
 		t.Fatalf("no arrival: %+v", c)
 	}
 	tx := ClearedLineUpBehind("CSA1", "A320", "24")
-	if tx.Text != "CSA1, behind the landing A320, runway 24, line up and wait behind" {
+	if tx.Text != "CSA1, behind the landing A320, line up and wait runway 24, behind" {
 		t.Errorf("%q", tx.Text)
 	}
-	if rb, _ := Readback(tx); !strings.HasPrefix(rb.Text, "Behind the landing A320, runway 24, line up and wait behind") {
+	if rb, _ := Readback(tx); !strings.HasPrefix(rb.Text, "Behind the landing A320, line up and wait runway 24, behind") {
 		t.Errorf("readback %q", rb.Text)
 	}
 }
