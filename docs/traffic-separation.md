@@ -139,7 +139,7 @@ route := arrival.ProcedureRoute()          // the rest of the STAR as flown now,
 - `AbsorbDelay` sends MSFS AI the new waypoints. A later call adds to what was absorbed: the sequencer sees the slower, longer flight and asks only for the rest.
 - On the final, or when not flying a STAR, it returns `ErrNotOnProcedure`.
 
-On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM". The Approach tab's 🐢 asks for another minute by hand.
+On the airport map, an arrival on its STAR is asked to absorb its delay once the delay reaches 30 s, at most every 90 s, so it has slowed before the delay is looked at again. The log says it as ATC would: "CSA701, number 2, delay 2m10s: 210 kt, +3.2 NM". The Sequence section's 🐢 asks for another minute by hand.
 
 ## Holding
 
@@ -241,7 +241,7 @@ A controller can change what the sequencer and the arrivals do:
 - `ArrivalController.DirectToJoin()` sends an arrival straight to the join point on the final, leaving out the rest of its STAR: a shortcut to fill a gap.
 - `AbsorbDelay`, `EnterHold`/`LeaveHold` and `GoAround` (above) slow it down, hold it or send it around.
 
-The airport map's **Approach** tab shows each runway's landing sequence, first to land first: wake category, distance still to fly, delay, and what the aircraft is doing. It has controls for each of our arrivals:
+The airport map's **Sequence** section shows each runway's landing sequence, first to land first: wake category, distance still to fly, delay, and what the aircraft is doing. It has controls for each of our arrivals:
 
 - ▲▼: order;
 - ⤳: direct to the final;
@@ -250,7 +250,7 @@ The airport map's **Approach** tab shows each runway's landing sequence, first t
 - ⏵: leave the hold;
 - ↺: go around.
 
-These call `POST /api/approach/{icao}/{callsign}/{action}`. The tab also shows the tower (who is on or at each runway, and why they wait) and the predicted conflicts with the resolutions given. While it is open, the map draws each final: the extended centreline to 15 NM with a tick every mile, and each arrival within 20 NM at its distance to go. The arrival is green when it keeps its spacing to the one ahead, red when it is short.
+These call `POST /api/approach/{icao}/{callsign}/{action}`. The section also shows the tower (who is on or at each runway, and why they wait) and the predicted conflicts with the resolutions given. While it is open, the map draws each final: the extended centreline to 15 NM with a tick every mile, and each arrival within 20 NM at its distance to go. The arrival is green when it keeps its spacing to the one ahead, red when it is short.
 
 In the ATC game the player can work approach too, and spacing on final costs: an arrival within 10 NM of the threshold closer to the one ahead than its spacing loses 25 points.
 

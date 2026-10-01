@@ -11,8 +11,7 @@ The [airport map](airport-layout.md#seeing-it-on-a-map) doubles as a small ATC g
 
 ```bash
 cd cmd/airport-map && go run .
-# open http://127.0.0.1:8080/?icao=LKPR, pick the runway in use under Route,
-# then ATC game → ▶ Start game
+# open http://127.0.0.1:8080/?icao=LKPR, then Schedule → ATC game → Start game
 ```
 
 ## How it plays

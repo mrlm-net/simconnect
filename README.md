@@ -38,8 +38,19 @@
 - A landing sequence per runway, first come first served, re-sequencing go-arounds; arrivals lose delays by speed, then a longer downwind, then a hold with its stack
 - A tower per runway: line-up, take-off and crossing clearances in mixed mode; automatic go-arounds on the published missed approach
 - Airborne conflicts predicted five minutes ahead and resolved by the least disturbing speed, level or heading change
-- Standard-rate turns by airframe instead of MSFS AI's hard turns at waypoints; injected take-off with engine spool-up and a stable glide path to touchdown
-- On the airport map: an Approach tab with the sequence, the tower and the final's spacing, and controls to work it by hand
+- Standard-rate turns by airframe instead of MSFS AI's hard turns at waypoints; injected take-off with engine spool-up and a stable glide path to touchdown, crabbed into a crosswind and de-crabbed in the flare, the touchdown point varying a little from landing to landing
+- A runway change re-plans the traffic not yet committed: new SID or STAR, a new taxi route from where each aircraft is
+- On the airport map: the landing sequence with its final ladder, the tower and the final's spacing, and controls to work it by hand
+
+### Radio & Voice
+- Every clearance as a structured transmission (position, intent, parameters) with the text as said, on each position's frequency, with hand-offs and check-ins, pilot requests and readbacks, the ATIS on its frequency
+- The gate-to-gate flow: delivery clearance, push and start (with the facing), taxi, line-up (also behind a landing aircraft), take-off with the wind, identified and climb, arrival and approach clearances with the QNH, landing, vacating; expedited forms; weather and direct requests
+- ICAO wording by default and the FAA's at US airports, both checked against the quoted documents ([Phraseology](docs/traffic-phraseology.md))
+- Spoken through [voice-goio](https://github.com/mrlm-net/voice-goio) on the airport map: a voice per controller (with shift changes) and per crew, a radio chain, following or tuning COM1
+
+### Camera
+- The MSFS 2024 add-on camera bound on the engine; `pkg/camera` places it relative to the world or an aircraft, with eased moves, spline paths and drone moves (reveal, flyover, side dolly, lead chase, details of engines, gear, cockpit…) and a director that plays them
+- On the airport map: an auto director cutting to the aircraft on the radio, and scripted scenes (JSON) for films
 
 ### Navigation & Weather
 - Airways crawled from the simulator's navigation data and routed (A*); weather at the user aircraft, the runway in use, ATIS
@@ -70,16 +81,19 @@ func main() {
 }
 ```
 
-## Examples
+## The airport map
 
-Start with the **[airport map](cmd/airport-map)**, the SDK's main example and the tool it is debugged with. It shows an airport's ground layout as SimConnect reports it, taxi routes, AI traffic under your control, scheduled airline traffic, the landing sequence, the tower and the ATC game, all built on this SDK:
+Start with the **[airport map](cmd/airport-map)**: the traffic control app built on this SDK and the tool it is debugged with. It shows an airport's ground layout as SimConnect reports it, taxi routes, AI traffic under your control with every clearance on the radio, scheduled airline traffic, the landing sequence, the tower, the camera and the ATC game. It works on a desktop, a tablet or a phone, and several people can play over the network, each working one position:
 
 ```shell
 cd cmd/airport-map && go run .
 # open http://127.0.0.1:8080/?icao=LKPR
+# on the network (tablets, phones, other controllers): go run . -addr :8080
 ```
 
-![The airport map at LKPR](docs/images/airport-map/traffic.jpg)
+![The airport map at LKPR](docs/images/airport-map/ui-traffic.png)
+
+## Examples
 
 [Examples](docs/examples.md) has a tour of the map with screenshots and a line on every other example. Each is a standalone `main` package; run one with `go run ./examples/<name>`:
 
