@@ -71,7 +71,7 @@ func (p ApproachPhase) String() string {
 // ApproachPose is where an ApproachMover puts the aircraft.
 type ApproachPose struct {
 	// Position is on the extended runway centreline; Heading is the runway
-	// heading (true degrees).
+	// heading (true degrees), crabbed into a crosswind on final.
 	Position airport.LatLon
 	Heading  float64
 	// HeightFt is the main wheels' height above the runway; PitchDeg is
@@ -109,7 +109,33 @@ type ApproachMover struct {
 	touchX      float64
 	touchFpm    float64
 	startNm     float64
+	// cross is the crosswind in knots, positive from the right of the
+	// runway heading (SetCrosswind).
+	cross float64
 }
+
+// SetCrosswind sets the crosswind the approach is flown in, knots,
+// positive from the right of the runway: on final the aircraft crabs into
+// it, nose into the wind by the drift angle, and straightens through the
+// flare to touch down along the centreline.
+func (m *ApproachMover) SetCrosswind(kts float64) { m.cross = kts }
+
+// crabDeg is the heading off the runway's now: the drift angle on final
+// (into the wind), taken out through the flare, none on the ground.
+func (m *ApproachMover) crabDeg() float64 {
+	if m.cross == 0 || m.phase >= ApproachDerotate || m.v <= 0 {
+		return 0
+	}
+	ratio := math.Max(-maxCrabSin, math.Min(maxCrabSin, m.cross/(m.v/ktsToMS)))
+	crab := math.Asin(ratio) * 180 / math.Pi
+	if m.phase == ApproachFlare && m.p.FlareFt > 0 {
+		crab *= math.Max(0, m.h/m.p.FlareFt) // de-crab: aligned at touchdown
+	}
+	return crab
+}
+
+// maxCrabSin bounds the drift: about 17° at most.
+const maxCrabSin = 0.3
 
 // NewApproachMover starts startMeters before the threshold of a runway end
 // (threshold position, true heading), on the glide path at StartKts.
@@ -122,7 +148,7 @@ func NewApproachMover(threshold airport.LatLon, heading, startMeters float64, p 
 // Pose returns the current pose.
 func (m *ApproachMover) Pose() ApproachPose {
 	return ApproachPose{
-		Position: offsetHeading(m.thr, m.heading, m.x), Heading: m.heading,
+		Position: offsetHeading(m.thr, m.heading, m.x), Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
 		HeightFt: m.h, PitchDeg: m.pitch, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
 		Touchdown: m.touchX, TouchdownFpm: m.touchFpm,
