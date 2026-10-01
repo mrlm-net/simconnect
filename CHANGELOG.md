@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Reduced 2.5 NM spacing on final applies only where the radar minimum governs: a RECAT-EU pair whose 3 NM is a wake minimum (A behind A, C behind C or D …) keeps it.
+- docs/traffic-taxi.md: `TrafficLookMeters` is 200 m, the default tug is `FSDT_Pushback_03`, and the tightest push radius tried is 17 m.
+
 ### Changed
 
 - The airport map moved from `examples/airport-map` to its own entry point, `cmd/airport-map` (module `github.com/mrlm-net/simconnect/cmd/airport-map`): it is the traffic control app and the SDK's debugger, not an example. Run it with `cd cmd/airport-map && go run .`.
@@ -22,6 +27,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` standard pushback per stand: `PlanStandardPushes(graph, model, stands)` plans, in the background, the push most ends of the two longest runways take from each stand; a departure takes it whatever its runway unless it costs more than `standardPushMargin` extra (LKPR B9 pushes onto B2 for every runway). The airport map plans them when an airport loads.
 - `pkg/traffic` landings vary: each injected landing moves its aiming point by up to `TouchdownSpreadMeters` (±10 m) (`ApproachMover.SetAimShift`), and in a crosswind the upwind wing goes down in the flare as the crab comes out, the upwind main gear touching first, levelled within 1.5 s (`ApproachPose.BankDeg`, at most 4°).
 - `pkg/traffic` crosswind landings: `ApproachMover.SetCrosswind` / `ArrivalRequest.CrosswindKts` (positive from the right): the injected final is flown crabbed into the wind by the drift angle and straightened through the flare to touch down along the centreline. The airport map passes the wind at the user aircraft.
+- docs: traffic-decisions.md — how the traffic decides, with the numbers from the code and diagrams: pushback choice (poses, push geometry, cost terms, push-and-tow, second look, standard push, worked examples LKPR A3, A5, B9, C17), ground give-way, taxi routing costs, the runway controller, spacing and sequencing, delay absorption, holds and conflict resolution, #449.
 - `pkg/traffic` radio, the gate-to-gate flow (#462): `Identified` answers a departure's check-in ("identified, climb to flight level 240"); `ClearedApproachTo` with the QNH and "report established"; the arrival clearance with the QNH; pilots ask for the weather (`RequestWeather` → `WeatherReport`: wind and QNH) and to fly direct (`RequestDirect` → `ClearedDirectTo`).
 - `pkg/traffic` phraseology by region (#463): `Transmission.Phraseology`, `PhraseologyFor` (FAA in the US and its territories, ICAO elsewhere) and `RadioOptions.Phraseology`; at a US airport the radio says the departure clearance ("then as filed", "climb via SID except maintain"), taxi ("runway 04L, taxi via B, A"), line-up, take-off ("takeoff", no wind), landing, approach and arrival clearances, radar contact and the weather the FAA way, and the readbacks follow.
 - `pkg/traffic` expedite (#510): `Rushed(clearance)` says "cleared for immediate take-off", "line up, be ready for immediate departure", "expedite crossing", "expedite vacating"; `TaxiController.Expedite` shrinks the waits at the gates (`RushDelayFactor`), `ArrivalController.Expedite` leaves the runway `RushExitKts` faster.
