@@ -61,6 +61,12 @@ type RunwayClearances struct {
 	// Land: the next arrival, within ClearToLandNM with nothing in the way
 	// on the runway: cleared to land (Doc 4444 12.3.4.16).
 	Land []string `json:"land,omitempty"`
+	// LineUpBehind: the first departure at the holding points waiting only
+	// for the next arrival, by call sign, and that arrival: line up and
+	// wait behind it once it has passed (a conditional line-up).
+	LineUpBehind map[string]string `json:"lineUpBehind,omitempty"`
+	// NextArrival is the next arrival to land ("" none).
+	NextArrival string `json:"nextArrival,omitempty"`
 	// Why each departure or crossing still waits.
 	Waiting map[string]string `json:"waiting,omitempty"`
 }
@@ -127,7 +133,7 @@ func (r *RunwayController) SetSurface(s RunwaySurface) {
 func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClearances {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := RunwayClearances{Waiting: map[string]string{}}
+	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}}
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
@@ -202,6 +208,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		return arrivalClear(RunwayOccupancyIn(u.Wake, false, r.opts.Surface), r.opts.MinArrivalNM)
 	}
 
+	out.NextArrival = nextArrName
 	// The next arrival on short final with the runway not free: around.
 	// In the way: anyone lined up, crossing, still on it after landing, or
 	// other traffic on it; not our departure rolling.
@@ -277,6 +284,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			occupied = u.Callsign
 		default:
 			out.Waiting[u.Callsign] = why
+			// Waiting for the next arrival only, first in turn: behind it.
+			if number == 1 && nextArrName != "" && len(out.LineUpBehind) == 0 && interval(u) == "" {
+				out.LineUpBehind[u.Callsign] = nextArrName
+			}
 		}
 	}
 	return out

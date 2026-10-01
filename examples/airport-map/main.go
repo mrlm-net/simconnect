@@ -294,6 +294,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	cw := newConflictWatch(sched)
 	tw := newTowers(cc, sched)
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
+	cc.lineUpBehind = tw.behindNext
+	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at
 	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
 	cc.namedAirport = sched.cfg.AirportName

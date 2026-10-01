@@ -253,3 +253,27 @@ func TestRunwayControllerLandingClearance(t *testing.T) {
 		t.Error("cleared to land with a departure still on its roll")
 	}
 }
+
+// Waiting only for the next arrival, the first departure is given a
+// conditional line-up behind it; the second, and one waiting for the
+// interval, are not (#509).
+func TestRunwayControllerLineUpBehind(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	c := r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), dep("CSA2", "A320", RunwayHoldingShort), final("DLH2", 3)})
+	if c.LineUpBehind["CSA1"] != "DLH2" || c.LineUpBehind["CSA2"] != "" || c.NextArrival != "DLH2" {
+		t.Fatalf("behind DLH2: %+v", c)
+	}
+	// Nobody to land: no condition.
+	c = r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort)})
+	if len(c.LineUpBehind) != 0 {
+		t.Fatalf("no arrival: %+v", c)
+	}
+	tx := ClearedLineUpBehind("CSA1", "A320", "24")
+	if tx.Text != "CSA1, behind the landing A320, runway 24, line up and wait behind" {
+		t.Errorf("%q", tx.Text)
+	}
+	if rb, _ := Readback(tx); !strings.HasPrefix(rb.Text, "Behind the landing A320, runway 24, line up and wait behind") {
+		t.Errorf("readback %q", rb.Text)
+	}
+}

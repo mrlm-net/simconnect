@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"math"
 	"net/http"
 	"slices"
@@ -35,6 +36,15 @@ type towers struct {
 	given   map[string]bool                      // clearances given: "tail action"
 	waiting map[string]string                    // why each waits, as last logged
 	last    map[string][]runwayUserView          // the users, for the API
+	// behind: departures cleared to line up behind a landing aircraft
+	// (#509), by call sign: that aircraft, and the departure's runway.
+	behind map[string]behindClearance
+	next   map[string]string // the next arrival to land, by "ICAO runway"
+}
+
+// behindClearance is a conditional line-up waiting for its arrival.
+type behindClearance struct {
+	arrival, icao, rwy string
 }
 
 type runwayUserView struct {
@@ -44,7 +54,7 @@ type runwayUserView struct {
 }
 
 func newTowers(cc *controlCenter, s *scheduler) *towers {
-	return &towers{cc: cc, s: s, ctl: map[string]*traffic.RunwayController{}, given: map[string]bool{}, waiting: map[string]string{}, last: map[string][]runwayUserView{}}
+	return &towers{cc: cc, s: s, ctl: map[string]*traffic.RunwayController{}, given: map[string]bool{}, waiting: map[string]string{}, last: map[string][]runwayUserView{}, behind: map[string]behindClearance{}, next: map[string]string{}}
 }
 
 var phaseNames = map[traffic.RunwayPhase]string{traffic.RunwayHoldingShort: "holding short", traffic.RunwayLinedUp: "lined up",
@@ -198,7 +208,11 @@ func (t *towers) tick(now time.Time) {
 		}
 		t.mu.Unlock()
 		c := rc.Decide(now, list)
+		t.lineUpBehind(k.icao, k.rwy, list, ours)
 		t.apply(k.icao, k.rwy, c, ours)
+		t.mu.Lock()
+		t.next[k.icao+" "+k.rwy] = c.NextArrival
+		t.mu.Unlock()
 		var view []runwayUserView
 		for _, u := range list {
 			view = append(view, runwayUserView{Callsign: u.Callsign, Phase: phaseNames[u.Phase], Waiting: c.Waiting[u.Callsign]})
@@ -206,6 +220,94 @@ func (t *towers) tick(now time.Time) {
 		t.mu.Lock()
 		t.last[k.icao+" "+k.rwy] = view
 		t.mu.Unlock()
+	}
+}
+
+// behind gives departure it a conditional line-up behind arrival (#509):
+// said now, lined up by lineUpBehind once the arrival has passed.
+func (t *towers) clearBehind(it *controlled, arrival, icao, rwy string) {
+	t.mu.Lock()
+	t.behind[it.Tail] = behindClearance{arrival: arrival, icao: icao, rwy: rwy}
+	t.given[it.Tail+" lineup"] = true
+	t.mu.Unlock()
+}
+
+// nextArrival is the next arrival to land on its runway ("" none).
+func (t *towers) nextArrival(it *controlled) string {
+	l := it.graph.Layout
+	it.mu.Lock()
+	rwy := it.view.Runway
+	it.mu.Unlock()
+	r, ok := runwayOf(l, rwy)
+	if !ok {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.next[it.ICAO+" "+r.Name()]
+}
+
+// behindNext is the user's conditional line-up of departure it behind the
+// next arrival (#509); an error when none is to land.
+func (t *towers) behindNext(it *controlled) error {
+	arr := t.nextArrival(it)
+	if arr == "" {
+		return errors.New("no arrival to line up behind")
+	}
+	r, _ := runwayOf(it.graph.Layout, it.view.Runway)
+	t.clearBehind(it, arr, it.ICAO, r.Name())
+	return nil
+}
+
+// arrivalSaid is an arrival as a tower names it in a condition: its type
+// ("Airbus A320"), "aircraft" when not one of ours.
+func (t *towers) arrivalSaid(cs string) string {
+	if a := t.cc.byTail(cs); a != nil {
+		a.mu.Lock()
+		model := a.view.Model
+		a.mu.Unlock()
+		return typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
+	}
+	return "aircraft"
+}
+
+// lineUpBehind lines up the departures cleared behind a landing aircraft
+// once it has passed: no longer on the final — for an intersection
+// departure, off the runway too.
+func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours map[string]*controlled) {
+	t.mu.Lock()
+	var due []string
+	for dep, b := range t.behind {
+		if b.icao != icao || b.rwy != rwy {
+			continue
+		}
+		it := ours[dep]
+		if it == nil || it.dep == nil {
+			delete(t.behind, dep) // gone, or no longer holding short
+			continue
+		}
+		phase, there := traffic.RunwayPhase(0), false
+		for _, u := range list {
+			if u.Callsign == b.arrival {
+				phase, there = u.Phase, true
+			}
+		}
+		passed := !there || phase != traffic.RunwayFinal
+		if r := it.dep.Route(); r != nil && r.Entry != "" && there {
+			passed = false // an intersection: once it is off the runway
+		}
+		if passed {
+			delete(t.behind, dep)
+			due = append(due, dep)
+		}
+	}
+	t.mu.Unlock()
+	for _, dep := range due {
+		it := ours[dep]
+		tlog.printf("%-6s lining up behind the landing traffic", dep)
+		if err := t.cc.do(func() error { it.dep.ClearToLineUp(); return nil }); err != nil {
+			tlog.printf("%-6s line-up refused: %v", dep, err)
+		}
 	}
 }
 
@@ -224,8 +326,8 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		// Said here: the state change it causes is not logged again.
 		spoken := []string{strings.Fields(action)[0]}
-		if action == "takeoff" {
-			spoken = append(spoken, "lineup") // line up and take off in one
+		if action == "takeoff" || action == "lineupbehind" {
+			spoken = append(spoken, "lineup") // line up and take off in one; or said with its condition
 		}
 		it.mu.Lock()
 		for _, k := range spoken {
@@ -234,7 +336,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		it.mu.Unlock()
 		t.mu.Lock()
 		t.given[tail+" "+action] = true
-		if action == "takeoff" {
+		if action == "takeoff" || action == "lineupbehind" {
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
@@ -261,6 +363,18 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			continue
 		}
 		give(cs, "lineup", traffic.ClearedLineUp(cs, end(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
+	}
+	// Waiting only for the next arrival: line up behind it once it has
+	// passed (#509).
+	for cs, arr := range c.LineUpBehind {
+		if ours[cs] == nil || ours[cs].gates {
+			continue
+		}
+		arr := arr
+		give(cs, "lineupbehind", traffic.ClearedLineUpBehind(cs, t.arrivalSaid(arr), end(cs)), func(it *controlled) error {
+			t.clearBehind(it, arr, icao, rwy)
+			return nil
+		})
 	}
 	for _, cs := range c.Takeoff {
 		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return it.dep.ClearForTakeoff() })

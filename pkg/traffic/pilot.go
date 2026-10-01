@@ -200,6 +200,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Cross runway " + p[ParamRunway]
 	case IntentLineUp:
 		s = fmt.Sprintf("Runway %s, line up and wait", p[ParamRunway])
+		if p[ParamBehind] != "" {
+			s = fmt.Sprintf("Behind the landing %s, runway %s, line up and wait behind", p[ParamBehind], p[ParamRunway])
+		}
 	case IntentTakeoff:
 		s = fmt.Sprintf("Runway %s, cleared for take-off", p[ParamRunway]) // CAP 413: runway first
 	case IntentLanding:

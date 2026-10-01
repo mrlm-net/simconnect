@@ -70,6 +70,7 @@ const (
 	ParamEntry    = "entry"    // where an intersection departure enters its runway ("B")
 	ParamStartUp  = "startup"  // "1": the start-up asked for or approved with the pushback
 	ParamFacing   = "facing"   // where a push ends facing: "east"
+	ParamBehind   = "behind"   // a conditional line-up: the landing traffic as said ("A320")
 	ParamGiveWay  = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways = "taxiways" // as said: "B2, H, A"
 	ParamStand    = "stand"
@@ -183,6 +184,10 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentCross:
 		return fmt.Sprintf("%s, cross runway %s", cs, p[ParamRunway]) // 12.3.4.9
 	case IntentLineUp:
+		if p[ParamBehind] != "" {
+			// Conditional: the condition first, "behind" again at the end.
+			return fmt.Sprintf("%s, behind the landing %s, runway %s, line up and wait behind", cs, p[ParamBehind], p[ParamRunway])
+		}
 		return fmt.Sprintf("%s, runway %s, line up and wait", cs, p[ParamRunway]) // 12.3.4.10
 	case IntentTakeoff:
 		// Its own transmission, never with the line-up (CAP 413 4.29).
@@ -468,6 +473,14 @@ func ClearedCross(cs, runway string) Transmission {
 // ClearedLineUp is "line up and wait" on runway.
 func ClearedLineUp(cs, runway string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLineUp, Params: map[string]string{ParamRunway: runway}})
+}
+
+// ClearedLineUpBehind is a conditional line-up behind the next landing
+// aircraft (traffic: its type as said, "A320"): "CSA1, behind the landing
+// A320, runway 24, line up and wait behind". The crew lines up once that
+// aircraft has passed.
+func ClearedLineUpBehind(cs, traffic, runway string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLineUp, Params: map[string]string{ParamRunway: runway, ParamBehind: traffic}})
 }
 
 // ClearedTakeoff clears the take-off from runway, with the wind (WindSaid,

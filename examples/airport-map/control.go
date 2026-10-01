@@ -201,6 +201,10 @@ type controlCenter struct {
 	namedAirport func(icao string) string
 	// atisLetter is an airport's current ATIS letter for first calls (#418).
 	atisLetter func(icao string) string
+	// lineUpBehind clears a departure to line up behind the next arrival,
+	// behindSaid names that arrival (#509): the towers'.
+	lineUpBehind func(it *controlled) error
+	behindSaid   func(it *controlled) string
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin      func(icao, tail string)
@@ -841,7 +845,7 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.T
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
 			return []string{"cross", "upto", "taxi"}
 		}
-		return []string{"lineup", "takeoff"}
+		return []string{"lineup", "lineupbehind", "takeoff"}
 	case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
 		return []string{"takeoff", "abort"}
 	case traffic.TaxiDeparting:
@@ -879,6 +883,11 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		d.ClearToCross()
 	case d != nil && action == "lineup":
 		d.ClearToLineUp()
+	case d != nil && action == "lineupbehind":
+		if it.cc.lineUpBehind == nil {
+			return errors.New("no tower")
+		}
+		return it.cc.lineUpBehind(it)
 	case d != nil && action == "takeoff":
 		return d.ClearForTakeoff()
 	case d != nil && action == "remove":
@@ -1892,6 +1901,12 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return traffic.HoldPosition(call)
 	case "land":
 		return traffic.ClearedToLand(call, rwy, it.cc.windSaid(it.ICAO))
+	case "lineupbehind":
+		what := "aircraft"
+		if it.cc.behindSaid != nil {
+			what = it.cc.behindSaid(it)
+		}
+		return traffic.ClearedLineUpBehind(call, what, rwy)
 	case "goaround":
 		return traffic.GoAround(call, "")
 	case "abort":
@@ -2159,7 +2174,7 @@ func entryPoint(r *airport.Route) string {
 // up to a limit no "taxi".
 func impliedBy(action string) []string {
 	switch action {
-	case "takeoff":
+	case "takeoff", "lineupbehind":
 		return []string{"lineup"}
 	case "taxi":
 		return []string{"pushback"}
