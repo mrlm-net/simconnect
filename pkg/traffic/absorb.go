@@ -72,8 +72,10 @@ func PlanAbsorption(delay time.Duration, starNM, speedKts, minKts float64) Absor
 	}
 	h := delay.Hours()
 	minKts = math.Min(minKts, speedKts)
-	if v := starNM / (starNM/speedKts + h); v >= minKts {
-		return Absorption{SpeedKts: math.Round(v)}
+	// Speeds as ATC gives them, in tens of knots ("210", not "239"): down
+	// to the ten below, which loses a little more; the rest is asked again.
+	if v := math.Floor(starNM/(starNM/speedKts+h)/10) * 10; v >= minKts {
+		return Absorption{SpeedKts: v}
 	}
 	a := Absorption{SpeedKts: minKts}
 	rest := h - (starNM/minKts - starNM/speedKts) // hours after slowing down
@@ -159,6 +161,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		minKts = MinProcedureSpeedTurbopropKts
 	}
 	a := PlanAbsorption(delay, starNM, speed, minKts)
+	if a.SpeedKts >= speed {
+		a.SpeedKts = 0 // flying it already: nothing to say about the speed
+	}
 	if a.SpeedKts == 0 && a.ExtraNM == 0 {
 		return a, nil
 	}
