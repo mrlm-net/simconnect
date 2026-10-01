@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"math/rand/v2"
@@ -81,6 +82,8 @@ type voiceOut struct {
 	// exchange after a breath.
 	lastEnd time.Time
 	lastCS  string
+	// shifts: each station's controller on duty (onShift).
+	shifts map[string]*shift
 	rng     *rand.Rand
 	// piper: the piper executable and the voices folder ("" defaults).
 	piperPath, voicesDir string
@@ -310,7 +313,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	if t.Pilot {
 		voice = pool.Assign(t.Callsign, voicegoio.Center) // each crew its own voice
 	} else {
-		voice = pool.Assign(t.Airport, controllerKind(t.Position))
+		voice = pool.Assign(v.onShift(t.Airport, t.Position), controllerKind(t.Position))
 	}
 	pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(t.Text, voicegoio.ICAO))
 	if err != nil {
@@ -333,6 +336,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	if t.Pilot {
 		who = t.Callsign
 	}
+	heardOnCamera(t) // the picture with the sound
 	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: who, Phraseology: voicegoio.ICAO, Text: t.Text}, out, player.SampleRate()); err != nil {
 		return // turned off meanwhile
 	}
@@ -358,6 +362,46 @@ func controllerKind(p traffic.Position) voicegoio.ControllerKind {
 	default:
 		return voicegoio.Tower
 	}
+}
+
+// A station's controller hands over every shiftMin to shiftMax (a new
+// voice on the frequency); a crew keeps its voice for good.
+const (
+	shiftMin = 30 * time.Minute
+	shiftMax = 60 * time.Minute
+)
+
+type shift struct {
+	n     int
+	until time.Time
+}
+
+// onShift is the voice key of the controller working pos at icao now:
+// the airport, with the shift number once the first has handed over
+// ("LKPR", then "LKPR-2"): the airport's prefix still picks the voices of
+// its region.
+func (v *voiceOut) onShift(icao string, pos traffic.Position) string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.shifts == nil {
+		v.shifts = map[string]*shift{}
+	}
+	k := icao + "/" + string(pos)
+	s := v.shifts[k]
+	now := time.Now()
+	length := func() time.Duration { return shiftMin + time.Duration(v.rng.Int64N(int64(shiftMax-shiftMin))) }
+	if s == nil {
+		s = &shift{n: 1, until: now.Add(length())}
+		v.shifts[k] = s
+	}
+	for now.After(s.until) {
+		s.n++
+		s.until = s.until.Add(length())
+	}
+	if s.n == 1 {
+		return icao
+	}
+	return fmt.Sprintf("%s-%d", icao, s.n)
 }
 
 // sayOnce says t now, whatever the frequency followed (the airport panel's
@@ -456,8 +500,8 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 			On        bool   `json:"on"`
 			Frequency string `json:"frequency"`
 			SyncCom   *bool  `json:"syncCom"`
-			// Tune: following COM1, the frequency was picked on the map:
-			// COM1 is tuned to it.
+			// Tune: the frequency was picked on the map and COM1 is to be
+			// tuned to it (following COM1, or "Tune my COM1").
 			Tune bool `json:"tune"`
 			// Device picks the output ("" the system default).
 			Device *string `json:"device"`
@@ -475,7 +519,7 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 				return
 			}
 		}
-		if req.Tune && req.Frequency != "" && v.state().SyncCom {
+		if req.Tune && req.Frequency != "" {
 			if err := v.tuneCom1(req.Frequency); err != nil {
 				log.Printf("voice: tune COM1: %v", err)
 			}

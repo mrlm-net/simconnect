@@ -233,6 +233,26 @@ func (m *Message) AsFlowEvent() *types.SIMCONNECT_RECV_FLOW_EVENT {
 	return (*types.SIMCONNECT_RECV_FLOW_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
+// AsCameraStatus casts the message to SIMCONNECT_RECV_CAMERA_STATUS; nil
+// if it is not one. MSFS 2024 only.
+func (m *Message) AsCameraStatus() *types.SIMCONNECT_RECV_CAMERA_STATUS {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CAMERA_STATUS {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_CAMERA_STATUS)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
+// AsCameraData reads a SIMCONNECT_RECV_CAMERA_DATA (the camera is packed,
+// so it is decoded rather than cast); false if the message is not one.
+// MSFS 2024 only.
+func (m *Message) AsCameraData() (types.SIMCONNECT_DATA_CAMERA, bool) {
+	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CAMERA_DATA || m.DwSize < 12+types.SimConnectCameraDataSize {
+		return types.SIMCONNECT_DATA_CAMERA{}, false
+	}
+	b := unsafe.Slice((*byte)(unsafe.Pointer(m.SIMCONNECT_RECV)), m.DwSize)
+	return types.CameraDataFrom(b[12:])
+}
+
 // AsEnumerateInputEvents casts the message to SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS.
 // Returns nil if the message is not an enumerate input events response.
 // Note: MSFS 2024 only.

@@ -1,0 +1,22 @@
+{
+  "name": "DEMO007 and the Lufthansa landing",
+  "description": "DEMO007 pushes and taxis while a Lufthansa A320 comes in; it lines up behind the landing aircraft and takes off. The radio follows whoever matters.",
+  "cast": [
+    { "role": "dep", "kind": "departure", "tail": "DEMO007", "models": "csa-lines, a320", "tug": true, "procedure": true, "pushAfterSec": 35 },
+    { "role": "arr", "kind": "arrival", "tail": "DLH1402", "models": "lufthansa, a320", "atSec": 120 }
+  ],
+  "listen": "dep",
+  "beats": [
+    { "cue": "start", "shots": [ { "move": "crane", "who": "dep", "sec": 10 } ] },
+    { "cue": "dep:lights:B", "shots": [ { "move": "topOrbit", "who": "dep", "sec": 10 } ] },
+    { "cue": "dep:pushback", "shots": [ { "move": "noseGear", "who": "dep", "sec": 5 }, { "move": "pullBackReveal", "who": "dep", "side": -1, "sec": 9 } ] },
+    { "cue": "dep:awaiting taxi", "shots": [ { "move": "engine", "who": "dep", "sec": 6 }, { "move": "heroPushIn", "who": "dep", "sec": 8 } ] },
+    { "cue": "dep:taxiing", "shots": [ { "move": "headOnPass", "who": "dep", "sec": 8 }, { "move": "parallaxTrack", "who": "dep", "side": -1, "sec": 9 } ] },
+    { "cue": "arr:approaching", "listen": "arr", "shots": [ { "move": "leadChase", "who": "arr", "sec": 8 }, { "move": "cockpit", "who": "arr", "sec": 5 }, { "move": "tail", "who": "dep", "sec": 5 }, { "move": "underApproach", "who": "arr", "sec": 9 } ] },
+    { "cue": "arr:rollout", "shots": [ { "move": "sideDolly", "who": "arr", "sec": 7 }, { "move": "runwaySide", "who": "arr", "along": 1200, "right": 90, "fov": 38, "fovTo": 24, "sec": 6 } ] },
+    { "cue": "dep:lining up", "listen": "dep", "shots": [ { "move": "mainGear", "who": "dep", "sec": 5 }, { "move": "lights", "who": "dep", "sec": 5 }, { "move": "heroPushIn", "who": "dep", "side": -1, "sec": 7 } ] },
+    { "cue": "dep:departing", "shots": [ { "move": "runwaySide", "who": "dep", "along": 900, "right": 90, "fov": 40, "fovTo": 22, "sec": 7 }, { "move": "sideDolly", "who": "dep", "sec": 6 } ] },
+    { "cue": "dep:airborne", "shots": [ { "move": "chaseRise", "who": "dep", "sec": 9 } ] },
+    { "cue": "dep:height:1500", "end": true, "shots": [ { "move": "flyover", "who": "dep", "side": -1, "sec": 10 } ] }
+  ]
+}

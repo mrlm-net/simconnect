@@ -1,0 +1,17 @@
+{
+  "name": "Lufthansa arrival",
+  "description": "A Lufthansa A320 from a 5 NM final to its stand: the approach, the touchdown, the roll-out, the taxi in and parking.",
+  "cast": [
+    { "role": "arr", "kind": "arrival", "tail": "DLH1402", "models": "lufthansa, a320" }
+  ],
+  "listen": "arr",
+  "beats": [
+    { "cue": "start", "shots": [ { "move": "leadChase", "who": "arr", "sec": 9 }, { "move": "cockpit", "who": "arr", "sec": 5 }, { "move": "underApproach", "who": "arr", "sec": 9 } ] },
+    { "cue": "t:24", "shots": [ { "move": "chaseRise", "who": "arr", "side": -1, "sec": 8 }, { "move": "lights", "who": "arr", "sec": 5 }, { "move": "underApproach", "who": "arr", "side": -1, "along": -200, "right": 70, "sec": 9 } ] },
+    { "cue": "arr:rollout", "shots": [ { "move": "sideDolly", "who": "arr", "sec": 7 }, { "move": "runwaySide", "who": "arr", "along": 1200, "right": 90, "fov": 38, "fovTo": 24, "sec": 7 } ] },
+    { "cue": "arr:vacating", "shots": [ { "move": "mainGear", "who": "arr", "sec": 5 }, { "move": "parallaxTrack", "who": "arr", "sec": 9 } ] },
+    { "cue": "arr:taxiing", "shots": [ { "move": "headOnPass", "who": "arr", "sec": 8 }, { "move": "tail", "who": "arr", "sec": 5 }, { "move": "leadChase", "who": "arr", "side": -1, "sec": 9 }, { "move": "spiralDescend", "who": "arr", "sec": 9 } ] },
+    { "cue": "arr:parking", "shots": [ { "move": "topOrbit", "who": "arr", "sec": 10 } ] },
+    { "cue": "arr:parked", "end": true, "shots": [ { "move": "pullBackReveal", "who": "arr", "sec": 10 } ] }
+  ]
+}

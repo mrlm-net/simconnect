@@ -38,6 +38,21 @@ type API interface {
 
 	SubscribeToFlowEvent() error
 	UnsubscribeFromFlowEvent() error
+	// The add-on camera (MSFS 2024 only).
+	CameraAcquire(clientID string) error
+	CameraRelease(cameraDef string) error
+	CameraGetStatus() error
+	CameraSet(data types.SIMCONNECT_DATA_CAMERA, mask types.SIMCONNECT_CAMERA_DATA_MASK) error
+	CameraGet(referential types.SIMCONNECT_POSITION_REFERENTIAL) error
+	CameraEnableFlag(flag types.SIMCONNECT_CAMERA_FLAG) error
+	CameraDisableFlag(flag types.SIMCONNECT_CAMERA_FLAG) error
+	SubscribeToCameraStatusUpdate() error
+	UnsubscribeToCameraStatusUpdate() error
+	EnumerateCameraDefinitions() error
+	CameraSetUsingCameraDefinition(cameraDef string) error
+	RequestCameraWorldLocker(position types.SIMCONNECT_DATA_XYZ, referential types.SIMCONNECT_POSITION_REFERENTIAL, objectID uint32) error
+	DeleteCameraWorldLocker() error
+	SubscribeToCameraWorldLockerStatusUpdate() error
 
 	FlightLoad(flightFile string) error
 	FlightPlanLoad(flightPlanFile string) error

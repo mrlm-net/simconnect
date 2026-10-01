@@ -131,6 +131,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── position.go      #   Lat/lon conversion
 │   │   └── speed.go         #   Knots/km/h/m/s conversion
 │   ├── calc/                # Calculation helpers
+│   ├── camera/              # Add-on camera (MSFS 2024): poses, shots, drone moves, Director
 │   ├── airport/             # Airport ground layout, taxi graph, routing
 │   │   ├── layout.go        #   Layout, Runway(End), Parking, TaxiPoint, TaxiPath
 │   │   ├── build.go         #   RawAirport records → BuildLayout
@@ -261,6 +262,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
+│   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
