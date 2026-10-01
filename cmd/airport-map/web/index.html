@@ -342,6 +342,10 @@
             <span class="field__lbl">Call sign</span>
             <input class="input mono upper" id="cTail" placeholder="auto (next free MAPnn)" maxlength="8" spellcheck="false" title="The call sign, e.g. CSA123; empty: the next free MAPnn">
           </label>
+          <label class="field">
+            <span class="field__lbl">Squawk</span>
+            <input class="input mono" id="cSquawk" placeholder="auto" maxlength="4" inputmode="numeric" pattern="[0-7]{4}" spellcheck="false" title="The departure's transponder code, four octal digits (0–7); empty: its own">
+          </label>
           <details class="disclosure">
             <summary>Options <span class="muted small" id="optSummary"></span></summary>
             <div class="stack">
@@ -387,7 +391,7 @@
 
         <details class="disclosure disclosure--log" id="ctlLogBox">
           <summary>Traffic log</summary>
-          <pre class="log" id="ctlLog"></pre>
+          <ol class="tlog" id="ctlLog" aria-label="Traffic log, newest first"></ol>
         </details>
       </section>
 

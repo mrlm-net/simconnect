@@ -162,10 +162,30 @@ async function pollControl() {
   controlUpdated(r.data || []);
   if ($('ctlLogBox').open) {
     const lg = await api('/api/control/log');
-    const el = $('ctlLog'), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
-    const text = ((lg.ok && lg.data) || []).join('\n') || 'Nothing yet.';
-    if (el.textContent !== text) { el.textContent = text; if (atBottom) el.scrollTop = el.scrollHeight; }
+    const el = $('ctlLog'), lines = (lg.ok && lg.data) || [];
+    const sig = lines.length + '|' + (lines[lines.length - 1] || '');
+    if (el.dataset.sig !== sig) {
+      el.dataset.sig = sig;
+      // One row per entry, newest first: time, call sign, kind, message.
+      el.innerHTML = lines.length ? lines.slice().reverse().map(tlogRow).join('') : '<li class="tlog__empty">Nothing yet.</li>';
+    }
   }
+}
+// tlogRow is a traffic log line ("00:03:15.609  WZZ1979 ATC: Wizzair 1979, …")
+// as a row: the time to the second, the call sign, the kind, the message.
+function tlogRow(line) {
+  const m = /^(\d\d:\d\d:\d\d)(?:\.\d+)?\s+(.*)$/.exec(line);
+  if (!m) return `<li class="tlog__row"><span class="tlog__msg">${esc(line)}</span></li>`;
+  let rest = m[2].trim(), cs = '';
+  const c = /^([A-Z0-9]{2,8})\s+(.*)$/.exec(rest);
+  if (c) { cs = c[1]; rest = c[2]; }
+  let kind = '';
+  const k = /^(ATC|pilot|departure|arrival|sequence|tower|schedule|conflict|separation|runway in use|scene)\b([^:]*):\s*(.*)$/.exec(rest);
+  // "sequence LKPR 24: number 2": what is between the kind and the colon
+  // stays with the message.
+  if (k) { kind = k[1]; rest = (k[2].trim() ? k[2].trim() + ': ' : '') + k[3]; }
+  const cls = kind ? 'tlog--' + kind.split(' ')[0].toLowerCase() : '';
+  return `<li class="tlog__row ${cls}"><span class="tlog__t">${m[1]}</span><span class="tlog__cs">${esc(cs)}</span><span class="tlog__kind">${esc(kind)}</span><span class="tlog__msg">${esc(rest)}</span></li>`;
 }
 async function pollStands() {
   if (!data) return;
@@ -183,7 +203,7 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
       <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected a slow look round the airfield">Tower</button>
     </div></div>
   <div class="field" data-look-row hidden><span class="field__lbl">Tower look</span>
-    <div class="director__row look" title="Turn the tower camera; hold a button to keep turning">
+    <div class="director__row look" title="Turn the tower camera; hold a button to keep turning. Keys: arrows turn, + and − zoom (Shift: faster). Mouse: hold the middle button and drag to turn, roll the wheel while holding it to zoom.">
       <button type="button" class="btn btn--sm" data-look="-4,0,0" aria-label="Turn left">⟲</button><button type="button" class="btn btn--sm" data-look="4,0,0" aria-label="Turn right">⟳</button><button type="button" class="btn btn--sm" data-look="0,1.5,0" aria-label="Look up">▲</button><button type="button" class="btn btn--sm" data-look="0,-1.5,0" aria-label="Look down">▼</button><button type="button" class="btn btn--sm" data-look="0,0,-3" aria-label="Zoom in">+</button><button type="button" class="btn btn--sm" data-look="0,0,3" aria-label="Zoom out">−</button>
       <button type="button" class="btn btn--sm btn--toggle" data-swing aria-pressed="false" title="Swing slowly from side to side by itself">Swing</button>
     </div></div>
@@ -1046,4 +1066,58 @@ function initTower() {
       saveTower({ lat: e.latlng.lat, lon: e.latlng.lng });
     });
   });
+}
+
+/* ───────────── Tower look: keys and the middle mouse button ───────────── */
+// Only while the tower looks round (Tower, no aircraft selected): arrows turn
+// it, + and − zoom (Shift: bigger steps); the middle button held and dragged
+// turns it, the wheel while held zooms. Steps go out together every 80 ms.
+const lookPending = { yaw: 0, tilt: 0, fov: 0 };
+let lookFlush = 0;
+function towerLooking() { return !!camView && camView.mode === 'tower'; }
+function queueLook(yaw, tilt, fov) {
+  lookPending.yaw += yaw; lookPending.tilt += tilt; lookPending.fov += fov;
+  if (lookFlush) return;
+  lookFlush = setTimeout(() => {
+    lookFlush = 0;
+    const { yaw: y, tilt: t, fov: f } = lookPending;
+    lookPending.yaw = lookPending.tilt = lookPending.fov = 0;
+    if (y || t || f) send('/api/camera', { mode: 'look', yaw: y, tilt: t, fov: f });
+  }, 80);
+}
+document.addEventListener('keydown', (e) => {
+  if (!towerLooking() || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest && e.target.closest('input, select, textarea, [contenteditable]')) return;
+  const k = e.shiftKey ? 3 : 1;
+  const step = { ArrowLeft: [-3, 0, 0], ArrowRight: [3, 0, 0], ArrowUp: [0, 1, 0], ArrowDown: [0, -1, 0], '+': [0, 0, -3], '=': [0, 0, -3], '-': [0, 0, 3], '_': [0, 0, 3] }[e.key];
+  if (!step) return;
+  e.preventDefault();
+  e.stopPropagation(); // not the map's own arrow-key panning
+  queueLook(step[0] * k, step[1] * k, step[2] * k);
+}, true);
+let midLook = null; // the middle button held: where the pointer was
+function initTowerMouse() {
+  const el = map.getContainer();
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 1 || !towerLooking()) return;
+    e.preventDefault(); // no auto-scroll
+    midLook = { x: e.clientX, y: e.clientY };
+    el.classList.add('is-looking');
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!midLook) return;
+    const dx = e.clientX - midLook.x, dy = e.clientY - midLook.y;
+    midLook = { x: e.clientX, y: e.clientY };
+    queueLook(dx * 0.15, -dy * 0.1, 0);
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 1 && midLook) { midLook = null; el.classList.remove('is-looking'); }
+  });
+  // The wheel while the middle button is held zooms the tower, not the map.
+  el.addEventListener('wheel', (e) => {
+    if (!midLook) return;
+    e.preventDefault();
+    e.stopPropagation();
+    queueLook(0, 0, Math.sign(e.deltaY) * 2);
+  }, { capture: true, passive: false });
 }

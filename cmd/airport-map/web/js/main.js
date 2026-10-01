@@ -288,6 +288,7 @@ function boot() {
   zoomClasses();
   initDirector();
   initTower();
+  initTowerMouse();
   initTraffic();
   initSections();
   initSheet();

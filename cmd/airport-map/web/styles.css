@@ -1062,6 +1062,7 @@ select option { background: var(--surface); color: var(--text); }
 .m-tower { display: grid; place-items: center; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text-2); color: var(--text); box-shadow: var(--shadow-1); }
 .m-tower .ic { width: 15px; height: 15px; }
 .leaflet-container.is-placing { cursor: crosshair; }
+.leaflet-container.is-looking { cursor: move; }
 
 /* The simulator gone: a blurred map and a radar scope with a plane in the hold. */
 .lost { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 16px;
@@ -1086,3 +1087,20 @@ select option { background: var(--surface); color: var(--text); }
 .popover--more .rate { display: flex; width: 100%; }
 .popover--more .rate .btn { flex: none; width: var(--hit); }
 .popover--more .rate__val { flex: 1; text-align: center; }
+
+/* The traffic log: one row per entry, newest first. */
+.tlog { list-style: none; margin: var(--s-2) 0 0; padding: 0; max-height: 300px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-2); font-size: var(--fs-xs); }
+.tlog__row { display: grid; grid-template-columns: auto auto 1fr; grid-template-areas: "t cs kind" "msg msg msg"; gap: 2px 8px; align-items: baseline; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.tlog__t { grid-area: t; }
+.tlog__cs { grid-area: cs; }
+.tlog__kind { grid-area: kind; }
+.tlog__msg { grid-area: msg; }
+.tlog__row:last-child { border-bottom: 0; }
+.tlog__t { font-family: var(--font-mono); color: var(--text-3); }
+.tlog__cs { font-family: var(--font-mono); font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.tlog__kind { color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; font-weight: 600; }
+.tlog__msg { color: var(--text-2); overflow-wrap: anywhere; }
+.tlog--atc .tlog__kind { color: var(--accent); }
+.tlog--pilot .tlog__kind { color: var(--text-2); }
+.tlog--tower .tlog__kind, .tlog--conflict .tlog__kind, .tlog--separation .tlog__kind { color: var(--warn); }
+.tlog__empty { padding: 8px 10px; color: var(--text-3); }

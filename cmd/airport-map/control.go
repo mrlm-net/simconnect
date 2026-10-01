@@ -129,6 +129,7 @@ type ControlView struct {
 	Kind           string           `json:"kind"`
 	ICAO           string           `json:"icao"` // its airport
 	Tail           string           `json:"tail"`
+	Squawk         string           `json:"squawk,omitempty"` // a departure's SSR code
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
@@ -419,6 +420,9 @@ type SpawnRequest struct {
 	Exit           *int     `json:"exit"`  // arrival: runway exit, an index into /api/exits; nil = the controller's choice
 	Model          string   `json:"model"`
 	Tail           string   `json:"tail"`
+	// Squawk: a departure's SSR code, four octal digits; "": its own
+	// (squawkFor).
+	Squawk string `json:"squawk"`
 	Gates          bool     `json:"gates"`          // hold at every clearance
 	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
 	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
@@ -480,6 +484,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	prof := ac.Motion
 	if r.Tail == "" {
 		r.Tail = fmt.Sprintf("MAP%02d", n)
+	}
+	// The squawk asked for, else its own; never an emergency code.
+	if r.Squawk != "" {
+		if !validSquawk(r.Squawk) {
+			return nil, fmt.Errorf("squawk %q: four octal digits (0–7), not 7500, 7600 or 7700", r.Squawk)
+		}
+	} else if r.Kind == "departure" {
+		r.Squawk = squawkFor(r.Tail)
 	}
 	// A call sign picked on the map: letters and digits, as said on the radio.
 	if len(r.Tail) < 2 || len(r.Tail) > 8 || strings.IndexFunc(r.Tail, func(c rune) bool { return (c < 'A' || c > 'Z') && (c < '0' || c > '9') }) >= 0 {
@@ -631,7 +643,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
-	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
@@ -655,7 +667,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.climbSaid = initialClimbSaid(lim, procName)
 			it.say(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest))
 			it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
-				Runway: r.Runway, Level: it.climbSaid, Squawk: squawkFor(r.Tail)}))
+				Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
 		} else {
 			// The first call to approach with its level, then the STAR.
 			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosApproach)

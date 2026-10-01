@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Airport map: the squawk can be set in New flight (four octal digits; empty: automatic). The emergency codes are refused, and the aircraft's card shows it (`SpawnRequest.Squawk`, `ControlView.Squawk`).
+- Airport map: the tower camera looking round can also be turned with keys (arrows turn, + and − zoom, Shift faster). Holding the middle mouse button and dragging turns it; rolling the wheel while holding it zooms.
+
+### Fixed
+
+- Airport map: the traffic log is readable. One entry per row, newest first, with the time, call sign and kind on one line and the message under them (it was one block of wrapped text).
+
 ---
 
 ## [0.18.3] - 2026-10-02
