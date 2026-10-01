@@ -254,11 +254,11 @@ func main() {
 		</p>
 		<a href="{base}/docs/examples" class="block overflow-hidden rounded-xl border transition-colors hover:border-[var(--color-text-muted)]" style="border-color: var(--color-border);">
 			<img
-				src="{base}/docs/images/airport-map/traffic.jpg"
-				alt="The airport map at LKPR: the ground layout, scheduled traffic and the Traffic tab"
+				src="{base}/docs/images/airport-map/ui-traffic.png"
+				alt="The airport map at LKPR: the status strip, a departure selected, the traffic list"
 				class="block w-full"
-				width="1500"
-				height="900"
+				width="1600"
+				height="950"
 				loading="lazy"
 			/>
 		</a>
