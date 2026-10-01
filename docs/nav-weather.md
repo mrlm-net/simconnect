@@ -84,7 +84,7 @@ var sel nav.RunwaySelector // one per airport, kept
 use := sel.Choose(time.Now(), layout, weather, limits)
 ```
 
-While it holds, the headwind and crosswind it reports are those of the runway kept. The airport map uses a selector per airport for traffic and for the Charts panel. Near a tailwind limit in light, variable wind, the runway had flipped between 06 and 24 from one minute to the next.
+While it holds, the headwind and crosswind it reports are those of the runway kept. The airport map uses a selector per airport for traffic and for the Airport panel. Near a tailwind limit in light, variable wind, the runway had flipped between 06 and 24 from one minute to the next.
 
 ## ATIS
 

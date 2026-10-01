@@ -168,7 +168,7 @@ The older push is fitted to the stand's surroundings. The main gear starts at th
 - **On the stand** (`Deicing{}` without a pad): once cleared to push, the aircraft is treated on the stand first (`TaxiEvent.Deicing`), then the beacon comes on and it pushes back.
 - **At a pad** (`Deicing{Pad: &airport.DeicingPad{…}}`): the route passes the pad's taxi node (a via point); the aircraft stops there with engines running and the taxi light off, is treated, and taxis on. The stop is its own hold: a taxi clearance does not skip it.
 
-The treatment takes `Dwell` (default `DefaultDeicingDwell`, 6 min, varied by `DwellJitter`). MSFS facility data has no de-icing pads, so they come from `airport.Limits.DeicingPads` (the airport map lets you pick them from the taxi points: Charts → De-icing pads); `nav.IcingConditions(weather)` says when de-icing is due (at or below +3 °C with visible moisture).
+The treatment takes `Dwell` (default `DefaultDeicingDwell`, 6 min, varied by `DwellJitter`). MSFS facility data has no de-icing pads, so they come from `airport.Limits.DeicingPads` (the airport map lets you pick them from the taxi points: Airport → De-icing pads); `nav.IcingConditions(weather)` says when de-icing is due (at or below +3 °C with visible moisture).
 
 ## Ground traffic
 
