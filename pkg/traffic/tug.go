@@ -180,7 +180,10 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		return t.finish()
 	}
 	// Backed off: drive forward, turning TugDriveOffTurnDeg away.
-	p, h := t.pose.Position, t.pose.Heading
+	// Forward, the mover places it a wheelbase behind the path's start:
+	// the path starts that far ahead, so it drives off from where it
+	// stands (it jumped a wheelbase back as it turned away).
+	p, h := offsetHeading(t.pose.Position, t.pose.Heading, tugProfile().WheelbaseMeters), t.pose.Heading
 	ahead := offsetHeading(p, h, 5)
 	off := offsetHeading(ahead, h+TugDriveOffTurnDeg, TugDriveOffMeters)
 	path, err := NewArcPath([]airport.LatLon{p, ahead, off}, tugProfile(), 6)
