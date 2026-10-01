@@ -16,6 +16,8 @@ import (
 // Pilot intents.
 const (
 	IntentReadback         Intent = "readback"          // a clearance read back
+	IntentRequestWeather   Intent = "request_weather"   // the crew asks for the wind and QNH
+	IntentRequestDirect    Intent = "request_direct"    // the crew asks to fly direct to a fix
 	IntentRequestClearance Intent = "request_clearance" // the departure clearance, first call to delivery
 	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
 	IntentRequestPushback  Intent = "request_pushback"  // ready for push
@@ -92,6 +94,19 @@ func firstCall(in Intent, station, cs, stand, info, req string) Transmission {
 	return pilotTx(PosGround, cs, in, p, text+withInfo(info)+", "+req)
 }
 
+// RequestWeather is a crew asking for the weather: "Ruzyne Tower, CSA1,
+// request weather". The wording is the project's (no source read gives
+// one); the answer is WeatherReport.
+func RequestWeather(pos Position, cs string) Transmission {
+	return pilotTx(pos, cs, IntentRequestWeather, nil, cs+", request weather")
+}
+
+// RequestDirect is a crew asking to fly direct to fix: "CSA1, request
+// direct GOLOP" (the project's wording); the answer is ClearedDirectTo.
+func RequestDirect(pos Position, cs, fix string) Transmission {
+	return pilotTx(pos, cs, IntentRequestDirect, map[string]string{ParamFix: fix}, cs+", request direct "+fix)
+}
+
 // RequestTaxi is a departure pushed back and ready to taxi.
 func RequestTaxi(cs string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, nil, cs+", request taxi")
@@ -160,7 +175,29 @@ func Readback(t Transmission) (Transmission, bool) {
 	var s string
 	// The readbacks as docs/traffic-phraseology.md quotes them (Doc 4444
 	// 4.5.7.5, CAP 413 examples): the clearance's items, then the call sign.
+	if t.Phraseology == PhraseologyFAA {
+		// The FAA's: the clearance as given, without the call sign (AIM
+		// 4-4-7), for those worded the FAA's way.
+		if said, ok := phraseFAA(cs, t.Intent, p); ok && t.Intent != IntentIdentified {
+			s = capital(strings.TrimPrefix(said, cs+", "))
+			rb := pilotTx(t.Position, cs, IntentReadback, cloneParams(p, ParamIntent, string(t.Intent)), s+", "+cs)
+			rb.Phraseology = PhraseologyFAA
+			return rb, true
+		}
+	}
 	switch t.Intent {
+	case IntentWeather:
+		s = "QNH " + p[ParamQNH] // the pressure setting is read back (4.5.7.5.1)
+		if p[ParamQNH] == "" {
+			return Transmission{}, false
+		}
+	case IntentDirectTo:
+		s = "Cleared direct to " + p[ParamFix]
+	case IntentIdentified:
+		if p[ParamLevel] == "" {
+			return Transmission{}, false // identification alone needs no readback
+		}
+		s = "Climb to " + p[ParamLevel]
 	case IntentDepartureClearance:
 		s = capital(departureClearance(p)) // CAP 413 2.68
 	case IntentArrivalClearance:

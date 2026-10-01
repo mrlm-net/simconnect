@@ -771,3 +771,26 @@ func TestTaxiControllerTakeoffClearedWhileTaxiing(t *testing.T) {
 		t.Error("held short of runway 24 though cleared for take-off")
 	}
 }
+
+// Expedited, a departure lingers less at its gates: it is airborne sooner
+// than the same departure without (#510).
+func TestTaxiControllerExpedite(t *testing.T) {
+	airborne := func(rush bool) time.Duration {
+		ctl, _, run, now := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		start := *now
+		ctl.Expedite(rush)
+		if !run(TaxiDeparting, 60*1800) {
+			t.Fatalf("rush %v: state %v", rush, ctl.State())
+		}
+		return now.Sub(start)
+	}
+	slow, fast := airborne(false), airborne(true)
+	if fast >= slow {
+		t.Errorf("expedited %s, not before %s", fast, slow)
+	}
+	t.Logf("to the take-off roll: %s, expedited %s", slow.Round(time.Second), fast.Round(time.Second))
+}

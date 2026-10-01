@@ -238,6 +238,7 @@ type ArrivalController struct {
 	timing        timing            // this aircraft's draw of the spreads (#343)
 	lightsChanged bool              // the sim reported a light change since the last event
 	approach      *ApproachMover    // injected approach until the rollout hand-over
+	rush          bool              // expedite vacating (Expedite, #510)
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
 	goArounds     int // go-arounds flown (GoAround)
@@ -780,6 +781,14 @@ func (c *ArrivalController) stopHere(m arrivalMonitor, desc string) {
 	if err != nil {
 		c.emit(err, true)
 	}
+}
+
+// Expedite has the crew vacate the runway faster (#510): RushExitKts
+// more at the exit, for a rollout planned from now on.
+func (c *ArrivalController) Expedite(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rush = on
 }
 
 // ClearToTaxi clears an aircraft waiting clear of the runway to taxi to its

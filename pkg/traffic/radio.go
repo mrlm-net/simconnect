@@ -62,45 +62,79 @@ const (
 	IntentLevel              Intent = "level"               // climb or descend
 	IntentHeading            Intent = "heading"             // turn left or right heading
 	IntentContact            Intent = "contact"             // a handoff: contact the next position (#416)
+	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
+	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
+	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
 )
+
+// Phraseology is the wording a transmission is said in: ICAO (Doc 4444,
+// "" also means ICAO) or the FAA's (JO 7110.65), by the airport's region
+// (PhraseologyFor). docs/traffic-phraseology.md has both side by side.
+type Phraseology string
+
+const (
+	PhraseologyICAO Phraseology = "icao"
+	PhraseologyFAA  Phraseology = "faa"
+)
+
+// PhraseologyFor is the phraseology at airport icao: FAA in the United
+// States and its territories (K, PA Alaska, PH Hawaii, PG Guam and the
+// Northern Marianas, TJ Puerto Rico, TI the Virgin Islands), ICAO
+// elsewhere.
+func PhraseologyFor(icao string) Phraseology {
+	icao = strings.ToUpper(icao)
+	if strings.HasPrefix(icao, "K") && len(icao) == 4 {
+		return PhraseologyFAA
+	}
+	for _, p := range []string{"PA", "PH", "PG", "TJ", "TI"} {
+		if strings.HasPrefix(icao, p) {
+			return PhraseologyFAA
+		}
+	}
+	return PhraseologyICAO
+}
 
 // Parameter keys of a transmission. Values are the text as said (a runway
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
-	ParamRunway   = "runway"
-	ParamEntry    = "entry"    // where an intersection departure enters its runway ("B")
-	ParamStartUp  = "startup"  // "1": the start-up asked for or approved with the pushback
-	ParamFacing   = "facing"   // where a push ends facing: "east"
-	ParamBehind   = "behind"   // a conditional line-up: the landing traffic as said ("A320")
-	ParamGiveWay  = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
-	ParamTaxiways = "taxiways" // as said: "B2, H, A"
-	ParamStand    = "stand"
-	ParamLimit    = "limit" // a taxiway to hold short of; "" a marked point
-	ParamSID      = "sid"
-	ParamSTAR     = "star"
-	ParamApproach = "approach" // the approach expected ("ILS")
-	ParamReason   = "reason"
-	ParamNumber   = "number" // in the landing sequence
-	ParamDelay    = "delay"
-	ParamLose     = "lose" // how the delay is lost: "210 kt, +3.2 NM"
-	ParamFix      = "fix"
-	ParamHoldIn   = "entry_type"  // hold entry: direct, teardrop, parallel
-	ParamAltitude = "altitude"    // feet
-	ParamExpect   = "expect"      // expect further clearance, HH:MM
-	ParamSpeed    = "speed"       // knots
-	ParamLevel    = "level"       // "flight level 210" or "altitude 9000 feet"
-	ParamHeading  = "heading"     // degrees, three digits
-	ParamTurn     = "turn"        // left, right
-	ParamClimb    = "climb"       // climb, descend
-	ParamSlower   = "slower"      // "true": reduce, else increase
-	ParamTraffic  = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
-	ParamPosition = "position"    // a handoff's next position
-	ParamStation  = "station"     // … as said: "Praha Tower"
-	ParamFreq     = "frequency"   // … its frequency: "118.105"
-	ParamWhen     = "when"        // … a condition: "when vacated"
-	ParamDest     = "destination" // a clearance limit as said: "Frankfurt"
-	ParamSquawk   = "squawk"      // SSR code: "4521"
-	ParamWind     = "wind"        // as said: "wind 100 degrees 6 knots"
+	ParamRunway    = "runway"
+	ParamEntry     = "entry"    // where an intersection departure enters its runway ("B")
+	ParamStartUp   = "startup"  // "1": the start-up asked for or approved with the pushback
+	ParamFacing    = "facing"   // where a push ends facing: "east"
+	ParamBehind    = "behind"   // a conditional line-up: the landing traffic as said ("A320")
+	ParamGiveWay   = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
+	ParamTaxiways  = "taxiways" // as said: "B2, H, A"
+	ParamStand     = "stand"
+	ParamLimit     = "limit" // a taxiway to hold short of; "" a marked point
+	ParamSID       = "sid"
+	ParamSTAR      = "star"
+	ParamApproach  = "approach" // the approach expected ("ILS")
+	ParamReason    = "reason"
+	ParamNumber    = "number" // in the landing sequence
+	ParamDelay     = "delay"
+	ParamLose      = "lose" // how the delay is lost: "210 kt, +3.2 NM"
+	ParamFix       = "fix"
+	ParamHoldIn    = "entry_type"  // hold entry: direct, teardrop, parallel
+	ParamAltitude  = "altitude"    // feet
+	ParamExpect    = "expect"      // expect further clearance, HH:MM
+	ParamSpeed     = "speed"       // knots
+	ParamLevel     = "level"       // "flight level 210" or "altitude 9000 feet"
+	ParamHeading   = "heading"     // degrees, three digits
+	ParamTurn      = "turn"        // left, right
+	ParamClimb     = "climb"       // climb, descend
+	ParamSlower    = "slower"      // "true": reduce, else increase
+	ParamTraffic   = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
+	ParamPosition  = "position"    // a handoff's next position
+	ParamStation   = "station"     // … as said: "Praha Tower"
+	ParamFreq      = "frequency"   // … its frequency: "118.105"
+	ParamWhen      = "when"        // … a condition: "when vacated"
+	ParamDest      = "destination" // a clearance limit as said: "Frankfurt"
+	ParamSquawk    = "squawk"      // SSR code: "4521"
+	ParamWind      = "wind"        // as said: "wind 100 degrees 6 knots"
+	ParamQNH       = "qnh"         // hPa: "1013" (FAA: inches, ParamAltimeter)
+	ParamAltimeter = "altimeter"   // inches of mercury ×100: "2992"
+	ParamReport    = "report"      // what to report: "established"
+	ParamRush      = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
 )
 
 // Transmission is one message on the radio.
@@ -114,13 +148,105 @@ type Transmission struct {
 	Intent    Intent            `json:"intent"`
 	Params    map[string]string `json:"params,omitempty"`
 	Text      string            `json:"text"`
+	// Phraseology is the wording of Text ("" ICAO); the Radio sets FAA at
+	// US airports (RadioOptions.Phraseology).
+	Phraseology Phraseology `json:"phraseology,omitempty"`
 }
 
 // Say is t with its text: the ATC phrase (ICAO phraseology, the
 // application's normal tokens) for its intent and parameters.
 func Say(t Transmission) Transmission {
+	if t.Phraseology == PhraseologyFAA {
+		if s, ok := phraseFAA(t.Callsign, t.Intent, t.Params); ok {
+			t.Text = s
+			return t
+		}
+	}
 	t.Text = phrase(t.Callsign, t.Intent, t.Params)
 	return t
+}
+
+// phraseFAA is the FAA wording (JO 7110.65, as quoted in
+// docs/traffic-phraseology.md) where it differs from ICAO's; false: the
+// ICAO text stands.
+func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
+	rwy := "runway " + p[ParamRunway]
+	if p[ParamEntry] != "" {
+		rwy += " at " + p[ParamEntry] // intersection (3-9-4, 3-9-10)
+	}
+	switch in {
+	case IntentDepartureClearance:
+		// 4-3-3: "Cleared to (airport); (SID) departure; then, as filed.
+		// Maintain (altitude)."; 4-3-2: "Climb via SID except maintain".
+		s := cs + ", cleared"
+		if p[ParamDest] != "" {
+			s += " to " + p[ParamDest] + " airport"
+		}
+		if p[ParamSID] != "" {
+			s += ", " + p[ParamSID] + " departure"
+		}
+		s += ", then as filed"
+		switch lvl := faaLevel(p[ParamLevel]); {
+		case lvl != "" && p[ParamSID] != "":
+			s += ", climb via SID except maintain " + lvl
+		case lvl != "":
+			s += ", maintain " + lvl
+		}
+		if p[ParamSquawk] != "" {
+			s += ", squawk " + p[ParamSquawk]
+		}
+		return s, true
+	case IntentTaxi:
+		if p[ParamStand] != "" {
+			return "", false
+		}
+		via := ""
+		if p[ParamTaxiways] != "" {
+			via = " via " + p[ParamTaxiways]
+		}
+		return fmt.Sprintf("%s, %s, taxi%s", cs, rwy, via), true // 3-7-2: runway first
+	case IntentLineUp:
+		// No conditional clearances on the runway in the FAA's rules.
+		return fmt.Sprintf("%s, %s, line up and wait", cs, rwy), true // 3-9-4
+	case IntentTakeoff:
+		return fmt.Sprintf("%s, %s, cleared for takeoff", cs, rwy), true // 3-9-10; civil: no wind
+	case IntentLanding:
+		return fmt.Sprintf("%s, runway %s, cleared to land", cs, p[ParamRunway]), true // 3-10-5
+	case IntentApproachClearance:
+		kind := p[ParamApproach]
+		if kind == "" {
+			return fmt.Sprintf("%s, cleared approach runway %s", cs, p[ParamRunway]), true
+		}
+		return fmt.Sprintf("%s, cleared %s runway %s approach", cs, kind, p[ParamRunway]), true // 4-8-1
+	case IntentArrivalClearance:
+		s := cs + ", cleared " + p[ParamSTAR] + " arrival"
+		if lvl := faaLevel(p[ParamLevel]); lvl != "" {
+			s += ", descend and maintain " + lvl // 4-5-7
+		}
+		if p[ParamAltimeter] != "" {
+			s += ", altimeter " + p[ParamAltimeter] // 2-7-2
+		}
+		return s, true
+	case IntentWeather:
+		s := cs + ", " + p[ParamWind]
+		if p[ParamAltimeter] != "" {
+			s += ", altimeter " + p[ParamAltimeter] // 2-7-2
+		}
+		return s, true
+	case IntentIdentified:
+		s := cs + ", radar contact" // 5-3-7
+		if lvl := faaLevel(p[ParamLevel]); lvl != "" {
+			s += ", climb and maintain " + lvl // 4-5-7
+		}
+		return s, true
+	}
+	return "", false
+}
+
+// faaLevel is a level said the FAA's way: "5000 feet" is "5000" (no
+// "feet"), flight levels as they are.
+func faaLevel(s string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(s, "altitude "), " feet")
 }
 
 // phrase is the text of a controller's transmission: ICAO phraseology as
@@ -183,15 +309,24 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return fmt.Sprintf("%s, taxi%s, hold short of %s", cs, via, p[ParamLimit]) // 12.3.4.8
 	case IntentCross:
+		if p[ParamRush] != "" {
+			return fmt.Sprintf("%s, expedite crossing runway %s", cs, p[ParamRunway]) // 12.3.4.9
+		}
 		return fmt.Sprintf("%s, cross runway %s", cs, p[ParamRunway]) // 12.3.4.9
 	case IntentLineUp:
 		if p[ParamBehind] != "" {
 			// Conditional: the condition first, "behind" again at the end.
 			return fmt.Sprintf("%s, behind the landing %s, runway %s, line up and wait behind", cs, p[ParamBehind], p[ParamRunway])
 		}
+		if p[ParamRush] != "" {
+			return fmt.Sprintf("%s, runway %s, line up, be ready for immediate departure", cs, p[ParamRunway]) // 12.3.4.10 h
+		}
 		return fmt.Sprintf("%s, runway %s, line up and wait", cs, p[ParamRunway]) // 12.3.4.10
 	case IntentTakeoff:
 		// Its own transmission, never with the line-up (CAP 413 4.29).
+		if p[ParamRush] != "" {
+			return fmt.Sprintf("%s, runway %s, cleared for immediate take-off%s", cs, p[ParamRunway], wind) // CAP 413 4.30
+		}
 		return fmt.Sprintf("%s, runway %s, cleared for take-off%s", cs, p[ParamRunway], wind) // 12.3.4.11 a
 	case IntentLanding:
 		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
@@ -239,8 +374,25 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
+	case IntentWeather:
+		s := cs + ", " + p[ParamWind] // 12.3.1.8 a
+		if p[ParamQNH] != "" {
+			s += ", QNH " + p[ParamQNH] // 12.3.1.8 l
+		}
+		return s
+	case IntentDirectTo:
+		return fmt.Sprintf("%s, cleared direct to %s", cs, p[ParamFix]) // CAP 413 6.8
+	case IntentIdentified:
+		s := cs + ", identified" // 12.4.1.1 e
+		if p[ParamLevel] != "" {
+			s += ", climb to " + p[ParamLevel] // 12.3.1.2 a
+		}
+		return s
 	case IntentContact:
 		station := strings.TrimSpace(p[ParamStation] + " " + p[ParamFreq])
+		if p[ParamRush] != "" && p[ParamWhen] != "" {
+			return fmt.Sprintf("%s, expedite vacating, %s contact %s", cs, p[ParamWhen], station) // 12.3.4.7 y
+		}
 		if p[ParamWhen] != "" {
 			return fmt.Sprintf("%s, %s contact %s", cs, p[ParamWhen], station) // 12.3.4.20; CAP 413 4.68
 		}
@@ -295,6 +447,9 @@ func arrivalClearance(p map[string]string) string {
 	if p[ParamLevel] != "" {
 		s += ", descend to " + p[ParamLevel]
 	}
+	if p[ParamQNH] != "" {
+		s += ", QNH " + p[ParamQNH] // with the level (CAP 413 3.9)
+	}
 	if p[ParamApproach] != "" {
 		s += ", expect " + p[ParamApproach] + " approach"
 	}
@@ -309,10 +464,17 @@ func ClearedApproach(cs, kind, runway string) Transmission {
 
 // approachClearance is an approach clearance after the call sign.
 func approachClearance(p map[string]string) string {
-	if p[ParamApproach] == "" {
-		return "cleared approach runway " + p[ParamRunway]
+	s := "cleared approach runway " + p[ParamRunway]
+	if p[ParamApproach] != "" {
+		s = "cleared " + p[ParamApproach] + " approach runway " + p[ParamRunway] // 12.3.3.2 f
 	}
-	return "cleared " + p[ParamApproach] + " approach runway " + p[ParamRunway]
+	if p[ParamQNH] != "" {
+		s += ", QNH " + p[ParamQNH] // CAP 413 6.28
+	}
+	if p[ParamReport] == "established" {
+		s += ", report established" // 12.4.2.2 e
+	}
+	return s
 }
 
 // WindSaid is the surface wind as a tower says it, magnetic degrees:
@@ -451,6 +613,62 @@ func runwayChange(p map[string]string) string {
 		s += ", expect " + p[ParamApproach] + " approach"
 	}
 	return s
+}
+
+// WeatherReport answers a crew's weather request: the wind (WindSaid) and
+// the QNH: "CSA1, wind 240 degrees 8 knots, QNH 1013". FAA: the altimeter.
+func WeatherReport(pos Position, cs, wind, qnh, altimeter string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentWeather, Params: map[string]string{ParamWind: wind, ParamQNH: qnh, ParamAltimeter: altimeter}})
+}
+
+// ClearedDirectTo clears an aircraft direct to fix, as its crew asked:
+// "CSA1, cleared direct to GOLOP".
+func ClearedDirectTo(pos Position, cs, fix string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentDirectTo, Params: map[string]string{ParamFix: fix}})
+}
+
+// Identified answers a departure's check-in: identified (FAA: radar
+// contact), climb to level ("" none): "CSA1, identified, climb to flight
+// level 240".
+func Identified(pos Position, cs, level string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentIdentified, Params: map[string]string{ParamLevel: level}})
+}
+
+// ApproachClearance is an approach clearance's content.
+type ApproachClearance struct {
+	Kind, Runway string // "ILS", "24"
+	QNH          string // hPa ("" none)
+	// ReportEstablished asks the crew to report established on the
+	// localizer before the tower (Doc 4444 12.4.2.2 e).
+	ReportEstablished bool
+}
+
+// ClearedApproachTo clears an approach with its QNH, asking for the
+// established report: "CSA1, cleared ILS approach runway 24, QNH 1013,
+// report established".
+func ClearedApproachTo(cs string, a ApproachClearance) Transmission {
+	p := map[string]string{ParamApproach: a.Kind, ParamRunway: a.Runway, ParamQNH: a.QNH}
+	if a.ReportEstablished {
+		p[ParamReport] = "established"
+	}
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentApproachClearance, Params: p})
+}
+
+// Rushed is clearance t expedited (#510): an immediate take-off, "be ready
+// for immediate departure", "expedite crossing", "expedite vacating".
+// Clearances without an expedited form are returned as they are.
+func Rushed(t Transmission) Transmission {
+	switch t.Intent {
+	case IntentTakeoff, IntentLineUp, IntentCross, IntentContact:
+	default:
+		return t
+	}
+	p := map[string]string{ParamRush: "1"}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params = p
+	return Say(t)
 }
 
 // GiveWay tells a taxiing aircraft to give way to other traffic,
@@ -710,6 +928,9 @@ type RadioOptions struct {
 	// uses it, so text and voice are the same (#462). Callsign keeps the
 	// ICAO form.
 	SaidCallsign func(cs string) string
+	// Phraseology is the wording at an airport; nil: PhraseologyFor (FAA in
+	// the United States, ICAO elsewhere, #463).
+	Phraseology func(airport string) Phraseology
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -746,6 +967,18 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	}
 	if t.Text == "" {
 		t = Say(t)
+	}
+	// The airport's phraseology: a controller's phrase built by Say is said
+	// again the FAA's way at a US airport (custom texts stay as they are).
+	if !t.Pilot && t.Phraseology == "" {
+		ph := PhraseologyFor(t.Airport)
+		if r.opts.Phraseology != nil {
+			ph = r.opts.Phraseology(t.Airport)
+		}
+		if ph == PhraseologyFAA && Say(t).Text == t.Text {
+			t.Phraseology = PhraseologyFAA
+			t = Say(t)
+		}
 	}
 	if r.opts.SaidCallsign != nil && t.Callsign != "" {
 		if said := r.opts.SaidCallsign(t.Callsign); said != t.Callsign {
