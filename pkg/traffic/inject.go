@@ -430,6 +430,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		Longitude: pose.Position.Lon,
 		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt,
 		Pitch:     -pose.PitchDeg, // SimConnect: negative is nose up
+		Bank:      -pose.BankDeg,  // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
 		OnGround:  onGround,
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
