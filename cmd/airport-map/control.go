@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -94,6 +95,8 @@ type controlled struct {
 	heightFt            float64
 	vacateSaid          bool
 	readySaid           bool // a departure's "ready for departure"
+	// rush: told to hurry (#510): its clearances are the expedited ones.
+	rush atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -130,6 +133,7 @@ type ControlView struct {
 	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
 	OnGround       bool             `json:"onGround"`
 	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Rush           bool             `json:"rush,omitempty"`         // told to hurry (#510)
 	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
@@ -647,7 +651,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				level = traffic.LevelSaidAbove(p.Spawn.Altitude, lim.TransitionAltitudeFt)
 			}
 			it.say(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info))
-			it.firstContact(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""))
+			qnh, _ := cc.qnh()
+			it.firstContact(withParams(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""), map[string]string{traffic.ParamQNH: qnh}))
+			it.askWeather(traffic.PosApproach)
 			it.view.Procedure += " → " + expect
 		}
 	}
@@ -1011,6 +1017,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 
 	// GET /api/radio?icao=LKPR&n=50 — what our controllers said (#415):
 	// structured transmissions, oldest first (icao empty: every airport).
+	registerNetwork(mux, st) // the radio as clips, for clients on the network
 	mux.HandleFunc("GET /api/radio", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
 		cc := st.control
@@ -1159,6 +1166,33 @@ func registerControl(mux *http.ServeMux, st *state) {
 		cc.mu.Unlock()
 		if it == nil {
 			http.Error(w, "no such aircraft", http.StatusNotFound)
+			return
+		}
+		// Rush (#510): ?on=1 or 0; the crew hurries, the clearances say it.
+		if r.PathValue("action") == "rush" {
+			on := r.URL.Query().Get("on") != "0"
+			it.rush.Store(on)
+			err := cc.do(func() error {
+				if it.dep != nil {
+					it.dep.Expedite(on)
+				} else if it.arr != nil {
+					it.arr.Expedite(on)
+				}
+				return nil
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+			it.mu.Lock()
+			it.view.Rush = on
+			it.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Network play (#511): only the position working it clears it.
+		if as := positionOf(r); !mayClear(as, it) {
+			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
 			return
 		}
 		node := airport.NodeID(-1)
@@ -1869,8 +1903,69 @@ func (it *controlled) phrase(action string, node airport.NodeID) traffic.Transmi
 	it.mu.Lock()
 	v := it.view
 	it.mu.Unlock()
-	return it.phraseView(v, r, action, node)
+	return it.rushed(it.phraseView(v, r, action, node))
 }
+
+// rushed is clearance t expedited when the aircraft is told to hurry
+// (#510): "cleared for immediate take-off", "expedite crossing" …
+func (it *controlled) rushed(t traffic.Transmission) traffic.Transmission {
+	if it.rush.Load() {
+		return traffic.Rushed(t)
+	}
+	return t
+}
+
+// qnh is the QNH at the user aircraft, hPa as said ("" without weather),
+// and the same as an altimeter setting in inches ×100 for the FAA.
+func (cc *controlCenter) qnh() (hPa, inches string) {
+	if cc.weather == nil {
+		return "", ""
+	}
+	w := cc.weather()
+	if w == nil || w.QNHhPa <= 0 {
+		return "", ""
+	}
+	return fmt.Sprintf("%d", int(math.Floor(w.QNHhPa))), fmt.Sprintf("%04d", int(math.Round(w.QNHhPa*0.0295300*100)))
+}
+
+// withParams is t said again with params added.
+func withParams(t traffic.Transmission, params map[string]string) traffic.Transmission {
+	p := map[string]string{}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	for k, v := range params {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	t.Params = p
+	return traffic.Say(t)
+}
+
+// weatherShare: how often a crew asks for the weather on its check-in with
+// tower (departures) or approach (arrivals).
+const weatherShare = 0.15
+
+// askWeather has the crew of it ask pos for the weather now and then, and
+// the controller answer with the wind and QNH.
+func (it *controlled) askWeather(pos traffic.Position) {
+	if rand.Float64() >= weatherShare || it.gates {
+		return
+	}
+	p := it.cc.pending
+	p.later(it.clearAt(pos).Add(crewActDelay+p.jitter(crewActJitter)), func() {
+		it.say(traffic.RequestWeather(pos, it.Tail))
+		qnh, alt := it.cc.qnh()
+		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+			it.say(traffic.WeatherReport(pos, it.Tail, it.cc.windSaid(it.ICAO), qnh, alt))
+		})
+	})
+}
+
+// departureClimbSaid is the level departure clears a climbing departure
+// to once identified.
+const departureClimbSaid = "flight level 240"
 
 // phraseView is phrase for a view the caller holds.
 func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) traffic.Transmission {
@@ -1988,7 +2083,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// vacated (Doc 4444 12.3.4.20; #462).
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.vacateSaid && !it.gates && it.atc == traffic.PosTower {
 		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
-		it.say(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf))
+		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true
 	}
 	station, freq := it.cc.stationOf(it.ICAO, pos)
@@ -2008,7 +2103,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// Approach clears the arrival for its approach before handing it to
 	// tower on the final.
 	if ev.arr != nil && from == traffic.PosApproach && pos == traffic.PosTower && !it.gates {
-		it.say(traffic.ClearedApproach(it.Tail, it.approachKind(), it.view.Runway))
+		// With the QNH and "report established"; the crew reports it, then
+		// approach hands it over (Doc 4444 12.4.2.2 e; CAP 413 6.27, 6.28).
+		qnh, _ := it.cc.qnh()
+		it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
+		it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
 	}
 	switch {
 	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:
@@ -2028,6 +2127,16 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 	}
 	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info))
+	switch {
+	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates:
+		// Departure identifies it and clears the climb on (#462).
+		p := it.cc.pending
+		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, departureClimbSaid))
+		})
+	case ev.dep != nil && pos == traffic.PosTower:
+		it.askWeather(traffic.PosTower)
+	}
 }
 
 // checkInReport is what the pilot reports on first calling pos.

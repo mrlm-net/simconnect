@@ -104,24 +104,8 @@ func newVoice() *voiceOut {
 
 // open starts the voice pipeline on first use; v.mu held.
 func (v *voiceOut) open() error {
-	if v.engine == nil {
-		engine, backend, err := tts.Open(tts.Options{Piper: piper.Options{PiperPath: v.piperPath, VoicesDir: v.voicesDir}})
-		if err != nil {
-			return err
-		}
-		if backend != tts.BackendPiper {
-			engine.Close()
-			return errors.New("no voice: piper and a voice model are needed (see the airport-map README)")
-		}
-		man, err := voices.LoadDefault()
-		if err != nil {
-			engine.Close()
-			return err
-		}
-		v.engine, v.backend = engine, backend
-		// Not the Czech model reading English: it sounds wrong on the radio.
-		v.pool = voices.NewPool(man, voices.PoolOptions{Seed: time.Now().UnixNano(), AllowUnaudited: true, Dir: v.voicesDir, Exclude: []string{"cs_CZ-jirka-medium"}})
-		v.chain, v.norm = radio.Default(), normalise.New()
+	if err := v.openEngine(); err != nil {
+		return err
 	}
 	if v.player == nil {
 		p, err := audio.NewPlayer(audio.Options{DeviceID: v.device})
@@ -138,6 +122,41 @@ func (v *voiceOut) open() error {
 		v.player = p
 	}
 	return nil
+}
+
+// openEngine opens the voices (piper and its models), without a player: a
+// client on the network plays the radio itself (network.go). v.mu held.
+func (v *voiceOut) openEngine() error {
+	if v.engine != nil {
+		return nil
+	}
+	engine, backend, err := tts.Open(tts.Options{Piper: piper.Options{PiperPath: v.piperPath, VoicesDir: v.voicesDir}})
+	if err != nil {
+		return err
+	}
+	if backend != tts.BackendPiper {
+		engine.Close()
+		return errors.New("no voice: piper and a voice model are needed (see the airport-map README)")
+	}
+	man, err := voices.LoadDefault()
+	if err != nil {
+		engine.Close()
+		return err
+	}
+	v.engine, v.backend = engine, backend
+	// Not the Czech model reading English: it sounds wrong on the radio.
+	v.pool = voices.NewPool(man, voices.PoolOptions{Seed: time.Now().UnixNano(), AllowUnaudited: true, Dir: v.voicesDir, Exclude: []string{"cs_CZ-jirka-medium"}})
+	v.chain, v.norm = radio.Default(), normalise.New()
+	return nil
+}
+
+// phraseologyOf is the voice's reading of t: FAA numbers and frequencies at
+// a US airport (#463).
+func phraseologyOf(t traffic.Transmission) voicegoio.Phraseology {
+	if t.Phraseology == traffic.PhraseologyFAA {
+		return voicegoio.FAA
+	}
+	return voicegoio.ICAO
 }
 
 // set turns the voice on or off and picks the frequency followed.
@@ -315,7 +334,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	} else {
 		voice = pool.Assign(v.onShift(t.Airport, t.Position), controllerKind(t.Position))
 	}
-	pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(t.Text, voicegoio.ICAO))
+	pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(t.Text, phraseologyOf(t)))
 	if err != nil {
 		log.Printf("voice: %v", err)
 		return
@@ -337,7 +356,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 		who = t.Callsign
 	}
 	heardOnCamera(t) // the picture with the sound
-	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: who, Phraseology: voicegoio.ICAO, Text: t.Text}, out, player.SampleRate()); err != nil {
+	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: who, Phraseology: phraseologyOf(t), Text: t.Text}, out, player.SampleRate()); err != nil {
 		return // turned off meanwhile
 	}
 	// Wait while it is said, so the queue stays on the lag it has.

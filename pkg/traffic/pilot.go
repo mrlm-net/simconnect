@@ -17,6 +17,7 @@ import (
 const (
 	IntentReadback         Intent = "readback"          // a clearance read back
 	IntentRequestWeather   Intent = "request_weather"   // the crew asks for the wind and QNH
+	IntentEstablished      Intent = "established"       // the crew reports established on the localizer
 	IntentRequestDirect    Intent = "request_direct"    // the crew asks to fly direct to a fix
 	IntentRequestClearance Intent = "request_clearance" // the departure clearance, first call to delivery
 	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
@@ -92,6 +93,13 @@ func firstCall(in Intent, station, cs, stand, info, req string) Transmission {
 		text += ", stand " + stand
 	}
 	return pilotTx(PosGround, cs, in, p, text+withInfo(info)+", "+req)
+}
+
+// EstablishedReport is a crew established on the localizer, as asked in
+// the approach clearance: "Localizer established runway 24, CSA1" (CAP
+// 413 6.27).
+func EstablishedReport(cs, runway string) Transmission {
+	return pilotTx(PosApproach, cs, IntentEstablished, map[string]string{ParamRunway: runway}, "Localizer established runway "+runway+", "+cs)
 }
 
 // RequestWeather is a crew asking for the weather: "Ruzyne Tower, CSA1,

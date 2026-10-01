@@ -318,6 +318,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		if it == nil || it.gates {
 			return
 		}
+		said = it.rushed(said)
 		t.mu.Lock()
 		done := t.given[tail+" "+action]
 		t.mu.Unlock()
