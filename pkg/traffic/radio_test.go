@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -189,5 +190,19 @@ func TestSaidValues(t *testing.T) {
 		if got != want {
 			t.Errorf("%q, want %q", got, want)
 		}
+	}
+}
+
+func TestRunwayChangePhrase(t *testing.T) {
+	tx := RunwayChange(PosGround, "CSA1", "06", "VOZ 2D", "", "")
+	if tx.Text != "CSA1, runway change, runway 06 in use, VOZ 2D departure" {
+		t.Errorf("departure: %q", tx.Text)
+	}
+	tx = RunwayChange(PosApproach, "CSA2", "06", "", "GOLOP 2B", "ILS")
+	if tx.Text != "CSA2, runway change, runway 06 in use, GOLOP 2B arrival, expect ILS approach" {
+		t.Errorf("arrival: %q", tx.Text)
+	}
+	if rb, _ := Readback(tx); !strings.Contains(rb.Text, "Runway 06 in use, GOLOP 2B arrival") {
+		t.Errorf("readback: %q", rb.Text)
 	}
 }

@@ -282,6 +282,8 @@ type TaxiController struct {
 	startUpCleared                                          bool             // ClearStartUp: the engines may start
 	enginesOn                                               bool             // started (combustion on)
 	enginesReadyAt                                          time.Time        // started up, ready to taxi
+	reroute                                                 bool             // ChangeRunway: plan the taxi-out from where it stands when it starts
+	fromHere                                                bool             // the route starts on the edge under the nose (routeFromHere)
 	takeoffPhase                                            TakeoffPhase     // the take-off's phase last frame
 	flapsUpNoted                                            bool
 	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none

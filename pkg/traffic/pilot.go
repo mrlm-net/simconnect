@@ -170,6 +170,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentGiveWay:
 		s = "Giving way to the " + p[ParamGiveWay]
+	case IntentRunwayChange:
+		s = capital(strings.TrimPrefix(runwayChange(p), "runway change, "))
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			s = "Holding at the marked point"
