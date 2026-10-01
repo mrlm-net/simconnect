@@ -137,6 +137,14 @@ func wav(pcm []int16, rate int) []byte {
 //	    (its at, callsign and intent) as a WAV, for a client playing the
 //	    radio on its own device.
 func registerNetwork(mux *http.ServeMux, st *state) {
+	// GET /api/status — {connected}: the simulator is connected (also in its
+	// menu, without an aircraft).
+	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		connected := st.control != nil
+		st.mu.Unlock()
+		writeJSON(w, map[string]bool{"connected": connected})
+	})
 	mux.HandleFunc("GET /api/voice/clip", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
 		cc := st.control

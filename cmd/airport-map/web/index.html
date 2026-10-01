@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Airport Map</title>
+<meta name="description" content="Airport map: ATC traffic control, radio and voice, camera, airport data.">
+<script>
+  // A remembered explicit theme, applied before the first paint (no flash).
+  try { var t = localStorage.getItem('apm-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%232b3440%27/%3E%3Cpath fill=%27%23fff%27 transform=%27rotate(45 12 12)%27 d=%27M12 3.3c.6 0 1 .7 1 1.5v4l5.7 3.3v1.5l-5.7-1.7v3.4l1.6 1.3v1L12 17l-2.6.6v-1l1.6-1.3v-3.4l-5.7 1.7v-1.5L11 8.8v-4c0-.8.4-1.5 1-1.5z%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Icon sprite: every icon is an inline SVG symbol, stroked with currentColor. -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-jet" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 1.8c.85 0 1.35.95 1.35 2.1v5.3l7.85 4.55v2.05l-7.85-2.35v4.7l2.25 1.75v1.35L12 20.4l-3.6.85V19.9l2.25-1.75v-4.7L2.8 15.8v-2.05l7.85-4.55V3.9c0-1.15.5-2.1 1.35-2.1z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.8M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-strips" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4.5" rx="1"/><rect x="3" y="10" width="18" height="4.5" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></symbol>
+  <symbol id="i-seq" viewBox="0 0 24 24"><path d="M3 18h18"/><path d="M5 18l4-6 4 3 6-9"/><circle cx="19" cy="6" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h8M8 16.5h5"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8l10-5"/><circle cx="15.5" cy="14" r="2.5"/><path d="M6.5 12.5h4M6.5 15.5h4"/></symbol>
+  <symbol id="i-tower" viewBox="0 0 24 24"><path d="M8 21l1.5-10h5L16 21M7 7h10l-1.5 4h-7z"/><path d="M12 3v4M10 21h4"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3M3 12h7"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V5.5a1.5 1.5 0 0 1 3 0V13M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-5-2.7L4.6 14a1.5 1.5 0 0 1 2.4-1.8L8 13.5"/></symbol>
+  <symbol id="i-goaround" viewBox="0 0 24 24"><path d="M4 19c3-1 5-4 6-8s3-6 8-7"/><path d="M14 3h5v5"/></symbol>
+  <symbol id="i-abort" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-direct" viewBox="0 0 24 24"><path d="M4 18L19 5"/><path d="M12 5h7v7"/></symbol>
+  <symbol id="i-slow" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M10 2h4"/></symbol>
+  <symbol id="i-hold" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="10" rx="5"/><path d="M15 4l2 3-2 3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+  <symbol id="i-release" viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6"/><path d="M20 5v14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-game" viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></symbol>
+  <symbol id="i-snow" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9 4l3 2 3-2M9 20l3-2 3 2"/></symbol>
+  <symbol id="i-push" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+</svg>
+
+<!-- ───────────── Status strip: the always-on picture ───────────── -->
+<header class="strip" role="banner">
+  <div class="strip__group strip__lead">
+    <span class="brand" aria-hidden="true"><svg class="ic"><use href="#i-jet"/></svg></span>
+    <div class="pop-anchor">
+      <button type="button" class="chip chip--airport" id="aptBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="aptPop" title="Airport: load another, or fetch again">
+        <span class="mono strong" id="aptCode">—</span><span class="chip__sub hide-xl" id="aptName"></span><svg class="ic ic--sm"><use href="#i-chev"/></svg>
+      </button>
+      <div class="popover" id="aptPop" role="dialog" aria-label="Airport" hidden>
+        <form class="row gap-2" id="aptForm">
+          <label class="sr-only" for="icao">ICAO</label>
+          <input id="icao" class="input mono upper" maxlength="8" autocomplete="off" list="airportList" placeholder="ICAO" title="Type an ICAO or pick an airport in range">
+          <datalist id="airportList"></datalist>
+          <button class="btn btn--primary">Load</button>
+          <button type="button" class="btn btn--icon" id="aptRefresh" title="Fetch again from the simulator" aria-label="Fetch again from the simulator"><svg class="ic"><use href="#i-refresh"/></svg></button>
+        </form>
+        <p class="small" id="aptStatus" role="status"></p>
+        <p class="muted small" id="aptInRange"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip__group strip__picture" aria-label="Airport picture">
+    <button type="button" class="chip chip--rwy" id="rwyChip" data-goto="airport" title="Runway in use (from the wind)">
+      <span class="chip__k">RWY</span><span class="mono strong" id="rwyChipVal">—</span><span class="chip__sub hide-xl" id="rwyChipSub"></span>
+    </button>
+    <button type="button" class="chip chip--atis" id="atisChip" data-goto="airport" title="ATIS" hidden>
+      <span class="atis-letter" aria-hidden="true" id="atisChipLetter">?</span><span class="hide-sm">ATIS</span><span class="sr-only" id="atisChipSr"></span>
+    </button>
+    <span class="chip chip--static hide-tab" id="windChip" title="Wind (magnetic), measured at your aircraft" hidden>
+      <svg class="ic ic--sm"><use href="#i-wind"/></svg><span class="mono" id="windChipVal"></span>
+    </span>
+    <span class="chip chip--static hide-xl" id="qnhChip" title="QNH" hidden><span class="chip__k">QNH</span><span class="mono" id="qnhChipVal"></span></span>
+  </div>
+
+  <div class="strip__group strip__sim" aria-label="Simulation" title="The simulation: traffic runs on its time — stopped while paused, faster at a higher rate">
+    <button type="button" class="btn btn--sim" id="simPause" aria-pressed="false" aria-label="Pause the simulation">
+      <svg class="ic"><use href="#i-pause"/></svg><span class="lbl">Pause</span>
+    </button>
+    <div class="rate hide-tab" role="group" aria-label="Simulation rate">
+      <button type="button" class="btn btn--icon btn--ghost" data-rate="slower" aria-label="Slower" title="Slower"><svg class="ic"><use href="#i-minus"/></svg></button>
+      <output class="mono rate__val" id="simRate" data-rate-out aria-live="polite">—</output>
+      <button type="button" class="btn btn--icon btn--ghost" data-rate="faster" aria-label="Faster" title="Faster"><svg class="ic"><use href="#i-plus"/></svg></button>
+    </div>
+  </div>
+
+  <div class="strip__group strip__ops">
+    <button type="button" class="chip chip--game hide-tab" id="gameChip" data-goto="schedule" title="ATC game: score, flights handled, next flight" hidden>
+      <svg class="ic ic--sm"><use href="#i-game"/></svg><span class="mono strong" id="gameChipScore">0</span><span class="chip__sub hide-md" id="gameChipSub"></span>
+    </button>
+    <div class="pop-anchor hide-tab">
+      <button type="button" class="chip" id="camBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="camPop" title="Camera and scenes">
+        <svg class="ic ic--sm"><use href="#i-camera"/></svg><span id="camChipLbl">Off</span>
+      </button>
+      <div class="popover popover--right" id="camPop" role="dialog" aria-label="Camera and scenes" hidden>
+        <div class="director" data-director></div>
+      </div>
+    </div>
+    <button type="button" class="chip chip--radio hide-sm" id="radioChip" data-goto="radio" title="Listening frequency and voice">
+      <svg class="ic ic--sm"><use href="#i-mute" id="radioChipIc"/></svg><span class="chip__k" id="radioChipPos">RADIO</span><span class="mono" id="radioChipFreq">—</span>
+    </button>
+    <label class="chip chip--as hide-tab" title="Network play: the position this device works. Clearances for aircraft on other frequencies are refused."><span class="hide-xl">As</span>
+      <select id="asSel" aria-label="Position this device works"><option value="">All positions</option><option value="delivery">Delivery</option><option value="ground">Ground</option><option value="tower">Tower</option><option value="approach">Approach</option></select></label>
+    <span class="chip chip--static chip--conn hide-tab" id="connChip" title="Simulator"><span class="dot" id="connDot"></span><span class="hide-xl" id="connLbl">Not connected</span></span>
+  </div>
+
+  <div class="strip__group strip__end">
+    <div class="theme-switch hide-tab" role="radiogroup" aria-label="Theme">
+      <button type="button" role="radio" data-theme-set="light" aria-label="Light theme" title="Light"><svg class="ic ic--sm"><use href="#i-sun"/></svg></button>
+      <button type="button" role="radio" data-theme-set="dark" aria-label="Dark theme" title="Dark"><svg class="ic ic--sm"><use href="#i-moon"/></svg></button>
+      <button type="button" role="radio" data-theme-set="system" aria-label="System theme" title="System"><svg class="ic ic--sm"><use href="#i-monitor"/></svg></button>
+    </div>
+    <button type="button" class="btn btn--icon btn--ghost hide-tab" data-open-help aria-label="Quick reference" title="Quick reference"><svg class="ic"><use href="#i-help"/></svg></button>
+    <div class="pop-anchor show-tab">
+      <button type="button" class="btn btn--icon btn--ghost" id="moreBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="morePop" aria-label="More"><svg class="ic"><use href="#i-more"/></svg></button>
+      <div class="popover popover--right popover--more" id="morePop" role="dialog" aria-label="More" hidden>
+        <dl class="kv">
+          <dt>Wind</dt><dd class="mono" id="moreWind">—</dd>
+          <dt>QNH</dt><dd class="mono" id="moreQnh">—</dd>
+          <dt>Simulator</dt><dd id="moreConn">—</dd>
+        </dl>
+        <div class="field">
+          <span class="field__lbl">Sim rate</span>
+          <div class="rate" role="group" aria-label="Simulation rate">
+            <button type="button" class="btn btn--icon" data-rate="slower" aria-label="Slower"><svg class="ic"><use href="#i-minus"/></svg></button>
+            <output class="mono rate__val" data-rate-out>—</output>
+            <button type="button" class="btn btn--icon" data-rate="faster" aria-label="Faster"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+        </div>
+        <button type="button" class="btn btn--block" data-goto="schedule"><svg class="ic"><use href="#i-game"/></svg><span id="moreGame">ATC game</span></button>
+        <div class="director" data-director></div>
+        <div class="field">
+          <span class="field__lbl">Theme</span>
+          <div class="theme-switch theme-switch--wide" role="radiogroup" aria-label="Theme">
+            <button type="button" role="radio" data-theme-set="light"><svg class="ic ic--sm"><use href="#i-sun"/></svg>Light</button>
+            <button type="button" role="radio" data-theme-set="dark"><svg class="ic ic--sm"><use href="#i-moon"/></svg>Dark</button>
+            <button type="button" role="radio" data-theme-set="system"><svg class="ic ic--sm"><use href="#i-monitor"/></svg>System</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn--block" data-open-help><svg class="ic"><use href="#i-help"/></svg>Quick reference</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="workspace" id="workspace">
+  <!-- ───────────── The map ───────────── -->
+  <section class="mapwrap" aria-label="Airport map">
+    <div id="map" role="application" aria-label="Airport map with traffic"></div>
+
+    <div class="paused-banner" id="pausedBanner" hidden role="status">
+      <svg class="ic"><use href="#i-pause"/></svg><strong>Simulation paused</strong><span class="hide-sm">· traffic stopped, timers frozen</span>
+      <button type="button" class="btn btn--sm btn--primary" data-resume><svg class="ic ic--sm"><use href="#i-play"/></svg>Resume</button>
+    </div>
+
+    <div class="overlay-tag" id="overlayTag" hidden></div>
+
+    <div class="maptools" role="toolbar" aria-label="Map tools" aria-orientation="vertical">
+      <div class="maptools__grp">
+        <button type="button" class="tool" id="zoomIn" aria-label="Zoom in" title="Zoom in"><svg class="ic"><use href="#i-plus"/></svg></button>
+        <button type="button" class="tool" id="zoomOut" aria-label="Zoom out" title="Zoom out"><svg class="ic"><use href="#i-minus"/></svg></button>
+      </div>
+      <div class="maptools__grp">
+        <button type="button" class="tool" id="locateMe" aria-label="Show my aircraft" title="Show my aircraft"><svg class="ic"><use href="#i-locate"/></svg></button>
+        <button type="button" class="tool" id="worldBtn" aria-pressed="false" aria-label="World view" title="World view: the traffic picture, airports in range"><svg class="ic"><use href="#i-globe"/></svg></button>
+        <button type="button" class="tool" id="layersBtn" aria-label="Map layers" title="Map layers" data-goto="map"><svg class="ic"><use href="#i-layers"/></svg></button>
+      </div>
+      <div class="maptools__grp hide-sm">
+        <button type="button" class="tool" id="fsBtn" aria-label="Full screen" title="Full screen, panel included (Esc leaves)"><svg class="ic"><use href="#i-expand"/></svg></button>
+        <button type="button" class="tool" id="panelBtn" aria-pressed="true" aria-label="Hide the panel" title="Hide the panel"><svg class="ic"><use href="#i-panel"/></svg></button>
+      </div>
+    </div>
+
+    <details class="legend" id="legend">
+      <summary><svg class="ic ic--sm"><use href="#i-info"/></svg>Legend</summary>
+      <ul class="legend__list">
+        <li><span class="lg-ac lg-ac--ours"><svg><use href="#i-jet"/></svg></span>Ours, under control</li>
+        <li><span class="lg-ac lg-ac--sel"><svg><use href="#i-jet"/></svg></span>Selected</li>
+        <li><span class="lg-ac lg-ac--arr"><svg><use href="#i-jet"/></svg></span>Arrival en route</li>
+        <li><span class="lg-ac lg-ac--ovf"><svg><use href="#i-jet"/></svg></span>Overflight</li>
+        <li><span class="lg-ac lg-ac--dep"><svg><use href="#i-jet"/></svg></span>Departed</li>
+        <li><span class="lg-ac lg-ac--other"><svg><use href="#i-jet"/></svg></span>Other traffic (MSFS AI)</li>
+        <li><span class="lg-ac lg-ac--user"><svg><use href="#i-jet"/></svg></span>My aircraft</li>
+        <li><span class="lg-line lg-line--taxi"></span>Taxi route (cleared · planned)</li>
+        <li><span class="lg-line lg-line--preview"></span>New flight route</li>
+        <li><span class="lg-line lg-line--air"></span>Air route, hold</li>
+        <li><span class="lg-line lg-line--final"></span>Final, NM ticks</li>
+        <li><span class="lg-line lg-line--hold"></span>Hold-short point</li>
+        <li><span class="lg-ring lg-ring--occ"></span>Stand held · <span class="lg-ring lg-ring--det"></span>found occupied</li>
+      </ul>
+    </details>
+
+    <!-- ───────────── Selected aircraft: the context panel ───────────── -->
+    <aside class="ctx" id="ctx" aria-label="Selected aircraft" hidden></aside>
+  </section>
+
+  <!-- ───────────── Side panel / bottom sheet ───────────── -->
+  <aside class="panel" id="panel" data-sheet="peek" aria-label="Workspace">
+    <div class="sheet-handle" id="sheetHandle" role="button" tabindex="0" aria-label="Resize panel" aria-controls="panel" aria-expanded="false">
+      <span class="sheet-handle__bar"></span>
+      <span class="sheet-handle__sum" id="sheetSummary">—</span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Workspace sections">
+      <button type="button" role="tab" id="tab-traffic" aria-controls="p-traffic" data-tab="traffic"><svg class="ic"><use href="#i-strips"/></svg><span>Traffic</span><span class="badge badge--warn" title="Waiting for a clearance" hidden>0</span></button>
+      <button type="button" role="tab" id="tab-sequence" aria-controls="p-sequence" data-tab="sequence"><svg class="ic"><use href="#i-seq"/></svg><span>Sequence</span><span class="badge badge--danger" title="Spacing on final below the minimum" hidden>0</span></button>
+      <button type="button" role="tab" id="tab-schedule" aria-controls="p-schedule" data-tab="schedule"><svg class="ic"><use href="#i-board"/></svg><span>Schedule</span></button>
+      <button type="button" role="tab" id="tab-radio" aria-controls="p-radio" data-tab="radio"><svg class="ic"><use href="#i-radio"/></svg><span>Radio</span></button>
+      <button type="button" role="tab" id="tab-airport" aria-controls="p-airport" data-tab="airport"><svg class="ic"><use href="#i-tower"/></svg><span>Airport</span></button>
+      <button type="button" role="tab" id="tab-map" aria-controls="p-map" data-tab="map"><svg class="ic"><use href="#i-map"/></svg><span>Map</span></button>
+    </nav>
+
+    <div class="panel__body" id="panelBody">
+
+      <!-- TRAFFIC: new flight and the strip bay -->
+      <section class="tabpanel" id="p-traffic" role="tabpanel" aria-labelledby="tab-traffic" data-panel="traffic" hidden>
+        <div class="toolbar">
+          <label class="search">
+            <svg class="ic ic--sm"><use href="#i-search"/></svg>
+            <span class="sr-only">Filter aircraft</span>
+            <input type="search" id="stripFilter" placeholder="Filter call sign, stand, runway" autocomplete="off">
+          </label>
+          <button type="button" class="btn btn--primary" id="newFlightBtn" aria-expanded="false" aria-controls="newFlight"><svg class="ic"><use href="#i-plus"/></svg>New flight</button>
+        </div>
+
+        <form class="card nf dep" id="newFlight" hidden aria-label="New flight" autocomplete="off">
+          <div class="card__head">
+            <h3>New flight</h3>
+            <button type="button" class="btn btn--icon btn--ghost" data-close-nf aria-label="Close" title="Close (the picked stand stays)"><svg class="ic"><use href="#i-x"/></svg></button>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Kind">
+            <button type="button" role="radio" aria-checked="true" data-kind="dep">Departure</button>
+            <button type="button" role="radio" aria-checked="false" data-kind="arr">Arrival</button>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <span class="field__lbl" id="rStandLbl">From stand</span>
+              <div class="pickbox"><span class="mono strong" id="rFrom">—</span><span class="muted small" id="rFromHint">click a stand on the map</span></div>
+              <label class="check small"><input type="checkbox" id="cAutoStand"> Free stand</label>
+            </div>
+            <label class="field">
+              <span class="field__lbl">Runway</span>
+              <select class="input" id="rTo" title="Active: the runway in use from the weather, followed when it changes; or pick one"></select>
+            </label>
+            <label class="field">
+              <span class="field__lbl" id="rPickLbl">Entry</span>
+              <select class="input" id="rPick"></select>
+            </label>
+            <label class="field">
+              <span class="field__lbl">Flight plan <span class="muted">(optional)</span></span>
+              <span class="fp" title="Optional. The loaded airport is always one end. A departure flies the SID, airways and cruise level to the airport you type; an arrival comes from it and appears at the STAR entry on that side. Empty: no flight plan.">
+                <span class="mono dep-only fpHere"></span><span class="dep-only" aria-hidden="true">→</span>
+                <input class="input mono upper" id="cOther" placeholder="ICAO" maxlength="4" list="airportList" aria-label="Destination (departure) or origin (arrival)">
+                <span class="arr-only" aria-hidden="true">→</span><span class="mono arr-only fpHere"></span>
+              </span>
+            </label>
+          </div>
+          <div class="field">
+            <span class="field__lbl">Aircraft <span class="muted" id="cModelCount"></span></span>
+            <div class="combo">
+              <input class="input" type="text" id="cModel" value="FSLTL A320 Air France SL" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="modelMenu" aria-label="Aircraft model" title="Type to search the simulator's aircraft (all words must match)">
+              <button type="button" class="btn btn--icon" id="cModelOpen" aria-label="Show all models" title="Show all models"><svg class="ic"><use href="#i-chev"/></svg></button>
+              <div id="modelMenu" class="combo-menu" role="listbox" hidden></div>
+            </div>
+          </div>
+          <label class="field">
+            <span class="field__lbl">Call sign</span>
+            <input class="input mono upper" id="cTail" placeholder="auto (next free MAPnn)" maxlength="8" spellcheck="false" title="The call sign, e.g. CSA123; empty: the next free MAPnn">
+          </label>
+          <details class="disclosure">
+            <summary>Options <span class="muted small" id="optSummary"></span></summary>
+            <div class="stack">
+              <label class="check"><input type="checkbox" id="cGates" checked> <span class="check__txt" id="cGatesLbl">Hold at every clearance</span></label>
+              <label class="check dep-only"><input type="checkbox" id="cTug" checked> Pushback tug</label>
+              <div class="tug dep-only" id="tugBox">
+                <label class="field"><span class="field__lbl">Tug model <span class="muted">(empty: default)</span></span><input class="input" id="cTugTitle" placeholder="default GSX tug" spellcheck="false"></label>
+                <div class="grid2 grid2--tight">
+                  <label class="field"><span class="field__lbl">Tug yaw °</span><input class="input mono" type="number" id="cTugYaw" step="1" placeholder="default" title="Tug heading against the aircraft, degrees"></label>
+                  <label class="field"><span class="field__lbl">Ahead of nose gear m</span><input class="input mono" type="number" id="cTugAhead" step="0.1" placeholder="default" title="Tug reference point ahead of the nose gear, meters"></label>
+                </div>
+              </div>
+              <label class="check arr-only"><input type="checkbox" id="cInjectApproach" checked> Fly the approach <span class="muted">(off: MSFS AI lands)</span></label>
+              <label class="check arr-only"><input type="checkbox" id="cTurn"> Turnaround after <input class="input input--num mono" type="number" id="cDwell" value="90" min="10" step="10" aria-label="Dwell seconds"> s</label>
+              <label class="check" title="Departures fly a SID after take-off; arrivals appear at a STAR entry and fly the STAR and approach."><input type="checkbox" id="cProc"> Fly the procedures <span class="muted">(SID / STAR and approach)</span></label>
+              <label class="check dep-only">De-icing
+                <select class="input input--inline" id="cDeice"><option value="">off</option><option value="auto">automatic (weather)</option><option value="stand">on the stand</option><option value="pad">at a pad</option></select>
+                <input class="input input--num mono" type="number" id="cDeiceSec" value="120" min="10" step="10" aria-label="De-icing seconds"> s</label>
+            </div>
+          </details>
+          <details class="disclosure" id="customBox">
+            <summary>Custom taxi route <span class="muted small" id="customSummary"></span></summary>
+            <div class="stack">
+              <label class="check"><input type="checkbox" id="rViaPick"> Pick via points on the map <span class="muted small">(click a taxiway; a via point removes on click)</span></label>
+              <div class="small mono" id="rVia"></div>
+              <label class="field"><span class="field__lbl">Taxiways, in order</span><input class="input mono upper" id="rTaxiways" placeholder="A, L" spellcheck="false"></label>
+              <label class="check"><input type="checkbox" id="rRwyPaths"> Allow taxiing on runway paths</label>
+              <div><button type="button" class="btn btn--sm" id="rCustomClear">Clear</button></div>
+            </div>
+          </details>
+          <div class="nf__foot">
+            <div class="small nf__info" id="rInfo" aria-live="polite"></div>
+            <div class="small nf__info" id="cInfo" aria-live="polite"></div>
+            <div class="row gap-2">
+              <button type="button" class="btn" id="rHide" title="Deselect the stand and hide the planned route (Esc)">Hide route</button>
+              <button type="button" class="btn btn--primary btn--grow" id="cSpawn"><svg class="ic"><use href="#i-play"/></svg><span id="cSpawnLbl">Spawn</span></button>
+            </div>
+          </div>
+        </form>
+
+        <p class="note-box" id="trafficNote" hidden></p>
+        <div id="strips" class="strips" aria-live="polite"></div>
+
+        <details class="disclosure disclosure--log" id="ctlLogBox">
+          <summary>Traffic log</summary>
+          <pre class="log" id="ctlLog"></pre>
+        </details>
+      </section>
+
+      <!-- SEQUENCE: the approach -->
+      <section class="tabpanel" id="p-sequence" role="tabpanel" aria-labelledby="tab-sequence" data-panel="sequence" hidden>
+        <p class="small" id="apMsg" role="status"></p>
+        <div id="apSeq"></div>
+        <div class="card">
+          <div class="card__head"><h3>Tower</h3><span class="muted small">runway occupancy</span></div>
+          <div class="small" id="apTower">—</div>
+        </div>
+        <details class="card disclosure" id="apConfBox" open>
+          <summary><h3 class="inline">Conflicts</h3> <span class="badge" id="apConfN">0</span></summary>
+          <div class="small" id="apConf">—</div>
+        </details>
+        <p class="hint"><svg class="ic ic--sm"><use href="#i-info"/></svg><span>Per runway, first to land first. Earlier / later change the order (kept); direct to the final; slow loses a minute (speed, then a dog-leg); hold at the STAR fix; leave the hold; go around. Green gap: spacing kept; red: below the minimum.</span></p>
+      </section>
+
+      <!-- SCHEDULE: traffic sources and boards -->
+      <section class="tabpanel" id="p-schedule" role="tabpanel" aria-labelledby="tab-schedule" data-panel="schedule" hidden>
+        <div class="card">
+          <div class="card__head">
+            <h3>Scheduled traffic</h3>
+            <span class="pill" id="schedPill">off</span>
+          </div>
+          <p class="small muted" id="sInfo">—</p>
+          <p class="small muted">Airlines fly a timetable at the loaded airport: departures board before their STD and push at it, arrivals appear at a STAR entry in time for their STA and turn around into later departures. Arrivals keep landing gaps; departures wait on the stand while the taxiways are full.</p>
+          <div class="grid2">
+            <div class="field">
+              <span class="field__lbl">Density</span>
+              <div class="seg seg--sm" role="radiogroup" aria-label="Density" id="sDensity">
+                <button type="button" role="radio" aria-checked="false" data-density="0.5">½</button><button type="button" role="radio" aria-checked="true" data-density="1">1</button><button type="button" role="radio" aria-checked="false" data-density="1.5">1½</button><button type="button" role="radio" aria-checked="false" data-density="2">2</button>
+              </div>
+            </div>
+            <label class="field"><span class="field__lbl">Max aircraft</span><input class="input mono" type="number" id="sMax" value="12" min="1" max="40"></label>
+            <label class="field" title="The airports whose timetables run: the loaded one by default. Others are loaded when you start (the simulator must reach them)."><span class="field__lbl">Airports</span><input class="input mono upper" id="sAirports" placeholder="LKPR, LKTB" list="airportList" spellcheck="false"></label>
+          </div>
+          <div class="row gap-2 end"><button type="button" class="btn btn--primary" id="sStart"><svg class="ic"><use href="#i-play"/></svg><span>Start schedule</span></button></div>
+        </div>
+
+        <div class="card">
+          <div class="card__head">
+            <h3>ATC game</h3>
+            <span class="pill" id="gamePill">not playing</span>
+          </div>
+          <p class="small muted" id="gScore">You are ground and tower on the New flight runway. Arrivals come in on STARs, departures wait at their stands; every aircraft holds for your clearances.</p>
+          <div class="row gap-2 wrap">
+            <label class="check">New flight every <input class="input input--num mono" type="number" id="gEvery" value="3" min="1" step="0.5" aria-label="Minutes"> min</label>
+            <button type="button" class="btn btn--primary btn--grow" id="gStart"><svg class="ic"><use href="#i-play"/></svg><span>Start game</span></button>
+          </div>
+          <details class="disclosure" id="gLogBox">
+            <summary>Scoring and events</summary>
+            <table class="tbl tbl--ref small"><tbody>
+              <tr><td class="mono pos">+10</td><td>departure airborne, arrival on its stand</td></tr>
+              <tr><td class="mono neg">−1</td><td>every 30 s a flight waits for you over a minute</td></tr>
+              <tr><td class="mono neg">−25</td><td>spacing on final below the minimum (within 10 NM)</td></tr>
+              <tr><td class="mono neg">−50</td><td>wingtip separation lost on the ground</td></tr>
+              <tr><td class="mono neg">−100</td><td>two aircraft on a runway</td></tr>
+            </tbody></table>
+            <pre class="log" id="gLog"></pre>
+          </details>
+        </div>
+
+        <div class="card card--flush">
+          <div class="card__head pad">
+            <h3>Boards</h3>
+            <label class="sr-only" for="sBoard">Board airport</label>
+            <select class="input input--inline mono" id="sBoard" hidden></select>
+          </div>
+          <div class="seg seg--tabs pad-x" role="tablist" aria-label="Board">
+            <button type="button" role="tab" aria-selected="true" data-board="dep">Departures <span class="muted" id="bDepN">0</span></button>
+            <button type="button" role="tab" aria-selected="false" data-board="arr">Arrivals <span class="muted" id="bArrN">0</span></button>
+            <button type="button" role="tab" aria-selected="false" data-board="ovf">Overflights <span class="muted" id="bOvfN">0</span></button>
+          </div>
+          <div class="board-wrap"><table class="tbl board" id="boardTbl"></table></div>
+        </div>
+      </section>
+
+      <!-- RADIO: the console -->
+      <section class="tabpanel" id="p-radio" role="tabpanel" aria-labelledby="tab-radio" data-panel="radio" hidden>
+        <div class="console">
+          <div class="console__ctl">
+            <button type="button" class="btn btn--toggle" id="rdSound" aria-pressed="false"><svg class="ic"><use href="#i-mute"/></svg><span>Voice off</span></button>
+            <label class="switch" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"><span class="switch__ui" aria-hidden="true"></span>Follow my COM1</label>
+            <label class="switch" title="A frequency picked here (or on an aircraft) tunes your aircraft's COM1"><input type="checkbox" id="rdTuneCom"><span class="switch__ui" aria-hidden="true"></span>Tune my COM1</label>
+            <label class="switch" title="Play the frequency on this device (a tablet or laptop on the network), not on the map's computer"><input type="checkbox" id="rdHere"><span class="switch__ui" aria-hidden="true"></span>Play on this device</label>
+            <label class="field field--inline" id="rdDeviceWrap" hidden><span class="field__lbl">Output</span>
+              <select class="input input--inline" id="rdDevice" title="Where the voice plays"></select></label>
+          </div>
+          <div class="freqs" id="rdFreqs" role="radiogroup" aria-label="Frequency"></div>
+          <div class="console__now" id="rdNow" aria-live="polite"></div>
+          <div class="rlog" id="rdLog" role="log" aria-label="Transmissions"></div>
+          <p class="hint"><svg class="ic ic--sm"><use href="#i-info"/></svg><span>What is said on one of the airport's frequencies, as on a receiver: our controllers' clearances and handoffs, the pilots' requests and readbacks. Tune the ATIS to hear its broadcast.</span></p>
+        </div>
+      </section>
+
+      <!-- AIRPORT: runway in use, ATIS, weather, facts, procedures, de-icing -->
+      <section class="tabpanel" id="p-airport" role="tabpanel" aria-labelledby="tab-airport" data-panel="airport" hidden>
+        <div class="card use">
+          <div class="use__rwy"><span class="field__lbl">Runway in use</span><span class="use__big mono" id="useBig">—</span><span class="small muted" id="useSub">from the wind</span></div>
+          <dl class="kv kv--tight" id="useKv"></dl>
+        </div>
+
+        <div class="card">
+          <div class="card__head"><h3>ATIS</h3><button type="button" class="btn btn--sm" id="apSpeak" title="Read it aloud (the spoken form, digits spelled)" disabled><svg class="ic ic--sm"><use href="#i-vol"/></svg>Listen</button></div>
+          <div class="atis">
+            <span class="atis__letter" aria-hidden="true" id="apAtisLetter">–</span>
+            <div><strong id="apAtisTitle">No ATIS yet</strong><p class="atis__text" id="apAtisText"></p></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__head"><h3>Weather</h3><span class="muted small">at your aircraft</span></div>
+          <div id="apWx" class="small muted">—</div>
+        </div>
+
+        <div class="card">
+          <div class="card__head"><h3>Airport</h3></div>
+          <div id="apInfo" class="small">—</div>
+          <p class="small muted" id="info">—</p>
+        </div>
+
+        <div class="card">
+          <div class="card__head"><h3>Procedures</h3><button type="button" class="btn btn--sm" id="pFit">Fit in view</button></div>
+          <div class="grid2">
+            <label class="field"><span class="field__lbl">Runway</span><select class="input" id="pRunway"><option value="">All</option></select></label>
+            <label class="field"><span class="field__lbl">Procedure</span><select class="input" id="pFilter"></select></label>
+          </div>
+          <div class="togglerow">
+            <label class="tchip"><input type="checkbox" id="pSID"><span class="sw sw--sid"></span>SIDs</label>
+            <label class="tchip"><input type="checkbox" id="pSTAR"><span class="sw sw--star"></span>STARs</label>
+            <label class="tchip"><input type="checkbox" id="pAPP"><span class="sw sw--app"></span>Approaches</label>
+            <label class="tchip"><input type="checkbox" id="pFix" checked><span class="sw sw--fix"></span>VOR / NDB</label>
+          </div>
+          <p class="small muted" id="pInfo">—</p>
+          <p class="small muted">From the simulator's navigation data, one at a time as a chart. Legs to an altitude or a manual termination are approximated.</p>
+        </div>
+
+        <div class="card">
+          <div class="card__head"><h3>De-icing pads</h3></div>
+          <label class="switch"><input type="checkbox" id="dePick"><span class="switch__ui" aria-hidden="true"></span>Pick on the map: click a taxiway</label>
+          <div class="tags" id="dePads"></div>
+          <p class="small muted">Where departures are de-iced (De-icing: at a pad, or automatic in icing weather). MSFS data has none: pick them from the taxi points. Kept per airport.</p>
+        </div>
+      </section>
+
+      <!-- MAP: layers and the traffic picture -->
+      <section class="tabpanel" id="p-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map" hidden>
+        <div class="card">
+          <div class="card__head"><h3>Base map</h3></div>
+          <!-- leaflet-control-layers-base: the review script (playwright/shots2.mjs) picks the satellite through it -->
+          <div class="seg leaflet-control-layers-base" role="radiogroup" aria-label="Base map" id="baseSeg">
+            <label><input type="radio" name="base" value="map"><span>Map <span class="muted small">theme</span></span></label>
+            <label><input type="radio" name="base" value="osm"><span>OpenStreetMap</span></label>
+            <label><input type="radio" name="base" value="sat"><span>Satellite</span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card__head"><h3>On the map</h3></div>
+          <div class="stack stack--tight">
+            <label class="switch"><input type="checkbox" data-layer="ours"><span class="switch__ui" aria-hidden="true"></span>Our aircraft</label>
+            <label class="switch" title="MSFS AI and other add-ons, up to 200 km"><input type="checkbox" data-layer="others"><span class="switch__ui" aria-hidden="true"></span>Other traffic <span class="muted small">(MSFS AI, add-ons)</span></label>
+            <label class="switch"><input type="checkbox" data-layer="routes"><span class="switch__ui" aria-hidden="true"></span>Routes of all our aircraft <span class="muted small">(off: selected only)</span></label>
+            <label class="switch"><input type="checkbox" data-layer="final"><span class="switch__ui" aria-hidden="true"></span>Final approach and spacing</label>
+            <label class="switch"><input type="checkbox" data-layer="labels"><span class="switch__ui" aria-hidden="true"></span>Taxiway names</label>
+            <label class="switch"><input type="checkbox" data-layer="tags"><span class="switch__ui" aria-hidden="true"></span>Data tags <span class="muted small">(call sign, speed, level)</span></label>
+            <label class="switch" title="Half the wing span plus 3 m around every aircraft on the ground; red where two overlap"><input type="checkbox" data-layer="safe"><span class="switch__ui" aria-hidden="true"></span>Safe zones <span class="muted small">(red where two overlap)</span></label>
+            <label class="switch"><input type="checkbox" data-layer="overlaps"><span class="switch__ui" aria-hidden="true"></span>Overlapping stands <span class="muted small" id="overlapInfo"></span></label>
+            <label class="switch"><input type="checkbox" data-layer="occupied"><span class="switch__ui" aria-hidden="true"></span>Occupied stands <span class="muted small">(held, found occupied)</span></label>
+            <label class="switch"><input type="checkbox" data-layer="runways"><span class="switch__ui" aria-hidden="true"></span>Runways</label>
+            <label class="switch"><input type="checkbox" data-layer="parking"><span class="switch__ui" aria-hidden="true"></span>Parking spots</label>
+            <label class="switch"><input type="checkbox" data-layer="holds"><span class="switch__ui" aria-hidden="true"></span>Hold-short points</label>
+            <label class="switch"><input type="checkbox" data-layer="points"><span class="switch__ui" aria-hidden="true"></span>Taxi points</label>
+            <label class="switch"><input type="checkbox" data-layer="follow"><span class="switch__ui" aria-hidden="true"></span>Follow my aircraft</label>
+          </div>
+          <p class="small muted mono" id="acInfo">My aircraft: —</p>
+        </div>
+        <div class="card">
+          <div class="card__head"><h3>Traffic picture</h3><span class="muted small">world view</span></div>
+          <div class="grid2">
+            <label class="field"><span class="field__lbl">Centre</span><select class="input" id="wCentre"><option value="follow">Follow my aircraft</option><option value="airport">This airport</option><option value="position">Map centre</option></select></label>
+            <label class="field"><span class="field__lbl">Radius</span><select class="input" id="wRadius"><option value="100">100 NM</option><option value="150">150 NM</option><option value="250" selected>250 NM</option><option value="350">350 NM</option><option value="500">500 NM</option></select></label>
+          </div>
+          <p class="small muted" id="wInfo">—</p>
+          <p class="small muted">All traffic around the centre: airports in range feed the airport lists; SimConnect shows MSFS AI up to 200 km away.</p>
+        </div>
+        <div class="card">
+          <div class="card__head"><h3>Other traffic</h3><span class="muted small" id="othersN"></span></div>
+          <label class="field field--inline" title="The scheduled traffic respects other traffic (it fills taxiways, takes landing slots, blocks spawn points) or ignores it"><span class="field__lbl">Scheduled traffic</span><select class="input input--inline" id="othersMode"><option value="respect">respects it</option><option value="ignore">ignores it</option></select></label>
+          <div class="tbl-wrap"><table class="tbl small others" id="trafficTable"></table></div>
+        </div>
+        <details class="card disclosure">
+          <summary><h3 class="inline">Airport data</h3> <span class="muted small">raw types, for debugging</span></summary>
+          <p class="field__lbl">Taxi paths by TYPE</p>
+          <div class="stack stack--tight" id="pathTypes"></div>
+          <p class="field__lbl">Taxi points by TYPE</p>
+          <table class="tbl small" id="pointTypes"></table>
+        </details>
+      </section>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- ───────────── Quick reference ───────────── -->
+<dialog class="dialog" id="help" aria-labelledby="helpTitle">
+  <div class="dialog__head"><h2 id="helpTitle">Quick reference</h2><button type="button" class="btn btn--icon btn--ghost" data-close-help aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="dialog__body help">
+    <h3>Quick start</h3>
+    <ol>
+      <li>Airport chip (top left): type an ICAO and <b>Load</b> (the simulator must be running; ↻ fetches again).</li>
+      <li><b>Traffic → New flight</b>: kind, runway (<i>Active</i> follows the runway in use from the weather; pick one to override), click a stand on the map or tick <i>Free stand</i>; a departure can pick an <b>Entry</b>, an arrival an <b>Exit</b>. The route is previewed on the map. <b>Spawn</b>.</li>
+      <li>Click a strip or an aircraft to open its panel; its clearances are grouped by phase, the next one first.</li>
+      <li>Or <b>Schedule</b>: start the timetable (airlines fly it by themselves; the boards show it), or the ATC game (you work all traffic).</li>
+    </ol>
+    <h3>Clearances</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td>Pushback (N E S W)</td><td>push back and start-up approved; a facing ends the push facing that way where it can</td></tr>
+      <tr><td>Start up</td><td>start engines on the stand</td></tr>
+      <tr><td>Taxi</td><td>to the holding point / to the stand via the route shown; <i>Continue taxi</i> after Hold position</td></tr>
+      <tr><td>Route point</td><td>with an aircraft selected, click a point of its route: taxi and hold there (progressive taxi)</td></tr>
+      <tr><td>Cross</td><td>cross the runway it holds short of</td></tr>
+      <tr><td>Line up · behind landing</td><td>line up and wait · line up behind the landing traffic</td></tr>
+      <tr><td>Take-off</td><td>cleared for take-off (from the holding point: a rolling take-off)</td></tr>
+      <tr><td>Cleared to land</td><td>landing clearance on final</td></tr>
+      <tr><td>Depart now</td><td>turnaround: depart the parked arrival without waiting</td></tr>
+    </tbody></table>
+    <h3>When something is in the way</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td><span class="kbd-urgent">Hold position</span></td><td>stops as soon as it comfortably can; Taxi releases it</td></tr>
+      <tr><td><span class="kbd-urgent">Go around</span></td><td>on final, before touchdown: climbs out, flies a circuit, lands again</td></tr>
+      <tr><td><span class="kbd-urgent">Abort take-off</span></td><td>before V1: stops, vacates, back to the holding point. Lined up: cancels the take-off clearance</td></tr>
+      <tr><td><span class="kbd-danger">Remove</span></td><td>removes the aircraft (asks first)</td></tr>
+    </tbody></table>
+    <p class="small muted">Aircraft keep their distance on the ground by themselves: they queue and give way where routes cross. A departure waits for the tug to drive clear, and a pushback waits while traffic passes behind the stand. While a clearance is on its way, that aircraft's buttons are locked.</p>
+    <h3>Flight options</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td>Hold at every clearance</td><td>off: they clear themselves after a short wait</td></tr>
+      <tr><td>Pushback tug</td><td>a tug pushes the departure; its model, yaw and position can be set (empty: defaults)</td></tr>
+      <tr><td>Fly the procedures</td><td>SID after take-off; arrivals start at a STAR entry</td></tr>
+      <tr><td>Flight plan</td><td>LKPR → LOWW for a departure (SID, airways, cruise), LOWW → LKPR for an arrival (appears at the STAR entry on that side)</td></tr>
+      <tr><td>Turnaround</td><td>an arrival departs again after the dwell</td></tr>
+      <tr><td>De-icing</td><td>on the stand before the push, or at a pad (Airport → De-icing pads, or via point 1); automatic when the weather is icing (the game uses automatic)</td></tr>
+      <tr><td>Custom taxi route</td><td>via points (click taxiways) and taxiway names, in order; never where the aircraft does not fit</td></tr>
+    </tbody></table>
+    <h3>Scheduled traffic</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td>Boards</td><td>STD/STA, → estimate when late, ⟲ turnaround (the arrival's aircraft departs again), status and why</td></tr>
+      <tr><td>held</td><td>ground stop: departures stay on the stand while the taxiways are full</td></tr>
+      <tr><td>landing flow</td><td>an arrival appears later to keep the gap on final</td></tr>
+      <tr><td>waiting</td><td>its STAR entry or stand is taken: it tries again</td></tr>
+      <tr><td>enroute</td><td>an arrival on its way on its flight plan (MSFS AI), handed to the arrival at its STAR entry</td></tr>
+      <tr><td>Overflights</td><td>traffic between airports outside the area crossing it at cruise level</td></tr>
+      <tr><td>Other traffic</td><td>MSFS AI and other add-ons (Map, off by default): the schedule respects it (default) or ignores it; × removes one</td></tr>
+    </tbody></table>
+    <h3>Map</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td>Show my aircraft</td><td>centres the map on your aircraft</td></tr>
+      <tr><td>World view</td><td>the traffic picture's circle, airports in range and every aircraft with call sign, level and phase (again: back to the airport)</td></tr>
+      <tr><td>Full screen · panel</td><td>full screen with the panel (Esc leaves) · hide the panel for the map alone</td></tr>
+      <tr><td>Show · Follow · Camera</td><td>on the selected aircraft: centre it · keep it in the middle (Esc stops) · the simulator camera follows it</td></tr>
+      <tr><td><i>click</i></td><td>a stand: pick it for New flight · our aircraft: select it · other traffic: details · a taxiway or point: raw data</td></tr>
+      <tr><td>Sequence</td><td>the landing sequence per runway with its controls, the tower and the conflicts; the final's spacing on the map, green kept, red short</td></tr>
+    </tbody></table>
+    <h3>Game score</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td class="mono">+10</td><td>departure airborne, arrival on its stand</td></tr>
+      <tr><td class="mono">−1</td><td>every 30 s a flight waits for you over a minute</td></tr>
+      <tr><td class="mono">−25</td><td>spacing on final below the minimum (within 10 NM)</td></tr>
+      <tr><td class="mono">−50</td><td>wingtip separation lost on the ground</td></tr>
+      <tr><td class="mono">−100</td><td>two aircraft on a runway</td></tr>
+    </tbody></table>
+    <h3>Keys</h3>
+    <table class="tbl tbl--ref"><tbody>
+      <tr><td><kbd>Esc</kbd></td><td>close a popover; else stop following, deselect the aircraft and hide the planned route</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>switch section</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>pause / resume the simulation</td></tr>
+    </tbody></table>
+    <p class="small muted">Camera: <b>Auto</b> cuts to the aircraft on the radio as you hear it, <b>Follow</b> stays on the selected aircraft; a scene's <b>Play</b> spawns its own aircraft and films them beat by beat, <b>Stop</b> gives the camera back. Changing the view in the sim also takes it back.</p>
+    <p class="small muted">Guides: <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/atc-game.md" target="_blank" rel="noopener">ATC game</a> · <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/traffic-commands.md" target="_blank" rel="noopener">ATC commands</a> · <a href="https://github.com/mrlm-net/simconnect/blob/main/docs/airport-layout.md" target="_blank" rel="noopener">Airport layout</a> · <a href="/classic">previous page</a></p>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/map.js"></script>
+<script src="js/traffic.js"></script>
+<script src="js/sections.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
