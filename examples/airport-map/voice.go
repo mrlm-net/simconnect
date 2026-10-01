@@ -53,6 +53,10 @@ type voiceOut struct {
 	freq    string // followed; "" all
 	status  string // why it is silent, or the backend speaking
 	backend string
+	// syncCom follows the user aircraft's COM1 (com1): tuning the radio in
+	// the simulator picks the frequency heard. Off by default.
+	syncCom bool
+	com     string
 
 	engine voicegoio.TTS
 	pool   *voices.Pool
@@ -155,12 +159,14 @@ type voiceState struct {
 	On        bool   `json:"on"`
 	Frequency string `json:"frequency"`
 	Status    string `json:"status"`
+	SyncCom   bool   `json:"syncCom"`
+	Com1      string `json:"com1,omitempty"`
 }
 
 func (v *voiceOut) state() voiceState {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return voiceState{On: v.on, Frequency: v.freq, Status: v.status}
+	return voiceState{On: v.on, Frequency: v.freq, Status: v.status, SyncCom: v.syncCom, Com1: v.com}
 }
 
 // hear takes a transmission from the radio: said if the voice is on and it
@@ -189,7 +195,7 @@ func (v *voiceOut) run() {
 				continue
 			}
 			v.say(it.t, false)
-		case <-time.After(time.Second):
+		case <-time.After(voiceTick):
 			v.mu.Lock()
 			on, freq, atis := v.on, v.freq, v.atis
 			v.mu.Unlock()
@@ -239,7 +245,11 @@ func (v *voiceOut) broadcast(icao, freq, text string) {
 	period := length + atisGap
 	into := time.Since(start) % period
 	if into >= length {
-		time.Sleep(period - into) // between two runs: the next one from its start
+		// Between two runs: the next one from its start, unless the
+		// frequency changes meanwhile.
+		if !v.wait(period-into, freq, player) {
+			return
+		}
 		into = 0
 	}
 	from := int(into.Seconds() * float64(rate))
@@ -248,14 +258,27 @@ func (v *voiceOut) broadcast(icao, freq, text string) {
 	}
 	// Wait while it plays, but stop listening for it at a change of
 	// frequency (set closes the player).
-	for end := time.Now().Add(length - into); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+	v.wait(length-into, freq, player)
+}
+
+// voiceTick is how often the voice looks for an ATIS to broadcast and,
+// while waiting, for a change of frequency.
+const voiceTick = 100 * time.Millisecond
+
+// wait waits d while the voice stays on freq with player, and reports
+// whether it did: a change of frequency (set closes the player) ends it at
+// once, so the new frequency is heard without the old one's delay.
+func (v *voiceOut) wait(d time.Duration, freq string, player *audio.Player) bool {
+	for end := time.Now().Add(d); time.Now().Before(end); {
 		v.mu.Lock()
 		same := v.freq == freq && v.player == player && v.on
 		v.mu.Unlock()
 		if !same {
-			return
+			return false
 		}
+		time.Sleep(min(voiceTick, time.Until(end)))
 	}
+	return true
 }
 
 // say synthesises t in its speaker's voice and waits while it is played;
@@ -266,7 +289,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 		v.mu.Unlock()
 		return
 	}
-	engine, pool, chain, norm, player := v.engine, v.pool, v.chain, v.norm, v.player
+	engine, pool, chain, norm, player, freq := v.engine, v.pool, v.chain, v.norm, v.player, v.freq
 	v.mu.Unlock()
 
 	var voice voicegoio.VoiceProfile
@@ -292,8 +315,8 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	}
 	wait := time.Until(v.lastEnd.Add(gap))
 	v.mu.Unlock()
-	if wait > 0 {
-		time.Sleep(wait)
+	if wait > 0 && !v.wait(wait, freq, player) {
+		return // another frequency meanwhile
 	}
 	who := string(t.Position)
 	if t.Pilot {
@@ -307,7 +330,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	v.mu.Lock()
 	v.lastEnd, v.lastCS = time.Now().Add(said), t.Callsign
 	v.mu.Unlock()
-	time.Sleep(said)
+	v.wait(said, freq, player)
 }
 
 // controllerKind is voice-goio's kind for a position: its voice and radio.
@@ -346,8 +369,33 @@ func (v *voiceOut) sayOnce(t traffic.Transmission) bool {
 	return true
 }
 
+// com1 takes the user aircraft's COM1 active frequency: followed at once
+// while syncCom is on.
+func (v *voiceOut) com1(freq string) {
+	v.mu.Lock()
+	v.com = freq
+	follow := v.syncCom && freq != "" && freq != v.freq
+	on := v.on
+	v.mu.Unlock()
+	if follow {
+		v.set(on, freq)
+	}
+}
+
+// follow turns the COM1 sync on or off; on, it follows COM1 now.
+func (v *voiceOut) follow(sync bool) {
+	v.mu.Lock()
+	v.syncCom = sync
+	com := v.com
+	v.mu.Unlock()
+	if sync {
+		v.com1(com)
+	}
+}
+
 // registerVoice serves the voice switch: GET /api/voice is its state, POST
-// /api/voice {on, frequency} turns it on or off and picks the frequency.
+// /api/voice {on, frequency, syncCom} turns it on or off, picks the
+// frequency, or follows the user aircraft's COM1.
 func registerVoice(mux *http.ServeMux, v *voiceOut) {
 	mux.HandleFunc("GET /api/voice", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, v.state())
@@ -356,10 +404,17 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 		var req struct {
 			On        bool   `json:"on"`
 			Frequency string `json:"frequency"`
+			SyncCom   *bool  `json:"syncCom"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if req.SyncCom != nil {
+			v.follow(*req.SyncCom)
+		}
+		if st := v.state(); st.SyncCom && st.Com1 != "" {
+			req.Frequency = st.Com1 // following COM1
 		}
 		v.set(req.On, req.Frequency)
 		writeJSON(w, v.state())
