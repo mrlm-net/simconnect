@@ -135,6 +135,7 @@ type ControlView struct {
 	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
 	Rush           bool             `json:"rush,omitempty"`         // told to hurry (#510)
 	Manual         bool             `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	Entry          string           `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
 	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
@@ -696,6 +697,9 @@ func (it *controlled) setRoute() {
 	}
 	if r != nil {
 		it.view.Route, it.view.Nodes = r.Points, r.Nodes
+		if it.dep != nil {
+			it.view.Entry = r.Entry
+		}
 	}
 }
 
@@ -1186,6 +1190,28 @@ func registerControl(mux *http.ServeMux, st *state) {
 			if !on && req != "" {
 				p := it.cc.pending
 				p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.answer(req) })
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Entry (?entry=B, "" full length): the departure takes its runway
+		// from another intersection, re-planned from where it is; taxiing,
+		// ground gives the new route.
+		if r.PathValue("action") == "entry" && it.dep != nil {
+			entry := r.URL.Query().Get("entry")
+			if err := cc.do(func() error { return it.dep.ChangeEntry(entry) }); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			it.gates.Store(true) // the user's clearance: manual from here
+			it.mu.Lock()
+			it.view.Manual = true
+			it.setRoute()
+			state := it.view.State
+			it.mu.Unlock()
+			tlog.printf("%-6s runway entry %s", it.Tail, orNone(entry))
+			if state == traffic.TaxiTaxiing.String() { // on along the new route at once
+				it.say(it.phrase("taxi", -1))
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return

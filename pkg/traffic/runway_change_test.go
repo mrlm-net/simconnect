@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +123,48 @@ func TestArrivalChangeRunway(t *testing.T) {
 	}
 	if ctl.State() != ArrivalParked {
 		t.Fatalf("stuck in %v", ctl.State())
+	}
+}
+
+// A departure changes its runway entry on the stand and while taxiing; an
+// unknown entry is refused.
+func TestChangeEntry(t *testing.T) {
+	g := lkprGraph(t)
+	entries, err := g.RunwayEntries("24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var named string
+	for _, e := range entries[1:] {
+		if e.Taxiway != "" {
+			named = e.Taxiway
+			break
+		}
+	}
+	if named == "" {
+		t.Skip("no named intersection on 24")
+	}
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	if err := ctl.ChangeEntry(named); err != nil {
+		t.Fatalf("on the stand: %v", err)
+	}
+	if r := ctl.Route(); r == nil || !strings.EqualFold(r.Entry, named) {
+		t.Fatalf("route entry %q, want %s", r.Entry, named)
+	}
+	if !run(TaxiTaxiing, 60*900) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	if err := ctl.ChangeEntry(""); err != nil {
+		t.Fatalf("taxiing, back to full length: %v", err)
+	}
+	if err := ctl.ChangeEntry("NOPE"); err == nil {
+		t.Error("unknown entry accepted")
+	}
+	if !run(TaxiDeparting, 60*1500) {
+		t.Fatalf("state %v after the change", ctl.State())
 	}
 }

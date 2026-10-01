@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"fmt"
+	"strings"
 	"math"
 	"time"
 
@@ -16,6 +17,43 @@ import (
 // from where each aircraft is. ChangeRunway is that re-plan for one
 // injected departure; the caller (a tower) decides who gets it and says
 // the re-clearance.
+
+// ChangeEntry has the departure take its runway from entry instead (the
+// entry taxiway, "" full length): planned again as for a runway change
+// (ChangeRunway), on the stand or from where it is. An entry leaving less
+// runway than the type needs is ErrEntryTooShort.
+func (c *TaxiController) ChangeEntry(entry string) error {
+	c.mu.Lock()
+	req := c.req
+	c.mu.Unlock()
+	if entry != "" {
+		entries, err := req.Graph.RunwayEntries(req.Runway)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, e := range entries {
+			if !strings.EqualFold(e.Taxiway, entry) {
+				continue
+			}
+			found = true
+			req.Entry = e.Taxiway
+			last := e.Node
+			if e.HoldShort >= 0 {
+				last = e.HoldShort
+			}
+			if err := entryLongEnough(req, &airport.Route{Nodes: []airport.NodeID{last}}); err != nil {
+				return err
+			}
+			entry = e.Taxiway
+			break
+		}
+		if !found {
+			return fmt.Errorf("%w: no entry %q onto runway %s", ErrBadTaxiRequest, entry, req.Runway)
+		}
+	}
+	return c.ChangeRunway(req.Runway, entry, nil)
+}
 
 // ChangeRunway re-plans the departure for runway (entry an intersection,
 // "" full length) and departure, its new SID and route (nil keeps the

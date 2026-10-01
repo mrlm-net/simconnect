@@ -63,6 +63,9 @@ const (
 	evPauseOff uint32 = 2013
 	evRateUp   uint32 = 2014
 	evRateDown uint32 = 2015
+	// evFrame: every rendered frame; the camera is set on it, in step
+	// with the picture.
+	evFrame uint32 = 2016
 )
 
 // simEvents are the simulator events the map's pause and rate buttons send.
@@ -244,6 +247,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	fmt.Println("✅ Connected to SimConnect")
 	defer client.Disconnect()
 
+	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
+		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Frame):", err)
+	}
 	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Pause):", err)
 	}
@@ -380,6 +386,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	}()
 	camTick := time.NewTicker(cameraRate)
 	defer camTick.Stop()
+	var lastFrame time.Time // the simulator's last frame event
 	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
@@ -439,7 +446,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			cmd()
 
 		case now := <-camTick.C:
-			cam.tick(now)
+			// Only when the simulator sends no frames (its menu): on frames
+			// the camera moves with the picture, no double or missed steps.
+			if now.Sub(lastFrame) > 3*cameraRate {
+				cam.tick(now)
+			}
 
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
@@ -511,6 +522,11 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				if res.Err == nil {
 					go planStandardPushes(st, res.ICAO)
 				}
+				continue
+			}
+			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {
+				lastFrame = time.Now()
+				cam.tick(lastFrame)
 				continue
 			}
 			if cam.handle(msg) {
