@@ -9,22 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.
-- Airport map: pushback and start-up in one clearance again ("with start-up" by the pushback, said "pushback and start up approved, facing …").
-- Airport map: on the map's own computer, its voice and "Play on this device" exclude each other (no echo); the network address other devices open the map on is shown in the quick reference and the status menu (`GET /api/status`: `network`).
+## [0.18.0] - 2026-10-01
 
-### Fixed
-
-- Runway exits and entries named at airports whose connectors to the runway are unnamed paths (#376; LOWW: every exit and entry was ""): the name is taken from the taxiway the connector leads onto, followed straight on for up to 300 m.
-- Reduced 2.5 NM spacing on final applies only where the radar minimum governs: a RECAT-EU pair whose 3 NM is a wake minimum (A behind A, C behind C or D …) keeps it.
-- docs/traffic-taxi.md: `TrafficLookMeters` is 200 m, the default tug is `FSDT_Pushback_03`, and the tightest push radius tried is 17 m.
-
-### Changed
-
-- The airport map has a new interface (`cmd/airport-map/web/`): a status strip (airport, runway, ATIS, wind, pause and rate, score, camera, frequency, network position, connection), the selected aircraft in its own panel with the next clearance first and the urgent ones always in place, sections for Traffic, Sequence, Schedule, Radio, Airport and Map, light/dark/system themes on a flat palette, and a layout for tablets and phones (bottom sheet, 44 px touch targets). The previous page stays at `/classic` for now. Network play in the UI (#511): the position this device works, Play on this device; Rush per aircraft (#510). `GET /api/status` tells a connected simulator also in its menu.
-- The airport map moved from `examples/airport-map` to its own entry point, `cmd/airport-map` (module `github.com/mrlm-net/simconnect/cmd/airport-map`): it is the traffic control app and the SDK's debugger, not an example. Run it with `cd cmd/airport-map && go run .`.
+The airport map becomes an app: a new interface for desktop, tablet and phone, played over the network one position per device, with a camera director and scripted films. The radio covers the flight gate to gate, in ICAO wording or the FAA's at US airports, with expedited clearances and crew requests. Landings crab into the crosswind and vary their touchdown; a runway change re-plans the traffic; pushbacks follow a standard per stand; EDDM, LOWW and EGLL are validated with their AIP limits.
 
 ### Added
 
@@ -48,10 +37,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The airport map has a new interface (`cmd/airport-map/web/`): a status strip (airport, runway, ATIS, wind, pause and rate, score, camera, frequency, network position, connection), the selected aircraft in its own panel with the next clearance first and the urgent ones always in place, sections for Traffic, Sequence, Schedule, Radio, Airport and Map, light/dark/system themes on a flat palette, and a layout for tablets and phones (bottom sheet, 44 px touch targets). The previous page stays at `/classic` for now. Network play in the UI (#511): the position this device works, Play on this device; Rush per aircraft (#510). `GET /api/status` tells a connected simulator also in its menu.
+- The airport map moved from `examples/airport-map` to its own entry point, `cmd/airport-map` (module `github.com/mrlm-net/simconnect/cmd/airport-map`): it is the traffic control app and the SDK's debugger, not an example. Run it with `cd cmd/airport-map && go run .`.
 - Hold position is read back as given: "Hold position, CSA1" (the project's choice over Doc 4444's "holding").
 
 ### Fixed
 
+- Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.
+- Airport map: pushback and start-up in one clearance again ("with start-up" by the pushback, said "pushback and start up approved, facing …").
+- Airport map: on the map's own computer, its voice and "Play on this device" exclude each other (no echo); the network address other devices open the map on is shown in the quick reference and the status menu (`GET /api/status`: `network`).
+- Runway exits and entries named at airports whose connectors to the runway are unnamed paths (#376; LOWW: every exit and entry was ""): the name is taken from the taxiway the connector leads onto, followed straight on for up to 300 m.
+- Reduced 2.5 NM spacing on final applies only where the radar minimum governs: a RECAT-EU pair whose 3 NM is a wake minimum (A behind A, C behind C or D …) keeps it.
+- docs/traffic-taxi.md: `TrafficLookMeters` is 200 m, the default tug is `FSDT_Pushback_03`, and the tightest push radius tried is 17 m.
 - Pushback: a taxi-out turning back right after the push is also caught at the first node from the nose (LKPR B9 for 24 faced east 23 m short of B2's junction, then looped 130 m round onto B1); such a push gets a second look with a larger search, after push-and-tow.
 - A departure cleared for take-off while taxiing does not stop at its holding point or report holding short: it rolls onto the runway at its speed (traffic ahead still stops it).
 
