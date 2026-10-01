@@ -356,7 +356,14 @@ const (
 // Reports older than TrafficStaleAfter are ignored; bodies are sampled every
 // trafficBodyStep meters.
 const (
-	TrafficLookMeters = 150.0
+	TrafficLookMeters = 200.0
+	// TrafficBrakeFactor: braking for traffic found closer than a normal
+	// stop is up to this many times the profile's deceleration (and jerk);
+	// TrafficOverrunMeters how far into the gap behind it the aircraft may
+	// still roll, braking, rather than stop dead.
+	TrafficBrakeFactor   = 3.0
+	TrafficJerkFactor    = 6.0
+	TrafficOverrunMeters = 8.0
 	TrafficGapMeters  = 15.0
 	TrafficStaleAfter = 3 * time.Second
 	trafficBodyStep   = 5.0

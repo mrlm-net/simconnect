@@ -47,6 +47,8 @@ type groundDrive struct {
 	// planned is the way it will taxi, reported while it waits for its taxi
 	// clearance (#452).
 	planned []airport.LatLon
+	// givingWay is the aircraft it gives way to now (followAhead), 0 none.
+	givingWay uint32
 	trafficAt     time.Time // last look ahead (every TrafficCheckEvery)
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
@@ -295,6 +297,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 		return // a pushback keeps its own traffic stop (holdPushForTraffic)
 	}
 	if d.picture == nil || !d.followTraffic || d.mover == nil {
+		d.givingWay = 0
 		if d.mover != nil {
 			d.mover.ClearTrafficStop()
 		}
@@ -334,7 +337,9 @@ func (d *groundDrive) followAhead(now time.Time) {
 	}
 	// Give way where routes cross or merge: stop short of the conflict
 	// (its first point is already a half-span away from the other path).
-	if gw := d.picture.giveWay(d.object, path, s0, GiveWayLookMeters, half, now); !math.IsInf(gw, 1) {
+	gw, whom := d.picture.giveWayTo(d.object, path, s0, GiveWayLookMeters, half, now)
+	d.givingWay = whom
+	if !math.IsInf(gw, 1) {
 		stop = math.Min(stop, gw-(pushNoseFactor-1)*d.prof.WheelbaseMeters-TrafficGapMeters)
 	}
 	if math.IsInf(stop, 1) {

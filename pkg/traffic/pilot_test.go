@@ -20,6 +20,7 @@ func TestReadbacks(t *testing.T) {
 		{ClearedStartUp("CSA1"), "Start up approved, CSA1"},
 		{ClearedPushback("CSA1"), "Pushback approved, CSA1"},
 		{ClearedTaxiToRunway("CSA1", "24", "B", []string{"H", "A"}), "Taxi to and hold short of runway 24 at B via H, A, CSA1"},
+		{GiveWay("CSA1", "A320 passing left to right"), "Giving way to the A320 passing left to right, CSA1"},
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), "Taxi to stand C22 via B, D, CSA1"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), "Holding short of A, CSA1"},
 		{ClearedCross("CSA1", "12"), "Cross runway 12, CSA1"},
@@ -71,6 +72,7 @@ func TestPilotCalls(t *testing.T) {
 		{ReadbackCorrect(PosDelivery, "CSA1"), "CSA1, readback correct"},
 		{RequestTaxi("CSA1"), "CSA1, request taxi"},
 		{ReadyForDeparture("CSA1", "24"), "CSA1, holding point runway 24, ready for departure"},
+		{HoldingShortReport("CSA1", "12", "F"), "CSA1, holding short of runway 12 at F"},
 		{CheckIn(PosTower, "Ruzyne Tower", "CSA1", "established ILS runway 06", ""), "Ruzyne Tower, CSA1, established ILS runway 06"},
 		{Vacated("CSA1", "06"), "CSA1, runway vacated"}, // Doc 4444 12.3.4.7 z
 		{SayAgain(PosTower, "CSA1"), "CSA1, say again"},

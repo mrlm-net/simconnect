@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 	"math/rand/v2"
 	"net/http"
 	"sync"
@@ -57,6 +58,9 @@ type voiceOut struct {
 	// the simulator picks the frequency heard. Off by default.
 	syncCom bool
 	com     string
+	// tune sets the user aircraft's COM1 (MHz), in the connection's
+	// goroutine; nil while not connected.
+	tune func(mhz float64) error
 
 	engine voicegoio.TTS
 	pool   *voices.Pool
@@ -382,6 +386,30 @@ func (v *voiceOut) com1(freq string) {
 	}
 }
 
+// setTune sets how COM1 is tuned (the connection's TransmitClientEvent).
+func (v *voiceOut) setTune(f func(mhz float64) error) {
+	v.mu.Lock()
+	v.tune = f
+	v.mu.Unlock()
+}
+
+// tuneCom1 tunes the user aircraft's COM1 to freq (as the radio writes it)
+// and follows it at once.
+func (v *voiceOut) tuneCom1(freq string) error {
+	mhz, err := strconv.ParseFloat(freq, 64)
+	if err != nil {
+		return err
+	}
+	v.mu.Lock()
+	tune := v.tune
+	v.com = freq
+	v.mu.Unlock()
+	if tune == nil {
+		return errors.New("not connected to the simulator")
+	}
+	return tune(mhz)
+}
+
 // follow turns the COM1 sync on or off; on, it follows COM1 now.
 func (v *voiceOut) follow(sync bool) {
 	v.mu.Lock()
@@ -405,6 +433,9 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 			On        bool   `json:"on"`
 			Frequency string `json:"frequency"`
 			SyncCom   *bool  `json:"syncCom"`
+			// Tune: following COM1, the frequency was picked on the map:
+			// COM1 is tuned to it.
+			Tune bool `json:"tune"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -412,6 +443,11 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 		}
 		if req.SyncCom != nil {
 			v.follow(*req.SyncCom)
+		}
+		if req.Tune && req.Frequency != "" && v.state().SyncCom {
+			if err := v.tuneCom1(req.Frequency); err != nil {
+				log.Printf("voice: tune COM1: %v", err)
+			}
 		}
 		if st := v.state(); st.SyncCom && st.Com1 != "" {
 			req.Frequency = st.Com1 // following COM1

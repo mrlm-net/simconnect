@@ -306,6 +306,15 @@ func (m *GroundMover) step(dt float64) {
 	// reaching it in about SpeedResponseSeconds.
 	stop := m.stop()
 	rem := stop - m.s
+	// Traffic stopping it (not a hold): it may brake firmly and, where the
+	// stop turned up inside the braking distance, run on into the gap kept
+	// behind the traffic rather than halt on the spot (it looked like a
+	// glitch).
+	traffic := m.hasTraffic && m.trafficAt < m.hold
+	limit := stop
+	if traffic {
+		limit = math.Min(m.hold, m.trafficAt+TrafficOverrunMeters)
+	}
 	// Look ahead by what the response lag covers (at least
 	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
 	// runs about SpeedResponseSeconds late on every slow-down.
@@ -338,11 +347,22 @@ func (m *GroundMover) step(dt float64) {
 			want = math.Min(want, (v0*v0-m.v*m.v)/(2*r)) // brake exactly onto the slow point
 		}
 	}
-	want = math.Max(-1.5*p.Decel, math.Min(p.Accel, want))
+	firm, jerk := 1.5*p.Decel, p.Jerk
+	if traffic && m.v*m.v > 2*p.Decel*math.Max(rem, 0.01) {
+		firm, jerk = TrafficBrakeFactor*p.Decel, TrafficJerkFactor*p.Jerk // closer than a normal stop
+		// Last resort: brake exactly onto the end of the gap, hard but
+		// smoothly, rather than meet it at speed.
+		if r := limit - m.s; r > 0.05 {
+			need := m.v * m.v / (2 * r)
+			want = math.Min(want, -need)
+			firm = math.Max(firm, need)
+		}
+	}
+	want = math.Max(-firm, math.Min(p.Accel, want))
 	if want > m.a {
 		m.a = math.Min(want, m.a+p.Jerk*dt)
 	} else {
-		m.a = math.Max(want, m.a-p.Jerk*dt)
+		m.a = math.Max(want, m.a-jerk*dt)
 	}
 	m.v = math.Max(0, m.v+m.a*dt)
 	// Around a SlowAt point the aircraft keeps rolling at its slow speed
@@ -356,9 +376,12 @@ func (m *GroundMover) step(dt float64) {
 	if rem := stop - m.s; rem > 0 && rem < 0.3 && m.v < finalCreep {
 		step = math.Max(step, finalCreep*dt)
 	}
-	m.s = math.Min(m.s+step, stop)
-	if m.s >= stop {
-		m.s, m.v, m.a = stop, 0, 0
+	m.s = math.Min(m.s+step, limit)
+	if m.s >= limit || traffic && m.v == 0 {
+		m.v, m.a = 0, 0
+		if m.s >= limit {
+			m.s = limit
+		}
 	}
 }
 

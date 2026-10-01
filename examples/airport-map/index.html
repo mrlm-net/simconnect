@@ -1891,9 +1891,9 @@ function showVoice(v) {
   $('rdSound').className = rdSoundOn ? '' : 'secondary';
   $('rdVoice').textContent = rdSoundOn ? `listening on ${rdFreq}` : (v.status && v.status !== 'off' ? v.status : '');
 }
-async function setVoice(on) {
+async function setVoice(on, tune = false) {
   try {
-    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq, syncCom: rdSync }) });
+    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq, syncCom: rdSync, tune }) });
     if (res.ok) showVoice(await res.json());
   } catch { /* server gone */ }
 }
@@ -1906,9 +1906,9 @@ $('rdFreqs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-f]');
   if (!b) return;
   rdFreq = b.dataset.f;
-  rdSync = false; // picked by hand: no longer following COM1
   try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
-  setVoice(rdSoundOn);
+  // Following COM1, a frequency picked here tunes it (both ways).
+  setVoice(rdSoundOn, rdSync);
   pollRadio();
 });
 setInterval(pollRadio, 1000);

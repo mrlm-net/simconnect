@@ -332,3 +332,42 @@ func TestPushbackMover(t *testing.T) {
 	}
 	t.Logf("final heading %.1f after %.0f m", last.Heading, last.Distance)
 }
+
+// Traffic turning up inside the braking distance: the aircraft brakes
+// firmly but continuously, never stopping dead on the spot (live it looked
+// like a glitch), and comes to rest within TrafficOverrunMeters past the
+// traffic stop, inside the gap kept behind the traffic.
+func TestGroundMoverBrakesSmoothlyForTraffic(t *testing.T) {
+	prof := DefaultMotionProfile()
+	path, err := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 600)}, prof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		ahead, maxDecel float64
+	}{
+		{30, TrafficBrakeFactor * prof.Decel}, // found ahead as usual: firm braking at most
+		{12, 4},                               // found right ahead: hard, but no dead stop
+	} {
+		m := NewGroundMover(path, prof)
+		for m.Pose().GroundSpeedKts < 14 {
+			m.Step(1.0 / 60)
+		}
+		at := m.Pose().Distance + c.ahead
+		m.SetTrafficStop(at)
+		prev := m.Pose().GroundSpeedKts * ktsToMS
+		maxDecel := 0.0
+		for i := 0; i < 60*60 && m.Pose().GroundSpeedKts > 0; i++ {
+			v := m.Step(1.0/60).GroundSpeedKts * ktsToMS
+			maxDecel = math.Max(maxDecel, (prev-v)*60)
+			prev = v
+		}
+		if maxDecel > c.maxDecel+0.05 {
+			t.Errorf("%.0f m ahead: braked at %.2f m/s², want at most %.2f (no dead stop)", c.ahead, maxDecel, c.maxDecel)
+		}
+		if d := m.Pose().Distance; d > at+TrafficOverrunMeters+0.01 {
+			t.Errorf("%.0f m ahead: stopped %.1f m past the traffic stop, want at most %.0f", c.ahead, d-at, TrafficOverrunMeters)
+		}
+		t.Logf("%.0f m ahead: stopped %.1f m past the traffic stop, braking up to %.2f m/s²", c.ahead, m.Pose().Distance-at, maxDecel)
+	}
+}
