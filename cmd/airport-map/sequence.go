@@ -64,6 +64,10 @@ func (q *sequences) at(icao string) map[string][]traffic.SequenceEntry {
 func (q *sequences) rejoin(icao, tail string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	// A new approach: slowed and broken off afresh if need be.
+	delete(q.slowedFinal, tail)
+	delete(q.brokeOff, tail)
+	delete(q.absorbed, tail)
 	for k, s := range q.seq {
 		if i, _, _ := strings.Cut(k, " "); i == icao {
 			s.Rejoin(tail)

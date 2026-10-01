@@ -255,6 +255,9 @@ func (c *ArrivalController) GoAround() error {
 		names = append(idents, names[1:]...)
 	}
 	c.setCorners(wps, names)
+	// From the first corner on: the nearest may well be past the climb-out
+	// (abeam, close to the final) and would skip the circuit.
+	c.cornerNext = 0
 	wps = roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around", nil)
 	c.note("release", c.inj.Release(c.objectID))

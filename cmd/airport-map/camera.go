@@ -82,6 +82,9 @@ type cameraMan struct {
 	// none); set back when it is released, so the user's camera is not left
 	// locked where ours was.
 	prevSim int
+	// simGen counts the user's camera choices: a restore under way gives up
+	// when it changed (the user picked another camera meanwhile).
+	simGen int
 	// look: the tower's aim when it looks round the airfield (towerPan).
 	look towerLook
 	// towerAt: the airport whose tower watches (the one on the map), for
@@ -205,7 +208,9 @@ func (m *cameraMan) setView(view string, id int, icao string) error {
 			m.look.mu.Unlock()
 		}
 		m.mode, m.follow, m.subject, m.shots, m.err, m.towerAt, m.lookAt = "tower", 0, "", 0, "", strings.ToUpper(icao), time.Time{}
+		m.simGen++
 		m.mu.Unlock()
+		m.dir.Play() // the shots queued before: dropped, the look starts now
 		if m.frames != nil {
 			m.frames(true)
 		}
@@ -292,6 +297,7 @@ func (m *cameraMan) restoreSim() error {
 	m.mu.Lock()
 	prev := m.prevSim
 	m.prevSim = 0
+	gen := m.simGen
 	m.mu.Unlock()
 	if prev == 0 || m.sim == nil {
 		return nil
@@ -306,10 +312,10 @@ func (m *cameraMan) restoreSim() error {
 				return
 			}
 			m.mu.Lock()
-			ours := m.mode != "off"
+			changed := m.mode != "off" || m.simGen != gen
 			m.mu.Unlock()
-			if ours {
-				return // taken over again meanwhile
+			if changed {
+				return // taken over again, or another camera picked, meanwhile
 			}
 			_ = m.cc.do(func() error { return m.sim.setRaw(prev) })
 		}
@@ -327,7 +333,8 @@ func (m *cameraMan) towerLook() {
 	m.mu.Lock()
 	icao, subject := m.towerAt, m.subject
 	m.mu.Unlock()
-	if subject == airfieldSubject || icao == "" {
+	_ = subject // called only with nothing playing (tick): the look plays again
+	if icao == "" {
 		return
 	}
 	g, err := m.cc.graph(icao)
@@ -345,7 +352,7 @@ func (m *cameraMan) towerLook() {
 // airfieldSubject names the tower's look round the airfield.
 const airfieldSubject = "the airfield"
 
-// towerLookEvery: how often the tower looks for another aircraft to watch.
+// towerLookEvery: how often an idle tower camera plays its look again.
 const towerLookEvery = 3 * time.Second
 
 // heard is a call on the radio, as it is heard: in auto and the demo the

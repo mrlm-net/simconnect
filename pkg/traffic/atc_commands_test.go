@@ -314,6 +314,11 @@ func goAroundStretched(t *testing.T, along float64) {
 	if len(fixes) == 0 || fixes[len(fixes)-1].Ident != "FINAL" {
 		t.Fatalf("circuit fixes %+v", fixes)
 	}
+	// The whole circuit ahead, from the climb-out: not from the nearest
+	// corner (abeam, near the threshold), which skipped it.
+	if fixes[0].Ident != "UPWIND" && fixes[0].Ident != "CROSSWIND" {
+		t.Errorf("circuit starts at %s: %+v", fixes[0].Ident, fixes)
+	}
 	fly := func(alongNM, sideNM, hdg float64) {
 		at := offsetHeading(offsetHeading(p.End.Threshold, p.End.Heading, alongNM*1852), p.End.Heading-90, sideNM*1852)
 		ctl.Handle(arrivalPositionMsg(mon, 77, at, 4000, hdg, 180, false))

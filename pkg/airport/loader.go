@@ -329,7 +329,8 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 			}
 		}
 	case partRunway:
-		if m.Type == types.SIMCONNECT_FACILITY_DATA_RUNWAY {
+		// The whole record, its ILS fields included, or it is not read.
+		if m.Type == types.SIMCONNECT_FACILITY_DATA_RUNWAY && int(m.DwSize)-int(unsafe.Offsetof(m.Data)) >= runwayWireSize {
 			s.raw.Runways = setAt(s.raw.Runways, i, decodeRunway(data))
 		}
 	case partParking:

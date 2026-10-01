@@ -237,8 +237,9 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		s.since, s.use = time.Time{}, fresh // the same runways: current wind figures
 		return fresh
 	}
-	// Out of limits: change now.
-	if slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+	// Out of limits: change now, to one within them (none within them, the
+	// best of the out-of-limits ones would flip with every gust).
+	if fresh.WithinLimits && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
 		s.use, s.since = fresh, time.Time{}
 		return fresh
 	}

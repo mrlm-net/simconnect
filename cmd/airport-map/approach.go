@@ -91,7 +91,8 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		}
 		it.say(traffic.DirectToFinal(callsign, e.Number))
 	case "goaround":
-		if err := it.act("goaround", 0); err != nil {
+		// On the connection's goroutine, as every SimConnect call.
+		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
 			return err
 		}
 		it.say(traffic.GoAround(callsign, ""))
@@ -120,6 +121,13 @@ func registerApproach(mux *http.ServeMux, st *state) {
 		if q == nil {
 			http.Error(w, "not connected", http.StatusServiceUnavailable)
 			return
+		}
+		// Network play (#511): only the position working it.
+		if as := positionOf(r); q.cc != nil {
+			if it := q.cc.byTail(r.PathValue("callsign")); it != nil && !mayClear(as, it) {
+				http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
+				return
+			}
 		}
 		err := q.approachAction(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"))
 		switch {

@@ -220,7 +220,8 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			}
 		}
 		if at < 0 || longest < MinStretchLegNM {
-			a.Left += time.Duration(a.ExtraNM / a.SpeedKts * float64(time.Hour))
+			// At the speed flown: SpeedKts is 0 when it is unchanged.
+			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 			a.ExtraNM = 0
 		} else {
 			from, to := pts[at-1], pts[at]
@@ -234,7 +235,11 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			if at >= 2 {
 				alt = (out[at-2].Altitude + out[at-1].Altitude) / 2
 			}
-			wp := procedureWaypoint(apex, alt, math.Min(out[at-1].KtsSpeed, a.SpeedKts))
+			kts := out[at-1].KtsSpeed
+			if a.SpeedKts > 0 {
+				kts = math.Min(kts, a.SpeedKts) // never 0 kt: unchanged keeps its own
+			}
+			wp := procedureWaypoint(apex, alt, kts)
 			out = append(out[:at-1], append([]types.SIMCONNECT_DATA_WAYPOINT{wp}, out[at-1:]...)...)
 			outNames = append(outNames[:at-1], append([]string{""}, outNames[at-1:]...)...)
 		}

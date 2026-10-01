@@ -470,6 +470,10 @@ func (v *voiceOut) tuneCom1(freq string) error {
 	if err != nil {
 		return err
 	}
+	// A COM frequency ("NaN" or 1e30 would overflow the event's Hz).
+	if !(mhz >= 118 && mhz < 137) {
+		return fmt.Errorf("frequency %s: not a COM frequency (118 to 136.975 MHz)", freq)
+	}
 	v.mu.Lock()
 	tune := v.tune
 	v.com = freq

@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // The tower the user placed (#tower view): the facility data puts some
@@ -78,8 +79,16 @@ func setUserTower(icao string, t towerSite, reset bool) error {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(file, b, 0o644)
+	// Written whole or not at all: a temporary file, then renamed.
+	tmp := file + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, file)
 }
+
+// towerReachM: a tower is placed at most this far from the airport.
+const towerReachM = 5000
 
 // towerHeightM: the cab's height above the airfield when nobody set one.
 const towerHeightM = 100
@@ -170,6 +179,14 @@ func registerTowers(mux *http.ServeMux, st *state) {
 		if req.CabM < 0 || req.CabM > 400 {
 			http.Error(w, "cabM: 0 to 400 m", http.StatusUnprocessableEntity)
 			return
+		}
+		// On the airport: a tower placed within towerReachM of it.
+		if req.Lat != 0 || req.Lon != 0 {
+			l := g.Layout
+			if req.Lat < -90 || req.Lat > 90 || req.Lon < -180 || req.Lon > 180 || calc.HaversineMeters(req.Lat, req.Lon, l.Latitude, l.Longitude) > towerReachM {
+				http.Error(w, "the tower must stand within 5 km of the airport", http.StatusUnprocessableEntity)
+				return
+			}
 		}
 		icao := g.Layout.ICAO
 		t, _ := userTower(icao)

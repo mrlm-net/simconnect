@@ -238,7 +238,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			blocker = u.Callsign
 		}
 	}
-	if blocker != "" && nextArrName != "" && nextArrName != blocker && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
+	// Only an arrival established on the final: one still on its procedure
+	// passing near the threshold is not landing (live, a circuit downwind).
+	if blocker != "" && nextArrName != "" && nextArrName != blocker && nextArrUser.Established && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
 		out.GoAround = append(out.GoAround, nextArrName)
 		out.Waiting[nextArrName] = blocker + " on the runway"
 	}

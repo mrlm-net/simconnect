@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"slices"
@@ -399,7 +400,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	// 12.3.4.11 c).
 	for cs, why := range c.Waiting {
 		it := ours[cs]
-		if it == nil || it.dep == nil || it.gates.Load() || !strings.Contains(why, "on the runway") && !strings.Contains(why, "NM final") {
+		if it == nil || it.dep == nil || it.gates.Load() || !cancelTakeoffFor(why) {
 			continue
 		}
 		it.mu.Lock()
@@ -488,6 +489,54 @@ func (t *towers) forgetLanding(tail string) {
 	t.mu.Lock()
 	delete(t.given, tail+" land")
 	t.mu.Unlock()
+}
+
+// cancelTakeoffFor reports whether why (Decide's wait) cancels a take-off
+// clearance given: someone on the runway, or an arrival well inside the
+// minimum (cancelInsideNM) — not one just under it, or a clearance given at
+// 4.05 NM is cancelled at 3.9 NM, seconds after the readback.
+func cancelTakeoffFor(why string) bool {
+	if strings.Contains(why, "on the runway") {
+		return true
+	}
+	var nm float64
+	if i := strings.Index(why, " on a "); i >= 0 {
+		if _, err := fmt.Sscanf(why[i+len(" on a "):], "%f NM final", &nm); err == nil {
+			return nm < cancelInsideNM
+		}
+	}
+	return false
+}
+
+// cancelInsideNM: an arrival this close cancels a take-off not yet rolling.
+const cancelInsideNM = 3.0
+
+// dropBehind lets the departures told to line up behind arrival (gone
+// around) be cleared afresh: no longer waiting for it.
+func (t *towers) dropBehind(arrival string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for dep, b := range t.behind {
+		if b.arrival == arrival {
+			delete(t.behind, dep)
+			delete(t.given, dep+" lineupbehind")
+			delete(t.given, dep+" lineup")
+		}
+	}
+}
+
+// forgetTail drops every clearance given to tail and its conditional
+// line-up: a call sign spawned again starts afresh (a replayed scene).
+func (t *towers) forgetTail(tail string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k := range t.given {
+		if strings.HasPrefix(k, tail+" ") {
+			delete(t.given, k)
+		}
+	}
+	delete(t.behind, tail)
+	delete(t.waiting, tail)
 }
 
 // forgetGoAround lets an arrival be sent around again on its next approach.

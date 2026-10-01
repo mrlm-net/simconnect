@@ -6,8 +6,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"unsafe"
 
@@ -75,15 +73,8 @@ func (s *simCamera) register() error {
 // on the connection's goroutine.
 func (s *simCamera) set(state string) error {
 	v, ok := simCameraStates[state]
-	if n, err := strconv.Atoi(strings.TrimPrefix(state, "state:")); err == nil && strings.HasPrefix(state, "state:") {
-		v, ok = n, true // a raw CAMERA STATE, to find what this simulator accepts
-	}
 	if !ok {
-		names := make([]string, 0, len(simCameraStates))
-		for k := range simCameraStates {
-			names = append(names, k)
-		}
-		return fmt.Errorf("simulator camera: one of %s", strings.Join(names, ", "))
+		return fmt.Errorf("simulator camera: one of cockpit, chase, drone, fixed, environment")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -142,6 +133,7 @@ func (m *cameraMan) setSim(state string, step int) error {
 		m.mu.Lock()
 		ours := m.mode != "off"
 		m.mode, m.subject, m.err, m.prevSim = "off", "", "", 0 // set where asked, not back
+		m.simGen++
 		m.mu.Unlock()
 		if ours {
 			if m.frames != nil {

@@ -110,7 +110,7 @@ async function ctlAct(id, action, node, facing) {
   controlPoll.now();
 }
 async function approachAct(tail, action) {
-  if (!data) return;
+  if (!data) { $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; }); return; }
   // Its own airport's sequence, not the one on the map.
   const own = ctlViews.find((v) => v.tail === tail);
   const icao = (own && own.icao) || data.icao;
@@ -196,7 +196,7 @@ function fillLive() {
 function actBtn(v, a, busy, extra = '') {
   const A = ACT[a] || { label: a };
   const on = has(v, a) && !busy;
-  return `<button type="button" class="btn ${A.urgent ? 'btn--urgent' : ''} ${extra}" data-act="${a}" data-id="${v.id}"${on ? '' : ' disabled'}>${A.icon ? icon(A.icon, 'ic ic--sm') : ''}${esc(actLabel(v, a))}</button>`;
+  return `<button type="button" class="btn ${A.urgent ? 'btn--urgent' : ''} ${extra}" data-act="${esc(a)}" data-id="${v.id}"${on ? '' : ' disabled'}>${A.icon ? icon(A.icon, 'ic ic--sm') : ''}${esc(actLabel(v, a))}</button>`;
 }
 // Runway entries for a departure's Entry choice, by "ICAO runway model"
 // (GET /api/entries, with whether the type can take off from each).
@@ -212,6 +212,7 @@ function entryRow(v) {
     entriesCache.set(key, null);
     api(`/api/entries?icao=${encodeURIComponent(icao)}&runway=${encodeURIComponent(v.runway)}&model=${encodeURIComponent(v.model)}`).then((r) => {
       entriesCache.set(key, r.ok ? r.data || [] : []);
+      if (!r.ok) setTimeout(() => entriesCache.delete(key), 5000); // asked again, not cached as empty
       renderCtx();
     });
   }
@@ -227,6 +228,7 @@ document.addEventListener('change', (e) => {
   send(`/api/control/${v.id}/entry?entry=${encodeURIComponent(s.value)}`).then((r) => {
     toast(r.ok ? `${v.tail}: runway ${v.runway}${s.value ? ' at ' + s.value : ', full length'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');
     s.disabled = false;
+    s.blur(); // the card renders again (it waits while a select has the focus)
     controlPoll.now();
   });
 });
@@ -552,6 +554,7 @@ async function ctlSpawn() {
 let models = [];
 let modelActive = -1;
 let modelsLoading = false;
+let modelsTimer = 0; // one retry pending at a time
 async function loadModels() {
   if (models.length || modelsLoading) return;
   modelsLoading = true;
@@ -559,7 +562,7 @@ async function loadModels() {
   modelsLoading = false;
   models = (r.ok && r.data) || [];
   $('cModelCount').textContent = models.length ? `· ${models.length} models` : simLive ? '· loading the list…' : '· list needs the simulator';
-  if (!models.length && nfOpen()) setTimeout(loadModels, 5000);
+  if (!models.length && nfOpen() && !modelsTimer) modelsTimer = setTimeout(() => { modelsTimer = 0; loadModels(); }, 5000);
 }
 function modelMatches(showAll) {
   const words = showAll ? [] : $('cModel').value.toLowerCase().split(/\s+/).filter(Boolean);
