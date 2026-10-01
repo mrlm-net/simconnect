@@ -213,7 +213,8 @@ func TestTaxiWaitsForTug(t *testing.T) {
 		t.Fatalf("state %v", ctl.State())
 	}
 	ctl.ClearToTaxi()
-	for i := 0; i < 60*60 && ctl.State() == TaxiAwaitingTaxi; i++ {
+	// The tug drives off, then the engines start (EngineStartTime each).
+	for i := 0; i < 60*180 && ctl.State() == TaxiAwaitingTaxi; i++ {
 		run(TaxiTaxiing, 1)
 		if ctl.State() != TaxiAwaitingTaxi && !tug.Done() {
 			t.Fatalf("taxiing with the tug still there (%d of %d updates)", tug.after, tug.doneAfter)

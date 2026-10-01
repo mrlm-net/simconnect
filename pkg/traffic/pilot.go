@@ -63,7 +63,15 @@ func RequestPushback(station, cs, stand, info string) Transmission {
 	return firstCall(IntentRequestPushback, station, cs, stand, info, "request pushback")
 }
 
-// RequestStartUp asks for the start-up, the push under way: "CSA123,
+// RequestPushbackAndStartUp asks for both in one call: "Ruzyne Ground,
+// CSA123, stand C22, request pushback and start up".
+func RequestPushbackAndStartUp(station, cs, stand, info string) Transmission {
+	t := firstCall(IntentRequestPushback, station, cs, stand, info, "request pushback and start up")
+	t.Params[ParamStartUp] = "1"
+	return t
+}
+
+// RequestStartUp asks for the start-up once the tug has gone: "CSA123,
 // request start up" (Doc 4444 12.3.4.3 a); with station and stand as a
 // first call.
 func RequestStartUp(station, cs, stand, info string) Transmission {
@@ -137,6 +145,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Start up approved"
 	case IntentPushback:
 		s = "Pushback approved"
+		if p[ParamStartUp] != "" {
+			s = "Pushback and start up approved"
+		}
 	case IntentTaxi:
 		if p[ParamStand] != "" {
 			s = "Taxi to stand " + p[ParamStand]

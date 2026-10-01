@@ -105,7 +105,16 @@ func (it *controlled) onRequest(req string) {
 			info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 		}
 		station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
-		it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
+		// Now and then the crew asks for both in one call; otherwise the
+		// start-up once the tug has gone (TaxiEvent.Request "start_up").
+		it.pushAndStart = float64(it.cc.pending.jitter(time.Second)) < pushAndStartShare*float64(time.Second)
+		if it.pushAndStart {
+			it.say(traffic.RequestPushbackAndStartUp(station, it.Tail, it.view.Stand, info))
+		} else {
+			it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
+		}
+	case "start_up":
+		it.say(traffic.RequestStartUp("", it.Tail, "", ""))
 	case "taxi":
 		it.say(traffic.RequestTaxi(it.Tail))
 	default:
@@ -128,17 +137,27 @@ func (it *controlled) answer(req string) {
 	}
 	it.spoken[req] = true // said here: the state change is not said again
 	it.mu.Unlock()
-	if req == "pushback" {
+	switch req {
+	case "pushback":
+		it.mu.Lock()
+		both := it.pushAndStart
+		it.mu.Unlock()
+		if both {
+			it.say(traffic.ClearedPushbackAndStartUp(it.Tail))
+			it.actAfterReadback(traffic.PosGround, req, func() error {
+				if err := it.act("startup", -1); err != nil {
+					return err
+				}
+				return it.act(req, -1)
+			})
+			return
+		}
 		it.say(traffic.ClearedPushback(it.Tail))
 		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
-		// The push under way, the crew asks for the start-up.
-		p := it.cc.pending
-		p.later(it.clearAt(traffic.PosGround).Add(pushToStartUp+p.jitter(pushToStartUp)), func() {
-			it.say(traffic.RequestStartUp("", it.Tail, "", ""))
-			p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-				it.say(traffic.ClearedStartUp(it.Tail))
-			})
-		})
+		return
+	case "start_up":
+		it.say(traffic.ClearedStartUp(it.Tail))
+		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act("startup", -1) })
 		return
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
@@ -146,9 +165,9 @@ func (it *controlled) answer(req string) {
 	it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 }
 
-// pushToStartUp is how long into the push the crew asks for the start-up,
-// with up to as much again at random.
-const pushToStartUp = 12 * time.Second
+// pushAndStartShare is the share of crews that ask for the pushback and
+// the start-up in one call.
+const pushAndStartShare = 0.3
 
 // clearance is the delivery exchange of a departure, in radio order: the
 // crew's request (said already), the clearance once it has been heard, the
