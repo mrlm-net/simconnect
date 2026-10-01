@@ -105,6 +105,7 @@ type aircraftRaw struct {
 	GroundKts float64
 	OnGround  float64
 	SimRate   float64 // SIMULATION RATE
+	Com1      float64 // COM ACTIVE FREQUENCY:1, MHz
 }
 
 // Aircraft is the user aircraft position served at /api/aircraft.
@@ -208,6 +209,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		{"GROUND VELOCITY", "knots"},
 		{"SIM ON GROUND", "bool"},
 		{"SIMULATION RATE", "number"},
+		{"COM ACTIVE FREQUENCY:1", "MHz"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
@@ -427,6 +429,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
 					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Updated: time.Now()}
 				st.mu.Unlock()
+				if a.Com1 > 0 {
+					speaker.com1(airport.FormatMHz(a.Com1)) // the voice follows it when synced
+				}
 
 			case types.SIMCONNECT_RECV_ID_EVENT:
 				if e := msg.AsEvent(); uint32(e.UEventID) == evPause {

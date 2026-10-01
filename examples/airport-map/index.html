@@ -225,7 +225,7 @@
 
   <section data-panel="radio" hidden>
     <h2>Radio <span class="i" title="What is said on one of the airport's frequencies, as on a receiver: our controllers' clearances and handoffs, the pilots' requests and readbacks. Tune the ATIS to hear its broadcast.">ⓘ</span></h2>
-    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <span id="rdVoice" class="note"></span></div>
+    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <label class="opt" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"> Follow my COM1</label> <span id="rdVoice" class="note"></span></div>
     <div id="rdFreqs" class="rdfreqs"></div>
     <div id="rdLog" class="rdlog"></div>
   </section>
@@ -1859,8 +1859,9 @@ async function pollRadio() {
   const count = {};
   for (const t of said) count[t.frequency || ''] = (count[t.frequency || ''] || 0) + 1;
   const btn = (mhz, label) => `<button type="button" data-f="${esc(mhz)}" class="${rdFreq === mhz ? 'on' : ''}">${esc(label)}${mhz ? ' ' + esc(mhz) : ''}<span class="n">${mhz ? count[mhz] || 0 : said.length}</span></button>`;
-  // One frequency, as on a receiver (#462): the tower until one is picked.
-  if (!rdFreq || !freqs.some((f) => f.mhz === rdFreq)) {
+  // One frequency, as on a receiver (#462): the tower until one is picked;
+  // following COM1, whatever it is tuned to.
+  if (!rdSync && (!rdFreq || !freqs.some((f) => f.mhz === rdFreq))) {
     const tower = freqs.find((f) => f.label === 'Tower') || freqs[0];
     if (tower) {
       rdFreq = tower.mhz;
@@ -1878,28 +1879,36 @@ async function pollRadio() {
   }).join('') || '<div class="note">Nothing said yet.</div>';
   if (atEnd) log.scrollTop = log.scrollHeight;
 }
-// The voice (#419): on or off, following the frequency picked.
-let rdSoundOn = false;
+// The voice (#419): on or off, following the frequency picked, or the
+// user aircraft's COM1 (off by default).
+let rdSoundOn = false, rdSync = false;
 function showVoice(v) {
   rdSoundOn = !!v.on;
+  rdSync = !!v.syncCom;
+  $('rdSync').checked = rdSync;
+  if (rdSync && v.frequency && v.frequency !== rdFreq) { rdFreq = v.frequency; pollRadio(); }
   $('rdSound').textContent = rdSoundOn ? '🔊 Sound on' : '🔇 Sound off';
   $('rdSound').className = rdSoundOn ? '' : 'secondary';
   $('rdVoice').textContent = rdSoundOn ? `listening on ${rdFreq}` : (v.status && v.status !== 'off' ? v.status : '');
 }
 async function setVoice(on) {
   try {
-    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq }) });
+    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq, syncCom: rdSync }) });
     if (res.ok) showVoice(await res.json());
   } catch { /* server gone */ }
 }
 $('rdSound').addEventListener('click', () => setVoice(!rdSoundOn));
+$('rdSync').addEventListener('change', (e) => { rdSync = e.target.checked; setVoice(rdSoundOn); });
+// Following COM1: the frequency changes with the radio in the simulator.
+setInterval(() => { if (rdSync) fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {}); }, 1000);
 fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {});
 $('rdFreqs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-f]');
   if (!b) return;
   rdFreq = b.dataset.f;
+  rdSync = false; // picked by hand: no longer following COM1
   try { localStorage.setItem('airportMapRadioFreq', rdFreq); } catch { /* private window */ }
-  if (rdSoundOn) setVoice(true);
+  setVoice(rdSoundOn);
   pollRadio();
 });
 setInterval(pollRadio, 1000);
