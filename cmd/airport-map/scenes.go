@@ -39,6 +39,10 @@ import (
 //go:embed scenes/*.json
 var builtinScenes embed.FS
 
+// scenePace stretches every scene shot (the moves were found a little
+// fast).
+const scenePace = 1.3
+
 // scenesDir is where scenes are read from first (-scenes).
 var scenesDir = "scenes"
 
@@ -412,7 +416,9 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 		it.mu.Lock()
 		v := it.view
 		it.mu.Unlock()
-		d := time.Duration(s.Sec * float64(time.Second))
+		// Slower than written: the moves read better unhurried (at most
+		// camera.MaxShot).
+		d := min(time.Duration(s.Sec*scenePace*float64(time.Second)), camera.MaxShot)
 		if d <= 0 {
 			d = wideShot
 		}

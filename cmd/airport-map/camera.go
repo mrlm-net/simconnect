@@ -248,8 +248,8 @@ func interest(it *controlled) int {
 // Shot lengths: a wide shot long enough to read the move, a detail one a
 // beat.
 const (
-	wideShot   = 7 * time.Second
-	detailShot = 4500 * time.Millisecond
+	wideShot   = 9500 * time.Millisecond
+	detailShot = 6 * time.Second
 )
 
 // phaseMoves are the drone moves for what an aircraft is doing, wide and

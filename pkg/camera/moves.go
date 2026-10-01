@@ -65,14 +65,14 @@ func Flyover(o uint32, s Size, side float64, d time.Duration) Shot {
 		key(o, 1, Offset{side * w * 0.1, l * 0.8, -l * 1.3}, Offset{0, 0, -l * 0.2}, 55))
 }
 
-// SpiralDescend: circling a third of the way round while dropping from
+// SpiralDescend: circling a quarter of the way round while dropping from
 // high and wide to low and close.
 func SpiralDescend(o uint32, s Size, side float64, d time.Duration) Shot {
 	_, l := s.sized()
 	var keys []Key
 	for i := 0; i <= 4; i++ {
 		f := float64(i) / 4
-		a := (150 - 120*f) * side * math.Pi / 180
+		a := (140 - 80*f) * side * math.Pi / 180
 		r := l * (2.6 - 1.3*f)
 		keys = append(keys, key(o, f, Offset{r * math.Sin(a), l*(1.1-0.95*f) + 1, r * math.Cos(a)}, Offset{0, 1.5, 0}, 55-13*f))
 	}
@@ -94,8 +94,8 @@ func LeadChase(o uint32, s Size, side float64, d time.Duration) Shot {
 func ParallaxTrack(o uint32, s Size, side float64, d time.Duration) Shot {
 	_, l := s.sized()
 	return Path("parallax track", d, Linear,
-		key(o, 0, Offset{side * l * 1.4, 2.5, -l * 1.1}, Offset{0, 1.5, -l * 0.2}, 40),
-		key(o, 1, Offset{side * l * 1.4, 3.5, l * 1.1}, Offset{0, 1.5, l * 0.2}, 40))
+		key(o, 0, Offset{side * l * 1.4, 2.5, -l * 0.75}, Offset{0, 1.5, -l * 0.15}, 40),
+		key(o, 1, Offset{side * l * 1.4, 3.5, l * 0.75}, Offset{0, 1.5, l * 0.15}, 40))
 }
 
 // HeroLowPushIn: low at the front quarter, pushing in and narrowing: the
@@ -187,7 +187,7 @@ func TopOrbit(o uint32, s Size, side float64, d time.Duration) Shot {
 	var keys []Key
 	for i := 0; i <= 4; i++ {
 		f := float64(i) / 4
-		a := (200 + 100*f*side) * math.Pi / 180
+		a := (200 + 70*f*side) * math.Pi / 180
 		r := l * 0.35
 		keys = append(keys, key(o, f, Offset{r * math.Sin(a), l * (1.9 - 0.3*f), r * math.Cos(a)}, Offset{0, 0, l * 0.15}, 52))
 	}
