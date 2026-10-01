@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.1] - 2026-10-01
+
+Fixes from a live session at LKPR. The tower no longer clears a take-off ahead of a close arrival. Go-arounds fly a clean circuit back with named track points. Approach clears the approach on the base. The map uses a fraction of the CPU: standard pushbacks are planned only where needed, paced, and saved between runs. The camera gains fixed views with switching between aircraft.
+
 ### Added
 
 - Traffic: SaveStandardPushes and LoadStandardPushes keep an airport's standard pushes between runs (refused with ErrStandardStale for another layout). The airport map saves them to the user cache folder and loads them on later starts.
