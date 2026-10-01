@@ -167,8 +167,12 @@ func dubins(a airport.LatLon, headA float64, b airport.LatLon, headB, r, step fl
 		return nil
 	}
 	w := words[bi]
-	// Integrate the path (midpoint rule), in metres.
+	// Integrate the path (midpoint rule), in metres; back to degrees with
+	// a's scale (offsetHeading east then north, without its trigonometry
+	// per point: the standard push planning spends a quarter of its time
+	// here).
 	x, y, th := 0.0, 0.0, th0
+	kx := metersPerDegree * math.Cos(a.Lat*math.Pi/180)
 	out := []airport.LatLon{a}
 	for i, seg := range []float64{w.t, w.p, w.q} {
 		k := w.kinds[i] / r
@@ -179,7 +183,7 @@ func dubins(a airport.LatLon, headA float64, b airport.LatLon, headB, r, step fl
 			x, y = x+math.Cos(mid)*ds, y+math.Sin(mid)*ds
 			th += k * ds
 			s += ds
-			out = append(out, offsetHeading(offsetHeading(a, 90, x), 0, y))
+			out = append(out, airport.LatLon{Lat: a.Lat + y/metersPerDegree, Lon: a.Lon + x/kx})
 		}
 	}
 	return out

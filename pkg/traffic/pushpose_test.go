@@ -4,9 +4,11 @@
 package traffic
 
 import (
+	"bytes"
 	"errors"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,5 +313,53 @@ func TestStandardPush(t *testing.T) {
 	a, b := plan("24"), plan("06")
 	if !samePose(*a, *b) || a.lane != "B2" {
 		t.Errorf("24 on %s facing %.0f°, 06 on %s facing %.0f°: want both on B2", a.lane, a.heading, b.lane, b.heading)
+	}
+}
+
+// Standard pushes saved and loaded again (SaveStandardPushes,
+// LoadStandardPushes): the same push per stand, without planning; a file
+// for another layout is refused.
+func TestStandardPushesSaved(t *testing.T) {
+	g := airportGraph(t, "LKPR")
+	var stands []int
+	for _, name := range []string{"B9", "B14", "C22", "A4"} {
+		i, err := g.Layout.ParkingIndex(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stands = append(stands, i)
+	}
+	start := time.Now()
+	PlanStandardPushes(g, "FSLTL_B738_RYR", stands)
+	t.Logf("%d stands planned in %s", len(stands), time.Since(start).Round(time.Millisecond))
+	want := map[int]*pushPose{}
+	for _, i := range stands {
+		v, _ := standardPushes.Load(standardKey{g, i})
+		want[i] = v.(*pushPose)
+	}
+	var buf bytes.Buffer
+	if n, err := SaveStandardPushes(&buf, g); err != nil || n < len(stands) {
+		t.Fatalf("saved %d: %v", n, err)
+	}
+	saved := buf.String()
+	for _, i := range stands {
+		standardPushes.Delete(standardKey{g, i})
+	}
+	if n, err := LoadStandardPushes(strings.NewReader(saved), g); err != nil || n < len(stands) {
+		t.Fatalf("loaded %d: %v", n, err)
+	}
+	for _, i := range stands {
+		v, ok := standardPushes.Load(standardKey{g, i})
+		if !ok {
+			t.Fatalf("stand %d not loaded", i)
+		}
+		got := v.(*pushPose)
+		if (got == nil) != (want[i] == nil) || got != nil && !samePose(*got, *want[i]) {
+			t.Errorf("stand %d: loaded %+v, planned %+v", i, got, want[i])
+		}
+	}
+	other := airportGraph(t, "EDDM")
+	if _, err := LoadStandardPushes(strings.NewReader(saved), other); !errors.Is(err, ErrStandardStale) {
+		t.Errorf("another airport's file: %v", err)
 	}
 }

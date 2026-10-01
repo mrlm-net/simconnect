@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Traffic: SaveStandardPushes and LoadStandardPushes keep an airport's standard pushes between runs (refused with ErrStandardStale for another layout). The airport map saves them to the user cache folder and loads them on later starts.
 - Airport map: camera views. A fixed view (chase, cockpit, wing, front, top, tower) of the selected aircraft, or of your own with none selected; ◀ ▶ switch between our aircraft, and selecting another aircraft moves the view to it (POST /api/camera {"mode":"view","view":"chase","id":7}; id -1 is your aircraft).
 - Airport map: -pprof 127.0.0.1:6060 serves Go's profiler (off by default).
 
@@ -28,7 +29,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: the radio log shows the newest call first.
 - Arrivals: a delay absorbed on a STAR or a go-around's circuit re-plans from the procedure's corners, not from its already rounded turns: a downwind extended no longer cuts into a turn's arc, and no dog-leg loops are drawn (live, DLH1402 flew loops after its go-around).
 - Airport map: the radio tab fills the panel and only its log scrolls (two scrollbars before).
-- Airport map: CPU. Every airport loaded, flight-plan destinations included, planned its stands' standard pushbacks at once, in parallel: 1–2.5 min of a core each, 6 cores at peak. Now only airports where a departure appears, one at a time.
+- Airport map: CPU. Every airport loaded, flight-plan destinations included, planned its stands' standard pushbacks at once, in parallel: 1–2.5 min of a core each, 6 cores at peak. Now only airports where a departure appears, one at a time, resting after each stand (about 30% of one core), and planned once per layout: saved and loaded on later starts. The push geometry is cheaper too (no trigonometry per point of a push path): planning takes about half the time.
+- Airport map: the sequence ladder's distances carry their unit (NM); the final no longer labels its arrivals (click the aircraft for its details; the dot shows whether the spacing is kept).
 - Airport map: dropdown lists (the position picker) take the theme's colours in dark mode.
 
 ---
