@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.2] - 2026-10-01
+
+Runway and sequencing safety. Take-off waits for everyone on the runway, and a cleared take-off is cancelled if the runway stops being free. Conditional line-ups are honoured. Speeds come in tens of knots. The sequencer looks ahead on the final, slowing an arrival that closes up on its leader, or breaking it off early.
+
 ### Added
 
 - Sequencing looks ahead on the final: SequenceEntry.ShortBy shows how much sooner than its spacing an established arrival would land behind its leader. The map acts before they meet. On the STAR or downwind it slows the arrival or extends the downwind. On the final it reduces to final approach speed (ArrivalController.ReduceToFinalSpeed, "for spacing reduce to final approach speed"). Still short and already inside its spacing, more than 3 NM out, it is sent around early, not on short final.
