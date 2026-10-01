@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Sequencing looks ahead on the final: SequenceEntry.ShortBy shows how much sooner than its spacing an established arrival would land behind its leader. The map acts before they meet. On the STAR or downwind it slows the arrival or extends the downwind. On the final it reduces to final approach speed (ArrivalController.ReduceToFinalSpeed, "for spacing reduce to final approach speed"). Still short and already inside its spacing, more than 3 NM out, it is sent around early, not on short final.
+
 ### Fixed
 
 - Sequencing: speeds are assigned in tens of knots ("reduce speed to 230 knots", not 239), and an arrival already flying the speed is not told it again (live, CSA1389 heard "reduce speed to 210 knots" three times).

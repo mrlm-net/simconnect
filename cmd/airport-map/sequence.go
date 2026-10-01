@@ -36,10 +36,15 @@ type sequences struct {
 	absorbed map[string]time.Time
 	// stacks: the holding stacks by airport and fix (#392).
 	stacks map[string]*traffic.HoldStack
+	// slowedFinal: when an arrival closing up on the final was told to fly
+	// its final approach speed; brokeOff: sent around early for spacing.
+	slowedFinal map[string]time.Time
+	brokeOff    map[string]bool
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
-	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{}}
+	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -110,6 +115,10 @@ const (
 // absorb has the arrivals of a sequence on their STAR lose their delay:
 // speed, then a dog-leg; what is left waits for the hold (#392).
 func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEntry, items []*controlled) {
+	dtg := map[string]float64{} // distance to go by call sign: the gap now
+	for _, e := range seq {
+		dtg[e.Callsign] = e.DistanceToGoNM
+	}
 	for _, e := range seq {
 		var it *controlled
 		for _, x := range items {
@@ -118,8 +127,20 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				break
 			}
 		}
-		if it == nil || e.Fixed {
+		if it == nil {
 			continue
+		}
+		// Looking ahead: an established arrival (fixed, it keeps its time)
+		// acts only when predicted to land short of its spacing behind its
+		// leader — closing up on a slower one ahead — before they meet.
+		delay := e.Delay
+		if e.Fixed {
+			if e.ShortBy < spacingActFrom {
+				continue
+			}
+			delay = e.ShortBy
+		} else if e.ShortBy > delay {
+			delay = e.ShortBy
 		}
 		// In a hold: released once its delay is down to holdRelease.
 		if h, _, holding := it.arr.Holding(); holding {
@@ -128,7 +149,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		if e.Delay < absorbFrom {
+		if delay < absorbFrom && e.ShortBy < spacingActFrom {
 			continue
 		}
 		q.mu.Lock()
@@ -138,7 +159,15 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			continue
 		}
 		var a traffic.Absorption
-		err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.Delay); return err })
+		err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(delay); return err })
+		if errors.Is(err, traffic.ErrNotOnProcedure) && e.ShortBy >= spacingActFrom {
+			lead, ok := dtg[e.Leader]
+			if !ok {
+				lead = -1
+			}
+			q.closingUp(now, it, e, e.DistanceToGoNM-lead) // on the final: slower, else around early
+			continue
+		}
 		if errors.Is(err, traffic.ErrNotOnProcedure) || errors.Is(err, traffic.ErrHolding) {
 			continue // on the final, not flying a STAR, or holding
 		}
@@ -146,7 +175,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		q.absorbed[e.Callsign] = now
 		q.mu.Unlock()
 		if err != nil {
-			tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, e.Delay.Round(time.Second), err)
+			tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, delay.Round(time.Second), err)
 			continue
 		}
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
@@ -160,12 +189,68 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if a == (traffic.Absorption{}) {
 			continue
 		}
-		it.say(traffic.Sequenced(e.Callsign, e.Number, e.Delay, a))
+		if e.ShortBy >= spacingActFrom {
+			tlog.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
+		}
+		it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
 			q.enterHold(now, icao, it, e, a.Left)
 		}
 	}
+}
+
+// Spacing on the final: an arrival predicted spacingActFrom or more short
+// of its spacing acts; still breakOffFrom short breakOffAfter it was
+// slowed, and more than breakOffNM out, it is sent around then, not on the
+// short final.
+const (
+	spacingActFrom = 10 * time.Second
+	breakOffFrom   = 25 * time.Second
+	breakOffAfter  = 20 * time.Second
+	breakOffNM     = 3.0
+)
+
+// closingUp handles an arrival on its final closing up on its leader: first
+// its final approach speed from now on ("reduce to final approach speed");
+// still short of its spacing once that has had time to work and inside it
+// already (gapNM, the track distance to its leader now: the prediction
+// alone can overstate the closing), around early.
+func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceEntry, gapNM float64) {
+	q.mu.Lock()
+	slowedAt, slowed := q.slowedFinal[e.Callsign]
+	broke := q.brokeOff[e.Callsign]
+	q.mu.Unlock()
+	it.mu.Lock()
+	pos := it.atc
+	it.mu.Unlock()
+	if !slowed {
+		var gain time.Duration
+		if err := q.cc.do(func() (err error) { gain, err = it.arr.ReduceToFinalSpeed(); return err }); err != nil {
+			return
+		}
+		q.mu.Lock()
+		q.slowedFinal[e.Callsign] = now
+		q.mu.Unlock()
+		tlog.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
+		if gain > 0 {
+			it.say(traffic.SequencedFinalSpeed(pos, e.Callsign, e.Number))
+		}
+		return
+	}
+	if broke || now.Sub(slowedAt) < breakOffAfter || e.ShortBy < breakOffFrom || e.DistanceToGoNM <= breakOffNM || gapNM >= e.SpacingNM {
+		return
+	}
+	q.mu.Lock()
+	q.brokeOff[e.Callsign] = true
+	q.mu.Unlock()
+	if err := q.cc.do(func() error { return it.arr.GoAround() }); err != nil {
+		tlog.printf("%-6s sequence: go-around for spacing refused: %v", e.Callsign, err)
+		return
+	}
+	tlog.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
+	it.say(traffic.GoAround(e.Callsign, "spacing"))
+	q.cc.rejoin(it.ICAO, it.Tail)
 }
 
 // Holding (#392): an arrival with holdFrom or more left after speed and

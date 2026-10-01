@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/convert"
@@ -267,6 +268,31 @@ func (c *ArrivalController) GoAround() error {
 	c.goArounds++
 	c.setState(ArrivalApproaching, nil)
 	return nil
+}
+
+// ReduceToFinalSpeed has an arrival on its injected final fly its final
+// approach speed from now on instead of slowing to it on the way: for
+// spacing behind a slower leader. It returns the time that gains;
+// ErrNotApplicable when it is not on the final.
+func (c *ArrivalController) ReduceToFinalSpeed() (time.Duration, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.approach == nil || c.flyingProc {
+		return 0, ErrNotApplicable
+	}
+	return c.approach.slowNow(), nil
+}
+
+// FinalSlowGain is the time ReduceToFinalSpeed would gain now (0 when not
+// on the final, or slowed already).
+func (c *ArrivalController) FinalSlowGain() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.approach == nil || c.flyingProc {
+		return 0
+	}
+	m := *c.approach
+	return m.slowNow()
 }
 
 // missedWaypoints are the points of a published missed approach at its

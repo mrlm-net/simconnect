@@ -50,6 +50,11 @@ type SequenceEntry struct {
 	Landing time.Time     `json:"landing"`
 	Delay   time.Duration `json:"delay"`
 	Fixed   bool          `json:"fixed,omitempty"`
+	// ShortBy is how much sooner than its spacing it would land behind its
+	// leader: a fixed arrival (established, inside FreezeNM) keeps its
+	// predicted time, so two of them closing up on the final show here
+	// before they meet (0: spaced).
+	ShortBy time.Duration `json:"shortBy,omitempty"`
 	// DistanceToGoNM as given.
 	DistanceToGoNM float64 `json:"distanceToGoNM"`
 }
@@ -338,7 +343,11 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			Delay: p.at.Sub(p.eta), Fixed: p.a.Fixed, DistanceToGoNM: p.a.DistanceToGoNM}
 		if i > 0 {
 			e.Leader = planned[i-1].a.Callsign
-			_, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
+			var g time.Duration
+			g, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
+			if short := g - p.at.Sub(planned[i-1].at); short > 0 {
+				e.ShortBy = short
+			}
 		}
 		out[i] = e
 	}

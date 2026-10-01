@@ -480,7 +480,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	camTick := time.NewTicker(cameraRate)
 	defer camTick.Stop()
 	var lastFrame time.Time // the simulator's last frame event
-	cc.rejoin = seqs.rejoin // a go-around is sequenced again (#394)
+	// A go-around is sequenced again (#394), and cleared to land again on
+	// its next approach (#486).
+	cc.rejoin = func(icao, tail string) { seqs.rejoin(icao, tail); tw.forgetLanding(tail) }
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at

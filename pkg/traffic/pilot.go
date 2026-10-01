@@ -278,6 +278,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamSpeed] != "" {
 			s += ", reduce speed to " + p[ParamSpeed] + " knots"
 		}
+		if p[ParamFinalSpeed] != "" {
+			s += ", reduce to final approach speed"
+		}
 	case IntentDirect:
 		s = "Direct to final"
 	case IntentHold:

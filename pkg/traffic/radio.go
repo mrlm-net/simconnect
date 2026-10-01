@@ -97,44 +97,45 @@ func PhraseologyFor(icao string) Phraseology {
 // Parameter keys of a transmission. Values are the text as said (a runway
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
-	ParamRunway    = "runway"
-	ParamEntry     = "entry"    // where an intersection departure enters its runway ("B")
-	ParamStartUp   = "startup"  // "1": the start-up asked for or approved with the pushback
-	ParamFacing    = "facing"   // where a push ends facing: "east"
-	ParamBehind    = "behind"   // a conditional line-up: the landing traffic as said ("A320")
-	ParamGiveWay   = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
-	ParamTaxiways  = "taxiways" // as said: "B2, H, A"
-	ParamStand     = "stand"
-	ParamLimit     = "limit" // a taxiway to hold short of; "" a marked point
-	ParamSID       = "sid"
-	ParamSTAR      = "star"
-	ParamApproach  = "approach" // the approach expected ("ILS")
-	ParamReason    = "reason"
-	ParamNumber    = "number" // in the landing sequence
-	ParamDelay     = "delay"
-	ParamLose      = "lose" // how the delay is lost: "210 kt, +3.2 NM"
-	ParamFix       = "fix"
-	ParamHoldIn    = "entry_type"  // hold entry: direct, teardrop, parallel
-	ParamAltitude  = "altitude"    // feet
-	ParamExpect    = "expect"      // expect further clearance, HH:MM
-	ParamSpeed     = "speed"       // knots
-	ParamLevel     = "level"       // "flight level 210" or "altitude 9000 feet"
-	ParamHeading   = "heading"     // degrees, three digits
-	ParamTurn      = "turn"        // left, right
-	ParamClimb     = "climb"       // climb, descend
-	ParamSlower    = "slower"      // "true": reduce, else increase
-	ParamTraffic   = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
-	ParamPosition  = "position"    // a handoff's next position
-	ParamStation   = "station"     // … as said: "Praha Tower"
-	ParamFreq      = "frequency"   // … its frequency: "118.105"
-	ParamWhen      = "when"        // … a condition: "when vacated"
-	ParamDest      = "destination" // a clearance limit as said: "Frankfurt"
-	ParamSquawk    = "squawk"      // SSR code: "4521"
-	ParamWind      = "wind"        // as said: "wind 100 degrees 6 knots"
-	ParamQNH       = "qnh"         // hPa: "1013" (FAA: inches, ParamAltimeter)
-	ParamAltimeter = "altimeter"   // inches of mercury ×100: "2992"
-	ParamReport    = "report"      // what to report: "established"
-	ParamRush      = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
+	ParamRunway     = "runway"
+	ParamEntry      = "entry"    // where an intersection departure enters its runway ("B")
+	ParamStartUp    = "startup"  // "1": the start-up asked for or approved with the pushback
+	ParamFacing     = "facing"   // where a push ends facing: "east"
+	ParamBehind     = "behind"   // a conditional line-up: the landing traffic as said ("A320")
+	ParamGiveWay    = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
+	ParamTaxiways   = "taxiways" // as said: "B2, H, A"
+	ParamStand      = "stand"
+	ParamLimit      = "limit" // a taxiway to hold short of; "" a marked point
+	ParamSID        = "sid"
+	ParamSTAR       = "star"
+	ParamApproach   = "approach" // the approach expected ("ILS")
+	ParamReason     = "reason"
+	ParamNumber     = "number" // in the landing sequence
+	ParamDelay      = "delay"
+	ParamLose       = "lose" // how the delay is lost: "210 kt, +3.2 NM"
+	ParamFix        = "fix"
+	ParamHoldIn     = "entry_type"  // hold entry: direct, teardrop, parallel
+	ParamAltitude   = "altitude"    // feet
+	ParamExpect     = "expect"      // expect further clearance, HH:MM
+	ParamSpeed      = "speed"       // knots
+	ParamFinalSpeed = "final_speed" // "1": reduce to final approach speed
+	ParamLevel      = "level"       // "flight level 210" or "altitude 9000 feet"
+	ParamHeading    = "heading"     // degrees, three digits
+	ParamTurn       = "turn"        // left, right
+	ParamClimb      = "climb"       // climb, descend
+	ParamSlower     = "slower"      // "true": reduce, else increase
+	ParamTraffic    = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
+	ParamPosition   = "position"    // a handoff's next position
+	ParamStation    = "station"     // … as said: "Praha Tower"
+	ParamFreq       = "frequency"   // … its frequency: "118.105"
+	ParamWhen       = "when"        // … a condition: "when vacated"
+	ParamDest       = "destination" // a clearance limit as said: "Frankfurt"
+	ParamSquawk     = "squawk"      // SSR code: "4521"
+	ParamWind       = "wind"        // as said: "wind 100 degrees 6 knots"
+	ParamQNH        = "qnh"         // hPa: "1013" (FAA: inches, ParamAltimeter)
+	ParamAltimeter  = "altimeter"   // inches of mercury ×100: "2992"
+	ParamReport     = "report"      // what to report: "established"
+	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
 )
 
 // Transmission is one message on the radio.
@@ -350,6 +351,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		s := fmt.Sprintf("%s, number %s", cs, p[ParamNumber])
 		if p[ParamSpeed] != "" {
 			s += fmt.Sprintf(", for spacing reduce speed to %s knots", p[ParamSpeed])
+		}
+		if p[ParamFinalSpeed] != "" {
+			s += ", for spacing reduce to final approach speed"
 		}
 		if p[ParamDelay] != "" {
 			s += fmt.Sprintf(", expect %s minutes delay", p[ParamDelay])
@@ -756,6 +760,13 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 		p[ParamDelay] = fmt.Sprint(min)
 	}
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentSequence, Params: p})
+}
+
+// SequencedFinalSpeed has an arrival on the final slow to its final
+// approach speed for spacing: "CSA1, number 2, for spacing reduce to final
+// approach speed". From pos: the position working it.
+func SequencedFinalSpeed(pos Position, cs string, number int) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentSequence, Params: map[string]string{ParamNumber: fmt.Sprint(number), ParamFinalSpeed: "1"}})
 }
 
 // DirectToFinal sends an arrival direct to the final.

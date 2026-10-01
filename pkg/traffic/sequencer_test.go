@@ -210,3 +210,38 @@ func TestSequencerMove(t *testing.T) {
 		t.Errorf("unknown: %v", err)
 	}
 }
+
+// Two established arrivals (inside FreezeNM, fixed) closing up on the
+// final: the follower shows how short of its spacing it would land, before
+// they meet; spaced, nothing.
+func TestSequencerShortBy(t *testing.T) {
+	now := time.Now()
+	fin := func(cs string, nm, kts float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: kts, FinalKts: 140}
+	}
+	s := NewApproachSequencer("24", SequencerOptions{})
+	seq := s.Update(now, []ApproachAircraft{fin("CSA1", 3, 140), fin("DLH2", 4.5, 180)})
+	if len(seq) != 2 || seq[1].Callsign != "DLH2" || seq[1].ShortBy <= 0 {
+		t.Fatalf("closing up 1.5 NM behind: %+v", seq)
+	}
+	s = NewApproachSequencer("24", SequencerOptions{})
+	seq = s.Update(now, []ApproachAircraft{fin("CSA1", 2, 140), fin("DLH2", 7.5, 140)})
+	if seq[1].ShortBy != 0 {
+		t.Errorf("5.5 NM behind at the same speed: short by %s", seq[1].ShortBy)
+	}
+}
+
+// Reducing to the final approach speed early gains time on a long final,
+// once: flown at it already, nothing more.
+func TestApproachMoverSlowNow(t *testing.T) {
+	p := DefaultApproachProfile()
+	p.StartKts, p.ApproachKts, p.ApproachSpeedNm = 170, 135, 1
+	m := NewApproachMover(airport.LatLon{Lat: 50.1, Lon: 14.26}, 245, 8*1852, p)
+	gain := m.slowNow()
+	if gain < 10*time.Second {
+		t.Fatalf("8 NM out, 170 → 135 kt: gains %s", gain)
+	}
+	if again := m.slowNow(); again != 0 {
+		t.Errorf("slowed already: gains %s", again)
+	}
+}
