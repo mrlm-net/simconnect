@@ -17,6 +17,7 @@ The airport map becomes an app: a new interface for desktop, tablet and phone, p
 
 ### Added
 
+- A departure's runway entry can be changed on the stand or while taxiing (`TaxiController.ChangeEntry`; the Entry choice in the aircraft panel, with the entries too short for the type marked); taxiing, ground says the new route.
 - The MSFS 2024 add-on camera (#515): `engine` binds `CameraAcquire`, `CameraSet`, `CameraGet`, `CameraRelease`, the world locker and the rest (`types.SIMCONNECT_DATA_CAMERA`, packed); `pkg/camera` has poses relative to the world, an aircraft or the eyepoint, eased `Move` and spline `Path` shots, drone moves scaled to the aircraft (reveal rise, flyover, spiral descend, lead chase, parallax track, side dolly, head-on pass, top orbit, details of the engines, gear, cockpit, tail and lights) and a `Director` that plays them. Conventions measured live are in `docs/camera.md`.
 - Airport map camera: auto director (cuts to the aircraft on the radio as the call is heard, wide and detail shots for its phase), follow the selected aircraft, and scripted scenes (`-scenes`, JSON: cast, beats, cues such as `dep:pushback` or `dep:lights:B`, the radio following the aircraft that matters) with three to start from.
 - Airport map: pause/resume and simulation rate on the map; the sound output picker remembered; "Tune my COM1" (a frequency picked on the map tunes COM1 without following it); pushback facing as a select (auto by default); "Continue taxi" after hold position; "Cleared to land" only on final; buttons disabled while a command is on its way; a wider panel on large screens; controllers change voice at a shift change every 30–60 minutes.
@@ -43,6 +44,7 @@ The airport map becomes an app: a new interface for desktop, tablet and phone, p
 
 ### Fixed
 
+- Airport map camera: set on every rendered frame (the simulator's Frame event) instead of a timer, so its moves no longer blip.
 - Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.
 - Airport map: pushback and start-up in one clearance again ("with start-up" by the pushback, said "pushback and start up approved, facing …").
 - Airport map: on the map's own computer, its voice and "Play on this device" exclude each other (no echo); the network address other devices open the map on is shown in the quick reference and the status menu (`GET /api/status`: `network`).

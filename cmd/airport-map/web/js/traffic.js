@@ -193,6 +193,37 @@ function actBtn(v, a, busy, extra = '') {
   const on = has(v, a) && !busy;
   return `<button type="button" class="btn ${A.urgent ? 'btn--urgent' : ''} ${extra}" data-act="${a}" data-id="${v.id}"${on ? '' : ' disabled'}>${A.icon ? icon(A.icon, 'ic ic--sm') : ''}${esc(actLabel(v, a))}</button>`;
 }
+// Runway entries for a departure's Entry choice, by "ICAO runway model"
+// (GET /api/entries, with whether the type can take off from each).
+const entriesCache = new Map();
+const ENTRY_STATES = ['spawning', 'awaiting pushback', 'pushback', 'awaiting taxi', 'taxiing', 'holding short'];
+function entryRow(v) {
+  if (v.kind !== 'departure' || v.done || !ENTRY_STATES.includes(v.state) || !data) return '';
+  const key = `${data.icao} ${v.runway} ${v.model}`;
+  const list = entriesCache.get(key);
+  if (list === undefined) {
+    entriesCache.set(key, null);
+    api(`/api/entries?icao=${encodeURIComponent(data.icao)}&runway=${encodeURIComponent(v.runway)}&model=${encodeURIComponent(v.model)}`).then((r) => {
+      entriesCache.set(key, r.ok ? r.data || [] : []);
+      renderCtx();
+    });
+  }
+  const opts = [['', 'Full length']].concat((list || []).slice(1).filter((e) => e.taxiway).map((e) => [e.taxiway, `${e.taxiway} · ${Math.round(e.remaining)} m${e.ok === false ? ' (too short)' : ''}`]));
+  return `<dt>Entry</dt><dd><select class="input input--inline" data-entry="${v.id}" title="The intersection it takes the runway from; changed on the stand or while taxiing">${opts.map(([k, t]) => `<option value="${esc(k)}"${(v.entry || '') === k ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></dd>`;
+}
+document.addEventListener('change', (e) => {
+  const s = e.target.closest('select[data-entry]');
+  if (!s) return;
+  const v = ctlViews.find((x) => x.id === Number(s.dataset.entry));
+  if (!v) return;
+  s.disabled = true;
+  send(`/api/control/${v.id}/entry?entry=${encodeURIComponent(s.value)}`).then((r) => {
+    toast(r.ok ? `${v.tail}: runway ${v.runway}${s.value ? ' at ' + s.value : ', full length'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');
+    s.disabled = false;
+    controlPoll.now();
+  });
+});
+
 // ctlWithStart: the aircraft whose pushback includes the start-up.
 const ctlWithStart = new Set();
 function facingRow(v, busy) {
@@ -246,6 +277,7 @@ function renderCtx() {
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : esc(v.atc)) : '';
   h += `<section class="ctx__sec"><dl class="kv">
     <dt>Route</dt><dd class="mono">${esc(routeText(v))}</dd>
+    ${entryRow(v)}
     ${v.procedure ? `<dt>Procedure</dt><dd class="mono">${esc(v.procedure)}</dd>` : ''}
     ${freq ? `<dt>Frequency</dt><dd>${freq}</dd>` : ''}
     <dt>Motion</dt><dd class="mono" data-motion="${v.id}"></dd>
