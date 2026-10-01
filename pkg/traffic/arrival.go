@@ -242,6 +242,14 @@ type ArrivalController struct {
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
 	goArounds     int // go-arounds flown (GoAround)
+	// corners: proc's points as planned, before its turns are rounded
+	// (proc.Waypoints is the rounded chain flown), with their names ("" for
+	// none) and the next one ahead (-1: the nearest). A delay absorbed
+	// re-plans from them: from the rounded points, a downwind extended cut
+	// into a turn's arc and left loops in the path.
+	corners     []types.SIMCONNECT_DATA_WAYPOINT
+	cornerNames []string
+	cornerNext  int
 	// procNext is the waypoint of proc flown to, tracked forward from a
 	// known start: after a go-around (whose circuit loops back past the
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
@@ -383,6 +391,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 			}
 			plan.Spawn = proc.Spawn
 			// Its corners are the aircraft's turns (roundCorners).
+			c.setCorners(proc.Waypoints, nil)
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
 			c.proc, c.procNext = proc, -1
 		}

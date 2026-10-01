@@ -94,6 +94,7 @@ type controlled struct {
 	procSaid, climbSaid string
 	heightFt            float64
 	vacateSaid          bool
+	approachSaid        bool // its approach clearance, given on the base
 	readySaid           bool // a departure's "ready for departure"
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
@@ -1006,6 +1007,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 				if it.arr != nil && !v.OnGround {
 					v.AirRoute = it.arr.ProcedureRoute()
 					v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
+					// Going around: the circuit's track points back to the final.
+					for _, n := range it.arr.CircuitFixes() {
+						v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
+					}
 					// On the final, the procedure flown: the line to the
 					// threshold and down the runway to where its taxi starts.
 					if len(v.AirRoute) == 0 && it.graph != nil {
@@ -2174,6 +2179,15 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true
 	}
+	// On the base, before the turn onto the final, approach clears the
+	// approach; the crew reports established on the final, and approach
+	// hands it to tower then (Doc 4444 12.4.2.2 e; CAP 413 6.27, 6.28).
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
+		!it.approachSaid && !it.gates.Load() && it.arr.TurningFinal() {
+		qnh, _ := it.cc.qnh()
+		it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
+		it.approachSaid = true
+	}
 	station, freq := it.cc.stationOf(it.ICAO, pos)
 	it.view.ATC, it.view.Frequency = string(pos), freq
 	if it.atc == "" || it.view.Done {
@@ -2191,11 +2205,14 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// Approach clears the arrival for its approach before handing it to
 	// tower on the final.
 	if ev.arr != nil && from == traffic.PosApproach && pos == traffic.PosTower && !it.gates.Load() {
-		// With the QNH and "report established"; the crew reports it, then
-		// approach hands it over (Doc 4444 12.4.2.2 e; CAP 413 6.27, 6.28).
-		qnh, _ := it.cc.qnh()
-		it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
+		// Cleared on the base; else (on the final already, as it appeared)
+		// now. The crew reports established, then approach hands it over.
+		if !it.approachSaid {
+			qnh, _ := it.cc.qnh()
+			it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
+		}
 		it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
+		it.approachSaid = false // a go-around is cleared again
 	}
 	switch {
 	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:
@@ -2256,6 +2273,11 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 			s += ", " + it.procSaid
 		}
 		return s
+	case it.arr != nil && pos == traffic.PosApproach:
+		// Back from a go-around: climbing to the circuit's altitude.
+		if fx := it.arr.CircuitFixes(); len(fx) > 0 {
+			return fmt.Sprintf("going around, climbing %.0f feet", math.Round(fx[0].AltMin*3.28084/100)*100)
+		}
 	case it.arr != nil && pos == traffic.PosTower:
 		if kind := it.approachKind(); kind != "" {
 			return "established " + kind + " runway " + rwy

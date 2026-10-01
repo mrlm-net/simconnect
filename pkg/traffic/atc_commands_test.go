@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -269,5 +270,81 @@ func TestCrewRequests(t *testing.T) {
 	ctl.ClearToTaxi()
 	if !run(TaxiTaxiing, 60*60) || ctl.last.Request != "" {
 		t.Errorf("after the taxi clearance: %v, request %q", ctl.State(), ctl.last.Request)
+	}
+}
+
+// TestGoAroundStretched: a go-around asked to lose time twice extends its
+// downwind from the circuit's corners — one base turn, no loops (live,
+// DLH1402 re-rounded its own turns and flew loops) — and names its track
+// points for the map.
+func TestGoAroundStretched(t *testing.T) {
+	for _, along := range []float64{-1, -4, -7, -9, -10, -11} {
+		t.Run(strconv.FormatFloat(along, 'f', 0, 64), func(t *testing.T) { goAroundStretched(t, along) })
+	}
+}
+
+func goAroundStretched(t *testing.T, along float64) {
+	g := lkprGraph(t)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "A320", Tail: "DLH1402",
+		InjectApproach: true, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	p := ctl.Plan()
+	for i := 0; i < 60*600 && ctl.approach != nil && ctl.approach.Pose().HeightFt > 300; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 77, p.End.Threshold, 0, 0, 0, false))
+	}
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	fixes := ctl.CircuitFixes()
+	if len(fixes) == 0 || fixes[len(fixes)-1].Ident != "FINAL" {
+		t.Fatalf("circuit fixes %+v", fixes)
+	}
+	fly := func(alongNM, sideNM, hdg float64) {
+		at := offsetHeading(offsetHeading(p.End.Threshold, p.End.Heading, alongNM*1852), p.End.Heading-90, sideNM*1852)
+		ctl.Handle(arrivalPositionMsg(mon, 77, at, 4000, hdg, 180, false))
+	}
+	fly(1, 0, p.End.Heading) // climbing out
+	if _, err := ctl.AbsorbDelay(2 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	fly(along, GoAroundOffsetNm, p.End.Heading+180) // on the downwind
+	if _, err := ctl.AbsorbDelay(2 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.tromboneNM <= 0 {
+		t.Fatal("downwind not extended")
+	}
+	bases := 0
+	for _, f := range ctl.CircuitFixes() {
+		if f.Ident == "BASE" {
+			bases++
+		}
+	}
+	if bases > 1 {
+		t.Errorf("%d base turns: %+v", bases, ctl.CircuitFixes())
+	}
+	// No loops: the flown chain never turns back on itself between points.
+	w := ctl.proc.Waypoints
+	for i := 2; i < len(w); i++ {
+		a := calc.BearingDegrees(w[i-2].Latitude, w[i-2].Longitude, w[i-1].Latitude, w[i-1].Longitude)
+		b := calc.BearingDegrees(w[i-1].Latitude, w[i-1].Longitude, w[i].Latitude, w[i].Longitude)
+		if math.Abs(headingDiff(a, b)) > 100 {
+			t.Errorf("turns back %.0f° at point %d", headingDiff(a, b), i-1)
+		}
 	}
 }
