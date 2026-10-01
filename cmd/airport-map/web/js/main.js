@@ -399,3 +399,34 @@ function boot() {
   pollers.forEach((p) => p.run());
 }
 boot();
+
+// Keep the screen on (a tablet working a position): on by default on touch
+// devices, remembered; taken again when the page comes back into view.
+let wakeLock = null;
+async function keepAwake() {
+  const want = $('wakeLock').checked && document.visibilityState === 'visible';
+  if (!('wakeLock' in navigator)) { $('wakeLock').disabled = true; return; }
+  try {
+    if (want && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!want && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch { /* not allowed now (no user gesture, low battery): tried again later */ }
+}
+{
+  const saved = store.get('airportMapWakeLock');
+  $('wakeLock').checked = saved === null ? matchMedia('(pointer: coarse)').matches : saved === '1';
+  $('wakeLock').addEventListener('change', () => { store.set('airportMapWakeLock', $('wakeLock').checked ? '1' : '0'); keepAwake(); });
+  document.addEventListener('visibilitychange', keepAwake);
+  document.addEventListener('pointerdown', () => { if (!wakeLock) keepAwake(); }, { passive: true });
+  keepAwake();
+}
+
+// Installable as an app: a service worker, where the browser allows one
+// (https or this computer).
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* still works as a page */ });
+}

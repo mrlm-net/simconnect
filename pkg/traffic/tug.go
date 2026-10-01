@@ -286,6 +286,33 @@ func (t *SimObjectTug) finish() error {
 	return t.client.AIRemoveObject(obj, t.reqID)
 }
 
+// Track is where the tug is and the way it still drives (to the nose from
+// its depot, or off and home after the push): none while on the nose or
+// gone. ok is false before it is created or once removed.
+func (t *SimObjectTug) Track() (pose GroundPose, route []airport.LatLon, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.objectID == 0 || t.done {
+		return GroundPose{}, nil, false
+	}
+	m := t.arrive
+	if m == nil {
+		m = t.away
+	}
+	if m != nil {
+		pts := m.Path().Points()
+		// From the point it is nearest on: the way still ahead.
+		near, best := 0, math.Inf(1)
+		for i, p := range pts {
+			if d := localDist(p, t.pose.Position); d < best {
+				near, best = i, d
+			}
+		}
+		route = append([]airport.LatLon{t.pose.Position}, pts[min(near+1, len(pts)):]...)
+	}
+	return t.pose, route, true
+}
+
 // Clear reports that the tug is off the aircraft: backed away and driving
 // off or home. The aircraft may start and taxi; the tug may still be on
 // its way to the depot.

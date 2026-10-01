@@ -46,6 +46,13 @@ let lostSince = 0, lostDismissed = false, lostQuip = 0;
 function updateLost() {
   const el = $('lostOverlay');
   if (simLive) { lostSince = 0; lostDismissed = false; el.hidden = true; return; }
+  // The map server gone, or only the simulator: said apart.
+  const down = serverDown();
+  if (el.dataset.down !== String(down)) {
+    el.dataset.down = String(down);
+    $('lostTitle').textContent = down ? 'The map server is not answering' : 'Houston, we\x27ve lost the simulator';
+    if (down) $('lostQuip').textContent = `Is the airport map still running on ${location.host}? Restarted, this page picks it up by itself.`;
+  }
   if (!lostSince) lostSince = Date.now();
   // A moment first: on load the simulator answers within a second or two.
   const was = el.hidden;
@@ -57,7 +64,7 @@ function updateLost() {
 setInterval(() => {
   updateLost();
   // Another line every 7 s, faded.
-  if (!$('lostOverlay').hidden && Math.floor(Date.now() / 1000) % 7 === 0) {
+  if (!$('lostOverlay').hidden && !serverDown() && Math.floor(Date.now() / 1000) % 7 === 0) {
     const q = $('lostQuip');
     q.classList.add('is-out');
     setTimeout(() => { lostQuip = (lostQuip + 1) % LOST_QUIPS.length; q.textContent = LOST_QUIPS[lostQuip]; q.classList.remove('is-out'); }, 250);
@@ -206,7 +213,7 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
       <button type="button" role="radio" data-cam="off">Off</button><button type="button" role="radio" data-cam="auto" title="Cuts to the aircraft on the radio as you hear it">Auto director</button><button type="button" role="radio" data-cam="follow" title="Stays on the selected aircraft">Follow selected</button><button type="button" role="radio" data-cam="tower" title="From the airport's tower: the selected aircraft, or with none selected a slow look round the airfield">Tower</button>
     </div></div>
   <div class="field" data-look-row hidden><span class="field__lbl">Tower look</span>
-    <div class="director__row look" title="Turn the tower camera; hold a button to keep turning. Keys: arrows turn, + and − zoom (Shift: faster). Mouse: hold the middle button and drag to turn, roll the wheel while holding it to zoom.">
+    <div class="director__row look" title="Turn the tower camera; hold a button to keep turning. Keys: arrows turn, + and − zoom (Shift: faster). Mouse: hold the middle button and drag to turn, roll the wheel while holding it to zoom. Double-click the middle button to lock the view to the mouse (no button held); middle click or Esc unlocks.">
       <button type="button" class="btn btn--sm" data-look="-4,0,0" aria-label="Turn left">⟲</button><button type="button" class="btn btn--sm" data-look="4,0,0" aria-label="Turn right">⟳</button><button type="button" class="btn btn--sm" data-look="0,1.5,0" aria-label="Look up">▲</button><button type="button" class="btn btn--sm" data-look="0,-1.5,0" aria-label="Look down">▼</button><button type="button" class="btn btn--sm" data-look="0,0,-3" aria-label="Zoom in">+</button><button type="button" class="btn btn--sm" data-look="0,0,3" aria-label="Zoom out">−</button>
       <button type="button" class="btn btn--sm btn--toggle" data-swing aria-pressed="false" title="Swing slowly from side to side by itself">Swing</button>
       <label class="switch switch--sm" title="Show on the map where the tower camera looks: its bearing, tilt and field of view"><input type="checkbox" data-angle><span class="switch__ui" aria-hidden="true"></span>Angle</label>
@@ -1124,26 +1131,45 @@ document.addEventListener('keydown', (e) => {
   queueLook(step[0] * k, step[1] * k, step[2] * k);
 }, true);
 let midLook = null; // the middle button held: where the pointer was
+// A double click of the middle button locks the look on: the mouse turns the
+// tower and the wheel zooms it with no button held, until another middle
+// click or Escape.
+let midLocked = false, midDownAt = 0;
+function unlockLook(el) {
+  midLocked = false;
+  midLook = null;
+  el.classList.remove('is-looking', 'is-look-locked');
+}
 function initTowerMouse() {
   const el = map.getContainer();
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && midLocked) unlockLook(el); });
   // Caught on the window, before the map or the browser act on it (no map
   // drag, no auto-scroll, no middle-click paste or link).
   window.addEventListener('mousedown', (e) => {
     if (e.button !== 1 || !towerLooking() || !el.contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
+    if (midLocked) { unlockLook(el); midDownAt = 0; return; }
+    const now = Date.now();
+    if (now - midDownAt < 350) {
+      midLocked = true;
+      el.classList.add('is-look-locked');
+      toast('View locked to the mouse: middle click or Esc to unlock');
+    }
+    midDownAt = now;
     midLook = { x: e.clientX, y: e.clientY };
     el.classList.add('is-looking');
   }, true);
   window.addEventListener('auxclick', (e) => { if (e.button === 1 && towerLooking() && el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
   window.addEventListener('mousemove', (e) => {
     if (!midLook) return;
+    if (midLocked && !towerLooking()) { unlockLook(el); return; }
     const dx = e.clientX - midLook.x, dy = e.clientY - midLook.y;
     midLook = { x: e.clientX, y: e.clientY };
     queueLook(dx * 0.15, -dy * 0.1, 0);
   });
   window.addEventListener('mouseup', (e) => {
-    if (e.button === 1 && midLook) { midLook = null; el.classList.remove('is-looking'); }
+    if (e.button === 1 && midLook && !midLocked) { midLook = null; el.classList.remove('is-looking'); }
   });
   // The wheel while the middle button is held zooms the tower, not the map.
   window.addEventListener('wheel', (e) => {

@@ -52,6 +52,8 @@ const (
 )
 
 type controlled struct {
+	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
+	tug *traffic.SimObjectTug
 	ID     int    `json:"id"`
 	Kind   string `json:"kind"` // departure | arrival
 	Tail   string `json:"tail"`
@@ -121,6 +123,13 @@ type controlled struct {
 }
 
 // ControlView is what the map shows of a controlled aircraft.
+// tugView is a departure's tug: where it is and the way it still drives.
+type tugView struct {
+	Position airport.LatLon   `json:"position"`
+	Heading  float64          `json:"heading"`
+	Route    []airport.LatLon `json:"route,omitempty"`
+}
+
 type ControlView struct {
 	ID int `json:"id"`
 	// ATC and Frequency: the position working it and its frequency (#416).
@@ -130,6 +139,9 @@ type ControlView struct {
 	ICAO           string           `json:"icao"` // its airport
 	Tail           string           `json:"tail"`
 	Squawk         string           `json:"squawk,omitempty"` // a departure's SSR code
+	// Tug: its pushback tug while it drives (from its depot or home), with
+	// the way still ahead.
+	Tug *tugView `json:"tug,omitempty"`
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
@@ -603,9 +615,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	case "departure":
 		standardPlanner.want(g) // its stands' standard pushes, once
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
+		tug := cc.tug(r, reqBase, prof)
+		if t, ok := tug.(*traffic.SimObjectTug); ok {
+			it.tug = t // its way shown on the map
+		}
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken }}); err != nil {
@@ -1057,6 +1073,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 					}
 					if h, alt, ok := it.arr.Holding(); ok {
 						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
+					}
+				}
+				if it.tug != nil {
+					if p, route, ok := it.tug.Track(); ok {
+						v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
 					}
 				}
 				// A departure in the air: its SID still to fly, like a STAR.

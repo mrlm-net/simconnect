@@ -41,7 +41,7 @@ const layers = {
   runways: L.layerGroup(), parking: L.layerGroup(), points: L.layerGroup(), holds: L.layerGroup(), labels: L.layerGroup(),
   overlaps: L.layerGroup(), occupied: L.layerGroup(), pads: L.layerGroup(), procs: L.layerGroup(), final: L.layerGroup(),
   routes: L.layerGroup(), choices: L.layerGroup(), preview: L.layerGroup(), via: L.layerGroup(),
-  safe: L.layerGroup(), traffic: L.layerGroup(), world: L.layerGroup(), locate: L.layerGroup(),
+  safe: L.layerGroup(), traffic: L.layerGroup(), world: L.layerGroup(), locate: L.layerGroup(), tugs: L.layerGroup(),
 };
 const PATH_TYPES = { 0: 'NONE', 1: 'TAXI', 2: 'RUNWAY', 3: 'PARKING', 4: 'PATH', 5: 'CLOSED', 6: 'VEHICLE', 7: 'ROAD', 8: 'PAINTEDLINE' };
 // Drawing per path TYPE: colour token, weight, opacity, dashes.
@@ -78,7 +78,7 @@ function setPathType(t, on) {
 }
 function initLayers() {
   // choices, preview and via come with the New flight form.
-  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate']) layers[g].addTo(map);
+  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate', 'tugs']) layers[g].addTo(map);
   for (const name of Object.keys(LAYER_DEFAULTS)) setLayer(name, layerOn[name]);
   for (const t of Object.keys(PATH_TYPES)) if (pathOn[t]) pathGroups[t].addTo(map);
 }
@@ -525,3 +525,26 @@ function toggleWorld() {
 }
 
 themeListeners.push(() => { setTiles(); drawNetwork(); });
+
+// drawTugs shows each departure's pushback tug while it drives from its
+// depot to the nose or home again: a small marker and its way ahead, dashed.
+const tugMarks = new Map(); // control ID -> {marker, line}
+function drawTugs() {
+  const keep = new Set();
+  for (const v of ctlViews) {
+    const t = v.tug;
+    if (!t || v.done) continue;
+    keep.add(v.id);
+    let m = tugMarks.get(v.id);
+    if (!m) {
+      const icon = L.divIcon({ className: 'm-tug', html: '<span>T</span>', iconSize: [16, 16], iconAnchor: [8, 8] });
+      m = { marker: L.marker([t.position.lat, t.position.lon], { icon, interactive: false, keyboard: false }).addTo(layers.tugs),
+        line: L.polyline([], { className: 'm-tug-route', interactive: false }).addTo(layers.tugs) };
+      m.marker.bindTooltip(`${esc(v.tail)} tug`, { direction: 'top', className: 'map-lbl' });
+      tugMarks.set(v.id, m);
+    }
+    m.marker.setLatLng([t.position.lat, t.position.lon]);
+    m.line.setLatLngs((t.route || []).map((p) => [p.lat, p.lon]));
+  }
+  for (const [id, m] of tugMarks) if (!keep.has(id)) { m.marker.remove(); m.line.remove(); tugMarks.delete(id); }
+}

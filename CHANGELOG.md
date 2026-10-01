@@ -9,6 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Airport map: install it as an app on a tablet or phone (web app manifest, icons, a pass-through service worker). A full install needs HTTPS or localhost. Over plain http on the LAN, browsers add a home-screen shortcut instead; on an iPad it still opens full screen.
+- Airport map: Keep the screen on (More menu), on by default on touch screens.
+- Airport map: tugs on the map, with a T marker and their route on the vehicle roads as a dashed line (`SimObjectTug.Track`, `ControlView.Tug`).
+- Airport map: a double click of the middle mouse button locks the tower look to the mouse. Moving the mouse turns the view and the wheel zooms it, with no button held. Another middle click or Esc unlocks it.
+- Airport map: Enter in the strip filter selects the first matching aircraft and centres the map on it.
+- Airport map: when the map server stops answering, the lost overlay says so and names the address.
+- Website: copy buttons for the airport map's run command on the landing and examples pages, with the links on their own line.
+
+### Fixed
+
+- Website: the airport map's run command is `cd cmd/airport-map && go run .`, and its GitHub link points to `cmd/airport-map`.
+
 ---
 
 ## [0.18.4] - 2026-10-02

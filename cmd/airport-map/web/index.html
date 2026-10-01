@@ -10,6 +10,14 @@
   try { var t = localStorage.getItem('apm-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%232b3440%27/%3E%3Cpath fill=%27%23fff%27 transform=%27rotate(45 12 12)%27 d=%27M12 3.3c.6 0 1 .7 1 1.5v4l5.7 3.3v1.5l-5.7-1.7v3.4l1.6 1.3v1L12 17l-2.6.6v-1l1.6-1.3v-3.4l-5.7 1.7v-1.5L11 8.8v-4c0-.8.4-1.5 1-1.5z%27/%3E%3C/svg%3E">
+<!-- Saved as an app on a tablet or phone (Add to Home Screen / Install). -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2b3440">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Airport Map">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
@@ -176,6 +184,7 @@
             <button type="button" class="btn btn--icon" data-rate="faster" aria-label="Faster"><svg class="ic"><use href="#i-plus"/></svg></button>
           </div>
         </div>
+        <label class="switch" title="Keep this device's screen on while the map is open (a tablet working a position)"><input type="checkbox" id="wakeLock"><span class="switch__ui" aria-hidden="true"></span>Keep the screen on</label>
         <button type="button" class="btn btn--block" data-goto="schedule"><svg class="ic"><use href="#i-game"/></svg><span id="moreGame">ATC game</span></button>
         <div class="director" data-director></div>
         <div class="field">
@@ -293,7 +302,7 @@
           <label class="search">
             <svg class="ic ic--sm"><use href="#i-search"/></svg>
             <span class="sr-only">Filter aircraft</span>
-            <input type="search" id="stripFilter" placeholder="Filter call sign, stand, runway" autocomplete="off">
+            <input type="search" id="stripFilter" placeholder="Filter call sign, stand, runway" autocomplete="off" title="Filters the list; Enter goes to the aircraft (selects it, centres the map)">
           </label>
           <button type="button" class="btn btn--primary" id="newFlightBtn" aria-expanded="false" aria-controls="newFlight"><svg class="ic"><use href="#i-plus"/></svg>New flight</button>
         </div>
