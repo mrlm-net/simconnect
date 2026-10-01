@@ -42,6 +42,7 @@ const (
 	IntentTaxi               Intent = "taxi"                // taxi to the holding point or the stand
 	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
 	IntentGiveWay            Intent = "give_way"            // give way to other traffic on the ground
+	IntentRunwayChange       Intent = "runway_change"       // a new runway in use: new SID or STAR (#456)
 	IntentCross              Intent = "cross"               // cross a runway
 	IntentLineUp             Intent = "line_up"             // line up and wait
 	IntentTakeoff            Intent = "takeoff"             // cleared for take-off
@@ -164,6 +165,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s", cs, p[ParamRunway], entry, via)
 	case IntentGiveWay:
 		return fmt.Sprintf("%s, give way to the %s", cs, p[ParamGiveWay])
+	case IntentRunwayChange:
+		return cs + ", " + runwayChange(p)
 	case IntentTaxiLimit:
 		if p[ParamLimit] == "" {
 			return fmt.Sprintf("%s, taxi%s, hold position at the marked point", cs, via)
@@ -382,6 +385,28 @@ func ClearedTaxiToRunway(cs, runway, entry string, taxiways []string) Transmissi
 // ClearedTaxiToStand clears an arrival to its stand via taxiways.
 func ClearedTaxiToStand(cs, stand string, taxiways []string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentTaxi, Params: map[string]string{ParamStand: stand, ParamTaxiways: strings.Join(taxiways, ", ")}})
+}
+
+// RunwayChange tells an aircraft of a new runway in use (#456): a
+// departure its SID (sid, at pos ground or delivery), an arrival its STAR
+// and approach: "CSA1, runway change, runway 06 in use, VOZ 2D departure".
+func RunwayChange(pos Position, cs, runway, sid, star, approach string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentRunwayChange, Params: map[string]string{ParamRunway: runway, ParamSID: sid, ParamSTAR: star, ParamApproach: approach}})
+}
+
+// runwayChange is a runway change after the call sign.
+func runwayChange(p map[string]string) string {
+	s := "runway change, runway " + p[ParamRunway] + " in use"
+	if p[ParamSID] != "" {
+		s += ", " + p[ParamSID] + " departure"
+	}
+	if p[ParamSTAR] != "" {
+		s += ", " + p[ParamSTAR] + " arrival"
+	}
+	if p[ParamApproach] != "" {
+		s += ", expect " + p[ParamApproach] + " approach"
+	}
+	return s
 }
 
 // GiveWay tells a taxiing aircraft to give way to other traffic,

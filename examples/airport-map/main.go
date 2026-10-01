@@ -315,6 +315,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					st.atisTick(now, cc, sched.airports())
 				}
 				cc.pending.run(now) // clearances and actions in radio order (#462)
+				cc.checkRunways(now) // a new runway in use re-plans the traffic (#456)
 				sched.tick(now)
 				seqs.tick(now)
 				air := cc.world.Aircraft()

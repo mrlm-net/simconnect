@@ -1345,6 +1345,13 @@ const (
 // startTaxiOut builds the taxi path from the nose gear to the hold-short
 // of the departure runway, with holds short of runway crossings.
 func (c *TaxiController) startTaxiOut() error {
+	// A runway changed since the push (ChangeRunway): the route from here.
+	if c.reroute {
+		c.reroute = false
+		if err := c.routeFromHere(); err != nil {
+			return err
+		}
+	}
 	prof, route := c.profile(), c.route
 	pose := c.mover.Pose()
 	nose := NoseGear(pose.Position, pose.Heading, prof)
@@ -1363,7 +1370,7 @@ func (c *TaxiController) startTaxiOut() error {
 	// A push-and-turn ends on the taxi-out itself, up to pushTurnPastMeters
 	// past the junction: start on from the route segment nearest the nose,
 	// not from a point behind it (LKPR B9, EDDF: a first leg backwards).
-	if c.pushTurn || c.pushPose != nil {
+	if c.pushTurn || c.pushPose != nil || c.fromHere {
 		best := math.Inf(1)
 		for i := c.pushJunction + 1; i < len(route.Points); i++ {
 			a, b := route.Points[i-1], route.Points[i]
@@ -1400,8 +1407,9 @@ func (c *TaxiController) startTaxiOut() error {
 		return err
 	}
 	apron.limit(path, c.req.Airport, prof.Decel)
-	// Start where the aircraft stands (not a wheelbase along the path).
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
+	// Start where the aircraft is (not a wheelbase along the path), at the
+	// speed it has: 0 from a stop, its taxi speed on a re-plan.
+	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts)
 	c.holdNextCrossing()
 	if c.padNode >= 0 && !c.deiced {
 		// Stop on the de-icing pad, the nose gear on its node.

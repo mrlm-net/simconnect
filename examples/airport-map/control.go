@@ -160,6 +160,10 @@ type controlCenter struct {
 	next  int
 	items map[int]*controlled
 	// standCheckAt: the last recheckArrivalStands (#479).
+	// runwayCheckAt: the last checkRunways; runwaysNow each airport's
+	// departure and arrival runway then (#456).
+	runwayCheckAt time.Time
+	runwaysNow    map[string][2]string
 	standCheckAt time.Time
 	models       map[string]bool                    // aircraft titles the simulator offers
 	stands       map[string]*traffic.StandAllocator // by ICAO
