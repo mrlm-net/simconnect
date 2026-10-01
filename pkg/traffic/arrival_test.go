@@ -459,9 +459,14 @@ func TestArrivalControllerHybridRunwayTakeover(t *testing.T) {
 		if atExit == 0 && ctl.last.Position.Lat != 0 && calc.HaversineMeters(exitNode.Lat, exitNode.Lon, ctl.last.Position.Lat, ctl.last.Position.Lon) < 15 {
 			atExit = ctl.last.GroundSpeed
 		}
+		// On the runway the landing lights stay on; clear of it (vacating)
+		// they go off with the strobes, as the after-landing flow does.
 		landing := lightsAt(ec.events, "LANDING_LIGHTS_SET")
-		if (ctl.State() == ArrivalRollout || ctl.State() == ArrivalVacating) && landing == "LANDING_LIGHTS_SET=0" {
-			t.Fatalf("landing lights off before stopping (%v)", ctl.State())
+		if ctl.State() == ArrivalRollout && landing == "LANDING_LIGHTS_SET=0" {
+			t.Fatalf("landing lights off on the runway (%v)", ctl.State())
+		}
+		if ctl.State() == ArrivalVacating && landing != "LANDING_LIGHTS_SET=0" {
+			t.Fatal("landing lights still on clear of the runway")
 		}
 		if ctl.State() == ArrivalVacating && lightsAt(ec.events, "STROBES_SET") != "STROBES_SET=0" {
 			t.Fatal("strobes still on clear of the runway")
@@ -527,7 +532,7 @@ func TestArrivalControllerHybridRollThrough(t *testing.T) {
 		ctl.Handle(arrivalPositionMsg(mon, 77, onRunway(s), 12, p.End.Heading, v/ktsToMS, true))
 		for _, e := range ec.events[n:] {
 			switch {
-			case e == "LANDING_LIGHTS_SET=0" && landingOffAt.IsZero() && ctl.State() >= ArrivalAwaitingTaxi:
+			case e == "LANDING_LIGHTS_SET=0" && landingOffAt.IsZero() && ctl.State() >= ArrivalVacating:
 				landingOffAt = now
 			case e == "TAXI_LIGHTS_SET=1" && taxiOnAt.IsZero():
 				taxiOnAt = now

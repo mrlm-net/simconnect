@@ -1456,6 +1456,9 @@ func (c *TaxiController) startTakeoff() {
 	c.takeoff = NewTakeoffMover(pose.Position, c.end.Heading, pose.GroundSpeedKts, c.takeoffProfile())
 	c.mover = nil
 	c.lastStep = c.now()
+	c.seq.begin(c.lastStep)
+	c.seq.add(c.lastStep, "take-off roll, landing lights on", 0, pose.GroundSpeedKts)
+	c.takeoffPhase, c.flapsUpNoted = TakeoffRoll, false
 	c.setInjectedLights(lightsTakeoff, "lights take-off (landing)")
 	c.setState(TaxiDeparting, nil)
 }
@@ -1485,15 +1488,40 @@ func (c *TaxiController) onTakeoffFrame() {
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.OnGround, c.last.HeightFt = pose.Phase != TakeoffAirborne, pose.HeightFt
-	if fl := c.aircraft().Flaps; pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
-		c.flaps.target, c.flaps.rate = 0, fl.TakeoffPct/(FlapsRetractClimbSeconds*f(c.timing.flaps)) // flaps up in the climb
+	if pose.Phase != c.takeoffPhase {
+		c.takeoffPhase = pose.Phase
+		switch pose.Phase {
+		case TakeoffRotate:
+			c.seq.add(now, "rotate", pose.HeightFt, pose.GroundSpeedKts)
+		case TakeoffAirborne:
+			c.seq.add(now, "lift-off", pose.HeightFt, pose.GroundSpeedKts)
+		}
+	}
+	// Past the acceleration altitude the flaps follow the speed schedule:
+	// all out at the climb speed, up at the clean speed.
+	if fl, tp := c.aircraft().Flaps, c.takeoffProfile(); pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
+		to := fl.TakeoffPct * tp.FlapsShare(pose.GroundSpeedKts)
+		if to < c.flaps.target {
+			if c.flaps.target == fl.TakeoffPct {
+				c.seq.add(now, "acceleration: flaps retracting", pose.HeightFt, pose.GroundSpeedKts)
+			}
+			c.flaps.target, c.flaps.rate = to, fl.TakeoffPct/(FlapsRetractClimbSeconds*f(c.timing.flaps))
+		}
+	}
+	if !c.flapsUpNoted && c.takeoffPhase == TakeoffAirborne && c.flaps.target == 0 && c.flaps.pct == 0 {
+		c.flapsUpNoted = true
+		c.seq.add(now, "flaps up", pose.HeightFt, pose.GroundSpeedKts)
 	}
 	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds*f(c.timing.gearUp) && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")
+		c.seq.add(now, "gear up, taxi light off", pose.HeightFt, pose.GroundSpeedKts)
 	}
-	if pose.HeightFt >= c.handoverFt() {
+	// To MSFS AI clean: above the hand-over height with the flaps up (or
+	// well above it, whatever the speed).
+	if pose.HeightFt >= c.handoverFt() && (c.flaps.pct == 0 || pose.HeightFt >= c.handoverFt()+HandoverCleanMarginFt) {
+		c.seq.add(now, "hand-over to MSFS AI", pose.HeightFt, pose.GroundSpeedKts)
 		c.handOverClimb(pose)
 		return
 	}

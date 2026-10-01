@@ -12,13 +12,15 @@ import (
 )
 
 // TestTakeoffMover: an A320 take-off from a standing start rotates at Vr,
-// lifts off within a typical distance and climbs smoothly.
+// lifts off within a typical distance and climbs smoothly; past the
+// acceleration altitude it speeds up towards the clean speed, climbing
+// more slowly meanwhile.
 func TestTakeoffMover(t *testing.T) {
 	p := DefaultTakeoffProfile()
 	m := NewTakeoffMover(lkpr, 244, 0, p)
 	var liftoff TakeoffPose
 	prevVS, maxVSStep := 0.0, 0.0
-	for i := 0; i < 60*90; i++ {
+	for i := 0; i < 60*120; i++ {
 		pose := m.Step(1.0 / 60)
 		maxVSStep = math.Max(maxVSStep, math.Abs(pose.VerticalFpm-prevVS))
 		prevVS = pose.VerticalFpm
@@ -39,7 +41,7 @@ func TestTakeoffMover(t *testing.T) {
 		t.Errorf("lift-off at %.0f kt", liftoff.GroundSpeedKts)
 	}
 	final := m.Pose()
-	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm) > 1 || final.PitchDeg != p.ClimbPitch {
+	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm*TakeoffAccelClimbFactor) > 1 || final.GroundSpeedKts <= p.ClimbKts || final.PitchDeg != p.ClimbPitch {
 		t.Errorf("climb-out %+v", final)
 	}
 	if maxVSStep > 60 { // fpm per frame: no jolt into the climb

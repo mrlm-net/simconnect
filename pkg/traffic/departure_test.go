@@ -103,7 +103,9 @@ func TestTaxiControllerInjectedDeparture(t *testing.T) {
 	for i := 1; i < len(all); i++ {
 		maxStep = math.Max(maxStep, calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude))
 	}
-	if maxStep > 1.5 {
+	// At 60 frames a second: the clean climb after the acceleration (up to
+	// about 225 kt) moves under 2 m a frame.
+	if maxStep > 2 {
 		t.Errorf("largest move between frames %.2f m", maxStep)
 	}
 	ev := strings.Join(ec.events, " ")
@@ -252,7 +254,7 @@ func TestTaxiControllerInjectedDepartureSweep(t *testing.T) {
 			}
 			all := placements(ec)
 			for i := 1; i < len(all); i++ {
-				if d := calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude); d > 1.5 {
+				if d := calc.HaversineMeters(all[i-1].Latitude, all[i-1].Longitude, all[i].Latitude, all[i].Longitude); d > 2 {
 					t.Errorf("%s → %s: jumped %.2f m at placement %d/%d", p.Label(), end, d, i, len(all))
 					break
 				}

@@ -273,6 +273,9 @@ type TaxiController struct {
 	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
 	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
 	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
+	seq                                                     sequence         // the take-off's steps (Sequence)
+	takeoffPhase                                            TakeoffPhase     // the take-off's phase last frame
+	flapsUpNoted                                            bool
 	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
 	towing                                                  bool             // the tow after the push is under way
 }
@@ -343,6 +346,14 @@ func (c *TaxiController) Route() *airport.Route {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.route
+}
+
+// Sequence is the injected take-off step by step, from the start of the
+// roll: rotation, lift-off, gear, flaps, lights, hand-over to MSFS AI.
+func (c *TaxiController) Sequence() []SequenceStep {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.seq.list()
 }
 
 // ObjectID returns the aircraft's SimConnect object ID, 0 before it exists.

@@ -277,7 +277,11 @@ func (c *ArrivalController) onInjectedFrame() {
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
 		if pose.Distance >= c.clearDist {
 			c.mover.SetProfile(c.profile())
-			c.setInjectedLights(lightsVacated, "lights vacated")
+			// Clear of the runway: strobes and landing lights off, flaps and
+			// spoilers up, as the after-landing flow does.
+			c.setInjectedLights(lightsStopped, "lights vacated (strobes and landing lights off)")
+			c.taxiLightAt = c.now().Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
+			c.seq.add(c.now(), "vacated: strobes and landing lights off, flaps and spoilers retracting", 0, pose.GroundSpeedKts)
 			if c.req.InjectApproach {
 				c.flapsUpFrom = c.now() // after-landing flaps up once clear
 				c.spoilers.target = 0
@@ -287,11 +291,14 @@ func (c *ArrivalController) onInjectedFrame() {
 		}
 	case ArrivalVacating:
 		// Stopped clear of the runway (or, rolling through, at the slowest
-		// point): landing lights off, and a moment later the taxi light on;
-		// then wait for the taxi clearance, or roll on.
+		// point): wait for the taxi clearance, or roll on.
 		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-0.5) {
-			c.setInjectedLights(lightsStopped, "lights landing off")
-			c.taxiLightAt = c.now().Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
+			// Taken over already clear of the runway (hybrid): the landing
+			// lights go off here, and a moment later the taxi light comes on.
+			if c.lights.Landing {
+				c.setInjectedLights(lightsStopped, "lights landing off")
+				c.taxiLightAt = c.now().Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
+			}
 			c.clearAt = c.now().Add(c.dwell())
 			c.ignoreRunway = -1 // clear of the landing runway now
 			c.setState(ArrivalAwaitingTaxi, nil)
@@ -389,13 +396,18 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	}
 	c.note("injector takeover on final", nil)
 	c.initDrive()
+	c.seq.begin(c.now())
+	c.approachPhase, c.landingFlaps, c.landingFlapsSet = ApproachFinal, false, false
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
 	c.flapsPct = c.aircraft().Flaps.ApproachPct
 	c.note("approach flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
 	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, startMeters, c.approachProfile())
+	at := c.approach.Pose()
+	c.seq.add(c.now(), "takeover on final: gear down, approach flaps", at.HeightFt, at.GroundSpeedKts)
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
 	c.fast = true
 	c.lastStep = c.now()
@@ -428,8 +440,27 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	// Landing flaps: from the approach setting to full over
 	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
 	if fl := c.aircraft().Flaps; pose.HeightFt < fl.FullFt && c.flapsPct < fl.LandingPct && !pose.OnGround {
+		if !c.landingFlaps {
+			c.landingFlaps = true
+			c.seq.add(now, "landing flaps extending", pose.HeightFt, pose.GroundSpeedKts)
+		}
 		c.flapsPct = math.Min(fl.LandingPct, c.flapsPct+(fl.LandingPct-fl.ApproachPct)/(FlapsFullSeconds*f(c.timing.flaps))*math.Max(dt, 0))
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+		if c.flapsPct >= fl.LandingPct && !c.landingFlapsSet {
+			c.landingFlapsSet = true
+			c.seq.add(now, "landing flaps set", pose.HeightFt, pose.GroundSpeedKts)
+		}
+	}
+	if pose.Phase != c.approachPhase {
+		c.approachPhase = pose.Phase
+		switch pose.Phase {
+		case ApproachFlare:
+			c.seq.add(now, "flare", pose.HeightFt, pose.GroundSpeedKts)
+		case ApproachDerotate:
+			c.seq.add(now, "touchdown, spoilers", pose.HeightFt, pose.GroundSpeedKts)
+		case ApproachDone:
+			c.seq.add(now, "nose wheel down", pose.HeightFt, pose.GroundSpeedKts)
+		}
 	}
 	switch {
 	case c.state == ArrivalApproaching && pose.HeightFt < LandingAGLFt:
