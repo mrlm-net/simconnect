@@ -309,6 +309,10 @@ const (
 	StandWingtipClearanceMeters = 3.0
 	StandDetectKts              = 2.0
 	standRankCandidates         = 12
+	// StandSpread and StandSpreadMeters: stands whose taxi-in is within
+	// StandSpread of the best plus StandSpreadMeters are picked at random.
+	StandSpread       = 0.4
+	StandSpreadMeters = 300.0
 )
 
 // Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters

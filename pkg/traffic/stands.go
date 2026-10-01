@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -71,6 +73,18 @@ type StandAllocator struct {
 	partial  map[uint32][]scanned // per scan request, until its last entry
 	lastScan map[uint32][]scanned
 	routes   map[string][]airport.NodeID
+	// spread: stands within this share of the best taxi-in (plus
+	// StandSpreadMeters) are picked at random (rng), so a schedule does not
+	// fill the same gates every time; 0 picks the best.
+	spread float64
+	rng    *rand.Rand
+}
+
+// StandWithSpread sets how far from the best taxi-in a stand may be and
+// still be picked at random (default StandSpread); 0 always picks the
+// stand with the shortest taxi-in.
+func StandWithSpread(share float64) StandOption {
+	return func(a *StandAllocator) { a.spread = math.Max(0, share) }
 }
 
 type scanned struct {
@@ -109,6 +123,8 @@ func NewStandAllocator(client engine.Client, g *airport.Graph, opts ...StandOpti
 		reserved: map[int]Occupant{}, detected: map[int]Occupant{},
 		partial: map[uint32][]scanned{}, lastScan: map[uint32][]scanned{},
 		routes: map[string][]airport.NodeID{},
+		spread: StandSpread,
+		rng:    rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5354414e44)),
 	}
 	for _, o := range opts {
 		o(a)
@@ -287,10 +303,18 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 
 // rank orders stands by taxi-in length from the runway's best exit. Only
 // the standRankCandidates nearest the runway are routed; the rest follow by
-// distance. Without a runway the order is by index.
+// distance. Without a runway the order is random (by index without the
+// spread).
 func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
 	out := slices.Clone(stands)
 	if runwayEnd == "" {
+		// No runway to rank by: any suitable stand (the first by index was
+		// always LKPR A1).
+		if a.spread > 0 {
+			a.mu.Lock()
+			a.rng.Shuffle(len(out), func(x, y int) { out[x], out[y] = out[y], out[x] })
+			a.mu.Unlock()
+		}
 		return out
 	}
 	l := a.g.Layout
@@ -310,6 +334,18 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
 		}
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
+	// Not always the very best: the stands nearly as close (as a stand
+	// controller allocates, or a schedule's gates) in random order first.
+	if a.spread > 0 && len(out) > 1 && cost[out[0]] < 1e7 {
+		limit := cost[out[0]]*(1+a.spread) + StandSpreadMeters
+		n := 0
+		for n < len(out) && cost[out[n]] <= limit {
+			n++
+		}
+		a.mu.Lock()
+		a.rng.Shuffle(n, func(x, y int) { out[x], out[y] = out[y], out[x] })
+		a.mu.Unlock()
+	}
 	return out
 }
 
