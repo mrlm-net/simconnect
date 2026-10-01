@@ -824,7 +824,16 @@ function initSections() {
   for (const id of ['pFix', 'pFilter']) $(id).addEventListener('change', drawProcedures);
   $('pFit').addEventListener('click', fitProcedures);
 
-  $('rdSound').addEventListener('click', () => setVoice(!rdSoundOn));
+  $('rdSound').addEventListener('click', () => {
+    // On the map's own computer the voice and "Play on this device" would
+    // echo each other: one or the other.
+    if (!rdSoundOn && isLocalHost && $('rdHere').checked) {
+      $('rdHere').checked = false;
+      $('rdHere').dispatchEvent(new Event('change'));
+      toast('Voice on this computer: playing in the browser is off (it would echo)');
+    }
+    setVoice(!rdSoundOn);
+  });
   $('rdDevice').addEventListener('change', async (e) => {
     store.set('airportMapVoiceDevice', e.target.value);
     const r = await send('/api/voice', { on: rdSoundOn, frequency: rdFreq, syncCom: rdSync, device: e.target.value });

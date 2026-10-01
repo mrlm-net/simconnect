@@ -98,7 +98,11 @@ async function ctlAct(id, action, node, facing) {
   if (ctlBusy.has(id)) return;
   ctlBusy.add(id);
   renderTraffic();
-  const q = node !== undefined ? `?node=${node}` : facing ? `?facing=${facing}` : '';
+  const qs = new URLSearchParams();
+  if (node !== undefined) qs.set('node', node);
+  if (facing) qs.set('facing', facing);
+  if (action === 'pushback' && ctlWithStart.has(id)) qs.set('startup', '1');
+  const q = qs.toString() ? `?${qs}` : '';
   const r = await send(`/api/control/${id}/${action}${q}`);
   if (!r.ok) toast(`${v ? v.tail + ': ' : ''}${r.error}`, 'err');
   else if (action === 'remove' && ctlSelected === id) select(0);
@@ -189,8 +193,10 @@ function actBtn(v, a, busy, extra = '') {
   const on = has(v, a) && !busy;
   return `<button type="button" class="btn ${A.urgent ? 'btn--urgent' : ''} ${extra}" data-act="${a}" data-id="${v.id}"${on ? '' : ' disabled'}>${A.icon ? icon(A.icon, 'ic ic--sm') : ''}${esc(actLabel(v, a))}</button>`;
 }
+// ctlWithStart: the aircraft whose pushback includes the start-up.
+const ctlWithStart = new Set();
 function facingRow(v, busy) {
-  return `<div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
+  return `<label class="switch switch--sm" title="Pushback and start-up approved in one"><input type="checkbox" data-withstart="${v.id}"${ctlWithStart.has(v.id) ? ' checked' : ''}><span class="switch__ui" aria-hidden="true"></span>with start-up</label><div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
 }
 function renderCtx() {
   const el = $('ctx');
@@ -254,6 +260,7 @@ function renderCtx() {
     <button type="button" class="btn btn--sm" data-tool="locate" data-id="${v.id}"${located ? '' : ' disabled'}>${icon('i-locate', 'ic ic--sm')}Show</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="follow" data-id="${v.id}" aria-pressed="${ctlFollow === v.id}" title="The map keeps it in the middle (Esc stops)"${located ? '' : ' disabled'}>${icon('i-target', 'ic ic--sm')}Follow</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="camera" data-id="${v.id}" aria-pressed="${camOn}" title="The simulator camera follows it">${icon('i-camera', 'ic ic--sm')}Camera</button>
+    <button type="button" class="btn btn--sm btn--toggle" data-tool="manual" data-id="${v.id}" aria-pressed="${!!v.manual}" title="Manual: you give every clearance. Off: ATC answers the crew and the tower clears it by itself. Your first clearance turns it on."${v.done ? ' disabled' : ''}>${icon('i-hand', 'ic ic--sm')}Manual</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="rush" data-id="${v.id}" aria-pressed="${!!v.rush}" title="Expedite: immediate take-off, expedite crossing and vacating; the crew hurries"${busy || v.done ? ' disabled' : ''}>${icon('i-bolt', 'ic ic--sm')}Rush</button>
     <button type="button" class="btn btn--sm btn--danger" data-tool="remove" data-id="${v.id}"${busy ? ' disabled' : ''}>${icon('i-trash', 'ic ic--sm')}Remove</button>
   </div></section>`;
@@ -599,6 +606,8 @@ function initTraffic() {
     if (tune) { e.stopPropagation(); tuneTo(tune.dataset.tune); return; }
     const ap = e.target.closest('[data-ap]');
     if (ap) { if (!ap.disabled) { ap.disabled = true; approachAct(ap.dataset.cs, ap.dataset.ap); } return; }
+    const ws = e.target.closest('[data-withstart]');
+    if (ws) { const id = Number(ws.dataset.withstart); if (ws.checked) ctlWithStart.add(id); else ctlWithStart.delete(id); return; }
     const a = e.target.closest('[data-act]');
     if (a) { if (!a.disabled) ctlAct(Number(a.dataset.id), a.dataset.act, undefined, a.dataset.facing); return; }
     const tool = e.target.closest('[data-tool]');
@@ -618,6 +627,12 @@ function initTraffic() {
         camPost('/api/camera', on ? { mode: 'off' } : { mode: 'follow', id: v.id });
       }
       if (tool.dataset.tool === 'remove') ctlAct(v.id, 'remove');
+      if (tool.dataset.tool === 'manual') {
+        send(`/api/control/${v.id}/manual?on=${v.manual ? 0 : 1}`).then((r) => {
+          toast(r.ok ? `${v.tail}: ${v.manual ? 'automatic again' : 'under your control'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');
+          controlPoll.now();
+        });
+      }
       if (tool.dataset.tool === 'rush') {
         send(`/api/control/${v.id}/rush?on=${v.rush ? 0 : 1}`).then((r) => {
           toast(r.ok ? `${v.tail}: ${v.rush ? 'no more rush' : 'expedite'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');

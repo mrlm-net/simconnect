@@ -633,6 +633,7 @@ func (s *state) load(ctx context.Context, icao string, refresh bool, requests ch
 }
 
 func serve(ctx context.Context, addr string, st *state, requests chan<- string) error {
+	listenAddr = addr
 	mux := http.NewServeMux()
 	web, _ := fs.Sub(webFiles, "web")
 	mux.Handle("GET /", http.FileServerFS(web))

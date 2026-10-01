@@ -219,6 +219,10 @@ async function pollHere() {
 }
 const herePoll = poller('here', pollHere, () => ($('rdHere').checked && simLive ? 1000 : 0));
 $('rdHere').addEventListener('change', (e) => {
+  if (e.target.checked && isLocalHost && rdSoundOn) {
+    setVoice(false); // the map's own voice would say it twice here
+    toast('Playing in this browser: the map voice on this computer is off (it would echo)');
+  }
   if (e.target.checked) {
     // Made in the click, so the browser lets it play.
     hereAudio = hereAudio || new Audio();
@@ -239,9 +243,25 @@ $('asSel').addEventListener('change', (e) => {
   toast(atcPosition ? `Working as ${e.target.selectedOptions[0].textContent}: other frequencies are read-only` : 'Working all positions');
 });
 // The simulator connection, also without an aircraft (the main menu).
+// isLocalHost: this browser runs on the map's own computer.
+const isLocalHost = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(location.hostname);
+let netShown = '';
 const statusPoll = poller('status', async () => {
   const r = await api('/api/status');
   if (r.ok && r.data && r.data.connected) markLive();
+  if (r.ok && r.data) {
+    // Where other devices open the map (network play, #511).
+    const urls = r.data.network || [];
+    const html = urls.length
+      ? `On the network: ${urls.map((u) => `<a href="${esc(u)}/?icao=${data ? esc(data.icao) : ''}" target="_blank" rel="noopener">${esc(u)}</a>`).join(', ')}: open it on a tablet, laptop or phone and pick <b>As</b>.`
+      : 'Only this computer can open the map. To play over the network, start it with <code>-addr :8080</code> and open the address shown here on the other devices.';
+    if (html !== netShown) {
+      netShown = html;
+      $('netInfo').innerHTML = html;
+      $('moreNet').innerHTML = urls.length ? urls.map(esc).join('<br>') : 'this computer only';
+      $('connChip').dataset.net = urls.join(', ');
+    }
+  }
   return r.ok;
 }, () => 3000);
 const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (tabVisible('radio') ? 1000 : 2000) : 0));

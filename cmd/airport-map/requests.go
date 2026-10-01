@@ -130,7 +130,7 @@ func (it *controlled) onRequest(req string) {
 	default:
 		return
 	}
-	if it.gates {
+	if it.gates.Load() {
 		return // the user answers
 	}
 	p := it.cc.pending

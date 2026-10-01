@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.
+- Airport map: pushback and start-up in one clearance again ("with start-up" by the pushback, said "pushback and start up approved, facing …").
+- Airport map: on the map's own computer, its voice and "Play on this device" exclude each other (no echo); the network address other devices open the map on is shown in the quick reference and the status menu (`GET /api/status`: `network`).
+
+### Fixed
+
 - Runway exits and entries named at airports whose connectors to the runway are unnamed paths (#376; LOWW: every exit and entry was ""): the name is taken from the taxiway the connector leads onto, followed straight on for up to 300 m.
 - Reduced 2.5 NM spacing on final applies only where the radar minimum governs: a RECAT-EU pair whose 3 NM is a wake minimum (A behind A, C behind C or D …) keeps it.
 - docs/traffic-taxi.md: `TrafficLookMeters` is 200 m, the default tug is `FSDT_Pushback_03`, and the tightest push radius tried is 17 m.
