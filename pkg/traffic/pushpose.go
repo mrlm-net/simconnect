@@ -55,6 +55,12 @@ const (
 	pushTaxiAlignDeg    = 45.0
 	pushTaxiStartMeters = 10.0
 	pushTaxiStartDeg    = 20.0
+	// pushEarlyTurnCost: taxi meters per degree the taxi-out turns off the
+	// nose within pushEarlyTurnMeters: of two poses, the one already facing
+	// along the taxi-out wins (LKPR A3 for 24: onto A1 facing north, not on
+	// AA facing west and turning onto A1).
+	pushEarlyTurnMeters = 30.0
+	pushEarlyTurnCost   = 3.0
 	// pushTightPenalty: a pose on a lane whose wingtip clearance from the
 	// stands beside it is short (Graph.Fits) holds those stands while the
 	// engines start; a lane with clearance wins (LKPR A3: onto A1, not the
@@ -239,6 +245,21 @@ func (p pushPose) aligned() bool {
 	return p.within(pushTaxiStartMeters, pushTaxiStartDeg) && p.within(pushTaxiAlignMeters, pushTaxiAlignDeg)
 }
 
+// offNose is how far (degrees) the taxi-out's point meters ahead of the
+// nose lies off its heading.
+func (p pushPose) offNose(meters float64) float64 {
+	pts := append([]airport.LatLon{p.nose}, p.out.Points...)
+	walked := 0.0
+	for i := 1; i < len(pts); i++ {
+		walked += localDist(pts[i-1], pts[i])
+		if walked >= meters {
+			ahead := offsetHeading(pts[i], localBearing(pts[i], pts[i-1]), walked-meters)
+			return math.Abs(headingDiff(p.heading, localBearing(p.nose, ahead)))
+		}
+	}
+	return 0
+}
+
 // within reports whether the taxi-out's point meters ahead of the nose
 // lies within deg of its heading.
 func (p pushPose) within(meters, deg float64) bool {
@@ -409,10 +430,16 @@ func laneEnds(g *airport.Graph, center airport.LatLon, radius float64) []paveSeg
 				continue
 			}
 			out := localBearing(g.Nodes[in.To].Position, end.Position)
+			// A dead end, or a named lane turning into an unnamed connector; not
+			// an unnamed branch of a lead-in (EHAM U26: the Y of the small stands
+			// beside it, with grass beyond).
 			open := true
 			for _, e := range g.Adj[a] {
 				if e.To == in.To || !pushEdge(g, e) {
 					continue
+				}
+				if in.Name == "" {
+					open = false
 				}
 				if e.Name != "" || math.Abs(headingDiff(out, localBearing(end.Position, g.Nodes[e.To].Position))) <= laneEndDeg {
 					open = false
@@ -426,6 +453,43 @@ func laneEnds(g *airport.Graph, center airport.LatLon, radius float64) []paveSeg
 				half = g.Layout.TaxiPaths[in.Path].Width / 2
 			}
 			segs = append(segs, paveSeg{end.Position, offsetHeading(end.Position, out, laneEndMeters), half})
+		}
+	}
+	return segs
+}
+
+// filletMeters: where taxiways meet or a lane bends, the paved corner
+// reaches this far beyond the lanes' half widths around the node (EHAM
+// U26: the stub turning onto C; without it the push cut across the grass
+// beside the corner).
+const filletMeters = 10.0
+
+// junctionFillets is the pavement of the corners within radius of center:
+// a disc around every node where taxiways meet or a lane bends by 30° or
+// more, filletMeters beyond the widest lane there.
+func junctionFillets(g *airport.Graph, center airport.LatLon, radius float64) []paveSeg {
+	var segs []paveSeg
+	for a := range g.Adj {
+		nd := g.Nodes[a]
+		if nd.Kind == airport.NodeParking || localDist(nd.Position, center) > radius {
+			continue
+		}
+		var dirs []float64
+		half := 0.0
+		for _, e := range g.Adj[a] {
+			if !pushEdge(g, e) {
+				continue
+			}
+			dirs = append(dirs, localBearing(nd.Position, g.Nodes[e.To].Position))
+			h := 12.5
+			if e.Path >= 0 && e.Path < len(g.Layout.TaxiPaths) && g.Layout.TaxiPaths[e.Path].Width > 0 {
+				h = g.Layout.TaxiPaths[e.Path].Width / 2
+			}
+			half = math.Max(half, h)
+		}
+		corner := len(dirs) >= 3 || len(dirs) == 2 && math.Abs(headingDiff(dirs[0], dirs[1])) < 150
+		if corner {
+			segs = append(segs, paveSeg{nd.Position, nd.Position, half + filletMeters})
 		}
 	}
 	return segs
@@ -755,6 +819,7 @@ func (c *TaxiController) planPushPose() bool {
 	}
 	around := pavementAround(g, gear, pushPoseReachMeters+50)
 	around.segs = append(around.segs, laneEnds(g, gear, pushPoseReachMeters+50)...)
+	around.segs = append(around.segs, junctionFillets(g, gear, pushPoseReachMeters+50)...)
 	pv := newFlatPave(around, gear)
 	c.emptyNear = c.emptyStands()
 	pv.withStands(g, c.req.Parking, c.emptyNear)
@@ -837,6 +902,7 @@ func (c *TaxiController) planPushPose() bool {
 					if p.stem {
 						p.fixed += pushLeadInPenalty
 					}
+					p.fixed += pushEarlyTurnCost * p.offNose(pushEarlyTurnMeters)
 				}
 				if cd.cost = p.fixed + cd.push; best == nil || cd.cost < best.cost {
 					best = cd

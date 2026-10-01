@@ -399,6 +399,9 @@ func TestTaxiControllerLimitPassedDuringPush(t *testing.T) {
 	// can end up behind the same way on stands where the push passes
 	// route nodes).
 	passed := ctl.Route().Nodes[0]
+	if ctl.origRoute != nil {
+		passed = ctl.origRoute.Nodes[0] // the stand: a push to a pose re-plans the route from a taxiway
+	}
 	ctl.mu.Lock()
 	ctl.pendingLimit, ctl.hasPendingLimit, ctl.taxiCleared = passed, true, true
 	ctl.mu.Unlock()
