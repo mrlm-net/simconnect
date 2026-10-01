@@ -28,7 +28,8 @@ func TestReadbacks(t *testing.T) {
 		{ClearedTakeoff("CSA1", "24", "wind 100 degrees 6 knots"), "Runway 24, cleared for take-off, CSA1"}, // CAP 413 4.30
 		{ClearedToLand("CSA1", "06", "wind 100 degrees 6 knots"), "Runway 06, cleared to land, CSA1"},
 		{WhenVacatedContact("CSA1", PosTower, PosGround, "Ruzyne Ground", "121.91"), "When vacated Ruzyne Ground 121.91, CSA1"}, // CAP 413 4.68
-		{HoldPosition("CSA1"), "Holding, CSA1"},                                                                                 // Doc 4444 12.3.4.8 note
+		{HoldPosition("CSA1"), "Hold position, CSA1"},                                                                           // Doc 4444 12.3.4.8 note
+		{ContinueTaxi("CSA1"), "Continue taxi, CSA1"},
 		{GoAround("CSA1", "GAT1 on the runway"), "Going around, CSA1"},
 		{Handoff("CSA1", PosGround, PosTower, "Ruzyne Tower", "134.56"), "Ruzyne Tower 134.56, CSA1"},
 		{Resolved(PosCenter, Resolution{Callsign: "CSA1", Kind: ResolveLevel, AltFt: 21000}, 20000, 90, 450), "Climb to flight level 210, CSA1"},

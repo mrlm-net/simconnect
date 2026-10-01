@@ -49,6 +49,7 @@ const (
 	IntentTakeoff            Intent = "takeoff"             // cleared for take-off
 	IntentLanding            Intent = "landing"             // cleared to land
 	IntentHoldPosition       Intent = "hold_position"       // hold position (on the ground)
+	IntentContinueTaxi       Intent = "continue_taxi"       // continue taxi after holding position
 	IntentStop               Intent = "stop"                // stop immediately (a take-off roll)
 	IntentCancelTakeoff      Intent = "cancel_takeoff"      // hold position, cancel take-off clearance
 	IntentGoAround           Intent = "go_around"           // go around (ParamReason: why)
@@ -194,6 +195,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, runway %s, cleared for take-off%s", cs, p[ParamRunway], wind) // 12.3.4.11 a
 	case IntentLanding:
 		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
+	case IntentContinueTaxi:
+		return cs + ", continue taxi"
 	case IntentHoldPosition:
 		return cs + ", hold position" // 12.3.4.8
 	case IntentStop:
@@ -499,6 +502,12 @@ func ClearedToLand(cs, runway, wind string) Transmission {
 // GoAround sends an arrival around (reason "": none said).
 func HoldPosition(cs string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentHoldPosition})
+}
+
+// ContinueTaxi resumes the taxi of an aircraft told to hold position, on
+// the route it was cleared: "CSA1, continue taxi".
+func ContinueTaxi(cs string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentContinueTaxi})
 }
 
 func Stop(cs string) Transmission {

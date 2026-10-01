@@ -280,3 +280,36 @@ func TestPushbackFacing(t *testing.T) {
 		t.Error("CompassName")
 	}
 }
+
+// A stand pushes the same way whatever the runway (PlanStandardPushes):
+// LKPR B9 onto B2 facing north-west for 24 as for 06, not onto B1 for 24
+// alone; and no taxi-out turns back on itself right after the push.
+func TestStandardPush(t *testing.T) {
+	g := airportGraph(t, "LKPR")
+	i, err := g.Layout.ParkingIndex("B9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := func(rwy string) *pushPose {
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: rwy, Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1, StandOccupied: func(int) bool { return false }}); err != nil {
+			t.Fatal(err)
+		}
+		if ctl.pushPose == nil {
+			t.Fatalf("%s: no pose", rwy)
+		}
+		if ctl.pushPose.hairpin() {
+			t.Errorf("%s: the taxi-out turns back after the push (pose %.0f°)", rwy, ctl.pushPose.heading)
+		}
+		return ctl.pushPose
+	}
+	if p := plan("24"); p.hairpin() {
+		t.Fatal("hairpin")
+	}
+	PlanStandardPushes(g, "FSLTL_B738_RYR", []int{i})
+	a, b := plan("24"), plan("06")
+	if !samePose(*a, *b) || a.lane != "B2" {
+		t.Errorf("24 on %s facing %.0f°, 06 on %s facing %.0f°: want both on B2", a.lane, a.heading, b.lane, b.heading)
+	}
+}
