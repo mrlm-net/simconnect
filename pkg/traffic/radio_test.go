@@ -229,3 +229,78 @@ func TestApproachClearancePhrase(t *testing.T) {
 		t.Errorf("readback %q", rb.Text)
 	}
 }
+
+// FAA wording at US airports, ICAO elsewhere (#463); the radio says a
+// clearance the FAA's way by the airport, and so does the readback.
+func TestPhraseologyByRegion(t *testing.T) {
+	for icao, want := range map[string]Phraseology{"KJFK": PhraseologyFAA, "PHNL": PhraseologyFAA, "TJSJ": PhraseologyFAA, "LKPR": PhraseologyICAO, "EGLL": PhraseologyICAO, "K1": PhraseologyICAO} {
+		if got := PhraseologyFor(icao); got != want {
+			t.Errorf("%s: %s, want %s", icao, got, want)
+		}
+	}
+	r := NewRadio(RadioOptions{ReadBack: true})
+	var said []string
+	r.opts.OnTransmission = func(tx Transmission) { said = append(said, tx.Text) }
+	r.Transmit("KJFK", ClearedTakeoff("AAL1", "04L", "wind 040 degrees 8 knots"))
+	r.Transmit("KJFK", ClearedTaxiToRunway("AAL1", "04L", "", []string{"B", "A"}))
+	r.Transmit("LKPR", ClearedTakeoff("CSA1", "24", "wind 240 degrees 8 knots"))
+	want := []string{
+		"AAL1, runway 04L, cleared for takeoff", "Runway 04L, cleared for takeoff, AAL1",
+		"AAL1, runway 04L, taxi via B, A", "Runway 04L, taxi via B, A, AAL1",
+		"CSA1, runway 24, cleared for take-off, wind 240 degrees 8 knots",
+	}
+	for i, w := range want {
+		if i >= len(said) || said[i] != w {
+			t.Fatalf("said %q, want %q at %d", said, w, i)
+		}
+	}
+	tx := Say(Transmission{Phraseology: PhraseologyFAA, Callsign: "AAL1", Intent: IntentDepartureClearance, Params: map[string]string{ParamDest: "Boston", ParamSID: "KENNEDY 5", ParamLevel: "5000 feet", ParamSquawk: "4521"}})
+	if tx.Text != "AAL1, cleared to Boston airport, KENNEDY 5 departure, then as filed, climb via SID except maintain 5000, squawk 4521" {
+		t.Errorf("FAA departure clearance %q", tx.Text)
+	}
+}
+
+func TestIdentifiedRushAndApproach(t *testing.T) {
+	if tx := Identified(PosDeparture, "CSA1", "flight level 240"); tx.Text != "CSA1, identified, climb to flight level 240" {
+		t.Errorf("%q", tx.Text)
+	}
+	if rb, ok := Readback(Identified(PosDeparture, "CSA1", "flight level 240")); !ok || rb.Text != "Climb to flight level 240, CSA1" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	for in, want := range map[*Transmission]string{
+		ptr(Rushed(ClearedTakeoff("CSA1", "24", ""))): "CSA1, runway 24, cleared for immediate take-off",
+		ptr(Rushed(ClearedLineUp("CSA1", "24"))):      "CSA1, runway 24, line up, be ready for immediate departure",
+		ptr(Rushed(ClearedCross("CSA1", "12"))):       "CSA1, expedite crossing runway 12",
+		ptr(Rushed(HoldPosition("CSA1"))):             "CSA1, hold position",
+	} {
+		if in.Text != want {
+			t.Errorf("%q, want %q", in.Text, want)
+		}
+	}
+	tx := ClearedApproachTo("CSA1", ApproachClearance{Kind: "ILS", Runway: "24", QNH: "1013", ReportEstablished: true})
+	if tx.Text != "CSA1, cleared ILS approach runway 24, QNH 1013, report established" {
+		t.Errorf("%q", tx.Text)
+	}
+}
+
+func ptr(t Transmission) *Transmission { return &t }
+
+func TestWeatherAndDirectRequests(t *testing.T) {
+	if tx := RequestWeather(PosTower, "CSA1"); tx.Text != "CSA1, request weather" || !tx.Pilot {
+		t.Errorf("%+v", tx)
+	}
+	w := WeatherReport(PosTower, "CSA1", "wind 240 degrees 8 knots", "1013", "")
+	if w.Text != "CSA1, wind 240 degrees 8 knots, QNH 1013" {
+		t.Errorf("%q", w.Text)
+	}
+	if rb, ok := Readback(w); !ok || rb.Text != "QNH 1013, CSA1" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	faa := Say(Transmission{Phraseology: PhraseologyFAA, Callsign: "AAL1", Intent: IntentWeather, Params: map[string]string{ParamWind: "wind 040 at 8", ParamAltimeter: "2992"}})
+	if faa.Text != "AAL1, wind 040 at 8, altimeter 2992" {
+		t.Errorf("%q", faa.Text)
+	}
+	if d := ClearedDirectTo(PosApproach, "CSA1", "GOLOP"); d.Text != "CSA1, cleared direct to GOLOP" {
+		t.Errorf("%q", d.Text)
+	}
+}

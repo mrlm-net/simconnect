@@ -149,6 +149,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if c.plan.Exit.HighSpeed {
 			exitKts = ro.HighSpeedExitKts
 		}
+		if c.rush {
+			exitKts += RushExitKts // expedite vacating
+		}
 		v0, vs, ve := m.GroundKts*ktsToMS, ro.SlowKts*ktsToMS, exitKts*ktsToMS
 		slowAt := math.Max(0, (v0*v0-vs*vs)/(2*ro.BrakeDecel))
 		gentle := math.Max(0.2, (vs*vs-ve*ve)/(2*math.Max(onRwy-slowAt, 1)))

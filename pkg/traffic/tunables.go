@@ -6,6 +6,13 @@ package traffic
 import "time"
 
 // Taxi speeds in knots.
+// Expedited (#510): the waits shrink to RushDelayFactor, an arrival
+// leaves the runway RushExitKts faster.
+const (
+	RushDelayFactor = 0.35
+	RushExitKts     = 6.0
+)
+
 const (
 	// PushbackSpeedKts matches a pushback tug's walking pace.
 	PushbackSpeedKts = 3.0
@@ -286,12 +293,12 @@ const (
 // FlapsRetractFt over FlapsRetractClimbSeconds; DefaultRollingTakeoffChance
 // of departures without held gates roll straight into the take-off.
 const (
-	TakeoffFlapsPct             = 25.0
-	FlapsSetSeconds             = 8.0
-	FlapsRetractFt              = 1000.0
+	TakeoffFlapsPct = 25.0
+	FlapsSetSeconds = 8.0
+	FlapsRetractFt  = 1000.0
 	// HandoverCleanMarginFt: a take-off is handed to MSFS AI with the
 	// flaps up, at most this far above the hand-over height.
-	HandoverCleanMarginFt = 2500.0
+	HandoverCleanMarginFt       = 2500.0
 	FlapsRetractClimbSeconds    = 10.0
 	DefaultRollingTakeoffChance = 0.3
 )
@@ -364,9 +371,9 @@ const (
 	TrafficBrakeFactor   = 3.0
 	TrafficJerkFactor    = 6.0
 	TrafficOverrunMeters = 8.0
-	TrafficGapMeters  = 15.0
-	TrafficStaleAfter = 3 * time.Second
-	trafficBodyStep   = 5.0
+	TrafficGapMeters     = 15.0
+	TrafficStaleAfter    = 3 * time.Second
+	trafficBodyStep      = 5.0
 	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
 	TrafficCheckEvery = 100 * time.Millisecond
 	// GiveWayLookMeters is how far ahead a taxiing aircraft reports where

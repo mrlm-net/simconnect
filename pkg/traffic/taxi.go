@@ -255,45 +255,47 @@ type TaxiController struct {
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
 	// climb: the waypoints MSFS AI flies after the injected climb (the
 	// SID), for ClimbRoute.
-	climb []types.SIMCONNECT_DATA_WAYPOINT
-	pushStopped                                             bool // HoldPushback: stay on the stand
-	takeoffHeld                                             bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
-	holdingCrossing                                         bool
-	alignDist                                               float64
-	takeoff                                                 *TakeoffMover
-	gearUp                                                  bool
-	pendingLimit                                            airport.NodeID // ClearUpTo before the taxi starts
-	hasPendingLimit                                         bool
-	flaps                                                   surfaceRamp
-	frameAt                                                 time.Time
-	tugAttached                                             bool
-	pushBranch                                              airport.NodeID // taxiway the tail is pushed onto (planPushback)
-	havePushBranch                                          bool
-	pushJunction                                            int              // route index of the junction the tail swings at (planPushback; 1: the first)
-	pushPts                                                 []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
-	pushTurn                                                bool             // push and turn on the apron (only taxiway at the junction is the way out)
-	pushPlanned                                             *GroundPath      // the push path, planned before it starts (pushPath)
-	pushTurnDir                                             float64          // the way out from the junction
-	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
-	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	climb           []types.SIMCONNECT_DATA_WAYPOINT
+	pushStopped     bool // HoldPushback: stay on the stand
+	takeoffHeld     bool // AbortTakeoff before the roll: wait for ClearForTakeoff, gates or not
+	holdingCrossing bool
+	alignDist       float64
+	takeoff         *TakeoffMover
+	gearUp          bool
+	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
+	hasPendingLimit bool
+	flaps           surfaceRamp
+	frameAt         time.Time
+	tugAttached     bool
+	pushBranch      airport.NodeID // taxiway the tail is pushed onto (planPushback)
+	havePushBranch  bool
+	pushJunction    int              // route index of the junction the tail swings at (planPushback; 1: the first)
+	pushPts         []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
+	pushTurn        bool             // push and turn on the apron (only taxiway at the junction is the way out)
+	pushPlanned     *GroundPath      // the push path, planned before it starts (pushPath)
+	pushTurnDir     float64          // the way out from the junction
+	pushPose        *pushPose        // where the push ends (planPushPose), nil for the older plans
+	faceOut         bool             // a self-manoeuvring stand (standFacesOut, at the start)
 	// pushFacing: the heading a push ends facing, asked for with the
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
 	havePushFacing bool
 	// noStandard: planning a stand's standard push itself (standardPush).
 	noStandard bool
-	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
-	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
-	seq                                                     sequence         // the take-off's steps (Sequence)
-	startUpCleared                                          bool             // ClearStartUp: the engines may start
-	enginesOn                                               bool             // started (combustion on)
-	enginesReadyAt                                          time.Time        // started up, ready to taxi
-	reroute                                                 bool             // ChangeRunway: plan the taxi-out from where it stands when it starts
-	fromHere                                                bool             // the route starts on the edge under the nose (routeFromHere)
-	takeoffPhase                                            TakeoffPhase     // the take-off's phase last frame
-	flapsUpNoted                                            bool
-	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
-	towing                                                  bool             // the tow after the push is under way
+	// rush: expedited (Expedite, #510).
+	rush           bool
+	emptyNear      []int          // the neighbouring stands empty when the push was planned (StandOccupied)
+	origRoute      *airport.Route // the route planned from the stand, before the push re-planned it
+	seq            sequence       // the take-off's steps (Sequence)
+	startUpCleared bool           // ClearStartUp: the engines may start
+	enginesOn      bool           // started (combustion on)
+	enginesReadyAt time.Time      // started up, ready to taxi
+	reroute        bool           // ChangeRunway: plan the taxi-out from where it stands when it starts
+	fromHere       bool           // the route starts on the edge under the nose (routeFromHere)
+	takeoffPhase   TakeoffPhase   // the take-off's phase last frame
+	flapsUpNoted   bool
+	towPts         []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
+	towing         bool             // the tow after the push is under way
 }
 
 // SimConnect IDs relative to the bases.

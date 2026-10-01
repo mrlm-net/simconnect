@@ -123,7 +123,24 @@ func (c *TaxiController) setRequest(now time.Time) {
 
 // openGate starts a gate's automatic wait of about d.
 func (c *TaxiController) openGate(d time.Duration) {
+	if c.rush {
+		d = time.Duration(float64(d) * RushDelayFactor) // expedited: no lingering
+	}
 	c.gateAt = c.now().Add(time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1))))
+}
+
+// Expedite has the crew hurry (#510): the waits before taxi, line-up and
+// take-off shrink to RushDelayFactor; a gate already open closes sooner.
+// The clearance says it (Rushed).
+func (c *TaxiController) Expedite(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if on && !c.rush && !c.gateAt.IsZero() {
+		if left := c.gateAt.Sub(c.now()); left > 0 {
+			c.gateAt = c.now().Add(time.Duration(float64(left) * RushDelayFactor))
+		}
+	}
+	c.rush = on
 }
 
 // startInjectedDeparture takes the aircraft over on the stand.
