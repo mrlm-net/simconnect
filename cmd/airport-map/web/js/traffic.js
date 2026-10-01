@@ -283,7 +283,7 @@ function renderCtx() {
     <dt>Motion</dt><dd class="mono" data-motion="${v.id}"></dd>
     <dt>Lights</dt><dd>${esc(v.lights || '—')}</dd>
   </dl></section>`;
-  const mine = (radioCache || []).filter((t) => t.callsign === v.tail).slice(-4);
+  const mine = (radioCache || []).filter((t) => t.callsign === v.tail).slice(-4).reverse();
   h += `<section class="ctx__sec"><div class="ctx__lbl">Radio <button type="button" class="btn btn--sm btn--ghost" data-goto="radio">Open console</button></div>
     <div class="mini-log">${mine.length ? mine.map(txHTML).join('') : '<p class="muted small">Nothing said yet.</p>'}</div></section>`;
   const camOn = camView && camView.mode === 'follow' && camView.subject === v.tail;

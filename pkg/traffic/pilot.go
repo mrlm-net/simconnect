@@ -149,6 +149,17 @@ func HoldingShortSaid(runway, entry string) string {
 	return s
 }
 
+// TaxiingToSaid is a departure on its way to the runway as its crew says
+// it on first calling tower: "taxiing to runway 24", "taxiing to runway 24
+// at Z" for an intersection.
+func TaxiingToSaid(runway, entry string) string {
+	s := "taxiing to runway " + runway
+	if entry != "" {
+		s += " at " + entry
+	}
+	return s
+}
+
 // Vacated reports the runway vacated: "CSA123, runway vacated" (Doc 4444
 // 12.3.4.7 z).
 func Vacated(cs, runway string) Transmission {

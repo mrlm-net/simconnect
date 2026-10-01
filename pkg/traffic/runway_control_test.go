@@ -277,3 +277,23 @@ func TestRunwayControllerLineUpBehind(t *testing.T) {
 		t.Errorf("readback %q", rb.Text)
 	}
 }
+
+// The incident of a departure cleared off the holding point with an arrival
+// on a 5 NM final at 154 kt: lining up takes its time, so it lines up behind.
+func TestRunwayControllerLineUpTime(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	arr := final("DLH1402", 5)
+	arr.GroundKts = 154
+	c := r.Decide(time.Now(), []RunwayUser{dep("WZZ222", "A20N", RunwayHoldingShort), arr})
+	if slices.Contains(c.Takeoff, "WZZ222") || slices.Contains(c.LineUp, "WZZ222") {
+		t.Fatalf("take-off ahead of an arrival 2 minutes out: %+v", c)
+	}
+	if c.LineUpBehind["WZZ222"] != "DLH1402" {
+		t.Fatalf("not behind DLH1402: %+v", c)
+	}
+	// Lined up already: no line-up time, it goes.
+	c = r.Decide(time.Now(), []RunwayUser{dep("WZZ222", "A20N", RunwayLinedUp), arr})
+	if !slices.Contains(c.Takeoff, "WZZ222") {
+		t.Fatalf("lined up with the arrival 2 minutes out: %+v", c)
+	}
+}

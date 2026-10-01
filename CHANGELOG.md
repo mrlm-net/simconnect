@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Runway: a departure at its holding point is cleared to line up and take off only with the next arrival its line-up time (RunwayControllerOptions.LineUpTime, 60 s) farther away too; it lines up behind the arrival instead. A departure cleared for take-off is no longer also given a conditional line-up.
+- Airport map: an arrival removed in the air (a scene ending) is no longer handed to ground with "runway vacated".
+- Airport map: on the final, once its procedure is flown, an arrival's line runs to the threshold and down the runway.
+- Airport map: a departure checks in with tower "taxiing to runway 24" ("at Z" for an intersection).
+- Airport map: the radio log shows the newest call first.
+
 ---
 
 ## [0.18.0] - 2026-10-01

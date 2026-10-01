@@ -371,6 +371,12 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		if ours[cs] == nil || ours[cs].gates.Load() {
 			continue
 		}
+		t.mu.Lock()
+		cleared := t.given[cs+" takeoff"]
+		t.mu.Unlock()
+		if cleared {
+			continue // cleared for take-off already: no condition after it
+		}
 		arr := arr
 		give(cs, "lineupbehind", traffic.ClearedLineUpBehind(cs, t.arrivalSaid(arr), end(cs)), func(it *controlled) error {
 			t.clearBehind(it, arr, icao, rwy)

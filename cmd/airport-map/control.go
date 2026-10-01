@@ -1006,6 +1006,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 				if it.arr != nil && !v.OnGround {
 					v.AirRoute = it.arr.ProcedureRoute()
 					v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
+					// On the final, the procedure flown: the line to the
+					// threshold and down the runway to where its taxi starts.
+					if len(v.AirRoute) == 0 && it.graph != nil {
+						if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
+							v.AirRoute = []airport.LatLon{end.Threshold}
+							if len(v.Route) > 0 {
+								v.AirRoute = append(v.AirRoute, v.Route[0])
+							}
+						}
+					}
 					if h, alt, ok := it.arr.Holding(); ok {
 						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
 					}
@@ -2123,6 +2133,12 @@ const (
 // change is said by the position handing over ("contact Praha Tower
 // 118.105"). it.mu held.
 func (it *controlled) handoff(ev TaxiOrArrival) {
+	// Removed (a scene ending, the user, a failure): nobody hands it over —
+	// an arrival cancelled on the final is not "runway vacated".
+	if ev.arr != nil && (ev.arr.State == traffic.ArrivalCancelled || ev.arr.State == traffic.ArrivalFailed) ||
+		ev.dep != nil && (ev.dep.State == traffic.TaxiCancelled || ev.dep.State == traffic.TaxiFailed) {
+		return
+	}
 	var pos traffic.Position
 	switch {
 	case ev.dep != nil:
@@ -2225,7 +2241,7 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 			entry = r.Entry
 		}
 		if it.view.State != traffic.TaxiHoldingShort.String() {
-			return "taxiing to " + traffic.HoldingShortSaid(rwy, entry)
+			return traffic.TaxiingToSaid(rwy, entry)
 		}
 		it.readySaid = true
 		return traffic.HoldingShortSaid(rwy, entry) + ", ready for departure"

@@ -90,6 +90,10 @@ type RunwayControllerOptions struct {
 	// ClearToLandNM: the next arrival is cleared to land within this of
 	// the threshold, once nothing is in the way (default 6 NM).
 	ClearToLandNM float64
+	// LineUpTime: how long a departure at a holding point takes to line up
+	// (default 60 s); cleared to line up and take off in one, it needs the
+	// next arrival that much farther away.
+	LineUpTime time.Duration
 }
 
 // RunwayController clears the users of one runway.
@@ -118,6 +122,9 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	}
 	if opts.ClearToLandNM == 0 {
 		opts.ClearToLandNM = 6
+	}
+	if opts.LineUpTime == 0 {
+		opts.LineUpTime = 60 * time.Second
 	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
@@ -198,14 +205,14 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		}
 		return ""
 	}
-	takeoffWhy := func(u RunwayUser) string {
+	takeoffWhy := func(u RunwayUser, lineUp time.Duration) string {
 		if occupied != "" && occupied != u.Callsign {
 			return occupied + " on the runway"
 		}
 		if why := interval(u); why != "" {
 			return why
 		}
-		return arrivalClear(RunwayOccupancyIn(u.Wake, false, r.opts.Surface), r.opts.MinArrivalNM)
+		return arrivalClear(lineUp+RunwayOccupancyIn(u.Wake, false, r.opts.Surface), r.opts.MinArrivalNM)
 	}
 
 	out.NextArrival = nextArrName
@@ -235,7 +242,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		if u.Callsign != linedUp {
 			continue
 		}
-		if why := takeoffWhy(u); why == "" {
+		if why := takeoffWhy(u, 0); why == "" {
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 		} else {
 			out.Waiting[u.Callsign] = why
@@ -270,14 +277,15 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			}
 			continue
 		}
-		why := takeoffWhy(u)
+		// From the holding point: lining up takes its time too.
+		why := takeoffWhy(u, r.opts.LineUpTime)
 		switch {
 		case why == "":
 			// Line up and go.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 			occupied = u.Callsign
-		case arrivalClear(RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+		case arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why
