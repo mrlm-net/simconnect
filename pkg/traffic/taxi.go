@@ -130,6 +130,14 @@ type TaxiRequest struct {
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
 	Tug PushbackTug
+	// StandOccupied reports whether a stand is taken now (an aircraft on it
+	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
+	// through an empty neighbouring stand (EHAM E3: back into the empty
+	// slot beside, turning there), never through a taken one or the
+	// terminal ahead of a gate. Nil treats every neighbouring stand as
+	// taken. The push is planned at Start and planned again when it begins
+	// if a neighbouring stand has been taken or freed since.
+	StandOccupied func(stand int) bool
 }
 
 // TaxiEvent reports a state change or progress of a departure taxi.
@@ -261,6 +269,12 @@ type TaxiController struct {
 	pushTurn                                                bool             // push and turn on the apron (only taxiway at the junction is the way out)
 	pushPlanned                                             *GroundPath      // the push path, planned before it starts (pushPath)
 	pushTurnDir                                             float64          // the way out from the junction
+	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
+	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
+	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
+	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
+	towing                                                  bool             // the tow after the push is under way
 }
 
 // SimConnect IDs relative to the bases.
@@ -409,6 +423,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		// Adopted: no spawn; the aircraft is already on the stand.
 		c.req, c.route = req, route
 		c.pushJunction = 1
+		c.faceOut = c.standFacesOut()
 		if c.inj != nil {
 			c.planPushback()
 		}
@@ -437,6 +452,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 
 	c.req, c.route = req, route
 	c.pushJunction = 1
+	c.faceOut = c.standFacesOut()
 	if c.inj != nil {
 		c.planPushback() // may re-plan the route from the push
 	}

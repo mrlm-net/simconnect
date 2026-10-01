@@ -399,6 +399,9 @@ func TestTaxiControllerLimitPassedDuringPush(t *testing.T) {
 	// can end up behind the same way on stands where the push passes
 	// route nodes).
 	passed := ctl.Route().Nodes[0]
+	if ctl.origRoute != nil {
+		passed = ctl.origRoute.Nodes[0] // the stand: a push to a pose re-plans the route from a taxiway
+	}
 	ctl.mu.Lock()
 	ctl.pendingLimit, ctl.hasPendingLimit, ctl.taxiCleared = passed, true, true
 	ctl.mu.Unlock()
@@ -592,7 +595,9 @@ var knownBesideJunction = map[string]bool{}
 
 // TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
 // from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
-// an A320 from C17 is pushed onto JB's side and leaves by JB, the nearest.
+// an A320 from C17 leaves by J or JB, the parallel lanes beside it (it used
+// to be pushed onto JB's side and turn from a standstill; a push-and-turn
+// now leaves it facing along J: TestTaxiStartsAlongNose).
 func TestDepartureRoutesBySize(t *testing.T) {
 	g := lkprGraph(t)
 	for _, c := range []struct {
@@ -600,7 +605,7 @@ func TestDepartureRoutesBySize(t *testing.T) {
 		want, not    string
 	}{
 		{"B14", "FSLTL B77W Emirates", "J", "JO"},
-		{"C17", "FSLTL A320 Air France SL", "JB", ""},
+		{"C17", "FSLTL A320 Air France SL", "J|JB", ""},
 	} {
 		pi, _ := g.Layout.ParkingIndex(c.stand)
 		ec := &eventClient{}
@@ -609,15 +614,16 @@ func TestDepartureRoutesBySize(t *testing.T) {
 			t.Fatal(err)
 		}
 		tw := ctl.Route().Taxiways
-		if !slices.Contains(tw, c.want) || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
+		want := slices.ContainsFunc(strings.Split(c.want, "|"), func(w string) bool { return slices.Contains(tw, w) })
+		if !want || (c.not != "" && (slices.Contains(tw, c.not) || slices.Contains(tw, "JB"))) {
 			t.Errorf("%s %s via %v, want %s", c.model, c.stand, tw, c.want)
 		}
 		t.Logf("%s from %s via %v (tight %v)", c.model, c.stand, tw, ctl.Route().Tight)
 	}
 }
 
-// TestPushbackFitsAircraft: a 777 at LKPR B14 is not pushed onto JO (code C)
-// but on straight back to J, and leaves along it.
+// TestPushbackFitsAircraft: a 777 at LKPR B14 is not pushed onto JO or JB
+// (code C) but on to J, and leaves along it.
 func TestPushbackFitsAircraft(t *testing.T) {
 	g := lkprGraph(t)
 	pi, _ := g.Layout.ParkingIndex("B14")
@@ -627,13 +633,12 @@ func TestPushbackFitsAircraft(t *testing.T) {
 	if err := ctl.Start(TaxiRequest{Graph: g, Parking: pi, Runway: "24", Model: model, Profile: MotionProfileFor(model)}); err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range ctl.route.Edges[:ctl.pushJunction+1] {
-		if e.Name == "JO" || e.Name == "JB" {
-			t.Fatalf("pushed along %s", e.Name)
-		}
+	p := ctl.pushPose
+	if p == nil {
+		t.Fatal("no push planned to a pose")
 	}
-	if ctl.pushTurn || !ctl.havePushBranch {
-		t.Fatalf("push plan: turn %v branch %v", ctl.pushTurn, ctl.havePushBranch)
+	if p.lane == "JO" || p.lane == "JB" || ctl.route.Edges[0].Name == "JO" || ctl.route.Edges[0].Name == "JB" {
+		t.Fatalf("pushed onto %s (%s)", p.lane, ctl.route.Edges[0].Name)
 	}
 	if err := ctl.startPushback(); err != nil {
 		t.Fatal(err)

@@ -1926,7 +1926,30 @@ $('rPick').addEventListener('change', computeRoute);
 $('rRwyPaths').addEventListener('change', computeRoute);
 const initial = new URLSearchParams(location.search).get('icao') || 'LKPR';
 $('icao').value = initial;
-load(initial);
+// Read before load: loading an airport rewrites the URL.
+const overlayName = new URLSearchParams(location.search).get('overlay');
+load(initial).then(showOverlay);
+
+// ?overlay=LKPR-A1-24-after: a review overlay (GET /api/overlay) — the push
+// in red, the start of the taxi in blue, the stand — fitted on the map.
+async function showOverlay() {
+  const name = overlayName;
+  if (!name) return;
+  const res = await fetch(`/api/overlay?name=${encodeURIComponent(name)}`);
+  if (!res.ok) return;
+  const style = (f) => ({ push: { color: '#ff3030', weight: 5 }, tow: { color: '#ff9d1e', weight: 5, dashArray: '8 6' }, target: { color: '#39ff6a', weight: 3 } })[f.properties.kind] || { color: '#2f8cff', weight: 5 };
+  const layer = L.geoJSON(await res.json(), {
+    style,
+    pointToLayer: (f, ll) => f.properties.kind === 'pose' ? L.marker(ll, { zIndexOffset: 900, icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      html: `<svg viewBox="0 0 24 24" width="30" height="30" style="transform:rotate(${f.properties.heading}deg)"><path fill="#39ff6a" stroke="#000" stroke-width=".8" d="M12 1.5l1.6 7 7.4 4.3v2.1l-7.4-2-.4 5.4 2.3 1.8v1.6L12 20.8l-3.5.9v-1.6l2.3-1.8-.4-5.4-7.4 2v-2.1l7.4-4.3z"/></svg>` }) })
+      .bindTooltip(`target ${Math.round(f.properties.heading)}°`, { direction: 'left' }) : L.circleMarker(ll, { radius: 7, color: '#fff', fillColor: '#ffcc00', fillOpacity: 1 })
+      .bindTooltip(`${f.properties.label} (${Math.round(f.properties.heading)}°)`, { permanent: true, direction: 'right' }),
+  }).addTo(map);
+  map.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 18 });
+  const tag = L.control({ position: 'topright' });
+  tag.onAdd = () => { const d = document.createElement('div'); d.style.cssText = 'background:#000c;color:#fff;padding:6px 10px;font:14px sans-serif'; d.innerHTML = `${name} — <span style="color:#ff5050">push</span> · <span style="color:#ff9d1e">tow</span> · <span style="color:#4a9cff">taxi start</span> · <span style="color:#39ff6a">target pose (to scale)</span>`; return d; };
+  tag.addTo(map);
+}
 </script>
 </body>
 </html>

@@ -31,10 +31,7 @@ func pushTurnPlan(g *airport.Graph, own int, gear airport.LatLon, pushDir float6
 	for i := 1; i < len(ahead); i++ {
 		cum[i] = cum[i-1] + localDist(ahead[i-1], ahead[i])
 	}
-	type goal struct {
-		nose     airport.LatLon
-		dir, pen float64
-	}
+	type goal = pushTurnGoal
 	var goals []goal
 	for x := 20.0; x <= math.Min(pushTurnPastMeters, cum[len(cum)-1]-5); x += 10 {
 		dir := localBearing(pointAlong(ahead, cum, x-5), pointAlong(ahead, cum, x+5))
@@ -46,6 +43,21 @@ func pushTurnPlan(g *airport.Graph, own int, gear airport.LatLon, pushDir float6
 	}
 	base := standIntrusion(g, own, []airport.LatLon{offsetHeading(gear, pushDir+180, 1), gear}, prof)
 	pv := pavementAround(g, gear, pushTurnMaxMeters)
+	// Within the pavement as modelled (stand circles and taxiway strips); if
+	// no push-and-turn fits, a wider tolerance: the apron is wider than the
+	// model, and without a push-and-turn the aircraft is pushed straight and
+	// left across its way out (LKPR A1, EDDF A16).
+	for _, tol := range []float64{pushOffPavementMeters, pushOffPavementWideMeters} {
+		if pts := pushTurnSearch(g, own, gear, pushDir, goals, prof, base, pv, tol); pts != nil {
+			return pts
+		}
+	}
+	return nil
+}
+
+// pushTurnSearch is pushTurnPlan's search with the main gear within tol of
+// the pavement pv.
+func pushTurnSearch(g *airport.Graph, own int, gear airport.LatLon, pushDir float64, goals []pushTurnGoal, prof MotionProfile, base float64, pv pavement, tol float64) []airport.LatLon {
 	var best, clear []airport.LatLon
 	bestIn, bestCost := math.Inf(1), math.Inf(1)
 	for r := PushbackArcMeters; r >= PushbackMinArcMeters-0.01; r -= 4 {
@@ -62,7 +74,7 @@ func pushTurnPlan(g *airport.Graph, own int, gear airport.LatLon, pushDir float6
 			}
 			// Clear of the neighbours: the cheapest push, with a tighter turn
 			// costing pushTurnRadiusCost per meter of radius given up.
-			if offPavement(pv, pts) > pushOffPavementMeters {
+			if offPavement(pv, pts) > tol {
 				continue // off the stands and taxiways: a building or grass
 			}
 			in := standIntrusion(g, own, pts, prof)
@@ -81,6 +93,13 @@ func pushTurnPlan(g *airport.Graph, own int, gear airport.LatLon, pushDir float6
 		return clear
 	}
 	return best
+}
+
+// pushTurnGoal is where a push-and-turn may end: the nose there, facing
+// dir, at a cost pen.
+type pushTurnGoal struct {
+	nose     airport.LatLon
+	dir, pen float64
 }
 
 // dubins samples the shortest path of turn radius r from a (travelling
@@ -231,7 +250,7 @@ func pavementAround(g *airport.Graph, center airport.LatLon, radius float64) pav
 	}
 	for a := range g.Adj {
 		pa := g.Nodes[a].Position
-		if localDist(pa, center) > radius+200 {
+		if localDist(pa, center) > radius+2000 {
 			continue
 		}
 		for _, e := range g.Adj[a] {
@@ -241,6 +260,12 @@ func pavementAround(g *airport.Graph, center airport.LatLon, radius float64) pav
 			half := 12.5
 			if e.Path >= 0 && e.Path < len(g.Layout.TaxiPaths) && g.Layout.TaxiPaths[e.Path].Width > 0 {
 				half = g.Layout.TaxiPaths[e.Path].Width / 2
+			}
+			pb := g.Nodes[e.To].Position
+			h := localBearing(pa, pb)
+			along := math.Max(0, math.Min(localDist(pa, pb), alongHeading(pa, h, center)))
+			if localDist(center, offsetHeading(pa, h, along)) > radius+half {
+				continue // nothing within radius comes near it
 			}
 			pv.segs = append(pv.segs, paveSeg{pa, g.Nodes[e.To].Position, half})
 		}
