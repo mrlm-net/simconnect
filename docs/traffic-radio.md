@@ -115,6 +115,40 @@ Each airport's ATIS (`nav.ATISService`, see [Weather and ATIS](nav-weather.md)) 
 
 The airport map refreshes the ATIS of its managed airports every minute of traffic time, from the weather at the user's aircraft. A new information goes out on the radio and into the traffic log. `GET /api/radio/atis?icao=LKPR` serves the current one (letter, text, spoken form and frequency) for a voice to loop. The airport panel's 🔊 button reads it in an English voice, whatever the browser's language.
 
+## ICAO and FAA
+
+Where a controller is, decides how they speak (#463). `PhraseologyFor(icao)` gives the FAA in the United States and its territories (ICAO prefixes K, PA, PH, PG, TJ and TI) and ICAO everywhere else. `RadioOptions.Phraseology` overrides it.
+
+A clearance built by `Say` is said again in FAA wording at a US airport, and `Transmission.Phraseology` records which wording was used. Readbacks follow the same wording, and the voice reads numbers and frequencies the FAA way there. The wordings are those quoted in [Phraseology](traffic-phraseology.md), so the differences there are the differences here:
+
+| Clearance | ICAO | FAA |
+|---|---|---|
+| Departure clearance | "cleared to Frankfurt, BALTU 7D departure, flight planned route, runway 24, climb via SID to flight level 100, squawk 4521" | "cleared to Boston airport, KENNEDY 5 departure, then as filed, climb via SID except maintain 5000, squawk 4521" |
+| Taxi | "taxi to and hold short of runway 24 via B, A" | "runway 04L, taxi via B, A" |
+| Take-off | "runway 24, cleared for take-off, wind 240 degrees 8 knots" | "runway 04L, cleared for takeoff" (no wind in the civil phrase) |
+| Approach | "cleared ILS approach runway 24, QNH 1013, report established" | "cleared ILS runway 04L approach" |
+| Departure's check-in answered | "identified, climb to flight level 240" | "radar contact, climb and maintain 5000" |
+
+On the runway, a conditional line-up ("behind the landing …, line up and wait behind") is ICAO only. The FAA does not allow conditions on the runway.
+
+## Expedite, weather and direct
+
+`Rushed(clearance)` gives the expedited form where one exists (#510). The aircraft then hurries: `TaxiController.Expedite` shrinks its waits at the gates, and `ArrivalController.Expedite` leaves the runway faster.
+
+| Clearance | Expedited |
+|---|---|
+| Take-off | "cleared for immediate take-off" (CAP 413 4.30) |
+| Line-up | "line up, be ready for immediate departure" (Doc 4444 12.3.4.10) |
+| Crossing | "expedite crossing runway 12" (12.3.4.9) |
+| Vacating | "expedite vacating, when vacated contact Ruzyne Ground 121.91" (12.3.4.7) |
+
+Crews can also ask for the weather or for a shortcut:
+
+- **Weather:** `RequestWeather` is answered by `WeatherReport`: "wind 240 degrees 8 knots, QNH 1013". The crew reads the QNH back; at a US airport the answer gives the altimeter.
+- **Direct:** `RequestDirect` ("request direct GOLOP") is answered by `ClearedDirectTo` ("cleared direct to GOLOP").
+
+No source we have read gives the wording of the two requests themselves, so it is the project's own; the answers are quoted ones.
+
 ## The radio panel
 
 The airport map's **Radio** tab (#425) shows what is said on the airport's frequencies. Each frequency the scenery lists (Delivery, Ground, Tower, Approach, ATIS…) has a button with the number of transmissions heard on it. Pick the one to follow, as on a receiver: one frequency at a time (#462). Pilot lines and the ATIS are coloured apart from the controllers'. The choice is remembered.
