@@ -814,6 +814,9 @@ body.panel-hidden .panel { display: none; }
 .show-tab { display: none !important; }
 @media (max-width: 1599px) { .hide-xl { display: none !important; } }
 @media (max-width: 1023px) { .hide-tab { display: none !important; } .show-tab { display: block !important; } }
+/* Under 1280 px the strip keeps what matters; the rest is in the More menu. */
+.show-md { display: none !important; }
+@media (max-width: 1279px) { .show-md { display: block !important; } }
 
 /* Large desktop: a wider panel */
 @media (min-width: 1600px) { :root { --panel-w: 432px; } }

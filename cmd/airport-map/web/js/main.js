@@ -246,12 +246,14 @@ $('rdHere').addEventListener('change', (e) => {
   }
 });
 // The position this device works (#511).
-$('asSel').value = atcPosition;
-$('asSel').addEventListener('change', (e) => {
+// Two pickers: in the strip, and in the More menu on narrower screens.
+$('asSel').value = $('asSelMore').value = atcPosition;
+['asSel', 'asSelMore'].forEach((id) => $(id).addEventListener('change', (e) => {
   atcPosition = e.target.value;
+  $('asSel').value = $('asSelMore').value = atcPosition;
   try { localStorage.setItem('apm-as', atcPosition); } catch { /* private window */ }
   toast(atcPosition ? `Working as ${e.target.selectedOptions[0].textContent}: other frequencies are read-only` : 'Working all positions');
-});
+}));
 // The simulator connection, also without an aircraft (the main menu).
 // isLocalHost: this browser runs on the map's own computer.
 const isLocalHost = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(location.hostname);
