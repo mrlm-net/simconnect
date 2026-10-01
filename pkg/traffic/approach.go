@@ -78,6 +78,9 @@ type ApproachPose struct {
 	// nose-up attitude.
 	HeightFt float64
 	PitchDeg float64
+	// BankDeg is the wing low into a crosswind in the flare, positive right
+	// wing down (SetCrosswind).
+	BankDeg float64
 	// GroundSpeedKts and VerticalFpm are the current speeds.
 	GroundSpeedKts float64
 	VerticalFpm    float64
@@ -112,7 +115,46 @@ type ApproachMover struct {
 	// cross is the crosswind in knots, positive from the right of the
 	// runway heading (SetCrosswind).
 	cross float64
+	// aim shifts the whole path along the runway, meters (SetAimShift): the
+	// touchdown point varies from landing to landing.
+	aim float64
 }
+
+// SetAimShift moves the aiming point, and so the touchdown, by meters
+// along the runway (negative: earlier).
+func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
+
+// TouchdownSpreadMeters: an injected landing touches down up to this much
+// before or past its type's usual point.
+const TouchdownSpreadMeters = 10.0
+
+// bankDeg is the wing low into a crosswind: none on final (crabbed), into
+// the wind as the crab comes out in the flare (the upwind main gear first),
+// level again as the nose comes down. Positive: right wing down.
+func (m *ApproachMover) bankDeg() float64 {
+	if m.cross == 0 {
+		return 0
+	}
+	full := math.Copysign(math.Min(maxWingLowDeg, math.Abs(m.cross)*wingLowPerKt), m.cross)
+	switch m.phase {
+	case ApproachFlare:
+		if m.p.FlareFt <= 0 {
+			return 0
+		}
+		return full * (1 - math.Max(0, m.h/m.p.FlareFt))
+	case ApproachDerotate:
+		return full * math.Max(0, 1-m.derotateT/wingLevelSeconds)
+	}
+	return 0
+}
+
+// The wing low: wingLowPerKt degrees per knot of crosswind, at most
+// maxWingLowDeg, levelled in wingLevelSeconds after touchdown.
+const (
+	wingLowPerKt     = 0.25
+	maxWingLowDeg    = 4.0
+	wingLevelSeconds = 1.5
+)
 
 // SetCrosswind sets the crosswind the approach is flown in, knots,
 // positive from the right of the runway: on final the aircraft crabs into
@@ -148,10 +190,10 @@ func NewApproachMover(threshold airport.LatLon, heading, startMeters float64, p 
 // Pose returns the current pose.
 func (m *ApproachMover) Pose() ApproachPose {
 	return ApproachPose{
-		Position: offsetHeading(m.thr, m.heading, m.x), Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
-		HeightFt: m.h, PitchDeg: m.pitch, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
-		Distance: m.x, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
-		Touchdown: m.touchX, TouchdownFpm: m.touchFpm,
+		Position: offsetHeading(m.thr, m.heading, m.x+m.aim), Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
+		HeightFt: m.h, PitchDeg: m.pitch, BankDeg: m.bankDeg(), GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
+		Distance: m.x + m.aim, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
+		Touchdown: m.touchX + m.aim, TouchdownFpm: m.touchFpm,
 	}
 }
 
