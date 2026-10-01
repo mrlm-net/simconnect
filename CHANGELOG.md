@@ -9,26 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- Pushback: an alley push counts the crossroads of lanes it passes and ends on, whatever the lanes are called; LKPR A5 for 24 no longer pushes 134 m into the B1 crossroads (#489).
-- Radio flow (#462): pushback first (the first call to ground), start-up with the push under way; the delivery exchange paced (request, clearance, readback, "readback correct", transfer to ground) and the crew's requests after it; arrivals' first call then their clearance; "flight planned route" in the departure clearance; the initial climb FL100 by default, per airport (`Limits.InitialClimbFt`) and per SID (`Limits.InitialClimbs`, `InitialClimbFor`). The radio follows one frequency; the voice shortens pauses rather than dropping calls (60 s), and tuned to the ATIS joins its continuous broadcast where it is.
-- Airport map: conflicts between our arrivals on their STARs are resolved: the one landing later loses time (speed, then a dog-leg), said on the frequency, and holds if the conflict is still predicted 90 s on (#455; before, only en route aircraft were steered).
-- Turnarounds: the arrival's stand passes to the departure (`StandAllocator.Transfer`) instead of being released and taken again, which failed with ErrStandTaken against the parked aircraft itself; on the airport map turnaround departures never spawned (#470).
-- Airport map: an overflight appears where its plan enters the area, moved on by the time since its entry time (not by its STD along the plan: RYR1850 appeared 230 NM out); a plan that never enters the area is not spawned (#469).
-- An arrival whose reserved stand is taken by other traffic before it lands goes to another stand: `StandAllocator.TakenFrom`, `ArrivalController.ChangeStand`; the airport map re-checks every 10 s (#479).
-- Overflights cross the area along their great circle, not a straight line in latitude and longitude (`calc.IntermediatePoint`): no Dublin–Seoul over Prague (#468).
-- Ground: a push under way no longer stops for an aircraft giving way to it (the wing clearance of #446 applies before a push starts only), and a finished push shows its planned taxi in the same frame: no mutual wait (#466).
-- `nav.RunwaySelector` chooses a runway only 2 kt within its wind limits (`RunwayChoiceMarginKts`) and keeps it up to the limits: no runway chosen at its tailwind limit and dropped at the next gust (#460).
-- Airport map: the schedule waits for the first weather sample (at most 30 s) before spawning, so the first flights do not take the preferred runway when the wind says the other (#458).
-- ATIS: the runway in use is kept through wind shifts near a limit (`RunwaySelector`), and on the airport map it is the traffic's own (`ATISWithSelector`): no new letter and runway every minute (#454).
-- Pushback: an alley push counts the junctions of other taxiways it passes, and a taxi-out turning back sharply right after the push costs more (#441; LKPR A3 no longer tows 190 m along Z, A5 faces its way out).
-- Ground: facing oncoming traffic, an aircraft keeps the junction before it clear, so the other can turn off there (#444).
-- Pushback: a moving aircraft (pushing, taxiing) must be clear of the push corridor by both half-spans, not only its fuselage (#446).
-- Ground: an aircraft waiting for its taxi clearance shows its planned way, so a neighbour does not push into it; beside a push under way only an aircraft the push stops for goes on (#452).
+## [0.17.0] - 2026-10-01
+
+Radio and voice: ATC speaks in structured ICAO phrases on each position's frequency, pilots call, request and read back, the ATIS broadcasts on its own frequency, and the airport map says it all aloud through voice-goio. Pushbacks end at a planned pose on the taxiway, engines start after the tug has gone, and a change of the runway in use re-plans the traffic.
 
 ### Added
 
+- `pkg/traffic` pushback to a target pose (#491): the push is planned to a point and facing on a taxiway (`pushpose.go`): Dubins push fitted to the pavement, clear of stands and other aircraft, empty neighbouring stands usable (`TaxiRequest.StandOccupied`); push-and-tow only where a push alone would end misaligned or in a hairpin.
+- `pkg/traffic` engines off on the stand (#502): an injected departure starts its engines once the tug has gone (`EngineStartTime` each); the crew asks for start-up (`TaxiEvent.Request` "start_up", `ClearStartUp`) or for pushback and start-up together (`RequestPushbackAndStartUp`, `ClearedPushbackAndStartUp`); a taxi clearance implies the start-up.
+- `pkg/traffic` runway change (#456): `TaxiController.ChangeRunway` re-routes a departure not yet lining up (a new push from the stand, or a taxi route from where it is) with its new SID; `ArrivalController.ChangeRunway` gives an arrival not on the injected final the new runway's procedure and plan; `RunwayChange` says it ("runway change, runway 06 in use, VOZ 2D departure"). The airport map re-clears its traffic when the runway in use changes.
+- `pkg/traffic` ground give-way (#503): `GiveWay` ("give way to the A320 passing left to right"), `TaxiEvent.GivingWayTo`/`ArrivalEvent.GivingWayTo`; crossings report "holding short of runway 12 at F" (`HoldingShortReport`); a departure clearance without a SID says "climb to".
+- `pkg/traffic` take-off and landing step timelines (#497): `TaxiController.Sequence`, `ArrivalController.Sequence` (`SequenceStep`).
+- `examples/airport-map`: voice through voice-goio from installed voices only (#496); the voice follows a frequency change at once, and "follow my COM1" both ways (#499); hide the planned route (Esc) and pick the call sign when spawning (#498); start-up action; the Charts tab is now Airport (#506).
 - docs: Phraseology — ICAO and FAA side by side for the gate-to-gate IFR flow, every phrase quoted from Doc 4444, CAP 413, JO 7110.65 or the AIM with its paragraph (#462).
 - Radio phraseology to that reference (#462): the full departure clearance (`DepartureClearance`: destination, SID by its fix, runway, initial climb, squawk; `RequestClearance`), start-up and pushback as two approvals (`ClearedStartUp`, `RequestStartUp`), the landing clearance (`ClearedToLand`, `RunwayClearances.Land`), wind in take-off and landing clearances (`WindSaid`), `WhenVacatedContact`, levels against the transition altitude (`LevelSaidAbove`), "reduce speed to", reasons as "due traffic", one runway designator in a crossing, readbacks as the reference has them. The airport map: the handoff to departure once airborne with the passing/cleared level and SID, stations named for the frequency found and from the AIP (LKPR: Ruzyne Radar).
 - Requests and clearances in radio order (#462): `TaxiEvent.Request` (the crew asks when ready), `Radio.ClearAt`; `RequestPushback` takes the station (first call). The airport map answers requests after a pause and acts after the readback; tower clearances too.
@@ -49,11 +43,37 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `pkg/traffic` transmissions (#415): what ATC says as a `Transmission` (position, call sign, intent, parameters, and the text as said), built by one phrasebook (`Say`) with a builder per clearance, and carried by a `Radio` (stamped, kept, `OnTransmission`, `Recent`). The airport map's ATC log comes from its radio with unchanged wording, and `GET /api/radio` serves it. See `docs/traffic-radio.md`.
 - `pkg/traffic` `SimClock` (#413): traffic time at the simulation rate, stopped while paused (`SetRate`, `SetPaused`); `TaxiWithClock`, `ArrivalWithClock`; injected motion steps at most `MaxFrameStepSeconds` (1 s) a frame. The airport map runs all its traffic on it, fed by `SIMULATION RATE` and the "Pause" event, and shows the rate.
 
+### Changed
+
+- Taxi clearance: "taxi to and hold short of runway 24 [at B] via H, A" (#501).
+- Take-off and landing closer to real procedures (#497): acceleration altitude 1000 ft, flaps up by speed, hand-over once clean; landing flaps by 1400 ft, strobes and landing lights off on vacating.
+- Stands are picked at random among the nearly best, not always the same gate (#500).
+
 ### Fixed
 
+- Ground: braking behind traffic starts earlier and is smooth (#503).
+- Tug: drives off without jumping a wheelbase as it turns away (#504).
+- A spawned departure with a flight plan asks delivery for its clearance (#503).
+- Pushback: an alley push counts the crossroads of lanes it passes and ends on, whatever the lanes are called; LKPR A5 for 24 no longer pushes 134 m into the B1 crossroads (#489).
+- Radio flow (#462): pushback first (the first call to ground), start-up with the push under way; the delivery exchange paced (request, clearance, readback, "readback correct", transfer to ground) and the crew's requests after it; arrivals' first call then their clearance; "flight planned route" in the departure clearance; the initial climb FL100 by default, per airport (`Limits.InitialClimbFt`) and per SID (`Limits.InitialClimbs`, `InitialClimbFor`). The radio follows one frequency; the voice shortens pauses rather than dropping calls (60 s), and tuned to the ATIS joins its continuous broadcast where it is.
+- Airport map: conflicts between our arrivals on their STARs are resolved: the one landing later loses time (speed, then a dog-leg), said on the frequency, and holds if the conflict is still predicted 90 s on (#455; before, only en route aircraft were steered).
+- Turnarounds: the arrival's stand passes to the departure (`StandAllocator.Transfer`) instead of being released and taken again, which failed with ErrStandTaken against the parked aircraft itself; on the airport map turnaround departures never spawned (#470).
+- Airport map: an overflight appears where its plan enters the area, moved on by the time since its entry time (not by its STD along the plan: RYR1850 appeared 230 NM out); a plan that never enters the area is not spawned (#469).
+- An arrival whose reserved stand is taken by other traffic before it lands goes to another stand: `StandAllocator.TakenFrom`, `ArrivalController.ChangeStand`; the airport map re-checks every 10 s (#479).
+- Overflights cross the area along their great circle, not a straight line in latitude and longitude (`calc.IntermediatePoint`): no Dublin–Seoul over Prague (#468).
+- Ground: a push under way no longer stops for an aircraft giving way to it (the wing clearance of #446 applies before a push starts only), and a finished push shows its planned taxi in the same frame: no mutual wait (#466).
+- `nav.RunwaySelector` chooses a runway only 2 kt within its wind limits (`RunwayChoiceMarginKts`) and keeps it up to the limits: no runway chosen at its tailwind limit and dropped at the next gust (#460).
+- Airport map: the schedule waits for the first weather sample (at most 30 s) before spawning, so the first flights do not take the preferred runway when the wind says the other (#458).
+- ATIS: the runway in use is kept through wind shifts near a limit (`RunwaySelector`), and on the airport map it is the traffic's own (`ATISWithSelector`): no new letter and runway every minute (#454).
+- Pushback: an alley push counts the junctions of other taxiways it passes, and a taxi-out turning back sharply right after the push costs more (#441; LKPR A3 no longer tows 190 m along Z, A5 faces its way out).
+- Ground: facing oncoming traffic, an aircraft keeps the junction before it clear, so the other can turn off there (#444).
+- Pushback: a moving aircraft (pushing, taxiing) must be clear of the push corridor by both half-spans, not only its fuselage (#446).
+- Ground: an aircraft waiting for its taxi clearance shows its planned way, so a neighbour does not push into it; beside a push under way only an aircraft the push stops for goes on (#452).
 - `pkg/traffic`: a pushback does not leave the nose facing back at the stand (#436). A branch less than 45° off the straight push is not taken across a named taxiway behind the stand; along an unnamed lead-in it still is. Live, E190s at LKPR A4 were pushed straight across B1 and faced the dead-end lead-in.
 - `pkg/airport`: runway 24 at LKPR lists entry Z (#433). The search for the ways off a runway bounded the whole path, including the edge leaving the surface. Z leaves A's long lead-in at the runway edge 137 m from its first node off the runway, so it was cut and merged into A. The bound is now on the way across the surface only.
 - `pkg/traffic`: a pushback does not leave the aircraft blocking other taxiways (#429). Each junction of another taxiway it would sit on costs 400 m in the choice. A wider swing, up to 125°, is a fallback where no ordinary push is clear. Live, RYR1455 pushed from LKPR A4 stood across H; over all LKPR stands, pushes ending on another taxiway went from 31 of 103 to 9.
+
+---
 
 ## [0.16.0] - 2026-09-30
 
