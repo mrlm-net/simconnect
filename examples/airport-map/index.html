@@ -226,7 +226,7 @@
 
   <section data-panel="radio" hidden>
     <h2>Radio <span class="i" title="What is said on one of the airport's frequencies, as on a receiver: our controllers' clearances and handoffs, the pilots' requests and readbacks. Tune the ATIS to hear its broadcast.">ⓘ</span></h2>
-    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <label class="opt" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"> Follow my COM1</label> <span id="rdVoice" class="note"></span></div>
+    <div class="bar"><button type="button" id="rdSound" class="secondary">🔇 Sound off</button> <label class="opt" title="Hear the frequency your aircraft's COM1 is tuned to: tune it in the simulator"><input type="checkbox" id="rdSync"> Follow my COM1</label> <select id="rdDevice" title="Where the voice plays" hidden></select> <span id="rdVoice" class="note"></span></div>
     <div id="rdFreqs" class="rdfreqs"></div>
     <div id="rdLog" class="rdlog"></div>
   </section>
@@ -1892,17 +1892,34 @@ function showVoice(v) {
   rdSync = !!v.syncCom;
   $('rdSync').checked = rdSync;
   if (rdSync && v.frequency && v.frequency !== rdFreq) { rdFreq = v.frequency; pollRadio(); }
+  // The outputs, once known (the sound has been on): the voice plays on the one picked.
+  const dev = $('rdDevice');
+  if (v.devices && v.devices.length) {
+    const opts = v.devices.map((d) => `<option value="${esc(d.ID || '')}">${esc(d.Name)}</option>`).join('');
+    if (dev.dataset.opts !== opts) { dev.innerHTML = opts; dev.dataset.opts = opts; }
+    dev.value = v.device || '';
+    dev.hidden = false;
+  }
   $('rdSound').textContent = rdSoundOn ? '🔊 Sound on' : '🔇 Sound off';
   $('rdSound').className = rdSoundOn ? '' : 'secondary';
   $('rdVoice').textContent = rdSoundOn ? `listening on ${rdFreq}` : (v.status && v.status !== 'off' ? v.status : '');
 }
+// savedDevice is the output picked before, remembered in this browser.
+function savedDevice() {
+  try { const d = localStorage.getItem('airportMapVoiceDevice'); return d === null ? {} : { device: d }; } catch { return {}; }
+}
 async function setVoice(on, tune = false) {
   try {
-    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq, syncCom: rdSync, tune }) });
+    const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, frequency: rdFreq, syncCom: rdSync, tune, ...savedDevice() }) });
     if (res.ok) showVoice(await res.json());
   } catch { /* server gone */ }
 }
 $('rdSound').addEventListener('click', () => setVoice(!rdSoundOn));
+$('rdDevice').addEventListener('change', async (e) => {
+  try { localStorage.setItem('airportMapVoiceDevice', e.target.value); } catch { /* private window */ }
+  const res = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: rdSoundOn, frequency: rdFreq, syncCom: rdSync, device: e.target.value }) });
+  if (res.ok) showVoice(await res.json());
+});
 $('rdSync').addEventListener('change', (e) => { rdSync = e.target.checked; setVoice(rdSoundOn); });
 // Following COM1: the frequency changes with the radio in the simulator.
 setInterval(() => { if (rdSync) fetch('/api/voice').then((r) => r.json()).then(showVoice).catch(() => {}); }, 1000);

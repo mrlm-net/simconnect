@@ -66,6 +66,10 @@ type voiceOut struct {
 	chain  *radio.Set
 	norm   *normalise.Normaliser
 	player *audio.Player
+	// device is the output picked ("" the system default); devices the
+	// outputs there are, listed when the player opens.
+	device  string
+	devices []voicegoio.Device
 
 	queue chan voiceItem
 	// The ATIS broadcast: its text, its audio, when its loop started.
@@ -117,9 +121,12 @@ func (v *voiceOut) open() error {
 		v.chain, v.norm = radio.Default(), normalise.New()
 	}
 	if v.player == nil {
-		p, err := audio.NewPlayer(audio.Options{})
+		p, err := audio.NewPlayer(audio.Options{DeviceID: v.device})
 		if err != nil {
 			return err
+		}
+		if d, err := p.Devices(); err == nil {
+			v.devices = d
 		}
 		go func() {
 			for range p.Events() { // drained: the player needs it
@@ -164,12 +171,16 @@ type voiceState struct {
 	Status    string `json:"status"`
 	SyncCom   bool   `json:"syncCom"`
 	Com1      string `json:"com1,omitempty"`
+	// Device is the output picked ("" the system default), Devices those
+	// there are (known once the sound has been on).
+	Device  string             `json:"device"`
+	Devices []voicegoio.Device `json:"devices,omitempty"`
 }
 
 func (v *voiceOut) state() voiceState {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return voiceState{On: v.on, Frequency: v.freq, Status: v.status, SyncCom: v.syncCom, Com1: v.com}
+	return voiceState{On: v.on, Frequency: v.freq, Status: v.status, SyncCom: v.syncCom, Com1: v.com, Device: v.device, Devices: v.devices}
 }
 
 // hear takes a transmission from the radio: said if the voice is on and it
@@ -417,6 +428,22 @@ func (v *voiceOut) follow(sync bool) {
 	}
 }
 
+// setDevice plays on output id ("" the system default) from now on.
+func (v *voiceOut) setDevice(id string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if id == v.device {
+		return nil
+	}
+	if v.player != nil {
+		if err := v.player.SetDevice(id); err != nil {
+			return err
+		}
+	}
+	v.device = id
+	return nil
+}
+
 // registerVoice serves the voice switch: GET /api/voice is its state, POST
 // /api/voice {on, frequency, syncCom} turns it on or off, picks the
 // frequency, or follows the user aircraft's COM1.
@@ -432,6 +459,8 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 			// Tune: following COM1, the frequency was picked on the map:
 			// COM1 is tuned to it.
 			Tune bool `json:"tune"`
+			// Device picks the output ("" the system default).
+			Device *string `json:"device"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -439,6 +468,12 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 		}
 		if req.SyncCom != nil {
 			v.follow(*req.SyncCom)
+		}
+		if req.Device != nil {
+			if err := v.setDevice(*req.Device); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
 		}
 		if req.Tune && req.Frequency != "" && v.state().SyncCom {
 			if err := v.tuneCom1(req.Frequency); err != nil {
