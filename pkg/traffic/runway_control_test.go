@@ -297,3 +297,19 @@ func TestRunwayControllerLineUpTime(t *testing.T) {
 		t.Fatalf("lined up with the arrival 2 minutes out: %+v", c)
 	}
 }
+
+// A departure lining up behind a landing aircraft still rolling out is not
+// cleared for take-off, whichever of them is listed first (live: BAW1272
+// was cleared as AFR558 rolled out, the arrival listed first).
+func TestRunwayControllerRollingArrivalBlocksTakeoff(t *testing.T) {
+	roll := final("AFR558", 0)
+	roll.Phase = RunwayRolling
+	up := dep("BAW1272", "A320", RunwayLinedUp)
+	for _, users := range [][]RunwayUser{{roll, up}, {up, roll}} {
+		r := NewRunwayController(RunwayControllerOptions{})
+		c := r.Decide(time.Now(), users)
+		if slices.Contains(c.Takeoff, "BAW1272") || !strings.Contains(c.Waiting["BAW1272"], "AFR558") {
+			t.Errorf("%s first: %+v", users[0].Callsign, c)
+		}
+	}
+}

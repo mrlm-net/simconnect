@@ -144,7 +144,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
+	// occupied: who is on the runway (the first seen); onRunway: all of
+	// them — a take-off waits for every one but itself.
 	occupied, linedUp := "", ""
+	var onRunway []string
 	nextArr, nextArrName := math.Inf(1), ""
 	var nextArrUser RunwayUser
 	var holding []RunwayUser
@@ -154,12 +157,14 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		switch u.Phase {
 		case RunwayRolling:
 			occupied = u.Callsign
+			onRunway = append(onRunway, u.Callsign)
 			if !u.Arrival && !u.Crossing && (r.lastDep == nil || r.lastDep.Callsign != u.Callsign) {
 				uu := u // a departure started its roll: the interval runs from here
 				r.lastDep, r.lastAt = &uu, now
 			}
 		case RunwayLinedUp:
 			occupied = u.Callsign
+			onRunway = append(onRunway, u.Callsign)
 			if !u.Other {
 				linedUp = u.Callsign
 			}
@@ -206,6 +211,13 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		return ""
 	}
 	takeoffWhy := func(u RunwayUser, lineUp time.Duration) string {
+		// Anyone else on it: one lining up as another rolls out after
+		// landing was cleared, the arrival listed first (live: BAW1272).
+		for _, cs := range onRunway {
+			if cs != u.Callsign {
+				return cs + " on the runway"
+			}
+		}
 		if occupied != "" && occupied != u.Callsign {
 			return occupied + " on the runway"
 		}
