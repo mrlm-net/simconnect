@@ -547,7 +547,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: cc.tug(r, reqBase, prof), Profile: prof,
-			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice}); err != nil {
+			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice,
+			// The push may swing through a neighbouring stand nobody holds.
+			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken }}); err != nil {
 			return nil, err
 		}
 		it.dep = ctl

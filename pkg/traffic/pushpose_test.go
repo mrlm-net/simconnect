@@ -184,3 +184,39 @@ func TestPushThenTow(t *testing.T) {
 		t.Errorf("taxi starts %.0f° off the pose's heading", d)
 	}
 }
+
+// The stands around as they are: the push swings through an empty
+// neighbouring stand, never through a taken one. EHAM U26 for 09: with the
+// small stands in front of it empty, straight back onto C facing south;
+// with them taken, a shorter push clear of them.
+func TestPushThroughEmptyStands(t *testing.T) {
+	g := airportGraph(t, "EHAM")
+	i, err := g.Layout.ParkingIndex("U26")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := func(occupied func(int) bool) *TaxiController {
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "09", Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1, StandOccupied: occupied}); err != nil {
+			t.Fatal(err)
+		}
+		if ctl.pushPose == nil {
+			t.Fatal("no pose")
+		}
+		return ctl
+	}
+	free := plan(func(int) bool { return false })
+	if p := free.pushPose; p.lane != "C" || math.Abs(headingDiff(p.heading, 183)) > 15 || free.towPts != nil {
+		t.Errorf("neighbours empty: pose on %q facing %.0f° (tow %v), want C facing about 183°", p.lane, p.heading, free.towPts != nil)
+	}
+	taken := plan(func(int) bool { return true })
+	stand := g.Layout.Parking[i]
+	gear := offsetHeading(StandPoint(stand, taken.req.NoseOffset), stand.Heading, -taken.profile().RefAheadMeters)
+	pv := newFlatPave(pavementAround(g, gear, pushPoseReachMeters+50), gear)
+	pv.withStands(g, i, nil)
+	base := math.Max(0, pv.intrusion([]airport.LatLon{offsetHeading(gear, stand.Heading, 2), offsetHeading(gear, stand.Heading, 1), gear}, taken.profile()))
+	if in := pv.intrusion(taken.pushPts, taken.profile()); in > base+pushClearanceSlackMeters {
+		t.Errorf("neighbours taken: the push reaches %.1f m into one", in)
+	}
+}

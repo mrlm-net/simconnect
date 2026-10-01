@@ -129,6 +129,8 @@ type airportResponse struct {
 }
 
 type state struct {
+	// reviewDir holds GeoJSON overlays for review (GET /api/overlay).
+	reviewDir string
 	cache *airport.Cache
 
 	mu         sync.Mutex
@@ -548,6 +550,23 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerProcedures(mux, st)
 	registerGame(mux, st)
 	registerAirportInfo(mux, st)
+	// GET /api/overlay?name=LKPR-A1-24-after — a GeoJSON overlay from the
+	// review folder (<dump-dir>/review), drawn with ?overlay= on the page:
+	// push and taxi-start paths written by the tests, for review.
+	mux.HandleFunc("GET /api/overlay", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" || strings.Trim(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != "" {
+			http.Error(w, "bad overlay name", http.StatusBadRequest)
+			return
+		}
+		b, err := os.ReadFile(filepath.Join(st.reviewDir, name+".geojson"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/geo+json")
+		w.Write(b)
+	})
 	registerVoice(mux, speaker)
 	speaker.atis = st.atisOn
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
@@ -830,6 +849,7 @@ func main() {
 	requests := make(chan string)
 	st.requests = requests
 	st.pads = loadPadStore(filepath.Join(*dumpDir, "deicing.json"))
+	st.reviewDir = filepath.Join(*dumpDir, "review")
 	if *airways != "" {
 		if g, err := nav.LoadAirwayGraph(*airways); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠️  airways: %v (flight plans fly direct)\n", err)

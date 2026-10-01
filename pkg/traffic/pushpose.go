@@ -28,6 +28,7 @@ type pushPose struct {
 	from, to airport.NodeID
 	lane     string
 	tight    bool           // on a lane without wingtip clearance from the stands beside it
+	stem     bool           // on a single unnamed stem off a stand (forkedLeadIns)
 	own      airport.NodeID // the junction of the stand's lead-in (poseBlocks)
 	taxi     float64        // meters on from the nose to the far node
 	lb       float64        // lower bound of the cost of a push to it
@@ -38,7 +39,7 @@ type pushPose struct {
 
 const (
 	// pushPoseReachMeters: a push ends on a taxiway within this of the stand.
-	pushPoseReachMeters = 120.0
+	pushPoseReachMeters = 150.0
 	// pushPoseStepMeters: poses along a taxiway edge, this apart.
 	pushPoseStepMeters = 5.0
 	// laneEndPoseMeters: a pose's nose up to this far short of its edge.
@@ -145,6 +146,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 		limits = airport.KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
 	span := 2 * c.halfSpan()
+	leadIns := forkedLeadIns(g, gear, pushPoseReachMeters+300)
 	var poses []pushPose
 	for a := range g.Adj {
 		from := airport.NodeID(a)
@@ -157,7 +159,8 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 			// clearance from the stands beside it is the push's own check
 			// (pushFits), as the lane beside the stand's neighbours is where
 			// the push ends (LKPR H1 at C31).
-			if max, ok := limits[e.Name]; !pushEdge(g, e) || ok && e.Name != "" && span > max {
+			lead := leadIns[[2]airport.NodeID{from, e.To}]
+			if max, ok := limits[e.Name]; !pushEdge(g, e) || lead == leadInFork || ok && e.Name != "" && span > max {
 				continue
 			}
 			pb := g.Nodes[e.To].Position
@@ -177,7 +180,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 					continue // no way to the runway from there
 				}
 				taxi += l - x
-				poses = append(poses, pushPose{nose: nose, heading: h, from: from, to: e.To, lane: lane, tight: tight, taxi: l - x, lbTaxi: taxi, lb: math.Max(0, d-c.profile().WheelbaseMeters)*pushCostFactor + taxi})
+				poses = append(poses, pushPose{nose: nose, heading: h, from: from, to: e.To, lane: lane, tight: tight, stem: lead == leadInStem, taxi: l - x, lbTaxi: taxi, lb: math.Max(0, d-c.profile().WheelbaseMeters)*pushCostFactor + taxi})
 			}
 		}
 	}
@@ -250,6 +253,123 @@ func (p pushPose) within(meters, deg float64) bool {
 	}
 	return true
 }
+
+// forkedLeadIns are the edges of the stands' lead-ins within radius of
+// center, both ways: where a stand's junction splits into unnamed branches
+// leaving within 90° of each other (a Y onto the lane, LFPG M), or goes on
+// as one unnamed stem, each branch on to the next junction or named
+// taxiway. A
+// taxilane runs straight through a stand's junction; a lead-in only leads
+// onto the stand and no push ends on it.
+func forkedLeadIns(g *airport.Graph, center airport.LatLon, radius float64) map[[2]airport.NodeID]leadIn {
+	out := map[[2]airport.NodeID]leadIn{}
+	branches := func(n airport.NodeID) []airport.Edge {
+		var es []airport.Edge
+		for _, e := range g.Adj[n] {
+			if pushEdge(g, e) {
+				es = append(es, e)
+			}
+		}
+		return es
+	}
+	// A node another stand leads onto is on a lane serving the stands
+	// (KJFK, EHAM: unnamed apron lanes), not on a lead-in.
+	serves := func(n airport.NodeID) bool {
+		for _, e := range g.Adj[n] {
+			if g.Nodes[e.To].Kind == airport.NodeParking {
+				return true
+			}
+		}
+		return false
+	}
+	for p, nd := range g.Nodes {
+		if nd.Kind != airport.NodeParking || localDist(nd.Position, center) > radius {
+			continue
+		}
+		for _, in := range g.Adj[p] {
+			j := in.To
+			es := branches(j)
+			if len(es) == 0 {
+				continue
+			}
+			// A single unnamed stem may be a lead-in (LFPG M15: from the stand
+			// down to U) or an apron lane (KJFK C1002).
+			stem := len(es) == 1 && es[0].Name == ""
+			forked := false
+			for x := range es {
+				if es[x].Name != "" {
+					forked = false
+					break
+				}
+				for y := x + 1; y < len(es); y++ {
+					if math.Abs(headingDiff(localBearing(g.Nodes[j].Position, g.Nodes[es[x].To].Position), localBearing(g.Nodes[j].Position, g.Nodes[es[y].To].Position))) < 90 {
+						forked = true
+					}
+				}
+			}
+			// Each branch on through unnamed lanes to the next junction.
+			chains := make([][][2]airport.NodeID, len(es))
+			ends := make([]airport.NodeID, len(es))
+			for k, e := range es {
+				prev, cur := j, e.To
+				chains[k] = [][2]airport.NodeID{{prev, cur}}
+				for step := 0; step < 20; step++ {
+					next := branches(cur)
+					if len(next) != 2 || next[0].Name != "" || next[1].Name != "" || serves(cur) {
+						break
+					}
+					nx := next[0].To
+					if nx == prev {
+						nx = next[1].To
+					}
+					prev, cur = cur, nx
+					chains[k] = append(chains[k], [2]airport.NodeID{prev, cur})
+				}
+				ends[k] = cur
+			}
+			// A fork is a Y onto one taxiway: every branch meets the same named
+			// one (LFPG M: both onto U). An unnamed apron lane bending at the
+			// junction (KJFK) meets none.
+			if forked {
+				meet := false
+				for _, e := range g.Adj[ends[0]] {
+					if e.Name != "" && !slices.ContainsFunc(ends[1:], func(end airport.NodeID) bool {
+						return !slices.ContainsFunc(g.Adj[end], func(x airport.Edge) bool { return x.Name == e.Name })
+					}) {
+						meet = true
+					}
+				}
+				forked = meet
+			}
+			kind := leadInStem
+			if forked {
+				kind = leadInFork
+			} else if !stem {
+				continue
+			}
+			for _, chain := range chains {
+				for _, k := range chain {
+					out[k], out[[2]airport.NodeID{k[1], k[0]}] = max(kind, out[k]), max(kind, out[[2]airport.NodeID{k[1], k[0]}])
+				}
+			}
+		}
+	}
+	return out
+}
+
+// leadIn is how an edge belongs to a stand's lead-in.
+type leadIn int
+
+const (
+	notLeadIn  leadIn = iota
+	leadInStem        // a single unnamed stem: a lead-in or an apron lane
+	leadInFork        // a branch of a forked lead-in
+)
+
+// pushLeadInPenalty: a pose on a single unnamed stem off a stand costs this
+// many taxi meters more: a taxiway wins where one is reachable (LFPG M15:
+// onto U at 90°, not down its own stem).
+const pushLeadInPenalty = 400.0
 
 // poseRoute plans the taxi-out of pose p from the far node of its edge,
 // not turning back (cached per edge in routes); nil if there is none.
@@ -389,14 +509,15 @@ func (f *flatPave) offXY(x, y float64) float64 {
 
 // withStands adds the stands within 200 m of the centre, and the gates,
 // as standIntrusion sees them; not own, nor the stands overlapping it
-// (KJFK C1002 on C10): nobody parks there while own is taken.
-func (f *flatPave) withStands(g *airport.Graph, own int) {
+// (KJFK C1002 on C10): nobody parks there while own is taken; nor the
+// empty ones. The terminal ahead of every gate stays, taken or not.
+func (f *flatPave) withStands(g *airport.Graph, own int, empty []int) {
 	skip := g.Layout.ParkingConflicts(own)
 	for _, p := range g.Layout.Parking {
 		if localDist(p.Position, f.c) >= 200 {
 			continue
 		}
-		if p.Index != own && !slices.Contains(skip, p.Index) {
+		if p.Index != own && !slices.Contains(skip, p.Index) && !slices.Contains(empty, p.Index) {
 			x, y := f.xy(p.Position)
 			f.near = append(f.near, [4]float64{x, y, p.Radius})
 		}
@@ -563,6 +684,22 @@ func towFits(pts []airport.LatLon, prof MotionProfile, pv *flatPave, tol, base f
 	return off, pv.intrusion(gear, prof) <= base+pushClearanceSlackMeters
 }
 
+// emptyStands are the stands within 200 m of the parked aircraft that are
+// empty now (TaxiRequest.StandOccupied); none without it.
+func (c *TaxiController) emptyStands() []int {
+	if c.req.StandOccupied == nil {
+		return nil
+	}
+	own := c.req.Graph.Layout.Parking[c.req.Parking]
+	var out []int
+	for _, p := range c.req.Graph.Layout.Parking {
+		if p.Index != c.req.Parking && localDist(p.Position, own.Position) < 200 && !c.req.StandOccupied(p.Index) {
+			out = append(out, p.Index)
+		}
+	}
+	return out
+}
+
 // poseBlocks counts the junctions of other taxiways under the aircraft
 // standing at the pose: nose to tail, half its span either side; not own,
 // the junction of the stand's lead-in, which every push from it passes.
@@ -619,7 +756,8 @@ func (c *TaxiController) planPushPose() bool {
 	around := pavementAround(g, gear, pushPoseReachMeters+50)
 	around.segs = append(around.segs, laneEnds(g, gear, pushPoseReachMeters+50)...)
 	pv := newFlatPave(around, gear)
-	pv.withStands(g, c.req.Parking)
+	c.emptyNear = c.emptyStands()
+	pv.withStands(g, c.req.Parking, c.emptyNear)
 	// As deep into a neighbouring stand as the parked aircraft already
 	// reaches (sampled as a push is), or to its edge: a parked aircraft well
 	// clear of its neighbours does not keep its push as far (LFPG M6).
@@ -696,6 +834,9 @@ func (c *TaxiController) planPushPose() bool {
 					if p.tight {
 						p.fixed += pushTightPenalty
 					}
+					if p.stem {
+						p.fixed += pushLeadInPenalty
+					}
 				}
 				if cd.cost = p.fixed + cd.push; best == nil || cd.cost < best.cost {
 					best = cd
@@ -712,10 +853,11 @@ func (c *TaxiController) planPushPose() bool {
 		return &b
 	}
 	best := choose(cands)
-	// A tow after the push only where no push alone ends cleanly: the pose
-	// costs more than its taxi-out (a turn off the nose, a hairpin, a lane
-	// held, a junction blocked), or there is none.
-	if best == nil || poses[best.at].fixed > poses[best.at].taxi+poses[best.at].out.Cost {
+	// A tow after the push only where no push alone leaves the aircraft
+	// facing its way out: none, or the taxi-out turns off the nose or back
+	// on itself. A push onto the taxiway facing the runway is never turned
+	// round by a tow (EHAM U26).
+	if best == nil || !poses[best.at].aligned() || hairpinAfterPush(poses[best.at].out) {
 		if tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base); len(tows) > 0 {
 			if b := choose(append(cands, tows...)); b != nil {
 				best = b

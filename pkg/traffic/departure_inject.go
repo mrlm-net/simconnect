@@ -502,6 +502,14 @@ func (c *TaxiController) standInPlace() error {
 // the taxiway junction and on along the taxiway, away from the taxi
 // direction, so the aircraft ends up facing the way it will taxi.
 func (c *TaxiController) startPushback() error {
+	// The stands around as they are now: a neighbour taken or freed since
+	// the push was planned plans it again.
+	if c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear) {
+		c.note("stands around changed: pushback planned again", nil)
+		c.route = c.origRoute
+		c.planPushback()
+		c.track = newRouteTracker(c.route)
+	}
 	path, err := c.pushPath()
 	if err != nil {
 		return err
@@ -692,6 +700,9 @@ func pushEdge(g *airport.Graph, e airport.Edge) bool {
 // the route planned from the stand, which at LKPR C17 went on straight
 // ahead of the push and left the aircraft facing away from its route.
 func (c *TaxiController) planPushback() {
+	if c.origRoute == nil {
+		c.origRoute = c.route
+	}
 	orig := c.route
 	excl := map[pushChoice]bool{}
 	for try := 0; try < pushPlanTries; try++ {

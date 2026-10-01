@@ -130,6 +130,14 @@ type TaxiRequest struct {
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
 	Tug PushbackTug
+	// StandOccupied reports whether a stand is taken now (an aircraft on it
+	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
+	// through an empty neighbouring stand (EHAM E3: back into the empty
+	// slot beside, turning there), never through a taken one or the
+	// terminal ahead of a gate. Nil treats every neighbouring stand as
+	// taken. The push is planned at Start and planned again when it begins
+	// if a neighbouring stand has been taken or freed since.
+	StandOccupied func(stand int) bool
 }
 
 // TaxiEvent reports a state change or progress of a departure taxi.
@@ -263,6 +271,8 @@ type TaxiController struct {
 	pushTurnDir                                             float64          // the way out from the junction
 	pushPose                                                *pushPose        // where the push ends (planPushPose), nil for the older plans
 	faceOut                                                 bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	emptyNear                                               []int            // the neighbouring stands empty when the push was planned (StandOccupied)
+	origRoute                                               *airport.Route   // the route planned from the stand, before the push re-planned it
 	towPts                                                  []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
 	towing                                                  bool             // the tow after the push is under way
 }
