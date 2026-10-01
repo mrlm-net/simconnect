@@ -81,6 +81,8 @@ The camera button in the status strip opens the director:
 - **🎥 Camera**
   - *Auto director* cuts to the aircraft on the radio as you hear the call. It plays a short sequence for what that aircraft is doing: wide, a detail, wide again; on the runway and on final it opens with a camera beside the runway.
   - *Follow selected* stays on the selected card's aircraft.
+- **View** holds a fixed view of the selected aircraft, or of your own when none is selected: chase, cockpit, wing, front, top or tower. ◀ ▶ step through our aircraft, and selecting another aircraft moves the view to it.
+  - *Tower* looks from the airport's tower and turns with the aircraft. The position is the facility data's `TOWER_LATITUDE` and `TOWER_LONGITUDE`, 45 m above `TOWER_ALTITUDE`, which is the ground at the tower (`towerHeightM`; without a tower, over the airport reference point). With no aircraft selected, the tower turns to whoever is on the radio, or otherwise the busiest aircraft, checking every 3 s.
 - **🎬 Scene** plays a scripted film. A scene spawns its cast, listens to one of them on the radio, and plays **beats**: each waits for its cue, then cuts to its shots. If a beat's shots end before the next cue, more shots of the same aircraft fill the gap.
 
 Scenes are JSON files in `-scenes` (default `scenes/`), read on every play, so a scene can be edited and played again without a restart.

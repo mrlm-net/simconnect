@@ -148,7 +148,11 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		return err
 	}
 	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Deice: "auto"}
-	req.Runway = cc.activeRunway(g, !f.Departure())
+	// Resolved by spawn (pickRunway); a planned arrival on its plan's.
+	req.Runway = "active"
+	if pre != nil && pre.plan != nil && pre.plan.Request.ArrivalRunway != "" && !f.Departure() {
+		req.Runway = pre.plan.Request.ArrivalRunway
+	}
 	if f.Departure() {
 		req.pushAt = f.STD
 	}
@@ -172,6 +176,28 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 			return fmt.Errorf("no model of a %s", f.Type)
 		}
 		req.Model = models[(f.Attempts-1)%len(models)] // another one on each attempt
+	}
+	// A departure's stand first: with parallel runways used together its
+	// runway is the one nearest the stand, and the flight plan's SID follows
+	// the runway. An arrival takes the less busy runway (its stand comes
+	// near it). Released again if the spawn fails.
+	assigned := false
+	if f.Departure() && req.Stand < 0 {
+		m, _, _ := strings.Cut(req.Model, liverySep)
+		s, err := cc.allocator(g).Assign(traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2})
+		if err != nil {
+			return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err) // no stand free now: tried again
+		}
+		req.Stand, assigned = s, true
+	}
+	spawned := false
+	defer func() {
+		if assigned && !spawned {
+			cc.allocator(g).ReleaseOwner(f.Callsign)
+		}
+	}()
+	if req.Runway == "active" {
+		req.Runway = cc.pickRunway(g, !f.Departure(), req.Stand)
 	}
 	// The flight plan from or to the other end, else the runway's procedure.
 	req.Other = f.Destination
@@ -214,6 +240,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	} else if err != nil {
 		return err
 	}
+	spawned = true
 	it.mu.Lock()
 	it.managed = s.mgr
 	stand, runway := it.view.Stand, it.view.Runway

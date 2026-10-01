@@ -47,6 +47,11 @@ type RunwayLimits struct {
 	PreferredArrival []string
 	// MinLengthM leaves out shorter runways.
 	MinLengthM float64
+	// Parallel is how parallel runways are used together: ParallelAuto
+	// (0) the most their spacing allows (ParallelModeFor), ParallelNone one
+	// runway, or a mode the airport uses (never more than the spacing
+	// allows).
+	Parallel ParallelMode
 }
 
 // RunwayLimitsFrom returns runway limits with the airport's preferential
@@ -58,8 +63,17 @@ func RunwayLimitsFrom(l airport.Limits) RunwayLimits {
 
 // RunwayUse is the runway configuration of an airport.
 type RunwayUse struct {
-	Departure airport.RunwayEnd
-	Arrival   airport.RunwayEnd
+	// Departure and Arrival are the runway ends in use, the first of
+	// Departures and Arrivals: all of them, with parallel runways used
+	// together (Parallel).
+	Departure  airport.RunwayEnd
+	Arrival    airport.RunwayEnd
+	Departures []airport.RunwayEnd
+	Arrivals   []airport.RunwayEnd
+	// Parallel is how the parallels are used (ParallelNone: one runway),
+	// SpacingM the distance between their centre lines.
+	Parallel ParallelMode
+	SpacingM float64
 	// HeadwindKts (negative: tailwind) and CrosswindKts are the mean wind
 	// components on the arrival end.
 	HeadwindKts  float64
@@ -131,14 +145,15 @@ func ActiveRunways(l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
 		arrPref = lim.PreferredArrival
 	}
 	arr, arrOK := chooseRunway(cands, arrPref)
-	return RunwayUse{
+	return withParallels(l, RunwayUse{
 		Departure:    dep.end,
 		Arrival:      arr.end,
 		HeadwindKts:  arr.headwind,
 		CrosswindKts: arr.cross,
 		WithinLimits: depOK && arrOK && len(cands) > 0,
 		Approach:     ApproachFor(w),
-	}
+		Parallel:     ParallelNone,
+	}, cands, lim)
 }
 
 // chooseRunway picks from cands; ok is false when none is within limits.
@@ -190,12 +205,11 @@ type RunwaySelector struct {
 	// ChangeAfter: 0 means RunwayChangeAfter.
 	ChangeAfter time.Duration
 
-	mu        sync.Mutex
-	use       RunwayUse
-	have      bool
-	since     time.Time // when the choice first differed
-	pendingDp string
-	pendingAr string
+	mu      sync.Mutex
+	use     RunwayUse
+	have    bool
+	since   time.Time // when the choice first differed
+	pending string    // the better choice (RunwayUse.key)
 }
 
 // RunwayChoiceMarginKts is how far within its wind limits a runway must be
@@ -219,18 +233,18 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		s.use, s.have = fresh, fresh.Departure.Name != ""
 		return fresh
 	}
-	if fresh.Departure.Name == s.use.Departure.Name && fresh.Arrival.Name == s.use.Arrival.Name {
+	if fresh.key() == s.use.key() {
 		s.since, s.use = time.Time{}, fresh // the same runways: current wind figures
 		return fresh
 	}
 	// Out of limits: change now.
-	if !endWithin(s.use.Departure, w, lim) || !endWithin(s.use.Arrival, w, lim) {
+	if slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
 		s.use, s.since = fresh, time.Time{}
 		return fresh
 	}
 	// A better choice: only once it has held.
-	if s.since.IsZero() || fresh.Departure.Name != s.pendingDp || fresh.Arrival.Name != s.pendingAr {
-		s.since, s.pendingDp, s.pendingAr = now, fresh.Departure.Name, fresh.Arrival.Name
+	if s.since.IsZero() || fresh.key() != s.pending {
+		s.since, s.pending = now, fresh.key()
 	}
 	if now.Sub(s.since) >= after {
 		s.use, s.since = fresh, time.Time{}

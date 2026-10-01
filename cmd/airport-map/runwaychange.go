@@ -5,10 +5,12 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -35,7 +37,7 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		byICAO[it.ICAO] = append(byICAO[it.ICAO], it)
 	}
 	if cc.runwaysNow == nil {
-		cc.runwaysNow = map[string][2]string{}
+		cc.runwaysNow = map[string]string{}
 	}
 	cc.mu.Unlock()
 	for icao, items := range byICAO {
@@ -43,7 +45,8 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		if err != nil {
 			continue
 		}
-		use := [2]string{cc.activeRunway(g, false), cc.activeRunway(g, true)}
+		deps, arrs := nav.Names(cc.runwaysInUse(g, false)), nav.Names(cc.runwaysInUse(g, true))
+		use := strings.Join(deps, ",") + "/" + strings.Join(arrs, ",")
 		cc.mu.Lock()
 		before, known := cc.runwaysNow[icao]
 		cc.runwaysNow[icao] = use
@@ -55,12 +58,14 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 			it.mu.Lock()
 			v := it.view
 			it.mu.Unlock()
+			// Only who is on a runway no longer in use moves: with parallels,
+			// to the one nearest its stand.
 			switch {
 			case v.Done:
-			case it.dep != nil && v.Runway != use[0]:
-				cc.changeDepartureRunway(g, it, use[0])
-			case it.arr != nil && v.Runway != use[1]:
-				cc.changeArrivalRunway(g, it, use[1])
+			case it.dep != nil && !slices.Contains(deps, v.Runway):
+				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, it.stand))
+			case it.arr != nil && !slices.Contains(arrs, v.Runway):
+				cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, it.stand))
 			}
 		}
 	}

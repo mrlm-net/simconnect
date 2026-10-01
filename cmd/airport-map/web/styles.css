@@ -925,6 +925,10 @@ body.full .panel, body.full .ctx { display: none; }
 .toast--err { background: var(--danger); color: #fff; }
 .empty { margin: var(--s-2) 0; padding: var(--s-4) var(--s-3); border: 1px dashed var(--border-strong); border-radius: var(--r-3); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
 #apMsg:empty, #aptStatus:empty, #aptInRange:empty { display: none; }
+.apt-range { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--s-2); max-height: 168px; overflow-y: auto; }
+.apt-range__lbl { width: 100%; font-size: var(--fs-xs); color: var(--text-3); }
+.apt-range__btn { border: 1px solid var(--border); border-radius: var(--r-1); background: var(--surface-2); color: var(--text-2); font: var(--fs-xs) var(--font-sans); padding: 3px 7px; cursor: pointer; white-space: nowrap; }
+.apt-range__btn:hover { border-color: var(--accent); color: var(--text); }
 .stack--tight { gap: 0; }
 .tbl td.n, .tbl th.n { text-align: right; }
 .tbl-wrap { max-height: 40vh; overflow: auto; margin-top: var(--s-2); }

@@ -9,6 +9,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Parallel runways used together. `nav.ActiveRunways` adds the parallels of the runway in use (`RunwayUse.Departures`, `Arrivals`, `Parallel`, `SpacingM`), the mode from their spacing (ICAO AN-Conf/11-IP/3):
+  - segregated from 760 m: arrivals on one, departures on the other;
+  - dependent from 915 m: both mixed, 2 NM diagonally between adjacent finals;
+  - independent from 1035 m: both mixed.
+
+  Crossing runways are never used together. `RunwayLimits.Parallel` sets an airport's own mode. The ATIS names every runway in use.
+- Airport map: with parallels in use, a departure takes the runway nearest its stand, and an arrival the one with fewer arrivals in its sequence, with a stand near it. Dependent finals keep 2 NM diagonally (`SequencerOptions.DiagonalNM`, `ApproachAircraft.Runway`). After a runway change, only flights on a runway no longer in use move. The runway chip shows every runway in use ("26L+26R").
+- Airport map: tower view from the airport's real tower (facility `TOWER_*`, now in `airport.Layout`). It follows the selected aircraft or, with none selected, whoever is on the radio.
+
+### Fixed
+
+- Voice: aircraft types are read as crews say them, "Airbus A three twenty-one", not "alpha three two one" (voice-goio).
+- Airport map: the airport picker lists every airport in range, each loadable with a click (the list was cut short).
+- Airport map: the wind on the runway reads "tailwind 0, crosswind 6 kt" instead of "-1 / 6".
+
 ---
 
 ## [0.18.2] - 2026-10-01

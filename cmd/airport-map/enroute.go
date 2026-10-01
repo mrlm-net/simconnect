@@ -80,7 +80,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		if err != nil {
 			return err
 		}
-		arrRwy = cc.activeRunway(g, true)
+		arrRwy = cc.pickRunway(g, true, -1)
 	}
 	a := s.airlines[f.Airline]
 	models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)

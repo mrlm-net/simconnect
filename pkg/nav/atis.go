@@ -110,13 +110,39 @@ func (a ATIS) render(spoken bool) string {
 	if !a.Time.IsZero() {
 		add("time", n.digits(a.Time.UTC().Format("1504")))
 	}
+	// The runways in use: "runways in use 26L and 26R" for parallels used
+	// together, landing and departure runways when they differ.
+	runways := func(ends []airport.RunwayEnd, one string) []string {
+		if len(ends) == 0 {
+			return []string{one}
+		}
+		var out []string
+		for _, e := range ends {
+			out = append(out, n.runway(e.Name))
+		}
+		return out
+	}
+	list := func(s []string) string {
+		if len(s) < 2 {
+			return strings.Join(s, "")
+		}
+		return strings.Join(s[:len(s)-1], ", ") + " and " + s[len(s)-1]
+	}
+	plural := func(s []string, one string) string {
+		if len(s) > 1 {
+			return one + "s"
+		}
+		return one
+	}
 	switch u := a.Use; {
 	case u.Arrival.Name == "" && u.Departure.Name == "":
-	case u.Single():
-		add("runway in use", n.runway(u.Arrival.Name))
+	case u.Single() && len(u.Departures) == len(u.Arrivals):
+		r := runways(u.Arrivals, n.runway(u.Arrival.Name))
+		add(plural(r, "runway"), "in use", list(r))
 	default:
-		add("landing runway", n.runway(u.Arrival.Name))
-		add("departure runway", n.runway(u.Departure.Name))
+		ar, dr := runways(u.Arrivals, n.runway(u.Arrival.Name)), runways(u.Departures, n.runway(u.Departure.Name))
+		add("landing", plural(ar, "runway"), list(ar))
+		add("departure", plural(dr, "runway"), list(dr))
 	}
 	if a.Use.Approach == ApproachILS {
 		add("expect ILS approach")
@@ -349,7 +375,7 @@ func (s *ATISService) significant(old, new ATIS) bool {
 	if s.maxAge > 0 && new.Time.Sub(old.Time) >= s.maxAge {
 		return true
 	}
-	if old.Use.Departure.Name != new.Use.Departure.Name || old.Use.Arrival.Name != new.Use.Arrival.Name ||
+	if old.Use.key() != new.Use.key() ||
 		old.Use.Approach != new.Use.Approach || old.QNH != new.QNH || old.TransitionLevel != new.TransitionLevel {
 		return true
 	}

@@ -609,6 +609,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					l := res.Layout
 					fmt.Printf("🏁 %s %s: %d runways, %d parking, %d taxi points, %d taxi paths, %d names\n",
 						l.ICAO, l.Name, len(l.Runways), len(l.Parking), len(l.TaxiPoints), len(l.TaxiPaths), len(l.TaxiNames))
+					if l.HasTower {
+						fmt.Printf("🗼 %s tower %.5f, %.5f at %.0f m (airport %.0f m)\n", l.ICAO, l.Tower.Lat, l.Tower.Lon, l.TowerAltitude, l.Altitude)
+					}
 					if dumpDir != "" {
 						writeDump(dumpDir, res.Raw)
 					}

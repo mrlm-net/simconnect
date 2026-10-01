@@ -34,10 +34,21 @@ type RawAirport struct {
 	ParkingAirlines map[int][]string `json:"parkingAirlines,omitempty"`
 	// Frequencies are the FREQUENCY records (#416).
 	Frequencies []RawFrequency `json:"frequencies,omitempty"`
+	// Tower is the airport's tower, nil when it has none (or the data was
+	// captured without it).
+	Tower *RawTower `json:"tower,omitempty"`
 }
 
 // RawFrequency is a FREQUENCY record: TYPE
 // (SIMCONNECT_FACILITY_FREQUENCY_TYPE), FREQUENCY in Hz, NAME.
+// RawTower is the AIRPORT record's tower (TOWER_LATITUDE, _LONGITUDE,
+// _ALTITUDE).
+type RawTower struct {
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
+	Altitude  float64 `json:"alt"`
+}
+
 type RawFrequency struct {
 	Type int32  `json:"type"`
 	Hz   int32  `json:"hz"`
@@ -102,13 +113,16 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 		return nil, ErrNoData
 	}
 	l := &Layout{
-		ICAO:      raw.ICAO,
-		Name:      raw.Name,
-		Latitude:  raw.Latitude,
-		Longitude: raw.Longitude,
-		Altitude:  raw.Altitude,
-		TaxiNames: append([]string(nil), raw.TaxiNames...),
+		ICAO:        raw.ICAO,
+		Name:        raw.Name,
+		Latitude:    raw.Latitude,
+		Longitude:   raw.Longitude,
+		Altitude:    raw.Altitude,
+		TaxiNames:   append([]string(nil), raw.TaxiNames...),
 		Frequencies: frequenciesOf(raw.Frequencies),
+	}
+	if t := raw.Tower; t != nil {
+		l.Tower, l.TowerAltitude, l.HasTower = LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Altitude, true
 	}
 	offset := func(x, z float32) LatLon {
 		lat, lon := convert.OffsetToLatLon(raw.Latitude, raw.Longitude, float64(x), float64(z))

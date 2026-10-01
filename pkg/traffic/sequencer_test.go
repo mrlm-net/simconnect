@@ -245,3 +245,31 @@ func TestApproachMoverSlowNow(t *testing.T) {
 		t.Errorf("slowed already: gains %s", again)
 	}
 }
+
+// Dependent parallel approaches: an arrival on the adjacent final (given
+// with its runway) is kept DiagonalNM away, not the full spacing.
+func TestSequencerAdjacentFinal(t *testing.T) {
+	now := time.Now()
+	at := func(cs string, nm float64, rwy string) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: 140, FinalKts: 140, Runway: rwy, Fixed: rwy != ""}
+	}
+	delay := func(other string) time.Duration {
+		s := NewApproachSequencer("26L", SequencerOptions{MinSpacingNM: 5})
+		for _, e := range s.Update(now, []ApproachAircraft{at("DLH1", 19, other), at("CSA2", 20, "")}) {
+			if e.Callsign == "CSA2" {
+				if other != "" && e.Leader == "DLH1" && e.SpacingWhy != "adjacent final" {
+					t.Errorf("spacing why %q", e.SpacingWhy)
+				}
+				return e.Delay
+			}
+		}
+		t.Fatal("CSA2 not sequenced")
+		return 0
+	}
+	adjacent, same := delay("26R"), delay("")
+	// 1 NM behind at 140 kt: the diagonal 2 NM costs about 26 s, the same
+	// final's 5 NM about 1m43s.
+	if adjacent < 20*time.Second || adjacent > 35*time.Second || same < 90*time.Second {
+		t.Errorf("behind on the adjacent final %s, on the same %s", adjacent, same)
+	}
+}

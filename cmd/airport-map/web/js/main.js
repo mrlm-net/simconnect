@@ -314,6 +314,10 @@ function boot() {
     if (!e.target.closest('.popover') && !e.target.closest('[aria-haspopup]')) closePopovers();
   });
   $('aptForm').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').value); });
+  $('aptInRange').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-apt]');
+    if (b) { $('icao').value = b.dataset.apt; load(b.dataset.apt); }
+  });
   $('aptRefresh').addEventListener('click', () => load($('icao').value || (data ? data.icao : ''), true));
 
   $('zoomIn').addEventListener('click', () => map.zoomIn());

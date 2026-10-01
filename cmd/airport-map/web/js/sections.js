@@ -132,7 +132,7 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="director__row" title="A fixed view of the selected aircraft (none selected: your own); ◀ ▶ switch between aircraft">
       <button type="button" class="btn btn--sm" data-view-step="-1" aria-label="Previous aircraft">◀</button>
       <div class="seg" role="radiogroup" aria-label="Camera view">
-        <button type="button" role="radio" data-view="chase">Chase</button><button type="button" role="radio" data-view="cockpit">Cockpit</button><button type="button" role="radio" data-view="wing">Wing</button><button type="button" role="radio" data-view="front">Front</button><button type="button" role="radio" data-view="top">Top</button><button type="button" role="radio" data-view="tower">Tower</button>
+        <button type="button" role="radio" data-view="chase">Chase</button><button type="button" role="radio" data-view="cockpit">Cockpit</button><button type="button" role="radio" data-view="wing">Wing</button><button type="button" role="radio" data-view="front">Front</button><button type="button" role="radio" data-view="top">Top</button><button type="button" role="radio" data-view="tower" title="From the airport's tower: the selected aircraft, or with none selected whoever is on the radio">Tower</button>
       </div>
       <button type="button" class="btn btn--sm" data-view-step="1" aria-label="Next aircraft">▶</button>
     </div></div>
@@ -199,19 +199,19 @@ async function pollCamera() {
 function updateDirector() {
   const v = camView, mode = v ? v.mode : 'off', playing = mode === 'scene';
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.cam === mode)));
-  $$('[data-view]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'view' && !!v && b.dataset.view === v.shot)));
+  $$('[data-view]').forEach((b) => b.setAttribute('aria-checked', String(mode === 'view' && !!v && b.dataset.view === v.shot || mode === 'tower' && b.dataset.view === 'tower')));
   $$('[data-scene-play]').forEach((b) => {
     b.className = `btn ${playing ? 'btn--danger' : 'btn--primary'}`;
     b.innerHTML = `${icon(playing ? 'i-stop' : 'i-play', 'ic ic--sm')}<span>${playing ? 'Stop' : 'Play'}</span>`;
   });
   const info = !v ? (simLive ? 'Camera not available.' : 'The camera needs the simulator (not connected).')
     : v.mode === 'off' ? 'The simulator camera is yours.'
-    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
+    : [playing ? 'Playing' : v.mode === 'auto' ? 'Auto: cuts to the aircraft heard on the radio' : v.mode === 'view' ? 'View' : v.mode === 'tower' ? 'Tower: turns to who is on the radio' : 'Follow', v.subject, v.shot, v.acquired ? '' : 'waiting for the camera', v.error].filter(Boolean).join(' · ');
   $$('[data-cam-info]').forEach((i) => { i.textContent = info; });
   const chip = $('camBtn');
   chip.classList.toggle('chip--onair', playing);
   const scene = playing && scenes.find((s) => s.key === document.querySelector('[data-scene]').value);
-  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : { off: 'Off', auto: 'Auto', follow: 'Follow', view: 'View' }[mode] || mode;
+  $('camChipLbl').textContent = playing ? `On air${scene ? ' · ' + scene.name : ''}` : { off: 'Off', auto: 'Auto', follow: 'Follow', view: 'View', tower: 'Tower' }[mode] || mode;
 }
 
 /* ───────────── ATC game ───────────── */
@@ -337,7 +337,8 @@ async function pollWorld() {
   const apts = w.airports.filter((a) => /^[A-Z]{4}$/.test(a.icao));
   // Airports with a proper ICAO code (not heliports and strips), nearest first.
   setHTML($('airportList'), apts.map((a) => `<option value="${esc(a.icao)}">${a.distanceNM.toFixed(0)} NM</option>`).join(''));
-  $('aptInRange').textContent = apts.length ? `In range: ${apts.slice(0, 12).map((a) => a.icao).join(', ')}${apts.length > 12 ? '…' : ''}` : '';
+  // Every airport in range, nearest first: a click loads it.
+  if (!interacting($('aptInRange'))) setHTML($('aptInRange'), apts.length ? `<span class="apt-range__lbl">In range</span>` + apts.map((a) => `<button type="button" class="apt-range__btn" data-apt="${esc(a.icao)}" title="Load ${esc(a.icao)}"><b class="mono">${esc(a.icao)}</b> ${a.distanceNM.toFixed(0)} NM</button>`).join('') : '');
   const phases = {};
   for (const a of w.aircraft) phases[a.phase] = (phases[a.phase] || 0) + 1;
   const where = w.follow ? 'following your aircraft' : `around ${esc(w.icao || 'a position')}`;
@@ -379,9 +380,12 @@ async function pollAirportInfo() {
   if (a.use) setActiveUse(a.use);
   const u = a.use, w = a.weather;
   // Strip: runway in use, ATIS, wind, QNH.
-  $('rwyChipVal').textContent = u ? (u.arrival !== u.departure ? `${u.departure}/${u.arrival}` : u.departure) : '—';
-  $('rwyChipSub').textContent = u ? (u.arrival !== u.departure ? 'dep / arr' : 'dep · arr') : '';
-  $('rwyChip').title = u ? `Runway in use (from the wind): departures ${u.departure}, arrivals ${u.arrival}` : 'Runway in use: no weather yet';
+  // Parallels used together: "26L+26R"; segregated: departures / arrivals.
+  const dl = u ? (u.departures && u.departures.length ? u.departures : [u.departure]).join('+') : '';
+  const al = u ? (u.arrivals && u.arrivals.length ? u.arrivals : [u.arrival]).join('+') : '';
+  $('rwyChipVal').textContent = u ? (al !== dl ? `${dl}/${al}` : dl) : '—';
+  $('rwyChipSub').textContent = u ? (al !== dl ? 'dep / arr' : 'dep · arr') : '';
+  $('rwyChip').title = u ? `Runway in use (from the wind): departures ${dl}, arrivals ${al}${u.parallel ? ' (' + u.parallel + ')' : ''}` : 'Runway in use: no weather yet';
   $('atisChip').hidden = !a.atis;
   if (a.atis) {
     $('atisChipLetter').textContent = a.atis.letter[0];
@@ -396,9 +400,13 @@ async function pollAirportInfo() {
   $('moreWind').textContent = wind || '—';
   $('moreQnh').textContent = w ? w.QNHhPa.toFixed(0) : '—';
   // Airport section: runway in use.
-  $('useBig').textContent = u ? u.departure : '—';
-  $('useSub').textContent = u ? (u.arrival !== u.departure ? `departures · arrivals ${u.arrival}` : 'departures and arrivals') : 'no weather yet (simulator not connected?)';
-  $('useKv').innerHTML = u ? `<dt>Head / cross</dt><dd class="mono">${u.headwindKts.toFixed(0)} / ${Math.abs(u.crosswindKts).toFixed(0)} kt</dd>
+  $('useBig').textContent = u ? dl : '—';
+  $('useSub').textContent = u ? (al !== dl ? `departures · arrivals ${al}` : 'departures and arrivals') + (u.parallel ? ` · ${u.parallel}` : '') : 'no weather yet (simulator not connected?)';
+  // On the runway: headwind or tailwind, and crosswind, whole knots without
+  // a sign (from 146° at 6 kt on 24: tailwind 0, crosswind 6 — not "-1").
+  const along = u ? (u.headwindKts >= 0 ? `headwind ${Math.round(u.headwindKts)}` : `tailwind ${Math.round(-u.headwindKts)}`) : '';
+  const across = u ? `crosswind ${Math.round(Math.abs(u.crosswindKts))} kt` : '';
+  $('useKv').innerHTML = u ? `<dt>On the runway</dt><dd class="mono">${along}, ${across}</dd>
     <dt>Approach</dt><dd>${esc(u.approach || '—')}</dd>
     <dt>Limits</dt><dd><span class="pill ${u.withinLimits ? 'pill--ok' : 'pill--warn'}">${u.withinLimits ? 'within' : 'outside limits'}</span></dd>` : '';
   // Weather.
@@ -407,7 +415,7 @@ async function pollAirportInfo() {
     const vis = w.VisibilityM >= 10000 ? '10 km or more' : `${(w.VisibilityM / 1000).toFixed(1)} km`;
     $('apWx').className = 'small';
     $('apWx').innerHTML = `<dl class="kv">
-      <dt>Wind</dt><dd class="mono">${windTxt}${u ? ` <span class="muted">· head ${u.headwindKts.toFixed(0)}, cross ${Math.abs(u.crosswindKts).toFixed(0)} kt</span>` : ''}</dd>
+      <dt>Wind</dt><dd class="mono">${windTxt}${u ? ` <span class="muted">· ${along}, ${across}</span>` : ''}</dd>
       <dt>Visibility</dt><dd>${vis}${w.Precip && w.Precip !== 'none' ? ' · ' + esc(w.Precip) : ''}${w.InCloud ? ' · in cloud' : ''}</dd>
       <dt>Temperature</dt><dd class="mono">${w.TempC.toFixed(0)} °C</dd>
       <dt>QNH</dt><dd class="mono">${w.QNHhPa.toFixed(0)} hPa</dd>

@@ -174,7 +174,7 @@ type controlCenter struct {
 	// runwayCheckAt: the last checkRunways; runwaysNow each airport's
 	// departure and arrival runway then (#456).
 	runwayCheckAt time.Time
-	runwaysNow    map[string][2]string
+	runwaysNow    map[string]string
 	standCheckAt time.Time
 	models       map[string]bool                    // aircraft titles the simulator offers
 	stands       map[string]*traffic.StandAllocator // by ICAO
@@ -459,8 +459,12 @@ const (
 )
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
-	if r.Runway == "" || strings.EqualFold(r.Runway, "active") {
-		r.Runway = cc.activeRunway(g, r.Kind == "arrival")
+	// The runway in use: with parallels used together, an arrival takes
+	// the less busy one (its stand is then found near it), a departure the
+	// one nearest its stand once that is known.
+	auto := r.Runway == "" || strings.EqualFold(r.Runway, "active")
+	if auto {
+		r.Runway = cc.pickRunway(g, r.Kind == "arrival", r.Stand)
 	}
 	cc.mu.Lock()
 	cc.next++
@@ -504,6 +508,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		r.Stand = s
 	} else if err := alloc.Occupy(r.Stand, r.Tail, prof.SpanMeters/2); err != nil {
 		return nil, err
+	}
+	if auto && r.Kind != "arrival" {
+		r.Runway = cc.runwayFor(g, false, r.Stand)
 	}
 	started := false
 	defer func() {
@@ -1095,7 +1102,8 @@ func registerControl(mux *http.ServeMux, st *state) {
 				break
 			}
 			from, ok := g.NearestNode(airport.LatLon{Lat: own.Latitude, Lon: own.Longitude}, 200)
-			rwy := cc.activeRunway(g, false)
+			// The runway in use nearest the user's aircraft.
+			rwy := nav.Nearest(g.Layout, cc.runwaysInUse(g, false), airport.LatLon{Lat: own.Latitude, Lon: own.Longitude}).Name
 			route, err := g.RouteToRunwayFrom(from, -1, rwy, "", airport.RouteOptions{})
 			if !ok || err != nil {
 				say(traffic.SayAgain(traffic.PosGround, call.Callsign))
@@ -1157,7 +1165,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			return
 		}
 		if req.Runway == "" || strings.EqualFold(req.Runway, "active") {
-			req.Runway = cc.activeRunway(g, req.Kind == "arrival")
+			req.Runway = cc.pickRunway(g, req.Kind == "arrival", req.Stand)
 		}
 		if req.Other != "" {
 			p, err := planFor(r.Context(), st, g, req)
@@ -1360,7 +1368,7 @@ func runwaySelector(icao string) *nav.RunwaySelector {
 // logRunwayChange logs a change of icao's runway in use, with the wind
 // that made it (#465: to see every change, and why, in the traffic log).
 func logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
-	now := use.Departure.Name + "/" + use.Arrival.Name
+	now := strings.Join(nav.Names(use.Departures), "+") + "/" + strings.Join(nav.Names(use.Arrivals), "+")
 	runwaySelectors.Lock()
 	before := runwayInUse[icao]
 	runwayInUse[icao] = now
@@ -1369,7 +1377,11 @@ func logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
 		return
 	}
 	head, cross := w.Components(use.Arrival.Heading)
-	tlog.printf("runway in use %s: %s → %s (departures/arrivals), wind %03.0f°/%.0f kt gust %.0f: headwind %.1f kt, crosswind %.1f kt on %s", icao, orNone(before), now, w.WindDirTrue, w.WindKts, w.GustKts, head, cross, use.Arrival.Name)
+	mode := ""
+	if use.Parallel != nav.ParallelNone {
+		mode = fmt.Sprintf(", %s, %.0f m apart", use.Parallel, use.SpacingM)
+	}
+	tlog.printf("runway in use %s: %s → %s (departures/arrivals)%s, wind %03.0f°/%.0f kt gust %.0f: headwind %.1f kt, crosswind %.1f kt on %s", icao, orNone(before), now, mode, w.WindDirTrue, w.WindKts, w.GustKts, head, cross, use.Arrival.Name)
 }
 
 var runwayInUse = map[string]string{}
@@ -1397,37 +1409,113 @@ func (cc *controlCenter) crosswind(g *airport.Graph, rwy string) float64 {
 
 // activeRunway is the runway in use at g's airport now: from the weather
 // (wind, limits, preferential runways), else the first preferred runway,
-// else the first runway end. Departures and arrivals may differ.
+// else the first runway end. Departures and arrivals may differ. With
+// parallels in use together, the first of them (runwayFor picks one per
+// flight).
 func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
+	ends := cc.runwaysInUse(g, arrival)
+	if len(ends) == 0 {
+		return ""
+	}
+	return ends[0].Name
+}
+
+// runwayFor is the runway in use a flight from or to stand takes: with
+// parallels in use together, the one nearest the stand (a negative stand:
+// the first).
+func (cc *controlCenter) runwayFor(g *airport.Graph, arrival bool, stand int) string {
+	ends := cc.runwaysInUse(g, arrival)
+	if len(ends) == 0 {
+		return ""
+	}
+	if stand < 0 || stand >= len(g.Layout.Parking) {
+		return ends[0].Name
+	}
+	return nav.Nearest(g.Layout, ends, g.Layout.Parking[stand].Position).Name
+}
+
+// pickRunway is the runway in use for a new flight: from or to stand, the
+// nearest of parallels used together; an arrival without a stand yet, the
+// one with the fewest arrivals in its sequence.
+func (cc *controlCenter) pickRunway(g *airport.Graph, arrival bool, stand int) string {
+	ends := cc.runwaysInUse(g, arrival)
+	if len(ends) < 2 || !arrival || stand >= 0 {
+		return cc.runwayFor(g, arrival, stand)
+	}
+	var seqs map[string][]traffic.SequenceEntry
+	if cc.sequencesAt != nil {
+		seqs = cc.sequencesAt(g.Layout.ICAO)
+	}
+	best := ends[0].Name
+	own := func(rwy string) int { // not the adjacent final's, given to it too
+		n := 0
+		for _, e := range seqs[rwy] {
+			if e.Runway == "" {
+				n++
+			}
+		}
+		return n
+	}
+	for _, e := range ends[1:] {
+		if own(e.Name) < own(best) {
+			best = e.Name
+		}
+	}
+	return best
+}
+
+// runwaysInUse are the runway ends in use for departures or arrivals at
+// g's airport: several with parallel runways used together.
+func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.RunwayEnd {
+	if use, ok := cc.runwayUse(g); ok {
+		ends := use.Departures
+		if arrival {
+			ends = use.Arrivals
+		}
+		if len(ends) > 0 && ends[0].Name != "" {
+			return ends
+		}
+	}
+	lim := cc.limitsOf(g)
+	name := ""
+	switch {
+	case len(lim.PreferredRunways) > 0:
+		name = lim.PreferredRunways[0]
+	case len(g.Layout.Runways) > 0:
+		name = g.Layout.Runways[0].Primary.Name
+	}
+	if _, end, ok := g.Layout.RunwayEnd(name); ok {
+		return []airport.RunwayEnd{end}
+	}
+	return nil
+}
+
+// limitsOf are g's airport limits, with its procedures when known.
+func (cc *controlCenter) limitsOf(g *airport.Graph) airport.Limits {
 	var procs *airport.Procedures
 	if cc.procedures != nil {
 		if p, ok := cc.procedures(g.Layout.ICAO); ok {
 			procs = &p
 		}
 	}
-	lim := airport.LimitsFor(g.Layout, procs)
-	if cc.weather != nil {
-		if w := cc.weather(); w != nil {
-			// The runway in use holds through wind shifts near a limit (#391);
-			// the ATIS says the same (#454).
-			use := runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(lim))
-			logRunwayChange(g.Layout.ICAO, use, *w)
-			end := use.Departure
-			if arrival {
-				end = use.Arrival
-			}
-			if end.Name != "" {
-				return end.Name
-			}
-		}
+	return airport.LimitsFor(g.Layout, procs)
+}
+
+// runwayUse is the runway configuration in use at g's airport now, from
+// the weather; false without weather.
+func (cc *controlCenter) runwayUse(g *airport.Graph) (nav.RunwayUse, bool) {
+	if cc.weather == nil {
+		return nav.RunwayUse{}, false
 	}
-	if len(lim.PreferredRunways) > 0 {
-		return lim.PreferredRunways[0]
+	w := cc.weather()
+	if w == nil {
+		return nav.RunwayUse{}, false
 	}
-	if len(g.Layout.Runways) > 0 {
-		return g.Layout.Runways[0].Primary.Name
-	}
-	return ""
+	// The runway in use holds through wind shifts near a limit (#391); the
+	// ATIS says the same (#454).
+	use := runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(cc.limitsOf(g)))
+	logRunwayChange(g.Layout.ICAO, use, *w)
+	return use, use.Departure.Name != ""
 }
 
 // reportOwn tells the traffic picture what one of our aircraft is doing:
