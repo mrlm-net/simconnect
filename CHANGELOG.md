@@ -44,6 +44,7 @@ The airport map becomes an app: a new interface for desktop, tablet and phone, p
 
 ### Fixed
 
+- Camera moves are slower: the auto director's shots last 9.5 s (wide) and 6 s (details), scene shots 30 % longer, and the spiral, top orbit and parallax track sweep less.
 - Airport map camera: set on every rendered frame (the simulator's Frame event) instead of a timer, so its moves no longer blip.
 - Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.
 - Airport map: pushback and start-up in one clearance again ("with start-up" by the pushback, said "pushback and start up approved, facing …").
