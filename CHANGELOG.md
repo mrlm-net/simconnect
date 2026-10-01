@@ -44,6 +44,7 @@ The airport map becomes an app: a new interface for desktop, tablet and phone, p
 
 ### Fixed
 
+- Camera: after every cut the new shot holds still for `camera.CutSettle` (0.6 s) while the simulator settles on the new view, then moves; the frame event is on only while the camera is in use.
 - Camera moves are slower: the auto director's shots last 9.5 s (wide) and 6 s (details), scene shots 30 % longer, and the spiral, top orbit and parallax track sweep less.
 - Airport map camera: set on every rendered frame (the simulator's Frame event) instead of a timer, so its moves no longer blip.
 - Airport map: the first clearance you give an aircraft takes it over (Manual), so automatic answers and tower clearances no longer clash with your clicks; the Manual toggle hands it back, a waiting request is then answered.

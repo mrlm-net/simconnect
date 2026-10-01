@@ -56,6 +56,9 @@ const minShotBeforeCut = 5 * time.Second
 type cameraMan struct {
 	cc  *controlCenter
 	dir *camera.Director
+	// frames turns the simulator's per-frame event on while the camera is
+	// ours, off otherwise (60 messages a second for nothing).
+	frames func(on bool)
 
 	mu      sync.Mutex
 	mode    string // off, follow, auto, demo
@@ -128,6 +131,9 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 	m.mu.Lock()
 	m.mode, m.follow, m.subject, m.shots, m.err = mode, follow, "", 0, ""
 	m.mu.Unlock()
+	if m.frames != nil {
+		m.frames(mode != "off")
+	}
 	if mode == "off" {
 		return m.cc.do(m.dir.Release)
 	}
