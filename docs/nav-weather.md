@@ -73,6 +73,21 @@ For every runway end of the layout (at least `MinLengthM` long), the headwind an
 
 `PreferredArrival` gives arrivals their own preference list, for split operations (`RunwayUse.Single()` is then false). `Approach` is `ApproachILS` when visibility is below 5000 m or the ceiling below 1500 ft, else `ApproachVisual` ("visual/RNAV"); pick the actual procedure from `airport.Procedures`.
 
+### Parallel runways used together
+
+With parallel runways (headings within 15°), `ActiveRunways` also uses the parallels of the chosen end that are in the same direction and within the wind limits. `RunwayUse.Departures` and `Arrivals` list every end in use; `Departure` and `Arrival` are the first of them. `Parallel` says how they work together, and `SpacingM` is the distance between their centre lines.
+
+The mode follows the spacing (`ParallelModeFor`). The figures are from the ICAO draft manual on simultaneous operations on parallel instrument runways (AN-Conf/11-IP/3):
+
+| Spacing | Mode | Use |
+|---------|------|-----|
+| under 760 m | `ParallelNone` | one runway, for wake turbulence (2.3.3.2) |
+| 760 m | `ParallelSegregated` | arrivals on one runway, departures on the other (departures side by side from 760 m, 3.3.2) |
+| 915 m | `ParallelDependent` | both runways mixed; approaches dependent, 2 NM diagonally between adjacent finals (2.3.1.1, 2.3.2.2) |
+| 1035 m | `ParallelIndependent` | both runways mixed; each final on its own (the Annex 14 distance) |
+
+Runways that cross are never used together. A third parallel joins only if it is far enough from both. `RunwayLimits.Parallel` sets an airport's own mode, never more than the spacing allows; for example `ParallelSegregated` for an airport that keeps one runway for arrivals, or `ParallelNone` for one runway only. `Nearest(layout, ends, p)` is the parallel nearest a point, such as a stand. The ATIS names every runway in use: "runways in use 26L and 26R", or "landing runway 27R, departure runway 27L".
+
 ### Keeping the runway in use
 
 An airport does not change runways with every wind shift. `RunwaySelector` keeps the runway in use until one of two things happens:

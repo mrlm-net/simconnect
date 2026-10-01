@@ -103,7 +103,12 @@ While connected to the simulator, the **Traffic** tab spawns AI aircraft driven 
 
 ### Approach and tower
 
-Every runway in use has an approach sequencer and a tower ([Airborne Separation](../../docs/traffic-separation.md)):
+Every runway in use has an approach sequencer and a tower ([Airborne Separation](../../docs/traffic-separation.md)). Parallel runways far enough apart are used together ([Parallel runways](../../docs/nav-weather.md#parallel-runways-used-together)):
+
+- A departure takes the parallel nearest its stand. An arrival takes the one with fewer arrivals in its sequence, and gets a stand near it.
+- On dependent parallel approaches, each final also keeps 2 NM diagonally from the arrivals on the adjacent final.
+- After a runway change, only flights on a runway no longer in use move.
+
 
 - **Landing sequence:** the landing order with wake spacing that follows the weather. Delays are absorbed by speed, then path stretching on the STAR, then a hold at the STAR's hold fix on a stack; the sequencer releases the holds.
 - **Controls** in the Sequence section: ▲▼ change the order (kept), ⤳ direct to the final, 🐢 lose another minute, ⟳ hold, ⏵ leave the hold, ↺ go around.

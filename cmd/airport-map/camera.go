@@ -73,6 +73,9 @@ type cameraMan struct {
 	locked  string // the airport the world is kept loaded around
 	scene   *sceneRun
 	picking atomic.Bool // a next shot being picked
+	// lookAt: in the tower, when to look for another aircraft to watch
+	// (its view holds meanwhile, turning with its aircraft).
+	lookAt time.Time
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
@@ -100,6 +103,10 @@ func (m *cameraMan) tick(now time.Time) {
 	}
 	m.mu.Lock()
 	mode := m.mode
+	look := mode != "tower" || !now.Before(m.lookAt)
+	if mode == "tower" && look {
+		m.lookAt = now.Add(towerLookEvery)
+	}
 	m.mu.Unlock()
 	if mode == "off" {
 		return
@@ -107,7 +114,7 @@ func (m *cameraMan) tick(now time.Time) {
 	// The next shot is picked off the connection's goroutine: it looks at
 	// the aircraft (their locks), and a goroutine holding one may be
 	// waiting on this one.
-	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "view" && m.picking.CompareAndSwap(false, true) {
+	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "view" && look && m.picking.CompareAndSwap(false, true) {
 		go func() {
 			defer m.picking.Store(false)
 			m.next(now)
@@ -170,6 +177,17 @@ func (m *cameraMan) setView(view string, id int) error {
 		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
 		obj, size, name, l = it.objectID, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.Tail, it.graph.Layout
 	}
+	// The tower with no aircraft picked: from the tower, the camera turns to
+	// who is on the radio, else the busiest aircraft (next).
+	if view == "tower" && id < 0 {
+		m.mu.Lock()
+		m.mode, m.follow, m.subject, m.shots, m.err = "tower", 0, "", 0, ""
+		m.mu.Unlock()
+		if m.frames != nil {
+			m.frames(true)
+		}
+		return nil
+	}
 	shot, err := viewShot(view, obj, id < 0, size, l)
 	if err != nil {
 		return err
@@ -213,11 +231,33 @@ func viewShot(view string, o uint32, user bool, s camera.Size, l *airport.Layout
 		if l == nil {
 			return nil, errors.New("tower: pick an aircraft at the loaded airport")
 		}
-		// A tower-high camera at the airport reference point, zoomed in.
-		p = camera.Pose{Eye: camera.At(l.Latitude, l.Longitude, l.Altitude+45), Target: on(0, 1.5, 0), FovDeg: 30}
+		// From the tower, turning with the aircraft, zoomed in.
+		p = camera.Pose{Eye: towerEye(l), Target: on(0, 1.5, 0), FovDeg: 30}
 	}
 	return camera.Hold(view, p, camera.MaxShot), nil
 }
+
+// towerEye is where the tower controller sees from: the airport's tower
+// (facility data), else a tower-high point over the airport reference
+// point.
+func towerEye(l *airport.Layout) camera.Point {
+	if !l.HasTower {
+		return camera.At(l.Latitude, l.Longitude, l.Altitude+towerHeightM)
+	}
+	// The facility gives the ground at the tower (LKPR, live: 359 m, the
+	// airport 364 m), not the cab: the cab towerHeightM above it.
+	base := l.TowerAltitude
+	if base == 0 {
+		base = l.Altitude
+	}
+	return camera.At(l.Tower.Lat, l.Tower.Lon, base+towerHeightM)
+}
+
+// towerLookEvery: how often the tower looks for another aircraft to watch.
+const towerLookEvery = 3 * time.Second
+
+// towerHeightM: the cab's height when the airport gives no tower altitude.
+const towerHeightM = 45
 
 // heard is a call on the radio, as it is heard: in auto and the demo the
 // camera cuts to the aircraft talking or talked to.
@@ -231,7 +271,7 @@ func (m *cameraMan) heard(t traffic.Transmission) {
 		m.scene.heardCall(t.Callsign) // a cue; the scene cuts itself
 	}
 	m.mu.Unlock()
-	if mode != "auto" || t.Callsign == subject {
+	if mode != "auto" && mode != "tower" || t.Callsign == subject {
 		return
 	}
 	now := time.Now()
@@ -255,6 +295,20 @@ func (m *cameraMan) cut(it *controlled, now time.Time) {
 	m.subject, m.since, m.shots = it.Tail, now, n+1
 	m.mu.Unlock()
 	m.lockAirport(it)
+	m.mu.Lock()
+	tower := m.mode == "tower"
+	m.mu.Unlock()
+	if tower {
+		// One view, held: it keeps turning with the aircraft.
+		it.mu.Lock()
+		model := it.view.Model
+		it.mu.Unlock()
+		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
+		if shot, err := viewShot("tower", it.objectID, false, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.graph.Layout); err == nil {
+			m.dir.Play(shot)
+		}
+		return
+	}
 	m.dir.Play(sequenceFor(it, n)...)
 }
 
@@ -306,9 +360,13 @@ func (m *cameraMan) next(now time.Time) {
 			best, pick = score, it
 		}
 	}
-	if pick != nil {
-		m.cut(pick, now)
+	if pick == nil {
+		return
 	}
+	if mode == "tower" && pick.Tail == subject {
+		return // still the one to watch: its view holds and turns with it
+	}
+	m.cut(pick, now)
 }
 
 // interest ranks what an aircraft is doing for the auto camera.

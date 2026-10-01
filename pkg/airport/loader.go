@@ -110,7 +110,7 @@ type loadState struct {
 // loaderDefinitions are the facility definitions, in request order. The
 // field order of each must match the wire decoding in handleData.
 var loaderDefinitions = [][]string{
-	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "CLOSE AIRPORT"},
+	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "TOWER_LATITUDE", "TOWER_LONGITUDE", "TOWER_ALTITUDE", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN RUNWAY", "LATITUDE", "LONGITUDE", "ALTITUDE", "HEADING", "LENGTH", "WIDTH",
 		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR", "CLOSE RUNWAY", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_PARKING", "NAME", "SUFFIX", "NUMBER", "TYPE", "HEADING", "RADIUS", "BIAS_X", "BIAS_Z",
@@ -297,6 +297,11 @@ type airportWire struct {
 	ICAO      [8]byte
 	Name      [32]byte
 	Name64    [64]byte
+	// The tower: where the controller sees from (0, 0 when the airport
+	// has none).
+	TowerLatitude  float64
+	TowerLongitude float64
+	TowerAltitude  float64
 }
 
 // add stores one FACILITY_DATA record. Every request first delivers the
@@ -310,6 +315,9 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 		if m.Type == types.SIMCONNECT_FACILITY_DATA_AIRPORT {
 			a := engine.CastDataAs[airportWire](data)
 			s.raw.Latitude, s.raw.Longitude, s.raw.Altitude = a.Latitude, a.Longitude, a.Altitude
+			if a.TowerLatitude != 0 || a.TowerLongitude != 0 {
+				s.raw.Tower = &RawTower{Latitude: a.TowerLatitude, Longitude: a.TowerLongitude, Altitude: a.TowerAltitude}
+			}
 			if icao := engine.BytesToString(a.ICAO[:]); icao != "" {
 				s.raw.ICAO = icao
 			}

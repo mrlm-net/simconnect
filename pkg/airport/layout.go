@@ -35,6 +35,12 @@ type Layout struct {
 	TaxiNames  []string    `json:"taxiNames"`
 	// Frequencies are the airport's radio frequencies (#416).
 	Frequencies []Frequency `json:"frequencies,omitempty"`
+	// Tower is the airport's tower and TowerAltitude the ground there in
+	// meters MSL (TOWER_ALTITUDE: LKPR 359 m, the airport 364 m), not the
+	// cab; HasTower false when the airport has none.
+	Tower         LatLon  `json:"tower,omitempty"`
+	TowerAltitude float64 `json:"towerAlt,omitempty"`
+	HasTower      bool    `json:"hasTower,omitempty"`
 }
 
 // Runway is a runway with both of its ends.

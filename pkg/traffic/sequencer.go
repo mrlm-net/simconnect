@@ -31,6 +31,10 @@ type ApproachAircraft struct {
 	// Fixed: it cannot be delayed — other traffic, or already established.
 	// The sequencer also fixes aircraft inside FreezeNM.
 	Fixed bool
+	// Runway is the runway end it lands on: "" the sequencer's own. On
+	// dependent parallel approaches the arrivals of the adjacent final are
+	// given too (Fixed, with their runway): only DiagonalNM is kept to them.
+	Runway string
 }
 
 // SequenceEntry is an arrival's place in the landing sequence.
@@ -57,6 +61,9 @@ type SequenceEntry struct {
 	ShortBy time.Duration `json:"shortBy,omitempty"`
 	// DistanceToGoNM as given.
 	DistanceToGoNM float64 `json:"distanceToGoNM"`
+	// Runway: as given (ApproachAircraft.Runway); not "" for an arrival on
+	// the adjacent final of dependent parallel approaches.
+	Runway string `json:"runway,omitempty"`
 }
 
 // SequenceChange reports an arrival's new place or delay.
@@ -91,6 +98,9 @@ type SequencerOptions struct {
 	// headwind the distance shrinks (time-based separation, TBS); the
 	// default keeps the distance, which takes longer to fly into the wind.
 	TimeBased bool
+	// DiagonalNM is the spacing to an arrival on the adjacent final of
+	// dependent parallel approaches (0: 2 NM, AN-Conf/11-IP/3 2.3.2.2 b).
+	DiagonalNM float64
 	// OnChange is called with every change of place or delay.
 	OnChange func(SequenceChange)
 }
@@ -206,6 +216,15 @@ func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachCon
 // occupancy on the surface. It returns the time, the spacing and why the
 // spacing differs from the wake minimum.
 func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditions) (time.Duration, float64, string) {
+	// On adjacent finals of dependent parallel approaches: the diagonal
+	// spacing, and no runway occupancy (another runway).
+	if lead.Runway != follow.Runway {
+		nm := s.opts.DiagonalNM
+		if nm == 0 {
+			nm = 2
+		}
+		return SeparationTime(nm, c.FinalGroundKts(follow.FinalKts)), nm, "adjacent final"
+	}
 	nm, why := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced && s.opts.MinSpacingNM == 0)
 	if s.opts.MinSpacingNM > nm {
 		nm, why = s.opts.MinSpacingNM, ""
@@ -340,7 +359,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	out := make([]SequenceEntry, len(planned))
 	for i, p := range planned {
 		e := SequenceEntry{Callsign: p.a.Callsign, Number: i + 1, Wake: p.a.Wake, ETA: p.eta, Landing: p.at,
-			Delay: p.at.Sub(p.eta), Fixed: p.a.Fixed, DistanceToGoNM: p.a.DistanceToGoNM}
+			Delay: p.at.Sub(p.eta), Fixed: p.a.Fixed, DistanceToGoNM: p.a.DistanceToGoNM, Runway: p.a.Runway}
 		if i > 0 {
 			e.Leader = planned[i-1].a.Callsign
 			var g time.Duration

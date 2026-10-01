@@ -60,8 +60,13 @@ type weatherInfo struct {
 }
 
 type useInfo struct {
-	Departure    string  `json:"departure"`
-	Arrival      string  `json:"arrival"`
+	Departure string `json:"departure"`
+	Arrival   string `json:"arrival"`
+	// All the runways in use, with parallels used together, and how
+	// ("independent parallel", "segregated"; "" one runway).
+	Departures []string `json:"departures"`
+	Arrivals   []string `json:"arrivals"`
+	Parallel   string   `json:"parallel,omitempty"`
 	HeadwindKts  float64 `json:"headwindKts"`
 	CrosswindKts float64 `json:"crosswindKts"`
 	WithinLimits bool    `json:"withinLimits"`
@@ -248,6 +253,10 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			if cc != nil {
 				if g, err := cc.graph(icao); err == nil {
 					out.Use.Departure, out.Use.Arrival = cc.activeRunway(g, false), cc.activeRunway(g, true)
+					out.Use.Departures, out.Use.Arrivals = nav.Names(cc.runwaysInUse(g, false)), nav.Names(cc.runwaysInUse(g, true))
+					if u, ok := cc.runwayUse(g); ok && u.Parallel != nav.ParallelNone {
+						out.Use.Parallel = u.Parallel.String()
+					}
 					if _, end, ok := l.RunwayEnd(out.Use.Arrival); ok {
 						out.Use.HeadwindKts, out.Use.CrosswindKts = wx.Components(end.Heading)
 					}

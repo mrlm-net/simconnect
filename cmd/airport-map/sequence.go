@@ -81,6 +81,9 @@ func (q *sequences) sequencer(icao, runway string) *traffic.ApproachSequencer {
 	}
 	s := traffic.NewApproachSequencer(runway, traffic.SequencerOptions{MinSpacingNM: sepMinNM, OnChange: func(c traffic.SequenceChange) {
 		e := c.Entry
+		if e.Runway != "" {
+			return // the adjacent final's: logged by its own sequence
+		}
 		switch {
 		case c.Gone:
 			tlog.printf("%-6s sequence %s %s: out of the sequence", e.Callsign, icao, c.Runway)
@@ -120,6 +123,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		dtg[e.Callsign] = e.DistanceToGoNM
 	}
 	for _, e := range seq {
+		if e.Runway != "" {
+			continue // on the adjacent final: its own sequence handles it
+		}
 		var it *controlled
 		for _, x := range items {
 			if x.arr != nil && x.Tail == e.Callsign && x.ICAO == icao {
@@ -445,6 +451,40 @@ func (q *sequences) tick(now time.Time) {
 			}
 		}
 	}
+	// Dependent parallel approaches: each final's sequence also keeps the
+	// adjacent final's arrivals, ParallelDiagonalNM away (fixed: that
+	// final places them).
+	adjacent := map[key][]traffic.ApproachAircraft{}
+	done := map[string]bool{}
+	for k := range feed {
+		if done[k.icao] {
+			continue
+		}
+		done[k.icao] = true
+		g, err := q.cc.graph(k.icao)
+		if err != nil {
+			continue
+		}
+		use, ok := q.cc.runwayUse(g)
+		if !ok || use.Parallel != nav.ParallelDependent {
+			continue
+		}
+		names := nav.Names(use.Arrivals)
+		for _, r := range names {
+			for _, o := range names {
+				if o == r {
+					continue
+				}
+				for _, a := range feed[key{k.icao, o}] {
+					a.Runway, a.Fixed = o, true
+					adjacent[key{k.icao, r}] = append(adjacent[key{k.icao, r}], a)
+				}
+			}
+		}
+	}
+	for k, l := range adjacent {
+		feed[k] = append(feed[k], l...)
+	}
 	// Every sequencer gets its arrivals, also none (they leave).
 	q.mu.Lock()
 	for k, s := range q.seq {
@@ -539,7 +579,14 @@ func registerSequence(mux *http.ServeMux, st *state) {
 		q.mu.Lock()
 		for k, s := range q.seq {
 			if i, rwy, _ := strings.Cut(k, " "); i == icao {
-				if seq := s.Sequence(); len(seq) > 0 {
+				// Its own arrivals: not the adjacent final's it keeps spaced from.
+				var seq []traffic.SequenceEntry
+				for _, e := range s.Sequence() {
+					if e.Runway == "" {
+						seq = append(seq, e)
+					}
+				}
+				if len(seq) > 0 {
 					c := s.Conditions()
 					out = append(out, sequenceView{Runway: rwy, Conditions: c, LVP: c.LowVisibility(), Arrive: seq})
 				}
