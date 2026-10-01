@@ -10,6 +10,15 @@
 
 	let copied = $state(false);
 
+	// The airport map's run command, copied like the install command.
+	const runMap = 'cd cmd/airport-map && go run .';
+	let runCopied = $state(false);
+	function copyRun() {
+		navigator.clipboard.writeText(runMap);
+		runCopied = true;
+		setTimeout(() => (runCopied = false), 2000);
+	}
+
 	function copyInstall() {
 		navigator.clipboard.writeText('go get github.com/mrlm-net/simconnect');
 		copied = true;
@@ -262,16 +271,30 @@ func main() {
 				loading="lazy"
 			/>
 		</a>
-		<div class="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
+		<div class="mt-6 flex flex-col items-center justify-center gap-3">
 			<div
 				class="inline-flex items-center gap-3 rounded-lg border px-5 py-3 font-mono text-sm"
 				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
 			>
 				<span style="color: var(--color-text-muted);">$</span>
-				<span style="color: var(--color-text-secondary);">go run ./examples/airport-map</span>
+				<span style="color: var(--color-text-secondary);">{runMap}</span>
+				<button
+					class="cursor-pointer rounded p-1 transition-colors hover:bg-white/5"
+					style="color: {runCopied ? '#3fb950' : 'var(--color-text-muted)'};"
+					aria-label="Copy the command that runs the airport map"
+					onclick={copyRun}
+				>
+					{#if runCopied}
+						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					{:else}
+						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					{/if}
+				</button>
 			</div>
-			<a href="{base}/docs/examples" class="text-sm font-semibold" style="color: var(--color-link);">Tour the map &rarr;</a>
-			<a href="{base}/examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
+			<div class="flex flex-wrap items-center justify-center gap-4">
+				<a href="{base}/docs/examples" class="text-sm font-semibold" style="color: var(--color-link);">Tour the map &rarr;</a>
+				<a href="{base}/examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
+			</div>
 		</div>
 	</div>
 </section>

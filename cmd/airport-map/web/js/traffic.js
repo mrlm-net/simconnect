@@ -621,6 +621,19 @@ function initTraffic() {
   for (const id of ['cAutoStand', 'cGates', 'cTug', 'cInjectApproach', 'cTurn', 'cProc', 'cDeice']) $(id).addEventListener('change', updateSpawn);
   $('cTug').addEventListener('change', () => { $('tugBox').classList.toggle('is-off', !$('cTug').checked); });
   $('stripFilter').addEventListener('input', renderStrips);
+  // Enter: to that aircraft. The call sign typed, else the first match still
+  // flying or moving; selected and centred on the map.
+  $('stripFilter').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = e.target.value.trim().toUpperCase();
+    if (!q) return;
+    const match = (v) => `${v.tail} ${v.stand} ${v.runway} ${v.model} ${v.procedure || ''}`.toUpperCase().includes(q);
+    const v = ctlViews.find((x) => x.tail.toUpperCase() === q) || ctlViews.find((x) => !isDone(x) && match(x)) || ctlViews.find(match);
+    if (!v) { toast(`No aircraft ${q}`, 'err'); return; }
+    select(v.id);
+    if (v.position) locate(v.position.lat, v.position.lon, v.tail);
+  });
 
   $('cModel').addEventListener('focus', () => openModelMenu(true));
   $('cModel').addEventListener('click', () => openModelMenu(true));
@@ -726,6 +739,7 @@ function controlUpdated(list) {
   if (ctlSelected && !selectedView()) { ctlSelected = 0; ctlFollow = 0; }
   renderTraffic();
   drawRoutes();
+  drawTugs();
   const f = ctlFollow && ctlViews.find((x) => x.id === ctlFollow);
   if (f && f.position && (f.position.lat || f.position.lon)) map.panTo([f.position.lat, f.position.lon], { animate: true });
 }

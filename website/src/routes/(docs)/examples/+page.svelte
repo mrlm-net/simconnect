@@ -7,6 +7,15 @@
 	import { siteConfig } from '$lib/config/site.js';
 	import type { Example } from '$lib/content/types.js';
 
+	// The airport map's run command, with a copy button.
+	const runMap = 'cd cmd/airport-map && go run .';
+	let runCopied = $state(false);
+	function copyRun() {
+		navigator.clipboard.writeText(runMap);
+		runCopied = true;
+		setTimeout(() => (runCopied = false), 2000);
+	}
+
 	let {
 		data
 	}: {
@@ -103,13 +112,25 @@
 				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
 			>
 				<span style="color: var(--color-text-muted);">$</span>
-				<span style="color: var(--color-text-secondary);">go run ./examples/airport-map</span>
+				<span style="color: var(--color-text-secondary);">{runMap}</span>
+			<button
+				class="cursor-pointer rounded p-1 transition-colors hover:bg-white/5"
+				style="color: {runCopied ? '#3fb950' : 'var(--color-text-muted)'};"
+				aria-label="Copy the command that runs the airport map"
+				onclick={copyRun}
+			>
+				{#if runCopied}
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+				{:else}
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+				{/if}
+			</button>
 			</div>
 			<div class="flex flex-wrap gap-4 text-sm">
 				<a href="{base}/docs/examples" style="color: var(--color-link);">Tour and screenshots &rarr;</a>
 				<a href="{base}/docs/atc-game" style="color: var(--color-link);">ATC game &rarr;</a>
 				<a
-					href="https://github.com/mrlm-net/simconnect/tree/main/examples/airport-map"
+					href="https://github.com/mrlm-net/simconnect/tree/main/cmd/airport-map"
 					target="_blank"
 					rel="noopener noreferrer"
 					style="color: var(--color-link);"

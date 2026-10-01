@@ -25,17 +25,24 @@ const store = {
 // other frequencies.
 let atcPosition = '';
 try { atcPosition = localStorage.getItem('apm-as') || ''; } catch { /* private window */ }
+// The map server: when it last answered (any status) and last failed to.
+let apiOkAt = Date.now(), apiFailAt = 0;
+// serverDown: the map server itself not answering for a few seconds (not
+// the simulator: the server answers without it).
+function serverDown() { return apiFailAt > apiOkAt && Date.now() - apiOkAt > 5000; }
 async function api(url, opts) {
   try {
     if (atcPosition && atcPosition !== 'all') {
       opts = { ...(opts || {}), headers: { ...((opts && opts.headers) || {}), 'X-ATC-Position': atcPosition } };
     }
     const res = await fetch(url, opts);
+    apiOkAt = Date.now();
     if (res.status === 204) return { ok: true, status: 204, data: null };
     if (!res.ok) return { ok: false, status: res.status, error: (await res.text()).trim() || res.statusText };
     const ct = res.headers.get('Content-Type') || '';
     return { ok: true, status: res.status, data: ct.includes('json') ? await res.json() : await res.text() };
   } catch {
+    apiFailAt = Date.now();
     return { ok: false, status: 0, error: 'the map server is not reachable' };
   }
 }

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -816,6 +817,8 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	listenAddr = addr
 	mux := http.NewServeMux()
 	web, _ := fs.Sub(webFiles, "web")
+	// The app manifest's type, which Go does not know by itself.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	mux.Handle("GET /", http.FileServerFS(web))
 	mux.HandleFunc("GET /classic", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFileFS(w, r, web, "classic.html")
