@@ -1277,7 +1277,7 @@ let ctlSelected = null;
 let ctlViews = [];
 // Follow: the map keeps the aircraft of this id in the middle.
 let ctlFollow = 0;
-const ACTION_LABEL = { follow: '🎯', land: 'Cleared to land', pushback: 'Pushback', startup: 'Start up', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
+const ACTION_LABEL = { follow: '🎯', land: 'Cleared to land', lineupbehind: 'Line up behind landing', pushback: 'Pushback', startup: 'Start up', taxi: 'Taxi', cross: 'Cross', lineup: 'Line up', takeoff: 'Take-off', depart: 'Depart now', hold: 'Hold position', goaround: 'Go around', abort: 'Abort take-off', locate: '📍', remove: '✕' };
 
 async function ctlSpawn(kind) {
   const auto = $('cAutoStand').checked;
