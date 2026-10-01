@@ -691,10 +691,11 @@ function renderRadio() {
   if (!interacting($('rdFreqs'))) setHTML($('rdFreqs'), freqs.map((f) => `<button type="button" role="radio" class="freq${com1 && com1 === f.mhz ? ' is-com1' : ''}" aria-checked="${f.mhz === rdFreq}" data-f="${esc(f.mhz)}" title="${count[f.mhz] || 0} aircraft on ${esc(f.mhz)}">
     <span class="freq__pos">${esc(f.label)}</span><span class="freq__mhz">${esc(f.mhz)}</span><span class="freq__n">${icon('i-jet', '')}${count[f.mhz] || 0}</span></button>`).join('') || '<p class="muted small">No frequencies known for this airport.</p>');
   const log = $('rdLog');
-  const shown = radioCache.filter((t) => t.frequency === rdFreq);
-  const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  // Newest first: the latest call on top.
+  const shown = radioCache.filter((t) => t.frequency === rdFreq).reverse();
+  const atTop = log.scrollTop <= 20;
   setHTML(log, shown.map(txHTML).join('') || `<p class="muted small rlog__empty">${simLive ? 'Nothing said yet on this frequency.' : 'Nothing said: the simulator is not connected.'}</p>`);
-  if (atEnd) log.scrollTop = log.scrollHeight;
+  if (atTop) log.scrollTop = 0;
   const label = (freqs.find((f) => f.mhz === rdFreq) || {}).label || '';
   $('rdNow').innerHTML = rdSoundOn ? `<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>Listening on ${esc(label)} ${esc(rdFreq)}${rdSync ? ' (my COM1)' : ''}`
     : `<span class="muted">${esc(voice && voice.status && voice.status !== 'off' ? voice.status : 'Voice off: transcript only')}</span>`;
