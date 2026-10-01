@@ -40,12 +40,11 @@ const voiceMaxLagSeconds = 60
 const voiceQueueKey = "radio"
 
 // The pauses a frequency has (#419; voice-goio waits for each transmission
-// to finish): a reply to the same aircraft follows after voiceReplyGap, a new
-// exchange after voiceExchangeGap, each with up to voiceGapJitter more.
+// to finish): voiceGap and up to voiceGapJitter more, at random — 1 to 5 s
+// between any two transmissions, a reply or a new exchange.
 const (
-	voiceReplyGap    = 800 * time.Millisecond
-	voiceExchangeGap = 2 * time.Second
-	voiceGapJitter   = 1500 * time.Millisecond
+	voiceGap       = time.Second
+	voiceGapJitter = 4 * time.Second
 )
 
 type voiceOut struct {
@@ -310,10 +309,7 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	out := chain.Apply(pcm, engine.SampleRate(voice), voice.Radio, player.SampleRate(), int64(len(t.Text)))
 	// The pause since the last transmission, synthesis included.
 	v.mu.Lock()
-	gap := voiceExchangeGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
-	if t.Callsign != "" && t.Callsign == v.lastCS { // a reply: short
-		gap = voiceReplyGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter/3)))
-	}
+	gap := voiceGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
 	if len(v.queue) > 2 {
 		gap /= 2 // behind: shorter pauses rather than dropping calls
 	}

@@ -37,9 +37,10 @@ type Intent string
 const (
 	IntentDepartureClearance Intent = "departure_clearance" // cleared the SID, runway
 	IntentArrivalClearance   Intent = "arrival_clearance"   // cleared the STAR, expect the approach
+	IntentApproachClearance  Intent = "approach_clearance"  // cleared the approach to the runway
 	IntentStartUp            Intent = "start_up"            // start up approved
 	IntentPushback           Intent = "pushback"            // pushback approved
-	IntentTaxi               Intent = "taxi"                // taxi to the holding point or the stand
+	IntentTaxi               Intent = "taxi"                // taxi to and hold short of the runway, or to the stand
 	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
 	IntentGiveWay            Intent = "give_way"            // give way to other traffic on the ground
 	IntentRunwayChange       Intent = "runway_change"       // a new runway in use: new SID or STAR (#456)
@@ -66,8 +67,9 @@ const (
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
 	ParamRunway   = "runway"
-	ParamEntry    = "entry"    // the holding point of an intersection departure ("B")
+	ParamEntry    = "entry"    // where an intersection departure enters its runway ("B")
 	ParamStartUp  = "startup"  // "1": the start-up asked for or approved with the pushback
+	ParamFacing   = "facing"   // where a push ends facing: "east"
 	ParamGiveWay  = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways = "taxiways" // as said: "B2, H, A"
 	ParamStand    = "stand"
@@ -144,13 +146,19 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		// Identification, STAR, runway in use, cleared level (6.5.2.3);
 		// the approach to expect (CAP 413 6.9).
 		return cs + ", " + arrivalClearance(p)
+	case IntentApproachClearance:
+		return cs + ", " + approachClearance(p)
 	case IntentStartUp:
 		return cs + ", start up approved" // Doc 4444 12.3.4.3 c
 	case IntentPushback:
+		s := cs + ", pushback approved" // Doc 4444 12.3.4.4 b
 		if p[ParamStartUp] != "" {
-			return cs + ", pushback and start up approved" // both in one
+			s = cs + ", pushback and start up approved" // both in one
 		}
-		return cs + ", pushback approved" // Doc 4444 12.3.4.4 b
+		if p[ParamFacing] != "" {
+			s += ", facing " + p[ParamFacing]
+		}
+		return s
 	case IntentTaxi:
 		if p[ParamStand] != "" {
 			return fmt.Sprintf("%s, taxi to stand %s%s", cs, p[ParamStand], via) // CAP 413 4.68
@@ -285,6 +293,20 @@ func arrivalClearance(p map[string]string) string {
 	return s
 }
 
+// ClearedApproach clears an arrival for the approach (kind "ILS", ""
+// none named) to runway: "CSA1, cleared ILS approach runway 24".
+func ClearedApproach(cs, kind, runway string) Transmission {
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentApproachClearance, Params: map[string]string{ParamApproach: kind, ParamRunway: runway}})
+}
+
+// approachClearance is an approach clearance after the call sign.
+func approachClearance(p map[string]string) string {
+	if p[ParamApproach] == "" {
+		return "cleared approach runway " + p[ParamRunway]
+	}
+	return "cleared " + p[ParamApproach] + " approach runway " + p[ParamRunway]
+}
+
 // WindSaid is the surface wind as a tower says it, magnetic degrees:
 // "wind 100 degrees 6 knots", "wind 270 degrees 18 knots gusting 28 knots",
 // "wind calm" below a knot (Doc 4444 12.3.1.8 a).
@@ -374,6 +396,20 @@ func ClearedPushbackAndStartUp(cs string) Transmission {
 // ClearedPushback approves the pushback (Doc 4444 12.3.4.4).
 func ClearedPushback(cs string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentPushback})
+}
+
+// WithFacing adds where the push ends facing ("east") to a pushback
+// approval: "CSA1, pushback approved, facing east".
+func WithFacing(t Transmission, facing string) Transmission {
+	if facing == "" || t.Intent != IntentPushback {
+		return t
+	}
+	p := map[string]string{ParamFacing: facing}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params, t.Text = p, ""
+	return Say(t)
 }
 
 // ClearedTaxiToRunway clears a departure to the holding point (entry: an

@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"errors"
 	"math"
 	"slices"
 	"testing"
@@ -218,5 +219,64 @@ func TestPushThroughEmptyStands(t *testing.T) {
 	base := math.Max(0, pv.intrusion([]airport.LatLon{offsetHeading(gear, stand.Heading, 2), offsetHeading(gear, stand.Heading, 1), gear}, taken.profile()))
 	if in := pv.intrusion(taken.pushPts, taken.profile()); in > base+pushClearanceSlackMeters {
 		t.Errorf("neighbours taken: the push reaches %.1f m into one", in)
+	}
+}
+
+// A pushback cleared to face a compass direction ends facing it wherever a
+// push can, and keeps its plan where none can: at LKPR, asked for the
+// opposite of the planned facing.
+func TestPushbackFacing(t *testing.T) {
+	g := airportGraph(t, "LKPR")
+	turned, kept := 0, 0
+	for i, st := range g.Layout.Parking {
+		if i%2 != 0 {
+			continue
+		}
+		ec := &eventClient{}
+		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "24", Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1}); err != nil {
+			continue
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		ctl.state = TaxiAwaitingPushback
+		was := ctl.PushFacing()
+		if was == "" {
+			continue
+		}
+		h, _ := CompassHeading(was)
+		want := CompassName(h + 180)
+		if err := ctl.ClearPushbackFacing(want); err != nil {
+			t.Fatalf("%s: %v", st.Label(), err)
+		}
+		if !ctl.pushCleared {
+			t.Errorf("%s: not cleared", st.Label())
+		}
+		switch ctl.PushFacing() {
+		case want:
+			turned++
+		case was:
+			kept++
+		}
+		if _, err := ctl.pushPath(); err != nil {
+			t.Errorf("%s facing %s: %v", st.Label(), want, err)
+		}
+	}
+	t.Logf("LKPR: %d pushes turned round, %d kept", turned, kept)
+	if turned == 0 {
+		t.Error("no push turned to the facing asked for")
+	}
+	ctl := NewTaxiController(NewFleet(&eventClient{}))
+	ctl.state = TaxiPushback
+	if err := ctl.ClearPushbackFacing("east"); !errors.Is(err, ErrTooLate) {
+		t.Errorf("pushing: %v, want ErrTooLate", err)
+	}
+	if err := ctl.ClearPushbackFacing("up"); err == nil {
+		t.Error("facing up accepted")
+	}
+	if CompassName(-10) != "north" || CompassName(100) != "east" || CompassName(225+1) != "west" {
+		t.Error("CompassName")
 	}
 }

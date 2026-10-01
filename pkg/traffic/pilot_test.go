@@ -71,7 +71,8 @@ func TestPilotCalls(t *testing.T) {
 		{RequestStartUp("", "CSA1", "", ""), "CSA1, request start up"},                                                                  // Doc 4444 12.3.4.3 a
 		{ReadbackCorrect(PosDelivery, "CSA1"), "CSA1, readback correct"},
 		{RequestTaxi("CSA1"), "CSA1, request taxi"},
-		{ReadyForDeparture("CSA1", "24"), "CSA1, holding point runway 24, ready for departure"},
+		{ReadyForDeparture("CSA1", "24", ""), "CSA1, holding short runway 24, ready for departure"},
+		{ReadyForDeparture("CSA1", "24", "Z"), "CSA1, holding short runway 24 at Z, ready for departure"},
 		{HoldingShortReport("CSA1", "12", "F"), "CSA1, holding short of runway 12 at F"},
 		{CheckIn(PosTower, "Ruzyne Tower", "CSA1", "established ILS runway 06", ""), "Ruzyne Tower, CSA1, established ILS runway 06"},
 		{Vacated("CSA1", "06"), "CSA1, runway vacated"}, // Doc 4444 12.3.4.7 z

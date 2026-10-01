@@ -20,8 +20,8 @@ import (
 // The pauses: the controller's before answering, the crew's before acting
 // on a clearance read back; each with up to the jitter more.
 const (
-	atcAnswerDelay   = 1500 * time.Millisecond
-	atcAnswerJitter  = 1500 * time.Millisecond
+	atcAnswerDelay   = time.Second // 1 to 5 s
+	atcAnswerJitter  = 4 * time.Second
 	crewActDelay     = 2 * time.Second
 	crewActJitter    = 2 * time.Second
 	pendingCheckTick = time.Second
@@ -114,6 +114,16 @@ func (it *controlled) onRequest(req string) {
 			it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
 		}
 	case "start_up":
+		if it.view.State == traffic.TaxiAwaitingPushback.String() {
+			// A stand it taxis out of: start-up is its first call to ground.
+			info := ""
+			if !it.atisSaid && it.cc.atisLetter != nil {
+				info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
+			}
+			station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
+			it.say(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info))
+			break
+		}
 		it.say(traffic.RequestStartUp("", it.Tail, "", ""))
 	case "taxi":
 		it.say(traffic.RequestTaxi(it.Tail))
@@ -136,6 +146,9 @@ func (it *controlled) answer(req string) {
 		return // answered, or no longer asking
 	}
 	it.spoken[req] = true // said here: the state change is not said again
+	for _, k := range impliedBy(req) {
+		it.spoken[k] = true
+	}
 	it.mu.Unlock()
 	switch req {
 	case "pushback":
@@ -143,7 +156,7 @@ func (it *controlled) answer(req string) {
 		both := it.pushAndStart
 		it.mu.Unlock()
 		if both {
-			it.say(traffic.ClearedPushbackAndStartUp(it.Tail))
+			it.say(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(it.Tail), it.dep.PushFacing()))
 			it.actAfterReadback(traffic.PosGround, req, func() error {
 				if err := it.act("startup", -1); err != nil {
 					return err
@@ -152,7 +165,7 @@ func (it *controlled) answer(req string) {
 			})
 			return
 		}
-		it.say(traffic.ClearedPushback(it.Tail))
+		it.say(traffic.WithFacing(traffic.ClearedPushback(it.Tail), it.dep.PushFacing()))
 		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 		return
 	case "start_up":

@@ -11,6 +11,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.17.1] - 2026-10-01
+
+### Added
+
+- `pkg/traffic` pushback facing a compass direction: `TaxiController.ClearPushbackFacing("east")` plans the push again among those ending within 45° of it; `PushFacing`, `CompassHeading`, `CompassName`; `WithFacing` says it ("pushback approved, facing east"). The airport map has N/E/S/W buttons beside Pushback and says the facing with every pushback.
+- `pkg/traffic` `ClearedApproach` ("cleared ILS approach runway 24"): the airport map's approach clears each arrival for its approach before handing it to tower, and the arrival checks in "established ILS runway 24".
+- `examples/airport-map`: "Cleared to land" for the arrivals you control; the 📻 frequency on an aircraft's card tunes the radio to it; the frequency buttons count the aircraft on each, not the calls.
+
+### Changed
+
+- "Holding point" is gone from the phraseology: `ReadyForDeparture(cs, runway, entry)` says "holding short runway 24 [at Z], ready for departure" (`HoldingShortSaid`).
+- Airport map: a taxiing departure is handed to tower 300–700 m before its runway, checking in "taxiing to holding short runway 24", and calls ready once there; it goes to departure between 1000 and 2500 ft, a different height for each.
+- Airport map: 1 to 5 s at random between transmissions, and before a controller answers.
+- A stand the aircraft taxis straight out of asks for start-up, then taxi: no pushback offered (`TaxiController.FacesOut`).
+
+### Fixed
+
+- Airport map: a take-off clearance from the holding point is no longer followed by "line up and wait"; a taxi clearance on the stand by "pushback approved", one up to a limit by the full taxi clearance.
+- Airport map: the remove button sits with the other actions.
+
 ## [0.17.0] - 2026-10-01
 
 Radio and voice: ATC speaks in structured ICAO phrases on each position's frequency, pilots call, request and read back, the ATIS broadcasts on its own frequency, and the airport map says it all aloud through voice-goio. Pushbacks end at a planned pose on the taxiway, engines start after the tug has gone, and a change of the runway in use re-plans the traffic.
