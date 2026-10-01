@@ -136,8 +136,9 @@ func TestStandAllocatorAssign(t *testing.T) {
 			t.Errorf("assigned %s (radius %.0f)", p.Label(), p.Radius)
 		}
 	}
-	// The first pick has the shortest taxi-in of all free candidates it routed.
-	b := NewStandAllocator(nil, g)
+	// Without the spread, the first pick has the shortest taxi-in of all
+	// free candidates it routed.
+	b := NewStandAllocator(nil, g, StandWithSpread(0))
 	first, _ := b.Assign(StandRequirements{Owner: "X", Runway: "24"})
 	_, r1, err := bestExit(g, "24", first, airport.RouteOptions{})
 	if err != nil {
@@ -329,4 +330,23 @@ func TestStandTransfer(t *testing.T) {
 	if o, _ := a.Occupant(a4); o.Owner != "TVS1753" || !o.Detected {
 		t.Errorf("occupant %+v", o)
 	}
+}
+
+// The schedule's gates vary: with the default spread, many first picks for
+// 24 spread over several stands near the best taxi-in, not always the same.
+func TestStandAllocatorSpread(t *testing.T) {
+	g := lkprGraph(t)
+	picks := map[int]bool{}
+	for i := 0; i < 30; i++ {
+		a := NewStandAllocator(nil, g)
+		s, err := a.Assign(StandRequirements{Owner: "X", Runway: "24"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		picks[s] = true
+	}
+	if len(picks) < 3 {
+		t.Errorf("30 first picks on %d stands, want them spread", len(picks))
+	}
+	t.Logf("30 first picks on %d stands", len(picks))
 }
