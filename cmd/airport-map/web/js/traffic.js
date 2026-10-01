@@ -142,7 +142,7 @@ function renderTraffic() {
   renderCtx();
 }
 function stripHTML(v) {
-  const w = waits(v), done = isDone(v), busy = ctlBusy.has(v.id);
+  const w = waits(v), done = isDone(v), busy = ctlBusy.has(v.id) || !onMyFrequency(v);
   const next = nextAction(v);
   let act = '';
   if (!done) {
@@ -152,7 +152,8 @@ function stripHTML(v) {
   }
   const kind = v.kind === 'arrival' ? 'arr' : 'dep';
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.atc)} ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : `<span>${esc(v.atc)}</span>`) : '';
-  return `<article class="strip-card${done ? ' is-done' : ''}${busy ? ' is-busy' : ''}" data-kind="${kind}" data-sel="${v.id}" tabindex="0" aria-current="${v.id === ctlSelected}" aria-label="${esc(v.tail)}, ${esc(v.state)}" title="${esc(v.model)} · lights ${esc(v.lights || '—')}">
+  const other = !onMyFrequency(v);
+  return `<article class="strip-card${done ? ' is-done' : ''}${busy ? ' is-busy' : ''}${other ? ' is-other' : ''}" data-kind="${kind}" data-sel="${v.id}" tabindex="0" aria-current="${v.id === ctlSelected}" aria-label="${esc(v.tail)}, ${esc(v.state)}${other ? ', not on your frequency' : ''}" title="${esc(v.model)} · lights ${esc(v.lights || '—')}${other ? ' · not on your frequency: another position clears it' : ''}">
     <div class="strip-card__l1"><span class="strip-card__cs">${esc(v.tail)}</span>${v.deicing ? icon('i-snow', 'ic ic--xs') : ''}${w ? `<span class="wait-t" data-wait="${v.id}"></span>` : ''}</div>
     ${act}
     <div class="strip-card__l2"><span class="strip-card__state${w ? ' is-wait' : ''}">${esc(statusText(v))}</span></div>
@@ -190,6 +191,14 @@ function fillLive() {
   for (const el of $$('[data-gs]')) { const v = byId(el.dataset.gs); if (v) el.textContent = `${v.groundSpeed.toFixed(0)} kt`; }
   for (const el of $$('[data-motion]')) { const v = byId(el.dataset.motion); if (v) el.textContent = `${v.groundSpeed.toFixed(0)} kt · ${Math.round(v.heading || 0)}°${v.state === 'spawning' ? ' · appearing' : (v.kind === 'departure' ? v.state !== 'departing' || v.onGround : v.onGround) ? ' · on ground' : ' · airborne'}`; }
   tickWaits();
+}
+
+// onMyFrequency: working one position (As), only aircraft on its frequency
+// take clearances from here (approach also works departures); not yet
+// handed to anyone, any. The server refuses the others anyway (#511).
+function onMyFrequency(v) {
+  if (!atcPosition || atcPosition === 'all' || !v.atc) return true;
+  return v.atc === atcPosition || atcPosition === 'approach' && v.atc === 'departure';
 }
 
 /* ───────────── The context panel ───────────── */
@@ -245,7 +254,7 @@ function renderCtx() {
   if (interacting(el)) { fillLive(); return; }
   el.hidden = false;
   el.dataset.kind = v.kind === 'arrival' ? 'arr' : 'dep';
-  const w = waits(v), busy = ctlBusy.has(v.id), done = isDone(v);
+  const w = waits(v), busy = ctlBusy.has(v.id) || !onMyFrequency(v), done = isDone(v);
   let h = `<header class="ctx__head">
     <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${busy ? '<span class="pill pill--accent small">sending…</span>' : ''}</div>
     <button type="button" class="btn btn--icon btn--ghost ctx__close" data-close-ctx aria-label="Deselect (Esc)" title="Deselect (Esc)">${icon('i-x')}</button>

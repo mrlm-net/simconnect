@@ -196,7 +196,8 @@ const controlPoll = poller('control', pollControl, () => 1000);
 // These answer 503 without the simulator: polled only while it is there
 // (my aircraft reported, or one of them answered lately).
 const standsPoll = poller('stands', pollStands, () => (simLive && data && layerOn.occupied ? 3000 : 0));
-const cameraPoll = poller('camera', pollCamera, () => (simLive ? 2000 : 0));
+// Faster while the tower's angle is drawn: the cone follows the turning.
+const cameraPoll = poller('camera', pollCamera, () => (!simLive ? 0 : showAngle && camView && camView.mode === 'tower' ? 500 : 2000));
 const gamePoll = poller('game', pollGame, () => (simLive ? 2000 : 0));
 const schedulePoll = poller('schedule', pollSchedule, () => (!simLive ? 0 : tabVisible('schedule') ? 3000 : 10000));
 const worldPoll = poller('world', pollWorld, () => (!simLive ? 0 : worldOn || tabVisible('map') ? 5000 : 15000));
@@ -256,6 +257,7 @@ $('rdHere').addEventListener('change', (e) => {
 $('asSel').value = $('asSelMore').value = atcPosition;
 ['asSel', 'asSelMore'].forEach((id) => $(id).addEventListener('change', (e) => {
   atcPosition = e.target.value;
+  renderStrips(); renderCtx(); // other frequencies greyed out
   $('asSel').value = $('asSelMore').value = atcPosition;
   try { localStorage.setItem('apm-as', atcPosition); } catch { /* private window */ }
   toast(atcPosition ? `Working as ${e.target.selectedOptions[0].textContent}: other frequencies are read-only` : 'Working all positions');

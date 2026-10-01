@@ -11,8 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Airport map: working one position (As), the clearance buttons of aircraft on other frequencies are greyed out and their cards dimmed (the server refuses them anyway).
+- Airport map: the tower camera's angle on the map, off by default (the Angle switch in Tower look). A cone of its field of view from the tower, labelled with its bearing, tilt and width; it follows the camera as it turns.
 - Airport map: the squawk can be set in New flight (four octal digits; empty: automatic). The emergency codes are refused, and the aircraft's card shows it (`SpawnRequest.Squawk`, `ControlView.Squawk`).
-- Airport map: the tower camera looking round can also be turned with keys (arrows turn, + and − zoom, Shift faster). Holding the middle mouse button and dragging turns it; rolling the wheel while holding it zooms.
+- Airport map: the tower camera looking round can also be turned with keys (arrows turn, + and − zoom, Shift faster). Holding the middle mouse button and dragging turns it; rolling the wheel while holding it zooms. The middle button is caught before the map and the browser act on it.
 
 ### Fixed
 
