@@ -600,6 +600,12 @@ func runwaySide(l *airport.Layout, name string, along, right, up float64) (camer
 	return camera.At(lat, lon, l.Altitude+up), true
 }
 
+type lookView struct {
+	Yaw  float64 `json:"yaw"`
+	Tilt float64 `json:"tilt"`
+	Fov  float64 `json:"fov"`
+}
+
 type cameraView struct {
 	Mode     string `json:"mode"`
 	Subject  string `json:"subject,omitempty"`
@@ -612,6 +618,9 @@ type cameraView struct {
 	SimView int    `json:"simView,omitempty"`
 	// Swing: the tower looking round by itself (else where it was turned).
 	Swing bool `json:"swing"`
+	// Look: where the tower camera looks now while it looks round (for the
+	// angle shown on the map): bearing and tilt in degrees, field of view.
+	Look *lookView `json:"look,omitempty"`
 }
 
 func (m *cameraMan) view() cameraView {
@@ -623,6 +632,9 @@ func (m *cameraMan) view() cameraView {
 	}
 	m.look.mu.Lock()
 	v.Swing = m.look.auto
+	if m.mode == "tower" && m.look.set {
+		v.Look = &lookView{Yaw: m.look.curYaw, Tilt: m.look.curTilt, Fov: m.look.curFov}
+	}
 	m.look.mu.Unlock()
 	if m.sim != nil && m.mode == "off" {
 		v.Sim, v.SimView = m.sim.current()

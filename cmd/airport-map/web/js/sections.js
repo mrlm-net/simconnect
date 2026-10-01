@@ -209,6 +209,7 @@ const DIRECTOR_HTML = `<div class="field"><span class="field__lbl">Camera</span>
     <div class="director__row look" title="Turn the tower camera; hold a button to keep turning. Keys: arrows turn, + and − zoom (Shift: faster). Mouse: hold the middle button and drag to turn, roll the wheel while holding it to zoom.">
       <button type="button" class="btn btn--sm" data-look="-4,0,0" aria-label="Turn left">⟲</button><button type="button" class="btn btn--sm" data-look="4,0,0" aria-label="Turn right">⟳</button><button type="button" class="btn btn--sm" data-look="0,1.5,0" aria-label="Look up">▲</button><button type="button" class="btn btn--sm" data-look="0,-1.5,0" aria-label="Look down">▼</button><button type="button" class="btn btn--sm" data-look="0,0,-3" aria-label="Zoom in">+</button><button type="button" class="btn btn--sm" data-look="0,0,3" aria-label="Zoom out">−</button>
       <button type="button" class="btn btn--sm btn--toggle" data-swing aria-pressed="false" title="Swing slowly from side to side by itself">Swing</button>
+      <label class="switch switch--sm" title="Show on the map where the tower camera looks: its bearing, tilt and field of view"><input type="checkbox" data-angle><span class="switch__ui" aria-hidden="true"></span>Angle</label>
     </div></div>
   <div class="field"><span class="field__lbl">Simulator camera</span>
     <div class="director__row" title="The simulator's own cameras, on your aircraft; ◀ ▶ the camera's views">
@@ -297,6 +298,8 @@ function updateDirector() {
   // The look buttons while the tower looks round (no aircraft selected).
   $$('[data-look-row]').forEach((r) => { r.hidden = mode !== 'tower'; });
   $$('[data-swing]').forEach((b) => b.setAttribute('aria-pressed', String(!!(v && v.swing))));
+  $$('[data-angle]').forEach((c) => { c.checked = showAngle; });
+  drawAngle();
   $$('[data-scene-play]').forEach((b) => {
     b.className = `btn ${playing ? 'btn--danger' : 'btn--primary'}`;
     b.innerHTML = `${icon(playing ? 'i-stop' : 'i-play', 'ic ic--sm')}<span>${playing ? 'Stop' : 'Play'}</span>`;
@@ -1060,6 +1063,7 @@ function showTower(t) {
   const icon = L.divIcon({ className: 'm-tower', html: icon_('i-tower'), iconSize: [26, 26], iconAnchor: [13, 13] });
   if (!towerMarker) towerMarker = L.marker([t.lat, t.lon], { icon, interactive: false, keyboard: false }).addTo(map);
   else towerMarker.setLatLng([t.lat, t.lon]);
+  drawAngle(); // the cone starts at the tower, known only now
 }
 function icon_(id) { return `<svg class="ic"><use href="#${id}"/></svg>`; }
 async function saveTower(body) {
@@ -1106,7 +1110,7 @@ function queueLook(yaw, tilt, fov) {
     lookFlush = 0;
     const { yaw: y, tilt: t, fov: f } = lookPending;
     lookPending.yaw = lookPending.tilt = lookPending.fov = 0;
-    if (y || t || f) send('/api/camera', { mode: 'look', yaw: y, tilt: t, fov: f });
+    if (y || t || f) send('/api/camera', { mode: 'look', yaw: y, tilt: t, fov: f }).then((r) => { if (r.ok) { camView = r.data; drawAngle(); } });
   }, 80);
 }
 document.addEventListener('keydown', (e) => {
@@ -1122,12 +1126,16 @@ document.addEventListener('keydown', (e) => {
 let midLook = null; // the middle button held: where the pointer was
 function initTowerMouse() {
   const el = map.getContainer();
-  el.addEventListener('mousedown', (e) => {
-    if (e.button !== 1 || !towerLooking()) return;
-    e.preventDefault(); // no auto-scroll
+  // Caught on the window, before the map or the browser act on it (no map
+  // drag, no auto-scroll, no middle-click paste or link).
+  window.addEventListener('mousedown', (e) => {
+    if (e.button !== 1 || !towerLooking() || !el.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
     midLook = { x: e.clientX, y: e.clientY };
     el.classList.add('is-looking');
-  });
+  }, true);
+  window.addEventListener('auxclick', (e) => { if (e.button === 1 && towerLooking() && el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
   window.addEventListener('mousemove', (e) => {
     if (!midLook) return;
     const dx = e.clientX - midLook.x, dy = e.clientY - midLook.y;
@@ -1138,10 +1146,43 @@ function initTowerMouse() {
     if (e.button === 1 && midLook) { midLook = null; el.classList.remove('is-looking'); }
   });
   // The wheel while the middle button is held zooms the tower, not the map.
-  el.addEventListener('wheel', (e) => {
+  window.addEventListener('wheel', (e) => {
     if (!midLook) return;
     e.preventDefault();
     e.stopPropagation();
     queueLook(0, 0, Math.sign(e.deltaY) * 2);
   }, { capture: true, passive: false });
+}
+
+/* ───────────── Tower look: the angle on the map ───────────── */
+// Where the tower camera looks, drawn from the tower: a cone of its field of
+// view, with its bearing, tilt and width. Off by default (the Angle switch).
+let showAngle = store.get('airportMapTowerAngle') === '1';
+let angleLayer = null;
+document.addEventListener('change', (e) => {
+  if (!e.target.matches('[data-angle]')) return;
+  showAngle = e.target.checked;
+  store.set('airportMapTowerAngle', showAngle ? '1' : '0');
+  drawAngle();
+});
+function drawAngle() {
+  const k = camView && camView.mode === 'tower' && camView.look;
+  if (!showAngle || !k || !towerInfo) {
+    if (angleLayer) { angleLayer.remove(); angleLayer = null; }
+    return;
+  }
+  const R = 1500; // meters on the map
+  const pts = [[towerInfo.lat, towerInfo.lon]];
+  for (let i = 0; i <= 12; i++) {
+    const b = (k.yaw - k.fov / 2 + (k.fov * i) / 12) * Math.PI / 180;
+    pts.push(offset(towerInfo.lat, towerInfo.lon, Math.sin(b) * R, Math.cos(b) * R));
+  }
+  const label = `${String(Math.round(((k.yaw % 360) + 360) % 360)).padStart(3, '0')}° · tilt ${k.tilt.toFixed(0)}° · ${k.fov.toFixed(0)}°`;
+  if (!angleLayer) {
+    angleLayer = L.polygon(pts, { className: 'm-angle', interactive: false }).addTo(map);
+    angleLayer.bindTooltip(label, { permanent: true, direction: 'center', className: 'map-lbl' });
+  } else {
+    angleLayer.setLatLngs(pts);
+    angleLayer.setTooltipContent(label);
+  }
 }
