@@ -52,17 +52,25 @@ The voice needs [piper](https://github.com/rhasspy/piper) and at least one Engli
 
 Without them the button says what is missing and the map stays silent; the ATIS button falls back to the browser's English voice.
 
-## The panel
+## The layout
 
-The side panel has a tab per task; **?** is the quick reference of every button, clearance and colour. The map buttons: **✈** shows your aircraft, **⛶** full screen (panel included), **◨** hides the panel, **🌐** the world view, **🎯** (on a card) follows an aircraft.
+The UI lives in `web/` (plain HTML, CSS and scripts, embedded in the binary); the previous page is still at `/classic`. Light, dark or system theme (top right). On a phone the panel is a bottom sheet; on large screens it docks at the side.
 
-| Tab | What is in it |
+- **Status strip** (always visible): the airport, the runway in use, the ATIS letter, the wind and QNH, pause and simulation rate, the game score, the camera, the frequency listened to, the position this device works (network play), the connection.
+- **Selected aircraft** (click it on the map or in a list): its state and wait time, the next clearance as one big button (Pushback with its facing N/E/S/W), the other clearances by phase, Hold / Go around / Abort always in the same place, Rush, its radio exchange, Show, Follow, Camera, Remove.
+
+| Section | What is in it |
 |-----|---------------|
-| **Traffic** | The [ATC game](../../docs/atc-game.md); scheduled traffic with its departure, arrival and overflight boards; **New flight** to spawn one aircraft; the **Aircraft** cards with their clearances; the traffic log |
-| **Approach** | The landing sequence per runway with its controls, the tower, the predicted conflicts; the final drawn on the map |
-| **Charts** | The airport, de-icing pads, the weather at your aircraft and the runway in use, the ATIS (🔊 reads it out), SIDs, STARs and approaches on the map |
-| **Layers** | Airport data, the traffic picture (centre and radius), live traffic (ours, other traffic, safe zones), taxiway names, overlapping stands, taxi paths and points by `TYPE` |
-| **?** | Quick reference |
+| **Traffic** | Aircraft waiting for you, moving, airborne and done; **New flight** to spawn one; the traffic log |
+| **Sequence** | The landing sequence per runway with its controls and the final ladder; the tower; predicted conflicts |
+| **Schedule** | Scheduled traffic and its departure, arrival and overflight boards; the [ATC game](../../docs/atc-game.md) |
+| **Radio** | The frequencies with the aircraft on each, the conversation, the voice (on this computer or on this device), follow and tune COM1, the output |
+| **Airport** | The runway in use, the weather, the ATIS, procedures on the map, de-icing pads |
+| **Map** | Base map, layers (ours, other traffic, safe zones, the final, taxiway names, overlapping stands, occupied stands, paths and points by `TYPE`), the traffic picture and world view |
+
+## Network play
+
+Start it with `-addr :8080` and open `http://<this computer>:8080` on tablets, laptops and phones on the same network (there is no login: use a network you trust). Each device picks **As** in the status strip, the position it works: Delivery, Ground, Tower or Approach (with departure), or all. A clearance for an aircraft on another position's frequency is refused. **Play on this device** in Radio plays the frequency followed through that device, in the voices the map's computer uses.
 
 ## What it shows
 
@@ -71,7 +79,7 @@ The side panel has a tab per task; **?** is the quick reference of every button,
 - **Taxi points** by `TYPE`; hold-short types (2, 4, 5, 6) get their own layer.
 - **Parking spots** as circles of their `RADIUS`, labelled from `NAME`, `NUMBER` and `SUFFIX` (e.g. `C22`, `S22A`). Stands whose circles overlap are outlined in orange.
 - **Routes:** click a parking spot and pick a runway. A departure shows the route to the runway (full length or from an entry), its taxiways, length, runway crossings and hold-short; an arrival the taxi-in from a runway exit, with the vacate point and the stop on the stand.
-- **Our aircraft** coloured by what they are: under our control (a card), arriving en route, overflying, departed. **Other traffic** (MSFS AI and other add-ons) on the Layers tab, off by default.
+- **Our aircraft** coloured by what they are: under our control (a card), arriving en route, overflying, departed. **Other traffic** (MSFS AI and other add-ons) in the Map section, off by default.
 - **Safe zones:** half the wing span plus 3 m around every aircraft on the ground; red where two overlap.
 - **World view (🌐):** the traffic picture's circle, the airports in range and every aircraft with call sign, level and phase.
 
@@ -98,7 +106,7 @@ While connected to the simulator, the **Traffic** tab spawns AI aircraft driven 
 Every runway in use has an approach sequencer and a tower ([Airborne Separation](../../docs/traffic-separation.md)):
 
 - **Landing sequence:** the landing order with wake spacing that follows the weather. Delays are absorbed by speed, then path stretching on the STAR, then a hold at the STAR's hold fix on a stack; the sequencer releases the holds.
-- **Controls** on the Approach tab: ▲▼ change the order (kept), ⤳ direct to the final, 🐢 lose another minute, ⟳ hold, ⏵ leave the hold, ↺ go around.
+- **Controls** in the Sequence section: ▲▼ change the order (kept), ⤳ direct to the final, 🐢 lose another minute, ⟳ hold, ⏵ leave the hold, ↺ go around.
 - **Tower:** line-up, take-off and crossing clearances when the runway is free, the interval after the last departure has passed and the next arrival is far enough out.
 - **Separation:** every airborne pair under 5 NM and 1000 ft is logged; pairs predicted to come that close get the least disturbing change to one of our en route aircraft (speed, level or a heading), said as ATC would.
 

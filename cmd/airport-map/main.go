@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
@@ -44,8 +45,11 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-//go:embed index.html
-var web embed.FS
+// The page: web/index.html with its styles and scripts. web/classic.html
+// is the previous page, served at /classic during the redesign.
+//
+//go:embed web
+var webFiles embed.FS
 
 // User aircraft position (and the simulation rate), polled once per
 // second; the pause state as the simulator reports it (#413).
@@ -630,7 +634,11 @@ func (s *state) load(ctx context.Context, icao string, refresh bool, requests ch
 
 func serve(ctx context.Context, addr string, st *state, requests chan<- string) error {
 	mux := http.NewServeMux()
+	web, _ := fs.Sub(webFiles, "web")
 	mux.Handle("GET /", http.FileServerFS(web))
+	mux.HandleFunc("GET /classic", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, web, "classic.html")
+	})
 
 	icaoParam := func(r *http.Request) string {
 		return strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("icao")))

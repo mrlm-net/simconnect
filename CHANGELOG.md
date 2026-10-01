@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The airport map has a new interface (`cmd/airport-map/web/`): a status strip (airport, runway, ATIS, wind, pause and rate, score, camera, frequency, network position, connection), the selected aircraft in its own panel with the next clearance first and the urgent ones always in place, sections for Traffic, Sequence, Schedule, Radio, Airport and Map, light/dark/system themes on a flat palette, and a layout for tablets and phones (bottom sheet, 44 px touch targets). The previous page stays at `/classic` for now. Network play in the UI (#511): the position this device works, Play on this device; Rush per aircraft (#510). `GET /api/status` tells a connected simulator also in its menu.
 - The airport map moved from `examples/airport-map` to its own entry point, `cmd/airport-map` (module `github.com/mrlm-net/simconnect/cmd/airport-map`): it is the traffic control app and the SDK's debugger, not an example. Run it with `cd cmd/airport-map && go run .`.
 
 ### Added

@@ -1,0 +1,357 @@
+/* Tabs, the bottom sheet, popovers, keys, loading an airport, the review
+   overlay, polling and boot. */
+'use strict';
+
+/* ───────────── Tabs ───────────── */
+const TABS = ['traffic', 'sequence', 'schedule', 'radio', 'airport', 'map'];
+// The previous page's tab names, so a remembered tab carries over.
+const OLD_TABS = { approach: 'sequence', charts: 'airport', layers: 'map', help: 'traffic' };
+let currentTab = store.get('apm-tab') || OLD_TABS[store.get('airportMapTab')] || store.get('airportMapTab') || 'traffic';
+function showTab(name, fromUser) {
+  if (!TABS.includes(name)) name = 'traffic';
+  currentTab = name;
+  $$('.tabs [role="tab"]').forEach((b) => {
+    const on = b.dataset.tab === name;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  $$('.tabpanel').forEach((p) => { p.hidden = p.dataset.panel !== name; });
+  store.set('apm-tab', name);
+  if (fromUser && isPhone()) {
+    if ($('panel').dataset.sheet === 'peek') setSheet('half');
+    if (ctlSelected) select(0);
+  }
+  if (fromUser && document.body.classList.contains('panel-hidden')) togglePanel(true);
+  refreshSection();
+}
+// refreshSection fills a section that just became visible.
+function refreshSection() {
+  if (currentTab === 'radio') { renderRadio(); radioPoll.now(); }
+  if (currentTab === 'sequence') approachPoll.now();
+  if (currentTab === 'schedule') { renderBoard(); schedulePoll.now(); }
+  if (currentTab === 'airport') procPoll.now();
+  if (currentTab === 'map') { renderOthers(lastTraffic); trafficPoll.now(); }
+}
+
+/* ───────────── Bottom sheet (phone) and the panel ───────────── */
+function setSheet(state) {
+  const p = $('panel');
+  p.dataset.sheet = state;
+  p.style.height = '';
+  $('sheetHandle').setAttribute('aria-expanded', String(state !== 'peek'));
+  if (state !== 'peek') refreshSection();
+}
+function initSheet() {
+  const h = $('sheetHandle'), p = $('panel');
+  const cycle = { peek: 'half', half: 'full', full: 'peek' };
+  let y0 = 0, h0 = 0, dragging = false, moved = false;
+  h.addEventListener('pointerdown', (e) => {
+    if (!isPhone()) return;
+    dragging = true; moved = false; y0 = e.clientY; h0 = p.getBoundingClientRect().height;
+    h.setPointerCapture(e.pointerId);
+    p.classList.add('is-dragging');
+  });
+  h.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dy = y0 - e.clientY;
+    if (Math.abs(dy) > 6) moved = true;
+    p.style.height = Math.max(110, Math.min(window.innerHeight - 56, h0 + dy)) + 'px';
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    p.classList.remove('is-dragging');
+    if (!moved) { setSheet(cycle[p.dataset.sheet]); return; }
+    const hh = p.getBoundingClientRect().height, vh = window.innerHeight;
+    const snaps = { peek: 112, half: vh * 0.46 + 60, full: vh - 68 };
+    setSheet(Object.entries(snaps).sort((a, b) => Math.abs(a[1] - hh) - Math.abs(b[1] - hh))[0][0]);
+  };
+  h.addEventListener('pointerup', end);
+  h.addEventListener('pointercancel', end);
+  h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSheet(cycle[p.dataset.sheet]); } });
+}
+function updateSheetSummary() {
+  const nWait = ctlViews.filter((v) => !isDone(v) && waits(v)).length;
+  const ours = ctlViews.filter((v) => !isDone(v)).length;
+  const rwy = $('rwyChipVal').textContent;
+  $('sheetSummary').textContent = `${nWait} waiting · ${ours} ours${rwy && rwy !== '—' ? ' · RWY ' + rwy : ''}${lastOwn && lastOwn.paused ? ' · paused' : ''}${simLive ? '' : ' · no simulator'}`;
+}
+function togglePanel(show) {
+  const hide = show === undefined ? !document.body.classList.contains('panel-hidden') : !show;
+  document.body.classList.toggle('panel-hidden', hide);
+  const b = $('panelBtn');
+  b.setAttribute('aria-pressed', String(!hide));
+  b.setAttribute('aria-label', hide ? 'Show the panel' : 'Hide the panel');
+  b.title = hide ? 'Show the panel' : 'Hide the panel';
+  setTimeout(() => map.invalidateSize(), 50);
+  if (!hide) refreshSection();
+}
+
+/* ───────────── Popovers, help ───────────── */
+function closePopovers(except) {
+  $$('.popover').forEach((p) => { if (p !== except) p.hidden = true; });
+  $$('[aria-haspopup="dialog"][aria-controls]').forEach((b) => { if (!except || b.getAttribute('aria-controls') !== except.id) b.setAttribute('aria-expanded', 'false'); });
+}
+function openHelp() {
+  closePopovers();
+  const d = $('help');
+  if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+}
+
+/* ───────────── Loading an airport ───────────── */
+// normalize flattens a pkg/airport Layout into the shape the drawing code
+// uses: lat/lon on every item and the runway end fields.
+function normalize(d) {
+  for (const p of [...d.parking, ...d.taxiPoints]) { p.lat = p.position.lat; p.lon = p.position.lon; }
+  for (const r of d.runways) {
+    r.lat = r.center.lat; r.lon = r.center.lon;
+    r.primaryNumber = r.primary.number; r.primaryDesignator = r.primary.designator;
+    r.secondaryNumber = r.secondary.number; r.secondaryDesignator = r.secondary.designator;
+  }
+  d.taxiPaths = d.taxiPaths || [];
+  d.taxiNames = d.taxiNames || [];
+  return d;
+}
+async function load(icao, refresh) {
+  icao = icao.trim().toUpperCase();
+  if (!icao) return;
+  const st = $('aptStatus');
+  st.className = 'small';
+  st.textContent = `Loading ${icao}…`;
+  $('aptCode').textContent = icao;
+  const r = await api(`/api/airport?icao=${encodeURIComponent(icao)}${refresh ? '&refresh=1' : ''}`);
+  if (!r.ok) {
+    st.className = 'small err-text';
+    st.textContent = r.error;
+    $('aptName').textContent = data ? data.name : 'not loaded';
+    if (data) $('aptCode').textContent = data.icao;
+    toast(`${icao}: ${r.error}`, 'err');
+    return;
+  }
+  const prev = data && data.icao;
+  data = normalize(r.data);
+  if (prev !== data.icao) { routeFrom = null; viaPoints = []; drawVia(); $('rFrom').textContent = '—'; $('rFromHint').textContent = 'click a stand on the map'; }
+  $('aptCode').textContent = data.icao;
+  $('aptName').textContent = data.name;
+  $('icao').value = data.icao;
+  drawAirport();
+  renderTypeTables();
+  $('info').innerHTML = `${data.runways.length} runways · ${data.parking.length} parking · ${data.taxiPoints.length} points · ${data.taxiPaths.length} paths · ${data.taxiNames.length} names` +
+    (unresolvedPaths ? `<br><span class="err-text">${unresolvedPaths} paths with an out-of-range endpoint (red rings)</span>` : '') +
+    `<br>Fetched ${new Date(data.fetchedAt).toLocaleString()}`;
+  st.textContent = `Loaded ${data.icao}: ${data.runways.length} runways, ${data.parking.length} stands, ${data.taxiPoints.length} taxi points`;
+  const pts = [...data.taxiPoints, ...data.parking].map((p) => [p.lat, p.lon]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.05));
+  else map.setView([data.lat, data.lon], 14);
+  history.replaceState(null, '', `?icao=${data.icao}`);
+  fillRunwayEnds();
+  resetProcedures();
+  loadChoices();
+  renderRadio();
+  airportInfoPoll.now();
+  standsPoll.now();
+  approachPoll.now();
+  procPoll.now();
+}
+
+/* ───────────── The review overlay ───────────── */
+// ?overlay=LKPR-A1-24-after: a review overlay (GET /api/overlay) — the push
+// in red, the tow, the start of the taxi in blue, the target pose — fitted
+// on the map with its legend (playwright/shots2.mjs screenshots it).
+async function showOverlay(name) {
+  if (!name) return;
+  const r = await api(`/api/overlay?name=${encodeURIComponent(name)}`);
+  if (!r.ok || !r.data) { toast(`Overlay ${name}: ${r.error || 'empty'}`, 'err'); return; }
+  const geo = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+  const style = (f) => ({ push: { color: '#ff3030', weight: 5 }, tow: { color: '#ff9d1e', weight: 5, dashArray: '8 6' }, target: { color: '#39ff6a', weight: 3 } })[f.properties.kind] || { color: '#2f8cff', weight: 5 };
+  const layer = L.geoJSON(geo, {
+    style,
+    pointToLayer: (f, ll) => f.properties.kind === 'pose'
+      ? L.marker(ll, { zIndexOffset: 900, icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+        html: `<svg viewBox="0 0 24 24" width="30" height="30" style="transform:rotate(${f.properties.heading}deg)"><path fill="#39ff6a" stroke="#000" stroke-width=".8" d="M12 1.8c.85 0 1.35.95 1.35 2.1v5.3l7.85 4.55v2.05l-7.85-2.35v4.7l2.25 1.75v1.35L12 20.4l-3.6.85V19.9l2.25-1.75v-4.7L2.8 15.8v-2.05l7.85-4.55V3.9c0-1.15.5-2.1 1.35-2.1z"/></svg>` }) })
+        .bindTooltip(`target ${Math.round(f.properties.heading)}°`, { direction: 'left' })
+      : L.circleMarker(ll, { radius: 7, color: '#fff', fillColor: '#ffcc00', fillOpacity: 1 })
+        .bindTooltip(`${esc(f.properties.label)} (${Math.round(f.properties.heading)}°)`, { permanent: true, direction: 'right' }),
+  }).addTo(map);
+  if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 18 });
+  const tag = $('overlayTag');
+  tag.innerHTML = `${esc(name)} — <span style="color:#ff5050">push</span> · <span style="color:#ff9d1e">tow</span> · <span style="color:#4a9cff">taxi start</span> · <span style="color:#39ff6a">target pose (to scale)</span>`;
+  tag.hidden = false;
+}
+
+/* ───────────── Polling ───────────── */
+const aircraftPoll = poller('aircraft', pollAircraft, () => 1000);
+const trafficPoll = poller('traffic', pollTraffic, () => (layerOn.ours || layerOn.others || layerOn.safe || tabVisible('map') ? 1000 : 0));
+const controlPoll = poller('control', pollControl, () => 1000);
+// These answer 503 without the simulator: polled only while it is there
+// (my aircraft reported, or one of them answered lately).
+const standsPoll = poller('stands', pollStands, () => (simLive && data && layerOn.occupied ? 3000 : 0));
+const cameraPoll = poller('camera', pollCamera, () => (simLive ? 2000 : 0));
+const gamePoll = poller('game', pollGame, () => (simLive ? 2000 : 0));
+const schedulePoll = poller('schedule', pollSchedule, () => (!simLive ? 0 : tabVisible('schedule') ? 3000 : 10000));
+const worldPoll = poller('world', pollWorld, () => (!simLive ? 0 : worldOn || tabVisible('map') ? 5000 : 15000));
+const procPoll = poller('procedures', pollProcedures, () => (simLive && data && !procs && procTries < 20 && tabVisible('airport') ? 3000 : 0));
+const airportInfoPoll = poller('airportinfo', pollAirportInfo, () => (data ? 10000 : 0));
+const approachPoll = poller('approach', pollApproach, () => (data && seqWanted() ? (tabVisible('sequence') ? 2000 : 4000) : 0));
+// Play on this device (#511): the calls on the frequency followed, as the
+// server's voice says them, through this browser.
+const hereQueue = [];
+const herePlayed = new Set();
+let hereSince = 0, hereAudio = null, herePlaying = false;
+function hereNext() {
+  if (herePlaying || !hereQueue.length || !hereAudio) return;
+  herePlaying = true;
+  hereAudio.src = hereQueue.shift();
+  hereAudio.play().catch(() => { herePlaying = false; });
+}
+async function pollHere() {
+  if (!data) return true;
+  const r = await api(`/api/radio?icao=${encodeURIComponent(data.icao)}&n=20`);
+  if (!r.ok) return false;
+  for (const t of r.data || []) {
+    const key = `${t.at} ${t.callsign} ${t.intent}`;
+    if (herePlayed.has(key) || Date.parse(t.at) < hereSince || t.frequency !== rdFreq || t.intent === 'atis') continue;
+    herePlayed.add(key);
+    hereQueue.push(`/api/voice/clip?icao=${encodeURIComponent(data.icao)}&at=${encodeURIComponent(t.at)}&cs=${encodeURIComponent(t.callsign)}&intent=${encodeURIComponent(t.intent)}`);
+  }
+  hereNext();
+  return true;
+}
+const herePoll = poller('here', pollHere, () => ($('rdHere').checked && simLive ? 1000 : 0));
+$('rdHere').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    // Made in the click, so the browser lets it play.
+    hereAudio = hereAudio || new Audio();
+    hereAudio.onended = hereAudio.onerror = () => { herePlaying = false; hereNext(); };
+    hereSince = Date.now();
+    herePoll.now();
+  } else {
+    hereQueue.length = 0;
+    if (hereAudio) hereAudio.pause();
+    herePlaying = false;
+  }
+});
+// The position this device works (#511).
+$('asSel').value = atcPosition;
+$('asSel').addEventListener('change', (e) => {
+  atcPosition = e.target.value;
+  try { localStorage.setItem('apm-as', atcPosition); } catch { /* private window */ }
+  toast(atcPosition ? `Working as ${e.target.selectedOptions[0].textContent}: other frequencies are read-only` : 'Working all positions');
+});
+// The simulator connection, also without an aircraft (the main menu).
+const statusPoll = poller('status', async () => {
+  const r = await api('/api/status');
+  if (r.ok && r.data && r.data.connected) markLive();
+  return r.ok;
+}, () => 3000);
+const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (tabVisible('radio') ? 1000 : 2000) : 0));
+const voicePoll = poller('voice', pollVoice, () => (rdSync ? 1000 : 10000));
+
+/* ───────────── Boot ───────────── */
+function boot() {
+  applyTheme(themePref);
+  $$('[data-theme-set]').forEach((b) => b.addEventListener('click', () => applyTheme(b.dataset.themeSet)));
+  setBase(baseMode);
+  initLayers();
+  zoomClasses();
+  initDirector();
+  initTraffic();
+  initSections();
+  initSheet();
+  fillRunwayEnds();
+  fillProcedurePick();
+  updateSpawn();
+  updateConn();
+  showSim();
+  renderStrips();
+
+  $$('.tabs [role="tab"]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab, true)));
+  document.querySelector('.tabs').addEventListener('keydown', (e) => {
+    const tabs = $$('.tabs [role="tab"]');
+    const i = tabs.findIndex((t) => t.dataset.tab === currentTab);
+    let j = -1;
+    if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+    if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+    if (j >= 0) { e.preventDefault(); showTab(tabs[j].dataset.tab, true); tabs[j].focus(); }
+  });
+  document.addEventListener('click', (e) => {
+    const g = e.target.closest('[data-goto]');
+    if (g) { closePopovers(); showTab(g.dataset.goto, true); }
+    if (e.target.closest('[data-open-help]')) openHelp();
+    if (e.target.closest('[data-close-help]')) $('help').close();
+  });
+  $$('[aria-haspopup="dialog"][aria-controls]').forEach((btn) => btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pop = $(btn.getAttribute('aria-controls'));
+    const open = pop.hidden;
+    closePopovers(pop);
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open && !isPhone()) { const first = pop.querySelector('input, button, select'); if (first) first.focus(); }
+  }));
+  document.addEventListener('click', (e) => {
+    if (!document.contains(e.target)) return; // re-rendered inside a popover
+    if (!e.target.closest('.popover') && !e.target.closest('[aria-haspopup]')) closePopovers();
+  });
+  $('aptForm').addEventListener('submit', (e) => { e.preventDefault(); load($('icao').value); });
+  $('aptRefresh').addEventListener('click', () => load($('icao').value || (data ? data.icao : ''), true));
+
+  $('zoomIn').addEventListener('click', () => map.zoomIn());
+  $('zoomOut').addEventListener('click', () => map.zoomOut());
+  $('locateMe').addEventListener('click', () => {
+    if (lastOwn) locate(lastOwn.lat, lastOwn.lon, 'You');
+    else toast('Your aircraft is not reported (simulator not connected?)');
+  });
+  $('worldBtn').addEventListener('click', toggleWorld);
+  $('panelBtn').addEventListener('click', () => togglePanel());
+  // Full screen (browser), with the panel: play without the browser around it.
+  $('fsBtn').addEventListener('click', () => {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => toast('Full screen is not available here'));
+    } catch { /* not allowed here */ }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const on = !!document.fullscreenElement, b = $('fsBtn');
+    b.innerHTML = icon(on ? 'i-shrink' : 'i-expand');
+    b.title = on ? 'Leave full screen (Esc)' : 'Full screen, panel included (Esc leaves)';
+    b.setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
+    setTimeout(() => map.invalidateSize(), 100);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const typing = e.target.closest('input, select, textarea');
+    if (e.key === 'Escape') {
+      if ($$('.popover').some((p) => !p.hidden)) { closePopovers(); return; }
+      if ($('help').open) return; // the dialog closes itself
+      if (typing) return;
+      // Stop following, deselect, and hide the planned route.
+      if (ctlSelected || ctlFollow) { ctlFollow = 0; select(0); }
+      if (routeFrom) hideRoute();
+      if (isPhone() && $('panel').dataset.sheet !== 'peek') setSheet('peek');
+      return;
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey || $('help').open) return;
+    if (/^[1-6]$/.test(e.key)) showTab(TABS[Number(e.key) - 1], true);
+    if (e.key === ' ' && !e.target.closest('button, a, summary, [role="button"], [tabindex]')) {
+      e.preventDefault();
+      simAct(lastOwn && lastOwn.paused ? 'resume' : 'pause');
+    }
+  });
+  window.addEventListener('resize', () => { if (!isPhone()) $('panel').style.height = ''; });
+  $('ctlLogBox').addEventListener('toggle', () => { if ($('ctlLogBox').open) controlPoll.now(); });
+
+  setInterval(tickWaits, 1000);
+  requestAnimationFrame(glideTraffic);
+  if (isPhone()) setSheet('peek');
+  showTab(currentTab);
+
+  const params = new URLSearchParams(location.search);
+  const initial = params.get('icao') || 'LKPR';
+  // Read before load: loading an airport rewrites the URL.
+  const overlay = params.get('overlay');
+  $('icao').value = initial;
+  load(initial).then(() => showOverlay(overlay));
+  pollers.forEach((p) => p.run());
+}
+boot();
