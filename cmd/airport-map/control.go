@@ -794,7 +794,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
 			qnh, _ := cc.qnh()
-			it.firstContact(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" downwind", r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
+			it.call(traffic.PosTower, prioApproach, func() {
+				it.say(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" downwind", r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
+			})
 		} else {
 			// The first call to approach with its level, then the STAR.
 			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosApproach)
@@ -2481,6 +2483,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// 12.3.4.13): no approach clearance, no "established".
 		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && (len(it.arr.ProcedureRoute()) == 0 || it.circuit != nil)
 		pos = traffic.ArrivalPosition(ev.arr.State, onFinal)
+		if it.circuit != nil && pos == traffic.PosApproach {
+			pos = traffic.PosTower // VFR in the circuit: the tower from its first call, spawning too
+		}
 	default:
 		return
 	}
