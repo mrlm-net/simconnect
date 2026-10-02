@@ -872,6 +872,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		w.Write(b)
 	})
 	registerVoice(mux, speaker)
+	registerPush(mux)
 	registerCamera(mux, st)
 	registerTowers(mux, st)
 	speaker.atis = st.atisOn
@@ -1118,7 +1119,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		writeJSON(w, a)
 	})
 
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: guard(mux), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -1126,6 +1127,11 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		srv.Shutdown(shutdownCtx)
 	}()
 	fmt.Printf("🗺️  Map at http://%s\n", addr)
+	for role, links := range shareLinks() {
+		for _, l := range links {
+			fmt.Printf("   %s link: %s\n", role, l)
+		}
+	}
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -1155,7 +1161,10 @@ func main() {
 	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
 	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
 	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
+	controlToken := flag.String("token", "", "network play: the token another device needs to control the traffic (\"auto\": a random one; \"\": none needed)")
+	viewToken := flag.String("view-token", "", "network play: a token to watch only, as a spectator (\"auto\": a random one)")
 	flag.Parse()
+	setTokens(*controlToken, *viewToken)
 	startPprof()
 	speaker.piperPath, speaker.voicesDir = *piperPath, *voicesDir
 	// The default is the repo's graph, from the repo root or from this

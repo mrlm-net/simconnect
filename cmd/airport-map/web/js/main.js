@@ -202,6 +202,11 @@ async function showOverlay(name) {
 /* ───────────── Polling ───────────── */
 const aircraftPoll = poller('aircraft', pollAircraft, () => 1000);
 const trafficPoll = poller('traffic', pollTraffic, () => (layerOn.ours || layerOn.others || layerOn.safe || tabVisible('map') ? 1000 : 0));
+// Push (server-sent events, GET /api/events): the server says what changed
+// and it is fetched at once. The control poll stays at a second (it brings
+// our aircraft's positions, tugs and routes); the radio polls, only a
+// fallback while the stream is up.
+let pushUp = false;
 const controlPoll = poller('control', pollControl, () => 1000);
 // These answer 503 without the simulator: polled only while it is there
 // (my aircraft reported, or one of them answered lately).
@@ -279,7 +284,7 @@ async function pollHere() {
   hereNext();
   return true;
 }
-const herePoll = poller('here', pollHere, () => ($('rdHere').checked && simLive ? 1000 : 0));
+const herePoll = poller('here', pollHere, () => (!$('rdHere').checked || !simLive ? 0 : pushUp ? 5000 : 1000));
 $('rdHere').addEventListener('change', (e) => {
   if (voice) showVoice(voice); // the output picker: not for this device
   if (e.target.checked && isLocalHost && rdSoundOn) {
@@ -324,8 +329,18 @@ const statusPoll = poller('status', async () => {
   if (r.ok && r.data) {
     // Where other devices open the map (network play, #511).
     const urls = r.data.network || [];
+    // Spectating (a view token): watch only, the controls hidden (the
+    // server refuses them anyway).
+    const spect = r.data.role === 'spectator';
+    document.body.classList.toggle('spectator', spect);
+    $('spectChip').hidden = !spect;
+    // With tokens, the host sees the links to give out (each carries its token).
+    const links = r.data.links || {};
+    const linkList = (role, label) => (links[role] || []).map((u) => `${label}: <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join('<br>');
     const html = urls.length
-      ? `On the network: ${urls.map((u) => `<a href="${esc(u)}/?icao=${data ? esc(data.icao) : ''}" target="_blank" rel="noopener">${esc(u)}</a>`).join(', ')}: open it on a tablet, laptop or phone and pick <b>As</b>.`
+      ? (r.data.tokens && isLocalHost
+        ? `On the network, give out a link: ${[linkList('control', 'control'), linkList('spectator', 'watch only')].filter(Boolean).join('<br>')}`
+        : `On the network: ${urls.map((u) => `<a href="${esc(u)}/?icao=${data ? esc(data.icao) : ''}" target="_blank" rel="noopener">${esc(u)}</a>`).join(', ')}: open it on a tablet, laptop or phone and pick <b>As</b>.`)
       : 'Only this computer can open the map. To play over the network, start it with <code>-addr :8080</code> and open the address shown here on the other devices.';
     if (html !== netShown) {
       netShown = html;
@@ -336,7 +351,15 @@ const statusPoll = poller('status', async () => {
   }
   return r.ok;
 }, () => 3000);
-const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (tabVisible('radio') ? 1000 : 2000) : 0));
+const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (pushUp ? 10000 : tabVisible('radio') ? 1000 : 2000) : 0));
+(function push() {
+  if (!window.EventSource) return;
+  const es = new EventSource('/api/events');
+  es.onopen = () => { pushUp = true; };
+  es.onerror = () => { pushUp = false; }; // the browser reconnects by itself (retry: 3 s)
+  es.addEventListener('control', () => { controlPoll.now(); if (seqWanted()) approachPoll.now(); });
+  es.addEventListener('radio', () => { if (radioWanted()) radioPoll.now(); if ($('rdHere').checked) herePoll.now(); });
+})();
 const voicePoll = poller('voice', pollVoice, () => (rdSync ? 1000 : 10000));
 
 /* ───────────── Boot ───────────── */

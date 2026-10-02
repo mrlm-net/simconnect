@@ -70,7 +70,11 @@ The UI lives in `web/` (plain HTML, CSS and scripts, embedded in the binary); th
 
 ## Network play
 
-Start it with `-addr :8080` and open `http://<this computer>:8080` on tablets, laptops and phones on the same network (there is no login: use a network you trust). Each device picks **As** in the status strip, the position it works: Delivery, Ground, Tower or Approach (with departure), or all. A clearance for an aircraft on another position's frequency is refused. **Play on this device** in Radio plays the frequency followed through that device, in the voices the map's computer uses.
+Start it with `-addr :8080` and open `http://<this computer>:8080` on tablets, laptops and phones on the same network. Without tokens there is no login, so use a network you trust.
+
+With `-token <secret>`, another device needs a link with that token to control the traffic. With `-view-token <secret>`, a second link lets a device watch only: as a spectator it sees everything and changes nothing. Either flag takes `auto` to make a random token. The links are printed at start and shown on this computer in the Quick reference (?). A device opens its link once; the map keeps the token in a cookie and takes it out of the address. This computer always has full access.
+
+Open maps are told of changes as they happen (server-sent events, `GET /api/events`): a clearance, a state or a transmission shows at once. The polls remain as a fallback. Each device picks **As** in the status strip, the position it works: Delivery, Ground, Tower or Approach (with departure), or all. A clearance for an aircraft on another position's frequency is refused. **Play on this device** in Radio plays the frequency followed through that device, in the voices the map's computer uses.
 
 ## What it shows
 

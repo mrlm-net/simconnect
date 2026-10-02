@@ -254,6 +254,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentCross:
 		s = "Cross runway " + p[ParamRunway]
+		if p[ParamBehind] != "" {
+			s = fmt.Sprintf("Behind the landing %s, cross runway %s, behind", p[ParamBehind], p[ParamRunway])
+		}
 	case IntentLineUp:
 		s = fmt.Sprintf("Runway %s, line up and wait", p[ParamRunway])
 		if p[ParamBehind] != "" {

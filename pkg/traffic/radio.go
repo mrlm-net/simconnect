@@ -310,6 +310,11 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return fmt.Sprintf("%s, taxi%s, hold short of %s", cs, via, p[ParamLimit]) // 12.3.4.8
 	case IntentCross:
+		if p[ParamBehind] != "" {
+			// Conditional, as a line-up: the condition first, "behind" again
+			// at the end.
+			return fmt.Sprintf("%s, behind the landing %s, cross runway %s, behind", cs, p[ParamBehind], p[ParamRunway])
+		}
 		if p[ParamRush] != "" {
 			return fmt.Sprintf("%s, expedite crossing runway %s", cs, p[ParamRunway]) // 12.3.4.9
 		}
@@ -693,6 +698,13 @@ func ClearedTaxiUpTo(cs string, taxiways []string, limit string) Transmission {
 // ground across it, as at most airports).
 func ClearedCross(cs, runway string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentCross, Params: map[string]string{ParamRunway: runway}})
+}
+
+// ClearedCrossBehind is a conditional crossing behind the next landing
+// aircraft (traffic: its type as said): "CSA1, behind the landing A320,
+// cross runway 12, behind". The crew crosses once that aircraft has passed.
+func ClearedCrossBehind(cs, traffic, runway string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentCross, Params: map[string]string{ParamRunway: runway, ParamBehind: traffic}})
 }
 
 // ClearedLineUp is "line up and wait" on runway.

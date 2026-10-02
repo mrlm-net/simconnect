@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Airport map: optional access for network play. With `-token`, another device needs a link with that token to control the traffic. With `-view-token`, a device can watch as a spectator: it reads everything, changes nothing, and its controls are hidden. `auto` makes a random token. A link's token goes into a cookie and out of the address. This computer always has full access. The host sees the links in the Quick reference.
+- Airport map: push updates. Open maps hear of a change (a clearance, a state, a transmission) as it happens through server-sent events (`GET /api/events`) and fetch it at once. The polls remain as a fallback; the radio polls slow down while the stream is up.
+- Departure slots: with departures waiting at the runway (holding short, lining up, lined up), the approach sequence opens a gap on final for each one (`ApproachSequencer.SetDepartureSlots`). The gap is at least 6 NM (`DepartureGapNM`) and at least what the tower needs to let the departure go: the arrival ahead off the runway, then the next one still 4.5 NM out. The Sequence tab shows it as "departure gap".
+- Conditional runway crossing: an aircraft holding short of a crossing, with only the next arrival in the way, is told "behind the landing A320, cross runway 12, behind" (`ClearedCrossBehind`, `RunwayClearances.CrossBehind`). It crosses once that arrival is off the runway.
+
 ---
 
 ## [0.18.6] - 2026-10-02

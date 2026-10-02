@@ -101,6 +101,11 @@ type SequencerOptions struct {
 	// DiagonalNM is the spacing to an arrival on the adjacent final of
 	// dependent parallel approaches (0: 2 NM, AN-Conf/11-IP/3 2.3.2.2 b).
 	DiagonalNM float64
+	// DepartureGapNM is the spacing on final that lets one departure go
+	// between two arrivals on the same runway (mixed mode; 0: 6 NM). With
+	// SetDepartureSlots, that many gaps open in front of the next arrivals
+	// not yet established.
+	DepartureGapNM float64
 	// OnChange is called with every change of place or delay.
 	OnChange func(SequenceChange)
 }
@@ -120,7 +125,46 @@ type ApproachSequencer struct {
 	keys   map[string]time.Time
 	manual map[string]time.Time
 	cond  ApproachConditions
+	// depSlots: departures waiting for the runway, each to get a gap.
+	depSlots int
 }
+
+// SetDepartureSlots asks for n departure gaps (DepartureGapNM) in front of
+// the next arrivals not yet established: the departures waiting at the
+// runway (holding short, lining up, lined up) go between them. 0: none.
+func (s *ApproachSequencer) SetDepartureSlots(n int) {
+	s.mu.Lock()
+	s.depSlots = max(0, n)
+	s.mu.Unlock()
+}
+
+// departureGap is the time a departure gap takes on final between lead
+// and follow, and its spacing: DepartureGapNM, and at least what the tower
+// needs (RunwayController): the leader off the runway, then the follower
+// still DepartureGapArrivalNM out as the departure rolls.
+func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c ApproachConditions) (time.Duration, float64) {
+	nm := s.opts.DepartureGapNM
+	if nm == 0 {
+		nm = DefaultDepartureGapNM
+	}
+	kts := c.FinalGroundKts(follow.FinalKts)
+	g := SeparationTime(nm, kts)
+	if need := RunwayOccupancyIn(lead.Wake, true, c.Surface) + SeparationTime(DepartureGapArrivalNM, kts); need > g {
+		g = need
+		nm = g.Hours() * kts
+	}
+	return g, math.Round(nm*10) / 10
+}
+
+const (
+	// DefaultDepartureGapNM is the least gap on final for one departure
+	// in mixed mode.
+	DefaultDepartureGapNM = 6.0
+	// DepartureGapArrivalNM is how far out the next arrival still is as
+	// the departure in the gap starts its roll: the tower's MinArrivalNM
+	// (4 NM by default) and half a mile to spare.
+	DepartureGapArrivalNM = 4.5
+)
 
 // NewApproachSequencer creates the sequencer of a runway end ("24").
 func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequencer {
@@ -326,13 +370,31 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	})
 	planned := fixed // sorted by landing time
 	var lastFree *slot
+	s.mu.Lock()
+	slots := s.depSlots
+	s.mu.Unlock()
+	gapped := map[string]float64{} // arrivals behind a departure gap: its NM
 	for k := range free {
 		f := free[k]
 		at := f.eta
 		// Never before the one ahead of it in the order.
-		if lastFree != nil {
-			if g, _, _ := s.gap(lastFree.a, f.a, c); at.Before(lastFree.at.Add(g)) {
-				at = lastFree.at.Add(g)
+		ahead := lastFree
+		if ahead == nil && len(fixed) > 0 {
+			ahead = &fixed[len(fixed)-1] // the last established one
+		}
+		if ahead != nil {
+			g, _, _ := s.gap(ahead.a, f.a, c)
+			// A departure gap in front of it, while departures wait (a wide
+			// enough gap already is one).
+			if slots > 0 && ahead.a.Runway == f.a.Runway {
+				if dg, nm := s.departureGap(ahead.a, f.a, c); dg > g {
+					g = dg
+					gapped[f.a.Callsign] = nm
+				}
+				slots--
+			}
+			if at.Before(ahead.at.Add(g)) {
+				at = ahead.at.Add(g)
 			}
 		}
 		for {
@@ -366,6 +428,9 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			g, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
 			if short := g - p.at.Sub(planned[i-1].at); short > 0 {
 				e.ShortBy = short
+			}
+			if nm, ok := gapped[p.a.Callsign]; ok && planned[i-1].a.Callsign != "" {
+				e.SpacingNM, e.SpacingWhy = nm, "departure gap"
 			}
 		}
 		out[i] = e

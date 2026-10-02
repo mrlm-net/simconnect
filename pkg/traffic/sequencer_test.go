@@ -273,3 +273,30 @@ func TestSequencerAdjacentFinal(t *testing.T) {
 		t.Errorf("behind on the adjacent final %s, on the same %s", adjacent, same)
 	}
 }
+
+// Departure slots: with a departure waiting, the next arrival not yet
+// established lands a departure gap (6 NM) behind the one ahead, not the
+// 3 NM of the wake minimum; without, it closes up again.
+func TestDepartureSlots(t *testing.T) {
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	s := NewApproachSequencer("24", SequencerOptions{})
+	list := []ApproachAircraft{arr("CSA1", "A320", 12), arr("DLH2", "A320", 13)}
+	base := s.Update(now, list)
+	s.SetDepartureSlots(1)
+	seq := s.Update(now, list)
+	if seq[1].SpacingWhy != "departure gap" || seq[1].SpacingNM < DefaultDepartureGapNM {
+		t.Fatalf("second: %+v", seq[1])
+	}
+	gap := seq[1].Landing.Sub(seq[0].Landing)
+	want := SeparationTime(seq[1].SpacingNM, ApproachConditions{}.FinalGroundKts(140)) - time.Second
+	if gap < want-time.Second {
+		t.Errorf("gap %v, want at least %v", gap, want)
+	}
+	if !seq[1].Landing.After(base[1].Landing) {
+		t.Errorf("not delayed for the departure: %v, before %v", seq[1].Landing, base[1].Landing)
+	}
+	s.SetDepartureSlots(0)
+	if again := s.Update(now, list); again[1].SpacingWhy == "departure gap" || !again[1].Landing.Equal(base[1].Landing) {
+		t.Errorf("without departures: %+v", again[1])
+	}
+}

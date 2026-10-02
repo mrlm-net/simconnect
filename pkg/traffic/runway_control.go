@@ -65,6 +65,11 @@ type RunwayClearances struct {
 	// for the next arrival, by call sign, and that arrival: line up and
 	// wait behind it once it has passed (a conditional line-up).
 	LineUpBehind map[string]string `json:"lineUpBehind,omitempty"`
+	// CrossBehind: aircraft holding short of a crossing waiting only for
+	// the next arrival (the runway otherwise free): a conditional crossing
+	// behind it ("behind the landing A320, cross runway 12, behind"), by
+	// crossing aircraft, the arrival's call sign.
+	CrossBehind map[string]string `json:"crossBehind,omitempty"`
 	// NextArrival is the next arrival to land ("" none).
 	NextArrival string `json:"nextArrival,omitempty"`
 	// Why each departure or crossing still waits.
@@ -140,7 +145,7 @@ func (r *RunwayController) SetSurface(s RunwaySurface) {
 func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClearances {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}}
+	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}}
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
@@ -273,6 +278,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			default:
 				if why := arrivalClear(r.opts.CrossTime, 0); why != "" {
 					out.Waiting[u.Callsign] = why
+					// Only the next arrival in the way: across behind it.
+					if nextArrName != "" && !nextArrUser.Other {
+						out.CrossBehind[u.Callsign] = nextArrName
+					}
 					continue
 				}
 				out.Cross = append(out.Cross, u.Callsign)

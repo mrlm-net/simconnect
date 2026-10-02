@@ -1177,3 +1177,11 @@ body.nf-open { overflow: hidden; }
   body[data-dock="bottom"] .strip-card { margin-bottom: 0; }
   body[data-dock="bottom"]:not(.panel-hidden) .legend { bottom: 12px; }
 }
+
+/* Spectating (a view token): watch only. The controls that change anything
+   are hidden; the server refuses them anyway. */
+.chip--spect { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+body.spectator #newFlightBtn, body.spectator .strip-card__act, body.spectator .ctx__sec--next, body.spectator .ctx__sec--urgent,
+body.spectator .ctx .phase .acts, body.spectator .ctx .tools-row [data-tool="manual"], body.spectator .ctx .tools-row [data-tool="rush"],
+body.spectator .ctx .tools-row [data-tool="remove"], body.spectator .seq-acts, body.spectator .strip__sim, body.spectator #nfModal,
+body.spectator [data-game-start], body.spectator .facing { display: none !important; }

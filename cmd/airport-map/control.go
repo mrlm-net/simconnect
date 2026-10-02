@@ -278,6 +278,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 				who = "pilot"
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
+			hub.publish("radio") // the open maps fetch it now (push.go)
 			speaker.hear(t) // the voice, when on (#419)
 			if !speaker.state().On {
 				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
@@ -751,6 +752,14 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	// A change worth showing now (not each move): the open maps fetch it
+	// at once (push.go). Positions come with the regular poll.
+	defer func() {
+		if prev.State != v.State || prev.ATC != v.ATC || prev.AtLimit != v.AtLimit || prev.LimitNode != v.LimitNode ||
+			prev.Lights != v.Lights || prev.Error != v.Error || prev.Done != v.Done || prev.Manual != v.Manual || !slices.Equal(prev.Actions, v.Actions) {
+			hub.publish("control")
+		}
+	}()
 	// What the crew asks for (#462), once the change is logged and handed
 	// off (deferred first: runs last).
 	defer func() {

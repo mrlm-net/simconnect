@@ -502,11 +502,29 @@ func (q *sequences) tick(now time.Time) {
 	if q.cc.weather != nil {
 		wx = q.cc.weather()
 	}
+	// Departure slots: our departures waiting at a runway end (holding short
+	// of it, lining up, lined up) each get a gap in its arrivals. A runway
+	// for departures only has no arrivals to open one in.
+	waiting := map[key]int{}
+	for _, it := range items {
+		it.mu.Lock()
+		v := it.view
+		it.mu.Unlock()
+		if it.dep == nil || v.Done {
+			continue
+		}
+		atRunway := v.State == "lining up" || v.State == "lined up" ||
+			v.State == "holding short" && (v.HoldingShortOf == "" || strings.Contains(v.HoldingShortOf, v.Runway))
+		if atRunway {
+			waiting[key{it.ICAO, v.Runway}]++
+		}
+	}
 	for k, list := range feed {
 		if k.rwy == "" {
 			continue
 		}
 		s := q.sequencer(k.icao, k.rwy)
+		s.SetDepartureSlots(waiting[k])
 		if wx != nil {
 			if g, err := q.cc.graph(k.icao); err == nil {
 				if _, end, ok := g.Layout.RunwayEnd(k.rwy); ok {

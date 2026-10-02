@@ -56,6 +56,7 @@ A type not in the table takes the category of its wing span: below 15 m light, b
 
 - `DepartureInterval(leader, follower, sameRoute)` is how long a departure waits after the one before it on the same runway (Doc 4444 §5.8.3). The default is 1 minute on diverging routes and 2 minutes on the same SID. A medium or light following a heavy waits 2 minutes. Anything following a super waits 3 minutes, or 2 if it is heavy.
 - `RunwayOccupancy(wake, landing)` is a typical time on the runway. Landing, it runs from the threshold until clear: 45–70 s by category. Departing, it runs from lining up until lift-off: 40–60 s.
+- Departure slots: `ApproachSequencer.SetDepartureSlots(n)` opens `n` gaps on final, one for each departure waiting at the runway, in front of the next arrivals not yet established. A gap is at least `DepartureGapNM`, 6 NM by default. It is also at least what the tower needs: the arrival ahead off the runway, then the next arrival still `DepartureGapArrivalNM` (4.5 NM) out as the departure rolls. The tower's `MinArrivalNM` is 4 NM. A gap already wide enough counts as a slot. The Sequence tab shows such spacing as "departure gap". The airport map counts the departures holding short of the runway, lining up or lined up, per runway end. A runway used only for departures gets no gaps.
 
 The figures come from ICAO Doc 4444 (PANS-ATM) and EUROCONTROL RECAT-EU (2018). The assignments of types to RECAT-EU categories follow its tables where they list a type, and its weight and span criteria otherwise.
 
