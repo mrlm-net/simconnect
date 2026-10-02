@@ -63,6 +63,15 @@ The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#
 - The tower answers "join left downwind runway 24" with the wind and QNH.
 - The pilot reports "downwind" abeam the threshold.
 
+### Scheduled VFR flights
+
+`VFRFlights(VFROptions, from, to)` adds light aircraft flying in to the focus airports through the circuit, `VFRPerHour` (1) an hour by default, scaled by the density. Each flight has `Rules` "VFR", no origin, a light type (`VFRTypes`: C172, P28A, C152, DA40, SR22 by weight) and as call sign a registration of the airport's country (`VFRRegistration`: OKABC at LKPR, DEABC in Germany, GABCD in the UK).
+
+- They fly by day only. It must be day (`Daylight`: the sun no lower than 6° below the horizon, civil twilight, `SunElevation`) from when the flight appears until a quarter of an hour after its STA. At LKPR on 2 October the first lands at 06:55 local and the last at 18:40.
+- They fly in visual conditions only (`VFROptions.Visual`). The airport map asks for a visibility of 5 km and a ceiling of 1,500 ft or better at the user's aircraft. It checks again at the spawn, and a flight waits while the weather is worse.
+- The manager has a VFR flight appear `ManagerOptions.VFRLead` (8 min) before its STA, near the airport, never en route.
+- On the map it joins the circuit as a circuit arrival (no flight plan, no STAR) and parks on a GA ramp where the airport has one free, else on any stand that fits.
+
 Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.

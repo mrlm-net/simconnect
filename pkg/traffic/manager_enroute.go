@@ -22,7 +22,10 @@ func (m *TrafficManager) start(f *ManagedFlight, now time.Time) (time.Time, stri
 	case f.Overflight():
 		return f.Enter, "enroute"
 	}
-	direct := f.STA.Add(-o.ArrivalLead)
+	direct := f.STA.Add(-m.arrivalLead(&f.Flight))
+	if f.Rules == "VFR" {
+		return direct, "" // near the airport, joining the circuit
+	}
 	if o.EnrouteLead > 0 && !f.noEnroute && now.Before(direct.Add(-2*time.Minute)) {
 		return direct.Add(-o.EnrouteLead), "enroute"
 	}
@@ -97,4 +100,13 @@ func (p *TrafficPicture) has(objectID uint32) bool {
 	defer p.mu.Unlock()
 	_, ok := p.aircraft[objectID]
 	return ok
+}
+
+// arrivalLead is how long before its STA arrival f appears: VFRLead for a
+// VFR flight, ArrivalLead for the rest.
+func (m *TrafficManager) arrivalLead(f *Flight) time.Duration {
+	if f.Rules == "VFR" {
+		return m.opts.VFRLead
+	}
+	return m.opts.ArrivalLead
 }

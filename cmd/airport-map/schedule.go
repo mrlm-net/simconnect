@@ -101,8 +101,32 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 			opts.Layouts[icao] = l
 		}
 	}
-	return traffic.Schedule(s.cfg, opts, from, to)
+	flights := traffic.Schedule(s.cfg, opts, from, to)
+	// Light aircraft through the circuit, by day in visual conditions (#568).
+	// Their lead is the manager's default VFRLead: Source runs under the
+	// manager's lock, so its options are not asked for.
+	vfr := traffic.VFRFlights(traffic.VFROptions{Focus: focus, Layouts: opts.Layouts, Density: density, Seed: opts.Seed ^ 0x7f,
+		Visual: s.visual}, from, to)
+	return append(flights, vfr...)
 }
+
+// visual reports whether the weather at an airport allows VFR flights: a
+// visibility of VFRVisibilityM and a ceiling of VFRCeilingFt or better
+// (unknown counts as good). The weather is the user's (conditions).
+func (s *scheduler) visual(icao string) bool {
+	c, ok := s.conditions(icao)
+	if !ok {
+		return true
+	}
+	return (c.VisibilityM == 0 || c.VisibilityM >= vfrVisibilityM) && (c.CeilingFt == 0 || c.CeilingFt >= vfrCeilingFt)
+}
+
+// VFR flights need at least this visibility and ceiling (the usual VFR
+// limits in a control zone).
+const (
+	vfrVisibilityM = 5000
+	vfrCeilingFt   = 1500
+)
 
 // Overflights cross the scan range around the picture's centre (SimConnect
 // sees 108 NM): six in the peak hour at density 1.
@@ -148,6 +172,14 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		return err
 	}
 	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Fuel: true, Deice: "auto"}
+	vfr := f.Rules == "VFR"
+	if vfr {
+		// A light aircraft joining the circuit (#568): no plan, no STAR.
+		req.Circuit, req.Tug, req.Fuel, req.Deice = true, false, false, ""
+		if !s.visual(f.Airport) {
+			return fmt.Errorf("%w: no VFR in this weather", traffic.ErrSpawnBlocked)
+		}
+	}
 	// Resolved by spawn (pickRunway); a planned arrival on its plan's.
 	req.Runway = "active"
 	if pre != nil && pre.plan != nil && pre.plan.Request.ArrivalRunway != "" && !f.Departure() {
@@ -214,7 +246,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	var entry []airport.NavPoint
 	p, err := pre, error(nil)
-	if pre == nil {
+	if vfr {
+		// Through the circuit: no flight plan, no procedure.
+	} else if pre == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		p, err = planFor(ctx, st, g, req)
 		cancel()
@@ -226,7 +260,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		if pts, name, _, err := cc.procedureFor(g, req); err == nil {
 			entry, req.ProcName = pts, name
 		}
-	} else {
+	} else if p != nil {
 		req.planned, entry = p, p.route
 	}
 	// Nobody appears on top of other traffic: an arrival waits while an

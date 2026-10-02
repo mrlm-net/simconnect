@@ -183,6 +183,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── picture_airports.go # AirportLister: airports around (facilities list)
 │       ├── schedule.go      #   Schedule: flights (airlines, fleets, routes, waves), ScheduleConfig JSON
 │       ├── schedule_data.go #   DefaultScheduleConfig: built-in airlines, airports, waves, type limits
+│       ├── schedule_vfr.go  #   VFRFlights: light aircraft through the circuit, by day in visual conditions (#568)
+│       ├── daylight.go      #   SunElevation, Daylight (civil twilight)
 │       ├── manager.go       #   TrafficManager: schedule → spawn/remove, turnarounds, limits, retries, boards, other traffic
 │       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
 │       ├── manager_enroute.go # Enroute arrivals, overflights, leaving the area, Attach
