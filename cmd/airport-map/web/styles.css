@@ -541,6 +541,9 @@ body.panel-hidden .panel { display: none; }
 .wait-t { font: 600 var(--fs-xs) var(--font-mono); color: var(--warn); background: var(--warn-soft); padding: 1px 6px; border-radius: var(--r-pill); }
 .sched-t { font: 600 var(--fs-xs) var(--font-mono); color: var(--ok); background: var(--ok-soft); padding: 1px 6px; border-radius: var(--r-pill); white-space: nowrap; }
 .sched-t:empty { display: none; }
+.rules { font: 600 var(--fs-xs) var(--font-mono); padding: 0 5px; border-radius: var(--r-pill); margin-left: 6px; border: 1px solid currentColor; }
+.rules--i { color: var(--text-2); }
+.rules--v { color: var(--ok); background: var(--ok-soft); }
 .sched-t.is-late { color: var(--warn); background: var(--warn-soft); }
 .sched-t.is-vlate { color: var(--danger); background: var(--danger-soft); }
 

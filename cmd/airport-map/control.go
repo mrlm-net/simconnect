@@ -142,9 +142,12 @@ type ControlView struct {
 	ATC       string `json:"atc,omitempty"`
 	Frequency string `json:"frequency,omitempty"`
 	Kind      string `json:"kind"`
-	ICAO      string `json:"icao"` // its airport
-	Tail      string `json:"tail"`
-	Squawk    string `json:"squawk,omitempty"` // a departure's SSR code
+	// Rules: the flight rules it flies under, "IFR" or "VFR" (a circuit
+	// arrival).
+	Rules  string `json:"rules"`
+	ICAO   string `json:"icao"` // its airport
+	Tail   string `json:"tail"`
+	Squawk string `json:"squawk,omitempty"` // a departure's SSR code
 	// Tug: its pushback tug while it drives (from its depot or home), with
 	// the way still ahead.
 	Tug            *tugView         `json:"tug,omitempty"`
@@ -692,7 +695,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
-	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Rules: flightRules(r), Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
 	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
@@ -988,6 +991,15 @@ func arrivalActions(s traffic.ArrivalState) []string {
 		return []string{"cross", "upto", "taxi"}
 	}
 	return nil
+}
+
+// flightRules: a circuit arrival flies VFR (#568), everything else IFR on
+// its procedures or plan.
+func flightRules(r SpawnRequest) string {
+	if r.Circuit && r.Kind == "arrival" {
+		return "VFR"
+	}
+	return "IFR"
 }
 
 // act gives a clearance to a controlled aircraft.
