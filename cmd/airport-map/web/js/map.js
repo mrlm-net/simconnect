@@ -5,6 +5,9 @@
 'use strict';
 
 const map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 21, zoomSnap: 0.5, zoomDelta: 0.5 }).setView([50.1, 14.26], 14);
+// Aircraft and their data tags above the taxiway signs and other labels
+// (tooltips, 650), below popups (700).
+map.createPane('aircraft').style.zIndex = 660;
 L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
 const canvas = L.canvas({ padding: 0.5, tolerance: 4 });
 
@@ -295,7 +298,7 @@ function drawTraffic(list) {
     const kind = trafficKind(t), cat = CAT_OF[kind] || 'other';
     let m = acMarkers.get(t.objectId);
     if (!m) {
-      m = L.marker([t.lat, t.lon], { icon: acIcon(cat), keyboard: false, riseOnHover: true }).addTo(layers.traffic);
+      m = L.marker([t.lat, t.lon], { icon: acIcon(cat), keyboard: false, riseOnHover: true, pane: 'aircraft' }).addTo(layers.traffic);
       const id = t.objectId;
       m.on('click', () => aircraftClicked(id));
       acMarkers.set(t.objectId, m);
@@ -329,7 +332,7 @@ function refreshSelection() {
 
 function drawUser(a) {
   if (!a) { if (userMarker) { userMarker.remove(); userMarker = null; } return; }
-  if (!userMarker) userMarker = L.marker([a.lat, a.lon], { icon: acIcon('user'), keyboard: false, zIndexOffset: 1100 }).addTo(map);
+  if (!userMarker) userMarker = L.marker([a.lat, a.lon], { icon: acIcon('user'), keyboard: false, zIndexOffset: 1100, pane: 'aircraft' }).addTo(map);
   userMarker.setLatLng([a.lat, a.lon]);
   updateMarker(userMarker, 'user', a.heading, `<b>You</b><br>${a.groundKts.toFixed(0)} kt`, false, false);
   userMarker.setZIndexOffset(1100);

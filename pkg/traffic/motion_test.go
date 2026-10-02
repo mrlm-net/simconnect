@@ -191,7 +191,7 @@ func groundMsg(req, obj uint32, groundFt, cgFt float64) engine.Message {
 	h := (*types.SIMCONNECT_RECV_SIMOBJECT_DATA)(unsafe.Pointer(&buf[0]))
 	h.DwID = types.DWORD(types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA)
 	h.DwRequestID, h.DwObjectID = types.DWORD(req), types.DWORD(obj)
-	*(*injectGround)(unsafe.Pointer(&buf[off])) = injectGround{groundFt, cgFt}
+	*(*injectGround)(unsafe.Pointer(&buf[off])) = injectGround{GroundFt: groundFt, CGFt: cgFt}
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 

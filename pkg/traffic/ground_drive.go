@@ -345,10 +345,19 @@ func (d *groundDrive) followAhead(now time.Time) {
 	// Give way where routes cross or merge: stop short of the conflict
 	// (its first point is already a half-span away from the other path).
 	gw, whom := d.picture.giveWayTo(d.object, path, s0, GiveWayLookMeters, half, now)
-	d.givingWay = whom
 	if !math.IsInf(gw, 1) {
-		stop = math.Min(stop, gw-(pushNoseFactor-1)*d.prof.WheelbaseMeters-TrafficGapMeters)
+		at := gw - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters
+		// In the junction already (past where it would have stopped): it
+		// clears the junction rather than stopping in it — live, QTR1788 was
+		// pulled up short inside a crossing. Short of the stop it still gives
+		// way, and the traffic actually ahead on its path (body) still stops it.
+		if at < s0-1 && !d.picture.pushingNow(whom) { // a pushback is given way to always
+			whom, gw = 0, math.Inf(1)
+		} else {
+			stop = math.Min(stop, at)
+		}
 	}
+	d.givingWay = whom
 	if math.IsInf(stop, 1) {
 		d.mover.ClearTrafficStop()
 	} else {

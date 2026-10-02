@@ -282,7 +282,8 @@ const (
 	PushbackMinArcMeters = 14.0
 	PushStraightMeters   = 6.0
 	PushAlignMeters      = 10.0
-	GearUpFt             = 50.0
+	GearUpFt             = 500.0 // the gear comes up between GearUpFt and GearUpMaxFt above the runway (each crew its own), as asked 2026-10-02
+	GearUpMaxFt          = 1000.0
 	GearUpDelaySeconds   = 4.5
 	GearUpFpm            = 500.0
 	ClimbHandoverFt      = 1500.0
@@ -363,8 +364,11 @@ const (
 // aircraft) up to the climb pitch.
 const (
 	TailstrikeMarginDeg = 2.0
-	PositiveClimbFt     = 15.0
-	TailClearFtPerDeg   = 3.0
+	// Held to 35 ft and then a degree per 5 ft: at 15 ft and 3 ft the nose
+	// came up so soon after lift-off that it looked near a tail strike
+	// (live, 2026-10-02).
+	PositiveClimbFt   = 35.0
+	TailClearFtPerDeg = 5.0
 )
 
 // Ground traffic (GroundPicture, #334): a taxiing aircraft looks

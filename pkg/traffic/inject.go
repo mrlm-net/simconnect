@@ -53,6 +53,7 @@ type Injector struct {
 type injected struct {
 	slot           int
 	groundFt, cgFt float64
+	staticPitch    float64 // degrees, the simulator's convention
 	haveGround     bool
 	lights         Lights
 	lightsSent     bool
@@ -92,7 +93,12 @@ var injectEventNames = [injectEventCount]string{
 	"LANDING_LIGHTS_SET", "LOGO_LIGHTS_SET", "WING_LIGHTS_SET",
 }
 
-type injectGround struct{ GroundFt, CGFt float64 }
+// injectGround is the ground under an aircraft and how it rests on its
+// gear: CG height and STATIC PITCH, the attitude it sits at (the
+// simulator's pitch convention, as PLANE PITCH DEGREES: an A320 rests at
+// about +0.8°). Placed level, a model resting nose-up dug its nose wheel
+// into the ground (live, 2026-10-02).
+type injectGround struct{ GroundFt, CGFt, StaticPitch float64 }
 
 // InjectorOption configures an Injector.
 type InjectorOption func(*Injector)
@@ -136,8 +142,8 @@ func (i *Injector) register() error {
 	if err := i.track("define Initial Position", c.AddToDataDefinition(i.defBase+injDefPosition, "Initial Position", "", types.SIMCONNECT_DATATYPE_INITPOSITION, 0, 0)); err != nil {
 		return err
 	}
-	for k, v := range []string{"GROUND ALTITUDE", "STATIC CG TO GROUND"} {
-		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefGround, v, "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"STATIC CG TO GROUND", "feet"}, {"STATIC PITCH", "degrees"}} {
+		if err := i.track("define "+v.name, c.AddToDataDefinition(i.defBase+injDefGround, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
 	}
@@ -281,6 +287,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
 		Altitude:  o.groundFt + o.cgFt,
+		Pitch:     o.staticPitch, // resting on its gear, not level
 		Heading:   pose.Heading,
 		OnGround:  1,
 	}
@@ -379,7 +386,7 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		}
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
-			o.groundFt, o.cgFt, o.haveGround = g.GroundFt, g.CGFt, true
+			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
 		}
 		return true, nil
 	case types.SIMCONNECT_RECV_ID_EXCEPTION:

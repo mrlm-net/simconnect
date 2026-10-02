@@ -114,6 +114,15 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	return at
 }
 
+// pushingNow reports whether aircraft id is pushing back (taxiing traffic
+// gives way to it whatever happens).
+func (p *GroundPicture) pushingNow(id uint32) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e, ok := p.aircraft[id]
+	return ok && e.pushing
+}
+
 // giveWayTo is giveWay and the aircraft given way to (0 for none).
 func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half float64, now time.Time) (float64, uint32) {
 	type other struct {
