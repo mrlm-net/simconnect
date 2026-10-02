@@ -279,7 +279,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				if why := arrivalClear(r.opts.CrossTime, 0); why != "" {
 					out.Waiting[u.Callsign] = why
 					// Only the next arrival in the way: across behind it.
-					if nextArrName != "" && !nextArrUser.Other {
+					if nextArrName != "" && !nextArrUser.Other && nextArrUser.Established {
 						out.CrossBehind[u.Callsign] = nextArrName
 					}
 					continue
@@ -316,7 +316,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		default:
 			out.Waiting[u.Callsign] = why
 			// Waiting for the next arrival only, first in turn: behind it.
-			if number == 1 && nextArrName != "" && len(out.LineUpBehind) == 0 && interval(u) == "" {
+			// Only behind one established on the final: one still on its STAR
+			// or downwind may be many minutes away.
+			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" {
 				out.LineUpBehind[u.Callsign] = nextArrName
 			}
 		}

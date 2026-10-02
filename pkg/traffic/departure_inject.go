@@ -184,8 +184,15 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	if c.mover != nil {
 		speed = c.mover.Pose().GroundSpeedKts
 	}
+	// Driving in from its depot counts too: the aircraft waits still on the
+	// stand meanwhile, and at a still aircraft's rate the tug jumped along
+	// the road (live, 2026-10-02).
+	arriving := false
+	if t, ok := c.req.Tug.(interface{ Connected() bool }); ok && c.tugAttached {
+		arriving = !t.Connected()
+	}
 	tugDriving := c.req.Tug != nil && !c.req.Tug.Done() &&
-		(c.state == TaxiAwaitingPushback && (!c.tugAttached || !c.pushAt.IsZero()) || c.state >= TaxiPushback && c.tugAttached)
+		(c.state == TaxiAwaitingPushback && (!c.tugAttached || !c.pushAt.IsZero() || arriving) || c.state >= TaxiPushback && c.tugAttached)
 	moving := c.state == TaxiPushback || speed > 0.5 || tugDriving
 	full := c.state >= TaxiLiningUp || tugDriving
 	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
@@ -1543,9 +1550,14 @@ func (c *TaxiController) startLineUp() {
 		c.fail(err)
 		return
 	}
-	// Taxi speed through the entry, LineUpSpeedKts over the alignment.
+	// Taxi speed through the entry, LineUpSpeedKts over the alignment; a
+	// rolling take-off (cleared already) aligns briskly and rolls on.
 	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
-	path.LimitRange(c.alignDist-LineUpAlignMeters, path.Length(), LineUpSpeedKts, prof.Decel)
+	alignKts := LineUpSpeedKts
+	if c.takeoffCleared {
+		alignKts = LineUpRollingKts
+	}
+	path.LimitRange(c.alignDist-LineUpAlignMeters, path.Length(), alignKts, prof.Decel)
 	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts) // rolling on, or from a stop
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
@@ -1556,6 +1568,10 @@ func (c *TaxiController) startLineUp() {
 	c.setInjectedLights(lightsLineUp, "lights line-up (strobes)")
 	c.setState(TaxiLiningUp, nil)
 }
+
+// LineUpRollingKts is the alignment's speed for a rolling take-off
+// (cleared before lining up): onto the centreline and straight on.
+var LineUpRollingKts = 12.0
 
 // rollOnMeters: cleared for take-off while taxiing, the aircraft turns
 // onto the runway this far before its holding point instead of stopping.
