@@ -226,6 +226,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	}
 	switch t.Intent {
+	case IntentTrafficInfo:
+		s = "Looking out" // traffic information is acknowledged, not read back
 	case IntentWeather:
 		s = "QNH " + p[ParamQNH] // the pressure setting is read back (4.5.7.5.1)
 		if p[ParamQNH] == "" {

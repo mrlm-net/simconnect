@@ -27,6 +27,9 @@ type sepMonitor struct {
 	open   map[string]*sepLoss // by pair, while it lasts
 	losses []sepLoss           // ended, the latest last (at most 50)
 	now    []traffic.SeparationPair
+	// needed: whether two call signs need separation where they are
+	// (airspace classes, #570); nil: always.
+	needed func(a, b string) bool
 }
 
 type sepLoss struct {
@@ -47,8 +50,8 @@ func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
 	m.now = pairs
 	seen := map[string]bool{}
 	for _, p := range pairs {
-		if !p.Loss {
-			continue
+		if !p.Loss || m.needed != nil && !m.needed(p.A, p.B) {
+			continue // no separation required here (VFR in D, E, G; #570): no loss
 		}
 		k := p.A + "/" + p.B
 		seen[k] = true

@@ -76,6 +76,12 @@ A VFR arrival in the circuit is sequenced with the IFR arrivals to the same runw
 
 On the airport map the crew reports "downwind, touch and go" and the tower clears "cleared touch and go" (12.3.4.16 c); the last landing is cleared to land. After each touch-and-go it is sequenced again. New flight → Arrival → *VFR through the circuit* takes a number of touch-and-goes. Two in five scheduled VFR arrivals fly two to four training circuits (by their call sign).
 
+### Airspace classes and traffic information (#570)
+
+`SeparationRequired(class, a, b)` says whom ATC separates. In class C (and stricter) IFR is separated from IFR and from VFR. In D and E only IFR is separated from IFR, and in G nobody is. Where two aircraft are not separated, they are told of each other: `TrafficInformation` ("OKABC, traffic, 2 o'clock, 3 miles, opposite direction, Airbus A320, 2500 feet", with `TrafficRelative` for the o'clock, distance and direction), acknowledged "Looking out".
+
+On the airport map the managed airports' zones are class D (`-airspace` sets C, D, E or G), out to 10 NM and up to 5,000 ft above the field; around them class E. Our aircraft fly under their rules (`ControlView.Rules`), other traffic is IFR except light singles. A predicted conflict that needs no separation gets traffic information on each of ours' frequency, at most every 3 minutes, instead of a resolution. Such a pair coming close is not logged as a loss of separation.
+
 ### VFR departures
 
 `Circuit.Departure(exitBearing)` is the way out of the circuit towards an exit point `VFRExitNM` (5 NM) from the field, `VFRExitAboveFt` (1,000 ft) above circuit height. It leaves the circuit by the side the exit is on:

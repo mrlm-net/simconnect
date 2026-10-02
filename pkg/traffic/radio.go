@@ -66,15 +66,16 @@ const (
 	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
 	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
 	// VFR in the aerodrome traffic circuit (#569; Doc 4444 12.3.4.13–17).
-	IntentJoinCircuit    Intent = "join_circuit"    // join (left/right) (position in circuit) runway, QNH
-	IntentStraightIn     Intent = "straight_in"     // make straight-in approach, runway
-	IntentFollow         Intent = "follow"          // number (n), follow (traffic)
-	IntentCircuitInstr   Intent = "circuit_instr"   // make short/long approach, extend downwind, report base/final, continue approach
-	IntentTouchAndGo     Intent = "touch_and_go"    // cleared touch and go
-	IntentFullStop       Intent = "full_stop"       // make full stop
-	IntentCircuitDelay   Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
-	IntentVFRForLanding  Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
-	IntentCircuitReport  Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
+	IntentJoinCircuit   Intent = "join_circuit"    // join (left/right) (position in circuit) runway, QNH
+	IntentStraightIn    Intent = "straight_in"     // make straight-in approach, runway
+	IntentFollow        Intent = "follow"          // number (n), follow (traffic)
+	IntentCircuitInstr  Intent = "circuit_instr"   // make short/long approach, extend downwind, report base/final, continue approach
+	IntentTouchAndGo    Intent = "touch_and_go"    // cleared touch and go
+	IntentFullStop      Intent = "full_stop"       // make full stop
+	IntentCircuitDelay  Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
+	IntentVFRForLanding Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
+	IntentCircuitReport Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
+	IntentTrafficInfo   Intent = "traffic_info"    // traffic, (o'clock), (distance), (direction), (type), (level) (#570)
 )
 
 // Phraseology is the wording a transmission is said in: ICAO (Doc 4444,

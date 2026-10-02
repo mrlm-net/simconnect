@@ -575,6 +575,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				sched.tick(now)
 				seqs.tick(now)
 				air := cc.world.Aircraft()
+				sep.needed = cc.separationNeeded(air, sched.airports())
 				sep.tick(now, air)
 				cw.tick(now, air)
 				tw.tick(now)
@@ -1173,11 +1174,18 @@ func main() {
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
 	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
+	airspaceFlag := flag.String("airspace", "D", "class of the managed airports' control zones for VFR rules: C, D, E or G (#570)")
 	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
 	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
 	controlToken := flag.String("token", "", "network play: the token another device needs to control the traffic (\"auto\": a random one; \"\": none needed)")
 	viewToken := flag.String("view-token", "", "network play: a token to watch only, as a spectator (\"auto\": a random one)")
 	flag.Parse()
+	if cl, err := parseAirspaceClass(*airspaceFlag); err == nil {
+		zoneClass = cl
+	} else {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	setTokens(*controlToken, *viewToken)
 	startPprof()
 	speaker.piperPath, speaker.voicesDir = *piperPath, *voicesDir
