@@ -1075,6 +1075,7 @@ select option { background: var(--surface); color: var(--text); }
 .leaflet-container.is-look-locked { cursor: crosshair; box-shadow: inset 0 0 0 3px rgba(88,166,255,.7); }
 .m-tug { display: grid; place-items: center; border-radius: 4px; background: var(--warn); color: #fff; font: 700 10px/1 var(--font-sans); box-shadow: var(--shadow-1); }
 .m-tug-route { fill: none; stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 5; stroke-opacity: .8; }
+.m-tug--fuel { background: var(--ok); }
 .m-angle { fill: var(--accent); fill-opacity: .14; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
 
 /* The simulator gone: a blurred map and a radar scope with a plane in the hold. */

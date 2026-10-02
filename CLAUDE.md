@@ -176,6 +176,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours, terminal
 │       ├── pushturn.go      #   Dubins push-and-turn, alley entry, pavement check
 │       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
+│       ├── fuel.go          #   FuelService interface, SimObjectFuelTruck (fuel truck at the wing, #582)
 │       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
 │       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
 │       ├── picture.go       #   TrafficPicture: all traffic around a configurable centre, phases, feeds

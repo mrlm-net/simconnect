@@ -147,7 +147,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if err != nil {
 		return err
 	}
-	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Deice: "auto"}
+	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Fuel: true, Deice: "auto"}
 	// Resolved by spawn (pickRunway); a planned arrival on its plan's.
 	req.Runway = "active"
 	if pre != nil && pre.plan != nil && pre.plan.Request.ArrivalRunway != "" && !f.Departure() {

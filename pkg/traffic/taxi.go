@@ -130,6 +130,10 @@ type TaxiRequest struct {
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
 	Tug PushbackTug
+	// Fuel refuels the aircraft on its stand before the tug comes (#582):
+	// e.g. NewSimObjectFuelTruck. Nil: no refuelling shown. The controller
+	// passes it its messages.
+	Fuel FuelService
 	// StandOccupied reports whether a stand is taken now (an aircraft on it
 	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
 	// through an empty neighbouring stand (EHAM E3: back into the empty
@@ -269,6 +273,10 @@ type TaxiController struct {
 	frameAt         time.Time
 	tugAttached     bool
 	tugAttachedAt   time.Time // when the tug was sent for
+	fuelAttached    bool
+	fuelWaitFrom    time.Time // first frame waiting on the stand
+	fuelUntil       time.Time // refuelling done (set once at the wing)
+	fuelClearFrom   time.Time // the push first waited for it to leave
 	pushBranch      airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch  bool
 	pushJunction    int              // route index of the junction the tail swings at (planPushback; 1: the first)
@@ -506,6 +514,9 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 	if c.req.Tug != nil && c.req.Tug.Handle(msg) {
 		return true
 	}
+	if c.req.Fuel != nil && c.req.Fuel.Handle(msg) {
+		return true
+	}
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
 		m := msg.AsAssignedObjectID()
@@ -669,11 +680,13 @@ func (c *TaxiController) fail(err error) {
 	c.setState(TaxiFailed, err)
 }
 
-// removeTug takes the pushback tug away (cancel, failure).
+// removeTug takes the pushback tug away (cancel, failure), and the fuel
+// truck.
 func (c *TaxiController) removeTug() {
 	if c.req.Tug != nil {
 		c.note("tug", c.req.Tug.Remove())
 	}
+	c.removeFuel()
 }
 
 // setState records a state change and publishes it.

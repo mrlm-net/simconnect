@@ -456,6 +456,9 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	if err := airports.Request(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  airport list: %v\n", err)
 	}
+	if err := cc.requestFuelTitles(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  fuel truck list: %v\n", err)
+	}
 	if err := cc.requestModels(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
 	}
