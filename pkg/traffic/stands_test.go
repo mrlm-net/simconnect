@@ -141,12 +141,12 @@ func TestStandAllocatorAssign(t *testing.T) {
 	// free candidates it routed.
 	b := NewStandAllocator(nil, g, StandWithSpread(0))
 	first, _ := b.Assign(StandRequirements{Owner: "X", Runway: "24"})
-	_, r1, err := bestExit(g, "24", first, airport.RouteOptions{})
+	_, r1, err := bestExit(g, "24", first, airport.RouteOptions{}, exitReach{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	c22 := stand(t, g, "C22")
-	if _, r2, err := bestExit(g, "24", c22, airport.RouteOptions{}); err == nil && first != c22 && r2.Length < r1.Length-1 {
+	if _, r2, err := bestExit(g, "24", c22, airport.RouteOptions{}, exitReach{}); err == nil && first != c22 && r2.Length < r1.Length-1 {
 		t.Errorf("assigned %s (%.0f m taxi) though C22 is %.0f m", g.Layout.Parking[first].Label(), r1.Length, r2.Length)
 	}
 	gates := []types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_HEAVY}
