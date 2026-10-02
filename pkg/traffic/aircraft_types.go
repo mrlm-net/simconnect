@@ -114,7 +114,39 @@ var knownTypes = []typeSpec{
 		vapp: 113, pitch: 0.5, flarePitch: 3, flareFt: 20, tdFpm: -100, takeoff: toTprop, brake: 2.2, taxi: 15, flaps: flapsATR},
 	{match: []string{"DH8D", "Q400", "DASH 8", "DHC-8", "DH8"}, Type: "DH8D", Category: CategoryTurboprop, span: 28.4, length: 32.8, wheelbase: 13.9, cg: 3.0, tod: 1400,
 		vapp: 125, pitch: 0, flarePitch: 3, flareFt: 20, tdFpm: -100, takeoff: toTprop, brake: 2.2, taxi: 15, flaps: flapsQ400},
+	// Light aircraft (VFR traffic, #565). Span and length as published
+	// (Wikipedia specifications: C172R, PA-28-140, DA40 XL, SR22-G5, C152);
+	// vapp is 1.3 times the published flaps-down stall speed. Wheelbase,
+	// CG height and take-off distance are estimates (no published figure
+	// read); the simulator's SimVars refine span and the rest (Refine).
+	{match: []string{"C172", "CESSNA 172", "SKYHAWK", "C-172"}, Type: "C172", Category: CategoryPiston, span: 11.0, length: 8.28, wheelbase: 1.7, cg: 1.0, tod: 500,
+		vapp: 61, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 721), brake: 2.0, taxi: 10, flaps: flapsCessna},
+	{match: []string{"C152", "CESSNA 152", "C-152"}, Type: "C152", Category: CategoryPiston, span: 10.16, length: 7.34, wheelbase: 1.5, cg: 0.9, tod: 450,
+		vapp: 56, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(50, 70, 715), brake: 2.0, taxi: 10, flaps: flapsCessna},
+	{match: []string{"P28A", "PA28", "PA-28", "CHEROKEE", "ARCHER", "WARRIOR"}, Type: "P28A", Category: CategoryPiston, span: 9.14, length: 7.10, wheelbase: 1.9, cg: 0.9, tod: 500,
+		vapp: 61, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 660), brake: 2.0, taxi: 10, flaps: flapsPiper},
+	{match: []string{"DA40", "DA 40", "DIAMOND STAR"}, Type: "DA40", Category: CategoryPiston, span: 11.9, length: 8.1, wheelbase: 1.7, cg: 1.0, tod: 580,
+		vapp: 64, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(59, 75, 1120), brake: 2.0, taxi: 10, flaps: flapsDiamond},
+	{match: []string{"SR22", "SR-22", "CIRRUS"}, Type: "SR22", Category: CategoryPiston, span: 11.68, length: 7.92, wheelbase: 1.8, cg: 1.0, tod: 760,
+		vapp: 78, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -110, takeoff: toPiston(70, 100, 1270), brake: 2.0, taxi: 10, flaps: flapsCirrus},
 }
+
+// toPiston is a light single's take-off: rotation and climb speeds (kt,
+// estimates) and the published rate of climb (fpm).
+func toPiston(rotateKts, climbKts, climbFpm float64) TakeoffProfile {
+	return TakeoffProfile{RollAccel: 1.5, RotateKts: rotateKts, RotateRate: 3, LiftoffPitch: 7, ClimbPitch: 9, ClimbKts: climbKts,
+		ClimbFpm: climbFpm, ClimbRampSeconds: 2, TailstrikePitch: 12}
+}
+
+// Light aircraft flap settings, as percent of travel: Cessna 0 10 20 30
+// (take-off 10, approach 20, landing 30), Piper 0 10 25 40 (0, 25, 40),
+// Diamond UP T/O LDG (T/O, T/O, LDG), Cirrus 0 50 100 (50, 50, 100).
+var (
+	flapsCessna  = FlapSchedule{TakeoffPct: 33.3, ApproachPct: 66.7, LandingPct: 100}
+	flapsPiper   = FlapSchedule{TakeoffPct: 0, ApproachPct: 62.5, LandingPct: 100}
+	flapsDiamond = FlapSchedule{TakeoffPct: 50, ApproachPct: 50, LandingPct: 100}
+	flapsCirrus  = FlapSchedule{TakeoffPct: 50, ApproachPct: 50, LandingPct: 100}
+)
 
 // TakeoffProfileFor picks take-off figures for an aircraft model title,
 // e.g. "FSLTL B77W Emirates" or "Boeing 777-300", by its family (see
@@ -125,9 +157,12 @@ func TakeoffProfileFor(model string) TakeoffProfile {
 }
 
 // EngineCount is how many engines the type has: four for the 747, A340
-// and A380 families, two otherwise (twins and the turboprops listed).
+// and A380 families, one for the light singles (pistons), two otherwise
+// (twins and the turboprops listed).
 func (p AircraftProfile) EngineCount() int {
 	switch {
+	case p.Category == CategoryPiston:
+		return 1
 	case strings.HasPrefix(p.Type, "B74"), strings.HasPrefix(p.Type, "A34"), strings.HasPrefix(p.Type, "A38"):
 		return 4
 	}

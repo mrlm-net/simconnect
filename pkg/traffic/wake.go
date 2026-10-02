@@ -82,6 +82,7 @@ var wakeTypes = map[string]Wake{
 	"DH8A": {WakeMedium, RecatE}, "DH8C": {WakeMedium, RecatE}, "DH8D": {WakeMedium, RecatE}, "SF34": {WakeMedium, RecatE}, "SU95": {WakeMedium, RecatE},
 	"C208": {WakeLight, RecatF}, "C172": {WakeLight, RecatF}, "SR22": {WakeLight, RecatF}, "PC12": {WakeLight, RecatF}, "BE20": {WakeLight, RecatF},
 	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
+	"C152": {WakeLight, RecatF}, "P28A": {WakeLight, RecatF}, "DA40": {WakeLight, RecatF},
 }
 
 // WakeFor is the wake categories of a type: an ICAO type designator, or a

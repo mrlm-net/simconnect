@@ -1,0 +1,76 @@
+//go:build windows
+// +build windows
+
+package traffic
+
+import (
+	"math"
+	"testing"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/convert"
+)
+
+// side is which side of the line through a on heading hdg p lies: negative
+// left, positive right (meters).
+func side(a airport.LatLon, hdg float64, p airport.LatLon) float64 {
+	return math.Sin((localBearing(a, p)-hdg)*math.Pi/180) * localDist(a, p)
+}
+
+// A C172's circuit on LKPR 24: left-hand by default, 1000 ft above the
+// field on the downwind, the downwind about a mile out, the final on the
+// centreline; right-hand and other figures as configured.
+func TestCircuit(t *testing.T) {
+	l := lkprGraph(t).Layout
+	p := ProfileFor("Asobo PassiveAircraft C172")
+	_, end, _ := l.RunwayEnd("24")
+	field := convert.MetersToFeet(l.Altitude)
+	c, err := NewCircuit(l, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Side != CircuitLeft || len(c.Points) != 6 || c.DownwindNM < CircuitMinDownwindNM || c.DownwindNM > 1.5 {
+		t.Fatalf("circuit %+v", c)
+	}
+	dw, _ := c.Point(LegDownwind)
+	if math.Abs(dw.AltFt-(field+1000)) > 1 {
+		t.Errorf("downwind at %.0f ft, field %.0f", dw.AltFt, field)
+	}
+	if s := side(end.Threshold, end.Heading, dw.Position); s > -0.7*1852 {
+		t.Errorf("left-hand downwind %.0f m from the centreline", s)
+	}
+	fin, _ := c.Point(LegFinal)
+	if s := side(end.Threshold, end.Heading, fin.Position); math.Abs(s) > 5 {
+		t.Errorf("final %.0f m off the centreline", s)
+	}
+	if fin.Kts >= dw.Kts || fin.AltFt >= dw.AltFt {
+		t.Errorf("final %+v after downwind %+v", fin, dw)
+	}
+	// The 45° join: outside the circuit, a mile from midfield, met at 45°.
+	entry, mid := c.JoinDownwind()
+	if d := localDist(entry.Position, mid.Position); math.Abs(d-1852) > 20 {
+		t.Errorf("join %.0f m from midfield", d)
+	}
+	if side(end.Threshold, end.Heading, entry.Position) > side(end.Threshold, end.Heading, mid.Position) {
+		t.Error("join from inside the circuit")
+	}
+	downwindDir := end.Heading + 180
+	if a := math.Abs(headingDiff(localBearing(entry.Position, mid.Position), downwindDir)); math.Abs(a-45) > 2 {
+		t.Errorf("join meets the downwind at %.0f°", a)
+	}
+	// Configured: right-hand, 800 ft, a 1.2 NM downwind.
+	r, _ := NewCircuit(l, "24", CircuitConfig{Side: CircuitRight, HeightFt: 800, DownwindNM: 1.2}, p)
+	rdw, _ := r.Point(LegDownwind)
+	if s := side(end.Threshold, end.Heading, rdw.Position); math.Abs(s-1.2*1852) > 20 {
+		t.Errorf("right-hand downwind %.0f m from the centreline", s)
+	}
+	if math.Abs(rdw.AltFt-(field+800)) > 1 {
+		t.Errorf("configured height: %.0f", rdw.AltFt)
+	}
+	if wps := c.Waypoints(LegDownwind); len(wps) < 4 {
+		t.Errorf("%d waypoints from downwind", len(wps))
+	}
+	if _, err := NewCircuit(l, "99", CircuitConfig{}, p); err != ErrNoRunway {
+		t.Errorf("no runway: %v", err)
+	}
+}

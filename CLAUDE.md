@@ -198,6 +198,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── clock.go         #   SimClock: traffic time at the simulation rate, stopped while paused (#413)
 │       ├── corners.go       #   Rounded turns: standard bank by airframe, fly-by arcs for MSFS AI chains
 │       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
+│       ├── circuit.go       #   VFR circuits: CircuitConfig per runway end, NewCircuit, JoinDownwind, Waypoints (#567)
 │       ├── absorb.go        #   AbsorbDelay: speed control and path stretching on the STAR (#391)
 │       ├── sequencer.go     #   ApproachSequencer: landing order, spacing and delays per runway; DistanceToGo
 │       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
@@ -262,6 +263,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
+│   ├── traffic-vfr.md       #   VFR traffic: light aircraft, circuits, reporting points (v0.19)
 │   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
 │   ├── traffic-decisions.md #   How the traffic decides, with the numbers: push choice, give way, routing, runway, sequencing, conflicts
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
