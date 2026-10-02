@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.7] - 2026-10-02
+
+Network play grows up: tokens to control or only watch (spectators), and changes pushed to every open map as they happen. The approach sequence opens gaps on final for waiting departures, and the tower clears a crossing conditionally, behind the landing aircraft.
+
 ### Added
 
 - Airport map: optional access for network play. With `-token`, another device needs a link with that token to control the traffic. With `-view-token`, a device can watch as a spectator: it reads everything, changes nothing, and its controls are hidden. `auto` makes a random token. A link's token goes into a cookie and out of the address. This computer always has full access. The host sees the links in the Quick reference.
