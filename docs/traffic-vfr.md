@@ -63,9 +63,20 @@ The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#
 - The tower answers "join left downwind runway 24" with the wind and QNH.
 - The pilot reports "downwind" abeam the threshold.
 
+### VFR departures
+
+`Circuit.Departure(exitBearing)` is the way out of the circuit towards an exit point `VFRExitNM` (5 NM) from the field, `VFRExitAboveFt` (1,000 ft) above circuit height. It leaves the circuit by the side the exit is on:
+
+- **ahead** (within 45° of the runway heading): straight out from the upwind;
+- **to the circuit's side**: by its crosswind leg;
+- **to the other side**: turning away from the circuit after the upwind;
+- **behind**: by the crosswind and downwind on the circuit's side, or by their mirror on the other side. It never crosses the circuit.
+
+With `TaxiRequest.VFR` the injected take-off hands over to MSFS AI at `VFRHandoverFt` (400 ft), so MSFS AI flies the turns. `VFRDepartureWaypoints` gives it the points at their altitude and the circuit speed. On the airport map the New flight option *VFR through the circuit* works for departures too: the exit is in a random direction (`SpawnRequest.ExitBearing` sets it) and the route is shown as "VFR north". A VFR departure gets no departure clearance: its first call is to ground, for start-up or taxi.
+
 ### Scheduled VFR flights
 
-`VFRFlights(VFROptions, from, to)` adds light aircraft flying in to the focus airports through the circuit, `VFRPerHour` (1) an hour by default, scaled by the density. Each flight has `Rules` "VFR", no origin, a light type (`VFRTypes`: C172, P28A, C152, DA40, SR22 by weight) and as call sign a registration of the airport's country (`VFRRegistration`: OKABC at LKPR, DEABC in Germany, GABCD in the UK).
+`VFRFlights(VFROptions, from, to)` adds light aircraft flying in to the focus airports through the circuit, and as many flying out of them, `VFRPerHour` (1) an hour by default, scaled by the density. Each flight has `Rules` "VFR", no origin, a light type (`VFRTypes`: C172, P28A, C152, DA40, SR22 by weight) and as call sign a registration of the airport's country (`VFRRegistration`: OKABC at LKPR, DEABC in Germany, GABCD in the UK).
 
 - They fly by day only. It must be day (`Daylight`: the sun no lower than 6° below the horizon, civil twilight, `SunElevation`) from when the flight appears until a quarter of an hour after its STA. At LKPR on 2 October the first lands at 06:55 local and the last at 18:40.
 - They fly in visual conditions only (`VFROptions.Visual`). The airport map asks for a visibility of 5 km and a ceiling of 1,500 ft or better at the user's aircraft. It checks again at the spawn, and a flight waits while the weather is worse.
@@ -75,7 +86,7 @@ The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#
 Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.
-- Touch-and-goes and circuit departures are still to come.
+- Touch-and-goes are still to come.
 - The "number 2, follow …" sequencing with IFR arrivals is #569.
 
 ## Jetbridges (#572)

@@ -11,29 +11,37 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
-// TestVFRFlights: light aircraft fly in to LKPR by day only, as OK-
-// registrations, as many as asked for; none in poor weather.
+// TestVFRFlights: light aircraft fly in to and out of LKPR by day only, as
+// OK- registrations, as many as asked for; none in poor weather.
 func TestVFRFlights(t *testing.T) {
 	l := lkprGraph(t).Layout
 	opts := VFROptions{Focus: []string{"LKPR"}, Layouts: map[string]*airport.Layout{"LKPR": l}, PerHour: 2, Seed: 7}
 	day := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
 	fs := VFRFlights(opts, day, day.Add(24*time.Hour))
-	if len(fs) < 15 || len(fs) > 30 {
-		t.Fatalf("%d VFR flights in a day at 2 an hour by day, want about 22", len(fs))
+	if len(fs) < 30 || len(fs) > 60 {
+		t.Fatalf("%d VFR flights in a day at 2 an hour each way by day, want about 45", len(fs))
 	}
+	deps := 0
 	pos := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
 	for _, f := range fs {
-		if f.Rules != "VFR" || f.Destination != "LKPR" || f.Origin != "" || !strings.HasPrefix(f.Callsign, "OK") || len(f.Callsign) != 5 {
+		dep := f.Origin == "LKPR"
+		if dep {
+			deps++
+		}
+		if f.Rules != "VFR" || !dep && (f.Destination != "LKPR" || f.Origin != "") || dep && f.Destination != "" || !strings.HasPrefix(f.Callsign, "OK") || len(f.Callsign) != 5 {
 			t.Errorf("flight %+v", f)
 		}
-		if !Daylight(pos, f.STA.Add(-8*time.Minute)) || !Daylight(pos, f.STA) {
+		if when := f.STA; dep && !Daylight(pos, f.STD) || !dep && (!Daylight(pos, when.Add(-8*time.Minute)) || !Daylight(pos, when)) {
 			t.Errorf("%s at %v: not by day", f.Callsign, f.STA)
 		}
 		if p := ProfileFor(f.Type); p.Category != CategoryPiston {
 			t.Errorf("%s: type %s is no light aircraft", f.Callsign, f.Type)
 		}
 	}
-	t.Logf("%d flights, first %v, last %v", len(fs), fs[0].STA.Format("15:04"), fs[len(fs)-1].STA.Format("15:04"))
+	if deps == 0 || deps == len(fs) {
+		t.Errorf("%d departures of %d flights", deps, len(fs))
+	}
+	t.Logf("%d flights, %d departures", len(fs), deps)
 	opts.Visual = func(string) bool { return false }
 	if n := len(VFRFlights(opts, day, day.Add(24*time.Hour))); n != 0 {
 		t.Errorf("%d VFR flights in poor weather", n)

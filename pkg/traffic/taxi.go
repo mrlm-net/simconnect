@@ -113,6 +113,10 @@ type TaxiRequest struct {
 	// optionally the rest of the flight plan (#315). Empty climbs straight
 	// ahead (TakeoffClimb).
 	Departure []airport.NavPoint
+	// VFR: Departure is a VFR departure (Circuit.Departure, #568): the
+	// injected take-off hands over at VFRHandoverFt, and MSFS AI flies its
+	// points at their altitude and speed (VFRDepartureWaypoints).
+	VFR bool
 	// Aircraft is the aircraft's profile (#324); nil resolves it from
 	// Model (ProfileFor). It fills Profile, Takeoff and NoseOffset where
 	// those are zero and sets the flaps and pushback speed.
@@ -266,7 +270,7 @@ type TaxiController struct {
 	alignDist       float64
 	takeoff         *TakeoffMover
 	gearUp          bool
-	gearUpAt        float64 // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
+	gearUpAt        float64        // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
 	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
 	hasPendingLimit bool
 	flaps           surfaceRamp
@@ -274,9 +278,9 @@ type TaxiController struct {
 	tugAttached     bool
 	tugAttachedAt   time.Time // when the tug was sent for
 	fuelAttached    bool
-	fuelWaitFrom    time.Time // first frame waiting on the stand
-	fuelUntil       time.Time // refuelling done (set once at the wing)
-	fuelClearFrom   time.Time // the push first waited for it to leave
+	fuelWaitFrom    time.Time      // first frame waiting on the stand
+	fuelUntil       time.Time      // refuelling done (set once at the wing)
+	fuelClearFrom   time.Time      // the push first waited for it to leave
 	pushBranch      airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch  bool
 	pushJunction    int              // route index of the junction the tail swings at (planPushback; 1: the first)

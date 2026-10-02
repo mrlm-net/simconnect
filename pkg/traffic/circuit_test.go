@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 )
 
@@ -95,5 +96,59 @@ func TestPlanCircuitArrival(t *testing.T) {
 	}
 	if p.minJoin() != p.MinJoinMeters || (&ArrivalProcedure{}).minJoin() != 2*1852 {
 		t.Error("minJoin")
+	}
+}
+
+// TestCircuitDeparture: from LKPR 24 (left-hand circuit, to the south of
+// the centreline) a VFR departure goes straight out to an exit ahead, by
+// the crosswind to one on the circuit's side, turns away to one on the
+// other side, and leaves behind by the downwind on the circuit's side or
+// the mirrored legs on the other side, never crossing the centreline
+// before the exit; the exit is VFRExitNM out, VFRExitAboveFt above circuit
+// height. MSFS AI gets it at the circuit speed, from the first point ahead.
+func TestCircuitDeparture(t *testing.T) {
+	l := lkprGraph(t).Layout
+	p := ProfileFor("Asobo PassiveAircraft C172")
+	c, err := NewCircuit(l, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hdg := c.heading
+	thr, _ := c.Point(LegRunway)
+	up, _ := c.Point(LegUpwind)
+	// Signed distance right of the centreline (m).
+	right := func(q airport.LatLon) float64 {
+		return calc.CrossTrackMeters(thr.Position.Lat, thr.Position.Lon, up.Position.Lat, up.Position.Lon, q.Lat, q.Lon)
+	}
+	for _, tc := range []struct {
+		name    string
+		rel     float64
+		n       int
+		circuit bool // the legs on the circuit's side (left of 24)
+	}{
+		{"ahead", 10, 2, false}, {"circuit side", -90, 3, true}, {"other side", 90, 2, false},
+		{"behind, circuit side", -170, 4, true}, {"behind, other side", 170, 4, false},
+	} {
+		route := c.Departure(hdg + tc.rel)
+		if len(route) != tc.n {
+			t.Errorf("%s: %d points, want %d", tc.name, len(route), tc.n)
+			continue
+		}
+		for _, q := range route[1 : len(route)-1] {
+			if r := right(q.Position); tc.circuit && r > -100 || !tc.circuit && r < 100 {
+				t.Errorf("%s: a leg %.0f m right of the centreline", tc.name, r)
+			}
+		}
+		exit := route[len(route)-1]
+		if d := localDist(exit.Position, airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}) / 1852; d < VFRExitNM-1.5 || d > VFRExitNM+1.5 {
+			t.Errorf("%s: exit %.1f NM out", tc.name, d)
+		}
+		if want := (c.HeightFt + VFRExitAboveFt) * 0.3048; math.Abs(exit.AltMax-want) > 1 {
+			t.Errorf("%s: exit at %.0f m, want %.0f", tc.name, exit.AltMax, want)
+		}
+		wps := VFRDepartureWaypoints(offsetHeading(up.Position, hdg+180, 600), hdg, route, MaxBankDeg(p))
+		if len(wps) < 2 || math.Abs(wps[0].KtsSpeed-CircuitKts(p)) > 1 {
+			t.Errorf("%s: %d waypoints, first at %.0f kt", tc.name, len(wps), wps[0].KtsSpeed)
+		}
 	}
 }

@@ -477,10 +477,14 @@ type SpawnRequest struct {
 	// ProcName picks the SID or STAR; "" picks one for the runway.
 	Procedure bool   `json:"procedure"`
 	ProcName  string `json:"procName"`
-	// Circuit: an arrival flies in VFR through the circuit (#568): it
-	// appears at the 45° entry to the downwind and lands from the base; the
-	// runway end's circuit as set on the map (circuits.go).
-	Circuit bool `json:"circuit"`
+	// Circuit: a VFR flight through the circuit (#568), the runway end's
+	// as set on the map (circuits.go). An arrival appears at the 45° entry
+	// to the downwind and lands from the base; a departure leaves the
+	// circuit towards ExitBearing (true degrees from the field; nil: at
+	// random) to a point VFRExitNM out (Circuit.Departure), without a
+	// departure clearance.
+	Circuit     bool     `json:"circuit"`
+	ExitBearing *float64 `json:"exitBearing"`
 	// Other is the destination of a departure or the origin of an arrival
 	// (ICAO): the flight follows a generated flight plan (#331).
 	Other string `json:"other"`
@@ -564,8 +568,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		var s int
 		err := traffic.ErrNoStand
-		if r.Circuit && r.Kind == "arrival" {
-			// A light aircraft through the circuit parks on a GA ramp where
+		if r.Circuit {
+			// A light aircraft (VFR) stands on a GA ramp where
 			// the airport has one free (#568), else on any stand that fits.
 			ga := req
 			ga.Types = gaRamps
@@ -591,8 +595,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}()
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
-	if r.Circuit && r.Kind == "arrival" {
-		r.Procedure, r.planned = false, nil // VFR through the circuit: no STAR, no IFR plan
+	if r.Circuit {
+		r.Procedure, r.planned = false, nil // VFR through the circuit: no SID or STAR, no IFR plan
 	}
 	if r.planned != nil {
 		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
@@ -603,6 +607,17 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
 			return nil, err
 		}
+	} else if r.Circuit && r.Kind == "departure" {
+		// VFR out of the circuit towards its exit (#568).
+		c, err := traffic.NewCircuit(g.Layout, r.Runway, circuitConfig(g.Layout.ICAO, r.Runway), ac)
+		if err != nil {
+			return nil, err
+		}
+		exit := rand.Float64() * 360
+		if r.ExitBearing != nil {
+			exit = *r.ExitBearing
+		}
+		procRoute, procName = c.Departure(exit), "VFR "+traffic.CompassName(exit)
 	}
 	// Nobody appears on top of other traffic: an arrival waits while an
 	// aircraft is near its STAR entry, or appeared there in the last minute.
@@ -670,7 +685,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Profile: prof,
-			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice,
+			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken }}); err != nil {
 			return nil, err
@@ -737,7 +752,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if cc.atisLetter != nil {
 			info, it.atisSaid = cc.atisLetter(g.Layout.ICAO), true
 		}
-		if r.Kind == "departure" {
+		if r.Kind == "departure" && r.Circuit {
+			// VFR: no departure clearance; its first call is to ground,
+			// for start-up or taxi (#568).
+			_, freq := cc.stationOf(g.Layout.ICAO, traffic.PosGround)
+			it.delivered, it.atc = true, traffic.PosGround
+			it.view.ATC, it.view.Frequency = string(traffic.PosGround), freq
+		} else if r.Kind == "departure" {
 			// The first call to delivery, then the clearance (#462).
 			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosDelivery)
 			dest := ""
@@ -1024,7 +1045,7 @@ func arrivalActions(s traffic.ArrivalState) []string {
 // flightRules: a circuit arrival flies VFR (#568), everything else IFR on
 // its procedures or plan.
 func flightRules(r SpawnRequest) string {
-	if r.Circuit && r.Kind == "arrival" {
+	if r.Circuit {
 		return "VFR"
 	}
 	return "IFR"
@@ -2427,6 +2448,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	case ev.dep != nil:
 		own := ev.dep.HoldingShortOf != "" && strings.Contains(ev.dep.HoldingShortOf, it.view.Runway)
 		pos = traffic.DeparturePosition(ev.dep.State, own)
+		if pos == traffic.PosDelivery && it.delivered {
+			pos = traffic.PosGround // VFR: no clearance, ground from the start (#568)
+		}
 		it.heightFt = ev.dep.HeightFt
 		// Handed to departure once airborne and climbing away (7110.65 3-9-3:
 		// about half a mile past the runway end), not at the hand-over to
@@ -2435,7 +2459,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			it.handoffFt = departureHandoffFt + rand.Float64()*departureHandoffSpreadFt
 			it.towerAtM = towerHandoffMeters + (2*rand.Float64()-1)*towerHandoffSpreadM
 		}
-		if ev.dep.State == traffic.TaxiDeparting && ev.dep.HeightFt >= it.handoffFt {
+		// A VFR departure stays with the tower out of the circuit: no radar
+		// departure, no IFR climb (live, OKVFD: "climb to flight level 240").
+		if ev.dep.State == traffic.TaxiDeparting && ev.dep.HeightFt >= it.handoffFt && it.view.Rules != "VFR" {
 			pos = traffic.PosDeparture
 		}
 		// Handed to tower on the way to the runway, not at its holding point:

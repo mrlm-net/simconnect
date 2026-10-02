@@ -18,8 +18,9 @@ type VFROptions struct {
 	// Layouts give their position (an airport without one is left out).
 	Focus   []string
 	Layouts map[string]*airport.Layout
-	// PerHour is the mean number of VFR arrivals an hour at each airport;
-	// 0 means VFRPerHour. Density scales it (0 means 1).
+	// PerHour is the mean number of VFR arrivals an hour at each airport,
+	// and as many departures; 0 means VFRPerHour. Density scales it (0
+	// means 1).
 	PerHour, Density float64
 	Seed             uint64
 	// Visual reports whether the weather at an airport allows VFR flight
@@ -30,7 +31,8 @@ type VFROptions struct {
 	Lead time.Duration
 }
 
-// VFRPerHour is the default mean of VFR arrivals an hour at an airport.
+// VFRPerHour is the default mean of VFR arrivals (and of departures) an
+// hour at an airport.
 const VFRPerHour = 1.0
 
 // VFRTypes are the light aircraft a VFR flight is, by weight.
@@ -40,11 +42,14 @@ var VFRTypes = []struct {
 }{{"C172", 40}, {"P28A", 25}, {"C152", 15}, {"DA40", 12}, {"SR22", 8}}
 
 // VFRFlights generates the light aircraft flying in to the focus airports
-// through the circuit between from and to (#568): by day only (Daylight
-// from Lead before the STA to a quarter of an hour after it) and in visual
-// conditions (Visual), with the registration of the airport's country as
-// call sign (VFRRegistration). Each has Rules "VFR", no origin and the
-// airport as destination.
+// through the circuit, and out of them, between from and to (#568): by day
+// only (Daylight from Lead before the STA to a quarter of an hour after it;
+// a departure from DepartureLead, 10 min, before its STD to half an hour
+// after it) and in visual conditions (Visual), with the registration of
+// the airport's country as call sign (VFRRegistration). Each has Rules
+// "VFR"; an arrival no origin and the airport as destination, a
+// departure the airport as origin and no destination (it leaves the
+// circuit to an exit point, Circuit.Departure).
 func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 	if opts.PerHour <= 0 {
 		opts.PerHour = VFRPerHour
@@ -73,18 +78,32 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 			if rng.Float64() < mean-float64(n) {
 				n++
 			}
-			for i := 0; i < n; i++ {
+			for i := 0; i < 2*n; i++ {
 				at := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(5 * time.Minute)
-				if at.Before(from) || !at.Before(to) || !Daylight(pos, at.Add(-opts.Lead)) || !Daylight(pos, at.Add(15*time.Minute)) {
+				typ := VFRTypes[max(0, pick(rng, weights))].Type
+				cs := VFRRegistration(icao, rng)
+				if at.Before(from) || !at.Before(to) {
 					continue
 				}
-				typ := VFRTypes[max(0, pick(rng, weights))].Type
-				out = append(out, Flight{Callsign: VFRRegistration(icao, rng), Type: typ, Destination: icao,
-					STA: at, STD: at.Add(-opts.Lead), Rules: "VFR"})
+				if i%2 == 0 { // an arrival
+					if Daylight(pos, at.Add(-opts.Lead)) && Daylight(pos, at.Add(15*time.Minute)) {
+						out = append(out, Flight{Callsign: cs, Type: typ, Destination: icao, STA: at, STD: at.Add(-opts.Lead), Rules: "VFR"})
+					}
+					continue
+				}
+				if Daylight(pos, at.Add(-10*time.Minute)) && Daylight(pos, at.Add(30*time.Minute)) {
+					out = append(out, Flight{Callsign: cs, Type: typ, Origin: icao, STD: at, STA: at.Add(30 * time.Minute), Rules: "VFR"})
+				}
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].STA.Before(out[j].STA) })
+	at := func(f Flight) time.Time {
+		if f.Origin != "" {
+			return f.STD
+		}
+		return f.STA
+	}
+	sort.Slice(out, func(i, j int) bool { return at(out[i]).Before(at(out[j])) })
 	return out
 }
 

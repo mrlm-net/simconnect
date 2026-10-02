@@ -223,7 +223,9 @@ func PlanCircuitArrival(c Circuit) *ArrivalProcedure {
 	base, _ := c.Point(LegBase)
 	fin, _ := c.Point(LegFinal)
 	rwy, _ := c.Point(LegRunway)
-	wp := func(p CircuitPoint) types.SIMCONNECT_DATA_WAYPOINT { return procedureWaypoint(p.Position, p.AltFt, p.Kts) }
+	wp := func(p CircuitPoint) types.SIMCONNECT_DATA_WAYPOINT {
+		return procedureWaypoint(p.Position, p.AltFt, p.Kts)
+	}
 	return &ArrivalProcedure{
 		Spawn: types.SIMCONNECT_DATA_INITPOSITION{
 			Latitude: entry.Position.Lat, Longitude: entry.Position.Lon, Altitude: entry.AltFt,
@@ -235,4 +237,103 @@ func PlanCircuitArrival(c Circuit) *ArrivalProcedure {
 		JoinMeters:    localDist(fin.Position, rwy.Position),
 		MinJoinMeters: 0.5 * 1852,
 	}
+}
+
+// VFR departures (#568): out of the circuit to an exit point VFRExitNM from
+// the field, VFRExitAboveFt above circuit height; the injected take-off
+// hands over to MSFS AI at VFRHandoverFt above the runway, so MSFS AI
+// flies the circuit's turns.
+var (
+	VFRExitNM      = 5.0
+	VFRExitAboveFt = 1000.0
+	VFRHandoverFt  = 400.0
+)
+
+// Departure is the way out of the circuit towards exitBearing (true
+// degrees from the field), as the circuit's points then the exit point:
+//
+//   - ahead (within 45° of the runway heading): straight out, from the
+//     upwind;
+//   - to the circuit's side: by its crosswind leg;
+//   - to the other side: turning away from the circuit after the upwind;
+//   - behind, on the circuit's side: by its crosswind and downwind (a
+//     downwind departure); behind on the other side, by the mirror of
+//     those legs, never across the circuit.
+//
+// The points are at circuit height, the exit point VFRExitAboveFt above
+// it; each at the circuit speed.
+func (c Circuit) Departure(exitBearing float64) []airport.NavPoint {
+	up, _ := c.Point(LegUpwind)
+	cw, _ := c.Point(LegCrosswind)
+	dw, _ := c.Point(LegDownwind)
+	rwy, _ := c.Point(LegRunway)
+	field := airport.LatLon{Lat: (rwy.Position.Lat + up.Position.Lat) / 2, Lon: (rwy.Position.Lon + up.Position.Lon) / 2}
+	rel := headingDiff(c.heading, exitBearing) // exit relative to the runway heading, + to the right
+	circuitSide := rel < 0
+	if c.Side == CircuitRight {
+		circuitSide = rel > 0
+	}
+	// The mirror of a circuit point on the other side of the centreline.
+	mirror := func(p CircuitPoint) CircuitPoint {
+		away := c.heading + 90
+		if c.Side == CircuitRight {
+			away = c.heading - 90
+		}
+		p.Position = offsetHeading(p.Position, away, 2*c.DownwindNM*1852)
+		return p
+	}
+	top := up
+	top.AltFt = c.HeightFt
+	pts := []CircuitPoint{top}
+	switch abs := math.Abs(rel); {
+	case abs <= 45:
+	case abs <= 135 && circuitSide:
+		pts = append(pts, cw)
+	case abs <= 135:
+	case circuitSide:
+		pts = append(pts, cw, dw)
+	default:
+		pts = append(pts, mirror(cw), mirror(dw))
+	}
+	exit := CircuitPoint{Position: offsetHeading(field, exitBearing, VFRExitNM*1852), AltFt: c.HeightFt + VFRExitAboveFt, Kts: up.Kts}
+	pts = append(pts, exit)
+	out := make([]airport.NavPoint, len(pts))
+	prev := rwy.Position
+	for i, p := range pts {
+		alt := p.AltFt * 0.3048
+		out[i] = airport.NavPoint{Position: p.Position, AltMin: alt, AltMax: alt, SpeedMax: p.Kts, Course: localBearing(prev, p.Position)}
+		prev = p.Position
+	}
+	out[len(out)-1].Ident = "VFR exit"
+	return out
+}
+
+// VFRDepartureWaypoints are a VFR departure's points (Circuit.Departure) as
+// MSFS AI waypoints from pos (heading hdg) on: each at its altitude and
+// speed, the points already passed or behind left out, then on along the
+// last leg; the corners rounded to the aircraft's turns (maxBank).
+func VFRDepartureWaypoints(pos airport.LatLon, hdg float64, route []airport.NavPoint, maxBank float64) []types.SIMCONNECT_DATA_WAYPOINT {
+	var wps []types.SIMCONNECT_DATA_WAYPOINT
+	here := procedureWaypoint(pos, 0, 0)
+	kts, alt := 0.0, 0.0
+	if n := len(route); n > 0 {
+		kts, alt = route[n-1].SpeedMax, route[n-1].AltMax/0.3048
+	}
+	cur, last := pos, pos
+	for _, n := range route {
+		d := localDist(cur, n.Position)
+		if len(wps) == 0 && (d < 0.3*1852 || math.Abs(headingDiff(localBearing(pos, n.Position), hdg)) > 100) {
+			continue // passed during the injected climb, or behind
+		}
+		kts, alt = n.SpeedMax, n.AltMax/0.3048
+		wps = append(wps, procedureWaypoint(n.Position, alt, kts))
+		last, cur = cur, n.Position
+	}
+	track := hdg
+	if len(wps) > 0 && last != cur {
+		track = localBearing(last, cur)
+	}
+	wps = append(wps, procedureWaypoint(offsetHeading(cur, track, 20*1852), alt, kts))
+	here.KtsSpeed = kts
+	return roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), maxBank)[1:]
 }
