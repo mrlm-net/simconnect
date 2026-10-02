@@ -593,6 +593,43 @@ async function listenAtis() {
   if (!r.ok) speakEnglish(airportInfo.atis.spoken);
 }
 
+/* ───────────── VFR reporting points (#566) ───────────── */
+let vfrPts = null; // GET /api/vfrpoints
+function resetVfrPoints() {
+  vfrPts = null;
+  layers.vfrpts.clearLayers();
+  $('vpList').innerHTML = '';
+}
+async function pollVfrPoints() {
+  if (!data || vfrPts) return;
+  const r = await api(`/api/vfrpoints?icao=${encodeURIComponent(data.icao)}`);
+  if (!r.ok) return;
+  vfrPts = r.data || [];
+  renderVfrPoints();
+}
+function renderVfrPoints() {
+  $('vpList').innerHTML = vfrPts.length
+    ? vfrPts.map((p, i) => `<span class="tag">${esc(p.name)} <button type="button" data-vp="${i}" aria-label="Remove ${esc(p.name)}" title="Remove">${icon('i-x', 'ic ic--xs')}</button></span>`).join('')
+    : '<span class="small muted">None yet — tick “Add on the map” and click.</span>';
+  layers.vfrpts.clearLayers();
+  for (const p of vfrPts) {
+    L.marker([p.position.lat, p.position.lon], { icon: L.divIcon({ className: 'm-vfrpt', html: '<span>▲</span>', iconSize: [14, 14], iconAnchor: [7, 7] }), interactive: false, keyboard: false })
+      .bindTooltip(esc(p.name), { permanent: true, direction: 'right', offset: [6, 0], className: 'map-lbl map-lbl--sm' })
+      .addTo(layers.vfrpts);
+  }
+}
+async function saveVfrPoints(list) {
+  const r = await send(`/api/vfrpoints?icao=${encodeURIComponent(data.icao)}`, list);
+  if (!r.ok) { toast(r.error, 'err'); return; }
+  vfrPts = list.map((p) => ({ ...p, name: p.name.trim().toUpperCase() }));
+  renderVfrPoints();
+}
+function addVfrPointAt(latlng) {
+  const name = (prompt('Name of the reporting point (e.g. NOVEMBER):') || '').trim();
+  if (!name) return;
+  saveVfrPoints([...(vfrPts || []), { name, position: { lat: latlng.lat, lon: latlng.lng } }]);
+}
+
 /* ───────────── VFR circuits (#567) ───────────── */
 let circuits = null; // GET /api/circuits: by runway end, its config and the C172's circuit
 function resetCircuits() {
@@ -1062,6 +1099,11 @@ function initSections() {
   for (const id of ['pFix', 'pFilter']) $(id).addEventListener('change', drawProcedures);
   $('pFit').addEventListener('click', fitProcedures);
   $('ciRwy').addEventListener('change', () => { fillCircuitForm(); drawCircuits(); });
+  $('vpList').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-vp]');
+    if (b) saveVfrPoints(vfrPts.filter((_, i) => i !== Number(b.dataset.vp)));
+  });
+  $('vpPick').addEventListener('change', () => { if ($('vpPick').checked) { $('dePick').checked = false; $('rViaPick').checked = false; toast('Click on the map where the reporting point is'); } });
   $('ciShow').addEventListener('change', drawCircuits);
   $('ciSave').addEventListener('click', () => saveCircuit(false));
   $('ciReset').addEventListener('click', () => saveCircuit(true));
