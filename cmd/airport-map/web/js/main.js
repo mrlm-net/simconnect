@@ -216,25 +216,66 @@ const airportInfoPoll = poller('airportinfo', pollAirportInfo, () => (data ? 100
 const approachPoll = poller('approach', pollApproach, () => (data && seqWanted() ? (tabVisible('sequence') ? 2000 : 4000) : 0));
 // Play on this device (#511): the calls on the frequency followed, as the
 // server's voice says them, through this browser.
-const hereQueue = [];
+// Every call seen is marked, on whatever frequency: switching frequency
+// plays what is said from then on, not what was said there before. Each
+// clip is fetched (and synthesised by the server) as soon as it is queued,
+// tried again once, and played in order; a call older than HERE_STALE_MS
+// behind the newest (a sleeping tablet waking up) is skipped.
+const HERE_STALE_MS = 20000;
+const hereQueue = []; // {freq, clip: Promise<object URL or null>}
 const herePlayed = new Set();
-let hereSince = 0, hereAudio = null, herePlaying = false;
-function hereNext() {
+let hereAudio = null, herePlaying = false, hereWatch = 0, hereBlockedSaid = false;
+async function hereFetch(url) {
+  for (let i = 0; i < 2; i++) {
+    try {
+      const res = await fetch(url, { headers: atcPosition && atcPosition !== 'all' ? { 'X-ATC-Position': atcPosition } : {} });
+      if (res.ok) return URL.createObjectURL(await res.blob());
+      if (res.status === 404) return null; // gone from the server's recent calls
+    } catch { /* the network: again */ }
+    await new Promise((ok) => setTimeout(ok, 700));
+  }
+  return null;
+}
+function hereDone() {
+  clearTimeout(hereWatch);
+  if (hereAudio && hereAudio.src.startsWith('blob:')) URL.revokeObjectURL(hereAudio.src);
+  herePlaying = false;
+  hereNext();
+}
+async function hereNext() {
   if (herePlaying || !hereQueue.length || !hereAudio) return;
   herePlaying = true;
-  hereAudio.src = hereQueue.shift();
-  hereAudio.play().catch(() => { herePlaying = false; });
+  const item = hereQueue.shift();
+  const src = await item.clip;
+  // Retuned meanwhile, or no clip: on to the next.
+  if (!src || item.freq !== rdFreq || !$('rdHere').checked) { if (src) URL.revokeObjectURL(src); herePlaying = false; hereNext(); return; }
+  hereAudio.src = src;
+  // A clip that never ends (a stalled element) does not stop the rest.
+  hereWatch = setTimeout(hereDone, 30000);
+  hereAudio.play().catch((err) => {
+    if (err && err.name === 'NotAllowedError' && !hereBlockedSaid) {
+      hereBlockedSaid = true;
+      toast('The browser blocked the sound: tap Play on this device again', 'err');
+    }
+    hereDone();
+  });
 }
 async function pollHere() {
   if (!data) return true;
   const r = await api(`/api/radio?icao=${encodeURIComponent(data.icao)}&n=20`);
   if (!r.ok) return false;
-  for (const t of r.data || []) {
+  const list = r.data || [];
+  const newest = Math.max(0, ...list.map((t) => Date.parse(t.at) || 0));
+  for (const t of list) {
     const key = `${t.at} ${t.callsign} ${t.intent}`;
-    if (herePlayed.has(key) || Date.parse(t.at) < hereSince || t.frequency !== rdFreq || t.intent === 'atis') continue;
+    if (herePlayed.has(key)) continue;
     herePlayed.add(key);
-    hereQueue.push(`/api/voice/clip?icao=${encodeURIComponent(data.icao)}&at=${encodeURIComponent(t.at)}&cs=${encodeURIComponent(t.callsign)}&intent=${encodeURIComponent(t.intent)}`);
+    if (t.frequency !== rdFreq || t.intent === 'atis' || newest - Date.parse(t.at) > HERE_STALE_MS) continue;
+    const url = `/api/voice/clip?icao=${encodeURIComponent(data.icao)}&at=${encodeURIComponent(t.at)}&cs=${encodeURIComponent(t.callsign)}&intent=${encodeURIComponent(t.intent)}`;
+    hereQueue.push({ freq: t.frequency, clip: hereFetch(url) });
   }
+  // Bounded: the oldest marks go (a Set keeps the order they came in).
+  for (const k of herePlayed) { if (herePlayed.size <= 500) break; herePlayed.delete(k); }
   hereNext();
   return true;
 }
@@ -248,10 +289,10 @@ $('rdHere').addEventListener('change', (e) => {
   if (e.target.checked) {
     // Made in the click, so the browser lets it play.
     hereAudio = hereAudio || new Audio();
-    hereAudio.onended = hereAudio.onerror = () => { herePlaying = false; hereNext(); };
+    hereAudio.onended = hereAudio.onerror = hereDone;
+    hereBlockedSaid = false;
     // What was said before: not played. (The server's times, not this
     // device's clock, which can be off.)
-    hereSince = 0;
     api(`/api/radio?icao=${encodeURIComponent(data ? data.icao : '')}&n=20`).then((r) => {
       for (const t of (r.ok && r.data) || []) herePlayed.add(`${t.at} ${t.callsign} ${t.intent}`);
       herePoll.now();
@@ -259,6 +300,7 @@ $('rdHere').addEventListener('change', (e) => {
   } else {
     hereQueue.length = 0;
     if (hereAudio) hereAudio.pause();
+    clearTimeout(hereWatch);
     herePlaying = false;
   }
 });

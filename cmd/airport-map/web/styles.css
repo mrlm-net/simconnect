@@ -1121,10 +1121,18 @@ select option { background: var(--surface); color: var(--text); }
 .nfm > .nf { width: min(1000px, 100%); max-height: calc(100dvh - 48px); margin: 0; padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-4); box-shadow: var(--shadow-2); animation: pop-in var(--t-med) var(--ease); }
 .nfm .card__head { margin: 0; padding: 12px 18px; border-bottom: 1px solid var(--border); }
 .nfm .card__head h3 { font-size: var(--fs-lg); }
-.nf__cols { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px 24px; align-items: start; padding: 14px 18px; }
+.nf__cols { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px 24px; align-items: start; align-content: start; padding: 14px 18px; }
 .nf__side .disclosure { margin-top: var(--s-1); }
 .nfm .nf__foot { position: static; margin: 0; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-radius: 0; }
-.pickbox #rPickStand { margin-left: auto; }
+.nf__main > .grid2 > .field:first-child { grid-column: 1 / -1; }
+.nfm .pickbox { flex-wrap: nowrap; align-items: center; min-width: 0; }
+@media (max-width: 899px) { .nf__cols { grid-template-columns: minmax(0, 1fr); } }
+.nfm .pickbox #rFromHint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickbox #rPickStand { margin-left: auto; flex: none; }
+.nfm .card__head { gap: 16px; }
+.nfm .card__head h3 { white-space: nowrap; }
+.nf .nf__kind { margin: 0 auto 0 0; min-width: 220px; }
+@media (max-width: 480px) { .nf .nf__kind { min-width: 0; } .nf .nf__kind > button { padding-inline: 10px; } }
 body.nf-open { overflow: hidden; }
 /* Picking on the map: a bar over the map instead of the window. */
 .nfpick { position: fixed; z-index: 1300; top: calc(var(--strip-h) + 12px); left: 50%; transform: translateX(-50%);

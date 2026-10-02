@@ -390,7 +390,7 @@ function drawRoutes() {
     const air = v.airRoute && v.airRoute.length;
     if (!ground && !air && !v.hold) continue;
     keep.add(v.id);
-    const canUpTo = !!(v.actions && v.actions.includes('upto'));
+    const canUpTo = !!(v.actions && v.actions.includes('upto')) && onMyFrequency(v);
     const sig = JSON.stringify([sel, canUpTo, ground ? v.route : 0, v.limitNode, v.atLimit, air ? v.airRoute : 0, v.airFixes || 0, v.hold || 0]);
     let r = routeLayers.get(v.id);
     if (!r || r.sig !== sig) {

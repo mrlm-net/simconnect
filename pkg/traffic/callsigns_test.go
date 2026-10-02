@@ -13,9 +13,12 @@ func TestSaidCallsign(t *testing.T) {
 	c := DefaultScheduleConfig()
 	for cs, want := range map[string]string{
 		"DLH1675": "Lufthansa 1675", "CSA273": "CSA Lines 273", "KLM594": "KLM 594", "WZZ1529": "Wizzair 1529",
-		"LOT844": "LOT 844", "BAW452": "Speedbird 452", "TVS795": "Skytravel 795", "EZY12AB": "Easy 12AB",
+		"LOT844": "Pollot 844", "BAW452": "Speedbird 452", "TVS795": "Skytravel 795", "EZY12AB": "Easy 12AB",
 		"AFR903": "Airfrans 903", "QTR1489": "Qatari 1489", "KAL1573": "Koreanair 1573", "ENT464": "Enter 464",
-		"XYZ123": "XYZ123", "OKABC": "OKABC", "TST1": "TST1",
+		"QQQ123": "QQQ123", "OKABC": "OKABC", "ZZZ1": "ZZZ1",
+		// Not in the schedule: the built-in designators (Telephony).
+		"CEF001": "Czech Air Force 001", "GAF615": "German Air Force 615", "RCH4021": "Reach 4021", "UPS2938": "UPS 2938",
+		"BMW1": "BMW Flight 1", "XYZ123": "Rainbird 123",
 	} {
 		if got := c.SaidCallsign(cs); got != want {
 			t.Errorf("%s: %q, want %q", cs, got, want)

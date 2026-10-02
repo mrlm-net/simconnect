@@ -9,6 +9,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Radio call signs for every airline and air force: about 5500 ICAO designators with their telephony (`traffic.Telephony`), from Wikipedia's List of airline codes (CC BY-SA 4.0, attributed in `pkg/traffic/telephony.tsv`). `CEF001` is said "Czech Air Force 001", `GAF615` "German Air Force 615". Airlines in the schedule keep their own.
+
+### Fixed
+
+- Radio: short words in a call sign are said as words ("Czech Air Force", "Sky", "Jet"); only initialisms are spelled ("KLM", "CSA Lines", "UPS"). LOT is "Pollot", as assigned.
+- Airport map, working one position: every control for an aircraft on another frequency is now off, not only the clearance buttons. That includes the approach actions and go-around, the Sequence tab's buttons, Manual, Entry, "with start-up" and "Clear up to here" on the map. The card shows the position working it instead of "sending…".
+- Airport map, Play on this device: switching frequency no longer plays the calls said there before. Clips are fetched as soon as a call is heard and retried once; a stalled clip no longer stops the rest; calls more than 20 s behind are skipped (a tablet waking up). The server makes each clip once, however many devices ask.
+- Airport map, New flight: the entry picked ("06 at E") stays when the aircraft type changes; if it is too short for the new type, a message says so.
+- Airport map, New flight window: the kind (Departure, Arrival) sits in the header; the stand has a row of its own with *Pick on map*; one column below 900 px; *Clear stand* instead of *Hide route*; Ctrl+Enter spawns.
+- Sequence tab: an aircraft spawned on the map no longer shows on a crossing runway as other traffic ("12/30 · CEF001 on the runway" while it took off from 06).
+
 ---
 
 ## [0.18.5] - 2026-10-02

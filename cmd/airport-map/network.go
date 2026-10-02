@@ -90,6 +90,11 @@ var clips = struct {
 
 const clipCacheSize = 200
 
+// clipMaking makes one clip at a time: devices playing the same call (and a
+// browser fetching the next clips ahead) wait for it rather than synthesise
+// it again, each at once.
+var clipMaking sync.Mutex
+
 // clipKey names a transmission: its time and call sign.
 func clipKey(t traffic.Transmission) string {
 	return t.At.Format(time.RFC3339Nano) + " " + t.Callsign + " " + string(t.Intent)
@@ -98,12 +103,20 @@ func clipKey(t traffic.Transmission) string {
 // clip is transmission t as said on the radio, a 16-bit mono WAV.
 func (v *voiceOut) clip(t traffic.Transmission) ([]byte, error) {
 	key := clipKey(t)
-	clips.Lock()
-	if b, ok := clips.m[key]; ok {
-		clips.Unlock()
+	cached := func() ([]byte, bool) {
+		clips.Lock()
+		defer clips.Unlock()
+		b, ok := clips.m[key]
+		return b, ok
+	}
+	if b, ok := cached(); ok {
 		return b, nil
 	}
-	clips.Unlock()
+	clipMaking.Lock()
+	defer clipMaking.Unlock()
+	if b, ok := cached(); ok {
+		return b, nil // made while this one waited
+	}
 	v.mu.Lock()
 	err := v.openEngine()
 	engine, pool, chain, norm := v.engine, v.pool, v.chain, v.norm

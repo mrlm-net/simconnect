@@ -540,14 +540,14 @@
     <form class="card nf dep" id="newFlight" aria-labelledby="nfTitle" autocomplete="off">
       <div class="card__head">
         <h3 id="nfTitle">New flight</h3>
+        <div class="seg nf__kind" role="radiogroup" aria-label="Kind">
+          <button type="button" role="radio" aria-checked="true" data-kind="dep">Departure</button>
+          <button type="button" role="radio" aria-checked="false" data-kind="arr">Arrival</button>
+        </div>
         <button type="button" class="btn btn--icon btn--ghost" data-close-nf aria-label="Close" title="Close (Esc; the picked stand stays)"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
       <div class="nf__cols">
       <div class="nf__main">
-      <div class="seg" role="radiogroup" aria-label="Kind">
-        <button type="button" role="radio" aria-checked="true" data-kind="dep">Departure</button>
-        <button type="button" role="radio" aria-checked="false" data-kind="arr">Arrival</button>
-      </div>
       <div class="grid2">
         <div class="field">
           <span class="field__lbl" id="rStandLbl">From stand</span>
@@ -625,8 +625,8 @@
         <div class="small nf__info" id="rInfo" aria-live="polite"></div>
         <div class="small nf__info" id="cInfo" aria-live="polite"></div>
         <div class="row gap-2">
-          <button type="button" class="btn" id="rHide" title="Deselect the stand and hide the planned route (Esc)">Hide route</button>
-          <button type="button" class="btn btn--primary btn--grow" id="cSpawn"><svg class="ic"><use href="#i-play"/></svg><span id="cSpawnLbl">Spawn</span></button>
+          <button type="button" class="btn" id="rHide" title="Deselect the stand and hide the planned route">Clear stand</button>
+          <button type="button" class="btn btn--primary btn--grow" id="cSpawn" title="Spawn (Ctrl+Enter)"><svg class="ic"><use href="#i-play"/></svg><span id="cSpawnLbl">Spawn</span></button>
         </div>
       </div>
     </form>
