@@ -240,6 +240,17 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			if a.ExtraNM > 0 {
 				it.say(traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
 			}
+			// More than a longer downwind can take: an orbit (12.3.4.17).
+			if a.Left >= circuitOrbitFrom {
+				if err := q.cc.do(func() error { _, err := it.arr.Orbit(); return err }); err == nil {
+					orbit := traffic.DelayOrbitLeft
+					if it.circuit.Side == traffic.CircuitRight {
+						orbit = traffic.DelayOrbitRight
+					}
+					it.say(traffic.CircuitDelay(e.Callsign, orbit))
+					tlog.printf("%-6s sequence: %s to lose in the circuit: %s", e.Callsign, a.Left.Round(time.Second), orbit)
+				}
+			}
 			continue
 		}
 		it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
@@ -249,6 +260,10 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 	}
 }
+
+// circuitOrbitFrom: a VFR arrival in the circuit with this much more to lose
+// than its extended downwind takes orbits (#569).
+const circuitOrbitFrom = 45 * time.Second
 
 // Spacing on the final: an arrival predicted spacingActFrom or more short
 // of its spacing acts; still breakOffFrom short breakOffAfter it was
