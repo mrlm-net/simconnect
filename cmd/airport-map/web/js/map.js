@@ -74,6 +74,8 @@ function setLayer(name, on) {
   if (name === 'tags') c.toggle('no-tags', !on);
   if (name === 'labels') c.toggle('no-labels', !on);
   $$(`[data-layer="${name}"]`).forEach((i) => { i.checked = on; });
+  // The circuits are fetched when first shown (the Airport tab or this layer).
+  if (name === 'circuits' && on && typeof circuitPoll !== 'undefined') circuitPoll.now();
 }
 function setPathType(t, on) {
   pathOn[t] = on;

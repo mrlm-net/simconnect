@@ -220,7 +220,7 @@ const schedulePoll = poller('schedule', pollSchedule, () => (!simLive ? 0 : tabV
 const worldPoll = poller('world', pollWorld, () => (!simLive ? 0 : worldOn || tabVisible('map') ? 5000 : 15000));
 const procPoll = poller('procedures', pollProcedures, () => (simLive && data && !procs && procTries < 20 && tabVisible('airport') ? 3000 : 0));
 const vfrPointPoll = poller('vfrpoints', pollVfrPoints, () => (data && !vfrPts ? 3000 : 0));
-const circuitPoll = poller('circuits', pollCircuits, () => (simLive && data && !circuits && tabVisible('airport') ? 3000 : 0));
+const circuitPoll = poller('circuits', pollCircuits, () => (simLive && data && !circuits && (tabVisible('airport') || layerOn.circuits) ? 3000 : 0));
 const airportInfoPoll = poller('airportinfo', pollAirportInfo, () => (data ? 10000 : 0));
 const approachPoll = poller('approach', pollApproach, () => (data && seqWanted() ? (tabVisible('sequence') ? 2000 : 4000) : 0));
 // Play on this device (#511): the calls on the frequency followed, as the
