@@ -562,9 +562,19 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
-		s, err := alloc.Assign(req)
+		var s int
+		err := traffic.ErrNoStand
+		if r.Circuit && r.Kind == "arrival" {
+			// A light aircraft through the circuit parks on a GA ramp where
+			// the airport has one free (#568), else on any stand that fits.
+			ga := req
+			ga.Types = gaRamps
+			s, err = alloc.Assign(ga)
+		}
 		if err != nil {
-			return nil, err
+			if s, err = alloc.Assign(req); err != nil {
+				return nil, err
+			}
 		}
 		r.Stand = s
 	} else if err := alloc.Occupy(r.Stand, r.Tail, prof.SpanMeters/2); err != nil {
@@ -2756,3 +2766,10 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.world.Observe(cc.clock.Now(), obs)
 }
 
+// gaRamps are the general aviation parking types: where a VFR light
+// aircraft parks (#568).
+var gaRamps = []types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{
+	types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA, types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_SMALL,
+	types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_MEDIUM, types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_LARGE,
+	types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_EXTRA,
+}

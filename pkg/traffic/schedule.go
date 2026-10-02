@@ -36,6 +36,9 @@ type Flight struct {
 	// (Overflights, #369); zero for other flights.
 	Enter time.Time `json:"enter,omitempty"`
 	Exit  time.Time `json:"exit,omitempty"`
+	// Rules is "VFR" for a light aircraft flying in by day through the
+	// circuit (VFRFlights); "" an airline's IFR flight.
+	Rules string `json:"rules,omitempty"`
 }
 
 // Airline is an airline the generator schedules.

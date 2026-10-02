@@ -133,6 +133,9 @@ type ManagerOptions struct {
 	// stand (default 10 min); ArrivalLead how long before its STA an arrival
 	// appears to fly its STAR and approach (default 25 min).
 	DepartureLead, ArrivalLead time.Duration
+	// VFRLead: a VFR flight (Flight.Rules) appears this long before its
+	// STA near the airport to join the circuit (default 8 min).
+	VFRLead time.Duration
 	// A departure not started by STD+DepartureLate (default 15 min), or an
 	// arrival not by STA-ArrivalLead+ArrivalLate (default 10 min), is
 	// cancelled: too late.
@@ -198,6 +201,7 @@ func (o *ManagerOptions) defaults() {
 	def(&o.Horizon, 2*time.Hour)
 	def(&o.DepartureLead, 10*time.Minute)
 	def(&o.ArrivalLead, 25*time.Minute)
+	def(&o.VFRLead, 8*time.Minute)
 	def(&o.DepartureLate, 15*time.Minute)
 	def(&o.ArrivalLate, 10*time.Minute)
 	def(&o.ArrivalSpacing, 3*time.Minute)
@@ -384,7 +388,7 @@ func (m *TrafficManager) addAt(flights []Flight, now time.Time) {
 	var keep []Flight
 	for _, f := range flights {
 		depLate := m.airports[f.Origin] && now.After(f.STD.Add(o.DepartureLate))
-		arrLate := m.airports[f.Destination] && now.After(f.STA.Add(-o.ArrivalLead).Add(o.ArrivalLate))
+		arrLate := m.airports[f.Destination] && now.After(f.STA.Add(-m.arrivalLead(&f)).Add(o.ArrivalLate))
 		if (depLate || !m.airports[f.Origin]) && (arrLate || !m.airports[f.Destination]) {
 			continue
 		}
@@ -508,7 +512,7 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 		switch f.Status {
 		case FlightScheduled:
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
-				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-o.ArrivalLead).Add(o.ArrivalLate)) ||
+				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) ||
 				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
 				f.Err = "too late"
 				m.set(f, FlightCancelled, now)
