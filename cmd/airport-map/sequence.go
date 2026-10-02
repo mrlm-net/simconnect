@@ -40,11 +40,43 @@ type sequences struct {
 	// its final approach speed; brokeOff: sent around early for spacing.
 	slowedFinal map[string]time.Time
 	brokeOff    map[string]bool
+	// conflictHeld: arrivals holding for a conflict with another (the
+	// conflict watch, #455): the sequence does not release them, however
+	// small their delay, before conflictHoldMin has passed and inConflict
+	// no longer predicts the pair to lose separation.
+	conflictHeld map[string]conflictHold
+	inConflict   func(a, b string) bool
+}
+
+type conflictHold struct {
+	other string
+	at    time.Time
+}
+
+// conflictHoldMin is the least an arrival holds for a conflict.
+const conflictHoldMin = 2 * time.Minute
+
+// keepHolding reports that arrival cs holds for a conflict that is not
+// over yet (conflictHeld); one that is over is forgotten.
+func (q *sequences) keepHolding(now time.Time, cs string) bool {
+	q.mu.Lock()
+	h, ok := q.conflictHeld[cs]
+	q.mu.Unlock()
+	if !ok {
+		return false
+	}
+	if now.Sub(h.at) < conflictHoldMin || q.inConflict != nil && q.inConflict(cs, h.other) {
+		return true
+	}
+	q.mu.Lock()
+	delete(q.conflictHeld, cs)
+	q.mu.Unlock()
+	return false
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -154,7 +186,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		// In a hold: released once its delay is down to holdRelease.
 		if h, _, holding := it.arr.Holding(); holding {
-			if e.Delay <= holdRelease {
+			if e.Delay <= holdRelease && !q.keepHolding(now, e.Callsign) {
 				q.leaveHold(icao, it, h, e)
 			}
 			continue

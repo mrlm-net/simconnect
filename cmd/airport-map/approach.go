@@ -25,6 +25,10 @@ import (
 // approachSlowBy is what one "slow" asks the arrival to lose.
 const approachSlowBy = time.Minute
 
+// errNothingToSlow: an arrival told to lose time flies as slow and as long
+// a way as it can already (AbsorbDelay changed nothing).
+var errNothingToSlow = errors.New("nothing more to slow")
+
 // entryOf is callsign's sequencer at icao and its entry in the sequence.
 func (q *sequences) entryOf(icao, callsign string) (*traffic.ApproachSequencer, traffic.SequenceEntry, bool) {
 	q.mu.Lock()
@@ -83,6 +87,9 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		var a traffic.Absorption
 		if err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(approachSlowBy); return err }); err != nil {
 			return err
+		}
+		if a == (traffic.Absorption{}) {
+			return errNothingToSlow // as slow and as long as it goes already
 		}
 		it.say(traffic.Sequenced(callsign, e.Number, 0, a))
 	case "direct":

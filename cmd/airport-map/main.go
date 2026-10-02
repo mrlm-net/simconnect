@@ -468,6 +468,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	seqs := newSequences(cc, sched)
 	sep := newSepMonitor()
 	cw := newConflictWatch(sched)
+	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
 	tw := newTowers(cc, sched)
 	// The camera on our traffic: cut to the aircraft on the radio as the
 	// call is heard.

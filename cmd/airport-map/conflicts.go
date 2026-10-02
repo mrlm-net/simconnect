@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -146,6 +147,19 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	w.mu.Unlock()
 }
 
+// inConflict reports that a and b are predicted to lose separation (the
+// latest look).
+func (w *conflictWatch) inConflict(a, b string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, c := range w.now {
+		if c.A == a && c.B == b || c.A == b && c.B == a {
+			return true
+		}
+	}
+	return false
+}
+
 // view is what the separation API shows of the watch.
 func (w *conflictWatch) view() ([]traffic.Conflict, []resolutionView) {
 	w.mu.Lock()
@@ -198,9 +212,24 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	if slowed {
 		action = "hold"
 	}
-	if err := q.approachAction(trailer.it.ICAO, cs, action); err != nil {
+	err := q.approachAction(trailer.it.ICAO, cs, action)
+	if errors.Is(err, errNothingToSlow) {
+		// Slowed and stretched as far as it goes already: it holds now
+		// (live, CSA1257 and AFR1552 merging on GOLO4S and LOMK8S: "number
+		// 3" changed nothing, and they met at 0.5 NM).
+		action = "hold"
+		err = q.approachAction(trailer.it.ICAO, cs, action)
+	}
+	if err != nil {
 		tlog.printf("%-6s conflict with %s: %s refused: %v", cs, other(c, cs), action, err)
 		return
+	}
+	if action == "hold" {
+		// Held until the conflict is over, not released by the sequence's
+		// small delay a second later (live, CSA1257 at ERASU).
+		q.mu.Lock()
+		q.conflictHeld[cs] = conflictHold{other: other(c, cs), at: now}
+		q.mu.Unlock()
 	}
 	tlog.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, other(c, cs), map[string]string{"slow": "loses time", "hold": "holds"}[action])
 	w.mu.Lock()
