@@ -337,3 +337,43 @@ func VFRDepartureWaypoints(pos airport.LatLon, hdg float64, route []airport.NavP
 	here.KtsSpeed = kts
 	return roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), maxBank)[1:]
 }
+
+// ReportingPoint is a VFR reporting point (#566): where VFR traffic enters
+// and leaves the control zone, as an airport publishes it or a user sets
+// it ("NOVEMBER").
+type ReportingPoint struct {
+	Name     string         `json:"name"`
+	Position airport.LatLon `json:"position"`
+}
+
+// DepartureVia is Departure towards reporting point p, ending over it.
+func (c Circuit) DepartureVia(p ReportingPoint) []airport.NavPoint {
+	up, _ := c.Point(LegUpwind)
+	rwy, _ := c.Point(LegRunway)
+	field := airport.LatLon{Lat: (rwy.Position.Lat + up.Position.Lat) / 2, Lon: (rwy.Position.Lon + up.Position.Lon) / 2}
+	route := c.Departure(localBearing(field, p.Position))
+	last := &route[len(route)-1]
+	prev := rwy.Position
+	if len(route) > 1 {
+		prev = route[len(route)-2].Position
+	}
+	last.Position, last.Ident, last.Course = p.Position, p.Name, localBearing(prev, p.Position)
+	return route
+}
+
+// PlanCircuitArrivalFrom is PlanCircuitArrival entering over reporting
+// point from (nil: at the 45° entry): it appears there VFRExitAboveFt above
+// circuit height, flies to the 45° entry and on as PlanCircuitArrival.
+func PlanCircuitArrivalFrom(c Circuit, from *ReportingPoint) *ArrivalProcedure {
+	proc := PlanCircuitArrival(c)
+	if from == nil {
+		return proc
+	}
+	entry, _ := c.JoinDownwind()
+	alt := c.HeightFt + VFRExitAboveFt
+	proc.Spawn.Latitude, proc.Spawn.Longitude, proc.Spawn.Altitude = from.Position.Lat, from.Position.Lon, alt
+	proc.Spawn.Heading = localBearing(from.Position, entry.Position)
+	join := procedureWaypoint(entry.Position, c.HeightFt, entry.Kts)
+	proc.Waypoints = append([]types.SIMCONNECT_DATA_WAYPOINT{join}, proc.Waypoints...)
+	return proc
+}

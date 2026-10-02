@@ -43,8 +43,11 @@ The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an est
 
 ## Reporting points (#566)
 
-VFR arrivals and departures use the airport's reporting points. A live probe at LKPR found none of the simulator's waypoints typed VFR (WAYPOINT `TYPE` 9) within 30 km. Seven named waypoints have `VP`-prefixed idents, possibly coded visual points, but without names. The reporting points are therefore set per airport, with those waypoints offered as candidates.
+`ReportingPoint` is a VFR reporting point: a name and a position. The simulator's navigation data has none near LKPR (only unnamed VP* idents), so the airport map keeps them per airport as the user sets them. Use Airport tab → *VFR reporting points* → *Add on the map* and click; they are kept in `vfrpoints.json` (`GET/POST /api/vfrpoints?icao=`).
 
+- **Arrivals:** a VFR arrival enters over one (`ArrivalRequest.CircuitEntry`, `PlanCircuitArrivalFrom`). It appears there 1,000 ft above circuit height, flies to the 45° entry, then joins downwind as before. Its first call says so: "OKARR, Cessna 172, over NOVEMBER, 3200 feet, for landing".
+- **Departures:** a VFR departure leaves via one (`Circuit.DepartureVia`): out of the circuit by the side the point is on, ending over it. Its route shows as "VFR via SIERRA".
+- **Which point:** each flight takes one of the airport's points by its call sign, or the one named (`SpawnRequest.VFRPoint`). Without points VFR traffic comes and goes in any direction.
 ## Circuit arrivals (#568)
 
 `ArrivalRequest.Circuit` (with `InjectApproach`, instead of a STAR in `Procedure`) is a VFR arrival through the circuit. `PlanCircuitArrival` plans it:

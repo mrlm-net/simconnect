@@ -106,6 +106,8 @@ type controlled struct {
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
 	tngRolling bool
+	// vfrPoint: the reporting point it enters or leaves by (#566).
+	vfrPoint *traffic.ReportingPoint
 	// exitTwy: the taxiway an arrival vacated by, for its report.
 	exitTwy   string
 	readySaid bool // a departure's "ready for departure"
@@ -491,6 +493,10 @@ type SpawnRequest struct {
 	// TouchAndGos: a VFR arrival makes this many touch-and-goes before its
 	// full stop, flying the circuit again after each (#569).
 	TouchAndGos int `json:"touchAndGos"`
+	// VFRPoint: the reporting point a VFR flight enters or leaves by
+	// (#566, vfrpoints.go); "" one of the airport's by its call sign, or
+	// none when the airport has none (ExitBearing set: none).
+	VFRPoint string `json:"vfrPoint"`
 	// Other is the destination of a departure or the origin of an arrival
 	// (ICAO): the flight follows a generated flight plan (#331).
 	Other string `json:"other"`
@@ -624,6 +630,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			exit = *r.ExitBearing
 		}
 		procRoute, procName = c.Departure(exit), "VFR "+traffic.CompassName(exit)
+		if pt := vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail); pt != nil && r.ExitBearing == nil {
+			procRoute, procName = c.DepartureVia(*pt), "VFR via "+pt.Name // out by a reporting point (#566)
+		}
 	}
 	// Nobody appears on top of other traffic: an arrival waits while an
 	// aircraft is near its STAR entry, or appeared there in the last minute.
@@ -720,7 +729,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos,
+		// In over a reporting point, where the airport has some (#566).
+		var entryPoint *traffic.ReportingPoint
+		if r.Circuit {
+			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
+			it.vfrPoint = entryPoint
+		}
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, CircuitEntry: entryPoint,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -791,6 +806,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				}
 				pos = fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
 				level = fmt.Sprintf("%.0f feet", math.Round(p.Spawn.Altitude/100)*100)
+			}
+			if it.vfrPoint != nil {
+				pos = "over " + it.vfrPoint.Name
 			}
 			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
 			qnh, _ := cc.qnh()

@@ -1091,6 +1091,7 @@ select option { background: var(--surface); color: var(--text); }
 .m-tug--fuel { background: var(--ok); }
 .m-circuit { fill: none; stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 6 6; stroke-opacity: .55; }
 .m-circuit.is-sel { stroke-width: 2.5; stroke-opacity: .9; }
+.m-vfrpt { display: grid; place-items: center; color: var(--ok); font-size: 12px; line-height: 1; text-shadow: 0 0 2px var(--surface); }
 .m-circuit-pt { fill: var(--ok); stroke: var(--surface); stroke-width: 1; fill-opacity: 1; }
 .m-angle { fill: var(--accent); fill-opacity: .14; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
 

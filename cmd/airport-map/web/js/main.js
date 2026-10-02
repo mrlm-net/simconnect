@@ -167,6 +167,7 @@ async function load(icao, refresh) {
   fillRunwayEnds();
   resetProcedures();
   resetCircuits();
+  resetVfrPoints();
   loadChoices();
   renderRadio();
   airportInfoPoll.now();
@@ -218,6 +219,7 @@ const gamePoll = poller('game', pollGame, () => (simLive ? 2000 : 0));
 const schedulePoll = poller('schedule', pollSchedule, () => (!simLive ? 0 : tabVisible('schedule') ? 3000 : 10000));
 const worldPoll = poller('world', pollWorld, () => (!simLive ? 0 : worldOn || tabVisible('map') ? 5000 : 15000));
 const procPoll = poller('procedures', pollProcedures, () => (simLive && data && !procs && procTries < 20 && tabVisible('airport') ? 3000 : 0));
+const vfrPointPoll = poller('vfrpoints', pollVfrPoints, () => (data && !vfrPts ? 3000 : 0));
 const circuitPoll = poller('circuits', pollCircuits, () => (simLive && data && !circuits && tabVisible('airport') ? 3000 : 0));
 const airportInfoPoll = poller('airportinfo', pollAirportInfo, () => (data ? 10000 : 0));
 const approachPoll = poller('approach', pollApproach, () => (data && seqWanted() ? (tabVisible('sequence') ? 2000 : 4000) : 0));

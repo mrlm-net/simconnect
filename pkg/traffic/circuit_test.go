@@ -152,3 +152,31 @@ func TestCircuitDeparture(t *testing.T) {
 		}
 	}
 }
+
+// TestReportingPoints: a VFR departure via a reporting point ends over it,
+// named; an arrival over one appears there and flies to the 45° entry
+// first (#566).
+func TestReportingPoints(t *testing.T) {
+	l := lkprGraph(t).Layout
+	c, err := NewCircuit(l, "24", CircuitConfig{}, ProfileFor("C172"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	field := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
+	nov := ReportingPoint{Name: "NOVEMBER", Position: offsetHeading(field, 0, 6*1852)}
+	route := c.DepartureVia(nov)
+	last := route[len(route)-1]
+	if last.Ident != "NOVEMBER" || localDist(last.Position, nov.Position) > 1 {
+		t.Errorf("departure ends at %q %.0f m from NOVEMBER", last.Ident, localDist(last.Position, nov.Position))
+	}
+	proc := PlanCircuitArrivalFrom(c, &nov)
+	at := airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}
+	entry, _ := c.JoinDownwind()
+	first := airport.LatLon{Lat: proc.Waypoints[0].Latitude, Lon: proc.Waypoints[0].Longitude}
+	if localDist(at, nov.Position) > 1 || localDist(first, entry.Position) > 1 {
+		t.Errorf("appears %.0f m from NOVEMBER, first waypoint %.0f m from the 45° entry", localDist(at, nov.Position), localDist(first, entry.Position))
+	}
+	if n := len(proc.Waypoints); n != len(PlanCircuitArrival(c).Waypoints)+1 {
+		t.Errorf("%d waypoints", n)
+	}
+}

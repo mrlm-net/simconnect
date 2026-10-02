@@ -126,6 +126,9 @@ type ArrivalRequest struct {
 	// TouchAndGos (with Circuit) is how many touch-and-goes it makes
 	// before its full stop, flying the circuit again after each (#569).
 	TouchAndGos int
+	// CircuitEntry (with Circuit) is the reporting point it enters over
+	// (#566); nil: it appears at the 45° entry to the downwind.
+	CircuitEntry *ReportingPoint
 	// MissedApproach (with InjectApproach) is the published missed approach
 	// flown on a go-around (airport.Procedures.MissedApproach), then back
 	// round to the final; without it the go-around flies a circuit (#394).
@@ -401,7 +404,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + convert.MetersToFeet(req.Aircraft.CGHeightM)
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
 		if req.Circuit != nil {
-			proc := PlanCircuitArrival(*req.Circuit)
+			proc := PlanCircuitArrivalFrom(*req.Circuit, req.CircuitEntry)
 			plan.Spawn = proc.Spawn
 			c.setCorners(proc.Waypoints, nil)
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))

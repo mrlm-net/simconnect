@@ -811,6 +811,7 @@ function initTraffic() {
   map.on('click', async (e) => {
     if (!data) return;
     if ($('dePick').checked) { addPadAt(e.latlng); return; }
+    if ($('vpPick').checked) { addVfrPointAt(e.latlng); return; }
     if (!$('rViaPick').checked || !nfOpen()) return;
     const r = await api(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
     if (!r.ok) { $('rInfo').innerHTML = `<span class="err-text">${esc(r.error)}</span>`; return; }

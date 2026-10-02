@@ -884,6 +884,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerCamera(mux, st)
 	registerTowers(mux, st)
 	registerCircuits(mux, func() *controlCenter { st.mu.Lock(); defer st.mu.Unlock(); return st.control })
+	registerVFRPoints(mux)
 	speaker.atis = st.atisOn
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.
