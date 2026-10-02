@@ -464,6 +464,24 @@
         </div>
 
         <div class="card">
+          <div class="card__head"><h3>VFR circuits</h3><label class="switch switch--sm"><input type="checkbox" id="ciShow" checked><span class="switch__ui" aria-hidden="true"></span>On the map</label></div>
+          <div class="grid2">
+            <label class="field"><span class="field__lbl">Runway</span><select class="input" id="ciRwy"></select></label>
+            <label class="field"><span class="field__lbl">Side</span><select class="input" id="ciSide"><option value="left">Left-hand</option><option value="right">Right-hand</option></select></label>
+            <label class="field"><span class="field__lbl">Height ft</span><input class="input mono" type="number" id="ciHeight" min="500" max="3000" step="100" placeholder="1000"></label>
+            <label class="field"><span class="field__lbl">Downwind NM</span><input class="input mono" type="number" id="ciDownwind" min="0.5" max="3" step="0.1" placeholder="auto"></label>
+            <label class="field"><span class="field__lbl">Upwind NM</span><input class="input mono" type="number" id="ciUpwind" min="0" max="3" step="0.1" placeholder="0.5"></label>
+            <label class="field"><span class="field__lbl">Final NM</span><input class="input mono" type="number" id="ciBase" min="0.3" max="3" step="0.1" placeholder="1.0"></label>
+          </div>
+          <div class="row gap-2">
+            <button type="button" class="btn btn--sm btn--primary" id="ciSave">Save</button>
+            <button type="button" class="btn btn--sm" id="ciReset" title="Back to the defaults: left-hand, 1000 ft, the downwind from the aircraft's turns">Reset</button>
+          </div>
+          <p class="small muted" id="ciInfo">—</p>
+          <p class="small muted">The circuit VFR traffic flies at each runway end (a Cessna 172's shown). Empty fields take the defaults. Kept per airport.</p>
+        </div>
+
+        <div class="card">
           <div class="card__head"><h3>De-icing pads</h3></div>
           <label class="switch"><input type="checkbox" id="dePick"><span class="switch__ui" aria-hidden="true"></span>Pick on the map: click a taxiway</label>
           <div class="tags" id="dePads"></div>

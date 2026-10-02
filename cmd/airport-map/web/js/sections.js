@@ -593,6 +593,69 @@ async function listenAtis() {
   if (!r.ok) speakEnglish(airportInfo.atis.spoken);
 }
 
+/* ───────────── VFR circuits (#567) ───────────── */
+let circuits = null; // GET /api/circuits: by runway end, its config and the C172's circuit
+function resetCircuits() {
+  circuits = null;
+  layers.circuits.clearLayers();
+  $('ciInfo').textContent = 'Loading when the Airport section is open…';
+}
+async function pollCircuits() {
+  if (!data || circuits) return;
+  const r = await api(`/api/circuits?icao=${encodeURIComponent(data.icao)}`);
+  if (!r.ok) { $('ciInfo').textContent = r.error; return; }
+  circuits = r.data || {};
+  const ends = Object.keys(circuits).sort();
+  const was = $('ciRwy').value;
+  $('ciRwy').innerHTML = ends.map((e) => `<option>${esc(e)}</option>`).join('');
+  if (ends.includes(was)) $('ciRwy').value = was;
+  fillCircuitForm();
+  drawCircuits();
+}
+function fillCircuitForm() {
+  const e = circuits && circuits[$('ciRwy').value];
+  if (!e) return;
+  const c = e.config || {};
+  $('ciSide').value = c.side || 'left';
+  $('ciHeight').value = c.heightFt || '';
+  $('ciDownwind').value = c.downwindNM || '';
+  $('ciUpwind').value = c.upwindNM || '';
+  $('ciBase').value = c.baseNM || '';
+  const ci = e.circuit;
+  const set = Object.keys(c).length ? 'set for this airport' : 'the defaults';
+  $('ciInfo').textContent = `${ci.side}-hand at ${Math.round(ci.heightFt)} ft MSL, downwind ${ci.downwindNM.toFixed(1)} NM out — ${set}.`;
+}
+// drawCircuits draws each runway end's circuit, dashed, its legs named; the
+// selected runway's bolder.
+function drawCircuits() {
+  layers.circuits.clearLayers();
+  if (!circuits || !$('ciShow').checked) return;
+  const sel = $('ciRwy').value;
+  for (const [end, e] of Object.entries(circuits)) {
+    const pts = (e.circuit.points || []).map((p) => [p.position.lat, p.position.lon]);
+    if (pts.length < 2) continue;
+    const on = end === sel;
+    L.polyline(pts, { className: `m-circuit${on ? ' is-sel' : ''}`, interactive: false }).addTo(layers.circuits);
+    if (!on) continue;
+    for (const p of e.circuit.points) {
+      if (p.leg === 'runway') continue;
+      L.circleMarker([p.position.lat, p.position.lon], { radius: 3, className: 'm-circuit-pt', interactive: false })
+        .bindTooltip(`${p.leg} ${Math.round(p.altFt)} ft`, { permanent: true, direction: 'right', offset: [6, 0], className: 'map-lbl map-lbl--sm' })
+        .addTo(layers.circuits);
+    }
+  }
+}
+async function saveCircuit(reset) {
+  if (!data) return;
+  const num = (id) => { const v = Number($(id).value); return $(id).value.trim() === '' || !isFinite(v) ? undefined : v; };
+  const cfg = reset ? {} : { side: $('ciSide').value === 'right' ? 'right' : undefined, heightFt: num('ciHeight'), downwindNM: num('ciDownwind'), upwindNM: num('ciUpwind'), baseNM: num('ciBase') };
+  const r = await send(`/api/circuits?icao=${encodeURIComponent(data.icao)}&runway=${encodeURIComponent($('ciRwy').value)}`, cfg);
+  if (!r.ok) { toast(r.error, 'err'); return; }
+  toast(reset ? 'Circuit back to the defaults' : 'Circuit saved');
+  circuits = null;
+  pollCircuits();
+}
+
 /* ───────────── Procedures (#314): SIDs, STARs, approaches ───────────── */
 let procs = null;
 let procTries = 0;
@@ -998,6 +1061,10 @@ function initSections() {
   for (const id of ['pRunway', 'pSID', 'pSTAR', 'pAPP']) $(id).addEventListener('change', () => { fillProcedurePick(); drawProcedures(); });
   for (const id of ['pFix', 'pFilter']) $(id).addEventListener('change', drawProcedures);
   $('pFit').addEventListener('click', fitProcedures);
+  $('ciRwy').addEventListener('change', () => { fillCircuitForm(); drawCircuits(); });
+  $('ciShow').addEventListener('change', drawCircuits);
+  $('ciSave').addEventListener('click', () => saveCircuit(false));
+  $('ciReset').addEventListener('click', () => saveCircuit(true));
 
   $('rdSound').addEventListener('click', () => {
     // On the map's own computer the voice and "Play on this device" would

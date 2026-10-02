@@ -45,6 +45,7 @@ const layers = {
   overlaps: L.layerGroup(), occupied: L.layerGroup(), pads: L.layerGroup(), procs: L.layerGroup(), final: L.layerGroup(),
   routes: L.layerGroup(), choices: L.layerGroup(), preview: L.layerGroup(), via: L.layerGroup(),
   safe: L.layerGroup(), traffic: L.layerGroup(), world: L.layerGroup(), locate: L.layerGroup(), tugs: L.layerGroup(),
+  circuits: L.layerGroup(),
 };
 const PATH_TYPES = { 0: 'NONE', 1: 'TAXI', 2: 'RUNWAY', 3: 'PARKING', 4: 'PATH', 5: 'CLOSED', 6: 'VEHICLE', 7: 'ROAD', 8: 'PAINTEDLINE' };
 // Drawing per path TYPE: colour token, weight, opacity, dashes.
@@ -81,7 +82,7 @@ function setPathType(t, on) {
 }
 function initLayers() {
   // choices, preview and via come with the New flight form.
-  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate', 'tugs']) layers[g].addTo(map);
+  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate', 'tugs', 'circuits']) layers[g].addTo(map);
   for (const name of Object.keys(LAYER_DEFAULTS)) setLayer(name, layerOn[name]);
   for (const t of Object.keys(PATH_TYPES)) if (pathOn[t]) pathGroups[t].addTo(map);
 }
