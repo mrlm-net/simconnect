@@ -485,6 +485,9 @@ func (c *TaxiController) standFacesOut() bool {
 	return alongHeading(nose, stand.Heading, j) > 0 && math.Abs(headingDiff(stand.Heading, localBearing(nose, j))) <= faceOutMaxDeg
 }
 
+// TugLeadTime is how long before the pushback request the tug is sent.
+var TugLeadTime = 3 * time.Minute
+
 // faceOutMaxDeg: a self-manoeuvring stand's junction lies at most this
 // off the nose.
 const faceOutMaxDeg = 60.0
@@ -503,6 +506,12 @@ func (c *TaxiController) updateTug(dt float64) {
 	}
 	if !c.tugAttached {
 		if c.state != TaxiAwaitingPushback || c.facesOut() {
+			return
+		}
+		// Sent TugLeadTime before the crew is due to ask for the push (its
+		// departure time), or at once when the push is cleared: not ten
+		// minutes early at the nose (live, EZY775 at C29).
+		if !c.pushCleared && c.now().Before(c.gateAt.Add(-TugLeadTime)) {
 			return
 		}
 		c.tugAttached, c.tugAttachedAt = true, c.now()

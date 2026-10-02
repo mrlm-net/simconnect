@@ -33,6 +33,7 @@ func TestPushToPoseEverywhere(t *testing.T) {
 			}
 		}
 		planned, posed, towed := 0, 0, 0
+		sumLen, sumTurn := 0.0, 0.0 // the pushes' length and tightest turn, for the log
 		for i, st := range l.Parking {
 			if i%3 != 0 {
 				continue
@@ -71,6 +72,8 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				if r := tightestTurn(pts); r < PushbackMinArcMeters-3 {
 					t.Errorf("%s: push turns on %.1f m", name, r)
 				}
+				sumLen += path.Length()
+				sumTurn += math.Min(tightestTurn(pts), 100)
 				n := len(pts)
 				net := math.Abs(headingDiff(localBearing(pts[0], pts[2]), localBearing(pts[n-3], pts[n-1])))
 				if turn := totalTurn(pts); turn > net+pushMaxSwerveDeg+1 {
@@ -104,7 +107,9 @@ func TestPushToPoseEverywhere(t *testing.T) {
 				}
 			}
 		}
-		t.Logf("%s: %d of %d pushes to a pose, %d with a tow", icao, posed, planned, towed)
+		if posed > 0 {
+			t.Logf("%s: %d of %d pushes to a pose, %d with a tow; push %.0f m, tightest turn %.0f m on average", icao, posed, planned, towed, sumLen/float64(posed), sumTurn/float64(posed))
+		}
 		if posed < planned*85/100 {
 			t.Errorf("%s: only %d of %d pushes to a pose", icao, posed, planned)
 		}
