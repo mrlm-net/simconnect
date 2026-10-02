@@ -9,8 +9,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.18.8] - 2026-10-02
+
+Fuel trucks, service vehicles that give way to aircraft and to each other, controllers who call the most urgent first, and VFR flights that depart, arrive on a schedule and fit into the landing sequence.
+
 ### Fixed
 
+- Arrivals in conflict on their STARs: one that cannot slow down further now holds at once, and stays in the hold for at least 2 minutes and until the conflict is over. Before, the sequence released it a second later. Live, CSA1257 and AFR1552 merging on GOLO4S and LOMK8S met at 0.5 NM (#589).
+- Light aircraft land shorter: they cross the threshold at 30 ft (`LightThresholdHeightFt`), and the exit choice uses their own touchdown point, speed and braking. They take the first exit they can make. At LKPR a C172 clears 24 at C in 56 s, where it rolled 83 s to D before; a PA-28 clears 30 at R in 31 s. Airliners keep their exits (#583).
+- Airport map: an aircraft whose position did not change since the last poll is not dead-reckoned ahead. Frozen aircraft no longer jitter forward and back (#591).
+- Stands: a stand next to one whose aircraft is due off within 8 minutes ranks lower (`StandRequirements.OffBlock`), so neighbours rarely push at the same time (#581).
+- Pushback and start-up are approved together by default: crews ask for both in one call 85% of the time. The map's "with start-up" switch is on by default (#580).
 - Tower: an arrival's time to land is measured along the route it still flies, not in a straight line. An arrival passing near the field on its STAR no longer holds every departure: live, RYR1485 "landed in 1m38s" 11 minutes early (#574).
 - Tower: a conditional line-up or crossing ("behind the landing …") is given only behind an arrival established on the final. It also needs time for the departure before the arrival after that one: the first off the runway, the departure's roll, the margin. The room is checked again when the line-up happens; without it the crew is told to hold position. Live, a departure lined up behind a landing aircraft, and the next arrival had to go around.
 - Tower: a vacating arrival frees the runway once it is clear of it (its reference point 40 m beyond the edge), not when it stops past the holding point, 35 s later live (#574).
@@ -32,6 +41,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Airport map: our aircraft are labelled with our call sign. A turnaround flies on in the same aircraft object, whose ATC ID the simulator keeps, so TVS1124 showed as TVS1482 on the runway.
 
 ### Added
+
+- Fuel trucks (#582, #585): `TaxiRequest.Fuel` and `SimObjectFuelTruck`. A departure waiting on its stand long enough is refuelled before the tug comes. The truck drives from the nearest vehicle depot along the vehicle roads to the right wing and refuels for about 8 minutes (twice that for a widebody). It leaves by the nose or the tail, never across the aircraft, and the push waits for it. The map uses GSX hydrant dispensers at gates, GSX fuel trucks elsewhere, and MSFS's own fuel truck without GSX, with two fuel companies per airport. It is shown on the map as **F**.
+- Service vehicles give way (#586, #592). Tugs and fuel trucks stop for moving aircraft crossing their way. They drive 2 m right of the road's centreline, so oncoming vehicles pass, and follow each other with a gap; side by side or crossing, a fixed tie-break decides who waits. After a minute waiting for a vehicle they drive on.
+- Controllers call the most urgent first (#587). Each frequency has an agenda: a go-around, a landing, a take-off or line-up, approach, taxi for a vacated arrival, taxi for a departure, pushback, and a departure clearance last. Within a class the longest waiting goes first. A runway clearance no longer granted when its turn comes is dropped and given again later.
+- VFR departures (#590): `Circuit.Departure` leaves the circuit towards an exit point 5 NM out by the side the exit is on, never across the circuit. `TaxiRequest.VFR` hands the take-off to MSFS AI at 400 ft. On the map: *VFR through the circuit* for departures too. There is no departure clearance; the aircraft calls ground first and stays with the tower.
+- Scheduled VFR flights (#588, #590): `VFRFlights` adds light aircraft arriving through the circuit and departing, about one an hour each way. They fly by day only (`SunElevation`, `Daylight`: civil twilight) and in visual weather (5 km, 1,500 ft). Call signs are local registrations (OKABC at LKPR). They appear 8 minutes before landing (`ManagerOptions.VFRLead`) and park on GA ramps.
+- VFR in the landing sequence (#594, part of #569). On its downwind report the tower gives a VFR arrival its place: "number 2, follow the Airbus A320 on 4 mile final". When it must lose time, its downwind is extended ("extend downwind") at circuit speed: no 210 kt instruction and no hold.
+- Airport map strips show the scheduled time (STD for a departure, STA for an arrival), amber 6–15 minutes late, red beyond. Flights without a schedule keep the wait clock (#579).
+- Airport map: IFR or VFR tag by the call sign on strips, in the panel and on VFR aircraft labels (#584).
+- Airport map: an aircraft's popup with structure: call sign and kind, type and model, route with STD/STA, then altitude, speed, vertical rate, heading, phase, lights by name, gear when low, and span. `/api/traffic` gives each aircraft's ICAO `type` (#593).
 
 - VFR circuit arrivals (#568): `ArrivalRequest.Circuit` and `PlanCircuitArrival`. The aircraft appears at the 45° entry to the downwind, MSFS AI flies the circuit, and the injected approach takes over on the short final (`ArrivalProcedure.MinJoinMeters`). On the map: New flight → *VFR: join the circuit*; per-airport circuit settings at `GET/POST /api/circuits` (`circuits.json`).
 - VFR radio (#569): the Doc 4444 12.3.4.13–17 phrases, with readbacks: `VFRForLanding`, `JoinCircuit`, `StraightIn`, `CircuitReport`, `FollowTraffic`, `CircuitInstruction`, `CircuitDelay`, `ClearedTouchAndGo`, `MakeFullStop`. A circuit arrival calls the tower for landing, is told to join downwind and reports downwind. GA types are named on the radio ("Cessna 172").
