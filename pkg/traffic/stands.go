@@ -33,6 +33,9 @@ type Occupant struct {
 	HalfSpan float64 `json:"halfSpan"` // meters
 	Detected bool    `json:"detected"`
 	ObjectID uint32  `json:"objectId,omitempty"` // detected aircraft
+	// OffBlock is when the reserved aircraft is due off the stand (zero:
+	// not known).
+	OffBlock time.Time `json:"offBlock,omitempty"`
 }
 
 // StandRequirements describe the aircraft a stand is wanted for.
@@ -49,6 +52,11 @@ type StandRequirements struct {
 	// Runway is the arrival runway end: the stand with the shortest taxi-in
 	// from its best exit wins. Empty ranks by stand index.
 	Runway string
+	// OffBlock is when the aircraft is due to leave the stand: a departure's
+	// STD, an arrival's turnaround. Stands next to one whose aircraft is
+	// due off at nearly the same time rank lower (StandPushConflictWindow),
+	// so neighbours do not push into each other. Zero: not known.
+	OffBlock time.Time
 }
 
 // StandAllocator assigns stands at one airport and keeps track of who is on
@@ -292,8 +300,9 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 		if len(group) == 0 {
 			continue
 		}
-		for _, i := range a.rank(group, req.Runway) {
+		for _, i := range a.rank(group, req.Runway, req.OffBlock) {
 			if err := a.Occupy(i, req.Owner, half); err == nil {
+				a.SetOffBlock(req.Owner, req.OffBlock)
 				return i, nil
 			}
 		}
@@ -304,9 +313,16 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 // rank orders stands by taxi-in length from the runway's best exit. Only
 // the standRankCandidates nearest the runway are routed; the rest follow by
 // distance. Without a runway the order is random (by index without the
-// spread).
-func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
+// spread). Either way a stand next to one whose aircraft is due off near
+// offBlock pays pushConflict.
+func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time) []int {
 	out := slices.Clone(stands)
+	pen := map[int]float64{}
+	a.mu.Lock()
+	for _, i := range out {
+		pen[i] = a.pushConflict(i, offBlock)
+	}
+	a.mu.Unlock()
 	if runwayEnd == "" {
 		// No runway to rank by: any suitable stand (the first by index was
 		// always LKPR A1).
@@ -315,6 +331,7 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
 			a.rng.Shuffle(len(out), func(x, y int) { out[x], out[y] = out[y], out[x] })
 			a.mu.Unlock()
 		}
+		sort.SliceStable(out, func(x, y int) bool { return pen[out[x]] < pen[out[y]] })
 		return out
 	}
 	l := a.g.Layout
@@ -332,6 +349,9 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string) []int {
 		if _, r, err := bestExit(a.g, runwayEnd, i, airport.RouteOptions{}); err == nil && r != nil {
 			cost[i] = r.Length
 		}
+	}
+	for _, i := range out {
+		cost[i] += pen[i]
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	// Not always the very best: the stands nearly as close (as a stand
@@ -501,6 +521,46 @@ func (a *StandAllocator) TakenFrom(stand int, owner string, object uint32) strin
 		}
 	}
 	return ""
+}
+
+// pushConflict is what taking stand costs an aircraft due off it at
+// offBlock, in meters of taxi-in: StandPushConflictMeters for each
+// reserved stand within StandPushNeighbourMeters whose aircraft is due off
+// at the same time, less as the times are further apart, nothing from
+// StandPushConflictWindow. a.mu is held.
+func (a *StandAllocator) pushConflict(stand int, offBlock time.Time) float64 {
+	if offBlock.IsZero() {
+		return 0
+	}
+	l := a.g.Layout
+	pen := 0.0
+	for j, o := range a.reserved {
+		if j == stand || o.OffBlock.IsZero() || !a.valid(j) {
+			continue
+		}
+		if localDist(l.Parking[stand].Position, l.Parking[j].Position) > StandPushNeighbourMeters {
+			continue
+		}
+		dt := o.OffBlock.Sub(offBlock).Abs()
+		if dt < StandPushConflictWindow {
+			pen += StandPushConflictMeters * (1 - float64(dt)/float64(StandPushConflictWindow))
+		}
+	}
+	return pen
+}
+
+// SetOffBlock records when owner's aircraft is due off the stands it holds
+// (StandRequirements.OffBlock): a turnaround's departure time once it is
+// known, or a delay.
+func (a *StandAllocator) SetOffBlock(owner string, t time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, o := range a.reserved {
+		if o.Owner == owner {
+			o.OffBlock = t
+			a.reserved[i] = o
+		}
+	}
 }
 
 // Transfer passes every stand held by fromOwner to toOwner: a turnaround,

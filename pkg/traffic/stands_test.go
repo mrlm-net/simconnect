@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -349,4 +350,56 @@ func TestStandAllocatorSpread(t *testing.T) {
 		t.Errorf("30 first picks on %d stands, want them spread", len(picks))
 	}
 	t.Logf("30 first picks on %d stands", len(picks))
+}
+
+// TestStandPushConflict: departures due off together get stands apart
+// (more than StandPushNeighbourMeters), so they do not push into each
+// other; due off far apart in time, neighbours are fine again.
+func TestStandPushConflict(t *testing.T) {
+	g := lkprGraph(t)
+	l := g.Layout
+	at := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	near := func(a, b int) bool {
+		return localDist(l.Parking[a].Position, l.Parking[b].Position) <= StandPushNeighbourMeters
+	}
+	// Ranked by taxi-in: the second departure at the same time skips the
+	// first's neighbours; one an hour later takes the best stand left.
+	a := NewStandAllocator(nil, g, StandWithSpread(0))
+	s1, err := a.Assign(StandRequirements{Owner: "D1", Runway: "24", OffBlock: at})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := a.Assign(StandRequirements{Owner: "D2", Runway: "24", OffBlock: at.Add(time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if near(s1, s2) {
+		t.Errorf("D1 %s and D2 %s, due off a minute apart, are neighbours", l.Parking[s1].Label(), l.Parking[s2].Label())
+	}
+	// An hour apart: D2 gets the stand it gets with no time at all.
+	b := NewStandAllocator(nil, g, StandWithSpread(0))
+	c := NewStandAllocator(nil, g, StandWithSpread(0))
+	b.Assign(StandRequirements{Owner: "D1", Runway: "24", OffBlock: at})
+	c.Assign(StandRequirements{Owner: "D1", Runway: "24", OffBlock: at})
+	b2, _ := b.Assign(StandRequirements{Owner: "D2", Runway: "24", OffBlock: at.Add(time.Hour)})
+	c2, _ := c.Assign(StandRequirements{Owner: "D2", Runway: "24"})
+	if b2 != c2 {
+		t.Errorf("an hour apart, D2 got %s; without a time %s", l.Parking[b2].Label(), l.Parking[c2].Label())
+	}
+	// Unranked (a schedule's departures): ten due off within five minutes,
+	// no two neighbours.
+	d := NewStandAllocator(nil, g)
+	var got []int
+	for i := range 10 {
+		s, err := d.Assign(StandRequirements{Owner: string(rune('a' + i)), OffBlock: at.Add(time.Duration(i) * 30 * time.Second)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range got {
+			if near(s, o) {
+				t.Errorf("%s and %s, due off within five minutes, are neighbours", l.Parking[s].Label(), l.Parking[o].Label())
+			}
+		}
+		got = append(got, s)
+	}
 }

@@ -342,6 +342,8 @@ When the body ahead faces at least `oncomingDeg` (120°) off the path, the aircr
 - another aircraft's fuselage within the half-span + 3 m (`PushClearMarginMeters`) of the corridor. If that aircraft is moving (it reports a path), its own half-span is added, so its wing keeps clear too (#446).
 - another aircraft's reported path within both half-spans + 10 m. This includes a taxiing aircraft's path, a neighbour's push and the planned taxi of an aircraft waiting after its push. Two pushes into one corridor would otherwise each stop for the other (#452).
 
+**Before the stand is given** (`StandAllocator.Assign`), neighbours due off together are kept apart: a stand within 90 m (`StandPushNeighbourMeters`) of one whose aircraft is due off within 8 minutes (`StandPushConflictWindow`) of this one ranks as if its taxi-in were up to 600 m (`StandPushConflictMeters`) longer, the full amount for the same time and less as the times are further apart (`pushConflict`, `stands.go`). The map's schedule gives departures their STD and arrivals their turnaround's STD.
+
 **Under way** (`holdPushForTraffic`) the push reports what it still sweeps (`ReportPush`), and taxiing traffic gives way to it. The push itself stops only for a fuselage within the half-span + 3 m of what it still has to sweep. An aircraft that stopped short to give way would otherwise hold it for ever (#466). It brakes to a stop `v² / (2 × 0.25) + 0.2 m` ahead, using the push profile's 0.25 m/s² deceleration. `TaxiEvent.PushbackHeld` reports the hold.
 
 ### Braking
