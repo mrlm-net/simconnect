@@ -91,3 +91,49 @@ func testTouchAndGo(t *testing.T, stopGo bool) {
 	}
 	t.Logf("states %v", states)
 }
+
+// TestCircuitGoAround: a C172 going around from its circuit's final climbs
+// into its own circuit (upwind first, at circuit height), not the
+// airliners' 3000 ft circuit 3.5 NM out (#569).
+func TestCircuitGoAround(t *testing.T) {
+	g := lkprGraph(t)
+	ci, _ := NewCircuit(g.Layout, "24", CircuitConfig{}, ProfileFor("C172"))
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKGA",
+		InjectApproach: true, Circuit: &ci, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 81))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 81, 1200, 12))
+	fin, _ := ci.Point(LegFinal)
+	end := ctl.Plan().End
+	for i := 0; i < 60*30 && ctl.flyingProc; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 81, offsetHeading(fin.Position, end.Heading, 50), fin.AltFt-g.Layout.Altitude/0.3048, end.Heading, fin.Kts, false))
+	}
+	for i := 0; i < 60*5; i++ { // a few seconds down the final
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 81, end.Threshold, 0, 0, 0, false))
+	}
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	if !ctl.flyingProc || len(ctl.corners) == 0 || ctl.cornerNames[0] != string(LegUpwind) {
+		t.Fatalf("not in its circuit: flying %v, corners %v", ctl.flyingProc, ctl.cornerNames)
+	}
+	for _, w := range ctl.corners {
+		if w.Altitude > ci.HeightFt+1 {
+			t.Errorf("a circuit point at %.0f ft, circuit height %.0f", w.Altitude, ci.HeightFt)
+		}
+	}
+}
