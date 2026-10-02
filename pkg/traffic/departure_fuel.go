@@ -53,6 +53,7 @@ func (c *TaxiController) updateFuel(dt float64) {
 			return
 		}
 		c.fuelAttached = true
+		c.giveTraffic(f)
 		c.note("fuel truck", nil)
 		if err := f.Attach(pose); err != nil {
 			c.fuelErr(err)
@@ -93,6 +94,14 @@ func (c *TaxiController) fuelClear() bool {
 	c.fuelErr(errors.New("the fuel truck did not leave: removed"))
 	c.fuelErr(f.Remove())
 	return true
+}
+
+// giveTraffic lets a service vehicle give way to the aircraft around
+// (trafficAware): the departure's ground picture, without itself.
+func (c *TaxiController) giveTraffic(v any) {
+	if a, ok := v.(trafficAware); ok && c.picture != nil {
+		a.SetTraffic(c.picture, c.objectID, c.now)
+	}
 }
 
 // fuelDriving reports that the fuel vehicle is on its way in or out: the

@@ -346,6 +346,10 @@ When the body ahead faces at least `oncomingDeg` (120°) off the path, the aircr
 
 **Under way** (`holdPushForTraffic`) the push reports what it still sweeps (`ReportPush`), and taxiing traffic gives way to it. The push itself stops only for a fuselage within the half-span + 3 m of what it still has to sweep. An aircraft that stopped short to give way would otherwise hold it for ever (#466). It brakes to a stop `v² / (2 × 0.25) + 0.2 m` ahead, using the push profile's 0.25 m/s² deceleration. `TaxiEvent.PushbackHeld` reports the hold.
 
+### Service vehicles
+
+Tugs and fuel trucks give way to aircraft on their way to and from their depot (`vehicle_yield.go`, `GroundPicture.VehicleConflict`). The vehicle looks `VehicleLookMeters` (40 m) ahead along its way. It stops `VehicleStopShortMeters` (3 m) short of the first point that comes within both half widths plus `VehicleClearMeters` (8 m) of a moving aircraft. That means the aircraft's body, or the first `VehicleAircraftLookMeters` (120 m) of its path ahead. It waits there until the aircraft has passed. A vehicle already in an aircraft's path (within `VehicleCommitMeters`, 4 m, of its front) drives on to clear it. Parked aircraft and aircraft waiting for a clearance do not count, since the roads pass them, and neither does the vehicle's own aircraft. Aircraft do not see the vehicles and keep their way. At LKPR B9 a tug meeting an A320 taxiing across its road stops about 29 m short of the crossing.
+
 ### Braking
 
 | | Value | Constant (tunables.go) |
