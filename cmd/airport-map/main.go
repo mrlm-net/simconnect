@@ -122,6 +122,9 @@ type Traffic struct {
 	// Span is the wing span in meters; Alt the altitude above sea level in feet.
 	Span float64 `json:"span"`
 	Alt  float64 `json:"alt"`
+	// Type is the ICAO type designator from the model title ("B738"),
+	// "" when not known.
+	Type string `json:"type,omitempty"`
 }
 
 type aircraftRaw struct {
@@ -1095,6 +1098,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 				if tail := tails[t[i].ObjectID]; tail != "" {
 					t[i].Tail = tail // our call sign, not the object's first ATC ID
 				}
+				t[i].Type = typeOfTitle(t[i].Title)
 			}
 		}
 		writeJSON(w, t)
@@ -1340,3 +1344,21 @@ func derivedKts(prev fix, lat, lon float64, now time.Time) float64 {
 	}
 	return calc.HaversineMeters(prev.lat, prev.lon, lat, lon) / dt / 0.514444
 }
+
+// typeOfTitle is the ICAO type designator of a model title ("FSLTL_B738_RYR"
+// → "B738", traffic.ProfileFor), remembered per title; "" when unknown.
+func typeOfTitle(title string) string {
+	typeTitlesMu.Lock()
+	defer typeTitlesMu.Unlock()
+	if t, ok := typeTitles[title]; ok {
+		return t
+	}
+	t := traffic.ProfileFor(title).Type
+	typeTitles[title] = t
+	return t
+}
+
+var (
+	typeTitlesMu sync.Mutex
+	typeTitles   = map[string]string{}
+)
