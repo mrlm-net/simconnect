@@ -539,6 +539,10 @@ body.panel-hidden .panel { display: none; }
 .freq-btn { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid var(--border); border-radius: var(--r-1); background: transparent; color: var(--text-2); font: var(--fs-xs) var(--font-mono); cursor: pointer; min-height: 22px; }
 .freq-btn.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .wait-t { font: 600 var(--fs-xs) var(--font-mono); color: var(--warn); background: var(--warn-soft); padding: 1px 6px; border-radius: var(--r-pill); }
+.sched-t { font: 600 var(--fs-xs) var(--font-mono); color: var(--ok); background: var(--ok-soft); padding: 1px 6px; border-radius: var(--r-pill); white-space: nowrap; }
+.sched-t:empty { display: none; }
+.sched-t.is-late { color: var(--warn); background: var(--warn-soft); }
+.sched-t.is-vlate { color: var(--danger); background: var(--danger-soft); }
 
 /* Sequence tab */
 .seqcard__cap { display: flex; align-items: baseline; gap: 8px; }

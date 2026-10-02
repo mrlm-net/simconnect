@@ -362,6 +362,7 @@ async function toggleGame() {
 
 /* ───────────── Scheduled traffic and boards ───────────── */
 let sched = null;
+let schedSkew = 0; // traffic time minus the browser's clock (ms)
 let board = 'dep';
 async function pollSchedule() {
   const r = await api('/api/schedule');
@@ -373,6 +374,7 @@ async function pollSchedule() {
   }
   markLive();
   sched = r.data;
+  if (sched.now) schedSkew = Date.parse(sched.now) - Date.now();
   const at = (sched.airports || []).join(', ');
   const fs = sched.flights || [];
   $('sStart').innerHTML = `${icon(sched.enabled ? 'i-stop' : 'i-play')}<span>${sched.enabled ? 'Stop schedule' : 'Start schedule'}</span>`;

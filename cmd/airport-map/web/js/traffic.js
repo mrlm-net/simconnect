@@ -154,12 +154,34 @@ function stripHTML(v) {
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.atc)} ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : `<span>${esc(v.atc)}</span>`) : '';
   const other = !onMyFrequency(v);
   return `<article class="strip-card${done ? ' is-done' : ''}${busy ? ' is-busy' : ''}${other ? ' is-other' : ''}" data-kind="${kind}" data-sel="${v.id}" tabindex="0" aria-current="${v.id === ctlSelected}" aria-label="${esc(v.tail)}, ${esc(v.state)}${other ? ', not on your frequency' : ''}" title="${esc(v.model)} · lights ${esc(v.lights || '—')}${other ? ' · not on your frequency: another position clears it' : ''}">
-    <div class="strip-card__l1"><span class="strip-card__cs">${esc(v.tail)}</span>${v.deicing ? icon('i-snow', 'ic ic--xs') : ''}${w ? `<span class="wait-t" data-wait="${v.id}"></span>` : ''}</div>
+    <div class="strip-card__l1"><span class="strip-card__cs">${esc(v.tail)}</span>${v.deicing ? icon('i-snow', 'ic ic--xs') : ''}${timeChip(v, w)}</div>
     ${act}
     <div class="strip-card__l2"><span class="strip-card__state${w ? ' is-wait' : ''}">${esc(statusText(v))}</span></div>
     <div class="strip-card__l3"><span>${kind.toUpperCase()} ${esc(routeText(v).replace('RWY ', ''))}</span>${v.procedure ? `<span>${esc(v.procedure)}</span>` : ''}${freq}<span data-gs="${v.id}"></span></div>
     ${v.error ? `<div class="strip-card__err">${icon('i-warn', 'ic ic--xs')}${esc(v.error)}</div>` : ''}
   </article>`;
+}
+// timeChip: a scheduled flight shows its STD (departure) or STA (arrival),
+// coloured by how late it is (fillSched); any other aircraft waiting for a
+// clearance, how long it has waited.
+const timeChip = (v, w) => schedFlight(v.tail) ? `<span class="sched-t" data-sched="${v.id}"></span>` : w ? `<span class="wait-t" data-wait="${v.id}"></span>` : '';
+const LATE_MIN = 5, VERY_LATE_MIN = 15; // the acceptable window, then late, then very late
+const actualAt = new Map(); // control ID → traffic time it left the stand (departure) or landed (arrival)
+function fillSched(el, v) {
+  const f = schedFlight(v.tail);
+  const dep = v.kind !== 'arrival';
+  const t = f ? Date.parse(dep ? f.std : f.sta) : 0;
+  if (!t) { el.textContent = ''; return; }
+  const now = Date.now() + schedSkew;
+  // Off the stand once it pushes or taxis; an arrival, once on the ground.
+  const off = dep ? !/awaiting pushback|spawning/.test(v.state) : v.onGround || isDone(v);
+  if (off && !actualAt.has(v.id)) actualAt.set(v.id, now);
+  const est = f.estimated && !f.estimated.startsWith('0001') ? Date.parse(f.estimated) : 0;
+  const at = actualAt.get(v.id) || Math.max(now, est);
+  const late = Math.round((at - t) / 60000);
+  el.textContent = `${dep ? 'STD' : 'STA'} ${hhmm(t)}${late > LATE_MIN ? ` +${late}` : ''}`;
+  el.className = `sched-t${late > VERY_LATE_MIN ? ' is-vlate' : late > LATE_MIN ? ' is-late' : ''}`;
+  el.title = `${dep ? 'Scheduled off the stand' : 'Scheduled to land'} ${hhmm(t)}${late > 0 ? `, ${late} min late` : ', on time'}${!actualAt.has(v.id) && est ? ` (expected ${hhmm(est)})` : ''}`;
 }
 const waitSecs = (id) => waitSince.has(id) ? (Date.now() - waitSince.get(id)) / 1000 : 0;
 function renderStrips() {
@@ -183,6 +205,7 @@ function renderStrips() {
 // The wait timers tick in place, once a second.
 function tickWaits() {
   for (const el of $$('[data-wait]')) el.textContent = mmss(waitSecs(Number(el.dataset.wait)));
+  for (const el of $$('[data-sched]')) { const v = ctlViews.find((x) => x.id === Number(el.dataset.sched)); if (v) fillSched(el, v); }
 }
 // fillLive writes the values that change every second (speed, motion,
 // wait) in place, so the strips and the panel re-render only on a change.
@@ -262,7 +285,7 @@ function renderCtx() {
     <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${ctlBusy.has(v.id) ? '<span class="pill pill--accent small">sending…</span>' : other ? `<span class="pill small" title="Another position clears it">${esc(v.atc)}</span>` : ''}</div>
     <button type="button" class="btn btn--icon btn--ghost ctx__close" data-close-ctx aria-label="Deselect (Esc)" title="Deselect (Esc)">${icon('i-x')}</button>
     <div class="ctx__sub">${esc(v.model)}</div>
-    <div class="ctx__state${w ? ' is-wait' : ''}">${w ? `<span class="wait-t" data-wait="${v.id}"></span>` : ''}${v.deicing ? icon('i-snow', 'ic ic--sm') : ''}${esc(statusText(v))}</div>
+    <div class="ctx__state${w ? ' is-wait' : ''}">${timeChip(v, w)}${v.deicing ? icon('i-snow', 'ic ic--sm') : ''}${esc(statusText(v))}</div>
   </header>`;
   if (v.error) h += `<section class="ctx__sec ctx__err">${icon('i-warn', 'ic ic--sm')}${esc(v.error)}</section>`;
   if (!done) {
