@@ -35,6 +35,9 @@ type conflictWatch struct {
 	// that has had time to work, they hold (#455).
 	slowed map[string]bool
 	seen   map[string]bool // conflicts logged, by pair
+	// informed: when each pair not separated here was last told of each
+	// other (traffic information, #570).
+	informed map[string]time.Time
 	now    []traffic.Conflict
 	done   []resolutionView // the latest last (at most 50)
 }
@@ -46,7 +49,7 @@ type resolutionView struct {
 }
 
 func newConflictWatch(s *scheduler) *conflictWatch {
-	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}}
+	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}}
 }
 
 func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
@@ -74,6 +77,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		return a.Ours && !busy && enroute(a) != nil
 	}
 	pairs := map[string]bool{}
+	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
 	for _, c := range cs {
 		pair := c.A + "/" + c.B
 		pairs[pair] = true
@@ -87,6 +91,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		if busy {
 			continue // a change is flown already: see it work
+		}
+		// Not separated in this airspace (VFR in D, E, G): told of each
+		// other instead (#570).
+		if !needed(c.A, c.B) {
+			w.tellTraffic(now, c, aircraft)
+			continue
 		}
 		r, ok := traffic.ResolveConflict(c, aircraft, canSteer, conflictOpts)
 		if !ok {
