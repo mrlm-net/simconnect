@@ -990,6 +990,19 @@ body.full .panel, body.full .ctx { display: none; }
 .leaflet-popup-content { font: 12px/1.45 var(--font-mono); margin: 10px 14px; }
 .leaflet-popup-content b { font-family: var(--font-sans); }
 .leaflet-container a.leaflet-popup-close-button { color: var(--text-3); }
+/* An aircraft's popup (trafficDetail) */
+.tdet { min-width: 220px; font: 12px/1.45 var(--font-sans); }
+.tdet__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-right: 16px; }
+.tdet__cs { font: 700 15px/1.2 var(--font-mono); }
+.tdet__chip { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--r-pill); background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.tdet__chip--other { background: var(--surface-2); color: var(--text-2); }
+.tdet__chip--controlled { background: var(--warn-soft); color: var(--warn); }
+.tdet__type { margin-top: 2px; font-size: 11px; }
+.tdet__route { margin-top: 4px; font: 600 12px var(--font-mono); }
+.tdet__kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.tdet__kv dt { color: var(--text-2); }
+.tdet__kv dd { margin: 0; font-family: var(--font-mono); }
+.tdet__note { font-size: 11px; color: var(--text-2); font-style: italic; }
 
 /* Map objects of the real airport */
 .m-park { fill: var(--stand); fill-opacity: .08; stroke: var(--stand); stroke-width: 1.25; cursor: pointer; }

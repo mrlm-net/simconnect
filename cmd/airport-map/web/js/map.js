@@ -284,8 +284,37 @@ function tagFor(t) {
 }
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
 const KIND_NOTE = { enroute: 'arrival en route (MSFS AI on its plan, handed over at the STAR entry)', overflight: 'overflight (MSFS AI on its plan, crossing the area)', departed: 'departed (MSFS AI on its plan after the SID)', controlled: 'under our control', other: 'other traffic (not ours)' };
-const trafficDetail = (t) => `<b>${esc(t.tail || t.objectId)}</b> ${esc(t.title)}<br><i>${esc(KIND_NOTE[trafficKind(t)] || '')}</i><br>${t.agl.toFixed(0)} ft · ${t.groundKts.toFixed(0)} kt · ` +
-  `${t.vs >= 0 ? '+' : ''}${t.vs.toFixed(0)} fpm<br>gear ${(t.gear * 100).toFixed(0)}% · lights ${esc(t.lights || '—')} · span ${t.span.toFixed(0)} m<br>${esc(shortState(t.state))}`;
+// The kind of an aircraft, as its popup's chip shows it.
+const KIND_CHIP = { enroute: 'Arrival', overflight: 'Overflight', departed: 'Departure', controlled: 'Ours', other: 'Other traffic' };
+// Lights by their letters (Traffic.Lights): the ones that are on.
+const LIGHT_NAMES = { N: 'nav', B: 'beacon', S: 'strobe', T: 'taxi', L: 'landing', O: 'logo', W: 'wing' };
+const lightsSaid = (s) => [...(s || '')].map((c) => LIGHT_NAMES[c]).filter(Boolean).join(', ') || 'off';
+// trafficDetail is an aircraft's popup: who it is, where it goes, how it
+// flies, and who flies it.
+function trafficDetail(t) {
+  const kind = trafficKind(t);
+  const f = t.ours ? schedFlight(t.tail) : null;
+  const vs = Math.abs(t.vs) < 300 ? 'level' : `${t.vs > 0 ? '↑' : '↓'} ${Math.round(Math.abs(t.vs) / 100) * 100} fpm`;
+  const rows = [
+    ['Altitude', t.onGround ? 'on the ground' : `${flightLevel(t.alt || 0)}${t.agl < 5000 ? ` <span class="muted">(${Math.round(t.agl / 10) * 10} ft AGL)</span>` : ''}`],
+    ['Speed', `${t.groundKts.toFixed(0)} kt`],
+    ['Vertical', t.onGround ? '—' : vs],
+    ['Heading', `${String(Math.round(t.heading || 0) % 360).padStart(3, '0')}°`],
+    ['Phase', esc(shortState(t.state) || '—')],
+    ['Lights', esc(lightsSaid(t.lights))],
+  ];
+  // The gear only where it matters: on the ground or low.
+  if (t.onGround || t.agl < 5000) rows.push(['Gear', t.gear >= 0.99 ? 'down' : t.gear <= 0.01 ? 'up' : 'moving']);
+  rows.push(['Span', `${t.span.toFixed(0)} m`]);
+  const route = f ? `<div class="tdet__route">${esc(f.origin || 'local')} → ${esc(f.destination || 'local')}${f.std ? ` <span class="muted">STD ${hhmm(f.std)} · STA ${hhmm(f.sta)}</span>` : ''}</div>` : '';
+  return `<div class="tdet">
+    <div class="tdet__head"><span class="tdet__cs">${esc(t.tail || String(t.objectId))}</span><span class="tdet__chip tdet__chip--${kind}">${KIND_CHIP[kind] || ''}</span></div>
+    <div class="tdet__type">${t.type ? `<b>${esc(t.type)}</b> · ` : ''}<span class="muted">${esc(t.title)}</span></div>
+    ${route}
+    <dl class="tdet__kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <div class="tdet__note">${esc(KIND_NOTE[kind] || '')}</div>
+  </div>`;
+}
 const CAT_OF = { controlled: 'ours', enroute: 'arr', overflight: 'ovf', departed: 'dep', other: 'other' };
 
 let lastTraffic = [];
