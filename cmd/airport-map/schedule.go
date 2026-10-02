@@ -176,6 +176,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if vfr {
 		// A light aircraft joining the circuit (#568): no plan, no STAR.
 		req.Circuit, req.Tug, req.Fuel, req.Deice = true, false, false, ""
+		if !f.Departure() {
+			req.TouchAndGos = touchAndGosFor(f.Callsign)
+		}
 		if !s.visual(f.Airport) {
 			return fmt.Errorf("%w: no VFR in this weather", traffic.ErrSpawnBlocked)
 		}

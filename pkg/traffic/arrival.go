@@ -123,6 +123,9 @@ type ArrivalRequest struct {
 	// the downwind, MSFS AI flies the downwind and base, and the injected
 	// approach takes over on the circuit's short final.
 	Circuit *Circuit
+	// TouchAndGos (with Circuit) is how many touch-and-goes it makes
+	// before its full stop, flying the circuit again after each (#569).
+	TouchAndGos int
 	// MissedApproach (with InjectApproach) is the published missed approach
 	// flown on a go-around (airport.Procedures.MissedApproach), then back
 	// round to the final; without it the go-around flies a circuit (#394).
@@ -154,6 +157,9 @@ type ArrivalEvent struct {
 	Touchdown float64
 	// TouchdownFpm is the vertical speed just before touchdown (negative).
 	TouchdownFpm float64
+	// TouchAndGo is set while it is on the runway for a touch-and-go:
+	// it takes off again, not vacating (#569).
+	TouchAndGo bool
 	// Remaining is the distance to the stand along the taxi-in route, in
 	// meters, once on the ground.
 	Remaining float64
@@ -247,6 +253,8 @@ type ArrivalController struct {
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
 	goArounds     int // go-arounds flown (GoAround)
+	tngLeft       int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
+	tng           *TakeoffMover // a touch-and-go's take-off, while it flies it
 	// corners: proc's points as planned, before its turns are rounded
 	// (proc.Waypoints is the rounded chain flown), with their names ("" for
 	// none) and the next one ahead (-1: the nearest). A delay absorbed
@@ -370,6 +378,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		return ErrAlreadyStarted
 	}
 	c.timing = drawTiming(c.rng)
+	c.tngLeft = req.TouchAndGos
 	if req.Graph == nil || req.Model == "" || req.Parking < 0 || req.Parking >= len(req.Graph.Layout.Parking) {
 		return fmt.Errorf("%w: Graph, Model and a valid Parking are required", ErrBadTaxiRequest)
 	}
@@ -559,6 +568,10 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	}
 	if c.flyingProc {
 		c.onProcedureFrame(m)
+		return
+	}
+	if c.tng != nil {
+		c.onTouchAndGoFrame()
 		return
 	}
 	if c.approach != nil {

@@ -50,3 +50,20 @@ func (it *controlled) circuitPlace() (int, string) {
 	}
 	return 0, ""
 }
+
+// touchAndGosFor is how many touch-and-goes a scheduled VFR arrival makes
+// (#569): by its call sign, two in five fly two to four training circuits,
+// the rest land straight away.
+func touchAndGosFor(cs string) int {
+	h := 0
+	for _, r := range cs {
+		h = h*31 + int(r)
+	}
+	if h < 0 {
+		h = -h
+	}
+	if h%5 >= 2 {
+		return 0
+	}
+	return 2 + h%3
+}

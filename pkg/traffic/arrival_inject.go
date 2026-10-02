@@ -484,6 +484,9 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		c.spoilers = surfaceRamp{target: 100, rate: 100 / SpoilerDeploySeconds}
 		c.setState(ArrivalRollout, nil)
 		return
+	case pose.Phase == ApproachDone && c.tngLeft > 0 && c.req.Circuit != nil:
+		c.startTouchAndGo(pose) // off again: the circuit once more (#569)
+		return
 	case pose.Phase == ApproachDone:
 		// Nose wheel down: the injected rollout, exit and taxi-in take over,
 		// continuing from exactly this pose.

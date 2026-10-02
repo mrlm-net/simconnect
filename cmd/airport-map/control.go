@@ -103,6 +103,9 @@ type controlled struct {
 	// reported downwind.
 	circuit      *traffic.Circuit
 	downwindSaid bool
+	// tngRolling: on the runway for a touch-and-go; once in the circuit
+	// again its calls start afresh (#569).
+	tngRolling bool
 	// exitTwy: the taxiway an arrival vacated by, for its report.
 	exitTwy   string
 	readySaid bool // a departure's "ready for departure"
@@ -485,6 +488,9 @@ type SpawnRequest struct {
 	// departure clearance.
 	Circuit     bool     `json:"circuit"`
 	ExitBearing *float64 `json:"exitBearing"`
+	// TouchAndGos: a VFR arrival makes this many touch-and-goes before its
+	// full stop, flying the circuit again after each (#569).
+	TouchAndGos int `json:"touchAndGos"`
 	// Other is the destination of a departure or the origin of an arrival
 	// (ICAO): the flight follows a generated flight plan (#331).
 	Other string `json:"other"`
@@ -714,7 +720,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit,
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -2478,11 +2484,26 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	default:
 		return
 	}
+	// After a touch-and-go, in the circuit again: its reports and the
+	// tower's clearances start afresh, and it is sequenced again (#569).
+	if ev.arr != nil && ev.arr.TouchAndGo {
+		it.tngRolling = true
+	}
+	if ev.arr != nil && it.tngRolling && !ev.arr.TouchAndGo && ev.arr.State == traffic.ArrivalApproaching {
+		it.tngRolling, it.downwindSaid, it.vacateSaid = false, false, false
+		if it.cc.rejoin != nil {
+			go it.cc.rejoin(it.ICAO, it.Tail)
+		}
+	}
 	// A VFR arrival reports downwind abeam the threshold (12.3.4.14 a).
 	if ev.arr != nil && it.circuit != nil && !it.downwindSaid && ev.arr.State == traffic.ArrivalApproaching {
 		if dw, ok := it.circuit.Point(traffic.LegDownwind); ok && calc.HaversineMeters(ev.arr.Position.Lat, ev.arr.Position.Lon, dw.Position.Lat, dw.Position.Lon) < 500 {
 			it.downwindSaid = true
-			it.say(traffic.CircuitReport(it.Tail, "downwind"))
+			report := "downwind"
+			if it.arr.TouchAndGosLeft() > 0 {
+				report = "downwind, touch and go"
+			}
+			it.say(traffic.CircuitReport(it.Tail, report))
 			// The tower gives its place in the landing sequence (#569).
 			it.call(traffic.PosTower, prioApproach, func() {
 				if n, tr := it.circuitPlace(); n > 0 {
@@ -2493,7 +2514,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).
-	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
 		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
 		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true

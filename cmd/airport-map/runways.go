@@ -562,7 +562,12 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	// The next arrival, the runway free: cleared to land (#462); on the
 	// landing roll it is told to call ground when vacated.
 	for _, cs := range c.Land {
-		give(cs, "land", traffic.ClearedToLand(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return nil })
+		said := traffic.ClearedToLand(cs, end(cs), t.cc.windSaid(icao))
+		// A VFR arrival with touch-and-goes left: cleared touch and go (#569).
+		if it := ours[cs]; it != nil && it.arr != nil && it.arr.TouchAndGosLeft() > 0 {
+			said = traffic.ClearedTouchAndGo(cs, end(cs))
+		}
+		give(cs, "land", said, func(it *controlled) error { return nil })
 	}
 	// Waiting only for the next arrival at a crossing: across behind it,
 	// once it is off the runway. Given once; the plain crossing is then
