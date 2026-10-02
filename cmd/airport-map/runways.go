@@ -75,10 +75,20 @@ func runwayOf(l *airport.Layout, name string) (airport.Runway, bool) {
 
 // onRunway reports whether p is on the runway's surface (and a margin).
 func onRunway(r airport.Runway, p airport.LatLon) bool {
+	return onRunwayWithin(r, p, 15)
+}
+
+// vacatedClearM: a vacating aircraft's reference point this far beyond
+// the runway edge has its tail clear of the runway too.
+const vacatedClearM = 40.0
+
+// onRunwayWithin reports whether p is on the runway or within margin
+// meters of its edges.
+func onRunwayWithin(r airport.Runway, p airport.LatLon, margin float64) bool {
 	a, b := r.Primary.Threshold, r.Secondary.Threshold
 	along := calc.AlongTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon)
 	cross := math.Abs(calc.CrossTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon))
-	return along > -100 && along < r.Length+100 && cross < r.Width/2+15
+	return along > -100 && along < r.Length+100 && cross < r.Width/2+margin
 }
 
 func (t *towers) tick(now time.Time) {
@@ -154,7 +164,17 @@ func (t *towers) tick(now time.Time) {
 			u.Phase = traffic.RunwayAirborne
 		case it.arr != nil && (v.State == "approaching" || v.State == "landing") && !v.OnGround:
 			_, end, _ := l.RunwayEnd(v.Runway)
+			// Along the way it still flies, as the sequence counts it: in a
+			// straight line, an arrival passing near the field on its STAR or
+			// downwind "landed in 1m38s" eleven minutes early and held every
+			// departure (live, RYR1485, 2026-10-02).
 			d := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)
+			it.mu.Lock()
+			route := it.approach
+			it.mu.Unlock()
+			if len(route) > 0 {
+				d = math.Max(d, traffic.DistanceToGo(v.Position, route, end.Threshold))
+			}
 			if d > 3 {
 				t.forgetGoAround(v.Tail) // out again: another go-around may follow
 			}
@@ -164,7 +184,15 @@ func (t *towers) tick(now time.Time) {
 			u.Phase, u.Arrival, u.DistanceNM, u.GroundKts = traffic.RunwayFinal, true, d, v.GroundSpeed
 			// Established: its STAR and approach flown, on the final (#486).
 			u.Established = it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
-		case it.arr != nil && (v.State == "landing" || v.State == "rollout" || v.State == "vacating"):
+		case it.arr != nil && (v.State == "landing" || v.State == "rollout"):
+			u.Phase, u.Arrival = traffic.RunwayRolling, true
+		case it.arr != nil && v.State == "vacating":
+			// Off the runway once it is clear of it (its tail too), not when
+			// it stops past the holding point: live, RYR1485 held a lined-up
+			// departure 35 s after it had turned off (2026-10-02).
+			if !onRunwayWithin(own, v.Position, vacatedClearM) {
+				continue
+			}
 			u.Phase, u.Arrival = traffic.RunwayRolling, true
 		default:
 			continue
