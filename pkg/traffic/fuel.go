@@ -54,7 +54,8 @@ type SimObjectFuelTruck struct {
 	Layout *airport.Layout
 	// SideMeters is how far right of the aircraft's axis it parks; 0 uses
 	// FuelTruckSideShare of the span (at least FuelTruckMinSideMeters).
-	SideMeters float64
+	SideMeters   float64
+	vehicleYield // gives way to aircraft on its way (SetTraffic)
 
 	mu        sync.Mutex
 	objectID  uint32
@@ -180,6 +181,7 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 		return err
 	}
 	if f.arrive != nil {
+		f.check(f.arrive)
 		f.pose = f.arrive.Step(dt)
 		if f.pose.Arrived {
 			f.arrive = nil
@@ -211,6 +213,7 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 		}
 		f.away = NewGroundMoverFrom(path, fuelRoadProfile(), h, 0)
 	}
+	f.check(f.away)
 	f.pose = f.away.Step(dt)
 	if f.pose.Arrived {
 		return f.finish()

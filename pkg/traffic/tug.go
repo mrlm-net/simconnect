@@ -49,7 +49,8 @@ type SimObjectTug struct {
 	// parking spot nearest the stand, airport.Layout.VehicleDepots) to the
 	// aircraft and back, on the vehicle roads (VehicleRoute). nil, or no
 	// depot or road: it appears at the nose and drives off to the side.
-	Layout *airport.Layout
+	Layout       *airport.Layout
+	vehicleYield // gives way to aircraft on its way (SetTraffic)
 
 	mu        sync.Mutex
 	objectID  uint32
@@ -60,13 +61,13 @@ type SimObjectTug struct {
 	haveBar   bool
 	lastNose  airport.LatLon // nose gear at the last bar update
 	haveNose  bool
-	waitLeft  float64 // seconds to the drive-off after the push
+	waitLeft  float64        // seconds to the drive-off after the push
 	arrive    *GroundMover   // driving in from the depot; nil once at the nose
 	depot     airport.LatLon // where it came from and goes back to
 	haveDepot bool
 	stand     airport.LatLon // the nose gear on the stand, before the push
-	homing    bool // driving back to the depot
-	err       error   // from the takeover, reported by Update
+	homing    bool           // driving back to the depot
+	err       error          // from the takeover, reported by Update
 	done      bool
 }
 
@@ -214,6 +215,7 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	}
 	// Driving in from the depot; once there, on the nose.
 	if t.arrive != nil {
+		t.check(t.arrive)
 		t.pose = t.arrive.Step(dt)
 		if t.pose.Arrived {
 			t.arrive, t.pose = nil, t.at(pose)
@@ -238,6 +240,9 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 			return t.finish()
 		}
 		t.away, t.reversing = NewPushbackMover(path, tugProfile(), t.pose.Heading), true
+	}
+	if !t.reversing {
+		t.check(t.away)
 	}
 	t.pose = t.away.Step(dt)
 	if !t.pose.Arrived {

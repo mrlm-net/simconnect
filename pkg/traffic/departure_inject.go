@@ -517,6 +517,7 @@ func (c *TaxiController) updateTug(dt float64) {
 			return
 		}
 		c.tugAttached, c.tugAttachedAt = true, c.now()
+		c.giveTraffic(t)
 		if d, ok := t.(disconnectDelayer); ok {
 			d.SetDisconnectDelay(TugDisconnectSeconds * f(c.timing.tug))
 		}
