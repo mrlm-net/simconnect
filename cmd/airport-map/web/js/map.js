@@ -58,7 +58,7 @@ const HOLD_SHORT = new Set([2, 4, 5, 6]);
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
 
-const LAYER_DEFAULTS = { circuits: true, vfrpts: true, ours: true, others: false, routes: true, final: true, labels: true, tags: true, safe: false, overlaps: true, occupied: true, runways: true, parking: true, holds: true, points: false, follow: false };
+const LAYER_DEFAULTS = { circuits: false, vfrpts: true, ours: true, others: false, routes: true, final: true, labels: true, tags: true, safe: false, overlaps: true, occupied: true, runways: true, parking: true, holds: true, points: false, follow: false };
 const layerOn = { ...LAYER_DEFAULTS, ...store.json('apm-layers', {}), follow: false };
 const pathOn = { 1: true, 2: true, 3: true, 4: true, 5: true, ...store.json('apm-paths', {}) };
 const LAYER_GROUPS = { circuits: 'circuits', vfrpts: 'vfrpts', runways: 'runways', parking: 'parking', holds: 'holds', points: 'points', labels: 'labels', overlaps: 'overlaps', occupied: 'occupied', final: 'final', safe: 'safe' };
