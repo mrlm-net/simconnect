@@ -21,6 +21,7 @@ func TestVFRPhrases(t *testing.T) {
 		{CircuitDelay("OKABC", DelayOrbitRight), "OKABC, orbit right", "Orbit right, OKABC"},
 		{ClearedTouchAndGo("OKABC", "24"), "OKABC, cleared touch and go", "Cleared touch and go, OKABC"},
 		{MakeFullStop("OKABC"), "OKABC, make full stop", "Make full stop, OKABC"},
+		{ClearedStopAndGo("OKABC", "24"), "OKABC, cleared stop and go", "Cleared stop and go, OKABC"},
 	} {
 		if c.tx.Text != c.said {
 			t.Errorf("said %q, want %q", c.tx.Text, c.said)

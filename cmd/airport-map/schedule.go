@@ -178,6 +178,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		req.Circuit, req.Tug, req.Fuel, req.Deice = true, false, false, ""
 		if !f.Departure() {
 			req.TouchAndGos = touchAndGosFor(f.Callsign)
+			req.StopAndGo = req.TouchAndGos > 0 && len(f.Callsign)%3 == 0 // a third of the training circuits
 		}
 		if !s.visual(f.Airport) {
 			return fmt.Errorf("%w: no VFR in this weather", traffic.ErrSpawnBlocked)

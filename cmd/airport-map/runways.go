@@ -566,6 +566,9 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		// A VFR arrival with touch-and-goes left: cleared touch and go (#569).
 		if it := ours[cs]; it != nil && it.arr != nil && it.arr.TouchAndGosLeft() > 0 {
 			said = traffic.ClearedTouchAndGo(cs, end(cs))
+			if it.stopAndGo {
+				said = traffic.ClearedStopAndGo(cs, end(cs))
+			}
 		}
 		give(cs, "land", said, func(it *controlled) error { return nil })
 	}

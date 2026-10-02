@@ -85,6 +85,10 @@ On the airport map the crew reports "downwind, touch and go" and the tower clear
 
 On the airport map the managed airports' zones are class D (`-airspace` sets C, D, E or G), out to 10 NM and up to 5,000 ft above the field; around them class E. Our aircraft fly under their rules (`ControlView.Rules`), other traffic is IFR except light singles. A predicted conflict that needs no separation gets traffic information on each of ours' frequency, at most every 3 minutes, instead of a resolution. Such a pair coming close is not logged as a loss of separation.
 
+### Stop-and-goes (#567)
+
+With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to a stop on the runway at its `BrakeDecel`, stands `StopAndGoWait` (10 s, an estimate), and takes off from there. On the map the crew reports "downwind, stop and go" and the tower says "cleared stop and go" (`ClearedStopAndGo`, worded like the touch-and-go; Doc 4444 12.3.4.16 does not list it). The New flight form has a *Stop-and-go* box; a third of the scheduled training circuits are stop-and-goes.
+
 ### VFR departures
 
 `Circuit.Departure(exitBearing)` is the way out of the circuit towards an exit point `VFRExitNM` (5 NM) from the field, `VFRExitAboveFt` (1,000 ft) above circuit height. It leaves the circuit by the side the exit is on:
@@ -109,7 +113,7 @@ Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.
 - Touch-and-goes are still to come.
-- "Make another circuit" and stop-and-go are still to come (#569, #567).
+- "Make another circuit" and the base and overhead joins are still to come (#569, #567).
 
 ## Jetbridges (#572)
 

@@ -106,6 +106,7 @@ type controlled struct {
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
 	tngRolling bool
+	stopAndGo  bool // its touch-and-goes are stop-and-goes
 	// vfrPoint: the reporting point it enters or leaves by (#566).
 	vfrPoint *traffic.ReportingPoint
 	// circuitJoin: where the tower joins it (LegFinal: straight in).
@@ -495,6 +496,8 @@ type SpawnRequest struct {
 	// TouchAndGos: a VFR arrival makes this many touch-and-goes before its
 	// full stop, flying the circuit again after each (#569).
 	TouchAndGos int `json:"touchAndGos"`
+	// StopAndGo: each of them a stop-and-go (#567).
+	StopAndGo bool `json:"stopAndGo"`
 	// VFRPoint: the reporting point a VFR flight enters or leaves by
 	// (#566, vfrpoints.go); "" one of the airport's by its call sign, or
 	// none when the airport has none (ExitBearing set: none).
@@ -731,6 +734,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Circuit {
 			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
 			it.vfrPoint = entryPoint
+			it.stopAndGo = r.StopAndGo
 			if entryPoint != nil {
 				if c, j, err := traffic.CircuitJoinFor(g.Layout, r.Runway, cfg, entryPoint.Position); err == nil {
 					cfg, join = c, j
@@ -748,7 +752,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, CircuitEntry: entryPoint, CircuitJoin: join,
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -2542,6 +2546,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			report := "downwind"
 			if it.arr.TouchAndGosLeft() > 0 {
 				report = "downwind, touch and go"
+				if it.stopAndGo {
+					report = "downwind, stop and go"
+				}
 			}
 			it.say(traffic.CircuitReport(it.Tail, report))
 			// The tower gives its place in the landing sequence (#569).

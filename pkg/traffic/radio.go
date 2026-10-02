@@ -387,6 +387,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentCircuitInstr, IntentCircuitDelay:
 		return cs + ", " + p[ParamInstr] // 12.3.4.15 a–d, 12.3.4.17 a–c
 	case IntentTouchAndGo:
+		if p[ParamInstr] != "" {
+			return cs + ", cleared " + p[ParamInstr] // stop and go (ClearedStopAndGo)
+		}
 		return cs + ", cleared touch and go" // 12.3.4.16 c
 	case IntentFullStop:
 		return cs + ", make full stop" // 12.3.4.16 d
@@ -801,6 +804,13 @@ func CircuitDelay(cs, instr string) Transmission {
 // ClearedTouchAndGo is "cleared touch and go" (12.3.4.16 c).
 func ClearedTouchAndGo(cs, runway string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTouchAndGo, Params: map[string]string{ParamRunway: runway}})
+}
+
+// ClearedStopAndGo is "cleared stop and go": a touch-and-go that stops on
+// the runway before the take-off (ArrivalRequest.StopAndGo). The wording
+// follows ClearedTouchAndGo; Doc 4444 12.3.4.16 does not list it.
+func ClearedStopAndGo(cs, runway string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTouchAndGo, Params: map[string]string{ParamRunway: runway, ParamInstr: "stop and go"}})
 }
 
 // MakeFullStop is "make full stop" (12.3.4.16 d).

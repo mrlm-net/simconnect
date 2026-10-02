@@ -604,6 +604,7 @@ async function ctlSpawn() {
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
     circuit: $('cCircuit').checked,
+    stopAndGo: kind === 'arrival' && $('cCircuit').checked && $('cSng').checked,
     touchAndGos: kind === 'arrival' && $('cCircuit').checked ? Math.max(0, Math.min(9, Number($('cTng').value) || 0)) : 0,
     other: $('cOther').value.trim().toUpperCase(),
     ...customRoute(),
