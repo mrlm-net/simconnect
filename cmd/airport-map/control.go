@@ -2519,7 +2519,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).
-	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && it.arr.TouchAndGosLeft() == 0 && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
 		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
 		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true
