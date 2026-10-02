@@ -123,4 +123,4 @@ Jetbridges for our traffic are blocked by the simulator.
 - `RequestJetwayData` lists an airport's jetways: 27 at LKPR. Each is a SimObject with a status and the aircraft attached, and its parking index is the layout's stand index.
 - `TOGGLE_JETWAY` sent to one of our aircraft parked at a jetway stand did nothing.
 - Our traffic is created as NonATC aircraft, the only kind whose stand we can choose. A devsupport thread (March 2026) reports that only ParkedATC and EnrouteATC aircraft use jetways.
-- `pkg/types.SIMCONNECT_JETWAY_DATA` does not match the packed 160-byte wire entry, so a list must be decoded field by field.
+- `types.DecodeJetwayData` reads one packed 160-byte `SIMCONNECT_JETWAY_DATA` entry (`JetwayDataSize`); the Go struct is laid out differently and must not be cast onto the wire data (#606).
