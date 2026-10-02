@@ -238,6 +238,16 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
+	// A runway nobody uses now shows nobody: its last state stayed on
+	// (live, "12/30 · WZZ100 on the runway" long after it had crossed).
+	t.mu.Lock()
+	for name := range t.last {
+		icao, rwy, _ := strings.Cut(name, " ")
+		if _, used := users[key{icao, rwy}]; !used {
+			delete(t.last, name)
+		}
+	}
+	t.mu.Unlock()
 	for k, list := range users {
 		t.mu.Lock()
 		rc := t.ctl[k.icao+" "+k.rwy]

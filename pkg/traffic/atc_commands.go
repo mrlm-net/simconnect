@@ -179,6 +179,9 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 // downwind GoAroundOffsetNm from the runway at GoAroundHeightFt above it,
 // then back to the join point for another approach.
 var (
+	// GoAroundGearUpFt: the gear comes up this far above the runway in the
+	// go-around climb (it stayed down all round the circuit before).
+	GoAroundGearUpFt = 400.0
 	GoAroundClimbNm  = 3.0
 	GoAroundOffsetNm = 3.5
 	GoAroundHeightFt = 3000.0
@@ -266,7 +269,7 @@ func (c *ArrivalController) GoAround() error {
 	}
 	c.approach = nil
 	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, 0
-	c.flyingProc, c.blend = true, joinBlend{}
+	c.flyingProc, c.blend, c.gaGearUp = true, joinBlend{}, false
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++
 	c.setState(ArrivalApproaching, nil)

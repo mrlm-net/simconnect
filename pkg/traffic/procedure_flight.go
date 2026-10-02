@@ -10,6 +10,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
+	"unsafe"
 )
 
 // Procedure flying (#315): after the injected take-off MSFS AI flies the
@@ -248,6 +249,14 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		c.holdFrame(pos)
 		c.emit(nil, false)
 		return
+	}
+	// Going around: the gear up once well clear of the runway.
+	if c.circuit && !c.gaGearUp && m.AltFt != 0 && m.AltFt-c.plan.Runway.Altitude/0.3048 > GoAroundGearUpFt {
+		c.gaGearUp = true
+		if client := c.fleet.clientOrNil(); client != nil {
+			gear := [1]float64{0}
+			c.note("go-around: gear up", client.SetDataOnSimObject(c.defBase+arrDefGear, c.objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(gear)), unsafe.Pointer(&gear)))
+		}
 	}
 	t, far := c.plan.End.Threshold, c.proc.Join
 	along := calc.AlongTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon)

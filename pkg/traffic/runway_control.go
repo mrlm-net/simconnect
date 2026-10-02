@@ -99,6 +99,14 @@ type RunwayControllerOptions struct {
 	// (default 60 s); cleared to line up and take off in one, it needs the
 	// next arrival that much farther away.
 	LineUpTime time.Duration
+	// LineUpWaitTime: how long lining up to a stop takes (line up and wait,
+	// a conditional line-up; default 85 s, measured live): a departure lined
+	// up behind a landing aircraft goes only once that is done.
+	LineUpWaitTime time.Duration
+	// MinArrivalLinedUpNM: a departure already lined up takes off with the
+	// next arrival farther out than this (default 3 NM) and its time rule
+	// (its roll and Margin) kept; one still to line up needs MinArrivalNM.
+	MinArrivalLinedUpNM float64
 }
 
 // RunwayController clears the users of one runway.
@@ -116,7 +124,10 @@ type RunwayController struct {
 // (then seconds): the first off the runway, the departure's roll and the
 // margin, all before the second lands.
 func (r *RunwayController) behindRoom(next float64, first RunwayUser, then float64, u RunwayUser) bool {
-	need := next + (RunwayOccupancyIn(first.Wake, true, r.opts.Surface) + RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.opts.Margin).Seconds()
+	// Lined up once the first is off the runway and its own line-up is done
+	// (live, TVS158 took 84 s and QTR1788 behind had to go around).
+	free := max(RunwayOccupancyIn(first.Wake, true, r.opts.Surface), r.opts.LineUpWaitTime)
+	need := next + (free + RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.opts.Margin).Seconds()
 	return then >= need
 }
 
@@ -146,6 +157,12 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	}
 	if opts.LineUpTime == 0 {
 		opts.LineUpTime = 60 * time.Second
+	}
+	if opts.LineUpWaitTime == 0 {
+		opts.LineUpWaitTime = 85 * time.Second
+	}
+	if opts.MinArrivalLinedUpNM == 0 {
+		opts.MinArrivalLinedUpNM = 3
 	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
@@ -251,7 +268,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		if why := interval(u); why != "" {
 			return why
 		}
-		return arrivalClear(lineUp+RunwayOccupancyIn(u.Wake, false, r.opts.Surface), r.opts.MinArrivalNM)
+		minNM := r.opts.MinArrivalNM
+		if lineUp == 0 {
+			minNM = r.opts.MinArrivalLinedUpNM // lined up: the time rule does the rest
+		}
+		return arrivalClear(lineUp+RunwayOccupancyIn(u.Wake, false, r.opts.Surface), minNM)
 	}
 
 	out.NextArrival = nextArrName

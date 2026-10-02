@@ -1411,9 +1411,6 @@ const (
 	// pushOffPavementWideMeters: the tolerance tried when no push-and-turn
 	// fits within pushOffPavementMeters.
 	pushOffPavementWideMeters = 8.0
-	// pushTurnRadiusCost is what a meter of turn radius below
-	// PushbackArcMeters is worth in meters of push, choosing a push-and-turn.
-	pushTurnRadiusCost = 1.5
 	// A pushback may continue straight back past the first junction to a
 	// later one, while the route stays within pushCorridorDeg of the push
 	// direction, up to pushCorridorMeters from the stand.
@@ -1578,6 +1575,23 @@ func (c *TaxiController) startLineUp() {
 	c.setState(TaxiLiningUp, nil)
 }
 
+// PushTurnRadiusCost is what a meter of turn radius below
+// PushbackArcMeters is worth in meters of push, choosing a push-and-turn
+// (a variable: the review renders compare weights, tools/push-review).
+//
+// A push to a pose is planned with PushWideRadiusCost (wide turns started
+// early, the aircraft ending aligned on the taxiway) unless that makes it
+// more than PushWideMaxExtraMeters longer than with PushTurnRadiusCost.
+// Reviewed 2026-10-02 at the ten test airports: 3 was better everywhere
+// but where it chose a much farther pose (LKPR C21, LFPG B2 and F14, KJFK
+// A10: 33–59 m longer). To go back to the round-7 pushes (accepted
+// 2026-10-01), set PushWideRadiusCost = PushTurnRadiusCost.
+var (
+	PushTurnRadiusCost     = 1.5
+	PushWideRadiusCost     = 3.0
+	PushWideMaxExtraMeters = 25.0
+)
+
 // LineUpRollingKts is the alignment's speed for a rolling take-off
 // (cleared before lining up): onto the centreline and straight on.
 var LineUpRollingKts = 12.0
@@ -1648,7 +1662,10 @@ func (c *TaxiController) onTakeoffFrame() {
 		c.flapsUpNoted = true
 		c.seq.add(now, "flaps up", pose.HeightFt, pose.GroundSpeedKts)
 	}
-	if !c.gearUp && pose.HeightFt > GearUpFt && pose.AirborneSeconds >= GearUpDelaySeconds*f(c.timing.gearUp) && pose.VerticalFpm >= GearUpFpm { // positive climb
+	if c.gearUpAt == 0 {
+		c.gearUpAt = GearUpFt + c.rng.Float64()*(GearUpMaxFt-GearUpFt)
+	}
+	if !c.gearUp && pose.HeightFt > c.gearUpAt && pose.AirborneSeconds >= GearUpDelaySeconds*f(c.timing.gearUp) && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")
@@ -1666,6 +1683,10 @@ func (c *TaxiController) onTakeoffFrame() {
 
 // handOverClimb releases the aircraft to MSFS AI with climb waypoints.
 func (c *TaxiController) handOverClimb(pose TakeoffPose) {
+	if !c.gearUp { // handed over below the crew's gear-up height: up now
+		c.gearUp = true
+		c.note("gear up", c.inj.SetGear(c.objectID, false))
+	}
 	c.note("flaps up", c.inj.SetFlaps(c.objectID, 0)) // clean for MSFS AI
 	c.note("release", c.inj.Release(c.objectID))
 	wps := TakeoffClimb(pose.Position.Lat, pose.Position.Lon, pose.Heading)

@@ -264,6 +264,9 @@ type ArrivalController struct {
 	// is joined again only from its last two points (align, join) — climbing
 	// out along the centreline it would look established at once.
 	circuit bool
+	// gaGearUp: the gear is up after a go-around (raised GoAroundGearUpFt
+	// above the runway; down again when the approach takes over).
+	gaGearUp bool
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
 	tromboneNM        float64

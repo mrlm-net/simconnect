@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"errors"
 	"cmp"
 	"math"
 	"slices"
@@ -672,7 +673,7 @@ const (
 // shortest path of turn radius PushbackMinArcMeters to PushbackArcMeters
 // for the nose gear, the same clearances as a push. One per pose, the
 // cheapest.
-func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOffs []float64, prof MotionProfile, pv *flatPave, base float64) []pushCand {
+func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOffs []float64, prof MotionProfile, pv *flatPave, base, radiusCost float64) []pushCand {
 	from := slices.Clone(pushes)
 	slices.SortFunc(from, func(a, b pushCand) int { return cmp.Compare(a.push, b.push) })
 	from = from[:min(len(from), towPushes)]
@@ -688,7 +689,7 @@ func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOff
 				if tow == nil {
 					continue
 				}
-				cost := f.push + pathLen(tow)*pushCostFactor + towPenalty + pushTurnRadiusCost*(PushbackArcMeters-r)
+				cost := f.push + pathLen(tow)*pushCostFactor + towPenalty + radiusCost*(PushbackArcMeters-r)
 				if b, ok := best[j]; ok && cost >= b.push {
 					continue
 				}
@@ -944,6 +945,51 @@ func (c *TaxiController) poseBlocks(p pushPose, own airport.NodeID) int {
 // radius given up. It sets the push and the route (from the pose's edge
 // to the runway); false if no pose is reachable.
 func (c *TaxiController) planPushPose() bool {
+	// Wide (PushWideRadiusCost), unless much longer than the tighter one
+	// (see PushWideRadiusCost): planned both ways when they differ.
+	if PushWideRadiusCost == PushTurnRadiusCost {
+		return c.planPushPoseWith(PushTurnRadiusCost)
+	}
+	route := c.route
+	if !c.planPushPoseWith(PushWideRadiusCost) {
+		c.route = route
+		return c.planPushPoseWith(PushTurnRadiusCost)
+	}
+	wRoute, wJunction, wPush, wTow, wPose, wEmpty := c.route, c.pushJunction, c.pushPts, c.towPts, c.pushPose, c.emptyNear
+	c.route = route
+	if c.planPushPoseWith(PushTurnRadiusCost) && !wideKeeps(wPose, wPush, wTow, c.pushPose, c.pushPts, c.towPts) {
+		return true // the tighter push: the wide one is not the same push, smoother
+	}
+	c.route, c.pushJunction, c.pushPts, c.towPts, c.pushPose, c.emptyNear = wRoute, wJunction, wPush, wTow, wPose, wEmpty
+	return true
+}
+
+// wideKeeps reports whether the wide push (w) may replace the tighter one
+// (t): the same push, only smoother — facing the same way (within
+// pushWideFacingDeg), aligned and no
+// hairpin where the tighter is, no tow in either, and at most
+// PushWideMaxExtraMeters longer.
+// Everything the tighter push gets right, the wide one must too.
+func wideKeeps(w *pushPose, wPush, wTow []airport.LatLon, t *pushPose, tPush, tTow []airport.LatLon) bool {
+	switch {
+	case w == nil || t == nil:
+		return w != nil
+	case math.Abs(headingDiff(w.heading, t.heading)) > pushWideFacingDeg:
+		return false
+	case wTow != nil || tTow != nil:
+		return false // a push and tow stays as planned: the wide arc is for pushes alone (KJFK D70)
+	case t.aligned() && !w.aligned(), !t.hairpin() && w.hairpin():
+		return false
+	}
+	return pathLen(wPush)+pathLen(wTow) <= pathLen(tPush)+pathLen(tTow)+PushWideMaxExtraMeters
+}
+
+// pushWideFacingDeg: the wide push ends facing within this of the tighter.
+const pushWideFacingDeg = 20.0
+
+// planPushPoseWith plans the push to a pose with radiusCost: what a meter
+// of turn radius below PushbackArcMeters costs in meters of push.
+func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	g, prof := c.req.Graph, c.profile()
 	stand := g.Layout.Parking[c.req.Parking]
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
@@ -988,7 +1034,7 @@ func (c *TaxiController) planPushPose() bool {
 			if pts == nil {
 				continue
 			}
-			push := pathLen(pts)*pushCostFactor + pushTurnRadiusCost*(PushbackArcMeters-r)
+			push := pathLen(pts)*pushCostFactor + radiusCost*(PushbackArcMeters-r)
 			if best != nil && push >= best.push {
 				continue
 			}
@@ -1074,7 +1120,7 @@ func (c *TaxiController) planPushPose() bool {
 	// on itself. A push onto the taxiway facing the runway is never turned
 	// round by a tow (EHAM U26).
 	if best == nil || !poses[best.at].aligned() || poses[best.at].hairpin() {
-		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base)
+		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base, PushTurnRadiusCost) // tows as before: the wide weight is for pushes
 		if c.havePushFacing {
 			tows = c.facingWay(poses, tows)
 		}
@@ -1129,4 +1175,37 @@ func (c *TaxiController) planPushPose() bool {
 	full.Runway, full.RunwayEnd, full.Entry, full.HoldShort, full.Tight = p.out.Runway, p.out.RunwayEnd, p.out.Entry, p.out.HoldShort, p.out.Tight
 	c.route, c.pushJunction, c.pushPts, c.towPts, c.pushPose = full, 0, best.pts, best.tow, &p
 	return true
+}
+
+// PlannedPush is a departure's pushback as planned: the main gear's way
+// back (Push), a tow forward after it (Tow, none mostly), the taxi-out's
+// route from the pose on (Taxi), and the pose it ends in: the nose there,
+// facing Heading.
+type PlannedPush struct {
+	Push, Tow, Taxi []airport.LatLon
+	Pose            airport.LatLon
+	Heading         float64
+}
+
+// ErrNoPushPose is returned by PlanPush when the stand has no pushback to
+// a pose (it faces out, or no pose fits).
+var ErrNoPushPose = errors.New("traffic: no pushback to a pose")
+
+// PlanPush plans the pushback of a departure from req's stand to its
+// runway (Graph, Parking, Runway, Model; Entry and Options as for
+// TaxiController.Start) without a simulator: for review and tools
+// (tools/push-review).
+func PlanPush(req TaxiRequest) (PlannedPush, error) {
+	req.resolveAircraft()
+	req.Options = withSpan(req.Options, req.Profile)
+	req.Options.OwnStands = []int{req.Parking}
+	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
+	if err != nil {
+		return PlannedPush{}, err
+	}
+	t := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1}
+	if t.standFacesOut() || !t.planPushPose() || t.pushPose == nil {
+		return PlannedPush{}, ErrNoPushPose
+	}
+	return PlannedPush{Push: t.pushPts, Tow: t.towPts, Taxi: t.route.Points, Pose: t.pushPose.nose, Heading: t.pushPose.heading}, nil
 }

@@ -73,13 +73,13 @@ func pushTurnSearch(g *airport.Graph, own int, gear airport.LatLon, pushDir floa
 				continue
 			}
 			// Clear of the neighbours: the cheapest push, with a tighter turn
-			// costing pushTurnRadiusCost per meter of radius given up.
+			// costing PushTurnRadiusCost per meter of radius given up.
 			if offPavement(pv, pts) > tol {
 				continue // off the stands and taxiways: a building or grass
 			}
 			in := standIntrusion(g, own, pts, prof)
 			if in <= base+pushClearanceSlackMeters {
-				if cost := pathLen(pts) + pushTurnRadiusCost*(PushbackArcMeters-r) + gl.pen; cost < bestCost {
+				if cost := pathLen(pts) + PushTurnRadiusCost*(PushbackArcMeters-r) + gl.pen; cost < bestCost {
 					clear, bestCost = pts, cost
 				}
 				continue
