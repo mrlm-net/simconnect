@@ -2483,6 +2483,12 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		if dw, ok := it.circuit.Point(traffic.LegDownwind); ok && calc.HaversineMeters(ev.arr.Position.Lat, ev.arr.Position.Lon, dw.Position.Lat, dw.Position.Lon) < 500 {
 			it.downwindSaid = true
 			it.say(traffic.CircuitReport(it.Tail, "downwind"))
+			// The tower gives its place in the landing sequence (#569).
+			it.call(traffic.PosTower, prioApproach, func() {
+				if n, tr := it.circuitPlace(); n > 0 {
+					it.say(traffic.FollowTraffic(it.Tail, n, tr))
+				}
+			})
 		}
 	}
 	// On the landing roll the tower tells the crew to call ground when

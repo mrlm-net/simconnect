@@ -234,6 +234,14 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if e.ShortBy >= spacingActFrom {
 			tlog.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
 		}
+		if it.circuit != nil {
+			// VFR in the circuit (#569): its downwind extended, said so; no
+			// speed for a light aircraft and no hold (12.3.4.15 c).
+			if a.ExtraNM > 0 {
+				it.say(traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
+			}
+			continue
+		}
 		it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
