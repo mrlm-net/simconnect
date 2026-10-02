@@ -129,6 +129,9 @@ type ArrivalRequest struct {
 	// CircuitEntry (with Circuit) is the reporting point it enters over
 	// (#566); nil: it appears at the 45° entry to the downwind.
 	CircuitEntry *ReportingPoint
+	// CircuitJoin (with CircuitEntry) is where the tower joins it
+	// (CircuitJoinFor): LegFinal a straight-in approach, else the downwind.
+	CircuitJoin CircuitLeg
 	// MissedApproach (with InjectApproach) is the published missed approach
 	// flown on a go-around (airport.Procedures.MissedApproach), then back
 	// round to the final; without it the go-around flies a circuit (#394).
@@ -404,7 +407,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + convert.MetersToFeet(req.Aircraft.CGHeightM)
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
 		if req.Circuit != nil {
-			proc := PlanCircuitArrivalFrom(*req.Circuit, req.CircuitEntry)
+			proc := PlanCircuitArrivalVia(*req.Circuit, req.CircuitEntry, req.CircuitJoin)
 			plan.Spawn = proc.Spawn
 			c.setCorners(proc.Waypoints, nil)
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))

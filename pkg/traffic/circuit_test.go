@@ -180,3 +180,58 @@ func TestReportingPoints(t *testing.T) {
 		t.Errorf("%d waypoints", n)
 	}
 }
+
+// TestCircuitJoinFor: at LKPR 24 (left-hand circuit, south of the runway)
+// a VFR arrival from the north is joined to a right-hand downwind, one
+// from the south to the left, one from the final's sector straight in;
+// none flies across the runway on its way to the join (live, OKARR from
+// NOVEMBER crossed it at circuit height).
+func TestCircuitJoinFor(t *testing.T) {
+	l := lkprGraph(t).Layout
+	p := ProfileFor("C172")
+	r, end, _ := l.RunwayEnd("24")
+	far := r.Primary.Threshold
+	if end.Name == r.Primary.Name {
+		far = r.Secondary.Threshold
+	}
+	// Whether the segment a–b crosses the runway (its centreline segment).
+	crosses := func(a, b airport.LatLon) bool {
+		s1 := calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, far.Lat, far.Lon, a.Lat, a.Lon)
+		s2 := calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, far.Lat, far.Lon, b.Lat, b.Lon)
+		if s1*s2 > 0 {
+			return false
+		}
+		k := s1 / (s1 - s2)
+		x := airport.LatLon{Lat: a.Lat + k*(b.Lat-a.Lat), Lon: a.Lon + k*(b.Lon-a.Lon)}
+		along := calc.AlongTrackMeters(end.Threshold.Lat, end.Threshold.Lon, far.Lat, far.Lon, x.Lat, x.Lon)
+		return along > -300 && along < localDist(end.Threshold, far)+300
+	}
+	field := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
+	for _, c := range []struct {
+		name string
+		brg  float64
+		side CircuitSide
+		join CircuitLeg
+	}{
+		{"north", 0, CircuitRight, LegDownwind}, {"south", 180, CircuitLeft, LegDownwind}, {"final sector", 65, "", LegFinal},
+	} {
+		from := ReportingPoint{Name: c.name, Position: offsetHeading(field, c.brg, 7*1852)}
+		cfg, join, err := CircuitJoinFor(l, "24", CircuitConfig{}, from.Position)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if join != c.join || c.side != "" && cfg.Side != c.side {
+			t.Errorf("%s: join %s %s, want %s %s", c.name, cfg.Side, join, c.side, c.join)
+		}
+		ci, _ := NewCircuit(l, "24", cfg, p)
+		proc := PlanCircuitArrivalVia(ci, &from, join)
+		prev := from.Position
+		for i, w := range proc.Waypoints {
+			q := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+			if crosses(prev, q) {
+				t.Errorf("%s: leg %d crosses the runway", c.name, i)
+			}
+			prev = q
+		}
+	}
+}
