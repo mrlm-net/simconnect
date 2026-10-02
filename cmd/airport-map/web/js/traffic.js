@@ -101,7 +101,7 @@ async function ctlAct(id, action, node, facing) {
   const qs = new URLSearchParams();
   if (node !== undefined) qs.set('node', node);
   if (facing) qs.set('facing', facing);
-  if (action === 'pushback' && ctlWithStart.has(id)) qs.set('startup', '1');
+  if (action === 'pushback' && !ctlPushOnly.has(id)) qs.set('startup', '1');
   const q = qs.toString() ? `?${qs}` : '';
   const r = await send(`/api/control/${id}/${action}${q}`);
   if (!r.ok) toast(`${v ? v.tail + ': ' : ''}${r.error}`, 'err');
@@ -265,10 +265,11 @@ document.addEventListener('change', (e) => {
   });
 });
 
-// ctlWithStart: the aircraft whose pushback includes the start-up.
-const ctlWithStart = new Set();
+// ctlPushOnly: the aircraft whose pushback leaves out the start-up (by
+// default the two are approved in one).
+const ctlPushOnly = new Set();
 function facingRow(v, busy) {
-  return `<label class="switch switch--sm" title="Pushback and start-up approved in one"><input type="checkbox" data-withstart="${v.id}"${ctlWithStart.has(v.id) ? ' checked' : ''}${busy ? ' disabled' : ''}><span class="switch__ui" aria-hidden="true"></span>with start-up</label><div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
+  return `<label class="switch switch--sm" title="Pushback and start-up approved in one"><input type="checkbox" data-withstart="${v.id}"${ctlPushOnly.has(v.id) ? '' : ' checked'}${busy ? ' disabled' : ''}><span class="switch__ui" aria-hidden="true"></span>with start-up</label><div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
 }
 function renderCtx() {
   const el = $('ctx');
@@ -760,7 +761,7 @@ function initTraffic() {
     const ap = e.target.closest('[data-ap]');
     if (ap) { if (!ap.disabled) { ap.disabled = true; approachAct(ap.dataset.cs, ap.dataset.ap); } return; }
     const ws = e.target.closest('[data-withstart]');
-    if (ws) { const id = Number(ws.dataset.withstart); if (ws.checked) ctlWithStart.add(id); else ctlWithStart.delete(id); return; }
+    if (ws) { const id = Number(ws.dataset.withstart); if (ws.checked) ctlPushOnly.delete(id); else ctlPushOnly.add(id); return; }
     const a = e.target.closest('[data-act]');
     if (a) { if (!a.disabled) ctlAct(Number(a.dataset.id), a.dataset.act, undefined, a.dataset.facing); return; }
     const tool = e.target.closest('[data-tool]');
