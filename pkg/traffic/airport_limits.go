@@ -47,6 +47,9 @@ func (a *apronSpans) limit(path *GroundPath, lim *airport.Limits, decel float64)
 // hands over to MSFS AI: the airport's ClimbHandoverFt, else
 // ClimbHandoverFt.
 func (c *TaxiController) handoverFt() float64 {
+	if c.req.VFR {
+		return VFRHandoverFt
+	}
 	if a := c.req.Airport; a != nil && a.ClimbHandoverFt > 0 {
 		return a.ClimbHandoverFt
 	}

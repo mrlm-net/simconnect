@@ -586,7 +586,7 @@ function updateSpawn() {
   const b = $('cSpawn');
   b.disabled = !data || !stand;
   $('cSpawnLbl').textContent = !stand ? 'Pick a stand on the map (or a free one)' : arr ? `Spawn arrival: runway ${rwy} → ${stand}` : `Spawn departure: ${stand} → runway ${rwy}${entry}`;
-  const opts = [$('cGates').checked && 'hold at clearances', !arr && $('cTug').checked && 'tug', arr && $('cInjectApproach').checked && 'approach', arr && $('cTurn').checked && 'turnaround', arr && $('cCircuit').checked && 'VFR circuit', $('cProc').checked && 'procedures', !arr && $('cDeice').value && 'de-icing'].filter(Boolean);
+  const opts = [$('cGates').checked && 'hold at clearances', !arr && $('cTug').checked && 'tug', arr && $('cInjectApproach').checked && 'approach', arr && $('cTurn').checked && 'turnaround', $('cCircuit').checked && 'VFR', $('cProc').checked && 'procedures', !arr && $('cDeice').value && 'de-icing'].filter(Boolean);
   $('optSummary').textContent = opts.join(' · ');
   const c = customRoute();
   $('customSummary').textContent = c.via.length || c.taxiways.length ? `${c.via.length} via · ${c.taxiways.join(', ') || 'no taxiways'}` : '';
@@ -603,7 +603,7 @@ async function ctlSpawn() {
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
-    circuit: kind === 'arrival' && $('cCircuit').checked,
+    circuit: $('cCircuit').checked,
     other: $('cOther').value.trim().toUpperCase(),
     ...customRoute(),
     deice: kind === 'departure' ? $('cDeice').value : '', deiceSec: Number($('cDeiceSec').value) || 0,

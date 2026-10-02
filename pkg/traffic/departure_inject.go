@@ -1676,7 +1676,10 @@ func (c *TaxiController) onTakeoffFrame() {
 	}
 	// To MSFS AI clean: above the hand-over height with the flaps up (or
 	// well above it, whatever the speed).
-	if pose.HeightFt >= c.handoverFt() && (c.flaps.pct == 0 || pose.HeightFt >= c.handoverFt()+HandoverCleanMarginFt) {
+	// A VFR departure goes at VFRHandoverFt whatever its flaps: a light
+	// single climbs below its clean speed, and waited for the margin (live,
+	// OKVFD handed over at 2900 ft after 4.5 minutes).
+	if pose.HeightFt >= c.handoverFt() && (c.req.VFR || c.flaps.pct == 0 || pose.HeightFt >= c.handoverFt()+HandoverCleanMarginFt) {
 		c.seq.add(now, "hand-over to MSFS AI", pose.HeightFt, pose.GroundSpeedKts)
 		c.handOverClimb(pose)
 		return
@@ -1693,7 +1696,9 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 	c.note("flaps up", c.inj.SetFlaps(c.objectID, 0)) // clean for MSFS AI
 	c.note("release", c.inj.Release(c.objectID))
 	wps := TakeoffClimb(pose.Position.Lat, pose.Position.Lon, pose.Heading)
-	if len(c.req.Departure) > 0 {
+	if c.req.VFR && len(c.req.Departure) > 0 {
+		wps = VFRDepartureWaypoints(pose.Position, pose.Heading, c.req.Departure, MaxBankDeg(*c.aircraft()))
+	} else if len(c.req.Departure) > 0 {
 		alt := convert.MetersToFeet(c.req.Graph.Layout.Altitude) + pose.HeightFt
 		wps = DepartureWaypoints(pose.Position, pose.Heading, alt, c.req.Departure)
 		// Its corners are the aircraft's turns (roundCorners).

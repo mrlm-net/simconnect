@@ -224,7 +224,17 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	assigned := false
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
-		s, err := cc.allocator(g).Assign(traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD})
+		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD}
+		s, err := -1, traffic.ErrNoStand
+		if vfr {
+			// A light aircraft on a GA ramp where one is free (#568).
+			ga := sr
+			ga.Types = gaRamps
+			s, err = cc.allocator(g).Assign(ga)
+		}
+		if err != nil {
+			s, err = cc.allocator(g).Assign(sr)
+		}
 		if err != nil {
 			return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err) // no stand free now: tried again
 		}
