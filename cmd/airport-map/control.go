@@ -108,6 +108,8 @@ type controlled struct {
 	tngRolling bool
 	// vfrPoint: the reporting point it enters or leaves by (#566).
 	vfrPoint *traffic.ReportingPoint
+	// circuitJoin: where the tower joins it (LegFinal: straight in).
+	circuitJoin traffic.CircuitLeg
 	// exitTwy: the taxiway an arrival vacated by, for its report.
 	exitTwy   string
 	readySaid bool // a departure's "ready for departure"
@@ -719,8 +721,25 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			exit = &exits[*r.Exit]
 		}
 		var circuit *traffic.Circuit
+		// In over a reporting point, where the airport has some (#566); the
+		// tower joins it from there (CircuitJoinFor): the downwind of the
+		// circuit on its side, or straight in from the final's sector, never
+		// across the runway.
+		var entryPoint *traffic.ReportingPoint
+		join := traffic.LegDownwind
+		cfg := circuitConfig(g.Layout.ICAO, r.Runway)
 		if r.Circuit {
-			c, err := traffic.NewCircuit(g.Layout, r.Runway, circuitConfig(g.Layout.ICAO, r.Runway), ac)
+			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
+			it.vfrPoint = entryPoint
+			if entryPoint != nil {
+				if c, j, err := traffic.CircuitJoinFor(g.Layout, r.Runway, cfg, entryPoint.Position); err == nil {
+					cfg, join = c, j
+				}
+			}
+			it.circuitJoin = join
+		}
+		if r.Circuit {
+			c, err := traffic.NewCircuit(g.Layout, r.Runway, cfg, ac)
 			if err != nil {
 				return nil, err
 			}
@@ -729,13 +748,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		// In over a reporting point, where the airport has some (#566).
-		var entryPoint *traffic.ReportingPoint
-		if r.Circuit {
-			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
-			it.vfrPoint = entryPoint
-		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, CircuitEntry: entryPoint,
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -813,6 +826,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
 			qnh, _ := cc.qnh()
 			it.call(traffic.PosTower, prioApproach, func() {
+				if it.circuitJoin == traffic.LegFinal {
+					it.say(traffic.StraightIn(r.Tail, r.Runway, cc.windSaid(g.Layout.ICAO), qnh))
+					return
+				}
 				it.say(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" downwind", r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
 			})
 		} else {

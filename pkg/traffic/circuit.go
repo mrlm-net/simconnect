@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -359,6 +360,62 @@ func (c Circuit) DepartureVia(p ReportingPoint) []airport.NavPoint {
 	}
 	last.Position, last.Ident, last.Course = p.Position, p.Name, localBearing(prev, p.Position)
 	return route
+}
+
+// CircuitJoinFor is how the tower of a controlled aerodrome joins a VFR
+// arrival coming from p into runway rwy's traffic (Doc 4444 12.3.4.13: it
+// assigns the direction of the circuit and where to join, or a
+// straight-in approach), so it never crosses the runway:
+//
+//   - from the final's sector (within StraightInSectorDeg of the extended
+//     centreline, beyond the threshold): a straight-in approach (LegFinal);
+//   - else the downwind (LegDownwind) of the circuit on p's side of the
+//     centreline, cfg's side turned round where it is the other.
+func CircuitJoinFor(l *airport.Layout, rwy string, cfg CircuitConfig, p airport.LatLon) (CircuitConfig, CircuitLeg, error) {
+	r, end, ok := l.RunwayEnd(rwy)
+	if !ok {
+		return cfg, "", ErrNoRunway
+	}
+	if math.Abs(headingDiff(end.Heading+180, localBearing(end.Threshold, p))) <= StraightInSectorDeg {
+		return cfg, LegFinal, nil
+	}
+	far := r.Secondary.Threshold
+	if end.Name == r.Secondary.Name {
+		far = r.Primary.Threshold
+	}
+	right := calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, far.Lat, far.Lon, p.Lat, p.Lon) > 0
+	if right {
+		cfg.Side = CircuitRight
+	} else {
+		cfg.Side = CircuitLeft
+	}
+	return cfg, LegDownwind, nil
+}
+
+// StraightInSectorDeg: a VFR arrival this close to the extended
+// centreline, out on the final's side, is given a straight-in approach.
+const StraightInSectorDeg = 30.0
+
+// StraightInNM: a straight-in approach lines up this far out.
+const StraightInNM = 3.0
+
+// PlanCircuitArrivalFrom is PlanCircuitArrival entering over reporting
+// point from (nil: at the 45° entry): it appears there VFRExitAboveFt above
+// circuit height, flies to the 45° entry and on as PlanCircuitArrival; with
+// join LegFinal, onto the extended centreline StraightInNM out and down
+// the final instead (a straight-in approach).
+func PlanCircuitArrivalVia(c Circuit, from *ReportingPoint, join CircuitLeg) *ArrivalProcedure {
+	proc := PlanCircuitArrivalFrom(c, from)
+	if from == nil || join != LegFinal {
+		return proc
+	}
+	fin, _ := c.Point(LegFinal)
+	rwy, _ := c.Point(LegRunway)
+	out := offsetHeading(rwy.Position, c.heading+180, StraightInNM*1852)
+	alt := math.Min(c.HeightFt, fin.AltFt+(StraightInNM-CircuitBaseNM)*CircuitGlideFtPerNM)
+	proc.Spawn.Heading = localBearing(from.Position, out)
+	proc.Waypoints = []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(out, alt, fin.Kts), procedureWaypoint(fin.Position, fin.AltFt, fin.Kts)}
+	return proc
 }
 
 // PlanCircuitArrivalFrom is PlanCircuitArrival entering over reporting
