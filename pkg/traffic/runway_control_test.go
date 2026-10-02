@@ -313,3 +313,24 @@ func TestRunwayControllerRollingArrivalBlocksTakeoff(t *testing.T) {
 		}
 	}
 }
+
+// A crossing waiting only for the next arrival is given conditionally,
+// behind it; one in the way of someone on the runway is not.
+func TestRunwayControllerCrossBehind(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	x := RunwayUser{Callsign: "TVS3", Phase: RunwayHoldingShort, Crossing: true}
+	c := r.Decide(now, []RunwayUser{x, final("DLH2", 1.5)})
+	if len(c.Cross) != 0 || c.CrossBehind["TVS3"] != "DLH2" {
+		t.Fatalf("crossing behind an arrival at 1.5 NM: %+v", c)
+	}
+	roll := final("DLH2", 0)
+	roll.Phase = RunwayRolling
+	if c := r.Decide(now, []RunwayUser{x, roll}); len(c.CrossBehind) != 0 || len(c.Cross) != 0 {
+		t.Fatalf("with an arrival rolling out: %+v", c)
+	}
+	tx := ClearedCrossBehind("TVS3", "A320", "12")
+	if tx.Text != "TVS3, behind the landing A320, cross runway 12, behind" {
+		t.Errorf("said %q", tx.Text)
+	}
+}

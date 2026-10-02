@@ -43,9 +43,11 @@ type towers struct {
 	next   map[string]string // the next arrival to land, by "ICAO runway"
 }
 
-// behindClearance is a conditional line-up waiting for its arrival.
+// behindClearance is a conditional line-up or crossing (cross) waiting
+// for its arrival.
 type behindClearance struct {
 	arrival, icao, rwy string
+	cross              bool
 }
 
 type runwayUserView struct {
@@ -286,12 +288,13 @@ func (t *towers) arrivalSaid(cs string) string {
 func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours map[string]*controlled) {
 	t.mu.Lock()
 	var due []string
+	crossing := map[string]bool{}
 	for dep, b := range t.behind {
 		if b.icao != icao || b.rwy != rwy {
 			continue
 		}
 		it := ours[dep]
-		if it == nil || it.dep == nil {
+		if it == nil || it.dep == nil && !b.cross {
 			delete(t.behind, dep) // gone, or no longer holding short
 			continue
 		}
@@ -302,17 +305,36 @@ func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours 
 			}
 		}
 		passed := !there || phase != traffic.RunwayFinal
-		if r := it.dep.Route(); r != nil && r.Entry != "" && there {
-			passed = false // an intersection: once it is off the runway
+		if b.cross && there {
+			passed = false // across once it is off the runway: where it rolls to is not known
+		} else if !b.cross {
+			if r := it.dep.Route(); r != nil && r.Entry != "" && there {
+				passed = false // an intersection: once it is off the runway
+			}
 		}
 		if passed {
 			delete(t.behind, dep)
 			due = append(due, dep)
+			crossing[dep] = b.cross
 		}
 	}
 	t.mu.Unlock()
 	for _, dep := range due {
 		it := ours[dep]
+		if crossing[dep] {
+			tlog.printf("%-6s crossing behind the landing traffic", dep)
+			if err := t.cc.do(func() error {
+				if it.dep != nil {
+					it.dep.ClearToCross()
+				} else if it.arr != nil {
+					it.arr.ClearToCross()
+				}
+				return nil
+			}); err != nil {
+				tlog.printf("%-6s crossing refused: %v", dep, err)
+			}
+			continue
+		}
 		tlog.printf("%-6s lining up behind the landing traffic", dep)
 		if err := t.cc.do(func() error { it.dep.ClearToLineUp(); return nil }); err != nil {
 			tlog.printf("%-6s line-up refused: %v", dep, err)
@@ -433,6 +455,21 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	// landing roll it is told to call ground when vacated.
 	for _, cs := range c.Land {
 		give(cs, "land", traffic.ClearedToLand(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return nil })
+	}
+	// Waiting only for the next arrival at a crossing: across behind it,
+	// once it is off the runway. Given once; the plain crossing is then
+	// taken as given.
+	for cs, arr := range c.CrossBehind {
+		if ours[cs] == nil || ours[cs].gates.Load() {
+			continue
+		}
+		arr := arr
+		give(cs, "cross "+rwy, traffic.ClearedCrossBehind(cs, t.arrivalSaid(arr), oneDesignator(rwy)), func(it *controlled) error {
+			t.mu.Lock()
+			t.behind[it.Tail] = behindClearance{arrival: arr, icao: icao, rwy: rwy, cross: true}
+			t.mu.Unlock()
+			return nil
+		})
 	}
 	for _, cs := range c.Cross {
 		// A crossing is cleared once per holding point: forget it once done.

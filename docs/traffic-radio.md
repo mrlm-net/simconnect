@@ -129,7 +129,7 @@ A clearance built by `Say` is said again in FAA wording at a US airport, and `Tr
 | Approach | "cleared ILS approach runway 24, QNH 1013, report established" | "cleared ILS runway 04L approach" |
 | Departure's check-in answered | "identified, climb to flight level 240" | "radar contact, climb and maintain 5000" |
 
-On the runway, a conditional line-up ("behind the landing …, line up and wait runway 24, behind") is ICAO only. The FAA does not allow conditions on the runway.
+On the runway, a conditional line-up ("behind the landing …, line up and wait runway 24, behind") is ICAO only. So is a conditional crossing (`ClearedCrossBehind`: "behind the landing A320, cross runway 12, behind"). The tower gives one to an aircraft holding short of a crossing when only the next arrival is in the way (`RunwayClearances.CrossBehind`). The aircraft crosses once that arrival is off the runway. The FAA does not allow conditions on the runway.
 
 ## Expedite, weather and direct
 

@@ -25,7 +25,8 @@ import (
 // refused. Each client can play the radio itself: GET /api/voice/clip gives
 // a transmission as a WAV in the voice the server would say it in.
 //
-// There is no login: serve it on a network you trust.
+// Without -token there is no login: serve it on a network you trust. With
+// it, see access.go: a token to control, another to watch.
 
 // positionOf is the position a request is made as ("" or "all": any).
 func positionOf(r *http.Request) string {
@@ -184,7 +185,11 @@ func registerNetwork(mux *http.ServeMux, st *state) {
 		st.mu.Lock()
 		connected := st.control != nil
 		st.mu.Unlock()
-		writeJSON(w, map[string]any{"connected": connected, "network": networkURLs(), "addr": listenAddr})
+		out := map[string]any{"connected": connected, "network": networkURLs(), "addr": listenAddr, "role": requestRole(r), "tokens": tokensOn()}
+		if fromThisComputer(r) {
+			out["links"] = shareLinks() // the links to give out, with their tokens: for the host only
+		}
+		writeJSON(w, out)
 	})
 	mux.HandleFunc("GET /api/voice/clip", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
