@@ -658,6 +658,7 @@ function fillCircuitForm() {
   $('ciDownwind').value = c.downwindNM || '';
   $('ciUpwind').value = c.upwindNM || '';
   $('ciBase').value = c.baseNM || '';
+  $('ciOverhead').checked = !!c.overheadJoin;
   const ci = e.circuit;
   const set = Object.keys(c).length ? 'set for this airport' : 'the defaults';
   $('ciInfo').textContent = `${ci.side}-hand at ${Math.round(ci.heightFt)} ft MSL, downwind ${ci.downwindNM.toFixed(1)} NM out — ${set}.`;
@@ -685,7 +686,7 @@ function drawCircuits() {
 async function saveCircuit(reset) {
   if (!data) return;
   const num = (id) => { const v = Number($(id).value); return $(id).value.trim() === '' || !isFinite(v) ? undefined : v; };
-  const cfg = reset ? {} : { side: $('ciSide').value === 'right' ? 'right' : undefined, heightFt: num('ciHeight'), downwindNM: num('ciDownwind'), upwindNM: num('ciUpwind'), baseNM: num('ciBase') };
+  const cfg = reset ? {} : { side: $('ciSide').value === 'right' ? 'right' : undefined, heightFt: num('ciHeight'), downwindNM: num('ciDownwind'), upwindNM: num('ciUpwind'), baseNM: num('ciBase'), overheadJoin: $('ciOverhead').checked || undefined };
   const r = await send(`/api/circuits?icao=${encodeURIComponent(data.icao)}&runway=${encodeURIComponent($('ciRwy').value)}`, cfg);
   if (!r.ok) { toast(r.error, 'err'); return; }
   toast(reset ? 'Circuit back to the defaults' : 'Circuit saved');

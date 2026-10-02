@@ -86,6 +86,14 @@ On the airport map the crew reports "downwind, touch and go" and the tower clear
 
 On the airport map the managed airports' zones are class D (`-airspace` sets C, D, E or G), out to 10 NM and up to 5,000 ft above the field; around them class E. Our aircraft fly under their rules (`ControlView.Rules`), other traffic is IFR except light singles. A predicted conflict that needs no separation gets traffic information on each of ours' frequency, at most every 3 minutes, instead of a resolution. Such a pair coming close is not logged as a loss of separation.
 
+### Standard overhead join (#567)
+
+With `CircuitConfig.OverheadJoin` (Airport tab → VFR circuits → *Standard overhead join*), VFR arrivals join overhead from any side (`LegOverhead`). They cross the field `OverheadAboveFt` (1,000 ft) above circuit height, descend on the dead side (the side away from the circuit) to circuit height, cross the upwind end of the runway at circuit height onto the crosswind leg, then fly the downwind, base and final. The tower says "join overhead runway 24". The procedure follows UK practice at airfields without a tower: UK Airprox Board report 2025183 quotes the Sherburn-in-Elmet AIP entry, "join overhead at 2000 FT QFE and descend in accordance with the 'Standard Overhead Join' procedure", with circuits at 1000 FT QFE and the descent "on the deadside". Without it the tower assigns the join, as at LKPR. Without reporting points an overhead join comes from 6 NM out in a direction by its call sign.
+
+### Another circuit (#569)
+
+`AnotherCircuit` has a circuit arrival fly round once more: on round its circuit to the final, over the runway at circuit height, then upwind, crosswind, downwind, base and final again. That is about 4 minutes more for a C172. The sequence uses it when 3 minutes or more must be lost beyond the extended downwind, saying "make another circuit" (Doc 4444 12.3.4.17 c), and an orbit for less.
+
 ### Stop-and-goes (#567)
 
 With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to a stop on the runway at its `BrakeDecel`, stands `StopAndGoWait` (10 s, an estimate), and takes off from there. On the map the crew reports "downwind, stop and go" and the tower says "cleared stop and go" (`ClearedStopAndGo`, worded like the touch-and-go; Doc 4444 12.3.4.16 does not list it). The New flight form has a *Stop-and-go* box; a third of the scheduled training circuits are stop-and-goes.
@@ -114,7 +122,7 @@ Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.
 - Touch-and-goes are still to come.
-- "Make another circuit" and the overhead join are still to come (#569, #567).
+- Touch-and-goes from a straight-in or base join fly the circuit afterwards on its own side.
 
 ## Jetbridges (#572)
 

@@ -734,6 +734,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Circuit {
 			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
 			it.vfrPoint = entryPoint
+			if entryPoint == nil && cfg.OverheadJoin {
+				// An overhead join needs somewhere to come from: 6 NM out, in a
+				// direction by its call sign.
+				h := fnv32(r.Tail)
+				entryPoint = &traffic.ReportingPoint{Position: offsetLatLon(airport.LatLon{Lat: g.Layout.Latitude, Lon: g.Layout.Longitude}, float64(h%360), 6*1852)}
+			}
 			it.stopAndGo = r.StopAndGo
 			if entryPoint != nil {
 				if c, j, err := traffic.CircuitJoinFor(g.Layout, r.Runway, cfg, entryPoint.Position); err == nil {
@@ -834,11 +840,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 					it.say(traffic.StraightIn(r.Tail, r.Runway, cc.windSaid(g.Layout.ICAO), qnh))
 					return
 				}
-				where := "downwind"
-				if it.circuitJoin == traffic.LegBase {
-					where = "base" // from the approach side (#567)
+				where := string(it.circuit.Side) + " downwind"
+				switch it.circuitJoin {
+				case traffic.LegBase:
+					where = string(it.circuit.Side) + " base" // from the approach side (#567)
+				case traffic.LegOverhead:
+					where = "overhead" // the standard overhead join (#567)
 				}
-				it.say(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" "+where, r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
+				it.say(traffic.JoinCircuit(r.Tail, where, r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
 			})
 		} else {
 			// The first call to approach with its level, then the STAR.
