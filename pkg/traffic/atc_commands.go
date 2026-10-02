@@ -208,6 +208,19 @@ func (c *ArrivalController) GoAround() error {
 	if pose.OnGround {
 		return ErrTooLate
 	}
+	// A VFR circuit arrival goes round its own circuit, at circuit height
+	// (#569): not the airliners' 3000 ft circuit 3.5 NM out.
+	if c.req.Circuit != nil {
+		c.approach = nil
+		if err := c.circuitAgain(true); err != nil {
+			return err
+		}
+		c.goArounds++
+		c.gaGearUp = true // a light single's gear stays as it is
+		c.note("go around (circuit)", nil)
+		c.setState(ArrivalApproaching, nil)
+		return nil
+	}
 	end := c.plan.End
 	join := math.Max(c.plan.SpawnNm, ProcedureJoinNm) * 1852
 	jp := NewApproachMover(end.Threshold, end.Heading, join, c.approachProfile()).Pose()

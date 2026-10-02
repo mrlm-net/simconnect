@@ -89,7 +89,7 @@ func (c *ArrivalController) onTouchAndGoFrame() {
 		return
 	}
 	if pose.HeightFt >= VFRHandoverFt {
-		if err := c.circuitAgain(); err != nil {
+		if err := c.circuitAgain(false); err != nil {
 			c.fail(err)
 		}
 		return
@@ -97,14 +97,19 @@ func (c *ArrivalController) onTouchAndGoFrame() {
 	c.emit(nil, false)
 }
 
-// circuitAgain hands a touch-and-go's climb-out to MSFS AI: the circuit
-// from its crosswind leg round to the final, the join point there.
-func (c *ArrivalController) circuitAgain() error {
+// circuitAgain hands a touch-and-go's climb-out (or a circuit arrival's
+// go-around, upwind: from the upwind leg) to MSFS AI: the circuit from its
+// crosswind leg round to the final, the join point there.
+func (c *ArrivalController) circuitAgain(upwind bool) error {
 	ci := *c.req.Circuit
 	plan := PlanCircuitArrival(ci)
 	var wps []types.SIMCONNECT_DATA_WAYPOINT
 	var names []string
-	for _, leg := range []CircuitLeg{LegCrosswind, LegDownwind, LegBase, LegFinal} {
+	legs := []CircuitLeg{LegCrosswind, LegDownwind, LegBase, LegFinal}
+	if upwind {
+		legs = append([]CircuitLeg{LegUpwind}, legs...)
+	}
+	for _, leg := range legs {
 		if p, ok := ci.Point(leg); ok {
 			wps = append(wps, procedureWaypoint(p.Position, p.AltFt, p.Kts))
 			names = append(names, string(leg))
