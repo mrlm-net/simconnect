@@ -15,7 +15,13 @@ import (
 // circuit from the crosswind round to the final, the injected approach
 // takes over there again, and the second landing is a full stop to its
 // stand.
-func TestTouchAndGo(t *testing.T) {
+func TestTouchAndGo(t *testing.T) { testTouchAndGo(t, false) }
+
+// TestStopAndGo: the same with a stop-and-go: it brakes to a stop on the
+// runway, stands StopAndGoWait, and takes off from there (#567).
+func TestStopAndGo(t *testing.T) { testTouchAndGo(t, true) }
+
+func testTouchAndGo(t *testing.T, stopGo bool) {
 	g := lkprGraph(t)
 	p := ProfileFor("C172")
 	ci, err := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
@@ -27,12 +33,12 @@ func TestTouchAndGo(t *testing.T) {
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
 	st, _ := g.Layout.ParkingIndex("C22")
 	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKTNG",
-		InjectApproach: true, Circuit: &ci, TouchAndGos: 1, RollThroughChance: -1, AfterLandingDwell: time.Second}); err != nil {
+		InjectApproach: true, Circuit: &ci, TouchAndGos: 1, StopAndGo: stopGo, RollThroughChance: -1, AfterLandingDwell: time.Second}); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
 	var states []ArrivalState
-	tngSeen := false
+	tngSeen, stopped := false, false
 	go func() {
 		for ev := range ctl.Events() {
 			mu.Lock()
@@ -40,6 +46,7 @@ func TestTouchAndGo(t *testing.T) {
 				states = append(states, ev.State)
 			}
 			tngSeen = tngSeen || ev.TouchAndGo
+			stopped = stopped || ev.TouchAndGo && ev.GroundSpeed < 0.5
 			mu.Unlock()
 		}
 	}()
@@ -70,6 +77,9 @@ func TestTouchAndGo(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	if stopGo && !stopped {
+		t.Error("a stop-and-go that never stopped")
+	}
 	if joined != 2 || !tngSeen || ctl.TouchAndGosLeft() != 0 {
 		t.Errorf("joined the final %d times (want 2), touch-and-go seen %v, left %d", joined, tngSeen, ctl.TouchAndGosLeft())
 	}

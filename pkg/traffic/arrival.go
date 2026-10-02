@@ -126,6 +126,9 @@ type ArrivalRequest struct {
 	// TouchAndGos (with Circuit) is how many touch-and-goes it makes
 	// before its full stop, flying the circuit again after each (#569).
 	TouchAndGos int
+	// StopAndGo makes each of them a stop-and-go: it brakes to a stop on
+	// the runway, waits StopAndGoWait, and takes off from there (#567).
+	StopAndGo bool
 	// CircuitEntry (with Circuit) is the reporting point it enters over
 	// (#566); nil: it appears at the 45° entry to the downwind.
 	CircuitEntry *ReportingPoint
@@ -261,6 +264,7 @@ type ArrivalController struct {
 	goArounds     int // go-arounds flown (GoAround)
 	tngLeft       int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
 	tng           *TakeoffMover // a touch-and-go's take-off, while it flies it
+	sng           *stopAndGo    // a stop-and-go's stop, before its take-off
 	// corners: proc's points as planned, before its turns are rounded
 	// (proc.Waypoints is the rounded chain flown), with their names ("" for
 	// none) and the next one ahead (-1: the nearest). A delay absorbed
@@ -576,7 +580,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		c.onProcedureFrame(m)
 		return
 	}
-	if c.tng != nil {
+	if c.tng != nil || c.sng != nil {
 		c.onTouchAndGoFrame()
 		return
 	}

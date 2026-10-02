@@ -291,6 +291,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = capital(p[ParamInstr])
 	case IntentTouchAndGo:
 		s = "Cleared touch and go"
+		if p[ParamInstr] != "" {
+			s = "Cleared " + p[ParamInstr]
+		}
 	case IntentFullStop:
 		s = "Make full stop"
 	case IntentCross:
