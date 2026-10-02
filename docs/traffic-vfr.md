@@ -71,7 +71,7 @@ The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#
 
 ### In the landing sequence (#569)
 
-A VFR arrival in the circuit is sequenced with the IFR arrivals to the same runway. When it reports downwind, the tower gives its place (Doc 4444 12.3.4.14 b, `FollowTraffic`): "OKABC, number 2, follow the Airbus A320 on 4 mile final", or "on short final", or "in the circuit" when it follows another circuit aircraft; "number 1" alone when it lands first. When the sequence asks it to lose time, the tower extends its downwind (`CircuitInstruction`, "extend downwind", 12.3.4.15 c). `AbsorbDelay` puts all of the delay into a longer downwind for a circuit arrival, with the base turn and final further out, and gives it no speed instruction and no hold. At LKPR a C172 asked to lose a minute on the 24 circuit has its base turn moved out by 0.7 NM.
+A VFR arrival in the circuit is sequenced with the IFR arrivals to the same runway. When it reports downwind, the tower gives its place (Doc 4444 12.3.4.14 b, `FollowTraffic`): "OKABC, number 2, follow the Airbus A320 on 4 mile final", or "on short final", or "in the circuit" when it follows another circuit aircraft; "number 1" alone when it lands first. When the sequence asks it to lose time, the tower extends its downwind (`CircuitInstruction`, "extend downwind", 12.3.4.15 c). `AbsorbDelay` puts all of the delay into a longer downwind for a circuit arrival, with the base turn and final further out, and gives it no speed instruction and no hold. For a circuit arrival `AbsorbDelay` flies on along the downwind and turns base further out, at circuit speed: up to `CircuitMaxExtendNM` (2 NM; each mile on adds two). At LKPR a C172 asked to lose a minute on the 24 circuit turns base 1.3 NM further out. More than that is lost in an orbit (`Orbit`, Doc 4444 12.3.4.17): a full turn where it is, to the side its circuit turns, standard rate (about 1½ minutes for a C172), said "orbit left" or "orbit right" once 45 s or more remain.
 
 ### Touch-and-goes (#569)
 
@@ -109,7 +109,7 @@ Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.
 - Touch-and-goes are still to come.
-- Orbits and "make another circuit" are still to come (#569).
+- "Make another circuit" and stop-and-go are still to come (#569, #567).
 
 ## Jetbridges (#572)
 

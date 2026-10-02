@@ -124,6 +124,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	if c.holding != nil {
 		return Absorption{}, ErrHolding
 	}
+	if c.req.Circuit != nil {
+		return c.absorbInCircuit(delay) // a VFR circuit: its downwind, then an orbit (#569)
+	}
 	pos := c.last.Position
 	wps := c.proc.Waypoints
 	final := len(wps) - 2 // align and join: never touched
