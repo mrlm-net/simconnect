@@ -21,8 +21,62 @@ var ErrNotStandRoute = errors.New("traffic: taxi-in route must end at a parking 
 // arriving aircraft has slowed to exitKts: touchdown at TouchdownMeters and
 // TouchdownSpeedKts, then braking at RolloutDecel.
 func RequiredRollout(exitKts float64) float64 {
-	v0, v1 := TouchdownSpeedKts*knot, exitKts*knot
-	return TouchdownMeters + (v0*v0-v1*v1)/(2*RolloutDecel)
+	return exitReach{}.rollout(exitKts)
+}
+
+// exitReach is the aircraft an exit is chosen for (bestExit): its
+// touchdown speed (kt) and planned braking (m/s²). A light single (touching
+// down below exitLightTouchdownKts) has its own: it touches down at half an
+// airliner's speed and turns off at the first exits. Any other aircraft,
+// and zero, use an airliner's (TouchdownSpeedKts, RolloutDecel).
+type exitReach struct{ touchdownKts, decel float64 }
+
+// exitLightTouchdownKts: below this touchdown speed an aircraft is light
+// (exitReach). A light aircraft is planned to touch down
+// exitLightTouchdownMeters past the threshold (its injected landing,
+// crossing the threshold at LightThresholdHeightFt, does at about 220 m)
+// and brakes at its own BrakeDecel.
+const (
+	exitLightTouchdownKts    = 90.0
+	exitLightTouchdownMeters = 250.0
+)
+
+func (x exitReach) light() bool {
+	return x.touchdownKts > 0 && x.touchdownKts < exitLightTouchdownKts
+}
+
+func (x exitReach) speeds() (td, decel float64) {
+	if x.light() {
+		decel = RolloutDecel
+		if x.decel > 0 {
+			decel = x.decel
+		}
+		return x.touchdownKts, decel
+	}
+	return TouchdownSpeedKts, RolloutDecel
+}
+
+// rollout is the distance from the threshold to where the aircraft has
+// slowed to exitKts.
+func (x exitReach) rollout(exitKts float64) float64 {
+	td, decel := x.speeds()
+	v0, v1 := td*knot, math.Min(exitKts, td)*knot
+	at := TouchdownMeters
+	if x.light() {
+		at = exitLightTouchdownMeters
+	}
+	return at + (v0*v0-v1*v1)/(2*decel)
+}
+
+// runwayCostPerM is what a meter of rollout costs in taxi-in meters:
+// exitRunwayCostPerM for an airliner; for a light single it grows with the
+// square of how much slower it lands (about six times at 51 kt). It holds
+// the runway longer for every meter and taxis slowly anyway, so it takes
+// the first exit it can make even for a longer taxi-in.
+func (x exitReach) runwayCostPerM() float64 {
+	td, _ := x.speeds()
+	k := TouchdownSpeedKts / td
+	return exitRunwayCostPerM * k * k
 }
 
 // ExitSpeed is the speed to reach a runway exit at: ExitHighSpeedKts for a
@@ -96,11 +150,12 @@ func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset float6
 }
 
 // bestExit chooses the runway exit for an arrival to parking: among exits the
-// aircraft can reach at its exit speed (Along ≥ RequiredRollout), the one with
-// the lowest taxi-in cost — route length, plus a penalty for every turn
-// sharper than TurnAngleDeg, plus runway occupancy for exits further down.
-// If none is reachable, the last exit is used.
-func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.RouteOptions) (airport.RunwayExit, *airport.Route, error) {
+// aircraft can reach at its exit speed (Along ≥ its rollout, exitReach), the
+// one with the lowest taxi-in cost — route length, plus a penalty for every
+// turn sharper than TurnAngleDeg, plus runway occupancy for exits further
+// down (more for a slow aircraft). If none is reachable, the last exit is
+// used.
+func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, error) {
 	exits, err := g.RunwayExits(runwayEnd)
 	if err != nil {
 		return airport.RunwayExit{}, nil, err
@@ -112,7 +167,7 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 		lastErr   error = airport.ErrNoExit
 	)
 	for i, e := range exits {
-		if e.Along < RequiredRollout(ExitSpeed(e)) && i < len(exits)-1 {
+		if e.Along < reach.rollout(ExitSpeed(e)) && i < len(exits)-1 {
 			continue
 		}
 		r, err := g.RouteFromRunway(e, parking, opts)
@@ -120,7 +175,7 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 			lastErr = err
 			continue
 		}
-		if c := exitCost(e, r); c < bestCost {
+		if c := exitCost(e, r, reach.runwayCostPerM()); c < bestCost {
 			best, bestRoute, bestCost = e, r, c
 		}
 	}
@@ -137,8 +192,8 @@ const (
 	exitRunwayCostPerM = 0.3
 )
 
-func exitCost(e airport.RunwayExit, r *airport.Route) float64 {
-	cost := r.Length + exitRunwayCostPerM*e.Along
+func exitCost(e airport.RunwayExit, r *airport.Route, perM float64) float64 {
+	cost := r.Length + perM*e.Along
 	pts := thin(simplify(r.Points), MinWaypointSpacingMeters)
 	for i := 1; i+1 < len(pts); i++ {
 		if a := turnAngle(pts[i-1], pts[i], pts[i+1]); a > TurnAngleDeg {
@@ -204,6 +259,10 @@ type ArrivalOptions struct {
 	// NoseOffset is the distance from the aircraft reference point to its
 	// nose, used to stop on the stand (StandStop); 0 means DefaultNoseOffsetMeters.
 	NoseOffset float64
+	// TouchdownKts and BrakeDecel (m/s²) are the aircraft's, for the exits
+	// it can make and what its runway time costs (bestExit); 0: an
+	// airliner's (TouchdownSpeedKts, RolloutDecel).
+	TouchdownKts, BrakeDecel float64
 }
 
 // ArrivalPlan is a complete arrival for one aircraft.
@@ -262,7 +321,7 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		if route, err = g.RouteFromRunway(x, parking, opts); err != nil {
 			return nil, err
 		}
-	} else if x, route, err = bestExit(g, runwayEnd, parking, opts); err != nil {
+	} else if x, route, err = bestExit(g, runwayEnd, parking, opts, exitReach{o.TouchdownKts, o.BrakeDecel}); err != nil {
 		return nil, err
 	}
 	elev := convert.MetersToFeet(g.Layout.Altitude)

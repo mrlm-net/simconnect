@@ -377,6 +377,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	req.Options = withSpan(req.Options, req.Profile)
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
 	if err != nil {
 		return err

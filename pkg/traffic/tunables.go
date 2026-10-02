@@ -304,6 +304,11 @@ const (
 	DefaultRollingTakeoffChance = 0.3
 )
 
+// LightThresholdHeightFt is the height a light single (CategoryPiston)
+// crosses the threshold at on its injected approach, an estimate: lower
+// than an airliner's 50 ft, so it touches down nearer the threshold.
+const LightThresholdHeightFt = 30.0
+
 // TurnAroundMeters scales the turn-around loop onto a self-manoeuvring
 // (face-out) stand; an A320 turns on about 15-20 m radius.
 const TurnAroundMeters = 18.0

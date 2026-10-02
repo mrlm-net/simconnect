@@ -231,6 +231,11 @@ func (s typeSpec) profile() AircraftProfile {
 	if s.Category == CategoryTurboprop {
 		r.SlowKts = 60
 	}
+	if s.Category == CategoryPiston {
+		// A light single aims nearer the threshold: it touches down about
+		// 100 m earlier and makes the first exits (exitReach).
+		a.ThresholdHeightFt = LightThresholdHeightFt
+	}
 	flaps := s.flaps
 	flaps.RetractFt, flaps.FullFt = FlapsRetractFt, FlapsFullFt
 	return AircraftProfile{

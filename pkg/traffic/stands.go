@@ -346,7 +346,7 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	for _, i := range out[:min(len(out), standRankCandidates)] {
-		if _, r, err := bestExit(a.g, runwayEnd, i, airport.RouteOptions{}); err == nil && r != nil {
+		if _, r, err := bestExit(a.g, runwayEnd, i, airport.RouteOptions{}, exitReach{}); err == nil && r != nil {
 			cost[i] = r.Length
 		}
 	}
