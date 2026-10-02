@@ -383,6 +383,8 @@ type scheduleView struct {
 	Seed        uint64                   `json:"seed"`
 	Active      int                      `json:"active"`
 	Flights     []traffic.ManagedFlight  `json:"flights"`
+	// Now is the traffic time the flights' times are in (#413).
+	Now time.Time `json:"now"`
 }
 
 func registerSchedule(mux *http.ServeMux, st *state) {
@@ -404,7 +406,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		density, seed := s.density, s.seed
 		s.mu.Unlock() // never held while calling the manager (its Source takes it)
 		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed,
-			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights()}
+			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
 	mux.HandleFunc("POST /api/schedule", func(w http.ResponseWriter, r *http.Request) {
