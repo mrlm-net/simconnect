@@ -213,7 +213,7 @@ func TestCircuitJoinFor(t *testing.T) {
 		side CircuitSide
 		join CircuitLeg
 	}{
-		{"north", 0, CircuitRight, LegDownwind}, {"south", 180, CircuitLeft, LegDownwind}, {"final sector", 65, "", LegFinal},
+		{"north", 0, CircuitRight, LegDownwind}, {"south", 180, CircuitLeft, LegDownwind}, {"final sector", 65, "", LegFinal}, {"south-east, approach side", 110, CircuitLeft, LegBase},
 	} {
 		from := ReportingPoint{Name: c.name, Position: offsetHeading(field, c.brg, 7*1852)}
 		cfg, join, err := CircuitJoinFor(l, "24", CircuitConfig{}, from.Position)

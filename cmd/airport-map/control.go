@@ -834,7 +834,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 					it.say(traffic.StraightIn(r.Tail, r.Runway, cc.windSaid(g.Layout.ICAO), qnh))
 					return
 				}
-				it.say(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" downwind", r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
+				where := "downwind"
+				if it.circuitJoin == traffic.LegBase {
+					where = "base" // from the approach side (#567)
+				}
+				it.say(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" "+where, r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
 			})
 		} else {
 			// The first call to approach with its level, then the STAR.

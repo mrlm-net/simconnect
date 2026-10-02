@@ -369,6 +369,8 @@ func (c Circuit) DepartureVia(p ReportingPoint) []airport.NavPoint {
 //
 //   - from the final's sector (within StraightInSectorDeg of the extended
 //     centreline, beyond the threshold): a straight-in approach (LegFinal);
+//   - from within BaseJoinSectorDeg of the extended centreline on the
+//     approach side: the base leg (LegBase) of the circuit on its side;
 //   - else the downwind (LegDownwind) of the circuit on p's side of the
 //     centreline, cfg's side turned round where it is the other.
 func CircuitJoinFor(l *airport.Layout, rwy string, cfg CircuitConfig, p airport.LatLon) (CircuitConfig, CircuitLeg, error) {
@@ -389,12 +391,20 @@ func CircuitJoinFor(l *airport.Layout, rwy string, cfg CircuitConfig, p airport.
 	} else {
 		cfg.Side = CircuitLeft
 	}
+	if math.Abs(headingDiff(end.Heading+180, localBearing(end.Threshold, p))) <= BaseJoinSectorDeg {
+		return cfg, LegBase, nil
+	}
 	return cfg, LegDownwind, nil
 }
 
 // StraightInSectorDeg: a VFR arrival this close to the extended
 // centreline, out on the final's side, is given a straight-in approach.
 const StraightInSectorDeg = 30.0
+
+// BaseJoinSectorDeg: a VFR arrival from within this of the extended
+// centreline on the approach side (but not in the final's sector) joins
+// on base.
+const BaseJoinSectorDeg = 60.0
 
 // StraightInNM: a straight-in approach lines up this far out.
 const StraightInNM = 3.0
@@ -406,7 +416,15 @@ const StraightInNM = 3.0
 // the final instead (a straight-in approach).
 func PlanCircuitArrivalVia(c Circuit, from *ReportingPoint, join CircuitLeg) *ArrivalProcedure {
 	proc := PlanCircuitArrivalFrom(c, from)
-	if from == nil || join != LegFinal {
+	if from == nil || join != LegFinal && join != LegBase {
+		return proc
+	}
+	if join == LegBase {
+		// Straight to the base turn and round onto the final.
+		base, _ := c.Point(LegBase)
+		fin, _ := c.Point(LegFinal)
+		proc.Spawn.Heading = localBearing(from.Position, base.Position)
+		proc.Waypoints = []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(base.Position, base.AltFt, base.Kts), procedureWaypoint(fin.Position, fin.AltFt, fin.Kts)}
 		return proc
 	}
 	fin, _ := c.Point(LegFinal)

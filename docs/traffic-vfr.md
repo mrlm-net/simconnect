@@ -47,6 +47,7 @@ The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an est
 
 - **Arrivals:** a VFR arrival enters over one (`ArrivalRequest.CircuitEntry`). It appears there 1,000 ft above circuit height. Its first call says so: "OKARR, Cessna 172, over NOVEMBER, 3200 feet, for landing". At a controlled aerodrome the tower assigns the join (Doc 4444 12.3.4.13: the direction of the circuit and where to join, or a straight-in approach), so it never crosses the runway (`CircuitJoinFor`, `ArrivalRequest.CircuitJoin`, `PlanCircuitArrivalVia`):
   - from the final's sector (within 30° of the extended centreline beyond the threshold, `StraightInSectorDeg`): "make straight-in approach"; it lines up 3 NM out;
+  - from within 60° of it (`BaseJoinSectorDeg`): "join left base" (or right), straight to the base turn;
   - from elsewhere: the downwind of the circuit on its side of the runway, by the 45° entry: "join right downwind runway 24" from the north at LKPR, though the published circuit is left-hand.
   Live, OKARR from NOVEMBER (north) flew across the runway at circuit height to the left-hand circuit's entry before.
 - **Departures:** a VFR departure leaves via one (`Circuit.DepartureVia`): out of the circuit by the side the point is on, ending over it. Its route shows as "VFR via SIERRA".
@@ -113,7 +114,7 @@ Not yet:
 
 - A go-around from the circuit still flies the IFR go-around circuit.
 - Touch-and-goes are still to come.
-- "Make another circuit" and the base and overhead joins are still to come (#569, #567).
+- "Make another circuit" and the overhead join are still to come (#569, #567).
 
 ## Jetbridges (#572)
 
