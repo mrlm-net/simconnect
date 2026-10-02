@@ -21,6 +21,7 @@ import (
 type GroundPicture struct {
 	mu       sync.Mutex
 	aircraft map[uint32]groundEntry
+	vehicles map[uint32]vehicleEntry // service vehicles (ReportVehicle)
 }
 
 type groundEntry struct {

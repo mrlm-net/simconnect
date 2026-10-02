@@ -286,7 +286,16 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 }
 
 func (t *SimObjectTug) place() error {
-	err := t.inj.PlaceMoving(t.objectID, t.pose)
+	// On the roads in its lane; reported to the other vehicles.
+	var road *GroundMover
+	if t.arrive != nil {
+		road = t.arrive
+	} else if t.away != nil && !t.reversing {
+		road = t.away
+	}
+	shown := lane(t.pose, road)
+	t.report(t.objectID, shown, tugProfile().WheelbaseMeters+1)
+	err := t.inj.PlaceMoving(t.objectID, shown)
 	if errors.Is(err, ErrGroundUnknown) {
 		return nil
 	}
@@ -297,6 +306,7 @@ func (t *SimObjectTug) place() error {
 func (t *SimObjectTug) finish() error {
 	t.done = true
 	obj := t.objectID
+	t.forget(obj)
 	t.inj.Forget(obj)
 	return t.client.AIRemoveObject(obj, t.reqID)
 }
