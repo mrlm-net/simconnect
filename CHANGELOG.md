@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+---
+
+## [0.18.6] - 2026-10-02
+
+Radio call signs for every airline and air force ("Czech Air Force 001"). Working one position now turns off every control for aircraft on other frequencies. Audio played on another device follows frequency changes without replaying old calls, and it no longer stalls. New flight keeps the entry you picked, and its window is tidier.
+
 ### Added
 
 - Radio call signs for every airline and air force: about 5500 ICAO designators with their telephony (`traffic.Telephony`), from Wikipedia's List of airline codes (CC BY-SA 4.0, attributed in `pkg/traffic/telephony.tsv`). `CEF001` is said "Czech Air Force 001", `GAF615` "German Air Force 615". Airlines in the schedule keep their own.
