@@ -172,6 +172,11 @@ func (t *towers) tick(now time.Time) {
 	}
 	// Respected other traffic: on a runway, or arriving on the one in use.
 	if t.s.mgr.Options().Others == traffic.OtherRespect {
+		// Ours are counted above, on their own runway: the manager does not
+		// know the aircraft spawned on the map and would count them again as
+		// other traffic (a departure rolling through the crossing runway
+		// showed on 12/30 as well as on 06/24).
+		ownIDs := t.cc.ownIDs()
 		for _, icao := range t.s.mgr.Airports() {
 			l := layout(icao)
 			if l == nil {
@@ -181,6 +186,9 @@ func (t *towers) tick(now time.Time) {
 			arrRwy := t.cc.activeRunway(g, true)
 			_, end, _ := l.RunwayEnd(arrRwy)
 			for _, a := range t.s.mgr.Others(icao) {
+				if ownIDs[a.ObjectID] || (a.Tail != "" && t.cc.byTail(a.Tail) != nil) {
+					continue
+				}
 				u := traffic.RunwayUser{Callsign: nameOf(a), Wake: traffic.WakeFor(a.Title), Other: true}
 				switch a.Phase {
 				case traffic.PhaseRunway:

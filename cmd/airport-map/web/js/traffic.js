@@ -211,7 +211,7 @@ function actBtn(v, a, busy, extra = '') {
 // (GET /api/entries, with whether the type can take off from each).
 const entriesCache = new Map();
 const ENTRY_STATES = ['spawning', 'awaiting pushback', 'pushback', 'awaiting taxi', 'taxiing', 'holding short'];
-function entryRow(v) {
+function entryRow(v, other) {
   if (v.kind !== 'departure' || v.done || !ENTRY_STATES.includes(v.state) || !data) return '';
   // Its own airport, not the one on the map (live: EDKG asked for LKPR's 24).
   const icao = v.icao || data.icao;
@@ -226,7 +226,7 @@ function entryRow(v) {
     });
   }
   const opts = [['', 'Full length']].concat((list || []).slice(1).filter((e) => e.taxiway).map((e) => [e.taxiway, `${e.taxiway} · ${Math.round(e.remaining)} m${e.ok === false ? ' (too short)' : ''}`]));
-  return `<dt>Entry</dt><dd><select class="input input--inline" data-entry="${v.id}" title="The intersection it takes the runway from; changed on the stand or while taxiing">${opts.map(([k, t]) => `<option value="${esc(k)}"${(v.entry || '') === k ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></dd>`;
+  return `<dt>Entry</dt><dd><select class="input input--inline" data-entry="${v.id}" title="The intersection it takes the runway from; changed on the stand or while taxiing"${other ? ' disabled' : ''}>${opts.map(([k, t]) => `<option value="${esc(k)}"${(v.entry || '') === k ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></dd>`;
 }
 document.addEventListener('change', (e) => {
   const s = e.target.closest('select[data-entry]');
@@ -245,7 +245,7 @@ document.addEventListener('change', (e) => {
 // ctlWithStart: the aircraft whose pushback includes the start-up.
 const ctlWithStart = new Set();
 function facingRow(v, busy) {
-  return `<label class="switch switch--sm" title="Pushback and start-up approved in one"><input type="checkbox" data-withstart="${v.id}"${ctlWithStart.has(v.id) ? ' checked' : ''}><span class="switch__ui" aria-hidden="true"></span>with start-up</label><div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
+  return `<label class="switch switch--sm" title="Pushback and start-up approved in one"><input type="checkbox" data-withstart="${v.id}"${ctlWithStart.has(v.id) ? ' checked' : ''}${busy ? ' disabled' : ''}><span class="switch__ui" aria-hidden="true"></span>with start-up</label><div class="facing"><span>facing</span>${['n', 'e', 's', 'w'].map((d) => `<button type="button" class="btn" data-act="pushback" data-facing="${d}" data-id="${v.id}" title="Pushback, ending facing ${FACING[d]} where it can" aria-label="Pushback facing ${FACING[d]}"${busy ? ' disabled' : ''}>${d.toUpperCase()}</button>`).join('')}</div>`;
 }
 function renderCtx() {
   const el = $('ctx');
@@ -254,9 +254,12 @@ function renderCtx() {
   if (interacting(el)) { fillLive(); return; }
   el.hidden = false;
   el.dataset.kind = v.kind === 'arrival' ? 'arr' : 'dep';
-  const w = waits(v), busy = ctlBusy.has(v.id) || !onMyFrequency(v), done = isDone(v);
+  const other = !onMyFrequency(v), w = waits(v), busy = ctlBusy.has(v.id) || other, done = isDone(v);
+  // Working one position, an aircraft on another frequency is shown but not
+  // cleared from here: every control that changes it is off (#511).
+  const off = other ? ` disabled title="Not on your frequency: ${esc(v.atc || 'another position')} works it"` : '';
   let h = `<header class="ctx__head">
-    <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${busy ? '<span class="pill pill--accent small">sending…</span>' : ''}</div>
+    <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${ctlBusy.has(v.id) ? '<span class="pill pill--accent small">sending…</span>' : other ? `<span class="pill small" title="Another position clears it">${esc(v.atc)}</span>` : ''}</div>
     <button type="button" class="btn btn--icon btn--ghost ctx__close" data-close-ctx aria-label="Deselect (Esc)" title="Deselect (Esc)">${icon('i-x')}</button>
     <div class="ctx__sub">${esc(v.model)}</div>
     <div class="ctx__state${w ? ' is-wait' : ''}">${w ? `<span class="wait-t" data-wait="${v.id}"></span>` : ''}${v.deicing ? icon('i-snow', 'ic ic--sm') : ''}${esc(statusText(v))}</div>
@@ -280,7 +283,7 @@ function renderCtx() {
     const s = v.kind === 'arrival' && !v.onGround ? seqEntry(v.tail) : null;
     const ap = seqActs(v, s).filter((a) => a !== 'goaround');
     if (has(v, 'land') || ap.length) {
-      groups.push(`<div class="phase"><div class="phase__name">Approach${s ? ` · #${s.e.number} RWY ${esc(s.r.runway)}, ${s.e.distanceToGoNM.toFixed(1)} NM` : ''}</div><div class="acts">${has(v, 'land') ? actBtn(v, 'land', busy) : ''}${ap.map((a) => `<button type="button" class="btn" data-ap="${a}" data-cs="${esc(v.tail)}" title="${AP_ACT[a].title}">${icon(AP_ACT[a].icon, 'ic ic--sm')}${AP_ACT[a].label}</button>`).join('')}</div></div>`);
+      groups.push(`<div class="phase"><div class="phase__name">Approach${s ? ` · #${s.e.number} RWY ${esc(s.r.runway)}, ${s.e.distanceToGoNM.toFixed(1)} NM` : ''}</div><div class="acts">${has(v, 'land') ? actBtn(v, 'land', busy) : ''}${ap.map((a) => `<button type="button" class="btn" data-ap="${a}" data-cs="${esc(v.tail)}" title="${AP_ACT[a].title}"${other ? ' disabled' : ''}>${icon(AP_ACT[a].icon, 'ic ic--sm')}${AP_ACT[a].label}</button>`).join('')}</div></div>`);
     }
     const known = new Set([...PHASES.flatMap((p) => p.acts), ...URGENT, 'land', 'upto']);
     const other = (v.actions || []).filter((a) => !known.has(a));
@@ -289,14 +292,14 @@ function renderCtx() {
     // Urgent: always in the same place, enabled when they apply.
     const apGo = !has(v, 'goaround') && s && !s.e.fixed;
     h += `<section class="ctx__sec ctx__sec--urgent"><div class="ctx__lbl">Urgent</div><div class="urgent-row">${actBtn(v, 'hold', busy)}${apGo
-      ? `<button type="button" class="btn btn--urgent" data-ap="goaround" data-cs="${esc(v.tail)}">${icon('i-goaround', 'ic ic--sm')}Go around</button>` : actBtn(v, 'goaround', busy)}${actBtn(v, 'abort', busy)}</div>
+      ? `<button type="button" class="btn btn--urgent" data-ap="goaround" data-cs="${esc(v.tail)}"${other ? ' disabled' : ''}>${icon('i-goaround', 'ic ic--sm')}Go around</button>` : actBtn(v, 'goaround', busy)}${actBtn(v, 'abort', busy)}</div>
       ${has(v, 'upto') ? '<p class="small muted ctx__hint">Click a point of its route on the map: taxi and hold there.</p>' : ''}</section>`;
   }
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : esc(v.atc)) : '';
   h += `<section class="ctx__sec"><dl class="kv">
     <dt>Route</dt><dd class="mono">${esc(routeText(v))}</dd>${v.squawk ? `
     <dt>Squawk</dt><dd class="mono">${esc(v.squawk)}</dd>` : ''}
-    ${entryRow(v)}
+    ${entryRow(v, other)}
     ${v.procedure ? `<dt>Procedure</dt><dd class="mono">${esc(v.procedure)}</dd>` : ''}
     ${freq ? `<dt>Frequency</dt><dd>${freq}</dd>` : ''}
     <dt>Motion</dt><dd class="mono" data-motion="${v.id}"></dd>
@@ -311,7 +314,7 @@ function renderCtx() {
     <button type="button" class="btn btn--sm" data-tool="locate" data-id="${v.id}"${located ? '' : ' disabled'}>${icon('i-locate', 'ic ic--sm')}Show</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="follow" data-id="${v.id}" aria-pressed="${ctlFollow === v.id}" title="The map keeps it in the middle (Esc stops)"${located ? '' : ' disabled'}>${icon('i-target', 'ic ic--sm')}Follow</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="camera" data-id="${v.id}" aria-pressed="${camOn}" title="The simulator camera follows it">${icon('i-camera', 'ic ic--sm')}Camera</button>
-    <button type="button" class="btn btn--sm btn--toggle" data-tool="manual" data-id="${v.id}" aria-pressed="${!!v.manual}" title="Manual: you give every clearance. Off: ATC answers the crew and the tower clears it by itself. Your first clearance turns it on."${v.done ? ' disabled' : ''}>${icon('i-hand', 'ic ic--sm')}Manual</button>
+    <button type="button" class="btn btn--sm btn--toggle" data-tool="manual" data-id="${v.id}" aria-pressed="${!!v.manual}" title="Manual: you give every clearance. Off: ATC answers the crew and the tower clears it by itself. Your first clearance turns it on."${v.done ? ' disabled' : off}>${icon('i-hand', 'ic ic--sm')}Manual</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="rush" data-id="${v.id}" aria-pressed="${!!v.rush}" title="Expedite: immediate take-off, expedite crossing and vacating; the crew hurries"${busy || v.done ? ' disabled' : ''}>${icon('i-bolt', 'ic ic--sm')}Rush</button>
     <button type="button" class="btn btn--sm btn--danger" data-tool="remove" data-id="${v.id}"${busy ? ' disabled' : ''}>${icon('i-trash', 'ic ic--sm')}Remove</button>
   </div></section>`;
@@ -423,8 +426,15 @@ function hideRoute() {
 // loadChoices fetches the entries or exits of the runway end, fills the
 // picker and marks them on the map (click a marker to pick it).
 let choicesSeq = 0;
+// The pick (an entry, or an exit) stays across a reload for the same
+// runway and kind: a new aircraft type reloads the entries (which are long
+// enough depends on it), and must not drop "06 at E" back to full length.
+let choicesFor = '';
 async function loadChoices() {
   const rwy = selectedRunway(), arr = arrival(), seq = ++choicesSeq;
+  const forKey = `${arr ? 'arr' : 'dep'} ${rwy}`;
+  const keep = forKey === choicesFor ? $('rPick').value : '';
+  choicesFor = forKey;
   $('rStandLbl').textContent = arr ? 'To stand' : 'From stand';
   $('rPickLbl').textContent = arr ? 'Exit' : 'Entry';
   choices = [];
@@ -450,6 +460,11 @@ async function loadChoices() {
     }
   }
   $('rPick').innerHTML += opts.join('');
+  if (keep) {
+    const o = [...$('rPick').options].find((x) => x.value === keep);
+    if (o && !o.disabled) $('rPick').value = keep;
+    else if (!arr) toast(o ? `${rwy} at ${keep} is too short for this aircraft: full length` : `${rwy} has no entry ${keep} now: full length`, 'err');
+  }
   computeRoute();
 }
 function drawChoices() {
@@ -642,6 +657,10 @@ function initTraffic() {
     if (e.target.closest('[data-close-nf]')) openNewFlight(false);
   });
   $('rPickStand').addEventListener('click', () => nfStepAside('stand'));
+  // Ctrl+Enter (Cmd+Enter) spawns from anywhere in the window.
+  $('nfModal').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('cSpawn').disabled) { e.preventDefault(); $('cSpawn').click(); }
+  });
   $('rViaPick').addEventListener('change', () => { if ($('rViaPick').checked) nfStepAside('via'); });
   $('nfPickBack').addEventListener('click', nfBack);
   // A click on the blurred backdrop closes the window (pressed and released

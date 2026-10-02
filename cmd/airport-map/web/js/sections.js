@@ -781,7 +781,7 @@ function renderApproach(tower, sep) {
         let what = v ? v.state : sf ? `en route from ${sf.origin}` : 'other traffic';
         if (v && v.hold) what = `holding at ${v.hold.ident} ${Math.round(v.hold.altFt)} ft`;
         const acts = v ? seqActs(v, { r, i, e }) : [];
-        const btns = acts.map((a) => `<button type="button" class="btn ${AP_ACT[a].urgent ? 'btn--urgent' : ''}" data-ap="${a}" data-cs="${esc(e.callsign)}" title="${AP_ACT[a].title}" aria-label="${AP_ACT[a].title}: ${esc(e.callsign)}">${icon(AP_ACT[a].icon, 'ic ic--sm')}</button>`).join('');
+        const btns = acts.map((a) => `<button type="button" class="btn ${AP_ACT[a].urgent ? 'btn--urgent' : ''}" data-ap="${a}" data-cs="${esc(e.callsign)}" title="${AP_ACT[a].title}" aria-label="${AP_ACT[a].title}: ${esc(e.callsign)}"${onMyFrequency(v) ? '' : ' disabled'}>${icon(AP_ACT[a].icon, 'ic ic--sm')}</button>`).join('');
         return `<tr class="${e.fixed ? 'is-fix' : ''} ${v || sf ? '' : 'is-other'} ${short ? 'is-short' : ''}">
           <td class="num mono">${e.number}</td>
           <td><span class="mono strong cs" title="${esc(v ? v.model || '' : '')}">${esc(e.callsign)}</span><br><span class="muted small mono" title="wake ${esc(e.wake.icao)}, RECAT-EU ${esc(e.wake.recat)}">${esc(e.wake.icao)}/${esc(e.wake.recat)}</span></td>
