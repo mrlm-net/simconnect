@@ -6,6 +6,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -66,4 +68,19 @@ func touchAndGosFor(cs string) int {
 		return 0
 	}
 	return 2 + h%3
+}
+
+// fnv32 is a small stable hash of s (a call sign: the same choice each time).
+func fnv32(s string) uint32 {
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h = (h ^ uint32(s[i])) * 16777619
+	}
+	return h
+}
+
+// offsetLatLon is p moved meters along true bearing brg.
+func offsetLatLon(p airport.LatLon, brg, meters float64) airport.LatLon {
+	lat, lon := calc.DisplaceByHeading(p.Lat, p.Lon, brg, meters)
+	return airport.LatLon{Lat: lat, Lon: lon}
 }

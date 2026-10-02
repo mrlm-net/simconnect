@@ -474,6 +474,7 @@
             <label class="field"><span class="field__lbl">Upwind NM</span><input class="input mono" type="number" id="ciUpwind" min="0" max="3" step="0.1" placeholder="0.5"></label>
             <label class="field"><span class="field__lbl">Final NM</span><input class="input mono" type="number" id="ciBase" min="0.3" max="3" step="0.1" placeholder="1.0"></label>
           </div>
+          <label class="check" title="As airfields without a tower ask: overhead 1000 ft above circuit height, down on the dead side, across the upwind end, crosswind, downwind. Else the tower assigns the join."><input type="checkbox" id="ciOverhead"> Standard overhead join</label>
           <div class="row gap-2">
             <button type="button" class="btn btn--sm btn--primary" id="ciSave">Save</button>
             <button type="button" class="btn btn--sm" id="ciReset" title="Back to the defaults: left-hand, 1000 ft, the downwind from the aircraft's turns">Reset</button>

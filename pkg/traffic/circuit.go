@@ -6,6 +6,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -61,6 +62,10 @@ type CircuitConfig struct {
 	UpwindNM float64 `json:"upwindNM,omitempty"`
 	// BaseNM before the threshold, then final.
 	BaseNM float64 `json:"baseNM,omitempty"`
+	// OverheadJoin: VFR arrivals join by the standard overhead join
+	// (CircuitJoinFor, PlanCircuitArrivalVia), as airfields without a
+	// tower ask; else the tower assigns the join.
+	OverheadJoin bool `json:"overheadJoin,omitempty"`
 }
 
 // CircuitLeg names a circuit's points, as pilots report them.
@@ -73,6 +78,8 @@ const (
 	LegBase      CircuitLeg = "base"
 	LegFinal     CircuitLeg = "final"
 	LegRunway    CircuitLeg = "runway"
+	// LegOverhead names the standard overhead join (CircuitJoinFor).
+	LegOverhead CircuitLeg = "overhead"
 )
 
 // CircuitPoint is a corner of the circuit: the end of the leg it names
@@ -378,6 +385,9 @@ func CircuitJoinFor(l *airport.Layout, rwy string, cfg CircuitConfig, p airport.
 	if !ok {
 		return cfg, "", ErrNoRunway
 	}
+	if cfg.OverheadJoin {
+		return cfg, LegOverhead, nil // whatever side it comes from: overhead first
+	}
 	if math.Abs(headingDiff(end.Heading+180, localBearing(end.Threshold, p))) <= StraightInSectorDeg {
 		return cfg, LegFinal, nil
 	}
@@ -416,7 +426,13 @@ const StraightInNM = 3.0
 // the final instead (a straight-in approach).
 func PlanCircuitArrivalVia(c Circuit, from *ReportingPoint, join CircuitLeg) *ArrivalProcedure {
 	proc := PlanCircuitArrivalFrom(c, from)
-	if from == nil || join != LegFinal && join != LegBase {
+	if from == nil || join != LegFinal && join != LegBase && join != LegOverhead {
+		return proc
+	}
+	if join == LegOverhead {
+		proc.Waypoints = c.overheadJoin()
+		first := proc.Waypoints[0]
+		proc.Spawn.Heading = localBearing(from.Position, airport.LatLon{Lat: first.Latitude, Lon: first.Longitude})
 		return proc
 	}
 	if join == LegBase {
@@ -451,4 +467,83 @@ func PlanCircuitArrivalFrom(c Circuit, from *ReportingPoint) *ArrivalProcedure {
 	join := procedureWaypoint(entry.Position, c.HeightFt, entry.Kts)
 	proc.Waypoints = append([]types.SIMCONNECT_DATA_WAYPOINT{join}, proc.Waypoints...)
 	return proc
+}
+
+// overheadJoin is the standard overhead join into circuit c, the way UK
+// airfields without a tower publish it (UK Airprox Board report 2025183,
+// quoting the Sherburn-in-Elmet AIP entry: "join overhead at 2000 FT QFE
+// and descend in accordance with the 'Standard Overhead Join' procedure",
+// circuits at 1000 FT QFE; the pilots descend "on the deadside"): overhead
+// the field OverheadAboveFt above circuit height, down on the dead side
+// (the side away from the circuit) to circuit height, across the upwind
+// end of the runway at circuit height onto the crosswind leg, then the
+// downwind, base and final.
+func (c Circuit) overheadJoin() []types.SIMCONNECT_DATA_WAYPOINT {
+	up, _ := c.Point(LegUpwind)
+	cw, _ := c.Point(LegCrosswind)
+	dw, _ := c.Point(LegDownwind)
+	base, _ := c.Point(LegBase)
+	fin, _ := c.Point(LegFinal)
+	rwy, _ := c.Point(LegRunway)
+	field := airport.LatLon{Lat: (rwy.Position.Lat + up.Position.Lat) / 2, Lon: (rwy.Position.Lon + up.Position.Lon) / 2}
+	dead := c.heading + 90 // the dead side: away from a left-hand circuit
+	if c.Side == CircuitRight {
+		dead = c.heading - 90
+	}
+	// Down on the dead side, abeam the upwind end, as wide as the downwind.
+	deadside := offsetHeading(up.Position, dead, c.DownwindNM*1852)
+	wp := func(p airport.LatLon, alt, kts float64) types.SIMCONNECT_DATA_WAYPOINT {
+		return procedureWaypoint(p, alt, kts)
+	}
+	return []types.SIMCONNECT_DATA_WAYPOINT{
+		wp(field, c.HeightFt+OverheadAboveFt, up.Kts),
+		wp(deadside, c.HeightFt, up.Kts),
+		wp(up.Position, c.HeightFt, up.Kts), // across the upwind end
+		wp(cw.Position, c.HeightFt, cw.Kts),
+		wp(dw.Position, dw.AltFt, dw.Kts),
+		wp(base.Position, base.AltFt, base.Kts),
+		wp(fin.Position, fin.AltFt, fin.Kts),
+	}
+}
+
+// OverheadAboveFt is how far above circuit height the overhead join
+// crosses the field: 1000 ft (2000 ft above it for a 1000 ft circuit).
+const OverheadAboveFt = 1000.0
+
+// AnotherCircuit has a VFR circuit arrival make another circuit (Doc 4444
+// 12.3.4.17 c, "make another circuit"; #569): on round its circuit from
+// where it is to the final, over the runway at circuit height, and once
+// more round from the upwind to the final, where the injected approach
+// takes over. It returns about how long that takes. ErrNotOnProcedure when
+// it is not flying its circuit.
+func (c *ArrivalController) AnotherCircuit() (time.Duration, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.req.Circuit == nil || !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 2 {
+		return 0, ErrNotOnProcedure
+	}
+	ci := c.req.Circuit
+	pos := c.last.Position
+	if pos == (airport.LatLon{}) {
+		return 0, ErrNotOnProcedure
+	}
+	thr, _ := ci.Point(LegRunway)
+	up, _ := ci.Point(LegUpwind)
+	var wps []types.SIMCONNECT_DATA_WAYPOINT
+	next := c.procWaypoint(c.proc.Waypoints)
+	wps = append(wps, c.proc.Waypoints[next:len(c.proc.Waypoints)-1]...) // round to the final, not into the join
+	wps = append(wps, procedureWaypoint(thr.Position, ci.HeightFt, up.Kts), procedureWaypoint(up.Position, ci.HeightFt, up.Kts))
+	for _, leg := range []CircuitLeg{LegCrosswind, LegDownwind, LegBase, LegFinal} {
+		p, _ := ci.Point(leg)
+		wps = append(wps, procedureWaypoint(p.Position, p.AltFt, p.Kts))
+	}
+	rounded := roundedChain(pos, wps, MaxBankDeg(*c.aircraft()))
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, rounded); err != nil {
+		return 0, err
+	}
+	c.proc.Waypoints, c.procNext = rounded, 0
+	c.corners, c.cornerNames, c.cornerNext = nil, nil, -1
+	c.note("another circuit", nil)
+	nm := pathNMOf(pos, rounded[:len(rounded)-1], rounded[len(rounded)-1])
+	return time.Duration(nm / CircuitKts(*c.aircraft()) * float64(time.Hour)), nil
 }

@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"math"
+	"time"
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -234,4 +235,71 @@ func TestCircuitJoinFor(t *testing.T) {
 			prev = q
 		}
 	}
+}
+
+// TestOverheadJoin: with OverheadJoin set the join is overhead from any
+// side: over the field 1000 ft above circuit height, down on the dead side
+// (away from the circuit) to circuit height, across the upwind end, then
+// the crosswind, downwind, base and final at their heights.
+func TestOverheadJoin(t *testing.T) {
+	l := lkprGraph(t).Layout
+	c, _ := NewCircuit(l, "24", CircuitConfig{OverheadJoin: true}, ProfileFor("C172"))
+	field := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
+	from := ReportingPoint{Name: "SOUTH", Position: offsetHeading(field, 180, 7*1852)}
+	cfg, join, _ := CircuitJoinFor(l, "24", CircuitConfig{OverheadJoin: true}, from.Position)
+	if join != LegOverhead || !cfg.OverheadJoin {
+		t.Fatalf("join %s", join)
+	}
+	wps := PlanCircuitArrivalVia(c, &from, LegOverhead).Waypoints
+	if len(wps) != 7 || wps[0].Altitude != c.HeightFt+OverheadAboveFt || wps[1].Altitude != c.HeightFt {
+		t.Fatalf("%d points, overhead at %.0f, dead side at %.0f", len(wps), wps[0].Altitude, wps[1].Altitude)
+	}
+	// The dead side is the other side of the runway from the circuit
+	// (left-hand at 24: the circuit south, the dead side north).
+	up, _ := c.Point(LegUpwind)
+	thr, _ := c.Point(LegRunway)
+	dw, _ := c.Point(LegDownwind)
+	dead := airport.LatLon{Lat: wps[1].Latitude, Lon: wps[1].Longitude}
+	side := func(q airport.LatLon) float64 {
+		return calc.CrossTrackMeters(thr.Position.Lat, thr.Position.Lon, up.Position.Lat, up.Position.Lon, q.Lat, q.Lon)
+	}
+	if side(dead)*side(dw.Position) >= 0 {
+		t.Errorf("the dead side point is on the circuit's side")
+	}
+}
+
+// TestAnotherCircuit: a C172 on the downwind told to make another circuit
+// flies round once more (over the runway at circuit height, upwind,
+// crosswind, downwind, base) before the final: a few minutes more.
+func TestAnotherCircuit(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	c, _ := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKAGN",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 82))
+	entry, _ := c.JoinDownwind()
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 82, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
+	d, err := ctl.AnotherCircuit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d < 3*time.Minute || d > 10*time.Minute { // from the 45° entry: the rest of this circuit and a whole one more
+		t.Errorf("another circuit takes %v", d)
+	}
+	last := ctl.proc.Waypoints[len(ctl.proc.Waypoints)-1]
+	fin, _ := c.Point(LegFinal)
+	if localDist(airport.LatLon{Lat: last.Latitude, Lon: last.Longitude}, fin.Position) > 50 {
+		t.Error("not ending at the final")
+	}
+	t.Logf("another circuit: %v", d.Round(time.Second))
 }
