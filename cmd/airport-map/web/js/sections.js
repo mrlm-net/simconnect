@@ -666,7 +666,7 @@ function fillCircuitForm() {
 // selected runway's bolder.
 function drawCircuits() {
   layers.circuits.clearLayers();
-  if (!circuits || !$('ciShow').checked) return;
+  if (!circuits) return;
   const sel = $('ciRwy').value;
   for (const [end, e] of Object.entries(circuits)) {
     const pts = (e.circuit.points || []).map((p) => [p.position.lat, p.position.lon]);
@@ -1099,12 +1099,13 @@ function initSections() {
   for (const id of ['pFix', 'pFilter']) $(id).addEventListener('change', drawProcedures);
   $('pFit').addEventListener('click', fitProcedures);
   $('ciRwy').addEventListener('change', () => { fillCircuitForm(); drawCircuits(); });
+  // The circuits card's switch is the Map tab's VFR circuits layer (off by default).
+  $('p-airport').addEventListener('change', (e) => { const k = e.target.dataset.layer; if (k) setLayer(k, e.target.checked); });
   $('vpList').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-vp]');
     if (b) saveVfrPoints(vfrPts.filter((_, i) => i !== Number(b.dataset.vp)));
   });
   $('vpPick').addEventListener('change', () => { if ($('vpPick').checked) { $('dePick').checked = false; $('rViaPick').checked = false; toast('Click on the map where the reporting point is'); } });
-  $('ciShow').addEventListener('change', drawCircuits);
   $('ciSave').addEventListener('click', () => saveCircuit(false));
   $('ciReset').addEventListener('click', () => saveCircuit(true));
 
