@@ -350,6 +350,14 @@ When the body ahead faces at least `oncomingDeg` (120°) off the path, the aircr
 
 Tugs and fuel trucks give way to aircraft on their way to and from their depot (`vehicle_yield.go`, `GroundPicture.VehicleConflict`). The vehicle looks `VehicleLookMeters` (40 m) ahead along its way. It stops `VehicleStopShortMeters` (3 m) short of the first point that comes within both half widths plus `VehicleClearMeters` (8 m) of a moving aircraft. That means the aircraft's body, or the first `VehicleAircraftLookMeters` (120 m) of its path ahead. It waits there until the aircraft has passed. A vehicle already in an aircraft's path (within `VehicleCommitMeters`, 4 m, of its front) drives on to clear it. Parked aircraft and aircraft waiting for a clearance do not count, since the roads pass them, and neither does the vehicle's own aircraft. Aircraft do not see the vehicles and keep their way. At LKPR B9 a tug meeting an A320 taxiing across its road stops about 29 m short of the crossing.
 
+Vehicles also respect each other. Each tug and fuel truck reports itself to the airport's ground picture (`ReportVehicle`). On the roads it drives `VehicleLaneMeters` (2 m) right of the centreline, blended in over the first and last 15 m of its way, so oncoming vehicles pass each other. It stops `VehicleStopShortMeters` (3 m) short of another vehicle's body within both half widths plus `VehicleGapMeters` (3 m) of its way, as follows:
+
+- **ahead of it:** it waits behind and follows;
+- **behind it:** it ignores it, since that one waits;
+- **side by side** (two leaving one depot together), **or crossing:** the one with the higher object ID waits, so two never wait for each other.
+
+After `VehicleWaitMax` (1 min) waiting for vehicles, it drives on regardless for 20 s, so one parked on its way cannot hold it for ever. At LKPR two tugs leaving the same depot for B9 and B10 together keep at least 4 m apart.
+
 ### Braking
 
 | | Value | Constant (tunables.go) |

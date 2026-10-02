@@ -237,7 +237,14 @@ func (f *SimObjectFuelTruck) clearOf(pose GroundPose, p airport.LatLon) float64 
 const fuelNoseMeters = 5.0
 
 func (f *SimObjectFuelTruck) place() error {
-	err := f.inj.PlaceMoving(f.objectID, f.pose)
+	// On the roads in its lane; reported to the other vehicles.
+	road := f.arrive
+	if road == nil {
+		road = f.away
+	}
+	shown := lane(f.pose, road)
+	f.report(f.objectID, shown, fuelProfile().WheelbaseMeters+3)
+	err := f.inj.PlaceMoving(f.objectID, shown)
 	if errors.Is(err, ErrGroundUnknown) {
 		return nil
 	}
@@ -247,6 +254,7 @@ func (f *SimObjectFuelTruck) place() error {
 func (f *SimObjectFuelTruck) finish() error {
 	f.done = true
 	obj := f.objectID
+	f.forget(obj)
 	f.inj.Forget(obj)
 	return f.client.AIRemoveObject(obj, f.reqID)
 }
