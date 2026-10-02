@@ -58,10 +58,10 @@ const HOLD_SHORT = new Set([2, 4, 5, 6]);
 const pathGroups = {};
 for (const t of Object.keys(PATH_TYPES)) pathGroups[t] = L.layerGroup();
 
-const LAYER_DEFAULTS = { ours: true, others: false, routes: true, final: true, labels: true, tags: true, safe: false, overlaps: true, occupied: true, runways: true, parking: true, holds: true, points: false, follow: false };
+const LAYER_DEFAULTS = { circuits: true, vfrpts: true, ours: true, others: false, routes: true, final: true, labels: true, tags: true, safe: false, overlaps: true, occupied: true, runways: true, parking: true, holds: true, points: false, follow: false };
 const layerOn = { ...LAYER_DEFAULTS, ...store.json('apm-layers', {}), follow: false };
 const pathOn = { 1: true, 2: true, 3: true, 4: true, 5: true, ...store.json('apm-paths', {}) };
-const LAYER_GROUPS = { runways: 'runways', parking: 'parking', holds: 'holds', points: 'points', labels: 'labels', overlaps: 'overlaps', occupied: 'occupied', final: 'final', safe: 'safe' };
+const LAYER_GROUPS = { circuits: 'circuits', vfrpts: 'vfrpts', runways: 'runways', parking: 'parking', holds: 'holds', points: 'points', labels: 'labels', overlaps: 'overlaps', occupied: 'occupied', final: 'final', safe: 'safe' };
 
 function setLayer(name, on) {
   layerOn[name] = on;
@@ -82,7 +82,7 @@ function setPathType(t, on) {
 }
 function initLayers() {
   // choices, preview and via come with the New flight form.
-  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate', 'tugs', 'circuits', 'vfrpts']) layers[g].addTo(map);
+  for (const g of ['pads', 'procs', 'routes', 'traffic', 'locate', 'tugs']) layers[g].addTo(map);
   for (const name of Object.keys(LAYER_DEFAULTS)) setLayer(name, layerOn[name]);
   for (const t of Object.keys(PATH_TYPES)) if (pathOn[t]) pathGroups[t].addTo(map);
 }
@@ -326,7 +326,10 @@ function drawTraffic(list) {
   for (const t of list) {
     if (t.user || (t.ours ? !layerOn.ours : !layerOn.others)) continue;
     seen.add(t.objectId);
-    const kind = trafficKind(t), cat = CAT_OF[kind] || 'other';
+    const kind = trafficKind(t);
+    // Ours flying VFR in their own colour (#571).
+    const vfr = t.ours && ctlViews.some((x) => x.tail === t.tail && !x.done && x.rules === 'VFR');
+    const cat = vfr ? 'vfr' : CAT_OF[kind] || 'other';
     let m = acMarkers.get(t.objectId);
     if (!m) {
       m = L.marker([t.lat, t.lon], { icon: acIcon(cat), keyboard: false, riseOnHover: true, pane: 'aircraft' }).addTo(layers.traffic);
