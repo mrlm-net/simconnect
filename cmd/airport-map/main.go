@@ -151,11 +151,11 @@ type Aircraft struct {
 	OnGround  bool    `json:"onGround"`
 	// SimRate and Paused: the simulator's rate and pause (traffic follows
 	// them, #413).
-	SimRate float64   `json:"simRate"`
-	Paused  bool      `json:"paused"`
+	SimRate float64 `json:"simRate"`
+	Paused  bool    `json:"paused"`
 	// Camera is the simulator's CAMERA STATE now (its numbering differs
 	// between versions: see simCameraStates).
-	Camera int `json:"camera"`
+	Camera  int `json:"camera"`
 	CamView int `json:"cameraView"`
 	// ZuluSec and LocalSec: the simulator's time of day, seconds since
 	// midnight UTC and local (at the user's aircraft).
@@ -163,11 +163,11 @@ type Aircraft struct {
 	LocalSec float64 `json:"localSec"`
 	// The simulator's UTC date, and the part of the day at the aircraft
 	// (0 dawn, 1 day, 2 dusk, 3 night).
-	ZuluDay   int `json:"zuluDay"`
-	ZuluMonth int `json:"zuluMonth"`
-	ZuluYear  int `json:"zuluYear"`
-	DayPart   int `json:"dayPart"`
-	Updated time.Time `json:"updated"`
+	ZuluDay   int       `json:"zuluDay"`
+	ZuluMonth int       `json:"zuluMonth"`
+	ZuluYear  int       `json:"zuluYear"`
+	DayPart   int       `json:"dayPart"`
+	Updated   time.Time `json:"updated"`
 }
 
 // airportResponse is the /api/airport payload: the Layout plus when it was
@@ -180,7 +180,7 @@ type airportResponse struct {
 type state struct {
 	// reviewDir holds GeoJSON overlays for review (GET /api/overlay).
 	reviewDir string
-	cache *airport.Cache
+	cache     *airport.Cache
 
 	// sim sends a pause or rate event to the simulator (simEvents); nil
 	// while not connected.
@@ -565,7 +565,8 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					atisAt = now
 					st.atisTick(now, cc, sched.airports())
 				}
-				cc.pending.run(now) // clearances and actions in radio order (#462)
+				cc.pending.run(now)  // clearances and actions in radio order (#462)
+				cc.agenda.run(now)   // the controllers' calls, most urgent first
 				cc.checkRunways(now) // a new runway in use re-plans the traffic (#456)
 				sched.tick(now)
 				seqs.tick(now)

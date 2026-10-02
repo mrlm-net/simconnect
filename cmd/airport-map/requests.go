@@ -134,8 +134,25 @@ func (it *controlled) onRequest(req string) {
 	if it.gates.Load() {
 		return // the user answers
 	}
-	p := it.cc.pending
-	p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.answer(req) })
+	it.askGround(req)
+}
+
+// askGround puts the ground controller's answer to request req on the
+// agenda: a vacated arrival's taxi before a departure's, a pushback or
+// start-up last; dropped if the crew no longer asks when its turn comes.
+func (it *controlled) askGround(req string) {
+	prio := prioStand
+	if req == "taxi" {
+		prio = prioTaxi
+		if it.arr != nil {
+			prio = prioClearing // in the way at its runway exit
+		}
+	}
+	it.callIf(traffic.PosGround, prio, func() bool {
+		it.mu.Lock()
+		defer it.mu.Unlock()
+		return it.request == req
+	}, nil, func() { it.answer(req) })
 }
 
 // answer is the ground controller's clearance for request req, if the
@@ -189,7 +206,7 @@ const pushAndStartShare = 0.85
 // crew's waiting request, if any, to ground (#462).
 func (it *controlled) clearance(clr traffic.Transmission) {
 	p := it.cc.pending
-	p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+	it.call(traffic.PosDelivery, prioDelivery, func() {
 		it.say(clr) // read back by the crew
 		p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
@@ -213,8 +230,7 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 // firstContact is an arrival's first call to approach (said already), then
 // the approach controller's clearance once it has been heard.
 func (it *controlled) firstContact(clr traffic.Transmission) {
-	p := it.cc.pending
-	p.later(it.clearAt(traffic.PosApproach).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.say(clr) })
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(clr) })
 }
 
 // actAfterReadback runs f in the simulator's goroutine once the clearance
