@@ -312,8 +312,8 @@ function renderCtx() {
       groups.push(`<div class="phase"><div class="phase__name">Approach${s ? ` · #${s.e.number} RWY ${esc(s.r.runway)}, ${s.e.distanceToGoNM.toFixed(1)} NM` : ''}</div><div class="acts">${has(v, 'land') ? actBtn(v, 'land', busy) : ''}${ap.map((a) => `<button type="button" class="btn" data-ap="${a}" data-cs="${esc(v.tail)}" title="${AP_ACT[a].title}"${other ? ' disabled' : ''}>${icon(AP_ACT[a].icon, 'ic ic--sm')}${AP_ACT[a].label}</button>`).join('')}</div></div>`);
     }
     const known = new Set([...PHASES.flatMap((p) => p.acts), ...URGENT, 'land', 'upto']);
-    const other = (v.actions || []).filter((a) => !known.has(a));
-    if (other.length) groups.push(`<div class="phase"><div class="phase__name">Other</div><div class="acts">${other.map((a) => actBtn(v, a, busy)).join('')}</div></div>`);
+    const rest = (v.actions || []).filter((a) => !known.has(a));
+    if (rest.length) groups.push(`<div class="phase"><div class="phase__name">Other</div><div class="acts">${rest.map((a) => actBtn(v, a, busy)).join('')}</div></div>`);
     if (groups.length) h += `<section class="ctx__sec"><div class="ctx__lbl">Clearances</div>${groups.join('')}</section>`;
     // Urgent: always in the same place, enabled when they apply.
     const apGo = !has(v, 'goaround') && s && !s.e.fixed;
