@@ -154,7 +154,7 @@ function stripHTML(v) {
   const freq = v.atc ? (v.frequency ? `<button type="button" class="freq-btn${v.frequency === rdFreq ? ' is-on' : ''}" data-tune="${esc(v.frequency)}" title="Listen on ${esc(v.atc)} ${esc(v.frequency)}">${icon('i-radio', 'ic ic--xs')}${esc(v.atc)} ${esc(v.frequency)}</button>` : `<span>${esc(v.atc)}</span>`) : '';
   const other = !onMyFrequency(v);
   return `<article class="strip-card${done ? ' is-done' : ''}${busy ? ' is-busy' : ''}${other ? ' is-other' : ''}" data-kind="${kind}" data-sel="${v.id}" tabindex="0" aria-current="${v.id === ctlSelected}" aria-label="${esc(v.tail)}, ${esc(v.state)}${other ? ', not on your frequency' : ''}" title="${esc(v.model)} · lights ${esc(v.lights || '—')}${other ? ' · not on your frequency: another position clears it' : ''}">
-    <div class="strip-card__l1"><span class="strip-card__cs">${esc(v.tail)}</span>${v.deicing ? icon('i-snow', 'ic ic--xs') : ''}${timeChip(v, w)}</div>
+    <div class="strip-card__l1"><span class="strip-card__cs">${esc(v.tail)}</span>${rulesTag(v)}${v.deicing ? icon('i-snow', 'ic ic--xs') : ''}${timeChip(v, w)}</div>
     ${act}
     <div class="strip-card__l2"><span class="strip-card__state${w ? ' is-wait' : ''}">${esc(statusText(v))}</span></div>
     <div class="strip-card__l3"><span>${kind.toUpperCase()} ${esc(routeText(v).replace('RWY ', ''))}</span>${v.procedure ? `<span>${esc(v.procedure)}</span>` : ''}${freq}<span data-gs="${v.id}"></span></div>
@@ -183,6 +183,8 @@ function fillSched(el, v) {
   el.className = `sched-t${late > VERY_LATE_MIN ? ' is-vlate' : late > LATE_MIN ? ' is-late' : ''}`;
   el.title = `${dep ? 'Scheduled off the stand' : 'Scheduled to land'} ${hhmm(t)}${late > 0 ? `, ${late} min late` : ', on time'}${!actualAt.has(v.id) && est ? ` (expected ${hhmm(est)})` : ''}`;
 }
+// rulesTag: the flight rules, IFR or VFR, by the call sign.
+const rulesTag = (v) => v.rules ? `<span class="rules rules--${v.rules === 'VFR' ? 'v' : 'i'}" title="${v.rules === 'VFR' ? 'Visual flight rules' : 'Instrument flight rules'}">${esc(v.rules)}</span>` : '';
 const waitSecs = (id) => waitSince.has(id) ? (Date.now() - waitSince.get(id)) / 1000 : 0;
 function renderStrips() {
   const el = $('strips');
@@ -283,7 +285,7 @@ function renderCtx() {
   // cleared from here: every control that changes it is off (#511).
   const off = other ? ` disabled title="Not on your frequency: ${esc(v.atc || 'another position')} works it"` : '';
   let h = `<header class="ctx__head">
-    <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${ctlBusy.has(v.id) ? '<span class="pill pill--accent small">sending…</span>' : other ? `<span class="pill small" title="Another position clears it">${esc(v.atc)}</span>` : ''}</div>
+    <div class="ctx__cs">${esc(v.tail)}<span class="ctx__kind">${v.kind === 'arrival' ? 'ARR' : 'DEP'}</span>${rulesTag(v)}${ctlBusy.has(v.id) ? '<span class="pill pill--accent small">sending…</span>' : other ? `<span class="pill small" title="Another position clears it">${esc(v.atc)}</span>` : ''}</div>
     <button type="button" class="btn btn--icon btn--ghost ctx__close" data-close-ctx aria-label="Deselect (Esc)" title="Deselect (Esc)">${icon('i-x')}</button>
     <div class="ctx__sub">${esc(v.model)}</div>
     <div class="ctx__state${w ? ' is-wait' : ''}">${timeChip(v, w)}${v.deicing ? icon('i-snow', 'ic ic--sm') : ''}${esc(statusText(v))}</div>

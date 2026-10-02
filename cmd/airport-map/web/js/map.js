@@ -279,7 +279,8 @@ function tagFor(t) {
   if (f) line = `${flightLevel(t.alt || 0)} <i>·</i> ${f.kind === 'overflight' ? esc(f.origin) + '→' : '→'}${esc(f.destination)}`; // en route: level, destination (#369)
   else if (t.onGround) line = `${t.groundKts.toFixed(0)} kt`;
   else line = `${t.groundKts.toFixed(0)} kt <i>·</i> ${t.agl.toFixed(0)} ft`;
-  return `<b>${vsArrow(t)}${cs}</b><br>${line}`;
+  const v = t.ours ? ctlViews.find((x) => x.tail === t.tail && !x.done) : null;
+  return `<b>${vsArrow(t)}${cs}</b>${v && v.rules === 'VFR' ? ' <span class="rules rules--v">VFR</span>' : ''}<br>${line}`;
 }
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
 const KIND_NOTE = { enroute: 'arrival en route (MSFS AI on its plan, handed over at the STAR entry)', overflight: 'overflight (MSFS AI on its plan, crossing the area)', departed: 'departed (MSFS AI on its plan after the SID)', controlled: 'under our control', other: 'other traffic (not ours)' };

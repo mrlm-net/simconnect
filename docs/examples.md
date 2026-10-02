@@ -74,7 +74,7 @@ The **status strip** shows:
 
 **The selected aircraft** (click it on the map or in a list) shows:
 
-- its state and how long it has waited;
+- its flight rules (IFR, or VFR for a circuit arrival), its state, and its scheduled time (STD or STA, amber past 5 minutes late, red past 15) or, without a schedule, how long it has waited;
 - the next clearance as one big button. Pushback has its facing (N, E, S, W) and "with start-up" by it, on by default.
 - the other clearances by phase;
 - Hold position, Go around and Abort take-off, always in the same place;
