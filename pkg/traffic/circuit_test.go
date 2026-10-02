@@ -74,3 +74,26 @@ func TestCircuit(t *testing.T) {
 		t.Errorf("no runway: %v", err)
 	}
 }
+
+// A circuit arrival appears at the 45° entry heading for midfield, flies
+// midfield, downwind, base and the final point, and joins there, a mile
+// out, with a short-final takeover allowed.
+func TestPlanCircuitArrival(t *testing.T) {
+	l := lkprGraph(t).Layout
+	c, err := NewCircuit(l, "24", CircuitConfig{}, ProfileFor("C172"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := PlanCircuitArrival(c)
+	entry, mid := c.JoinDownwind()
+	at := airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
+	if localDist(at, entry.Position) > 1 || math.Abs(headingDiff(p.Spawn.Heading, localBearing(entry.Position, mid.Position))) > 1 {
+		t.Errorf("spawn %+v, entry %+v", p.Spawn, entry)
+	}
+	if len(p.Waypoints) != 4 || math.Abs(p.JoinMeters-CircuitBaseNM*1852) > 30 || p.MinJoinMeters >= p.JoinMeters {
+		t.Errorf("%d waypoints, join %.0f m, min %.0f m", len(p.Waypoints), p.JoinMeters, p.MinJoinMeters)
+	}
+	if p.minJoin() != p.MinJoinMeters || (&ArrivalProcedure{}).minJoin() != 2*1852 {
+		t.Error("minJoin")
+	}
+}

@@ -97,6 +97,10 @@ type controlled struct {
 	heightFt            float64
 	vacateSaid          bool
 	approachSaid        bool // its approach clearance, given on the base
+	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
+	// reported downwind.
+	circuit      *traffic.Circuit
+	downwindSaid bool
 	readySaid           bool // a departure's "ready for departure"
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
@@ -454,6 +458,10 @@ type SpawnRequest struct {
 	// ProcName picks the SID or STAR; "" picks one for the runway.
 	Procedure bool   `json:"procedure"`
 	ProcName  string `json:"procName"`
+	// Circuit: an arrival flies in VFR through the circuit (#568): it
+	// appears at the 45° entry to the downwind and lands from the base; the
+	// runway end's circuit as set on the map (circuits.go).
+	Circuit bool `json:"circuit"`
 	// Other is the destination of a departure or the origin of an arrival
 	// (ICAO): the flight follows a generated flight plan (#331).
 	Other string `json:"other"`
@@ -551,6 +559,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}()
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
+	if r.Circuit && r.Kind == "arrival" {
+		r.Procedure, r.planned = false, nil // VFR through the circuit: no STAR, no IFR plan
+	}
 	if r.planned != nil {
 		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
 		tlog.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
@@ -641,9 +652,20 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 			exit = &exits[*r.Exit]
 		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit,
+		var circuit *traffic.Circuit
+		if r.Circuit {
+			c, err := traffic.NewCircuit(g.Layout, r.Runway, circuitConfig(g.Layout.ICAO, r.Runway), ac)
+			if err != nil {
+				return nil, err
+			}
+			circuit, it.circuit = &c, &c
+			for _, p := range c.Points {
+				it.approach = append(it.approach, p.Position) // its way on the map
+			}
+		}
+		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, Exit: exit, Circuit: circuit,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0, Profile: prof,
+			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
 			CrosswindKts: cc.crosswind(g, r.Runway)}); err != nil {
 			return nil, err
@@ -670,7 +692,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
 	// then the clearance (#462).
-	if procName != "" || r.Kind == "departure" {
+	if procName != "" || r.Kind == "departure" || it.circuit != nil {
 		if procName != "" {
 			it.view.Procedure = procName
 			it.procSaid = procedureSaid(procName, r.planned)
@@ -690,6 +712,21 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.say(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest))
 			it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
 				Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
+		} else if it.circuit != nil {
+			// VFR: the first call to the tower, for landing, then the join
+			// (Doc 4444 12.3.4.13 a, b, d).
+			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosTower)
+			p := it.arr.Plan()
+			pos, level := "", ""
+			if p != nil {
+				at := airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
+				nm := calc.HaversineNM(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)
+				pos = fmt.Sprintf("%.0f miles %s", math.Max(1, math.Round(nm)), traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
+				level = fmt.Sprintf("%.0f feet", math.Round(p.Spawn.Altitude/100)*100)
+			}
+			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
+			qnh, _ := cc.qnh()
+			it.firstContact(traffic.JoinCircuit(r.Tail, string(it.circuit.Side)+" downwind", r.Runway, cc.windSaid(g.Layout.ICAO), qnh, ""))
 		} else {
 			// The first call to approach with its level, then the STAR.
 			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosApproach)
@@ -1850,6 +1887,14 @@ func typeSaid(icao string) string {
 		return "ATR " + icao[2:3] + "2"
 	case strings.HasPrefix(icao, "CRJ"):
 		return "CRJ " + icao[3:] + "00"
+	case icao == "C152", icao == "C172":
+		return "Cessna " + icao[1:]
+	case icao == "P28A":
+		return "Piper PA-28"
+	case icao == "DA40":
+		return "Diamond DA40"
+	case icao == "SR22":
+		return "Cirrus SR22"
 	}
 	return icao
 }
@@ -1872,6 +1917,28 @@ func (cc *controlCenter) byTail(tail string) *controlled {
 }
 
 // ownIDs are the object IDs of the controlled aircraft.
+// ownTails are the call signs of our aircraft by object: a turnaround
+// flies on as a new flight in the same object, whose ATC ID the simulator
+// keeps (live, TVS1124 showed as TVS1482 on the runway). The flight still
+// going wins over a finished one.
+func (cc *controlCenter) ownTails() map[uint32]string {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	out := map[uint32]string{}
+	for _, it := range cc.items {
+		it.mu.Lock()
+		id, tail, done := it.objectID, it.Tail, it.view.Done
+		it.mu.Unlock()
+		if id == 0 {
+			continue
+		}
+		if _, have := out[id]; !have || !done {
+			out[id] = tail
+		}
+	}
+	return out
+}
+
 func (cc *controlCenter) ownIDs() map[uint32]bool {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -2325,6 +2392,13 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		pos = traffic.ArrivalPosition(ev.arr.State, onFinal)
 	default:
 		return
+	}
+	// A VFR arrival reports downwind abeam the threshold (12.3.4.14 a).
+	if ev.arr != nil && it.circuit != nil && !it.downwindSaid && ev.arr.State == traffic.ArrivalApproaching {
+		if dw, ok := it.circuit.Point(traffic.LegDownwind); ok && calc.HaversineMeters(ev.arr.Position.Lat, ev.arr.Position.Lon, dw.Position.Lat, dw.Position.Lon) < 500 {
+			it.downwindSaid = true
+			it.say(traffic.CircuitReport(it.Tail, "downwind"))
+		}
 	}
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).

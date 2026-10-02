@@ -177,6 +177,27 @@ func CheckIn(pos Position, station, cs, report, info string) Transmission {
 	return pilotTx(pos, cs, IntentCheckIn, map[string]string{ParamStation: station, ParamState: report, ParamInfo: info}, text+withInfo(info))
 }
 
+// VFRForLanding is a VFR arrival's first call to the tower (Doc 4444
+// 12.3.4.13 a, d): "Ruzyne Tower, OKABC, Cessna 172, 5 miles north, 2000
+// feet, information Alpha, for landing" (typ, position and level as said;
+// info "" when no ATIS).
+func VFRForLanding(station, cs, typ, position, level, info string) Transmission {
+	text := station + ", " + cs
+	for _, s := range []string{typ, position, level} {
+		if s != "" {
+			text += ", " + s
+		}
+	}
+	return pilotTx(PosTower, cs, IntentVFRForLanding, map[string]string{ParamStation: station, ParamType: typ, ParamCircuit: position, ParamLevel: level, ParamInfo: info},
+		text+withInfo(info)+", for landing")
+}
+
+// CircuitReport is a report of the position in the circuit (12.3.4.14 a):
+// "OKABC, downwind".
+func CircuitReport(cs, position string) Transmission {
+	return pilotTx(PosTower, cs, IntentCircuitReport, map[string]string{ParamCircuit: position}, cs+", "+position)
+}
+
 func withInfo(info string) string {
 	if info == "" {
 		return ""
@@ -252,6 +273,24 @@ func Readback(t Transmission) (Transmission, bool) {
 		} else {
 			s = "Holding short of " + p[ParamLimit] // 12.3.4.8 note
 		}
+	case IntentJoinCircuit:
+		s = fmt.Sprintf("Join %s runway %s", p[ParamCircuit], p[ParamRunway])
+		if p[ParamQNH] != "" {
+			s += ", QNH " + p[ParamQNH] // the pressure setting is read back (4.5.7.5.1)
+		}
+	case IntentStraightIn:
+		s = "Straight-in approach runway " + p[ParamRunway]
+		if p[ParamQNH] != "" {
+			s += ", QNH " + p[ParamQNH]
+		}
+	case IntentFollow:
+		s = "Number " + p[ParamNumber]
+	case IntentCircuitInstr, IntentCircuitDelay:
+		s = capital(p[ParamInstr])
+	case IntentTouchAndGo:
+		s = "Cleared touch and go"
+	case IntentFullStop:
+		s = "Make full stop"
 	case IntentCross:
 		s = "Cross runway " + p[ParamRunway]
 		if p[ParamBehind] != "" {

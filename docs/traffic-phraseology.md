@@ -180,6 +180,22 @@ Taxiway and procedure designators are spoken with the phonetic alphabet (A1 "Alp
 | Readback | UK: frequency changes read back in full: "Wrayton Control 129.125, BIGJET 347" (CAP 413 2.60, 2.69). | Acknowledge: "one three four point five, United Two Twenty-Two" (AIM 4-2-3). |
 | First call on the new frequency | Call sign and level only (and assigned speed or heading) (CAP 413 3.26, 3.27; Doc 4444 4.11.3). | "(Name) Center, (identification), level (altitude)" or "leaving (altitude), climbing/descending to (altitude)" (AIM 5-3-1). |
 
+## 11. VFR in the aerodrome traffic circuit
+
+ICAO only so far: the FAA's traffic pattern sections (7110.65 3-10, AIM 4-3) have not been read for this table yet, so the FAA wording is still the ICAO text (`phraseFAA` has no VFR cases).
+
+| | ICAO (Doc 4444 12.3.4.13–12.3.4.17) | In the code |
+|---|---|---|
+| Entering the circuit, pilot | "[aircraft type] (position) (level) FOR LANDING" (13 a); with ATIS "(aircraft type) (position) (level) INFORMATION (ATIS identification) FOR LANDING" (13 d). | `VFRForLanding`: "Ruzyne Tower, OKABC, Cessna 172, 3 miles south, 1400 feet, information Alpha, for landing" |
+| Join | "JOIN [(direction of circuit)] (position in circuit) (runway number) [SURFACE] WIND (direction and speed) (units) [TEMPERATURE ...] QNH (or QFE) (number) [(units)] [TRAFFIC (detail)]" (13 b); with ATIS "JOIN (position in circuit) [RUNWAY (number)] QNH (or QFE) (number) [TRAFFIC (detail)]" (13 e). | `JoinCircuit`: "OKABC, join left downwind runway 24, wind 240 degrees 8 knots, QNH 1013" |
+| Straight in | "MAKE STRAIGHT-IN APPROACH, RUNWAY (number) [SURFACE] WIND … QNH … [TRAFFIC (detail)]" (13 c). | `StraightIn` |
+| In the circuit, pilot | "(position in circuit, e.g. DOWNWIND/FINAL)" (14 a). | `CircuitReport`: "OKABC, downwind" |
+| Sequence | "NUMBER ... FOLLOW (aircraft type and position) [additional instructions if required]" (14 b). | `FollowTraffic`: "OKABC, number 2, follow the Airbus A320 on final" |
+| Approach instructions | "MAKE SHORT APPROACH"; "MAKE LONG APPROACH (or EXTEND DOWNWIND)"; "REPORT BASE (or FINAL, or LONG FINAL)"; "CONTINUE APPROACH [PREPARE FOR POSSIBLE GO AROUND]" (15 a–d). "LONG FINAL" is reported when turning final more than 4 NM out, or 8 NM out on a straight-in; "FINAL" is then required at 4 NM (15 note). | `CircuitInstruction` with `InstrShortApproach`, `InstrLongApproach`, `InstrExtendDownwind`, `InstrReportBase`, `InstrReportFinal`, `InstrContinue` |
+| Landing | "RUNWAY (number) CLEARED TO LAND" (16 a); special operations: "CLEARED TOUCH AND GO" (16 c), "MAKE FULL STOP" (16 d). | `ClearedToLand`, `ClearedTouchAndGo`, `MakeFullStop` |
+| Delaying | "CIRCLE THE AERODROME"; "ORBIT (RIGHT, or LEFT) [FROM PRESENT POSITION]"; "MAKE ANOTHER CIRCUIT" (17 a–c). | `CircuitDelay` with `DelayCircle`, `DelayOrbitRight`, `DelayOrbitLeft`, `DelayAnotherCircuit` |
+| Readback | The QNH is read back (4.5.7.5.1); the rest repeats the instruction, as the other clearances in the code do. | `Readback`: "Join left downwind runway 24, QNH 1013, OKABC" |
+
 ## Differences at a glance
 
 - Order of runway and taxi route: ICAO "taxi to holding point (x) runway (n) via (route)"; FAA "runway (n), taxi via (route)".

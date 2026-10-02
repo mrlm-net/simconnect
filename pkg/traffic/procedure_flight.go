@@ -115,6 +115,17 @@ type ArrivalProcedure struct {
 	Waypoints  []types.SIMCONNECT_DATA_WAYPOINT
 	Join       airport.LatLon
 	JoinMeters float64
+	// MinJoinMeters is the nearest to the threshold the injected approach
+	// takes over (0: 2 NM, an airliner's final; a circuit's is shorter).
+	MinJoinMeters float64
+}
+
+// minJoin is p's MinJoinMeters, 2 NM when unset.
+func (p *ArrivalProcedure) minJoin() float64 {
+	if p.MinJoinMeters > 0 {
+		return p.MinJoinMeters
+	}
+	return 2 * 1852
 }
 
 // PlanArrivalProcedure plans the STAR and approach of route to a join
@@ -242,7 +253,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	along := calc.AlongTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon)
 	cross := math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon))
 	near := calc.HaversineMeters(pos.Lat, pos.Lon, far.Lat, far.Lon) < JoinCaptureMeters
-	established := along > 2*1852 && along <= c.proc.JoinMeters+300 && cross < 2000 && math.Abs(headingDiff(m.Heading, c.plan.End.Heading)) < 45
+	established := along > c.proc.minJoin() && along <= c.proc.JoinMeters+300 && cross < 2000 && math.Abs(headingDiff(m.Heading, c.plan.End.Heading)) < 45
 	if c.circuit && c.procWaypoint(c.proc.Waypoints) < len(c.proc.Waypoints)-2 {
 		near, established = false, false // still going around
 	}
@@ -251,7 +262,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		return
 	}
 	c.flyingProc, c.circuit = false, false
-	start := math.Max(2*1852, math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
+	start := math.Max(c.proc.minJoin(), math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
 	if err := c.startInjectedApproach(start); err != nil {
 		c.fail(err)
 		return

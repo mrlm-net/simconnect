@@ -111,6 +111,22 @@ type RunwayController struct {
 	queue   map[string]time.Time // when each departure started waiting
 }
 
+// behindRoom reports whether a departure u lining up behind the next
+// arrival (landing in next seconds) can take off before the one after it
+// (then seconds): the first off the runway, the departure's roll and the
+// margin, all before the second lands.
+func (r *RunwayController) behindRoom(next float64, first RunwayUser, then float64, u RunwayUser) bool {
+	need := next + (RunwayOccupancyIn(first.Wake, true, r.opts.Surface) + RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.opts.Margin).Seconds()
+	return then >= need
+}
+
+// BehindRoom is behindRoom for the map: whether departure u, lined up
+// behind arrival first now landing, still has time before the next
+// arrival (landing in then).
+func (r *RunwayController) BehindRoom(first RunwayUser, then time.Duration, u RunwayUser) bool {
+	return r.behindRoom(0, first, then.Seconds(), u)
+}
+
 // NewRunwayController creates the controller of one runway.
 func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	if opts.MinArrivalNM == 0 {
@@ -155,6 +171,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	var onRunway []string
 	nextArr, nextArrName := math.Inf(1), ""
 	var nextArrUser RunwayUser
+	// thenArr: when the arrival after the next lands (seconds).
+	thenArr := math.Inf(1)
 	var holding []RunwayUser
 	seen := map[string]bool{}
 	for _, u := range users {
@@ -174,8 +192,12 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				linedUp = u.Callsign
 			}
 		case RunwayFinal:
-			if t := u.DistanceNM / math.Max(u.GroundKts, 100) * 3600; t < nextArr {
+			t := u.DistanceNM / math.Max(u.GroundKts, 100) * 3600
+			if t < nextArr {
+				thenArr = nextArr
 				nextArr, nextArrName, nextArrUser = t, u.Callsign, u
+			} else if t < thenArr {
+				thenArr = t
 			}
 		case RunwayHoldingShort:
 			if !u.Other {
@@ -316,9 +338,13 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		default:
 			out.Waiting[u.Callsign] = why
 			// Waiting for the next arrival only, first in turn: behind it.
-			// Only behind one established on the final: one still on its STAR
-			// or downwind may be many minutes away.
-			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" {
+			// Only behind one established on the final (one still on its STAR
+			// or downwind may be many minutes away), and with time to go
+			// before the arrival after it: lined up as the first lands, it
+			// goes once that one is off the runway — live, TVS1124 lined up
+			// behind CSA1232 and LOT775 behind it had to go around.
+			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" &&
+				r.behindRoom(nextArr, nextArrUser, thenArr, u) {
 				out.LineUpBehind[u.Callsign] = nextArrName
 			}
 		}

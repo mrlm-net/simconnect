@@ -118,6 +118,11 @@ type ArrivalRequest struct {
 	// extended centreline (ProcedureJoinNm out), and the injected approach
 	// takes over there (#315).
 	Procedure []airport.NavPoint
+	// Circuit (with InjectApproach, instead of Procedure) is a VFR arrival
+	// through the circuit (#568): the aircraft appears at the 45° entry to
+	// the downwind, MSFS AI flies the downwind and base, and the injected
+	// approach takes over on the circuit's short final.
+	Circuit *Circuit
 	// MissedApproach (with InjectApproach) is the published missed approach
 	// flown on a go-around (airport.Procedures.MissedApproach), then back
 	// round to the final; without it the go-around flies a circuit (#394).
@@ -382,7 +387,13 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		plan.Spawn.Latitude, plan.Spawn.Longitude = ap.Position.Lat, ap.Position.Lon
 		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + convert.MetersToFeet(req.Aircraft.CGHeightM)
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
-		if len(req.Procedure) > 0 {
+		if req.Circuit != nil {
+			proc := PlanCircuitArrival(*req.Circuit)
+			plan.Spawn = proc.Spawn
+			c.setCorners(proc.Waypoints, nil)
+			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
+			c.proc, c.procNext = proc, -1
+		} else if len(req.Procedure) > 0 {
 			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
 			jp := NewApproachMover(plan.End.Threshold, plan.End.Heading, join, approachProfileOf(req)).Pose()
 			proc, err := PlanArrivalProcedure(req.Procedure, plan.End, join, convert.MetersToFeet(req.Graph.Layout.Altitude)+jp.HeightFt)
@@ -395,8 +406,8 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
 			c.proc, c.procNext = proc, -1
 		}
-	} else if len(req.Procedure) > 0 {
-		return fmt.Errorf("%w: Procedure needs InjectApproach", ErrBadTaxiRequest)
+	} else if len(req.Procedure) > 0 || req.Circuit != nil {
+		return fmt.Errorf("%w: Procedure and Circuit need InjectApproach", ErrBadTaxiRequest)
 	}
 	client := c.fleet.clientOrNil()
 	if client == nil {

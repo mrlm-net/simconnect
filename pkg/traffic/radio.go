@@ -65,6 +65,16 @@ const (
 	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
 	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
 	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
+	// VFR in the aerodrome traffic circuit (#569; Doc 4444 12.3.4.13–17).
+	IntentJoinCircuit    Intent = "join_circuit"    // join (left/right) (position in circuit) runway, QNH
+	IntentStraightIn     Intent = "straight_in"     // make straight-in approach, runway
+	IntentFollow         Intent = "follow"          // number (n), follow (traffic)
+	IntentCircuitInstr   Intent = "circuit_instr"   // make short/long approach, extend downwind, report base/final, continue approach
+	IntentTouchAndGo     Intent = "touch_and_go"    // cleared touch and go
+	IntentFullStop       Intent = "full_stop"       // make full stop
+	IntentCircuitDelay   Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
+	IntentVFRForLanding  Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
+	IntentCircuitReport  Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
 )
 
 // Phraseology is the wording a transmission is said in: ICAO (Doc 4444,
@@ -136,6 +146,9 @@ const (
 	ParamAltimeter  = "altimeter"   // inches of mercury ×100: "2992"
 	ParamReport     = "report"      // what to report: "established"
 	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
+	ParamCircuit    = "circuit"     // a position in the circuit as said: "left downwind", "base", "final"
+	ParamInstr      = "instr"       // an approach instruction or delay as said: "extend downwind", "orbit right"
+	ParamType       = "type"        // an aircraft type as said: "Cessna 172"
 )
 
 // Transmission is one message on the radio.
@@ -344,6 +357,35 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, stop immediately, %s, stop immediately", cs, cs) // 12.3.4.11 e
 	case IntentCancelTakeoff:
 		return cs + ", hold position, cancel take-off, I say again, cancel take-off" // 12.3.4.11 c
+	case IntentJoinCircuit:
+		s := fmt.Sprintf("%s, join %s runway %s", cs, p[ParamCircuit], p[ParamRunway]) // 12.3.4.13 b, e
+		if p[ParamWind] != "" {
+			s += ", " + p[ParamWind]
+		}
+		if p[ParamQNH] != "" {
+			s += ", QNH " + p[ParamQNH]
+		}
+		if p[ParamTraffic] != "" {
+			s += ", traffic " + p[ParamTraffic]
+		}
+		return s
+	case IntentStraightIn:
+		s := fmt.Sprintf("%s, make straight-in approach, runway %s", cs, p[ParamRunway]) // 12.3.4.13 c
+		if p[ParamWind] != "" {
+			s += ", " + p[ParamWind]
+		}
+		if p[ParamQNH] != "" {
+			s += ", QNH " + p[ParamQNH]
+		}
+		return s
+	case IntentFollow:
+		return fmt.Sprintf("%s, number %s, follow %s", cs, p[ParamNumber], p[ParamTraffic]) // 12.3.4.14 b
+	case IntentCircuitInstr, IntentCircuitDelay:
+		return cs + ", " + p[ParamInstr] // 12.3.4.15 a–d, 12.3.4.17 a–c
+	case IntentTouchAndGo:
+		return cs + ", cleared touch and go" // 12.3.4.16 c
+	case IntentFullStop:
+		return cs + ", make full stop" // 12.3.4.16 d
 	case IntentGoAround:
 		reason := ""
 		if p[ParamReason] != "" {
@@ -705,6 +747,61 @@ func ClearedCross(cs, runway string) Transmission {
 // cross runway 12, behind". The crew crosses once that aircraft has passed.
 func ClearedCrossBehind(cs, traffic, runway string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentCross, Params: map[string]string{ParamRunway: runway, ParamBehind: traffic}})
+}
+
+// JoinCircuit tells a VFR arrival to join the circuit (Doc 4444 12.3.4.13
+// b, e): position as said ("left downwind", "right base"), with the wind
+// (WindSaid, "" none), QNH and traffic ("" none).
+func JoinCircuit(cs, position, runway, wind, qnh, traffic string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentJoinCircuit,
+		Params: map[string]string{ParamCircuit: position, ParamRunway: runway, ParamWind: wind, ParamQNH: qnh, ParamTraffic: traffic}})
+}
+
+// StraightIn is "make straight-in approach, runway (n)" (12.3.4.13 c).
+func StraightIn(cs, runway, wind, qnh string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentStraightIn,
+		Params: map[string]string{ParamRunway: runway, ParamWind: wind, ParamQNH: qnh}})
+}
+
+// FollowTraffic is the place in the circuit: "number 2, follow the Airbus
+// A320 on final" (12.3.4.14 b); traffic as said, with its position.
+func FollowTraffic(cs string, number int, traffic string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentFollow,
+		Params: map[string]string{ParamNumber: fmt.Sprint(number), ParamTraffic: traffic}})
+}
+
+// Circuit approach instructions (12.3.4.15) and delays (12.3.4.17), as said.
+const (
+	InstrShortApproach  = "make short approach"
+	InstrLongApproach   = "make long approach"
+	InstrExtendDownwind = "extend downwind"
+	InstrReportBase     = "report base"
+	InstrReportFinal    = "report final"
+	InstrContinue       = "continue approach"
+	DelayCircle         = "circle the aerodrome"
+	DelayOrbitRight     = "orbit right"
+	DelayOrbitLeft      = "orbit left"
+	DelayAnotherCircuit = "make another circuit"
+)
+
+// CircuitInstruction is one of the Instr* approach instructions.
+func CircuitInstruction(cs, instr string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentCircuitInstr, Params: map[string]string{ParamInstr: instr}})
+}
+
+// CircuitDelay is one of the Delay* instructions.
+func CircuitDelay(cs, instr string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentCircuitDelay, Params: map[string]string{ParamInstr: instr}})
+}
+
+// ClearedTouchAndGo is "cleared touch and go" (12.3.4.16 c).
+func ClearedTouchAndGo(cs, runway string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTouchAndGo, Params: map[string]string{ParamRunway: runway}})
+}
+
+// MakeFullStop is "make full stop" (12.3.4.16 d).
+func MakeFullStop(cs string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentFullStop})
 }
 
 // ClearedLineUp is "line up and wait" on runway.

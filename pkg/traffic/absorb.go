@@ -220,10 +220,12 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			}
 		}
 		if at < 0 || longest < MinStretchLegNM {
-			// At the speed flown: SpeedKts is 0 when it is unchanged.
-			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
-			a.ExtraNM = 0
-		} else {
+			// No leg long enough (near the end of the STAR): vectors from
+			// where it is, out and back to its next point — a hold is for
+			// long delays only (live, LOT775 held at PR532 for a minute).
+			at = 1
+		}
+		{
 			from, to := pts[at-1], pts[at]
 			side := 1.0
 			thr := c.plan.End.Threshold
@@ -231,11 +233,15 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 				side = -1 // the runway is to the right: stretch to the left
 			}
 			apex := StretchLeg(from, to, a.ExtraNM, side)
-			alt := out[at-1].Altitude
+			ref := wps[final] // no STAR point left: the align point's
+			if at-1 < len(out) {
+				ref = out[at-1]
+			}
+			alt := ref.Altitude
 			if at >= 2 {
 				alt = (out[at-2].Altitude + out[at-1].Altitude) / 2
 			}
-			kts := out[at-1].KtsSpeed
+			kts := ref.KtsSpeed
 			if a.SpeedKts > 0 {
 				kts = math.Min(kts, a.SpeedKts) // never 0 kt: unchanged keeps its own
 			}

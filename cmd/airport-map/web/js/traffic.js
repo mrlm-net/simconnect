@@ -560,7 +560,7 @@ function updateSpawn() {
   const b = $('cSpawn');
   b.disabled = !data || !stand;
   $('cSpawnLbl').textContent = !stand ? 'Pick a stand on the map (or a free one)' : arr ? `Spawn arrival: runway ${rwy} → ${stand}` : `Spawn departure: ${stand} → runway ${rwy}${entry}`;
-  const opts = [$('cGates').checked && 'hold at clearances', !arr && $('cTug').checked && 'tug', arr && $('cInjectApproach').checked && 'approach', arr && $('cTurn').checked && 'turnaround', $('cProc').checked && 'procedures', !arr && $('cDeice').value && 'de-icing'].filter(Boolean);
+  const opts = [$('cGates').checked && 'hold at clearances', !arr && $('cTug').checked && 'tug', arr && $('cInjectApproach').checked && 'approach', arr && $('cTurn').checked && 'turnaround', arr && $('cCircuit').checked && 'VFR circuit', $('cProc').checked && 'procedures', !arr && $('cDeice').value && 'de-icing'].filter(Boolean);
   $('optSummary').textContent = opts.join(' · ');
   const c = customRoute();
   $('customSummary').textContent = c.via.length || c.taxiways.length ? `${c.via.length} via · ${c.taxiways.join(', ') || 'no taxiways'}` : '';
@@ -577,6 +577,7 @@ async function ctlSpawn() {
     gates: $('cGates').checked, injectApproach: $('cInjectApproach').checked, tug: $('cTug').checked,
     turnaround: kind === 'arrival' && $('cTurn').checked, dwellSec: Number($('cDwell').value) || 90,
     procedure: $('cProc').checked,
+    circuit: kind === 'arrival' && $('cCircuit').checked,
     other: $('cOther').value.trim().toUpperCase(),
     ...customRoute(),
     deice: kind === 'departure' ? $('cDeice').value : '', deiceSec: Number($('cDeiceSec').value) || 0,
@@ -682,7 +683,7 @@ function initTraffic() {
   $('rCustomClear').addEventListener('click', () => { viaPoints = []; $('rTaxiways').value = ''; drawVia(); computeRoute(); });
   $('rHide').addEventListener('click', hideRoute);
   $('cSpawn').addEventListener('click', ctlSpawn);
-  for (const id of ['cAutoStand', 'cGates', 'cTug', 'cInjectApproach', 'cTurn', 'cProc', 'cDeice']) $(id).addEventListener('change', updateSpawn);
+  for (const id of ['cAutoStand', 'cGates', 'cTug', 'cInjectApproach', 'cTurn', 'cProc', 'cCircuit', 'cDeice']) $(id).addEventListener('change', updateSpawn);
   $('cTug').addEventListener('change', () => { $('tugBox').classList.toggle('is-off', !$('cTug').checked); });
   $('stripFilter').addEventListener('input', renderStrips);
   // Enter: to that aircraft. The call sign typed, else the first match still
