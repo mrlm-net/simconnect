@@ -25,6 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Ground: an aircraft already in a junction when it should give way clears the junction instead of being pulled up inside it (live, QTR1788); a pushback is still always given way to.
 - Sequence tab: a runway nobody uses no longer keeps showing its last user ("12/30 · WZZ100 on the runway" long after the crossing).
 - Airport map: aircraft and their data tags are drawn above the taxiway signs and other labels.
+- Airport map voice: about one controller and crew in nine speaks with a female voice (1:8), from voice-goio's documented speaker genders (`PoolOptions.FemaleShare`; VCTK's genders and accents from the corpus's speaker-info.txt).
 - Tugs are sent `TugLeadTime` (3 min) before the crew is due to ask for the push, or at once when the push is cleared. They no longer wait at the nose ten minutes early: live, EZY775 at C29.
 - VFR circuit arrivals stay with the tower from their first call: no approach clearance and no "established" report. "1 mile south", not "1 miles".
 - The vacated report names the runway and the exit: "runway 24 vacated at D".

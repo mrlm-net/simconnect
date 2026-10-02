@@ -145,7 +145,7 @@ func (v *voiceOut) openEngine() error {
 	}
 	v.engine, v.backend = engine, backend
 	// Not the Czech model reading English: it sounds wrong on the radio.
-	v.pool = voices.NewPool(man, voices.PoolOptions{Seed: time.Now().UnixNano(), AllowUnaudited: true, Dir: v.voicesDir, Exclude: []string{"cs_CZ-jirka-medium"}})
+	v.pool = voices.NewPool(man, voices.PoolOptions{Seed: time.Now().UnixNano(), AllowUnaudited: true, Dir: v.voicesDir, Exclude: []string{"cs_CZ-jirka-medium"}, FemaleShare: 1.0 / 9})
 	v.chain, v.norm = radio.Default(), normalise.New()
 	return nil
 }
