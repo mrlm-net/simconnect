@@ -54,6 +54,8 @@ const (
 type controlled struct {
 	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
 	tug    *traffic.SimObjectTug
+	// fuel: a departure's fuel truck (#582), for its way on the map.
+	fuel *traffic.SimObjectFuelTruck
 	ID     int    `json:"id"`
 	Kind   string `json:"kind"` // departure | arrival
 	Tail   string `json:"tail"`
@@ -151,6 +153,7 @@ type ControlView struct {
 	// Tug: its pushback tug while it drives (from its depot or home), with
 	// the way still ahead.
 	Tug            *tugView         `json:"tug,omitempty"`
+	Fuel           *tugView         `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
@@ -200,6 +203,7 @@ type controlCenter struct {
 	runwaysNow    map[string]string
 	standCheckAt  time.Time
 	models        map[string]bool                    // aircraft titles the simulator offers
+	fuelTitles    fuelTitles                         // fuel vehicles the simulator offers (#582)
 	stands        map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
@@ -409,8 +413,12 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 		return true
 	}
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
-		if e := msg.AsSimObjectAndLiveryEnumeration(); uint32(e.DwRequestID) == reqModels {
+		switch e := msg.AsSimObjectAndLiveryEnumeration(); uint32(e.DwRequestID) {
+		case reqModels:
 			cc.addModels(msg)
+			return true
+		case reqGroundVehicles:
+			cc.addFuelTitles(msg)
 			return true
 		}
 	}
@@ -450,6 +458,9 @@ type SpawnRequest struct {
 	Gates          bool     `json:"gates"`          // hold at every clearance
 	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
 	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
+	// Fuel: a departure is refuelled on its stand when it waits long
+	// enough (a schedule's), by a fuel truck or hydrant dispenser (#582).
+	Fuel bool `json:"fuel"`
 	TugTitle       string   `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
 	TugYaw         *float64 `json:"tugYaw"`         // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
 	TugAhead       *float64 `json:"tugAhead"`       // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
@@ -639,9 +650,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if t, ok := tug.(*traffic.SimObjectTug); ok {
 			it.tug = t // its way shown on the map
 		}
+		var fuel traffic.FuelService
+		if f := cc.fuelTruck(r, g, reqBase, prof); f != nil {
+			fuel, it.fuel = f, f
+		}
 		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken }}); err != nil {
@@ -1149,6 +1164,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 				if it.tug != nil {
 					if p, route, ok := it.tug.Track(); ok {
 						v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
+					}
+				}
+				if it.fuel != nil {
+					if p, route, ok := it.fuel.Track(); ok {
+						v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
 					}
 				}
 				// A departure in the air: its SID still to fly, like a STAR.

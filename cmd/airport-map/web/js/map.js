@@ -530,25 +530,32 @@ function toggleWorld() {
 
 themeListeners.push(() => { setTiles(); drawNetwork(); });
 
-// drawTugs shows each departure's pushback tug while it drives from its
-// depot to the nose or home again: a small marker and its way ahead, dashed.
-const tugMarks = new Map(); // control ID -> {marker, line}
+// drawTugs shows each departure's pushback tug (T) and fuel truck (F,
+// #582) while they drive from their depot to the aircraft or home again,
+// and the fuel truck while it refuels: a small marker and its way ahead,
+// dashed.
+const tugMarks = new Map(); // "id:tug" or "id:fuel" -> {marker, line}
+const VEHICLES = [['tug', 'T', 'tug'], ['fuel', 'F', 'fuel truck']];
 function drawTugs() {
   const keep = new Set();
   for (const v of ctlViews) {
-    const t = v.tug;
-    if (!t || v.done) continue;
-    keep.add(v.id);
-    let m = tugMarks.get(v.id);
-    if (!m) {
-      const icon = L.divIcon({ className: 'm-tug', html: '<span>T</span>', iconSize: [16, 16], iconAnchor: [8, 8] });
-      m = { marker: L.marker([t.position.lat, t.position.lon], { icon, interactive: false, keyboard: false }).addTo(layers.tugs),
-        line: L.polyline([], { className: 'm-tug-route', interactive: false }).addTo(layers.tugs) };
-      m.marker.bindTooltip(`${esc(v.tail)} tug`, { direction: 'top', className: 'map-lbl' });
-      tugMarks.set(v.id, m);
+    if (v.done) continue;
+    for (const [key, letter, name] of VEHICLES) {
+      const t = v[key];
+      if (!t) continue;
+      const k = `${v.id}:${key}`;
+      keep.add(k);
+      let m = tugMarks.get(k);
+      if (!m) {
+        const icon = L.divIcon({ className: `m-tug m-tug--${key}`, html: `<span>${letter}</span>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+        m = { marker: L.marker([t.position.lat, t.position.lon], { icon, interactive: false, keyboard: false }).addTo(layers.tugs),
+          line: L.polyline([], { className: 'm-tug-route', interactive: false }).addTo(layers.tugs) };
+        m.marker.bindTooltip(`${esc(v.tail)} ${name}`, { direction: 'top', className: 'map-lbl' });
+        tugMarks.set(k, m);
+      }
+      m.marker.setLatLng([t.position.lat, t.position.lon]);
+      m.line.setLatLngs((t.route || []).map((p) => [p.lat, p.lon]));
     }
-    m.marker.setLatLng([t.position.lat, t.position.lon]);
-    m.line.setLatLngs((t.route || []).map((p) => [p.lat, p.lon]));
   }
-  for (const [id, m] of tugMarks) if (!keep.has(id)) { m.marker.remove(); m.line.remove(); tugMarks.delete(id); }
+  for (const [k, m] of tugMarks) if (!keep.has(k)) { m.marker.remove(); m.line.remove(); tugMarks.delete(k); }
 }
