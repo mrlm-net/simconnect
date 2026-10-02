@@ -53,9 +53,9 @@ const (
 
 type controlled struct {
 	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
-	tug    *traffic.SimObjectTug
+	tug *traffic.SimObjectTug
 	// fuel: a departure's fuel truck (#582), for its way on the map.
-	fuel *traffic.SimObjectFuelTruck
+	fuel   *traffic.SimObjectFuelTruck
 	ID     int    `json:"id"`
 	Kind   string `json:"kind"` // departure | arrival
 	Tail   string `json:"tail"`
@@ -228,6 +228,8 @@ type controlCenter struct {
 	extra func(engine.Message) bool
 	// pending runs clearances and actions at their traffic time (#462).
 	pending *pending
+	// agenda: the controllers' calls, most urgent first (agenda.go).
+	agenda *agenda
 	// saidCallsign writes a call sign as said (#462); set once the schedule
 	// exists.
 	saidCallsign func(cs string) string
@@ -276,6 +278,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 		game:   &game{},
 	}
 	cc.pending = newPending()
+	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		// Call signs as said, in the text and so in the voice (#462).
@@ -454,16 +457,16 @@ type SpawnRequest struct {
 	Tail   string `json:"tail"`
 	// Squawk: a departure's SSR code, four octal digits; "": its own
 	// (squawkFor).
-	Squawk         string   `json:"squawk"`
-	Gates          bool     `json:"gates"`          // hold at every clearance
-	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
-	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
+	Squawk         string `json:"squawk"`
+	Gates          bool   `json:"gates"`          // hold at every clearance
+	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection
+	Tug            bool   `json:"tug"`            // departure: a pushback tug (GSX model)
 	// Fuel: a departure is refuelled on its stand when it waits long
 	// enough (a schedule's), by a fuel truck or hydrant dispenser (#582).
-	Fuel bool `json:"fuel"`
-	TugTitle       string   `json:"tugTitle"`       // ground vehicle title; "" = traffic.DefaultTugTitle
-	TugYaw         *float64 `json:"tugYaw"`         // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
-	TugAhead       *float64 `json:"tugAhead"`       // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
+	Fuel     bool     `json:"fuel"`
+	TugTitle string   `json:"tugTitle"` // ground vehicle title; "" = traffic.DefaultTugTitle
+	TugYaw   *float64 `json:"tugYaw"`   // tug heading against the aircraft, degrees (default traffic.TugYawDeg)
+	TugAhead *float64 `json:"tugAhead"` // tug reference point ahead of the nose gear, meters (default traffic.TugAheadMeters)
 	// Turnaround (arrival): once parked the same aircraft departs again
 	// from its stand after DwellSec (±20 %, default 90 s; the "depart"
 	// action skips the wait), from the same runway (#296).
@@ -1358,8 +1361,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			it.mu.Unlock()
 			tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])
 			if !on && req != "" {
-				p := it.cc.pending
-				p.later(it.clearAt(traffic.PosGround).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() { it.answer(req) })
+				it.askGround(req)
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -2753,3 +2755,4 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	// aircraft report themselves (SetOwn in update).
 	cc.world.Observe(cc.clock.Now(), obs)
 }
+

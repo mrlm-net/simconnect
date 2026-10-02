@@ -59,6 +59,21 @@ recent := radio.Recent("LKPR", 50) // oldest first
 
 On the airport map every ATC line of the traffic log comes from its radio: the ground and tower clearances, the tower's automatic ones, the sequencer's delays and holds, the Sequence section's actions and the conflict resolutions. The wording is unchanged. `GET /api/radio?icao=LKPR&n=50` serves the recent transmissions.
 
+### Whom the controller calls first
+
+On the airport map each controller decides whom to call next (`cmd/airport-map/agenda.go`). A clearance it has decided waits on its frequency's agenda until the controller's answer time (1–5 s). It goes out once the frequency has been quiet for `atcAnswerDelay` (1 s), one call at a time. The most urgent ready call goes first, by class:
+
+1. a go-around;
+2. a landing clearance;
+3. a take-off, line-up or runway crossing;
+4. an approach clearance;
+5. taxi for an arrival that has vacated (it is in the way at its exit);
+6. taxi for a departure;
+7. pushback and start-up;
+8. a departure clearance.
+
+Within a class the call that has waited longest goes first. A call no longer wanted when its turn comes is dropped: a crew that no longer asks, or a runway clearance the runway controller no longer grants (not granted for `grantFresh`, 2.5 s). A dropped runway clearance is given again once it is granted again. Hold position, cancel take-off and the other safety calls are said at once, as before. Before, each answer went out in the order it was decided, so a landing clearance waited behind line-ups and pushbacks.
+
 ## Frequencies and handoffs
 
 An airport's frequencies come with its layout. `Layout.Frequencies` holds each one's kind (`FreqATIS`, `FreqClearance`, `FreqGround`, `FreqTower`, `FreqApproach`, `FreqDeparture`, `FreqCenter`, `FreqCTAF`), its MHz and the name the scenery gives it ("PRAHA TOWER"). `FrequencyFor(kind)` finds a position's frequency and falls back as ATC does where a position isn't staffed on its own:

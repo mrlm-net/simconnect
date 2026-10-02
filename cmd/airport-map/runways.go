@@ -41,6 +41,10 @@ type towers struct {
 	// (#509), by call sign: that aircraft, and the departure's runway.
 	behind map[string]behindClearance
 	next   map[string]string // the next arrival to land, by "ICAO runway"
+	// grantAt: when the runway controller last granted each clearance
+	// ("tail action"): one waiting on the agenda is dropped once it is
+	// no longer granted.
+	grantAt map[string]time.Time
 }
 
 // behindClearance is a conditional line-up or crossing (cross) waiting
@@ -420,6 +424,10 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		said = it.rushed(said)
 		t.mu.Lock()
+		if t.grantAt == nil {
+			t.grantAt = map[string]time.Time{}
+		}
+		t.grantAt[tail+" "+action] = t.cc.clock.Now()
 		done := t.given[tail+" "+action]
 		_, behind := t.behind[tail]
 		t.mu.Unlock()
@@ -432,25 +440,56 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		if behind && (action == "takeoff" || action == "lineup") {
 			return
 		}
-		// Said here: the state change it causes is not logged again.
-		spoken := []string{strings.Fields(action)[0]}
-		if action == "takeoff" || action == "lineupbehind" {
-			spoken = append(spoken, "lineup") // line up and take off in one; or said with its condition
-		}
-		it.mu.Lock()
-		for _, k := range spoken {
-			it.spoken[k] = true
-		}
-		it.mu.Unlock()
 		t.mu.Lock()
 		t.given[tail+" "+action] = true
 		if action == "takeoff" || action == "lineupbehind" {
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
-		// Said first; the crew acts once it has read it back (#462).
-		it.say(said)
-		it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error { return f(it) })
+		// On the tower's agenda, most urgent first: a go-around, then a
+		// landing, then the rest. Still granted when its turn comes, or
+		// dropped (to be given again when granted again).
+		prio := prioRunway
+		switch action {
+		case "goaround":
+			prio = prioUrgent
+		case "land":
+			prio = prioLanding
+		}
+		key := tail + " " + action
+		still := func() bool {
+			if action == "goaround" {
+				return true
+			}
+			t.mu.Lock()
+			at := t.grantAt[key]
+			t.mu.Unlock()
+			return !it.gates.Load() && t.cc.clock.Now().Sub(at) <= grantFresh
+		}
+		dropped := func() {
+			t.mu.Lock()
+			delete(t.given, key)
+			if action == "takeoff" || action == "lineupbehind" {
+				delete(t.given, tail+" lineup")
+			}
+			t.mu.Unlock()
+			tlog.printf("%-6s tower: %s no longer granted when its turn came", tail, action)
+		}
+		it.callIf(traffic.PosTower, prio, still, dropped, func() {
+			// Said here: the state change it causes is not logged again.
+			spoken := []string{strings.Fields(action)[0]}
+			if action == "takeoff" || action == "lineupbehind" {
+				spoken = append(spoken, "lineup") // line up and take off in one; or said with its condition
+			}
+			it.mu.Lock()
+			for _, k := range spoken {
+				it.spoken[k] = true
+			}
+			it.mu.Unlock()
+			// Said first; the crew acts once it has read it back (#462).
+			it.say(said)
+			it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error { return f(it) })
+		})
 	}
 	takeoff := map[string]bool{}
 	for _, cs := range c.Takeoff {
@@ -585,6 +624,10 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 	}
 }
+
+// grantFresh: a clearance the runway controller granted no longer ago than
+// this (it decides every second) is still granted.
+const grantFresh = 2500 * time.Millisecond
 
 // waitKind is a wait reason without its numbers: the same wait while its
 // time or distance counts down.
