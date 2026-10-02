@@ -89,6 +89,7 @@
   --route-air:#4f8a86;
   --final:#4f8a86;
   --ac-ours:#c98a2e;
+  --ac-vfr:#7d5fb8;
   --ac-sel:#2b3440;
   --ac-arr:#4f8a86;
   --ac-ovf:#a08a5e;
@@ -154,6 +155,7 @@
     --route-air:#86b8b3;
     --final:#86b8b3;
     --ac-ours:#d9a95a;
+    --ac-vfr:#b8a3e0;
     --ac-sel:#eef1f4;
     --ac-arr:#86b8b3;
     --ac-ovf:#c2ae86;
@@ -218,6 +220,7 @@
   --route-air:#86b8b3;
   --final:#86b8b3;
   --ac-ours:#d9a95a;
+  --ac-vfr:#b8a3e0;
   --ac-sel:#eef1f4;
   --ac-arr:#86b8b3;
   --ac-ovf:#c2ae86;
@@ -670,7 +673,7 @@ body.panel-hidden .panel { display: none; }
 .legend__list li { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 .lg-ac { width: 18px; height: 18px; display: inline-grid; place-items: center; }
 .lg-ac svg { width: 16px; height: 16px; }
-.lg-ac--ours { color: var(--ac-ours); } .lg-ac--arr { color: var(--ac-arr); } .lg-ac--ovf { color: var(--ac-ovf); }
+.lg-ac--ours { color: var(--ac-ours); } .lg-ac--vfr { color: var(--ac-vfr); } .lg-ac--arr { color: var(--ac-arr); } .lg-ac--ovf { color: var(--ac-ovf); }
 .lg-ac--dep { color: var(--ac-dep); } .lg-ac--other { color: var(--ac-other); } .lg-ac--user { color: var(--ac-user); }
 .lg-ac--sel { color: var(--ac-ours); border-radius: 50%; box-shadow: 0 0 0 2px var(--ac-sel); }
 .lg-line { width: 22px; height: 0; border-top: 3px solid; flex: none; }
@@ -794,6 +797,7 @@ body.panel-hidden .panel { display: none; }
 .ac { position: absolute; inset: 0; color: var(--ac-ours); transform: rotate(var(--hdg, 0deg)); transition: transform 600ms linear; filter: drop-shadow(0 0 1px var(--ac-halo)) drop-shadow(0 0 1px var(--ac-halo)) drop-shadow(0 1px 2px rgba(0,0,0,.35)); cursor: pointer; }
 .ac svg { width: 100%; height: 100%; display: block; }
 .ac--arr { color: var(--ac-arr); }
+.ac--vfr { color: var(--ac-vfr); }
 .ac--ovf { color: var(--ac-ovf); }
 .ac--dep { color: var(--ac-dep); }
 .ac--other { color: var(--ac-other); width: 24px; height: 24px; inset: 3px; }
@@ -807,7 +811,7 @@ body.panel-hidden .panel { display: none; }
 }
 .dtag b { font-weight: 600; font-size: 11px; }
 .dtag i { font-style: normal; color: var(--text-3); }
-.dtag--arr { border-left-color: var(--ac-arr); } .dtag--ovf { border-left-color: var(--ac-ovf); } .dtag--dep { border-left-color: var(--ac-dep); }
+.dtag--vfr { border-left-color: var(--ac-vfr); } .dtag--arr { border-left-color: var(--ac-arr); } .dtag--ovf { border-left-color: var(--ac-ovf); } .dtag--dep { border-left-color: var(--ac-dep); }
 .dtag--other { border-left-color: var(--ac-other); } .dtag--user { border-left-color: var(--ac-user); }
 .dtag--other, .dtag--user, .dtag--ovf { display: none; }
 .acm:hover .dtag, .acm.is-sel .dtag { display: block; }
