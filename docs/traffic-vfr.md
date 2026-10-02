@@ -1,0 +1,46 @@
+---
+title: "VFR Traffic"
+description: "v0.19 VFR traffic: light aircraft, circuits round a runway (configurable per airport), reporting points, and how VFR traffic joins and leaves."
+order: 16
+section: "traffic"
+---
+
+# VFR Traffic
+
+v0.19 brings general aviation alongside the airline traffic (epic #431): light aircraft flying circuits and VFR arrivals and departures through reporting points, with the tower's VFR calls. This page grows with the version; what is here is in place.
+
+## Light aircraft (#565)
+
+`ProfileFor` knows five light singles, matched in the model title as the simulator's AI models name them (`Asobo PassiveAircraft C152`, `C172`, `DA40 NG`, `SR22`), and the PA-28:
+
+| Type | Span | Length | Approach | Climb | Flaps (take-off, approach, landing) |
+|---|---|---|---|---|---|
+| C152 | 10.16 m | 7.34 m | 56 kt | 715 fpm | 10°, 20°, 30° |
+| C172 | 11.00 m | 8.28 m | 61 kt | 721 fpm | 10°, 20°, 30° |
+| P28A (PA-28) | 9.14 m | 7.10 m | 61 kt | 660 fpm | 0°, 25°, 40° |
+| DA40 | 11.9 m | 8.1 m | 64 kt | 1120 fpm | T/O, T/O, LDG |
+| SR22 | 11.68 m | 7.92 m | 78 kt | 1270 fpm | 50 %, 50 %, 100 % |
+
+Span, length and rate of climb are the published figures (Wikipedia's specifications: C152, C172R, PA-28-140, DA40 XL, SR22-G5). The approach speed is 1.3 times the published flaps-down stall speed. Wheelbase, CG height, take-off distance and the rotation and climb speeds are estimates; the simulator's SimVars refine the airframe in flight (`Refine`). They are light for wake (ICAO L, RECAT-EU F) and single-engined (`EngineCount` 1). An unknown aircraft below 15 m span is taken for a light single (`GenericProfile`).
+
+## Circuits (#567)
+
+`NewCircuit(layout, "24", CircuitConfig{}, profile)` is a runway end's circuit for one aircraft: upwind, crosswind, downwind (its point abeam the threshold), base, final and the runway, each with its altitude and speed. `Waypoints(leg)` gives them from a leg on as MSFS AI waypoints, the corners rounded to the aircraft's turns.
+
+Every airport, and every runway end, can have its own circuit (`CircuitConfig`). Anything left at zero takes a default:
+
+| Setting | Default |
+|---|---|
+| `Side` | left-hand (`CircuitRight` for a right-hand circuit) |
+| `HeightFt` | 1000 ft above the airfield (`CircuitHeightFt`) |
+| `DownwindNM` | two standard-rate turn radii at the circuit speed, at least 0.8 NM (`CircuitMinDownwindNM`): about 1 NM for a C172 |
+| `UpwindNM` | 0.5 NM past the departure end, then crosswind (`CircuitUpwindNM`) |
+| `BaseNM` | 1 NM before the threshold, then final (`CircuitBaseNM`) |
+
+The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an estimate: about 75 kt for a C172). The upwind climbs to two thirds of the circuit height before the crosswind turn. The base starts down, and the final follows a 3° path (`CircuitGlideFtPerNM`).
+
+`JoinDownwind()` is the 45° entry: a point a mile out from midfield on the downwind, outside the circuit and towards its upwind end. Flown to midfield, it meets the downwind at 45°; a left-hand circuit is joined with a right turn. `From(LegDownwind)` goes on from there.
+
+## Reporting points (#566)
+
+VFR arrivals and departures use the airport's reporting points. A live probe at LKPR found none of the simulator's waypoints typed VFR (WAYPOINT `TYPE` 9) within 30 km. Seven named waypoints have `VP`-prefixed idents, possibly coded visual points, but without names. The reporting points are therefore set per airport, with those waypoints offered as candidates.

@@ -143,7 +143,8 @@ func KnownTypes() []string {
 
 // GenericProfile is a profile for an unknown type of the given wing span
 // (meters) and category: the figures of a representative type of its size
-// — an ATR 72 for turboprops and pistons, an E190 for jets below 32 m, the
+// — a C172 for pistons and anything below 15 m, an ATR 72 for
+// turboprops, an E190 for jets below 32 m, the
 // A320 family below 40 m, a 787 below 62 m, a 777 below 70 m, an A380
 // above — with Type "" and the airframe scaled to the span. No span gives
 // DefaultAircraftProfile.
@@ -152,7 +153,10 @@ func GenericProfile(spanM float64, category AircraftCategory) AircraftProfile {
 	switch {
 	case spanM <= 0:
 		return DefaultAircraftProfile()
-	case category == CategoryTurboprop || category == CategoryPiston:
+	case category == CategoryPiston || spanM < 15:
+		p = ProfileFor("C172") // a light single
+		p.Category = CategoryPiston
+	case category == CategoryTurboprop:
 		p = ProfileFor("AT76")
 		p.Category = category
 	case spanM < 32:

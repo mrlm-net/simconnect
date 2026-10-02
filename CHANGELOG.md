@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- VFR traffic (v0.19, #431), first part. Light aircraft: C152, C172, PA-28 (P28A), DA40 and SR22 profiles from the published figures. They match the simulator's AI models (`Asobo PassiveAircraft …`) and are single-engined with light wake (#565). Circuits: `NewCircuit` builds a runway end's circuit (upwind, crosswind, downwind, base, final) with altitudes and speeds and the 45° join to the downwind (`JoinDownwind`). The side, height and leg distances are configurable per airport and runway end (`CircuitConfig`); defaults are left-hand at 1000 ft, with the downwind spacing taken from the aircraft's turns (#567). See [VFR Traffic](docs/traffic-vfr.md).
+
 ---
 
 ## [0.18.7] - 2026-10-02

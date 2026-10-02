@@ -87,7 +87,7 @@ func TestProfileDefaults(t *testing.T) {
 		if p.Approach.TouchdownKts >= p.Approach.ApproachKts || p.Approach.FlarePitchDeg >= p.Takeoff.TailstrikePitch-TailstrikeMarginDeg+2 {
 			t.Errorf("%s: approach %+v", typ, p.Approach)
 		}
-		if p.Flaps.TakeoffPct <= 0 || p.Flaps.ApproachPct < p.Flaps.TakeoffPct-30 || p.Flaps.LandingPct < p.Flaps.ApproachPct {
+		if p.Flaps.TakeoffPct <= 0 && p.Category != CategoryPiston || p.Flaps.ApproachPct < p.Flaps.TakeoffPct-30 || p.Flaps.LandingPct < p.Flaps.ApproachPct { // a light single may take off clean (PA-28)
 			t.Errorf("%s: flaps %+v", typ, p.Flaps)
 		}
 		// The take-off the mover flies is about the published distance.
