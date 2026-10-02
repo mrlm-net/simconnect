@@ -17,6 +17,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Departures: a rolling take-off aligns at 12 kt, not 6 (`LineUpRollingKts`). From the holding point to the take-off roll takes 55 s instead of 70 in simulation, within the tower's 60 s (#574).
 - Tugs drive in from their depot smoothly: the aircraft waiting on its stand had its frames slowed, and the tug moved in jumps (#574).
 - Sequencing: near the end of a STAR, with no leg long enough to stretch, a delay is lost by vectors from where the aircraft is, out and back to its next point, not in a hold. Live, LOT775 held at PR532 for a one-minute delay. Holds are for what 30 NM of stretching cannot absorb.
+- Tugs are sent `TugLeadTime` (3 min) before the crew is due to ask for the push, or at once when the push is cleared. They no longer wait at the nose ten minutes early: live, EZY775 at C29.
+- VFR circuit arrivals stay with the tower from their first call: no approach clearance and no "established" report. "1 mile south", not "1 miles".
+- The vacated report names the runway and the exit: "runway 24 vacated at D".
 - Airport map: our aircraft are labelled with our call sign. A turnaround flies on in the same aircraft object, whose ATC ID the simulator keeps, so TVS1124 showed as TVS1482 on the runway.
 
 ### Added

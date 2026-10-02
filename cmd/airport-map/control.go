@@ -101,6 +101,8 @@ type controlled struct {
 	// reported downwind.
 	circuit      *traffic.Circuit
 	downwindSaid bool
+	// exitTwy: the taxiway an arrival vacated by, for its report.
+	exitTwy string
 	readySaid           bool // a departure's "ready for departure"
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
@@ -721,7 +723,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if p != nil {
 				at := airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
 				nm := calc.HaversineNM(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)
-				pos = fmt.Sprintf("%.0f miles %s", math.Max(1, math.Round(nm)), traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
+				miles := math.Max(1, math.Round(nm))
+				unit := "miles"
+				if miles == 1 {
+					unit = "mile"
+				}
+				pos = fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
 				level = fmt.Sprintf("%.0f feet", math.Round(p.Spawn.Altitude/100)*100)
 			}
 			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
@@ -789,6 +796,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	if ev.arr != nil && (ev.arr.State == traffic.ArrivalVacating || ev.arr.State == traffic.ArrivalRollout) && ev.arr.Taxiway != "" {
+		it.exitTwy = ev.arr.Taxiway
+	}
 	// A change worth showing now (not each move): the open maps fetch it
 	// at once (push.go). Positions come with the regular poll.
 	defer func() {
@@ -2388,7 +2398,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			pos = traffic.PosTower
 		}
 	case ev.arr != nil:
-		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
+		// A VFR circuit arrival is the tower's from its first call (Doc 4444
+		// 12.3.4.13): no approach clearance, no "established".
+		onFinal := ev.arr.State == traffic.ArrivalApproaching && !ev.arr.OnGround && it.objectID != 0 && (len(it.arr.ProcedureRoute()) == 0 || it.circuit != nil)
 		pos = traffic.ArrivalPosition(ev.arr.State, onFinal)
 	default:
 		return
@@ -2512,7 +2524,11 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 		}
 		return "final runway " + rwy // Doc 4444 7.3: position
 	case it.arr != nil && pos == traffic.PosGround:
-		return "runway vacated" // CAP 413 4.68
+		// CAP 413 4.68 "runway vacated", with the runway and the exit.
+		if it.exitTwy != "" {
+			return "runway " + rwy + " vacated at " + it.exitTwy
+		}
+		return "runway " + rwy + " vacated"
 	}
 	return ""
 }
