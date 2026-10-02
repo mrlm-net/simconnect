@@ -307,7 +307,11 @@ function drawTraffic(list) {
     m.setLatLng([t.lat, t.lon]);
     const v = kind === 'controlled' ? ctlViews.find((x) => x.tail === t.tail && !x.done) : null;
     updateMarker(m, cat, t.heading, tagFor(t),!!selTail && t.tail === selTail, !!v && waits(v));
-    m._dr = { lat: t.lat, lon: t.lon, hdg: t.heading, kts: t.groundKts, at: performance.now() };
+    // Not moved since the last poll (the sim's AI frozen, or the data
+    // stale): no dead reckoning, or it glides ahead and snaps back each
+    // second (live, 2026-10-02: "moving slightly forward and backward").
+    const still = m._dr && m._dr.lat === t.lat && m._dr.lon === t.lon;
+    m._dr = { lat: t.lat, lon: t.lon, hdg: t.heading, kts: still ? 0 : t.groundKts, at: performance.now() };
     if (popupFor === t.objectId && map._popup && map.hasLayer(map._popup)) map._popup.setLatLng([t.lat, t.lon]).setContent(trafficDetail(t));
   }
   for (const [id, m] of acMarkers) if (!seen.has(id)) { m.remove(); acMarkers.delete(id); }
@@ -477,7 +481,7 @@ function drawFinal(seqs) {
       const lead = i > 0 ? r.sequence[i - 1] : null;
       const gap = lead ? e.distanceToGoNM - lead.distanceToGoNM : 0;
       const short = lead && gap < (e.spacingNM || 0) - 0.3;
-      L.circleMarker(at(e.distanceToGoNM), { radius: 6, className: short ? 'm-final-ac--short' : 'm-final-ac--ok', interactive: false })
+      L.circleMarker(at(e.distanceToGoNM), { radius: 6, className: short ? 'm-final-ac--short' : 'm-final-ac--ok', interactive: false })
         .addTo(layers.final);
     });
   }
