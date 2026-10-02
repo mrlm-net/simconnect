@@ -379,6 +379,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return s
 	case IntentFollow:
+		if p[ParamTraffic] == "" {
+			return fmt.Sprintf("%s, number %s", cs, p[ParamNumber]) // number 1: no one to follow
+		}
 		return fmt.Sprintf("%s, number %s, follow %s", cs, p[ParamNumber], p[ParamTraffic]) // 12.3.4.14 b
 	case IntentCircuitInstr, IntentCircuitDelay:
 		return cs + ", " + p[ParamInstr] // 12.3.4.15 a–d, 12.3.4.17 a–c

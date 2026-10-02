@@ -16,6 +16,7 @@ func TestVFRPhrases(t *testing.T) {
 			"OKABC, join left downwind runway 24, wind 240 degrees 8 knots, QNH 1013", "Join left downwind runway 24, QNH 1013, OKABC"},
 		{StraightIn("OKABC", "24", "", "1013"), "OKABC, make straight-in approach, runway 24, QNH 1013", "Straight-in approach runway 24, QNH 1013, OKABC"},
 		{FollowTraffic("OKABC", 2, "the Airbus A320 on final"), "OKABC, number 2, follow the Airbus A320 on final", "Number 2, OKABC"},
+		{FollowTraffic("OKABC", 1, ""), "OKABC, number 1", "Number 1, OKABC"},
 		{CircuitInstruction("OKABC", InstrExtendDownwind), "OKABC, extend downwind", "Extend downwind, OKABC"},
 		{CircuitDelay("OKABC", DelayOrbitRight), "OKABC, orbit right", "Orbit right, OKABC"},
 		{ClearedTouchAndGo("OKABC", "24"), "OKABC, cleared touch and go", "Cleared touch and go, OKABC"},

@@ -160,6 +160,12 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	if c.aircraft().Category == CategoryTurboprop {
 		minKts = MinProcedureSpeedTurbopropKts
 	}
+	if c.req.Circuit != nil {
+		// In the circuit (#569): at circuit speed throughout; the delay all
+		// in a longer downwind, as a tower extends it.
+		speed = CircuitKts(*c.aircraft())
+		minKts = speed
+	}
 	a := PlanAbsorption(delay, starNM, speed, minKts)
 	if a.SpeedKts >= speed {
 		a.SpeedKts = 0 // flying it already: nothing to say about the speed
