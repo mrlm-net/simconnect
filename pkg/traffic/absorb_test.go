@@ -262,3 +262,43 @@ func TestAbsorbDelayExtendsDownwind(t *testing.T) {
 		t.Errorf("beyond the limit: %+v, want the hold", a)
 	}
 }
+
+// Near the end of its STAR, no leg long enough to stretch: a minute's
+// delay is lost by vectors from where it is, not in a hold (live, LOT775
+// held at PR532 for a minute).
+func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA8",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	wps := ctl.proc.Waypoints
+	// Halfway along the last leg of 2 NM or more before the final: the
+	// legs after it are all shorter than MinStretchLegNM.
+	a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
+	at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, 90, 210, false))
+	routeBefore := pathNM(ctl.ProcedureRoute())
+	a, err := ctl.AbsorbDelay(90 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Left > 0 || a.ExtraNM <= 0 {
+		t.Fatalf("absorption %+v: want vectors, nothing left for a hold", a)
+	}
+	if grown := pathNM(ctl.ProcedureRoute()) - routeBefore; grown < a.ExtraNM-1 {
+		t.Errorf("route grew %.1f NM, stretch %.1f", grown, a.ExtraNM)
+	}
+}

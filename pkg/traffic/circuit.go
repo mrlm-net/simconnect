@@ -211,3 +211,28 @@ func firstNonZero(v, def float64) float64 {
 	}
 	return def
 }
+
+// PlanCircuitArrival is a VFR arrival through the circuit c (#568): it
+// appears at the 45° entry (JoinDownwind) at circuit height and speed;
+// MSFS AI flies to midfield, the downwind abeam the threshold and the base
+// turn, then onto the final, where the injected approach takes over (the
+// final's point, c's BaseNM out).
+func PlanCircuitArrival(c Circuit) *ArrivalProcedure {
+	entry, mid := c.JoinDownwind()
+	dw, _ := c.Point(LegDownwind)
+	base, _ := c.Point(LegBase)
+	fin, _ := c.Point(LegFinal)
+	rwy, _ := c.Point(LegRunway)
+	wp := func(p CircuitPoint) types.SIMCONNECT_DATA_WAYPOINT { return procedureWaypoint(p.Position, p.AltFt, p.Kts) }
+	return &ArrivalProcedure{
+		Spawn: types.SIMCONNECT_DATA_INITPOSITION{
+			Latitude: entry.Position.Lat, Longitude: entry.Position.Lon, Altitude: entry.AltFt,
+			Heading:  localBearing(entry.Position, mid.Position),
+			Airspeed: types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(entry.Kts),
+		},
+		Waypoints:     []types.SIMCONNECT_DATA_WAYPOINT{wp(mid), wp(dw), wp(base), wp(fin)},
+		Join:          fin.Position,
+		JoinMeters:    localDist(fin.Position, rwy.Position),
+		MinJoinMeters: 0.5 * 1852,
+	}
+}

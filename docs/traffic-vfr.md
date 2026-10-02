@@ -44,3 +44,36 @@ The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an est
 ## Reporting points (#566)
 
 VFR arrivals and departures use the airport's reporting points. A live probe at LKPR found none of the simulator's waypoints typed VFR (WAYPOINT `TYPE` 9) within 30 km. Seven named waypoints have `VP`-prefixed idents, possibly coded visual points, but without names. The reporting points are therefore set per airport, with those waypoints offered as candidates.
+
+## Circuit arrivals (#568)
+
+`ArrivalRequest.Circuit` (with `InjectApproach`, instead of a STAR in `Procedure`) is a VFR arrival through the circuit. `PlanCircuitArrival` plans it:
+
+1. It appears at the 45° entry at circuit height and speed.
+2. MSFS AI flies it to midfield on the downwind, abeam the threshold, to the base turn and onto the final.
+3. The injected approach takes over at the final's point (`BaseNM` out) and lands it.
+
+An airliner's injected approach takes over at least 2 NM out. For a circuit the plan lets it take over from 0.5 NM out (`ArrivalProcedure.MinJoinMeters`).
+
+On the airport map: New flight → Arrival → Options → *VFR: join the circuit*. The circuit is the runway end's as set for the airport: `GET /api/circuits?icao=LKPR` shows it, and `POST /api/circuits?icao=LKPR&runway=24` with a `CircuitConfig` sets it (`{}` resets). The settings are kept in `circuits.json` in the user cache folder.
+
+The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#11-vfr-in-the-aerodrome-traffic-circuit)):
+
+- The pilot calls the tower "for landing", with the type, the position from the field, the altitude and the information.
+- The tower answers "join left downwind runway 24" with the wind and QNH.
+- The pilot reports "downwind" abeam the threshold.
+
+Not yet:
+
+- A go-around from the circuit still flies the IFR go-around circuit.
+- Touch-and-goes and circuit departures are still to come.
+- The "number 2, follow …" sequencing with IFR arrivals is #569.
+
+## Jetbridges (#572)
+
+Jetbridges for our traffic are blocked by the simulator.
+
+- `RequestJetwayData` lists an airport's jetways: 27 at LKPR. Each is a SimObject with a status and the aircraft attached, and its parking index is the layout's stand index.
+- `TOGGLE_JETWAY` sent to one of our aircraft parked at a jetway stand did nothing.
+- Our traffic is created as NonATC aircraft, the only kind whose stand we can choose. A devsupport thread (March 2026) reports that only ParkedATC and EnrouteATC aircraft use jetways.
+- `pkg/types.SIMCONNECT_JETWAY_DATA` does not match the packed 160-byte wire entry, so a list must be decoded field by field.

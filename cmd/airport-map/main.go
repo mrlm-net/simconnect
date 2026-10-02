@@ -875,6 +875,7 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerPush(mux)
 	registerCamera(mux, st)
 	registerTowers(mux, st)
+	registerCircuits(mux, func() *controlCenter { st.mu.Lock(); defer st.mu.Unlock(); return st.control })
 	speaker.atis = st.atisOn
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.
@@ -1082,10 +1083,13 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		cc := st.control
 		st.mu.Unlock()
 		if cc != nil {
-			ours := cc.ownIDs()
+			ours, tails := cc.ownIDs(), cc.ownTails()
 			t = append([]Traffic(nil), t...)
 			for i := range t {
 				t[i].Ours = ours[t[i].ObjectID]
+				if tail := tails[t[i].ObjectID]; tail != "" {
+					t[i].Tail = tail // our call sign, not the object's first ATC ID
+				}
 			}
 		}
 		writeJSON(w, t)

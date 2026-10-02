@@ -247,7 +247,7 @@ func (t *towers) tick(now time.Time) {
 		}
 		t.mu.Unlock()
 		c := rc.Decide(now, list)
-		t.lineUpBehind(k.icao, k.rwy, list, ours)
+		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.apply(k.icao, k.rwy, c, ours)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival
@@ -313,9 +313,9 @@ func (t *towers) arrivalSaid(cs string) string {
 // lineUpBehind lines up the departures cleared behind a landing aircraft
 // once it has passed: no longer on the final — for an intersection
 // departure, off the runway too.
-func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours map[string]*controlled) {
+func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, list []traffic.RunwayUser, ours map[string]*controlled) {
 	t.mu.Lock()
-	var due []string
+	var due, noRoom []string
 	crossing := map[string]bool{}
 	for dep, b := range t.behind {
 		if b.icao != icao || b.rwy != rwy {
@@ -340,6 +340,33 @@ func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours 
 				passed = false // an intersection: once it is off the runway
 			}
 		}
+		if passed && !b.cross {
+			// Still time before the arrival after it? Else not now: it holds
+			// and goes behind the next one (live, TVS1124 lined up and LOT775
+			// went around).
+			var first traffic.RunwayUser
+			then := math.Inf(1)
+			for _, u := range list {
+				switch {
+				case u.Callsign == b.arrival:
+					first = u
+				case u.Phase == traffic.RunwayFinal:
+					then = math.Min(then, u.DistanceNM/math.Max(u.GroundKts, 100)*3600)
+				}
+			}
+			if first.Callsign == "" {
+				first.Wake = traffic.WakeFor("A320")
+			}
+			it.mu.Lock()
+			model := it.view.Model
+			it.mu.Unlock()
+			if !math.IsInf(then, 1) && !rc.BehindRoom(first, time.Duration(then*float64(time.Second)), traffic.RunwayUser{Wake: traffic.WakeFor(model)}) {
+				delete(t.behind, dep)
+				delete(t.given, dep+" lineup")
+				noRoom = append(noRoom, dep)
+				continue
+			}
+		}
 		if passed {
 			delete(t.behind, dep)
 			due = append(due, dep)
@@ -347,6 +374,10 @@ func (t *towers) lineUpBehind(icao, rwy string, list []traffic.RunwayUser, ours 
 		}
 	}
 	t.mu.Unlock()
+	for _, dep := range noRoom {
+		ours[dep].say(traffic.HoldPosition(dep))
+		tlog.printf("%-6s holds: no time to line up and go before the next arrival", dep)
+	}
 	for _, dep := range due {
 		it := ours[dep]
 		if crossing[dep] {

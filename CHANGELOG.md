@@ -9,8 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Tower: an arrival's time to land is measured along the route it still flies, not in a straight line. An arrival passing near the field on its STAR no longer holds every departure: live, RYR1485 "landed in 1m38s" 11 minutes early (#574).
+- Tower: a conditional line-up or crossing ("behind the landing …") is given only behind an arrival established on the final. It also needs time for the departure before the arrival after that one: the first off the runway, the departure's roll, the margin. The room is checked again when the line-up happens; without it the crew is told to hold position. Live, a departure lined up behind a landing aircraft, and the next arrival had to go around.
+- Tower: a vacating arrival frees the runway once it is clear of it (its reference point 40 m beyond the edge), not when it stops past the holding point, 35 s later live (#574).
+- Departures: a rolling take-off aligns at 12 kt, not 6 (`LineUpRollingKts`). From the holding point to the take-off roll takes 55 s instead of 70 in simulation, within the tower's 60 s (#574).
+- Tugs drive in from their depot smoothly: the aircraft waiting on its stand had its frames slowed, and the tug moved in jumps (#574).
+- Sequencing: near the end of a STAR, with no leg long enough to stretch, a delay is lost by vectors from where the aircraft is, out and back to its next point, not in a hold. Live, LOT775 held at PR532 for a one-minute delay. Holds are for what 30 NM of stretching cannot absorb.
+- Airport map: our aircraft are labelled with our call sign. A turnaround flies on in the same aircraft object, whose ATC ID the simulator keeps, so TVS1124 showed as TVS1482 on the runway.
+
 ### Added
 
+- VFR circuit arrivals (#568): `ArrivalRequest.Circuit` and `PlanCircuitArrival`. The aircraft appears at the 45° entry to the downwind, MSFS AI flies the circuit, and the injected approach takes over on the short final (`ArrivalProcedure.MinJoinMeters`). On the map: New flight → *VFR: join the circuit*; per-airport circuit settings at `GET/POST /api/circuits` (`circuits.json`).
+- VFR radio (#569): the Doc 4444 12.3.4.13–17 phrases, with readbacks: `VFRForLanding`, `JoinCircuit`, `StraightIn`, `CircuitReport`, `FollowTraffic`, `CircuitInstruction`, `CircuitDelay`, `ClearedTouchAndGo`, `MakeFullStop`. A circuit arrival calls the tower for landing, is told to join downwind and reports downwind. GA types are named on the radio ("Cessna 172").
 - VFR traffic (v0.19, #431), first part. Light aircraft: C152, C172, PA-28 (P28A), DA40 and SR22 profiles from the published figures. They match the simulator's AI models (`Asobo PassiveAircraft …`) and are single-engined with light wake (#565). Circuits: `NewCircuit` builds a runway end's circuit (upwind, crosswind, downwind, base, final) with altitudes and speeds and the 45° join to the downwind (`JoinDownwind`). The side, height and leg distances are configurable per airport and runway end (`CircuitConfig`); defaults are left-hand at 1000 ft, with the downwind spacing taken from the aircraft's turns (#567). See [VFR Traffic](docs/traffic-vfr.md).
 
 ---
