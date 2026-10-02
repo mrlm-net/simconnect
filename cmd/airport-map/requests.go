@@ -98,15 +98,16 @@ func (it *controlled) onRequest(req string) {
 	}
 	switch req {
 	case "pushback":
-		// The first call to ground: pushback first, the start-up with the push
-		// under way (docs/traffic-phraseology.md, Doc 4444 12.3.4.3-4).
+		// The first call to ground: mostly pushback and start-up in one;
+		// some crews ask for the pushback first and the start-up with the
+		// push under way (docs/traffic-phraseology.md, Doc 4444 12.3.4.3-4).
 		info := ""
 		if !it.atisSaid && it.cc.atisLetter != nil {
 			info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 		}
 		station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
-		// Now and then the crew asks for both in one call; otherwise the
-		// start-up once the tug has gone (TaxiEvent.Request "start_up").
+		// Asked separately, the start-up comes once the tug has gone
+		// (TaxiEvent.Request "start_up").
 		it.pushAndStart = float64(it.cc.pending.jitter(time.Second)) < pushAndStartShare*float64(time.Second)
 		if it.pushAndStart {
 			it.say(traffic.RequestPushbackAndStartUp(station, it.Tail, it.view.Stand, info))
@@ -179,8 +180,8 @@ func (it *controlled) answer(req string) {
 }
 
 // pushAndStartShare is the share of crews that ask for the pushback and
-// the start-up in one call.
-const pushAndStartShare = 0.3
+// the start-up in one call; the others ask for each on its own.
+const pushAndStartShare = 0.85
 
 // clearance is the delivery exchange of a departure, in radio order: the
 // crew's request (said already), the clearance once it has been heard, the
