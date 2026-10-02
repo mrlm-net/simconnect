@@ -53,7 +53,7 @@ const (
 
 type controlled struct {
 	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
-	tug *traffic.SimObjectTug
+	tug    *traffic.SimObjectTug
 	ID     int    `json:"id"`
 	Kind   string `json:"kind"` // departure | arrival
 	Tail   string `json:"tail"`
@@ -102,8 +102,8 @@ type controlled struct {
 	circuit      *traffic.Circuit
 	downwindSaid bool
 	// exitTwy: the taxiway an arrival vacated by, for its report.
-	exitTwy string
-	readySaid           bool // a departure's "ready for departure"
+	exitTwy   string
+	readySaid bool // a departure's "ready for departure"
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
@@ -139,15 +139,15 @@ type tugView struct {
 type ControlView struct {
 	ID int `json:"id"`
 	// ATC and Frequency: the position working it and its frequency (#416).
-	ATC            string           `json:"atc,omitempty"`
-	Frequency      string           `json:"frequency,omitempty"`
-	Kind           string           `json:"kind"`
-	ICAO           string           `json:"icao"` // its airport
-	Tail           string           `json:"tail"`
-	Squawk         string           `json:"squawk,omitempty"` // a departure's SSR code
+	ATC       string `json:"atc,omitempty"`
+	Frequency string `json:"frequency,omitempty"`
+	Kind      string `json:"kind"`
+	ICAO      string `json:"icao"` // its airport
+	Tail      string `json:"tail"`
+	Squawk    string `json:"squawk,omitempty"` // a departure's SSR code
 	// Tug: its pushback tug while it drives (from its depot or home), with
 	// the way still ahead.
-	Tug *tugView `json:"tug,omitempty"`
+	Tug            *tugView         `json:"tug,omitempty"`
 	Model          string           `json:"model"`
 	Stand          string           `json:"stand"`
 	Runway         string           `json:"runway"`
@@ -195,9 +195,9 @@ type controlCenter struct {
 	// departure and arrival runway then (#456).
 	runwayCheckAt time.Time
 	runwaysNow    map[string]string
-	standCheckAt time.Time
-	models       map[string]bool                    // aircraft titles the simulator offers
-	stands       map[string]*traffic.StandAllocator // by ICAO
+	standCheckAt  time.Time
+	models        map[string]bool                    // aircraft titles the simulator offers
+	stands        map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
 	// ids hands out the controllers' ID blocks and takes them back (#370);
@@ -234,7 +234,7 @@ type controlCenter struct {
 	behindSaid   func(it *controlled) string
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
-	rejoin      func(icao, tail string)
+	rejoin func(icao, tail string)
 	// forgetTower drops what the tower gave a call sign (spawned again).
 	forgetTower func(tail string)
 	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
@@ -285,7 +285,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
 			hub.publish("radio") // the open maps fetch it now (push.go)
-			speaker.hear(t) // the voice, when on (#419)
+			speaker.hear(t)      // the voice, when on (#419)
 			if !speaker.state().On {
 				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
 			}
@@ -433,17 +433,17 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 
 // SpawnRequest asks for a controlled departure or arrival.
 type SpawnRequest struct {
-	Kind           string   `json:"kind"` // departure | arrival
-	ICAO           string   `json:"icao"`
-	Stand          int      `json:"stand"` // parking index
-	Runway         string   `json:"runway"`
-	Entry          string   `json:"entry"` // departure: runway entry taxiway
-	Exit           *int     `json:"exit"`  // arrival: runway exit, an index into /api/exits; nil = the controller's choice
-	Model          string   `json:"model"`
-	Tail           string   `json:"tail"`
+	Kind   string `json:"kind"` // departure | arrival
+	ICAO   string `json:"icao"`
+	Stand  int    `json:"stand"` // parking index
+	Runway string `json:"runway"`
+	Entry  string `json:"entry"` // departure: runway entry taxiway
+	Exit   *int   `json:"exit"`  // arrival: runway exit, an index into /api/exits; nil = the controller's choice
+	Model  string `json:"model"`
+	Tail   string `json:"tail"`
 	// Squawk: a departure's SSR code, four octal digits; "": its own
 	// (squawkFor).
-	Squawk string `json:"squawk"`
+	Squawk         string   `json:"squawk"`
 	Gates          bool     `json:"gates"`          // hold at every clearance
 	InjectApproach bool     `json:"injectApproach"` // arrival: fly the approach by injection
 	Tug            bool     `json:"tug"`            // departure: a pushback tug (GSX model)
@@ -480,6 +480,9 @@ type SpawnRequest struct {
 
 	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
 	pushAt time.Time // departure: stay on the stand until then (its STD)
+	// offBlock: an arrival's turnaround departure time, for its stand
+	// (StandRequirements.OffBlock).
+	offBlock time.Time
 }
 
 // Turnaround dwell when none is given, and its spread.
@@ -538,9 +541,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt}
 		if r.Kind == "arrival" {
-			req.Runway = r.Runway
+			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
 		s, err := alloc.Assign(req)
 		if err != nil {

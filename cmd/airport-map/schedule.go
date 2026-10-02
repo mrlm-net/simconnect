@@ -155,6 +155,13 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	if f.Departure() {
 		req.pushAt = f.STD
+	} else if f.TurnTo != "" {
+		// Its stand away from neighbours due off when its turnaround is.
+		for _, d := range s.mgr.Flights() {
+			if d.Callsign == f.TurnTo && d.Departure() {
+				req.offBlock = d.STD
+			}
+		}
 	}
 	// A turnaround: the arrival's aircraft on its stand.
 	if f.TurnFrom != "" {
@@ -166,6 +173,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		// The stand passes to the departure: its aircraft, detected there, is
 		// then its own and not in the way (#470).
 		arr.stands.Transfer(arr.Tail, f.Callsign)
+		arr.stands.SetOffBlock(f.Callsign, f.STD)
 		cc.forget(arr)
 	} else if model != "" {
 		req.Model = model
@@ -184,7 +192,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	assigned := false
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
-		s, err := cc.allocator(g).Assign(traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2})
+		s, err := cc.allocator(g).Assign(traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD})
 		if err != nil {
 			return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err) // no stand free now: tried again
 		}

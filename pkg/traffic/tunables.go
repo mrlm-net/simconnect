@@ -325,6 +325,14 @@ const (
 	// StandSpread of the best plus StandSpreadMeters are picked at random.
 	StandSpread       = 0.4
 	StandSpreadMeters = 300.0
+	// A stand within StandPushNeighbourMeters of one whose aircraft is due
+	// off the stand within StandPushConflictWindow of this one ranks as if
+	// its taxi-in were up to StandPushConflictMeters longer (less as the
+	// times are further apart): two neighbours pushing together block each
+	// other's push (StandRequirements.OffBlock).
+	StandPushNeighbourMeters = 90.0
+	StandPushConflictWindow  = 8 * time.Minute
+	StandPushConflictMeters  = 600.0
 )
 
 // Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters
