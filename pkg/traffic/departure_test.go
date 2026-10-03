@@ -776,7 +776,9 @@ func TestTaxiControllerTakeoffClearedWhileTaxiing(t *testing.T) {
 // than the same departure without (#510).
 func TestTaxiControllerExpedite(t *testing.T) {
 	airborne := func(rush bool) time.Duration {
-		ctl, _, run, now := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
+		// The same crew (seed) both times: random reaction times differed by
+		// more than expediting saves, and the test failed now and then.
+		ctl, _, run, now := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1}, TaxiWithSeed(7))
 		go func() {
 			for range ctl.Events() {
 			}
