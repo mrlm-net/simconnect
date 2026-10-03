@@ -9,6 +9,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.18.9] - 2026-10-03
+
+VFR traffic through the circuit (touch-and-goes, stop-and-goes, joins, reporting points, airspace classes), business aviation at large airports, airport detection (`airport.Locate`), and a day of live fixes: the gear after lift-off, take-off pitch, smooth stops and give-way on the ground, tug connection, arrival corners.
+
+### Added
+
+- `airport.Locate` and `airport.Tracker`: the airport a position is at, on the ground by the nearest surface (runways, taxiways, parking; the reference point of an airport without geometry) and in the air by approach and departure corridors, with aliases and fields inside larger ones handled; the tracker follows a flight (origin while climbing out, destination on approach). `tools/locate-eval` measures them on facility dumps: 99.99–100% on the ground, 99.1–99.7% in the air from one position, 100% for whole departures and approaches to a destination (#616).
+- Business aviation at large airports (#619): `BusinessFlights` (business jets and turboprops, IFR between airports, on the GA apron), `LargeAirport` (a 3000 m runway and 10 gates), 20 business and mid-size types with published figures (Citation CJ3/CJ4/XLS/Latitude/Longitude/Sovereign/X, Phenom 100/300, Praetor 500/600, PC-24, SF50, PC-12, TBM 930, King Air 200/350, DA42, DA62, Baron). At a large airport VFR flights are half as many, mid-size and cross-country, with no training circuits.
+- VFR flights flown by the airport's GA operators: a flying school, an aero club and private owners, with their fleets and training circuits (`GAOperatorsAt`, #565).
+- VFR circuit traffic: touch-and-goes and stop-and-goes (#569, #567), circuit delays by a longer downwind then an orbit, go-arounds in their own circuit, another circuit, the standard overhead join; arrivals joined by the tower on the downwind, base or straight-in and never across the runway; reporting points (`ReportingPoint`, `DepartureVia`, #566).
+- Airspace classes: separation where the class requires it, traffic information elsewhere (`SeparationRequired`, `TrafficInformation`, #570).
+- Tower: a take-off with traffic close behind on final is "cleared for take-off, no delay, traffic on N mile final" (`RunwayClearances.NoDelay`).
+- `types.DecodeJetwayData` and SIMCONNECT_JETWAY_DATA as the SDK documents it.
+- Airport map: IFR and VFR scheduled traffic switched on and off separately (Schedule tab, `ifr`/`vfr` on POST /api/schedule); VFR traffic in its own colour; the VFR circuits and reporting points edited on the Airport tab and drawn in Layers.
+
+### Fixed
+
+- Departures: the gear stayed up from the first airborne frame — the simulator snaps it up when an aircraft is first placed in the air; it is held down (handle and gear positions, `Injector.HoldGearDown`) until the crew raises it between 300 and 700 ft.
+- Take-off: lift-off at 6–7°, the climb pitch, then settling to about 10° once the gear is up (`TakeoffProfile.SettlePitch`); the take-off roll keeps the aircraft's rest height and pitch (no "wheelie" as the roll began).
+- Aircraft taken over rest at the height and pitch they rested at (their gear compressed), not the static values that left them a foot high with the nose wheel off the ground.
+- Ground: braking onto a holding point plans for the brakes coming on and the acceleration winding down; an aircraft released just short of it no longer stopped from 6–7 kt in one frame. An aircraft giving way slows down early and gently. Traffic ahead going the same way is followed, not given way to.
+- Tug: no 3 m hop as it connects at the nose.
+- Arrivals: corners keep their full radius through points in line with the legs (a 425 m arc where the turn needs 2.5 km).
+- Sequencing: a VFR arrival told to follow traffic stays behind it; turning in from a short circuit it had been put in front of the jet it followed and cleared to land (`ApproachSequencer.Behind`).
+- Tower: a take-off clearance is cancelled only for someone on the runway, never for an arrival closing in (a departure stopped on the runway sent the arrival around).
+- Radio: registrations are said in the phonetic alphabet ("Oscar Kilo Victor Quebec Yankee"); the pushback facing names the nearest of eight points ("south-east").
+- Airport map: the page no longer scrolls when the Airport tab opens (the map looked short); the vertical speed is derived from the altitude change (a landing aircraft showed climbing); the context panel no longer crashes for arrivals in the approach sequence.
+
 ## [0.18.8] - 2026-10-02
 
 Fuel trucks, service vehicles that give way to aircraft and to each other, controllers who call the most urgent first, and VFR flights that depart, arrive on a schedule and fit into the landing sequence.
