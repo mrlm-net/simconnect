@@ -2026,3 +2026,39 @@ func (c *TaxiController) ClimbRoute(pos airport.LatLon) []airport.LatLon {
 	}
 	return out
 }
+
+// ClimbPlan is the rest of a departure handed to MSFS AI as a route with
+// its altitudes and speeds, from pos: for a conflict resolution
+// (ResolvedRoute, then Reroute; #639). nil before the hand-over.
+func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.climb) == 0 || c.state != TaxiComplete {
+		return nil
+	}
+	var out []RoutePoint
+	for _, w := range c.climb[nextWaypoint(pos, c.climb):] {
+		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: w.Altitude, Kts: w.KtsSpeed})
+	}
+	return out
+}
+
+// Reroute sends a departure handed to MSFS AI on route (from where it is
+// now, as ResolvedRoute gives it), flown as waypoints like an en route
+// flight; ClimbPlan and ClimbRoute follow the new route (#639).
+func (c *TaxiController) Reroute(route []RoutePoint) error {
+	_, wps, err := EnrouteStart(route)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state != TaxiComplete || c.objectID == 0 {
+		return errors.New("traffic: reroute: not handed over to MSFS AI")
+	}
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {
+		return err
+	}
+	c.climb = wps
+	return nil
+}
