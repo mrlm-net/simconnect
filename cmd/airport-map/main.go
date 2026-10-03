@@ -435,7 +435,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// queue commands to it.
 	cc := newControlCenter(client)
 	// COM1 tuned from the map, in this connection's goroutine.
-	speaker.setTune(func(mhz float64) error {
+	radioVoice.setTune(func(mhz float64) error {
 		return cc.do(func() error {
 			return client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, evCom1Set, uint32(math.Round(mhz*1e6)),
 				types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
@@ -729,7 +729,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart), Updated: time.Now()}
 				st.mu.Unlock()
 				if a.Com1 > 0 {
-					speaker.com1(airport.FormatMHz(a.Com1)) // the voice follows it when synced
+					radioVoice.com1(airport.FormatMHz(a.Com1)) // the voice follows it when synced
 				}
 
 			case types.SIMCONNECT_RECV_ID_EVENT:
@@ -883,13 +883,13 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 		w.Header().Set("Content-Type", "application/geo+json")
 		w.Write(b)
 	})
-	registerVoice(mux, speaker)
+	registerVoice(mux, radioVoice)
 	registerPush(mux)
 	registerCamera(mux, st)
 	registerTowers(mux, st)
 	registerCircuits(mux, func() *controlCenter { st.mu.Lock(); defer st.mu.Unlock(); return st.control })
 	registerVFRPoints(mux)
-	speaker.atis = st.atisOn
+	radioVoice.setATIS(st.atisOn)
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.
 	mux.HandleFunc("POST /api/voice/atis", func(w http.ResponseWriter, r *http.Request) {
@@ -906,8 +906,8 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 			http.Error(w, "no ATIS yet", http.StatusNotFound)
 			return
 		}
-		if !speaker.sayOnce(traffic.Transmission{Airport: icao, Position: traffic.PosATIS, Intent: traffic.IntentATIS, Text: a.Text()}) {
-			http.Error(w, speaker.state().Status, http.StatusServiceUnavailable)
+		if !radioVoice.sayOnce(traffic.Transmission{Airport: icao, Position: traffic.PosATIS, Intent: traffic.IntentATIS, Text: a.Text()}) {
+			http.Error(w, radioVoice.state().Status, http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -1191,7 +1191,7 @@ func main() {
 	}
 	setTokens(*controlToken, *viewToken)
 	startPprof()
-	speaker.piperPath, speaker.voicesDir = *piperPath, *voicesDir
+	radioVoice.piperPath, radioVoice.voicesDir = *piperPath, *voicesDir
 	// The default is the repo's graph, from the repo root or from this
 	// example's folder (its own module: go run . here).
 	if *airways == "pkg/nav/testdata/LKPR-airways.json" {

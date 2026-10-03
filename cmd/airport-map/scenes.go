@@ -486,8 +486,8 @@ func (r *sceneRun) listen() {
 			it.mu.Lock()
 			f := it.view.Frequency
 			it.mu.Unlock()
-			if s := speaker.state(); s.On && !s.SyncCom && f != "" && f != s.Frequency {
-				speaker.set(true, f)
+			if s := radioVoice.state(); s.On && !s.SyncCom && f != "" && f != s.Frequency {
+				radioVoice.set(true, f)
 			}
 		}
 		time.Sleep(time.Second)

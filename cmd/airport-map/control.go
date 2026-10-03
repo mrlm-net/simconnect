@@ -322,8 +322,8 @@ func newControlCenter(client engine.Client) *controlCenter {
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
 			hub.publish("radio") // the open maps fetch it now (push.go)
-			speaker.hear(t)      // the voice, when on (#419)
-			if !speaker.state().On {
+			radioVoice.hear(t)      // the voice, when on (#419)
+			if !radioVoice.state().On {
 				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
 			}
 		}})
