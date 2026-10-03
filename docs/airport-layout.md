@@ -289,6 +289,27 @@ lim := airport.LimitsFor(layout, &procs) // LKPR: TA 5000, hand-over 1500 ft, 24
 use := nav.ActiveRunways(layout, weather, nav.RunwayLimitsFrom(lim))
 ```
 
+## Which airport an aircraft is at
+
+`Locate(LocateQuery, layouts)` names the airport a position is at among the airports around it (load those within about 15 km). It reports the airport, what of it the position is on (`OnRunway`, `OnTaxiway`, `AtParking`, `OnApproach`, `OnDeparture`, `NearAirport`), that runway, runway end, stand or taxiway, and the distance.
+
+- **On the ground** the airport whose surface is nearest wins: its runway rectangles, taxiway segments with their width, and parking spots with their radius. An airport without any geometry is its reference point. Most of the simulator's idents are like that: 603 of 693 around the test airports, mostly heliports and private strips. Where two airports share a surface, the larger wins, then a four-letter ICAO code, and the other is in `Alternatives`. Two cases do this: aliases (196 four-letter airports have another ident at the very same spot, such as EBBR/EBMB or PAAW/KEB) and a strip inside a larger field.
+- **In the air** it picks the runway end whose approach corridor (10 NM, 150 m either side widening at 10°) or departure corridor (5 NM, widening at 15°) the position is in. The height fits a 3° glide path or a 7° climb. `Track` and `VerticalFpm` tell an approach from a departure on the same line. `RunwayMeters` (the runway the aircraft needs) leaves out the corridors of shorter runways. Off every corridor it is near the nearest surface, within `LocateNearMeters` (5 km). Beyond that it is at no airport.
+
+`Tracker` follows one aircraft through whole flights. It locates on the ground and remembers where the aircraft took off, then keeps to that airport's departure while it climbs out. On an approach it keeps to its destination (`SetDestination`) or to the approach it was already flying. Where two fields' corridors overlap, one position alone cannot tell them apart; the flight can.
+
+`tools/locate-eval` measures both on facility dumps. The sample: the ten test airports and 60 crowded spots from the simulator's world list, each with every airport within 15 km. It samples every stand and taxi node, runway centrelines and edges, the same 25 m off, approaches and departures, and whole flights through a `Tracker`. The plain nearest-reference-point method is shown next to it:
+
+| | Locate / Tracker | Nearest reference point |
+|---|---|---|
+| Stands, taxi nodes, runways (79,000) | 99.99–100% | 91–92% |
+| Approaches, with track and vertical speed | 99.7% | 33% |
+| Departures, with track and vertical speed | 99.1% | 42% |
+| Flights: departures, approaches to the destination | 100% | 31–42% |
+| Flights: approaches with no destination | 99.65% | 31% |
+
+The remaining misses are distinct strips on one line or crossing each other's corridors, such as El Vergel and Los Gavanes, 1.8 km apart on the same runway line.
+
 ## Seeing it on a map
 
 [`cmd/airport-map`](../cmd/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.
