@@ -107,6 +107,10 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 	var flights []traffic.Flight
 	if !noIFR {
 		flights = traffic.Schedule(s.cfg, opts, from, to)
+		// Business jets and turboprops at the large airports, IFR between
+		// airports (#619).
+		flights = append(flights, traffic.BusinessFlights(s.cfg, traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
+			Seed: opts.Seed ^ 0xb1}, from, to)...)
 	}
 	// Light aircraft through the circuit, by day in visual conditions (#568).
 	// Their lead is the manager's default VFRLead: Source runs under the
@@ -241,8 +245,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		m, _, _ := strings.Cut(req.Model, liverySep)
 		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD}
 		s, err := -1, traffic.ErrNoStand
-		if vfr {
-			// A light aircraft on a GA ramp where one is free (#568).
+		if vfr || f.Operator == "business" {
+			// A light aircraft or a business jet on a GA ramp where one is
+			// free (#568, #619).
 			ga := sr
 			ga.Types = gaRamps
 			s, err = cc.allocator(g).Assign(ga)

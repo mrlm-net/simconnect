@@ -130,6 +130,15 @@ Each flight is flown by one of the airport's GA operators (`GAOperatorsAt`, the 
 
 A fleet aircraft keeps its registration and type and flies only every third hour (by its place in the fleet), so its flights never overlap, whichever hours the schedule is asked for; when none of the fleet is free, a private owner flies. The circuits are in `Flight.TouchAndGos` and `Flight.StopAndGo`, dropped when they would run into the dusk. The map's traffic detail shows the operator and the circuits.
 
+#### Large airports: business aviation (#619)
+
+At a large airport (`LargeAirport`: a runway of 3000 m or more and 10 gates or more; LKPR is, LKTB is not) general aviation flies between airports, and patterns are left to the smaller fields:
+
+- **Business flights** (`BusinessFlights`, most of it): business jets and turboprops, IFR, to and from other airports of the schedule within the type's range and runway, with a flight plan, SID and STAR, parked on a GA ramp where one is free. `BusinessPerHour` (1.5) arrivals an hour at the peak and as many departures, scaled by the density and following the day's waves. The types and their weights are `BusinessTypes`: Phenom 300, Citation CJ4, XLS, Latitude, PC-12, CJ3, Sovereign, Longitude, Praetor 600, PC-24, King Air 350, Praetor 500, Phenom 100, TBM 930, King Air 200, Citation X. The call sign is a registration of the country the aircraft is based in (the airport's, or the other end's for two flights in five), `Operator` "business". They come with the IFR switch on the map's Schedule tab.
+- **VFR flights** are half as many (`VFRLargeShare`), mid-size aircraft (`VFRLargeTypes`: DA62, DA42, Baron, SR22, TBM 930, PC-12) flying in from or out to another field, privately, with no training circuits or touch-and-goes.
+
+The business types' profiles (span, length, take-off distance, wheelbase where published) come from Textron, Pilatus, Cirrus, Diamond, Daher and Wikipedia's specifications; no Vref is published, so the approach speeds are 1.3 times the published stall speed or estimates.
+
 Not yet:
 
 - Touch-and-goes from a straight-in or base join fly the circuit afterwards on its own side.

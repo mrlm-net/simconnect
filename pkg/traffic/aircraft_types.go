@@ -114,6 +114,54 @@ var knownTypes = []typeSpec{
 		vapp: 113, pitch: 0.5, flarePitch: 3, flareFt: 20, tdFpm: -100, takeoff: toTprop, brake: 2.2, taxi: 15, flaps: flapsATR},
 	{match: []string{"DH8D", "Q400", "DASH 8", "DHC-8", "DH8"}, Type: "DH8D", Category: CategoryTurboprop, span: 28.4, length: 32.8, wheelbase: 13.9, cg: 3.0, tod: 1400,
 		vapp: 125, pitch: 0, flarePitch: 3, flareFt: 20, tdFpm: -100, takeoff: toTprop, brake: 2.2, taxi: 15, flaps: flapsQ400},
+	// Business aviation and mid-size GA (#619). Span, length, wheelbase
+	// (Textron and Daher only) and take-off distance as published: Textron
+	// (cessna/beechcraft.txtav.com), Pilatus, Cirrus, Diamond, Daher (TBM
+	// 930, archived) and Wikipedia's specifications (Embraer). No Vref is
+	// published: vapp is 1.3 times the published stall speed where there is
+	// one, else an estimate; an unpublished wheelbase is an estimate (0.42
+	// of the length for jets, as Textron's are), CG heights are estimates.
+	// The more specific titles first ("CITATION XLS" before "CITATION X").
+	{match: []string{"C25B", "CITATION CJ3"}, Type: "C25B", Category: CategoryJet, span: 16.26, length: 15.6, wheelbase: 6.10, cg: 1.5, tod: 969,
+		vapp: 115, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(110, 140, 3100), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C25C", "CITATION CJ4"}, Type: "C25C", Category: CategoryJet, span: 15.77, length: 16.3, wheelbase: 6.45, cg: 1.5, tod: 1039,
+		vapp: 115, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(112, 145, 2700), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C56X", "CITATION XLS", "CITATION EXCEL"}, Type: "C56X", Category: CategoryJet, span: 17.17, length: 16.0, wheelbase: 6.68, cg: 1.6, tod: 1085,
+		vapp: 112, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(110, 140, 2500), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C68A", "CITATION LATITUDE"}, Type: "C68A", Category: CategoryJet, span: 22.05, length: 19.0, wheelbase: 8.23, cg: 1.8, tod: 1091,
+		vapp: 110, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -120, takeoff: toBizJet(110, 140, 2800), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C700", "CITATION LONGITUDE"}, Type: "C700", Category: CategoryJet, span: 21.01, length: 22.3, wheelbase: 9.63, cg: 1.9, tod: 1466,
+		vapp: 115, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -120, takeoff: toBizJet(118, 150, 3400), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C680", "CITATION SOVEREIGN"}, Type: "C680", Category: CategoryJet, span: 22.05, length: 19.4, wheelbase: 8.49, cg: 1.8, tod: 1076,
+		vapp: 108, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -120, takeoff: toBizJet(108, 140, 2900), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"C750", "CITATION X"}, Type: "C750", Category: CategoryJet, span: 21.09, length: 22.43, wheelbase: 9.11, cg: 1.9, tod: 1600,
+		vapp: 128, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -130, takeoff: toBizJet(125, 160, 2900), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"E50P", "PHENOM 100"}, Type: "E50P", Category: CategoryJet, span: 12.3, length: 12.82, wheelbase: 5.4, cg: 1.3, tod: 975,
+		vapp: 100, pitch: 3, flarePitch: 5, flareFt: 15, tdFpm: -120, takeoff: toBizJet(100, 125, 2000), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"E55P", "PHENOM 300"}, Type: "E55P", Category: CategoryJet, span: 15.91, length: 15.64, wheelbase: 6.6, cg: 1.5, tod: 978,
+		vapp: 112, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(110, 140, 2800), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"E545", "PRAETOR 500", "LEGACY 450"}, Type: "E545", Category: CategoryJet, span: 21.5, length: 19.69, wheelbase: 8.3, cg: 1.8, tod: 1287,
+		vapp: 110, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -120, takeoff: toBizJet(112, 145, 3000), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"E550", "PRAETOR 600", "LEGACY 500"}, Type: "E550", Category: CategoryJet, span: 21.5, length: 20.74, wheelbase: 8.7, cg: 1.8, tod: 1352,
+		vapp: 112, pitch: 3, flarePitch: 5, flareFt: 25, tdFpm: -120, takeoff: toBizJet(115, 145, 3000), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"PC24", "PC-24"}, Type: "PC24", Category: CategoryJet, span: 17.0, length: 16.8, wheelbase: 7.1, cg: 1.6, tod: 940,
+		vapp: 108, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(105, 135, 2800), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	{match: []string{"SF50", "VISION"}, Type: "SF50", Category: CategoryJet, span: 11.79, length: 9.42, wheelbase: 3.4, cg: 1.2, tod: 858,
+		vapp: 87, pitch: 3, flarePitch: 5, flareFt: 12, tdFpm: -110, takeoff: toBizJet(85, 110, 1300), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	{match: []string{"PC12", "PC-12"}, Type: "PC12", Category: CategoryTurboprop, span: 16.28, length: 14.4, wheelbase: 5.0, cg: 1.6, tod: 758,
+		vapp: 87, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(85, 120, 1600), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	{match: []string{"TBM9", "TBM930", "TBM 930", "TBM"}, Type: "TBM9", Category: CategoryTurboprop, span: 12.83, length: 10.74, wheelbase: 2.914, cg: 1.3, tod: 726,
+		vapp: 85, pitch: 1, flarePitch: 4, flareFt: 12, tdFpm: -100, takeoff: toLightTprop(85, 120, 1500), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	{match: []string{"B350", "KING AIR 350", "KING AIR 360"}, Type: "B350", Category: CategoryTurboprop, span: 17.65, length: 14.2, wheelbase: 4.95, cg: 1.6, tod: 1006,
+		vapp: 105, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(100, 125, 2000), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	{match: []string{"BE20", "KING AIR 200", "KING AIR 250", "KING AIR 260", "KING AIR"}, Type: "BE20", Category: CategoryTurboprop, span: 17.65, length: 13.4, wheelbase: 4.55, cg: 1.6, tod: 643,
+		vapp: 104, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(85, 115, 1900), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	{match: []string{"DA62", "DA 62"}, Type: "DA62", Category: CategoryPiston, span: 14.55, length: 9.19, wheelbase: 2.3, cg: 1.1, tod: 883,
+		vapp: 88, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(80, 100, 1028), brake: 2.0, taxi: 10, flaps: flapsBiz},
+	{match: []string{"DA42", "DA 42", "TWIN STAR"}, Type: "DA42", Category: CategoryPiston, span: 13.55, length: 8.56, wheelbase: 2.1, cg: 1.0, tod: 649,
+		vapp: 81, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(70, 90, 1280), brake: 2.0, taxi: 10, flaps: flapsBiz},
+	{match: []string{"BE58", "BARON 58", "BARON G58"}, Type: "BE58", Category: CategoryPiston, span: 11.53, length: 9.1, wheelbase: 2.3, cg: 1.1, tod: 715,
+		vapp: 95, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(75, 100, 1700), brake: 2.0, taxi: 10, flaps: flapsBiz},
 	// Light aircraft (VFR traffic, #565). Span and length as published
 	// (Wikipedia specifications: C172R, PA-28-140, DA40 XL, SR22-G5, C152);
 	// vapp is 1.3 times the published flaps-down stall speed. Wheelbase,
@@ -190,3 +238,23 @@ func withSpan(o airport.RouteOptions, p MotionProfile) airport.RouteOptions {
 	o.HalfSpan = p.SpanMeters / 2
 	return o
 }
+
+// toBizJet is a business jet's take-off: rotation and initial climb speeds
+// (kt, estimates) and the initial climb rate (fpm, below the published
+// maximum).
+func toBizJet(rotateKts, climbKts, climbFpm float64) TakeoffProfile {
+	return TakeoffProfile{RollAccel: 2.6, RotateKts: rotateKts, RotateRate: 3, LiftoffPitch: 6.5, ClimbPitch: 15, ClimbKts: climbKts,
+		ClimbFpm: climbFpm, ClimbRampSeconds: 2.5, TailstrikePitch: 13}
+}
+
+// toLightTprop is a single or light twin turboprop's take-off (PC-12, TBM,
+// King Air): rotation and climb speeds (kt, estimates) and climb rate (fpm).
+func toLightTprop(rotateKts, climbKts, climbFpm float64) TakeoffProfile {
+	return TakeoffProfile{RollAccel: 2.2, RotateKts: rotateKts, RotateRate: 3, LiftoffPitch: 6, ClimbPitch: 12, ClimbKts: climbKts,
+		ClimbFpm: climbFpm, ClimbRampSeconds: 2.5, TailstrikePitch: 12}
+}
+
+// flapsBiz is a business type's flap settings, as percent of travel:
+// take-off a third, approach two thirds, landing full (typical; the types'
+// detents differ).
+var flapsBiz = FlapSchedule{TakeoffPct: 33.3, ApproachPct: 66.7, LandingPct: 100}
