@@ -18,16 +18,18 @@ type State struct {
 	Volts                      float64
 	ExtAvailable, ExtOn        bool
 	COM1, COM2                 bool // working
-	Engines                    int
-	Running, Starter           [4]bool // engines 1–4
-	ParkingBrake               bool
-	Beacon, Nav, Strobe        bool
-	Landing, Taxi              bool
-	Doors                      [4]bool // EXIT OPEN 0–3, open
-	XPDRState                  int     // 0 off, 1 standby, 2 test, 3 on, 4 alt
-	Squawk                     string  // e.g. "4521"
-	FlapsPct                   float64
-	GearDown                   bool
+	// COM frequencies in MHz (0 when the profile gives none).
+	COM1Active, COM1Standby, COM2Active, COM2Standby float64
+	Engines                                          int
+	Running, Starter                                 [4]bool // engines 1–4
+	ParkingBrake                                     bool
+	Beacon, Nav, Strobe                              bool
+	Landing, Taxi                                    bool
+	Doors                                            [4]bool // EXIT OPEN 0–3, open
+	XPDRState                                        int     // 0 off, 1 standby, 2 test, 3 on, 4 alt
+	Squawk                                           string  // e.g. "4521"
+	FlapsPct                                         float64
+	GearDown                                         bool
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
 	Values map[string]float64
@@ -152,6 +154,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 		s.Squawk = squawkOf(uint32(s.Values[XPDRCode]))
 	}
 	s.FlapsPct, s.GearDown = s.Values[FlapsPct], on(GearDown)
+	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
 	return s
 }
 

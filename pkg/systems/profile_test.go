@@ -4,6 +4,7 @@
 package systems
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,8 @@ func TestDefaultAndFenix(t *testing.T) {
 	if For(Aircraft{Package: "asobo-c172"}).Name != "default" {
 		t.Error("a stock aircraft matched an override")
 	}
-	if !strings.HasPrefix(fnx.Values[COM1Power].Note, "assumed") {
-		t.Error("the COM power is not marked assumed")
+	if !strings.HasPrefix(fnx.Values[COM1Power].Note, "measured") || fnx.Actions[COM1Swap].Press != "L:S_PED_RMP1_XFER" || For(Aircraft{Package: "x"}).Actions[COM1Swap].Press != "" {
+		t.Errorf("COM power %q, swap %+v", fnx.Values[COM1Power].Note, fnx.Actions[COM1Swap])
 	}
 }
 
@@ -40,12 +41,13 @@ func TestResolve(t *testing.T) {
 	if !s.Beacon || s.Squawk != "2000" || s.Engines != 2 {
 		t.Errorf("standard values %+v", s)
 	}
-	for _, k := range []varUnit{{"L:S_OH_ELEC_BAT2", "number"}, {"L:B_ELEC_BUS_POWER_DC_ESS", "number"}, {"L:I_OH_ELEC_EXT_PWR_L", "number"}, {"L:B_ELEC_BUS_POWER_AC_ESS", "number"}} {
+	for _, k := range []varUnit{{"L:S_OH_ELEC_BAT2", "number"}, {"L:B_ELEC_BUS_POWER_DC_ESS", "number"}, {"L:I_OH_ELEC_EXT_PWR_L", "number"}, {"L:B_ELEC_BUS_POWER_AC_ESS", "number"}, {"L:B_PED_RMP1_POWER", "number"}} {
 		read[k] = 1
 	}
 	read[varUnit{"L:N_ELEC_VOLT_BAT_1", "number"}], read[varUnit{"L:N_ELEC_VOLT_BAT_2", "number"}] = 25.4, 27.8
+	read[varUnit{"L:N_PED_RMP1_STDBY", "number"}] = 121805
 	s = resolveState(p, read)
-	if !s.Battery || !s.Powered || !s.Avionics || !s.ExtOn || !s.ExtAvailable || !s.COM1 || s.Volts != 27.8 {
+	if !s.Battery || !s.Powered || !s.Avionics || !s.ExtOn || !s.ExtAvailable || !s.COM1 || s.Volts != 27.8 || math.Abs(s.COM1Standby-121.805) > 1e-9 {
 		t.Errorf("powered Fenix read %+v", s)
 	}
 }

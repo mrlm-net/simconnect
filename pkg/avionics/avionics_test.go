@@ -5,6 +5,9 @@ package avionics
 
 import (
 	"testing"
+	"unsafe"
+
+	"github.com/mrlm-net/simconnect/pkg/systems"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -58,5 +61,46 @@ func TestRadios(t *testing.T) {
 		if bad == nil {
 			t.Error("bad input accepted")
 		}
+	}
+}
+
+type pressClient struct {
+	fakeClient
+	defs map[uint32]string
+	sets []float64
+}
+
+func (p *pressClient) AddToDataDefinition(def uint32, name, unit string, typ types.SIMCONNECT_DATATYPE, eps float32, id uint32) error {
+	if p.defs == nil {
+		p.defs = map[uint32]string{}
+	}
+	p.defs[def] = name
+	return nil
+}
+
+func (p *pressClient) SetDataOnSimObject(def, obj uint32, flags types.SIMCONNECT_DATA_SET_FLAG, n, size uint32, data unsafe.Pointer) error {
+	p.sets = append(p.sets, *(*float64)(data))
+	return nil
+}
+
+// The Fenix swaps with its RMP transfer key, pressed and released; others
+// keep the key event.
+func TestSwapByPress(t *testing.T) {
+	p := &pressClient{}
+	r := New(p, 0)
+	r.Use(map[string]systems.Action{systems.COM1Swap: {Press: "L:S_PED_RMP1_XFER"}})
+	if err := r.SwapCOM(1); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.sets) != 2 || p.sets[0] != 1 || p.sets[1] != 0 || len(p.sent) != 0 {
+		t.Errorf("pressed %v, events %v", p.sets, p.sent)
+	}
+	for _, name := range p.defs {
+		if name != "L:S_PED_RMP1_XFER" {
+			t.Errorf("defined %s", name)
+		}
+	}
+	if err := r.SwapCOM(2); err != nil || len(p.sent) != 1 {
+		t.Errorf("COM 2 without an action: %v, events %v", err, p.sent)
 	}
 }

@@ -42,6 +42,11 @@ const (
 	XPDRCode     = "xpdrCode"  // the code, BCD16 (Bco16)
 	FlapsPct     = "flapsPct"  // flaps handle, percent
 	GearDown     = "gearDown"  // gear handle down
+	// COM frequencies, MHz: active and standby of COM 1 and 2.
+	COM1Active  = "com1Active"
+	COM1Standby = "com1Standby"
+	COM2Active  = "com2Active"
+	COM2Standby = "com2Standby"
 )
 
 // Engine values: "engineRunning1"…"engineRunning4", "starter1"…"starter4";
@@ -63,6 +68,8 @@ type Value struct {
 	// AtLeast: true at this value or more (bus volts as powered).
 	TrueAt  []float64 `json:"trueAt,omitempty"`
 	AtLeast *float64  `json:"atLeast,omitempty"`
+	// Scale multiplies the result (a frequency in kHz as MHz: 0.001); 0 is 1.
+	Scale float64 `json:"scale,omitempty"`
 	// Note says how it was found ("measured", "assumed: ...").
 	Note string `json:"note,omitempty"`
 }
@@ -81,6 +88,9 @@ type Profile struct {
 	Match    Match            `json:"match"`
 	Measured string           `json:"measured,omitempty"` // how and where it was measured
 	Values   map[string]Value `json:"values"`
+	// Actions are how a model is operated where the standard key events
+	// do not do it (pkg/avionics), by name: "com1Swap", "com2Swap".
+	Actions map[string]Action `json:"actions,omitempty"`
 }
 
 // Aircraft is what a profile is matched against.
@@ -121,6 +131,13 @@ func Merge(base, over Profile) Profile {
 	}
 	for k, v := range over.Values {
 		out.Values[k] = v
+	}
+	out.Actions = map[string]Action{}
+	for k, a := range base.Actions {
+		out.Actions[k] = a
+	}
+	for k, a := range over.Actions {
+		out.Actions[k] = a
 	}
 	if over.Name != "" {
 		out.Name = over.Name
@@ -260,6 +277,9 @@ func (v Value) resolve(read map[varUnit]float64) float64 {
 	default:
 		out = vals[0]
 	}
+	if v.Scale != 0 {
+		out *= v.Scale
+	}
 	if v.AtLeast != nil {
 		if out >= *v.AtLeast {
 			return 1
@@ -268,3 +288,16 @@ func (v Value) resolve(read map[varUnit]float64) float64 {
 	}
 	return out
 }
+
+// Action is one way of operating a control: pressing a button variable
+// (set to 1, then back to 0, as a click does).
+type Action struct {
+	Press string `json:"press"` // e.g. "L:S_PED_RMP1_XFER"
+	Note  string `json:"note,omitempty"`
+}
+
+// The actions a profile may give.
+const (
+	COM1Swap = "com1Swap"
+	COM2Swap = "com2Swap"
+)

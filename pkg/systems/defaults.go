@@ -28,6 +28,10 @@ func Default() Profile {
 		XPDRCode:     one("TRANSPONDER CODE:1", "Bco16"),
 		FlapsPct:     one("FLAPS HANDLE PERCENT", "percent"),
 		GearDown:     one("GEAR HANDLE POSITION", "bool"),
+		COM1Active:   one("COM ACTIVE FREQUENCY:1", "MHz"),
+		COM1Standby:  one("COM STANDBY FREQUENCY:1", "MHz"),
+		COM2Active:   one("COM ACTIVE FREQUENCY:2", "MHz"),
+		COM2Standby:  one("COM STANDBY FREQUENCY:2", "MHz"),
 	}
 	for n := 1; n <= 4; n++ {
 		v[EngineRunning(n)] = one(fmtIndexed("GENERAL ENG COMBUSTION", n), "bool")
