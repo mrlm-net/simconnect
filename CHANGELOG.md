@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.18.11] - 2026-10-03
+
+Add-on detection without SimConnect, and the traffic picture tells which airport an aircraft flies to and how it climbs from its altitude.
+
 ### Added
 
 - `pkg/addons`: what is installed in the sim, without SimConnect. It finds the packages folder from `UserCfg.opt` and scans Community, Official and streamed packages (manifest fields; publisher and ICAO from streamed airport names). It also finds the package of the loaded aircraft, fingerprints the package set and snapshots the running processes. Guide: [Installed Add-ons](docs/addons.md).
