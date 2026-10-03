@@ -324,12 +324,22 @@ func Readback(t Transmission) (Transmission, bool) {
 	case IntentGoAround:
 		s = "Going around"
 	case IntentSequence:
-		s = "Number " + p[ParamNumber]
+		var parts []string
+		if p[ParamNumber] != "" {
+			parts = append(parts, "number "+p[ParamNumber])
+		}
 		if p[ParamSpeed] != "" {
-			s += ", reduce speed to " + p[ParamSpeed] + " knots"
+			parts = append(parts, "reduce speed to "+p[ParamSpeed]+" knots")
+		}
+		if p[ParamOrbit] != "" {
+			parts = append(parts, "orbit "+p[ParamOrbit])
 		}
 		if p[ParamFinalSpeed] != "" {
-			s += ", reduce to final approach speed"
+			parts = append(parts, "reduce to final approach speed")
+		}
+		s = strings.Join(parts, ", ")
+		if s != "" {
+			s = strings.ToUpper(s[:1]) + s[1:]
 		}
 	case IntentDirect:
 		s = "Direct to final"

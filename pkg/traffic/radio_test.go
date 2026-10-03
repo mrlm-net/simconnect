@@ -44,6 +44,7 @@ func TestTransmissionPhrases(t *testing.T) {
 		{Sequenced("CSA1", 2, 8*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9, Left: 3 * time.Minute}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots, expect 8 minutes delay", ParamNumber, "2"}, // CAP 413 6.23, 6.24
 		{Sequenced("CSA1", 2, 5*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots", ParamNumber, "2"}, // five minutes or less: not said
 		{Sequenced("OKYDV", 3, 2*time.Minute, Absorption{ExtraNM: 4, Orbit: "left"}), PosApproach, IntentSequence, "OKYDV, number 3, orbit left for spacing", ParamNumber, "3"},
+		{Sequenced("CSA1", 0, 2*time.Minute, Absorption{SpeedKts: 190}), PosApproach, IntentSequence, "CSA1, for spacing reduce speed to 190 knots", ParamSpeed, "190"}, // the number told already
 		{Sequenced("CSA1", 1, 0, Absorption{SpeedKts: 233}), PosApproach, IntentSequence, "CSA1, number 1, for spacing reduce speed to 233 knots", ParamSpeed, "233"},
 		{DirectToFinal("CSA1", 3), PosApproach, IntentDirect, "CSA1, proceed direct to final, number 3", ParamNumber, "3"},
 		{HoldAt("CSA1", "PR711", EntryTeardrop, 6000, efc), PosApproach, IntentHold, "CSA1, hold at PR711 as published, maintain 6000 feet, expect further clearance at 1042", ParamFix, "PR711"}, // Doc 4444 12.3.3.3 b, CAP 413 6.11

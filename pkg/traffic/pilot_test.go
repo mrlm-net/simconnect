@@ -24,6 +24,8 @@ func TestReadbacks(t *testing.T) {
 		{ClearedTaxiToStand("CSA1", "C22", []string{"B", "D"}), "Taxi to stand C22 via B, D, CSA1"},
 		{ClearedTaxiUpTo("CSA1", []string{"H"}, "A"), "Holding short of A, CSA1"},
 		{ClearedCross("CSA1", "12"), "Cross runway 12, CSA1"},
+		{Sequenced("CSA1", 2, 0, Absorption{SpeedKts: 210}), "Number 2, reduce speed to 210 knots, CSA1"},
+		{Sequenced("CSA1", 0, 0, Absorption{SpeedKts: 190}), "Reduce speed to 190 knots, CSA1"},
 		{ClearedLineUp("CSA1", "24"), "Runway 24, line up and wait, CSA1"},
 		{ClearedTakeoff("CSA1", "24", "wind 100 degrees 6 knots"), "Runway 24, cleared for take-off, CSA1"}, // CAP 413 4.30
 		{ClearedToLand("CSA1", "06", "wind 100 degrees 6 knots"), "Runway 06, cleared to land, CSA1"},

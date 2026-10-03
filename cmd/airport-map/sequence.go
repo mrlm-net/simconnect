@@ -41,8 +41,8 @@ type sequences struct {
 	slowedFinal map[string]time.Time
 	brokeOff    map[string]bool
 	// seqSaid: the last number and speed each arrival was told, and when:
-	// the same again is not said within seqRepeatAfter (live, AUA529 heard
-	// "number 2, expect 1 minutes delay" twice).
+	// nothing is said again unless one changed, and the number only once
+	// an approach (live, AUA529 heard "number 2" with every call).
 	seqSaid map[string]seqSaid
 	// conflictHeld: arrivals holding for a conflict with another (the
 	// conflict watch, #455): the sequence does not release them, however
@@ -103,6 +103,7 @@ func (q *sequences) rejoin(icao, tail string) {
 	// A new approach: slowed and broken off afresh if need be.
 	delete(q.slowedFinal, tail)
 	delete(q.brokeOff, tail)
+	delete(q.seqSaid, tail) // a new approach: its number is told again
 	delete(q.absorbed, tail)
 	for k, s := range q.seq {
 		if i, _, _ := strings.Cut(k, " "); i == icao {
@@ -265,8 +266,8 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		if q.sayOnce(now, e.Callsign, e.Number, a.SpeedKts) {
-			it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
+		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != ""); say {
+			it.say(traffic.Sequenced(e.Callsign, n, delay, a))
 		}
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
@@ -342,7 +343,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		q.mu.Unlock()
 		tlog.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
 		if gain > 0 {
-			it.say(traffic.SequencedFinalSpeed(pos, e.Callsign, e.Number))
+			it.say(traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number)))
 		}
 		return
 	}
@@ -414,7 +415,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 		return
 	}
 	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), e.Number))
-	q.sayOnce(it.cc.clock.Now(), e.Callsign, e.Number, 0) // its number is told
+	q.numberToSay(it.cc.clock.Now(), e.Callsign, e.Number) // its number is told
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
@@ -731,8 +732,6 @@ func (q *sequences) behind(icao, tail, lead string) {
 	}
 }
 
-// seqRepeatAfter: the same number and speed are told again only after this.
-const seqRepeatAfter = 3 * time.Minute
 
 type seqSaid struct {
 	number int
@@ -740,19 +739,38 @@ type seqSaid struct {
 	at     time.Time
 }
 
-// sayOnce reports whether cs is to be told number and speed kts now (and
-// notes it): not when it was told the same within seqRepeatAfter; a speed
-// of 0 after one told is the same.
-func (q *sequences) sayOnce(now time.Time, cs string, number int, kts float64) bool {
+// sequenceCall is what cs is told now of its number and speed kts (and
+// notes it): nothing when neither is new (say false); the number only the
+// first time and when it changes, 0 otherwise — a repeated "number N" with
+// every speed annoys. orbit: a 360 is always said. A speed of 0 after one
+// told keeps that one.
+func (q *sequences) sequenceCall(now time.Time, cs string, number int, kts float64, orbit bool) (say bool, sayNumber int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	last, ok := q.seqSaid[cs]
-	if ok && last.number == number && (kts == 0 || kts == last.kts) && now.Sub(last.at) < seqRepeatAfter {
-		return false
+	told := ok && last.number == number
+	if told && !orbit && (kts == 0 || kts == last.kts) {
+		return false, 0
 	}
 	if kts == 0 {
 		kts = last.kts
 	}
 	q.seqSaid[cs] = seqSaid{number: number, kts: kts, at: now}
-	return true
+	if told {
+		return true, 0
+	}
+	return true, number
+}
+
+// numberToSay is number when cs has not been told it yet (noting it), else 0.
+func (q *sequences) numberToSay(now time.Time, cs string, number int) int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	last, ok := q.seqSaid[cs]
+	if ok && last.number == number {
+		return 0
+	}
+	last.number, last.at = number, now
+	q.seqSaid[cs] = last
+	return number
 }
