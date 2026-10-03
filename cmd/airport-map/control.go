@@ -2420,12 +2420,12 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	switch action {
 	case "pushback":
 		if it.dep != nil {
-			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacing())
+			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacingSaid())
 		}
 		return traffic.ClearedPushback(call)
 	case "pushstart":
 		if it.dep != nil {
-			return traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacing())
+			return traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacingSaid())
 		}
 		return traffic.ClearedPushbackAndStartUp(call)
 	case "startup":

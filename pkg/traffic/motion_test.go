@@ -456,3 +456,36 @@ func TestGroundMoverGiveWayEarly(t *testing.T) {
 		t.Errorf("giving way stopped %.1f m short of the point", gwLeft)
 	}
 }
+
+// TestPlaceAirRestsOnTheRunway: on the take-off roll the aircraft keeps the
+// height and pitch it rested at, the rotation on top; 50 ft up they are gone.
+func TestPlaceAirRestsOnTheRunway(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	inj.Takeover(42)
+	m := groundMsg(DefaultInjectRequestBase+1, 42, 0, 0)
+	var hdr types.SIMCONNECT_RECV_SIMOBJECT_DATA
+	*(*injectGround)(unsafe.Add(unsafe.Pointer(m.SIMCONNECT_RECV), unsafe.Offsetof(hdr.DwData))) =
+		injectGround{GroundFt: 1200, CGFt: 10.44, StaticPitch: 0.1, PlaneFt: 1209.35, PlanePitch: 0.8, OnGround: 1}
+	inj.Handle(m)
+	placed := func(pose ApproachPose) types.SIMCONNECT_DATA_INITPOSITION {
+		if err := inj.PlaceAir(42, pose); err != nil {
+			t.Fatal(err)
+		}
+		var got types.SIMCONNECT_DATA_INITPOSITION
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+		return got
+	}
+	roll := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, GroundSpeedKts: 80})
+	if math.Abs(roll.Altitude-1209.35) > 1e-6 || math.Abs(roll.Pitch-0.8) > 1e-6 {
+		t.Errorf("on the roll at %.2f ft pitch %.2f, want its rest 1209.35 ft, 0.80", roll.Altitude, roll.Pitch)
+	}
+	rot := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, PitchDeg: 5})
+	if math.Abs(rot.Pitch-(0.8-5)) > 1e-6 {
+		t.Errorf("rotating: pitch %.2f, want the rest 0.80 with 5° nose up on top", rot.Pitch)
+	}
+	up := placed(ApproachPose{Position: lkpr, Heading: 244, HeightFt: 60, PitchDeg: 15})
+	if math.Abs(up.Altitude-(1200+60+10.44)) > 1e-6 || math.Abs(up.Pitch+15) > 1e-6 {
+		t.Errorf("60 ft up at %.2f ft pitch %.2f, want the static height and 15° nose up only", up.Altitude, up.Pitch)
+	}
+}

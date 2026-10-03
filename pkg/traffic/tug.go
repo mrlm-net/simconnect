@@ -160,7 +160,13 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}
-	path, err := NewArcPath(append(route, t.pose.Position), tugRoadProfile(), 6)
+	// The path is followed by the tug's front axle, its reference point a
+	// wheelbase behind: the path ends that far past the attach point, so the
+	// tug stops on it and is not snapped forward as it connects (live, a
+	// 3 m hop at the nose).
+	p := tugRoadProfile()
+	end := offsetHeading(t.pose.Position, localBearing(front, t.pose.Position), p.WheelbaseMeters-p.RefAheadMeters)
+	path, err := NewArcPath(append(route, end), p, 6)
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}

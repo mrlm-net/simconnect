@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/mrlm-net/simconnect/pkg/nav"
 )
 
 // Callsigns and destinations as said on the radio (#462): what the text of
@@ -50,11 +52,13 @@ func initialism(w string) bool {
 // designator, then the flight number ("DLH1675" → "Lufthansa 1675",
 // "CEF001" → "Czech Air Force 001"). The schedule's airlines first, then
 // the ICAO designators of the world (Telephony). A call sign of an
-// operator without one, or not of the form three letters and a number, is
-// returned as it is.
+// operator without one is returned as it is. One not of the form three
+// letters and a number is a registration, said letter by letter in the
+// phonetic alphabet, digits as digits ("OKVQY" → "Oscar Kilo Victor Quebec
+// Yankee", "N123AB" → "November 1 2 3 Alpha Bravo").
 func (c ScheduleConfig) SaidCallsign(cs string) string {
-	if len(cs) < 4 || cs[3] < '0' || cs[3] > '9' {
-		return cs
+	if len(cs) < 4 || cs[3] < '0' || cs[3] > '9' || strings.ContainsAny(cs[:3], "0123456789") {
+		return SaidRegistration(cs)
 	}
 	for _, a := range c.Airlines {
 		if strings.EqualFold(a.ICAO, cs[:3]) && a.Telephony != "" {
@@ -106,4 +110,23 @@ func (c ScheduleConfig) AirportName(icao string) string {
 		}
 	}
 	return icao
+}
+
+// SaidRegistration is a registration as said: each letter in the phonetic
+// alphabet, each digit on its own, the dash left out ("OK-VQY" → "Oscar
+// Kilo Victor Quebec Yankee").
+func SaidRegistration(reg string) string {
+	var words []string
+	for i := 0; i < len(reg); i++ {
+		switch b := reg[i]; {
+		case b >= '0' && b <= '9':
+			words = append(words, string(b))
+		case b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z':
+			words = append(words, nav.Phonetic(b))
+		}
+	}
+	if len(words) == 0 {
+		return reg
+	}
+	return strings.Join(words, " ")
 }
