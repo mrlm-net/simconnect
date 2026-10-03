@@ -148,6 +148,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── limits.go        #   Limits, LimitsFor, KnownLimits: TA, climb hand-over, taxi limits, preferential runways
 │   │   ├── deicing.go       #   DeicingPad, Graph.NearestNode
 │   │   ├── geojson.go       #   Layout/Route GeoJSON export
+│   │   ├── locate.go        #   Locate: which airport a position is at (surfaces, corridors, aliases)
+│   │   ├── locate_track.go  #   Tracker: Locate through whole flights (origin, destination, stickiness)
 │   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
 │   ├── nav/                 # Navigation: fixes, airways, routing, weather and ATIS, flight plans
 │   │   ├── navdata.go       #   FixKey, Fix, WaypointType, AirwayType, RouteLink
