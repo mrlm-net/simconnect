@@ -5,7 +5,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"slices"
@@ -501,9 +500,16 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		return rwy
 	}
+	// Traffic close behind on final: "no delay, traffic on 5 mile final".
+	takeoffSaid := func(cs string) traffic.Transmission {
+		if nm, ok := c.NoDelay[cs]; ok {
+			return traffic.ClearedTakeoffNoDelay(cs, end(cs), t.cc.windSaid(icao), nm)
+		}
+		return traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao))
+	}
 	for _, cs := range c.LineUp {
 		if takeoff[cs] {
-			give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error {
+			give(cs, "takeoff", takeoffSaid(cs), func(it *controlled) error {
 				it.dep.ClearToLineUp()
 				return it.dep.ClearForTakeoff()
 			})
@@ -530,12 +536,13 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		})
 	}
 	for _, cs := range c.Takeoff {
-		give(cs, "takeoff", traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), func(it *controlled) error { return it.dep.ClearForTakeoff() })
+		give(cs, "takeoff", takeoffSaid(cs), func(it *controlled) error { return it.dep.ClearForTakeoff() })
 	}
-	// Cleared for take-off but not rolling yet, and the runway is no longer
-	// free — someone on it, or an arrival inside the minimum (a slow line-up):
-	// the clearance is cancelled; it is cleared again once free (Doc 4444
-	// 12.3.4.11 c).
+	// Cleared for take-off but not rolling yet, and someone else on the
+	// runway: the clearance is cancelled; it is cleared again once free (Doc
+	// 4444 12.3.4.11 c). Not for an arrival closing in: lining up, the
+	// departure is on the runway either way, and stopped there it sends the
+	// arrival around (live, WZZ1387 behind DLH1233 at 2.9 NM).
 	for cs, why := range c.Waiting {
 		it := ours[cs]
 		if it == nil || it.dep == nil || it.gates.Load() || !cancelTakeoffFor(why) {
@@ -657,24 +664,10 @@ func (t *towers) forgetLanding(tail string) {
 }
 
 // cancelTakeoffFor reports whether why (Decide's wait) cancels a take-off
-// clearance given: someone on the runway, or an arrival well inside the
-// minimum (cancelInsideNM) — not one just under it, or a clearance given at
-// 4.05 NM is cancelled at 3.9 NM, seconds after the readback.
+// clearance given: someone on the runway only, never an arrival closing in.
 func cancelTakeoffFor(why string) bool {
-	if strings.Contains(why, "on the runway") {
-		return true
-	}
-	var nm float64
-	if i := strings.Index(why, " on a "); i >= 0 {
-		if _, err := fmt.Sscanf(why[i+len(" on a "):], "%f NM final", &nm); err == nil {
-			return nm < cancelInsideNM
-		}
-	}
-	return false
+	return strings.Contains(why, "on the runway")
 }
-
-// cancelInsideNM: an arrival this close cancels a take-off not yet rolling.
-const cancelInsideNM = 3.0
 
 // dropBehind lets the departures told to line up behind arrival (gone
 // around) be cleared afresh: no longer waiting for it.

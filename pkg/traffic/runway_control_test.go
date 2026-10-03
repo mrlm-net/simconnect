@@ -335,3 +335,22 @@ func TestRunwayControllerCrossBehind(t *testing.T) {
 	}
 }
 
+func TestRunwayControllerNoDelay(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	lined := dep("CSA716", "A320", RunwayLinedUp)
+	c := r.Decide(now, []RunwayUser{lined, final("TVS1034", 7)})
+	if !slices.Contains(c.Takeoff, "CSA716") || c.NoDelay["CSA716"] != 7 {
+		t.Fatalf("traffic on a 7 NM final: %+v", c)
+	}
+	c = r.Decide(now, []RunwayUser{lined, final("TVS1034", 12)})
+	if _, ok := c.NoDelay["CSA716"]; !slices.Contains(c.Takeoff, "CSA716") || ok {
+		t.Fatalf("traffic on a 12 NM final: %+v", c)
+	}
+	// Not yet on the final approach (a STAR passing near): no traffic said.
+	near := final("TVS1034", 6)
+	near.Established = false
+	if c = r.Decide(now, []RunwayUser{lined, near}); len(c.NoDelay) != 0 {
+		t.Fatalf("arrival not established: %+v", c)
+	}
+}

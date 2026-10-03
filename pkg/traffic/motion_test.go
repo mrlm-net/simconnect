@@ -371,3 +371,88 @@ func TestGroundMoverBrakesSmoothlyForTraffic(t *testing.T) {
 		t.Logf("%.0f m ahead: stopped %.1f m past the traffic stop, braking up to %.2f m/s²", c.ahead, m.Pose().Distance-at, maxDecel)
 	}
 }
+
+func TestInjectorRestsAsMeasured(t *testing.T) {
+	msg := func(g injectGround) engine.Message {
+		m := groundMsg(DefaultInjectRequestBase+1, 42, 0, 0)
+		var hdr types.SIMCONNECT_RECV_SIMOBJECT_DATA
+		*(*injectGround)(unsafe.Add(unsafe.Pointer(m.SIMCONNECT_RECV), unsafe.Offsetof(hdr.DwData))) = g
+		return m
+	}
+	placed := func(c *eventClient) types.SIMCONNECT_DATA_INITPOSITION {
+		var got types.SIMCONNECT_DATA_INITPOSITION
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+		return got
+	}
+	pose := GroundPose{Position: lkpr, Heading: 214}
+	resting := injectGround{GroundFt: 1200, CGFt: 10.44, StaticPitch: 0.1, PlaneFt: 1209.35, PlanePitch: 0, OnGround: 1}
+	for _, tc := range []struct {
+		name       string
+		sample     injectGround
+		alt, pitch float64
+	}{
+		{"at rest", resting, 1209.35, 0},
+		{"moving", func() injectGround { g := resting; g.GS = 12; return g }(), 1210.44, 0.1},
+		{"in the air", func() injectGround { g := resting; g.OnGround = 0; return g }(), 1210.44, 0.1},
+	} {
+		c := &eventClient{}
+		inj := NewInjector(c)
+		inj.Takeover(42)
+		inj.Handle(msg(tc.sample))
+		if err := inj.Place(42, pose); err != nil {
+			t.Fatal(err)
+		}
+		// Our own placement comes back: it must not become the rest.
+		g := tc.sample
+		g.PlaneFt, g.PlanePitch = 1250, 2
+		inj.Handle(msg(g))
+		inj.Place(42, pose)
+		if got := placed(c); math.Abs(got.Altitude-tc.alt) > 1e-9 || math.Abs(got.Pitch-tc.pitch) > 1e-9 {
+			t.Errorf("%s: placed at %.2f ft pitch %.2f, want %.2f ft pitch %.2f", tc.name, got.Altitude, got.Pitch, tc.alt, tc.pitch)
+		}
+	}
+}
+
+// TestGroundMoverGiveWayEarly: giving way at a crossing 225 m ahead, the
+// aircraft slows down from far out and gently, and still stops there; a
+// plain traffic stop keeps its speed until the last braking distance.
+func TestGroundMoverGiveWayEarly(t *testing.T) {
+	prof := DefaultMotionProfile()
+	path, _ := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 1500)}, prof)
+	run := func(giveWay bool) (slowFrom, maxDecel, stoppedAt float64) {
+		m := NewGroundMover(path, prof)
+		for m.Pose().GroundSpeedKts < TaxiSpeedKts-0.1 {
+			m.Step(1.0 / 60)
+		}
+		stop := m.Pose().Distance + 225
+		if giveWay {
+			m.SetGiveWayStop(stop)
+		} else {
+			m.SetTrafficStop(stop)
+		}
+		slowFrom = math.NaN()
+		last := m.Pose().GroundSpeedKts
+		for range 60 * 120 {
+			p := m.Step(1.0 / 60)
+			if d := (last - p.GroundSpeedKts) * ktsToMS * 60; d > maxDecel {
+				maxDecel = d
+			}
+			if math.IsNaN(slowFrom) && p.GroundSpeedKts < TaxiSpeedKts-1 {
+				slowFrom = stop - p.Distance
+			}
+			last = p.GroundSpeedKts
+		}
+		return slowFrom, maxDecel, stop - m.Pose().Distance
+	}
+	gwFrom, gwDecel, gwLeft := run(true)
+	trFrom, _, _ := run(false)
+	if gwFrom < 100 || gwFrom < trFrom+50 {
+		t.Errorf("giving way slows from %.0f m out, a traffic stop from %.0f m: want well before", gwFrom, trFrom)
+	}
+	if gwDecel > 0.3 {
+		t.Errorf("giving way brakes at up to %.2f m/s², want gentle", gwDecel)
+	}
+	if math.Abs(gwLeft) > 0.5 {
+		t.Errorf("giving way stopped %.1f m short of the point", gwLeft)
+	}
+}
