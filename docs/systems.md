@@ -59,6 +59,8 @@ After a reconnect, call `Reset`. When another aircraft loads, call `Use` with it
 }
 ```
 
+**Frequencies.** `com1Active`, `com1Standby`, `com2Active` and `com2Standby` are the COM frequencies in MHz (State.COM1Active and the others). The default reads them from `COM ACTIVE/STANDBY FREQUENCY:n`.
+
 **Match.** A profile applies when any one rule matches:
 - `packagePrefix`: the start of the aircraft's package folder (`addons.AircraftPackage`);
 - `titleContains`: part of the title, any case;
@@ -93,4 +95,15 @@ So the profile reads these from the Fenix's L:vars:
 - **avionics:** AC ESS bus powered;
 - **external power:** its AVAIL and ON lights.
 
-Lights, parking brake, EXIT OPEN:0 and the transponder follow the standard variables and stay as they are. COM power is the DC ESS bus, **assumed, not measured**, and marked so. Live, the two profiles disagreed only where the Fenix differs: external power on, and the volts.
+Lights, parking brake, EXIT OPEN:0 and the transponder follow the standard variables and stay as they are. Live, the two profiles disagreed only where the Fenix differs: external power on, and the volts.
+
+**Radios.** These come from the RMPs, measured powered and dark:
+- COM working: `L:B_PED_RMP1_POWER` and `RMP2_POWER`.
+- The frequencies: `L:N_PED_RMP1_ACTIVE` and `_STDBY`, in kHz scaled to MHz (`scale`: 0.001). `COM STANDBY FREQUENCY:1` does not follow the RMP.
+- RMP 2 is assumed to work as RMP 1, and marked so.
+
+The profile's **actions** give the COM swap as the RMP transfer key, `L:S_PED_RMP1_XFER` (see [Radios and Transponder](avionics.md)).
+
+## Actions
+
+`actions` names how a control is operated on a model where the standard key events do not do it: `{"com1Swap": {"press": "L:S_PED_RMP1_XFER"}}` presses that variable (1, then 0). `pkg/avionics` takes them with `Radios.Use(profile.Actions)`. They merge like values: an override wins per action.

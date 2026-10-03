@@ -13,7 +13,10 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
+	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/systems"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -65,6 +68,10 @@ type Radios struct {
 
 	mu     sync.Mutex
 	mapped bool
+	// actions: the model's (Use); pressDefs: the data definition of each
+	// button variable pressed.
+	actions   map[string]systems.Action
+	pressDefs map[string]uint32
 }
 
 // New returns Radios on client, its events from base (0: DefaultEventBase).
@@ -116,11 +123,19 @@ func (r *Radios) SetCOMActive(n int, mhz float64) error {
 	return r.send(evCOM1Active+n-1, hz)
 }
 
-// SwapCOM swaps COM n's (1–3) active and standby frequencies.
+// SwapCOM swaps COM n's (1–3) active and standby frequencies: with the
+// key event, or the model's transfer key when its actions give one (Use).
 func (r *Radios) SwapCOM(n int) error {
 	if n < 1 || n > 3 {
 		return ErrBadRadio
 	}
+	r.mu.Lock()
+	a, ok := r.actions[fmt.Sprintf("com%dSwap", n)]
+	if ok && a.Press != "" {
+		defer r.mu.Unlock()
+		return r.press(a.Press) // the model's transfer key
+	}
+	r.mu.Unlock()
 	return r.send(evCOM1Swap+n-1, 0)
 }
 
@@ -142,7 +157,7 @@ func comHz(n int, mhz float64) (uint32, error) {
 	if mhz < 118 || mhz >= 137 {
 		return 0, ErrBadFrequency
 	}
-	return uint32(math.Round(mhz * 1000)) * 1000, nil
+	return uint32(math.Round(mhz*1000)) * 1000, nil
 }
 
 // SquawkBCD encodes a squawk as XPNDR_SET takes it, BCD16: "7000" →
@@ -160,3 +175,52 @@ func SquawkBCD(code string) (uint32, error) {
 	}
 	return v, nil
 }
+
+// Presser is what Radios needs of a client to press a model's button
+// variable (an L:var) instead of a key event: engine.Engine and the manager
+// have both.
+type Presser interface {
+	AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error
+	SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error
+}
+
+// Use takes a model's actions (systems.Profile.Actions): a COM swap that is
+// a button press there ("com1Swap": the Fenix's RMP transfer key) replaces
+// the swap event. nil goes back to the key events.
+func (r *Radios) Use(actions map[string]systems.Action) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.actions, r.pressDefs = actions, map[string]uint32{}
+}
+
+// press presses var name: 1, then 0 after pressHold, as a click. r.mu held
+// by the caller is released while it waits.
+func (r *Radios) press(name string) error {
+	p, ok := r.client.(Presser)
+	if !ok {
+		return errors.New("avionics: the client cannot set variables (Presser)")
+	}
+	def, ok := r.pressDefs[name]
+	if !ok {
+		def = r.base + uint32(len(r.pressDefs)) // data definition IDs: their own space
+		if err := p.AddToDataDefinition(def, name, "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
+			return fmt.Errorf("avionics: define %s: %w", name, err)
+		}
+		r.pressDefs[name] = def
+	}
+	for i, v := range []float64{1, 0} {
+		val := v
+		if err := p.SetDataOnSimObject(def, types.SIMCONNECT_OBJECT_ID_USER, 0, 0, 8, unsafe.Pointer(&val)); err != nil {
+			return err
+		}
+		if i == 0 {
+			r.mu.Unlock()
+			time.Sleep(pressHold)
+			r.mu.Lock()
+		}
+	}
+	return nil
+}
+
+// pressHold is how long a pressed button is held.
+const pressHold = 300 * time.Millisecond

@@ -29,10 +29,20 @@ r.SetSquawk("4521")           // XPNDR_SET, BCD16 (SquawkBCD)
 
 **Errors:** `ErrBadRadio` (COM 1–3 only), `ErrBadFrequency` (118.000–136.990 MHz) and `ErrBadSquawk` (four digits 0–7) are returned before anything is sent.
 
-**Checked live in MSFS 2024** on the Fenix A319, reading back `COM STANDBY FREQUENCY:1`, `COM ACTIVE FREQUENCY:1` and `TRANSPONDER CODE:1`:
+**Checked live in MSFS 2024** on the Fenix A319, with the aircraft powered:
 
-- **Squawk:** `SetSquawk` took effect (2000 to 4521, and back).
-- **Swap:** `SwapCOM(1)` swapped active and standby.
-- **Standby:** `SetCOMStandby(1, …)` was ignored at every frequency tried (121.805, 121.800, 119.000). The Fenix runs its radio panels with its own logic, so on such aircraft the event is not obeyed. Read the frequency back to know whether it took.
+- **Squawk:** `SetSquawk` takes effect.
+- **Standby:** `SetCOMStandby(1, …)` sets the RMP 1 standby. Read it back from `L:N_PED_RMP1_STDBY` (kHz, the systems profile's `com1Standby`), not from `COM STANDBY FREQUENCY:1`, which does not follow the RMP.
+- **Swap:** the stock `COM1_RADIO_SWAP` swaps the simulator's own pair, which the RMP's standby never reached. On the Fenix the swap must be its transfer key, `L:S_PED_RMP1_XFER`. `COM ACTIVE FREQUENCY:1` then follows.
+- **Dark aircraft:** with the aircraft dark the RMP is unpowered and nothing changes. The first test was dark and wrongly read as "the Fenix ignores the event".
 
+**Per-model actions.** `Use(profile.Actions)` takes a model's actions from its systems profile (`pkg/systems`). On the Fenix the profile gives `"com1Swap": {"press": "L:S_PED_RMP1_XFER"}`, so `SwapCOM` presses that key (1, then 0 after 300 ms) instead of sending the event. Pressing needs a client that can set variables (`Presser`: the engine and the manager both can). Aircraft without such an action keep the key events.
+
+```go
+p := systems.For(aircraft)
+r := avionics.New(client, 0)
+r.Use(p.Actions)
+r.SetCOMStandby(1, 121.805)
+r.SwapCOM(1) // the Fenix: its RMP transfer key
+```
 Stock aircraft have not been checked yet.
