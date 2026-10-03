@@ -162,6 +162,12 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 	}
 	for _, o := range others {
 		reach := half + o.e.half + GiveWayMarginMeters
+		// In front on this aircraft's path, going the same way: followed at
+		// a gap (blocking), not given way to — it was stopped behind it
+		// until the other was 250 m on (live, OKOPA behind a B737).
+		if !o.e.pushing && sameWayAhead(mine, o.e.pos, o.e.hdg, half+o.e.half) {
+			continue
+		}
 		mineTo := first(mine, o.e.ahead, reach)
 		// Beside a push under way only an aircraft already close enough for
 		// the push to stop for it (corridorBlocked: both half-spans and
@@ -302,3 +308,20 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	}
 	return best, who
 }
+
+// sameWayAhead reports whether an aircraft at pos facing hdg is on path
+// (the points ahead of this one, nearest first) within reach of it, facing
+// within sameWayDeg of the path's direction there: traffic in front going
+// the same way.
+func sameWayAhead(path []airport.LatLon, pos airport.LatLon, hdg, reach float64) bool {
+	for i := 1; i < len(path); i++ {
+		if localDist(path[i], pos) <= reach {
+			return math.Abs(headingDiff(localBearing(path[i-1], path[i]), hdg)) <= sameWayDeg
+		}
+	}
+	return false
+}
+
+// sameWayDeg: facing within this of the path's direction is going the
+// same way (sameWayAhead).
+const sameWayDeg = 45.0

@@ -38,6 +38,9 @@ type scheduler struct {
 	mu       sync.Mutex
 	density  float64
 	seed     uint64
+	// noIFR and noVFR switch the airline (and overflying) and the light
+	// aircraft flights off; both run by default.
+	noIFR, noVFR bool
 	airlines map[string]traffic.Airline
 	focus    []string // the managed airports (the overflights avoid them)
 	// Enroute aircraft (#369): by call sign once created, by request ID
@@ -90,7 +93,7 @@ func (s *scheduler) airports() []string {
 
 func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight {
 	s.mu.Lock()
-	density, seed := s.density, s.seed
+	density, seed, noIFR, noVFR := s.density, s.seed, s.noIFR, s.noVFR
 	s.mu.Unlock()
 	opts := traffic.ScheduleOptions{Focus: focus, Density: density, Seed: seed ^ uint64(from.Unix()/3600)}
 	for _, icao := range focus {
@@ -101,13 +104,18 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 			opts.Layouts[icao] = l
 		}
 	}
-	flights := traffic.Schedule(s.cfg, opts, from, to)
+	var flights []traffic.Flight
+	if !noIFR {
+		flights = traffic.Schedule(s.cfg, opts, from, to)
+	}
 	// Light aircraft through the circuit, by day in visual conditions (#568).
 	// Their lead is the manager's default VFRLead: Source runs under the
 	// manager's lock, so its options are not asked for.
-	vfr := traffic.VFRFlights(traffic.VFROptions{Focus: focus, Layouts: opts.Layouts, Density: density, Seed: opts.Seed ^ 0x7f,
-		Visual: s.visual}, from, to)
-	return append(flights, vfr...)
+	if !noVFR {
+		flights = append(flights, traffic.VFRFlights(traffic.VFROptions{Focus: focus, Layouts: opts.Layouts, Density: density, Seed: opts.Seed ^ 0x7f,
+			Visual: s.visual}, from, to)...)
+	}
+	return flights
 }
 
 // visual reports whether the weather at an airport allows VFR flights: a
@@ -139,8 +147,11 @@ func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {
 		return nil
 	}
 	s.mu.Lock()
-	density, seed, focus := s.density, s.seed, s.focus
+	density, seed, focus, noIFR := s.density, s.seed, s.focus, s.noIFR
 	s.mu.Unlock()
+	if noIFR {
+		return nil // airliners crossing the area are IFR traffic too
+	}
 	return traffic.Overflights(s.cfg, traffic.OverflightOptions{Centre: c, RadiusNM: overflightRadiusNM, Density: density,
 		Seed: seed ^ uint64(from.Unix()/3600) ^ 0x0f, Exclude: focus}, from, to)
 }
@@ -436,7 +447,11 @@ type scheduleView struct {
 	Density     float64                  `json:"density"`
 	MaxAircraft int                      `json:"maxAircraft"`
 	Others      traffic.OtherTrafficMode `json:"others"`
-	Seed        uint64                   `json:"seed"`
+	// IFR and VFR: the airline flights (and overflights) and the light
+	// aircraft flights run.
+	IFR  bool   `json:"ifr"`
+	VFR  bool   `json:"vfr"`
+	Seed uint64 `json:"seed"`
 	Active      int                      `json:"active"`
 	Flights     []traffic.ManagedFlight  `json:"flights"`
 	// Now is the traffic time the flights' times are in (#413).
@@ -459,9 +474,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			return
 		}
 		s.mu.Lock()
-		density, seed := s.density, s.seed
+		density, seed, ifr, vfr := s.density, s.seed, !s.noIFR, !s.noVFR
 		s.mu.Unlock() // never held while calling the manager (its Source takes it)
-		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed,
+		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr,
 			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
@@ -478,6 +493,8 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			MaxAircraft int      `json:"maxAircraft"`
 			Seed        *uint64  `json:"seed"`
 			Others      string   `json:"others"` // respect | ignore
+			IFR         *bool    `json:"ifr"`    // airline flights and overflights
+			VFR         *bool    `json:"vfr"`    // light aircraft through the circuit
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -490,7 +507,25 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		if req.Seed != nil {
 			s.seed = *req.Seed
 		}
+		if req.IFR != nil {
+			s.noIFR = !*req.IFR
+		}
+		if req.VFR != nil {
+			s.noVFR = !*req.VFR
+		}
 		s.mu.Unlock()
+		// Switched off: its flights not yet in the simulator go at once (the
+		// hours already planned would otherwise still bring them); those
+		// flying finish their flight.
+		if req.IFR != nil && !*req.IFR || req.VFR != nil && !*req.VFR {
+			now := s.cc.clock.Now()
+			for _, f := range s.mgr.Flights() {
+				vfr := f.Rules == "VFR"
+				if f.Status == traffic.FlightScheduled && (vfr && req.VFR != nil && !*req.VFR || !vfr && req.IFR != nil && !*req.IFR) {
+					s.mgr.Remove(f.Callsign, now)
+				}
+			}
+		}
 		if req.MaxAircraft > 0 {
 			s.mgr.SetLimits(req.MaxAircraft, req.MaxAircraft)
 		}
@@ -532,10 +567,11 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		o := s.mgr.Options()
 		s.mu.Lock()
-		density := s.density
+		density, ifr, vfr := s.density, !s.noIFR, !s.noVFR
 		s.mu.Unlock()
-		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, other traffic: %s", map[bool]string{true: "on", false: "off"}[s.mgr.Enabled()],
-			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, o.Others)
+		onOff := map[bool]string{true: "on", false: "off"}
+		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, IFR %s, VFR %s, other traffic: %s", onOff[s.mgr.Enabled()],
+			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, onOff[ifr], onOff[vfr], o.Others)
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {

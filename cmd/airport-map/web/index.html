@@ -352,6 +352,10 @@
             <label class="field"><span class="field__lbl">Max aircraft</span><input class="input mono" type="number" id="sMax" value="12" min="1" max="40"></label>
             <label class="field" title="The airports whose timetables run: the loaded one by default. Others are loaded when you start (the simulator must reach them)."><span class="field__lbl">Airports</span><input class="input mono upper" id="sAirports" placeholder="LKPR, LKTB" list="airportList" spellcheck="false"></label>
           </div>
+          <div class="grid2">
+            <label class="check" title="The airlines' timetable and the airliners crossing the area. Switched off, the flights not yet in the simulator go at once; those flying finish."><input type="checkbox" id="sIFR" checked> IFR <span class="muted">(airlines, overflights)</span></label>
+            <label class="check" title="Light aircraft through the circuit, by day in visual conditions. Switched off, the flights not yet in the simulator go at once; those flying finish."><input type="checkbox" id="sVFR" checked> VFR <span class="muted">(light aircraft)</span></label>
+          </div>
           <div class="row gap-2 end"><button type="button" class="btn btn--primary" id="sStart"><svg class="ic"><use href="#i-play"/></svg><span>Start schedule</span></button></div>
         </div>
 

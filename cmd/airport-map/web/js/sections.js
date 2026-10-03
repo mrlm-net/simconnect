@@ -384,6 +384,8 @@ async function pollSchedule() {
   $('sInfo').textContent = sched.enabled || fs.length ? `${sched.enabled ? 'Running' : 'Stopped'}${at ? ' at ' + at : ''}: ${sched.active} aircraft, ${fs.filter((f) => f.status === 'scheduled').length} scheduled.` : 'Off.';
   $$('#sDensity [data-density]').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.density) === sched.density)));
   if (document.activeElement !== $('sMax')) $('sMax').value = String(sched.maxAircraft);
+  if (typeof sched.ifr === 'boolean') $('sIFR').checked = sched.ifr;
+  if (typeof sched.vfr === 'boolean') $('sVFR').checked = sched.vfr;
   if (document.activeElement !== $('othersMode') && sched.others) $('othersMode').value = sched.others;
   if (document.activeElement !== $('sAirports') && sched.airports && sched.airports.length && sched.enabled) $('sAirports').value = sched.airports.join(', ');
   const ap = sched.airports || [];
@@ -1063,7 +1065,7 @@ function initSections() {
     if (!data) { toast('Load an airport first', 'err'); return; }
     const airports = $('sAirports').value.toUpperCase().split(/[\s,;]+/).filter((a) => /^[A-Z0-9]{3,4}$/.test(a));
     const density = Number(($('sDensity').querySelector('[aria-checked="true"]') || {}).dataset?.density || 1);
-    setSchedule({ enabled: true, airports: airports.length ? airports : [data.icao], density, maxAircraft: Number($('sMax').value) });
+    setSchedule({ enabled: true, airports: airports.length ? airports : [data.icao], density, maxAircraft: Number($('sMax').value), ifr: $('sIFR').checked, vfr: $('sVFR').checked });
     board = 'dep';
   });
   $('sDensity').addEventListener('click', (e) => {
@@ -1082,6 +1084,8 @@ function initSections() {
     renderBoard();
   });
   $('othersMode').addEventListener('change', () => setSchedule({ others: $('othersMode').value }));
+  $('sIFR').addEventListener('change', () => setSchedule({ ifr: $('sIFR').checked }));
+  $('sVFR').addEventListener('change', () => setSchedule({ vfr: $('sVFR').checked }));
   $('wCentre').addEventListener('change', () => {
     const v = $('wCentre').value;
     if (v === 'follow') setWorld({ follow: true });

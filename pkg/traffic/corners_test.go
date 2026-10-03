@@ -60,3 +60,33 @@ func TestStandardBank(t *testing.T) {
 		}
 	}
 }
+
+// TestRoundCornersThroughPointsInLine: a point on the leg 524 m short of a
+// 90° corner (live, KLM1960's downwind before its base turn) leaves the arc
+// its full radius, flown round, not a 425 m one.
+func TestRoundCornersThroughPointsInLine(t *testing.T) {
+	wp := func(lat, lon float64) types.SIMCONNECT_DATA_WAYPOINT {
+		return types.SIMCONNECT_DATA_WAYPOINT{Latitude: lat, Longitude: lon, Altitude: 4000, KtsSpeed: 210}
+	}
+	a := wp(50, 14)
+	cLat, cLon := calc.DisplaceByHeading(50, 14, 90, 6000)
+	nLat, nLon := calc.DisplaceByHeading(cLat, cLon, 270, 524) // in line, just short of the corner
+	bLat, bLon := calc.DisplaceByHeading(cLat, cLon, 180, 8400)
+	got := roundCorners([]types.SIMCONNECT_DATA_WAYPOINT{a, wp(nLat, nLon), wp(cLat, cLon), wp(bLat, bLon)}, TurnBankDeg)
+	r := turnRadiusMeters(210, StandardBankDeg(210, TurnBankDeg))
+	// The arc's points: those beside both legs (the corner's).
+	minR := math.Inf(1)
+	for i := 1; i+2 < len(got); i++ {
+		p, q, s := got[i], got[i+1], got[i+2]
+		h1 := calc.BearingDegrees(p.Latitude, p.Longitude, q.Latitude, q.Longitude)
+		h2 := calc.BearingDegrees(q.Latitude, q.Longitude, s.Latitude, s.Longitude)
+		turn := math.Abs(math.Mod(h2-h1+540, 360)-180) * math.Pi / 180
+		if turn > 0.05 {
+			chord := calc.HaversineMeters(q.Latitude, q.Longitude, s.Latitude, s.Longitude)
+			minR = math.Min(minR, chord/(2*math.Sin(turn/2)))
+		}
+	}
+	if minR < 0.8*r {
+		t.Errorf("tightest arc %.0f m, want about the turn's %.0f m", minR, r)
+	}
+}

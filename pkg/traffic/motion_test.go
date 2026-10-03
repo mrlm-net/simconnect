@@ -456,3 +456,30 @@ func TestGroundMoverGiveWayEarly(t *testing.T) {
 		t.Errorf("giving way stopped %.1f m short of the point", gwLeft)
 	}
 }
+
+// TestGroundMoverStopsWithoutClamp: from rest a short way before a hold
+// (traffic ahead just gone, live TVS206 at LKPR), the aircraft brakes onto
+// the hold within its firm braking and is at walking pace before it stops,
+// not halted at 7 kt in one frame.
+func TestGroundMoverStopsWithoutClamp(t *testing.T) {
+	prof := DefaultMotionProfile()
+	for _, d := range []float64{15, 25, 40, 60, 90, 300} {
+		path, _ := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 400)}, prof)
+		m := NewGroundMover(path, prof)
+		m.HoldAt(d)
+		var vs []float64
+		for range 60 * 120 {
+			vs = append(vs, m.Step(1.0/60).GroundSpeedKts*ktsToMS)
+		}
+		half, before := 0.0, 0.0
+		for i := 30; i < len(vs); i++ {
+			half = math.Max(half, (vs[i-30]-vs[i])*2)
+			if vs[i] == 0 && vs[i-1] > 0 {
+				before = vs[i-1] / ktsToMS
+			}
+		}
+		if half > 1.5*prof.Decel || before > 0.5 || math.Abs(d-m.Pose().Distance) > 0.05 {
+			t.Errorf("hold %.0f m ahead: braking %.2f m/s² over 0.5 s, %.2f kt the frame before the stop, %.2f m short", d, half, before, d-m.Pose().Distance)
+		}
+	}
+}
