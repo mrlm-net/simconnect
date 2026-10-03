@@ -83,7 +83,9 @@ type PictureOptions struct {
 // the centre.
 type AirportRef struct {
 	ICAO       string         `json:"icao"`
+	Region     string         `json:"region,omitempty"` // ICAO region ("LK"), "" when none
 	Position   airport.LatLon `json:"position"`
+	AltM       float64        `json:"altM,omitempty"` // elevation in metres
 	DistanceNM float64        `json:"distanceNM"`
 }
 

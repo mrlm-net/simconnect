@@ -45,6 +45,18 @@ func (l *AirportLister) Request() error {
 	return l.client.RequestFacilitiesListEX1(l.reqID, types.SIMCONNECT_FACILITY_LIST_AIRPORT)
 }
 
+// RequestAll asks for every airport the simulator knows, worldwide, not
+// only the reality bubble (RequestAllFacilities; live from LKPR in MSFS
+// 2024: 85,723 airports in about a second). Handle collects it
+// the same way. The list carries no names or runways: look those up per
+// ICAO for the airports used.
+func (l *AirportLister) RequestAll() error {
+	l.mu.Lock()
+	l.pending = nil
+	l.mu.Unlock()
+	return l.client.RequestAllFacilities(types.SIMCONNECT_FACILITY_LIST_AIRPORT, l.reqID)
+}
+
 // Handle consumes the lister's messages; with the last part of the list it
 // returns the airports and true.
 func (l *AirportLister) Handle(msg engine.Message) ([]AirportRef, bool) {
@@ -93,10 +105,15 @@ func decodeAirportList(msg engine.Message, list *types.SIMCONNECT_RECV_AIRPORT_L
 		if j := strings.IndexByte(ident, 0); j >= 0 {
 			ident = ident[:j]
 		}
+		region := strings.TrimRight(string(unsafe.Slice((*byte)(unsafe.Pointer(e+identLen)), 3)), "\x00 ")
+		if j := strings.IndexByte(region, 0); j >= 0 {
+			region = region[:j]
+		}
 		lat := *(*float64)(unsafe.Pointer(e + latOff))
 		lon := *(*float64)(unsafe.Pointer(e + latOff + 8))
+		alt := *(*float64)(unsafe.Pointer(e + latOff + 16))
 		if ident != "" {
-			out = append(out, AirportRef{ICAO: ident, Position: airport.LatLon{Lat: lat, Lon: lon}})
+			out = append(out, AirportRef{ICAO: ident, Region: region, Position: airport.LatLon{Lat: lat, Lon: lon}, AltM: alt})
 		}
 	}
 	return out
