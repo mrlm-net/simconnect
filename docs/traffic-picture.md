@@ -44,11 +44,20 @@ A fixed centre stays put; `SetCentre` moves it, `SetRadius` changes the radius. 
 
 | Phase | For aircraft not ours |
 |---|---|
-| `parked` | on the ground, not moving |
-| `taxiing` | on the ground, up to 40 kt |
-| `runway` | on the ground, faster (take-off or landing roll) |
-| `departing` / `arriving` | airborne within `AirportTerminalNM` of an airport below 10 000 ft, climbing / descending |
-| `enroute` | anything else airborne |
+| `parked` | on a stand below `StandMovingKts` (3 kt: creeping into position is not taxiing), or still where the layout is unknown |
+| `pushback` | moving tail first: the track more than `PushbackOffNoseDeg` (120°) off the nose, at 1 kt or more |
+| `holding` | stopped off a stand |
+| `taxiing` | moving on the ground off the runways |
+| `runway` | on a runway, slow (lining up, vacating, waiting on it) |
+| `takeoff` / `landing` | on a runway faster than `RollKts` (30 kt); a landing roll within `LandingRollFor` (90 s) of touching down |
+| `departing` / `arriving` | climbing / descending within `AirportTerminalNM` of an airport below 10 000 ft |
+| `approach` | descending below `ApproachBelowFt` (3000 ft) near an airport; it lasts until a climb (a go-around) or back above 4000 ft |
+| `climbing` / `descending` | climbing / descending elsewhere |
+| `enroute` | level in the air |
+
+The simulator reports 0 kt for AI aircraft on the ground however they move (measured at LKPR: taxiing at 6–32 kt by their positions, 0.0 reported). Below `MovingKts` on the ground the picture works out the speed from the movement since the last scan (`SpeedDerived`, #622); such a speed counts as movement only above `DerivedMovingKts` (2 kt), as a metre of jitter between scans is about 1 kt. Climbing and descending follow the altitude over the last `ProfileWindow` (30 s), not one scan's vertical speed: a climb or descent starts past `ProfileEnterFpm` (400 ft/min) and ends inside `ProfileLeaveFpm` (150); with less than `ProfileMin` (10 s) of history the first scan's phase stands (#623).
+
+On the ground, **where** an aircraft is comes from `airport.Locate` among the airports within `AirportNearNM` whose layout `PictureOptions.Layout` gives (`Where`: runway, parking, taxiway; `WhereName`: "06/24", "C22", "A"). Without layouts the phase is by speed alone and the airport the nearest within `AirportNearNM`. The phases follow the MyCrew app's observer, which measured the simulator live (mycrew-online/app `internal/agent/traffic_phase.go`).
 
 An aircraft on the ground belongs to the airport within `AirportNearNM`. `Airports()` are the airports inside the radius with their distance from the centre. `Events()` reports aircraft and airports entering and leaving, and recentring (dropped when the channel is full; the picture itself stays current).
 

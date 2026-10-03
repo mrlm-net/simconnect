@@ -4,7 +4,6 @@
 package traffic
 
 import (
-	"math"
 	"sort"
 	"sync"
 	"time"
@@ -37,6 +36,9 @@ type TrafficPicture struct {
 	ground   map[string]*GroundPicture
 	stands   map[string]*StandAllocator
 	events   chan PictureEvent
+	// tracks: what is remembered of each aircraft between scans, for its
+	// phase (picture_phase.go).
+	tracks map[uint32]*phaseTrack
 }
 
 // MaxScanRadiusMeters is the largest radius SimConnect's
@@ -70,6 +72,11 @@ type Centre struct {
 type PictureOptions struct {
 	Centre   Centre
 	RadiusNM float64
+	// Layout gives an airport's layout when loaded (nil: none), for where
+	// on the airfield an aircraft on the ground is (airport.Locate: on a
+	// runway, on a stand, taxiing); without layouts the nearest airport by
+	// distance, the phase by speed alone.
+	Layout func(icao string) *airport.Layout
 }
 
 // AirportRef is an airport the picture knows: where it is and how far from
@@ -84,12 +91,24 @@ type AirportRef struct {
 type Phase string
 
 const (
-	PhaseParked    Phase = "parked"
-	PhaseTaxiing   Phase = "taxiing"
-	PhaseRunway    Phase = "runway" // on the take-off or landing roll
-	PhaseDeparting Phase = "departing"
-	PhaseEnroute   Phase = "enroute"
-	PhaseArriving  Phase = "arriving"
+	PhaseParked  Phase = "parked" // on a stand, or still with nothing to tell
+	PhaseTaxiing Phase = "taxiing"
+	// PhaseRunway: on a runway, slow (lining up, vacating, waiting on it);
+	// fast, PhaseTakeoff or PhaseLanding.
+	PhaseRunway    Phase = "runway"
+	PhaseDeparting Phase = "departing" // climbing in the terminal area
+	PhaseEnroute   Phase = "enroute"   // level in the air
+	PhaseArriving  Phase = "arriving"  // descending in the terminal area
+	// #623: pushing back; holding (stopped off a stand); the take-off and
+	// landing rolls; climbing and descending away from the airports; the
+	// approach (descending low near an airport, until a climb or back up).
+	PhasePushback   Phase = "pushback"
+	PhaseHolding    Phase = "holding"
+	PhaseTakeoff    Phase = "takeoff"
+	PhaseLanding    Phase = "landing"
+	PhaseClimbing   Phase = "climbing"
+	PhaseDescending Phase = "descending"
+	PhaseApproach   Phase = "approach"
 )
 
 // Observation is one aircraft of a scan.
@@ -118,6 +137,14 @@ type TrackedAircraft struct {
 	// Ours marks an aircraft one of our controllers drives.
 	Ours    bool      `json:"ours,omitempty"`
 	Updated time.Time `json:"updated"`
+	// Where on the airfield an aircraft on the ground is (airport.Locate:
+	// runway, parking, taxiway, near) and its name ("06/24", "C22", "A");
+	// "" without the airport's layout or off it.
+	Where     airport.LocateFeature `json:"where,omitempty"`
+	WhereName string                `json:"whereName,omitempty"`
+	// SpeedDerived: GroundKts is worked out from the movement between
+	// scans, the simulator reporting 0 for AI on the ground (#622).
+	SpeedDerived bool `json:"speedDerived,omitempty"`
 }
 
 type ownInfo struct {
@@ -151,7 +178,7 @@ func NewTrafficPicture(opts PictureOptions) *TrafficPicture {
 		opts.RadiusNM = DefaultPictureRadiusNM
 	}
 	p := &TrafficPicture{opts: opts, aircraft: map[uint32]*TrackedAircraft{}, own: map[uint32]ownInfo{},
-		inside: map[string]AirportRef{}, ground: map[string]*GroundPicture{}, stands: map[string]*StandAllocator{},
+		inside: map[string]AirportRef{}, ground: map[string]*GroundPicture{}, stands: map[string]*StandAllocator{}, tracks: map[uint32]*phaseTrack{},
 		events: make(chan PictureEvent, 256)}
 	p.setCentreLocked(opts.Centre)
 	return p
@@ -361,13 +388,14 @@ func (p *TrafficPicture) Observe(now time.Time, scan []Observation) {
 			}
 		} else {
 			a.Ours = false
-			a.Phase, a.Airport = p.classifyLocked(o)
+			p.classifyLocked(a, now)
 		}
 	}
 	for id, a := range p.aircraft {
 		out := p.hasCtr && calc.HaversineMeters(p.centre.Lat, p.centre.Lon, a.Position.Lat, a.Position.Lon)/1852 > p.opts.RadiusNM
 		if out || now.Sub(a.Updated) > PictureStaleAfter {
 			delete(p.aircraft, id)
+			delete(p.tracks, id)
 			for _, g := range p.ground {
 				g.Forget(id)
 			}
@@ -375,38 +403,6 @@ func (p *TrafficPicture) Observe(now time.Time, scan []Observation) {
 		}
 	}
 	p.feedLocked(now)
-}
-
-// classifyLocked guesses what an aircraft not ours is doing, and where.
-func (p *TrafficPicture) classifyLocked(o Observation) (Phase, string) {
-	near, nearNM := "", math.Inf(1)
-	for _, a := range p.all {
-		if d := calc.HaversineMeters(o.Position.Lat, o.Position.Lon, a.Position.Lat, a.Position.Lon) / 1852; d < nearNM {
-			near, nearNM = a.ICAO, d
-		}
-	}
-	if o.OnGround {
-		at := ""
-		if nearNM <= AirportNearNM {
-			at = near
-		}
-		switch {
-		case o.GroundKts < 1:
-			return PhaseParked, at
-		case o.GroundKts > 40:
-			return PhaseRunway, at
-		}
-		return PhaseTaxiing, at
-	}
-	if nearNM <= AirportTerminalNM && o.AGLFt < 10000 {
-		switch {
-		case o.VSFpm > 300:
-			return PhaseDeparting, near
-		case o.VSFpm < -300:
-			return PhaseArriving, near
-		}
-	}
-	return PhaseEnroute, ""
 }
 
 // feedLocked reports the aircraft on the ground that are not ours to the

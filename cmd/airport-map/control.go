@@ -272,6 +272,9 @@ type controlCenter struct {
 	// scan and when the game last ran.
 	game   *game
 	graph  func(icao string) (*airport.Graph, error)
+	// layout gives a loaded airport's layout (the cache), for where on the
+	// airfield other traffic is (TrafficPicture, #623).
+	layout func(icao string) (*airport.Layout, bool)
 	scan   []Traffic
 	gameAt time.Time
 }
@@ -285,9 +288,20 @@ func newControlCenter(client engine.Client) *controlCenter {
 		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
 		detail: traffic.NewDetail(),
 		stands: map[string]*traffic.StandAllocator{},
-		world:  traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true}}),
 		game:   &game{},
 	}
+	// Other traffic's phase by where it is on the airfield: the loaded
+	// layouts (cc.layout, set once the cache is there).
+	cc.world = traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true},
+		Layout: func(icao string) *airport.Layout {
+			if cc.layout == nil {
+				return nil
+			}
+			if l, ok := cc.layout(icao); ok {
+				return l
+			}
+			return nil
+		}})
 	cc.pending = newPending()
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,

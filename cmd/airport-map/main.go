@@ -442,6 +442,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		})
 	})
 	cc.graph = st.cache.Graph
+	cc.layout = st.cache.Layout
 	cc.pads = st.pads.forAirport
 	cc.weather = func() *nav.Weather {
 		st.mu.Lock()

@@ -183,7 +183,7 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 		// Other traffic arriving takes its slot: ETA from its distance and
 		// speed (it cannot be delayed; it is not ours).
 		for _, a := range s.Others {
-			if a.Phase == PhaseArriving && s.Position != (airport.LatLon{}) {
+			if (a.Phase == PhaseArriving || a.Phase == PhaseApproach) && s.Position != (airport.LatLon{}) {
 				d := calc.HaversineNM(a.Position.Lat, a.Position.Lon, s.Position.Lat, s.Position.Lon)
 				eta := s.Now.Add(time.Duration(d / math.Max(a.GroundKts, 120) * float64(time.Hour)))
 				name := a.Tail
@@ -262,7 +262,7 @@ func CheckGroundCongestion(max int) SituationCheck {
 			}
 		}
 		for _, a := range s.Others {
-			if a.Phase == PhaseTaxiing {
+			if a.Phase == PhaseTaxiing || a.Phase == PhaseHolding || a.Phase == PhasePushback {
 				moving++ // other traffic fills the taxiways too
 			}
 		}
