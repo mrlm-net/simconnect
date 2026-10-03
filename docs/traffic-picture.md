@@ -31,7 +31,7 @@ for msg := range client.Stream() {
 The picture is fed, not self-driving:
 
 - **`Observe(now, scan)`** with each aircraft scan. SimConnect's `RequestDataOnSimObjectType` reaches at most `MaxScanRadiusMeters` (200 km): MSFS AI farther away is not seen. Aircraft outside the radius, or not seen for `PictureStaleAfter`, leave the picture.
-- **`SetAirports`** with the airports around, e.g. from `AirportLister` (SimConnect's facilities list: the airports the simulator has loaded around the user, about 180 NM in MSFS 2024). `AddAirport` adds one it does not reach, such as a flight's destination.
+- **`SetAirports`** with the airports around, e.g. from `AirportLister` (SimConnect's facilities list: the airports the simulator has loaded around the user, about 180 NM in MSFS 2024). `AddAirport` adds one it does not reach, such as a flight's destination. `AirportLister.RequestAll()` asks for every airport the simulator knows, worldwide (`RequestAllFacilities`; live in MSFS 2024: 85,723 airports in about a second), collected by the same `Handle`. Each `AirportRef` carries the ICAO, region, position and elevation (`AltM`); names and runways are looked up per ICAO.
 - **`SetOwn(objectID, phase, icao)`** for the aircraft our controllers drive — they know their phase best; `ForgetOwn` when a controller lets go.
 
 ## Centre
