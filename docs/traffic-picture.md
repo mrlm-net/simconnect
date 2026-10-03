@@ -59,7 +59,13 @@ The simulator reports 0 kt for AI aircraft on the ground however they move (meas
 
 On the ground, **where** an aircraft is comes from `airport.Locate` among the airports within `AirportNearNM` whose layout `PictureOptions.Layout` gives (`Where`: runway, parking, taxiway; `WhereName`: "06/24", "C22", "A"). Without layouts the phase is by speed alone and the airport the nearest within `AirportNearNM`. The phases follow the MyCrew app's observer, which measured the simulator live (mycrew-online/app `internal/agent/traffic_phase.go`).
 
-An aircraft on the ground belongs to the airport within `AirportNearNM`. `Airports()` are the airports inside the radius with their distance from the centre. `Events()` reports aircraft and airports entering and leaving, and recentring (dropped when the channel is full; the picture itself stays current).
+An aircraft on the ground belongs to the airport within `AirportNearNM`. A departing or arriving aircraft belongs to its airport in this order:
+
+1. **Origin or destination**, when the observation names it (`Observation.From`/`To`, from AI TRAFFIC FROMAIRPORT/TOAIRPORT). It counts when it is within `AirportTerminalNM` or the picture does not know where it is. FSLTL aircraft leave these empty.
+2. **Ahead of it:** among the airports within `AirportTerminalNM`, one within `AirportAheadDeg` (60°) of its heading; for a departing aircraft, one as far behind it. Higher up, those with a layout loaded come first: that marks the airport the caller follows. Then the nearest.
+3. **The nearest**, when none is ahead.
+
+Before this, BAW1989 descending through 8,000 ft toward LKPR was given LKKQ, the nearest airport. `Airports()` are the airports inside the radius with their distance from the centre. `Events()` reports aircraft and airports entering and leaving, and recentring (dropped when the channel is full; the picture itself stays current).
 
 ## Feeding the controllers
 
