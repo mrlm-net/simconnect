@@ -4,12 +4,14 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -54,10 +56,15 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		if !known || before == use {
 			continue
 		}
+		keep := cc.lastOnOldRunway(g, items, arrs)
 		for _, it := range items {
 			it.mu.Lock()
 			v := it.view
 			it.mu.Unlock()
+			if keep[it.Tail] {
+				tlog.printf("%-6s runway change: finishes on %s", it.Tail, v.Runway)
+				continue
+			}
 			// Only who is on a runway no longer in use moves: with parallels,
 			// to the one nearest its stand.
 			switch {
@@ -201,4 +208,62 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	pq.later(it.clearAt(pos).Add(atcAnswerDelay+pq.jitter(atcAnswerJitter)), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, "", said, expect))
 	})
+}
+
+// A runway change is a transition, as a tower runs it: the new runway is
+// prepared for everyone at once, while the take-offs under way and the last
+// landings on the final finish on the old one. runwayChangeKeepArrivals at
+// most (the nearest, within runwayChangeKeepNM to go) land on it; every
+// other arrival is rerouted, as far as it makes sense.
+const (
+	runwayChangeKeepArrivals = 2
+	runwayChangeKeepNM       = 15.0
+)
+
+// lastOnOldRunway is who finishes on a runway no longer in use (arrs: the
+// arrival runways now): departures holding short of their runway, lining
+// up, lined up or rolling; and the runwayChangeKeepArrivals arrivals
+// nearest its threshold, approaching within runwayChangeKeepNM.
+func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, arrs []string) map[string]bool {
+	keep := map[string]bool{}
+	type near struct {
+		tail string
+		nm   float64
+	}
+	var landing []near
+	for _, it := range items {
+		it.mu.Lock()
+		v := it.view
+		it.mu.Unlock()
+		if v.Done {
+			continue
+		}
+		switch {
+		case it.dep != nil:
+			switch it.dep.State() {
+			case traffic.TaxiLiningUp, traffic.TaxiLinedUp, traffic.TaxiDeparting:
+				keep[it.Tail] = true
+			case traffic.TaxiHoldingShort:
+				if rwy, ok := runwayOf(g.Layout, v.Runway); ok && v.HoldingShortOf == rwy.Name() {
+					keep[it.Tail] = true // at its own runway: the take-off goes on
+				}
+			}
+		case it.arr != nil && !slices.Contains(arrs, v.Runway) && it.arr.State() == traffic.ArrivalApproaching:
+			_, end, ok := g.Layout.RunwayEnd(v.Runway)
+			if !ok {
+				continue
+			}
+			if nm := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon); nm <= runwayChangeKeepNM {
+				landing = append(landing, near{it.Tail, nm})
+			}
+		}
+	}
+	slices.SortFunc(landing, func(a, b near) int { return cmp.Compare(a.nm, b.nm) })
+	for i, l := range landing {
+		if i >= runwayChangeKeepArrivals {
+			break
+		}
+		keep[l.tail] = true
+	}
+	return keep
 }

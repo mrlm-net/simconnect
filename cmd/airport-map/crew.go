@@ -5,7 +5,9 @@ package main
 
 import (
 	"math/rand/v2"
+	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -64,4 +66,128 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		}()
 		it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.Acknowledge(traffic.PosTower, cs)) })
 	}
+}
+
+// crewRejectShare: the share of take-offs the crew rejects on its own (an
+// engine warning, a bird), decided once on each roll between
+// crewRejectFromKts and crewRejectToKts, below the speed it decides by
+// (V1: past it the take-off goes on, AbortTakeoff says too late).
+const (
+	crewRejectShare   = 0.003
+	crewRejectFromKts = 40.0
+	crewRejectToKts   = 100.0
+)
+
+// crewRejects lets the crews of our departures rolling at icao reject the
+// take-off, rarely: they stop on the runway, vacate and taxi back to the
+// holding point for a new clearance; the tower acknowledges (#621).
+func (t *towers) crewRejects(ours map[string]*controlled) {
+	for cs, it := range ours {
+		if it.dep == nil || it.gates.Load() {
+			continue
+		}
+		it.mu.Lock()
+		state, ground, kts := it.view.State, it.view.OnGround, it.view.GroundSpeed
+		it.mu.Unlock()
+		if state != traffic.TaxiDeparting.String() || !ground || kts < crewRejectFromKts || kts > crewRejectToKts {
+			continue
+		}
+		t.mu.Lock()
+		judged := t.rtoJudged[cs]
+		t.rtoJudged[cs] = true
+		t.mu.Unlock()
+		if judged || rand.Float64() >= crewRejectShare {
+			continue
+		}
+		cs, it := cs, it
+		go func() {
+			if err := t.cc.do(func() error { return it.act("abort", 0) }); err != nil {
+				tlog.printf("%-6s crew reject: %v", cs, err) // past V1: it goes on
+				return
+			}
+			tlog.printf("%-6s crew: take-off rejected at %.0f kt", cs, kts)
+			it.say(traffic.RejectingTakeoff(cs))
+			it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.Acknowledge(traffic.PosTower, cs)) })
+		}()
+	}
+}
+
+// crewDirectShare: the share of our departures whose crew, with the
+// departure radar, asks to fly direct to a fix further along its route;
+// the fix is crewDirectMinNM to crewDirectMaxNM away, past the next one.
+const (
+	crewDirectShare = 0.3
+	crewDirectMinNM = 8.0
+	crewDirectMaxNM = 60.0
+)
+
+// crewRequests lets the crews of our departures with the departure radar
+// ask for direct to a fix ahead, once a flight (#621). The radar clears it
+// unless the aircraft is in a predicted conflict or flying a resolution;
+// then it is "unable".
+func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAircraft) {
+	for _, a := range aircraft {
+		if !a.Ours || a.OnGround {
+			continue
+		}
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.dep == nil || it.objectID != a.ObjectID || it.gates.Load() {
+			continue
+		}
+		it.mu.Lock()
+		radar := it.atc == traffic.PosDeparture
+		it.mu.Unlock()
+		if !radar || len(it.dep.ClimbPlan(a.Position)) == 0 {
+			continue
+		}
+		w.mu.Lock()
+		asked := w.asked[a.Tail]
+		w.asked[a.Tail] = true
+		w.mu.Unlock()
+		if asked || rand.Float64() >= crewDirectShare {
+			continue
+		}
+		ahead := fixesAhead(it.fixes, it.dep.ClimbRoute(a.Position))
+		var fix *airFix
+		for i := len(ahead) - 1; i >= 1; i-- { // the furthest, past the next
+			if d := calc.HaversineNM(a.Position.Lat, a.Position.Lon, ahead[i].Lat, ahead[i].Lon); d >= crewDirectMinNM && d <= crewDirectMaxNM {
+				fix = &ahead[i]
+				break
+			}
+		}
+		if fix == nil {
+			continue
+		}
+		cs, a, f := a.Tail, a, *fix
+		tlog.printf("%-6s crew: request direct %s", cs, f.Ident)
+		it.say(traffic.RequestDirect(traffic.PosDeparture, cs, f.Ident))
+		it.call(traffic.PosDeparture, prioApproach, func() {
+			w.mu.Lock()
+			busy := now.Before(w.busy[cs])
+			w.mu.Unlock()
+			if busy || w.inConflictAny(cs) {
+				tlog.printf("%-6s direct %s: unable, traffic", cs, f.Ident)
+				it.say(traffic.UnableDirect(traffic.PosDeparture, cs))
+				return
+			}
+			if err := w.s.cc.do(func() error { return it.dep.DirectTo(a.Position, a.AltFt, a.GroundKts, f.LatLon) }); err != nil {
+				tlog.printf("%-6s direct %s refused: %v", cs, f.Ident, err)
+				return
+			}
+			it.say(traffic.ClearedDirectTo(traffic.PosDeparture, cs, f.Ident))
+		})
+	}
+}
+
+// inConflictAny reports that cs is in any predicted conflict (the latest
+// look).
+func (w *conflictWatch) inConflictAny(cs string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, c := range w.now {
+		if c.A == cs || c.B == cs {
+			return true
+		}
+	}
+	return false
 }

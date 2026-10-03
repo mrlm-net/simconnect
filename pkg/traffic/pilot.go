@@ -347,6 +347,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = verb + " speed to " + p[ParamSpeed] + " knots"
 	case IntentLevel:
 		s = capital(p[ParamClimb]) + " to " + p[ParamLevel]
+		if p[ParamClimb] == "stop" {
+			s = "Stop descent at " + p[ParamLevel]
+		}
 	case IntentHeading:
 		s = "Turn " + p[ParamTurn] + " heading " + p[ParamHeading]
 	case IntentContact:
@@ -463,6 +466,12 @@ func SayAgain(pos Position, cs string) Transmission {
 // around".
 func GoingAround(cs string) Transmission {
 	return pilotTx(PosTower, cs, IntentPilotGoAround, nil, cs+", going around")
+}
+
+// RejectingTakeoff is a crew rejecting its take-off on its own (#621):
+// "CSA1, stopping".
+func RejectingTakeoff(cs string) Transmission {
+	return pilotTx(PosTower, cs, IntentPilotReject, nil, cs+", stopping")
 }
 
 // Acknowledge is a controller's "roger" to a crew's report: "CSA1, roger".

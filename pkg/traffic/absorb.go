@@ -39,7 +39,10 @@ type Absorption struct {
 	SpeedKts float64 `json:"speedKts,omitempty"`
 	// ExtraNM is the track added by path stretching.
 	ExtraNM float64 `json:"extraNM,omitempty"`
-	// Left is what neither absorbs: for the hold.
+	// Orbit: the stretch is a 360 where it is (near the end of the STAR),
+	// the way it turns.
+	Orbit string `json:"orbit,omitempty"` // "left" or "right"
+		// Left is what neither absorbs: for the hold.
 	Left time.Duration `json:"left,omitempty"`
 }
 
@@ -53,6 +56,9 @@ func (a Absorption) String() string {
 			s += ", "
 		}
 		s += fmt.Sprintf("+%.1f NM", a.ExtraNM)
+		if a.Orbit != "" {
+			s += " (360)"
+		}
 	}
 	if a.Left > 0 {
 		if s != "" {
@@ -232,9 +238,19 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			// No leg long enough (near the end of the STAR): vectors from
 			// where it is, out and back to its next point — a hold is for
 			// long delays only (live, LOT775 held at PR532 for a minute).
+			// About one turn's worth or more: a 360 where it is, smoother
+			// than out and back on a short leg (live, OKYDV).
 			at = 1
+			if orbit, nm, side, ok := c.orbitHere(pts, a, speed); ok && a.ExtraNM >= OrbitFromShare*nm {
+				if lost := a.ExtraNM - nm; lost > 0 {
+					a.Left += time.Duration(lost / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+				}
+				out = append(orbit, out...)
+				outNames = append(make([]string, len(orbit)), outNames...)
+				a.Orbit, at = side, -1
+			}
 		}
-		{
+		if at > 0 {
 			from, to := pts[at-1], pts[at]
 			side := 1.0
 			thr := c.plan.End.Threshold
@@ -492,4 +508,89 @@ func (c *ArrivalController) DirectToJoin() error {
 	c.proc.Waypoints, c.procNext = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), final...), 0
 	c.note("direct to the join point", nil)
 	return nil
+}
+
+// StopDescent has an arrival on its STAR stop its descent at altFt (no
+// lower) for the next forNM of its route, then descend as planned: a level
+// that keeps it above traffic merging below it (live, LKPR: AUA529 on VLM6T
+// and CSA1871 descending to the same level at the merge, held instead).
+// The align and join points are never raised. ErrNotOnProcedure on the
+// final, ErrHolding in the hold.
+func (c *ArrivalController) StopDescent(altFt, forNM float64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 3 {
+		return ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return ErrHolding
+	}
+	pos := c.last.Position
+	wps := c.proc.Waypoints
+	final := len(wps) - 2
+	next := c.procWaypoint(wps[:final])
+	if next >= final || pos == (airport.LatLon{}) {
+		return ErrNotOnProcedure
+	}
+	raise := func(chain []types.SIMCONNECT_DATA_WAYPOINT, end int) []types.SIMCONNECT_DATA_WAYPOINT {
+		out := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), chain...)
+		prev, gone := pos, 0.0
+		for i := range out[:end] {
+			gone += calc.HaversineNM(prev.Lat, prev.Lon, out[i].Latitude, out[i].Longitude)
+			prev = airport.LatLon{Lat: out[i].Latitude, Lon: out[i].Longitude}
+			if gone > forNM {
+				break
+			}
+			out[i].Altitude = math.Max(out[i].Altitude, altFt)
+		}
+		return out
+	}
+	out := raise(wps[next:], final-next)
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+		return err
+	}
+	c.proc.Waypoints, c.procNext = out, 0
+	if len(c.corners) >= 3 {
+		if k := c.cornerAhead(); k < len(c.corners)-2 {
+			c.corners = append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[:k]...), raise(c.corners[k:], len(c.corners)-2-k)...)
+		}
+	}
+	c.note(fmt.Sprintf("stop descent at %.0f ft for %.0f NM", altFt, forNM), nil)
+	return nil
+}
+
+// OrbitFromShare: near the end of the STAR, a stretch of at least this
+// share of a 360's track is flown as the 360 (AbsorbDelay).
+const OrbitFromShare = 0.7
+
+// orbitHere is a 360 where the arrival is, at kts (a.SpeedKts when slower),
+// standard rate for that speed, turning away from the final (pts: from its
+// position on along the STAR), at the altitude it flies to next; and the
+// track it adds (NM). c.mu held.
+func (c *ArrivalController) orbitHere(pts []airport.LatLon, a Absorption, kts float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64, string, bool) {
+	if len(pts) < 2 || c.proc == nil || len(c.proc.Waypoints) == 0 {
+		return nil, 0, "", false
+	}
+	if a.SpeedKts > 0 && a.SpeedKts < kts {
+		kts = a.SpeedKts
+	}
+	pos, hdg := pts[0], c.last.Heading
+	r := turnRadiusMeters(kts, StandardBankDeg(kts, MaxBankDeg(*c.aircraft())))
+	turn := 1.0 // right
+	thr := c.plan.End.Threshold
+	if calc.CrossTrackMeters(pts[0].Lat, pts[0].Lon, pts[1].Lat, pts[1].Lon, thr.Lat, thr.Lon) > 0 {
+		turn = -1 // the runway to the right: turn left, away from it
+	}
+	alt := c.proc.Waypoints[c.procWaypoint(c.proc.Waypoints)].Altitude
+	centre := offsetHeading(pos, hdg+90*turn, r)
+	from := localBearing(centre, pos)
+	var orbit []types.SIMCONNECT_DATA_WAYPOINT
+	for k := 1; k <= 8; k++ {
+		orbit = append(orbit, procedureWaypoint(offsetHeading(centre, from+turn*45*float64(k), r), alt, kts))
+	}
+	side := "right"
+	if turn < 0 {
+		side = "left"
+	}
+	return orbit, 2 * math.Pi * r / 1852, side, true
 }

@@ -1615,11 +1615,30 @@ func runwaySelector(icao string) *nav.RunwaySelector {
 	defer runwaySelectors.Unlock()
 	s := runwaySelectors.m[icao]
 	if s == nil {
-		s = &nav.RunwaySelector{}
+		// A change that is due waits for a gap in the traffic, as a tower
+		// supervisor times it (the selector waits RunwayChangeMaxWait at
+		// most; out of limits it changes at once).
+		s = &nav.RunwaySelector{Ready: func(from, to nav.RunwayUse) bool {
+			runwayBusy.Lock()
+			defer runwayBusy.Unlock()
+			return !runwayBusy.m[icao]
+		}}
 		runwaySelectors.m[icao] = s
 	}
 	return s
 }
+
+// runwayBusy: the airports with more arrivals within runwayChangeGapNM on
+// the final than finish on the old runway (the towers' last look):
+// no moment to change the runway in use.
+var runwayBusy = struct {
+	sync.Mutex
+	m map[string]bool
+}{m: map[string]bool{}}
+
+// runwayChangeGapNM: an arrival this close on the final lands on the
+// runway in use before a change.
+const runwayChangeGapNM = 10.0
 
 // logRunwayChange logs a change of icao's runway in use, with the wind
 // that made it (#465: to see every change, and why, in the traffic log).
@@ -2508,6 +2527,9 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 const (
 	towerHandoffMeters  = 500.0
 	towerHandoffSpreadM = 200.0
+	// goAroundHandoffAfter: tower hands a go-around to approach this long
+	// after "going around", climbing away.
+	goAroundHandoffAfter = 30 * time.Second
 )
 
 // handoff moves the aircraft to the position working it now (#416): a
@@ -2635,6 +2657,17 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		}
 		it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
 		it.approachSaid = false // a go-around is cleared again
+	}
+	// Gone around: tower says "go around" and hears "going around" first,
+	// then hands it to approach once climbing away, and the crew calls in
+	// once (live, AUA529 heard "contact Ruzyne Radar" before "go around").
+	if ev.arr != nil && from == traffic.PosTower && pos == traffic.PosApproach {
+		p := it.cc.pending
+		p.later(it.cc.clock.Now().Add(goAroundHandoffAfter+p.jitter(atcAnswerJitter)), func() {
+			it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
+			it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), ""))
+		})
+		return
 	}
 	switch {
 	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:

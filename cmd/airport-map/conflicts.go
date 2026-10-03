@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"math"
 	"sync"
 	"time"
 
@@ -39,6 +40,8 @@ type conflictWatch struct {
 	// informed: when each pair not separated here was last told of each
 	// other (traffic information, #570).
 	informed map[string]time.Time
+	asked    map[string]bool // crews that have made their request (#621)
+	leveled  map[string]bool // arrivals told to stop descent for a conflict
 	now    []traffic.Conflict
 	done   []resolutionView // the latest last (at most 50)
 }
@@ -50,7 +53,7 @@ type resolutionView struct {
 }
 
 func newConflictWatch(s *scheduler) *conflictWatch {
-	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}}
+	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}, asked: map[string]bool{}, leveled: map[string]bool{}}
 }
 
 func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
@@ -159,7 +162,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	}
 	for cs := range w.slowed {
 		if !involved[cs] {
-			delete(w.slowed, cs) // out of conflict: a new one starts with speed again
+			delete(w.slowed, cs) // out of conflict: a new one starts with the level again
+		}
+	}
+	for cs := range w.leveled {
+		if !involved[cs] {
+			delete(w.leveled, cs)
 		}
 	}
 	w.now = cs
@@ -174,6 +182,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 	}
 	w.mu.Unlock()
+	w.crewRequests(now, aircraft) // after the look: a crew in a conflict is told "unable"
 }
 
 // inConflict reports that a and b are predicted to lose separation (the
@@ -203,9 +212,12 @@ const arrivalConflictRecheck = 90 * time.Second
 // resolveArrivals resolves a conflict between our arrivals on their STARs,
 // which the en route resolver does not steer (#455; LKPR, live: DLH1675 on
 // APRA2S and QTR1489 on VLM6T, both to 06, merging at the same level, were
-// predicted 1.8 NM apart and nothing acted). The one landing later loses
-// time as the Approach tab's 🐢 does (speed, then a dog-leg), said on the
-// frequency; still in conflict when that has had time to work, it holds.
+// predicted 1.8 NM apart and nothing acted), as a radar controller does:
+// the one landing later first stops its descent 1000 ft above the other;
+// then it loses time as the Approach tab's 🐢 does (speed, then vectors: a
+// dog-leg), again while that helps; it holds only once nothing more can be
+// absorbed. Holds are the exception (live, AUA529 held five minutes for a
+// conflict at the merge with a delay of two).
 func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	w.s.st.mu.Lock()
 	q := w.s.st.sequences
@@ -230,17 +242,48 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	if trailer == nil {
 		return
 	}
-	cs := trailer.it.Tail
+	cs, oth := trailer.it.Tail, other(c, trailer.it.Tail)
 	w.mu.Lock()
-	busy, slowed := now.Before(w.busy[cs]), w.slowed[cs]
+	busy, leveled := now.Before(w.busy[cs]), w.leveled[cs]
 	w.mu.Unlock()
 	if _, _, holding := trailer.it.arr.Holding(); busy || holding {
 		return // a change is flown already: see it work
 	}
-	action := "slow"
-	if slowed {
-		action = "hold"
+	recheck := func() {
+		w.mu.Lock()
+		w.busy[cs] = now.Add(arrivalConflictRecheck)
+		w.mu.Unlock()
 	}
+	// Level first: above the other, still descending to it.
+	if !leveled {
+		w.mu.Lock()
+		w.leveled[cs] = true
+		w.mu.Unlock()
+		var me, them *traffic.TrackedAircraft
+		for _, a := range w.s.cc.world.Aircraft() {
+			a := a
+			switch a.Tail {
+			case cs:
+				me = &a
+			case oth:
+				them = &a
+			}
+		}
+		if me != nil && them != nil {
+			level := math.Ceil((them.AltFt+arrivalLevelAboveFt)/500) * 500
+			if me.AltFt >= level-200 {
+				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(level, arrivalLevelForNM) })
+				if err == nil {
+					tlog.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
+					trailer.it.say(traffic.StopDescent(traffic.PosApproach, cs, level, oth))
+					recheck()
+					return
+				}
+				tlog.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
+			}
+		}
+	}
+	action := "slow"
 	err := q.approachAction(trailer.it.ICAO, cs, action)
 	if errors.Is(err, errNothingToSlow) {
 		// Slowed and stretched as far as it goes already: it holds now
@@ -250,22 +293,29 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		err = q.approachAction(trailer.it.ICAO, cs, action)
 	}
 	if err != nil {
-		tlog.printf("%-6s conflict with %s: %s refused: %v", cs, other(c, cs), action, err)
+		tlog.printf("%-6s conflict with %s: %s refused: %v", cs, oth, action, err)
 		return
 	}
 	if action == "hold" {
 		// Held until the conflict is over, not released by the sequence's
 		// small delay a second later (live, CSA1257 at ERASU).
 		q.mu.Lock()
-		q.conflictHeld[cs] = conflictHold{other: other(c, cs), at: now}
+		q.conflictHeld[cs] = conflictHold{other: oth, at: now}
 		q.mu.Unlock()
 	}
-	tlog.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, other(c, cs), map[string]string{"slow": "loses time", "hold": "holds"}[action])
+	tlog.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, oth, map[string]string{"slow": "loses time", "hold": "holds"}[action])
+	recheck()
 	w.mu.Lock()
-	w.busy[cs] = now.Add(arrivalConflictRecheck)
 	w.slowed[cs] = true
 	w.mu.Unlock()
 }
+
+// An arrival in conflict with another below it stops its descent this far
+// above it, for this far along its STAR.
+const (
+	arrivalLevelAboveFt = 1000.0
+	arrivalLevelForNM   = 20.0
+)
 
 // other is the other aircraft of conflict c.
 func other(c traffic.Conflict, cs string) string {

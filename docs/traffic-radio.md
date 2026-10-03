@@ -164,6 +164,22 @@ Crews can also ask for the weather or for a shortcut:
 
 No source we have read gives the wording of the two requests themselves, so it is the project's own; the answers are quoted ones.
 
+## VFR departures and squawks
+
+`VFRDepartureInstructions` and `VFRDepartureReadback` say a VFR departure's instructions from a controlled aerodrome, following CAP 413 (Edition 24, Figure 24, "VFR – Departure Instructions and Take-off Clearance"): "G-CD, after departure, left turn approved, climb not above altitude 2500 feet until reaching the zone boundary".
+
+- **Wording:** the figure says "departure", not "take-off", and "approved", not "cleared", and asks for a full readback: "Left turn approved, not above altitude 2500 feet until zone boundary, G-CD".
+- **Route out:** a visual reporting point is given as in CAP 413 6.7, "route via Whiskey".
+- **Squawk:** added last when one is given ("squawk 7000").
+
+Combining the route and squawk with the figure's wording is the project's own; each part is quoted.
+
+`Squawks` hands out discrete SSR codes. No source for per-airport code banks has been found, so the scheme is simple and documented:
+
+- **The bank:** codes from 4001 to 4777 by default (octal).
+- **Which code:** the first code tried is picked from the call sign, so a flight keeps its code; then the next free one.
+- **Never given:** codes in use (`Reserve` adds codes seen elsewhere, `Release` frees one), and the special codes 0000, 1200, 2000, 7000, 7500, 7600 and 7700 (`SpecialSquawk`).
+
 ## The radio panel
 
 The airport map's **Radio** tab (#425) shows what is said on the airport's frequencies. Each frequency the scenery lists (Delivery, Ground, Tower, Approach, ATIS…) has a button with the number of transmissions heard on it. Pick the one to follow, as on a receiver: one frequency at a time (#462). Pilot lines and the ATIS are coloured apart from the controllers'. The choice is remembered.
