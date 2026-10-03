@@ -749,11 +749,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				if t.GS < 0.5 {
 					t.GS = derivedKts(lastPos[id], t.Lat, t.Lon, now)
 				}
-				lastPos[id] = fix{t.Lat, t.Lon, now}
+				vs := derivedFpm(lastPos[id], t.AltFt, now)
+				lastPos[id] = fix{lat: t.Lat, lon: t.Lon, at: now, altFt: t.AltFt, vs: vs}
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
 					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
-					Heading: t.Heading, VerticalFpm: t.VS, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
 				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					st.mu.Lock()
@@ -1342,6 +1343,19 @@ func routeError(w http.ResponseWriter, err error) {
 type fix struct {
 	lat, lon float64
 	at       time.Time
+	altFt    float64 // feet MSL
+	vs       float64 // vertical speed derived so far (fpm)
+}
+
+// derivedFpm is the vertical speed from the altitude change since the last
+// fix, smoothed: VERTICAL SPEED is wrong for the aircraft we place (live, an
+// arrival descending on final read +700 fpm and showed climbing).
+func derivedFpm(prev fix, altFt float64, now time.Time) float64 {
+	dt := now.Sub(prev.at).Seconds()
+	if prev.at.IsZero() || dt < 0.2 || dt > 10 {
+		return 0
+	}
+	return 0.5*prev.vs + 0.5*(altFt-prev.altFt)/dt*60
 }
 
 // derivedKts is the ground speed from the distance moved since the last

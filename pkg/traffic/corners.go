@@ -69,13 +69,33 @@ func roundCorners(wps []types.SIMCONNECT_DATA_WAYPOINT, maxBank float64) []types
 		// An arc's own point (a chain rounded before: a turn of 45° or less
 		// a short chord away) is not rounded again.
 		arcPoint := math.Abs(turn) <= 46 && math.Min(legIn, legOut) < 0.8*r
-		if math.Abs(turn) < 15 || math.Abs(turn) > 170 || legIn < 200 || legOut < 200 || arcPoint {
+		// The straight runs into and out of the corner, through points in
+		// line with them: a point on the leg just short of the corner does not
+		// shorten the arc (live, KLM1960: a downwind point 524 m before the
+		// base turn made a 425 m radius where the turn needs some 2 km).
+		runIn, runOut, back, ahead := legIn, legOut, len(out)-1, i+1
+		for back >= 1 && inLine(out[back-1], out[back], c) {
+			runIn += calc.HaversineMeters(out[back-1].Latitude, out[back-1].Longitude, out[back].Latitude, out[back].Longitude)
+			back--
+		}
+		for ahead+1 < len(wps)-1 && inLine(c, wps[ahead], wps[ahead+1]) {
+			runOut += calc.HaversineMeters(wps[ahead].Latitude, wps[ahead].Longitude, wps[ahead+1].Latitude, wps[ahead+1].Longitude)
+			ahead++
+		}
+		if math.Abs(turn) < 15 || math.Abs(turn) > 170 || runIn < 200 || runOut < 200 || arcPoint {
 			out = append(out, c)
 			continue
 		}
 		d := r * math.Tan(th/2)
-		if lim := 0.45 * math.Min(legIn, legOut); d > lim {
+		if lim := 0.45 * math.Min(runIn, runOut); d > lim {
 			d, r = lim, lim/math.Tan(th/2)
+		}
+		// The points in line within the arc's reach are flown round, not over.
+		for len(out)-1 > back && calc.HaversineMeters(out[len(out)-1].Latitude, out[len(out)-1].Longitude, c.Latitude, c.Longitude) < d {
+			out = out[:len(out)-1]
+		}
+		for i+1 < ahead && calc.HaversineMeters(c.Latitude, c.Longitude, wps[i+1].Latitude, wps[i+1].Longitude) < d {
+			i++
 		}
 		// The arc from where it leaves the inbound leg to where it joins the
 		// outbound one, about its centre off to the side of the turn.
@@ -108,3 +128,14 @@ func roundedChain(here airport.LatLon, wps []types.SIMCONNECT_DATA_WAYPOINT, max
 	head := append([]types.SIMCONNECT_DATA_WAYPOINT{{Latitude: here.Lat, Longitude: here.Lon, KtsSpeed: wps[0].KtsSpeed}}, wps[:len(wps)-1]...)
 	return append(roundCorners(head, maxBank)[1:], wps[len(wps)-1])
 }
+
+// inLine reports whether b lies on the straight from a to c: the track
+// turns less than inLineDeg there.
+func inLine(a, b, c types.SIMCONNECT_DATA_WAYPOINT) bool {
+	in := calc.BearingDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude)
+	out := calc.BearingDegrees(b.Latitude, b.Longitude, c.Latitude, c.Longitude)
+	return math.Abs(math.Mod(out-in+540, 360)-180) < inLineDeg
+}
+
+// inLineDeg: a point where the track turns less than this is on a straight.
+const inLineDeg = 3.0

@@ -332,9 +332,18 @@ func (m *GroundMover) step(dt float64) {
 	// runs about SpeedResponseSeconds late on every slow-down.
 	ahead := math.Max(TurnLookaheadMeters, m.v*SpeedResponseSeconds)
 	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+ahead))
-	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
-	if traffic && m.giveWay {
-		target = math.Min(target, math.Sqrt(2*GiveWayDecelFactor*p.Decel*math.Max(0, rem)))
+	if traffic {
+		// Traffic: its own firm braking below catches what this misses.
+		target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
+		if m.giveWay {
+			target = math.Min(target, math.Sqrt(2*GiveWayDecelFactor*p.Decel*math.Max(0, rem)))
+		}
+	} else {
+		// A hold: the stop as reachable from here. Still accelerating, the
+		// aircraft first covers what it rolls while that winds down (at the
+		// jerk) and the lag before it answers, then brakes (stopSpeed).
+		remEff := rem - m.v*(math.Max(0, m.a)/p.Jerk+SpeedResponseSeconds/2)
+		target = math.Min(target, stopSpeed(p.Decel, p.Jerk, remEff))
 	}
 	if m.slowKts > 0 && m.s < m.slowAt {
 		v0 := m.slowKts * ktsToMS
@@ -696,4 +705,21 @@ func fillet(p []airport.LatLon, r float64) []airport.LatLon {
 		}
 	}
 	return append(out, p[len(p)-1])
+}
+
+// stopSpeed is the highest speed (m/s) from which braking that builds up
+// at jerk (m/s³) to decel (m/s²) stops within rem metres: it covers
+// v·decel/(2·jerk) while the braking builds, then v²/(2·decel). Planning
+// with v²/(2·decel) alone, the aircraft met the stop point still rolling
+// and halted in one frame (live, TVS206 at 7 kt at its holding point; from
+// rest 40 m before a hold, 7 kt to 0 at once).
+func stopSpeed(decel, jerk, rem float64) float64 {
+	if rem <= 0 || decel <= 0 {
+		return 0
+	}
+	if jerk <= 0 {
+		return math.Sqrt(2 * decel * rem)
+	}
+	k := decel / (2 * jerk)
+	return decel * (-k + math.Sqrt(k*k+2*rem/decel))
 }

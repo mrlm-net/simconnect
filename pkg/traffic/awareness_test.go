@@ -624,3 +624,50 @@ func TestPushUnderWayNotHeldByWaitingTraffic(t *testing.T) {
 		t.Fatalf("the push never finished (%v): held by the aircraft waiting beside it", ctl.State())
 	}
 }
+
+// TestGroundPictureFollowsSameWay: an aircraft behind another on the same
+// taxiway, going the same way, follows it at a gap and never gives way to
+// it (live, OKOPA stopped behind a B737 "giving way to the Boeing 737
+// ahead").
+func TestGroundPictureFollowsSameWay(t *testing.T) {
+	origin := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	prof := DefaultMotionProfile()
+	picture := NewGroundPicture()
+	now := time.Now()
+	mk := func(id uint32, start float64) *groundDrive {
+		a := offsetHeading(origin, 270, start)
+		b := offsetHeading(origin, 90, 600)
+		path, err := NewGroundPath([]airport.LatLon{a, b}, prof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &groundDrive{mover: NewGroundMover(path, prof), picture: picture, followTraffic: true, prof: prof, object: id,
+			clock: func() time.Time { return now }}
+	}
+	lead, behind := mk(1, 100), mk(2, 200)
+	gaveWay, closest := false, 1e9
+	for i := 0; i < 60*300; i++ {
+		now = now.Add(time.Second / 60)
+		for _, d := range []*groundDrive{lead, behind} {
+			p := d.mover.Pose()
+			picture.Report(d.object, p.Position, p.Heading, prof, now)
+		}
+		for _, d := range []*groundDrive{lead, behind} {
+			d.followAhead(now)
+			d.mover.Step(1.0 / 60)
+		}
+		if behind.givingWay == lead.object {
+			gaveWay = true
+		}
+		closest = math.Min(closest, localDist(lead.mover.Pose().Position, behind.mover.Pose().Position))
+		if lead.mover.Pose().Arrived && behind.mover.Pose().Arrived {
+			break
+		}
+	}
+	if gaveWay {
+		t.Error("gave way to the aircraft ahead going the same way")
+	}
+	if closest < prof.WheelbaseMeters+prof.TailMeters {
+		t.Errorf("closed to %.0f m behind it", closest)
+	}
+}
