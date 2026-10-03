@@ -163,8 +163,8 @@ Dozens of injected aircraft at once (#370) cost little CPU. The load is the mess
 | Aircraft | Driven |
 |---|---|
 | on the runway (lining up, take-off, landing roll, vacating) | every frame |
-| moving within `NearMeters` (3 km) of the viewer | every frame |
-| moving within `MidMeters` (10 km) | every 2nd frame (`MidInterval`) |
+| moving within `NearMeters` (8 km) of the viewer: the whole airport and its short finals | every frame |
+| moving within `MidMeters` (20 km) | every 2nd frame (`MidInterval`) |
 | moving farther away | every 4th frame (`FarInterval`, 15 Hz) |
 | standing still (on the stand, holding, lined up to wait) | every 30th frame (`StillInterval`, 2 Hz) |
 
