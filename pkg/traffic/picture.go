@@ -151,6 +151,11 @@ type TrackedAircraft struct {
 	// SpeedDerived: GroundKts is worked out from the movement between
 	// scans, the simulator reporting 0 for AI on the ground (#622).
 	SpeedDerived bool `json:"speedDerived,omitempty"`
+	// VSDerived: VSFpm is the altitude trend over the last ProfileWindow,
+	// not the reported vertical speed (wrong sign for FSLTL AI on short
+	// final); every aircraft in the air but the user's, once ProfileMin of
+	// history is in.
+	VSDerived bool `json:"vsDerived,omitempty"`
 }
 
 type ownInfo struct {

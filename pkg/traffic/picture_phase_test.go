@@ -198,3 +198,54 @@ func TestPictureFlightAirport(t *testing.T) {
 		t.Errorf("climbing out east: %s at %q, want departing LKPR", a.Phase, a.Airport)
 	}
 }
+
+// MSFS reports FSLTL AI on short final climbing (live, BAW1989 at LKPR:
+// +500…+940 fpm while descending about 1,100 fpm); the phase and the
+// vertical speed come from the altitude.
+func TestPictureVerticalSpeedFromAltitude(t *testing.T) {
+	p, _ := phasePicture(t)
+	final := offsetHeading(pictureLKPR.Position, 64, 3*1852)
+	var obs []Observation
+	for i := range 10 {
+		alt := 2200 - 37*float64(i) // 37 ft a 2 s scan: about 1,110 fpm down
+		obs = append(obs, Observation{Position: final, Heading: 244, AltFt: alt, AGLFt: alt - 1200, VSFpm: 600 + 40*float64(i)})
+	}
+	a := observeTrack(p, time.Now(), obs)
+	if a.Phase != PhaseApproach || a.Airport != "LKPR" {
+		t.Errorf("short final reported climbing: %s at %q, want approach at LKPR", a.Phase, a.Airport)
+	}
+	if !a.VSDerived || a.VSFpm > -1000 || a.VSFpm < -1200 {
+		t.Errorf("vertical speed %.0f fpm (derived %v), want about -1110", a.VSFpm, a.VSDerived)
+	}
+}
+
+// Lined up with a runway: that airport, though a nearer one with a layout
+// is ahead too (live: OKLTU on LKPR 06's centreline read LKHY, the app
+// having layouts for 40 airports around).
+func TestPictureFlightAirportAligned(t *testing.T) {
+	p, l := phasePicture(t)
+	var end airport.RunwayEnd
+	for _, rw := range l.Runways {
+		for _, e := range []airport.RunwayEnd{rw.Primary, rw.Secondary} {
+			if e.Name == "06" {
+				end = e
+			}
+		}
+	}
+	out := offsetHeading(end.Threshold, end.Heading+180, 14*1852) // 14 NM final
+	other := AirportRef{ICAO: "LKHY", Position: offsetHeading(out, end.Heading+40, 6*1852)}
+	small := &airport.Layout{ICAO: "LKHY", Runways: []airport.Runway{{Length: 2500,
+		Primary: airport.RunwayEnd{Name: "15", Heading: 150, Threshold: other.Position}, Secondary: airport.RunwayEnd{Name: "33", Heading: 330, Threshold: other.Position}}}}
+	p.opts.Layout = func(icao string) *airport.Layout {
+		return map[string]*airport.Layout{"LKPR": l, "LKHY": small}[icao]
+	}
+	p.SetAirports([]AirportRef{pictureLKPR, other})
+	var obs []Observation
+	for i := range 16 {
+		alt := 5800 - 16*float64(i) // about 500 fpm down
+		obs = append(obs, Observation{Position: out, Heading: end.Heading, AltFt: alt, AGLFt: alt - 1200, VSFpm: -970})
+	}
+	if a := observeTrack(p, time.Now(), obs); a.Phase != PhaseArriving || a.Airport != "LKPR" {
+		t.Errorf("on LKPR 06's centreline: %s at %q, want arriving at LKPR", a.Phase, a.Airport)
+	}
+}

@@ -55,14 +55,24 @@ A fixed centre stays put; `SetCentre` moves it, `SetRadius` changes the radius. 
 | `climbing` / `descending` | climbing / descending elsewhere |
 | `enroute` | level in the air |
 
-The simulator reports 0 kt for AI aircraft on the ground however they move (measured at LKPR: taxiing at 6–32 kt by their positions, 0.0 reported). Below `MovingKts` on the ground the picture works out the speed from the movement since the last scan (`SpeedDerived`, #622); such a speed counts as movement only above `DerivedMovingKts` (2 kt), as a metre of jitter between scans is about 1 kt. Climbing and descending follow the altitude over the last `ProfileWindow` (30 s), not one scan's vertical speed: a climb or descent starts past `ProfileEnterFpm` (400 ft/min) and ends inside `ProfileLeaveFpm` (150); with less than `ProfileMin` (10 s) of history the first scan's phase stands (#623).
+The simulator reports 0 kt for AI aircraft on the ground however they move (measured at LKPR: taxiing at 6–32 kt by their positions, 0.0 reported). Below `MovingKts` on the ground the picture works out the speed from the movement since the last scan (`SpeedDerived`, #622); such a speed counts as movement only above `DerivedMovingKts` (2 kt), as a metre of jitter between scans is about 1 kt. Climbing and descending follow the altitude over the last `ProfileWindow` (30 s): a climb or descent starts past `ProfileEnterFpm` (400 ft/min) and ends inside `ProfileLeaveFpm` (150) (#623).
+
+The reported vertical speed is used only on the first scan of an aircraft. MSFS gives FSLTL AI on short final the wrong sign: BAW1989 at LKPR read +500 to +940 fpm while descending about 1,100 fpm.
+
+- **`VSFpm`** of every aircraft in the air except the user's is that altitude trend (`VSDerived`).
+- **First seen**, the reported vertical speed sets the phase for that one scan. One that has just lifted off counts as departing. The phase then stands until `ProfileMin` (4 s) of history is in.
 
 On the ground, **where** an aircraft is comes from `airport.Locate` among the airports within `AirportNearNM` whose layout `PictureOptions.Layout` gives (`Where`: runway, parking, taxiway; `WhereName`: "06/24", "C22", "A"). Without layouts the phase is by speed alone and the airport the nearest within `AirportNearNM`. The phases follow the MyCrew app's observer, which measured the simulator live (mycrew-online/app `internal/agent/traffic_phase.go`).
 
 An aircraft on the ground belongs to the airport within `AirportNearNM`. A departing or arriving aircraft belongs to its airport in this order:
 
 1. **Origin or destination**, when the observation names it (`Observation.From`/`To`, from AI TRAFFIC FROMAIRPORT/TOAIRPORT). It counts when it is within `AirportTerminalNM` or the picture does not know where it is. FSLTL aircraft leave these empty.
-2. **Ahead of it:** among the airports within `AirportTerminalNM`, one within `AirportAheadDeg` (60°) of its heading; for a departing aircraft, one as far behind it. Higher up, those with a layout loaded come first: that marks the airport the caller follows. Then the nearest.
+2. **Ahead of it:** among the airports within `AirportTerminalNM`, one within `AirportAheadDeg` (60°) of its heading; for a departing aircraft, one as far behind it. Among these, in order:
+   - one with a runway lined up with its track (layout needed): within `AlignedRunwayDeg` (20°), and within `AlignedCentrelineNM` (1.5 NM, or a tenth of the distance) of the extended centreline, before the threshold arriving, past it departing;
+   - higher up, one with a layout loaded, then the longest runway;
+   - then the nearest.
+
+   Live, OKLTU on LKPR 06's centreline read LKHY, nearer and also with a layout.
 3. **The nearest**, when none is ahead.
 
 Before this, BAW1989 descending through 8,000 ft toward LKPR was given LKKQ, the nearest airport. `Airports()` are the airports inside the radius with their distance from the centre. `Events()` reports aircraft and airports entering and leaving, and recentring (dropped when the channel is full; the picture itself stays current).
