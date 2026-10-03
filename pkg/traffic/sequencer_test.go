@@ -300,3 +300,35 @@ func TestDepartureSlots(t *testing.T) {
 		t.Errorf("without departures: %+v", again[1])
 	}
 }
+
+// TestSequencerBehind: a VFR arrival told to follow a jet stays behind it
+// when, turning in from a short circuit, its own prediction is earlier
+// (live, OKVUV was put in front of CSA549 and cleared to land; CSA549 went
+// around).
+func TestSequencerBehind(t *testing.T) {
+	jet := arr("CSA549", "A320", 2.8)
+	jet.GroundKts, jet.FinalKts = 140, 140
+	vfr := ApproachAircraft{Callsign: "OKVUV", Wake: WakeFor("C172"), DistanceToGoNM: 1.1, GroundKts: 60, FinalKts: 60}
+	now := time.Now()
+	order := func(s *ApproachSequencer) (first string, gap time.Duration) {
+		seq := s.Update(now, []ApproachAircraft{jet, vfr})
+		return seq[0].Callsign, seq[1].Landing.Sub(seq[0].Landing)
+	}
+	if first, _ := order(NewApproachSequencer("24", SequencerOptions{})); first != "OKVUV" {
+		t.Fatalf("by the predictions alone %s lands first, want OKVUV (the case to cover)", first)
+	}
+	s := NewApproachSequencer("24", SequencerOptions{})
+	s.Behind("OKVUV", "CSA549")
+	first, gap := order(s)
+	if first != "CSA549" {
+		t.Fatalf("told to follow CSA549, %s lands first", first)
+	}
+	if want, _, _ := s.gap(jet, vfr, ApproachConditions{}); gap < want {
+		t.Errorf("%s behind the jet, want at least %s", gap, want)
+	}
+	// The jet landed: the constraint goes.
+	s.Update(now, []ApproachAircraft{vfr})
+	if _, ok := s.behind["OKVUV"]; ok {
+		t.Error("still held behind a jet that has landed")
+	}
+}
