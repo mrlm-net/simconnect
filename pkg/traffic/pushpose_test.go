@@ -283,6 +283,9 @@ func TestPushbackFacing(t *testing.T) {
 	if err := ctl.ClearPushbackFacing("up"); err == nil {
 		t.Error("facing up accepted")
 	}
+	if CompassName8(143) != "south-east" || CompassName8(-10) != "north" || CompassName8(250) != "west" || CompassName8(300) != "north-west" {
+		t.Error("CompassName8")
+	}
 	if CompassName(-10) != "north" || CompassName(100) != "east" || CompassName(225+1) != "west" {
 		t.Error("CompassName")
 	}

@@ -1800,6 +1800,30 @@ func (c *TaxiController) PushFacing() string {
 	return CompassName(h)
 }
 
+// PushFacingSaid is PushFacing as told to the crew: the nearest of eight
+// points ("south-east"), so a push ending at 143° is not told "facing
+// south" (live, UAE375 at LKPR C22).
+func (c *TaxiController) PushFacingSaid() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pushPose == nil {
+		return ""
+	}
+	h := c.pushPose.heading
+	if len(c.towPts) > 1 {
+		n := len(c.towPts)
+		h = localBearing(c.towPts[n-2], c.towPts[n-1])
+	}
+	return CompassName8(h)
+}
+
+// CompassName8 is the nearest of the eight compass points to heading:
+// "north", "north-east", "east" … "north-west".
+func CompassName8(heading float64) string {
+	i := int(math.Mod(math.Mod(heading, 360)+360+22.5, 360) / 45)
+	return [...]string{"north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"}[i%8]
+}
+
 // CompassHeading is the heading of a compass direction: "north" or "n" 0,
 // "east" or "e" 90, "south" or "s" 180, "west" or "w" 270.
 func CompassHeading(dir string) (float64, bool) {

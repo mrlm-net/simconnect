@@ -476,12 +476,25 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	if pose.OnGround {
 		onGround = 1
 	}
+	// On the runway the aircraft rests on its gear as Place puts it (its
+	// rest height and pitch), the take-off or landing pitch on top; the
+	// base fades out over the first restFadeFt in the air. Placed level
+	// with the static height instead, the nose came up as the take-off
+	// roll began (live, UAE375's B77W looked to pop a wheelie).
+	cg, base := o.cgFt, o.staticPitch
+	if o.haveRest {
+		cg, base = o.restFt, o.restPitch
+	}
+	w := 1.0
+	if !pose.OnGround {
+		w = math.Max(0, 1-math.Max(0, pose.HeightFt)/restFadeFt)
+	}
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt,
-		Pitch:     -pose.PitchDeg, // SimConnect: negative is nose up
-		Bank:      -pose.BankDeg,  // assumed like the pitch (negative right wing down); check live
+		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt + w*(cg-o.cgFt),
+		Pitch:     w*base - pose.PitchDeg, // SimConnect: negative is nose up
+		Bank:      -pose.BankDeg,          // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
 		OnGround:  onGround,
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
@@ -494,6 +507,10 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 // AirBlendFt: below this height an injected aircraft in the air eases from
 // the runway's elevation onto the ground under it.
 const AirBlendFt = 100.0
+
+// restFadeFt: in the air the rest height and pitch of the ground fade out
+// over this height (PlaceAir), so lift-off and touchdown do not jump.
+const restFadeFt = 50.0
 
 // airAltitude is the main wheels' altitude MSL for a pose over ground at
 // groundFt: the runway's elevation plus the height (a steady glide path,
