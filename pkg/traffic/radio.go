@@ -75,6 +75,10 @@ const (
 	IntentCircuitDelay  Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
 	IntentVFRForLanding Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
 	IntentCircuitReport Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
+	// The crew decides on its own (#621): pilot "going around"; ATC
+	// acknowledges, "roger".
+	IntentPilotGoAround Intent = "pilot_go_around"
+	IntentAcknowledge   Intent = "acknowledge"
 	IntentTrafficInfo   Intent = "traffic_info"    // traffic, (o'clock), (distance), (direction), (type), (level) (#570)
 )
 

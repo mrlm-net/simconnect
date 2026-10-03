@@ -457,3 +457,15 @@ func SayAgain(pos Position, cs string) Transmission {
 	}
 	return Transmission{Position: pos, Callsign: cs, Intent: IntentSayAgain, Text: text}
 }
+
+// GoingAround is a crew going around on its own (#621): no landing
+// clearance by its decision point, or an approach not stable: "CSA1, going
+// around".
+func GoingAround(cs string) Transmission {
+	return pilotTx(PosTower, cs, IntentPilotGoAround, nil, cs+", going around")
+}
+
+// Acknowledge is a controller's "roger" to a crew's report: "CSA1, roger".
+func Acknowledge(pos Position, cs string) Transmission {
+	return Transmission{Position: pos, Callsign: cs, Intent: IntentAcknowledge, Text: cs + ", roger"}
+}

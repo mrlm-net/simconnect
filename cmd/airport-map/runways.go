@@ -261,6 +261,7 @@ func (t *towers) tick(now time.Time) {
 		t.mu.Unlock()
 		c := rc.Decide(now, list)
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
+		t.crewDecides(k.icao, list, ours)
 		t.apply(k.icao, k.rwy, c, ours)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival
@@ -660,6 +661,7 @@ func waitKind(why string) string {
 func (t *towers) forgetLanding(tail string) {
 	t.mu.Lock()
 	delete(t.given, tail+" land")
+	delete(t.given, tail+" crew") // the next approach judged afresh (#621)
 	t.mu.Unlock()
 }
 
