@@ -441,6 +441,13 @@ func (m *TrafficManager) pair() {
 				continue
 			}
 			if gap := d.STD.Sub(a.STA); gap >= m.opts.MinTurn && gap <= m.opts.MaxTurn {
+				// A GA aircraft (no airline: its registration is its call sign)
+				// flies on under its registration, not the departure's own.
+				if a.Airline == "" && d.Callsign != a.Callsign && m.flights["departure "+a.Callsign] == nil {
+					delete(m.flights, d.key())
+					d.Callsign = a.Callsign
+					m.flights[d.key()] = d
+				}
 				a.TurnTo, d.TurnFrom = d.Callsign, a.Callsign
 				m.emit(EventTurnaround, d, time.Time{}, a.Callsign+" → "+d.Callsign)
 				break

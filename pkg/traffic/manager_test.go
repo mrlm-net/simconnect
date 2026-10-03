@@ -275,3 +275,43 @@ func TestModelsForFlight(t *testing.T) {
 		t.Errorf("liveries used: %v, want both TVS ones", seen)
 	}
 }
+
+// TestManagerTurnaroundKeepsRegistration: a business jet turning around
+// flies out under its registration, not the departure's own, and its
+// arrival and departure each get their own updates.
+func TestManagerTurnaroundKeepsRegistration(t *testing.T) {
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{}, "LKPR")
+	ga := func(cs, from, to string, std time.Time) Flight {
+		return Flight{Callsign: cs, Type: "C25C", Operator: "business", Origin: from, Destination: to, STD: std, STA: std.Add(time.Hour)}
+	}
+	m.Add([]Flight{ga("OKJET", "EDDF", "LKPR", t0), ga("OKXYZ", "LKPR", "LOWW", t0.Add(2*time.Hour))})
+	if s := statusOf(m, "departure OKJET"); s != FlightScheduled {
+		t.Fatalf("the departure did not take OKJET's registration (%v)", s)
+	}
+	if s := statusOf(m, "departure OKXYZ"); s != 0 {
+		for _, f := range m.Flights() {
+			if f.Callsign == "OKXYZ" {
+				t.Fatalf("OKXYZ still scheduled: %+v", f)
+			}
+		}
+	}
+	now := t0.Add(35 * time.Minute)
+	m.Tick(now)
+	m.Update("OKJET", FlightApproaching, now)
+	m.Update("OKJET", FlightParked, t0.Add(62*time.Minute))
+	if s := statusOf(m, "arrival OKJET"); s != FlightParked {
+		t.Fatalf("arrival %v, want parked", s)
+	}
+	if s := statusOf(m, "departure OKJET"); s != FlightScheduled {
+		t.Fatalf("departure %v while its aircraft arrives, want scheduled", s)
+	}
+	m.Tick(t0.Add(110 * time.Minute)) // STD − 10 min: adopts
+	m.Update("OKJET", FlightBoarding, t0.Add(111*time.Minute))
+	if s := statusOf(m, "departure OKJET"); s != FlightBoarding {
+		t.Fatalf("departure %v, want boarding", s)
+	}
+	if s := statusOf(m, "arrival OKJET"); s != FlightDone {
+		t.Fatalf("arrival %v once its aircraft boards, want done", s)
+	}
+}
