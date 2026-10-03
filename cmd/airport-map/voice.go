@@ -8,9 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"math/rand/v2"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -84,7 +85,7 @@ type voiceOut struct {
 	lastCS  string
 	// shifts: each station's controller on duty (onShift).
 	shifts map[string]*shift
-	rng     *rand.Rand
+	rng    *rand.Rand
 	// piper: the piper executable and the voices folder ("" defaults).
 	piperPath, voicesDir string
 	// atis is the current ATIS of the airport broadcasting on freq.
@@ -263,12 +264,12 @@ func (v *voiceOut) broadcast(icao, freq, text string) {
 	v.mu.Unlock()
 	if !cached {
 		voice := pool.Assign(icao, voicegoio.ATIS)
-		pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(text, voicegoio.ICAO))
+		pcm, err := engine.Synthesize(context.Background(), voice, spokenEnd(norm.Spoken(text, voicegoio.ICAO)))
 		if err != nil {
 			log.Printf("voice: %v", err)
 			return
 		}
-		out := chain.Apply(pcm, engine.SampleRate(voice), voice.Radio, player.SampleRate(), 1)
+		out := chain.Apply(tailPad(pcm, engine.SampleRate(voice)), engine.SampleRate(voice), voice.Radio, player.SampleRate(), 1)
 		v.mu.Lock()
 		v.atisText, v.atisPCM, v.atisStart = text, out, time.Now()
 		v.mu.Unlock()
@@ -334,12 +335,12 @@ func (v *voiceOut) say(t traffic.Transmission, force bool) {
 	} else {
 		voice = pool.Assign(v.onShift(t.Airport, t.Position), controllerKind(t.Position))
 	}
-	pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(t.Text, phraseologyOf(t)))
+	pcm, err := engine.Synthesize(context.Background(), voice, spokenEnd(norm.Spoken(t.Text, phraseologyOf(t))))
 	if err != nil {
 		log.Printf("voice: %v", err)
 		return
 	}
-	out := chain.Apply(pcm, engine.SampleRate(voice), voice.Radio, player.SampleRate(), int64(len(t.Text)))
+	out := chain.Apply(tailPad(pcm, engine.SampleRate(voice)), engine.SampleRate(voice), voice.Radio, player.SampleRate(), int64(len(t.Text)))
 	// The pause since the last transmission, synthesis included.
 	v.mu.Lock()
 	gap := voiceGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
@@ -557,3 +558,22 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 
 // speaker is the map's voice, one for the process.
 var speaker = newVoice()
+
+// spokenEnd ends text with a full stop: piper cuts the last syllable of a
+// sentence left open, and a call ends on a call sign ("…, Wizzair 1387").
+func spokenEnd(text string) string {
+	text = strings.TrimRight(text, " ")
+	if text == "" || strings.ContainsAny(text[len(text)-1:], ".?!") {
+		return text
+	}
+	return text + "."
+}
+
+// tailPad adds voiceTailPad of silence after a synthesised call, so the
+// radio chain's fade does not take the last syllable either.
+func tailPad(pcm []int16, rate int) []int16 {
+	return append(pcm, make([]int16, int(voiceTailPad.Seconds()*float64(rate)))...)
+}
+
+// voiceTailPad: silence after each call before the radio effect.
+const voiceTailPad = 150 * time.Millisecond

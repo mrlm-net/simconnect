@@ -42,3 +42,19 @@ func TestDerivedFpm(t *testing.T) {
 		t.Errorf("still descending: %.0f", vs)
 	}
 }
+
+// A call is spoken to its end: a full stop after the call sign (piper cuts
+// an open sentence's last syllable), silence after the audio.
+func TestSpokenEnd(t *testing.T) {
+	for in, want := range map[string]string{
+		"Runway 24, cleared to land, Wizzair 1387": "Runway 24, cleared to land, Wizzair 1387.",
+		"Say again?": "Say again?", "Roger.": "Roger.", "": "",
+	} {
+		if got := spokenEnd(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+	if n := len(tailPad(make([]int16, 100), 20000)); n != 100+3000 {
+		t.Errorf("padded to %d samples", n)
+	}
+}
