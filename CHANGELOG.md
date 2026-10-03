@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Sequencing: tactical swaps. Two arrivals already in the sequence, neither fixed, change places when that cuts their delay by `TacticalSwapGain` (60 s) and costs the one moved back no more than `TacticalSwapMaxCost` (3 min); the new order holds (live, OKYDV could land before TVS223 turning base). Never a newcomer, a moved or a following arrival.
 - `pkg/systems`: the user aircraft's power, radios, engines, brakes, lights, doors, transponder, flaps and gear through profiles as data: the standard SimVars by default, shipped per-model profiles (the Fenix A320 family on its L:vars, measured live), local override files winning per value. Guide: [Aircraft Systems Profiles](docs/systems.md).
 - Airport map: a crew rejects its take-off on its own, rarely (1 in 300), between 40 and 100 kt: "CSA1, stopping". The tower acknowledges; the aircraft stops, vacates and taxis back to the holding point for a new clearance. Past V1 it goes on (#621). `traffic.RejectingTakeoff`.
 - Airport map: a crew with the departure radar asks now and then for direct to a fix further along its route ("request direct VENOX"); cleared unless it is in a predicted conflict ("unable direct due traffic") (#621). `TaxiController.DirectTo`, `traffic.UnableDirect`.
@@ -31,6 +32,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Airport map voice: the last syllable of a call is no longer clipped now and then. voice-goio (#9) cut the end of each call by a once-measured length that varies from one synthesis to the next; it now cuts at the silence before its end marker. 19 of 80 test calls ended mid-sound before, 1 of 80 after.
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
