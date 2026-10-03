@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // The conflict watch (#395): every few seconds every airborne pair is flown
@@ -70,11 +71,21 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		return nil
 	}
+	// Ours departed and handed to MSFS AI: their climb waypoints can be
+	// changed as well (#639; live, RYR1527 flew through OKCVY ahead on the
+	// same SID, both handed the same climb).
+	departed := func(a traffic.TrackedAircraft) *controlled {
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.dep == nil || it.objectID != a.ObjectID || len(it.dep.ClimbPlan(a.Position)) == 0 {
+			return nil
+		}
+		return it
+	}
 	canSteer := func(a traffic.TrackedAircraft, _ traffic.ResolutionKind) bool {
 		w.mu.Lock()
 		busy := now.Before(w.busy[a.Tail])
 		w.mu.Unlock()
-		return a.Ours && !busy && enroute(a) != nil
+		return a.Ours && !busy && (enroute(a) != nil || departed(a) != nil)
 	}
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
@@ -109,21 +120,29 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				a = x
 			}
 		}
-		e := enroute(a)
-		if e == nil {
+		var err error
+		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
+		if e := enroute(a); e != nil {
+			icao = e.f.Airport
+			var wps []types.SIMCONNECT_DATA_WAYPOINT
+			_, wps, err = traffic.EnrouteStart(traffic.ResolvedRoute(e.route, a, r, conflictLookAhead))
+			if err == nil {
+				err = w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) })
+			}
+		} else if it := departed(a); it != nil {
+			// A departure: the departure radar that has it.
+			pos, icao = traffic.PosDeparture, it.ICAO
+			route := traffic.ResolvedRoute(it.dep.ClimbPlan(a.Position), a, r, conflictLookAhead)
+			err = w.s.cc.do(func() error { return it.dep.Reroute(route) })
+		} else {
 			continue
-		}
-		_, wps, err := traffic.EnrouteStart(traffic.ResolvedRoute(e.route, a, r, conflictLookAhead))
-		if err == nil {
-			err = w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) })
 		}
 		if err != nil {
 			tlog.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
 		}
-		// Said by the centre: our en route aircraft (#415).
-		tx := traffic.Resolved(traffic.PosCenter, r, a.AltFt, a.Heading, a.GroundKts)
-		w.s.cc.radio.Transmit(e.f.Airport, tx)
+		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts)
+		w.s.cc.radio.Transmit(icao, tx)
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
