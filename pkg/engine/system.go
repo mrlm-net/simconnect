@@ -26,11 +26,10 @@ func (e *Engine) SetSystemEventState(eventID uint32, state types.SIMCONNECT_STAT
 	return e.api.SetSystemEventState(eventID, state)
 }
 
-// SystemStateFloat64 extracts the float64 value from a SYSTEM_STATE receive struct.
-// FFloatBytes is stored as [8]byte at wire offset 20 to avoid Go alignment padding
-// (float64 after 12+4+4 bytes would be padded to offset 24 by Go).
+// SystemStateFloat64 extracts the float value from a SYSTEM_STATE receive struct.
+// On the wire fFloat is a 4-byte float at offset 20; it is widened to float64.
 func SystemStateFloat64(recv *types.SIMCONNECT_RECV_SYSTEM_STATE) float64 {
-	return math.Float64frombits(binary.LittleEndian.Uint64(recv.FFloatBytes[:]))
+	return float64(math.Float32frombits(binary.LittleEndian.Uint32(recv.FFloatBytes[:])))
 }
 
 // GetLastSentPacketID returns the send ID of the last request this client
