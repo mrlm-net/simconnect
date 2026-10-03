@@ -122,7 +122,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		// and speed differ from the schedule's, RYR1850 appeared 230 NM out).
 		in, ok := overflightEntry(fp, cc)
 		if !ok {
-			return fmt.Errorf("its plan %s → %s never enters the area", f.Origin, f.Destination)
+			return fmt.Errorf("%w: its plan %s → %s never enters the area", traffic.ErrSpawnImpossible, f.Origin, f.Destination)
 		}
 		dist = in
 		if !f.Enter.IsZero() {

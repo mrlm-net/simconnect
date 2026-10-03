@@ -108,18 +108,3 @@ func oneDesignator(name string) string {
 	return first
 }
 
-// aipUnitNames are unit call signs from the AIP where the scenery's
-// frequency names do not give the unit (LKPR AD 2.18: approach and
-// departure are "Ruzyně Radar"; the scenery names them "RUZYNE"). By
-// airport, then frequency as the radio writes it.
-var aipUnitNames = map[string]map[string]string{
-	"LKPR": {
-		"120.06": "Ruzyne Delivery", "121.91": "Ruzyne Ground", "134.56": "Ruzyne Tower",
-		"118.31": "Ruzyne Radar", "119.01": "Ruzyne Radar", "120.53": "Praha Radar", "127.58": "Praha Radar",
-	},
-}
-
-// aipUnitName is the AIP's call sign of the unit on freq at icao, "" none.
-func aipUnitName(icao, freq string) string {
-	return aipUnitNames[icao][freq]
-}

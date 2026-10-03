@@ -2446,7 +2446,10 @@ func (it *controlled) askWeather(pos traffic.Position) {
 
 // departureClimbSaid is the level departure clears a climbing departure
 // to once identified.
-const departureClimbSaid = "flight level 240"
+const (
+	departureClimbSaid = "flight level 240"
+	departureClimbFt   = 24000.0
+)
 
 // phraseView is phrase for a view the caller holds.
 func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) traffic.Transmission {
@@ -2759,7 +2762,8 @@ func (it *controlled) approachKind() string {
 	return kind
 }
 
-// stationOf is position pos at icao as said, and its frequency ("" none).
+// stationOf is position pos at icao as said, and its frequency ("" none):
+// traffic.StationFor at the airport's layout.
 func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, string) {
 	if cc.graph == nil {
 		return traffic.PositionName(pos), ""
@@ -2768,16 +2772,7 @@ func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, s
 	if err != nil {
 		return traffic.PositionName(pos), ""
 	}
-	f, ok := g.Layout.FrequencyFor(freqKind(pos))
-	if !ok {
-		return traffic.PositionName(pos), ""
-	}
-	if name := aipUnitName(icao, f.String()); name != "" {
-		return name, f.String()
-	}
-	// Named for what it is: a departure handed to the approach frequency
-	// talks to approach (there is no "Ruzyne Departure", #462).
-	return traffic.StationName(f.Name, kindPosition(f.Kind, pos)), f.String()
+	return traffic.StationFor(g.Layout, pos)
 }
 
 // departureHandoffFt: a departure is handed from tower to departure this
@@ -2787,47 +2782,6 @@ const (
 	departureHandoffFt       = 1000
 	departureHandoffSpreadFt = 1500
 )
-
-// kindPosition is the position a frequency of kind is, pos when it is
-// pos's own.
-func kindPosition(kind string, pos traffic.Position) traffic.Position {
-	switch kind {
-	case airport.FreqClearance:
-		return traffic.PosDelivery
-	case airport.FreqGround:
-		return traffic.PosGround
-	case airport.FreqTower:
-		return traffic.PosTower
-	case airport.FreqApproach:
-		return traffic.PosApproach
-	case airport.FreqDeparture:
-		return traffic.PosDeparture
-	case airport.FreqCenter:
-		return traffic.PosCenter
-	}
-	return pos
-}
-
-// freqKind is the airport frequency a position talks on.
-func freqKind(pos traffic.Position) string {
-	switch pos {
-	case traffic.PosDelivery:
-		return airport.FreqClearance
-	case traffic.PosGround:
-		return airport.FreqGround
-	case traffic.PosTower:
-		return airport.FreqTower
-	case traffic.PosApproach:
-		return airport.FreqApproach
-	case traffic.PosDeparture:
-		return airport.FreqDeparture
-	case traffic.PosCenter:
-		return airport.FreqCenter
-	case traffic.PosATIS:
-		return airport.FreqATIS
-	}
-	return ""
-}
 
 // say sends t on the radio: logged as ATC and kept for /api/radio.
 func (it *controlled) say(t traffic.Transmission) {

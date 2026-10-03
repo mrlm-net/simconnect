@@ -403,6 +403,18 @@ func ResolveConflict(c Conflict, aircraft []TrackedAircraft, canSteer func(Track
 	return best.r, true
 }
 
+// PathClear reports whether a, flown along path (the points it would fly
+// in turn, e.g. direct to a fix and on along its route) at its speed and
+// vertical speed now, keeps separation from every other airborne aircraft
+// through the look-ahead: before a direct is cleared (live, PHGVV cleared
+// direct DONAD, stopped at 4000 ft for TVS440 eleven seconds later).
+func PathClear(a TrackedAircraft, path []airport.LatLon, aircraft []TrackedAircraft, o ConflictOptions) bool {
+	o = o.withDefaults()
+	t := trackOf(a)
+	t.path = path
+	return clearOfAll(t, a, aircraft, o)
+}
+
 // clearOfAll reports whether me flying t keeps separation from every
 // other airborne aircraft through the look-ahead.
 func clearOfAll(t track, me TrackedAircraft, aircraft []TrackedAircraft, o ConflictOptions) bool {

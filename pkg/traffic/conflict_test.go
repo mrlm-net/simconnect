@@ -307,3 +307,19 @@ func TestPredictAlongRoute(t *testing.T) {
 		t.Errorf("along its route: %+v, want none", cs)
 	}
 }
+
+// A direct is cleared only when the path itself stays clear: towards
+// traffic it is not, turning away it is.
+func TestPathClear(t *testing.T) {
+	me := air(1, "PHGVV", 0, 0, 3000, 90, 200, 500, true)
+	other := air(2, "TVS440", 15, 0, 4000, 270, 220, 0, true)
+	all := []TrackedAircraft{me, other}
+	into := []airport.LatLon{air(0, "", 30, 0, 0, 0, 0, 0, false).Position}
+	away := []airport.LatLon{air(0, "", 0, -30, 0, 0, 0, 0, false).Position}
+	if PathClear(me, into, all, ConflictOptions{}) {
+		t.Error("direct towards TVS440: clear, want not")
+	}
+	if !PathClear(me, away, all, ConflictOptions{}) {
+		t.Error("direct away from TVS440: not clear, want clear")
+	}
+}

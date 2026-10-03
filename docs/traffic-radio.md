@@ -93,7 +93,7 @@ Who works an aircraft follows its state:
 
 Runway crossings stay on the ground frequency, the tower having agreed, as at most airports.
 
-A change of position is a handoff, said by the position handing over. `Handoff` gives "CSA123, contact Praha Tower 118.105" (`StationName` makes "Praha Tower" from the scenery's name). With `RadioOptions.FrequencyOf` the radio puts each transmission on its position's frequency and says one at a time on each frequency. While one transmission is said (`SpeakingTime`: about 160 words a minute), the next is stamped for when it ends, so a voice plays them in turn.
+A change of position is a handoff, said by the position handing over. `Handoff` gives "CSA123, contact Praha Tower 118.105" (`StationName` makes "Praha Tower" from the scenery's name). `StationFor(layout, pos)` gives a position's station and frequency as the airport map says them: the AIP's unit call sign where the scenery's names do not give the unit (`AIPUnitName`; at LKPR "Ruzyne Delivery", "Ruzyne Ground", "Ruzyne Tower", "Ruzyne Radar", "Praha Radar"), else `StationName` for what the frequency is; a position with no frequency of its own (departure at LKPR) talks on the one that serves it (approach). With `RadioOptions.FrequencyOf` the radio puts each transmission on its position's frequency and says one at a time on each frequency. While one transmission is said (`SpeakingTime`: about 160 words a minute), the next is stamped for when it ends, so a voice plays them in turn.
 
 On the airport map each aircraft's card shows who works it and on what frequency ("📻 tower 118.105"), and the traffic log reads as the radio: the clearance on each frequency, then "contact Praha Ground 121.905".
 
