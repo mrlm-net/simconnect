@@ -415,3 +415,27 @@ func TestSequencerSwapHolds(t *testing.T) {
 		t.Errorf("swapped back within the hold: %s first", got)
 	}
 }
+
+// A faster follower behind a slower leader keeps a compression buffer:
+// about 1 NM a B738 (140 kt) behind a PC-24 (108 kt); none the other way.
+func TestSequencerCompression(t *testing.T) {
+	now := time.Now()
+	pc24 := ApproachAircraft{Callsign: "OKCAQ", Wake: WakeFor("PC24"), DistanceToGoNM: 6, GroundKts: 140, FinalKts: 108}
+	b738 := ApproachAircraft{Callsign: "TVS251", Wake: WakeFor("B738"), DistanceToGoNM: 14, GroundKts: 180, FinalKts: 140}
+	seq := NewApproachSequencer("24", SequencerOptions{MinSpacingNM: 5}).Update(now, []ApproachAircraft{pc24, b738})
+	if seq[1].Callsign != "TVS251" || seq[1].SpacingNM < 6 || seq[1].SpacingNM > 6.2 || seq[1].SpacingWhy != "compression" {
+		t.Errorf("B738 behind the PC-24: %.2f NM (%s), want about 6.1, compression", seq[1].SpacingNM, seq[1].SpacingWhy)
+	}
+	pc24.DistanceToGoNM, b738.DistanceToGoNM = 14, 6
+	seq = NewApproachSequencer("24", SequencerOptions{MinSpacingNM: 5}).Update(now, []ApproachAircraft{pc24, b738})
+	if seq[1].Callsign != "OKCAQ" || seq[1].SpacingNM != 5 {
+		t.Errorf("PC-24 behind the B738: %.2f NM (%s), want 5", seq[1].SpacingNM, seq[1].SpacingWhy)
+	}
+	seq = NewApproachSequencer("24", SequencerOptions{MinSpacingNM: 5, CompressionMaxNM: -1}).Update(now, []ApproachAircraft{
+		{Callsign: "OKCAQ", Wake: WakeFor("PC24"), DistanceToGoNM: 6, GroundKts: 140, FinalKts: 108}, ApproachAircraft{Callsign: "TVS251", Wake: WakeFor("B738"), DistanceToGoNM: 14, GroundKts: 180, FinalKts: 140}})
+	for _, e := range seq {
+		if e.SpacingWhy == "compression" {
+			t.Error("compression with the buffer off")
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -326,5 +327,32 @@ func TestSimObjectTugFromDepot(t *testing.T) {
 	}
 	if d := localDist(tug.pose.Position, depot); d > 30 {
 		t.Errorf("removed %.0f m from its depot", d)
+	}
+}
+
+// A tug never created is created once more, further along its way in
+// (another tug may stand where it was to appear); not a third time.
+func TestTugRetryCreate(t *testing.T) {
+	g := lkprGraph(t)
+	c := &tugClient{}
+	tug := NewSimObjectTug(c, NewInjector(c), DefaultTugTitle, 9001, DefaultMotionProfile())
+	tug.Layout = g.Layout
+	i, _ := g.Layout.ParkingIndex("S16")
+	st := g.Layout.Parking[i]
+	if err := tug.Attach(GroundPose{Position: st.Position, Heading: st.Heading}); err != nil {
+		t.Fatal(err)
+	}
+	if !tug.RetryCreate() {
+		t.Fatal("not created again")
+	}
+	if len(c.created) != 2 {
+		t.Fatalf("%d creations", len(c.created))
+	}
+	a, b := c.created[0], c.created[1]
+	if d := calc.HaversineMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude); d < TugRetryAheadMeters-10 || d > TugRetryAheadMeters+10 {
+		t.Errorf("created again %.0f m from the first place, want about %.0f", d, TugRetryAheadMeters)
+	}
+	if tug.RetryCreate() {
+		t.Error("created a third time")
 	}
 }

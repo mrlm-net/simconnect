@@ -65,6 +65,8 @@ type SimObjectTug struct {
 	arrive    *GroundMover   // driving in from the depot; nil once at the nose
 	depot     airport.LatLon // where it came from and goes back to
 	haveDepot bool
+	inPath    *GroundPath // the way in planned (RetryCreate starts further on it)
+	retried   bool        // created again once (RetryCreate)
 	stand     airport.LatLon // the nose gear on the stand, before the push
 	homing    bool           // driving back to the depot
 	err       error          // from the takeover, reported by Update
@@ -135,13 +137,50 @@ func (t *SimObjectTug) Attach(pose GroundPose) error {
 	t.stand = NoseGear(pose.Position, pose.Heading, t.prof)
 	// From its depot when it has one: it appears there and drives in.
 	if path, depot, ok := t.inbound(pose); ok {
-		t.arrive, t.depot, t.haveDepot = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
+		t.arrive, t.depot, t.haveDepot, t.inPath = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true, path
 		t.pose = t.arrive.Pose()
 	}
 	return t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
 	}, t.reqID)
 }
+
+// RetryCreate creates the tug again, TugRetryAheadMeters further along its
+// way in (another tug, just created at the depot, may stand where it was
+// to appear: the sim then creates nothing — live, LKPR: seven tugs of the
+// day never came, each when another had just set off). False when it was
+// retried already or has an object.
+func (t *SimObjectTug) RetryCreate() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	g := t.inPath
+	if t.retried || t.objectID != 0 || !t.haveDepot || g == nil || g.Length() < 2*TugRetryAheadMeters {
+		return false
+	}
+	t.retried = true
+	pts := []airport.LatLon{g.PointAt(TugRetryAheadMeters)}
+	for i, p := range g.pts {
+		if g.cum[i] > TugRetryAheadMeters {
+			pts = append(pts, p)
+		}
+	}
+	path, err := NewGroundPath(pts, tugRoadProfile())
+	if err != nil {
+		return false
+	}
+	t.arrive = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
+	t.pose = t.arrive.Pose()
+	if err := t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
+	}, t.reqID); err != nil {
+		return false
+	}
+	return true
+}
+
+// TugRetryAheadMeters: a tug created again appears this far along its way
+// in (RetryCreate).
+const TugRetryAheadMeters = 40.0
 
 // inbound is the tug's way in for an aircraft at pose: from the nearest
 // depot along the vehicle roads to a point TugApproachMeters in front of

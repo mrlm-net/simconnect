@@ -448,6 +448,8 @@ At the holding points, departures and crossings go first come, first served, by 
 
 The longest of the route and wake intervals applies.
 
+**Speeds** (`DepartureIntervalSpeeds`, `RunwayUser.ClimbKts`). On the same route, a follower climbing `CatchUpFromKts` (20 kt) or more faster than the departure before it waits `CatchUpPer40Kts` (1 min) more per 40 kt, at most `CatchUpMax` (3 min). Otherwise it would close on the leader after take-off. At the holding points, one `DepartureFirstKts` (40 kt) or more faster on the same route, there no more than `DepartureFirstWithin` (2 min) after the other, goes first. The map takes the climb speed from `nav.PerformanceFor`, or for a business type without data from its published cruise speed. These numbers are the project's own: no source read gives them.
+
 ### Spacing on final
 
 `ArrivalSpacing` (`conditions.go`) starts from the wake minimum of the pair (`ArrivalSeparationNM` in `wake.go`), at least `MinRadarSeparationNM` (3 NM):
@@ -481,6 +483,8 @@ The code comments attribute these values to ICAO Doc 4444 and RECAT-EU. The cond
 
 **Order.** Arrivals inside `FreezeNM` (8 NM), or `Fixed`, keep their predicted time. The others are taken first come, first served, by the prediction they had when they joined, or their prediction now if it is earlier (a shortcut). Two of them change places only when their keys part by more than `SwapMargin` (90 s). Each takes the earliest time that keeps the gap behind the one before it, and is pushed behind any planned landing it would come within a gap of. Its delay is that time minus its ETA. A delay change under `DelayStep` (30 s) is not reported. `Move` lets a controller change the order, and `Rejoin` re-sequences an arrival after a go-around like a newcomer. The airport map uses `MinSpacingNM` 5 (`sepMinNM`), so 5 NM is the least spacing whatever the wake.
 
+**Compression.** A follower faster on final than its leader closes on it all the way down, and any error in either prediction comes off the spacing. Its spacing grows by `CompressionNMPer30Kts` (1 NM) per 30 kt of difference in approach speed, at most `CompressionMaxNM` (2 NM; negative: none), shown as "compression". A B738 at 140 kt behind a PC-24 at 108 kt gets about 1.1 NM more. Live at LKPR without it, TVS251 behind the PC-24 OKCAQ was 31 s short on the final and went around.
+
 **Tactical swaps.** First come, first served can waste time. An arrival slowed on its downwind keeps its place ahead of one that could now land first. So two neighbours already in the sequence, neither fixed, change places when the swap cuts their delay by `TacticalSwapGain` (60 s) or more, and costs the one moved back no more than `TacticalSwapMaxCost` (3 min). Their order keys are exchanged, so the next look keeps the new order, and neither is swapped again for `TacticalSwapHold` (3 min): the one moved back is given its delay, and its new prediction must not swap it straight back (live, three arrivals traded places every few seconds without it). A newcomer, an arrival placed by `Move` and one told to follow another (`Behind`) are never swapped. Live at LKPR, OKYDV could land before TVS223, which was turning base with room to extend. **Fixed arrivals keep their order:** one established on the final is never passed by another fixed later that is closer in by its prediction. The one behind shows the spacing it lacks (`ShortBy`).
 
 ### Delay absorption
@@ -494,8 +498,9 @@ The code comments attribute these values to ICAO Doc 4444 and RECAT-EU. The cond
 On the airport map (`cmd/airport-map/sequence.go`):
 
 - a delay is absorbed once it reaches 30 s (`absorbFrom`), at most every 90 s per arrival (`absorbEvery`);
-- an arrival holds when 1 min or more is left (`holdFrom`);
-- it leaves the hold when its delay is down to 1 min (`holdRelease`).
+- an arrival holds only when 4 min or more is left (`holdFrom`, one racetrack);
+- it leaves the hold when its delay is down to 1 min (`holdRelease`);
+- **shortcuts:** an arrival with a minute or more of room ahead of it (`shortcutFrom`) is sent direct to a named fix further on its STAR (`ArrivalController.Shortcut`). It uses at most 70 % of that room (number 1: up to 15 NM), saves at least `ShortcutMinNM` (2 NM), and is given only where it can still descend to that fix at `ShortcutDescentFtPerNM` (320 ft/NM, about 3°) or less, once each 3 min, and only where it makes sense: a turn of 60° at most (`ShortcutMaxTurnDeg`), the fix 10 NM or more from the threshold (`ShortcutFixFromThresholdNM`), the leg 4 NM clear of the runway (`ShortcutAirportClearNM`) and not across the final within 20 NM (`ShortcutFinalClearNM`), with 20 NM or more of the STAR left (`ShortcutMinToGoNM`): "cleared direct to PR722".
 
 **Closing up on the final.** An established arrival keeps its predicted time, so the sequencer cannot delay it. Instead it reports `ShortBy`: how much sooner than its spacing the arrival would land behind its leader. From 10 s short (`spacingActFrom`), the map acts before they meet:
 

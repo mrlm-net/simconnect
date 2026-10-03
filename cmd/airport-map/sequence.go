@@ -44,6 +44,8 @@ type sequences struct {
 	// nothing is said again unless one changed, and the number only once
 	// an approach (live, AUA529 heard "number 2" with every call).
 	seqSaid map[string]seqSaid
+	// shortcutAt: when each arrival was last looked at for a shortcut.
+	shortcutAt map[string]time.Time
 	// conflictHeld: arrivals holding for a conflict with another (the
 	// conflict watch, #455): the sequence does not release them, however
 	// small their delay, before conflictHoldMin has passed and inConflict
@@ -80,7 +82,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, conflictHeld: map[string]conflictHold{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -197,6 +199,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			continue
 		}
 		if delay < absorbFrom && e.ShortBy < spacingActFrom {
+			q.shortcut(now, it, e, seq)
 			continue
 		}
 		q.mu.Lock()
@@ -615,7 +618,11 @@ func (q *sequences) tick(now time.Time) {
 		}
 		atRunway := v.State == "lining up" || v.State == "lined up" ||
 			v.State == "holding short" && (v.HoldingShortOf == "" || strings.Contains(v.HoldingShortOf, v.Runway))
-		if atRunway {
+		// Taxiing there within departureGapLead: its gap opens now, while the
+		// arrivals it goes between can still be slowed for it — not once
+		// it waits at the runway and the ones close in are fixed.
+		soon := v.State == "taxiing" && v.TaxiRemainingM > 0 && v.TaxiRemainingM <= departureGapLeadM
+		if atRunway || soon {
 			waiting[key{it.ICAO, v.Runway}]++
 		}
 	}
@@ -774,3 +781,69 @@ func (q *sequences) numberToSay(now time.Time, cs string, number int) int {
 	q.seqSaid[cs] = last
 	return number
 }
+
+// Shortcuts: an arrival with room ahead of it in the sequence — it could
+// land shortcutFrom or more before it needs to behind its leader — is sent
+// direct to a fix further on its STAR, using at most shortcutShare of that
+// room and only where it can still descend (traffic.Shortcut); number 1
+// saves up to shortcutMaxNM. Once each shortcutEvery.
+const (
+	shortcutFrom  = time.Minute
+	shortcutShare = 0.7
+	shortcutMaxNM = 15.0
+	shortcutEvery = 3 * time.Minute
+)
+
+// shortcut squeezes it in when there is room (see the constants).
+func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry) {
+	if e.Fixed || e.Delay > 0 || it.circuit != nil || it.gates.Load() {
+		return
+	}
+	q.mu.Lock()
+	recent := now.Sub(q.shortcutAt[e.Callsign]) < shortcutEvery
+	q.mu.Unlock()
+	if recent {
+		return
+	}
+	maxNM := shortcutMaxNM
+	if e.Leader != "" {
+		var lead *traffic.SequenceEntry
+		for i := range seq {
+			if seq[i].Callsign == e.Leader {
+				lead = &seq[i]
+			}
+		}
+		if lead == nil {
+			return
+		}
+		earliest := lead.Landing.Add(traffic.SeparationTime(e.SpacingNM, 140))
+		room := e.ETA.Sub(earliest)
+		if room < shortcutFrom {
+			return
+		}
+		it.mu.Lock()
+		gs := it.view.GroundSpeed
+		it.mu.Unlock()
+		maxNM = min(maxNM, room.Hours()*max(gs, 180)*shortcutShare)
+	}
+	var fix string
+	var saved float64
+	err := q.cc.do(func() (err error) { fix, saved, err = it.arr.Shortcut(maxNM); return err })
+	q.mu.Lock()
+	q.shortcutAt[e.Callsign] = now
+	q.mu.Unlock()
+	if err != nil || fix == "" {
+		return
+	}
+	if r := it.arr.ProcedureRoute(); len(r) > 0 {
+		it.mu.Lock()
+		it.approach = r
+		it.mu.Unlock()
+	}
+	tlog.printf("%-6s sequence: room ahead, direct %s (%.1f NM shorter)", e.Callsign, fix, saved)
+	it.say(traffic.ClearedDirectTo(traffic.PosApproach, e.Callsign, fix))
+}
+
+// departureGapLeadM: a departure taxiing this close to its runway (about 5
+// min at taxi speed) already counts for a departure gap in the arrivals.
+const departureGapLeadM = 2500.0
