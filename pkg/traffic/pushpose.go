@@ -1105,6 +1105,22 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 		if best == nil {
 			return nil
 		}
+		// The last word between pushes of about the same cost: the taxi-out
+		// past fewer stands (airport.FewerStandsTolerance).
+		if out := poses[best.at].out; out != nil {
+			tol := math.Max(airport.FewerStandsTolerance*out.Length, airport.FewerStandsMinMeters)
+			stands := c.req.Graph.StandsPassed(out, c.req.Options)
+			for i := range cands {
+				cd := &cands[i]
+				p := &poses[cd.at]
+				if cd == best || p.out == nil || cd.near != best.near && !oneTier || cd.cost > best.cost+tol {
+					continue
+				}
+				if n := c.req.Graph.StandsPassed(p.out, c.req.Options); n < stands {
+					best, stands = cd, n
+				}
+			}
+		}
 		b := *best
 		return &b
 	}

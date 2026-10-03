@@ -175,7 +175,17 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 			lastErr = err
 			continue
 		}
-		if c := exitCost(e, r, reach.runwayCostPerM()); c < bestCost {
+		c := exitCost(e, r, reach.runwayCostPerM())
+		// Runways crossed on the way in count as in the route search; back
+		// over the one vacated, never if another exit avoids it (EGLL 09R
+		// S5W once the routes past fewer stands were taken).
+		for _, x := range r.RunwayCrossings {
+			c += airport.DefaultRunwayCrossingPenalty
+			if rwy, _, ok := g.Layout.RunwayEnd(runwayEnd); ok && x == rwy.Name() {
+				c += exitCrossBackPenalty
+			}
+		}
+		if c < bestCost {
 			best, bestRoute, bestCost = e, r, c
 		}
 	}
@@ -190,6 +200,8 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 const (
 	exitTurnCostPerDeg = 3.0
 	exitRunwayCostPerM = 0.3
+	// exitCrossBackPenalty: a taxi-in back across the runway just vacated.
+	exitCrossBackPenalty = 100000.0
 )
 
 func exitCost(e airport.RunwayExit, r *airport.Route, perM float64) float64 {

@@ -828,7 +828,10 @@ func (g *Graph) fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, e
 		return nil, err
 	}
 	r, err := find(opts)
-	if err == nil || !errors.Is(err, ErrNoRoute) {
+	if err == nil {
+		return g.fewerStands(r, opts, find), nil
+	}
+	if !errors.Is(err, ErrNoRoute) {
 		return r, err
 	}
 	if opts.HalfSpan > 0 {
@@ -851,6 +854,77 @@ func (g *Graph) fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, e
 		}
 	}
 	return r, err
+}
+
+// The last word between routes of about the same length: the one past
+// fewer stands. A second search prices apron taxilanes at
+// FewerStandsApronPenalty; its route wins when it passes fewer stands and
+// is no more than FewerStandsTolerance (at least FewerStandsMinMeters)
+// longer. Stands within OwnApronMeters of either end do not count.
+const (
+	FewerStandsApronPenalty = 4.0
+	FewerStandsTolerance    = 0.15
+	FewerStandsMinMeters    = 150.0
+)
+
+// fewerStandsOff turns the choice off (tests comparing routes with and
+// without it).
+var fewerStandsOff bool
+
+// fewerStands is r, or the route found with apron taxilanes priced
+// FewerStandsApronPenalty when that passes fewer stands within the
+// tolerance. Not for custom routes (Via, Taxiways: as asked) nor with the
+// apron penalty off.
+func (g *Graph) fewerStands(r *Route, opts RouteOptions, find func(RouteOptions) (*Route, error)) *Route {
+	if fewerStandsOff || opts.custom() || opts.apronPenalty() <= 0 || opts.apronPenalty() >= FewerStandsApronPenalty {
+		return r
+	}
+	n := g.StandsPassed(r, opts)
+	if n == 0 {
+		return r
+	}
+	alt := opts
+	alt.ApronPenalty = FewerStandsApronPenalty
+	r2, err := find(alt)
+	// Across no runway r does not cross (EGLL 09R exit S5W: back over the
+	// one vacated instead of another).
+	if err != nil || g.StandsPassed(r2, opts) >= n || !crossesOnly(r2, r) ||
+		r2.Length > r.Length+math.Max(FewerStandsTolerance*r.Length, FewerStandsMinMeters) {
+		return r
+	}
+	// The plain route's cost: the choice between routes this near is a
+	// tie-break, which must not move choices made by comparing costs (an
+	// exit, a push; EGLL 09R took S5W, back over the runway, when the
+	// other exits' routes grew dearer).
+	r2.Cost = r.Cost
+	return r2
+}
+
+// StandsPassed counts the stands a route passes: parking spots connected to
+// its nodes, leaving out those within OwnApronMeters of its start and end
+// (its own stand and apron).
+func (g *Graph) StandsPassed(r *Route, opts RouteOptions) int {
+	if r == nil || len(r.Nodes) == 0 {
+		return 0
+	}
+	own := opts.ownApron()
+	first, last := g.Nodes[r.Nodes[0]].Position, g.Nodes[r.Nodes[len(r.Nodes)-1]].Position
+	seen := map[NodeID]bool{}
+	for _, id := range r.Nodes {
+		if !g.stands[id] {
+			continue
+		}
+		p := g.Nodes[id].Position
+		if calc.HaversineMeters(p.Lat, p.Lon, first.Lat, first.Lon) < own || calc.HaversineMeters(p.Lat, p.Lon, last.Lat, last.Lon) < own {
+			continue
+		}
+		for _, e := range g.Adj[id] {
+			if g.Nodes[e.To].Kind == NodeParking {
+				seen[e.To] = true
+			}
+		}
+	}
+	return len(seen)
 }
 
 // KnownTaxiwayMaxSpan are published taxiway span limits by airport ICAO and
@@ -909,4 +983,20 @@ func (r *Route) SpokenTaxiways(upto int) []string {
 		}
 	}
 	return out
+}
+
+// crossesOnly reports whether r crosses only runways other crosses, each no
+// more often.
+func crossesOnly(r, other *Route) bool {
+	left := map[string]int{}
+	for _, c := range other.RunwayCrossings {
+		left[c]++
+	}
+	for _, c := range r.RunwayCrossings {
+		if left[c] == 0 {
+			return false
+		}
+		left[c]--
+	}
+	return true
 }
