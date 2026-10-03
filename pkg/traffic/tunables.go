@@ -282,8 +282,8 @@ const (
 	PushbackMinArcMeters = 14.0
 	PushStraightMeters   = 6.0
 	PushAlignMeters      = 10.0
-	GearUpFt             = 500.0 // the gear comes up between GearUpFt and GearUpMaxFt above the runway (each crew its own), as asked 2026-10-02
-	GearUpMaxFt          = 1000.0
+	GearUpFt             = 400.0 // the gear comes up between GearUpFt and GearUpMaxFt above the runway (each crew its own); 500–1000 was "spot on, could be a little earlier" (2026-10-03)
+	GearUpMaxFt          = 800.0
 	GearUpDelaySeconds   = 4.5
 	GearUpFpm            = 500.0
 	// GearHoldFirstSeconds and GearHoldEvery: after lift-off the gear is

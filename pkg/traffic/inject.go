@@ -81,6 +81,10 @@ const (
 // injMaxEngines is how many engines SetEngines reaches.
 const injMaxEngines = 4
 
+// injDefGearDown: the gear handle and the gear's positions, written
+// together by HoldGearDown (after the engines' definitions).
+const injDefGearDown = injDefEngine1 + injMaxEngines
+
 const (
 	injEvtFreezeLatLon = iota
 	injEvtFreezeAlt
@@ -187,6 +191,15 @@ func (i *Injector) register() error {
 	for k := 1; k <= injMaxEngines; k++ {
 		v := fmt.Sprintf("GENERAL ENG COMBUSTION:%d", k)
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefEngine1+uint32(k-1), v, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+			return err
+		}
+	}
+	for k, v := range []string{"GEAR HANDLE POSITION", "GEAR CENTER POSITION", "GEAR LEFT POSITION", "GEAR RIGHT POSITION"} {
+		unit := "percent over 100"
+		if k == 0 {
+			unit = "bool"
+		}
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefGearDown, v, unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
 	}
@@ -502,6 +515,20 @@ func (i *Injector) GroundFt(objectID uint32) (float64, bool) {
 		return o.groundFt, true
 	}
 	return 0, false
+}
+
+// HoldGearDown puts objectID's gear down at once: the handle and the gear
+// itself, no extension to watch. Placed in the air the first time, the
+// simulator snaps the gear up; with the handle alone it then extends
+// again over 4 s (live, KLM1700 at lift-off, 2026-10-03).
+func (i *Injector) HoldGearDown(objectID uint32) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	g := [4]float64{1, 1, 1, 1}
+	return i.client.SetDataOnSimObject(i.defBase+injDefGearDown, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g))
 }
 
 // SetGear moves the gear handle of objectID; the sim animates the gear
