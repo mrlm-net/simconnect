@@ -41,6 +41,17 @@ var VFRTypes = []struct {
 	Weight float64
 }{{"C172", 40}, {"P28A", 25}, {"C152", 15}, {"DA40", 12}, {"SR22", 8}}
 
+// VFRLargeTypes are the VFR flights' types at a large airport (#619):
+// mid-size aircraft flying between fields, not trainers.
+var VFRLargeTypes = []struct {
+	Type   string
+	Weight float64
+}{{"DA62", 25}, {"DA42", 20}, {"BE58", 15}, {"SR22", 20}, {"TBM9", 10}, {"PC12", 10}}
+
+// VFRLargeShare scales the VFR flights at a large airport: most of its
+// general aviation flies IFR (BusinessFlights).
+const VFRLargeShare = 0.5
+
 // VFRFlights generates the light aircraft flying in to the focus airports
 // through the circuit, and out of them, between from and to (#568): by day
 // only (Daylight from Lead before the STA to a quarter of an hour after it;
@@ -76,6 +87,18 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 		pos := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
 		ops := GAOperatorsAt(icao)
 		mean := opts.PerHour * opts.Density
+		// A large airport (#619): fewer VFR flights, mid-size aircraft
+		// flying in from or out to another field, no schools or clubs, no
+		// training circuits (its GA is mostly business: BusinessFlights).
+		large := LargeAirport(l)
+		types, tw := VFRTypes, weights
+		if large {
+			mean *= VFRLargeShare
+			types, tw = VFRLargeTypes, make([]float64, len(VFRLargeTypes))
+			for i, t := range VFRLargeTypes {
+				tw[i] = t.Weight
+			}
+		}
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
 			n := int(mean)
 			if rng.Float64() < mean-float64(n) {
@@ -84,7 +107,7 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 			busy := map[string][]Flight{}
 			for i := 0; i < 2*n; i++ {
 				at := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(5 * time.Minute)
-				f := Flight{Type: VFRTypes[max(0, pick(rng, weights))].Type, Rules: "VFR"}
+				f := Flight{Type: types[max(0, pick(rng, tw))].Type, Rules: "VFR"}
 				if i%2 == 0 { // an arrival
 					f.Destination, f.STA, f.STD = icao, at, at.Add(-opts.Lead)
 				} else {
@@ -102,7 +125,11 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 				if !Daylight(pos, first) || !Daylight(pos, last) {
 					continue
 				}
-				gaFlight(&f, ops, h, rng, busy, icao)
+				if large {
+					f.Operator, f.Callsign = "private", VFRRegistration(icao, rng)
+				} else {
+					gaFlight(&f, ops, h, rng, busy, icao)
+				}
 				if f.TouchAndGos > 0 && !Daylight(pos, f.STA.Add(time.Duration(f.TouchAndGos)*7*time.Minute+15*time.Minute)) {
 					f.TouchAndGos, f.StopAndGo = 0, false // no circuits into the dusk: a full stop
 				}

@@ -38,7 +38,7 @@ func TestGAOperatorsAt(t *testing.T) {
 // four circuits, private owners none, and no fleet aircraft flies two
 // flights at once.
 func TestVFROperators(t *testing.T) {
-	l := lkprGraph(t).Layout
+	l := smallField(lkprGraph(t).Layout)
 	fleet := map[string]GAKind{}
 	for _, o := range GAOperatorsAt("LKPR") {
 		for _, a := range o.Fleet {
