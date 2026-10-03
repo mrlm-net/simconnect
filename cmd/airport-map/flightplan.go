@@ -24,6 +24,8 @@ type planned struct {
 	name   string // SID or STAR
 	expect string // arrival: approach type
 	plan   *nav.FlightPlan
+	// adopt: an en route arrival handed over flies on as this object (#643).
+	adopt uint32
 }
 
 // planFor loads the other airport (waiting for the simulator) and plans

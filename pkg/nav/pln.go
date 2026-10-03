@@ -44,7 +44,23 @@ type plnFlightPlan struct {
 	DepartureName     string        `xml:"DepartureName"`
 	DestinationName   string        `xml:"DestinationName"`
 	AppVersion        plnAppVersion `xml:"AppVersion"`
-	Waypoints         []plnWaypoint `xml:"ATCWaypoint"`
+	// The MSFS 2024 layout (AppVersionMajor 12) names the runways and
+	// procedures here instead of on the waypoints; read only.
+	DepartureDetails *plnDetails   `xml:"DepartureDetails,omitempty"`
+	Waypoints        []plnWaypoint `xml:"ATCWaypoint"`
+	ArrivalDetails   *plnDetails   `xml:"ArrivalDetails,omitempty"`
+	ApproachDetails  *plnDetails   `xml:"ApproachDetails,omitempty"`
+}
+
+// plnDetails is a DepartureDetails, ArrivalDetails or ApproachDetails
+// block of the MSFS 2024 layout.
+type plnDetails struct {
+	RunwayNumberFP     string `xml:"RunwayNumberFP,omitempty"`
+	RunwayDesignatorFP string `xml:"RunwayDesignatorFP,omitempty"`
+	DepartureFP        string `xml:"DepartureFP,omitempty"`
+	ArrivalFP          string `xml:"ArrivalFP,omitempty"`
+	ApproachTypeFP     string `xml:"ApproachTypeFP,omitempty"`
+	SuffixFP           string `xml:"SuffixFP,omitempty"`
 }
 
 type plnAppVersion struct {

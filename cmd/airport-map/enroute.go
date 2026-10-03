@@ -52,6 +52,7 @@ type enrouteAC struct {
 	// route: the same as planned, which conflict resolutions change (#395).
 	waypoints []types.SIMCONNECT_DATA_WAYPOINT
 	route     []traffic.RoutePoint
+	fixes     []airFix // the named fixes of route, for shortcuts (conflicts)
 	handing   bool
 }
 
@@ -148,6 +149,9 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			break
 		}
 		route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: w.AltFt, Kts: traffic.EnrouteSpeedKts(w.AltFt, kts)})
+		if w.Ident != "" && w.Kind != "" {
+			e.fixes = append(e.fixes, airFix{Ident: w.Ident, LatLon: w.Position})
+		}
 	}
 	spawn, wps, err := traffic.EnrouteStart(route)
 	if err != nil {
@@ -242,11 +246,16 @@ func (s *scheduler) handovers(now time.Time) {
 	s.mu.Unlock()
 	for _, e := range due {
 		go func(e *enrouteAC) {
-			s.dropEnroute(e)
+			// The aircraft flies on: the arrival controller adopts it, no
+			// new one at the entry (#643: a jump of 15 km and 11,000 ft).
+			s.handEnroute(e)
 			f := e.f
 			f.Stage = ""
 			tlog.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
-			if err := s.spawnWith(f, e.arrive, e.model); err != nil {
+			arrive := *e.arrive
+			arrive.adopt = e.objectID
+			if err := s.spawnWith(f, &arrive, e.model); err != nil {
+				s.cc.do(func() error { return s.cc.client.AIRemoveObject(e.objectID, reqRemoveEnroute) })
 				tlog.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
 				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 			}
@@ -290,4 +299,14 @@ func (s *scheduler) nearPoint(p airport.LatLon, altFt float64) string {
 		return ""
 	}
 	return s.cc.nearAirborne(p, altFt, "", s.cc.clock.Now())
+}
+
+// handEnroute takes an enroute aircraft off the scheduler's list without
+// removing it from the simulator: the arrival controller adopts it.
+func (s *scheduler) handEnroute(e *enrouteAC) {
+	s.mu.Lock()
+	delete(s.enroute, e.f.Callsign)
+	s.mu.Unlock()
+	s.cc.dropOwn(e.objectID)
+	s.cc.world.ForgetOwn(e.objectID)
 }

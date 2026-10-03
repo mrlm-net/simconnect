@@ -69,3 +69,25 @@ func TestReadPLNUserPoints(t *testing.T) {
 		t.Error("garbage read")
 	}
 }
+
+// The MSFS 2024 layout (SimBrief's "M24" export, AppVersionMajor 12): the
+// runways and procedures in DepartureDetails, ArrivalDetails and
+// ApproachDetails, the waypoints without positions.
+func TestReadPLNMSFS2024(t *testing.T) {
+	p, err := ReadPLNFile("testdata/LKPRLKPD_M24.pln")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Departure != "LKPR" || p.Destination != "LKPD" || p.Rules != "IFR" || p.CruiseFt != 15000 {
+		t.Errorf("header %+v", p)
+	}
+	if p.DepartureRunway != "06" || p.SID != "" {
+		t.Errorf("departure %q %q, want 06 and no SID", p.DepartureRunway, p.SID)
+	}
+	if p.STAR != "BEKV1Q" || p.Approach != "RNAV" || p.ArrivalRunway != "09" {
+		t.Errorf("arrival %q %q %q, want BEKV1Q RNAV 09", p.STAR, p.Approach, p.ArrivalRunway)
+	}
+	if len(p.Waypoints) != 1 || p.Waypoints[0].Ident != "BEKVI" || p.Waypoints[0].Region != "LK" {
+		t.Errorf("waypoints %+v", p.Waypoints)
+	}
+}

@@ -91,12 +91,16 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		if a == (traffic.Absorption{}) {
 			return errNothingToSlow // as slow and as long as it goes already
 		}
-		it.say(traffic.Sequenced(callsign, e.Number, 0, a))
+		// The number once, as the sequence says it (live, AFR850 heard
+		// "number 4" from a conflict that only stretched its route).
+		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != ""); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "") {
+			it.say(traffic.Sequenced(callsign, n, 0, a))
+		}
 	case "direct":
 		if err := q.cc.do(it.arr.DirectToJoin); err != nil {
 			return err
 		}
-		it.say(traffic.DirectToFinal(callsign, e.Number))
+		it.say(traffic.DirectToFinal(callsign, q.numberToSay(q.cc.clock.Now(), callsign, e.Number)))
 	case "goaround":
 		// On the connection's goroutine, as every SimConnect call.
 		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {

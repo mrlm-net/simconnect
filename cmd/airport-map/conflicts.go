@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -42,8 +44,32 @@ type conflictWatch struct {
 	informed map[string]time.Time
 	asked    map[string]bool // crews that have made their request (#621)
 	leveled  map[string]bool // arrivals told to stop descent for a conflict
+	// stopped: ours told to stop a climb or descent for traffic, cleared
+	// on once clear of it.
+	stopped map[string]stoppedLevel
 	now      []traffic.Conflict
 	done     []resolutionView // the latest last (at most 50)
+}
+
+// stoppedLevel is a climb or descent stopped for traffic: who says the
+// clearance on (pos at icao) and to what level.
+type stoppedLevel struct {
+	icao  string
+	pos   traffic.Position
+	altFt float64
+	climb bool
+}
+
+// levelOn is the level the planned route climbs (or descends) on to
+// beyond stopFt: its highest (lowest) point; ok false when none is.
+func levelOn(planned []traffic.RoutePoint, stopFt float64, climb bool) (float64, bool) {
+	best, ok := stopFt, false
+	for _, p := range planned {
+		if climb && p.AltFt > best+200 || !climb && p.AltFt > 0 && p.AltFt < best-200 {
+			best, ok = p.AltFt, true
+		}
+	}
+	return math.Round(best/100) * 100, ok
 }
 
 type resolutionView struct {
@@ -53,7 +79,7 @@ type resolutionView struct {
 }
 
 func newConflictWatch(s *scheduler) *conflictWatch {
-	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}, asked: map[string]bool{}, leveled: map[string]bool{}}
+	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}, asked: map[string]bool{}, leveled: map[string]bool{}, stopped: map[string]stoppedLevel{}}
 }
 
 func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
@@ -64,7 +90,6 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	}
 	w.at = now
 	w.mu.Unlock()
-	cs := traffic.PredictConflicts(aircraft, conflictOpts)
 	// Ours en route can be steered, any way, unless already flying a change.
 	enroute := func(a traffic.TrackedAircraft) *enrouteAC {
 		w.s.mu.Lock()
@@ -84,12 +109,70 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		return it
 	}
-	canSteer := func(a traffic.TrackedAircraft, _ traffic.ResolutionKind) bool {
+	// A departure is never slowed: it climbs at its climb speed and is
+	// turned or levelled instead (live, AUA818 told "reduce speed to 200
+	// knots" passing 2400 ft).
+	canSteer := func(a traffic.TrackedAircraft, kind traffic.ResolutionKind) bool {
 		w.mu.Lock()
 		busy := now.Before(w.busy[a.Tail])
 		w.mu.Unlock()
-		return a.Ours && !busy && (enroute(a) != nil || departed(a) != nil)
+		if !a.Ours || busy {
+			return false
+		}
+		if enroute(a) != nil {
+			return true
+		}
+		return departed(a) != nil && kind != traffic.ResolveSpeed
 	}
+	// The named fixes ahead of ours, for shortcuts.
+	opts := conflictOpts
+	opts.DirectFixes = func(a traffic.TrackedAircraft) []traffic.DirectFix {
+		var fixes []airFix
+		if e := enroute(a); e != nil {
+			fixes = e.fixes
+		} else if it := departed(a); it != nil {
+			fixes = fixesAhead(it.fixes, it.dep.ClimbRoute(a.Position))
+		}
+		var out []traffic.DirectFix
+		for _, f := range fixes {
+			brg := calc.BearingDegrees(a.Position.Lat, a.Position.Lon, f.Lat, f.Lon)
+			if math.Abs(math.Mod(brg-a.Heading+540, 360)-180) < 90 {
+				out = append(out, traffic.DirectFix{Ident: f.Ident, Position: f.LatLon})
+			}
+		}
+		return out
+	}
+	// Ours are predicted along their routes, turning where they turn:
+	// arrivals on their STAR and approach, departures on their climb, en
+	// route on their plan (live, CSA786 stopped at 8000 ft for KLM130
+	// predicted straight on where its STAR turned away).
+	opts.Route = func(a traffic.TrackedAircraft) []airport.LatLon {
+		if !a.Ours {
+			return nil
+		}
+		if e := enroute(a); e != nil {
+			var pts []airport.LatLon
+			for _, p := range e.route {
+				pts = append(pts, p.Position)
+			}
+			return traffic.RouteAhead(a.Position, pts)
+		}
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.objectID != a.ObjectID {
+			return nil
+		}
+		if it.dep != nil {
+			return it.dep.ClimbRoute(a.Position) // from its next waypoint already
+		}
+		if it.arr != nil && it.arr.State() == traffic.ArrivalApproaching {
+			it.mu.Lock()
+			route := it.approach
+			it.mu.Unlock()
+			return traffic.RouteAhead(a.Position, route)
+		}
+		return nil
+	}
+	cs := traffic.PredictConflicts(aircraft, opts)
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
 	for _, c := range cs {
@@ -112,7 +195,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			w.tellTraffic(now, c, aircraft)
 			continue
 		}
-		r, ok := traffic.ResolveConflict(c, aircraft, canSteer, conflictOpts)
+		r, ok := traffic.ResolveConflict(c, aircraft, canSteer, opts)
 		if !ok {
 			w.resolveArrivals(now, c) // ours on their STARs (#455)
 			continue
@@ -124,9 +207,10 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			}
 		}
 		var err error
+		var planned []traffic.RoutePoint // the route before the change
 		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
 		if e := enroute(a); e != nil {
-			icao = e.f.Airport
+			icao, planned = e.f.Airport, e.route
 			var wps []types.SIMCONNECT_DATA_WAYPOINT
 			_, wps, err = traffic.EnrouteStart(traffic.ResolvedRoute(e.route, a, r, conflictLookAhead))
 			if err == nil {
@@ -135,7 +219,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		} else if it := departed(a); it != nil {
 			// A departure: the departure radar that has it.
 			pos, icao = traffic.PosDeparture, it.ICAO
-			route := traffic.ResolvedRoute(it.dep.ClimbPlan(a.Position), a, r, conflictLookAhead)
+			planned = it.dep.ClimbPlan(a.Position)
+			route := traffic.ResolvedRoute(planned, a, r, conflictLookAhead)
 			err = w.s.cc.do(func() error { return it.dep.Reroute(route) })
 		} else {
 			continue
@@ -149,6 +234,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
+		delete(w.stopped, r.Callsign)
+		if r.Kind == traffic.ResolveLevel && r.Stop {
+			if on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt); ok {
+				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: r.AltFt > a.AltFt}
+			}
+		}
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said})
 		if len(w.done) > 50 {
 			w.done = w.done[len(w.done)-50:]
@@ -176,12 +267,27 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			delete(w.seen, p) // over: a new one is logged again
 		}
 	}
+	var cleared []string
 	for cs, until := range w.busy {
 		if now.After(until) {
 			delete(w.busy, cs)
+			if _, ok := w.stopped[cs]; ok && !involved[cs] {
+				cleared = append(cleared, cs)
+			}
 		}
 	}
+	resume := map[string]stoppedLevel{}
+	for _, cs := range cleared {
+		resume[cs] = w.stopped[cs]
+		delete(w.stopped, cs)
+	}
 	w.mu.Unlock()
+	// Stopped for traffic and clear of it now: on to the level planned
+	// (the route resumes it as the change ends).
+	for cs, st := range resume {
+		tlog.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
+		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevel(st.pos, cs, st.altFt, st.climb))
+	}
 	w.crewRequests(now, aircraft) // after the look: a crew in a conflict is told "unable"
 }
 

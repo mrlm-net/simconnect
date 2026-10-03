@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<SimBase.Document>
+    <FlightPlan.FlightPlan>
+        <DepartureID>LKPR</DepartureID>
+        <DestinationID>LKPD</DestinationID>
+        <Title>LKPR - LKPD</Title>
+        <Descr>LKPR to LKPD created by SimBrief</Descr>
+        <FPType>IFR</FPType>
+        <CruisingAlt>15000</CruisingAlt>
+        <AppVersion>
+            <AppVersionMajor>12</AppVersionMajor>
+        </AppVersion>
+        <DepartureDetails>
+            <RunwayNumberFP>6</RunwayNumberFP>
+        </DepartureDetails>
+        <ATCWaypoint>
+            <ATCWaypointType>Intersection</ATCWaypointType>
+            <ICAO>
+                <ICAORegion>LK</ICAORegion>
+                <ICAOIdent>BEKVI</ICAOIdent>
+            </ICAO>
+        </ATCWaypoint>
+        <ArrivalDetails>
+            <RunwayNumberFP>9</RunwayNumberFP>
+            <ArrivalFP>BEKV1Q</ArrivalFP>
+        </ArrivalDetails>
+        <ApproachDetails>
+            <ApproachTypeFP>RNAV</ApproachTypeFP>
+            <RunwayNumberFP>9</RunwayNumberFP>
+        </ApproachDetails>
+    </FlightPlan.FlightPlan>
+</SimBase.Document>

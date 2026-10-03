@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -203,5 +204,106 @@ func TestTowerPair(t *testing.T) {
 	dep.AGLFt, arr.AGLFt = 6000, 6000
 	if TowerPair(dep, arr) {
 		t.Error("up high: still the tower's")
+	}
+}
+
+// A climbing departure below level traffic ahead is stopped on its way
+// ("stop climb at 4000 feet"), never slowed or sent back down.
+func TestResolveStopsClimb(t *testing.T) {
+	dep := air(1, "RYR1", 0, 0, 3000, 90, 200, 2000, true)
+	arr := air(2, "DLH2", 20, 0, 7000, 270, 250, 0, false)
+	all := []TrackedAircraft{dep, arr}
+	cs := PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v, want one", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{})
+	if !ok || r.Kind != ResolveLevel || !r.Stop || r.AltFt != 4000 {
+		t.Fatalf("%+v %v, want stop climb at 4000 ft", r, ok)
+	}
+	if got, want := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts).Text, "RYR1, stop climb at 4000 feet, due traffic"; !strings.HasPrefix(got, want) {
+		t.Errorf("%q, want %q", got, want)
+	}
+	if got, want := ContinueLevel(PosDeparture, "RYR1", 24000, true).Text, "RYR1, clear of traffic, climb to flight level 240"; got != want {
+		t.Errorf("%q, want %q", got, want)
+	}
+	if rb, _ := Readback(ContinueLevel(PosDeparture, "RYR1", 24000, true)); rb.Text != "Climb to flight level 240, RYR1" {
+		t.Errorf("readback %q", rb.Text)
+	}
+}
+
+// Crossing traffic is parted by altitude, traffic on the same route by
+// speed first, then a shortcut (or a leg extended), altitude last.
+func TestResolveOrderByGeometry(t *testing.T) {
+	// Crossing at right angles at FL150.
+	a, b := air(1, "CSA1", -14, 0, 15000, 90, 420, 0, true), air(2, "DLH2", 0, -14, 15000, 0, 420, 0, false)
+	all := []TrackedAircraft{a, b}
+	cs := PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("crossing: %+v", cs)
+	}
+	if r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{}); !ok || r.Kind != ResolveLevel {
+		t.Errorf("crossing: %+v %v, want a level", r, ok)
+	}
+	// In trail: 480 kt catching 380 kt from 8 NM behind.
+	a, b = air(1, "CSA1", -8, 0, 30000, 90, 480, 0, true), air(2, "DLH2", 0, 0, 30000, 90, 380, 0, false)
+	all = []TrackedAircraft{a, b}
+	cs = PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("in trail: %+v", cs)
+	}
+	if r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{}); !ok || r.Kind != ResolveSpeed {
+		t.Errorf("in trail: %+v %v, want speed", r, ok)
+	}
+	// The leader ours, the one catching up from behind not, and no speed
+	// change allowed: the leader takes a shortcut along its route (a fix
+	// 30 NM ahead, then one 20 NM off to the left): direct to the far fix.
+	a, b = air(1, "CSA1", -8, 0, 30000, 90, 440, 0, false), air(2, "DLH2", 0, 0, 30000, 90, 400, 0, true)
+	all = []TrackedAircraft{a, b}
+	cs = PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("leader: %+v", cs)
+	}
+	next := air(0, "", 30, 0, 0, 0, 0, 0, false).Position
+	far := air(0, "", 60, 20, 0, 0, 0, 0, false).Position
+	o := ConflictOptions{DirectFixes: func(TrackedAircraft) []DirectFix {
+		return []DirectFix{{Ident: "NEXT", Position: next}, {Ident: "FAR", Position: far}}
+	}}
+	noSpeed := func(x TrackedAircraft, k ResolutionKind) bool { return x.Ours && k != ResolveSpeed }
+	r, ok := ResolveConflict(cs[0], all, noSpeed, o)
+	if !ok || r.Kind != ResolveDirect || r.Fix != "FAR" {
+		t.Fatalf("leader: %+v %v, want direct FAR", r, ok)
+	}
+	if got := Resolved(PosCenter, r, 30000, 90, 400).Text; got != "DLH2, cleared direct to FAR" {
+		t.Errorf("%q", got)
+	}
+	route := []RoutePoint{{Position: next, AltFt: 30000, Kts: 400}, {Position: far, AltFt: 28000, Kts: 400}, {Position: air(0, "", 90, 20, 0, 0, 0, 0, false).Position, AltFt: 24000, Kts: 380}}
+	if got := ResolvedRoute(route, b, r, 5*time.Minute); len(got) != 3 || got[1].AltFt != 28000 {
+		t.Errorf("route %+v, want here, FAR, on", got)
+	}
+}
+
+// One of ours on its STAR turning away is predicted along its route, not
+// straight on into the other (live, CSA786 stopped at 8000 ft for KLM130
+// whose STAR turned away).
+func TestPredictAlongRoute(t *testing.T) {
+	// KLM1 heads east at 8000 ft towards CSA2 coming west at 8500 ft;
+	// KLM1's route turns north 4 NM ahead.
+	klm := air(1, "KLM1", 0, 0, 8000, 90, 250, 0, true)
+	csa := air(2, "CSA2", 20, 0, 8500, 270, 250, 0, false)
+	all := []TrackedAircraft{klm, csa}
+	if cs := PredictConflicts(all, ConflictOptions{}); len(cs) != 1 {
+		t.Fatalf("straight on: %+v, want one conflict", cs)
+	}
+	turn := air(0, "", 4, 0, 0, 0, 0, 0, false).Position
+	north := air(0, "", 4, 30, 0, 0, 0, 0, false).Position
+	o := ConflictOptions{Route: func(a TrackedAircraft) []airport.LatLon {
+		if a.ObjectID == 1 {
+			return RouteAhead(a.Position, []airport.LatLon{turn, north})
+		}
+		return nil
+	}}
+	if cs := PredictConflicts(all, o); len(cs) != 0 {
+		t.Errorf("along its route: %+v, want none", cs)
 	}
 }

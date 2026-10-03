@@ -134,6 +134,11 @@ type TaxiRequest struct {
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
 	Tug PushbackTug
+	// PowerOut: a small aircraft leaves its stand under its own power, no
+	// tug: forward, a loop round to the side and back past the stand onto
+	// the taxilane (planPowerOut), where the loop stays on the pavement and
+	// off any stand StandOccupied reports taken; else it is pushed as usual.
+	PowerOut bool
 	// Fuel refuels the aircraft on its stand before the tug comes (#582):
 	// e.g. NewSimObjectFuelTruck. Nil: no refuelling shown. The controller
 	// passes it its messages.
@@ -291,6 +296,7 @@ type TaxiController struct {
 	pushTurnDir     float64          // the way out from the junction
 	pushPose        *pushPose        // where the push ends (planPushPose), nil for the older plans
 	faceOut         bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	powerOut        []airport.LatLon // the loop out of the stand under its own power (PowerOut)
 	// pushFacing: the heading a push ends facing, asked for with the
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
@@ -468,6 +474,11 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		c.req, c.route = req, route
 		c.pushJunction = 1
 		c.faceOut = c.standFacesOut()
+		if c.req.PowerOut && !c.faceOut {
+			if loop, ok := c.planPowerOut(); ok {
+				c.powerOut, c.faceOut = loop, true
+			}
+		}
 		if c.inj != nil {
 			c.planPushback()
 		}
@@ -497,6 +508,11 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 	c.req, c.route = req, route
 	c.pushJunction = 1
 	c.faceOut = c.standFacesOut()
+	if c.req.PowerOut && !c.faceOut {
+		if loop, ok := c.planPowerOut(); ok {
+			c.powerOut, c.faceOut = loop, true // no tug, no push: out under its own power
+		}
+	}
 	if c.inj != nil {
 		c.planPushback() // may re-plan the route from the push
 	}

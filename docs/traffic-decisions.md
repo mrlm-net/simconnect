@@ -526,18 +526,22 @@ The holds are ours, not the simulator's (`hold.go`, #392):
 
 Pairs are skipped when the tower separates them (`TowerPair`: same airport, one below `TowerBelowFt`, 2500 ft above the ground) or when they cannot meet within the look-ahead. The airport map uses 5 NM in both cases (`conflictOpts`) and checks every 5 s.
 
-`ResolveConflict` tries changes to one of ours, cheapest first, and takes the first that keeps it clear of everyone through the look-ahead. Both aircraft are tried; on equal cost the first aircraft of the pair is chosen. Other traffic is never steered.
+`ResolveConflict` tries changes to one of ours, cheapest first, and takes the first that keeps it clear of everyone through the look-ahead. Both aircraft are tried; on equal cost the first aircraft of the pair is chosen. Other traffic is never steered. What comes first depends on the geometry: tracks within `SameRouteDeg` (45°) of each other are on the same route (in trail), more apart they cross.
 
-| Change | Cost |
-|---|---|
-| Speed × 0.9 or × 1.1 (not above 250 kt below 10,000 ft) | 1.5 |
-| Speed × 0.8 or × 1.2 | 2.0 |
-| Level ±1000 ft (at 1500 fpm, not below 1500 ft above the ground) | 2.5 |
-| Level ±2000 ft | 3.0 |
-| Level against the semicircular rule (level at 10,000 ft or above: odd thousands eastbound) | +1 |
-| Heading 20° right / left | 3.44 / 3.54 |
-| Heading 30° right / left | 3.67 / 3.77 |
-| Heading 45° right / left | 4.0 / 4.1 |
+| Change | Crossing | Same route |
+|---|---|---|
+| Stop the climb or descent at the next 1000 ft on its way / the one after | 0.8 / 1.3 | 3.8 / 4.3 |
+| Level ±1000 ft (at 1500 fpm, not below 1500 ft above the ground; never back against a climb or descent) | 2.5 | 5.5 |
+| Level ±2000 ft | 3.0 | 6.0 |
+| Level against the semicircular rule (level at 10,000 ft or above: odd thousands eastbound) | +1 | +1 |
+| Speed × 0.9 or × 1.1 (not above 250 kt below 10,000 ft) | 5.0 | 1.5 |
+| Speed × 0.8 or × 1.2 | 5.5 | 2.0 |
+| Shortcut: direct to a named fix past the next (`DirectFixes`; ≥ 5 NM away, ≤ 60° off), + turn/60 | 4.5 | 2.5 |
+| Heading 20° right / left (a leg extended) | 3.44 / 3.54 | 3.44 / 3.54 |
+| Heading 30° right / left | 3.67 / 3.77 | 3.67 / 3.77 |
+| Heading 45° right / left | 4.0 / 4.1 | 4.0 / 4.1 |
+
+On the map a departure is never given a speed change (live, AUA818 was told "reduce speed to 200 knots" climbing out). A stopped climb or descent goes on once the look-ahead has run and the aircraft is out of conflict: "clear of traffic, climb to flight level 240", to the highest (lowest) level of its planned route.
 
 The resolved aircraft flies the change for the look-ahead and then goes back to its route (`ResolvedRoute`). On the map it is not steered again for 5 min. Two of our arrivals on their STARs are not steered by the en-route resolver. Instead, the one landing later loses time (speed, then a dog-leg). If it is still in conflict 90 s later, it holds (#455, `cmd/airport-map/conflicts.go`).
 

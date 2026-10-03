@@ -1486,6 +1486,13 @@ func (c *TaxiController) startTaxiOut() error {
 			}
 		}
 	}
+	// Out under its own power: the loop round to the side and back past the
+	// stand, then the route from its first junction, behind the stand.
+	if len(c.powerOut) > 0 && !c.fromHere {
+		pts = append(pts, c.powerOut...)
+		start = c.pushJunction
+		c.powerOut = nil
+	}
 	apron := apronSpans{g: c.req.Graph}
 	for i := start; i < len(route.Points); i++ {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route.Points[i])
@@ -2086,4 +2093,57 @@ func (c *TaxiController) Reroute(route []RoutePoint) error {
 	}
 	c.climb = wps
 	return nil
+}
+
+// Power-out (TaxiRequest.PowerOut): a turn of powerOutRadius (the
+// arrival's turn-around scaled to the wheelbase, at least
+// PowerOutMinRadiusMeters); the loop may lie PowerOutOffPavementMeters off
+// the pavement at most.
+const (
+	PowerOutMinRadiusMeters   = 8.0
+	PowerOutOffPavementMeters = 1.0
+)
+
+// planPowerOut plans the loop out of the stand under the aircraft's own
+// power: forward, round to the side and back past the stand towards the
+// route's first junction behind it, on whichever side stays on the
+// pavement (taxiways and its own stand) and clear of the stands StandOccupied
+// reports taken. False when neither side fits.
+func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
+	if len(c.route.Points) < 2 || c.inj == nil {
+		return nil, false
+	}
+	g, prof := c.req.Graph, c.profile()
+	stand := g.Layout.Parking[c.req.Parking]
+	h := stand.Heading
+	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), h, prof)
+	r := math.Max(PowerOutMinRadiusMeters, TurnAroundMeters*prof.WheelbaseMeters/DefaultMotionProfile().WheelbaseMeters)
+	all := pavementAround(g, nose, 4*r)
+	own := pavement{segs: all.segs, stands: []airport.Parking{stand}}
+	half := c.halfSpan()
+	var best []airport.LatLon
+	bestOff := math.Inf(1)
+	for _, side := range []float64{1, -1} {
+		at := func(u, v float64) airport.LatLon { return offsetHeading(offsetHeading(nose, h, u*r), h+90, v*r*side) }
+		loop := []airport.LatLon{at(0.5, 0), at(1.4, 0.4), at(1.9, 1.2), at(1.6, 2.0), at(0.8, 2.3), at(0, 2.2)}
+		off := offPavement(own, loop)
+		if off > PowerOutOffPavementMeters || off >= bestOff {
+			continue
+		}
+		clear := true
+		for _, p := range g.Layout.Parking {
+			if p.Index == stand.Index || c.req.StandOccupied == nil || !c.req.StandOccupied(p.Index) {
+				continue
+			}
+			for _, q := range loop {
+				if localDist(q, p.Position) < p.Radius+half {
+					clear = false
+				}
+			}
+		}
+		if clear {
+			best, bestOff = loop, off
+		}
+	}
+	return best, best != nil
 }

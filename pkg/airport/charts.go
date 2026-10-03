@@ -105,7 +105,7 @@ func Charts(l *Layout, p Procedures) ChartSet {
 		}
 	}
 	for _, d := range p.Departures {
-		v := ChartProc{Name: d.Name, Runways: d.Runways()}
+		v := ChartProc{Name: d.Name, Runways: nonNil(d.Runways()), Paths: []ChartPath{}}
 		var common []LatLon
 		for _, tr := range d.RunwayTransitions {
 			start, alt := l.DepartureStart(tr.Runway)
@@ -137,7 +137,7 @@ func Charts(l *Layout, p Procedures) ChartSet {
 		out.SIDs = append(out.SIDs, v)
 	}
 	for _, a := range p.Arrivals {
-		v := ChartProc{Name: a.Name, Runways: a.Runways()}
+		v := ChartProc{Name: a.Name, Runways: nonNil(a.Runways()), Paths: []ChartPath{}}
 		common := ProcedurePath(a.Legs, LatLon{}, 3000, p.MagVar, 0)
 		for _, e := range a.EnrouteTransitions {
 			v.Paths = append(v.Paths, chartPath(e.Name+"."+a.Name, append(slices.Clone(e.Legs), a.Legs...), LatLon{}, 3000, p.MagVar, TurnRadiusEnroute, len(a.RunwayTransitions) == 0))
@@ -198,7 +198,7 @@ func Charts(l *Layout, p Procedures) ChartSet {
 // open legs after the last fix (a STAR's VM: heading, then vectors) become
 // the Vectors arrow instead of a flown path.
 func chartPath(label string, legs []Leg, start LatLon, alt, magVar, radius float64, vectors bool) ChartPath {
-	var marks []ChartMark
+	marks := []ChartMark{} // [] not null in the JSON, as the other lists
 	for _, l := range legs {
 		if !l.HasFix() || l.FixKind == "R" {
 			continue
@@ -216,6 +216,9 @@ func chartPath(label string, legs []Leg, start LatLon, alt, magVar, radius float
 		}
 	}
 	p := ChartPath{Label: label, Points: ProcedurePath(legs, start, alt, magVar, radius), Marks: marks, Tracks: chartTracks(legs, magVar)}
+	if p.Points == nil {
+		p.Points = []LatLon{}
+	}
 	if len(tail) > 0 && len(p.Points) > 0 {
 		from, c := lastPoint(p.Points), tail[0].Course
 		lat, lon := calc.DisplaceByHeading(from.Lat, from.Lon, trueFromMagnetic(c, magVar), chartVectorsMeters)
@@ -297,4 +300,12 @@ func endFixes(legs []Leg) (string, string) {
 		}
 	}
 	return first, lastFix
+}
+
+// nonNil is s, or an empty list for nil: [] in the JSON, not null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

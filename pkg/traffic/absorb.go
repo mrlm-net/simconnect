@@ -606,6 +606,10 @@ const ShortcutDescentFtPerNM = 320.0
 // LKPR: CSA1909 direct PR532 over the airport).
 const ShortcutAirportClearNM = 4.0
 
+// ShortcutMinKts: no shortcut before the aircraft is reported this fast
+// (flying, its heading known).
+const ShortcutMinKts = 100.0
+
 // ShortcutMinNM: a shortcut saving less is not worth the call.
 const ShortcutMinNM = 2.0
 
@@ -631,6 +635,9 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error)
 	if pos == (airport.LatLon{}) || k >= final-1 {
 		return "", 0, ErrNotOnProcedure
 	}
+	if c.last.GroundSpeed < ShortcutMinKts {
+		return "", 0, nil // not reported flying yet: no heading to turn from
+	}
 	// Only with a long way to go: near the end of the STAR a direct only
 	// muddles the join.
 	togo := 0.0
@@ -651,8 +658,8 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error)
 		p := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
 		along += calc.HaversineNM(prev.Lat, prev.Lon, p.Lat, p.Lon)
 		prev = p
-		if j == k || c.cornerName(j) == "" {
-			continue // at least one point left out; to a named fix
+		if j == k || c.cornerName(j) == "" || c.pastIAF(c.cornerName(j)) {
+			continue // at least one point left out; to a named fix, the IAF at the latest
 		}
 		direct := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon)
 		save := along - direct
@@ -768,4 +775,22 @@ func segmentsCross(a1, a2, b1, b2 airport.LatLon) bool {
 	d1, d2 := side(bx1, by1, bx2, by2, ax1, ay1), side(bx1, by1, bx2, by2, ax2, ay2)
 	d3, d4 := side(ax1, ay1, ax2, ay2, bx1, by1), side(ax1, ay1, ax2, ay2, bx2, by2)
 	return d1*d2 < 0 && d3*d4 < 0
+}
+
+// pastIAF reports a fix after the procedure's initial approach fix: a
+// shortcut goes to the IAF at the latest (live, LKPR: TVS1442 sent direct
+// PR532, a point on the approach, where ERASU was the one). False when the
+// procedure marks no IAF. c.mu held.
+func (c *ArrivalController) pastIAF(fix string) bool {
+	iaf := -1
+	at := -1
+	for i, n := range c.req.Procedure {
+		if n.IAF && iaf < 0 {
+			iaf = i
+		}
+		if n.Ident == fix && at < 0 {
+			at = i
+		}
+	}
+	return iaf >= 0 && at > iaf
 }

@@ -29,7 +29,26 @@ type ConflictOptions struct {
 	// or arriving) below TerminalBelowFt (defaults TerminalSeparationNM and
 	// 10000 ft). MinFt: the vertical minimum (default VerticalSeparationFt).
 	MinNM, TerminalNM, TerminalBelowFt, MinFt float64
+	// DirectFixes are the named fixes ahead on an aircraft's route, in
+	// route order, that a resolution may send it direct to (a shortcut);
+	// nil: none.
+	DirectFixes func(TrackedAircraft) []DirectFix
+	// Route is the points still ahead on an aircraft's route, in order:
+	// it is predicted along them, turning where they turn, not straight
+	// on (live, CSA786 told to stop descent for KLM130 predicted straight
+	// on where its STAR turned away); nil or empty: straight on.
+	Route func(TrackedAircraft) []airport.LatLon
 }
+
+// DirectFix is a named fix of a route.
+type DirectFix struct {
+	Ident    string
+	Position airport.LatLon
+}
+
+// SameRouteDeg: tracks within this of each other are on the same route
+// (in trail); more apart they cross.
+const SameRouteDeg = 45.0
 
 func (o ConflictOptions) withDefaults() ConflictOptions {
 	if o.LookAhead <= 0 {
@@ -72,6 +91,17 @@ type track struct {
 	hdg, kts, fpm   float64
 	// level: the vertical speed stops there (a cleared level); 0: none.
 	level float64
+	// path: the route's points ahead, flown in turn (nil: straight on).
+	path []airport.LatLon
+}
+
+// trackFor is a's track, along its route when o knows it.
+func trackFor(a TrackedAircraft, o ConflictOptions) track {
+	t := trackOf(a)
+	if o.Route != nil {
+		t.path = o.Route(a)
+	}
+	return t
 }
 
 func trackOf(a TrackedAircraft) track {
@@ -84,7 +114,23 @@ func trackOf(a TrackedAircraft) track {
 
 func (t track) at(d time.Duration) (lat, lon, altFt float64) {
 	s := d.Seconds()
-	lat, lon = calc.DisplaceByHeading(t.lat, t.lon, t.hdg, t.kts*1852*s/3600)
+	nm := t.kts * s / 3600
+	lat, lon = t.lat, t.lon
+	hdg := t.hdg
+	// Along its route first, turning where it turns; straight on past
+	// the route's end.
+	for _, p := range t.path {
+		leg := calc.HaversineNM(lat, lon, p.Lat, p.Lon)
+		if leg < 0.01 {
+			continue
+		}
+		hdg = calc.BearingDegrees(lat, lon, p.Lat, p.Lon)
+		if leg >= nm {
+			break
+		}
+		lat, lon, nm = p.Lat, p.Lon, nm-leg
+	}
+	lat, lon = calc.DisplaceByHeading(lat, lon, hdg, nm*1852)
 	altFt = t.altFt + t.fpm*s/60
 	if t.level != 0 && (t.fpm > 0 && altFt > t.level || t.fpm < 0 && altFt < t.level) {
 		altFt = t.level
@@ -152,7 +198,7 @@ func PredictConflicts(aircraft []TrackedAircraft, o ConflictOptions) []Conflict 
 			if calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon) > reach {
 				continue
 			}
-			if c, ok := conflictBetween(trackOf(a), trackOf(b), min, o); ok {
+			if c, ok := conflictBetween(trackFor(a, o), trackFor(b, o), min, o); ok {
 				c.A, c.B, c.AID, c.BID = callsignOf(a), callsignOf(b), a.ObjectID, b.ObjectID
 				out = append(out, c)
 			}
@@ -169,6 +215,9 @@ const (
 	ResolveSpeed   ResolutionKind = "speed"
 	ResolveLevel   ResolutionKind = "level"
 	ResolveHeading ResolutionKind = "heading"
+	// ResolveDirect: a shortcut, direct to Fix (at Direct) and on along
+	// the route from there.
+	ResolveDirect ResolutionKind = "direct"
 )
 
 // Resolution is a change to one of ours that keeps a conflict apart.
@@ -182,6 +231,12 @@ type Resolution struct {
 	Kts        float64 `json:"kts,omitempty"`
 	AltFt      float64 `json:"altFt,omitempty"`
 	HeadingDeg float64 `json:"headingDeg,omitempty"`
+	// Stop (level): a climb or descent stopped at AltFt on its way, to
+	// go on once clear of the traffic ("stop climb at 5000 feet").
+	Stop bool `json:"stop,omitempty"`
+	// Fix and Direct (direct): the fix of the route flown to.
+	Fix    string          `json:"fix,omitempty"`
+	Direct *airport.LatLon `json:"direct,omitempty"`
 	// Why: the conflict it resolves, as ATC would say it.
 	Why string `json:"why"`
 }
@@ -194,13 +249,20 @@ type resolutionCandidate struct {
 	cost float64
 }
 
-// candidates are the changes to aircraft a, least disturbing first in cost:
-// speed (a tenth to a fifth slower or faster, 250 kt below 10000 ft), a
-// level 1000 or 2000 ft up or down (by the semicircular rule when level
-// above the transition), a heading 20 to 45° off (right first).
-func candidates(a TrackedAircraft) []resolutionCandidate {
-	base := trackOf(a)
+// candidates are the changes to aircraft a, least disturbing first in cost.
+// Crossing traffic is parted by altitude first: a climb or descent stopped
+// on its way, else a level 1000 or 2000 ft up or down (by the semicircular
+// rule when level above the transition), then a heading 20 to 45° off
+// (right first), speed last. On the same route as the traffic (sameRoute:
+// in trail) speed comes first (a tenth to a fifth slower or faster, 250 kt
+// below 10000 ft), then a shortcut direct to a fix ahead (fixes) or a leg
+// extended by a heading off and back, altitude last.
+func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix) []resolutionCandidate {
 	var out []resolutionCandidate
+	speedCost, directCost, levelCost := 3.5, 3.5, 0.0
+	if sameRoute {
+		speedCost, directCost, levelCost = 0, 1.5, 3
+	}
 	add := func(r Resolution, t track, cost float64) {
 		r.Callsign, r.ObjectID = callsignOf(a), a.ObjectID
 		out = append(out, resolutionCandidate{r, t, cost})
@@ -212,16 +274,37 @@ func candidates(a TrackedAircraft) []resolutionCandidate {
 		}
 		t := base
 		t.kts = kts
-		add(Resolution{Kind: ResolveSpeed, Kts: math.Round(kts)}, t, 1+math.Abs(1-f)*5)
+		add(Resolution{Kind: ResolveSpeed, Kts: math.Round(kts)}, t, speedCost+1+math.Abs(1-f)*5)
+	}
+	// Climbing or descending: stopped at a level on its way (a radar
+	// controller's "stop climb at 5000 feet"), then on once clear; never
+	// turned back the other way.
+	if base.fpm != 0 {
+		up := base.fpm > 0
+		for i, cost := range []float64{0.8, 1.3} {
+			alt := math.Ceil((a.AltFt+500)/1000)*1000 + float64(i)*1000
+			if !up {
+				alt = math.Floor((a.AltFt-500)/1000)*1000 - float64(i)*1000
+			}
+			if alt < a.AltFt-a.AGLFt+1500 {
+				continue // too low over the ground
+			}
+			t := base
+			t.level = alt
+			add(Resolution{Kind: ResolveLevel, AltFt: alt, Stop: true}, t, levelCost+cost)
+		}
 	}
 	level := math.Round(a.AltFt/1000) * 1000
 	for _, dft := range []float64{1000, -1000, 2000, -2000} {
 		alt := level + dft
+		if base.fpm != 0 && (dft > 0) != (base.fpm > 0) {
+			continue // not turned back
+		}
 		if alt < a.AltFt-a.AGLFt+1500 {
 			continue // too low over the ground
 		}
 		t := base
-		cost := 2 + math.Abs(dft)/2000
+		cost := levelCost + 2 + math.Abs(dft)/2000
 		// Climb or descend there at 1500 fpm, then level.
 		t.fpm, t.level = math.Copysign(1500, alt-a.AltFt), alt
 		if base.fpm == 0 && alt >= 10000 {
@@ -233,9 +316,26 @@ func candidates(a TrackedAircraft) []resolutionCandidate {
 		}
 		add(Resolution{Kind: ResolveLevel, AltFt: alt}, t, cost)
 	}
+	// A shortcut: direct to a fix past the next, within 60° of the
+	// heading and far enough out to be one.
+	for i, f := range fixes {
+		if i == 0 {
+			continue // the next fix: no shortcut
+		}
+		d := calc.HaversineNM(a.Position.Lat, a.Position.Lon, f.Position.Lat, f.Position.Lon)
+		brg := calc.BearingDegrees(a.Position.Lat, a.Position.Lon, f.Position.Lat, f.Position.Lon)
+		turn := math.Abs(math.Mod(brg-base.hdg+540, 360) - 180)
+		if d < DirectMinNM || turn > DirectMaxTurnDeg {
+			continue
+		}
+		t := base
+		t.hdg, t.path = brg, fromFix(base.path, f.Position)
+		p := f.Position
+		add(Resolution{Kind: ResolveDirect, Fix: f.Ident, Direct: &p}, t, directCost+1+turn/60)
+	}
 	for _, turn := range []float64{20, -20, 30, -30, 45, -45} {
 		t := base
-		t.hdg = math.Mod(base.hdg+turn+360, 360)
+		t.hdg, t.path = math.Mod(base.hdg+turn+360, 360), nil // off the route: straight out
 		cost := 3 + math.Abs(turn)/45
 		if turn < 0 {
 			cost += 0.1 // right turns first
@@ -245,6 +345,13 @@ func candidates(a TrackedAircraft) []resolutionCandidate {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].cost < out[j].cost })
 	return out
 }
+
+// A shortcut resolution goes to a fix at least DirectMinNM away, at most
+// DirectMaxTurnDeg off the heading.
+const (
+	DirectMinNM      = 5.0
+	DirectMaxTurnDeg = 60.0
+)
 
 // ResolveConflict picks the least disturbing change to one of ours
 // (canSteer: which aircraft, and which kinds of change it can fly) that keeps the pair of c apart through the look-ahead without
@@ -266,8 +373,14 @@ func ResolveConflict(c Conflict, aircraft []TrackedAircraft, canSteer func(Track
 		return Resolution{}, false
 	}
 	var best *resolutionCandidate
+	// In trail (same route) or crossing: what parts them first.
+	sameRoute := math.Abs(math.Mod(a.Heading-b.Heading+540, 360)-180) <= SameRouteDeg
 	try := func(me, other *TrackedAircraft) {
-		for _, cand := range candidates(*me) {
+		var fixes []DirectFix
+		if o.DirectFixes != nil {
+			fixes = o.DirectFixes(*me)
+		}
+		for _, cand := range candidates(*me, trackFor(*me, o), sameRoute, fixes) {
 			if best != nil && cand.cost >= best.cost {
 				break // sorted: nothing cheaper follows
 			}
@@ -297,7 +410,7 @@ func clearOfAll(t track, me TrackedAircraft, aircraft []TrackedAircraft, o Confl
 		if x.ObjectID == me.ObjectID || x.OnGround {
 			continue
 		}
-		if _, lost := conflictBetween(t, trackOf(x), o.minFor(me, x), o); lost {
+		if _, lost := conflictBetween(t, trackFor(x, o), o.minFor(me, x), o); lost {
 			return false
 		}
 	}
@@ -330,6 +443,21 @@ func ResolvedRoute(route []RoutePoint, a TrackedAircraft, r Resolution, lookAhea
 		}
 		return p
 	}
+	if r.Kind == ResolveDirect && r.Direct != nil {
+		// Straight to the fix, then the route on from the point there.
+		at, best := -1, math.Inf(1)
+		for i, p := range ahead {
+			if d := calc.HaversineNM(r.Direct.Lat, r.Direct.Lon, p.Position.Lat, p.Position.Lon); d < best {
+				at, best = i, d
+			}
+		}
+		if at < 0 {
+			return []RoutePoint{here, {Position: *r.Direct, AltFt: a.AltFt, Kts: a.GroundKts}}
+		}
+		fix := ahead[at]
+		fix.Position = *r.Direct
+		return append([]RoutePoint{here, fix}, ahead[at+1:]...)
+	}
 	if r.Kind == ResolveHeading {
 		lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, r.HeadingDeg, reach/2*1852)
 		out := []RoutePoint{here, {Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: a.AltFt, Kts: a.GroundKts}}
@@ -356,6 +484,22 @@ func ResolvedRoute(route []RoutePoint, a TrackedAircraft, r Resolution, lookAhea
 		lat, lon := calc.DisplaceByHeading(prev.Position.Lat, prev.Position.Lon, brg, leg*f*1852)
 		out = append(out, apply(RoutePoint{Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: prev.AltFt, Kts: prev.Kts}))
 		return append(out, ahead[i:]...)
+	}
+	return out
+}
+
+// fromFix is a route from fix on: fix, then the points of path after the
+// one nearest it.
+func fromFix(path []airport.LatLon, fix airport.LatLon) []airport.LatLon {
+	at, best := -1, math.Inf(1)
+	for i, p := range path {
+		if d := calc.HaversineNM(fix.Lat, fix.Lon, p.Lat, p.Lon); d < best {
+			at, best = i, d
+		}
+	}
+	out := []airport.LatLon{fix}
+	if at >= 0 {
+		out = append(out, path[at+1:]...)
 	}
 	return out
 }
