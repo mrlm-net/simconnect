@@ -9,6 +9,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.18.10] - 2026-10-03
+
+The traffic picture reads AI on the ground right and tells more of what each aircraft is doing.
+
+### Added
+
+- `TrafficPicture` phases `pushback`, `holding`, `takeoff`, `landing`, `climbing`, `descending` and `approach`; `parked`, `taxiing`, `runway`, `departing`, `arriving` and `enroute` keep their meaning (#623).
+- `PictureOptions.Layout` and `TrackedAircraft.Where`/`WhereName`: where on the airfield an aircraft on the ground is (runway, parking, taxiway, by `airport.Locate`) (#623).
+
+### Fixed
+
+- `TrafficPicture`: AI on the ground report 0 kt however they move, so every taxiing AI read as parked and no take-off roll was seen; below 1 kt the speed is worked out from the movement between scans (`SpeedDerived`), counting as movement above 2 kt (#622).
+- `TrafficPicture`: climbing and descending follow a 30 s altitude trend with hysteresis (400/150 ft/min) instead of one scan's vertical speed, so an altitude blip no longer flips the phase (#623).
+- Airport map voice: calls are spoken to their end (the last syllable was clipped).
+
 ## [0.18.9] - 2026-10-03
 
 VFR traffic through the circuit (touch-and-goes, stop-and-goes, joins, reporting points, airspace classes), business aviation at large airports, airport detection (`airport.Locate`), and a day of live fixes: the gear after lift-off, take-off pitch, smooth stops and give-way on the ground, tug connection, arrival corners.
