@@ -79,6 +79,8 @@ func TestPilotCalls(t *testing.T) {
 		{Vacated("CSA1", "06"), "CSA1, runway vacated"}, // Doc 4444 12.3.4.7 z
 		{SayAgain(PosTower, "CSA1"), "CSA1, say again"},
 		{SayAgain(PosTower, ""), "Station calling, say again your call sign"},
+		{GoingAround("CSA1"), "CSA1, going around"},
+		{Acknowledge(PosTower, "CSA1"), "CSA1, roger"},
 	} {
 		if c.tx.Text != c.want {
 			t.Errorf("%s: %q, want %q", c.tx.Intent, c.tx.Text, c.want)
