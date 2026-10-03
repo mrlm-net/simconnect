@@ -132,6 +132,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   └── speed.go         #   Knots/km/h/m/s conversion
 │   ├── calc/                # Calculation helpers
 │   ├── addons/              # Installed add-ons (no SimConnect): packages path, Community/streamed scan, aircraft → package, fingerprint, processes
+│   ├── avionics/            # User aircraft radios: COM active/standby, swap, squawk (key events)
 │   ├── camera/              # Add-on camera (MSFS 2024): poses, shots, drone moves, Director
 │   ├── airport/             # Airport ground layout, taxi graph, routing
 │   │   ├── layout.go        #   Layout, Runway(End), Parking, TaxiPoint, TaxiPath
@@ -273,6 +274,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
 │   ├── traffic-decisions.md #   How the traffic decides, with the numbers: push choice, give way, routing, runway, sequencing, conflicts
 │   ├── addons.md            #   pkg/addons: installed packages, streamed airports, aircraft package, processes
+│   ├── avionics.md          #   pkg/avionics: COM frequencies, swap, transponder
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)

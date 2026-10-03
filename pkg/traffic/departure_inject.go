@@ -2043,6 +2043,25 @@ func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
 	return out
 }
 
+// DirectTo sends a departure handed to MSFS AI from pos straight to fix, a
+// point of its climb route ahead, and on along the route from there (its
+// crew asked, #621). The fix keeps the altitude and speed planned for the
+// climb waypoint nearest it.
+func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix airport.LatLon) error {
+	plan := c.ClimbPlan(pos)
+	at, best := -1, math.Inf(1)
+	for i, p := range plan {
+		if d := calc.HaversineNM(fix.Lat, fix.Lon, p.Position.Lat, p.Position.Lon); d < best {
+			at, best = i, d
+		}
+	}
+	if at < 0 || best > 2 {
+		return errors.New("traffic: direct: the fix is not on the climb route")
+	}
+	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: kts}, {Position: fix, AltFt: plan[at].AltFt, Kts: plan[at].Kts}}
+	return c.Reroute(append(route, plan[at+1:]...))
+}
+
 // Reroute sends a departure handed to MSFS AI on route (from where it is
 // now, as ResolvedRoute gives it), flown as waypoints like an en route
 // flight; ClimbPlan and ClimbRoute follow the new route (#639).

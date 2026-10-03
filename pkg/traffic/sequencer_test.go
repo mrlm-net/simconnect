@@ -332,3 +332,24 @@ func TestSequencerBehind(t *testing.T) {
 		t.Error("still held behind a jet that has landed")
 	}
 }
+
+// An arrival established on the final keeps its place: a VFR aircraft that
+// was number 2 and turns onto a short base, closer by its prediction, stays
+// number 2 and shows the spacing it lacks (live, LKPR: OKKSF took number 1
+// from AUA529 on a 5 NM final, which was sent around).
+func TestSequencerFixedKeepOrder(t *testing.T) {
+	now := time.Now()
+	s := NewApproachSequencer("06", SequencerOptions{})
+	ifr := ApproachAircraft{Callsign: "AUA529", Wake: WakeFor("A320"), DistanceToGoNM: 9, GroundKts: 160, FinalKts: 140}
+	vfr := ApproachAircraft{Callsign: "OKKSF", Wake: WakeFor("DA62"), DistanceToGoNM: 12, GroundKts: 120, FinalKts: 90}
+	seq := s.Update(now, []ApproachAircraft{ifr, vfr})
+	if seq[0].Callsign != "AUA529" {
+		t.Fatalf("first look: %+v", seq)
+	}
+	// Both fixed now: AUA529 on a 5 NM final, OKKSF on a 2 NM base.
+	ifr.DistanceToGoNM, vfr.DistanceToGoNM = 5, 2
+	seq = s.Update(now.Add(time.Minute), []ApproachAircraft{ifr, vfr})
+	if seq[0].Callsign != "AUA529" || seq[1].Callsign != "OKKSF" || seq[1].ShortBy <= 0 {
+		t.Errorf("closer in by its prediction: %+v, want AUA529 first and OKKSF short of its spacing", seq)
+	}
+}

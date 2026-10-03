@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // A departure handed to MSFS AI gives its climb as a route and flies a
@@ -47,5 +48,29 @@ func TestDepartureReroute(t *testing.T) {
 	}
 	if got := ctl.ClimbPlan(at); len(got) == 0 || got[0].AltFt != 7000 {
 		t.Errorf("after the level change the plan starts %+v, want 7000 ft", got)
+	}
+}
+
+// A crew asks direct to a fix further along its climb (#621): the points
+// before it are left out.
+func TestDepartureDirectTo(t *testing.T) {
+	ec := &eventClient{}
+	ctl := NewTaxiController(NewFleet(ec))
+	start := pictureLKPR.Position
+	ctl.objectID, ctl.state = 77, TaxiComplete
+	for i := range 5 {
+		ctl.climb = append(ctl.climb, procedureWaypoint(offsetHeading(start, 65+float64(i)*10, float64(i+1)*10*1852), 6000+float64(i)*3000, 250))
+	}
+	at := offsetHeading(start, 65, 5*1852)
+	fix := airport.LatLon{Lat: ctl.climb[3].Latitude, Lon: ctl.climb[3].Longitude}
+	if err := ctl.DirectTo(at, 5000, 250, fix); err != nil {
+		t.Fatal(err)
+	}
+	plan := ctl.ClimbPlan(at)
+	if len(plan) < 2 || calc.HaversineNM(plan[0].Position.Lat, plan[0].Position.Lon, fix.Lat, fix.Lon) > 1.5 || plan[0].AltFt != 15000 {
+		t.Errorf("after direct the plan starts %+v, want the fix at 15000 ft", plan)
+	}
+	if err := ctl.DirectTo(at, 5000, 250, offsetHeading(start, 200, 30*1852)); err == nil {
+		t.Error("direct to a point off the route accepted")
 	}
 }

@@ -40,6 +40,10 @@ type sequences struct {
 	// its final approach speed; brokeOff: sent around early for spacing.
 	slowedFinal map[string]time.Time
 	brokeOff    map[string]bool
+	// seqSaid: the last number and speed each arrival was told, and when:
+	// the same again is not said within seqRepeatAfter (live, AUA529 heard
+	// "number 2, expect 1 minutes delay" twice).
+	seqSaid map[string]seqSaid
 	// conflictHeld: arrivals holding for a conflict with another (the
 	// conflict watch, #455): the sequence does not release them, however
 	// small their delay, before conflictHoldMin has passed and inConflict
@@ -76,7 +80,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, conflictHeld: map[string]conflictHold{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -261,7 +265,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
+		if q.sayOnce(now, e.Callsign, e.Number, a.SpeedKts) {
+			it.say(traffic.Sequenced(e.Callsign, e.Number, delay, a))
+		}
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
 			q.enterHold(now, icao, it, e, a.Left)
@@ -300,6 +306,32 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	it.mu.Lock()
 	pos := it.atc
 	it.mu.Unlock()
+	// VFR in the circuit behind an arrival established on the final: an
+	// orbit while it can, else around; no speed for a light aircraft (live,
+	// OKKSF on a short base ahead of AUA529 on a 5 NM final).
+	if it.circuit != nil {
+		if broke {
+			return
+		}
+		if err := q.cc.do(func() error { _, err := it.arr.Orbit(); return err }); err == nil {
+			orbit := traffic.DelayOrbitLeft
+			if it.circuit.Side == traffic.CircuitRight {
+				orbit = traffic.DelayOrbitRight
+			}
+			it.say(traffic.CircuitDelay(e.Callsign, orbit))
+			tlog.printf("%-6s sequence: %s short behind %s: %s", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, orbit)
+		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
+			tlog.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
+			it.say(traffic.GoAround(e.Callsign, "spacing"))
+			q.cc.rejoin(it.ICAO, it.Tail)
+		} else {
+			return
+		}
+		q.mu.Lock()
+		q.brokeOff[e.Callsign] = true
+		q.mu.Unlock()
+		return
+	}
 	if !slowed {
 		var gain time.Duration
 		if err := q.cc.do(func() (err error) { gain, err = it.arr.ReduceToFinalSpeed(); return err }); err != nil {
@@ -329,12 +361,12 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	q.cc.rejoin(it.ICAO, it.Tail)
 }
 
-// Holding (#392): an arrival with holdFrom or more left after speed and
-// path stretching holds at the first STAR point holdFixNM or more from the
-// threshold, in that fix's stack from holdBaseFt; it leaves once its delay
+// Holding (#392), the exception: an arrival with holdFrom or more left
+// after speed and path stretching holds at the first STAR point holdFixNM
+// or more from the threshold, in that fix's stack from holdBaseFt; it leaves once its delay
 // is down to holdRelease, and the ones above step down.
 const (
-	holdFrom    = time.Minute
+	holdFrom    = 4 * time.Minute // one racetrack: less is left to speed and vectors, asked again
 	holdRelease = time.Minute
 	holdFixNM   = 15.0
 	holdBaseFt  = 6000.0
@@ -382,6 +414,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 		return
 	}
 	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), e.Number))
+	q.sayOnce(it.cc.clock.Now(), e.Callsign, e.Number, 0) // its number is told
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
@@ -696,4 +729,30 @@ func (q *sequences) behind(icao, tail, lead string) {
 			s.Behind(tail, lead)
 		}
 	}
+}
+
+// seqRepeatAfter: the same number and speed are told again only after this.
+const seqRepeatAfter = 3 * time.Minute
+
+type seqSaid struct {
+	number int
+	kts    float64
+	at     time.Time
+}
+
+// sayOnce reports whether cs is to be told number and speed kts now (and
+// notes it): not when it was told the same within seqRepeatAfter; a speed
+// of 0 after one told is the same.
+func (q *sequences) sayOnce(now time.Time, cs string, number int, kts float64) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	last, ok := q.seqSaid[cs]
+	if ok && last.number == number && (kts == 0 || kts == last.kts) && now.Sub(last.at) < seqRepeatAfter {
+		return false
+	}
+	if kts == 0 {
+		kts = last.kts
+	}
+	q.seqSaid[cs] = seqSaid{number: number, kts: kts, at: now}
+	return true
 }

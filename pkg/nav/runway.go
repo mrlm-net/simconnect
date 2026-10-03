@@ -204,12 +204,49 @@ const RunwayChangeAfter = 10 * time.Minute
 type RunwaySelector struct {
 	// ChangeAfter: 0 means RunwayChangeAfter.
 	ChangeAfter time.Duration
+	// Ready, when set, picks the moment of a change that is due (the better
+	// choice held ChangeAfter): false waits, for a gap in the traffic, at
+	// most MaxChangeWait more (0: RunwayChangeMaxWait). A runway out of its
+	// limits changes at once all the same. It is called with the selector
+	// locked: it must not call the selector.
+	Ready         func(from, to RunwayUse) bool
+	MaxChangeWait time.Duration
 
-	mu      sync.Mutex
-	use     RunwayUse
-	have    bool
-	since   time.Time // when the choice first differed
-	pending string    // the better choice (RunwayUse.key)
+	mu         sync.Mutex
+	use        RunwayUse
+	have       bool
+	since      time.Time // when the choice first differed
+	pending    string    // the better choice (RunwayUse.key)
+	pendingUse RunwayUse
+}
+
+// RunwayChangeMaxWait is how long a change that is due waits for its
+// RunwaySelector.Ready moment.
+const RunwayChangeMaxWait = 15 * time.Minute
+
+// Seed starts the selector from the runway in use already, e.g. saved by an
+// earlier run: it is kept as one in use is, not chosen afresh with the
+// tighter margin (two selectors started apart otherwise hold different
+// runways near a limit).
+func (s *RunwaySelector) Seed(use RunwayUse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if use.Departure.Name == "" {
+		return
+	}
+	s.use, s.have, s.since, s.pending = use, true, time.Time{}, ""
+}
+
+// Pending is the change coming, if any: the better runway in use and since
+// when it has been better (it changes ChangeAfter after that, at the Ready
+// moment).
+func (s *RunwaySelector) Pending() (RunwayUse, time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.since.IsZero() {
+		return RunwayUse{}, time.Time{}, false
+	}
+	return s.pendingUse, s.since, true
 }
 
 // RunwayChoiceMarginKts is how far within its wind limits a runway must be
@@ -247,7 +284,13 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	if s.since.IsZero() || fresh.key() != s.pending {
 		s.since, s.pending = now, fresh.key()
 	}
-	if now.Sub(s.since) >= after {
+	s.pendingUse = fresh
+	// Due: at the Ready moment, or once that has been waited for too long.
+	wait := s.MaxChangeWait
+	if wait == 0 {
+		wait = RunwayChangeMaxWait
+	}
+	if held := now.Sub(s.since); held >= after && (s.Ready == nil || held >= after+wait || s.Ready(s.use, fresh)) {
 		s.use, s.since = fresh, time.Time{}
 		return fresh
 	}

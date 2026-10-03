@@ -9,9 +9,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Airport map: a crew rejects its take-off on its own, rarely (1 in 300), between 40 and 100 kt: "CSA1, stopping". The tower acknowledges; the aircraft stops, vacates and taxis back to the holding point for a new clearance. Past V1 it goes on (#621). `traffic.RejectingTakeoff`.
+- Airport map: a crew with the departure radar asks now and then for direct to a fix further along its route ("request direct VENOX"); cleared unless it is in a predicted conflict ("unable direct due traffic") (#621). `TaxiController.DirectTo`, `traffic.UnableDirect`.
+- Taxi routes: of routes about as long (within 15 %, at least 150 m), the one past fewer stands wins, across no runway the other does not cross; the push choice uses the same last word. LKPR N51 to 06 now passes no stand instead of nine for 186 m more. `Graph.StandsPassed`, `FewerStands*`.
+- `nav.ReadPLN` / `ReadPLNFile`: read an MSFS flight plan (.pln): departure, destination, rules, cruise altitude, SID, STAR and approach with their runways, waypoints with airways. `ParseLLA`.
+- `pkg/avionics`: set the user aircraft's COM active and standby frequencies, swap them, set the squawk (key events, checked live in MSFS 2024; the Fenix ignores the standby set). Guide: [Radios and Transponder](docs/avionics.md).
+- `traffic.VFRDepartureInstructions` / `VFRDepartureReadback` (CAP 413 Figure 24: "after departure, … climb not above altitude 2500 feet until reaching the zone boundary") and `traffic.Squawks`, discrete SSR codes from a bank avoiding codes in use and the special ones.
+- `nav.RunwaySelector.Seed` (start from the runway in use already, e.g. saved by an earlier run), `Ready` (the moment of a change that is due, waited for at most `MaxChangeWait`, 15 min) and `Pending` (the change coming).
+- Delay absorption: near the end of the STAR, a delay of about one turn or more is flown as a 360 where the arrival is ("orbit left for spacing"), smoother than out and back on a short leg (live, OKYDV). `Absorption.Orbit`.
+- `ArrivalController.StopDescent` and `traffic.StopDescent`: an arrival on its STAR levels off above traffic merging below it ("stop descent at 7000 feet, due traffic").
+
+### Changed
+
+- Sequencing: arrivals inside the freeze distance keep the order they had: one established on the final is not passed by another closer in by its prediction (live, a DA62 from SIERRA on a short base took number 1 from AUA529 on a 5 NM final, which was sent around). A VFR aircraft in the circuit short of its spacing orbits, or goes around on the final.
+- Airport map: an arrival conflict at the merge is met as a radar controller would: the later one stops its descent 1000 ft above the other, then speed and vectors, a hold only when nothing more absorbs it; and a sequence holds only with 4 minutes or more left (was 1). AUA529 held five minutes for a two-minute delay.
+- Airport map, runway change: a transition, not a switch. The new runway is prepared for everyone at once, while departures holding at their runway, lined up or rolling take off from the old one, and at most the 2 nearest arrivals on its final land there; every other arrival is rerouted. The change comes once no more than those 2 are within 10 NM.
+- Radio: "for spacing reduce speed to … knots" without "expect N minutes delay"; a delay of 5 minutes or less is never mentioned; the same number and speed are not said again within 3 minutes; after a go-around the tower hands over to approach once the aircraft is climbing away, not before "go around".
+
 ### Fixed
 
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
+- Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
 ## [0.18.11] - 2026-10-03
 

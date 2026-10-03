@@ -65,6 +65,8 @@ const (
 	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
 	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
 	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
+	IntentUnableDirect       Intent = "unable_direct"       // a crew's direct refused for traffic (#621)
+	IntentVFRDeparture       Intent = "vfr_departure"       // VFR departure instructions (CAP 413 Figure 24)
 	// VFR in the aerodrome traffic circuit (#569; Doc 4444 12.3.4.13–17).
 	IntentJoinCircuit   Intent = "join_circuit"    // join (left/right) (position in circuit) runway, QNH
 	IntentStraightIn    Intent = "straight_in"     // make straight-in approach, runway
@@ -78,8 +80,9 @@ const (
 	// The crew decides on its own (#621): pilot "going around"; ATC
 	// acknowledges, "roger".
 	IntentPilotGoAround Intent = "pilot_go_around"
+	IntentPilotReject   Intent = "pilot_reject" // the crew rejects the take-off: "stopping"
 	IntentAcknowledge   Intent = "acknowledge"
-	IntentTrafficInfo   Intent = "traffic_info"    // traffic, (o'clock), (distance), (direction), (type), (level) (#570)
+	IntentTrafficInfo   Intent = "traffic_info" // traffic, (o'clock), (distance), (direction), (type), (level) (#570)
 )
 
 // Phraseology is the wording a transmission is said in: ICAO (Doc 4444,
@@ -134,6 +137,7 @@ const (
 	ParamExpect     = "expect"      // expect further clearance, HH:MM
 	ParamSpeed      = "speed"       // knots
 	ParamFinalSpeed = "final_speed" // "1": reduce to final approach speed
+	ParamOrbit      = "orbit"       // a 360 for spacing: "left" or "right"
 	ParamLevel      = "level"       // "flight level 210" or "altitude 9000 feet"
 	ParamHeading    = "heading"     // degrees, three digits
 	ParamTurn       = "turn"        // left, right
@@ -414,6 +418,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamSpeed] != "" {
 			s += fmt.Sprintf(", for spacing reduce speed to %s knots", p[ParamSpeed])
 		}
+		if p[ParamOrbit] != "" {
+			s += fmt.Sprintf(", orbit %s for spacing", p[ParamOrbit])
+		}
 		if p[ParamFinalSpeed] != "" {
 			s += ", for spacing reduce to final approach speed"
 		}
@@ -437,6 +444,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return fmt.Sprintf("%s, %s speed to %s knots%s", cs, verb, p[ParamSpeed], why) // 12.4.1.6
 	case IntentLevel:
+		if p[ParamClimb] == "stop" {
+			return fmt.Sprintf("%s, stop descent at %s%s", cs, p[ParamLevel], why)
+		}
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
@@ -448,6 +458,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return s
 	case IntentDirectTo:
 		return fmt.Sprintf("%s, cleared direct to %s", cs, p[ParamFix]) // CAP 413 6.8
+	case IntentUnableDirect:
+		return cs + ", unable direct due traffic, continue on the departure"
 	case IntentIdentified:
 		s := cs + ", identified" // 12.4.1.1 e
 		if p[ParamLevel] != "" {
@@ -693,6 +705,12 @@ func ClearedDirectTo(pos Position, cs, fix string) Transmission {
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentDirectTo, Params: map[string]string{ParamFix: fix}})
 }
 
+// UnableDirect refuses a crew's request for direct, for traffic (#621):
+// "CSA1, unable direct due traffic, continue on the departure".
+func UnableDirect(pos Position, cs string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentUnableDirect})
+}
+
 // Identified answers a departure's check-in: identified (FAA: radar
 // contact), climb to level ("" none): "CSA1, identified, climb to flight
 // level 240".
@@ -887,15 +905,24 @@ func GoAround(cs, reason string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentGoAround, Params: p})
 }
 
+// SequencedDelaySaidFrom: "expect N minutes delay" is said only from this
+// many minutes; five or less is not worth telling, speed and vectors take it.
+const SequencedDelaySaidFrom = 6
+
 // Sequenced tells an arrival its number and how it is spaced: the speed it
 // is to fly (a.SpeedKts), and the delay to expect, in whole minutes, when
-// more than speed (path stretching, a hold) absorbs it.
+// more than speed (path stretching, a hold) absorbs it and it is longer
+// than five minutes (SequencedDelaySaidFrom).
 func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmission {
 	p := map[string]string{ParamNumber: fmt.Sprint(number), ParamLose: a.String()}
+	if a.Orbit != "" {
+		p[ParamOrbit] = a.Orbit
+	}
 	if a.SpeedKts > 0 {
 		p[ParamSpeed] = fmt.Sprintf("%.0f", a.SpeedKts)
 	}
-	if min := int(math.Round(delay.Minutes())); min >= 1 && (a.ExtraNM > 0 || a.Left > 0) {
+	// The speed is the instruction; the delay is told only when it is long.
+	if min := int(math.Round(delay.Minutes())); min >= 1 && (a.ExtraNM > 0 || a.Left > 0) && min >= SequencedDelaySaidFrom {
 		p[ParamDelay] = fmt.Sprint(min)
 	}
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentSequence, Params: p})
@@ -1188,4 +1215,11 @@ func (r *Radio) Recent(airport string, n int) []Transmission {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out
+}
+
+// StopDescent has a descending arrival level off at altFt for traffic
+// below it: "AUA529, stop descent at 7000 feet, due traffic".
+func StopDescent(pos Position, cs string, altFt float64, traffic string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
+		Params: map[string]string{ParamLevel: LevelSaid(altFt), ParamClimb: "stop", ParamTraffic: traffic}})
 }

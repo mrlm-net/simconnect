@@ -44,6 +44,8 @@ type towers struct {
 	// ("tail action"): one waiting on the agenda is dropped once it is
 	// no longer granted.
 	grantAt map[string]time.Time
+	// rtoJudged: departures whose crew has judged its take-off roll (#621).
+	rtoJudged map[string]bool
 }
 
 // behindClearance is a conditional line-up or crossing (cross) waiting
@@ -60,7 +62,7 @@ type runwayUserView struct {
 }
 
 func newTowers(cc *controlCenter, s *scheduler) *towers {
-	return &towers{cc: cc, s: s, ctl: map[string]*traffic.RunwayController{}, given: map[string]bool{}, waiting: map[string]string{}, last: map[string][]runwayUserView{}, behind: map[string]behindClearance{}, next: map[string]string{}}
+	return &towers{cc: cc, s: s, ctl: map[string]*traffic.RunwayController{}, given: map[string]bool{}, waiting: map[string]string{}, last: map[string][]runwayUserView{}, behind: map[string]behindClearance{}, next: map[string]string{}, rtoJudged: map[string]bool{}}
 }
 
 var phaseNames = map[traffic.RunwayPhase]string{traffic.RunwayHoldingShort: "holding short", traffic.RunwayLinedUp: "lined up",
@@ -241,6 +243,21 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
+	// A gap for a change of the runway in use (the selector's Ready moment):
+	// no more arrivals within runwayChangeGapNM than finish on the old
+	// runway (runwayChangeKeepArrivals); take-offs under way finish there.
+	busy, nearby := map[string]bool{}, map[string]int{}
+	for k, list := range users {
+		for _, u := range list {
+			if u.Arrival && u.Phase == traffic.RunwayFinal && u.DistanceNM <= runwayChangeGapNM {
+				nearby[k.icao]++
+				busy[k.icao] = nearby[k.icao] > runwayChangeKeepArrivals
+			}
+		}
+	}
+	runwayBusy.Lock()
+	runwayBusy.m = busy
+	runwayBusy.Unlock()
 	// A runway nobody uses now shows nobody: its last state stayed on
 	// (live, "12/30 · WZZ100 on the runway" long after it had crossed).
 	t.mu.Lock()
@@ -262,6 +279,7 @@ func (t *towers) tick(now time.Time) {
 		c := rc.Decide(now, list)
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
+		t.crewRejects(ours)
 		t.apply(k.icao, k.rwy, c, ours)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival

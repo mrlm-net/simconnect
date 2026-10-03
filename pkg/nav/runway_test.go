@@ -111,3 +111,49 @@ func TestRunwayChoiceMargin(t *testing.T) {
 		t.Errorf("dropped 24 within its limits for %s", u.Departure.Name)
 	}
 }
+
+// A change that is due waits for its Ready moment (a gap in the traffic), at
+// most MaxChangeWait; Pending shows it coming; Seed starts from the runway
+// in use already.
+func TestRunwaySelectorReadyAndSeed(t *testing.T) {
+	l := lkprInfo(t).Layout
+	now := time.Now()
+	calm := StaticWeather(120, 11, 9999, 15, 5, 1013)
+	shift := StaticWeather(200, 4, 9999, 15, 5, 1013)
+	ready := false
+	s := RunwaySelector{Ready: func(from, to RunwayUse) bool { return ready }}
+	first := s.Choose(now, l, calm, RunwayLimits{}).Arrival.Name
+	fresh := ActiveRunways(l, shift, RunwayLimits{}).Arrival.Name
+	if fresh == first {
+		t.Skip("the shift does not change the choice at this airport")
+	}
+	s.Choose(now.Add(time.Minute), l, shift, RunwayLimits{})
+	if u, _, ok := s.Pending(); !ok || u.Arrival.Name != fresh {
+		t.Fatalf("pending %v %s, want %s", ok, u.Arrival.Name, fresh)
+	}
+	if u := s.Choose(now.Add(12*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != first {
+		t.Fatalf("changed to %s with no gap", u.Arrival.Name)
+	}
+	ready = true
+	if u := s.Choose(now.Add(13*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
+		t.Fatalf("still %s at the gap, want %s", u.Arrival.Name, fresh)
+	}
+	if _, _, ok := s.Pending(); ok {
+		t.Error("still pending after the change")
+	}
+	// No gap at all: changed once MaxChangeWait has gone too.
+	ready = false
+	s2 := RunwaySelector{Ready: func(from, to RunwayUse) bool { return ready }}
+	s2.Choose(now, l, calm, RunwayLimits{})
+	s2.Choose(now.Add(time.Minute), l, shift, RunwayLimits{})
+	if u := s2.Choose(now.Add(time.Minute+RunwayChangeAfter+RunwayChangeMaxWait), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
+		t.Errorf("still %s after the longest wait", u.Arrival.Name)
+	}
+	// Seeded with the other runway: kept, as one in use is.
+	var s3 RunwaySelector
+	seeded := ActiveRunways(l, calm, RunwayLimits{})
+	s3.Seed(seeded)
+	if u := s3.Choose(now, l, shift, RunwayLimits{}); u.Arrival.Name != seeded.Arrival.Name {
+		t.Errorf("seeded with %s, chose %s at once", seeded.Arrival.Name, u.Arrival.Name)
+	}
+}

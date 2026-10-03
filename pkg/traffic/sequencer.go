@@ -354,6 +354,37 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	}
 	byETA(fixed)
 	byETA(free)
+	// Fixed arrivals keep the order they had: one established on the final
+	// is not passed by another fixed later, closer in by its prediction
+	// (live, LKPR: a DA62 from SIERRA on a short base, number 2, took number
+	// 1 from AUA529 on a 5 NM final, which was sent around). The one behind
+	// shows the spacing it lacks (ShortBy) instead.
+	s.mu.Lock()
+	had := map[string]int{}
+	for cs, e := range s.last {
+		had[cs] = e.Number
+	}
+	s.mu.Unlock()
+	for range len(fixed) {
+		changed := false
+		for i := range fixed {
+			for j := range fixed {
+				pi, oki := had[fixed[i].a.Callsign]
+				pj, okj := had[fixed[j].a.Callsign]
+				// i was ahead of j: j lands after it, however close in.
+				if oki && okj && pi < pj && !fixed[j].at.After(fixed[i].at) {
+					fixed[j].at, changed = fixed[i].at.Add(time.Second), true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	byLanding := func(l []slot) {
+		sort.SliceStable(l, func(i, j int) bool { return l[i].at.Before(l[j].at) })
+	}
+	byLanding(fixed)
 	// First come, first served by the unconstrained time: each arrival
 	// keeps the prediction it had when it joined the sequence, so losing a
 	// delay (slower, longer, holding) never costs it its place to a

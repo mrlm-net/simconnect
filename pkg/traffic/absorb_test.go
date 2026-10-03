@@ -302,3 +302,106 @@ func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
 		t.Errorf("route grew %.1f NM, stretch %.1f", grown, a.ExtraNM)
 	}
 }
+
+// Stop descent: the STAR ahead no lower than the level for the distance
+// asked, then as planned; the align and join points untouched.
+func TestStopDescent(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "AUA529",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, 9000, 90, 250, false))
+	before := append(ctl.proc.Waypoints[:0:0], ctl.proc.Waypoints...)
+	n := len(before)
+	sets := len(ec.waypoints)
+	// The level: above every point of the first 15 NM, so each is raised.
+	level, p0, d0 := 0.0, route[0].Position, 0.0
+	for _, w := range before[:n-2] {
+		d0 += calc.HaversineNM(p0.Lat, p0.Lon, w.Latitude, w.Longitude)
+		p0 = airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+		if d0 <= 15 {
+			level = math.Max(level, w.Altitude+1000)
+		}
+	}
+	if err := ctl.StopDescent(level, 15); err != nil {
+		t.Fatal(err)
+	}
+	if len(ec.waypoints) == sets {
+		t.Fatal("no waypoints sent")
+	}
+	wps := ctl.proc.Waypoints
+	prev, gone, raised := route[0].Position, 0.0, 0
+	for i, w := range wps[:len(wps)-2] {
+		gone += calc.HaversineNM(prev.Lat, prev.Lon, w.Latitude, w.Longitude)
+		prev = airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+		if gone <= 15 && w.Altitude < level {
+			t.Errorf("point %d, %.1f NM on, at %.0f ft: below the level", i, gone, w.Altitude)
+		}
+		if w.Altitude >= level {
+			raised++
+		}
+	}
+	if raised == 0 {
+		t.Error("nothing at the level")
+	}
+	if a, b := wps[len(wps)-1], before[n-1]; a.Altitude != b.Altitude || a.Latitude != b.Latitude {
+		t.Error("the join point changed")
+	}
+}
+
+// Near the end of the STAR, about a turn's worth of delay is a 360 where
+// it is, not out and back on a short leg (live, OKYDV); a little is still
+// a small dog-leg.
+func TestAbsorbDelayOrbitNearTheEnd(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := func() *ArrivalController {
+		ec := &eventClient{}
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "OKYDV",
+			InjectApproach: true, Procedure: route}); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		wps := ctl.proc.Waypoints
+		a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
+		at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, 90, 210, false))
+		return ctl
+	}
+	a, err := start().AbsorbDelay(3 * time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Orbit == "" || a.ExtraNM <= 0 {
+		t.Errorf("3 minutes near the end: %+v, want a 360", a)
+	}
+	a, err = start().AbsorbDelay(20 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Orbit != "" {
+		t.Errorf("20 s near the end: %+v, want no 360", a)
+	}
+}

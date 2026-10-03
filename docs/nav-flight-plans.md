@@ -100,6 +100,18 @@ The magnetic variation comes from the departure's procedures (`Procedures.MagVar
 
 Runway thresholds, computed points and TOC/TOD are left out: the simulator rebuilds the procedures from their names.
 
+### Reading a .pln
+
+`ReadPLN(r)` and `ReadPLNFile(path)` read a `.pln` as MSFS 2020/2024 and `PLN()` write it, into a `PLNPlan`. They take what the file says and work nothing out:
+
+- **Header:** title, rules (`FPType`), route type, cruise altitude in feet, departure and destination ID, and `DeparturePosition`.
+- **Procedures:** the SID with its runway (`DepartureFP`, `RunwayNumberFP` and `RunwayDesignatorFP`: "6" becomes "06", "LEFT" becomes "L"), the STAR, and the approach with its runway, read from the waypoints.
+- **Waypoints:** id, type, ident and region, position and altitude (`ParseLLA`), and the airway they are reached by.
+
+A `.pln` has no alternate airport field, so none is read.
+
+**The active plan in MSFS 2024.** The `FlightPlan` system state is the active plan's path, and the `FlightLoaded` state is the flight's `.FLT`. Live, with no plan loaded, MSFS 2024 gave an empty `FlightPlan` and `…\MISSIONS\Custom\CustomFlight\CustomFlight.FLT`, with `[ATC_Aircraft.0] ActiveFlightPlan=False`. What 2024 reports for a plan made in the EFB or on the world map has not been checked yet.
+
 ## Performance
 
 `PerformanceFor` knows A20N, A320, A321, B738, B38M, B77W, B789, E190, CRJ9, AT76 and DH8D; other types plan as a generic medium jet (`Performance.Type` is then empty). The figures are typical round numbers, not a particular airframe's.
