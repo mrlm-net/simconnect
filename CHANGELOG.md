@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `pkg/systems`: the user aircraft's power, radios, engines, brakes, lights, doors, transponder, flaps and gear through profiles as data: the standard SimVars by default, shipped per-model profiles (the Fenix A320 family on its L:vars, measured live), local override files winning per value. Guide: [Aircraft Systems Profiles](docs/systems.md).
 - Airport map: a crew rejects its take-off on its own, rarely (1 in 300), between 40 and 100 kt: "CSA1, stopping". The tower acknowledges; the aircraft stops, vacates and taxis back to the holding point for a new clearance. Past V1 it goes on (#621). `traffic.RejectingTakeoff`.
 - Airport map: a crew with the departure radar asks now and then for direct to a fix further along its route ("request direct VENOX"); cleared unless it is in a predicted conflict ("unable direct due traffic") (#621). `TaxiController.DirectTo`, `traffic.UnableDirect`.
 - Taxi routes: of routes about as long (within 15 %, at least 150 m), the one past fewer stands wins, across no runway the other does not cross; the push choice uses the same last word. LKPR N51 to 06 now passes no stand instead of nine for 186 m more. `Graph.StandsPassed`, `FewerStands*`.

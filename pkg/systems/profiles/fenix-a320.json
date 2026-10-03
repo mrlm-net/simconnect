@@ -1,0 +1,18 @@
+{
+  "name": "Fenix A320 family",
+  "match": { "packagePrefix": ["fnx-aircraft"], "titleContains": ["FNX"] },
+  "measured": "MSFS 2024, LKPR, Fenix A319, 2026-10-03: each switch toggled while both the standard SimVars and the L:vars were traced. The standard battery, avionics and external power do not follow the Fenix (battery and avionics read on while dark, the main bus reads battery 2's 28 V, external power 'not feeding' with EXT PWR ON); lights, parking brake, EXIT OPEN:0 and the transponder do and stay standard. L:var list from FSUIPC7's WASM 'List Lvars'.",
+  "values": {
+    "battery": { "vars": ["L:S_OH_ELEC_BAT1", "L:S_OH_ELEC_BAT2"], "combine": "any", "note": "measured" },
+    "volts": { "vars": ["L:N_ELEC_VOLT_BAT_1", "L:N_ELEC_VOLT_BAT_2"], "combine": "max", "note": "measured" },
+    "powered": {
+      "vars": ["L:B_ELEC_BUS_POWER_AC_1", "L:B_ELEC_BUS_POWER_AC_2", "L:B_ELEC_BUS_POWER_AC_ESS", "L:B_ELEC_BUS_POWER_DC_1", "L:B_ELEC_BUS_POWER_DC_2", "L:B_ELEC_BUS_POWER_DC_ESS", "L:B_ELEC_BUS_POWER_DC_BAT"],
+      "combine": "any", "note": "measured"
+    },
+    "avionics": { "vars": ["L:B_ELEC_BUS_POWER_AC_ESS"], "note": "measured" },
+    "extAvailable": { "vars": ["L:I_OH_ELEC_EXT_PWR_U", "L:I_OH_ELEC_EXT_PWR_L"], "combine": "any", "note": "measured: the AVAIL or the ON light" },
+    "extOn": { "vars": ["L:I_OH_ELEC_EXT_PWR_L"], "note": "measured: the ON light" },
+    "com1": { "vars": ["L:B_ELEC_BUS_POWER_DC_ESS"], "note": "assumed, not measured: an A320's RMP 1 on the DC essential bus" },
+    "com2": { "vars": ["L:B_ELEC_BUS_POWER_DC_ESS"], "note": "assumed, not measured: as COM 1" }
+  }
+}
