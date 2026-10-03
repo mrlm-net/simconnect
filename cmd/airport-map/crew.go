@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -125,7 +126,7 @@ const (
 // ask for direct to a fix ahead, once a flight (#621). The radar clears it
 // unless the aircraft is in a predicted conflict or flying a resolution;
 // then it is "unable".
-func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAircraft) {
+func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAircraft, opts traffic.ConflictOptions) {
 	for _, a := range aircraft {
 		if !a.Ours || a.OnGround {
 			continue
@@ -165,7 +166,11 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			w.mu.Lock()
 			busy := now.Before(w.busy[cs])
 			w.mu.Unlock()
-			if busy || w.inConflictAny(cs) {
+			// The direct itself must stay clear of everyone, not only the
+			// aircraft be out of conflict now (live, PHGVV cleared direct
+			// DONAD, stopped at 4000 ft for TVS440 eleven seconds later).
+			path := append([]airport.LatLon{f.LatLon}, traffic.RouteAhead(f.LatLon, it.dep.ClimbRoute(a.Position))...)
+			if busy || w.inConflictAny(cs) || !traffic.PathClear(a, path, aircraft, opts) {
 				tlog.printf("%-6s direct %s: unable, traffic", cs, f.Ident)
 				it.say(traffic.UnableDirect(traffic.PosDeparture, cs))
 				return

@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -273,5 +274,24 @@ func TestLandingFlowOneDepartureGap(t *testing.T) {
 		if d := e.Sub(sta0); d != want[i]*time.Minute {
 			t.Errorf("arrival %d estimated %v after the first, want %v min", i+2, d, want[i])
 		}
+	}
+}
+
+// A flight that can never be spawned is cancelled at once, not tried
+// again (live, DLH112's overflight retried a plan never entering the area).
+func TestSpawnImpossibleCancels(t *testing.T) {
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, Checks: []SituationCheck{}}, "LKPR")
+	spawns := 0
+	sp.onSpawn = func(f ManagedFlight) {
+		spawns++
+		m.Failed(f.Callsign, fmt.Errorf("%w: its plan never enters the area", ErrSpawnImpossible), f.Since)
+	}
+	m.Add([]Flight{flight("DLH1", "EDDF", "LKPR", t0.Add(30*time.Minute), time.Hour)})
+	for s := 0; s <= 10*60; s += 5 {
+		m.Tick(t0.Add(65*time.Minute + time.Duration(s)*time.Second))
+	}
+	if f := find(m, "arrival DLH1"); f.Status != FlightCancelled || spawns != 1 {
+		t.Fatalf("%v after %d spawns, want cancelled after 1", f.Status, spawns)
 	}
 }

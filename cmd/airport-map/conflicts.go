@@ -69,7 +69,7 @@ func levelOn(planned []traffic.RoutePoint, stopFt float64, climb bool) (float64,
 			best, ok = p.AltFt, true
 		}
 	}
-	return math.Round(best/100) * 100, ok
+	return math.Round(best/1000) * 1000, ok // a level: whole thousands
 }
 
 type resolutionView struct {
@@ -236,7 +236,14 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
 		delete(w.stopped, r.Callsign)
 		if r.Kind == traffic.ResolveLevel && r.Stop {
-			if on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt); ok {
+			on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt)
+			if pos == traffic.PosDeparture && r.AltFt > a.AltFt {
+				// On to the level departure cleared it to, not the top of
+				// its climb waypoints (live, KLM704 "climb to flight level
+				// 192" after "climb to flight level 240").
+				on, ok = departureClimbFt, true
+			}
+			if ok {
 				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: r.AltFt > a.AltFt}
 			}
 		}
@@ -288,7 +295,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		tlog.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
 		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevel(st.pos, cs, st.altFt, st.climb))
 	}
-	w.crewRequests(now, aircraft) // after the look: a crew in a conflict is told "unable"
+	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
 }
 
 // inConflict reports that a and b are predicted to lose separation (the
@@ -314,6 +321,10 @@ func (w *conflictWatch) view() ([]traffic.Conflict, []resolutionView) {
 // arrivalConflictRecheck is how long an arrival told to lose time for a
 // conflict flies it before the conflict is looked at again (#455).
 const arrivalConflictRecheck = 90 * time.Second
+
+// arrivalConflictSoon: a conflict closer than this is acted on even right
+// after the sequence slowed the arrival.
+const arrivalConflictSoon = 3 * time.Minute
 
 // resolveArrivals resolves a conflict between our arrivals on their STARs,
 // which the en route resolver does not steer (#455; LKPR, live: DLH1675 on
@@ -392,6 +403,16 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				tlog.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 			}
 		}
+	}
+	// Just slowed by the sequence and the conflict still minutes off: let
+	// that speed work first (live, ENT1816 told 220 kt, then 210 kt three
+	// seconds later).
+	q.mu.Lock()
+	absorbed := q.absorbed[cs]
+	q.mu.Unlock()
+	if now.Sub(absorbed) < arrivalConflictRecheck && c.In > arrivalConflictSoon {
+		recheck()
+		return
 	}
 	action := "slow"
 	err := q.approachAction(trailer.it.ICAO, cs, action)

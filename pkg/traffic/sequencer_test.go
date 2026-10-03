@@ -439,3 +439,32 @@ func TestSequencerCompression(t *testing.T) {
 		}
 	}
 }
+
+// A jet still at cruise speed is predicted at TerminalKts in the terminal
+// area, not at its cruise speed down to the final: from 80 NM at 460 kt it
+// lands after one 60 NM out at 250 kt (live, TVS440 took number 2 from
+// ENT1816).
+func TestETATerminalSpeed(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{})
+	now := time.Now()
+	c := s.Conditions()
+	fast := s.eta(now, ApproachAircraft{Callsign: "TVS440", DistanceToGoNM: 80, GroundKts: 460}, c)
+	near := s.eta(now, ApproachAircraft{Callsign: "ENT1816", DistanceToGoNM: 60, GroundKts: 250}, c)
+	if !fast.After(near) {
+		t.Errorf("TVS440 at %s, ENT1816 at %s: want TVS440 later", fast.Sub(now).Round(time.Second), near.Sub(now).Round(time.Second))
+	}
+}
+
+// An arrival with no speed yet (the first look after it is created or
+// adopted reports 0 kt) is predicted at TerminalKts, not at its final
+// speed all the way (live, TVS440 adopted at LOMKI: number 3, then 2).
+func TestETANoSpeedYet(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{})
+	now := time.Now()
+	c := s.Conditions()
+	none := s.eta(now, ApproachAircraft{Callsign: "TVS440", DistanceToGoNM: 79}, c)
+	flying := s.eta(now, ApproachAircraft{Callsign: "TVS440", DistanceToGoNM: 79, GroundKts: 250}, c)
+	if d := none.Sub(flying); d < -time.Second || d > time.Second {
+		t.Errorf("no speed %s, at 250 kt %s: want the same", none.Sub(now).Round(time.Second), flying.Sub(now).Round(time.Second))
+	}
+}

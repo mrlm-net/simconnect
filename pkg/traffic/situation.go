@@ -73,6 +73,11 @@ type Advice struct {
 // RetryAfter and tries again without counting an attempt.
 var ErrSpawnBlocked = errors.New("spawn point in use")
 
+// ErrSpawnImpossible tells the manager (Failed) that a flight can never be
+// spawned, e.g. an overflight whose plan never enters the area: it is
+// cancelled at once, not tried again.
+var ErrSpawnImpossible = errors.New("cannot be spawned")
+
 // DefaultChecks are the checks a manager runs when ManagerOptions.Checks
 // is nil.
 func DefaultChecks() []SituationCheck {

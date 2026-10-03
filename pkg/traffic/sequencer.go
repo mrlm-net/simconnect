@@ -288,13 +288,33 @@ func (s *ApproachSequencer) Sequence() []SequenceEntry {
 	return append([]SequenceEntry(nil), s.seq...)
 }
 
+// TerminalNM before the final an arrival is predicted at most at
+// TerminalKts (250 kt below 10,000 ft).
+const (
+	TerminalNM  = 40.0
+	TerminalKts = 250.0
+)
+
 // eta predicts when an arrival lands flying on as it is.
 func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachConditions) time.Time {
 	final := c.FinalGroundKts(a.FinalKts) // on final, into the wind
 	gs := math.Max(a.GroundKts, final)
-	outer := math.Max(0, a.DistanceToGoNM-s.opts.FinalNM)
+	if a.GroundKts < 1 && a.DistanceToGoNM > s.opts.FinalNM {
+		// No speed yet (just created or adopted: the first look reports
+		// 0 kt): not predicted at the final speed all the way (live,
+		// TVS440 adopted at LOMKI went from number 2 to 3, delay 8 min, and
+		// back a second later).
+		gs = TerminalKts
+	}
+	// The terminal area is flown at most at TerminalKts whatever the speed
+	// now: a jet at cruise is not predicted at 460 kt down to the final
+	// (live, TVS440 at FL410 took number 2 from ENT1816, told it a
+	// minute before, on such a prediction).
+	term := math.Max(math.Min(gs, TerminalKts), final)
+	far := math.Max(0, a.DistanceToGoNM-s.opts.FinalNM-TerminalNM)
+	outer := math.Max(0, math.Min(a.DistanceToGoNM-s.opts.FinalNM, TerminalNM))
 	inner := math.Min(a.DistanceToGoNM, s.opts.FinalNM)
-	h := outer/gs + inner/((gs+final)/2)
+	h := far/gs + outer/term + inner/((term+final)/2)
 	if a.DistanceToGoNM <= s.opts.FinalNM {
 		h = a.DistanceToGoNM / final
 	}

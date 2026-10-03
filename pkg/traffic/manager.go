@@ -750,6 +750,11 @@ func (m *TrafficManager) failed(f *ManagedFlight, err error, now time.Time, remo
 		f.Attempts--
 		delete(m.last, f.key()[:1]+f.Airport) // nothing appeared: no spacing
 		m.emit(EventBlocked, f, now, err.Error())
+	case f.Status == FlightSpawning && errors.Is(err, ErrSpawnImpossible):
+		// Never possible: cancelled now (live, DLH112's overflight tried
+		// again with a plan that never enters the area).
+		m.set(f, FlightCancelled, now)
+		m.unpair(f)
 	case f.Status == FlightSpawning && f.Attempts < m.opts.MaxAttempts:
 		m.set(f, FlightScheduled, now)
 		f.retryAt = now.Add(m.opts.RetryAfter)
