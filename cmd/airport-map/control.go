@@ -1913,7 +1913,7 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 		if err != nil {
 			return nil, "", "", err
 		}
-		start, alt := departureEnd(g.Layout, r.Runway)
+		start, alt := g.Layout.DepartureStart(r.Runway)
 		pts, err := p.ResolveSID(sid.Name, r.Runway, "", start, alt)
 		return pts, sid.Name, "", err
 	}
