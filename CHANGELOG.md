@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `SIMCONNECT_RECV_SYSTEM_STATE`: `fFloat` is 4 bytes on the wire, so the string was read 4 bytes late ("bjects\Airplanes\..." for AircraftLoaded). `SystemStateFloat64` reads the 4-byte float (#634).
 - Business and GA turnarounds keep the arrival's registration as the departure's call sign.
+- `TrafficPicture`: a departing or arriving aircraft belongs to its origin or destination (`Observation.From`/`To`), otherwise the airport ahead of it (behind it departing), preferring one with a layout loaded. Before, it got the nearest airport: BAW1989 descending toward LKPR read LKKQ.
 
 ## [0.18.10] - 2026-10-03
 

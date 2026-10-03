@@ -122,7 +122,63 @@ func (p *TrafficPicture) phaseLocked(t *phaseTrack, a *TrackedAircraft, now time
 	if ph == PhaseEnroute || ph == PhaseClimbing || ph == PhaseDescending {
 		return ph, "", "", ""
 	}
-	return ph, near, "", ""
+	return ph, p.flightAirportLocked(a, ph, near), "", ""
+}
+
+// AirportAheadDeg: an arriving aircraft heads for an airport within this
+// angle of its heading; a departing one has it as far behind.
+const AirportAheadDeg = 60.0
+
+// flightAirportLocked is the airport a departing or arriving aircraft
+// belongs to: its origin or destination when it says (and it is in range or
+// not known to the picture), else among the airports within
+// AirportTerminalNM the ones ahead of it (behind it departing), those with
+// a layout loaded first (not on approach), then the nearest; near when
+// none is ahead.
+func (p *TrafficPicture) flightAirportLocked(a *TrackedAircraft, ph Phase, near string) string {
+	departing := ph == PhaseDeparting
+	known := a.To
+	if departing {
+		known = a.From
+	}
+	if known != "" {
+		in, nm := false, 0.0
+		for _, r := range p.all {
+			if r.ICAO == known {
+				in, nm = true, calc.HaversineMeters(a.Position.Lat, a.Position.Lon, r.Position.Lat, r.Position.Lon)/1852
+				break
+			}
+		}
+		if !in || nm <= AirportTerminalNM {
+			return known
+		}
+	}
+	best, bestNM, bestLayout := "", math.Inf(1), false
+	for _, r := range p.all {
+		nm := calc.HaversineMeters(a.Position.Lat, a.Position.Lon, r.Position.Lat, r.Position.Lon) / 1852
+		if nm > AirportTerminalNM {
+			continue
+		}
+		if nm > 1 { // overhead every direction is ahead
+			brg := calc.BearingDegrees(a.Position.Lat, a.Position.Lon, r.Position.Lat, r.Position.Lon)
+			if departing {
+				brg = math.Mod(brg+180, 360)
+			}
+			if math.Abs(headingDiff(brg, a.Heading)) > AirportAheadDeg {
+				continue
+			}
+		}
+		// Low on approach the nearest ahead is the one; higher up a
+		// layout loaded marks the airport the caller cares about.
+		layout := ph != PhaseApproach && p.opts.Layout != nil && p.opts.Layout(r.ICAO) != nil
+		if layout && !bestLayout || layout == bestLayout && nm < bestNM {
+			best, bestNM, bestLayout = r.ICAO, nm, layout
+		}
+	}
+	if best == "" {
+		return near
+	}
+	return best
 }
 
 // groundPhase is a's phase on the ground, where it is on the airfield

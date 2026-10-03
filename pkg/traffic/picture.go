@@ -125,6 +125,12 @@ type Observation struct {
 	OnGround  bool           `json:"onGround"`
 	User      bool           `json:"user,omitempty"`
 	SpanM     float64        `json:"spanM,omitempty"`
+	// From and To are the flight's departure and destination when the
+	// simulator knows them (AI TRAFFIC FROMAIRPORT/TOAIRPORT; "" for
+	// aircraft that do not say, such as FSLTL's). They name the airport of
+	// a departing or arriving aircraft.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 }
 
 // TrackedAircraft is an aircraft in the picture.

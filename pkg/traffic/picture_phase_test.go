@@ -150,3 +150,51 @@ func TestPicturePhaseAir(t *testing.T) {
 		t.Errorf("levelled off low on final: %s at %q, want approach at LKPR", a.Phase, a.Airport)
 	}
 }
+
+// An arriving aircraft belongs to the airport it heads for, not the nearest
+// one within the terminal distance (BAW1989 at 8,000 ft read LKKQ).
+func TestPictureFlightAirport(t *testing.T) {
+	now := time.Now()
+	east := offsetHeading(pictureLKPR.Position, 90, 20*1852)                      // 20 NM east of LKPR
+	side := AirportRef{ICAO: "LKSD", Position: offsetHeading(east, 0, 5*1852)}    // 5 NM north of it
+	front := AirportRef{ICAO: "LKFR", Position: offsetHeading(east, 270, 8*1852)} // 8 NM ahead, no layout
+	descend := func(o Observation) []Observation {
+		var obs []Observation
+		for i := range 16 {
+			alt := 9000 - 50*float64(i*2) // 1500 fpm down
+			o.AltFt, o.AGLFt, o.VSFpm = alt, alt-1000, -1500
+			obs = append(obs, o)
+		}
+		return obs
+	}
+	for _, c := range []struct {
+		name     string
+		airports []AirportRef
+		obs      Observation
+		want     string
+	}{
+		{"nearest is off to the side", []AirportRef{pictureLKPR, side}, Observation{Position: east, Heading: 270}, "LKPR"},
+		{"a nearer one ahead has no layout", []AirportRef{pictureLKPR, side, front}, Observation{Position: east, Heading: 270}, "LKPR"},
+		{"its destination", []AirportRef{pictureLKPR, side}, Observation{Position: east, Heading: 270, To: "LKSD"}, "LKSD"},
+		{"destination out of range", []AirportRef{pictureLKPR, side, pictureLOWW}, Observation{Position: east, Heading: 270, To: "LOWW"}, "LKPR"},
+		{"nothing ahead", []AirportRef{pictureLKPR, side}, Observation{Position: east, Heading: 90}, "LKSD"},
+	} {
+		p, _ := phasePicture(t)
+		p.SetAirports(c.airports)
+		a := observeTrack(p, now, descend(c.obs))
+		if a.Phase != PhaseArriving || a.Airport != c.want {
+			t.Errorf("%s: %s at %q, want arriving at %s", c.name, a.Phase, a.Airport, c.want)
+		}
+	}
+	// Climbing out: the airport behind it.
+	p, _ := phasePicture(t)
+	p.SetAirports([]AirportRef{pictureLKPR, side})
+	var obs []Observation
+	for i := range 16 {
+		alt := 3000 + 50*float64(i*2)
+		obs = append(obs, Observation{Position: east, Heading: 90, AltFt: alt, AGLFt: alt - 1000, VSFpm: 1500})
+	}
+	if a := observeTrack(p, now, obs); a.Phase != PhaseDeparting || a.Airport != "LKPR" {
+		t.Errorf("climbing out east: %s at %q, want departing LKPR", a.Phase, a.Airport)
+	}
+}
