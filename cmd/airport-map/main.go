@@ -545,6 +545,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		tw.forgetLanding(tail)
 		tw.dropBehind(tail) // nobody waits to line up behind an arrival that went around
 	}
+	cc.followed = seqs.behind
 	// A call sign spawned again (a scene replayed): no clearance remembered.
 	cc.forgetTower = tw.forgetTail
 	cc.lineUpBehind = tw.behindNext

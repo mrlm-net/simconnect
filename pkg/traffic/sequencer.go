@@ -4,6 +4,7 @@
 package traffic
 
 import (
+	"maps"
 	"math"
 	"sort"
 	"sync"
@@ -124,7 +125,10 @@ type ApproachSequencer struct {
 	first  map[string]time.Time
 	keys   map[string]time.Time
 	manual map[string]time.Time
-	cond  ApproachConditions
+	// behind: arrivals told to follow another (Behind), by call sign, the
+	// one they follow.
+	behind map[string]string
+	cond   ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
 }
@@ -181,7 +185,7 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 		opts.SwapMargin = 90 * time.Second
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
-		keys: map[string]time.Time{}, manual: map[string]time.Time{}}
+		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}}
 }
 
 // Rejoin puts an arrival back into the sequence afresh, by its prediction
@@ -193,6 +197,22 @@ func (s *ApproachSequencer) Rejoin(callsign string) {
 	delete(s.first, callsign)
 	delete(s.last, callsign)
 	delete(s.manual, callsign)
+	delete(s.behind, callsign)
+}
+
+// Behind keeps callsign landing after lead, a spacing behind it, close in
+// or not, as the tower told it ("number 2, follow …"): ordered by their
+// predicted times alone, a VFR arrival turning in from a short circuit was
+// put in front of the jet it had been told to follow, and cleared to land
+// (live, OKVUV and CSA549). It holds until lead lands or callsign rejoins.
+func (s *ApproachSequencer) Behind(callsign, lead string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if lead == "" || lead == callsign {
+		delete(s.behind, callsign)
+		return
+	}
+	s.behind[callsign] = lead
 }
 
 // Move moves an arrival places on in the landing order (negative: earlier)
@@ -416,6 +436,42 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		free[k].at = at
 		lastFree = &free[k]
 		planned = append(planned, f)
+		sort.SliceStable(planned, func(i, j int) bool { return planned[i].at.Before(planned[j].at) })
+	}
+	// Told to follow another (Behind): a spacing after it, whatever the
+	// predictions; dropped once the one followed is out of the sequence.
+	s.mu.Lock()
+	for cs, lead := range s.behind {
+		in := false
+		for _, p := range planned {
+			in = in || p.a.Callsign == lead
+		}
+		if !in {
+			delete(s.behind, cs)
+		}
+	}
+	behind := maps.Clone(s.behind)
+	s.mu.Unlock()
+	for range len(behind) + 1 {
+		changed := false
+		for i := range planned {
+			lead, ok := behind[planned[i].a.Callsign]
+			if !ok {
+				continue
+			}
+			for j := range planned {
+				if planned[j].a.Callsign != lead {
+					continue
+				}
+				g, _, _ := s.gap(planned[j].a, planned[i].a, c)
+				if earliest := planned[j].at.Add(g); planned[i].at.Before(earliest) {
+					planned[i].at, changed = earliest, true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
 		sort.SliceStable(planned, func(i, j int) bool { return planned[i].at.Before(planned[j].at) })
 	}
 	out := make([]SequenceEntry, len(planned))

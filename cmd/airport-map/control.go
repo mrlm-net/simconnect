@@ -252,6 +252,9 @@ type controlCenter struct {
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin func(icao, tail string)
+	// followed keeps tail landing after lead, as the tower told it
+	// ("number 2, follow …"; ApproachSequencer.Behind).
+	followed func(icao, tail, lead string)
 	// forgetTower drops what the tower gave a call sign (spawned again).
 	forgetTower func(tail string)
 	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
@@ -2566,8 +2569,13 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			it.say(traffic.CircuitReport(it.Tail, report))
 			// The tower gives its place in the landing sequence (#569).
 			it.call(traffic.PosTower, prioApproach, func() {
-				if n, tr := it.circuitPlace(); n > 0 {
+				if n, tr, lead := it.circuitPlace(); n > 0 {
 					it.say(traffic.FollowTraffic(it.Tail, n, tr))
+					// As told: it lands after the one it follows, whatever the
+					// predictions say once it turns in.
+					if lead != "" && it.cc.followed != nil {
+						it.cc.followed(it.ICAO, it.Tail, lead)
+					}
 				}
 			})
 		}

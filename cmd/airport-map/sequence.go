@@ -685,3 +685,15 @@ func registerSequence(mux *http.ServeMux, st *state) {
 		writeJSON(w, out)
 	})
 }
+
+// behind keeps tail landing after lead in icao's sequences (a VFR arrival
+// told "number 2, follow …"; ApproachSequencer.Behind).
+func (q *sequences) behind(icao, tail, lead string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for k, s := range q.seq {
+		if i, _, _ := strings.Cut(k, " "); i == icao {
+			s.Behind(tail, lead)
+		}
+	}
+}
