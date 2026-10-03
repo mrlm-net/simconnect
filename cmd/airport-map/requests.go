@@ -174,7 +174,7 @@ func (it *controlled) answer(req string) {
 		both := it.pushAndStart
 		it.mu.Unlock()
 		if both {
-			it.say(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(it.Tail), it.dep.PushFacing()))
+			it.say(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(it.Tail), it.dep.PushFacingSaid()))
 			it.actAfterReadback(traffic.PosGround, req, func() error {
 				if err := it.act("startup", -1); err != nil {
 					return err
@@ -183,7 +183,7 @@ func (it *controlled) answer(req string) {
 			})
 			return
 		}
-		it.say(traffic.WithFacing(traffic.ClearedPushback(it.Tail), it.dep.PushFacing()))
+		it.say(traffic.WithFacing(traffic.ClearedPushback(it.Tail), it.dep.PushFacingSaid()))
 		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 		return
 	case "start_up":

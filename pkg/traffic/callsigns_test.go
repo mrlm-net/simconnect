@@ -15,7 +15,9 @@ func TestSaidCallsign(t *testing.T) {
 		"DLH1675": "Lufthansa 1675", "CSA273": "CSA Lines 273", "KLM594": "KLM 594", "WZZ1529": "Wizzair 1529",
 		"LOT844": "Pollot 844", "BAW452": "Speedbird 452", "TVS795": "Skytravel 795", "EZY12AB": "Easy 12AB",
 		"AFR903": "Airfrans 903", "QTR1489": "Qatari 1489", "KAL1573": "Koreanair 1573", "ENT464": "Enter 464",
-		"QQQ123": "QQQ123", "OKABC": "OKABC", "ZZZ1": "ZZZ1",
+		"QQQ123": "QQQ123", "ZZZ1": "ZZZ1",
+		// Registrations, letter by letter (live, "OKVQY" was read as a word).
+		"OKABC": "Oscar Kilo Alpha Bravo Charlie", "OK-VQY": "Oscar Kilo Victor Quebec Yankee", "N123AB": "November 1 2 3 Alpha Bravo",
 		// Not in the schedule: the built-in designators (Telephony).
 		"CEF001": "Czech Air Force 001", "GAF615": "German Air Force 615", "RCH4021": "Reach 4021", "UPS2938": "UPS 2938",
 		"BMW1": "BMW Flight 1", "XYZ123": "Rainbird 123",

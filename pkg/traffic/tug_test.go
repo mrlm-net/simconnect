@@ -294,14 +294,22 @@ func TestSimObjectTugFromDepot(t *testing.T) {
 	}
 	tug.Handle(assignedMsg(9001, 55))
 	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 55, 1200, 3))
-	steps := 0
+	steps, maxStep := 0, 0.0
 	for ; steps < 60*600 && !tug.Connected(); steps++ {
+		before := tug.pose.Position
 		if err := tug.Update(pose, true, 1.0/60); err != nil {
 			t.Fatal(err)
+		}
+		if steps > 0 {
+			maxStep = math.Max(maxStep, localDist(before, tug.pose.Position))
 		}
 	}
 	if !tug.Connected() {
 		t.Fatal("never reached the nose")
+	}
+	// Driving in and connecting without a hop (live: 3 m at the nose).
+	if maxStep > 0.3 {
+		t.Errorf("moved %.2f m in one frame driving in or connecting", maxStep)
 	}
 	if d := localDist(tug.pose.Position, tug.at(pose).Position); d > 0.5 {
 		t.Errorf("connected %.1f m off the tow point", d)
