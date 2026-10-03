@@ -9,6 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/addons`: what is installed in the sim, without SimConnect. It finds the packages folder from `UserCfg.opt` and scans Community, Official and streamed packages (manifest fields; publisher and ICAO from streamed airport names). It also finds the package of the loaded aircraft, fingerprints the package set and snapshots the running processes. Guide: [Installed Add-ons](docs/addons.md).
+- Airport map: a crew goes around on its own without a landing clearance inside 0.6 NM, or on a rare unstable approach; the tower acknowledges and the aircraft is sequenced again (#621).
+
+### Changed
+
+- Level of detail: full frame rate out to 8 km and half rate to 20 km (was 3 km and 10 km), so traffic in view no longer judders.
+
+### Fixed
+
+- `SIMCONNECT_RECV_SYSTEM_STATE`: `fFloat` is 4 bytes on the wire, so the string was read 4 bytes late ("bjects\Airplanes\..." for AircraftLoaded). `SystemStateFloat64` reads the 4-byte float (#634).
+- Business and GA turnarounds keep the arrival's registration as the departure's call sign.
+
 ## [0.18.10] - 2026-10-03
 
 The traffic picture reads AI on the ground right and tells more of what each aircraft is doing.
