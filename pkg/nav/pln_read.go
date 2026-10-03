@@ -26,6 +26,7 @@ type PLNPlan struct {
 	Departure   string // DepartureID, e.g. "LKPR"
 	Destination string // DestinationID
 	// DepartureRunway and ArrivalRunway, SID, STAR and Approach come from
+	// DepartureDetails / ArrivalDetails / ApproachDetails (MSFS 2024) or
 	// the waypoints' DepartureFP / ArrivalFP / ApproachTypeFP and
 	// RunwayNumberFP / RunwayDesignatorFP, as MSFS writes them.
 	DepartureRunway string
@@ -44,7 +45,7 @@ type PLNWaypoint struct {
 	Type     string // ATCWaypointType: Airport, Intersection, VOR, NDB, User, ...
 	Ident    string // ICAOIdent ("" for user points)
 	Region   string // ICAORegion
-	Position airport.LatLon
+	Position airport.LatLon // 0,0 when the file has none (the MSFS 2024 layout)
 	AltFt    float64
 	Airway   string // ATCAirway: the airway it is reached by
 	// SID, STAR and Approach: the procedure the point belongs to, if any.
@@ -88,10 +89,7 @@ func ReadPLN(r io.Reader) (*PLNPlan, error) {
 		if pos, alt, ok := ParseLLA(w.WorldPosition); ok {
 			pw.Position, pw.AltFt = pos, alt
 		}
-		rwy := strings.TrimSpace(w.RunwayNumberFP) + plnDesignator(w.RunwayDesignatorFP)
-		if n, err := strconv.Atoi(strings.TrimSpace(w.RunwayNumberFP)); err == nil && n < 10 {
-			rwy = "0" + rwy // "6" → "06"
-		}
+		rwy := plnRunwayName(w.RunwayNumberFP, w.RunwayDesignatorFP)
 		switch {
 		case w.DepartureFP != "":
 			if p.SID == "" {
@@ -117,7 +115,41 @@ func ReadPLN(r io.Reader) (*PLNPlan, error) {
 		}
 		p.Waypoints = append(p.Waypoints, pw)
 	}
+	// The MSFS 2024 layout: the details blocks (the waypoints win where
+	// both say).
+	set := func(dst *string, v string) {
+		if *dst == "" {
+			*dst = strings.TrimSpace(v)
+		}
+	}
+	if d := fp.DepartureDetails; d != nil {
+		set(&p.DepartureRunway, plnRunwayName(d.RunwayNumberFP, d.RunwayDesignatorFP))
+		set(&p.SID, d.DepartureFP)
+	}
+	if d := fp.ArrivalDetails; d != nil {
+		set(&p.STAR, d.ArrivalFP)
+		set(&p.ArrivalRunway, plnRunwayName(d.RunwayNumberFP, d.RunwayDesignatorFP))
+	}
+	if d := fp.ApproachDetails; d != nil {
+		set(&p.Approach, d.ApproachTypeFP)
+		if rwy := plnRunwayName(d.RunwayNumberFP, d.RunwayDesignatorFP); rwy != "" {
+			p.ArrivalRunway = rwy // the approach's runway is the one landed on
+		}
+	}
 	return p, nil
+}
+
+// plnRunwayName is a RunwayNumberFP and RunwayDesignatorFP as a runway name:
+// "6" → "06", "24" and "LEFT" → "24L"; "" when there is no number.
+func plnRunwayName(number, designator string) string {
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return ""
+	}
+	if n, err := strconv.Atoi(number); err == nil && n < 10 {
+		number = "0" + number
+	}
+	return number + plnDesignator(designator)
 }
 
 // plnDesignator is a RunwayDesignatorFP as a runway name's suffix: "LEFT"

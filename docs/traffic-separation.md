@@ -257,13 +257,12 @@ In the ATC game the player can work approach too, and spacing on final costs: an
 
 ## Conflicts ahead
 
-`PredictConflicts(aircraft, opts)` flies every airborne pair on as it is now, using its track, ground speed and vertical speed (under 300 fpm counts as level). It lists the pairs that lose separation within `LookAhead` (5 min, in 10 s `Step`s), soonest first. For each conflict it gives when the minima are first lost (`In`) and the closest point (`ClosestNM`, `VerticalFt`, `ClosestIn`). The lateral minimum is `MinNM` (5 NM). Where both aircraft are in a terminal area it is `TerminalNM` (3 NM): both are at an airport, arriving or departing, and below `TerminalBelowFt` (10000 ft).
+`PredictConflicts(aircraft, opts)` flies every airborne pair on as it is now, using its track, ground speed and vertical speed (under 300 fpm counts as level). An aircraft whose route is known (`opts.Route`: the points still ahead, e.g. `RouteAhead(pos, route)`) is flown along it, turning where it turns, and straight on past its end; the map gives the routes of its own arrivals, departures and en-route aircraft. It lists the pairs that lose separation within `LookAhead` (5 min, in 10 s `Step`s), soonest first. For each conflict it gives when the minima are first lost (`In`) and the closest point (`ClosestNM`, `VerticalFt`, `ClosestIn`). The lateral minimum is `MinNM` (5 NM). Where both aircraft are in a terminal area it is `TerminalNM` (3 NM): both are at an airport, arriving or departing, and below `TerminalBelowFt` (10000 ft).
 
-`ResolveConflict(c, aircraft, canSteer, opts)` picks the least disturbing change to one of ours. It tries these in order of cost:
+`ResolveConflict(c, aircraft, canSteer, opts)` picks the least disturbing change to one of ours. What comes first depends on how the two meet:
 
-1. **Speed:** a tenth, then a fifth, slower or faster (at most 250 kt below 10000 ft).
-2. **Level:** 1000 ft, then 2000 ft, up or down, predicted at 1500 fpm. Above 10000 ft a level by the semicircular rule (odd thousands eastbound) comes first.
-3. **Heading:** 20°, 30° or 45° off, right before left.
+- **Crossing** (tracks more than `SameRouteDeg`, 45°, apart): **altitude** first. A climb or descent is stopped on its way at the next 1000 ft ("stop climb at 4000 feet"), never turned back; a level aircraft goes 1000 ft, then 2000 ft, up or down (above 10000 ft by the semicircular rule first, odd thousands eastbound), predicted at 1500 fpm. Then a heading, speed last.
+- **Same route** (in trail): **speed** first, a tenth, then a fifth, slower or faster (at most 250 kt below 10000 ft). Then a **shortcut** direct to a named fix past the next one (`opts.DirectFixes`, at least `DirectMinNM` 5 NM away and at most `DirectMaxTurnDeg` 60° off the heading) or a **leg extended**: a heading 20°, 30° or 45° off, right before left, and back. Altitude last.
 
 A change is taken only if it keeps the aircraft clear of everyone through the look-ahead, not just of the other of the pair. `canSteer(aircraft, kind)` says which aircraft are ours to move and which changes they can fly. Other traffic is an intruder we avoid, never steer.
 
@@ -271,6 +270,7 @@ A change is taken only if it keeps the aircraft clear of everyone through the lo
 
 - **Speed or level:** applied up to the look-ahead.
 - **Heading:** straight out for half the look-ahead, then back to the route's first point beyond it.
+- **Direct:** straight to the fix, then the route on from there.
 
 After that the plan resumes.
 

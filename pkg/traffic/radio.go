@@ -434,11 +434,17 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return s
 	case IntentDirect:
+		if p[ParamNumber] == "" {
+			return cs + ", proceed direct to final"
+		}
 		return fmt.Sprintf("%s, proceed direct to final, number %s", cs, p[ParamNumber])
 	case IntentHold:
 		// Doc 4444 12.3.3.3 b; CAP 413 6.11.
 		return fmt.Sprintf("%s, hold at %s as published, maintain %s, expect further clearance at %s", cs, p[ParamFix], p[ParamLevel], p[ParamExpect])
 	case IntentLeaveHold:
+		if p[ParamNumber] == "" {
+			return fmt.Sprintf("%s, leave %s, continue the arrival", cs, p[ParamFix])
+		}
 		return fmt.Sprintf("%s, leave %s, number %s, continue the arrival", cs, p[ParamFix], p[ParamNumber])
 	case IntentHoldLevel:
 		return fmt.Sprintf("%s, descend to %s", cs, p[ParamLevel]) // 12.3.1.2 a
@@ -449,8 +455,13 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		return fmt.Sprintf("%s, %s speed to %s knots%s", cs, verb, p[ParamSpeed], why) // 12.4.1.6
 	case IntentLevel:
-		if p[ParamClimb] == "stop" {
+		switch p[ParamClimb] {
+		case "stop":
 			return fmt.Sprintf("%s, stop descent at %s%s", cs, p[ParamLevel], why)
+		case "stop climb":
+			return fmt.Sprintf("%s, stop climb at %s%s", cs, p[ParamLevel], why)
+		case "continue climb", "continue descent":
+			return fmt.Sprintf("%s, clear of traffic, %s to %s", cs, strings.TrimPrefix(p[ParamClimb], "continue "), p[ParamLevel])
 		}
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentHeading:
@@ -949,7 +960,7 @@ func SequencedFinalSpeed(pos Position, cs string, number int) Transmission {
 
 // DirectToFinal sends an arrival direct to the final.
 func DirectToFinal(cs string, number int) Transmission {
-	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentDirect, Params: map[string]string{ParamNumber: fmt.Sprint(number)}})
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentDirect, Params: numberParam(map[string]string{}, number)})
 }
 
 // HoldAt holds an arrival at fix with entry at altFt, expecting further
@@ -961,7 +972,7 @@ func HoldAt(cs, fix string, entry HoldEntry, altFt float64, efc time.Time) Trans
 
 // LeaveHoldAt releases an arrival from the hold at fix as number.
 func LeaveHoldAt(cs, fix string, number int) Transmission {
-	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentLeaveHold, Params: map[string]string{ParamFix: fix, ParamNumber: fmt.Sprint(number)}})
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentLeaveHold, Params: numberParam(map[string]string{ParamFix: fix}, number)})
 }
 
 // HoldDescend steps a holding arrival down to altFt.
@@ -987,6 +998,15 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 		if r.AltFt < altFt {
 			t.Params[ParamClimb] = "descend"
 		}
+		if r.Stop {
+			t.Params[ParamClimb] = "stop climb"
+			if r.AltFt < altFt {
+				t.Params[ParamClimb] = "stop" // stop descent
+			}
+		}
+	case ResolveDirect:
+		t.Intent = IntentDirectTo
+		t.Params[ParamFix] = r.Fix
 	default:
 		t.Intent = IntentHeading
 		t.Params[ParamHeading] = fmt.Sprintf("%03.0f", r.HeadingDeg)
@@ -1229,9 +1249,29 @@ func (r *Radio) Recent(airport string, n int) []Transmission {
 	return out
 }
 
+// ContinueLevel lets an aircraft stopped for traffic climb or descend on
+// to altFt: "RYR1527, clear of traffic, climb to flight level 240".
+func ContinueLevel(pos Position, cs string, altFt float64, climb bool) Transmission {
+	verb := "continue descent"
+	if climb {
+		verb = "continue climb"
+	}
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
+		Params: map[string]string{ParamLevel: LevelSaid(altFt), ParamClimb: verb}})
+}
+
 // StopDescent has a descending arrival level off at altFt for traffic
 // below it: "AUA529, stop descent at 7000 feet, due traffic".
 func StopDescent(pos Position, cs string, altFt float64, traffic string) Transmission {
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
 		Params: map[string]string{ParamLevel: LevelSaid(altFt), ParamClimb: "stop", ParamTraffic: traffic}})
+}
+
+// numberParam adds the number in traffic to p, unless it is 0 (told
+// already: not said again).
+func numberParam(p map[string]string, number int) map[string]string {
+	if number > 0 {
+		p[ParamNumber] = fmt.Sprint(number)
+	}
+	return p
 }

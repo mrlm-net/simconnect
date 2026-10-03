@@ -66,6 +66,10 @@ type ArrivalRequest struct {
 	Model   string // aircraft container title
 	Livery  string
 	Tail    string
+	// ObjectID adopts an aircraft already flying (an en route arrival at its
+	// STAR entry, #643) instead of creating one: it flies the procedure from
+	// where it is, no jump to the spawn point. Procedure flights only.
+	ObjectID uint32
 	// SpawnNm is how far out on final the aircraft appears; 0 means DefaultSpawnNm.
 	SpawnNm float64
 	// CrosswindKts is the crosswind on the runway, knots, positive from its
@@ -461,10 +465,24 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	}
 	c.sent = map[uint32]string{}
 	c.standHeading = req.Graph.Layout.Parking[req.Parking].Heading
-	if err := c.fleet.RequestNonATC(NonATCOpts{Model: req.Model, Livery: req.Livery, Tail: req.Tail, Position: plan.Spawn}, c.reqBase+arrReqSpawn); err != nil {
-		return fmt.Errorf("%w: %v", ErrCreationFailed, err)
+	adopt := req.ObjectID != 0 && c.proc != nil
+	if req.ObjectID != 0 && c.proc == nil {
+		return fmt.Errorf("%w: ObjectID adopts a procedure flight only", ErrBadTaxiRequest)
+	}
+	if !adopt {
+		if err := c.fleet.RequestNonATC(NonATCOpts{Model: req.Model, Livery: req.Livery, Tail: req.Tail, Position: plan.Spawn}, c.reqBase+arrReqSpawn); err != nil {
+			return fmt.Errorf("%w: %v", ErrCreationFailed, err)
+		}
 	}
 	c.req, c.plan = req, plan
+	if adopt {
+		// Flying already: on with the procedure from where it is.
+		defer func() {
+			if c.state == ArrivalSpawning {
+				c.onSpawned(req.ObjectID)
+			}
+		}()
+	}
 	if chance := req.RollThroughChance; c.inj != nil && !req.HoldForClearance && chance >= 0 {
 		if chance == 0 {
 			chance = DefaultRollThroughChance

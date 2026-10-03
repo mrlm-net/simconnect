@@ -105,8 +105,8 @@ Runway thresholds, computed points and TOC/TOD are left out: the simulator rebui
 `ReadPLN(r)` and `ReadPLNFile(path)` read a `.pln` as MSFS 2020/2024 and `PLN()` write it, into a `PLNPlan`. They take what the file says and work nothing out:
 
 - **Header:** title, rules (`FPType`), route type, cruise altitude in feet, departure and destination ID, and `DeparturePosition`.
-- **Procedures:** the SID with its runway (`DepartureFP`, `RunwayNumberFP` and `RunwayDesignatorFP`: "6" becomes "06", "LEFT" becomes "L"), the STAR, and the approach with its runway, read from the waypoints.
-- **Waypoints:** id, type, ident and region, position and altitude (`ParseLLA`), and the airway they are reached by.
+- **Procedures:** the SID with its runway (`DepartureFP`, `RunwayNumberFP` and `RunwayDesignatorFP`: "6" becomes "06", "LEFT" becomes "L"), the STAR, and the approach with its runway, read from the waypoints. The MSFS 2024 layout (`AppVersionMajor` 12, e.g. SimBrief's "M24" export) names them in `DepartureDetails`, `ArrivalDetails` and `ApproachDetails` instead; those are read as well, and the waypoints win where both say. The approach's runway is the arrival runway.
+- **Waypoints:** id, type, ident and region, position and altitude (`ParseLLA`), and the airway they are reached by. The MSFS 2024 layout has no `WorldPosition` on its waypoints: their position stays 0,0, so look the idents up.
 
 A `.pln` has no alternate airport field, so none is read.
 

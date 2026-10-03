@@ -204,6 +204,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if pre != nil && pre.plan != nil && pre.plan.Request.ArrivalRunway != "" && !f.Departure() {
 		req.Runway = pre.plan.Request.ArrivalRunway
 	}
+	if pre != nil && pre.adopt != 0 && !f.Departure() {
+		req.adopt = pre.adopt // the en route aircraft flies on (#643)
+	}
 	if f.Departure() {
 		req.pushAt = f.STD
 	} else if f.TurnTo != "" {

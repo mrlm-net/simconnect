@@ -417,8 +417,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 		tlog.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
 		return
 	}
-	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), e.Number))
-	q.numberToSay(it.cc.clock.Now(), e.Callsign, e.Number) // its number is told
+	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), q.numberToSay(q.cc.clock.Now(), e.Callsign, e.Number)))
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
@@ -800,7 +799,14 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 		return
 	}
 	q.mu.Lock()
-	recent := now.Sub(q.shortcutAt[e.Callsign]) < shortcutEvery
+	first, seen := q.shortcutAt[e.Callsign]
+	if !seen {
+		// Just appeared: not before it has flown a while, heading set and
+		// cleared for its STAR (live, TVS1442 sent direct 2 s after it
+		// appeared, its heading still 0).
+		q.shortcutAt[e.Callsign] = now
+	}
+	recent := !seen || now.Sub(first) < shortcutEvery
 	q.mu.Unlock()
 	if recent {
 		return

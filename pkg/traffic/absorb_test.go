@@ -471,3 +471,33 @@ func TestShortcutNotOverAirport(t *testing.T) {
 		t.Error("a leg 10 NM away is over the airport")
 	}
 }
+
+// An en route arrival handed over at its STAR entry is adopted as it flies:
+// no new aircraft, straight onto the procedure (#643: the respawn at the
+// entry was a jump of 15 km and 11,000 ft).
+func TestArrivalAdopts(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	before := len(ec.waypoints)
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA877",
+		InjectApproach: true, Procedure: route, ObjectID: 4242}); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.ObjectID() != 4242 || ctl.State() != ArrivalApproaching {
+		t.Fatalf("object %d, state %v: want 4242 flying its procedure", ctl.ObjectID(), ctl.State())
+	}
+	if len(ec.waypoints) == before {
+		t.Error("no waypoints sent to the adopted aircraft")
+	}
+	// Not without a procedure.
+	ctl2 := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	if err := ctl2.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "X", InjectApproach: true, ObjectID: 1}); err == nil {
+		t.Error("adopted without a procedure")
+	}
+}

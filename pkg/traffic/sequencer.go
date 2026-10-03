@@ -663,13 +663,17 @@ func DistanceVia(pos airport.LatLon, route []airport.LatLon, threshold airport.L
 	return d
 }
 
-// DistanceToGo is the track distance in NM from pos along route (the
-// points still to fly, in order) to the threshold: from pos to the point
-// of the route it is heading for — the one after the leg it is nearest —
-// then on along the route and to the threshold.
-func DistanceToGo(pos airport.LatLon, route []airport.LatLon, threshold airport.LatLon) float64 {
+// RouteAhead is the part of route (the points of a route, in order) still
+// to fly from pos: from the point after the leg it is nearest (the one it
+// is heading for), as DistanceToGo counts it; all of it when pos is not
+// at the route yet. For ConflictOptions.Route.
+func RouteAhead(pos airport.LatLon, route []airport.LatLon) []airport.LatLon {
+	return route[nextOnRoute(pos, route):]
+}
+
+// nextOnRoute is the index of the point of pts pos is heading for.
+func nextOnRoute(pos airport.LatLon, pts []airport.LatLon) int {
 	nm := func(a, b airport.LatLon) float64 { return calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon) }
-	pts := append(append([]airport.LatLon(nil), route...), threshold)
 	// The leg it is on: the one it is least off (the detour via pos is
 	// shortest); before the first leg, it flies to the first point.
 	next, best := 0, math.Inf(1)
@@ -682,6 +686,17 @@ func DistanceToGo(pos airport.LatLon, route []airport.LatLon, threshold airport.
 	if next == 1 && nm(pos, pts[1]) > nm(pts[0], pts[1]) {
 		next = 0 // not at the route yet: to its first point
 	}
+	return next
+}
+
+// DistanceToGo is the track distance in NM from pos along route (the
+// points still to fly, in order) to the threshold: from pos to the point
+// of the route it is heading for — the one after the leg it is nearest —
+// then on along the route and to the threshold.
+func DistanceToGo(pos airport.LatLon, route []airport.LatLon, threshold airport.LatLon) float64 {
+	nm := func(a, b airport.LatLon) float64 { return calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon) }
+	pts := append(append([]airport.LatLon(nil), route...), threshold)
+	next := nextOnRoute(pos, pts)
 	d := nm(pos, pts[next])
 	for i := next; i+1 < len(pts); i++ {
 		d += nm(pts[i], pts[i+1])

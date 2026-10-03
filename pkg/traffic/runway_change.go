@@ -95,7 +95,12 @@ func (c *TaxiController) ChangeRunway(runway, entry string, departure []airport.
 		}
 		c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
 		c.route, c.origRoute, c.pushJunction, c.pushPlanned = route, nil, 1, nil
-		c.faceOut = c.standFacesOut()
+		c.faceOut, c.powerOut = c.standFacesOut(), nil
+		if c.req.PowerOut && !c.faceOut {
+			if loop, ok := c.planPowerOut(); ok {
+				c.powerOut, c.faceOut = loop, true
+			}
+		}
 		c.planPushback()
 		c.track = newRouteTracker(c.route)
 	case TaxiPushback, TaxiAwaitingTaxi:

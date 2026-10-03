@@ -317,3 +317,18 @@ func TestClearedTakeoffNoDelayReadback(t *testing.T) {
 		t.Errorf("%q", tx.Text)
 	}
 }
+
+// Told its number already: the direct to final and the release from the
+// hold leave it out (live, AFR850 heard "number 4" and "number 3" twice).
+func TestNumberSaidOnce(t *testing.T) {
+	for _, c := range []struct{ got, want string }{
+		{DirectToFinal("CSA1", 0).Text, "CSA1, proceed direct to final"},
+		{DirectToFinal("CSA1", 2).Text, "CSA1, proceed direct to final, number 2"},
+		{LeaveHoldAt("CSA1", "ERASU", 0).Text, "CSA1, leave ERASU, continue the arrival"},
+		{LeaveHoldAt("CSA1", "ERASU", 3).Text, "CSA1, leave ERASU, number 3, continue the arrival"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%q, want %q", c.got, c.want)
+		}
+	}
+}
