@@ -89,6 +89,11 @@ type SequencerOptions struct {
 	// SwapMargin: arrivals in the sequence change places only when their
 	// predicted landings part by more than this (default 90 s).
 	SwapMargin time.Duration
+	// TacticalSwapGain: two arrivals not yet fixed swap when that cuts
+	// their delay by this or more (default 60 s; negative: never), and
+	// TacticalSwapMaxCost is the most the one moved back may lose (3 min).
+	TacticalSwapGain    time.Duration
+	TacticalSwapMaxCost time.Duration
 	// MinSpacingNM is the least spacing on final whatever the wake (0: the
 	// minimum radar separation, 3 NM); a unit may keep more, e.g. 5 NM.
 	MinSpacingNM float64
@@ -183,6 +188,15 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	}
 	if opts.SwapMargin == 0 {
 		opts.SwapMargin = 90 * time.Second
+	}
+	if opts.TacticalSwapGain == 0 {
+		opts.TacticalSwapGain = time.Minute
+	}
+	if opts.TacticalSwapGain < 0 {
+		opts.TacticalSwapGain = time.Duration(math.MaxInt64) // never
+	}
+	if opts.TacticalSwapMaxCost == 0 {
+		opts.TacticalSwapMaxCost = 3 * time.Minute
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
 		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}}
@@ -419,6 +433,40 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		}
 		return free[i].key.Before(free[j].key)
 	})
+	// Tactical swaps: two arrivals not yet fixed change places when that
+	// cuts their delay by TacticalSwapGain or more and costs the one moved
+	// back no more than TacticalSwapMaxCost; their keys change too, so the
+	// next look keeps the new order (live, LKPR: OKYDV could land before
+	// TVS223 turning base, which had room to extend). Not for an arrival a
+	// controller placed (Move) or told to follow another (Behind), nor a
+	// newcomer: it joins at the back first (first come, first served).
+	s.mu.Lock()
+	for i := 0; i+1 < len(free); i++ {
+		a, b := &free[i], &free[i+1]
+		_, am := s.manual[a.a.Callsign]
+		_, bm := s.manual[b.a.Callsign]
+		_, ab := s.behind[a.a.Callsign]
+		_, bb := s.behind[b.a.Callsign]
+		_, aw := prev[a.a.Callsign]
+		_, bw := prev[b.a.Callsign]
+		if !aw || !bw || am || bm || ab || bb || !b.eta.Before(a.eta) {
+			continue
+		}
+		gAB, _, _ := s.gap(a.a, b.a, c)
+		gBA, _, _ := s.gap(b.a, a.a, c)
+		// The pair alone: as ordered, A then B; swapped, B then A.
+		delayAB := max(0, a.eta.Add(gAB).Sub(b.eta))
+		delayBA := max(0, b.eta.Add(gBA).Sub(a.eta))
+		if delayAB-delayBA < s.opts.TacticalSwapGain || delayBA > s.opts.TacticalSwapMaxCost {
+			continue
+		}
+		a.key, b.key = b.key, a.key
+		s.keys[a.a.Callsign], s.keys[b.a.Callsign] = a.key, b.key
+		s.first[a.a.Callsign], s.first[b.a.Callsign] = a.key, b.key
+		free[i], free[i+1] = free[i+1], free[i]
+		i++ // a pair at a time
+	}
+	s.mu.Unlock()
 	planned := fixed // sorted by landing time
 	var lastFree *slot
 	s.mu.Lock()

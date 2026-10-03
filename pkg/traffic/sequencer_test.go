@@ -353,3 +353,45 @@ func TestSequencerFixedKeepOrder(t *testing.T) {
 		t.Errorf("closer in by its prediction: %+v, want AUA529 first and OKKSF short of its spacing", seq)
 	}
 }
+
+// Tactical swap: the second can land well before the first, which has room
+// to lose the time: they change places, and keep them (live, OKYDV and
+// TVS223). Not when the one moved back would lose too much.
+func TestSequencerTacticalSwap(t *testing.T) {
+	now := time.Now()
+	ac := func(cs string, nm, kts float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: kts, FinalKts: 140}
+	}
+	order := func(seq []SequenceEntry) string {
+		s := ""
+		for _, e := range seq {
+			s += e.Callsign + " "
+		}
+		return s
+	}
+	s := NewApproachSequencer("06", SequencerOptions{})
+	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
+	// TVS223 slows on its downwind; OKYDV, behind it by the first look, now
+	// lands before it: first come, first served keeps TVS223 first.
+	seq := s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})
+	if got := order(seq); got != "OKYDV TVS223 " {
+		t.Fatalf("order %s, want OKYDV first", got)
+	}
+	seq = s.Update(now.Add(time.Minute), []ApproachAircraft{ac("TVS223", 17.5, 200), ac("OKYDV", 18, 250)})
+	if got := order(seq); got != "OKYDV TVS223 " {
+		t.Errorf("next look %s: the swap did not hold", got)
+	}
+	// Swapping would cost the first more than TacticalSwapMaxCost: kept.
+	s = NewApproachSequencer("06", SequencerOptions{TacticalSwapMaxCost: time.Second})
+	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
+	seq = s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})
+	if got := order(seq); got != "TVS223 OKYDV " {
+		t.Errorf("order %s with a 1 s cost limit, want kept", got)
+	}
+	// Off: never.
+	s = NewApproachSequencer("06", SequencerOptions{TacticalSwapGain: -1})
+	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
+	if got := order(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})); got != "TVS223 OKYDV " {
+		t.Errorf("order %s with swaps off", got)
+	}
+}
