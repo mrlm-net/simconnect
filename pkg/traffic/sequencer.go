@@ -94,6 +94,11 @@ type SequencerOptions struct {
 	// TacticalSwapMaxCost is the most the one moved back may lose (3 min).
 	TacticalSwapGain    time.Duration
 	TacticalSwapMaxCost time.Duration
+	// TacticalSwapHold: an arrival swapped is not swapped again for this
+	// long (default 3 min): the one moved back is given its delay, and its
+	// new prediction must not swap it straight back (live, LKPR: RYR730,
+	// CSA1119 and CSA1009 traded places every few seconds).
+	TacticalSwapHold time.Duration
 	// MinSpacingNM is the least spacing on final whatever the wake (0: the
 	// minimum radar separation, 3 NM); a unit may keep more, e.g. 5 NM.
 	MinSpacingNM float64
@@ -133,6 +138,8 @@ type ApproachSequencer struct {
 	// behind: arrivals told to follow another (Behind), by call sign, the
 	// one they follow.
 	behind map[string]string
+	// swappedAt: when each arrival last changed places in a tactical swap.
+	swappedAt map[string]time.Time
 	cond   ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
@@ -195,11 +202,14 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	if opts.TacticalSwapGain < 0 {
 		opts.TacticalSwapGain = time.Duration(math.MaxInt64) // never
 	}
+	if opts.TacticalSwapHold == 0 {
+		opts.TacticalSwapHold = 3 * time.Minute
+	}
 	if opts.TacticalSwapMaxCost == 0 {
 		opts.TacticalSwapMaxCost = 3 * time.Minute
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
-		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}}
+		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}, swappedAt: map[string]time.Time{}}
 }
 
 // Rejoin puts an arrival back into the sequence afresh, by its prediction
@@ -449,7 +459,8 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		_, bb := s.behind[b.a.Callsign]
 		_, aw := prev[a.a.Callsign]
 		_, bw := prev[b.a.Callsign]
-		if !aw || !bw || am || bm || ab || bb || !b.eta.Before(a.eta) {
+		recent := now.Sub(s.swappedAt[a.a.Callsign]) < s.opts.TacticalSwapHold || now.Sub(s.swappedAt[b.a.Callsign]) < s.opts.TacticalSwapHold
+		if !aw || !bw || am || bm || ab || bb || recent || !b.eta.Before(a.eta) {
 			continue
 		}
 		gAB, _, _ := s.gap(a.a, b.a, c)
@@ -463,6 +474,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		a.key, b.key = b.key, a.key
 		s.keys[a.a.Callsign], s.keys[b.a.Callsign] = a.key, b.key
 		s.first[a.a.Callsign], s.first[b.a.Callsign] = a.key, b.key
+		s.swappedAt[a.a.Callsign], s.swappedAt[b.a.Callsign] = now, now
 		free[i], free[i+1] = free[i+1], free[i]
 		i++ // a pair at a time
 	}
@@ -595,6 +607,7 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 	for cs, e := range s.last {
 		if !now[cs] {
 			delete(s.last, cs)
+			delete(s.swappedAt, cs)
 			delete(s.first, cs)
 			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: e.Number, Gone: true})
 		}

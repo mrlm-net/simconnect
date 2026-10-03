@@ -414,7 +414,12 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentSequence:
 		// The number in traffic (CAP 413 6.23) and how it is spaced: a speed
 		// (Doc 4444 12.4.1.6), or the delay it is to expect.
-		s := fmt.Sprintf("%s, number %s", cs, p[ParamNumber])
+		// The number is said once an approach (and when it changes): repeated
+		// with every speed it only annoys; without it the call is the speed.
+		s := cs
+		if p[ParamNumber] != "" {
+			s += ", number " + p[ParamNumber]
+		}
 		if p[ParamSpeed] != "" {
 			s += fmt.Sprintf(", for spacing reduce speed to %s knots", p[ParamSpeed])
 		}
@@ -914,7 +919,10 @@ const SequencedDelaySaidFrom = 6
 // more than speed (path stretching, a hold) absorbs it and it is longer
 // than five minutes (SequencedDelaySaidFrom).
 func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmission {
-	p := map[string]string{ParamNumber: fmt.Sprint(number), ParamLose: a.String()}
+	p := map[string]string{ParamLose: a.String()}
+	if number > 0 {
+		p[ParamNumber] = fmt.Sprint(number) // 0: told already, not said again
+	}
 	if a.Orbit != "" {
 		p[ParamOrbit] = a.Orbit
 	}
@@ -932,7 +940,11 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 // approach speed for spacing: "CSA1, number 2, for spacing reduce to final
 // approach speed". From pos: the position working it.
 func SequencedFinalSpeed(pos Position, cs string, number int) Transmission {
-	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentSequence, Params: map[string]string{ParamNumber: fmt.Sprint(number), ParamFinalSpeed: "1"}})
+	p := map[string]string{ParamFinalSpeed: "1"}
+	if number > 0 {
+		p[ParamNumber] = fmt.Sprint(number) // 0: told already
+	}
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentSequence, Params: p})
 }
 
 // DirectToFinal sends an arrival direct to the final.

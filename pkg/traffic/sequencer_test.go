@@ -395,3 +395,23 @@ func TestSequencerTacticalSwap(t *testing.T) {
 		t.Errorf("order %s with swaps off", got)
 	}
 }
+
+// A swap holds: the pair is not swapped straight back when the one moved
+// back, given its delay, now predicts earlier (live: RYR730, CSA1119 and
+// CSA1009 traded places every few seconds).
+func TestSequencerSwapHolds(t *testing.T) {
+	now := time.Now()
+	ac := func(cs string, nm, kts float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: cs, Wake: WakeFor("A320"), DistanceToGoNM: nm, GroundKts: kts, FinalKts: 140}
+	}
+	first := func(seq []SequenceEntry) string { return seq[0].Callsign }
+	s := NewApproachSequencer("06", SequencerOptions{})
+	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
+	if got := first(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})); got != "OKYDV" {
+		t.Fatalf("no swap: %s first", got)
+	}
+	// Now TVS223 would be the better first again: kept within the hold.
+	if got := first(s.Update(now.Add(time.Minute), []ApproachAircraft{ac("TVS223", 12, 250), ac("OKYDV", 19, 160)})); got != "OKYDV" {
+		t.Errorf("swapped back within the hold: %s first", got)
+	}
+}
