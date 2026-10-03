@@ -70,6 +70,10 @@ type RunwayClearances struct {
 	// behind it ("behind the landing A320, cross runway 12, behind"), by
 	// crossing aircraft, the arrival's call sign.
 	CrossBehind map[string]string `json:"crossBehind,omitempty"`
+	// NoDelay: departures in Takeoff with the next arrival established
+	// within NoDelayNM, by call sign, that arrival's distance (NM): "cleared
+	// for take-off, no delay, traffic on 5 mile final".
+	NoDelay map[string]float64 `json:"noDelay,omitempty"`
 	// NextArrival is the next arrival to land ("" none).
 	NextArrival string `json:"nextArrival,omitempty"`
 	// Why each departure or crossing still waits.
@@ -107,6 +111,10 @@ type RunwayControllerOptions struct {
 	// next arrival farther out than this (default 3 NM) and its time rule
 	// (its roll and Margin) kept; one still to line up needs MinArrivalNM.
 	MinArrivalLinedUpNM float64
+	// NoDelayNM: a take-off with the next arrival established within this
+	// of the threshold is told so (RunwayClearances.NoDelay; default 8 NM,
+	// about 3.5 minutes at 140 kt).
+	NoDelayNM float64
 }
 
 // RunwayController clears the users of one runway.
@@ -164,6 +172,9 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	if opts.MinArrivalLinedUpNM == 0 {
 		opts.MinArrivalLinedUpNM = 3
 	}
+	if opts.NoDelayNM == 0 {
+		opts.NoDelayNM = 8
+	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
 
@@ -178,7 +189,7 @@ func (r *RunwayController) SetSurface(s RunwaySurface) {
 func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClearances {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}}
+	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, NoDelay: map[string]float64{}}
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
@@ -368,6 +379,12 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				r.behindRoom(nextArr, nextArrUser, thenArr, u) {
 				out.LineUpBehind[u.Callsign] = nextArrName
 			}
+		}
+	}
+	// Cleared with the next arrival close behind: told so, to roll at once.
+	if nextArrName != "" && !nextArrUser.Other && nextArrUser.Established && nextArrUser.DistanceNM <= r.opts.NoDelayNM {
+		for _, cs := range out.Takeoff {
+			out.NoDelay[cs] = nextArrUser.DistanceNM
 		}
 	}
 	return out

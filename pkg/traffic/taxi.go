@@ -271,6 +271,7 @@ type TaxiController struct {
 	takeoff         *TakeoffMover
 	gearUp          bool
 	gearUpAt        float64        // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
+	gearDownSent    time.Time      // last "gear down" re-sent after lift-off (GearHoldEvery)
 	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
 	hasPendingLimit bool
 	flaps           surfaceRamp

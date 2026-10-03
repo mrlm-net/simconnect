@@ -147,6 +147,7 @@ const (
 	ParamAltimeter  = "altimeter"   // inches of mercury ×100: "2992"
 	ParamReport     = "report"      // what to report: "established"
 	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
+	ParamNoDelay    = "no_delay"    // a take-off with traffic on final: its distance in whole NM, "5"
 	ParamCircuit    = "circuit"     // a position in the circuit as said: "left downwind", "base", "final"
 	ParamInstr      = "instr"       // an approach instruction or delay as said: "extend downwind", "orbit right"
 	ParamType       = "type"        // an aircraft type as said: "Cessna 172"
@@ -346,6 +347,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		// Its own transmission, never with the line-up (CAP 413 4.29).
 		if p[ParamRush] != "" {
 			return fmt.Sprintf("%s, runway %s, cleared for immediate take-off%s", cs, p[ParamRunway], wind) // CAP 413 4.30
+		}
+		if p[ParamNoDelay] != "" {
+			return fmt.Sprintf("%s, runway %s, cleared for take-off%s, no delay, traffic on %s mile final", cs, p[ParamRunway], wind, p[ParamNoDelay])
 		}
 		return fmt.Sprintf("%s, runway %s, cleared for take-off%s", cs, p[ParamRunway], wind) // 12.3.4.11 a
 	case IntentLanding:
@@ -835,6 +839,14 @@ func ClearedLineUpBehind(cs, traffic, runway string) Transmission {
 // "" none). Given at the holding point it means line up and take off.
 func ClearedTakeoff(cs, runway, wind string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTakeoff, Params: map[string]string{ParamRunway: runway, ParamWind: wind}})
+}
+
+// ClearedTakeoffNoDelay is ClearedTakeoff with the next arrival finalNM
+// out (RunwayClearances.NoDelay): "CSA1, runway 24, cleared for take-off,
+// wind 360 degrees 2 knots, no delay, traffic on 5 mile final".
+func ClearedTakeoffNoDelay(cs, runway, wind string, finalNM float64) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTakeoff, Params: map[string]string{
+		ParamRunway: runway, ParamWind: wind, ParamNoDelay: fmt.Sprint(int(math.Max(1, math.Round(finalNM))))}})
 }
 
 // ClearedToLand clears the landing on runway, with the wind (WindSaid, ""

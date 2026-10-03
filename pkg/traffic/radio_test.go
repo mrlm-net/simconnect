@@ -304,3 +304,13 @@ func TestWeatherAndDirectRequests(t *testing.T) {
 		t.Errorf("%q", d.Text)
 	}
 }
+
+func TestClearedTakeoffNoDelayReadback(t *testing.T) {
+	rb, ok := Readback(ClearedTakeoffNoDelay("CSA716", "24", "", 0.4))
+	if !ok || rb.Text != "Runway 24, cleared for take-off, no delay, CSA716" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	if tx := ClearedTakeoffNoDelay("CSA716", "24", "", 0.4); !strings.HasSuffix(tx.Text, "traffic on 1 mile final") {
+		t.Errorf("%q", tx.Text)
+	}
+}

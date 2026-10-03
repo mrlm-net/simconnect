@@ -197,6 +197,7 @@ type GroundMover struct {
 	shortStart bool           // started from a standstill within StopApproachMeters of the stop
 	trafficAt  float64        // stop behind traffic ahead (SetTrafficStop), when hasTraffic
 	hasTraffic bool
+	giveWay    bool    // the traffic stop gives way at a crossing: slow down early (SetGiveWayStop)
 	slowAt     float64 // SlowAt point and speed; slowKts 0 when none
 	slowKts    float64
 	pose       GroundPose
@@ -267,7 +268,18 @@ func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.p
 // SetTrafficStop makes the aircraft stop with its nose gear at distance d
 // along the path behind traffic ahead, besides any HoldAt; it follows as d
 // moves on. ClearTrafficStop lifts it.
-func (m *GroundMover) SetTrafficStop(d float64) { m.trafficAt, m.hasTraffic = d, true }
+func (m *GroundMover) SetTrafficStop(d float64) {
+	m.trafficAt, m.hasTraffic, m.giveWay = d, true, false
+}
+
+// SetGiveWayStop is SetTrafficStop short of a crossing or merging route
+// whose traffic goes first: known well ahead, the aircraft slows down on a
+// gentler curve (GiveWayDecelFactor) and early, as a crew letting another
+// pass does, rather than taxi on at speed and brake at the last moment
+// (live, DLH1233 behind CSA999 at LKPR looked at the edge).
+func (m *GroundMover) SetGiveWayStop(d float64) {
+	m.trafficAt, m.hasTraffic, m.giveWay = d, true, true
+}
 
 // ClearTrafficStop lifts the traffic stop.
 func (m *GroundMover) ClearTrafficStop() { m.hasTraffic = false }
@@ -321,6 +333,9 @@ func (m *GroundMover) step(dt float64) {
 	ahead := math.Max(TurnLookaheadMeters, m.v*SpeedResponseSeconds)
 	target := math.Min(m.path.limitAt(m.s), m.path.limitAt(m.s+ahead))
 	target = math.Min(target, math.Sqrt(2*p.Decel*math.Max(0, rem)))
+	if traffic && m.giveWay {
+		target = math.Min(target, math.Sqrt(2*GiveWayDecelFactor*p.Decel*math.Max(0, rem)))
+	}
 	if m.slowKts > 0 && m.s < m.slowAt {
 		v0 := m.slowKts * ktsToMS
 		target = math.Min(target, math.Sqrt(v0*v0+2*p.Decel*(m.slowAt-m.s)))

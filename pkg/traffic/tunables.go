@@ -282,10 +282,15 @@ const (
 	PushbackMinArcMeters = 14.0
 	PushStraightMeters   = 6.0
 	PushAlignMeters      = 10.0
-	GearUpFt             = 500.0 // the gear comes up between GearUpFt and GearUpMaxFt above the runway (each crew its own), as asked 2026-10-02
-	GearUpMaxFt          = 1000.0
+	GearUpFt             = 400.0 // the gear comes up between GearUpFt and GearUpMaxFt above the runway (each crew its own); 500–1000 was "spot on, could be a little earlier" (2026-10-03)
+	GearUpMaxFt          = 800.0
 	GearUpDelaySeconds   = 4.5
 	GearUpFpm            = 500.0
+	// GearHoldFirstSeconds and GearHoldEvery: after lift-off the gear is
+	// put down again every frame for this long, then this often, until
+	// the gear-up (the simulator raises it at the first airborne frame).
+	GearHoldFirstSeconds = 2.0
+	GearHoldEvery        = time.Second
 	ClimbHandoverFt      = 1500.0
 )
 
@@ -409,6 +414,10 @@ const (
 	// half-spans for the paths to conflict.
 	GiveWayLookMeters   = 250.0
 	GiveWayMarginMeters = 10.0
+	// GiveWayDecelFactor: an aircraft giving way slows down on a braking
+	// curve of this share of its deceleration (0.2 m/s² for an A320 from
+	// 15 kt: from about 150 m out instead of 60).
+	GiveWayDecelFactor = 0.4
 	// junctionBranchMeters is how much of a junction's other branches an
 	// aircraft facing oncoming traffic keeps clear (#444).
 	junctionBranchMeters = 60.0

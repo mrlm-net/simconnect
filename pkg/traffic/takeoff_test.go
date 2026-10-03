@@ -230,3 +230,34 @@ func TestTakeoffSpoolUp(t *testing.T) {
 		t.Errorf("lift-off after %.0f m", d)
 	}
 }
+
+// TestTakeoffPitchProfile: lift-off at 5–7°, then the climb pitch, and
+// after GearUp the pitch settles to about 10° (2026-10-03).
+func TestTakeoffPitchProfile(t *testing.T) {
+	p := DefaultTakeoffProfile()
+	m := NewTakeoffMover(lkpr, 244, 0, p)
+	var liftoff float64
+	pose := m.Pose()
+	for pose.Phase != TakeoffAirborne {
+		pose = m.Step(0.05)
+	}
+	liftoff = pose.PitchDeg
+	if liftoff < 5 || liftoff > 7 {
+		t.Errorf("lift-off pitch %.1f°, want 5–7°", liftoff)
+	}
+	for pose.HeightFt < 600 {
+		pose = m.Step(0.05)
+	}
+	if pose.PitchDeg != p.ClimbPitch {
+		t.Errorf("first climb at %.1f°, want the climb pitch %.1f°", pose.PitchDeg, p.ClimbPitch)
+	}
+	m.GearUp()
+	pose = m.Step(2)
+	if pose.PitchDeg >= p.ClimbPitch || pose.PitchDeg < p.ClimbPitch-2.5 {
+		t.Errorf("2 s after gear-up %.1f°: want easing down at about 1°/s", pose.PitchDeg)
+	}
+	pose = m.Step(10)
+	if pose.PitchDeg != 10 {
+		t.Errorf("settled at %.1f°, want 10°", pose.PitchDeg)
+	}
+}

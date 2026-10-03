@@ -478,7 +478,8 @@ button.chip:hover { border-color: var(--border-strong); background: var(--surfac
 .director__info { font-size: var(--fs-sm); color: var(--text-3); min-height: 1.4em; }
 
 /* Workspace */
-.workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--panel-w); min-height: 0; }
+/* Clipped: nothing in it (the legend, a closed <details>) may make the page taller; scrolled into view, the strip and map moved up and the map looked short (live, after the Airport tab). */
+.workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--panel-w); min-height: 0; overflow: hidden; }
 body.panel-hidden .workspace { grid-template-columns: minmax(0, 1fr) 0; }
 body.panel-hidden .panel { display: none; }
 .mapwrap { position: relative; min-width: 0; min-height: 0; }

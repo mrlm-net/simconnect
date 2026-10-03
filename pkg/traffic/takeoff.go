@@ -35,13 +35,34 @@ type TakeoffProfile struct {
 	// it is held until a positive climb (PositiveClimbFt), then rises no
 	// faster than the tail clears the runway (TailClearFtPerDeg).
 	TailstrikePitch float64
+	// SettlePitch is the pitch (°) the climb settles to once the gear is up
+	// (GearUp): lift-off at LiftoffPitch (5–7°), ClimbPitch (12–15°) for the
+	// first climb, gear up, then this (0: ClimbPitch − SettleBelowClimbDeg,
+	// about 10°), as asked 2026-10-03.
+	SettlePitch float64
+}
+
+// SettleBelowClimbDeg and SettlePitchRate: the climb pitch settles this
+// far below ClimbPitch after gear-up (TakeoffProfile.SettlePitch unset), at
+// this rate (°/s).
+const (
+	SettleBelowClimbDeg = 5.0
+	SettlePitchRate     = 1.0
+)
+
+// settlePitch is the profile's pitch after gear-up, the default where unset.
+func (p TakeoffProfile) settlePitch() float64 {
+	if p.SettlePitch > 0 {
+		return p.SettlePitch
+	}
+	return math.Max(p.LiftoffPitch, p.ClimbPitch-SettleBelowClimbDeg)
 }
 
 // DefaultTakeoffProfile is an A320 family take-off.
 func DefaultTakeoffProfile() TakeoffProfile {
 	return TakeoffProfile{
 		RollAccel: 2.4, // live: 2.0 lifted off after ~1875 m, long for an A320
-		RotateKts: 138, RotateRate: 3, LiftoffPitch: 8, ClimbPitch: 15,
+		RotateKts: 138, RotateRate: 3, LiftoffPitch: 6.5, ClimbPitch: 15,
 		ClimbKts: 160, ClimbFpm: 2200, ClimbRampSeconds: 2.5, TailstrikePitch: 11.5,
 	}
 }
@@ -96,7 +117,12 @@ type TakeoffMover struct {
 	rejected    bool    // braking to a stop (Reject)
 	accel       bool    // past the acceleration altitude
 	accelFor    float64 // s since
+	settle      bool    // gear up: the pitch settles to SettlePitch
 }
+
+// GearUp tells the mover the gear is up: the pitch eases from the climb
+// pitch down to the profile's SettlePitch.
+func (m *TakeoffMover) GearUp() { m.settle = true }
 
 // Acceleration after take-off: held at the climb speed (V2 + 10) to the
 // acceleration altitude, then towards the clean speed, the flaps coming up
@@ -242,7 +268,10 @@ func (m *TakeoffMover) step(dt float64) {
 		m.airborneFor += dt
 		// Held until a positive climb, then up to the climb pitch no faster
 		// than the rising tail allows.
-		if m.h >= PositiveClimbFt {
+		if m.settle {
+			// Gear up: the nose eases down to the settled climb.
+			m.pitch = math.Max(math.Min(m.pitch, p.settlePitch()), m.pitch-SettlePitchRate*dt)
+		} else if m.h >= PositiveClimbFt {
 			limit := m.groundPitchLimit() + m.h/TailClearFtPerDeg
 			m.pitch = math.Max(m.pitch, math.Min(math.Min(p.ClimbPitch, limit), m.pitch+p.RotateRate*dt))
 		}

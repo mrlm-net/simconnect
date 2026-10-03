@@ -1665,11 +1665,23 @@ func (c *TaxiController) onTakeoffFrame() {
 		c.flapsUpNoted = true
 		c.seq.add(now, "flaps up", pose.HeightFt, pose.GroundSpeedKts)
 	}
+	// Placed in the air the first time, the simulator sets the aircraft up
+	// clean: live, the gear was up at the first airborne frame, 7–12 ft above
+	// the runway, whatever the gear-up height (CSA1802, EZY1957, TVS1175,
+	// 2026-10-03). Until the crew raises it, the gear is put down again:
+	// every frame just after lift-off, then every GearHoldEvery, the gear
+	// itself as well as the handle (HoldGearDown), so it is not seen to move.
+	if pose.Phase == TakeoffAirborne && !c.gearUp &&
+		(pose.AirborneSeconds < GearHoldFirstSeconds || now.Sub(c.gearDownSent) >= GearHoldEvery) {
+		c.gearDownSent = now
+		_ = c.inj.HoldGearDown(c.objectID) // not noted: every frame for a while
+	}
 	if c.gearUpAt == 0 {
 		c.gearUpAt = GearUpFt + c.rng.Float64()*(GearUpMaxFt-GearUpFt)
 	}
 	if !c.gearUp && pose.HeightFt > c.gearUpAt && pose.AirborneSeconds >= GearUpDelaySeconds*f(c.timing.gearUp) && pose.VerticalFpm >= GearUpFpm { // positive climb
 		c.gearUp = true
+		c.takeoff.GearUp() // the pitch settles from the climb pitch
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 		c.setInjectedLights(lightsClimb, "lights taxi off (gear up)")
 		c.seq.add(now, "gear up, taxi light off", pose.HeightFt, pose.GroundSpeedKts)

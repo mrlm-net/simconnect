@@ -55,9 +55,17 @@ type injected struct {
 	groundFt, cgFt float64
 	staticPitch    float64 // degrees, the simulator's convention
 	haveGround     bool
-	lights         Lights
-	lightsSent     bool
-	taken          bool // taken over (released and frozen), not just watched
+	// restFt and restPitch: how the aircraft itself rested on its gear
+	// before we placed it (CG above the ground, pitch), measured while
+	// stopped. Its gear compresses under its weight: live, a Fenix A319
+	// sat 1.1 ft below STATIC CG TO GROUND, so placed at the static
+	// values the nose wheel floated as the tug connected (2026-10-03).
+	restFt, restPitch float64
+	haveRest          bool
+	placed            bool // placed by us: the samples since are our own
+	lights            Lights
+	lightsSent        bool
+	taken             bool // taken over (released and frozen), not just watched
 }
 
 // Injector definition, request and event offsets.
@@ -72,6 +80,10 @@ const (
 
 // injMaxEngines is how many engines SetEngines reaches.
 const injMaxEngines = 4
+
+// injDefGearDown: the gear handle and the gear's positions, written
+// together by HoldGearDown (after the engines' definitions).
+const injDefGearDown = injDefEngine1 + injMaxEngines
 
 const (
 	injEvtFreezeLatLon = iota
@@ -98,7 +110,19 @@ var injectEventNames = [injectEventCount]string{
 // simulator's pitch convention, as PLANE PITCH DEGREES: an A320 rests at
 // about +0.8°). Placed level, a model resting nose-up dug its nose wheel
 // into the ground (live, 2026-10-02).
-type injectGround struct{ GroundFt, CGFt, StaticPitch float64 }
+type injectGround struct {
+	GroundFt, CGFt, StaticPitch       float64
+	PlaneFt, PlanePitch, OnGround, GS float64
+}
+
+// Rest limits: a measured rest further than this from the static values is
+// not trusted, and only an aircraft slower than restMaxKts is at rest
+// (braking or turning, it pitches).
+const (
+	restMaxOffFt    = 3.0
+	restMaxOffPitch = 3.0
+	restMaxKts      = 1.0
+)
 
 // InjectorOption configures an Injector.
 type InjectorOption func(*Injector)
@@ -142,7 +166,8 @@ func (i *Injector) register() error {
 	if err := i.track("define Initial Position", c.AddToDataDefinition(i.defBase+injDefPosition, "Initial Position", "", types.SIMCONNECT_DATATYPE_INITPOSITION, 0, 0)); err != nil {
 		return err
 	}
-	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"STATIC CG TO GROUND", "feet"}, {"STATIC PITCH", "degrees"}} {
+	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"STATIC CG TO GROUND", "feet"}, {"STATIC PITCH", "degrees"},
+		{"PLANE ALTITUDE", "feet"}, {"PLANE PITCH DEGREES", "degrees"}, {"SIM ON GROUND", "bool"}, {"GROUND VELOCITY", "knots"}} {
 		if err := i.track("define "+v.name, c.AddToDataDefinition(i.defBase+injDefGround, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
@@ -166,6 +191,15 @@ func (i *Injector) register() error {
 	for k := 1; k <= injMaxEngines; k++ {
 		v := fmt.Sprintf("GENERAL ENG COMBUSTION:%d", k)
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefEngine1+uint32(k-1), v, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+			return err
+		}
+	}
+	for k, v := range []string{"GEAR HANDLE POSITION", "GEAR CENTER POSITION", "GEAR LEFT POSITION", "GEAR RIGHT POSITION"} {
+		unit := "percent over 100"
+		if k == 0 {
+			unit = "bool"
+		}
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefGearDown, v, unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
 			return err
 		}
 	}
@@ -283,11 +317,16 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		i.mu.Unlock()
 		return ErrGroundUnknown
 	}
+	cg, pitch := o.cgFt, o.staticPitch // resting on its gear, not level
+	if o.haveRest {
+		cg, pitch = o.restFt, o.restPitch
+	}
+	o.placed = true
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  o.groundFt + o.cgFt,
-		Pitch:     o.staticPitch, // resting on its gear, not level
+		Altitude:  o.groundFt + cg,
+		Pitch:     pitch,
 		Heading:   pose.Heading,
 		OnGround:  1,
 	}
@@ -387,6 +426,11 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
+			rest := g.PlaneFt - g.GroundFt
+			if !o.placed && g.OnGround != 0 && g.GS < restMaxKts &&
+				math.Abs(rest-g.CGFt) <= restMaxOffFt && math.Abs(g.PlanePitch-g.StaticPitch) <= restMaxOffPitch {
+				o.restFt, o.restPitch, o.haveRest = rest, g.PlanePitch, true
+			}
 		}
 		return true, nil
 	case types.SIMCONNECT_RECV_ID_EXCEPTION:
@@ -442,6 +486,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		OnGround:  onGround,
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
 	}
+	o.placed = true
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -470,6 +515,20 @@ func (i *Injector) GroundFt(objectID uint32) (float64, bool) {
 		return o.groundFt, true
 	}
 	return 0, false
+}
+
+// HoldGearDown puts objectID's gear down at once: the handle and the gear
+// itself, no extension to watch. Placed in the air the first time, the
+// simulator snaps the gear up; with the handle alone it then extends
+// again over 4 s (live, KLM1700 at lift-off, 2026-10-03).
+func (i *Injector) HoldGearDown(objectID uint32) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	g := [4]float64{1, 1, 1, 1}
+	return i.client.SetDataOnSimObject(i.defBase+injDefGearDown, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g))
 }
 
 // SetGear moves the gear handle of objectID; the sim animates the gear
