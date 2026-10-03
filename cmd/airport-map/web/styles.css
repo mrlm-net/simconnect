@@ -1216,3 +1216,9 @@ body.spectator #newFlightBtn, body.spectator .strip-card__act, body.spectator .c
 body.spectator .ctx .phase .acts, body.spectator .ctx .tools-row [data-tool="manual"], body.spectator .ctx .tools-row [data-tool="rush"],
 body.spectator .ctx .tools-row [data-tool="remove"], body.spectator .seq-acts, body.spectator .strip__sim, body.spectator #nfModal,
 body.spectator [data-game-start], body.spectator .facing { display: none !important; }
+/* #623: the picture's further phases */
+.m-wac--pushback { fill: var(--ac-ours); }
+.m-wac--holding { fill: var(--stand-busy); }
+.m-wac--takeoff, .m-wac--landing { fill: var(--danger); }
+.m-wac--climbing { fill: var(--ac-dep); }
+.m-wac--descending, .m-wac--approach { fill: var(--route-taxi); }
