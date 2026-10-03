@@ -904,7 +904,8 @@ func (c *TaxiController) emptyStands() []int {
 }
 
 // poseBlocks counts the junctions of other taxiways under the aircraft
-// standing at the pose: nose to tail, half its span either side; not own,
+// standing at the pose: nose to tail, the fuselage and pushBlockBodyMeters
+// either side (wings over a junction leave it usable); not own,
 // the junction of the stand's lead-in, which every push from it passes.
 func (c *TaxiController) poseBlocks(p pushPose, own airport.NodeID) int {
 	g, prof := c.req.Graph, c.profile()
@@ -913,10 +914,13 @@ func (c *TaxiController) poseBlocks(p pushPose, own airport.NodeID) int {
 		tail = 20.5
 	}
 	// From the nose, a wheelbase and a third ahead of the nose gear, to the
-	// tail; the wings over the other taxiway block it too.
+	// tail, the fuselage and pushBlockBodyMeters either side.
 	ahead := prof.WheelbaseMeters * (pushNoseFactor - 1)
 	length := prof.WheelbaseMeters + tail
-	reach := c.halfSpan()
+	reach := pushBlockBodyMeters
+	if poseBlocksWings {
+		reach = c.halfSpan()
+	}
 	n := 0
 	for id, nd := range g.Nodes {
 		if airport.NodeID(id) == own || nd.Kind == airport.NodeParking || len(g.Adj[id]) < 3 || localDist(nd.Position, p.nose) > length+reach {
@@ -1225,3 +1229,13 @@ func PlanPush(req TaxiRequest) (PlannedPush, error) {
 	}
 	return PlannedPush{Push: t.pushPts, Tow: t.towPts, Taxi: t.route.Points, Pose: t.pushPose.nose, Heading: t.pushPose.heading}, nil
 }
+
+// pushBlockBodyMeters: a junction of another taxiway counts as blocked by a
+// pose (poseBlocks) within this of the aircraft's axis, the fuselage and a
+// margin, not under its wings: wings over a junction leave it usable, and
+// counting them sent a 777 at LKPR C22 the long way round for 24 (south-east
+// and a 180 instead of north-west onto H, 220 m less).
+const pushBlockBodyMeters = 8.0
+
+// poseBlocksWings counts the wings too (the rule before), for comparison.
+var poseBlocksWings = false

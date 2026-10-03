@@ -174,6 +174,8 @@ type ControlView struct {
 	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
 	State          string           `json:"state"`
 	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
+	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
+	TaxiRemainingM float64 `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
 	LimitNode      int              `json:"limitNode"`
 	Position       airport.LatLon   `json:"position"`
@@ -1023,6 +1025,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
+		v.TaxiRemainingM = e.Remaining
 		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()

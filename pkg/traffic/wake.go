@@ -225,3 +225,35 @@ func RunwayOccupancy(w Wake, landing bool) time.Duration {
 	}
 	return time.Duration(sec[1] * float64(time.Second))
 }
+
+// Catch-up on the same route: a follower climbing CatchUpFromKts or more
+// faster than the departure before it waits CatchUpPer40Kts more per 40 kt
+// of the difference, at most CatchUpMax, so it does not close on it after
+// take-off (live, LKPR: a B738 four minutes behind a C25C on VENO7D flew
+// through it). The project's own rule: no source read gives the numbers.
+const (
+	CatchUpFromKts  = 20.0
+	CatchUpPer40Kts = time.Minute
+	CatchUpMax      = 3 * time.Minute
+)
+
+// DepartureIntervalSpeeds is DepartureInterval with the climb speeds of the
+// two (TAS, 0 unknown): on the same route a faster follower waits longer.
+func DepartureIntervalSpeeds(leader, follower Wake, sameRoute bool, leaderKts, followerKts float64) time.Duration {
+	d := DepartureInterval(leader, follower, sameRoute)
+	if !sameRoute || leaderKts <= 0 || followerKts <= 0 {
+		return d
+	}
+	if diff := followerKts - leaderKts; diff >= CatchUpFromKts {
+		d += min(CatchUpMax, time.Duration(diff/40*float64(CatchUpPer40Kts)))
+	}
+	return d
+}
+
+// DepartureFirstKts: at the holding points, a departure this much faster
+// in the climb on the same route as the one before it, there no more than
+// DepartureFirstWithin later, goes first.
+const (
+	DepartureFirstKts    = 40.0
+	DepartureFirstWithin = 2 * time.Minute
+)

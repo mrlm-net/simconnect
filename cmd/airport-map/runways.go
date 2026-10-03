@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -135,6 +136,9 @@ func (t *towers) tick(now time.Time) {
 		}
 		model := v.Model
 		u := traffic.RunwayUser{Callsign: v.Tail, Wake: traffic.WakeFor(model), Route: v.Procedure, Other: it.gates.Load()}
+		if it.dep != nil {
+			u.ClimbKts = climbKts(model) // the interval and order behind a slower one
+		}
 		own, ok := runwayOf(l, v.Runway)
 		if !ok {
 			continue
@@ -754,4 +758,22 @@ func registerRunways(mux *http.ServeMux, st *state) {
 		}
 		writeJSON(w, out)
 	})
+}
+
+// climbKts is a type's climb speed (TAS) for the departure interval and
+// order: nav's performance data, else, for a business type there is none
+// for, its published cruise speed at the climb-to-cruise ratio of the
+// generic performance; 0 unknown.
+func climbKts(model string) float64 {
+	typ := traffic.ProfileFor(model).Type
+	if p := nav.PerformanceFor(typ); p.Type != "" {
+		return p.ClimbTASKts
+	}
+	g := nav.PerformanceFor("")
+	for _, b := range traffic.BusinessTypes {
+		if b.Type == typ && g.CruiseTASKts > 0 {
+			return b.CruiseKts * g.ClimbTASKts / g.CruiseTASKts
+		}
+	}
+	return 0
 }

@@ -46,7 +46,10 @@ type RunwayUser struct {
 	// only then is it cleared to land, #486).
 	DistanceNM, GroundKts float64
 	Established           bool
-	// Other traffic: counted, never cleared.
+	// ClimbKts: a departure's climb speed (TAS), for the interval and the
+	// order behind a slower one on the same route; 0 unknown.
+	ClimbKts float64
+		// Other traffic: counted, never cleared.
 	Other bool
 }
 
@@ -259,7 +262,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		if r.lastDep == nil || r.lastDep.Callsign == u.Callsign {
 			return ""
 		}
-		iv := DepartureInterval(r.lastDep.Wake, u.Wake, r.lastDep.Route != "" && r.lastDep.Route == u.Route)
+		iv := DepartureIntervalSpeeds(r.lastDep.Wake, u.Wake, r.lastDep.Route != "" && r.lastDep.Route == u.Route, r.lastDep.ClimbKts, u.ClimbKts)
 		if left := iv - now.Sub(r.lastAt); left > 0 {
 			return fmt.Sprintf("%s behind %s", left.Round(time.Second), r.lastDep.Callsign)
 		}
@@ -323,6 +326,17 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	}
 	// The holding points, first come first.
 	sort.SliceStable(holding, func(i, j int) bool { return r.queue[holding[i].Callsign].Before(r.queue[holding[j].Callsign]) })
+	// A faster one on the same route, at the holding points about as long,
+	// goes first: behind the slower it would wait the catch-up as well
+	// (DepartureIntervalSpeeds) and still close on it after take-off.
+	for i := 0; i+1 < len(holding); i++ {
+		a, b := holding[i], holding[i+1]
+		if a.Route != "" && a.Route == b.Route && a.ClimbKts > 0 && b.ClimbKts-a.ClimbKts >= DepartureFirstKts &&
+			r.queue[b.Callsign].Sub(r.queue[a.Callsign]) <= DepartureFirstWithin {
+			holding[i], holding[i+1] = b, a
+			i++
+		}
+	}
 	number := 1
 	for _, u := range holding {
 		if u.Crossing {

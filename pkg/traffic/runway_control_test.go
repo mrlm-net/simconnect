@@ -354,3 +354,28 @@ func TestRunwayControllerNoDelay(t *testing.T) {
 		t.Fatalf("arrival not established: %+v", c)
 	}
 }
+
+// Departures on the same route: a faster follower waits the catch-up as
+// well, and at the holding points about as long the faster goes first
+// (live: a B738 four minutes behind a C25C on VENO7D flew through it).
+func TestDepartureSpeeds(t *testing.T) {
+	m, l := WakeFor("A320"), WakeFor("C25C")
+	if d := DepartureIntervalSpeeds(l, m, true, 300, 380); d != SameRouteDepartureInterval+2*time.Minute {
+		t.Errorf("80 kt faster on the same route: %s", d)
+	}
+	if d := DepartureIntervalSpeeds(l, m, false, 300, 380); d != DepartureInterval(l, m, false) {
+		t.Errorf("another route: %s", d)
+	}
+	if d := DepartureIntervalSpeeds(m, l, true, 380, 300); d != SameRouteDepartureInterval {
+		t.Errorf("slower behind: %s", d)
+	}
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	slow, fast := dep("OKCVY", "C25C", RunwayHoldingShort), dep("RYR1527", "B738", RunwayHoldingShort)
+	slow.ClimbKts, fast.ClimbKts = 300, 380
+	r.Decide(now, []RunwayUser{slow})
+	c := r.Decide(now.Add(30*time.Second), []RunwayUser{slow, fast})
+	if !slices.Contains(c.LineUp, "RYR1527") || c.Waiting["OKCVY"] != "number 2 for departure" {
+		t.Errorf("the faster at the holding point 30 s later: %+v", c)
+	}
+}

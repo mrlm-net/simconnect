@@ -99,6 +99,9 @@ type SequencerOptions struct {
 	// new prediction must not swap it straight back (live, LKPR: RYR730,
 	// CSA1119 and CSA1009 traded places every few seconds).
 	TacticalSwapHold time.Duration
+	// CompressionMaxNM caps the compression buffer behind a slower leader
+	// (0: DefaultCompressionMaxNM, 2 NM; negative: none).
+	CompressionMaxNM float64
 	// MinSpacingNM is the least spacing on final whatever the wake (0: the
 	// minimum radar separation, 3 NM); a unit may keep more, e.g. 5 NM.
 	MinSpacingNM float64
@@ -316,6 +319,23 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditi
 	nm, why := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced && s.opts.MinSpacingNM == 0)
 	if s.opts.MinSpacingNM > nm {
 		nm, why = s.opts.MinSpacingNM, ""
+	}
+	// Compression: a follower faster on final than its leader closes on it
+	// all the way down, and any error in either prediction comes off the
+	// spacing; it is given CompressionNMPer30Kts per 30 kt of difference,
+	// at most CompressionMaxNM (live, LKPR: a B738 behind a PC-24 at 108 kt
+	// was 31 s short on the final and went around).
+	if diff := finalKtsOf(follow) - finalKtsOf(lead); diff > 0 && s.opts.CompressionMaxNM >= 0 {
+		limit := s.opts.CompressionMaxNM
+		if limit == 0 {
+			limit = DefaultCompressionMaxNM
+		}
+		if extra := math.Min(limit, diff/30*CompressionNMPer30Kts); extra >= 0.1 {
+			nm += extra
+			if why == "" {
+				why = "compression"
+			}
+		}
 	}
 	kts := c.FinalGroundKts(follow.FinalKts)
 	if s.opts.TimeBased {
@@ -667,4 +687,20 @@ func DistanceToGo(pos airport.LatLon, route []airport.LatLon, threshold airport.
 		d += nm(pts[i], pts[i+1])
 	}
 	return d
+}
+
+// Compression buffer (ApproachSequencer.gap): CompressionNMPer30Kts of
+// extra spacing per 30 kt a follower is faster on final than its leader,
+// at most DefaultCompressionMaxNM (SequencerOptions.CompressionMaxNM).
+const (
+	CompressionNMPer30Kts   = 1.0
+	DefaultCompressionMaxNM = 2.0
+)
+
+// finalKtsOf is a's approach speed on final (140 when not given).
+func finalKtsOf(a ApproachAircraft) float64 {
+	if a.FinalKts > 0 {
+		return a.FinalKts
+	}
+	return 140
 }

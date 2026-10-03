@@ -574,6 +574,12 @@ func (c *TaxiController) tugConnected() bool {
 		if c.now().Sub(c.tugAttachedAt) < wait {
 			return false
 		}
+		// Never created: once more a little further along its way in.
+		if r, ok := t.(interface{ RetryCreate() bool }); ok && wait == TugCreateTimeout && r.RetryCreate() {
+			c.tugAttachedAt = c.now()
+			c.note("tug created again further along its way", nil)
+			return false
+		}
 		c.tugErr(errors.New("the tug did not arrive: pushing without it"))
 		c.tugErr(t.Remove())
 	}

@@ -405,3 +405,69 @@ func TestAbsorbDelayOrbitNearTheEnd(t *testing.T) {
 		t.Errorf("20 s near the end: %+v, want no 360", a)
 	}
 }
+
+// A shortcut: direct to a named fix further on, as much as the room ahead
+// allows, where the descent still works; none too high or without room.
+func TestShortcut(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := func(aglFt float64) *ArrivalController {
+		ec := &eventClient{}
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "OKYDV",
+			InjectApproach: true, Procedure: route}); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		hdg := calc.BearingDegrees(route[0].Position.Lat, route[0].Position.Lon, route[1].Position.Lat, route[1].Position.Lon)
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, aglFt, hdg, 250, false))
+		return ctl
+	}
+	ctl := start(6000)
+	before := pathNM(ctl.ProcedureRoute())
+	fix, saved, err := ctl.Shortcut(30)
+	if err != nil || fix == "" || saved <= 0 || saved > 30 {
+		t.Fatalf("shortcut %q %.1f NM, %v", fix, saved, err)
+	}
+	if after := pathNM(ctl.ProcedureRoute()); before-after < saved-1.5 {
+		t.Errorf("route %.1f → %.1f NM for %.1f saved", before, after, saved)
+	}
+	if fix, _, _ := start(40000).Shortcut(30); fix != "" {
+		t.Errorf("40000 ft up: direct %s, want none (too high)", fix)
+	}
+	if fix, _, _ := start(6000).Shortcut(0.5); fix != "" {
+		t.Errorf("room for 0.5 NM: direct %s", fix)
+	}
+}
+
+// A shortcut never crosses the field: a leg across LKPR's runway is over
+// the airport, one 10 NM off is not (live: CSA1909 direct PR532).
+func TestShortcutNotOverAirport(t *testing.T) {
+	g := lkprGraph(t)
+	c := &ArrivalController{}
+	for _, r := range g.Layout.Runways {
+		if r.Name() == "06/24" {
+			c.plan = &ArrivalPlan{Runway: r}
+		}
+	}
+	if c.plan == nil {
+		t.Fatal("no 06/24")
+	}
+	mid := c.plan.Runway.Primary.Threshold
+	across := [2]airport.LatLon{offsetHeading(mid, 150, 15*1852), offsetHeading(mid, 330, 15*1852)}
+	if !c.overAirport(across[0], across[1]) {
+		t.Error("a leg across the runway is not over the airport")
+	}
+	away := [2]airport.LatLon{offsetHeading(mid, 150, 10*1852), offsetHeading(offsetHeading(mid, 150, 10*1852), 60, 20*1852)}
+	if c.overAirport(away[0], away[1]) {
+		t.Error("a leg 10 NM away is over the airport")
+	}
+}
