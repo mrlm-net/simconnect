@@ -42,8 +42,8 @@ type conflictWatch struct {
 	informed map[string]time.Time
 	asked    map[string]bool // crews that have made their request (#621)
 	leveled  map[string]bool // arrivals told to stop descent for a conflict
-	now    []traffic.Conflict
-	done   []resolutionView // the latest last (at most 50)
+	now      []traffic.Conflict
+	done     []resolutionView // the latest last (at most 50)
 }
 
 type resolutionView struct {
@@ -254,8 +254,12 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		w.busy[cs] = now.Add(arrivalConflictRecheck)
 		w.mu.Unlock()
 	}
-	// Level first: above the other, still descending to it.
-	if !leveled {
+	// Level first: above the other, still descending to it — only well out:
+	// closer in both are bound for the same final and must descend to it, so
+	// height parts them for a moment only; there the trailer is slowed and
+	// vectored instead (live, TVS251 told to stop descent behind a PC-24 at
+	// 108 kt on the same ILS, then sent around on the final).
+	if !leveled && trailer.e.DistanceToGoNM > arrivalLevelFromNM {
 		w.mu.Lock()
 		w.leveled[cs] = true
 		w.mu.Unlock()
@@ -315,6 +319,8 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 const (
 	arrivalLevelAboveFt = 1000.0
 	arrivalLevelForNM   = 20.0
+	// arrivalLevelFromNM: the level is given only this far or more to go.
+	arrivalLevelFromNM = 20.0
 )
 
 // other is the other aircraft of conflict c.
