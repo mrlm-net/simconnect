@@ -35,11 +35,13 @@ type Detail struct {
 	intervals map[uint32]uint32 // by object: what each aircraft runs at
 }
 
-// Level of detail defaults: every frame within 3 km, every 2nd within
-// 10 km, every 4th beyond (15 Hz at 60 fps), every 30th standing still.
+// Level of detail defaults: every frame within 8 km (the whole airport and
+// its short finals: at 3 km the far end of LKPR's 24 ran at half rate and
+// stuttered from the tower), every 2nd within 20 km, every 4th beyond
+// (15 Hz at 60 fps), every 30th standing still.
 const (
-	DefaultDetailNearMeters     = 3000
-	DefaultDetailMidMeters      = 10000
+	DefaultDetailNearMeters     = 8000
+	DefaultDetailMidMeters      = 20000
 	DefaultDetailMidInterval    = 1
 	DefaultDetailFarInterval    = 3
 	DefaultDetailStillInterval  = 29

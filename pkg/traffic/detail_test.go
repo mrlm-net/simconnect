@@ -23,7 +23,7 @@ func TestDetailInterval(t *testing.T) {
 		moving, full bool
 		want         uint32
 	}{
-		{1000, true, false, 0}, {5000, true, false, DefaultDetailMidInterval}, {20000, true, false, DefaultDetailFarInterval},
+		{1000, true, false, 0}, {5000, true, false, 0}, {12000, true, false, DefaultDetailMidInterval}, {30000, true, false, DefaultDetailFarInterval},
 		{1000, false, false, DefaultDetailStillInterval}, {20000, true, true, 0}, {20000, false, true, 0},
 	} {
 		if n := d.Interval(at(c.m), c.moving, c.full); n != c.want {
@@ -59,7 +59,7 @@ func TestDepartureDetail(t *testing.T) {
 	d := NewDetail()
 	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true}, TaxiWithDetail(d))
 	stand := ctl.req.Graph.Layout.Parking[ctl.req.Parking].Position
-	d.SetViewer(offsetHeading(stand, 0, 20000)) // 20 km away
+	d.SetViewer(offsetHeading(stand, 0, 30000)) // 30 km away
 	if !run(TaxiAwaitingPushback, 60*60) {
 		t.Fatal(ctl.State())
 	}
@@ -74,7 +74,7 @@ func TestDepartureDetail(t *testing.T) {
 	ctl.ClearPushback()
 	run(TaxiAwaitingTaxi, 60*10)
 	if ctl.State() != TaxiPushback || last() != DefaultDetailFarInterval {
-		t.Fatalf("pushing back 20 km away: %v, interval %d, want %d", ctl.State(), last(), DefaultDetailFarInterval)
+		t.Fatalf("pushing back 30 km away: %v, interval %d, want %d", ctl.State(), last(), DefaultDetailFarInterval)
 	}
 	ctl.Cancel()
 	if n, _, _ := d.Load(); n != 0 {
@@ -113,7 +113,7 @@ func TestDepartureDetailTug(t *testing.T) {
 	tug := &fakeTug{doneAfter: 60 * 20}
 	ctl, ec, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true, Tug: tug}, TaxiWithDetail(d))
 	stand := ctl.req.Graph.Layout.Parking[ctl.req.Parking].Position
-	d.SetViewer(offsetHeading(stand, 0, 20000)) // 20 km away
+	d.SetViewer(offsetHeading(stand, 0, 30000)) // 30 km away
 	if !run(TaxiAwaitingPushback, 60*60) {
 		t.Fatal(ctl.State())
 	}
