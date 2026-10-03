@@ -311,7 +311,7 @@ function trafficDetail(t) {
   // The gear only where it matters: on the ground or low.
   if (t.onGround || t.agl < 5000) rows.push(['Gear', t.gear >= 0.99 ? 'down' : t.gear <= 0.01 ? 'up' : 'moving']);
   rows.push(['Span', `${t.span.toFixed(0)} m`]);
-  const route = f ? `<div class="tdet__route">${esc(f.origin || 'local')} → ${esc(f.destination || 'local')}${f.std ? ` <span class="muted">STD ${hhmm(f.std)} · STA ${hhmm(f.sta)}</span>` : ''}</div>` : '';
+  const route = f ? `${f.operator ? `<div class="tdet__op">${esc(f.operator)}</div>` : ''}<div class="tdet__route">${esc(f.origin || 'local')} → ${esc(f.destination || 'local')}${f.touchAndGos ? ` <span class="muted">· ${f.touchAndGos} ${f.stopAndGo ? 'stop' : 'touch'}-and-go${f.touchAndGos > 1 ? 'es' : ''}</span>` : ''}${f.std ? ` <span class="muted">STD ${hhmm(f.std)} · STA ${hhmm(f.sta)}</span>` : ''}</div>` : '';
   return `<div class="tdet">
     <div class="tdet__head"><span class="tdet__cs">${esc(t.tail || String(t.objectId))}</span><span class="tdet__chip tdet__chip--${kind}">${KIND_CHIP[kind] || ''}</span></div>
     <div class="tdet__type">${t.type ? `<b>${esc(t.type)}</b> · ` : ''}<span class="muted">${esc(t.title)}</span></div>

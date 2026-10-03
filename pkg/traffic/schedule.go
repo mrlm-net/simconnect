@@ -39,6 +39,13 @@ type Flight struct {
 	// Rules is "VFR" for a light aircraft flying in by day through the
 	// circuit (VFRFlights); "" an airline's IFR flight.
 	Rules string `json:"rules,omitempty"`
+	// Operator is who flies a VFR flight: a GAOperator's name ("LKPR
+	// flying school") or "private" (#565).
+	Operator string `json:"operator,omitempty"`
+	// TouchAndGos a VFR arrival makes before its full stop, each a
+	// stop-and-go with StopAndGo (training circuits, by its operator).
+	TouchAndGos int  `json:"touchAndGos,omitempty"`
+	StopAndGo   bool `json:"stopAndGo,omitempty"`
 }
 
 // Airline is an airline the generator schedules.

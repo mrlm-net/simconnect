@@ -1003,6 +1003,7 @@ body.full .panel, body.full .ctx { display: none; }
 .tdet__chip--controlled { background: var(--warn-soft); color: var(--warn); }
 .tdet__type { margin-top: 2px; font-size: 11px; }
 .tdet__route { margin-top: 4px; font: 600 12px var(--font-mono); }
+.tdet__op { margin-top: 4px; font-size: 12px; color: var(--text-3); }
 .tdet__kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .tdet__kv dt { color: var(--text-2); }
 .tdet__kv dd { margin: 0; font-family: var(--font-mono); }

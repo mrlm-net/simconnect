@@ -46,7 +46,9 @@ var VFRTypes = []struct {
 // only (Daylight from Lead before the STA to a quarter of an hour after it;
 // a departure from DepartureLead, 10 min, before its STD to half an hour
 // after it) and in visual conditions (Visual), with the registration of
-// the airport's country as call sign (VFRRegistration). Each has Rules
+// the airport's country as call sign (VFRRegistration), flown by one of
+// the airport's operators (GAOperatorsAt, #565): a school's or a club's
+// own aircraft, or a private owner's. Each has Rules
 // "VFR"; an arrival no origin and the airport as destination, a
 // departure the airport as origin and no destination (it leaves the
 // circuit to an exit point, Circuit.Departure).
@@ -72,28 +74,39 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 			continue
 		}
 		pos := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
+		ops := GAOperatorsAt(icao)
 		mean := opts.PerHour * opts.Density
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
 			n := int(mean)
 			if rng.Float64() < mean-float64(n) {
 				n++
 			}
+			busy := map[string][]Flight{}
 			for i := 0; i < 2*n; i++ {
 				at := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(5 * time.Minute)
-				typ := VFRTypes[max(0, pick(rng, weights))].Type
-				cs := VFRRegistration(icao, rng)
+				f := Flight{Type: VFRTypes[max(0, pick(rng, weights))].Type, Rules: "VFR"}
+				if i%2 == 0 { // an arrival
+					f.Destination, f.STA, f.STD = icao, at, at.Add(-opts.Lead)
+				} else {
+					f.Origin, f.STD, f.STA = icao, at, at.Add(30*time.Minute)
+				}
 				if at.Before(from) || !at.Before(to) {
 					continue
 				}
-				if i%2 == 0 { // an arrival
-					if Daylight(pos, at.Add(-opts.Lead)) && Daylight(pos, at.Add(15*time.Minute)) {
-						out = append(out, Flight{Callsign: cs, Type: typ, Destination: icao, STA: at, STD: at.Add(-opts.Lead), Rules: "VFR"})
-					}
+				// Lit from its appearance until it is down (an arrival with its
+				// circuits) or well away (a departure).
+				first, last := f.STD.Add(-DepartureLead), f.STA
+				if f.Origin == "" {
+					first, last = f.STD, f.STA.Add(15*time.Minute)
+				}
+				if !Daylight(pos, first) || !Daylight(pos, last) {
 					continue
 				}
-				if Daylight(pos, at.Add(-10*time.Minute)) && Daylight(pos, at.Add(30*time.Minute)) {
-					out = append(out, Flight{Callsign: cs, Type: typ, Origin: icao, STD: at, STA: at.Add(30 * time.Minute), Rules: "VFR"})
+				gaFlight(&f, ops, h, rng, busy, icao)
+				if f.TouchAndGos > 0 && !Daylight(pos, f.STA.Add(time.Duration(f.TouchAndGos)*7*time.Minute+15*time.Minute)) {
+					f.TouchAndGos, f.StopAndGo = 0, false // no circuits into the dusk: a full stop
 				}
+				out = append(out, f)
 			}
 		}
 	}
