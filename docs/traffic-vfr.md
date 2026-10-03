@@ -78,7 +78,7 @@ A VFR arrival in the circuit is sequenced with the IFR arrivals to the same runw
 
 `ArrivalRequest.TouchAndGos` (with `Circuit`) is how many touch-and-goes a VFR arrival makes before its full stop. When its nose wheel is down it does not roll out: it takes off again from where it is, at the speed it has (an injected `TakeoffMover`), with take-off flaps. At `VFRHandoverFt` MSFS AI flies the circuit again from its crosswind leg round to the final, and the injected approach takes over there as on the first circuit. `ArrivalEvent.TouchAndGo` is set while it is on the runway for one; `TouchAndGosLeft` tells how many remain.
 
-On the airport map the crew reports "downwind, touch and go" and the tower clears "cleared touch and go" (12.3.4.16 c); the last landing is cleared to land. After each touch-and-go it is sequenced again. New flight → Arrival → *VFR through the circuit* takes a number of touch-and-goes. Two in five scheduled VFR arrivals fly two to four training circuits (by their call sign).
+On the airport map the crew reports "downwind, touch and go" and the tower clears "cleared touch and go" (12.3.4.16 c); the last landing is cleared to land. After each touch-and-go it is sequenced again. New flight → Arrival → *VFR through the circuit* takes a number of touch-and-goes. Scheduled VFR arrivals fly training circuits by their operator (see [Operators](#operators)).
 
 ### Airspace classes and traffic information (#570)
 
@@ -96,7 +96,7 @@ With `CircuitConfig.OverheadJoin` (Airport tab → VFR circuits → *Standard ov
 
 ### Stop-and-goes (#567)
 
-With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to a stop on the runway at its `BrakeDecel`, stands `StopAndGoWait` (10 s, an estimate), and takes off from there. On the map the crew reports "downwind, stop and go" and the tower says "cleared stop and go" (`ClearedStopAndGo`, worded like the touch-and-go; Doc 4444 12.3.4.16 does not list it). The New flight form has a *Stop-and-go* box; a third of the scheduled training circuits are stop-and-goes.
+With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to a stop on the runway at its `BrakeDecel`, stands `StopAndGoWait` (10 s, an estimate), and takes off from there. On the map the crew reports "downwind, stop and go" and the tower says "cleared stop and go" (`ClearedStopAndGo`, worded like the touch-and-go; Doc 4444 12.3.4.16 does not list it). The New flight form has a *Stop-and-go* box; a third of a flying school's training circuits are stop-and-goes.
 
 ### VFR departures
 
@@ -118,10 +118,20 @@ With `TaxiRequest.VFR` the injected take-off hands over to MSFS AI at `VFRHandov
 - The manager has a VFR flight appear `ManagerOptions.VFRLead` (8 min) before its STA, near the airport, never en route.
 - On the map it joins the circuit as a circuit arrival (no flight plan, no STAR) and parks on a GA ramp where the airport has one free, else on any stand that fits.
 
+#### Operators
+
+Each flight is flown by one of the airport's GA operators (`GAOperatorsAt`, the same every time for an airport; `Flight.Operator`):
+
+| Operator | Share | Fleet | Training circuits (arrivals) |
+|---|---|---|---|
+| Flying school ("LKPR flying school") | half | 5 aircraft: C152, C172, P28A, DA40 | two to four, a third of them stop-and-goes |
+| Aero club ("LKPR aero club") | a quarter | 3 aircraft: C172, P28A, DA40, SR22 | one or two, one time in three |
+| Private owners ("private") | a quarter | none: a fresh registration each flight | none: a full stop |
+
+A fleet aircraft keeps its registration and type and flies only every third hour (by its place in the fleet), so its flights never overlap, whichever hours the schedule is asked for; when none of the fleet is free, a private owner flies. The circuits are in `Flight.TouchAndGos` and `Flight.StopAndGo`, dropped when they would run into the dusk. The map's traffic detail shows the operator and the circuits.
+
 Not yet:
 
-- A go-around from the circuit still flies the IFR go-around circuit.
-- Touch-and-goes are still to come.
 - Touch-and-goes from a straight-in or base join fly the circuit afterwards on its own side.
 
 ## Jetbridges (#572)
