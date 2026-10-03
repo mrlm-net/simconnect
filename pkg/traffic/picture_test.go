@@ -100,11 +100,16 @@ func TestPicturePhases(t *testing.T) {
 		{ObjectID: 10, Tail: "PARK", Position: near(500), OnGround: true},
 		{ObjectID: 11, Tail: "TAXI", Position: near(800), OnGround: true, GroundKts: 15},
 		{ObjectID: 12, Tail: "ROLL", Position: near(1200), OnGround: true, GroundKts: 120},
-		{ObjectID: 13, Tail: "DEP", Position: near(8000), AGLFt: 3000, VSFpm: 2000},
-		{ObjectID: 14, Tail: "ARR", Position: near(20000), AGLFt: 4000, VSFpm: -800},
-		{ObjectID: 15, Tail: "CRZ", Position: offsetHeading(pictureLKPR.Position, 0, 80*1852), AGLFt: 35000},
-		{ObjectID: 16, Tail: "FAR", Position: offsetHeading(pictureLKPR.Position, 0, 200*1852), AGLFt: 35000},
+		{ObjectID: 13, Tail: "DEP", Position: near(8000), AltFt: 4000, AGLFt: 3000, VSFpm: 2000},
+		{ObjectID: 14, Tail: "ARR", Position: near(20000), AltFt: 5000, AGLFt: 4000, VSFpm: -800},
+		{ObjectID: 15, Tail: "CRZ", Position: offsetHeading(pictureLKPR.Position, 0, 80*1852), AltFt: 36000, AGLFt: 35000},
+		{ObjectID: 16, Tail: "FAR", Position: offsetHeading(pictureLKPR.Position, 0, 200*1852), AltFt: 36000, AGLFt: 35000},
 	}
+	// The vertical rate comes from the altitude: a scan 6 s earlier.
+	before := append([]Observation(nil), scan...)
+	before[3].AltFt -= 200 // 2000 fpm up
+	before[4].AltFt += 80  // 800 fpm down
+	p.Observe(now.Add(-6*time.Second), before)
 	p.Observe(now, scan)
 	want := map[string][2]string{"PARK": {"parked", "LKPR"}, "TAXI": {"taxiing", "LKPR"}, "ROLL": {"runway", "LKPR"},
 		"DEP": {"departing", "LKPR"}, "ARR": {"arriving", "LKPR"}, "CRZ": {"enroute", ""}}

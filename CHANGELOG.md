@@ -22,7 +22,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `SIMCONNECT_RECV_SYSTEM_STATE`: `fFloat` is 4 bytes on the wire, so the string was read 4 bytes late ("bjects\Airplanes\..." for AircraftLoaded). `SystemStateFloat64` reads the 4-byte float (#634).
 - Business and GA turnarounds keep the arrival's registration as the departure's call sign.
-- `TrafficPicture`: a departing or arriving aircraft belongs to its origin or destination (`Observation.From`/`To`), otherwise the airport ahead of it (behind it departing), preferring one with a layout loaded. Before, it got the nearest airport: BAW1989 descending toward LKPR read LKKQ.
+- `TrafficPicture`: a departing or arriving aircraft belongs to its origin or destination (`Observation.From`/`To`), otherwise the airport ahead of it (behind it departing): first one with a runway lined up with its track, then one with a layout loaded and the longest runway, then the nearest (OKLTU on LKPR 06 read LKHY). Before, it got the nearest airport: BAW1989 descending toward LKPR read LKKQ.
+- `TrafficPicture`: climbing and descending come from the altitude (the reported rate only on the first scan), and `VSFpm` of aircraft other than the user's is the altitude trend (`VSDerived`). MSFS reports FSLTL AI on short final climbing (+500 to +940 fpm while descending about 1,100), so a landing read as departing. `ProfileMin` is now 4 s.
 
 ## [0.18.10] - 2026-10-03
 

@@ -43,10 +43,11 @@ const (
 	ApproachBelowFt = 3000.0
 	ApproachLeaveFt = 4000.0
 	// ProfileWindow: the vertical trend looks this far back; with less than
-	// ProfileMin of history the first scan's phase stands. A climb or a
-	// descent starts past ProfileEnterFpm and ends inside ProfileLeaveFpm.
+	// ProfileMin of history the phase stands (first seen: by the reported rate, or
+	// departing just after lift-off). A climb or a descent starts past
+	// ProfileEnterFpm and ends inside ProfileLeaveFpm.
 	ProfileWindow   = 30 * time.Second
-	ProfileMin      = 10 * time.Second
+	ProfileMin      = 4 * time.Second
 	ProfileEnterFpm = 400.0
 	ProfileLeaveFpm = 150.0
 )
@@ -153,7 +154,25 @@ func (p *TrafficPicture) flightAirportLocked(a *TrackedAircraft, ph Phase, near 
 			return known
 		}
 	}
-	best, bestNM, bestLayout := "", math.Inf(1), false
+	type cand struct {
+		icao    string
+		nm      float64
+		aligned bool    // a runway end lined up with its track
+		layout  bool    // a layout loaded (not on approach)
+		rwyM    float64 // its longest runway
+	}
+	better := func(x, y cand) bool {
+		switch {
+		case x.aligned != y.aligned:
+			return x.aligned
+		case x.layout != y.layout:
+			return x.layout
+		case x.rwyM != y.rwyM && ph != PhaseApproach:
+			return x.rwyM > y.rwyM
+		}
+		return x.nm < y.nm
+	}
+	var best *cand
 	for _, r := range p.all {
 		nm := calc.HaversineMeters(a.Position.Lat, a.Position.Lon, r.Position.Lat, r.Position.Lon) / 1852
 		if nm > AirportTerminalNM {
@@ -168,17 +187,58 @@ func (p *TrafficPicture) flightAirportLocked(a *TrackedAircraft, ph Phase, near 
 				continue
 			}
 		}
-		// Low on approach the nearest ahead is the one; higher up a
-		// layout loaded marks the airport the caller cares about.
-		layout := ph != PhaseApproach && p.opts.Layout != nil && p.opts.Layout(r.ICAO) != nil
-		if layout && !bestLayout || layout == bestLayout && nm < bestNM {
-			best, bestNM, bestLayout = r.ICAO, nm, layout
+		c := cand{icao: r.ICAO, nm: nm}
+		var l *airport.Layout
+		if p.opts.Layout != nil {
+			l = p.opts.Layout(r.ICAO)
+		}
+		if l != nil {
+			// Low on approach the nearest lined up is the one; higher up a
+			// layout loaded marks an airport the caller cares about.
+			c.layout = ph != PhaseApproach
+			c.aligned = alignedRunway(l, a.Position, a.Heading, departing)
+			for _, rw := range l.Runways {
+				c.rwyM = math.Max(c.rwyM, rw.Length)
+			}
+		}
+		if best == nil || better(c, *best) {
+			best = &c
 		}
 	}
-	if best == "" {
+	if best == nil {
 		return near
 	}
-	return best
+	return best.icao
+}
+
+// AlignedRunwayDeg: a runway end within this angle of an aircraft's track,
+// with the aircraft within AlignedCentrelineNM (or a tenth of the distance)
+// of its extended centreline, is the one it lands on or took off from.
+const (
+	AlignedRunwayDeg    = 20.0
+	AlignedCentrelineNM = 1.5
+)
+
+// alignedRunway reports a runway of l lined up with an aircraft at pos on
+// heading hdg: before the threshold arriving, past it departing.
+func alignedRunway(l *airport.Layout, pos airport.LatLon, hdg float64, departing bool) bool {
+	for _, rw := range l.Runways {
+		for _, end := range []airport.RunwayEnd{rw.Primary, rw.Secondary} {
+			if math.Abs(headingDiff(end.Heading, hdg)) > AlignedRunwayDeg {
+				continue
+			}
+			d := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, pos.Lat, pos.Lon) / 1852
+			off := headingDiff(end.Heading, calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, pos.Lat, pos.Lon)) * math.Pi / 180
+			along, cross := d*math.Cos(off), math.Abs(d*math.Sin(off))
+			if !departing {
+				along = -along // arriving: out on the approach side
+			}
+			if along > 0 && cross <= math.Max(AlignedCentrelineNM, along/10) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // groundPhase is a's phase on the ground, where it is on the airfield
@@ -228,10 +288,21 @@ func groundPhase(t *phaseTrack, a *TrackedAircraft, now time.Time, where airport
 // vertical speed (a blip of a few dozen feet must not turn a cruise into a
 // climb); nearNM is the nearest airport's distance.
 func (p *TrafficPicture) airPhase(t *phaseTrack, a *TrackedAircraft, now time.Time, nearNM float64) Phase {
-	trend, ok := t.trendFpm(now, a.AltFt, a.VSFpm)
+	trend, ok := t.trendFpm(now, a.AltFt)
 	was := t.last
-	if !ok && t.seen && !t.onGround {
-		return was // too little history to change it
+	if ok && !a.User {
+		a.VSFpm, a.VSDerived = trend, true
+	}
+	if !ok {
+		switch {
+		case t.seen && !t.onGround:
+			return was // too little history to change it
+		case t.seen && nearNM <= AirportTerminalNM:
+			return PhaseDeparting // just lifted off
+		}
+		// First seen: the reported rate for this scan only (right but on
+		// short final, where the trend takes over after ProfileMin).
+		trend = a.VSFpm
 	}
 	nearAirport := nearNM <= AirportTerminalNM
 	climbing := was == PhaseClimbing || was == PhaseDeparting
@@ -257,16 +328,18 @@ func (p *TrafficPicture) airPhase(t *phaseTrack, a *TrackedAircraft, now time.Ti
 }
 
 // trendFpm adds the altitude to the history and is the vertical rate over
-// the last ProfileWindow; false (and the reported rate) while the history
-// is shorter than ProfileMin.
-func (t *phaseTrack) trendFpm(now time.Time, altFt, reportedFpm float64) (float64, bool) {
+// the last ProfileWindow; false while the history is shorter than
+// ProfileMin. The reported vertical speed is not used: MSFS gives FSLTL AI
+// on short final the wrong sign (live: +500…+940 fpm descending at about
+// 1,100 fpm, BAW1989 at LKPR).
+func (t *phaseTrack) trendFpm(now time.Time, altFt float64) (float64, bool) {
 	t.alts = append(t.alts, altAt{now, altFt})
 	for len(t.alts) > 1 && now.Sub(t.alts[0].at) > ProfileWindow {
 		t.alts = t.alts[1:]
 	}
 	span := now.Sub(t.alts[0].at)
 	if span < ProfileMin {
-		return reportedFpm, false
+		return 0, false
 	}
 	return (altFt - t.alts[0].altFt) / span.Minutes(), true
 }
