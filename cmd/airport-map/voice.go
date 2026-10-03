@@ -3,445 +3,133 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	voicegoio "github.com/mrlm-net/voice-goio"
-	"github.com/mrlm-net/voice-goio/audio"
-	"github.com/mrlm-net/voice-goio/audio/radio"
-	"github.com/mrlm-net/voice-goio/normalise"
-	"github.com/mrlm-net/voice-goio/tts"
-	"github.com/mrlm-net/voice-goio/tts/piper"
-	"github.com/mrlm-net/voice-goio/voices"
+	"github.com/mrlm-net/voice-goio/speaker"
 )
 
 // The radio, heard (#419): what is said on the frequency the Radio tab
-// follows (or all of them) goes through voice-goio — a voice per controller
+// follows goes through voice-goio's speaker — a voice per controller
 // position, each pilot in a voice of their own, the ATIS in its voice on a
 // loop while its frequency is followed — with the radio chain of each
-// position. Voice needs piper and a voice model (see the README); without
-// them the button says so and the map stays silent.
-
-// voiceMaxLagSeconds: a transmission not yet said this long after it was
-// made is dropped, so a busy frequency stays live rather than minutes
-// behind.
-const voiceMaxLagSeconds = 60
-
-// voiceQueueKey plays everything through one player queue: one frequency or
-// all, one thing at a time, as on a single receiver.
-const voiceQueueKey = "radio"
-
-// The pauses a frequency has (#419; voice-goio waits for each transmission
-// to finish): voiceGap and up to voiceGapJitter more, at random — 1 to 5 s
-// between any two transmissions, a reply or a new exchange.
-const (
-	voiceGap       = time.Second
-	voiceGapJitter = 4 * time.Second
-)
+// position. The rules live in the speaker, shared with the MyCrew app; the
+// map adds following and tuning the user aircraft's COM1, the HTTP API and
+// the camera cutting to the aircraft heard. Voice needs piper and a voice
+// model (see the README); without them the button says so and the map
+// stays silent.
 
 type voiceOut struct {
-	mu      sync.Mutex
-	on      bool
-	freq    string // followed; "" all
-	status  string // why it is silent, or the backend speaking
-	backend string
-	// syncCom follows the user aircraft's COM1 (com1): tuning the radio in
+	mu sync.Mutex
+	sp *speaker.Speaker
+	// piper: the piper executable and the voices folder ("" defaults),
+	// set before first use.
+	piperPath, voicesDir string
+	// syncCom follows the user aircraft's COM1 (com): tuning the radio in
 	// the simulator picks the frequency heard. Off by default.
 	syncCom bool
 	com     string
 	// tune sets the user aircraft's COM1 (MHz), in the connection's
 	// goroutine; nil while not connected.
 	tune func(mhz float64) error
-
-	engine voicegoio.TTS
-	pool   *voices.Pool
-	chain  *radio.Set
-	norm   *normalise.Normaliser
-	player *audio.Player
-	// device is the output picked ("" the system default); devices the
-	// outputs there are, listed when the player opens.
-	device  string
-	devices []voicegoio.Device
-
-	queue chan voiceItem
-	// The ATIS broadcast: its text, its audio, when its loop started.
-	atisText  string
-	atisPCM   []int16
-	atisStart time.Time
-	// The pauses between transmissions: when the last one ends and who it
-	// was to or from, so a readback follows its clearance closely and a new
-	// exchange after a breath.
-	lastEnd time.Time
-	lastCS  string
-	// shifts: each station's controller on duty (onShift).
-	shifts map[string]*shift
-	rng    *rand.Rand
-	// piper: the piper executable and the voices folder ("" defaults).
-	piperPath, voicesDir string
 	// atis is the current ATIS of the airport broadcasting on freq.
 	atis func(freq string) (icao, text string, ok bool)
 }
 
-type voiceItem struct {
-	t    traffic.Transmission
-	when time.Time
+func newVoice() *voiceOut { return &voiceOut{} }
+
+// speakerOf is the speaker, made on first use with the piper paths set.
+func (v *voiceOut) speakerOf() *speaker.Speaker {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.sp == nil {
+		v.sp = speaker.New(speaker.Options{
+			PiperPath: v.piperPath, VoicesDir: v.voicesDir, Hint: "see the airport-map README",
+			ATIS: func(freq string) (string, string, bool) {
+				v.mu.Lock()
+				atis := v.atis
+				v.mu.Unlock()
+				if atis == nil {
+					return "", "", false
+				}
+				return atis(freq)
+			},
+			OnSay: func(u speaker.Utterance) {
+				heardOnCamera(traffic.Transmission{Airport: u.Airport, Position: traffic.Position(u.Position), Callsign: u.Callsign, Pilot: u.Pilot, Frequency: u.Frequency, Text: u.Text}) // the picture with the sound
+			},
+		})
+	}
+	return v.sp
 }
 
-func newVoice() *voiceOut {
-	v := &voiceOut{queue: make(chan voiceItem, 64), status: "off", rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x70ce))}
-	go v.run()
-	return v
+// setATIS sets where the ATIS broadcast on a frequency comes from.
+func (v *voiceOut) setATIS(f func(freq string) (icao, text string, ok bool)) {
+	v.mu.Lock()
+	v.atis = f
+	v.mu.Unlock()
 }
 
-// open starts the voice pipeline on first use; v.mu held.
-func (v *voiceOut) open() error {
-	if err := v.openEngine(); err != nil {
-		return err
-	}
-	if v.player == nil {
-		p, err := audio.NewPlayer(audio.Options{DeviceID: v.device})
-		if err != nil {
-			return err
-		}
-		if d, err := p.Devices(); err == nil {
-			v.devices = d
-		}
-		go func() {
-			for range p.Events() { // drained: the player needs it
-			}
-		}()
-		v.player = p
-	}
-	return nil
-}
-
-// openEngine opens the voices (piper and its models), without a player: a
-// client on the network plays the radio itself (network.go). v.mu held.
-func (v *voiceOut) openEngine() error {
-	if v.engine != nil {
-		return nil
-	}
-	engine, backend, err := tts.Open(tts.Options{Piper: piper.Options{PiperPath: v.piperPath, VoicesDir: v.voicesDir}})
-	if err != nil {
-		return err
-	}
-	if backend != tts.BackendPiper {
-		engine.Close()
-		return errors.New("no voice: piper and a voice model are needed (see the airport-map README)")
-	}
-	man, err := voices.LoadDefault()
-	if err != nil {
-		engine.Close()
-		return err
-	}
-	v.engine, v.backend = engine, backend
-	// Not the Czech model reading English: it sounds wrong on the radio.
-	v.pool = voices.NewPool(man, voices.PoolOptions{Seed: time.Now().UnixNano(), AllowUnaudited: true, Dir: v.voicesDir, Exclude: []string{"cs_CZ-jirka-medium"}, FemaleShare: 1.0 / 9})
-	v.chain, v.norm = radio.Default(), normalise.New()
-	return nil
-}
-
-// phraseologyOf is the voice's reading of t: FAA numbers and frequencies at
-// a US airport (#463).
-func phraseologyOf(t traffic.Transmission) voicegoio.Phraseology {
+// utterance is transmission t as the speaker takes it: FAA numbers and
+// frequencies at a US airport (#463).
+func utterance(t traffic.Transmission) speaker.Utterance {
+	ph := voicegoio.ICAO
 	if t.Phraseology == traffic.PhraseologyFAA {
-		return voicegoio.FAA
+		ph = voicegoio.FAA
 	}
-	return voicegoio.ICAO
+	return speaker.Utterance{Airport: t.Airport, Position: string(t.Position), Callsign: t.Callsign,
+		Pilot: t.Pilot, Frequency: t.Frequency, Text: t.Text, Phraseology: ph}
 }
 
 // set turns the voice on or off and picks the frequency followed.
 func (v *voiceOut) set(on bool, freq string) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if freq != v.freq && v.player != nil {
-		v.player.Close() // another frequency: what the last one still had goes
-		v.player = nil
-		for len(v.queue) > 0 {
-			<-v.queue
-		}
+	sp := v.speakerOf()
+	sp.Set(on, freq)
+	if st := sp.State(); on && !st.On {
+		log.Printf("voice: %s", st.Status)
 	}
-	v.freq = freq
-	if !on {
-		v.on, v.status = false, "off"
-		if v.player != nil {
-			v.player.Close() // what is queued goes with it
-			v.player = nil
-		}
-		return
-	}
-	if err := v.open(); err != nil {
-		v.on, v.status = false, err.Error()
-		log.Printf("voice: %v", err)
-		return
-	}
-	v.on, v.status = true, "on ("+v.backend+")"
 }
 
 type voiceState struct {
-	On        bool   `json:"on"`
-	Frequency string `json:"frequency"`
-	Status    string `json:"status"`
-	SyncCom   bool   `json:"syncCom"`
-	Com1      string `json:"com1,omitempty"`
-	// Device is the output picked ("" the system default), Devices those
-	// there are (known once the sound has been on).
-	Device  string             `json:"device"`
-	Devices []voicegoio.Device `json:"devices,omitempty"`
+	speaker.State
+	SyncCom bool   `json:"syncCom"`
+	Com1    string `json:"com1,omitempty"`
 }
 
 func (v *voiceOut) state() voiceState {
+	st := v.speakerOf().State()
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return voiceState{On: v.on, Frequency: v.freq, Status: v.status, SyncCom: v.syncCom, Com1: v.com, Device: v.device, Devices: v.devices}
+	return voiceState{State: st, SyncCom: v.syncCom, Com1: v.com}
 }
 
 // hear takes a transmission from the radio: said if the voice is on and it
-// is on the frequency followed. It never blocks the radio.
+// is on the frequency followed (one frequency, as on a receiver: nothing
+// without one, #462). It never blocks the radio. The ATIS is broadcast
+// on its own loop, not heard here.
 func (v *voiceOut) hear(t traffic.Transmission) {
-	v.mu.Lock()
-	// One frequency, as on a receiver: nothing without one (#462).
-	skip := !v.on || v.freq == "" || t.Frequency != v.freq || t.Intent == traffic.IntentATIS
-	v.mu.Unlock()
-	if skip {
+	if t.Intent == traffic.IntentATIS {
 		return
 	}
-	select {
-	case v.queue <- voiceItem{t, time.Now()}:
-	default: // behind: drop it
-	}
-}
-
-// run says what is queued; while the followed frequency is an ATIS and
-// nothing else is to be said, it says the ATIS again and again.
-func (v *voiceOut) run() {
-	for {
-		select {
-		case it := <-v.queue:
-			if time.Since(it.when) > voiceMaxLagSeconds*time.Second {
-				continue
-			}
-			v.say(it.t, false)
-		case <-time.After(voiceTick):
-			v.mu.Lock()
-			on, freq, atis := v.on, v.freq, v.atis
-			v.mu.Unlock()
-			if !on || freq == "" || atis == nil {
-				continue
-			}
-			if icao, text, ok := atis(freq); ok {
-				v.broadcast(icao, freq, text)
-			}
-		}
-	}
-}
-
-// atisGap is the silence between two runs of an ATIS broadcast.
-const atisGap = 3 * time.Second
-
-// broadcast plays the ATIS on freq as a continuous broadcast (#462): each
-// information is synthesised once and loops from a fixed start, so tuning
-// in joins it where it is, mid-sentence, as on a real receiver. It returns
-// after one run, or when the frequency or the information changes.
-func (v *voiceOut) broadcast(icao, freq, text string) {
-	v.mu.Lock()
-	if !v.on || v.player == nil || v.engine == nil {
-		v.mu.Unlock()
-		return
-	}
-	engine, pool, chain, norm, player := v.engine, v.pool, v.chain, v.norm, v.player
-	cached := v.atisText == text && v.atisPCM != nil
-	v.mu.Unlock()
-	if !cached {
-		voice := pool.Assign(icao, voicegoio.ATIS)
-		pcm, err := engine.Synthesize(context.Background(), voice, spokenEnd(norm.Spoken(text, voicegoio.ICAO)))
-		if err != nil {
-			log.Printf("voice: %v", err)
-			return
-		}
-		out := chain.Apply(tailPad(pcm, engine.SampleRate(voice)), engine.SampleRate(voice), voice.Radio, player.SampleRate(), 1)
-		v.mu.Lock()
-		v.atisText, v.atisPCM, v.atisStart = text, out, time.Now()
-		v.mu.Unlock()
-	}
-	v.mu.Lock()
-	out, start := v.atisPCM, v.atisStart
-	v.mu.Unlock()
-	rate := player.SampleRate()
-	length := time.Duration(float64(len(out)) / float64(rate) * float64(time.Second))
-	period := length + atisGap
-	into := time.Since(start) % period
-	if into >= length {
-		// Between two runs: the next one from its start, unless the
-		// frequency changes meanwhile.
-		if !v.wait(period-into, freq, player) {
-			return
-		}
-		into = 0
-	}
-	from := int(into.Seconds() * float64(rate))
-	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: "atis", Phraseology: voicegoio.ICAO, Text: text}, out[from:], rate); err != nil {
-		return
-	}
-	// Wait while it plays, but stop listening for it at a change of
-	// frequency (set closes the player).
-	v.wait(length-into, freq, player)
-}
-
-// voiceTick is how often the voice looks for an ATIS to broadcast and,
-// while waiting, for a change of frequency.
-const voiceTick = 100 * time.Millisecond
-
-// wait waits d while the voice stays on freq with player, and reports
-// whether it did: a change of frequency (set closes the player) ends it at
-// once, so the new frequency is heard without the old one's delay.
-func (v *voiceOut) wait(d time.Duration, freq string, player *audio.Player) bool {
-	for end := time.Now().Add(d); time.Now().Before(end); {
-		v.mu.Lock()
-		same := v.freq == freq && v.player == player && v.on
-		v.mu.Unlock()
-		if !same {
-			return false
-		}
-		time.Sleep(min(voiceTick, time.Until(end)))
-	}
-	return true
-}
-
-// say synthesises t in its speaker's voice and waits while it is played;
-// force says it with the voice off (a one-off asked for).
-func (v *voiceOut) say(t traffic.Transmission, force bool) {
-	v.mu.Lock()
-	if !v.on && !force || v.player == nil {
-		v.mu.Unlock()
-		return
-	}
-	engine, pool, chain, norm, player, freq := v.engine, v.pool, v.chain, v.norm, v.player, v.freq
-	v.mu.Unlock()
-
-	var voice voicegoio.VoiceProfile
-	if t.Pilot {
-		voice = pool.Assign(t.Callsign, voicegoio.Center) // each crew its own voice
-	} else {
-		voice = pool.Assign(v.onShift(t.Airport, t.Position), controllerKind(t.Position))
-	}
-	pcm, err := engine.Synthesize(context.Background(), voice, spokenEnd(norm.Spoken(t.Text, phraseologyOf(t))))
-	if err != nil {
-		log.Printf("voice: %v", err)
-		return
-	}
-	out := chain.Apply(tailPad(pcm, engine.SampleRate(voice)), engine.SampleRate(voice), voice.Radio, player.SampleRate(), int64(len(t.Text)))
-	// The pause since the last transmission, synthesis included.
-	v.mu.Lock()
-	gap := voiceGap + time.Duration(v.rng.Int64N(int64(voiceGapJitter)))
-	if len(v.queue) > 2 {
-		gap /= 2 // behind: shorter pauses rather than dropping calls
-	}
-	wait := time.Until(v.lastEnd.Add(gap))
-	v.mu.Unlock()
-	if wait > 0 && !v.wait(wait, freq, player) {
-		return // another frequency meanwhile
-	}
-	who := string(t.Position)
-	if t.Pilot {
-		who = t.Callsign
-	}
-	heardOnCamera(t) // the picture with the sound
-	if err := player.Play(voicegoio.Transmission{Frequency: voiceQueueKey, ControllerID: who, Phraseology: phraseologyOf(t), Text: t.Text}, out, player.SampleRate()); err != nil {
-		return // turned off meanwhile
-	}
-	// Wait while it is said, so the queue stays on the lag it has.
-	said := time.Duration(float64(len(out)) / float64(player.SampleRate()) * float64(time.Second))
-	v.mu.Lock()
-	v.lastEnd, v.lastCS = time.Now().Add(said), t.Callsign
-	v.mu.Unlock()
-	v.wait(said, freq, player)
-}
-
-// controllerKind is voice-goio's kind for a position: its voice and radio.
-func controllerKind(p traffic.Position) voicegoio.ControllerKind {
-	switch p {
-	case traffic.PosDelivery, traffic.PosGround:
-		return voicegoio.Ground
-	case traffic.PosApproach, traffic.PosDeparture:
-		return voicegoio.Approach
-	case traffic.PosCenter:
-		return voicegoio.Center
-	case traffic.PosATIS:
-		return voicegoio.ATIS
-	default:
-		return voicegoio.Tower
-	}
-}
-
-// A station's controller hands over every shiftMin to shiftMax (a new
-// voice on the frequency); a crew keeps its voice for good.
-const (
-	shiftMin = 30 * time.Minute
-	shiftMax = 60 * time.Minute
-)
-
-type shift struct {
-	n     int
-	until time.Time
-}
-
-// onShift is the voice key of the controller working pos at icao now:
-// the airport, with the shift number once the first has handed over
-// ("LKPR", then "LKPR-2"): the airport's prefix still picks the voices of
-// its region.
-func (v *voiceOut) onShift(icao string, pos traffic.Position) string {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.shifts == nil {
-		v.shifts = map[string]*shift{}
-	}
-	k := icao + "/" + string(pos)
-	s := v.shifts[k]
-	now := time.Now()
-	length := func() time.Duration { return shiftMin + time.Duration(v.rng.Int64N(int64(shiftMax-shiftMin))) }
-	if s == nil {
-		s = &shift{n: 1, until: now.Add(length())}
-		v.shifts[k] = s
-	}
-	for now.After(s.until) {
-		s.n++
-		s.until = s.until.Add(length())
-	}
-	if s.n == 1 {
-		return icao
-	}
-	return fmt.Sprintf("%s-%d", icao, s.n)
+	v.speakerOf().Hear(utterance(t))
 }
 
 // sayOnce says t now, whatever the frequency followed (the airport panel's
-// ATIS button); false when the voice is off or unavailable.
+// ATIS button); false when the voice is unavailable.
 func (v *voiceOut) sayOnce(t traffic.Transmission) bool {
-	v.mu.Lock()
-	if !v.on {
-		if err := v.open(); err != nil {
-			v.status = err.Error()
-			v.mu.Unlock()
-			return false
-		}
-	}
-	player := v.player
-	v.mu.Unlock()
-	if player == nil {
-		return false
-	}
-	go v.say(t, true)
-	return true
+	return v.speakerOf().SayOnce(utterance(t))
+}
+
+// clipOf is t as said on the radio (16-bit mono) and its rate, for a
+// client on the network that plays the radio itself (network.go).
+func (v *voiceOut) clipOf(t traffic.Transmission) ([]int16, int, error) {
+	return v.speakerOf().Clip(utterance(t))
 }
 
 // com1 takes the user aircraft's COM1 active frequency: followed at once
@@ -449,11 +137,13 @@ func (v *voiceOut) sayOnce(t traffic.Transmission) bool {
 func (v *voiceOut) com1(freq string) {
 	v.mu.Lock()
 	v.com = freq
-	follow := v.syncCom && freq != "" && freq != v.freq
-	on := v.on
+	sync := v.syncCom
 	v.mu.Unlock()
-	if follow {
-		v.set(on, freq)
+	if !sync || freq == "" {
+		return
+	}
+	if st := v.speakerOf().State(); freq != st.Frequency {
+		v.set(st.On, freq)
 	}
 }
 
@@ -496,22 +186,6 @@ func (v *voiceOut) follow(sync bool) {
 	}
 }
 
-// setDevice plays on output id ("" the system default) from now on.
-func (v *voiceOut) setDevice(id string) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if id == v.device {
-		return nil
-	}
-	if v.player != nil {
-		if err := v.player.SetDevice(id); err != nil {
-			return err
-		}
-	}
-	v.device = id
-	return nil
-}
-
 // registerVoice serves the voice switch: GET /api/voice is its state, POST
 // /api/voice {on, frequency, syncCom} turns it on or off, picks the
 // frequency, or follows the user aircraft's COM1.
@@ -538,7 +212,7 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 			v.follow(*req.SyncCom)
 		}
 		if req.Device != nil {
-			if err := v.setDevice(*req.Device); err != nil {
+			if err := v.speakerOf().SetDevice(*req.Device); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
@@ -556,24 +230,5 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 	})
 }
 
-// speaker is the map's voice, one for the process.
-var speaker = newVoice()
-
-// spokenEnd ends text with a full stop: piper cuts the last syllable of a
-// sentence left open, and a call ends on a call sign ("…, Wizzair 1387").
-func spokenEnd(text string) string {
-	text = strings.TrimRight(text, " ")
-	if text == "" || strings.ContainsAny(text[len(text)-1:], ".?!") {
-		return text
-	}
-	return text + "."
-}
-
-// tailPad adds voiceTailPad of silence after a synthesised call, so the
-// radio chain's fade does not take the last syllable either.
-func tailPad(pcm []int16, rate int) []int16 {
-	return append(pcm, make([]int16, int(voiceTailPad.Seconds()*float64(rate)))...)
-}
-
-// voiceTailPad: silence after each call before the radio effect.
-const voiceTailPad = 150 * time.Millisecond
+// radioVoice is the map's voice, one for the process.
+var radioVoice = newVoice()

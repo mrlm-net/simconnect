@@ -4,9 +4,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/binary"
 	"net"
 	"net/http"
 	"strings"
@@ -14,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic"
-	voicegoio "github.com/mrlm-net/voice-goio"
+	"github.com/mrlm-net/voice-goio/speaker"
 )
 
 // Network play (#511): several people on the LAN, each working one
@@ -118,29 +115,14 @@ func (v *voiceOut) clip(t traffic.Transmission) ([]byte, error) {
 	if b, ok := cached(); ok {
 		return b, nil // made while this one waited
 	}
-	v.mu.Lock()
-	err := v.openEngine()
-	engine, pool, chain, norm := v.engine, v.pool, v.chain, v.norm
-	v.mu.Unlock()
+	if t.Intent == traffic.IntentATIS {
+		t.Position = traffic.PosATIS // the speaker's ATIS voice
+	}
+	out, rate, err := v.clipOf(t)
 	if err != nil {
 		return nil, err
 	}
-	var voice voicegoio.VoiceProfile
-	switch {
-	case t.Intent == traffic.IntentATIS:
-		voice = pool.Assign(t.Airport, voicegoio.ATIS)
-	case t.Pilot:
-		voice = pool.Assign(t.Callsign, voicegoio.Center)
-	default:
-		voice = pool.Assign(v.onShift(t.Airport, t.Position), controllerKind(t.Position))
-	}
-	pcm, err := engine.Synthesize(context.Background(), voice, norm.Spoken(t.Text, phraseologyOf(t)))
-	if err != nil {
-		return nil, err
-	}
-	rate := engine.SampleRate(voice)
-	out := chain.Apply(pcm, rate, voice.Radio, rate, int64(len(t.Text)))
-	b := wav(out, rate)
+	b := speaker.WAV(out, rate)
 	clips.Lock()
 	clips.m[key] = b
 	clips.order = append(clips.order, key)
@@ -150,27 +132,6 @@ func (v *voiceOut) clip(t traffic.Transmission) ([]byte, error) {
 	}
 	clips.Unlock()
 	return b, nil
-}
-
-// wav is pcm (16-bit mono at rate) as a WAV file.
-func wav(pcm []int16, rate int) []byte {
-	var b bytes.Buffer
-	le := binary.LittleEndian
-	data := uint32(len(pcm) * 2)
-	b.WriteString("RIFF")
-	binary.Write(&b, le, 36+data)
-	b.WriteString("WAVEfmt ")
-	binary.Write(&b, le, uint32(16))
-	binary.Write(&b, le, uint16(1)) // PCM
-	binary.Write(&b, le, uint16(1)) // mono
-	binary.Write(&b, le, uint32(rate))
-	binary.Write(&b, le, uint32(rate*2))
-	binary.Write(&b, le, uint16(2))
-	binary.Write(&b, le, uint16(16))
-	b.WriteString("data")
-	binary.Write(&b, le, data)
-	binary.Write(&b, le, pcm)
-	return b.Bytes()
 }
 
 // registerNetwork serves the clips:
@@ -212,7 +173,7 @@ func registerNetwork(mux *http.ServeMux, st *state) {
 			http.Error(w, "no such transmission", http.StatusNotFound)
 			return
 		}
-		b, err := speaker.clip(*found)
+		b, err := radioVoice.clip(*found)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
