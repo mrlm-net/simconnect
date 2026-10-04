@@ -176,8 +176,8 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				break
 			}
 		}
-		if it == nil {
-			continue
+		if it == nil || it.joinPending.Load() {
+			continue // VFR: told to join first (#711)
 		}
 		// Looking ahead: an established arrival (fixed, it keeps its time)
 		// acts only when predicted to land short of its spacing behind its
@@ -243,13 +243,23 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			tlog.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
 		}
 		if it.circuit != nil {
-			// VFR in the circuit (#569): its downwind extended, said so; no
-			// speed for a light aircraft and no hold (12.3.4.15 c).
-			if a.ExtraNM > 0 {
-				it.say(traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
-			}
+			// VFR in the circuit (#569): its downwind extended, said so with
+			// whom it follows (12.3.4.14 b: the slower one fitted in behind,
+			// #711); no speed for a light aircraft and no hold (12.3.4.15 c).
 			// Much more than a longer downwind can take: another circuit
-			// (12.3.4.17 c); a little more: an orbit.
+			// (12.3.4.17 c), said alone; a little more: an orbit.
+			extend := a.ExtraNM > 0 && a.Left < anotherCircuitFrom
+			if extend {
+				tx := traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind)
+				if n, tr, lead := it.circuitPlace(); n > 1 && tr != "" {
+					tx = traffic.Joined(traffic.FollowTraffic(e.Callsign, n, tr), tx)
+					it.placeSaid.Store(int32(n))
+					if lead != "" && q.cc.followed != nil {
+						q.cc.followed(it.ICAO, it.Tail, lead)
+					}
+				}
+				it.say(tx)
+			}
 			if a.Left >= anotherCircuitFrom {
 				if err := q.cc.do(func() error { _, err := it.arr.AnotherCircuit(); return err }); err == nil {
 					it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))

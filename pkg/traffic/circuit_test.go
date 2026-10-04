@@ -303,3 +303,42 @@ func TestAnotherCircuit(t *testing.T) {
 	}
 	t.Logf("another circuit: %v", d.Round(time.Second))
 }
+
+// TestCircuitGoAroundBeforeFinal: a circuit arrival sent around on its
+// base, before the injected approach, goes round again — not nothing
+// (live, OKIMV sent around twice, landed).
+func TestCircuitGoAroundBeforeFinal(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("SR22")
+	c, _ := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft SR22", Tail: "OKIMV",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 83))
+	base, _ := c.Point(LegBase)
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 83, base.Position, base.AltFt, 0, CircuitKts(p), false))
+	before := len(ctl.proc.Waypoints)
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.goArounds != 1 || len(ctl.proc.Waypoints) <= before {
+		t.Errorf("go-arounds %d, waypoints %d → %d: not sent round again", ctl.goArounds, before, len(ctl.proc.Waypoints))
+	}
+	up, _ := c.Point(LegUpwind)
+	closest := math.Inf(1) // its corners rounded: near the upwind point
+	for _, w := range ctl.proc.Waypoints {
+		closest = math.Min(closest, localDist(airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, up.Position))
+	}
+	if closest > 500 {
+		t.Errorf("not round the upwind again: closest %.0f m", closest)
+	}
+	t.Logf("upwind passed within %.0f m", closest)
+}

@@ -519,6 +519,11 @@ const OverheadAboveFt = 1000.0
 func (c *ArrivalController) AnotherCircuit() (time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.anotherCircuit()
+}
+
+// anotherCircuit is AnotherCircuit under c.mu.
+func (c *ArrivalController) anotherCircuit() (time.Duration, error) {
 	if c.req.Circuit == nil || !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 2 {
 		return 0, ErrNotOnProcedure
 	}

@@ -199,6 +199,17 @@ func (c *ArrivalController) GoAround() error {
 		return ErrNotInjected
 	}
 	if c.flyingProc {
+		// A circuit arrival on its base or final before the injected
+		// approach takes over: over the runway and round again (live,
+		// OKIMV sent around twice, landed: the order was dropped).
+		if c.req.Circuit != nil {
+			if _, err := c.anotherCircuit(); err != nil {
+				return err
+			}
+			c.goArounds++
+			c.note("go around (circuit, before the final)", nil)
+			return nil
+		}
 		return nil // not on final yet: nothing to go around from
 	}
 	if c.approach == nil {

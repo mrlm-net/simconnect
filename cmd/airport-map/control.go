@@ -130,6 +130,11 @@ type controlled struct {
 	directAnswer func() (traffic.Transmission, bool)
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
+	// joinPending: a VFR arrival's join call not said yet; no sequencing
+	// instruction before it (live, OKIMV "extend downwind" then "join
+	// right downwind", #711). placeSaid: its place in the circuit as told.
+	joinPending atomic.Bool
+	placeSaid   atomic.Int32
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -877,7 +882,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
 			qnh, _ := cc.qnh()
+			it.joinPending.Store(true)
 			it.call(traffic.PosTower, prioApproach, func() {
+				defer it.joinPending.Store(false)
 				if it.circuitJoin == traffic.LegFinal {
 					it.say(traffic.StraightIn(r.Tail, r.Runway, cc.windSaid(g.Layout.ICAO), qnh))
 					return
@@ -2685,7 +2692,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			it.say(traffic.CircuitReport(it.Tail, report))
 			// The tower gives its place in the landing sequence (#569).
 			it.call(traffic.PosTower, prioApproach, func() {
-				if n, tr, lead := it.circuitPlace(); n > 0 {
+				// Told with an extended downwind already: not again.
+				if n, tr, lead := it.circuitPlace(); n > 0 && int32(n) != it.placeSaid.Load() {
+					it.placeSaid.Store(int32(n))
 					it.say(traffic.FollowTraffic(it.Tail, n, tr))
 					// As told: it lands after the one it follows, whatever the
 					// predictions say once it turns in.
