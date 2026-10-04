@@ -342,7 +342,7 @@ type controlCenter struct {
 func newControlCenter(client engine.Client, k *core) *controlCenter {
 	log := k.log
 	cc := &controlCenter{
-		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
+		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models: map[string]bool{},
 		own:    map[uint32]bool{},

@@ -45,3 +45,13 @@ func TestHostAPI(t *testing.T) {
 	}
 	w.Heard(traffic.Transmission{Airport: "LKPR", Frequency: "118.100", Text: "x"}) // not connected: nothing
 }
+
+// TestIDBase: the library helpers move to IDBase, else keep the defaults.
+func TestIDBase(t *testing.T) {
+	if ids := New(Options{DataDir: t.TempDir(), IDBase: 0xA000}).st.core.libIDs(); ids.loaderDef != 0xA000 || ids.procReq != 0xA000+300 || ids.injEvt != 0xA000+900 {
+		t.Errorf("%+v", ids)
+	}
+	if ids := New(Options{DataDir: t.TempDir()}).st.core.libIDs(); ids.procDef != 8400 || ids.airportList != traffic.DefaultAirportListRequestID {
+		t.Errorf("defaults %+v", ids)
+	}
+}

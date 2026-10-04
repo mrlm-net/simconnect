@@ -45,6 +45,12 @@ type Options struct {
 	// DumpDir, when set, gets each fetched airport's raw facility records
 	// (<ICAO>.json).
 	DumpDir string
+	// IDBase moves the library helpers the World creates off their default
+	// SimConnect IDs, for a host using the same helpers on its connection:
+	// airport loader at IDBase (definitions) and +100 (requests), procedure
+	// loader +200/+300, nav loader +400/+500, airport list +600, injector
+	// +700/+800/+900 (events). 0: the defaults (docs/traffic-world.md).
+	IDBase uint32
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
 

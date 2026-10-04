@@ -420,10 +420,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	)
 
 	// The loader sends facility requests; this loop hands it every message.
-	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache))
-	procLoader := airport.NewProcedureLoader(client)
+	ids := st.core.libIDs()
+	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache), airport.LoaderWithIDs(ids.loaderDef, ids.loaderReq))
+	procLoader := airport.NewProcedureLoaderWithIDs(client, ids.procDef, ids.procReq)
 	// The runways' ILS: frequency and name from their navaid records.
-	navLoader := nav.NewNavLoaderWithIDs(client, nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, 8)
+	navLoader := nav.NewNavLoaderWithIDs(client, ids.navDef, ids.navReq, 8)
 	st.core.resetILS() // lookups of a connection before: never answered now
 	// Weather at the user aircraft, whenever it changes.
 	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
@@ -474,7 +475,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		return p, ok
 	}
 	// The airports around, for the traffic picture: now and every minute.
-	airports := traffic.NewAirportLister(client, 0)
+	airports := traffic.NewAirportLister(client, ids.airportList)
 	if err := airports.Request(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  airport list: %v\n", err)
 	}

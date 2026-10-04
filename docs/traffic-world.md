@@ -62,7 +62,7 @@ The World never controls nor calls the user aircraft. A host whose own ATC works
 
 ## SimConnect IDs
 
-The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them.
+The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900.
 
 | IDs | What |
 |---|---|
