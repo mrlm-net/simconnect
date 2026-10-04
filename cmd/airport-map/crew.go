@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -151,7 +150,9 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 		ahead := fixesAhead(it.fixes, it.dep.ClimbRoute(a.Position))
 		var fix *airFix
 		for i := len(ahead) - 1; i >= 1; i-- { // the furthest, past the next
-			if d := calc.HaversineNM(a.Position.Lat, a.Position.Lon, ahead[i].Lat, ahead[i].Lon); d >= crewDirectMinNM && d <= crewDirectMaxNM {
+			// Worth asking for: it saves a real part of the way (#670).
+			along, d := traffic.AlongTo(a.Position, it.dep.ClimbRoute(a.Position), ahead[i].LatLon)
+			if d >= crewDirectMinNM && d <= crewDirectMaxNM && traffic.DirectWorthIt(along, d) {
 				fix = &ahead[i]
 				break
 			}
