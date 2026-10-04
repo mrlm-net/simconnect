@@ -327,7 +327,6 @@ func (s *state) finish(icao string, err error) {
 	delete(s.waiters, icao)
 }
 
-
 // runOn runs the traffic on a connected client whose messages arrive on
 // stream (the client's own, or a host's fed through World.Feed), until ctx
 // ends (ctx.Err()) or stream closes (nil: the simulator went away).
@@ -438,6 +437,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			})
 		})
 	}
+	// What the loop reads goes to the World through the feed (#710).
+	var feed simFeed = localFeed{st: st, cc: cc}
 	cc.graph = st.cache.Graph
 	cc.layout = st.cache.Layout
 	cc.pads = st.pads.forAirport
@@ -615,7 +616,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
 			if err := loader.Request(icao); err != nil {
-				st.finish(icao, err)
+				feed.Layout(icao, err)
 			}
 			if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(os.Stderr, "❌ procedures of %s: %v\n", icao, err)
@@ -630,18 +631,18 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 			for _, r := range navLoader.Expire(now) {
-				st.core.gotILS(r)
+				feed.ILS(r)
 			}
 			for _, res := range loader.Expire(now) {
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
-				st.finish(res.ICAO, res.Err)
+				feed.Layout(res.ICAO, res.Err)
 			}
 
 		case msg, ok := <-stream:
 			if !ok {
 				fmt.Println("📴 Simulator disconnected")
 				for _, icao := range loader.Pending() {
-					st.finish(icao, errors.New("simulator disconnected"))
+					feed.Layout(icao, errors.New("simulator disconnected"))
 				}
 				return nil
 			}
@@ -651,27 +652,19 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 			if list, ok := airports.Handle(msg); ok {
-				cc.world.SetAirports(list)
+				feed.Airports(list)
 				continue
 			}
 			if wx, ok := weather.Handle(msg); ok {
-				st.mu.Lock()
-				st.weather = &wx
-				st.mu.Unlock()
+				feed.Weather(wx)
 				continue
 			}
 			if r, done := navLoader.Handle(msg); done {
-				st.core.gotILS(r)
+				feed.ILS(r)
 				continue
 			}
 			if p, done := procLoader.Handle(msg); done {
-				fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
-				st.mu.Lock()
-				if st.procedures == nil {
-					st.procedures = map[string]airport.Procedures{}
-				}
-				st.procedures[p.ICAO] = p
-				st.mu.Unlock()
+				feed.Procedures(p)
 				continue
 			}
 			if res, done := loader.Handle(msg); done {
@@ -689,7 +682,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					}
 					st.core.requestILS(navLoader, l)
 				}
-				st.finish(res.ICAO, res.Err)
+				feed.Layout(res.ICAO, res.Err)
 				continue
 			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {
@@ -716,28 +709,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				}
 				a := engine.CastDataAs[aircraftRaw](&d.DwData)
 				userID = uint32(d.DwObjectID) // the user aircraft's real object ID, as by-type scans report it
-				st.mu.Lock()
-				if a.SimRate > 0 && a.SimRate != cc.clock.Rate() {
-					cc.clock.SetRate(a.SimRate)
-					tlog.printf("simulation rate %g×: traffic follows it", a.SimRate)
-				}
-				st.aircraft = &Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
-					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, SimRate: cc.clock.Rate(), Paused: cc.clock.Paused(), Camera: int(a.Camera), CamView: int(a.CamView), ZuluSec: a.Zulu, LocalSec: a.Local,
-					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart), Updated: time.Now()}
-				st.mu.Unlock()
+				com1 := ""
 				if a.Com1 > 0 {
-					if h := st.core.hooks.OnCom1; h != nil {
-						h(airport.FormatMHz(a.Com1)) // a voice follows it when synced
-					}
+					com1 = airport.FormatMHz(a.Com1)
 				}
+				feed.UserAircraft(Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
+					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, Camera: int(a.Camera), CamView: int(a.CamView), ZuluSec: a.Zulu, LocalSec: a.Local,
+					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart)}, a.SimRate, com1)
 
 			case types.SIMCONNECT_RECV_ID_EVENT:
 				if e := msg.AsEvent(); uint32(e.UEventID) == evPause {
-					paused := e.DwData != 0
-					if paused != cc.clock.Paused() {
-						cc.clock.SetPaused(paused)
-						tlog.printf("simulation %s: traffic %s", map[bool]string{true: "paused", false: "resumed"}[paused], map[bool]string{true: "stops", false: "goes on"}[paused])
-					}
+					feed.Paused(e.DwData != 0)
 				}
 
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
@@ -758,14 +740,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
 				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
-					st.mu.Lock()
-					st.traffic, st.trafficAt = scan, time.Now()
-					st.mu.Unlock()
-					// Not under st.mu: reportTraffic takes cc.mu, and an aircraft
-					// handing off holds its own lock while it reads st (the
-					// weather), with /api/control taking cc.mu then the aircraft's:
-					// three locks in a ring froze the map.
-					cc.reportTraffic(scan)
+					feed.Traffic(scan)
 					scan = nil
 				}
 			}
