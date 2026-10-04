@@ -257,3 +257,22 @@ const (
 	DepartureFirstKts    = 40.0
 	DepartureFirstWithin = 2 * time.Minute
 )
+
+// WithWake is t, an aircraft's initial call to an ATS unit, with "heavy"
+// or "super" right after its call sign for an aircraft of that wake
+// category (Doc 4444 4.9.2): "Ruzyne Radar, Speedbird 1367 heavy, ...".
+// Other categories: t as it is.
+func WithWake(t Transmission, w WakeCategory) Transmission {
+	word := ""
+	switch w {
+	case WakeHeavy:
+		word = "heavy"
+	case WakeSuper:
+		word = "super"
+	}
+	if word == "" || t.Callsign == "" {
+		return t
+	}
+	t.Text = strings.Replace(t.Text, t.Callsign, t.Callsign+" "+word, 1)
+	return t
+}

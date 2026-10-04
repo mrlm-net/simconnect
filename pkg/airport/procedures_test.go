@@ -177,3 +177,25 @@ func uintptrOffsetData() uintptr {
 	var h types.SIMCONNECT_RECV_FACILITY_DATA
 	return unsafe.Offsetof(h.Data)
 }
+
+// TestProcedureLoaderWithIDs: a loader on its own IDs takes only its own
+// replies; the default one's are not its (#710: two on one connection).
+func TestProcedureLoaderWithIDs(t *testing.T) {
+	c := &fakeClient{}
+	l := NewProcedureLoaderWithIDs(c, 9400, 9500)
+	if err := l.Request("lkpr"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := l.Handle(endMsg(DefaultProcedureRequestBase)); ok {
+		t.Error("took a reply on the default IDs")
+	}
+	done := false
+	for i := uint32(0); i < 3; i++ {
+		if p, ok := l.Handle(endMsg(9500 + i)); ok {
+			done = p.ICAO == "LKPR"
+		}
+	}
+	if !done {
+		t.Error("its own replies did not finish the airport")
+	}
+}

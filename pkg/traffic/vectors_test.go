@@ -225,3 +225,18 @@ func TestAtEntry(t *testing.T) {
 		t.Errorf("full length %q", full.Text)
 	}
 }
+
+// TestWithWake: "heavy" or "super" after the call sign in a first call
+// (Doc 4444 4.9.2); nothing for the rest.
+func TestWithWake(t *testing.T) {
+	tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "BAW1367", "passing 3000 feet", ""), WakeHeavy)
+	if !strings.Contains(tx.Text, "BAW1367 heavy,") {
+		t.Errorf("%q", tx.Text)
+	}
+	if tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "UAE139", "", ""), WakeSuper); !strings.Contains(tx.Text, "UAE139 super") {
+		t.Errorf("%q", tx.Text)
+	}
+	if tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "CSA1", "", ""), WakeMedium); strings.Contains(tx.Text, "heavy") {
+		t.Errorf("%q", tx.Text)
+	}
+}
