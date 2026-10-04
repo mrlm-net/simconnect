@@ -105,6 +105,7 @@ func New(o Options) *World {
 	reqs := make(chan string)
 	st.requests = reqs
 	st.pads = loadPadStore(filepath.Join(o.DataDir, "deicing.json"))
+	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways = o.Airways
 	return &World{st: st, opts: o, reqs: reqs}
