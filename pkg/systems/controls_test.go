@@ -150,3 +150,28 @@ func TestGroundServices(t *testing.T) {
 		t.Errorf("pushback state %v %v %v", s.PushbackAvailable, s.PushbackAttached, s.PushbackWait)
 	}
 }
+
+// TestDoors: a profile's doors by name and number; the Fenix's 8 read and
+// toggled by the standard exit events, the default's 4 (#700).
+func TestDoors(t *testing.T) {
+	fx := For(Aircraft{Package: "fnx-aircraft-319"})
+	if len(fx.Doors) != 8 || fx.Doors[0] != "L1" || fx.Doors[5] != "AFT cargo" {
+		t.Fatalf("Fenix doors %v", fx.Doors)
+	}
+	if v := fx.Values[Door(7)]; len(v.Vars) != 1 || v.Vars[0] != "EXIT OPEN:7" {
+		t.Errorf("door 8 value %+v", v)
+	}
+	if a := fx.Actions[Door(7)]; a.Event != "TOGGLE_AIRCRAFT_EXIT" || a.Data == nil || *a.Data != 8 {
+		t.Errorf("door 8 action %+v", a)
+	}
+	s := resolveState(fx, map[varUnit]float64{{"EXIT OPEN:5", "percent"}: 100})
+	if len(s.DoorsOpen) != 8 || !s.DoorsOpen[5] || s.DoorsOpen[0] || s.DoorNames[5] != "AFT cargo" {
+		t.Errorf("state doors %v %v", s.DoorsOpen, s.DoorNames)
+	}
+	def := For(Aircraft{Title: "Asobo A320neo"})
+	c := NewControls(&fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}, 0)
+	c.Use(def)
+	if len(def.Doors) != 4 || c.Can(Door(4)) || !c.Can(Door(3)) {
+		t.Errorf("default doors %v, door 5 %v", def.Doors, c.Can(Door(4)))
+	}
+}

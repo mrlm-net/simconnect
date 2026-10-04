@@ -117,6 +117,12 @@ type Profile struct {
 	// EFB is the aircraft's tablet when it serves one over HTTP (the Fenix
 	// EFB on port 8083); nil none (#667).
 	EFB *EFB `json:"efb,omitempty"`
+	// Doors are the aircraft's exits by name, in the order of EXIT OPEN
+	// and TOGGLE_AIRCRAFT_EXIT (Door(0) is exit 1); their number is how many
+	// it has. The default: "Door 1"…"Door 4"; the Fenix: its 8 (#700). A
+	// door without its own value and action reads EXIT OPEN:n and toggles
+	// TOGGLE_AIRCRAFT_EXIT n+1.
+	Doors []string `json:"doors,omitempty"`
 }
 
 // EFB is where an aircraft's tablet is served: http://<sim host>:Port+Path.
@@ -180,6 +186,9 @@ func Merge(base, over Profile) Profile {
 	if over.EFB != nil {
 		out.EFB = over.EFB
 	}
+	if len(over.Doors) > 0 {
+		out.Doors = over.Doors
+	}
 	if len(over.Match.PackagePrefix)+len(over.Match.TitleContains)+len(over.Match.ATCType) > 0 {
 		out.Match = over.Match
 	}
@@ -242,6 +251,38 @@ func For(a Aircraft, overrides ...Profile) Profile {
 			p = Merge(p, o)
 		}
 	}
+	return withDoors(p)
+}
+
+// withDoors gives every door of p.Doors its value and action (the
+// standard EXIT OPEN:n and TOGGLE_AIRCRAFT_EXIT n+1) where p has none, and
+// drops the default's doors beyond its number.
+func withDoors(p Profile) Profile {
+	if len(p.Doors) == 0 {
+		return p
+	}
+	values, actions := map[string]Value{}, map[string]Action{}
+	for k, v := range p.Values {
+		values[k] = v
+	}
+	for k, a := range p.Actions {
+		actions[k] = a
+	}
+	for n := 0; n < 10; n++ {
+		if n >= len(p.Doors) {
+			delete(values, Door(n))
+			delete(actions, Door(n))
+			continue
+		}
+		if _, ok := values[Door(n)]; !ok {
+			values[Door(n)] = Value{Vars: []string{fmtIndexed("EXIT OPEN", n)}, Unit: "percent"}
+		}
+		if _, ok := actions[Door(n)]; !ok {
+			exit := uint32(n + 1)
+			actions[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
+		}
+	}
+	p.Values, p.Actions = values, actions
 	return p
 }
 
