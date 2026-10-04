@@ -498,3 +498,23 @@ func TestPathClearAlongProfile(t *testing.T) {
 		t.Errorf("levelling at 6000 ft on the SID: not clear, want clear")
 	}
 }
+
+// TestPastRouteEnd: two in trail on the same route, the one behind with
+// only its last waypoint, passed, left: flown straight on, not back to it
+// (live, TVS524 and THY1463, #657).
+func TestPastRouteEnd(t *testing.T) {
+	trail := air(2, "TVS524", 8, 0, 20400, 270, 250, 0, true)
+	o := ConflictOptions{Route: func(a TrackedAircraft) []airport.LatLon {
+		if a.ObjectID == 2 {
+			return []airport.LatLon{pt(10, 0, 0).Position} // behind it
+		}
+		return []airport.LatLon{pt(-60, 0, 0).Position}
+	}}
+	if _, _, alt := trackFor(trail, o).at(time.Minute); alt != 20400 {
+		t.Fatalf("alt %.0f", alt)
+	}
+	if lat, lon, _ := trackFor(trail, o).at(time.Minute); calc.HaversineNM(lat, lon, trail.Position.Lat, trail.Position.Lon) < 4 ||
+		calc.BearingDegrees(trail.Position.Lat, trail.Position.Lon, lat, lon) < 260 {
+		t.Errorf("not straight on west: %.4f %.4f", lat, lon)
+	}
+}

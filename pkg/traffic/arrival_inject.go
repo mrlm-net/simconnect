@@ -226,6 +226,10 @@ func (c *ArrivalController) step() GroundPose {
 		c.last.GivingWayTo = c.givingWay
 		c.emit(nil, true)
 	}
+	if by := map[bool]string{true: c.stoppedBy(pose)}[c.state == ArrivalTaxiing]; by != c.last.StoppedBy {
+		c.last.StoppedBy = by
+		c.emit(nil, true)
+	}
 	return pose
 }
 

@@ -356,6 +356,10 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.last.GivingWayTo = c.givingWay
 		c.emit(nil, true)
 	}
+	if by := map[bool]string{true: c.stoppedBy(pose)}[c.state == TaxiTaxiing]; by != c.last.StoppedBy {
+		c.last.StoppedBy = by
+		c.emit(nil, true)
+	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
 	c.last.Remaining = math.Max(0, c.mover.Path().Length()-pose.Distance)
 	if c.state != TaxiPushback {

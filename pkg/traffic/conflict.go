@@ -123,12 +123,27 @@ func trackFor(a TrackedAircraft, o ConflictOptions) track {
 				t.path = append(t.path, p.Position)
 				t.alts = append(t.alts, p.AltFt)
 			}
-			return t
+			return t.pastEnd()
 		}
 	}
 	if o.Route != nil {
 		t.path = o.Route(a)
 	}
+	return t.pastEnd()
+}
+
+// pastEnd is t straight on when every point of its path is behind it: past
+// the end of its route, where MSFS AI flies on as it heads (live, TVS524
+// predicted turning back to its last waypoint, 0.2 NM from THY1463 ahead
+// of it on the same route, and THY1463 vectored for it, #657).
+func (t track) pastEnd() track {
+	for _, p := range t.path {
+		b := calc.BearingDegrees(t.lat, t.lon, p.Lat, p.Lon)
+		if math.Abs(math.Mod(b-t.hdg+540, 360)-180) <= 90 {
+			return t
+		}
+	}
+	t.path, t.alts = nil, nil
 	return t
 }
 
