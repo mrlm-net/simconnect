@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -559,8 +560,12 @@ type SpawnRequest struct {
 	// (squawkFor).
 	Squawk         string `json:"squawk"`
 	Gates          bool   `json:"gates"`          // hold at every clearance
-	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection
-	Tug            bool   `json:"tug"`            // departure: a pushback tug (GSX model)
+	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection (the default: see AILanding)
+	// AILanding: MSFS AI flies the approach and lands (only when asked, an
+	// explicit injectApproach false; it lands at -1000 fpm). Every other
+	// arrival flies our injected approach.
+	AILanding bool `json:"-"`
+	Tug       bool `json:"tug"` // departure: a pushback tug (GSX model)
 	// Fuel: a departure is refuelled on its stand when it waits long
 	// enough (a schedule's), by a fuel truck or hydrant dispenser (#582).
 	Fuel     bool     `json:"fuel"`
@@ -852,7 +857,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
+			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
 			CrosswindKts: cc.crosswind(g, r.Runway)})
 		if err != nil {
@@ -875,7 +880,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
 	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Rules: flightRules(r), Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
-	cc.log.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
+	cc.log.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.Kind == "arrival" && !r.AILanding)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
 	// then the clearance (#462).
@@ -1513,10 +1518,20 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if cc == nil {
 			return
 		}
-		var req SpawnRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		var req SpawnRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// MSFS AI lands an arrival only when asked: injectApproach false.
+		var given map[string]json.RawMessage
+		if _ = json.Unmarshal(body, &given); given["injectApproach"] != nil && !req.InjectApproach {
+			req.AILanding = true
 		}
 		g, err := st.cache.Graph(req.ICAO)
 		if err != nil {
