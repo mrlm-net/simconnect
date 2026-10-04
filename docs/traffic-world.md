@@ -37,6 +37,7 @@ go w.RunOn(ctx, client) // all its SimConnect calls happen here; again on the ne
 | `Airspace` | the control zone class for VFR rules (default D) |
 | `DataDir` | de-icing pads (`deicing.json`) and review overlays |
 | `DumpDir` | write each fetched airport's raw facility records |
+| `IDBase` | moves the library helpers it creates off their default IDs (see SimConnect IDs) |
 | `Scenes` | a directory of camera scenes; "" the built-in ones |
 | `OnTransmission` | every transmission once logged: the host says it with its own voice |
 | `OnChange` | a part of the picture changed (`control`, `radio`): fetch it again |
