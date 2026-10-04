@@ -27,7 +27,14 @@ It builds against the library in the checkout through a Go workspace, which is n
 go work init . ./cmd/airport-map ./cmd/simvar-cli
 ```
 
-Its `go.mod` has no `replace`, so a released version installs with `go install`; the web UI is built in, and the voice looks for `bin/piper/piper.exe` next to the executable.
+Its `go.mod` has no `replace` and requires a released library, so it installs with no checkout:
+
+```bash
+go install github.com/mrlm-net/simconnect/cmd/airport-map@latest
+airport-map -icao LKPR
+```
+
+The web UI is built in; the voice looks for `bin/piper/piper.exe` next to the executable; without `-airways` flight plans fly direct. When the map uses library API newer than the release it requires, bump the require to the next release before tagging it.
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
