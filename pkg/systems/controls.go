@@ -4,8 +4,12 @@
 package systems
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
 	"sync"
 	"time"
 	"unsafe"
@@ -41,6 +45,8 @@ type Controls struct {
 
 	mu      sync.Mutex
 	actions map[string]Action
+	efb     *EFB   // the aircraft's tablet (Profile.EFB)
+	efbHost string // where the sim runs: "127.0.0.1" unless SetEFBHost
 	events  map[string]uint32 // event name → mapped client event ID
 	defs    map[string]uint32 // variable → data definition ID
 	next    uint32
@@ -52,14 +58,22 @@ func NewControls(client ControlClient, base uint32) *Controls {
 	if base == 0 {
 		base = DefaultControlBase
 	}
-	return &Controls{client: client, base: base, events: map[string]uint32{}, defs: map[string]uint32{}}
+	return &Controls{client: client, base: base, events: map[string]uint32{}, defs: map[string]uint32{}, efbHost: "127.0.0.1"}
+}
+
+// SetEFBHost sets the host the sim (and the aircraft's tablet) runs on,
+// for an app on another machine; "127.0.0.1" by default.
+func (c *Controls) SetEFBHost(host string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.efbHost = host
 }
 
 // Use takes the aircraft's profile (For): its actions from now on.
 func (c *Controls) Use(p Profile) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.actions = p.Actions
+	c.actions, c.efb = p.Actions, p.EFB
 }
 
 // Can reports whether the aircraft's profile gives a way to operate name.
@@ -84,6 +98,8 @@ func (c *Controls) Set(name string, on bool, now State) error {
 		want = 1
 	}
 	switch {
+	case a.EFB != "":
+		return c.efbWrite(a.EFB, on)
 	case a.Set != "":
 		return c.setVar(a.Set, want)
 	case a.Press != "":
@@ -126,6 +142,37 @@ func (c *Controls) event(name string, data uint32) error {
 	c.mu.Unlock()
 	return c.client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, id, data,
 		types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
+}
+
+// efbWrite writes boolean data ref name through the aircraft's tablet API
+// (GraphQL writeBool, as its own EFB does).
+func (c *Controls) efbWrite(name string, v bool) error {
+	c.mu.Lock()
+	efb, host := c.efb, c.efbHost
+	c.mu.Unlock()
+	if efb == nil {
+		return fmt.Errorf("%w: %s (no EFB in the profile)", ErrNoControl, name)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"query":     "mutation($v: Boolean!) { dataRef { writeBool(name: " + strconv.Quote(name) + ", value: $v) } }",
+		"variables": map[string]any{"v": v},
+	})
+	cl := http.Client{Timeout: 5 * time.Second}
+	resp, err := cl.Post("http://"+host+":"+strconv.Itoa(efb.Port)+"/graphql", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("systems: EFB write %s: %w", name, err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("systems: EFB write %s: status %d %v", name, resp.StatusCode, err)
+	}
+	if len(out.Errors) > 0 {
+		return fmt.Errorf("systems: EFB write %s: %s", name, out.Errors[0].Message)
+	}
+	return nil
 }
 
 func (c *Controls) setVar(name string, v float64) error {
