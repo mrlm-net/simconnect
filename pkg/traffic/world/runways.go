@@ -279,6 +279,11 @@ func (t *towers) tick(now time.Time) {
 		}
 		t.mu.Unlock()
 		c := rc.Decide(now, list)
+		// The host's ATC cleared the user aircraft onto it (#710): none of
+		// ours lines up, takes off, lands or crosses meanwhile.
+		if p, ok := t.cc.core.playerOn(k.icao, k.rwy); ok && p.Phase != PlayerVacated {
+			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind = nil, nil, nil, nil, nil, nil
+		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
 		t.crewRejects(ours)

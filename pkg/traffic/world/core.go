@@ -38,6 +38,9 @@ type core struct {
 	circuits circuitStore
 	vfrSets  vfrPointStore
 
+	// player is the host's clearance of the user aircraft (World.ClearPlayer).
+	player playerState
+
 	// hooks are the host's (Options): the radio, COM1, scenes.
 	hooks Options
 

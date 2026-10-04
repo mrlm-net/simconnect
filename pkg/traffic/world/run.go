@@ -347,7 +347,13 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	}
 	fmt.Println("✅ Connected to SimConnect")
 	defer client.Disconnect()
+	return runOn(ctx, st, client, client.Stream(), requests, dumpDir)
+}
 
+// runOn runs the traffic on a connected client whose messages arrive on
+// stream (the client's own, or a host's fed through World.Feed), until ctx
+// ends (ctx.Err()) or stream closes (nil: the simulator went away).
+func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan engine.Message, requests <-chan string, dumpDir string) error {
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Frame):", err)
 	}
@@ -429,7 +435,12 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	// queue commands to it.
 	cc := newControlCenter(client, st.core)
 	// The front end: the open maps, the voice and the camera hear it all.
-	cc.onChange = hub.publish
+	cc.onChange = func(topic string) {
+		hub.publish(topic) // the open maps
+		if h := st.core.hooks.OnChange; h != nil {
+			h(topic)
+		}
+	}
 	cc.onTransmission = func(t traffic.Transmission) {
 		cc.changed("radio") // the open maps fetch it now (push.go)
 		if h := st.core.hooks.OnTransmission; h != nil {
@@ -604,7 +615,6 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	st.setLive(true)
 	defer st.setLive(false)
 
-	stream := client.Stream()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 

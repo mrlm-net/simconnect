@@ -167,6 +167,27 @@ type tugView struct {
 	Route    []airport.LatLon `json:"route,omitempty"`
 }
 
+// VehicleView is one of an aircraft's ground vehicles (the pushback tug,
+// the fuel truck): what it is, the sim object (a host matches it to the
+// objects it shows), where it is, the way still ahead and its state.
+type VehicleView struct {
+	Kind     string               `json:"kind"` // tug, fuel
+	ObjectID uint32               `json:"objectId"`
+	Title    string               `json:"title"`
+	State    traffic.VehicleState `json:"state"`
+	Position airport.LatLon       `json:"position"`
+	Heading  float64              `json:"heading"`
+	Route    []airport.LatLon     `json:"route,omitempty"`
+}
+
+func vehicleView(kind string, id uint32, title string, state traffic.VehicleState, track func() (traffic.GroundPose, []airport.LatLon, bool)) VehicleView {
+	v := VehicleView{Kind: kind, ObjectID: id, Title: title, State: state}
+	if p, route, ok := track(); ok {
+		v.Position, v.Heading, v.Route = p.Position, p.Heading, route
+	}
+	return v
+}
+
 type ControlView struct {
 	ID int `json:"id"`
 	// ATC and Frequency: the position working it and its frequency (#416).
@@ -183,6 +204,8 @@ type ControlView struct {
 	// the way still ahead.
 	Tug            *tugView `json:"tug,omitempty"`
 	Fuel           *tugView `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
+	// Vehicles: its ground vehicles with their object and state (#710).
+	Vehicles []VehicleView `json:"vehicles,omitempty"`
 	Model          string   `json:"model"`
 	Stand          string   `json:"stand"`
 	Runway         string   `json:"runway"`
@@ -1260,6 +1283,71 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	return nil
 }
 
+// views are our aircraft as the map and a host see them: ControlView
+// with the route still to fly and the ground vehicles.
+func (cc *controlCenter) views() []ControlView {
+	out := []ControlView{}
+		// Where departures handed to MSFS AI are now: the world scan.
+		air := map[uint32]traffic.TrackedAircraft{}
+		for _, a := range cc.world.Aircraft() {
+			air[a.ObjectID] = a
+		}
+		cc.mu.Lock()
+		for _, it := range cc.items {
+			it.mu.Lock()
+			v := it.view
+			it.mu.Unlock()
+			if it.arr != nil && !v.OnGround {
+				v.AirRoute = it.arr.ProcedureRoute()
+				v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
+				// Going around: the circuit's track points back to the final.
+				for _, n := range it.arr.CircuitFixes() {
+					v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
+				}
+				// On the final, the procedure flown: the line to the
+				// threshold and down the runway to where its taxi starts.
+				if len(v.AirRoute) == 0 && it.graph != nil {
+					if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
+						v.AirRoute = []airport.LatLon{end.Threshold}
+						if len(v.Route) > 0 {
+							v.AirRoute = append(v.AirRoute, v.Route[0])
+						}
+					}
+				}
+				if h, alt, ok := it.arr.Holding(); ok {
+					v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
+				}
+			}
+			if it.tug != nil {
+				if p, route, ok := it.tug.Track(); ok {
+					v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
+				}
+			}
+			if it.fuel != nil {
+				if p, route, ok := it.fuel.Track(); ok {
+					v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
+				}
+			}
+			// A departure in the air: its SID still to fly, like a STAR.
+			if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
+				if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
+					v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
+					v.AirFixes = fixesAhead(it.fixes, r)
+				}
+			}
+			// Its ground vehicles, with what they say of themselves (#710).
+			if it.tug != nil {
+				v.Vehicles = append(v.Vehicles, vehicleView("tug", it.tug.ObjectID(), it.tug.Title(), it.tug.State(), it.tug.Track))
+			}
+			if it.fuel != nil {
+				v.Vehicles = append(v.Vehicles, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
+			}
+			out = append(out, v)
+		}
+		cc.mu.Unlock()
+	return out
+}
+
 // registerControl adds the traffic control API to mux.
 func registerControl(mux *http.ServeMux, st *state) {
 	center := func(w http.ResponseWriter) *controlCenter {
@@ -1304,57 +1392,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		st.mu.Unlock()
 		out := []ControlView{}
 		if cc != nil {
-			// Where departures handed to MSFS AI are now: the world scan.
-			air := map[uint32]traffic.TrackedAircraft{}
-			for _, a := range cc.world.Aircraft() {
-				air[a.ObjectID] = a
-			}
-			cc.mu.Lock()
-			for _, it := range cc.items {
-				it.mu.Lock()
-				v := it.view
-				it.mu.Unlock()
-				if it.arr != nil && !v.OnGround {
-					v.AirRoute = it.arr.ProcedureRoute()
-					v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
-					// Going around: the circuit's track points back to the final.
-					for _, n := range it.arr.CircuitFixes() {
-						v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
-					}
-					// On the final, the procedure flown: the line to the
-					// threshold and down the runway to where its taxi starts.
-					if len(v.AirRoute) == 0 && it.graph != nil {
-						if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
-							v.AirRoute = []airport.LatLon{end.Threshold}
-							if len(v.Route) > 0 {
-								v.AirRoute = append(v.AirRoute, v.Route[0])
-							}
-						}
-					}
-					if h, alt, ok := it.arr.Holding(); ok {
-						v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
-					}
-				}
-				if it.tug != nil {
-					if p, route, ok := it.tug.Track(); ok {
-						v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
-					}
-				}
-				if it.fuel != nil {
-					if p, route, ok := it.fuel.Track(); ok {
-						v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
-					}
-				}
-				// A departure in the air: its SID still to fly, like a STAR.
-				if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
-					if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
-						v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
-						v.AirFixes = fixesAhead(it.fixes, r)
-					}
-				}
-				out = append(out, v)
-			}
-			cc.mu.Unlock()
+			out = cc.views()
 		}
 		writeJSON(w, out)
 	})

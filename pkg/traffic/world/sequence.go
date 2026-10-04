@@ -545,6 +545,19 @@ func (q *sequences) tick(now time.Time) {
 		}
 	}
 	q.s.mu.Unlock()
+	// The user aircraft landing, as the host's ATC cleared it (#710): in the
+	// sequence, never told anything; ours fit around it.
+	if p, ok := q.cc.core.playerLanding(); ok {
+		cs := p.Callsign
+		if cs == "" {
+			cs = "Player"
+		}
+		for _, a := range pos {
+			if a.User && !a.OnGround {
+				add(p.ICAO, p.Runway, cs, p.Model, a.Position, a.GroundKts, nil, true, false)
+			}
+		}
+	}
 	for _, e := range enroute {
 		a, ok := pos[e.objectID]
 		if !ok {

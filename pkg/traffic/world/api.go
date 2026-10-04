@@ -17,10 +17,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"net/http"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -48,6 +52,10 @@ type Options struct {
 	// it (its voice) or shows it. Called on the engine's goroutines; it
 	// must not block.
 	OnTransmission func(traffic.Transmission)
+	// OnChange is told a part of the picture changed ("control": our
+	// aircraft, "radio": a transmission): fetch it again now. It must not
+	// block.
+	OnChange func(topic string)
 	// OnCom1 is told the user aircraft's COM1 active frequency each
 	// second ("118.100").
 	OnCom1 func(freq string)
@@ -65,6 +73,13 @@ type World struct {
 	st   *state
 	opts Options
 	reqs chan string
+
+	// A host's connection (host.go): its messages, the in-process API.
+	qOnce   sync.Once
+	q       chan engine.Message
+	dropped atomic.Uint64
+	hOnce   sync.Once
+	h       http.Handler
 }
 
 // New makes a World; it connects with Run.
