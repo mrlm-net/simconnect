@@ -746,7 +746,6 @@ func (q *sequences) behind(icao, tail, lead string) {
 	}
 }
 
-
 type seqSaid struct {
 	number int
 	kts    float64
