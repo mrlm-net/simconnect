@@ -106,7 +106,9 @@ Runway thresholds, computed points and TOC/TOD are left out: the simulator rebui
 
 - **Header:** title, rules (`FPType`), route type, cruise altitude in feet, departure and destination ID, and `DeparturePosition`.
 - **Procedures:** the SID with its runway (`DepartureFP`, `RunwayNumberFP` and `RunwayDesignatorFP`: "6" becomes "06", "LEFT" becomes "L"), the STAR, and the approach with its runway, read from the waypoints. The MSFS 2024 layout (`AppVersionMajor` 12, e.g. SimBrief's "M24" export) names them in `DepartureDetails`, `ArrivalDetails` and `ApproachDetails` instead; those are read as well, and the waypoints win where both say. The approach's runway is the arrival runway.
-- **Waypoints:** id, type, ident and region, position and altitude (`ParseLLA`), and the airway they are reached by. The MSFS 2024 layout has no `WorldPosition` on its waypoints: their position stays 0,0, so look the idents up.
+- **Waypoints:** id, type, ident and region, position and altitude (`ParseLLA`), and the airway they are reached by. The MSFS 2024 layout has no `WorldPosition` on its waypoints: their position stays 0,0, and `PLNResolver` looks them up (#679).
+
+`NewPLNResolver(nav.NewNavLoader(client), plan, airportAt)` fills them in: intersections, VORs and NDBs by ident, region and kind through the facility API (a fix in the plan twice asked once), airports with `airportAt` (an `AirportLister.RequestAll` list, loaded layouts; nil leaves them). Call `Start`, feed every message to `Handle`, `Expire` now and then, until `Done`; `Missing` lists what stayed without a position (unknown fixes, user points, airports the lookup did not know). Live, SimBrief's M24 export LKPR–LKPD: BEKVI.LK at 50.0734, 14.7224.
 
 A `.pln` has no alternate airport field, so none is read.
 
