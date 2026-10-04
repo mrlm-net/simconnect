@@ -115,6 +115,9 @@ type controlled struct {
 	// exitTwy: the taxiway an arrival vacated by, for its report.
 	exitTwy   string
 	readySaid bool // a departure's "ready for departure"
+	// identified: departure has identified it (its check-in answered,
+	// "identified[, climb to ...]"), it.mu (#698).
+	identified bool
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
@@ -2765,6 +2768,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			if stopped := it.cc.climbStopped; stopped != nil && stopped(it.Tail) {
 				level = ""
 			}
+			it.mu.Lock()
+			it.identified = true
+			it.mu.Unlock()
 			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, level))
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
