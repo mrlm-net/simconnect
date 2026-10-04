@@ -107,3 +107,27 @@ The profile's **actions** give the COM swap as the RMP transfer key, `L:S_PED_RM
 ## Actions
 
 `actions` names how a control is operated on a model where the standard key events do not do it: `{"com1Swap": {"press": "L:S_PED_RMP1_XFER"}}` presses that variable (1, then 0). `pkg/avionics` takes them with `Radios.Use(profile.Actions)`. They merge like values: an override wins per action.
+
+An action is one of: `press` (a button variable clicked), `set` (a variable set to the state wanted, 1 or 0), or `event` (a key event; with `toggle` sent only when the state differs, with `data` for its parameter).
+
+## Ground controls
+
+`Controls` operates the user aircraft's ground controls by name, the same way for every aircraft (#667): `Door(n)`, `Chocks`, `GPU`, `ParkingBrake`. The profile says how:
+
+- **Default:** the exits by `TOGGLE_AIRCRAFT_EXIT` with their index from 1, toggled only when not as wanted; the parking brake by `PARKING_BRAKES`, likewise. No chocks or GPU.
+- **Fenix A320 family:** chocks `L:B_CONFIG_CHOCKS` and its GPU `L:B_CONFIG_GPU` (values and actions, from GSX's Fenix handler); the parking brake `L:S_MIP_PARKING_BRAKE`. Not yet measured live: marked so in the profile.
+
+```go
+ctl := systems.NewControls(client, 0)
+ctl.Use(profile) // systems.For(the aircraft)
+if ctl.Can(systems.Chocks) {
+	ctl.Set(systems.Chocks, false, reader.State()) // remove them
+}
+ctl.Set(systems.Door(0), true, reader.State()) // open the main door
+```
+
+`State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show.
+
+## EFB
+
+A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's EFB on port 8083 (`{"port": 8083, "path": "/"}`, plain HTTP, all interfaces); none in the default.

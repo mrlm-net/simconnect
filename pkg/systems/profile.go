@@ -47,6 +47,11 @@ const (
 	COM1Standby = "com1Standby"
 	COM2Active  = "com2Active"
 	COM2Standby = "com2Standby"
+	// Ground equipment (#667): wheel chocks in place, the aircraft's own
+	// ground power unit connected (a model that has them; not in the
+	// default).
+	Chocks = "chocks"
+	GPU    = "gpu"
 )
 
 // Engine values: "engineRunning1"…"engineRunning4", "starter1"…"starter4";
@@ -91,6 +96,15 @@ type Profile struct {
 	// Actions are how a model is operated where the standard key events
 	// do not do it (pkg/avionics), by name: "com1Swap", "com2Swap".
 	Actions map[string]Action `json:"actions,omitempty"`
+	// EFB is the aircraft's tablet when it serves one over HTTP (the Fenix
+	// EFB on port 8083); nil none (#667).
+	EFB *EFB `json:"efb,omitempty"`
+}
+
+// EFB is where an aircraft's tablet is served: http://<sim host>:Port+Path.
+type EFB struct {
+	Port int    `json:"port"`
+	Path string `json:"path,omitempty"` // "" is "/"
 }
 
 // Aircraft is what a profile is matched against.
@@ -144,6 +158,9 @@ func Merge(base, over Profile) Profile {
 	}
 	if over.Measured != "" {
 		out.Measured = over.Measured
+	}
+	if over.EFB != nil {
+		out.EFB = over.EFB
 	}
 	if len(over.Match.PackagePrefix)+len(over.Match.TitleContains)+len(over.Match.ATCType) > 0 {
 		out.Match = over.Match
@@ -289,14 +306,26 @@ func (v Value) resolve(read map[varUnit]float64) float64 {
 	return out
 }
 
-// Action is one way of operating a control: pressing a button variable
-// (set to 1, then back to 0, as a click does).
+// Action is one way of operating a control, one of:
+//   - Press: a button variable clicked (set to 1, then back to 0);
+//   - Set: a variable set to the state wanted (1 on or open, 0 off or
+//     closed), e.g. the Fenix's L:B_CONFIG_CHOCKS;
+//   - Event: a key event; with Toggle it is sent only when the state
+//     differs from the one wanted (TOGGLE_AIRCRAFT_EXIT), else with the
+//     state as its data (PARKING_BRAKE_SET 1 or 0); Data is sent instead
+//     when given (the exit's index).
 type Action struct {
-	Press string `json:"press"` // e.g. "L:S_PED_RMP1_XFER"
-	Note  string `json:"note,omitempty"`
+	Press  string  `json:"press,omitempty"` // e.g. "L:S_PED_RMP1_XFER"
+	Set    string  `json:"set,omitempty"`
+	Event  string  `json:"event,omitempty"`
+	Toggle bool    `json:"toggle,omitempty"`
+	Data   *uint32 `json:"data,omitempty"`
+	Note   string  `json:"note,omitempty"`
 }
 
-// The actions a profile may give.
+// The actions a profile may give: the radios' swap (pkg/avionics), and
+// the ground controls Controls operates by the value they change: Door(n),
+// Chocks, GPU, ParkingBrake (#667).
 const (
 	COM1Swap = "com1Swap"
 	COM2Swap = "com2Swap"

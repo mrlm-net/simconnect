@@ -17,10 +17,16 @@
     "com1Active": { "vars": ["L:N_PED_RMP1_ACTIVE"], "scale": 0.001, "note": "measured: RMP 1 in kHz (-1 dark)" },
     "com1Standby": { "vars": ["L:N_PED_RMP1_STDBY"], "scale": 0.001, "note": "measured: RMP 1 in kHz; COM STANDBY FREQUENCY:1 does not follow the RMP" },
     "com2Active": { "vars": ["L:N_PED_RMP2_ACTIVE"], "scale": 0.001, "note": "assumed as RMP 1, not measured" },
-    "com2Standby": { "vars": ["L:N_PED_RMP2_STDBY"], "scale": 0.001, "note": "assumed as RMP 1, not measured" }
+    "com2Standby": { "vars": ["L:N_PED_RMP2_STDBY"], "scale": 0.001, "note": "assumed as RMP 1, not measured" },
+    "chocks": { "vars": ["L:B_CONFIG_CHOCKS"], "note": "assumed from GSX's Fenix handler (Remove Chocks): 1 in place; not measured" },
+    "gpu": { "vars": ["L:B_CONFIG_GPU"], "note": "assumed from GSX's Fenix handler (Dismiss Fenix GPU): 1 connected; not measured" }
   },
   "actions": {
     "com1Swap": { "press": "L:S_PED_RMP1_XFER", "note": "measured: the RMP transfer key; the stock COM1_RADIO_SWAP swaps the sim's own pair, which the RMP standby set never reached" },
-    "com2Swap": { "press": "L:S_PED_RMP2_XFER", "note": "assumed as RMP 1, not measured" }
-  }
+    "com2Swap": { "press": "L:S_PED_RMP2_XFER", "note": "assumed as RMP 1, not measured" },
+    "chocks": { "set": "L:B_CONFIG_CHOCKS", "note": "assumed from GSX's Fenix handler: set 1 to place, 0 to remove; not measured" },
+    "gpu": { "set": "L:B_CONFIG_GPU", "note": "assumed from GSX's Fenix handler: set 1 to connect, 0 to dismiss; not measured" },
+    "parkingBrake": { "set": "L:S_MIP_PARKING_BRAKE", "note": "assumed: the Fenix parking brake handle, 1 set, 0 released; not measured" }
+  },
+  "efb": { "port": 8083, "path": "/" }
 }
