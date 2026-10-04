@@ -52,6 +52,24 @@ const (
 	// default).
 	Chocks = "chocks"
 	GPU    = "gpu"
+	// The sim's pushback for the user aircraft (Services Variables):
+	// a tug attached, a pushback possible here, waiting to push (#666).
+	PushbackAttached  = "pushbackAttached"
+	PushbackAvailable = "pushbackAvailable"
+	PushbackWait      = "pushbackWait"
+)
+
+// The sim's own ground services for the user aircraft, requested by name
+// with Controls.Request (#666): the standard key events by default (MSFS
+// 2024 SDK Key Events), a model's own way where its profile gives one.
+const (
+	Jetway      = "jetway"      // TOGGLE_JETWAY: a jetway at a parking spot, or sent away
+	Stairs      = "stairs"      // TOGGLE_RAMPTRUCK: a boarding ramp, or sent away
+	Baggage     = "baggage"     // REQUEST_LUGGAGE: the baggage loader
+	Catering    = "catering"    // REQUEST_CATERING: the catering truck
+	PowerSupply = "powerSupply" // REQUEST_POWER_SUPPLY: a ground power unit
+	FuelTruck   = "fuelTruck"   // REQUEST_FUEL_KEY: a fuel truck (at a parking spot)
+	Pushback    = "pushback"    // TOGGLE_PUSHBACK: the pushback tug
 )
 
 // Engine values: "engineRunning1"…"engineRunning4", "starter1"…"starter4";

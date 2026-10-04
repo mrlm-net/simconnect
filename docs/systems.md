@@ -128,6 +128,10 @@ ctl.Set(systems.Door(0), true, reader.State()) // open the main door
 
 `State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show.
 
+## Ground services
+
+The sim's own ground services for the user aircraft are requested by name with `Controls.Request` (#666): `Jetway` (`TOGGLE_JETWAY`, at a parking spot; asked again, sent away), `Stairs` (`TOGGLE_RAMPTRUCK`), `Baggage` (`REQUEST_LUGGAGE`), `Catering` (`REQUEST_CATERING`), `PowerSupply` (`REQUEST_POWER_SUPPLY`), `FuelTruck` (`REQUEST_FUEL_KEY`, at a parking spot) and `Pushback` (`TOGGLE_PUSHBACK`): the standard key events (MSFS 2024 SDK Key Events) by default, a model's own way where its profile gives one. `State` reads the pushback: `PushbackAttached`, `PushbackAvailable`, `PushbackWait` (Services Variables). An app that drives GSX uses it instead where GSX runs.
+
 ## EFB
 
 A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's EFB on port 8083 (`{"port": 8083, "path": "/"}`, plain HTTP, all interfaces); none in the default.

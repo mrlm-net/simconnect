@@ -124,3 +124,29 @@ func TestControlsFenix(t *testing.T) {
 		t.Errorf("state chocks %v/%v gpu %v/%v", s.HasChocks, s.Chocks, s.HasGPU, s.GPU)
 	}
 }
+
+// TestGroundServices: the sim's ground services requested by name, each its
+// standard key event once; the pushback state read (#666).
+func TestGroundServices(t *testing.T) {
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	c.Use(For(Aircraft{Title: "Asobo A320neo"}))
+	want := map[string]string{Jetway: "TOGGLE_JETWAY", Stairs: "TOGGLE_RAMPTRUCK", Baggage: "REQUEST_LUGGAGE",
+		Catering: "REQUEST_CATERING", PowerSupply: "REQUEST_POWER_SUPPLY", FuelTruck: "REQUEST_FUEL_KEY", Pushback: "TOGGLE_PUSHBACK"}
+	for _, name := range []string{Jetway, Stairs, Baggage, Catering, PowerSupply, FuelTruck, Pushback} {
+		if !c.Can(name) {
+			t.Fatalf("%s: not available", name)
+		}
+		f.sent = nil
+		if err := c.Request(name); err != nil {
+			t.Fatal(err)
+		}
+		if len(f.sent) != 1 || !strings.HasPrefix(f.sent[0], want[name]+" ") {
+			t.Errorf("%s: sent %q, want %s once", name, f.sent, want[name])
+		}
+	}
+	s := resolveState(Default(), map[varUnit]float64{{"PUSHBACK AVAILABLE", "bool"}: 1})
+	if !s.PushbackAvailable || s.PushbackAttached || s.PushbackWait {
+		t.Errorf("pushback state %v %v %v", s.PushbackAvailable, s.PushbackAttached, s.PushbackWait)
+	}
+}
