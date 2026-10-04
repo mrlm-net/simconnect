@@ -544,3 +544,56 @@ func TestDirectWorthIt(t *testing.T) {
 		t.Errorf("around the corner: %.1f along, %.1f direct, not worth it", along, d)
 	}
 }
+
+// TestResolveCrossAtOrAbove: a departure whose SID levels it at 5000 ft
+// under traffic at 5500 is told to cross the fix ahead at or above 7000
+// feet, the climb going on, rather than stopped (#662).
+func TestResolveCrossAtOrAbove(t *testing.T) {
+	dep := air(1, "DEP", 0, 0, 3000, 90, 210, 2000, true)
+	tra := air(2, "TRA", 15, -15, 5500, 0, 250, 0, false)
+	all := []TrackedAircraft{dep, tra}
+	o := ConflictOptions{
+		Profile: func(a TrackedAircraft) []RoutePoint {
+			if a.ObjectID == 1 {
+				return []RoutePoint{pt(5, 0, 5000), pt(10, 0, 5000), pt(30, 0, 5000), pt(60, 0, 24000)}
+			}
+			return nil
+		},
+		DirectFixes: func(a TrackedAircraft) []DirectFix {
+			return []DirectFix{{Ident: "VOZ", Position: pt(10, 0, 0).Position}}
+		},
+	}
+	cs := PredictConflicts(all, o)
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v, want one: levelled at 5000 under 5500", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, o)
+	if !ok || r.Kind != ResolveCross || r.Fix != "VOZ" || r.AltFt != 7000 {
+		t.Fatalf("%+v %v, want cross VOZ at or above 7000", r, ok)
+	}
+	tx := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts)
+	if !strings.HasPrefix(tx.Text, "DEP, cross VOZ at or above 7000 feet") {
+		t.Errorf("%q, want cross VOZ at or above 7000 feet", tx.Text)
+	}
+	if rb, ok := Readback(tx); !ok || rb.Text != "Cross VOZ at or above 7000 feet, DEP" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	// Flown: the fix at 7000 ft, the point before it raised on the way, not
+	// left at 5000 to level off at.
+	route := ResolvedRoute(o.Profile(dep), dep, r, 5*time.Minute)
+	var fix, before RoutePoint
+	for i, p := range route {
+		if calc.HaversineNM(p.Position.Lat, p.Position.Lon, r.Direct.Lat, r.Direct.Lon) < 0.1 {
+			fix, before = p, route[i-1]
+		}
+	}
+	if fix.AltFt != 7000 || before.AltFt <= 5000 {
+		t.Errorf("route %+v: want the fix at 7000 and the point before raised", route)
+	}
+	// Unable at its rate (the fix too near): no cross.
+	slow := dep
+	slow.VSFpm = 500
+	if r, ok := ResolveConflict(cs[0], []TrackedAircraft{slow, tra}, ours, o); ok && r.Kind == ResolveCross {
+		t.Errorf("at 500 fpm: %+v, want no cross", r)
+	}
+}

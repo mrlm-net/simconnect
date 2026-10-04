@@ -60,6 +60,7 @@ const (
 	IntentHoldLevel          Intent = "hold_level"          // descend in the hold
 	IntentSpeed              Intent = "speed"               // reduce or increase speed
 	IntentLevel              Intent = "level"               // climb or descend
+	IntentCrossLevel         Intent = "cross_level"         // cross a fix at or above (below) a level (#662)
 	IntentHeading            Intent = "heading"             // turn left or right heading
 	IntentContact            Intent = "contact"             // a handoff: contact the next position (#416)
 	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
@@ -473,6 +474,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			return fmt.Sprintf("%s, %s to %s", cs, strings.TrimPrefix(p[ParamClimb], "continue "), p[ParamLevel])
 		}
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
+	case IntentCrossLevel:
+		return fmt.Sprintf("%s, cross %s at or %s %s%s", cs, p[ParamFix], p[ParamClimb], p[ParamLevel], why) // 12.3.2.4 a
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
 	case IntentWeather:
@@ -1037,6 +1040,12 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 	case ResolveDirect:
 		t.Intent = IntentDirectTo
 		t.Params[ParamFix] = r.Fix
+	case ResolveCross:
+		t.Intent = IntentCrossLevel
+		t.Params[ParamFix], t.Params[ParamLevel], t.Params[ParamClimb] = r.Fix, LevelSaid(r.AltFt), "above"
+		if r.AltFt < altFt {
+			t.Params[ParamClimb] = "below"
+		}
 	default:
 		t.Intent = IntentHeading
 		t.Params[ParamHeading] = fmt.Sprintf("%03.0f", r.HeadingDeg)

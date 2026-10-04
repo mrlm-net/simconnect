@@ -265,6 +265,9 @@ const (
 	// ResolveDirect: a shortcut, direct to Fix (at Direct) and on along
 	// the route from there.
 	ResolveDirect ResolutionKind = "direct"
+	// ResolveCross: a level to be at (or above, climbing; below,
+	// descending) by Fix (at Direct), the climb or descent going on (#662).
+	ResolveCross ResolutionKind = "cross"
 )
 
 // Resolution is a change to one of ours that keeps a conflict apart.
@@ -353,6 +356,35 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 				t := base
 				t.level = alt
 				add(Resolution{Kind: ResolveLevel, AltFt: alt, Stop: true}, t, levelCost+0.7+float64(k)*0.002)
+			}
+		}
+	}
+	// Climbing (descending) toward the traffic's level: over (under) it by
+	// a fix ahead, the climb going on, "cross VOZ at or above 7000 feet"
+	// (Doc 4444 12.3.2.4 a). Where its route would level it off below the
+	// traffic (a SID's level) and it makes the level at no more than its
+	// rate now, at the nearest fix it can; cheaper than a stop (#662).
+	if base.fpm != 0 && len(base.path) > 0 {
+		up := base.fpm > 0
+		target := math.Ceil((other.AltFt+minFt)/1000) * 1000
+		if !up {
+			target = math.Floor((other.AltFt-minFt)/1000) * 1000
+		}
+		if up == (other.AltFt > a.AltFt) && goesTo(base, target, up) && target >= a.AltFt-a.AGLFt+1500 {
+			for _, f := range fixes {
+				k := nearestOn(base.path, f.Position)
+				if k < 0 || calc.HaversineNM(base.path[k].Lat, base.path[k].Lon, f.Position.Lat, f.Position.Lon) > 0.5 {
+					continue // not a point of its route
+				}
+				nm := base.pathNM(k)
+				if nm < 1 || base.kts <= 0 || math.Abs(target-a.AltFt)/(nm/base.kts*60) > math.Abs(base.fpm) {
+					continue // too near to make the level at its rate
+				}
+				t := base
+				t.alts = crossAlts(base, k, target, up)
+				p := f.Position
+				add(Resolution{Kind: ResolveCross, Fix: f.Ident, Direct: &p, AltFt: target}, t, levelCost+0.6)
+				break // the nearest it can make
 			}
 		}
 	}
@@ -641,6 +673,35 @@ func ResolvedRoute(route []RoutePoint, a TrackedAircraft, r Resolution, lookAhea
 		fix.Position = *r.Direct
 		return append([]RoutePoint{here, fix}, ahead[at+1:]...)
 	}
+	if r.Kind == ResolveCross && r.Direct != nil && len(ahead) > 0 {
+		k, best := -1, math.Inf(1)
+		for i, p := range ahead {
+			if d := calc.HaversineNM(r.Direct.Lat, r.Direct.Lon, p.Position.Lat, p.Position.Lon); d < best {
+				k, best = i, d
+			}
+		}
+		up := r.AltFt > a.AltFt
+		cum := make([]float64, len(ahead))
+		prev := here.Position
+		for i, p := range ahead {
+			d := calc.HaversineNM(prev.Lat, prev.Lon, p.Position.Lat, p.Position.Lon)
+			if i > 0 {
+				d += cum[i-1]
+			}
+			cum[i], prev = d, p.Position
+		}
+		out := []RoutePoint{here}
+		for i, p := range ahead {
+			if i <= k && cum[k] > 0 {
+				want := a.AltFt + (r.AltFt-a.AltFt)*cum[i]/cum[k]
+				if up && p.AltFt < want || !up && (p.AltFt == 0 || p.AltFt > want) {
+					p.AltFt = want
+				}
+			}
+			out = append(out, p)
+		}
+		return out
+	}
 	if r.Kind == ResolveHeading {
 		lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, r.HeadingDeg, reach/2*1852)
 		out := []RoutePoint{here, {Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: a.AltFt, Kts: a.GroundKts}}
@@ -701,4 +762,42 @@ func nearestOn(path []airport.LatLon, p airport.LatLon) int {
 		}
 	}
 	return at
+}
+
+// goesTo reports whether t climbs (up) or descends to target anyway: a
+// point of its profile at or beyond it, or no profile and no stop.
+func goesTo(t track, target float64, up bool) bool {
+	if len(t.alts) == 0 {
+		return t.level == 0
+	}
+	for _, x := range t.alts {
+		if x > 0 && (up && x >= target || !up && x <= target) {
+			return true
+		}
+	}
+	return false
+}
+
+// pathNM is how far t flies along its path to point k: to its first
+// point, then leg by leg.
+func (t track) pathNM(k int) float64 {
+	nm, lat, lon := 0.0, t.lat, t.lon
+	for i := 0; i <= k && i < len(t.path); i++ {
+		nm += calc.HaversineNM(lat, lon, t.path[i].Lat, t.path[i].Lon)
+		lat, lon = t.path[i].Lat, t.path[i].Lon
+	}
+	return nm
+}
+
+// crossAlts is t's profile with target at point k, at or above it (up)
+// or at or below it.
+func crossAlts(t track, k int, target float64, up bool) []float64 {
+	alts := make([]float64, len(t.path))
+	if len(t.alts) == len(t.path) {
+		copy(alts, t.alts)
+	}
+	if x := alts[k]; x == 0 || up && x < target || !up && x > target {
+		alts[k] = target
+	}
+	return alts
 }
