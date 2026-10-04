@@ -27,6 +27,10 @@ type simPort interface {
 	// vehicle titles the simulator offers; they come back as messages.
 	ListModels() error
 	ListGroundVehicles() error
+	// StartDeparture and StartArrival start an aircraft's controller on
+	// the IDs from defBase and reqBase: its commands and its events.
+	StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequest) (departureCtl, <-chan traffic.TaxiEvent, error)
+	StartArrival(defBase, reqBase uint32, req traffic.ArrivalRequest) (arrivalCtl, <-chan traffic.ArrivalEvent, error)
 }
 
 // localSim is the simPort on the World's own connection.
@@ -35,6 +39,30 @@ type localSim struct {
 	fleet   *traffic.Fleet
 	defOnce sync.Once
 	defErr  error
+	// The controllers' simulator side: injection, level of detail, the
+	// ground picture they give way by, traffic time.
+	inj    *traffic.Injector
+	detail *traffic.Detail
+	world  *traffic.TrafficPicture
+	clock  *traffic.SimClock
+}
+
+func (l *localSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequest) (departureCtl, <-chan traffic.TaxiEvent, error) {
+	ctl := traffic.NewTaxiController(l.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(l.inj), traffic.TaxiWithDetail(l.detail),
+		traffic.TaxiWithGroundPicture(l.world.Ground(req.Graph.Layout.ICAO)), traffic.TaxiWithClock(l.clock.Now))
+	if err := ctl.Start(req); err != nil {
+		return nil, nil, err
+	}
+	return ctl, ctl.Events(), nil
+}
+
+func (l *localSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalRequest) (arrivalCtl, <-chan traffic.ArrivalEvent, error) {
+	ctl := traffic.NewArrivalController(l.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(l.inj), traffic.ArrivalWithDetail(l.detail),
+		traffic.ArrivalWithGroundPicture(l.world.Ground(req.Graph.Layout.ICAO)), traffic.ArrivalWithClock(l.clock.Now))
+	if err := ctl.Start(req); err != nil {
+		return nil, nil, err
+	}
+	return ctl, ctl.Events(), nil
 }
 
 func (l *localSim) SpawnEnroute(o traffic.NonATCOpts, reqID uint32) error {
