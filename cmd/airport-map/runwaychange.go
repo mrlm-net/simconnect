@@ -62,7 +62,7 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 			v := it.view
 			it.mu.Unlock()
 			if keep[it.Tail] {
-				tlog.printf("%-6s runway change: finishes on %s", it.Tail, v.Runway)
+				cc.log.printf("%-6s runway change: finishes on %s", it.Tail, v.Runway)
 				continue
 			}
 			// Only who is on a runway no longer in use moves: with parallels,
@@ -118,7 +118,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 		return // lined up: it goes from the runway it is on
 	}
 	if err != nil {
-		tlog.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)
+		cc.log.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)
 		return
 	}
 	if pos == "" {
@@ -140,7 +140,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	said, state := it.procSaid, it.view.State
 	r := it.dep.Route()
 	it.mu.Unlock()
-	tlog.printf("%-6s runway change: runway %s, SID %s", it.Tail, runway, orNone(sid))
+	cc.log.printf("%-6s runway change: runway %s, SID %s", it.Tail, runway, orNone(sid))
 	p := cc.pending
 	p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, said, "", ""))
@@ -170,7 +170,7 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	}
 	pts, star, expect, err := cc.procedureFor(g, SpawnRequest{Kind: "arrival", Runway: runway, ProcName: name})
 	if err != nil {
-		tlog.printf("%-6s runway change to %s: %v", it.Tail, runway, err)
+		cc.log.printf("%-6s runway change to %s: %v", it.Tail, runway, err)
 		return
 	}
 	err = cc.do(func() error { return it.arr.ChangeRunway(runway, pts, cc.missedFor(g, runway)) })
@@ -178,7 +178,7 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 		return // established: it lands on the runway it flies to
 	}
 	if err != nil {
-		tlog.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)
+		cc.log.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)
 		return
 	}
 	it.mu.Lock()
@@ -203,7 +203,7 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	if cc.rejoin != nil {
 		cc.rejoin(it.ICAO, it.Tail)
 	}
-	tlog.printf("%-6s runway change: runway %s, STAR %s", it.Tail, runway, star)
+	cc.log.printf("%-6s runway change: runway %s, STAR %s", it.Tail, runway, star)
 	pq := cc.pending
 	pq.later(it.clearAt(pos).Add(atcAnswerDelay+pq.jitter(atcAnswerJitter)), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, "", said, expect))

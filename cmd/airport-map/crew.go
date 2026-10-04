@@ -59,11 +59,11 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		t.mu.Lock()
 		t.given[cs+" goaround"] = true
 		t.mu.Unlock()
-		tlog.printf("%-6s crew: going around — %s", cs, why)
+		t.cc.log.printf("%-6s crew: going around — %s", cs, why)
 		it.say(traffic.GoingAround(cs))
 		go func() {
 			if err := t.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
-				tlog.printf("%-6s crew go-around: %v", cs, err)
+				t.cc.log.printf("%-6s crew go-around: %v", cs, err)
 			}
 		}()
 		it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.Acknowledge(traffic.PosTower, cs)) })
@@ -104,10 +104,10 @@ func (t *towers) crewRejects(ours map[string]*controlled) {
 		cs, it := cs, it
 		go func() {
 			if err := t.cc.do(func() error { return it.act("abort", 0) }); err != nil {
-				tlog.printf("%-6s crew reject: %v", cs, err) // past V1: it goes on
+				t.cc.log.printf("%-6s crew reject: %v", cs, err) // past V1: it goes on
 				return
 			}
-			tlog.printf("%-6s crew: take-off rejected at %.0f kt", cs, kts)
+			t.cc.log.printf("%-6s crew: take-off rejected at %.0f kt", cs, kts)
 			it.say(traffic.RejectingTakeoff(cs))
 			it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.Acknowledge(traffic.PosTower, cs)) })
 		}()
@@ -163,7 +163,7 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			continue
 		}
 		cs, a, f := a.Tail, a, *fix
-		tlog.printf("%-6s crew: request direct %s", cs, f.Ident)
+		w.s.cc.log.printf("%-6s crew: request direct %s", cs, f.Ident)
 		it.say(traffic.RequestDirect(traffic.PosDeparture, cs, f.Ident))
 		answer := func() (traffic.Transmission, bool) {
 			w.mu.Lock()
@@ -174,11 +174,11 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			// DONAD, stopped at 4000 ft for TVS440 eleven seconds later).
 			path := append([]airport.LatLon{f.LatLon}, traffic.RouteAhead(f.LatLon, it.dep.ClimbRoute(a.Position))...)
 			if busy || w.inConflictAny(cs) || !traffic.PathClear(a, path, aircraft, opts) {
-				tlog.printf("%-6s direct %s: unable, traffic", cs, f.Ident)
+				w.s.cc.log.printf("%-6s direct %s: unable, traffic", cs, f.Ident)
 				return traffic.UnableDirect(traffic.PosDeparture, cs), true
 			}
 			if err := w.s.cc.do(func() error { return it.dep.DirectTo(a.Position, a.AltFt, a.GroundKts, f.LatLon) }); err != nil {
-				tlog.printf("%-6s direct %s refused: %v", cs, f.Ident, err)
+				w.s.cc.log.printf("%-6s direct %s refused: %v", cs, f.Ident, err)
 				return traffic.Transmission{}, false
 			}
 			return traffic.ClearedDirectTo(traffic.PosDeparture, cs, f.Ident), true
@@ -255,11 +255,11 @@ func (it *controlled) grantEntry() {
 		return
 	}
 	if err := it.cc.do(func() error { return it.dep.ChangeEntry(e) }); err != nil {
-		tlog.printf("%-6s crew: intersection %s not given: %v", it.Tail, e, err)
+		it.cc.log.printf("%-6s crew: intersection %s not given: %v", it.Tail, e, err)
 		return
 	}
 	it.mu.Lock()
 	it.view.Entry = e
 	it.mu.Unlock()
-	tlog.printf("%-6s crew: intersection %s given", it.Tail, e)
+	it.cc.log.printf("%-6s crew: intersection %s given", it.Tail, e)
 }

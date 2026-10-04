@@ -35,14 +35,14 @@ type scheduler struct {
 
 	created time.Time // wall time, for weatherWait
 
-	mu       sync.Mutex
-	density  float64
-	seed     uint64
+	mu      sync.Mutex
+	density float64
+	seed    uint64
 	// noIFR and noVFR switch the airline (and overflying) and the light
 	// aircraft flights off; both run by default.
 	noIFR, noVFR bool
-	airlines map[string]traffic.Airline
-	focus    []string // the managed airports (the overflights avoid them)
+	airlines     map[string]traffic.Airline
+	focus        []string // the managed airports (the overflights avoid them)
 	// Enroute aircraft (#369): by call sign once created, by request ID
 	// while the simulator creates them.
 	enroute map[string]*enrouteAC
@@ -171,7 +171,7 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 			spawn = func() error { return s.spawnEnroute(f) }
 		}
 		if err := spawn(); err != nil {
-			tlog.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
+			s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
 			s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 		}
 	}()
@@ -287,7 +287,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		cancel()
 	}
 	if err != nil {
-		tlog.printf("%-6s schedule: no flight plan with %s (%v): the runway's procedure", f.Callsign, req.Other, err)
+		s.cc.log.printf("%-6s schedule: no flight plan with %s (%v): the runway's procedure", f.Callsign, req.Other, err)
 		req.Other, req.Procedure = "", true
 		// Picked here, to see where it starts; the spawn flies the same one.
 		if pts, name, _, err := cc.procedureFor(g, req); err == nil {
@@ -325,7 +325,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if !f.Departure() {
 		when = "STA " + f.STA.Local().Format("15:04")
 	}
-	tlog.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type, when, stand)
+	s.cc.log.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type, when, stand)
 	return nil
 }
 
@@ -353,37 +353,37 @@ func (s *scheduler) event(e traffic.ManagerEvent) {
 	f := e.Flight
 	switch e.Kind {
 	case traffic.EventHeld:
-		tlog.printf("%-6s schedule: held on the stand — %s", f.Callsign, e.Reason)
+		s.cc.log.printf("%-6s schedule: held on the stand — %s", f.Callsign, e.Reason)
 	case traffic.EventReleased:
-		tlog.printf("%-6s schedule: hold released", f.Callsign)
+		s.cc.log.printf("%-6s schedule: hold released", f.Callsign)
 	case traffic.EventDelayed:
-		tlog.printf("%-6s schedule: %s delayed — %s", f.Callsign, f.Kind, e.Reason)
+		s.cc.log.printf("%-6s schedule: %s delayed — %s", f.Callsign, f.Kind, e.Reason)
 	case traffic.EventEstimated:
 		if f.Estimated.IsZero() {
-			tlog.printf("%-6s schedule: on time", f.Callsign)
+			s.cc.log.printf("%-6s schedule: on time", f.Callsign)
 		} else {
-			tlog.printf("%-6s schedule: estimated %s (%s)", f.Callsign, f.Estimated.Local().Format("15:04"), e.Reason)
+			s.cc.log.printf("%-6s schedule: estimated %s (%s)", f.Callsign, f.Estimated.Local().Format("15:04"), e.Reason)
 		}
 	case traffic.EventBlocked:
-		tlog.printf("%-6s schedule: waiting — %s", f.Callsign, e.Reason)
+		s.cc.log.printf("%-6s schedule: waiting — %s", f.Callsign, e.Reason)
 	case traffic.EventTurnaround:
-		tlog.printf("schedule: turnaround %s", e.Reason)
+		s.cc.log.printf("schedule: turnaround %s", e.Reason)
 	case traffic.EventStatus:
 		switch f.Status {
 		case traffic.FlightCancelled:
-			tlog.printf("%-6s schedule: cancelled — %s", f.Callsign, f.Err)
+			s.cc.log.printf("%-6s schedule: cancelled — %s", f.Callsign, f.Err)
 		case traffic.FlightDone:
-			tlog.printf("%-6s schedule: done", f.Callsign)
+			s.cc.log.printf("%-6s schedule: done", f.Callsign)
 		}
 	case traffic.EventEnabled, traffic.EventDisabled:
-		tlog.printf("schedule: %s", e.Kind)
+		s.cc.log.printf("schedule: %s", e.Kind)
 	}
 }
 
 // Remove takes a managed flight's aircraft out (traffic.Spawner).
 func (s *scheduler) Remove(f traffic.ManagedFlight) {
 	if s.removeEnroute(f.Callsign) {
-		tlog.printf("%-6s schedule: removed (%s%s)", f.Callsign, f.Status, map[bool]string{true: ", " + f.Note}[f.Note != ""])
+		s.cc.log.printf("%-6s schedule: removed (%s%s)", f.Callsign, f.Status, map[bool]string{true: ", " + f.Note}[f.Note != ""])
 		return
 	}
 	it := s.cc.byTail(f.Callsign)
@@ -391,7 +391,7 @@ func (s *scheduler) Remove(f traffic.ManagedFlight) {
 		return
 	}
 	s.cc.do(func() error { return s.cc.remove(it) })
-	tlog.printf("%-6s schedule: removed (%s)", f.Callsign, f.Status)
+	s.cc.log.printf("%-6s schedule: removed (%s)", f.Callsign, f.Status)
 }
 
 // managedStatus is the manager's status of a controller event; ok false
@@ -457,11 +457,11 @@ type scheduleView struct {
 	Others      traffic.OtherTrafficMode `json:"others"`
 	// IFR and VFR: the airline flights (and overflights) and the light
 	// aircraft flights run.
-	IFR  bool   `json:"ifr"`
-	VFR  bool   `json:"vfr"`
-	Seed uint64 `json:"seed"`
-	Active      int                      `json:"active"`
-	Flights     []traffic.ManagedFlight  `json:"flights"`
+	IFR     bool                    `json:"ifr"`
+	VFR     bool                    `json:"vfr"`
+	Seed    uint64                  `json:"seed"`
+	Active  int                     `json:"active"`
+	Flights []traffic.ManagedFlight `json:"flights"`
 	// Now is the traffic time the flights' times are in (#413).
 	Now time.Time `json:"now"`
 }

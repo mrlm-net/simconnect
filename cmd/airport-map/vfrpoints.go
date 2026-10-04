@@ -22,11 +22,11 @@ import (
 // GET /api/vfrpoints?icao=LKPR gives the airport's points; POST with a
 // list of traffic.ReportingPoint replaces them ([] removes them all).
 
-var vfrPointSets = struct {
+type vfrPointStore struct {
 	sync.Mutex
 	loaded bool
 	m      map[string][]traffic.ReportingPoint // ICAO -> points
-}{m: map[string][]traffic.ReportingPoint{}}
+}
 
 func vfrPointsFile() string {
 	dir, err := os.UserCacheDir()
@@ -37,33 +37,33 @@ func vfrPointsFile() string {
 }
 
 // vfrPoints are the reporting points set for icao.
-func vfrPoints(icao string) []traffic.ReportingPoint {
-	vfrPointSets.Lock()
-	defer vfrPointSets.Unlock()
-	if !vfrPointSets.loaded {
-		vfrPointSets.loaded = true
+func (k *core) vfrPoints(icao string) []traffic.ReportingPoint {
+	k.vfrSets.Lock()
+	defer k.vfrSets.Unlock()
+	if !k.vfrSets.loaded {
+		k.vfrSets.loaded = true
 		if b, err := os.ReadFile(vfrPointsFile()); err == nil {
-			_ = json.Unmarshal(b, &vfrPointSets.m)
+			_ = json.Unmarshal(b, &k.vfrSets.m)
 		}
 	}
-	return append([]traffic.ReportingPoint(nil), vfrPointSets.m[strings.ToUpper(icao)]...)
+	return append([]traffic.ReportingPoint(nil), k.vfrSets.m[strings.ToUpper(icao)]...)
 }
 
-func setVFRPoints(icao string, pts []traffic.ReportingPoint) error {
-	vfrPoints(icao) // loaded
-	vfrPointSets.Lock()
-	defer vfrPointSets.Unlock()
+func (k *core) setVFRPoints(icao string, pts []traffic.ReportingPoint) error {
+	k.vfrPoints(icao) // loaded
+	k.vfrSets.Lock()
+	defer k.vfrSets.Unlock()
 	icao = strings.ToUpper(icao)
 	if len(pts) == 0 {
-		delete(vfrPointSets.m, icao)
+		delete(k.vfrSets.m, icao)
 	} else {
-		vfrPointSets.m[icao] = pts
+		k.vfrSets.m[icao] = pts
 	}
 	file := vfrPointsFile()
 	if file == "" {
 		return nil
 	}
-	b, err := json.MarshalIndent(vfrPointSets.m, "", "  ")
+	b, err := json.MarshalIndent(k.vfrSets.m, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -76,8 +76,8 @@ func setVFRPoints(icao string, pts []traffic.ReportingPoint) error {
 // vfrPointFor is the reporting point a VFR flight uses at icao: the one
 // named (any case), else one by its call sign (the same each time); nil
 // when the airport has none.
-func vfrPointFor(icao, name, callsign string) *traffic.ReportingPoint {
-	pts := vfrPoints(icao)
+func (k *core) vfrPointFor(icao, name, callsign string) *traffic.ReportingPoint {
+	pts := k.vfrPoints(icao)
 	if len(pts) == 0 {
 		return nil
 	}
@@ -91,14 +91,14 @@ func vfrPointFor(icao, name, callsign string) *traffic.ReportingPoint {
 	return &pts[int(h.Sum32()%uint32(len(pts)))]
 }
 
-func registerVFRPoints(mux *http.ServeMux) {
+func registerVFRPoints(mux *http.ServeMux, k *core) {
 	mux.HandleFunc("GET /api/vfrpoints", func(w http.ResponseWriter, r *http.Request) {
 		icao := r.URL.Query().Get("icao")
 		if icao == "" {
 			http.Error(w, "icao is needed", http.StatusBadRequest)
 			return
 		}
-		pts := vfrPoints(icao)
+		pts := k.vfrPoints(icao)
 		if pts == nil {
 			pts = []traffic.ReportingPoint{}
 		}
@@ -122,7 +122,7 @@ func registerVFRPoints(mux *http.ServeMux) {
 				return
 			}
 		}
-		if err := setVFRPoints(icao, pts); err != nil {
+		if err := k.setVFRPoints(icao, pts); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
