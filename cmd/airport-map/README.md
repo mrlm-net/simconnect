@@ -34,7 +34,7 @@ go install github.com/mrlm-net/simconnect/cmd/airport-map@latest
 airport-map -icao LKPR
 ```
 
-The web UI is built in; the voice looks for `bin/piper/piper.exe` next to the executable; without `-airways` flight plans fly direct. When the map uses library API newer than the release it requires, bump the require to the next release before tagging it.
+The web UI is built in; the voice looks for `bin/piper/piper.exe` next to the executable; without `-airways` flight plans fly direct. Releasing: tag the library (vX), bump this require to vX, then tag that commit `cmd/airport-map/vX`: `@latest` installs the tagged map, which builds against a released library (main is often ahead of the last release).
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
