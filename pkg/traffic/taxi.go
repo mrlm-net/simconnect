@@ -57,7 +57,7 @@ func (s TaxiState) Terminal() bool { return s >= TaxiComplete }
 // TaxiRequest describes a departure taxi.
 type TaxiRequest struct {
 	// Graph is the airport's taxi graph, e.g. from airport.Cache.Graph.
-	Graph *airport.Graph
+	Graph *airport.Graph `json:"-"`
 	// Parking is the stand's parking index; see airport.Layout.ParkingIndex.
 	Parking int
 	// Runway is the runway end to depart from, e.g. "24".
@@ -130,7 +130,7 @@ type TaxiRequest struct {
 	// Tug shows a pushback tug (injected departures with a pushback): e.g.
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
-	Tug PushbackTug
+	Tug PushbackTug `json:"-"`
 	// PowerOut: a small aircraft leaves its stand under its own power, no
 	// tug: forward, a loop round to the side and back past the stand onto
 	// the taxilane (planPowerOut), where the loop stays on the pavement and
@@ -139,7 +139,7 @@ type TaxiRequest struct {
 	// Fuel refuels the aircraft on its stand before the tug comes (#582):
 	// e.g. NewSimObjectFuelTruck. Nil: no refuelling shown. The controller
 	// passes it its messages.
-	Fuel FuelService
+	Fuel FuelService `json:"-"`
 	// StandOccupied reports whether a stand is taken now (an aircraft on it
 	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
 	// through an empty neighbouring stand (EHAM E3: back into the empty
@@ -147,7 +147,7 @@ type TaxiRequest struct {
 	// terminal ahead of a gate. Nil treats every neighbouring stand as
 	// taken. The push is planned at Start and planned again when it begins
 	// if a neighbouring stand has been taken or freed since.
-	StandOccupied func(stand int) bool
+	StandOccupied func(stand int) bool `json:"-"`
 }
 
 // TaxiEvent reports a state change or progress of a departure taxi.

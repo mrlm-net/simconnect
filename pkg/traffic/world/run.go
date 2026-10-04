@@ -616,7 +616,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
 			if err := loader.Request(icao); err != nil {
-				feed.Layout(icao, err)
+				feed.Layout(icao, nil, err)
 			}
 			if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(os.Stderr, "❌ procedures of %s: %v\n", icao, err)
@@ -635,14 +635,14 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 			for _, res := range loader.Expire(now) {
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
-				feed.Layout(res.ICAO, res.Err)
+				feed.Layout(res.ICAO, nil, res.Err)
 			}
 
 		case msg, ok := <-stream:
 			if !ok {
 				fmt.Println("📴 Simulator disconnected")
 				for _, icao := range loader.Pending() {
-					feed.Layout(icao, errors.New("simulator disconnected"))
+					feed.Layout(icao, nil, errors.New("simulator disconnected"))
 				}
 				return nil
 			}
@@ -682,7 +682,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					}
 					st.core.requestILS(navLoader, l)
 				}
-				feed.Layout(res.ICAO, res.Err)
+				feed.Layout(res.ICAO, res.Layout, res.Err)
 				continue
 			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {

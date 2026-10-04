@@ -57,10 +57,10 @@ const LandingAGLFt = 200.0
 
 // ArrivalRequest describes an arrival.
 type ArrivalRequest struct {
-	Graph   *airport.Graph
-	Runway  string // runway end to land on, e.g. "24"
-	Parking int    // stand parking index; see airport.Layout.ParkingIndex
-	Model   string // aircraft container title
+	Graph   *airport.Graph `json:"-"`
+	Runway  string         // runway end to land on, e.g. "24"
+	Parking int            // stand parking index; see airport.Layout.ParkingIndex
+	Model   string         // aircraft container title
 	Livery  string
 	Tail    string
 	// ObjectID adopts an aircraft already flying (an en route arrival at its
@@ -158,8 +158,8 @@ type ArrivalEvent struct {
 	// taxiing in, 0 for none (TaxiEvent.GivingWayTo).
 	GivingWayTo uint32
 	// StoppedBy is why it stands still while taxiing in (TaxiEvent.StoppedBy).
-	StoppedBy string
-	Position  airport.LatLon
+	StoppedBy   string
+	Position    airport.LatLon
 	AGL         float64 // feet
 	Heading     float64
 	GroundSpeed float64 // knots
@@ -264,7 +264,7 @@ type ArrivalController struct {
 	rush          bool              // expedite vacating (Expedite, #510)
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
-	goArounds     int // go-arounds flown (GoAround)
+	goArounds     int           // go-arounds flown (GoAround)
 	tngLeft       int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
 	tng           *TakeoffMover // a touch-and-go's take-off, while it flies it
 	sng           *stopAndGo    // a stop-and-go's stop, before its take-off
@@ -290,12 +290,12 @@ type ArrivalController struct {
 	gaGearUp bool
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
-	tromboneNM        float64
+	tromboneNM float64
 	// vectors are the radar vectors still to say for a dog-leg or an
 	// extended downwind, each at its corner; vectored: off the STAR on
 	// vectors, cleared for the approach with the intercept heading (#661).
-	vectors  []Vector
-	vectored bool
+	vectors           []Vector
+	vectored          bool
 	blend             joinBlend
 	flapsPct          float64       // injected flap setting
 	seq               sequence      // the landing's steps (Sequence)

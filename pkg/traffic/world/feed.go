@@ -22,8 +22,8 @@ type simFeed interface {
 	ILS(r nav.NavResult)
 	// Procedures are an airport's SIDs, STARs and approaches.
 	Procedures(p airport.Procedures)
-	// Layout is an airport loaded, or why it was not (err).
-	Layout(icao string, err error)
+	// Layout is an airport loaded (l), or why it was not (err).
+	Layout(icao string, l *airport.Layout, err error)
 	// UserAircraft is the user's aircraft each second, with the simulation
 	// rate; com1 its COM1 frequency ("" none).
 	UserAircraft(a Aircraft, rate float64, com1 string)
@@ -60,7 +60,7 @@ func (f localFeed) Procedures(p airport.Procedures) {
 	f.st.mu.Unlock()
 }
 
-func (f localFeed) Layout(icao string, err error) { f.st.finish(icao, err) }
+func (f localFeed) Layout(icao string, _ *airport.Layout, err error) { f.st.finish(icao, err) }
 
 func (f localFeed) UserAircraft(a Aircraft, rate float64, com1 string) {
 	cc := f.cc
