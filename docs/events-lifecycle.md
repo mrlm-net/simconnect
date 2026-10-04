@@ -421,8 +421,8 @@ The following names are reserved for built-in events and will return `ErrReserve
 ### Lifecycle
 
 - Custom events are registered with SimConnect when `SubscribeToCustomSystemEvent` is called.
-- Custom event subscriptions are **cleared on disconnect** and must be re-registered after reconnection.
-- The ID pool resets on disconnect, so the same 37 slots are available for each connection.
+- Custom event subscriptions are **cleared by `Stop()`**. When the simulator goes away (it quits, or the connection drops) they are kept and subscribed again with the same IDs on the next connection; the request registry and the camera request of the lost connection are cleared.
+- The ID pool resets on `Stop()`, so the same 37 slots are available after it.
 
 ## Internal vs User-Facing Events
 
@@ -454,7 +454,8 @@ The following names are reserved for built-in events and will return `ErrReserve
        ├── SubscribeToSystemEvent("ObjectAdded", ...)
        ├── SubscribeToSystemEvent("ObjectRemoved", ...)
        ├── AddToDataDefinition(camera/sim state, ...)
-       └── RequestDataOnSimObject(periodic polling, ...)
+       ├── RequestDataOnSimObject(periodic polling, ...)
+       └── resubscribeCustomEvents(): custom events kept from a lost connection, same IDs
 
 3. Events flow through processMessage()
    ├── Typed handlers invoked (OnPause, OnCrashed, etc.)
@@ -462,8 +463,12 @@ The following names are reserved for built-in events and will return `ErrReserve
    └── Generic OnMessage/Subscribe always receive raw messages
 
 4. QUIT message received → StateDisconnected
-   └── SimState reset to defaults
-       └── Custom events cleared
+   └── SimState reset to defaults; the engine kept aside to close
+
+   Stream closed (after QUIT, or the connection dropped) → connectionLost()
+   ├── engine.Disconnect(): the handle closed, its goroutines waited for
+   ├── request registry and camera request cleared
+   └── custom events kept (Stop() clears them)
 
 5. AutoReconnect → back to step 1
 ```

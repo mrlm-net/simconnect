@@ -102,7 +102,7 @@ CustomEventIDMax = 999999886 // Last ID for custom events (37 slots total)
 
 **Purpose**: These IDs are dynamically allocated when users subscribe to custom SimConnect system events by name (e.g., "6Hz", "1sec"). Custom events use the `SubscribeToCustomSystemEvent` and `OnCustomSystemEvent` APIs.
 
-**Usage**: Managed internally by the manager. Custom event subscriptions are automatically cleared on disconnect and are not persisted across reconnection cycles.
+**Usage**: Managed internally by the manager. Custom event subscriptions are cleared by `Stop()`; over a lost connection they are kept and subscribed again with the same IDs on the next one.
 
 ## Request Registry
 
@@ -251,9 +251,16 @@ Manager registers internal requests at these points:
     - Simulator State Request (999999901)
     - Pause Event (999999998)
     - Crashed/CrashReset/Sound event subscriptions (manager reserved IDs listed above)
+    - Custom system events kept from a lost connection, subscribed again with their IDs (`resubscribeCustomEvents`)
 
-2. **On Disconnect (via `disconnect`)**:
+2. **On a lost connection (via `connectionLost`, the stream closed after QUIT or a drop)**:
+   - The engine disconnected: the SimConnect handle closed
    - All requests cleared via `requestRegistry.Clear()`
+   - Custom system events kept
+
+3. **On Stop (via `disconnect`)**:
+   - All requests cleared via `requestRegistry.Clear()`
+   - Custom system events cleared, their ID allocator reset
 
 ### Request Types Used by Manager
 
@@ -263,10 +270,11 @@ Manager registers internal requests at these points:
 
 ### Cleanup Strategy
 
-When the connection closes or manager stops:
+When the manager stops (`disconnect`):
 1. Clear the simulator state data definition (if its request was submitted)
-2. Clear custom system events and reset their ID allocator
-3. Clear all entries in request registry
-4. Reset `cameraDataRequestPending` flag
+2. Disconnect the engine
+3. Clear custom system events and reset their ID allocator
+4. Clear all entries in request registry
+5. Reset `cameraDataRequestPending` flag
 
-This ensures a clean state for the next connection.
+When the connection is lost (`connectionLost`): the same, except that the data definition is not cleared (the link is gone) and the custom system events are kept, to be subscribed again with the same IDs on the next OPEN. An application need not subscribe to them again after a reconnect; each `SubscribeToCustomSystemEvent` call returns a subscription of its own.
