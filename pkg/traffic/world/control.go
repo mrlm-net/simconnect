@@ -54,10 +54,10 @@ type controlled struct {
 	tug *traffic.SimObjectTug
 	// fuel: a departure's fuel truck (#582), for its way on the map.
 	fuel   *traffic.SimObjectFuelTruck
-	ID     int    `json:"id"`
-	Kind   string `json:"kind"` // departure | arrival
-	Tail   string `json:"tail"`
-	ICAO   string `json:"icao"`
+	ID     int          `json:"id"`
+	Kind   string       `json:"kind"` // departure | arrival
+	Tail   string       `json:"tail"`
+	ICAO   string       `json:"icao"`
 	dep    departureCtl // nil: not a departure
 	arr    arrivalCtl   // nil: not an arrival
 	graph  *airport.Graph
