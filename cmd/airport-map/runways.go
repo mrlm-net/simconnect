@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -259,9 +259,7 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
-	runwayBusy.Lock()
-	runwayBusy.m = busy
-	runwayBusy.Unlock()
+	t.cc.core.setRunwaysBusy(busy)
 	// A runway nobody uses now shows nobody: its last state stayed on
 	// (live, "12/30 · WZZ100 on the runway" long after it had crossed).
 	t.mu.Lock()
@@ -412,12 +410,12 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 	t.mu.Unlock()
 	for _, dep := range noRoom {
 		ours[dep].say(traffic.HoldPosition(dep))
-		tlog.printf("%-6s holds: no time to line up and go before the next arrival", dep)
+		t.cc.log.printf("%-6s holds: no time to line up and go before the next arrival", dep)
 	}
 	for _, dep := range due {
 		it := ours[dep]
 		if crossing[dep] {
-			tlog.printf("%-6s crossing behind the landing traffic", dep)
+			t.cc.log.printf("%-6s crossing behind the landing traffic", dep)
 			if err := t.cc.do(func() error {
 				if it.dep != nil {
 					it.dep.ClearToCross()
@@ -426,13 +424,13 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 				}
 				return nil
 			}); err != nil {
-				tlog.printf("%-6s crossing refused: %v", dep, err)
+				t.cc.log.printf("%-6s crossing refused: %v", dep, err)
 			}
 			continue
 		}
-		tlog.printf("%-6s lining up behind the landing traffic", dep)
+		t.cc.log.printf("%-6s lining up behind the landing traffic", dep)
 		if err := t.cc.do(func() error { it.dep.ClearToLineUp(); return nil }); err != nil {
-			tlog.printf("%-6s line-up refused: %v", dep, err)
+			t.cc.log.printf("%-6s line-up refused: %v", dep, err)
 		}
 	}
 }
@@ -495,7 +493,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 				delete(t.given, tail+" lineup")
 			}
 			t.mu.Unlock()
-			tlog.printf("%-6s tower: %s no longer granted when its turn came", tail, action)
+			t.cc.log.printf("%-6s tower: %s no longer granted when its turn came", tail, action)
 		}
 		it.callIf(traffic.PosTower, prio, still, dropped, func() {
 			// Said here: the state change it causes is not logged again.
@@ -584,9 +582,9 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			continue
 		}
 		it.say(traffic.CancelTakeoff(cs))
-		tlog.printf("%-6s take-off clearance cancelled — %s", cs, why)
+		t.cc.log.printf("%-6s take-off clearance cancelled — %s", cs, why)
 		if err := t.cc.do(func() error { return it.dep.AbortTakeoff() }); err != nil {
-			tlog.printf("%-6s cancel take-off refused: %v", cs, err)
+			t.cc.log.printf("%-6s cancel take-off refused: %v", cs, err)
 		}
 	}
 	// The next arrival, the runway free: cleared to land (#462); on the
@@ -658,7 +656,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		t.waiting[cs] = kind
 		t.mu.Unlock()
 		if changed && ours[cs] != nil && !ours[cs].gates.Load() && !slices.Contains(c.GoAround, cs) {
-			tlog.printf("%-6s tower %s: waits — %s", cs, rwy, why)
+			t.cc.log.printf("%-6s tower %s: waits — %s", cs, rwy, why)
 		}
 	}
 }

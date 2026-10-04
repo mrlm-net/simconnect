@@ -64,7 +64,7 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		if err := s.Move(callsign, places); err != nil {
 			return err
 		}
-		tlog.printf("%-6s approach: moved %s in the sequence to %s", callsign, action, s.Runway())
+		q.cc.log.printf("%-6s approach: moved %s in the sequence to %s", callsign, action, s.Runway())
 		return nil
 	}
 	it := q.cc.byTail(callsign)

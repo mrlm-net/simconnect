@@ -109,7 +109,7 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 	}
 	p, hasProcs := st.procedures[icao]
 	var procs *airport.Procedures
-	opts := []nav.ATISOption{nav.ATISWithSelector(runwaySelector(icao))}
+	opts := []nav.ATISOption{nav.ATISWithSelector(st.core.runwaySelector(icao))}
 	if hasProcs {
 		procs = &p
 		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
@@ -282,7 +282,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			}
 			out.ATIS = &atisInfo{Letter: nav.Phonetic(a.Letter), Text: a.Text(), Spoken: a.Spoken()}
 		}
-		out.ILS = ilsOf(icao)
+		out.ILS = st.core.ilsOf(icao)
 		writeJSON(w, out)
 	})
 }

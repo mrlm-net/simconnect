@@ -181,6 +181,8 @@ type airportResponse struct {
 }
 
 type state struct {
+	// core is the traffic engine's state that outlives a connection (#710).
+	core *core
 	// reviewDir holds GeoJSON overlays for review (GET /api/overlay).
 	reviewDir string
 	cache     *airport.Cache
@@ -230,15 +232,14 @@ func (s *state) setLive(v bool) {
 // planned for: a narrow-body, the stands' usual user.
 const standardPushModel = "FSLTL_B738_RYR"
 
-// standardPlanner plans every stand's standard push of an airport
+// pushPlanQueue (core.pushes) plans every stand's standard push of an airport
 // (traffic.PlanStandardPushes): a stand then pushes the same way whatever
 // the runway. Only airports we push back at — planned when the first
 // departure appears there, not for every airport loaded (destinations
 // included: a minute or two of a core each, all at once) — and one airport
 // at a time, in the background.
-var standardPlanner pushPlanQueue
-
 type pushPlanQueue struct {
+	log  *trafficLog
 	once sync.Once
 	mu   sync.Mutex
 	seen map[string]bool
@@ -261,7 +262,7 @@ func standardPushFile(icao string) string {
 
 // planStandardPushes loads g's saved standard pushes, plans the stands
 // still missing one at a time at standardPushDuty, and saves them.
-func planStandardPushes(g *airport.Graph) {
+func planStandardPushes(log *trafficLog, g *airport.Graph) {
 	icao, file := g.Layout.ICAO, standardPushFile(g.Layout.ICAO)
 	loaded := 0
 	if f, err := os.Open(file); err == nil {
@@ -307,7 +308,7 @@ func (q *pushPlanQueue) want(g *airport.Graph) {
 		q.seen, q.ch = map[string]bool{}, make(chan *airport.Graph, 64)
 		go func() {
 			for g := range q.ch {
-				planStandardPushes(g)
+				planStandardPushes(q.log, g)
 			}
 		}()
 	})
@@ -424,7 +425,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	procLoader := airport.NewProcedureLoader(client)
 	// The runways' ILS: frequency and name from their navaid records.
 	navLoader := nav.NewNavLoaderWithIDs(client, nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, 8)
-	resetILS() // lookups of a connection before: never answered now
+	st.core.resetILS() // lookups of a connection before: never answered now
 	// Weather at the user aircraft, whenever it changes.
 	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
 	if err := weather.Subscribe(); err != nil {
@@ -433,7 +434,16 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
-	cc := newControlCenter(client)
+	cc := newControlCenter(client, st.core)
+	// The front end: the open maps, the voice and the camera hear it all.
+	cc.onChange = hub.publish
+	cc.onTransmission = func(t traffic.Transmission) {
+		cc.changed("radio") // the open maps fetch it now (push.go)
+		radioVoice.hear(t)  // the voice, when on (#419)
+		if !radioVoice.state().On {
+			heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
+		}
+	}
 	// COM1 tuned from the map, in this connection's goroutine.
 	radioVoice.setTune(func(mhz float64) error {
 		return cc.do(func() error {
@@ -470,7 +480,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 	sched := newScheduler(st, cc)
 	cc.extra = sched.handle
 	seqs := newSequences(cc, sched)
-	sep := newSepMonitor()
+	sep := newSepMonitor(cc.log)
 	cw := newConflictWatch(sched)
 	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
 	cc.climbStopped = cw.isStopped
@@ -634,7 +644,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 			for _, r := range navLoader.Expire(now) {
-				gotILS(r)
+				st.core.gotILS(r)
 			}
 			for _, res := range loader.Expire(now) {
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
@@ -665,7 +675,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 				continue
 			}
 			if r, done := navLoader.Handle(msg); done {
-				gotILS(r)
+				st.core.gotILS(r)
 				continue
 			}
 			if p, done := procLoader.Handle(msg); done {
@@ -691,7 +701,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 					if dumpDir != "" {
 						writeDump(dumpDir, res.Raw)
 					}
-					requestILS(navLoader, l)
+					st.core.requestILS(navLoader, l)
 				}
 				st.finish(res.ICAO, res.Err)
 				continue
@@ -888,8 +898,8 @@ func serve(ctx context.Context, addr string, st *state, requests chan<- string) 
 	registerPush(mux)
 	registerCamera(mux, st)
 	registerTowers(mux, st)
-	registerCircuits(mux, func() *controlCenter { st.mu.Lock(); defer st.mu.Unlock(); return st.control })
-	registerVFRPoints(mux)
+	registerCircuits(mux, st.core, func() *controlCenter { st.mu.Lock(); defer st.mu.Unlock(); return st.control })
+	registerVFRPoints(mux, st.core)
 	radioVoice.setATIS(st.atisOn)
 	// POST /api/voice/atis?icao=LKPR — the airport panel's 🔊: the current
 	// ATIS said once through the voice.
@@ -1185,9 +1195,8 @@ func main() {
 	controlToken := flag.String("token", "", "network play: the token another device needs to control the traffic (\"auto\": a random one; \"\": none needed)")
 	viewToken := flag.String("view-token", "", "network play: a token to watch only, as a spectator (\"auto\": a random one)")
 	flag.Parse()
-	if cl, err := parseAirspaceClass(*airspaceFlag); err == nil {
-		zoneClass = cl
-	} else {
+	zone, err := parseAirspaceClass(*airspaceFlag)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
@@ -1218,7 +1227,8 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	st := &state{cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
+	st := &state{core: newCore(tlog), cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
+	st.core.zone = zone
 	requests := make(chan string)
 	st.requests = requests
 	st.pads = loadPadStore(filepath.Join(*dumpDir, "deicing.json"))

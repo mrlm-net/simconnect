@@ -219,10 +219,19 @@ type ControlView struct {
 }
 
 type controlCenter struct {
-	client engine.Client
-	fleet  *traffic.Fleet
-	inj    *traffic.Injector
-	cmds   chan func()
+	// core is the engine state that outlives this connection; log its
+	// traffic log (console, file, /api/control/log).
+	core *core
+	log  *trafficLog
+	// onTransmission hears every transmission once logged; onChange is told
+	// a part of the picture changed ("control", "radio"): the front end's
+	// voice, camera and open maps. Set before the connection runs; nil none.
+	onTransmission func(traffic.Transmission)
+	onChange       func(topic string)
+	client         engine.Client
+	fleet          *traffic.Fleet
+	inj            *traffic.Injector
+	cmds           chan func()
 
 	mu    sync.Mutex
 	next  int
@@ -305,16 +314,17 @@ type controlCenter struct {
 	gameAt time.Time
 }
 
-func newControlCenter(client engine.Client) *controlCenter {
+func newControlCenter(client engine.Client, k *core) *controlCenter {
+	log := k.log
 	cc := &controlCenter{
-		client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
+		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models: map[string]bool{},
 		own:    map[uint32]bool{},
 		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
 		detail: traffic.NewDetail(),
 		stands: map[string]*traffic.StandAllocator{},
-		game:   &game{},
+		game:   &game{log: log},
 	}
 	// Other traffic's phase by where it is on the airfield: the loaded
 	// layouts (cc.layout, set once the cache is there).
@@ -344,14 +354,19 @@ func newControlCenter(client engine.Client) *controlCenter {
 			if t.Pilot {
 				who = "pilot"
 			}
-			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
-			hub.publish("radio") // the open maps fetch it now (push.go)
-			radioVoice.hear(t)   // the voice, when on (#419)
-			if !radioVoice.state().On {
-				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
+			cc.log.printf("%-6s %s: %s", t.Callsign, who, t.Text)
+			if f := cc.onTransmission; f != nil {
+				f(t) // the front end: its voice, camera, open maps
 			}
 		}})
 	return cc
+}
+
+// changed tells the front end a part of the picture changed.
+func (cc *controlCenter) changed(topic string) {
+	if f := cc.onChange; f != nil {
+		f(topic)
+	}
 }
 
 // do runs f in the connection goroutine and waits for it.
@@ -436,7 +451,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		if err != nil {
 			_ = it.stands.Occupy(old, tail, half) // keep what it had; it will wait there
-			tlog.printf("%-6s arrival: stand %s taken (%s), no other: %v", tail, l.Parking[old].Label(), why, err)
+			cc.log.printf("%-6s arrival: stand %s taken (%s), no other: %v", tail, l.Parking[old].Label(), why, err)
 			continue
 		}
 		it.mu.Lock()
@@ -446,7 +461,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		if mgr != nil {
 			mgr.Describe(tail, model, label, rwy) // the board shows the new stand
 		}
-		tlog.printf("%-6s arrival: stand %s taken (%s), now %s", tail, l.Parking[old].Label(), why, l.Parking[newStand].Label())
+		cc.log.printf("%-6s arrival: stand %s taken (%s), now %s", tail, l.Parking[old].Label(), why, l.Parking[newStand].Label())
 	}
 }
 
@@ -660,7 +675,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}
 	if r.planned != nil {
 		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
-		tlog.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
+		cc.log.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
 			r.planned.plan.Route, r.planned.plan.CruiseFL, r.planned.plan.DistanceNM)
 	} else if r.Procedure {
 		var err error
@@ -669,7 +684,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	} else if r.Circuit && r.Kind == "departure" {
 		// VFR out of the circuit towards its exit (#568).
-		c, err := traffic.NewCircuit(g.Layout, r.Runway, circuitConfig(g.Layout.ICAO, r.Runway), ac)
+		c, err := traffic.NewCircuit(g.Layout, r.Runway, cc.core.circuitConfig(g.Layout.ICAO, r.Runway), ac)
 		if err != nil {
 			return nil, err
 		}
@@ -678,7 +693,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			exit = *r.ExitBearing
 		}
 		procRoute, procName = c.Departure(exit), "VFR "+traffic.CompassName(exit)
-		if pt := vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail); pt != nil && r.ExitBearing == nil {
+		if pt := cc.core.vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail); pt != nil && r.ExitBearing == nil {
 			procRoute, procName = c.DepartureVia(*pt), "VFR via "+pt.Name // out by a reporting point (#566)
 		}
 	}
@@ -735,7 +750,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		standardPlanner.want(g) // its stands' standard pushes, once
+		cc.core.pushes.want(g) // its stands' standard pushes, once
 		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
 		tug := cc.tug(r, reqBase, prof)
 		if t, ok := tug.(*traffic.SimObjectTug); ok {
@@ -774,9 +789,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		// across the runway.
 		var entryPoint *traffic.ReportingPoint
 		join := traffic.LegDownwind
-		cfg := circuitConfig(g.Layout.ICAO, r.Runway)
+		cfg := cc.core.circuitConfig(g.Layout.ICAO, r.Runway)
 		if r.Circuit {
-			entryPoint = vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
+			entryPoint = cc.core.vfrPointFor(g.Layout.ICAO, r.VFRPoint, r.Tail)
 			it.vfrPoint = entryPoint
 			if entryPoint == nil && cfg.OverheadJoin {
 				// An overhead join needs somewhere to come from: 6 NM out, in a
@@ -827,7 +842,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
 	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Rules: flightRules(r), Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
-	tlog.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
+	cc.log.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.InjectApproach)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
 	// then the clearance (#462).
@@ -914,7 +929,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}
 	started = true
 	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
-		tlog.printf("%-6s %s: route overlaps the routes of %s", r.Tail, r.Kind, strings.Join(clash, ", "))
+		cc.log.printf("%-6s %s: route overlaps the routes of %s", r.Tail, r.Kind, strings.Join(clash, ", "))
 	}
 	go func() {
 		for {
@@ -968,7 +983,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer func() {
 		if prev.State != v.State || prev.ATC != v.ATC || prev.AtLimit != v.AtLimit || prev.LimitNode != v.LimitNode ||
 			prev.Lights != v.Lights || prev.Error != v.Error || prev.Done != v.Done || prev.Manual != v.Manual || !slices.Equal(prev.Actions, v.Actions) {
-			hub.publish("control")
+			it.cc.changed("control")
 		}
 	}()
 	// What the crew asks for (#462), once the change is logged and handed
@@ -1079,17 +1094,17 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
 			if e.Deicing {
-				tlog.printf("%-6s %s: de-icing", v.Tail, v.Kind)
+				it.cc.log.printf("%-6s %s: de-icing", v.Tail, v.Kind)
 			} else {
-				tlog.printf("%-6s %s: de-icing done", v.Tail, v.Kind)
+				it.cc.log.printf("%-6s %s: de-icing done", v.Tail, v.Kind)
 			}
 		}
 		if e.PushbackHeld != v.PushbackHeld {
 			v.PushbackHeld = e.PushbackHeld
 			if e.PushbackHeld {
-				tlog.printf("%-6s %s: pushback holding for traffic behind the stand", v.Tail, v.Kind)
+				it.cc.log.printf("%-6s %s: pushback holding for traffic behind the stand", v.Tail, v.Kind)
 			} else {
-				tlog.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
+				it.cc.log.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
 			}
 		}
 		// Off the stand once taxiing; the route is done when airborne. Not
@@ -1651,64 +1666,6 @@ func registerControl(mux *http.ServeMux, st *state) {
 // names before the schedule exists.
 var defaultSchedule = traffic.DefaultScheduleConfig()
 
-// runwaySelectors keep each airport's runway in use, one for the traffic
-// and its ATIS (#454), for the life of the process.
-var runwaySelectors = struct {
-	sync.Mutex
-	m map[string]*nav.RunwaySelector
-}{m: map[string]*nav.RunwaySelector{}}
-
-func runwaySelector(icao string) *nav.RunwaySelector {
-	runwaySelectors.Lock()
-	defer runwaySelectors.Unlock()
-	s := runwaySelectors.m[icao]
-	if s == nil {
-		// A change that is due waits for a gap in the traffic, as a tower
-		// supervisor times it (the selector waits RunwayChangeMaxWait at
-		// most; out of limits it changes at once).
-		s = &nav.RunwaySelector{Ready: func(from, to nav.RunwayUse) bool {
-			runwayBusy.Lock()
-			defer runwayBusy.Unlock()
-			return !runwayBusy.m[icao]
-		}}
-		runwaySelectors.m[icao] = s
-	}
-	return s
-}
-
-// runwayBusy: the airports with more arrivals within runwayChangeGapNM on
-// the final than finish on the old runway (the towers' last look):
-// no moment to change the runway in use.
-var runwayBusy = struct {
-	sync.Mutex
-	m map[string]bool
-}{m: map[string]bool{}}
-
-// runwayChangeGapNM: an arrival this close on the final lands on the
-// runway in use before a change.
-const runwayChangeGapNM = 10.0
-
-// logRunwayChange logs a change of icao's runway in use, with the wind
-// that made it (#465: to see every change, and why, in the traffic log).
-func logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
-	now := strings.Join(nav.Names(use.Departures), "+") + "/" + strings.Join(nav.Names(use.Arrivals), "+")
-	runwaySelectors.Lock()
-	before := runwayInUse[icao]
-	runwayInUse[icao] = now
-	runwaySelectors.Unlock()
-	if before == now {
-		return
-	}
-	head, cross := w.Components(use.Arrival.Heading)
-	mode := ""
-	if use.Parallel != nav.ParallelNone {
-		mode = fmt.Sprintf(", %s, %.0f m apart", use.Parallel, use.SpacingM)
-	}
-	tlog.printf("runway in use %s: %s → %s (departures/arrivals)%s, wind %03.0f°/%.0f kt gust %.0f: headwind %.1f kt, crosswind %.1f kt on %s", icao, orNone(before), now, mode, w.WindDirTrue, w.WindKts, w.GustKts, head, cross, use.Arrival.Name)
-}
-
-var runwayInUse = map[string]string{}
-
 func orNone(s string) string {
 	if s == "" {
 		return "none"
@@ -1836,8 +1793,8 @@ func (cc *controlCenter) runwayUse(g *airport.Graph) (nav.RunwayUse, bool) {
 	}
 	// The runway in use holds through wind shifts near a limit (#391); the
 	// ATIS says the same (#454).
-	use := runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(cc.limitsOf(g)))
-	logRunwayChange(g.Layout.ICAO, use, *w)
+	use := cc.core.runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(cc.limitsOf(g)))
+	cc.core.logRunwayChange(g.Layout.ICAO, use, *w)
 	return use, use.Departure.Name != ""
 }
 
@@ -2017,7 +1974,7 @@ func (cc *controlCenter) missedFor(g *airport.Graph, runway string) []airport.Na
 // with the same call sign, stand reservation and runway; the arrival's
 // entry leaves the list.
 func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
-	tlog.printf("%-6s turnaround: parked, departing in %s", it.Tail, it.dwell.Round(time.Second))
+	cc.log.printf("%-6s turnaround: parked, departing in %s", it.Tail, it.dwell.Round(time.Second))
 	select {
 	case <-time.After(it.dwell):
 	case <-it.departNow:
@@ -2033,10 +1990,10 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 		return err
 	})
 	if err != nil {
-		tlog.printf("%-6s turnaround: departure failed: %v", it.Tail, err)
+		cc.log.printf("%-6s turnaround: departure failed: %v", it.Tail, err)
 		return
 	}
-	tlog.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, dep.view.Stand, d.Runway, dep.ID)
+	cc.log.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, dep.view.Stand, d.Runway, dep.ID)
 	cc.forget(it) // its ID block released too
 }
 
@@ -2082,7 +2039,7 @@ func (it *controlled) logStopped(by string) {
 		}
 		return "object " + s[1:]
 	})
-	tlog.printf("%-6s %s: stopped %s — %s", it.Tail, it.Kind, stoppedLogAfter, said)
+	it.cc.log.printf("%-6s %s: stopped %s — %s", it.Tail, it.Kind, stoppedLogAfter, said)
 }
 
 // objectIDs are the object IDs in a StoppedBy reason.
@@ -2355,7 +2312,7 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 		if v.HoldingShortOf != "" {
 			extra += " of " + v.HoldingShortOf
 		}
-		tlog.printf("%s: %s → %s%s  (%.0f kt, hdg %.0f)", who, prev.State, v.State, extra, v.GroundSpeed, v.Heading)
+		it.cc.log.printf("%s: %s → %s%s  (%.0f kt, hdg %.0f)", who, prev.State, v.State, extra, v.GroundSpeed, v.Heading)
 	}
 	if action := clearanceOf(v.Kind, prev.State, v.State); action != "" {
 		if it.spoken[action] {
@@ -2376,17 +2333,17 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 		}
 	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
-		tlog.printf("%s: lights %s → %s (%s)", who, prev.Lights, v.Lights, v.State)
+		it.cc.log.printf("%s: lights %s → %s (%s)", who, prev.Lights, v.Lights, v.State)
 	}
 	if v.AtLimit != prev.AtLimit {
 		if v.AtLimit {
-			tlog.printf("%s: holding at the clearance limit (node %d)", who, v.LimitNode)
+			it.cc.log.printf("%s: holding at the clearance limit (node %d)", who, v.LimitNode)
 		} else {
-			tlog.printf("%s: moving on from the clearance limit", who)
+			it.cc.log.printf("%s: moving on from the clearance limit", who)
 		}
 	}
 	if v.Error != "" && v.Error != prev.Error {
-		tlog.printf("%s: ⚠️ %s", who, v.Error)
+		it.cc.log.printf("%s: ⚠️ %s", who, v.Error)
 	}
 }
 

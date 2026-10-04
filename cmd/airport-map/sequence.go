@@ -129,11 +129,11 @@ func (q *sequences) sequencer(icao, runway string) *traffic.ApproachSequencer {
 		}
 		switch {
 		case c.Gone:
-			tlog.printf("%-6s sequence %s %s: out of the sequence", e.Callsign, icao, c.Runway)
+			q.cc.log.printf("%-6s sequence %s %s: out of the sequence", e.Callsign, icao, c.Runway)
 		case c.Previous == 0:
-			tlog.printf("%-6s sequence %s %s: number %d%s, %.0f NM to go, delay %s", e.Callsign, icao, c.Runway, e.Number, behind(e), e.DistanceToGoNM, e.Delay.Round(time.Second))
+			q.cc.log.printf("%-6s sequence %s %s: number %d%s, %.0f NM to go, delay %s", e.Callsign, icao, c.Runway, e.Number, behind(e), e.DistanceToGoNM, e.Delay.Round(time.Second))
 		default:
-			tlog.printf("%-6s sequence %s %s: number %d (was %d)%s, delay %s", e.Callsign, icao, c.Runway, e.Number, c.Previous, behind(e), e.Delay.Round(time.Second))
+			q.cc.log.printf("%-6s sequence %s %s: number %d (was %d)%s, delay %s", e.Callsign, icao, c.Runway, e.Number, c.Previous, behind(e), e.Delay.Round(time.Second))
 		}
 	}})
 	q.seq[k] = s
@@ -225,7 +225,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		q.absorbed[e.Callsign] = now
 		q.mu.Unlock()
 		if err != nil {
-			tlog.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, delay.Round(time.Second), err)
+			q.cc.log.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, delay.Round(time.Second), err)
 			continue
 		}
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
@@ -240,7 +240,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			continue
 		}
 		if e.ShortBy >= spacingActFrom {
-			tlog.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
+			q.cc.log.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
 		}
 		if it.circuit != nil {
 			// VFR in the circuit (#569): its downwind extended, said so with
@@ -263,7 +263,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			if a.Left >= anotherCircuitFrom {
 				if err := q.cc.do(func() error { _, err := it.arr.AnotherCircuit(); return err }); err == nil {
 					it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))
-					tlog.printf("%-6s sequence: %s to lose in the circuit: another circuit", e.Callsign, a.Left.Round(time.Second))
+					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: another circuit", e.Callsign, a.Left.Round(time.Second))
 					continue
 				}
 			}
@@ -274,7 +274,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 						orbit = traffic.DelayOrbitRight
 					}
 					it.say(traffic.CircuitDelay(e.Callsign, orbit))
-					tlog.printf("%-6s sequence: %s to lose in the circuit: %s", e.Callsign, a.Left.Round(time.Second), orbit)
+					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: %s", e.Callsign, a.Left.Round(time.Second), orbit)
 				}
 			}
 			continue
@@ -341,9 +341,9 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 				orbit = traffic.DelayOrbitRight
 			}
 			it.say(traffic.CircuitDelay(e.Callsign, orbit))
-			tlog.printf("%-6s sequence: %s short behind %s: %s", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, orbit)
+			q.cc.log.printf("%-6s sequence: %s short behind %s: %s", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, orbit)
 		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
-			tlog.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
+			q.cc.log.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
 			it.say(traffic.GoAround(e.Callsign, "spacing"))
 			q.cc.rejoin(it.ICAO, it.Tail)
 		} else {
@@ -362,7 +362,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		q.mu.Lock()
 		q.slowedFinal[e.Callsign] = now
 		q.mu.Unlock()
-		tlog.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
+		q.cc.log.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
 		if gain > 0 {
 			it.say(traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number)))
 		}
@@ -375,10 +375,10 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	q.brokeOff[e.Callsign] = true
 	q.mu.Unlock()
 	if err := q.cc.do(func() error { return it.arr.GoAround() }); err != nil {
-		tlog.printf("%-6s sequence: go-around for spacing refused: %v", e.Callsign, err)
+		q.cc.log.printf("%-6s sequence: go-around for spacing refused: %v", e.Callsign, err)
 		return
 	}
-	tlog.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
+	q.cc.log.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
 	it.say(traffic.GoAround(e.Callsign, "spacing"))
 	q.cc.rejoin(it.ICAO, it.Tail)
 }
@@ -410,7 +410,7 @@ func (q *sequences) stack(icao string, h traffic.Hold) *traffic.HoldStack {
 func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration) {
 	h, ok := it.arr.HoldFix(holdFixNM)
 	if !ok {
-		tlog.printf("%-6s sequence: %s to lose, no fix to hold at", e.Callsign, left.Round(time.Second))
+		q.cc.log.printf("%-6s sequence: %s to lose, no fix to hold at", e.Callsign, left.Round(time.Second))
 		return
 	}
 	st := q.stack(icao, h)
@@ -419,7 +419,7 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 	var entry traffic.HoldEntry
 	if err := q.cc.do(func() (err error) { entry, err = it.arr.EnterHold(h, alt); return err }); err != nil {
 		st.Release(e.Callsign)
-		tlog.printf("%-6s sequence: hold failed: %v", e.Callsign, err)
+		q.cc.log.printf("%-6s sequence: hold failed: %v", e.Callsign, err)
 		return
 	}
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
@@ -432,7 +432,7 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 
 func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry) {
 	if err := q.cc.do(it.arr.LeaveHold); err != nil {
-		tlog.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
+		q.cc.log.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
 		return
 	}
 	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), q.numberToSay(q.cc.clock.Now(), e.Callsign, e.Number)))
@@ -668,7 +668,7 @@ func (q *sequences) tick(now time.Time) {
 						if c.LowVisibility() {
 							lvp = ", low visibility procedures"
 						}
-						tlog.printf("sequence %s %s: %s%s", k.icao, k.rwy, c, lvp)
+						q.cc.log.printf("sequence %s %s: %s%s", k.icao, k.rwy, c, lvp)
 					}
 				}
 			}
@@ -863,7 +863,7 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 		it.approach = r
 		it.mu.Unlock()
 	}
-	tlog.printf("%-6s sequence: room ahead, direct %s (%.1f NM shorter)", e.Callsign, fix, saved)
+	q.cc.log.printf("%-6s sequence: room ahead, direct %s (%.1f NM shorter)", e.Callsign, fix, saved)
 	it.say(traffic.ClearedDirectTo(traffic.PosApproach, e.Callsign, fix))
 }
 

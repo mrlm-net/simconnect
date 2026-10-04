@@ -217,7 +217,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
 		w.mu.Unlock()
 		if first {
-			tlog.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
+			w.s.cc.log.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
 				c.A, c.AAltFt, c.B, c.BAltFt, c.In.Round(time.Second), c.LossNM, c.LossFt, c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
 		}
 		if busy {
@@ -279,11 +279,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			continue
 		}
 		if err != nil {
-			tlog.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
+			w.s.cc.log.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
 		}
 		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts)
-		tlog.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
+		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
 		w.s.cc.radio.Transmit(icao, tx)
 		said := tx.Text
 		w.mu.Lock()
@@ -366,7 +366,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// Stopped for traffic and clear of it now: on to the level planned
 	// (the route resumes it as the change ends).
 	for cs, st := range resume {
-		tlog.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
+		w.s.cc.log.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
 		// A departure not identified yet (still with the tower, or its
 		// check-in not answered): its identification clears the climb, the
 		// stop being over; said now as well, it heard it twice (#698).
@@ -375,7 +375,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			identified := it.identified
 			it.mu.Unlock()
 			if !identified {
-				tlog.printf("%-6s conflict over: the climb comes with its identification", cs)
+				w.s.cc.log.printf("%-6s conflict over: the climb comes with its identification", cs)
 				continue
 			}
 		}
@@ -494,12 +494,12 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 			if me.AltFt >= level-200 {
 				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(level, arrivalLevelForNM) })
 				if err == nil {
-					tlog.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
+					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
 					trailer.it.say(traffic.StopDescent(traffic.PosApproach, cs, level, oth))
 					recheck()
 					return
 				}
-				tlog.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
+				w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 			}
 		}
 	}
@@ -523,7 +523,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		err = q.approachAction(trailer.it.ICAO, cs, action)
 	}
 	if err != nil {
-		tlog.printf("%-6s conflict with %s: %s refused: %v", cs, oth, action, err)
+		w.s.cc.log.printf("%-6s conflict with %s: %s refused: %v", cs, oth, action, err)
 		return
 	}
 	if action == "hold" {
@@ -533,7 +533,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		q.conflictHeld[cs] = conflictHold{other: oth, at: now}
 		q.mu.Unlock()
 	}
-	tlog.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, oth, map[string]string{"slow": "loses time", "hold": "holds"}[action])
+	w.s.cc.log.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, oth, map[string]string{"slow": "loses time", "hold": "holds"}[action])
 	recheck()
 	w.mu.Lock()
 	w.slowed[cs] = true

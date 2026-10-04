@@ -249,7 +249,7 @@ func (it *controlled) actAfterReadback(pos traffic.Position, what string, f func
 	p := it.cc.pending
 	p.later(it.clearAt(pos).Add(crewActDelay+p.jitter(crewActJitter)), func() {
 		if err := it.cc.do(f); err != nil {
-			tlog.printf("%-6s %s refused: %v", it.Tail, what, err)
+			it.cc.log.printf("%-6s %s refused: %v", it.Tail, what, err)
 		}
 	})
 }

@@ -18,8 +18,7 @@ import (
 // above the field; around them class E. Who is separated from whom
 // follows traffic.SeparationRequired; where VFR traffic is not separated
 // it is told of the other (traffic information) instead, and a loss of
-// "separation" between them is no loss.
-var zoneClass = traffic.ClassD
+// "separation" between them is no loss. The class is core.zone.
 
 const (
 	zoneNM    = 10.0
@@ -67,7 +66,7 @@ func (cc *controlCenter) classAt(a traffic.TrackedAircraft, airports []string) t
 		}
 		l := g.Layout
 		if calc.HaversineNM(l.Latitude, l.Longitude, a.Position.Lat, a.Position.Lon) <= zoneNM && a.AltFt-l.Altitude/0.3048 <= zoneTopFt {
-			return zoneClass
+			return cc.core.zone
 		}
 	}
 	return traffic.ClassE
@@ -127,7 +126,7 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 		}
 		tx := traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, level)
 		it.call(pos, prioUrgent, func() { it.say(tx) })
-		tlog.printf("%-6s traffic information on %s (no separation required here)", cs, other.Tail)
+		w.s.cc.log.printf("%-6s traffic information on %s (no separation required here)", cs, other.Tail)
 	}
 }
 

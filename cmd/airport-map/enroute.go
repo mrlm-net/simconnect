@@ -173,7 +173,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		s.mu.Unlock()
 		return err
 	}
-	tlog.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d, %.0f NM along %s, %d waypoints", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type,
+	s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d, %.0f NM along %s, %d waypoints", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type,
 		int(math.Round(altFt/100)), dist, fp.Route, len(wps))
 	return nil
 }
@@ -201,14 +201,14 @@ func (s *scheduler) handle(msg engine.Message) bool {
 	cc.fleet.Acknowledge(e.reqID, e.objectID)
 	s.defOnce.Do(func() {
 		if err := cc.client.AddToDataDefinition(enrouteDefWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
-			tlog.printf("schedule: waypoint definition: %v", err)
+			s.cc.log.printf("schedule: waypoint definition: %v", err)
 		}
 	})
 	if err := cc.fleet.ReleaseControl(e.objectID, reqReleaseEnroute); err != nil {
-		tlog.printf("%-6s schedule: release: %v", e.f.Callsign, err)
+		s.cc.log.printf("%-6s schedule: release: %v", e.f.Callsign, err)
 	}
 	if err := cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, e.waypoints); err != nil {
-		tlog.printf("%-6s schedule: waypoints: %v", e.f.Callsign, err)
+		s.cc.log.printf("%-6s schedule: waypoints: %v", e.f.Callsign, err)
 	}
 	cc.addOwn(e.objectID)
 	cc.world.SetOwn(e.objectID, traffic.PhaseEnroute, "")
@@ -251,12 +251,12 @@ func (s *scheduler) handovers(now time.Time) {
 			s.handEnroute(e)
 			f := e.f
 			f.Stage = ""
-			tlog.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
+			s.cc.log.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			arrive := *e.arrive
 			arrive.adopt = e.objectID
 			if err := s.spawnWith(f, &arrive, e.model); err != nil {
 				s.cc.do(func() error { return s.cc.client.AIRemoveObject(e.objectID, reqRemoveEnroute) })
-				tlog.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
+				s.cc.log.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
 				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 			}
 		}(e)

@@ -45,6 +45,7 @@ const (
 var gameAirlines = []string{"CSA", "AUA", "DLH", "BAW", "AFR", "KLM", "WZZ", "RYR", "LOT", "SWR", "EZY", "UAE"}
 
 type game struct {
+	log      *trafficLog
 	mu       sync.Mutex
 	On       bool
 	ICAO     string
@@ -75,7 +76,7 @@ func (g *game) event(points int, format string, args ...any) {
 	if len(g.Events) > 200 {
 		g.Events = g.Events[len(g.Events)-200:]
 	}
-	tlog.printf("GAME %s (score %d)", msg, g.Score)
+	g.log.printf("GAME %s (score %d)", msg, g.Score)
 }
 
 // gameTick runs the game once a second, in the connection goroutine.

@@ -28,6 +28,7 @@ const (
 )
 
 type sepMonitor struct {
+	log    *trafficLog
 	mu     sync.Mutex
 	open   map[string]*sepLoss // by pair, while it lasts
 	losses []sepLoss           // ended, the latest last (at most 50)
@@ -46,7 +47,9 @@ type sepLoss struct {
 	VerticalFt float64   `json:"verticalFt"`
 }
 
-func newSepMonitor() *sepMonitor { return &sepMonitor{open: map[string]*sepLoss{}} }
+func newSepMonitor(log *trafficLog) *sepMonitor {
+	return &sepMonitor{log: log, open: map[string]*sepLoss{}}
+}
 
 func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
 	pairs := traffic.AirborneSeparationFor(aircraft, conflictOpts)
@@ -67,14 +70,14 @@ func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
 			continue
 		}
 		m.open[k] = &sepLoss{A: p.A, B: p.B, Since: now, ClosestNM: p.LateralNM, VerticalFt: p.VerticalFt}
-		tlog.printf("separation: %s and %s %.1f NM, %.0f ft apart (under %.0f NM and 1000 ft)", p.A, p.B, p.LateralNM, p.VerticalFt, p.MinNM)
+		m.log.printf("separation: %s and %s %.1f NM, %.0f ft apart (under %.0f NM and 1000 ft)", p.A, p.B, p.LateralNM, p.VerticalFt, p.MinNM)
 	}
 	for k, l := range m.open {
 		if seen[k] {
 			continue
 		}
 		l.Until = now
-		tlog.printf("separation: %s and %s separated again after %s, closest %.1f NM, %.0f ft", l.A, l.B, now.Sub(l.Since).Round(time.Second), l.ClosestNM, l.VerticalFt)
+		m.log.printf("separation: %s and %s separated again after %s, closest %.1f NM, %.0f ft", l.A, l.B, now.Sub(l.Since).Round(time.Second), l.ClosestNM, l.VerticalFt)
 		m.losses = append(m.losses, *l)
 		if len(m.losses) > 50 {
 			m.losses = m.losses[len(m.losses)-50:]
