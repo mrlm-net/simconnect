@@ -425,3 +425,17 @@ func TestConflictsAlongProfile(t *testing.T) {
 		t.Errorf("descending on the STAR through 6000 ft: %+v, want a conflict", cs)
 	}
 }
+
+// TestAirborneSeparationTerminal: in the terminal area (both at an airport
+// below 10000 ft) the lateral minimum is 3 NM, 5 NM elsewhere.
+func TestAirborneSeparationTerminal(t *testing.T) {
+	a := air(1, "CSA1", 0, 0, 8000, 90, 250, 0, true)
+	b := air(2, "CSA2", 4, 0, 8500, 270, 250, 0, true)
+	if ps := AirborneSeparationFor([]TrackedAircraft{a, b}, ConflictOptions{}); len(ps) != 1 || !ps[0].Loss || ps[0].MinNM != EnrouteSeparationNM {
+		t.Errorf("en route 4 NM, 500 ft: %+v, want a loss under 5 NM", ps)
+	}
+	a.Airport, b.Airport = "LKPR", "LKPR"
+	if ps := AirborneSeparationFor([]TrackedAircraft{a, b}, ConflictOptions{}); len(ps) != 1 || ps[0].Loss || ps[0].MinNM != TerminalSeparationNM {
+		t.Errorf("terminal 4 NM, 500 ft: %+v, want no loss under 3 NM", ps)
+	}
+}

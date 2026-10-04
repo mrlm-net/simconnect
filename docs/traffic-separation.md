@@ -227,7 +227,7 @@ On the map the tower sends our arrivals around once per approach ("go around, I 
 
 ## Keeping apart
 
-`AirborneSeparation(aircraft, minNM, minFt)` lists every pair of airborne aircraft, closest first, marking those closer than both minima at once: `TerminalSeparationNM` (3), `EnrouteSeparationNM` (5), `VerticalSeparationFt` (1000).
+`AirborneSeparation(aircraft, minNM, minFt)` lists every pair of airborne aircraft, closest first, marking those closer than both minima at once: `TerminalSeparationNM` (3), `EnrouteSeparationNM` (5), `VerticalSeparationFt` (1000). `AirborneSeparationFor(aircraft, opts)` takes the minima per pair as `PredictConflicts` does: `TerminalNM` (3 NM) where both are in a terminal area, `MinNM` (5 NM) elsewhere, with the one applied in each pair's `MinNM`. The airport map uses it for its loss log and its conflict watch: 3 NM in the terminal area, 5 NM en route, 5 NM in trail on the landing sequence.
 
 The airport map keeps 5 NM:
 - **On final:** its sequencers use `MinSpacingNM` 5, whatever the wake minimum is below it.

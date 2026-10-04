@@ -27,7 +27,7 @@ const (
 	conflictLookAhead = 5 * time.Minute
 )
 
-var conflictOpts = traffic.ConflictOptions{LookAhead: conflictLookAhead, MinNM: sepMinNM, TerminalNM: sepMinNM}
+var conflictOpts = traffic.ConflictOptions{LookAhead: conflictLookAhead, MinNM: sepMinNM, TerminalNM: sepTerminalNM}
 
 type conflictWatch struct {
 	s *scheduler
