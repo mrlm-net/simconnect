@@ -113,6 +113,7 @@ func main() {
 	accents := flag.Bool("accents", false, "controllers speak English with their airport's accent (the country's voice model, see the README)")
 	controlToken := flag.String("token", "", "network play: the token another device needs to control the traffic (\"auto\": a random one; \"\": none needed)")
 	viewToken := flag.String("view-token", "", "network play: a token to watch only, as a spectator (\"auto\": a random one)")
+	split := flag.Bool("split", false, "run the traffic split in this process: an actuator on the simulator and a director taking the decisions, linked as across a network (#710)")
 	flag.Parse()
 	zone, err := world.ParseAirspaceClass(*airspaceFlag)
 	if err != nil {
@@ -185,6 +186,11 @@ func main() {
 		}
 		*icao = l
 		fmt.Printf("📂 Loaded %s from %s — offline mode\n", l, *file)
+	} else if *split {
+		// The actuator: the simulator side only, no front end, no log file.
+		act := world.New(world.Options{Airways: graph, Airspace: zone, DataDir: *dumpDir})
+		world.Loopback(ctx, act, w)
+		fmt.Println("🔀 split: an actuator on the simulator, this map on its director")
 	} else {
 		go w.Run(ctx)
 	}

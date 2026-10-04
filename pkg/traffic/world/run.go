@@ -170,6 +170,9 @@ type airportResponse struct {
 }
 
 type state struct {
+	// actLink, when set, makes the World an actuator: its simulator side
+	// served on it to a director (#710).
+	actLink link
 	// core is the traffic engine's state that outlives a connection (#710).
 	core *core
 	// reviewDir holds GeoJSON overlays for review (GET /api/overlay).
@@ -327,6 +330,107 @@ func (s *state) finish(icao string, err error) {
 	delete(s.waiters, icao)
 }
 
+// startWorld wires the World's decisions to cc — the front end's hooks,
+// the schedule, sequences, separation, conflicts, towers and their ticks —
+// and returns what stops them: on the World's own connection (runOn) or
+// a director's, with the simulator side elsewhere (#710).
+func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
+	// The front end: the open maps, the voice and the camera hear it all.
+	cc.onChange = func(topic string) {
+		hub.publish(topic) // the open maps
+		if h := st.core.hooks.OnChange; h != nil {
+			h(topic)
+		}
+	}
+	cc.onTransmission = func(t traffic.Transmission) {
+		cc.changed("radio") // the open maps fetch it now (push.go)
+		if h := st.core.hooks.OnTransmission; h != nil {
+			h(t) // the host: its voice (#419), which cuts the camera as heard
+		} else {
+			heardOnCamera(t) // no voice: the camera cuts as it is said
+		}
+	}
+	cc.graph = st.cache.Graph
+	cc.layout = st.cache.Layout
+	cc.pads = st.pads.forAirport
+	cc.weather = func() *nav.Weather {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		return st.weather
+	}
+	cc.procedures = func(icao string) (airport.Procedures, bool) {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		p, ok := st.procedures[icao]
+		return p, ok
+	}
+	// Scheduled traffic: its own goroutine, as it waits for the connection.
+	sched := newScheduler(st, cc)
+	cc.extra = sched.handle
+	seqs := newSequences(cc, sched)
+	sep := newSepMonitor(cc.log)
+	cw := newConflictWatch(sched)
+	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
+	cc.climbStopped = cw.isStopped
+	tw := newTowers(cc, sched)
+	// A go-around is sequenced again (#394), and cleared to land again on
+	// its next approach (#486).
+	cc.rejoin = func(icao, tail string) {
+		seqs.rejoin(icao, tail)
+		tw.forgetLanding(tail)
+		tw.dropBehind(tail) // nobody waits to line up behind an arrival that went around
+	}
+	cc.followed = seqs.behind
+	// A call sign spawned again (a scene replayed): no clearance remembered.
+	cc.forgetTower = tw.forgetTail
+	cc.lineUpBehind = tw.behindNext
+	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
+	cc.sequencesAt = seqs.at
+	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
+	cc.namedAirport = sched.cfg.AirportName
+	cc.atisLetter = st.atisLetter
+	stop := make(chan struct{}) // this connection only
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		var atisAt time.Time // the last ATIS refresh (#418)
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				now := cc.clock.Now() // traffic time (#413)
+				if now.Sub(atisAt) >= time.Minute {
+					atisAt = now
+					st.atisTick(now, cc, sched.airports())
+				}
+				cc.pending.run(now)  // clearances and actions in radio order (#462)
+				cc.agenda.run(now)   // the controllers' calls, most urgent first
+				cc.checkRunways(now) // a new runway in use re-plans the traffic (#456)
+				sched.tick(now)
+				seqs.tick(now)
+				air := cc.world.Aircraft()
+				sep.needed = cc.separationNeeded(air, sched.airports())
+				sep.tick(now, air)
+				cw.tick(now, air)
+				tw.tick(now)
+			}
+		}
+	}()
+	st.mu.Lock()
+	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = cc, sched, seqs, sep, tw, cw
+	st.mu.Unlock()
+
+	st.setLive(true)
+	return func() {
+		close(stop)
+		st.mu.Lock()
+		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = nil, nil, nil, nil, nil, nil
+		st.mu.Unlock()
+		st.setLive(false)
+	}
+}
+
 // runOn runs the traffic on a connected client whose messages arrive on
 // stream (the client's own, or a host's fed through World.Feed), until ctx
 // ends (ctx.Err()) or stream closes (nil: the simulator went away).
@@ -412,21 +516,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client, st.core)
-	// The front end: the open maps, the voice and the camera hear it all.
-	cc.onChange = func(topic string) {
-		hub.publish(topic) // the open maps
-		if h := st.core.hooks.OnChange; h != nil {
-			h(topic)
-		}
-	}
-	cc.onTransmission = func(t traffic.Transmission) {
-		cc.changed("radio") // the open maps fetch it now (push.go)
-		if h := st.core.hooks.OnTransmission; h != nil {
-			h(t) // the host: its voice (#419), which cuts the camera as heard
-		} else {
-			heardOnCamera(t) // no voice: the camera cuts as it is said
-		}
-	}
+	stopWorld := st.startWorld(cc)
+	defer stopWorld()
 	// COM1 tuned from the map, in this connection's goroutine.
 	if h := st.core.hooks.OnTune; h != nil {
 		defer h(nil)
@@ -439,19 +530,10 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	}
 	// What the loop reads goes to the World through the feed (#710).
 	var feed simFeed = localFeed{st: st, cc: cc}
-	cc.graph = st.cache.Graph
-	cc.layout = st.cache.Layout
-	cc.pads = st.pads.forAirport
-	cc.weather = func() *nav.Weather {
-		st.mu.Lock()
-		defer st.mu.Unlock()
-		return st.weather
-	}
-	cc.procedures = func(icao string) (airport.Procedures, bool) {
-		st.mu.Lock()
-		defer st.mu.Unlock()
-		p, ok := st.procedures[icao]
-		return p, ok
+	// An actuator (#710): its simulator side served to a director.
+	var act *actuatorSim
+	if st.actLink != nil {
+		act, feed = st.actuate(ctx, cc, client, st.actLink)
 	}
 	// The airports around, for the traffic picture: now and every minute.
 	airports := traffic.NewAirportLister(client, ids.airportList)
@@ -464,15 +546,6 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	if err := cc.requestModels(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
 	}
-	// Scheduled traffic: its own goroutine, as it waits for the connection.
-	sched := newScheduler(st, cc)
-	cc.extra = sched.handle
-	seqs := newSequences(cc, sched)
-	sep := newSepMonitor(cc.log)
-	cw := newConflictWatch(sched)
-	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
-	cc.climbStopped = cw.isStopped
-	tw := newTowers(cc, sched)
 	// The camera on our traffic: cut to the aircraft on the radio as the
 	// call is heard.
 	st.mu.Lock()
@@ -538,63 +611,6 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	camTick := time.NewTicker(cameraRate)
 	defer camTick.Stop()
 	var lastFrame time.Time // the simulator's last frame event
-	// A go-around is sequenced again (#394), and cleared to land again on
-	// its next approach (#486).
-	cc.rejoin = func(icao, tail string) {
-		seqs.rejoin(icao, tail)
-		tw.forgetLanding(tail)
-		tw.dropBehind(tail) // nobody waits to line up behind an arrival that went around
-	}
-	cc.followed = seqs.behind
-	// A call sign spawned again (a scene replayed): no clearance remembered.
-	cc.forgetTower = tw.forgetTail
-	cc.lineUpBehind = tw.behindNext
-	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
-	cc.sequencesAt = seqs.at
-	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
-	cc.namedAirport = sched.cfg.AirportName
-	cc.atisLetter = st.atisLetter
-	stop := make(chan struct{})
-	defer close(stop) // this connection only
-	go func() {
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-		var atisAt time.Time // the last ATIS refresh (#418)
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				now := cc.clock.Now() // traffic time (#413)
-				if now.Sub(atisAt) >= time.Minute {
-					atisAt = now
-					st.atisTick(now, cc, sched.airports())
-				}
-				cc.pending.run(now)  // clearances and actions in radio order (#462)
-				cc.agenda.run(now)   // the controllers' calls, most urgent first
-				cc.checkRunways(now) // a new runway in use re-plans the traffic (#456)
-				sched.tick(now)
-				seqs.tick(now)
-				air := cc.world.Aircraft()
-				sep.needed = cc.separationNeeded(air, sched.airports())
-				sep.tick(now, air)
-				cw.tick(now, air)
-				tw.tick(now)
-			}
-		}
-	}()
-	st.mu.Lock()
-	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = cc, sched, seqs, sep, tw, cw
-	st.mu.Unlock()
-	defer func() {
-		st.mu.Lock()
-		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = nil, nil, nil, nil, nil, nil
-		st.mu.Unlock()
-	}()
-
-	st.setLive(true)
-	defer st.setLive(false)
-
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
@@ -691,6 +707,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				continue
 			}
 			if cam.handle(msg) {
+				continue
+			}
+			if act != nil && act.handle(msg) {
 				continue
 			}
 			if cc.handle(msg) {
