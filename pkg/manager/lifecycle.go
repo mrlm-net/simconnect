@@ -171,9 +171,21 @@ func (m *Instance) connectWithTimeout(ctx context.Context) error {
 func (m *Instance) connectionLost() {
 	m.setSimState(defaultSimState())
 	m.mu.Lock()
-	m.engine = nil
+	eng := m.engine
+	if eng == nil {
+		eng = m.quitEngine // the simulator quit first (QUIT)
+	}
+	m.engine, m.quitEngine = nil, nil
 	m.cameraDataRequestPending = false
 	m.mu.Unlock()
+	// Its stream has ended, the dispatcher with it: the handle is closed
+	// and the engine's goroutines waited for (the review of #405: it was
+	// left open on every lost connection).
+	if eng != nil {
+		if err := eng.Disconnect(); err != nil {
+			m.logger.Error("[manager] Disconnect after the connection was lost", "error", err)
+		}
+	}
 	m.fleet.SetClient(nil)
 	m.requestRegistry.Clear()
 	m.setState(StateDisconnected)
@@ -205,7 +217,10 @@ type systemEventSubscriber interface {
 func (m *Instance) disconnect() {
 	m.mu.Lock()
 	eng := m.engine
-	m.engine = nil
+	if eng == nil {
+		eng = m.quitEngine
+	}
+	m.engine, m.quitEngine = nil, nil
 	cameraRequestPending := m.cameraDataRequestPending
 	m.cameraDataRequestPending = false
 	m.mu.Unlock()
@@ -223,13 +238,13 @@ func (m *Instance) disconnect() {
 		}
 	}
 
-	// Clear custom system events on disconnect
+	// Stop clears the custom system events (a lost connection keeps them, #405)
 	m.mu.Lock()
 	m.customSystemEvents = make(map[string]*instance.CustomSystemEvent)
 	m.customEventIDAlloc = CustomEventIDMin
 	m.mu.Unlock()
 
-	// Clean up request registry on disconnect
+	// and the request registry.
 	m.requestRegistry.Clear()
 
 	m.setState(StateDisconnected)

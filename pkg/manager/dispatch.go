@@ -62,7 +62,9 @@ func (m *Instance) processMessage(msg engine.Message) {
 		m.setSimState(defaultSimState())
 		m.setState(StateDisconnected)
 		m.mu.Lock()
-		m.engine = nil
+		// Closed once its stream ends (connectionLost): not here, where its
+		// dispatcher may wait on this loop (#405).
+		m.quitEngine, m.engine = m.engine, nil
 		m.mu.Unlock()
 	}
 

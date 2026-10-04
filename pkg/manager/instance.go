@@ -112,6 +112,9 @@ type Instance struct {
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine
+	// quitEngine is the engine of a connection the simulator quit: closed
+	// once its stream has ended (connectionLost) or on Stop (#405).
+	quitEngine *engine.Engine
 
 	// AI traffic fleet — tracks pending and active AI aircraft.
 	// Reset on each reconnect (ObjectIDs are invalidated across disconnects).

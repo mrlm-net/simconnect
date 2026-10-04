@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/manager/internal/handlers"
 	"github.com/mrlm-net/simconnect/pkg/manager/internal/instance"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -67,7 +68,13 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 			ev := msg.AsEvent()
 			return ev != nil && ev.UEventID == types.DWORD(eventID)
 		}
-		return m.SubscribeWithFilter(eventName+"-custom", bufferSize, filter), nil
+		return m.SubscribeWithFilter(customSubscriptionID(eventName), bufferSize, filter), nil
+	}
+
+	// Connected first: an ID allocated while disconnected would be lost (#405)
+	if m.engine == nil {
+		m.mu.Unlock()
+		return nil, ErrNotConnected
 	}
 
 	// Allocate new event ID
@@ -78,10 +85,6 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	}
 
 	// Subscribe via engine
-	if m.engine == nil {
-		m.mu.Unlock()
-		return nil, ErrNotConnected
-	}
 
 	if err := m.engine.SubscribeToSystemEvent(eventID, eventName); err != nil {
 		m.mu.Unlock()
@@ -107,7 +110,7 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 		ev := msg.AsEvent()
 		return ev != nil && ev.UEventID == types.DWORD(eventID)
 	}
-	return m.SubscribeWithFilter(eventName+"-custom", bufferSize, filter), nil
+	return m.SubscribeWithFilter(customSubscriptionID(eventName), bufferSize, filter), nil
 }
 
 // UnsubscribeFromCustomSystemEvent unsubscribes from a custom system event.
@@ -186,4 +189,12 @@ func (m *Instance) allocateCustomEventIDLocked() (uint32, error) {
 	id := m.customEventIDAlloc
 	m.customEventIDAlloc++
 	return id, nil
+}
+
+// customSubscriptionID is a new subscription ID for eventName: each
+// SubscribeToCustomSystemEvent call its own subscription, not one replacing
+// the last (an app subscribing again after a reconnect orphaned its first,
+// #405).
+func customSubscriptionID(eventName string) string {
+	return eventName + "-custom-" + handlers.GenerateUUID()
 }
