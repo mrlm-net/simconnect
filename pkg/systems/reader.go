@@ -25,7 +25,11 @@ type State struct {
 	ParkingBrake                                     bool
 	Beacon, Nav, Strobe                              bool
 	Landing, Taxi                                    bool
-	Doors                                            [4]bool // EXIT OPEN 0–3, open
+	Doors                                            [4]bool // EXIT OPEN 0–3, open (the first four of DoorsOpen)
+	// DoorsOpen and DoorNames are all the aircraft's doors (Profile.Doors),
+	// open and by name, in exit order (#700).
+	DoorsOpen []bool
+	DoorNames []string
 	XPDRState                                        int     // 0 off, 1 standby, 2 test, 3 on, 4 alt
 	Squawk                                           string  // e.g. "4521"
 	FlapsPct                                         float64
@@ -153,6 +157,10 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 		s.Running[i], s.Starter[i], s.Doors[i] = on(EngineRunning(i+1)), on(Starter(i+1)), on(Door(i))
 	}
 	s.ParkingBrake = on(ParkingBrake)
+	s.DoorNames = append([]string(nil), p.Doors...)
+	for i := range p.Doors {
+		s.DoorsOpen = append(s.DoorsOpen, on(Door(i)))
+	}
 	s.Beacon, s.Nav, s.Strobe, s.Landing, s.Taxi = on(LightBeacon), on(LightNav), on(LightStrobe), on(LightLanding), on(LightTaxi)
 	s.XPDRState = int(s.Values[XPDRState])
 	if _, ok := p.Values[XPDRCode]; ok {

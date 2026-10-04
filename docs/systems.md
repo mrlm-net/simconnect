@@ -126,6 +126,8 @@ if ctl.Can(systems.Chocks) {
 ctl.Set(systems.Door(0), true, reader.State()) // open the main door
 ```
 
+A profile's `doors` names its exits in the order of EXIT OPEN and TOGGLE_AIRCRAFT_EXIT (`Door(0)` is exit 1); their number is how many it has: "Door 1"…"Door 4" by default, the Fenix's 8 (L1, R1, L2, R2, FWD cargo, AFT cargo, Bulk cargo, Other; measured: TOGGLE_AIRCRAFT_EXIT 1–8 each toggle one, #700). A door without its own value and action reads EXIT OPEN:n and toggles TOGGLE_AIRCRAFT_EXIT n+1. `State.DoorsOpen` and `DoorNames` are all of them (`Doors` keeps the first four).
+
 `State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show.
 
 ## Ground services

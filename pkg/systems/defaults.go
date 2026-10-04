@@ -61,7 +61,7 @@ func Default() Profile {
 		exit := uint32(n + 1)
 		a[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
 	}
-	return Profile{Name: "default", Values: v, Actions: a}
+	return Profile{Name: "default", Values: v, Actions: a, Doors: []string{"Door 1", "Door 2", "Door 3", "Door 4"}}
 }
 
 func fmtIndexed(name string, n int) string { return name + ":" + string(rune('0'+n)) }
