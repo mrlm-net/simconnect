@@ -119,7 +119,7 @@ func registerWorld(mux *http.ServeMux, st *state) {
 				return
 			}
 		}
-		if err := cc.do(func() error { return cc.client.AIRemoveObject(req.ObjectID, reqRemoveOther) }); err != nil {
+		if err := cc.do(func() error { return cc.sim.RemoveObject(req.ObjectID, reqRemoveOther) }); err != nil {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}

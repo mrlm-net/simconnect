@@ -252,8 +252,10 @@ type controlCenter struct {
 	onChange       func(topic string)
 	client         engine.Client
 	fleet          *traffic.Fleet
-	inj            *traffic.Injector
-	cmds           chan func()
+	// sim is what it does to the simulator beside the controllers (#710).
+	sim  simPort
+	inj  *traffic.Injector
+	cmds chan func()
 
 	mu    sync.Mutex
 	next  int
@@ -360,6 +362,7 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 			}
 			return nil
 		}})
+	cc.sim = &localSim{client: client, fleet: cc.fleet}
 	cc.pending = newPending()
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
@@ -2302,7 +2305,7 @@ const liverySep = " :: "
 
 // requestModels enumerates the aircraft the simulator can spawn.
 func (cc *controlCenter) requestModels() error {
-	return cc.client.EnumerateSimObjectsAndLiveries(reqModels, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+	return cc.sim.ListModels()
 }
 
 // addModels collects the titles of one enumeration message.

@@ -26,7 +26,7 @@ type fuelTitles struct {
 }
 
 func (cc *controlCenter) requestFuelTitles() error {
-	return cc.client.EnumerateSimObjectsAndLiveries(reqGroundVehicles, types.SIMCONNECT_SIMOBJECT_TYPE_GROUND)
+	return cc.sim.ListGroundVehicles()
 }
 
 // addFuelTitles keeps the fuel vehicles of one enumeration message.

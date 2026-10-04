@@ -162,7 +162,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = cc.do(func() error {
-		return cc.fleet.RequestNonATC(traffic.NonATCOpts{Model: title, Livery: livery, Tail: f.Callsign, Position: spawn}, e.reqID)
+		return cc.sim.SpawnEnroute(traffic.NonATCOpts{Model: title, Livery: livery, Tail: f.Callsign, Position: spawn}, e.reqID)
 	})
 	if err != nil {
 		s.mu.Lock()
@@ -195,17 +195,8 @@ func (s *scheduler) handle(msg engine.Message) bool {
 		return false
 	}
 	cc := s.cc
-	cc.fleet.Acknowledge(e.reqID, e.objectID)
-	s.defOnce.Do(func() {
-		if err := cc.client.AddToDataDefinition(enrouteDefWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
-			s.cc.log.printf("schedule: waypoint definition: %v", err)
-		}
-	})
-	if err := cc.fleet.ReleaseControl(e.objectID, reqReleaseEnroute); err != nil {
-		s.cc.log.printf("%-6s schedule: release: %v", e.f.Callsign, err)
-	}
-	if err := cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, e.waypoints); err != nil {
-		s.cc.log.printf("%-6s schedule: waypoints: %v", e.f.Callsign, err)
+	if err := cc.sim.FlyEnroute(e.reqID, e.objectID, e.waypoints); err != nil {
+		s.cc.log.printf("%-6s schedule: en route: %v", e.f.Callsign, err)
 	}
 	cc.addOwn(e.objectID)
 	cc.world.SetOwn(e.objectID, traffic.PhaseEnroute, "")
@@ -252,7 +243,7 @@ func (s *scheduler) handovers(now time.Time) {
 			arrive := *e.arrive
 			arrive.adopt = e.objectID
 			if err := s.spawnWith(f, &arrive, e.model); err != nil {
-				s.cc.do(func() error { return s.cc.client.AIRemoveObject(e.objectID, reqRemoveEnroute) })
+				s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
 				s.cc.log.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
 				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 			}
@@ -265,7 +256,7 @@ func (s *scheduler) dropEnroute(e *enrouteAC) {
 	s.mu.Lock()
 	delete(s.enroute, e.f.Callsign)
 	s.mu.Unlock()
-	s.cc.do(func() error { return s.cc.client.AIRemoveObject(e.objectID, reqRemoveEnroute) })
+	s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
 	s.cc.dropOwn(e.objectID)
 	s.cc.world.ForgetOwn(e.objectID)
 }
