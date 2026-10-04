@@ -27,18 +27,26 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 
 ### Run it
 
+From the repository root (the map is its own module: `-C` runs it from its folder):
+
 ```bash
 # Live: connect to the simulator and open LKPR
-cd cmd/airport-map && go run .
+go run -C cmd/airport-map .
 
 # Another airport
-cd cmd/airport-map && go run . -icao LOWW
+go run -C cmd/airport-map . -icao LOWW
 
 # Also save each fetched airport's raw data to <ICAO>.json
-cd cmd/airport-map && go run . -dump
+go run -C cmd/airport-map . -dump
 
 # Offline: serve a saved dump, no simulator needed (layout and routes only)
-cd cmd/airport-map && go run . -file LKPR.json
+go run -C cmd/airport-map . -file LKPR.json
+```
+
+The map builds against the library in the checkout through a Go workspace (`go.work`, not committed); create it once in the repository root:
+
+```bash
+go work init . ./cmd/airport-map ./cmd/simvar-cli
 ```
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
@@ -146,27 +154,27 @@ Smaller examples, each showing one part of the API.
 
 | Example | What it shows | Docs |
 |---------|---------------|------|
-| [basic-connection](https://github.com/mrlm-net/simconnect/tree/main/examples/basic-connection) | Connect, print the simulator's open message, disconnect | [Getting Started](getting-started.md) |
+| [basic-connection](https://github.com/mrlm-net/simconnect/tree/main/examples/basic-connection) | Connect, wait two seconds, disconnect | [Getting Started](getting-started.md) |
 | [await-connection](https://github.com/mrlm-net/simconnect/tree/main/examples/await-connection) | Retry until the simulator is up, shut down on Ctrl+C | [Client API](usage-client.md) |
 | [lifecycle-connection](https://github.com/mrlm-net/simconnect/tree/main/examples/lifecycle-connection) | Reconnect whenever the simulator quits and comes back | [Client API](usage-client.md) |
 | [simconnect-manager](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-manager) | `pkg/manager`: auto-reconnect and connection state callbacks | [Manager Usage](usage-manager.md) |
 | [simconnect-state](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-state) | Manager `SimState`: pause, sim running, camera state | [Manager Usage](usage-manager.md) |
-| [simconnect-subscribe](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-subscribe) | Manager channel subscriptions instead of callbacks | [Manager Usage](usage-manager.md) |
-| [simconnect-events](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-events) | Manager system events: flight and aircraft loaded, flight plan, objects added and removed | [Event Lifecycle](events-lifecycle.md) |
+| [simconnect-subscribe](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-subscribe) | Manager channel subscriptions for messages and connection state | [Manager Usage](usage-manager.md) |
+| [simconnect-events](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-events) | Manager system events: flight and aircraft loaded, flight plan, objects added and removed, crash, sound, view, and a custom `1sec` event | [Event Lifecycle](events-lifecycle.md) |
 | [simconnect-benchmark](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-benchmark) | Load test of the manager stack with CPU and memory profiles | |
 
 ### Data and events
 
 | Example | What it shows | Docs |
 |---------|---------------|------|
-| [read-messages](https://github.com/mrlm-net/simconnect/tree/main/examples/read-messages) | Data definitions and periodic SimVar requests for the user aircraft and camera | [Client API](usage-client.md) |
+| [read-messages](https://github.com/mrlm-net/simconnect/tree/main/examples/read-messages) | Data definitions, periodic SimVar requests for the user aircraft and camera, and a one-shot request for the aircraft within 10 km | [Client API](usage-client.md) |
 | [read-objects](https://github.com/mrlm-net/simconnect/tree/main/examples/read-objects) | `EnumerateSimObjectsAndLiveries`: the aircraft and liveries installed | [Client API](usage-client.md) |
 | [set-variables](https://github.com/mrlm-net/simconnect/tree/main/examples/set-variables) | Write a SimVar: change `CAMERA STATE` | [Client API](usage-client.md) |
 | [using-datasets](https://github.com/mrlm-net/simconnect/tree/main/examples/using-datasets) | The dataset registry, cloning, the builder and merging | [Dataset Composition](dataset-composition.md) |
 | [emit-events](https://github.com/mrlm-net/simconnect/tree/main/examples/emit-events) | Map and transmit client events: toggle aircraft doors | [Client API](usage-client.md) |
 | [subscribe-events](https://github.com/mrlm-net/simconnect/tree/main/examples/subscribe-events) | System event subscriptions: pause, sim start and stop, sound | [Event Lifecycle](events-lifecycle.md) |
 | [flow-events](https://github.com/mrlm-net/simconnect/tree/main/examples/flow-events) | `SubscribeToFlowEvent` (MSFS 2024 only) | [Client API](usage-client.md) |
-| [cmd/simvar-cli](https://github.com/mrlm-net/simconnect/tree/main/cmd/simvar-cli) | Read, write, watch and stream SimVars from the terminal (own `go.mod`) | [SimVar CLI](simvar-cli.md) |
+| [cmd/simvar-cli](https://github.com/mrlm-net/simconnect/tree/main/cmd/simvar-cli) | Get, set and watch SimVars, emit and listen for events, an interactive REPL (own `go.mod`) | [SimVar CLI](simvar-cli.md) |
 
 ### Facilities
 
@@ -176,10 +184,10 @@ Smaller examples, each showing one part of the API.
 | [read-facilities](https://github.com/mrlm-net/simconnect/tree/main/examples/read-facilities) | Facility lists, paginated | [Facilities](guide-facilities.md) |
 | [subscribe-facilities](https://github.com/mrlm-net/simconnect/tree/main/examples/subscribe-facilities) | Subscribe to the airport list and its updates | [Facilities](guide-facilities.md) |
 | [all-facilities](https://github.com/mrlm-net/simconnect/tree/main/examples/all-facilities) | Request the full airport list at once | [Facilities](guide-facilities.md) |
-| [airport-details](https://github.com/mrlm-net/simconnect/tree/main/examples/airport-details) | Parking, runways and taxi paths of one airport, multi-packet responses | [Facilities](guide-facilities.md) |
-| [locate-airport](https://github.com/mrlm-net/simconnect/tree/main/examples/locate-airport) | The nearest airports to the user aircraft | [Facilities](guide-facilities.md) |
-| [read-waypoints](https://github.com/mrlm-net/simconnect/tree/main/examples/read-waypoints) | Waypoint facility data | [Facilities](guide-facilities.md) |
-| [simconnect-facilities](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-facilities) | The ready-made facility datasets through the manager | [Datasets](usage-datasets.md) |
+| [airport-details](https://github.com/mrlm-net/simconnect/tree/main/examples/airport-details) | Parking, taxi paths, taxi points and taxiway names of one airport (EDDM), multi-packet responses | [Facilities](guide-facilities.md) |
+| [locate-airport](https://github.com/mrlm-net/simconnect/tree/main/examples/locate-airport) | The nearest airport to the user aircraft | [Facilities](guide-facilities.md) |
+| [read-waypoints](https://github.com/mrlm-net/simconnect/tree/main/examples/read-waypoints) | The waypoint list (`RequestFacilitiesList`, its count printed) and LKPR's airport facility data | [Facilities](guide-facilities.md) |
+| [simconnect-facilities](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-facilities) | The ready-made facility datasets (airport, runways, parking, frequencies) with `RegisterFacilityDataset` | [Datasets](usage-datasets.md) |
 
 ### Traffic
 
@@ -188,7 +196,7 @@ Smaller examples, each showing one part of the API.
 | [ai-taxi](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-taxi) | One departure: pushback, taxi, line-up and take-off with `pkg/traffic` | [Departure Taxi](traffic-taxi.md) |
 | [ai-arrival](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-arrival) | One arrival: final, touchdown, runway exit and taxi-in to a stand | [Arrivals](traffic-arrival.md) |
 | [ai-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/ai-traffic) | Raw SimConnect: parked and en route ATC aircraft from `planes.json` (run it from its folder) | [Traffic Guide](traffic-guide.md) |
-| [manage-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/manage-traffic) | Raw SimConnect: parked and airborne aircraft at LKPR driven by waypoints | [Traffic Guide](traffic-guide.md) |
+| [manage-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/manage-traffic) | Raw SimConnect: non-ATC aircraft parked at LKPR gates and one departure driven by waypoints from pushback through taxi to take-off (writes taxi CSV and GPX files) | [Traffic Guide](traffic-guide.md) |
 | [monitor-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/monitor-traffic) | Every aircraft within 25 km, polled every 5 seconds | [Client API](usage-client.md) |
 | [simconnect-traffic](https://github.com/mrlm-net/simconnect/tree/main/examples/simconnect-traffic) | The manager's traffic fleet: a parked aircraft at LFPG and a non-ATC aircraft at LKPR on waypoints, removed on exit | [Traffic Guide](traffic-guide.md) |
 
@@ -197,7 +205,7 @@ Smaller examples, each showing one part of the API.
 | Example | What it shows | Docs |
 |---------|---------------|------|
 | [atis](https://github.com/mrlm-net/simconnect/tree/main/examples/atis) | Weather at the user aircraft, the runway in use and the airport's ATIS | [Weather & ATIS](nav-weather.md) |
-| [flight-plan](https://github.com/mrlm-net/simconnect/tree/main/examples/flight-plan) | An IFR plan between two airports over the airways, written as a `.pln` | [Flight Plans](nav-flight-plans.md) |
+| [flight-plan](https://github.com/mrlm-net/simconnect/tree/main/examples/flight-plan) | An IFR plan between two airports over the airways, printed, and written as a `.pln` with `-out` | [Flight Plans](nav-flight-plans.md) |
 | [spike-airways](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airways) | Crawl the airway network around a centre and save it as JSON (the map's `-airways`) | [Airways](nav-airways.md) |
 
 ### Spikes
@@ -208,7 +216,7 @@ Experiments kept as a record of how the traffic features were found. Each answer
 |---------|----------|
 | [spike-airlines](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airlines) | Can the airlines of a parking spot be read? |
 | [spike-approach](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-approach) | Can a final approach, flare and rollout be flown by position injection? |
-| [spike-camera](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-camera) | What does the MSFS 2024 add-on camera API report, and can it hold a camera beside the aircraft? |
+| [spike-camera](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-camera) | What does the MSFS 2024 add-on camera API report, and can it hold a camera behind and above the aircraft? |
 | [spike-flare](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-flare) | Which flare profile gives a good touchdown? |
 | [spike-gear](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-gear) | How is the gear of a non-ATC aircraft lowered? |
 | [spike-geometry](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-geometry) | What does the simulator report of an aircraft's gear, span and CG? |

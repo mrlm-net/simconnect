@@ -2,14 +2,14 @@
 
 ## Overview
 
-This example demonstrates how to query detailed information about specific airports, including parking places, runway data, and taxi paths. It shows how to retrieve comprehensive airport facility data with multi-packet response handling.
+This example demonstrates how to query detailed information about specific airports, including parking places, taxi paths, taxi points and taxiway names. It shows how to retrieve comprehensive airport facility data with multi-packet response handling.
 
 ## What It Does
 
 1. **Connects to the simulator** — Establishes connection and waits for simulator to be ready
 2. **Queries airport data** — Requests facility information for a specific ICAO code (default: EDDM Munich)
 3. **Retrieves parking places** — Gets available parking positions with heading and dimensions
-4. **Reads runway data** — Obtains runway configuration and properties
+4. **Reads the taxiways** — Taxi paths, taxi points and taxiway names
 5. **Parses facility details** — Handles multi-packet responses for large datasets
 6. **Displays results** — Shows airport name, coordinates, and available parking
 
@@ -51,11 +51,6 @@ var airport = "LFPG"  // Paris Charles de Gaulle
    1. Gate A01 - Heading: 270° - Type: 0
    2. Gate A02 - Heading: 270° - Type: 0
    3. Gate B01 - Heading: 90° - Type: 1
-   
-✈️  Runways:
-   1. Runway 08L/26R - Surface: Asphalt
-   2. Runway 08R/26L - Surface: Concrete
-   3. Runway 16L/34R - Surface: Asphalt
    
 🛣️  Taxi Paths: 47 paths configured
 ```

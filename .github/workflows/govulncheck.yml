@@ -33,6 +33,11 @@ jobs:
         env:
           GOOS: windows
 
+      # The map builds against the library in this checkout, not its last
+      # release: through a workspace (go.work is not committed).
+      - name: Workspace for the airport map
+        run: go work init . ./cmd/airport-map
+
       - name: Scan airport-map module
         run: govulncheck .
         working-directory: cmd/airport-map

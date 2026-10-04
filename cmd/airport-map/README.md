@@ -8,20 +8,26 @@ The layout comes from [`pkg/airport`](../../docs/airport-layout.md): `airport.Lo
 
 ## Run
 
-The map is its own module (it speaks through [voice-goio](https://github.com/mrlm-net/voice-goio), and the SDK keeps zero dependencies), so run it from its folder:
+The map is its own module (it speaks through [voice-goio](https://github.com/mrlm-net/voice-goio), and the SDK keeps zero dependencies), so run it from the repository root with `-C` (or `go run .` in its folder):
 
 ```bash
-cd cmd/airport-map
-
 # Live: connect to the simulator and open LKPR
-go run .
+go run -C cmd/airport-map .
 
 # Also save each fetched airport's raw data to <ICAO>.json
-go run . -dump
+go run -C cmd/airport-map . -dump
 
 # Offline: serve a saved dump, no simulator needed (layout and routes only)
-go run . -file LKPR.json
+go run -C cmd/airport-map . -file LKPR.json
 ```
+
+It builds against the library in the checkout through a Go workspace, which is not committed; create it once in the repository root:
+
+```bash
+go work init . ./cmd/airport-map ./cmd/simvar-cli
+```
+
+Its `go.mod` has no `replace`, so a released version installs with `go install`; the web UI is built in, and the voice looks for `bin/piper/piper.exe` next to the executable.
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 

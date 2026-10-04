@@ -3,12 +3,17 @@
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-clike';
 	import 'prismjs/components/prism-go';
+	import 'prismjs/components/prism-bash';
 	import SeoHead from '$lib/components/seo/SeoHead.svelte';
 	import { siteConfig } from '$lib/config/site.js';
 	import type { Example } from '$lib/content/types.js';
 
-	// The airport map's run command, with a copy button.
-	const runMap = 'cd cmd/airport-map && go run .';
+	// The airport map's run command from the repository root (its own
+	// module: -C runs it from its folder), with a copy button.
+	const runMap = 'go run -C cmd/airport-map .';
+	const runMapHTML = Prism.languages.bash
+		? Prism.highlight(runMap, Prism.languages.bash, 'bash')
+		: runMap;
 	let runCopied = $state(false);
 	function copyRun() {
 		navigator.clipboard.writeText(runMap);
@@ -112,7 +117,7 @@
 				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
 			>
 				<span style="color: var(--color-text-muted);">$</span>
-				<span style="color: var(--color-text-secondary);">{runMap}</span>
+				<code class="language-bash" style="color: var(--color-text-secondary); background: none;">{@html runMapHTML}</code>
 			<button
 				class="cursor-pointer rounded p-1 transition-colors hover:bg-white/5"
 				style="color: {runCopied ? '#3fb950' : 'var(--color-text-muted)'};"
