@@ -467,6 +467,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			return fmt.Sprintf("%s, stop descent at %s%s", cs, p[ParamLevel], why)
 		case "stop climb":
 			return fmt.Sprintf("%s, stop climb at %s%s", cs, p[ParamLevel], why)
+		case "maintain":
+			return fmt.Sprintf("%s, maintain %s%s", cs, p[ParamLevel], why) // 12.3.2.3 a
 		case "continue climb", "continue descent":
 			// Plain "climb (or descend) to (level)" (12.3.1.2 a): the traffic it
 			// was stopped for is known. Doc 4444's "clear of traffic [appropriate
@@ -1036,6 +1038,9 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 			if r.AltFt < altFt {
 				t.Params[ParamClimb] = "stop" // stop descent
 			}
+		}
+		if r.Maintain {
+			t.Params[ParamClimb] = "maintain" // 12.3.2.3 a
 		}
 	case ResolveDirect:
 		t.Intent = IntentDirectTo

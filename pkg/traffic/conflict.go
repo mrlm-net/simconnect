@@ -284,6 +284,10 @@ type Resolution struct {
 	// Stop (level): a climb or descent stopped at AltFt on its way, to
 	// go on once clear of the traffic ("stop climb at 5000 feet").
 	Stop bool `json:"stop,omitempty"`
+	// Maintain (level): a level aircraft whose route would have it climb or
+	// descend is held at AltFt ("maintain flight level 100", Doc 4444
+	// 12.3.2.3 a), to go on once clear of the traffic (#697).
+	Maintain bool `json:"maintain,omitempty"`
 	// Fix and Direct (direct): the fix of the route flown to.
 	Fix    string          `json:"fix,omitempty"`
 	Direct *airport.LatLon `json:"direct,omitempty"`
@@ -406,11 +410,23 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 			add(Resolution{Kind: ResolveLevel, AltFt: alt, Stop: true}, t, levelCost+cost)
 		}
 	}
+	// Level now, its route climbing or descending ahead (an arrival about
+	// to descend on its STAR): held where it is, "maintain" (#697).
+	way := profileWay(base)
+	if base.fpm == 0 && way != 0 {
+		hold := math.Round(a.AltFt/100) * 100
+		t := base
+		t.level = hold
+		add(Resolution{Kind: ResolveLevel, AltFt: hold, Maintain: true}, t, levelCost+0.7)
+	}
 	level := math.Round(a.AltFt/1000) * 1000
 	for _, dft := range []float64{1000, -1000, 2000, -2000} {
 		alt := level + dft
 		if base.fpm != 0 && (dft > 0) != (base.fpm > 0) {
 			continue // not turned back
+		}
+		if base.fpm == 0 && way != 0 && (dft > 0) != (way > 0) {
+			continue // not against its route's climb or descent
 		}
 		if alt < a.AltFt-a.AGLFt+1500 {
 			continue // too low over the ground
@@ -800,4 +816,22 @@ func crossAlts(t track, k int, target float64, up bool) []float64 {
 		alts[k] = target
 	}
 	return alts
+}
+
+// profileWay is where t's profile takes it next: +1 climbing, -1
+// descending (its next altitude more than 300 ft off), 0 level or none.
+func profileWay(t track) int {
+	for _, x := range t.alts {
+		if x <= 0 {
+			continue
+		}
+		switch {
+		case x > t.altFt+300:
+			return 1
+		case x < t.altFt-300:
+			return -1
+		}
+		return 0
+	}
+	return 0
 }
