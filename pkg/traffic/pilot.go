@@ -226,6 +226,23 @@ func withInfo(info string) string {
 func Readback(t Transmission) (Transmission, bool) {
 	p := t.Params
 	cs := t.Callsign
+	// An instruction joined to the call (Joined): the call's own readback,
+	// if it has one, then the joined one's ("identified" alone has none:
+	// live in MyCrew, identified + cleared ILS approach read back nothing).
+	if also := p[ParamAlsoReadback]; also != "" {
+		own := t
+		own.Params = map[string]string{}
+		for k, v := range p {
+			if k != ParamAlsoSaid && k != ParamAlsoReadback {
+				own.Params[k] = v
+			}
+		}
+		s := capital(also)
+		if rb, ok := Readback(own); ok {
+			s = strings.TrimSuffix(rb.Text, ", "+cs) + ", " + also
+		}
+		return pilotTx(t.Position, cs, IntentReadback, cloneParams(p, ParamIntent, string(t.Intent)), s+", "+cs), true
+	}
 	var s string
 	// The readbacks as docs/traffic-phraseology.md quotes them (Doc 4444
 	// 4.5.7.5, CAP 413 examples): the clearance's items, then the call sign.
@@ -400,17 +417,7 @@ func Readback(t Transmission) (Transmission, bool) {
 			s = capital(p[ParamWhen]) + " " + s // CAP 413 4.68
 		}
 	default:
-		if p[ParamAlsoReadback] == "" {
-			return Transmission{}, false
-		}
-	}
-	// An instruction joined to the call (Joined): read back after it.
-	if v := p[ParamAlsoReadback]; v != "" {
-		if s == "" {
-			s = capital(v)
-		} else {
-			s += ", " + v
-		}
+		return Transmission{}, false
 	}
 	return pilotTx(t.Position, cs, IntentReadback, cloneParams(p, ParamIntent, string(t.Intent)), s+", "+cs), true
 }
