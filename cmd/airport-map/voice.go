@@ -65,7 +65,7 @@ func (v *voiceOut) speakerOf() *speaker.Speaker {
 				return atis(freq)
 			},
 			OnSay: func(u speaker.Utterance) {
-				heardOnCamera(traffic.Transmission{Airport: u.Airport, Position: traffic.Position(u.Position), Callsign: u.Callsign, Pilot: u.Pilot, Frequency: u.Frequency, Text: u.Text}) // the picture with the sound
+				cameraCut(traffic.Transmission{Airport: u.Airport, Position: traffic.Position(u.Position), Callsign: u.Callsign, Pilot: u.Pilot, Frequency: u.Frequency, Text: u.Text}) // the picture with the sound
 			},
 		})
 	}
@@ -235,3 +235,7 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 
 // radioVoice is the map's voice, one for the process.
 var radioVoice = newVoice()
+
+// cameraCut cuts the camera to a transmission's aircraft as the voice says
+// it (the World's camera, set in main).
+var cameraCut = func(traffic.Transmission) {}
