@@ -157,6 +157,10 @@ const (
 	ParamAltimeter  = "altimeter"   // inches of mercury ×100: "2992"
 	ParamReport     = "report"      // what to report: "established"
 	ParamFor        = "for"         // a vector's reason: "spacing", "base"
+	// A vector said with another call (WithVector): its words and their
+	// readback, after the call's own.
+	ParamAlsoSaid     = "alsoSaid"
+	ParamAlsoReadback = "alsoReadback"
 	ParamIntercept  = "intercept"   // the heading to intercept the final, three digits
 	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
 	ParamNoDelay    = "no_delay"    // a take-off with traffic on final: its distance in whole NM, "5"

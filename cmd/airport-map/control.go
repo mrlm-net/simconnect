@@ -10,9 +10,9 @@ import (
 	"math"
 	"math/rand/v2"
 	"net/http"
+	"regexp"
 	"slices"
 	"sort"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,9 +97,13 @@ type controlled struct {
 	// departure's initial climb ("5000 feet"), heightFt its height on the
 	// climb-out, vacateSaid the tower's "when vacated contact ground" (#462).
 	procSaid, climbSaid string
-	heightFt            float64
-	vacateSaid          bool
-	approachSaid        bool // its approach clearance, given on the base
+	// radarSaid, radarFt: the level departure clears it to once
+	// identified (departureLevel), its filed cruise level when lower.
+	radarSaid    string
+	radarFt      float64
+	heightFt     float64
+	vacateSaid   bool
+	approachSaid bool // its approach clearance, given on the base
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
@@ -121,6 +125,9 @@ type controlled struct {
 	// identified: departure has identified it (its check-in answered,
 	// "identified[, climb to ...]"), it.mu (#698).
 	identified bool
+	// directAnswer: the crew's request for direct asked before it was
+	// identified, answered in the same call, it.mu.
+	directAnswer func() (traffic.Transmission, bool)
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
@@ -169,22 +176,22 @@ type ControlView struct {
 	Squawk string `json:"squawk,omitempty"` // a departure's SSR code
 	// Tug: its pushback tug while it drives (from its depot or home), with
 	// the way still ahead.
-	Tug            *tugView         `json:"tug,omitempty"`
-	Fuel           *tugView         `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
-	Model          string           `json:"model"`
-	Stand          string           `json:"stand"`
-	Runway         string           `json:"runway"`
-	Procedure      string           `json:"procedure,omitempty"` // SID, or STAR → approach
-	OnGround       bool             `json:"onGround"`
-	PushbackHeld   bool             `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
-	Rush           bool             `json:"rush,omitempty"`         // told to hurry (#510)
-	Manual         bool             `json:"manual,omitempty"`       // the user gives its clearances, no automation
-	Entry          string           `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
-	Deicing        bool             `json:"deicing,omitempty"`      // being de-iced
-	State          string           `json:"state"`
-	HoldingShortOf string           `json:"holdingShortOf,omitempty"`
+	Tug            *tugView `json:"tug,omitempty"`
+	Fuel           *tugView `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
+	Model          string   `json:"model"`
+	Stand          string   `json:"stand"`
+	Runway         string   `json:"runway"`
+	Procedure      string   `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround       bool     `json:"onGround"`
+	PushbackHeld   bool     `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Rush           bool     `json:"rush,omitempty"`         // told to hurry (#510)
+	Manual         bool     `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	Entry          string   `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
+	Deicing        bool     `json:"deicing,omitempty"`      // being de-iced
+	State          string   `json:"state"`
+	HoldingShortOf string   `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
-	TaxiRemainingM float64 `json:"taxiRemainingM,omitempty"`
+	TaxiRemainingM float64          `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
 	LimitNode      int              `json:"limitNode"`
 	Position       airport.LatLon   `json:"position"`
@@ -284,8 +291,8 @@ type controlCenter struct {
 	procedures func(icao string) (airport.Procedures, bool)
 	// The ATC game (#272): its state, the taxi graphs, the last traffic
 	// scan and when the game last ran.
-	game   *game
-	graph  func(icao string) (*airport.Graph, error)
+	game  *game
+	graph func(icao string) (*airport.Graph, error)
 	// layout gives a loaded airport's layout (the cache), for where on the
 	// airfield other traffic is (TrafficPicture, #623).
 	layout func(icao string) (*airport.Layout, bool)
@@ -334,7 +341,7 @@ func newControlCenter(client engine.Client) *controlCenter {
 			}
 			tlog.printf("%-6s %s: %s", t.Callsign, who, t.Text)
 			hub.publish("radio") // the open maps fetch it now (push.go)
-			radioVoice.hear(t)      // the voice, when on (#419)
+			radioVoice.hear(t)   // the voice, when on (#419)
 			if !radioVoice.state().On {
 				heardOnCamera(t) // the camera cuts as it is said; with the voice, as it is heard
 			}
@@ -823,6 +830,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if procName != "" {
 			it.view.Procedure = procName
 			it.procSaid = procedureSaid(procName, r.planned)
+		}
+		if r.Kind == "departure" {
+			it.radarSaid, it.radarFt = departureLevel(r.planned, lim)
 		}
 		info := ""
 		if cc.atisLetter != nil {
@@ -2497,11 +2507,22 @@ func (it *controlled) askWeather(pos traffic.Position) {
 }
 
 // departureClimbSaid is the level departure clears a climbing departure
-// to once identified.
+// to once identified, its filed cruise level when lower (departureLevel).
 const (
 	departureClimbSaid = "flight level 240"
 	departureClimbFt   = 24000.0
 )
+
+// departureLevel is the level departure clears a departure with plan p
+// (nil none) to: FL240, or its cruise level when lower (live, a short
+// flight filed at FL150 cleared to FL240).
+func departureLevel(p *planned, lim airport.Limits) (string, float64) {
+	if p == nil || p.plan == nil || p.plan.CruiseFL <= 0 || float64(p.plan.CruiseFL)*100 >= departureClimbFt {
+		return departureClimbSaid, departureClimbFt
+	}
+	ft := float64(p.plan.CruiseFL) * 100
+	return traffic.LevelSaidAbove(ft, lim.TransitionAltitudeFt), ft
+}
 
 // phraseView is phrase for a view the caller holds.
 func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) traffic.Transmission {
@@ -2767,14 +2788,22 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			// Stopped for traffic since the check-in: identified only, the
 			// climb is cleared on once clear of it (live, TVS524 "stop climb
 			// at 4000 feet" then "identified, climb to flight level 240").
-			level := departureClimbSaid
+			level := it.radarSaid
 			if stopped := it.cc.climbStopped; stopped != nil && stopped(it.Tail) {
 				level = ""
 			}
 			it.mu.Lock()
 			it.identified = true
+			answer := it.directAnswer
+			it.directAnswer = nil
 			it.mu.Unlock()
-			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, level))
+			tx := traffic.Identified(traffic.PosDeparture, it.Tail, level)
+			if answer != nil {
+				if u, ok := answer(); ok {
+					tx = traffic.Joined(tx, u)
+				}
+			}
+			it.say(tx)
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)

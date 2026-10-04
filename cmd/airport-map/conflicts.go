@@ -47,8 +47,8 @@ type conflictWatch struct {
 	// stopped: ours told to stop a climb or descent for traffic, cleared
 	// on once clear of it.
 	stopped map[string]stoppedLevel
-	now      []traffic.Conflict
-	done     []resolutionView // the latest last (at most 50)
+	now     []traffic.Conflict
+	done    []resolutionView // the latest last (at most 50)
 }
 
 // stoppedLevel is a climb or descent stopped for traffic: who says the
@@ -248,7 +248,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			}
 		}
 		var err error
-		var planned []traffic.RoutePoint // the route before the change
+		radarFt := departureClimbFt        // a departure: the level departure cleared it to
+		var planned []traffic.RoutePoint   // the route before the change
 		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
 		if e := enroute(a); e != nil {
 			icao, planned = e.f.Airport, e.route
@@ -269,6 +270,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			// A departure: the departure radar that has it.
 			pos, icao = traffic.PosDeparture, it.ICAO
 			planned = it.dep.ClimbPlan(a.Position)
+			if it.radarFt > 0 {
+				radarFt = it.radarFt
+			}
 			route := traffic.ResolvedRoute(planned, a, r, conflictLookAhead)
 			err = w.s.cc.do(func() error { return it.dep.Reroute(route) })
 		} else {
@@ -297,7 +301,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				// On to the level departure cleared it to, not the top of
 				// its climb waypoints (live, KLM704 "climb to flight level
 				// 192" after "climb to flight level 240").
-				on, ok = departureClimbFt, true
+				on, ok = radarFt, true
 			}
 			if ok {
 				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up}

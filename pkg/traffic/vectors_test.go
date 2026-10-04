@@ -5,6 +5,7 @@ package traffic
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,4 +167,32 @@ func TestVectorPhrases(t *testing.T) {
 	if TurnTo(350, 10) != "right" || TurnTo(10, 350) != "left" {
 		t.Error("TurnTo across north")
 	}
+}
+
+// TestWithVector: the sequence call and the vector in one, read back
+// together (#707).
+func TestWithVector(t *testing.T) {
+	tx := Sequenced("KLM868", 3, time.Minute, Absorption{SpeedKts: 210})
+	tx = WithVector(tx, Vector{HeadingDeg: 138, For: "spacing"}, 4)
+	if want := ", fly heading 142, for spacing"; !strings.HasSuffix(tx.Text, want) || !strings.HasPrefix(tx.Text, "KLM868, number 3") {
+		t.Errorf("%q, want the sequence call ending %q", tx.Text, want)
+	}
+	rb, ok := Readback(tx)
+	if !ok || !strings.Contains(rb.Text, "210 knots") || !strings.HasSuffix(rb.Text, "fly heading 142, KLM868") {
+		t.Errorf("readback %q %v, want the speed and the heading", rb.Text, ok)
+	}
+}
+
+// TestJoined: departure's "identified, climb" and the answer to the
+// crew's request for direct in one call (live, LOT924).
+func TestJoined(t *testing.T) {
+	tx := Joined(Identified(PosDeparture, "LOT924", "flight level 240"), ClearedDirectTo(PosDeparture, "LOT924", "ARTUP"))
+	if want := "LOT924, identified, climb to flight level 240, cleared direct to ARTUP"; !strings.HasPrefix(tx.Text, "LOT924, identified") || !strings.HasSuffix(tx.Text, "ARTUP") {
+		t.Errorf("%q, want like %q", tx.Text, want)
+	}
+	rb, ok := Readback(tx)
+	if !ok || !strings.Contains(rb.Text, "flight level 240") || !strings.Contains(rb.Text, "direct") || !strings.HasSuffix(rb.Text, "ARTUP, LOT924") {
+		t.Errorf("readback %q %v, want the climb and the direct", rb.Text, ok)
+	}
+	t.Log(tx.Text, " / ", rb.Text)
 }
