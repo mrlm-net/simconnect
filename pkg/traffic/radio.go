@@ -1271,6 +1271,18 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	return t
 }
 
+// Occupy marks freq at airport busy until until, for something said on it
+// outside this radio (a host's own ATC, #710): what this radio says next
+// waits for it. Nothing is kept or heard.
+func (r *Radio) Occupy(airport, freq string, until time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := airport + " " + freq
+	if until.After(r.busy[key]) {
+		r.busy[key] = until
+	}
+}
+
 // ClearAt is when freq at airport is clear again: the end of what is said
 // on it, readbacks included, and a breath (#462: a crew acts on a
 // clearance once it has read it back).
