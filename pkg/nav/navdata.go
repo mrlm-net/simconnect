@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Package nav holds enroute navigation data: fixes (waypoints, VORs,
 // NDBs), the airway network crawled from the facility API, and routing
 // over it.

@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Package nav holds the navigation side of an airport environment:
 // navigation data, weather and ATIS, flight plans.
 //

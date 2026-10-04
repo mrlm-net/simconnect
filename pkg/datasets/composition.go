@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package datasets
 
 // Merge combines multiple DataSets into one, deduplicating definitions by Name.

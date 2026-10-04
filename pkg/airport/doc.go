@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Package airport models an airport's ground layout as SimConnect reports it
 // through facility data: runways, parking spots, taxi points, taxi paths and
 // taxiway names.

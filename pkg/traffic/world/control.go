@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package world
 
 import (
@@ -57,12 +54,12 @@ type controlled struct {
 	tug *traffic.SimObjectTug
 	// fuel: a departure's fuel truck (#582), for its way on the map.
 	fuel   *traffic.SimObjectFuelTruck
-	ID     int    `json:"id"`
-	Kind   string `json:"kind"` // departure | arrival
-	Tail   string `json:"tail"`
-	ICAO   string `json:"icao"`
-	dep    *traffic.TaxiController
-	arr    *traffic.ArrivalController
+	ID     int          `json:"id"`
+	Kind   string       `json:"kind"` // departure | arrival
+	Tail   string       `json:"tail"`
+	ICAO   string       `json:"icao"`
+	dep    departureCtl // nil: not a departure
+	arr    arrivalCtl   // nil: not an arrival
 	graph  *airport.Graph
 	stands *traffic.StandAllocator
 	stand  int  // parking index held for this aircraft
@@ -1176,7 +1173,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 }
 
-func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.TaxiController) []string {
+func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureCtl) []string {
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		if ctl != nil && ctl.FacesOut() {

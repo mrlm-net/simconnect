@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Package world is the traffic engine of the airport map (#710): scheduled
 // traffic around the focus airports with its ATC — spawning, pushback,
 // taxi, runways, sequencing, separation, conflicts, holds, approaches,
@@ -16,8 +13,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -27,6 +24,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // Options configure a World. The zero value is the airport map's defaults.
@@ -197,3 +195,9 @@ func (w *World) SetListenAddr(addr string) { listenAddr = addr }
 
 // ParseAirspaceClass reads a control zone class: C, D, E or G.
 func ParseAirspaceClass(s string) (traffic.AirspaceClass, error) { return parseAirspaceClass(s) }
+
+// systemEventStater turns a subscribed system event on or off (the
+// engine's SetSystemEventState), asserted on a client.
+type systemEventStater interface {
+	SetSystemEventState(eventID uint32, state types.SIMCONNECT_STATE) error
+}
