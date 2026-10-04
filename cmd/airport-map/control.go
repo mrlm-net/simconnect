@@ -115,6 +115,9 @@ type controlled struct {
 	// exitTwy: the taxiway an arrival vacated by, for its report.
 	exitTwy   string
 	readySaid bool // a departure's "ready for departure"
+	// askedEntry: the intersection the crew asked to depart from with its
+	// taxi request, answered with the taxi clearance (#621).
+	askedEntry string
 	// identified: departure has identified it (its check-in answered,
 	// "identified[, climb to ...]"), it.mu (#698).
 	identified bool

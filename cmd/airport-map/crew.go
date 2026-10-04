@@ -4,10 +4,12 @@
 package main
 
 import (
+	"math"
 	"math/rand/v2"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -196,4 +198,54 @@ func (w *conflictWatch) inConflictAny(cs string) bool {
 		}
 	}
 	return false
+}
+
+// crewIntersectionShare: the share of departures planned for the full
+// length whose crew asks to take the runway from an intersection (#621).
+const crewIntersectionShare = 0.15
+
+// crewEntry is the intersection a departure's crew asks for with its taxi
+// request: the entry nearest it, "" when it does not ask (most), departs
+// from an intersection already or the runway has none. it.mu is held.
+func (it *controlled) crewEntry() string {
+	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare {
+		return ""
+	}
+	entries, err := it.graph.RunwayEntries(it.view.Runway)
+	if err != nil {
+		return ""
+	}
+	best, bestD := "", math.Inf(1)
+	for _, e := range entries {
+		if e.Taxiway == "" || e.FromThreshold < airport.FullLengthMeters {
+			continue
+		}
+		p := it.graph.Nodes[e.Node].Position
+		if d := calc.HaversineMeters(it.view.Position.Lat, it.view.Position.Lon, p.Lat, p.Lon); d < bestD {
+			best, bestD = e.Taxiway, d
+		}
+	}
+	return best
+}
+
+// grantEntry answers the crew's intersection request before the taxi
+// clearance: the departure re-planned from it when the runway left is long
+// enough for the type (ChangeEntry), the clearance then naming it; else
+// the clearance is for the full length, the answer as given.
+func (it *controlled) grantEntry() {
+	it.mu.Lock()
+	e := it.askedEntry
+	it.askedEntry = ""
+	it.mu.Unlock()
+	if e == "" || it.dep == nil {
+		return
+	}
+	if err := it.cc.do(func() error { return it.dep.ChangeEntry(e) }); err != nil {
+		tlog.printf("%-6s crew: intersection %s not given: %v", it.Tail, e, err)
+		return
+	}
+	it.mu.Lock()
+	it.view.Entry = e
+	it.mu.Unlock()
+	tlog.printf("%-6s crew: intersection %s given", it.Tail, e)
 }

@@ -104,9 +104,15 @@ func (c *TaxiController) ChangeRunway(runway, entry string, departure []airport.
 		c.planPushback()
 		c.track = newRouteTracker(c.route)
 	case TaxiPushback, TaxiAwaitingTaxi:
-		// The taxi-out, from where the aircraft stands when it starts.
+		// The taxi-out, from where the aircraft stands when it starts;
+		// standing already (waiting for the taxi), planned now as well, so
+		// the taxi clearance names the new route (a crew's intersection
+		// request, #621).
 		c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
 		c.reroute = true
+		if c.state == TaxiAwaitingTaxi && c.mover != nil {
+			c.routeFromHere() // else planned when it starts, as before
+		}
 	case TaxiTaxiing, TaxiHoldingShort:
 		c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
 		if err := c.routeFromHere(); err != nil {
