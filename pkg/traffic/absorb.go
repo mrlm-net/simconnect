@@ -194,6 +194,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	}
 	stretched := false
 	baseAt, apexAt := -1, -1 // the new base turn, the dog-leg's apex (in out)
+	var legFrom, legTo airport.LatLon // the leg the dog-leg stretches
 	// A longer downwind, the way a controller extends it: on along the
 	// downwind past its last point, the base turn and the final that much
 	// further out (each mile on adds two), again as more is asked, up to
@@ -258,6 +259,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			// approach path, where arrivals join base and final (live, FINZX
 			// vectored toward them, #706).
 			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			legFrom, legTo = from, to
 			ref := wps[final] // no STAR point left: the align point's
 			if at-1 < len(out) {
 				ref = out[at-1]
@@ -279,6 +281,22 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
 	plainNames := append(outNames, names[final:]...)
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+	if apexAt >= 0 && a.ExtraNM > 0 {
+		// Flown, the apex is rounded off and the dog-leg adds less than
+		// asked (live, FINZX: 16 s of 1m08s left over): stretched further
+		// until the track as flown adds it (#706).
+		want, extra := a.ExtraNM, a.ExtraNM
+		for i := 0; i < 3; i++ {
+			got := pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
+			if got >= want-0.2 || extra >= 2*want {
+				break
+			}
+			extra = math.Min(2*want, extra+want-got)
+			p := dogLegApex(legFrom, legTo, extra, c.plan.End.Threshold, c.plan.End.Heading)
+			plain[apexAt].Latitude, plain[apexAt].Longitude = p.Lat, p.Lon
+			out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+		}
+	}
 	if a.ExtraNM > 0 {
 		// The track added as flown: the rounded turns included.
 		a.ExtraNM = pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before

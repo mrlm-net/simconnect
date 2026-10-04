@@ -290,7 +290,7 @@ func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
 	a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
 	at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
 	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, 90, 210, false))
-	routeBefore := pathNM(ctl.ProcedureRoute())
+	routeBefore := pathNM(append([]airport.LatLon{at}, ctl.ProcedureRoute()...)) // from where it is, as ExtraNM
 	a, err := ctl.AbsorbDelay(90 * time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
 	if a.Left > 0 || a.ExtraNM <= 0 {
 		t.Fatalf("absorption %+v: want vectors, nothing left for a hold", a)
 	}
-	if grown := pathNM(ctl.ProcedureRoute()) - routeBefore; grown < a.ExtraNM-1 {
+	if grown := pathNM(append([]airport.LatLon{at}, ctl.ProcedureRoute()...)) - routeBefore; grown < a.ExtraNM-1 {
 		t.Errorf("route grew %.1f NM, stretch %.1f", grown, a.ExtraNM)
 	}
 }
