@@ -45,7 +45,6 @@ type scheduler struct {
 	enroute map[string]*enrouteAC
 	pending map[uint32]*enrouteAC
 	nextReq uint32
-	defOnce sync.Once // the waypoint list definition, registered once
 }
 
 func newScheduler(st *state, cc *controlCenter) *scheduler {

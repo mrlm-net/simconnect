@@ -262,7 +262,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			var wps []types.SIMCONNECT_DATA_WAYPOINT
 			_, wps, err = traffic.EnrouteStart(resolved)
 			if err == nil {
-				err = w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) })
+				err = w.s.cc.do(func() error { return w.s.cc.sim.SetRoute(e.objectID, wps) })
 			}
 			if err == nil {
 				// Predicted on the route it flies now, the change in it
@@ -618,7 +618,7 @@ func (w *conflictWatch) restoreRoute(cs string, st stoppedLevel, aircraft []traf
 	if err != nil {
 		return err
 	}
-	if err := w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) }); err != nil {
+	if err := w.s.cc.do(func() error { return w.s.cc.sim.SetRoute(e.objectID, wps) }); err != nil {
 		return err
 	}
 	w.s.mu.Lock()
