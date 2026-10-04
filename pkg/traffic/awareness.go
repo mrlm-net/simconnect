@@ -25,6 +25,7 @@ type GroundPicture struct {
 }
 
 type groundEntry struct {
+	id         uint32 // the object (set where the picture is read)
 	pos        airport.LatLon
 	hdg        float64
 	nose, tail float64 // meters ahead of and behind the reference point
@@ -274,6 +275,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	others := make([]groundEntry, 0, len(p.aircraft))
 	for oid, e := range p.aircraft {
 		if oid != id && now.Sub(e.at) <= TrafficStaleAfter {
+			e.id = oid
 			others = append(others, e)
 		}
 	}

@@ -160,7 +160,9 @@ type ArrivalEvent struct {
 	// GivingWayTo is the aircraft (object ID) it stops to give way to while
 	// taxiing in, 0 for none (TaxiEvent.GivingWayTo).
 	GivingWayTo uint32
-	Position    airport.LatLon
+	// StoppedBy is why it stands still while taxiing in (TaxiEvent.StoppedBy).
+	StoppedBy string
+	Position  airport.LatLon
 	AGL         float64 // feet
 	Heading     float64
 	GroundSpeed float64 // knots

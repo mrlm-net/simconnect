@@ -49,6 +49,8 @@ type groundDrive struct {
 	planned []airport.LatLon
 	// givingWay is the aircraft it gives way to now (followAhead), 0 none.
 	givingWay uint32
+	// blockedBy is the aircraft ahead it stops behind (followAhead), 0 none.
+	blockedBy uint32
 	trafficAt time.Time // last look ahead (every TrafficCheckEvery)
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
@@ -123,6 +125,41 @@ func (d *groundDrive) checkCrossing(pose GroundPose) {
 		}
 		d.applyLights(desc)
 	}
+}
+
+// stoppedBy is why the aircraft stands still short of the end of its path,
+// "" when it moves or has arrived: traffic ahead or given way to (with the
+// object, "traffic ahead #123"), a crossing hold, its clearance limit, a
+// de-icing pad, else where it stands against its stops — for the log, so a
+// stuck aircraft says why (live, OKSTM stopped 39 m short of the holding
+// point with nothing near).
+func (d *groundDrive) stoppedBy(pose GroundPose) string {
+	m := d.mover
+	if m == nil || !pose.Stopped {
+		return ""
+	}
+	s, end := pose.Distance, m.path.Length()
+	if s >= end-1 {
+		return ""
+	}
+	if m.hasTraffic && m.trafficAt <= m.hold && s >= m.trafficAt-2 {
+		if m.giveWay {
+			return fmt.Sprintf("giving way to #%d", d.givingWay)
+		}
+		return fmt.Sprintf("traffic ahead #%d", d.blockedBy)
+	}
+	if s >= m.hold-2 {
+		switch {
+		case d.hasPad && math.Abs(m.hold-d.padStop) < 0.5:
+			return "de-icing pad"
+		case d.hasLimit && math.Abs(m.hold-d.limit) < 0.5:
+			return "clearance limit"
+		case d.holdAtCrossings && d.nextCross < len(d.crossZones):
+			return "hold short of runway " + d.crossZones[d.nextCross].runway + " (crossing)"
+		}
+		return fmt.Sprintf("hold at %.0f m of %.0f m", m.hold, end)
+	}
+	return fmt.Sprintf("stopped at %.0f m of %.0f m (hold %.0f m, traffic stop %v at %.0f m)", s, end, m.hold, m.hasTraffic, m.trafficAt)
 }
 
 // holdNextCrossing sets the hold short of the next runway crossing ahead,
@@ -328,6 +365,10 @@ func (d *groundDrive) followAhead(now time.Time) {
 	s0 := d.mover.Pose().Distance
 	path := d.mover.Path()
 	body, who := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
+	d.blockedBy = 0
+	if !math.IsInf(body, 1) {
+		d.blockedBy = who.id
+	}
 	stop := math.Inf(1)
 	noseTip := (pushNoseFactor - 1) * d.prof.WheelbaseMeters // ahead of the nose gear
 	if !math.IsInf(body, 1) {

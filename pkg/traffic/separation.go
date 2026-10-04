@@ -45,11 +45,25 @@ type SeparationPair struct {
 	Loss bool `json:"loss"`
 	// Tower: the tower separates them (TowerPair).
 	Tower bool `json:"tower,omitempty"`
+	// MinNM: the lateral minimum that applied to the pair.
+	MinNM float64 `json:"minNM"`
 }
 
 // AirborneSeparation lists the pairs of airborne aircraft, closest first,
 // marking those closer than minNM and minFt at once.
 func AirborneSeparation(aircraft []TrackedAircraft, minNM, minFt float64) []SeparationPair {
+	return airborneSeparation(aircraft, func(TrackedAircraft, TrackedAircraft) float64 { return minNM }, minFt)
+}
+
+// AirborneSeparationFor is AirborneSeparation with the minima of o, as
+// PredictConflicts applies them: TerminalNM (3 NM) where both are in a
+// terminal area, MinNM (5 NM) elsewhere, MinFt vertically.
+func AirborneSeparationFor(aircraft []TrackedAircraft, o ConflictOptions) []SeparationPair {
+	o = o.withDefaults()
+	return airborneSeparation(aircraft, o.minFor, o.MinFt)
+}
+
+func airborneSeparation(aircraft []TrackedAircraft, minFor func(a, b TrackedAircraft) float64, minFt float64) []SeparationPair {
 	var air []TrackedAircraft
 	for _, a := range aircraft {
 		if !a.OnGround {
@@ -68,8 +82,9 @@ func AirborneSeparation(aircraft []TrackedAircraft, minNM, minFt float64) []Sepa
 			a, b := air[i], air[j]
 			l := calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
 			v := math.Abs(a.AltFt - b.AltFt)
+			minNM := minFor(a, b)
 			loss := l < minNM && v < minFt && !TowerPair(a, b)
-			out = append(out, SeparationPair{A: name(a), B: name(b), LateralNM: l, VerticalFt: v, Loss: loss, Tower: TowerPair(a, b)})
+			out = append(out, SeparationPair{A: name(a), B: name(b), LateralNM: l, VerticalFt: v, Loss: loss, Tower: TowerPair(a, b), MinNM: minNM})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LateralNM < out[j].LateralNM })

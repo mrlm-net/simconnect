@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,6 +131,8 @@ type controlled struct {
 	// givingWay is the aircraft it gives way to (TaxiEvent.GivingWayTo),
 	// told by ground once.
 	givingWay uint32
+	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
+	stoppedBy string
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -238,6 +241,9 @@ type controlCenter struct {
 	extra func(engine.Message) bool
 	// pending runs clearances and actions at their traffic time (#462).
 	pending *pending
+	// climbStopped reports a climb or descent stopped for traffic and not
+	// yet cleared on (the conflict watch); nil none.
+	climbStopped func(cs string) bool
 	// agenda: the controllers' calls, most urgent first (agenda.go).
 	agenda *agenda
 	// saidCallsign writes a call sign as said (#462); set once the schedule
@@ -989,6 +995,21 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.givingWay = gw
 			if gw != 0 && it.cc != nil {
 				it.cc.pending.later(it.cc.clock.Now(), func() { it.tellGiveWay(gw) })
+			}
+		}
+		// Standing still while taxiing: why, logged once it lasts
+		// (live, OKSTM stopped short of the holding point unexplained).
+		by := ""
+		switch {
+		case ev.dep != nil:
+			by = ev.dep.StoppedBy
+		case ev.arr != nil:
+			by = ev.arr.StoppedBy
+		}
+		if by != it.stoppedBy {
+			it.stoppedBy = by
+			if by != "" && it.cc != nil {
+				it.cc.pending.later(it.cc.clock.Now().Add(stoppedLogAfter), func() { it.logStopped(by) })
 			}
 		}
 	}()
@@ -2019,6 +2040,31 @@ func (cc *controlCenter) byObject(id uint32) *controlled {
 // tellGiveWay is ground telling it to give way to other (by object ID):
 // "CSA1, give way to the Airbus A320 passing left to right" — the other's
 // type, and how it passes relative to this aircraft's heading.
+// stoppedLogAfter: standing still taxiing this long is logged with why.
+const stoppedLogAfter = 20 * time.Second
+
+// logStopped logs why it stands still taxiing, if it still does for the
+// same reason, with the object IDs named by their call signs.
+func (it *controlled) logStopped(by string) {
+	it.mu.Lock()
+	still := it.stoppedBy == by
+	it.mu.Unlock()
+	if !still {
+		return
+	}
+	said := objectIDs.ReplaceAllStringFunc(by, func(s string) string {
+		id, _ := strconv.ParseUint(s[1:], 10, 32)
+		if o := it.cc.byObject(uint32(id)); o != nil {
+			return o.Tail
+		}
+		return "object " + s[1:]
+	})
+	tlog.printf("%-6s %s: stopped %s — %s", it.Tail, it.Kind, stoppedLogAfter, said)
+}
+
+// objectIDs are the object IDs in a StoppedBy reason.
+var objectIDs = regexp.MustCompile(`#[0-9]+`)
+
 func (it *controlled) tellGiveWay(other uint32) {
 	o := it.cc.byObject(other)
 	if o == nil || o == it {
@@ -2699,7 +2745,14 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
 		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, departureClimbSaid))
+			// Stopped for traffic since the check-in: identified only, the
+			// climb is cleared on once clear of it (live, TVS524 "stop climb
+			// at 4000 feet" then "identified, climb to flight level 240").
+			level := departureClimbSaid
+			if stopped := it.cc.climbStopped; stopped != nil && stopped(it.Tail) {
+				level = ""
+			}
+			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, level))
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)

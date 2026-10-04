@@ -356,6 +356,10 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.last.GivingWayTo = c.givingWay
 		c.emit(nil, true)
 	}
+	if by := map[bool]string{true: c.stoppedBy(pose)}[c.state == TaxiTaxiing]; by != c.last.StoppedBy {
+		c.last.StoppedBy = by
+		c.emit(nil, true)
+	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
 	c.last.Remaining = math.Max(0, c.mover.Path().Length()-pose.Distance)
 	if c.state != TaxiPushback {
@@ -2041,8 +2045,9 @@ func (c *TaxiController) ClimbRoute(pos airport.LatLon) []airport.LatLon {
 }
 
 // ClimbPlan is the rest of a departure handed to MSFS AI as a route with
-// its altitudes and speeds, from pos: for a conflict resolution
-// (ResolvedRoute, then Reroute; #639). nil before the hand-over.
+// its altitudes (feet MSL) and speeds, from pos: for a conflict resolution
+// (ResolvedRoute, then Reroute; #639) and its prediction (#657). nil
+// before the hand-over.
 func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -2051,7 +2056,13 @@ func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
 	}
 	var out []RoutePoint
 	for _, w := range c.climb[nextWaypoint(pos, c.climb):] {
-		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: w.Altitude, Kts: w.KtsSpeed})
+		alt := w.Altitude
+		if w.Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 && c.req.Graph != nil {
+			// TakeoffClimb: above the ground under the waypoint, taken as
+			// above the field (#657): near enough for a prediction.
+			alt += convert.MetersToFeet(c.req.Graph.Layout.Altitude)
+		}
+		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: alt, Kts: w.KtsSpeed})
 	}
 	return out
 }

@@ -691,6 +691,16 @@ func RouteAhead(pos airport.LatLon, route []airport.LatLon) []airport.LatLon {
 	return route[nextOnRoute(pos, route):]
 }
 
+// ProfileAhead is RouteAhead for a route with altitudes: the points still
+// to fly from pos. For ConflictOptions.Profile.
+func ProfileAhead(pos airport.LatLon, route []RoutePoint) []RoutePoint {
+	pts := make([]airport.LatLon, len(route))
+	for i, p := range route {
+		pts[i] = p.Position
+	}
+	return route[nextOnRoute(pos, pts):]
+}
+
 // nextOnRoute is the index of the point of pts pos is heading for.
 func nextOnRoute(pos airport.LatLon, pts []airport.LatLon) int {
 	nm := func(a, b airport.LatLon) float64 { return calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon) }

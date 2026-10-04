@@ -27,7 +27,7 @@ const (
 	conflictLookAhead = 5 * time.Minute
 )
 
-var conflictOpts = traffic.ConflictOptions{LookAhead: conflictLookAhead, MinNM: sepMinNM, TerminalNM: sepMinNM}
+var conflictOpts = traffic.ConflictOptions{LookAhead: conflictLookAhead, MinNM: sepMinNM, TerminalNM: sepTerminalNM}
 
 type conflictWatch struct {
 	s *scheduler
@@ -172,6 +172,28 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		return nil
 	}
+	// And vertically along their profile: climbing and descending as the
+	// SID, STAR and plan have them, not at the vertical speed now for
+	// ever (live, TVS524 and BAW1413 on their SID and STAR, #657).
+	opts.Profile = func(a traffic.TrackedAircraft) []traffic.RoutePoint {
+		if !a.Ours {
+			return nil
+		}
+		if e := enroute(a); e != nil {
+			return traffic.ProfileAhead(a.Position, e.route)
+		}
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.objectID != a.ObjectID {
+			return nil
+		}
+		if it.dep != nil {
+			return it.dep.ClimbPlan(a.Position)
+		}
+		if it.arr != nil && it.arr.State() == traffic.ArrivalApproaching {
+			return it.arr.ProcedurePlan()
+		}
+		return nil
+	}
 	cs := traffic.PredictConflicts(aircraft, opts)
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
@@ -184,7 +206,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
 		w.mu.Unlock()
 		if first {
-			tlog.printf("conflict: %s and %s lose separation in %s, closest %.1f NM, %.0f ft in %s", c.A, c.B, c.In.Round(time.Second), c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
+			tlog.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
+				c.A, c.AAltFt, c.B, c.BAltFt, c.In.Round(time.Second), c.LossNM, c.LossFt, c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
 		}
 		if busy {
 			continue // a change is flown already: see it work
@@ -211,10 +234,18 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
 		if e := enroute(a); e != nil {
 			icao, planned = e.f.Airport, e.route
+			resolved := traffic.ResolvedRoute(e.route, a, r, conflictLookAhead)
 			var wps []types.SIMCONNECT_DATA_WAYPOINT
-			_, wps, err = traffic.EnrouteStart(traffic.ResolvedRoute(e.route, a, r, conflictLookAhead))
+			_, wps, err = traffic.EnrouteStart(resolved)
 			if err == nil {
 				err = w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) })
+			}
+			if err == nil {
+				// Predicted on the route it flies now, the change in it
+				// (#657 review: a stop predicted climbing on through).
+				w.s.mu.Lock()
+				e.route = resolved
+				w.s.mu.Unlock()
 			}
 		} else if it := departed(a); it != nil {
 			// A departure: the departure radar that has it.
@@ -230,11 +261,14 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			continue
 		}
 		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts)
+		tlog.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
 		w.s.cc.radio.Transmit(icao, tx)
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
-		delete(w.stopped, r.Callsign)
+		if r.Kind == traffic.ResolveLevel {
+			delete(w.stopped, r.Callsign) // a new level replaces the stop; another change keeps it to be cleared on
+		}
 		if r.Kind == traffic.ResolveLevel && r.Stop {
 			on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt)
 			if pos == traffic.PosDeparture && r.AltFt > a.AltFt {
@@ -274,13 +308,27 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			delete(w.seen, p) // over: a new one is logged again
 		}
 	}
-	var cleared []string
 	for cs, until := range w.busy {
 		if now.After(until) {
 			delete(w.busy, cs)
-			if _, ok := w.stopped[cs]; ok && !involved[cs] {
-				cleared = append(cleared, cs)
-			}
+		}
+	}
+	// Stopped and clear now: cleared on at any look, not only the one its
+	// change ends on (#657 review: involved then, stopped for good); gone
+	// from the sky, forgotten.
+	airborne := map[string]bool{}
+	for _, a := range aircraft {
+		if !a.OnGround && a.Tail != "" {
+			airborne[a.Tail] = true
+		}
+	}
+	var cleared []string
+	for cs := range w.stopped {
+		switch {
+		case !airborne[cs]:
+			delete(w.stopped, cs)
+		case !involved[cs] && !now.Before(w.busy[cs]):
+			cleared = append(cleared, cs)
 		}
 	}
 	resume := map[string]stoppedLevel{}
@@ -296,6 +344,15 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevel(st.pos, cs, st.altFt, st.climb))
 	}
 	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
+}
+
+// isStopped reports cs told to stop its climb or descent for traffic and
+// not yet cleared on.
+func (w *conflictWatch) isStopped(cs string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.stopped[cs]
+	return ok
 }
 
 // inConflict reports that a and b are predicted to lose separation (the

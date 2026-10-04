@@ -18,9 +18,14 @@ import (
 //	GET /api/separation — the closest pairs now, the losses so far, and the
 //	predicted conflicts with the resolutions given (conflicts.go)
 
-// sepMinNM is the lateral minimum watched (TerminalSeparationNM on final is
-// legal; the map keeps 5 NM, EnrouteSeparationNM).
-const sepMinNM = traffic.EnrouteSeparationNM
+// sepMinNM is the lateral minimum watched en route (EnrouteSeparationNM);
+// sepTerminalNM in the terminal area, both aircraft at an airport below
+// 10000 ft (TerminalSeparationNM, Doc 4444 8.7.3). The landing sequence
+// keeps sepMinNM in trail.
+const (
+	sepMinNM      = traffic.EnrouteSeparationNM
+	sepTerminalNM = traffic.TerminalSeparationNM
+)
 
 type sepMonitor struct {
 	mu     sync.Mutex
@@ -44,7 +49,7 @@ type sepLoss struct {
 func newSepMonitor() *sepMonitor { return &sepMonitor{open: map[string]*sepLoss{}} }
 
 func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
-	pairs := traffic.AirborneSeparation(aircraft, sepMinNM, traffic.VerticalSeparationFt)
+	pairs := traffic.AirborneSeparationFor(aircraft, conflictOpts)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.now = pairs
@@ -62,7 +67,7 @@ func (m *sepMonitor) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
 			continue
 		}
 		m.open[k] = &sepLoss{A: p.A, B: p.B, Since: now, ClosestNM: p.LateralNM, VerticalFt: p.VerticalFt}
-		tlog.printf("separation: %s and %s %.1f NM, %.0f ft apart (under %.0f NM and 1000 ft)", p.A, p.B, p.LateralNM, p.VerticalFt, sepMinNM)
+		tlog.printf("separation: %s and %s %.1f NM, %.0f ft apart (under %.0f NM and 1000 ft)", p.A, p.B, p.LateralNM, p.VerticalFt, p.MinNM)
 	}
 	for k, l := range m.open {
 		if seen[k] {

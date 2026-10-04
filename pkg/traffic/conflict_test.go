@@ -207,8 +207,9 @@ func TestTowerPair(t *testing.T) {
 	}
 }
 
-// A climbing departure below level traffic ahead is stopped on its way
-// ("stop climb at 4000 feet"), never slowed or sent back down.
+// A climbing departure below level traffic ahead is stopped on its way, as
+// high as the vertical minimum below the traffic allows ("stop climb at 6000
+// feet" under 7000), never slowed or sent back down (#657).
 func TestResolveStopsClimb(t *testing.T) {
 	dep := air(1, "RYR1", 0, 0, 3000, 90, 200, 2000, true)
 	arr := air(2, "DLH2", 20, 0, 7000, 270, 250, 0, false)
@@ -218,13 +219,20 @@ func TestResolveStopsClimb(t *testing.T) {
 		t.Fatalf("conflicts %+v, want one", cs)
 	}
 	r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{})
-	if !ok || r.Kind != ResolveLevel || !r.Stop || r.AltFt != 4000 {
-		t.Fatalf("%+v %v, want stop climb at 4000 ft", r, ok)
+	if !ok || r.Kind != ResolveLevel || !r.Stop || r.AltFt != 6000 {
+		t.Fatalf("%+v %v, want stop climb at 6000 ft", r, ok)
 	}
-	if got, want := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts).Text, "RYR1, stop climb at 4000 feet, due traffic"; !strings.HasPrefix(got, want) {
+	if got, want := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts).Text, "RYR1, stop climb at 6000 feet, due traffic"; !strings.HasPrefix(got, want) {
 		t.Errorf("%q, want %q", got, want)
 	}
-	if got, want := ContinueLevel(PosDeparture, "RYR1", 24000, true).Text, "RYR1, clear of traffic, climb to flight level 240"; got != want {
+	// The loss is under the vertical minimum, and the stop keeps it (#657).
+	if c := cs[0]; c.LossFt >= VerticalSeparationFt || c.LossNM >= c.MinNM || c.AAltFt == 0 && c.BAltFt == 0 {
+		t.Errorf("loss %.1f NM %.0f ft (alts %.0f/%.0f), want under %.1f NM and %.0f ft", c.LossNM, c.LossFt, c.AAltFt, c.BAltFt, c.MinNM, VerticalSeparationFt)
+	}
+	if r.KeepsFt != VerticalSeparationFt {
+		t.Errorf("the stop keeps %.0f ft, want %.0f", r.KeepsFt, VerticalSeparationFt)
+	}
+	if got, want := ContinueLevel(PosDeparture, "RYR1", 24000, true).Text, "RYR1, climb to flight level 240"; got != want {
 		t.Errorf("%q, want %q", got, want)
 	}
 	if rb, _ := Readback(ContinueLevel(PosDeparture, "RYR1", 24000, true)); rb.Text != "Climb to flight level 240, RYR1" {
@@ -321,5 +329,192 @@ func TestPathClear(t *testing.T) {
 	}
 	if !PathClear(me, away, all, ConflictOptions{}) {
 		t.Error("direct away from TVS440: not clear, want clear")
+	}
+}
+
+// TestStopClimbBelowTraffic: a departure climbing toward traffic level at
+// 10000 ft is stopped at 9000 ft, 1000 ft below it, not at the next thousand
+// above its own level (live, THY1463 and TVS524 stopped at 4000 ft, #657).
+func TestStopClimbBelowTraffic(t *testing.T) {
+	dep := air(1, "THY1463", 0, 0, 3000, 90, 210, 1600, true)
+	tra := air(2, "BAW1413", 30, 0, 10000, 270, 250, 0, false)
+	all := []TrackedAircraft{dep, tra}
+	cs := PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v, want one", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{})
+	if !ok || r.Kind != ResolveLevel || !r.Stop || r.AltFt != 9000 {
+		t.Fatalf("%+v %v, want stop climb at 9000 ft", r, ok)
+	}
+	if r.KeepsFt != VerticalSeparationFt {
+		t.Errorf("keeps %.0f ft, want %.0f", r.KeepsFt, VerticalSeparationFt)
+	}
+}
+
+// pt is a point east/north nm of the reference point at altFt.
+func pt(eastNM, northNM, altFt float64) RoutePoint {
+	lat, lon := calc.DisplaceByHeading(50, 14, 90, eastNM*1852)
+	lat, lon = calc.DisplaceByHeading(lat, lon, 0, northNM*1852)
+	return RoutePoint{Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: altFt}
+}
+
+// TestTrackAlongProfile: along a profile the altitude moves toward the next
+// point's at the rate that makes it by the point (or the vertical speed now
+// if faster), and stays there past it (#657).
+func TestTrackAlongProfile(t *testing.T) {
+	a := air(1, "A", 0, 0, 3000, 90, 240, 0, true) // 4 NM a minute
+	o := ConflictOptions{Profile: func(TrackedAircraft) []RoutePoint {
+		return []RoutePoint{pt(8, 0, 5000), pt(20, 0, 0), pt(40, 0, 5000)}
+	}}
+	tr := trackFor(a, o)
+	for _, c := range []struct {
+		d    time.Duration
+		want float64
+	}{{time.Minute, 4000}, {2 * time.Minute, 5000}, {4 * time.Minute, 5000}, {12 * time.Minute, 5000}} {
+		if _, _, alt := tr.at(c.d); alt < c.want-50 || alt > c.want+50 {
+			t.Errorf("at %s: %.0f ft, want %.0f", c.d, alt, c.want)
+		}
+	}
+	// Faster than needed: at its vertical speed, level at the altitude early.
+	a.VSFpm = 3000
+	if _, _, alt := trackFor(a, o).at(time.Minute); alt < 4950 || alt > 5050 {
+		t.Errorf("climbing 3000 fpm: %.0f ft after a minute, want 5000", alt)
+	}
+	// Stopped below it: not past the stop.
+	tr.level = 4000
+	if _, _, alt := tr.at(3 * time.Minute); alt != 4000 {
+		t.Errorf("stopped at 4000: %.0f ft", alt)
+	}
+}
+
+// TestConflictsAlongProfile: a departure climbing now but levelling off on
+// its SID below level traffic is no conflict; an arrival level now but
+// descending on its STAR onto a level departure is (live, TVS524 and
+// BAW1413 stopped for, #657).
+func TestConflictsAlongProfile(t *testing.T) {
+	dep := air(1, "TVS524", 0, 0, 3000, 90, 210, 2000, true)
+	tra := air(2, "BAW1413", 30, 0, 10000, 270, 250, 0, false)
+	all := []TrackedAircraft{dep, tra}
+	if cs := PredictConflicts(all, ConflictOptions{}); len(cs) != 1 {
+		t.Fatalf("climbing on at 2000 fpm: %+v, want a conflict", cs)
+	}
+	sid := ConflictOptions{Profile: func(a TrackedAircraft) []RoutePoint {
+		if a.ObjectID == 1 {
+			return []RoutePoint{pt(10, 0, 6000), pt(40, 0, 6000)}
+		}
+		return nil
+	}}
+	if cs := PredictConflicts(all, sid); len(cs) != 0 {
+		t.Errorf("levelling at 6000 ft under 10000: %+v, want none", cs)
+	}
+
+	lvl := air(1, "TVS524", 0, 0, 6000, 90, 210, 0, true)
+	arr := air(2, "BAW1413", 30, 0, 10000, 270, 250, 0, true)
+	all = []TrackedAircraft{lvl, arr}
+	if cs := PredictConflicts(all, ConflictOptions{}); len(cs) != 0 {
+		t.Fatalf("both level 4000 ft apart: %+v, want none", cs)
+	}
+	star := ConflictOptions{Profile: func(a TrackedAircraft) []RoutePoint {
+		if a.ObjectID == 2 {
+			return []RoutePoint{pt(20, 0, 6000), pt(-10, 0, 4000)}
+		}
+		return nil
+	}}
+	if cs := PredictConflicts(all, star); len(cs) != 1 {
+		t.Errorf("descending on the STAR through 6000 ft: %+v, want a conflict", cs)
+	}
+}
+
+// TestAirborneSeparationTerminal: in the terminal area (both at an airport
+// below 10000 ft) the lateral minimum is 3 NM, 5 NM elsewhere.
+func TestAirborneSeparationTerminal(t *testing.T) {
+	a := air(1, "CSA1", 0, 0, 8000, 90, 250, 0, true)
+	b := air(2, "CSA2", 4, 0, 8500, 270, 250, 0, true)
+	if ps := AirborneSeparationFor([]TrackedAircraft{a, b}, ConflictOptions{}); len(ps) != 1 || !ps[0].Loss || ps[0].MinNM != EnrouteSeparationNM {
+		t.Errorf("en route 4 NM, 500 ft: %+v, want a loss under 5 NM", ps)
+	}
+	a.Airport, b.Airport = "LKPR", "LKPR"
+	if ps := AirborneSeparationFor([]TrackedAircraft{a, b}, ConflictOptions{}); len(ps) != 1 || ps[0].Loss || ps[0].MinNM != TerminalSeparationNM {
+		t.Errorf("terminal 4 NM, 500 ft: %+v, want no loss under 3 NM", ps)
+	}
+}
+
+// TestStopClimbUnderDescendingTraffic: traffic descending toward the
+// climber: the highest level that stays clear of it all the look-ahead,
+// not the next thousand on the climber's way (#657 review).
+func TestStopClimbUnderDescendingTraffic(t *testing.T) {
+	dep := air(1, "DEP", 0, 0, 3000, 90, 210, 1500, true)
+	oth := air(2, "OTH", 30, 0, 12000, 270, 250, -1000, false)
+	all := []TrackedAircraft{dep, oth}
+	cs := PredictConflicts(all, ConflictOptions{})
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v, want one", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, ConflictOptions{})
+	if !ok || r.Kind != ResolveLevel || !r.Stop || r.AltFt <= 4000 {
+		t.Fatalf("%+v %v, want a stop above 4000 ft", r, ok)
+	}
+	if r.KeepsFt < VerticalSeparationFt {
+		t.Errorf("keeps %.0f ft, want at least %.0f", r.KeepsFt, VerticalSeparationFt)
+	}
+}
+
+// TestProfileEdges: no turning back to an altitude behind the climb, and
+// the vertical speed on past a profile without altitudes (#657 review).
+func TestProfileEdges(t *testing.T) {
+	a := air(1, "A", 0, 0, 6000, 90, 240, 2400, true) // 4 NM and 2400 ft a minute
+	o := ConflictOptions{Profile: func(TrackedAircraft) []RoutePoint {
+		return []RoutePoint{pt(4, 0, 5000), pt(40, 0, 24000)}
+	}}
+	if _, _, alt := trackFor(a, o).at(30 * time.Second); alt < 6900 {
+		t.Errorf("climbing past a point at 5000 ft: %.0f ft after 30 s, want on up", alt)
+	}
+	none := ConflictOptions{Profile: func(TrackedAircraft) []RoutePoint {
+		return []RoutePoint{pt(4, 0, 0)}
+	}}
+	if _, _, alt := trackFor(a, none).at(2 * time.Minute); alt < 10700 || alt > 10900 {
+		t.Errorf("no altitudes: %.0f ft after 2 min, want 10800", alt)
+	}
+}
+
+// TestPathClearAlongProfile: a direct asked for is checked along the
+// aircraft's profile, not at its vertical speed for ever (#657 review).
+func TestPathClearAlongProfile(t *testing.T) {
+	dep := air(1, "DEP", 0, 0, 3000, 90, 210, 2000, true)
+	tra := air(2, "TRA", 30, 0, 10000, 270, 250, 0, false)
+	all := []TrackedAircraft{dep, tra}
+	path := []airport.LatLon{pt(10, 0, 0).Position, pt(40, 0, 0).Position}
+	if PathClear(dep, path, all, ConflictOptions{}) {
+		t.Errorf("climbing on through 10000 ft: clear, want not")
+	}
+	sid := ConflictOptions{Profile: func(a TrackedAircraft) []RoutePoint {
+		if a.ObjectID == 1 {
+			return []RoutePoint{pt(10, 0, 6000), pt(40, 0, 6000)}
+		}
+		return nil
+	}}
+	if !PathClear(dep, path, all, sid) {
+		t.Errorf("levelling at 6000 ft on the SID: not clear, want clear")
+	}
+}
+
+// TestPastRouteEnd: two in trail on the same route, the one behind with
+// only its last waypoint, passed, left: flown straight on, not back to it
+// (live, TVS524 and THY1463, #657).
+func TestPastRouteEnd(t *testing.T) {
+	trail := air(2, "TVS524", 8, 0, 20400, 270, 250, 0, true)
+	o := ConflictOptions{Route: func(a TrackedAircraft) []airport.LatLon {
+		if a.ObjectID == 2 {
+			return []airport.LatLon{pt(10, 0, 0).Position} // behind it
+		}
+		return []airport.LatLon{pt(-60, 0, 0).Position}
+	}}
+	if _, _, alt := trackFor(trail, o).at(time.Minute); alt != 20400 {
+		t.Fatalf("alt %.0f", alt)
+	}
+	if lat, lon, _ := trackFor(trail, o).at(time.Minute); calc.HaversineNM(lat, lon, trail.Position.Lat, trail.Position.Lon) < 4 ||
+		calc.BearingDegrees(trail.Position.Lat, trail.Position.Lon, lat, lon) < 260 {
+		t.Errorf("not straight on west: %.4f %.4f", lat, lon)
 	}
 }
