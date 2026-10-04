@@ -258,8 +258,12 @@ func (it *controlled) grantEntry() {
 		it.cc.log.printf("%-6s crew: intersection %s not given: %v", it.Tail, e, err)
 		return
 	}
+	// The route re-planned to the intersection, drawn so (live, BAW1367
+	// cleared at B, its route still to A on the map).
 	it.mu.Lock()
+	it.setRoute()
 	it.view.Entry = e
 	it.mu.Unlock()
+	it.cc.changed("control")
 	it.cc.log.printf("%-6s crew: intersection %s given", it.Tail, e)
 }

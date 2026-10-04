@@ -58,6 +58,14 @@ type stoppedLevel struct {
 	pos   traffic.Position
 	altFt float64
 	climb bool
+	// other is the traffic it was stopped for; lastNM their distance at
+	// the last look: moving apart, the stop is over (live, TVS161 held at
+	// 8000 ft 1.5 min past the closest point).
+	other  string
+	lastNM float64
+	// planned: the route before the change, flown again when the stop ends
+	// before the change does (the change holds the level LookAhead long).
+	planned []traffic.RoutePoint
 }
 
 // routeClimbs reports whether planned's next altitude off altFt (by more
@@ -304,7 +312,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				on, ok = radarFt, true
 			}
 			if ok {
-				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up}
+				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned}
 			}
 		}
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said})
@@ -343,24 +351,41 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// change ends on (#657 review: involved then, stopped for good); gone
 	// from the sky, forgotten.
 	airborne := map[string]bool{}
+	at := map[string]airport.LatLon{}
 	for _, a := range aircraft {
 		if !a.OnGround && a.Tail != "" {
-			airborne[a.Tail] = true
+			airborne[a.Tail], at[a.Tail] = true, a.Position
 		}
 	}
 	var cleared []string
-	for cs := range w.stopped {
+	for cs, st := range w.stopped {
+		// Past the traffic it was stopped for, moving apart and clear of
+		// the terminal minimum: over, whatever the change was to last.
+		apart := false
+		if p, ok := at[cs]; ok {
+			if q, ok := at[st.other]; ok {
+				d := calc.HaversineMeters(p.Lat, p.Lon, q.Lat, q.Lon) / 1852
+				apart = st.lastNM > 0 && d > st.lastNM && d >= sepTerminalNM
+				st.lastNM = d
+				w.stopped[cs] = st
+			} else if st.other != "" {
+				apart = true // the traffic is gone
+			}
+		}
 		switch {
 		case !airborne[cs]:
 			delete(w.stopped, cs)
-		case !involved[cs] && !now.Before(w.busy[cs]):
+		case !involved[cs] && (apart || !now.Before(w.busy[cs])):
 			cleared = append(cleared, cs)
 		}
 	}
 	resume := map[string]stoppedLevel{}
+	early := map[string]bool{}
 	for _, cs := range cleared {
 		resume[cs] = w.stopped[cs]
+		early[cs] = now.Before(w.busy[cs])
 		delete(w.stopped, cs)
+		delete(w.busy, cs)
 	}
 	w.mu.Unlock()
 	// Stopped for traffic and clear of it now: on to the level planned
@@ -376,6 +401,14 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			it.mu.Unlock()
 			if !identified {
 				w.s.cc.log.printf("%-6s conflict over: the climb comes with its identification", cs)
+				continue
+			}
+		}
+		// Before the change ends: its level still holds in the route, so the
+		// route planned before it is flown again from here.
+		if early[cs] && len(st.planned) > 0 {
+			if err := w.restoreRoute(cs, st, aircraft); err != nil {
+				w.s.cc.log.printf("%-6s conflict over: route not restored: %v", cs, err)
 				continue
 			}
 		}
@@ -555,4 +588,44 @@ func other(c traffic.Conflict, cs string) string {
 		return c.B
 	}
 	return c.A
+}
+
+// restoreRoute sends cs on the route it had before it was stopped, from
+// where it is now.
+func (w *conflictWatch) restoreRoute(cs string, st stoppedLevel, aircraft []traffic.TrackedAircraft) error {
+	var a traffic.TrackedAircraft
+	for _, x := range aircraft {
+		if x.Tail == cs {
+			a = x
+		}
+	}
+	if a.ObjectID == 0 {
+		return errors.New("not seen")
+	}
+	route := append([]traffic.RoutePoint{{Position: a.Position, AltFt: a.AltFt, Kts: a.GroundKts}}, traffic.ProfileAhead(a.Position, st.planned)...)
+	if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && it.objectID == a.ObjectID {
+		return w.s.cc.do(func() error { return it.dep.Reroute(route) })
+	}
+	w.s.mu.Lock()
+	var e *enrouteAC
+	for _, x := range w.s.enroute {
+		if x.objectID == a.ObjectID {
+			e = x
+		}
+	}
+	w.s.mu.Unlock()
+	if e == nil {
+		return errors.New("not ours")
+	}
+	_, wps, err := traffic.EnrouteStart(route)
+	if err != nil {
+		return err
+	}
+	if err := w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) }); err != nil {
+		return err
+	}
+	w.s.mu.Lock()
+	e.route = route
+	w.s.mu.Unlock()
+	return nil
 }
