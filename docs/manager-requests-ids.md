@@ -102,7 +102,7 @@ CustomEventIDMax = 999999886 // Last ID for custom events (37 slots total)
 
 **Purpose**: These IDs are dynamically allocated when users subscribe to custom SimConnect system events by name (e.g., "6Hz", "1sec"). Custom events use the `SubscribeToCustomSystemEvent` and `OnCustomSystemEvent` APIs.
 
-**Usage**: Managed internally by the manager. Custom event subscriptions are automatically cleared on disconnect and are not persisted across reconnection cycles.
+**Usage**: Managed internally by the manager. Custom event subscriptions are cleared by `Stop()`; over a lost connection they are kept and subscribed again with the same IDs on the next one.
 
 ## Request Registry
 

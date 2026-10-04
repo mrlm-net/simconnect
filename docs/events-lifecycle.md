@@ -421,8 +421,8 @@ The following names are reserved for built-in events and will return `ErrReserve
 ### Lifecycle
 
 - Custom events are registered with SimConnect when `SubscribeToCustomSystemEvent` is called.
-- Custom event subscriptions are **cleared on disconnect** and must be re-registered after reconnection.
-- The ID pool resets on disconnect, so the same 37 slots are available for each connection.
+- Custom event subscriptions are **cleared by `Stop()`**. When the simulator goes away (it quits, or the connection drops) they are kept and subscribed again with the same IDs on the next connection; the request registry and the camera request of the lost connection are cleared.
+- The ID pool resets on `Stop()`, so the same 37 slots are available after it.
 
 ## Internal vs User-Facing Events
 

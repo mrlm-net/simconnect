@@ -95,12 +95,7 @@ func (m *Instance) runConnection() error {
 			if !ok {
 				// Stream closed (simulator disconnected)
 				m.logger.Debug("[manager] Stream closed (simulator disconnected)")
-				m.setSimState(defaultSimState())
-				m.setState(StateDisconnected)
-				m.mu.Lock()
-				m.engine = nil
-				m.mu.Unlock()
-				m.fleet.SetClient(nil)
+				m.connectionLost()
 				return nil // Return nil to allow reconnection
 			}
 
@@ -165,6 +160,45 @@ func (m *Instance) connectWithTimeout(ctx context.Context) error {
 	case err := <-done:
 		return err
 	}
+}
+
+// connectionLost is the simulator gone (its stream closed, #405): what
+// belonged to that connection is cleared as disconnect clears it — the
+// camera request, the request registry — before the reconnect loop. What the
+// application registered (custom system events with their subscriptions and
+// handlers) is kept and subscribed again on the next connection with the
+// same IDs (resubscribeCustomEvents), so their filters still match.
+func (m *Instance) connectionLost() {
+	m.setSimState(defaultSimState())
+	m.mu.Lock()
+	m.engine = nil
+	m.cameraDataRequestPending = false
+	m.mu.Unlock()
+	m.fleet.SetClient(nil)
+	m.requestRegistry.Clear()
+	m.setState(StateDisconnected)
+}
+
+// resubscribeCustomEvents subscribes the custom system events kept over a
+// lost connection again on client, with their IDs (#405).
+func (m *Instance) resubscribeCustomEvents(client systemEventSubscriber) {
+	m.mu.Lock()
+	evs := make([]instance.CustomSystemEvent, 0, len(m.customSystemEvents))
+	for _, ce := range m.customSystemEvents {
+		evs = append(evs, *ce)
+	}
+	m.mu.Unlock()
+	for _, ce := range evs {
+		if err := client.SubscribeToSystemEvent(ce.ID, ce.Name); err != nil {
+			m.logger.Error("[manager] Failed to subscribe a custom system event again", "event", ce.Name, "error", err)
+		}
+	}
+}
+
+// systemEventSubscriber is the part of engine.Client resubscribeCustomEvents
+// uses.
+type systemEventSubscriber interface {
+	SubscribeToSystemEvent(eventID uint32, eventName string) error
 }
 
 // disconnect gracefully disconnects from the simulator

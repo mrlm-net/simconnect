@@ -50,6 +50,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 
 		if client != nil {
 			m.registerSimStateSubscriptions(client)
+			m.resubscribeCustomEvents(client) // kept over a lost connection (#405)
 		}
 	}
 

@@ -550,7 +550,7 @@ Attempting to subscribe to a reserved event name using the custom APIs will retu
 
 ### Custom Event ID Allocation
 
-Custom system events are assigned IDs from a dedicated range (999,999,850 - 999,999,886, 37 slots, `CustomEventIDMin`–`CustomEventIDMax`). See [ID Management](#id-management) for details. Custom event subscriptions are automatically cleared on disconnect.
+Custom system events are assigned IDs from a dedicated range (999,999,850 - 999,999,886, 37 slots, `CustomEventIDMin`–`CustomEventIDMax`). See [ID Management](#id-management) for details. Custom event subscriptions are cleared by `Stop()`. When the simulator goes away they are kept, and the manager subscribes them again with the same IDs on the next connection, so their subscriptions and handlers go on working.
 
 ### Example: Multiple Custom Events
 
