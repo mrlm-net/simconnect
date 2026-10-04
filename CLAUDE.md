@@ -215,7 +215,9 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── aircraft_types.go #  Known-type table (A20N…B77W…AT76), TakeoffProfileFor, MotionProfileFor
 │       ├── profile_simvars.go # ProfileReader (type SimVars fed by Handle(msg)), Refine
 │       ├── telemetry.go     #   Recorder: per-movement JSON lines, Summary per type
-│       └── tunables.go      #   Taxi speeds, distances, IDs
+│       ├── tunables.go      #   Taxi speeds, distances, IDs
+│       ├── vehicle_state.go #   VehicleState: tug and fuel truck State(), Title()
+│       └── world/           #   The airport map's traffic engine (#710): New/Run/RunOn/Feed, Snapshot, Do/Get, Heard, ClearPlayer, Register
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
 │   ├── lifecycle-connection/ #  Connection with lifecycle hooks
@@ -250,7 +252,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── flight-plan/         #   Plan a flight between two loaded airports, write .pln
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
-│   ├── airport-map/         #   The airport map: ATC traffic control, radio and voice, camera, debugger (own go.mod: voice-goio)
+│   ├── airport-map/         #   The airport map: front end of pkg/traffic/world — page, voice (own go.mod: voice-goio)
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
 │   ├── config-client.md     #   Client configuration reference
@@ -272,6 +274,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
 │   ├── traffic-vfr.md       #   VFR traffic: light aircraft, circuits, reporting points (v0.19)
+│   ├── traffic-world.md     #   pkg/traffic/world: the map's engine as a package, host API, IDs (#710)
 │   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
 │   ├── traffic-decisions.md #   How the traffic decides, with the numbers: push choice, give way, routing, runway, sequencing, conflicts
 │   ├── addons.md            #   pkg/addons: installed packages, streamed airports, aircraft package, processes

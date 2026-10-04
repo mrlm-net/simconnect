@@ -146,6 +146,7 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - [Traffic Commands](https://simconnect.mrlm.net/docs/traffic-commands) — Hold position, go around, abort take-off
 - [Aircraft Profiles](https://simconnect.mrlm.net/docs/traffic-profiles) — Per-type profiles, SimVar refinement, telemetry
 - [Traffic Picture](https://simconnect.mrlm.net/docs/traffic-picture) — All traffic around a centre of the world
+- [Traffic World](https://simconnect.mrlm.net/docs/traffic-world) — The airport map's traffic engine as a package: run it, feed it, its API and hooks
 - [Traffic Schedules](https://simconnect.mrlm.net/docs/traffic-schedules) — Airlines, routes and time-of-day waves
 - [Traffic Manager](https://simconnect.mrlm.net/docs/traffic-manager) — Schedule to traffic, situation checks, other traffic, enroute and overflights, events
 - [Airborne Separation](https://simconnect.mrlm.net/docs/traffic-separation) — Wake categories, spacing on final, landing sequence, delays and holding, the runway controller, go-arounds, conflicts, working the approach
