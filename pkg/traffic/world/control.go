@@ -362,7 +362,7 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 			}
 			return nil
 		}})
-	cc.sim = &localSim{client: client, fleet: cc.fleet}
+	cc.sim = &localSim{client: client, fleet: cc.fleet, inj: cc.inj, detail: cc.detail, world: cc.world, clock: cc.clock}
 	cc.pending = newPending()
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
@@ -783,7 +783,6 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	switch r.Kind {
 	case "departure":
 		cc.core.pushes.want(g) // its stands' standard pushes, once
-		ctl := traffic.NewTaxiController(cc.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(cc.inj), traffic.TaxiWithDetail(cc.detail), traffic.TaxiWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.TaxiWithClock(cc.clock.Now))
 		tug := cc.tug(r, reqBase, prof)
 		if t, ok := tug.(*traffic.SimObjectTug); ok {
 			it.tug = t // its way shown on the map
@@ -792,20 +791,19 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if f := cc.fuelTruck(r, g, reqBase, prof); f != nil {
 			fuel, it.fuel = f, f
 		}
-		if err := ctl.Start(traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
+		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },
-			PowerOut:      powerOut(g.Layout.Parking[r.Stand], ac.WingspanM)}); err != nil {
+			PowerOut:      powerOut(g.Layout.Parking[r.Stand], ac.WingspanM)})
+		if err != nil {
 			return nil, err
 		}
 		it.dep = ctl
-		ch := ctl.Events()
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{dep: &ev}, ok }
 	case "arrival":
-		ctl := traffic.NewArrivalController(cc.fleet, traffic.ArrivalWithIDs(defBase, reqBase), traffic.ArrivalWithInjector(cc.inj), traffic.ArrivalWithDetail(cc.detail), traffic.ArrivalWithGroundPicture(cc.world.Ground(g.Layout.ICAO)), traffic.ArrivalWithClock(cc.clock.Now))
 		var exit *airport.RunwayExit
 		if r.Exit != nil {
 			exits, err := g.RunwayExits(r.Runway)
@@ -849,11 +847,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		if err := ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
+		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: r.InjectApproach || len(procRoute) > 0 || r.Circuit, Profile: prof,
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
-			CrosswindKts: cc.crosswind(g, r.Runway)}); err != nil {
+			CrosswindKts: cc.crosswind(g, r.Runway)})
+		if err != nil {
 			return nil, err
 		}
 		it.arr = ctl
@@ -868,8 +867,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.turn, it.departNow = &d, make(chan struct{}, 1)
 			it.dwell = time.Duration(float64(dwell) * (1 + dwellSpread*(2*rand.Float64()-1)))
 		}
-		ch := ctl.Events()
-		events = func() (TaxiOrArrival, bool) { ev, ok := <-ch; return TaxiOrArrival{arr: &ev}, ok }
+		events = func() (TaxiOrArrival, bool) { ev, ok := <-ach; return TaxiOrArrival{arr: &ev}, ok }
 	default:
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
