@@ -194,6 +194,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	}
 	stretched := false
 	baseAt, apexAt := -1, -1 // the new base turn, the dog-leg's apex (in out)
+	var legFrom, legTo airport.LatLon // the leg the dog-leg stretches
 	// A longer downwind, the way a controller extends it: on along the
 	// downwind past its last point, the base turn and the final that much
 	// further out (each mile on adds two), again as more is asked, up to
@@ -254,12 +255,11 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		}
 		if at > 0 {
 			from, to := pts[at-1], pts[at]
-			side := 1.0
-			thr := c.plan.End.Threshold
-			if calc.CrossTrackMeters(from.Lat, from.Lon, to.Lat, to.Lon, thr.Lat, thr.Lon) > 0 {
-				side = -1 // the runway is to the right: stretch to the left
-			}
-			apex := StretchLeg(from, to, a.ExtraNM, side)
+			// The side with more room: the apex farther from the final
+			// approach path, where arrivals join base and final (live, FINZX
+			// vectored toward them, #706).
+			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			legFrom, legTo = from, to
 			ref := wps[final] // no STAR point left: the align point's
 			if at-1 < len(out) {
 				ref = out[at-1]
@@ -281,6 +281,22 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
 	plainNames := append(outNames, names[final:]...)
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+	if apexAt >= 0 && a.ExtraNM > 0 {
+		// Flown, the apex is rounded off and the dog-leg adds less than
+		// asked (live, FINZX: 16 s of 1m08s left over): stretched further
+		// until the track as flown adds it (#706).
+		want, extra := a.ExtraNM, a.ExtraNM
+		for i := 0; i < 3; i++ {
+			got := pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
+			if got >= want-0.2 || extra >= 2*want {
+				break
+			}
+			extra = math.Min(2*want, extra+want-got)
+			p := dogLegApex(legFrom, legTo, extra, c.plan.End.Threshold, c.plan.End.Heading)
+			plain[apexAt].Latitude, plain[apexAt].Longitude = p.Lat, p.Lon
+			out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+		}
+	}
 	if a.ExtraNM > 0 {
 		// The track added as flown: the rounded turns included.
 		a.ExtraNM = pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
@@ -845,4 +861,31 @@ func (c *ArrivalController) pastIAF(fix string) bool {
 		}
 	}
 	return iaf >= 0 && at > iaf
+}
+
+// dogLegApex is the apex of a dog-leg adding extraNM to the leg from-to,
+// on the side farther from the final approach path (threshold thr, runway
+// heading hdg).
+func dogLegApex(from, to airport.LatLon, extraNM float64, thr airport.LatLon, hdg float64) airport.LatLon {
+	apex := StretchLeg(from, to, extraNM, 1)
+	if other := StretchLeg(from, to, extraNM, -1); finalDistanceNM(other, thr, hdg) > finalDistanceNM(apex, thr, hdg) {
+		apex = other
+	}
+	return apex
+}
+
+// finalAreaNM is how far out the final approach path counts for a
+// dog-leg's room: where arrivals join base and final.
+const finalAreaNM = 15.0
+
+// finalDistanceNM is how far p is from the final approach path: the
+// extended centreline from the threshold thr (runway heading hdg) out to
+// finalAreaNM.
+func finalDistanceNM(p, thr airport.LatLon, hdg float64) float64 {
+	best := math.Inf(1)
+	for d := 0.0; d <= finalAreaNM; d += 0.5 {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, hdg+180, d*1852)
+		best = math.Min(best, calc.HaversineNM(p.Lat, p.Lon, lat, lon))
+	}
+	return best
 }
