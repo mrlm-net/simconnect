@@ -10,7 +10,7 @@ section: "traffic"
 The [airport map](airport-layout.md#seeing-it-on-a-map) doubles as a small ATC game built only on the SDK (v0.10): you work ground and tower at one airport while traffic comes and goes.
 
 ```bash
-cd cmd/airport-map && go run .
+go run -C cmd/airport-map .
 # open http://127.0.0.1:8080/?icao=LKPR, then Schedule → ATC game → Start game
 ```
 
