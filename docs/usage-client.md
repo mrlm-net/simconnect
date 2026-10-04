@@ -754,3 +754,21 @@ func main() {
 - [Client Configuration](config-client.md) — All configuration options
 - [Manager Usage](usage-manager.md) — Automatic connection lifecycle management
 - [Examples](../examples) — Working code samples
+
+## CommBus (MSFS 2024)
+
+CommBus passes events with string data (usually JSON) between SimConnect clients, WebAssembly modules and JavaScript gauges or panels: an in-sim add-on can answer an app this way (#678).
+
+```go
+client.SubscribeToCommBusEvent(4242, "myaddon.reply")
+client.CallCommBusEvent("myaddon.request", types.SIMCONNECT_COMM_BUS_BROADCAST_TO_DEFAULT, `{"icao":"LKPR"}`)
+
+var parts engine.CommBusAssembler
+for msg := range client.Stream() {
+	if id, data, ok := parts.Add(&msg); ok {
+		fmt.Println(id, data) // 4242 {"metar":"..."}
+	}
+}
+```
+
+`SIMCONNECT_COMM_BUS_BROADCAST_TO_*` says who a call reaches: `JS`, `WASM`, `SIMCONNECT` (other clients), `SIMCONNECT_SELF_CALL` (with `SIMCONNECT`, the caller too); `DEFAULT` is the first three. A subscribed event arrives as `SIMCONNECT_RECV_ID_COMM_BUS` (`Message.AsCommBus`, `CommBusData`); data too long for one message comes in parts, which `CommBusAssembler` joins. Checked live with a self call: 16 bytes and 9 KB, each back intact in one message.

@@ -38,6 +38,9 @@ type API interface {
 
 	SubscribeToFlowEvent() error
 	UnsubscribeFromFlowEvent() error
+	SubscribeToCommBusEvent(eventID uint32, eventName string) error
+	UnsubscribeToCommBusEvent(eventID uint32) error
+	CallCommBusEvent(eventName string, broadcastTo types.SIMCONNECT_COMM_BUS_BROADCAST_TO, data string) error
 	// The add-on camera (MSFS 2024 only).
 	CameraAcquire(clientID string) error
 	CameraRelease(cameraDef string) error

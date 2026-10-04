@@ -30,6 +30,12 @@ type Client interface {
 	// UnsubscribeFromFlowEvent cancels the active flow event subscription (MSFS 2024 only).
 	UnsubscribeFromFlowEvent() error
 
+	// CommBus (MSFS 2024 only): events between clients, WebAssembly and
+	// JavaScript, data as strings (JSON).
+	SubscribeToCommBusEvent(eventID uint32, eventName string) error
+	UnsubscribeToCommBusEvent(eventID uint32) error
+	CallCommBusEvent(eventName string, broadcastTo types.SIMCONNECT_COMM_BUS_BROADCAST_TO, data string) error
+
 	// Input Event API (MSFS 2024 only)
 	EnumerateInputEvents(requestID uint32) error
 	GetInputEvent(requestID uint32, hash uint64) error
