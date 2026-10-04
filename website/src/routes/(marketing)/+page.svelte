@@ -2,6 +2,7 @@
 	import { base } from '$app/paths';
 	import Prism from 'prismjs';
 	import 'prismjs/components/prism-go';
+	import 'prismjs/components/prism-bash';
 	import SeoHead from '$lib/components/seo/SeoHead.svelte';
 	import JsonLd from '$lib/components/seo/JsonLd.svelte';
 	import { siteConfig } from '$lib/config/site.js';
@@ -11,7 +12,9 @@
 	let copied = $state(false);
 
 	// The airport map's run command, copied like the install command.
-	const runMap = 'cd cmd/airport-map && go run .';
+	// From the repository root: the map is its own module, -C runs it from its folder.
+	const runMap = 'go run -C cmd/airport-map .';
+	const runMapHTML = Prism.highlight(runMap, Prism.languages['bash'], 'bash');
 	let runCopied = $state(false);
 	function copyRun() {
 		navigator.clipboard.writeText(runMap);
@@ -277,7 +280,7 @@ func main() {
 				style="background-color: var(--color-bg-code); border-color: var(--color-border);"
 			>
 				<span style="color: var(--color-text-muted);">$</span>
-				<span style="color: var(--color-text-secondary);">{runMap}</span>
+				<code class="language-bash" style="color: var(--color-text-secondary); background: none;">{@html runMapHTML}</code>
 				<button
 					class="cursor-pointer rounded p-1 transition-colors hover:bg-white/5"
 					style="color: {runCopied ? '#3fb950' : 'var(--color-text-muted)'};"
@@ -293,7 +296,7 @@ func main() {
 			</div>
 			<div class="flex flex-wrap items-center justify-center gap-4">
 				<a href="{base}/docs/examples" class="text-sm font-semibold" style="color: var(--color-link);">Tour the map &rarr;</a>
-				<a href="{base}/docs/examples#other-examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
+				<a href="{base}/examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
 			</div>
 		</div>
 	</div>

@@ -164,7 +164,7 @@ Use `engine.BytesToString(field[:])` to convert a fixed-size byte array to a Go 
 To see what the SDK can do, run the airport map. It is the main example and the tool the SDK is debugged with: the ground layout of an airport, taxi routing, AI traffic, the landing sequence and the tower on a live map.
 
 ```bash
-cd cmd/airport-map && go run .
+go run -C cmd/airport-map .
 # open http://127.0.0.1:8080/?icao=LKPR
 ```
 
