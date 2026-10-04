@@ -22,7 +22,7 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 - **AI traffic under your control:** spawn departures and arrivals and give their clearances: pushback, taxi, progressive taxi, runway crossings, line-up, take-off ([Traffic Commands](traffic-commands.md)).
 - **Scheduled traffic:** airlines fly a timetable at the airport by themselves, with departure and arrival boards, en route arrivals and overflights ([Traffic Schedules](traffic-schedules.md), [Traffic Manager](traffic-manager.md)).
 - **The landing sequence and the tower:** landing order and spacing per runway, delays absorbed by speed, path stretching and holds, go-arounds, and a tower that clears line-up, take-off and crossings ([Airborne Separation](traffic-separation.md)).
-- **Conflicts:** airborne pairs predicted to come within 5 NM and 1000 ft, and the change given to resolve each.
+- **Conflicts:** airborne pairs predicted, along their routes and the levels of their SIDs and STARs, to come within 5 NM (3 NM in the terminal area) and 1000 ft, and the change given to resolve each.
 - **The ATC game:** work ground and tower yourself, scored ([ATC Game](atc-game.md)).
 
 ### Run it
@@ -52,6 +52,12 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and t
 | `-file` | | Serve a `-dump` file instead of connecting to the simulator |
 | `-log-dir` | `.` | Directory for the traffic control log, `traffic-<YYYYMMDD-HHMMSS>.log` |
 | `-airways` | `pkg/nav/testdata/LKPR-airways.json` | Airway graph for flight plans (see `spike-airways`); `""` for direct routes |
+| `-airspace` | `D` | Class of the managed airports' control zones for the VFR rules: `C`, `D`, `E` or `G` |
+| `-piper` | `bin/piper/piper.exe` | Piper executable for the voice (see the map's README) |
+| `-voices` | | Folder of piper voice models (`""`: voice-goio's user data folder) |
+| `-token` | | Network play: the token another device needs to control the traffic (`auto`: a random one; `""`: none needed) |
+| `-view-token` | | Network play: a token to watch only, as a spectator (`auto`: a random one) |
+| `-pprof` | | Serve the Go profiler on this address (e.g. `127.0.0.1:6060`) |
 
 The page loads Leaflet from cdnjs, the IBM Plex fonts from Google Fonts and map tiles from Esri and OpenStreetMap, so the browser needs internet access.
 
@@ -202,6 +208,7 @@ Experiments kept as a record of how the traffic features were found. Each answer
 |---------|----------|
 | [spike-airlines](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airlines) | Can the airlines of a parking spot be read? |
 | [spike-approach](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-approach) | Can a final approach, flare and rollout be flown by position injection? |
+| [spike-camera](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-camera) | What does the MSFS 2024 add-on camera API report, and can it hold a camera beside the aircraft? |
 | [spike-flare](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-flare) | Which flare profile gives a good touchdown? |
 | [spike-gear](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-gear) | How is the gear of a non-ATC aircraft lowered? |
 | [spike-geometry](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-geometry) | What does the simulator report of an aircraft's gear, span and CG? |

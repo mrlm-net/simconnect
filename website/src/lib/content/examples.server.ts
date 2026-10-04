@@ -2,56 +2,37 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Example } from './types.js';
 
-// The order here is the order on the examples page: the airport map first.
-const categoryMap: Record<string, string> = {
-	'airport-map': 'map',
-	'basic-connection': 'basics',
-	'lifecycle-connection': 'basics',
-	'await-connection': 'basics',
-	'read-messages': 'data',
-	'read-objects': 'data',
-	'set-variables': 'data',
-	'using-datasets': 'data',
-	'emit-events': 'events',
-	'subscribe-events': 'events',
-	'flow-events': 'events',
-	'read-facility': 'facilities',
-	'read-facilities': 'facilities',
-	'subscribe-facilities': 'facilities',
-	'all-facilities': 'facilities',
-	'airport-details': 'facilities',
-	'locate-airport': 'facilities',
-	'read-waypoints': 'facilities',
-	'ai-taxi': 'traffic',
-	'ai-arrival': 'traffic',
-	'ai-traffic': 'traffic',
-	'manage-traffic': 'traffic',
-	'monitor-traffic': 'traffic',
-	atis: 'nav',
-	'flight-plan': 'nav',
-	'spike-airways': 'nav',
-	'simconnect-manager': 'manager',
-	'simconnect-subscribe': 'manager',
-	'simconnect-state': 'manager',
-	'simconnect-events': 'manager',
-	'simconnect-facilities': 'manager',
-	'simconnect-traffic': 'manager',
-	'simconnect-benchmark': 'manager',
-	'simvar-cli': 'tools'
+// The examples page follows docs/examples.md (#664): its sections in their
+// order, the examples in each in the order of its tables, and what its
+// tables say of each. The airport map comes first, as there. An example on
+// disk that the doc does not list is shown last, with a build warning, so
+// the two pages cannot drift apart unnoticed.
+
+// The doc's section headings → the page's category keys (their colours).
+const sectionKeys: Record<string, string> = {
+	'The airport map': 'map',
+	'Connection and lifecycle': 'basics',
+	'Data and events': 'data',
+	Facilities: 'facilities',
+	Traffic: 'traffic',
+	'Navigation and weather': 'nav',
+	Spikes: 'spikes'
 };
 
 const categoryLabels: Record<string, string> = {
 	map: 'Airport Map',
-	basics: 'Getting Started',
-	data: 'Data & Objects',
-	events: 'Events',
+	basics: 'Connection and Lifecycle',
+	data: 'Data and Events',
 	facilities: 'Facilities',
-	traffic: 'AI Traffic',
-	nav: 'Navigation',
-	manager: 'Manager',
-	tools: 'Tools',
-	spikes: 'Spikes'
+	traffic: 'Traffic',
+	nav: 'Navigation and Weather',
+	spikes: 'Spikes',
+	other: 'Other'
 };
+
+function repoDir(): string {
+	return path.resolve(process.cwd(), '..');
+}
 
 function slugToTitle(slug: string): string {
 	return slug
@@ -60,83 +41,88 @@ function slugToTitle(slug: string): string {
 		.join(' ');
 }
 
+// plain is a Markdown table cell or sentence as plain text.
+function plain(md: string): string {
+	return md
+		.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+		.replace(/<([^>]+)>/g, '$1')
+		.replace(/\*\*|`/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 function firstSentence(text: string): string {
 	const m = text.match(/^.*?\.(\s|$)/);
 	return (m ? m[0] : text).trim();
 }
 
-// The first sentence of the doc comment above `package main`.
-function docComment(code: string): string {
-	let lines: string[] = [];
-	for (const line of code.split('\n')) {
-		const t = line.trim();
-		if (t.startsWith('package ')) break;
-		if (t.startsWith('//go:build') || t.startsWith('// +build')) continue;
-		if (t.startsWith('//')) lines.push(line.replace(/^\s*\/\/ ?/, ''));
-		else lines = []; // a blank line ends a comment block
-	}
-	const text = lines
-		.filter((l) => !l.startsWith('\t')) // indented: commands, not prose
-		.join(' ')
-		.replace(/\s+/g, ' ')
-		.trim();
-	return firstSentence(text);
+interface Listed {
+	slug: string;
+	dir: string; // repository-relative: examples/<name> or cmd/<name>
+	description: string;
+	category: string;
 }
 
-// The first sentence of the README's overview (or of its first paragraph).
-function readmeSummary(dir: string): string {
-	const file = path.join(dir, 'README.md');
-	if (!fs.existsSync(file)) return '';
+// listed reads docs/examples.md: each example linked from a table row, and
+// the airport map from the paragraph that introduces it.
+function listed(): Listed[] {
+	const file = path.join(repoDir(), 'docs', 'examples.md');
+	if (!fs.existsSync(file)) return [];
 	const md = fs.readFileSync(file, 'utf-8').replace(/\r\n/g, '\n');
-	const body = md.split(/^## Overview\s*$/m)[1] ?? md;
-	const para = body
-		.split(/\n\s*\n/)
-		.map((p) => p.trim())
-		.find((p) => p && !p.startsWith('#') && !p.startsWith('!') && !p.startsWith('```'));
-	if (!para) return '';
-	const plain = para
-		.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-		.replace(/\*\*|`/g, '')
-		.replace(/\s+/g, ' ');
-	return firstSentence(plain);
-}
-
-function examplesDir(): string {
-	return path.resolve(process.cwd(), '..', 'examples');
+	const out: Listed[] = [];
+	let category = '';
+	for (const line of md.split('\n')) {
+		const h = line.match(/^#{2,3} (.+)$/);
+		if (h) {
+			category = sectionKeys[h[1].trim()] ?? category;
+			continue;
+		}
+		if (category === 'map' && line.startsWith('[`cmd/airport-map`]') && !out.some((e) => e.slug === 'airport-map')) {
+			out.push({ slug: 'airport-map', dir: 'cmd/airport-map', description: firstSentence(plain(line)).replace(/^cmd\/airport-map serves/, 'Serves'), category });
+			continue;
+		}
+		const row = line.match(/^\|\s*\[([^\]]+)\]\(https:\/\/github\.com\/mrlm-net\/simconnect\/tree\/main\/([^)]+)\)\s*\|([^|]*)\|/);
+		if (!row || !category) continue;
+		const dir = row[2].replace(/\/$/, '');
+		out.push({ slug: path.basename(dir), dir, description: plain(row[3]), category });
+	}
+	return out;
 }
 
 export function loadExamples(): Example[] {
-	const dir = examplesDir();
-	if (!fs.existsSync(dir)) return [];
-
-	const entries = fs.readdirSync(dir, { withFileTypes: true });
+	const root = repoDir();
 	const examples: Example[] = [];
+	const seen = new Set<string>();
+	const read = (dir: string) => {
+		const main = path.join(root, dir, 'main.go');
+		return fs.existsSync(main) ? fs.readFileSync(main, 'utf-8').replace(/\r\n/g, '\n') : null;
+	};
 
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-
-		const mainPath = path.join(dir, entry.name, 'main.go');
-		if (!fs.existsSync(mainPath)) continue;
-
-		const code = fs.readFileSync(mainPath, 'utf-8').replace(/\r\n/g, '\n');
-		const slug = entry.name;
-
-		examples.push({
-			slug,
-			title: slugToTitle(slug),
-			description: docComment(code) || readmeSummary(path.join(dir, entry.name)),
-			category: categoryMap[slug] ?? (slug.startsWith('spike-') ? 'spikes' : 'other'),
-			code
-		});
+	for (const e of listed()) {
+		const code = read(e.dir);
+		if (code === null) {
+			console.warn(`examples: docs/examples.md lists ${e.dir}, which has no main.go`);
+			continue;
+		}
+		seen.add(e.dir);
+		examples.push({ slug: e.slug, title: slugToTitle(e.slug), description: e.description, category: e.category, code });
 	}
 
-	const order = Object.keys(categoryMap);
-	const rank = (slug: string) => {
-		const i = order.indexOf(slug);
-		return i === -1 ? 999 : i;
-	};
-	examples.sort((a, b) => rank(a.slug) - rank(b.slug) || a.slug.localeCompare(b.slug));
-
+	// On disk but not in the doc: last, and said so.
+	const dir = path.join(root, 'examples');
+	if (fs.existsSync(dir)) {
+		const rest = fs
+			.readdirSync(dir, { withFileTypes: true })
+			.filter((d) => d.isDirectory() && !seen.has(`examples/${d.name}`))
+			.map((d) => d.name)
+			.sort();
+		for (const name of rest) {
+			const code = read(`examples/${name}`);
+			if (code === null) continue;
+			console.warn(`examples: examples/${name} is not listed in docs/examples.md`);
+			examples.push({ slug: name, title: slugToTitle(name), description: '', category: 'other', code });
+		}
+	}
 	return examples;
 }
 
