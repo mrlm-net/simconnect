@@ -196,3 +196,14 @@ func TestJoined(t *testing.T) {
 	}
 	t.Log(tx.Text, " / ", rb.Text)
 }
+
+// TestJoinedReadbackWithoutOwn: a joined call whose first part needs no
+// readback ("identified" alone) still reads the joined one back (MyCrew).
+func TestJoinedReadbackWithoutOwn(t *testing.T) {
+	tx := Joined(Identified(PosApproach, "CSA1", ""), ClearedApproachTo("CSA1", ApproachClearance{Kind: "ILS", Runway: "09", QNH: "1018", ReportEstablished: true}))
+	rb, ok := Readback(tx)
+	if !ok || !strings.HasPrefix(rb.Text, "Cleared ILS approach runway 09, QNH 1018") || !strings.HasSuffix(rb.Text, ", CSA1") {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	t.Log(rb.Text)
+}
