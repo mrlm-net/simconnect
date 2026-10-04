@@ -946,6 +946,10 @@ func (c *TaxiController) poseBlocks(p pushPose, own airport.NodeID) int {
 // radius given up. It sets the push and the route (from the pose's edge
 // to the runway); false if no pose is reachable.
 func (c *TaxiController) planPushPose() bool {
+	// A push drawn for the stand (SetCustomPush) is flown as drawn.
+	if c.customPushTo() {
+		return true
+	}
 	// Wide (PushWideRadiusCost), unless much longer than the tighter one
 	// (see PushWideRadiusCost): planned both ways when they differ.
 	if PushWideRadiusCost == PushTurnRadiusCost {

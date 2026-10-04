@@ -206,8 +206,10 @@ type state struct {
 	// services by ICAO (#357).
 	weather *nav.Weather
 	atis    map[string]*nav.ATISService
-	// pads are the de-icing pads picked on the map (#323).
-	pads *padStore
+	// pads are the de-icing pads picked on the map (#323); pushes the
+	// pushbacks drawn by hand.
+	pads   *padStore
+	pushes *pushStore
 }
 
 func (s *state) setLive(v bool) {
@@ -886,6 +888,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerRunways(mux, st)
 	registerApproach(mux, st)
 	registerStatus(mux, st)
+	registerPushback(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

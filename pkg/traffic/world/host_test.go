@@ -3,6 +3,7 @@ package world
 import (
 	"testing"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -50,5 +51,30 @@ func TestIDBase(t *testing.T) {
 	}
 	if ids := New(Options{DataDir: t.TempDir()}).st.core.libIDs(); ids.procDef != 8400 || ids.airportList != traffic.DefaultAirportListRequestID {
 		t.Errorf("defaults %+v", ids)
+	}
+}
+
+// TestPushbackAPI: a drawn push is set, saved beside the settings and
+// read again by a new World; DELETE clears it.
+func TestPushbackAPI(t *testing.T) {
+	dir := t.TempDir()
+	w := New(Options{DataDir: dir})
+	p := traffic.PushRoute{Points: []airport.LatLon{{Lat: 50.1, Lon: 14.26}, {Lat: 50.1005, Lon: 14.2605}}, Facing: 90}
+	if _, err := w.Do("PUT", "/api/pushback?icao=LKPR&stand=S6", p); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := traffic.CustomPush("LKPR", "s6"); !ok || r.Said != "east" {
+		t.Fatalf("not set: %+v %v", r, ok)
+	}
+	traffic.ClearCustomPush("LKPR", "S6")
+	New(Options{DataDir: dir}) // read again at start
+	if _, ok := traffic.CustomPush("LKPR", "S6"); !ok {
+		t.Error("not kept")
+	}
+	if _, err := w.Do("DELETE", "/api/pushback?icao=LKPR&stand=S6", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := traffic.CustomPush("LKPR", "S6"); ok {
+		t.Error("not cleared")
 	}
 }
