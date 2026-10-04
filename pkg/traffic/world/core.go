@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -105,4 +106,20 @@ func (k *core) logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
 		mode = fmt.Sprintf(", %s, %.0f m apart", use.Parallel, use.SpacingM)
 	}
 	k.log.printf("runway in use %s: %s → %s (departures/arrivals)%s, wind %03.0f°/%.0f kt gust %.0f: headwind %.1f kt, crosswind %.1f kt on %s", icao, orNone(before), now, mode, w.WindDirTrue, w.WindKts, w.GustKts, head, cross, use.Arrival.Name)
+}
+
+// libraryIDs are the SimConnect ID bases of the library helpers the World
+// creates (Options.IDBase).
+type libraryIDs struct {
+	loaderDef, loaderReq, procDef, procReq, navDef, navReq, airportList, injDef, injReq, injEvt uint32
+}
+
+// libIDs are the helpers' IDs: the library defaults, or moved to IDBase.
+func (k *core) libIDs() libraryIDs {
+	if b := k.hooks.IDBase; b != 0 {
+		return libraryIDs{b, b + 100, b + 200, b + 300, b + 400, b + 500, b + 600, b + 700, b + 800, b + 900}
+	}
+	return libraryIDs{airport.DefaultLoaderDefinitionBase, airport.DefaultLoaderRequestBase, airport.DefaultProcedureDefinitionBase, airport.DefaultProcedureRequestBase,
+		nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, traffic.DefaultAirportListRequestID,
+		traffic.DefaultInjectDefinitionBase, traffic.DefaultInjectRequestBase, traffic.DefaultInjectEventBase}
 }
