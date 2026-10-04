@@ -313,13 +313,17 @@ func (v Value) resolve(read map[varUnit]float64) float64 {
 //   - Event: a key event; with Toggle it is sent only when the state
 //     differs from the one wanted (TOGGLE_AIRCRAFT_EXIT), else with the
 //     state as its data (PARKING_BRAKE_SET 1 or 0); Data is sent instead
-//     when given (the exit's index).
+//     when given (the exit's index);
+//   - EFB: a boolean data ref written through the aircraft's tablet API
+//     (Profile.EFB, GraphQL writeBool): the Fenix's chocks and GPU, which
+//     take no L:var write (measured).
 type Action struct {
 	Press  string  `json:"press,omitempty"` // e.g. "L:S_PED_RMP1_XFER"
 	Set    string  `json:"set,omitempty"`
 	Event  string  `json:"event,omitempty"`
 	Toggle bool    `json:"toggle,omitempty"`
 	Data   *uint32 `json:"data,omitempty"`
+	EFB    string  `json:"efb,omitempty"` // e.g. "fenix.efb.chocks"
 	Note   string  `json:"note,omitempty"`
 }
 

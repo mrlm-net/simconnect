@@ -4,6 +4,13 @@
 package systems
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -72,7 +79,24 @@ func TestControlsFenix(t *testing.T) {
 	p := For(Aircraft{Package: "fnx-aircraft-320", Title: "FenixA319 CFM WF HD"})
 	c := NewControls(f, 0)
 	c.Use(p)
-	now := State{Values: map[string]float64{Chocks: 1, GPU: 1}}
+	// Chocks and GPU through its EFB API (measured: no L:var write sticks).
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			Query     string
+			Variables map[string]bool
+		}
+		json.NewDecoder(r.Body).Decode(&q)
+		got = append(got, fmt.Sprintf("%s %s %v", r.URL.Path, q.Query[strings.Index(q.Query, "name: "):strings.Index(q.Query, ", value")], q.Variables["v"]))
+		fmt.Fprint(w, `{"data":{"dataRef":{"writeBool":true}}}`)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	p.EFB = &EFB{Port: port}
+	c.Use(p)
+	c.SetEFBHost(u.Hostname())
+	now := State{Values: map[string]float64{Chocks: 1, GPU: 1, ParkingBrake: 0}}
 	for _, step := range []struct {
 		name string
 		on   bool
@@ -81,16 +105,15 @@ func TestControlsFenix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := []string{"L:B_CONFIG_CHOCKS", "L:B_CONFIG_GPU", "L:S_MIP_PARKING_BRAKE"}
-	for i, w := range want {
-		if i >= len(f.setVar) || f.setVar[i] != w {
-			t.Fatalf("set %q %v, want %q", f.setVar, f.set, want)
-		}
+	want := []string{`/graphql name: "fenix.efb.chocks" false`, `/graphql name: "groundservice.groundpower" false`}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("EFB writes %q, want %q", got, want)
 	}
-	if f.set[0] != 0 || f.set[1] != 0 || f.set[2] != 1 {
-		t.Errorf("values %v, want 0 0 1", f.set)
+	// The parking brake: the default key event (measured on the Fenix).
+	if len(f.sent) != 1 || f.sent[0] != "PARKING_BRAKES 1" {
+		t.Errorf("sent %q, want the parking brake toggled", f.sent)
 	}
-	if p.EFB == nil || p.EFB.Port != 8083 {
+	if p := For(Aircraft{Package: "fnx-aircraft-320"}); p.EFB == nil || p.EFB.Port != 8083 {
 		t.Errorf("EFB %+v, want port 8083", p.EFB)
 	}
 	if Default().EFB != nil {
