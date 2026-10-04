@@ -432,7 +432,9 @@ function drawRoutes() {
     const sel = v.id === ctlSelected;
     if (!sel && (!layerOn.routes || !layerOn.ours || v.done)) continue;
     const ground = v.route && v.route.length > 1 && v.state !== 'complete' && !v.done;
-    const air = v.airRoute && v.airRoute.length;
+    // Not before the aircraft is in the sim: its position is not its own yet
+    // (a stand, or none), and the line flashed from there (airborne spawns).
+    const air = v.airRoute && v.airRoute.length && v.state !== 'spawning' && placed(v);
     if (!ground && !air && !v.hold) continue;
     keep.add(v.id);
     const canUpTo = !!(v.actions && v.actions.includes('upto')) && onMyFrequency(v);
@@ -448,6 +450,10 @@ function drawRoutes() {
     if (r.air && v.position) r.air.forEach((l) => l.setLatLngs(smoothLine([[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])])));
   }
   for (const [id, r] of routeLayers) if (!keep.has(id)) { r.group.remove(); routeLayers.delete(id); }
+}
+// placed: v has a position of its own (not 0,0).
+function placed(v) {
+  return !!(v.position && (v.position.lat || v.position.lon));
 }
 function buildRoute(v, sel, ground, air, canUpTo) {
   const g = L.layerGroup();
