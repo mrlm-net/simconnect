@@ -597,3 +597,33 @@ func TestResolveCrossAtOrAbove(t *testing.T) {
 		t.Errorf("at 500 fpm: %+v, want no cross", r)
 	}
 }
+
+// TestMaintainLevel: an arrival level now, its route descending onto a
+// level departure below: held at its level, "maintain", never sent up
+// (#697).
+func TestMaintainLevel(t *testing.T) {
+	lvl := air(1, "TVS524", 0, 0, 6000, 90, 210, 0, false)
+	arr := air(2, "BAW1413", 30, 0, 10000, 270, 250, 0, true)
+	all := []TrackedAircraft{lvl, arr}
+	o := ConflictOptions{Profile: func(a TrackedAircraft) []RoutePoint {
+		if a.ObjectID == 2 {
+			return []RoutePoint{pt(20, 0, 6000), pt(-10, 0, 4000)}
+		}
+		return nil
+	}}
+	cs := PredictConflicts(all, o)
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, o)
+	if !ok || r.Kind != ResolveLevel || !r.Maintain || r.AltFt != 10000 {
+		t.Fatalf("%+v %v, want maintain 10000", r, ok)
+	}
+	tx := Resolved(PosCenter, r, arr.AltFt, arr.Heading, arr.GroundKts)
+	if !strings.HasPrefix(tx.Text, "BAW1413, maintain 10000 feet") {
+		t.Errorf("%q", tx.Text)
+	}
+	if rb, ok := Readback(tx); !ok || rb.Text != "Maintain 10000 feet, BAW1413" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+}

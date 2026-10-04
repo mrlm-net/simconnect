@@ -378,6 +378,8 @@ func Readback(t Transmission) (Transmission, bool) {
 			s = "Stop descent at " + p[ParamLevel]
 		case "stop climb":
 			s = "Stop climb at " + p[ParamLevel]
+		case "maintain":
+			s = "Maintain " + p[ParamLevel]
 		case "continue climb", "continue descent":
 			s = capital(levelVerb(p[ParamClimb])) + " to " + p[ParamLevel]
 		}

@@ -60,6 +60,17 @@ type stoppedLevel struct {
 	climb bool
 }
 
+// routeClimbs reports whether planned's next altitude off altFt (by more
+// than 300 ft) is above it.
+func routeClimbs(planned []traffic.RoutePoint, altFt float64) bool {
+	for _, p := range planned {
+		if p.AltFt > 0 && math.Abs(p.AltFt-altFt) > 300 {
+			return p.AltFt > altFt
+		}
+	}
+	return false
+}
+
 // levelOn is the level the planned route climbs (or descends) on to
 // beyond stopFt: its highest (lowest) point; ok false when none is.
 func levelOn(planned []traffic.RoutePoint, stopFt float64, climb bool) (float64, bool) {
@@ -269,16 +280,20 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if r.Kind == traffic.ResolveLevel {
 			delete(w.stopped, r.Callsign) // a new level replaces the stop; another change keeps it to be cleared on
 		}
-		if r.Kind == traffic.ResolveLevel && r.Stop {
-			on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt)
-			if pos == traffic.PosDeparture && r.AltFt > a.AltFt {
+		if r.Kind == traffic.ResolveLevel && (r.Stop || r.Maintain) {
+			up := r.AltFt > a.AltFt
+			if r.Maintain { // level now: the way its route was going (#697)
+				up = routeClimbs(planned, r.AltFt)
+			}
+			on, ok := levelOn(planned, r.AltFt, up)
+			if pos == traffic.PosDeparture && up {
 				// On to the level departure cleared it to, not the top of
 				// its climb waypoints (live, KLM704 "climb to flight level
 				// 192" after "climb to flight level 240").
 				on, ok = departureClimbFt, true
 			}
 			if ok {
-				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: r.AltFt > a.AltFt}
+				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up}
 			}
 		}
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said})
