@@ -2,6 +2,7 @@ package world
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -167,3 +168,29 @@ func TestWireFeed(t *testing.T) {
 }
 
 func nilMessage() engine.Message { return engine.Message{} }
+
+// TestWireWeatherNaN: weather with an unknown dewpoint crosses the wire.
+func TestWireWeatherNaN(t *testing.T) {
+	dir, act := pipe()
+	defer dir.Close()
+	got := make(chan nav.Weather, 1)
+	f := &weatherFeed{got: got}
+	newWireClient(dir, func(m wireMsg) { _ = feedIn(m, f, nil) })
+	w := nav.StaticWeather(240, 8, 9999, 15, math.NaN(), 1013)
+	(&wireFeedOut{send: act.Send}).Weather(w)
+	select {
+	case g := <-got:
+		if g.QNHhPa != 1013 || !math.IsNaN(g.DewpointC) {
+			t.Errorf("%+v", g)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("weather lost")
+	}
+}
+
+type weatherFeed struct {
+	recFeed
+	got chan nav.Weather
+}
+
+func (f *weatherFeed) Weather(w nav.Weather) { f.got <- w }

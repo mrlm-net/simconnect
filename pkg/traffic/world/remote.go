@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"os"
+	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -31,6 +34,9 @@ type (
 		Req     traffic.TaxiRequest `json:"req"`
 		Tug     string              `json:"tug,omitempty"`
 		Fuel    string              `json:"fuel,omitempty"`
+		// TugYaw and TugAhead: the tug's place on the nose gear (0: its own).
+		TugYaw   float64 `json:"tugYaw,omitempty"`
+		TugAhead float64 `json:"tugAhead,omitempty"`
 	}
 	arrivalStart struct {
 		Target  string                 `json:"target"`
@@ -49,7 +55,7 @@ func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequ
 		w.ICAO = req.Graph.Layout.ICAO
 	}
 	if t, ok := req.Tug.(*traffic.SimObjectTug); ok && t != nil {
-		w.Tug = t.Title()
+		w.Tug, w.TugYaw, w.TugAhead = t.Title(), t.YawDeg, t.AheadMeters
 	}
 	if f, ok := req.Fuel.(*traffic.SimObjectFuelTruck); ok && f != nil {
 		w.Fuel = f.Title()
@@ -111,10 +117,14 @@ type actuatorSim struct {
 	srv   *wireServer
 	send  func(wireMsg) error
 	graph func(icao string) (*airport.Graph, error)
+	reqs  chan<- string // airports to load
 	// tug and fuel make an aircraft's tug and fuel truck from their models
 	// on its request IDs (nil: none).
-	tug  func(title string, reqBase uint32, prof traffic.MotionProfile) traffic.PushbackTug
-	fuel func(title string, reqBase uint32, prof traffic.MotionProfile) traffic.FuelService
+	tug  func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug
+	fuel func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
+
+	mu   sync.Mutex
+	ctls []interface{ Handle(engine.Message) bool } // started off the wire
 }
 
 // StartDeparture starts a departure off the wire and serves its controller
@@ -127,15 +137,16 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	req := w.Req
 	req.Graph = g
 	if w.Tug != "" && a.tug != nil {
-		req.Tug = a.tug(w.Tug, w.ReqBase, req.Profile)
+		req.Tug = a.tug(w, g, req.Profile)
 	}
 	if w.Fuel != "" && a.fuel != nil {
-		req.Fuel = a.fuel(w.Fuel, w.ReqBase, req.Profile)
+		req.Fuel = a.fuel(w, g, req.Profile)
 	}
 	ctl, evs, err := a.localSim.StartDeparture(w.DefBase, w.ReqBase, req)
 	if err != nil {
 		return err
 	}
+	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
 	go a.pump(w.Target, func(yield func(any, error) bool) {
 		for ev := range evs {
@@ -159,6 +170,7 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 	if err != nil {
 		return err
 	}
+	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
 	go a.pump(w.Target, func(yield func(any, error) bool) {
 		for ev := range evs {
@@ -197,6 +209,7 @@ func (f *wireFeedOut) put(kind string, vs ...any) {
 	for _, v := range vs {
 		b, err := json.Marshal(v)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  world: wire feed %s: %v\n", kind, err)
 			return
 		}
 		m.Args = append(m.Args, b)
@@ -205,9 +218,25 @@ func (f *wireFeedOut) put(kind string, vs ...any) {
 }
 
 func (f *wireFeedOut) Airports(list []traffic.AirportRef) { f.put("airports", list) }
-func (f *wireFeedOut) Weather(w nav.Weather)              { f.put("weather", w) }
-func (f *wireFeedOut) ILS(r nav.NavResult)                { f.put("ils", r) }
-func (f *wireFeedOut) Procedures(p airport.Procedures)    { f.put("procedures", p) }
+
+// Weather goes with an unknown dewpoint (NaN, which JSON cannot carry) as
+// null.
+func (f *wireFeedOut) Weather(w nav.Weather) {
+	ww := wireWeather{Weather: w}
+	if !math.IsNaN(w.DewpointC) {
+		ww.DewpointC = &w.DewpointC
+	}
+	f.put("weather", ww)
+}
+
+// wireWeather is nav.Weather on the wire.
+type wireWeather struct {
+	nav.Weather
+	DewpointC *float64 `json:"DewpointC"`
+}
+
+func (f *wireFeedOut) ILS(r nav.NavResult)             { f.put("ils", r) }
+func (f *wireFeedOut) Procedures(p airport.Procedures) { f.put("procedures", p) }
 func (f *wireFeedOut) Layout(icao string, l *airport.Layout, err error) {
 	e := ""
 	if err != nil {
@@ -238,11 +267,16 @@ func feedIn(m wireMsg, to simFeed, cache *airport.Cache) error {
 		}
 		to.Airports(v)
 	case "weather":
-		var v nav.Weather
+		var v wireWeather
 		if err := arg(0, &v); err != nil {
 			return err
 		}
-		to.Weather(v)
+		w := v.Weather
+		w.DewpointC = math.NaN()
+		if v.DewpointC != nil {
+			w.DewpointC = *v.DewpointC
+		}
+		to.Weather(w)
 	case "ils":
 		var v nav.NavResult
 		if err := arg(0, &v); err != nil {

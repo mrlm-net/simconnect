@@ -92,12 +92,13 @@ type wireClient struct {
 	waiting map[uint64]chan wireMsg
 	events  map[string]chan wireMsg // by target
 	onFeed  func(wireMsg)
-	onError func(error) // a call's error with nowhere to go
-	err     error       // the link's, once it broke
+	onError func(error)   // a call's error with nowhere to go
+	done    chan struct{} // closed once the link is gone
+	err     error         // the link's, once it broke
 }
 
 func newWireClient(l link, onFeed func(wireMsg)) *wireClient {
-	c := &wireClient{l: l, waiting: map[uint64]chan wireMsg{}, events: map[string]chan wireMsg{}, onFeed: onFeed}
+	c := &wireClient{l: l, waiting: map[uint64]chan wireMsg{}, events: map[string]chan wireMsg{}, onFeed: onFeed, done: make(chan struct{})}
 	go c.read()
 	return c
 }
@@ -117,6 +118,7 @@ func (c *wireClient) read() {
 				delete(c.events, t)
 			}
 			c.mu.Unlock()
+			close(c.done)
 			return
 		}
 		switch m.Kind {

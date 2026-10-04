@@ -252,8 +252,11 @@ type controlCenter struct {
 	onChange       func(topic string)
 	client         engine.Client
 	fleet          *traffic.Fleet
-	// sim is what it does to the simulator beside the controllers (#710).
-	sim  simPort
+	// sim is what it does to the simulator beside the controllers (#710);
+	// onModels is told the aircraft titles found (an actuator's, for its
+	// director).
+	sim      simPort
+	onModels func([]string)
 	inj  *traffic.Injector
 	cmds chan func()
 
@@ -2321,6 +2324,7 @@ func (cc *controlCenter) addModels(msg engine.Message) {
 	base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
+	var added []string
 	for i := uint32(0); i < n; i++ {
 		entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))
 		if t := engine.BytesToString(entry.AircraftTitle[:]); t != "" {
@@ -2328,7 +2332,11 @@ func (cc *controlCenter) addModels(msg engine.Message) {
 				t += liverySep + l
 			}
 			cc.models[t] = true
+			added = append(added, t)
 		}
+	}
+	if cc.onModels != nil && len(added) > 0 {
+		go cc.onModels(added)
 	}
 }
 
