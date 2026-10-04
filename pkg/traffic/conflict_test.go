@@ -224,7 +224,14 @@ func TestResolveStopsClimb(t *testing.T) {
 	if got, want := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts).Text, "RYR1, stop climb at 4000 feet, due traffic"; !strings.HasPrefix(got, want) {
 		t.Errorf("%q, want %q", got, want)
 	}
-	if got, want := ContinueLevel(PosDeparture, "RYR1", 24000, true).Text, "RYR1, clear of traffic, climb to flight level 240"; got != want {
+	// The loss is under the vertical minimum, and the stop keeps it (#657).
+	if c := cs[0]; c.LossFt >= VerticalSeparationFt || c.LossNM >= c.MinNM || c.AAltFt == 0 && c.BAltFt == 0 {
+		t.Errorf("loss %.1f NM %.0f ft (alts %.0f/%.0f), want under %.1f NM and %.0f ft", c.LossNM, c.LossFt, c.AAltFt, c.BAltFt, c.MinNM, VerticalSeparationFt)
+	}
+	if r.KeepsFt != 0 && r.KeepsFt < VerticalSeparationFt {
+		t.Errorf("the stop keeps %.0f ft, want at least %.0f", r.KeepsFt, VerticalSeparationFt)
+	}
+	if got, want := ContinueLevel(PosDeparture, "RYR1", 24000, true).Text, "RYR1, climb to flight level 240"; got != want {
 		t.Errorf("%q, want %q", got, want)
 	}
 	if rb, _ := Readback(ContinueLevel(PosDeparture, "RYR1", 24000, true)); rb.Text != "Climb to flight level 240, RYR1" {

@@ -184,7 +184,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
 		w.mu.Unlock()
 		if first {
-			tlog.printf("conflict: %s and %s lose separation in %s, closest %.1f NM, %.0f ft in %s", c.A, c.B, c.In.Round(time.Second), c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
+			tlog.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
+				c.A, c.AAltFt, c.B, c.BAltFt, c.In.Round(time.Second), c.LossNM, c.LossFt, c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
 		}
 		if busy {
 			continue // a change is flown already: see it work
@@ -230,6 +231,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			continue
 		}
 		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts)
+		tlog.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
 		w.s.cc.radio.Transmit(icao, tx)
 		said := tx.Text
 		w.mu.Lock()

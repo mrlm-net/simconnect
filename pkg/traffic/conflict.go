@@ -83,6 +83,14 @@ type Conflict struct {
 	ClosestNM  float64       `json:"closestNM"`
 	VerticalFt float64       `json:"verticalFt"` // at the closest point
 	MinNM      float64       `json:"minNM"`      // the lateral minimum that applies
+	// LossNM and LossFt are the lateral and vertical distances when the
+	// minima are first lost (In): the vertical one under the minimum (1000
+	// ft), where VerticalFt at the closest lateral point may not be.
+	LossNM float64 `json:"lossNM"`
+	LossFt float64 `json:"lossFt"`
+	// AAltFt and BAltFt are A's and B's altitudes now.
+	AAltFt float64 `json:"aAltFt"`
+	BAltFt float64 `json:"bAltFt"`
 }
 
 // track is an aircraft flying on as it is now.
@@ -151,7 +159,7 @@ func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, 
 			c.ClosestNM, c.ClosestIn, c.VerticalFt = l, d, v
 		}
 		if l < minNM && v < o.MinFt && c.In < 0 {
-			c.In = d
+			c.In, c.LossNM, c.LossFt = d, l, v
 		}
 	}
 	c.MinNM = minNM
@@ -200,6 +208,7 @@ func PredictConflicts(aircraft []TrackedAircraft, o ConflictOptions) []Conflict 
 			}
 			if c, ok := conflictBetween(trackFor(a, o), trackFor(b, o), min, o); ok {
 				c.A, c.B, c.AID, c.BID = callsignOf(a), callsignOf(b), a.ObjectID, b.ObjectID
+				c.AAltFt, c.BAltFt = a.AltFt, b.AltFt
 				out = append(out, c)
 			}
 		}
@@ -239,6 +248,11 @@ type Resolution struct {
 	Direct *airport.LatLon `json:"direct,omitempty"`
 	// Why: the conflict it resolves, as ATC would say it.
 	Why string `json:"why"`
+	// KeepsFt is the smallest vertical distance the change keeps from the
+	// traffic of the conflict while within the lateral minimum of it, over
+	// the look-ahead: at least the vertical minimum (1000 ft) by
+	// construction; 0 when they are never that close laterally.
+	KeepsFt float64 `json:"keepsFt"`
 }
 
 // resolutionCandidate is one change with its cost: the least disturbing
@@ -390,6 +404,7 @@ func ResolveConflict(c Conflict, aircraft []TrackedAircraft, canSteer func(Track
 			if clearOfAll(cand.t, *me, aircraft, o) {
 				cand := cand
 				cand.r.Why = fmt.Sprintf("traffic %s, %.1f NM in %s", callsignOf(*other), c.ClosestNM, c.ClosestIn.Round(time.Second))
+				cand.r.KeepsFt = verticalWithin(cand.t, trackFor(*other, o), o.minFor(*me, *other), o)
 				best = &cand
 				break
 			}
@@ -413,6 +428,23 @@ func PathClear(a TrackedAircraft, path []airport.LatLon, aircraft []TrackedAircr
 	t := trackOf(a)
 	t.path = path
 	return clearOfAll(t, a, aircraft, o)
+}
+
+// verticalWithin is the smallest vertical distance between a and b at the
+// moments they are within minNM laterally over the look-ahead; 0 never.
+func verticalWithin(a, b track, minNM float64, o ConflictOptions) float64 {
+	least := math.Inf(1)
+	for d := time.Duration(0); d <= o.LookAhead; d += o.Step {
+		alat, alon, aft := a.at(d)
+		blat, blon, bft := b.at(d)
+		if calc.HaversineNM(alat, alon, blat, blon) < minNM {
+			least = math.Min(least, math.Abs(aft-bft))
+		}
+	}
+	if math.IsInf(least, 1) {
+		return 0
+	}
+	return least
 }
 
 // clearOfAll reports whether me flying t keeps separation from every

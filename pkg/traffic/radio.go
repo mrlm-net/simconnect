@@ -461,7 +461,10 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		case "stop climb":
 			return fmt.Sprintf("%s, stop climb at %s%s", cs, p[ParamLevel], why)
 		case "continue climb", "continue descent":
-			return fmt.Sprintf("%s, clear of traffic, %s to %s", cs, strings.TrimPrefix(p[ParamClimb], "continue "), p[ParamLevel])
+			// Plain "climb (or descend) to (level)" (12.3.1.2 a): the traffic it
+			// was stopped for is known. Doc 4444's "clear of traffic [appropriate
+			// instructions]" is for passing unknown traffic (12.4.1.8 d).
+			return fmt.Sprintf("%s, %s to %s", cs, strings.TrimPrefix(p[ParamClimb], "continue "), p[ParamLevel])
 		}
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentHeading:
@@ -1250,7 +1253,7 @@ func (r *Radio) Recent(airport string, n int) []Transmission {
 }
 
 // ContinueLevel lets an aircraft stopped for traffic climb or descend on
-// to altFt: "RYR1527, clear of traffic, climb to flight level 240".
+// to altFt: "RYR1527, climb to flight level 240" (Doc 4444 12.3.1.2 a).
 func ContinueLevel(pos Position, cs string, altFt float64, climb bool) Transmission {
 	verb := "continue descent"
 	if climb {
