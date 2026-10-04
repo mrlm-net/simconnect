@@ -131,6 +131,10 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 	}
 }
 
+// trafficInfoNearNM: traffic already at its closest point is told of
+// only when nearer than this.
+const trafficInfoNearNM = 1.5
+
 // otherOf is the other aircraft of conflict c.
 func otherOf(c traffic.Conflict, cs string) string {
 	if c.A == cs {

@@ -226,6 +226,13 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		// Not separated in this airspace (VFR in D, E, G): told of each
 		// other instead (#570).
 		if !needed(c.A, c.B) {
+			// Only while they still close on each other: at the closest
+			// point already they move apart, nothing to look out for (live,
+			// TVS1324 told of an SR22 at 3 o'clock moving away, #704),
+			// unless that closest point is very close.
+			if c.ClosestIn <= 0 && c.ClosestNM >= trafficInfoNearNM {
+				continue
+			}
 			w.tellTraffic(now, c, aircraft)
 			continue
 		}
