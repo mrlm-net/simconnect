@@ -293,7 +293,7 @@ func main() {
 			</div>
 			<div class="flex flex-wrap items-center justify-center gap-4">
 				<a href="{base}/docs/examples" class="text-sm font-semibold" style="color: var(--color-link);">Tour the map &rarr;</a>
-				<a href="{base}/examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
+				<a href="{base}/docs/examples#other-examples" class="text-sm font-semibold" style="color: var(--color-link);">All examples &rarr;</a>
 			</div>
 		</div>
 	</div>
