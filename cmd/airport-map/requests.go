@@ -127,6 +127,12 @@ func (it *controlled) onRequest(req string) {
 		}
 		it.say(traffic.RequestStartUp("", it.Tail, "", ""))
 	case "taxi":
+		// Some crews ask to take the runway from an intersection (#621).
+		if e := it.crewEntry(); e != "" {
+			it.askedEntry = e
+			it.say(traffic.RequestTaxiIntersection(it.Tail, e))
+			break
+		}
 		it.say(traffic.RequestTaxi(it.Tail))
 	default:
 		return
@@ -190,6 +196,9 @@ func (it *controlled) answer(req string) {
 		it.say(traffic.ClearedStartUp(it.Tail))
 		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act("startup", -1) })
 		return
+	}
+	if req == "taxi" {
+		it.grantEntry()
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
 	it.say(tx)

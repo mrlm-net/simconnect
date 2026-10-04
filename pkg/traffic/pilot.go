@@ -122,6 +122,13 @@ func RequestDescent(pos Position, cs string) Transmission {
 	return pilotTx(pos, cs, IntentRequestDescent, nil, cs+", request descent")
 }
 
+// RequestTaxiIntersection is a departure ready to taxi asking to take the
+// runway from an intersection: "CSA1, request taxi, intersection B"
+// (Doc 4444 12.3.4.7 a, its intentions; #621).
+func RequestTaxiIntersection(cs, entry string) Transmission {
+	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamEntry: entry}, cs+", request taxi, intersection "+entry)
+}
+
 // RequestTaxi is a departure pushed back and ready to taxi.
 func RequestTaxi(cs string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, nil, cs+", request taxi")

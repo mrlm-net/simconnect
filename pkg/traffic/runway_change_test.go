@@ -168,3 +168,42 @@ func TestChangeEntry(t *testing.T) {
 		t.Fatalf("state %v after the change", ctl.State())
 	}
 }
+
+// TestChangeEntryWaitingForTaxi: pushed back and waiting for its taxi
+// clearance, a departure given an intersection (a crew's request) has its
+// route planned at once, so the taxi clearance names it (#621).
+func TestChangeEntryWaitingForTaxi(t *testing.T) {
+	g := lkprGraph(t)
+	entries, err := g.RunwayEntries("24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var named string
+	for _, e := range entries[1:] {
+		if e.Taxiway != "" {
+			named = e.Taxiway
+			break
+		}
+	}
+	if named == "" {
+		t.Skip("no named intersection on 24")
+	}
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true, RollingTakeoffChance: -1})
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	if !run(TaxiAwaitingPushback, 60*300) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*900) {
+		t.Fatalf("never waited for the taxi: %v", ctl.State())
+	}
+	if err := ctl.ChangeEntry(named); err != nil {
+		t.Fatal(err)
+	}
+	if r := ctl.Route(); r == nil || !strings.EqualFold(r.Entry, named) {
+		t.Fatalf("route entry %q right after the change, want %s", r.Entry, named)
+	}
+}
