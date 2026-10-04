@@ -1192,6 +1192,18 @@ func main() {
 	}
 	setTokens(*controlToken, *viewToken)
 	startPprof()
+	// The default piper is beside the map: its folder in the checkout, or
+	// next to the executable once installed (go install, #664).
+	if *piperPath == "bin/piper/piper.exe" {
+		if _, err := os.Stat(*piperPath); err != nil {
+			if exe, err := os.Executable(); err == nil {
+				p := filepath.Join(filepath.Dir(exe), "bin", "piper", "piper.exe")
+				if _, err := os.Stat(p); err == nil {
+					*piperPath = p
+				}
+			}
+		}
+	}
 	radioVoice.piperPath, radioVoice.voicesDir = *piperPath, *voicesDir
 	// The default is the repo's graph, from the repo root or from this
 	// example's folder (its own module: go run . here).
