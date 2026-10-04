@@ -49,6 +49,13 @@ The map builds against the library in the checkout through a Go workspace (`go.w
 go work init . ./cmd/airport-map ./cmd/simvar-cli
 ```
 
+Or install it, no checkout needed (the web UI is built in; the voice looks for `bin/piper/piper.exe` next to the executable, and without `-airways` flight plans fly direct):
+
+```bash
+go install github.com/mrlm-net/simconnect/cmd/airport-map@latest
+airport-map -icao LKPR
+```
+
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
 | Flag | Default | Description |
