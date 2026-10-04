@@ -97,7 +97,7 @@ const (
 // or Subscribe (every second while it changes), then pass every received
 // message to Handle.
 //
-//	wx := nav.NewWeatherReader(client, 7400, 7401)
+//	wx := nav.NewWeatherReader(client, 10000, 10001)
 //	wx.Request()
 //	for msg := range client.Stream() {
 //	    if w, ok := wx.Handle(msg); ok {

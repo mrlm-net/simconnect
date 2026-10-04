@@ -29,7 +29,7 @@ import "github.com/mrlm-net/simconnect/pkg/nav"
 `WeatherReader` follows the `airport.Loader` pattern: it never reads `client.Stream()` itself. Call `Request` (once) or `Subscribe` (every second, only when changed), and pass every message to `Handle`:
 
 ```go
-wx := nav.NewWeatherReader(client, 7400, 7401) // data definition ID, request ID
+wx := nav.NewWeatherReader(client, 10000, 10001) // data definition ID, request ID
 wx.Request()
 for msg := range client.Stream() {
     if w, ok := wx.Handle(msg); ok {

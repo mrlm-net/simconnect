@@ -104,6 +104,29 @@ CustomEventIDMax = 999999886 // Last ID for custom events (37 slots total)
 
 **Usage**: Managed internally by the manager. Custom event subscriptions are cleared by `Stop()`; over a lost connection they are kept and subscribed again with the same IDs on the next one.
 
+## Library default ID ranges
+
+Besides the manager's reserved range, several packages use fixed default IDs when the application does not pass its own. Definition, request and client event IDs are separate SimConnect namespaces; a range only collides with IDs of the same kind. Ranges below are the defaults (base constant plus the count in the code).
+
+| Package / type | What | Definition IDs | Request IDs | Event IDs |
+|---|---|---|---|---|
+| `airport.Loader` | airport facilities | 7100–7106 (`DefaultLoaderDefinitionBase`, 7 `loaderDefinitions`) | 7200–7311 (`DefaultLoaderRequestBase`, `loaderSlots` 16 × 7) | — |
+| `traffic.TaxiController` | taxiing aircraft | 7300–7301 (`DefaultTaxiDefinitionBase`, `taxiDefinitionCount` 2) | 7400–7403 (`DefaultTaxiRequestBase`, `taxiRequestCount` 4) | — |
+| `traffic.ArrivalController` | arriving aircraft | 7500–7503 (`DefaultArrivalDefinitionBase`, `arrDef*` 4) | 7600–7603 (`DefaultArrivalRequestBase`, `arrReq*` 4) | — |
+| `traffic.Injector` | injected aircraft and tugs | 7700–7709 (`DefaultInjectDefinitionBase`, up to `injDefGearDown`) | 7800–7991 (`DefaultInjectRequestBase`, 2 × `injectMaxAircraft` 96) | 7900–7909 (`DefaultInjectEventBase`, `injectEventCount` 10) |
+| `traffic.StandAllocator` | stand scan | 8200 (`DefaultStandDefinitionBase`) | 8300–8301 (`DefaultStandRequestBase`, `standReqAircraft`, `standReqUser`) | — |
+| `airport.ProcedureLoader` | SIDs, STARs, approaches | 8400–8402 (`DefaultProcedureDefinitionBase`, `procedureParts` 3) | 8500–8523 (`DefaultProcedureRequestBase`, `procedureSlots` 8 × 3) | — |
+| `nav.NavLoader` | waypoints, VORs, NDBs | 8700–8702 (`DefaultNavDefinitionBase`, 3 `navDefinitions`) | 8800–8831 (`DefaultNavRequestBase`, `DefaultNavSlots` 16 × `navParts` 2) | — |
+| `traffic.AirportLister` | airports in the reality bubble | — | 8900 (`DefaultAirportListRequestID`) | — |
+| `avionics.Radios` | COM and transponder | — | — | 0x7A00–0x7A09 = 31232–31241 (`DefaultEventBase`, `eventCount` 10) |
+| `systems.Controls` | doors, chocks, GPU, brake | 0x7B00–0x7B3F = 31488–31551 (`DefaultControlBase`, block of 64) | — | 0x7B00–0x7B3F (same block) |
+| `manager` | custom system events | — | — | 999999850–999999886 (`CustomEventIDMin`–`CustomEventIDMax`) |
+| `manager` | system events | — | — | 999999987–999999998 (`FlightPlanDeactivatedEventID`–`PauseEventID`) |
+| `manager` | simulator state | 999999900 (`CameraDefinitionID`) | 999999901 (`CameraRequestID`) | — |
+| `engine` | heartbeat | — | — | 999999999 (`HEARTBEAT_EVENT_ID`) |
+
+`nav.WeatherReader`, `systems.Reader`, `traffic.ProfileReader`, the tugs and fuel trucks take their IDs from the application and have no defaults. Pick application IDs outside all of the ranges above (the examples use 10000/10001 for the weather reader), or move a library type off its defaults (`LoaderWithIDs`, `TaxiWithIDs`, `ArrivalWithIDs`, `InjectorWithIDs`, `StandWithIDs`, `NewNavLoaderWithIDs`, the `reqID` of `NewAirportLister`, the `base` of `avionics.New` and `systems.NewControls`). `ProcedureLoader` always uses its defaults.
+
 ## Request Registry
 
 The manager maintains a `RequestRegistry` that tracks all active SimConnect requests. This enables:

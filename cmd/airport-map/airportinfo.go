@@ -20,10 +20,11 @@ import (
 // weather (at the user aircraft, as SimConnect reports it), the runway in
 // use and the ATIS.
 
-// SimConnect IDs of the weather reader.
+// SimConnect IDs of the weather reader: clear of the library's default
+// ranges (docs/manager-requests-ids.md; 7500 was ArrivalController's, #406).
 const (
-	weatherDefID = 7500
-	weatherReqID = 7501
+	weatherDefID = 10010
+	weatherReqID = 10011
 )
 
 type runwayInfo struct {

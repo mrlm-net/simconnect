@@ -51,7 +51,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	wx := nav.NewWeatherReader(client, 7400, 7401)
+	wx := nav.NewWeatherReader(client, 10000, 10001)
 	if err := wx.Request(); err != nil {
 		fmt.Println(err)
 		return

@@ -14,14 +14,14 @@ func (m *Instance) registerSimStateSubscriptions(client engine.Client) {
 	m.setSimState(defaultSimState())
 
 	// Subscribe to pause events
-	// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1000
+	// Registered and subscribed with the manager's pause event ID (PauseEventID)
 	m.requestRegistry.Register(m.pauseEventID, RequestTypeEvent, "Pause Event Subscription")
 	if err := client.SubscribeToSystemEvent(m.pauseEventID, "Pause"); err != nil {
 		m.logger.Error("[manager] Failed to subscribe to Pause event", "error", err)
 	}
 
 	// Subscribe to sim events
-	// Register manager ID for tracking, but subscribe with actual SimConnect event ID 1001
+	// Registered and subscribed with the manager's sim event ID (SimEventID)
 	m.requestRegistry.Register(m.simEventID, RequestTypeEvent, "Sim Event Subscription")
 	if err := client.SubscribeToSystemEvent(m.simEventID, "Sim"); err != nil {
 		m.logger.Error("[manager] Failed to subscribe to Sim event", "error", err)

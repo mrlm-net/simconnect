@@ -65,7 +65,7 @@ func main() {
 	// Layouts, procedures and the weather, all through one message loop.
 	loader := airport.NewLoader(client)
 	procs := airport.NewProcedureLoader(client)
-	wx := nav.NewWeatherReader(client, 7400, 7401)
+	wx := nav.NewWeatherReader(client, 10000, 10001)
 	dep, arr := strings.ToUpper(*from), strings.ToUpper(*to)
 	for _, icao := range []string{dep, arr} {
 		if err := loader.Request(icao); err != nil {
