@@ -118,6 +118,10 @@ A `.pln` has no alternate airport field, so none is read.
 
 `PerformanceFor` knows A20N, A320, A321, B738, B38M, B77W, B789, E190, CRJ9, AT76 and DH8D; other types plan as a generic medium jet (`Performance.Type` is then empty). The figures are typical round numbers, not a particular airframe's.
 
+### Top of descent
+
+`TopOfDescent(PerformanceFor(type), fromFt, toFt, gsKts, extraNM)` is how far before the point where it should be at `toFt` an aircraft starts down from `fromFt` (#693): at its descent rate (`DescentFPM`) and ground speed above FL100, at the 250 kt limit below it (SERA.6001; 14 CFR 91.117), plus about a mile per 10 kt to slow to 250 kt (the pilots' rule of thumb) and `extraNM` (the slow-down to approach speed, a level segment). From FL360 to 4000 ft at 420 kt: about 132 NM with a 5 NM margin. `Performance.DescentMach` and `DescentIASKts` are the descent speeds, rounded and checked against the EUROCONTROL Aircraft Performance Database (indicative figures); a turboprop has no Mach.
+
 ## Limits
 
 - No winds aloft: ETE and fuel are for still air.
