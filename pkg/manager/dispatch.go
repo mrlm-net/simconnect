@@ -117,7 +117,9 @@ func (m *Instance) processMessage(msg engine.Message) {
 		})
 	}
 
-	// Forward message to subscriptions (non-blocking)
+	// Forward message to subscriptions (non-blocking): each gets a copy that
+	// outlives this call, as the buffer goes back to the pool at its end (#404).
+	var detached *engine.Message
 	for _, sub := range m.subsBuf {
 		// fast-path: skip closed subscriptions
 		sub.closeMu.Lock()
@@ -152,7 +154,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 		sub.closeMu.Lock()
 		if !sub.closed.Load() {
 			select {
-			case sub.ch <- msg:
+			case sub.ch <- detachOnce(msg, &detached):
 			default:
 				// Channel full, skip message to avoid blocking
 				if sub.onDrop != nil {
@@ -171,4 +173,14 @@ func (m *Instance) processMessage(msg engine.Message) {
 		}
 		sub.closeMu.Unlock()
 	}
+}
+
+// detachOnce is msg detached from its pooled buffer, copied on the first
+// call and shared after (subscribers only read it).
+func detachOnce(msg engine.Message, d **engine.Message) engine.Message {
+	if *d == nil {
+		c := msg.Detach()
+		*d = &c
+	}
+	return **d
 }

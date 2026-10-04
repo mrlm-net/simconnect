@@ -44,3 +44,23 @@ func TestEventSubscriptionsDeliver(t *testing.T) {
 		t.Error("the state is not paused")
 	}
 }
+
+// TestOpenQuitForwarded: OPEN and QUIT reach a plain subscription after
+// the manager handled them (#404).
+func TestOpenQuitForwarded(t *testing.T) {
+	m := New("test").(*Instance)
+	sub := m.Subscribe("all", 4)
+	defer sub.Unsubscribe()
+	for _, id := range []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_OPEN, types.SIMCONNECT_RECV_ID_QUIT} {
+		recv := &types.SIMCONNECT_RECV{DwID: types.DWORD(id)}
+		m.processMessage(engine.Message{SIMCONNECT_RECV: recv})
+		select {
+		case msg := <-sub.Messages():
+			if types.SIMCONNECT_RECV_ID(msg.DwID) != id {
+				t.Fatalf("got %d, want %d", msg.DwID, id)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("message %d was not forwarded", id)
+		}
+	}
+}

@@ -76,6 +76,22 @@ func (m *Message) Release() {
 	}
 }
 
+// Detach is a copy of m that owns its buffer, with no release: for keeping
+// past m.Release, e.g. on another goroutine. Messages are copied from a
+// pool the dispatcher reuses once released; a subscriber reading a message
+// later would see the next one written over it (#404).
+func (m Message) Detach() Message {
+	m.release = nil
+	if m.SIMCONNECT_RECV == nil || len(m.data) == 0 {
+		return m
+	}
+	buf := make([]byte, len(m.data))
+	copy(buf, m.data)
+	m.data = buf
+	m.SIMCONNECT_RECV = (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))
+	return m
+}
+
 func CastAs[T any](m *Message) T {
 	switch types.SIMCONNECT_RECV_ID(m.DwID) {
 	case types.SIMCONNECT_RECV_ID_EVENT:
