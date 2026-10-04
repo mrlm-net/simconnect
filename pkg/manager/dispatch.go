@@ -51,7 +51,6 @@ func (m *Instance) processMessage(msg engine.Message) {
 		if client != nil {
 			m.registerSimStateSubscriptions(client)
 		}
-		return
 	}
 
 	// Check for quit message
@@ -64,25 +63,24 @@ func (m *Instance) processMessage(msg engine.Message) {
 		m.mu.Lock()
 		m.engine = nil
 		m.mu.Unlock()
-		return
 	}
 
-	// Handle pause and sim events
+	// Handle pause and sim events. The OPEN, QUIT and event messages are handled
+	// here and then forwarded like any other (#404): OnMessage handlers and
+	// channel subscriptions (SubscribeOnPause, SubscribeOnSimRunning, the
+	// filename and object events, custom system events) receive them too.
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT {
 		m.processEventMessage(msg)
-		return
 	}
 
 	// Handle filename events (FlightLoaded, AircraftLoaded, FlightPlanActivated)
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FILENAME {
 		m.processFilenameEvent(msg)
-		return
 	}
 
 	// Handle object add/remove events (ObjectAdded, ObjectRemoved)
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE {
 		m.processObjectEvent(msg)
-		return
 	}
 
 	// Handle camera state data
@@ -119,7 +117,9 @@ func (m *Instance) processMessage(msg engine.Message) {
 		})
 	}
 
-	// Forward message to subscriptions (non-blocking)
+	// Forward message to subscriptions (non-blocking): each gets a copy that
+	// outlives this call, as the buffer goes back to the pool at its end (#404).
+	var detached *engine.Message
 	for _, sub := range m.subsBuf {
 		// fast-path: skip closed subscriptions
 		sub.closeMu.Lock()
@@ -154,7 +154,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 		sub.closeMu.Lock()
 		if !sub.closed.Load() {
 			select {
-			case sub.ch <- msg:
+			case sub.ch <- detachOnce(msg, &detached):
 			default:
 				// Channel full, skip message to avoid blocking
 				if sub.onDrop != nil {
@@ -173,4 +173,14 @@ func (m *Instance) processMessage(msg engine.Message) {
 		}
 		sub.closeMu.Unlock()
 	}
+}
+
+// detachOnce is msg detached from its pooled buffer, copied on the first
+// call and shared after (subscribers only read it).
+func detachOnce(msg engine.Message, d **engine.Message) engine.Message {
+	if *d == nil {
+		c := msg.Detach()
+		*d = &c
+	}
+	return **d
 }
