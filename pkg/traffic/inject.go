@@ -124,6 +124,22 @@ const (
 	restMaxKts      = 1.0
 )
 
+// Moving on the ground the sim draws an injected aircraft's gear struts
+// extended, the nose more, so it sat nose up, a small wheelie, taxiing and
+// rolling (live, a Phenom 300 and A320s; at rest right): it is pitched
+// MovingPitchDeg nose down while moving, faded in up to MovingPitchFullKts
+// (the user picked it from five Phenoms moving side by side, #676).
+const (
+	MovingPitchDeg     = 1.0
+	MovingPitchFullKts = 5.0
+)
+
+// movingPitch is the nose-down pitch (SimConnect: positive) an aircraft
+// moving at kts on the ground is given on top of its rest pitch.
+func movingPitch(kts float64) float64 {
+	return MovingPitchDeg * math.Min(1, math.Max(0, kts)/MovingPitchFullKts)
+}
+
 // InjectorOption configures an Injector.
 type InjectorOption func(*Injector)
 
@@ -321,6 +337,9 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	if o.haveRest {
 		cg, pitch = o.restFt, o.restPitch
 	}
+	if !moving { // an aircraft (vehicles are placed moving): its struts drawn extended (#676)
+		pitch += movingPitch(pose.GroundSpeedKts)
+	}
 	o.placed = true
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
@@ -485,6 +504,12 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	if o.haveRest {
 		cg, base = o.restFt, o.restPitch
 	}
+	// On the wheels and rolling: its struts drawn extended (#676); not in
+	// the flare, a moment off the ground.
+	rolling := 0.0
+	if pose.OnGround {
+		rolling = movingPitch(pose.GroundSpeedKts)
+	}
 	w := 1.0
 	if !pose.OnGround {
 		w = math.Max(0, 1-math.Max(0, pose.HeightFt)/restFadeFt)
@@ -493,7 +518,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
 		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt + w*(cg-o.cgFt),
-		Pitch:     w*base - pose.PitchDeg, // SimConnect: negative is nose up
+		Pitch:     w*base + rolling - pose.PitchDeg, // SimConnect: negative is nose up
 		Bank:      -pose.BankDeg,          // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
 		OnGround:  onGround,
