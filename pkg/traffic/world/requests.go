@@ -110,9 +110,9 @@ func (it *controlled) onRequest(req string) {
 		// (TaxiEvent.Request "start_up").
 		it.pushAndStart = float64(it.cc.pending.jitter(time.Second)) < pushAndStartShare*float64(time.Second)
 		if it.pushAndStart {
-			it.say(traffic.RequestPushbackAndStartUp(station, it.Tail, it.view.Stand, info))
+			it.say(it.initial(traffic.RequestPushbackAndStartUp(station, it.Tail, it.view.Stand, info)))
 		} else {
-			it.say(traffic.RequestPushback(station, it.Tail, it.view.Stand, info))
+			it.say(it.initial(traffic.RequestPushback(station, it.Tail, it.view.Stand, info)))
 		}
 	case "start_up":
 		if it.view.State == traffic.TaxiAwaitingPushback.String() {
@@ -122,7 +122,7 @@ func (it *controlled) onRequest(req string) {
 				info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 			}
 			station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
-			it.say(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info))
+			it.say(it.initial(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info)))
 			break
 		}
 		it.say(traffic.RequestStartUp("", it.Tail, "", ""))

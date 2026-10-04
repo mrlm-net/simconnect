@@ -57,7 +57,15 @@ type procLink struct {
 
 // NewProcedureLoader creates a loader sending its requests through client.
 func NewProcedureLoader(client FacilityClient) *ProcedureLoader {
-	return &ProcedureLoader{client: client, defBase: DefaultProcedureDefinitionBase, reqBase: DefaultProcedureRequestBase}
+	return NewProcedureLoaderWithIDs(client, DefaultProcedureDefinitionBase, DefaultProcedureRequestBase)
+}
+
+// NewProcedureLoaderWithIDs is NewProcedureLoader on its own definition and
+// request ID bases, for two loaders on one connection (an application and
+// the traffic World, #710). It uses defBase to defBase+2 and reqBase to
+// reqBase+23.
+func NewProcedureLoaderWithIDs(client FacilityClient, defBase, reqBase uint32) *ProcedureLoader {
+	return &ProcedureLoader{client: client, defBase: defBase, reqBase: reqBase}
 }
 
 // procedureDefinitions are the three facility definitions: departures,

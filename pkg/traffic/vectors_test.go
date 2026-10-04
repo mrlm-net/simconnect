@@ -207,3 +207,36 @@ func TestJoinedReadbackWithoutOwn(t *testing.T) {
 	}
 	t.Log(rb.Text)
 }
+
+// TestAtEntry: from an intersection, the runway is said with it (JO
+// 7110.65 3-9-4, 3-9-10), in the clearance and its readback.
+func TestAtEntry(t *testing.T) {
+	tx := AtEntry(ClearedTakeoff("BAW1367", "24", "wind 360 degrees 5 knots"), "B")
+	if want := "BAW1367, runway 24 at B, cleared for take-off, wind 360 degrees 5 knots"; tx.Text != want {
+		t.Errorf("%q, want %q", tx.Text, want)
+	}
+	if rb, ok := Readback(tx); !ok || rb.Text != "Runway 24 at B, cleared for take-off, BAW1367" {
+		t.Errorf("readback %q", rb.Text)
+	}
+	if lu := AtEntry(ClearedLineUp("BAW1367", "24"), "B"); lu.Text != "BAW1367, runway 24 at B, line up and wait" {
+		t.Errorf("line-up %q", lu.Text)
+	}
+	if full := AtEntry(ClearedLineUp("BAW1367", "24"), ""); full.Text != "BAW1367, runway 24, line up and wait" {
+		t.Errorf("full length %q", full.Text)
+	}
+}
+
+// TestWithWake: "heavy" or "super" after the call sign in a first call
+// (Doc 4444 4.9.2); nothing for the rest.
+func TestWithWake(t *testing.T) {
+	tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "BAW1367", "passing 3000 feet", ""), WakeHeavy)
+	if !strings.Contains(tx.Text, "BAW1367 heavy,") {
+		t.Errorf("%q", tx.Text)
+	}
+	if tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "UAE139", "", ""), WakeSuper); !strings.Contains(tx.Text, "UAE139 super") {
+		t.Errorf("%q", tx.Text)
+	}
+	if tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "CSA1", "", ""), WakeMedium); strings.Contains(tx.Text, "heavy") {
+		t.Errorf("%q", tx.Text)
+	}
+}

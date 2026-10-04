@@ -215,14 +215,24 @@ func (w *conflictWatch) inConflictAny(cs string) bool {
 }
 
 // crewIntersectionShare: the share of departures planned for the full
-// length whose crew asks to take the runway from an intersection (#621).
-const crewIntersectionShare = 0.15
+// length whose crew asks to take the runway from an intersection (#621),
+// by wake category: light aircraft mostly do (they need little runway),
+// heavies do not.
+func crewIntersectionShare(model string) float64 {
+	switch traffic.WakeFor(model).ICAO {
+	case traffic.WakeLight:
+		return 0.85
+	case traffic.WakeHeavy, traffic.WakeSuper:
+		return 0
+	}
+	return 0.15
+}
 
 // crewEntry is the intersection a departure's crew asks for with its taxi
 // request: the entry nearest it, "" when it does not ask (most), departs
 // from an intersection already or the runway has none. it.mu is held.
 func (it *controlled) crewEntry() string {
-	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare {
+	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare(it.view.Model) {
 		return ""
 	}
 	entries, err := it.graph.RunwayEntries(it.view.Runway)

@@ -359,18 +359,18 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			return fmt.Sprintf("%s, behind the landing %s, line up and wait runway %s, behind", cs, p[ParamBehind], p[ParamRunway])
 		}
 		if p[ParamRush] != "" {
-			return fmt.Sprintf("%s, runway %s, line up, be ready for immediate departure", cs, p[ParamRunway]) // 12.3.4.10 h
+			return fmt.Sprintf("%s, %s, line up, be ready for immediate departure", cs, runwayAt(p)) // 12.3.4.10 h
 		}
-		return fmt.Sprintf("%s, runway %s, line up and wait", cs, p[ParamRunway]) // 12.3.4.10
+		return fmt.Sprintf("%s, %s, line up and wait", cs, runwayAt(p)) // 12.3.4.10; at an intersection, JO 7110.65 3-9-4
 	case IntentTakeoff:
 		// Its own transmission, never with the line-up (CAP 413 4.29).
 		if p[ParamRush] != "" {
-			return fmt.Sprintf("%s, runway %s, cleared for immediate take-off%s", cs, p[ParamRunway], wind) // CAP 413 4.30
+			return fmt.Sprintf("%s, %s, cleared for immediate take-off%s", cs, runwayAt(p), wind) // CAP 413 4.30
 		}
 		if p[ParamNoDelay] != "" {
-			return fmt.Sprintf("%s, runway %s, cleared for take-off%s, no delay, traffic on %s mile final", cs, p[ParamRunway], wind, p[ParamNoDelay])
+			return fmt.Sprintf("%s, %s, cleared for take-off%s, no delay, traffic on %s mile final", cs, runwayAt(p), wind, p[ParamNoDelay])
 		}
-		return fmt.Sprintf("%s, runway %s, cleared for take-off%s", cs, p[ParamRunway], wind) // 12.3.4.11 a
+		return fmt.Sprintf("%s, %s, cleared for take-off%s", cs, runwayAt(p), wind) // 12.3.4.11 a; at an intersection, JO 7110.65 3-9-10
 	case IntentLanding:
 		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
 	case IntentContinueTaxi:
@@ -910,6 +910,30 @@ func ClearedLineUp(cs, runway string) Transmission {
 // aircraft has passed.
 func ClearedLineUpBehind(cs, traffic, runway string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLineUp, Params: map[string]string{ParamRunway: runway, ParamBehind: traffic}})
+}
+
+// AtEntry is a line-up or take-off clearance t from the intersection entry
+// ("" the full length): "CSA1, runway 24 at B, cleared for take-off"
+// (JO 7110.65 3-9-4, 3-9-10: the intersection said with the runway).
+func AtEntry(t Transmission, entry string) Transmission {
+	if entry == "" {
+		return t
+	}
+	p := map[string]string{}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	p[ParamEntry] = entry
+	t.Params, t.Text = p, ""
+	return Say(t)
+}
+
+// runwayAt is "runway 24", or "runway 24 at B" from an intersection.
+func runwayAt(p map[string]string) string {
+	if p[ParamEntry] != "" {
+		return "runway " + p[ParamRunway] + " at " + p[ParamEntry]
+	}
+	return "runway " + p[ParamRunway]
 }
 
 // ClearedTakeoff clears the take-off from runway, with the wind (WindSaid,

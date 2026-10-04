@@ -134,7 +134,9 @@ type controlled struct {
 	// instruction before it (live, OKIMV "extend downwind" then "join
 	// right downwind", #711). placeSaid: its place in the circuit as told.
 	joinPending atomic.Bool
-	placeSaid   atomic.Int32
+	// wake: its wake category, said in its first calls (initial).
+	wake      traffic.WakeCategory
+	placeSaid atomic.Int32
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -202,22 +204,22 @@ type ControlView struct {
 	Squawk string `json:"squawk,omitempty"` // a departure's SSR code
 	// Tug: its pushback tug while it drives (from its depot or home), with
 	// the way still ahead.
-	Tug            *tugView `json:"tug,omitempty"`
-	Fuel           *tugView `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
+	Tug  *tugView `json:"tug,omitempty"`
+	Fuel *tugView `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
 	// Vehicles: its ground vehicles with their object and state (#710).
-	Vehicles []VehicleView `json:"vehicles,omitempty"`
-	Model          string   `json:"model"`
-	Stand          string   `json:"stand"`
-	Runway         string   `json:"runway"`
-	Procedure      string   `json:"procedure,omitempty"` // SID, or STAR → approach
-	OnGround       bool     `json:"onGround"`
-	PushbackHeld   bool     `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
-	Rush           bool     `json:"rush,omitempty"`         // told to hurry (#510)
-	Manual         bool     `json:"manual,omitempty"`       // the user gives its clearances, no automation
-	Entry          string   `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
-	Deicing        bool     `json:"deicing,omitempty"`      // being de-iced
-	State          string   `json:"state"`
-	HoldingShortOf string   `json:"holdingShortOf,omitempty"`
+	Vehicles       []VehicleView `json:"vehicles,omitempty"`
+	Model          string        `json:"model"`
+	Stand          string        `json:"stand"`
+	Runway         string        `json:"runway"`
+	Procedure      string        `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround       bool          `json:"onGround"`
+	PushbackHeld   bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Rush           bool          `json:"rush,omitempty"`         // told to hurry (#510)
+	Manual         bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	Entry          string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
+	Deicing        bool          `json:"deicing,omitempty"`      // being de-iced
+	State          string        `json:"state"`
+	HoldingShortOf string        `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
 	TaxiRemainingM float64          `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool             `json:"atLimit"`
@@ -383,6 +385,12 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 			}
 		}})
 	return cc
+}
+
+// initial is t, its first call to an ATS unit, with "heavy" or "super"
+// after the call sign for its wake category (Doc 4444 4.9.2).
+func (it *controlled) initial(t traffic.Transmission) traffic.Transmission {
+	return traffic.WithWake(t, it.wake)
 }
 
 // changed tells the front end a part of the picture changed.
@@ -770,6 +778,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}
 	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	it.gates.Store(r.Gates)
+	it.wake = traffic.WakeFor(model).ICAO
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
@@ -895,7 +904,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				dest = cc.airportName(r.Other)
 			}
 			it.climbSaid = initialClimbSaid(lim, procName)
-			it.say(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest))
+			it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
 			it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
 				Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
 		} else if it.circuit != nil {
@@ -918,7 +927,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if it.vfrPoint != nil {
 				pos = "over " + it.vfrPoint.Name
 			}
-			it.say(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info))
+			it.say(it.initial(traffic.VFRForLanding(station, r.Tail, typeSaid(traffic.ProfileFor(model).Type), pos, level, info)))
 			qnh, _ := cc.qnh()
 			it.joinPending.Store(true)
 			it.call(traffic.PosTower, prioApproach, func() {
@@ -943,7 +952,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if p := it.arr.Plan(); p != nil && p.Spawn.Altitude > 0 {
 				level = traffic.LevelSaidAbove(p.Spawn.Altitude, lim.TransitionAltitudeFt)
 			}
-			it.say(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info))
+			it.say(it.initial(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info)))
 			qnh, _ := cc.qnh()
 			it.firstContact(withParams(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""), map[string]string{traffic.ParamQNH: qnh}))
 			it.askWeather(traffic.PosApproach)
@@ -1287,64 +1296,64 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 // with the route still to fly and the ground vehicles.
 func (cc *controlCenter) views() []ControlView {
 	out := []ControlView{}
-		// Where departures handed to MSFS AI are now: the world scan.
-		air := map[uint32]traffic.TrackedAircraft{}
-		for _, a := range cc.world.Aircraft() {
-			air[a.ObjectID] = a
-		}
-		cc.mu.Lock()
-		for _, it := range cc.items {
-			it.mu.Lock()
-			v := it.view
-			it.mu.Unlock()
-			if it.arr != nil && !v.OnGround {
-				v.AirRoute = it.arr.ProcedureRoute()
-				v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
-				// Going around: the circuit's track points back to the final.
-				for _, n := range it.arr.CircuitFixes() {
-					v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
-				}
-				// On the final, the procedure flown: the line to the
-				// threshold and down the runway to where its taxi starts.
-				if len(v.AirRoute) == 0 && it.graph != nil {
-					if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
-						v.AirRoute = []airport.LatLon{end.Threshold}
-						if len(v.Route) > 0 {
-							v.AirRoute = append(v.AirRoute, v.Route[0])
-						}
+	// Where departures handed to MSFS AI are now: the world scan.
+	air := map[uint32]traffic.TrackedAircraft{}
+	for _, a := range cc.world.Aircraft() {
+		air[a.ObjectID] = a
+	}
+	cc.mu.Lock()
+	for _, it := range cc.items {
+		it.mu.Lock()
+		v := it.view
+		it.mu.Unlock()
+		if it.arr != nil && !v.OnGround {
+			v.AirRoute = it.arr.ProcedureRoute()
+			v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
+			// Going around: the circuit's track points back to the final.
+			for _, n := range it.arr.CircuitFixes() {
+				v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
+			}
+			// On the final, the procedure flown: the line to the
+			// threshold and down the runway to where its taxi starts.
+			if len(v.AirRoute) == 0 && it.graph != nil {
+				if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
+					v.AirRoute = []airport.LatLon{end.Threshold}
+					if len(v.Route) > 0 {
+						v.AirRoute = append(v.AirRoute, v.Route[0])
 					}
 				}
-				if h, alt, ok := it.arr.Holding(); ok {
-					v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
-				}
 			}
-			if it.tug != nil {
-				if p, route, ok := it.tug.Track(); ok {
-					v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
-				}
+			if h, alt, ok := it.arr.Holding(); ok {
+				v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
 			}
-			if it.fuel != nil {
-				if p, route, ok := it.fuel.Track(); ok {
-					v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
-				}
-			}
-			// A departure in the air: its SID still to fly, like a STAR.
-			if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
-				if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
-					v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
-					v.AirFixes = fixesAhead(it.fixes, r)
-				}
-			}
-			// Its ground vehicles, with what they say of themselves (#710).
-			if it.tug != nil {
-				v.Vehicles = append(v.Vehicles, vehicleView("tug", it.tug.ObjectID(), it.tug.Title(), it.tug.State(), it.tug.Track))
-			}
-			if it.fuel != nil {
-				v.Vehicles = append(v.Vehicles, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
-			}
-			out = append(out, v)
 		}
-		cc.mu.Unlock()
+		if it.tug != nil {
+			if p, route, ok := it.tug.Track(); ok {
+				v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
+			}
+		}
+		if it.fuel != nil {
+			if p, route, ok := it.fuel.Track(); ok {
+				v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
+			}
+		}
+		// A departure in the air: its SID still to fly, like a STAR.
+		if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
+			if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
+				v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
+				v.AirFixes = fixesAhead(it.fixes, r)
+			}
+		}
+		// Its ground vehicles, with what they say of themselves (#710).
+		if it.tug != nil {
+			v.Vehicles = append(v.Vehicles, vehicleView("tug", it.tug.ObjectID(), it.tug.Title(), it.tug.State(), it.tug.Track))
+		}
+		if it.fuel != nil {
+			v.Vehicles = append(v.Vehicles, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
+		}
+		out = append(out, v)
+	}
+	cc.mu.Unlock()
 	return out
 }
 
@@ -2578,9 +2587,9 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	case "cross":
 		return traffic.ClearedCross(call, oneDesignator(v.HoldingShortOf)) // one designator (#462)
 	case "lineup":
-		return traffic.ClearedLineUp(call, rwy)
+		return traffic.AtEntry(traffic.ClearedLineUp(call, rwy), v.Entry)
 	case "takeoff":
-		return traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO))
+		return traffic.AtEntry(traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO)), v.Entry)
 	case "hold":
 		return traffic.HoldPosition(call)
 	case "land":
@@ -2761,7 +2770,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		p := it.cc.pending
 		p.later(it.cc.clock.Now().Add(goAroundHandoffAfter+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
-			it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), ""))
+			it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), "")))
 		})
 		return
 	}
@@ -2782,7 +2791,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if !it.atisSaid && it.cc.atisLetter != nil {
 		info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 	}
-	it.say(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info))
+	it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)))
 	switch {
 	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates.Load():
 		// Departure identifies it and clears the climb on (#462).
