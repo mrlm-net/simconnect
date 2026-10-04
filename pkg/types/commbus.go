@@ -1,0 +1,29 @@
+//go:build windows
+// +build windows
+
+package types
+
+// SIMCONNECT_COMM_BUS_BROADCAST_TO says who a CallCommBusEvent reaches:
+// JavaScript (gauges, panels), WebAssembly modules and SimConnect clients
+// (MSFS 2024 SDK, SimConnect.h).
+type SIMCONNECT_COMM_BUS_BROADCAST_TO DWORD
+
+const (
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_JS         SIMCONNECT_COMM_BUS_BROADCAST_TO = 1 << 0
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_WASM       SIMCONNECT_COMM_BUS_BROADCAST_TO = 1 << 1
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT SIMCONNECT_COMM_BUS_BROADCAST_TO = 1 << 3
+	// SELF_CALL needs SIMCONNECT: the calling client receives its own call too.
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT_SELF_CALL SIMCONNECT_COMM_BUS_BROADCAST_TO = 1 << 4
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_DEFAULT                                               = SIMCONNECT_COMM_BUS_BROADCAST_TO_JS | SIMCONNECT_COMM_BUS_BROADCAST_TO_WASM | SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_ALL_SIMCONNECT                                        = SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT | SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT_SELF_CALL
+	SIMCONNECT_COMM_BUS_BROADCAST_TO_ALL                                                   = SIMCONNECT_COMM_BUS_BROADCAST_TO_DEFAULT | SIMCONNECT_COMM_BUS_BROADCAST_TO_SIMCONNECT_SELF_CALL
+)
+
+// SIMCONNECT_RECV_COMM_BUS is a CommBus event a client subscribed to
+// (SIMCONNECT_RECV_ID_COMM_BUS): its event ID, then the data, a string, in
+// one or more messages (DwEntryNumber of DwOutOf). The data follows this
+// header in the message; engine.Message.CommBusData reads it.
+type SIMCONNECT_RECV_COMM_BUS struct {
+	SIMCONNECT_RECV_LIST_TEMPLATE
+	UEventID DWORD
+}
