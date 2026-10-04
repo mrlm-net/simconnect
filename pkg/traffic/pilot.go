@@ -374,6 +374,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		case "continue climb", "continue descent":
 			s = capital(strings.TrimPrefix(p[ParamClimb], "continue ")) + " to " + p[ParamLevel]
 		}
+	case IntentCrossLevel:
+		s = "Cross " + p[ParamFix] + " at or " + p[ParamClimb] + " " + p[ParamLevel]
 	case IntentHeading:
 		s = "Turn " + p[ParamTurn] + " heading " + p[ParamHeading]
 	case IntentContact:
