@@ -70,6 +70,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and t
 | `-airspace` | `D` | Class of the managed airports' control zones for the VFR rules: `C`, `D`, `E` or `G` |
 | `-piper` | `bin/piper/piper.exe` | Piper executable for the voice (see the map's README) |
 | `-voices` | | Folder of piper voice models (`""`: voice-goio's user data folder) |
+| `-accents` | `false` | Controllers speak English with their airport's accent (Czech at LK, German at ED, French at LF, ...): the country's voice model on English phonemes |
 | `-token` | | Network play: the token another device needs to control the traffic (`auto`: a random one; `""`: none needed) |
 | `-view-token` | | Network play: a token to watch only, as a spectator (`auto`: a random one) |
 | `-pprof` | | Serve the Go profiler on this address (e.g. `127.0.0.1:6060`) |
