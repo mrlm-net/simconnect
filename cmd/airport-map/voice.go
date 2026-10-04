@@ -32,6 +32,9 @@ type voiceOut struct {
 	// piper: the piper executable and the voices folder ("" defaults),
 	// set before first use.
 	piperPath, voicesDir string
+	// accents: controllers speak with their airport's accent (-accents;
+	// off by default, voice-goio's Options.Accents).
+	accents bool
 	// syncCom follows the user aircraft's COM1 (com): tuning the radio in
 	// the simulator picks the frequency heard. Off by default.
 	syncCom bool
@@ -51,7 +54,7 @@ func (v *voiceOut) speakerOf() *speaker.Speaker {
 	defer v.mu.Unlock()
 	if v.sp == nil {
 		v.sp = speaker.New(speaker.Options{
-			PiperPath: v.piperPath, VoicesDir: v.voicesDir, Hint: "see the airport-map README",
+			PiperPath: v.piperPath, VoicesDir: v.voicesDir, Accents: v.accents, Hint: "see the airport-map README",
 			ATIS: func(freq string) (string, string, bool) {
 				v.mu.Lock()
 				atis := v.atis

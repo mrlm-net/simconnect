@@ -1,4 +1,4 @@
-github.com/mrlm-net/simconnect v0.18.17 h1:VCiUd9C8YXr2rsdH4FWxShMEOLXyMEghFX/RTePjzxY=
-github.com/mrlm-net/simconnect v0.18.17/go.mod h1:0wL5/YiIiuctzFQiWpkHKf9Q26csD1XxBITpThMenbU=
-github.com/mrlm-net/voice-goio v0.7.1 h1:E5ULRCEWmZqrzz99kDDVbIwvcfBioyNoQ8KySv+t3Ns=
-github.com/mrlm-net/voice-goio v0.7.1/go.mod h1:xM3AyYMgmYulQ9TA0inLrdUVuDr7np0la8CiE2rHG2U=
+github.com/mrlm-net/simconnect v0.18.18 h1:GtAj5/sDyaSVzDhElRkLHOp4x8Oz81q7v3UIa8DYhMM=
+github.com/mrlm-net/simconnect v0.18.18/go.mod h1:0wL5/YiIiuctzFQiWpkHKf9Q26csD1XxBITpThMenbU=
+github.com/mrlm-net/voice-goio v0.9.0 h1:RlXDjZV4yuTQeJYBEXLhvzIg4VqaAhQ1G6jUJmzNrGQ=
+github.com/mrlm-net/voice-goio v0.9.0/go.mod h1:xM3AyYMgmYulQ9TA0inLrdUVuDr7np0la8CiE2rHG2U=

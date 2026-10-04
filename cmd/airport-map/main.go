@@ -1181,6 +1181,7 @@ func main() {
 	airspaceFlag := flag.String("airspace", "D", "class of the managed airports' control zones for VFR rules: C, D, E or G (#570)")
 	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
 	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
+	accents := flag.Bool("accents", false, "controllers speak English with their airport's accent (the country's voice model, see the README)")
 	controlToken := flag.String("token", "", "network play: the token another device needs to control the traffic (\"auto\": a random one; \"\": none needed)")
 	viewToken := flag.String("view-token", "", "network play: a token to watch only, as a spectator (\"auto\": a random one)")
 	flag.Parse()
@@ -1204,7 +1205,7 @@ func main() {
 			}
 		}
 	}
-	radioVoice.piperPath, radioVoice.voicesDir = *piperPath, *voicesDir
+	radioVoice.piperPath, radioVoice.voicesDir, radioVoice.accents = *piperPath, *voicesDir, *accents
 	// The default is the repo's graph, from the repo root or from this
 	// example's folder (its own module: go run . here).
 	if *airways == "pkg/nav/testdata/LKPR-airways.json" {
