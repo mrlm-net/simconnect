@@ -51,7 +51,6 @@ func (m *Instance) processMessage(msg engine.Message) {
 		if client != nil {
 			m.registerSimStateSubscriptions(client)
 		}
-		return
 	}
 
 	// Check for quit message
@@ -64,25 +63,24 @@ func (m *Instance) processMessage(msg engine.Message) {
 		m.mu.Lock()
 		m.engine = nil
 		m.mu.Unlock()
-		return
 	}
 
-	// Handle pause and sim events
+	// Handle pause and sim events. The OPEN, QUIT and event messages are handled
+	// here and then forwarded like any other (#404): OnMessage handlers and
+	// channel subscriptions (SubscribeOnPause, SubscribeOnSimRunning, the
+	// filename and object events, custom system events) receive them too.
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT {
 		m.processEventMessage(msg)
-		return
 	}
 
 	// Handle filename events (FlightLoaded, AircraftLoaded, FlightPlanActivated)
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FILENAME {
 		m.processFilenameEvent(msg)
-		return
 	}
 
 	// Handle object add/remove events (ObjectAdded, ObjectRemoved)
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE {
 		m.processObjectEvent(msg)
-		return
 	}
 
 	// Handle camera state data
