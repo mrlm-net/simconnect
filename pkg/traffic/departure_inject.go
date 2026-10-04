@@ -2051,7 +2051,11 @@ func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
 	}
 	var out []RoutePoint
 	for _, w := range c.climb[nextWaypoint(pos, c.climb):] {
-		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: w.Altitude, Kts: w.KtsSpeed})
+		alt := w.Altitude
+		if w.Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 && c.req.Graph != nil {
+			alt += convert.MetersToFeet(c.req.Graph.Layout.Altitude) // TakeoffClimb: above the field (#657)
+		}
+		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: alt, Kts: w.KtsSpeed})
 	}
 	return out
 }

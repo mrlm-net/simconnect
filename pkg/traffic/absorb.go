@@ -420,23 +420,40 @@ func (c *ArrivalController) CircuitFixes() []airport.NavPoint {
 // ProcedureRoute is the rest of the arrival's STAR and approach as it
 // flies it now (with any dog-leg), up to the join point.
 func (c *ArrivalController) ProcedureRoute() []airport.LatLon {
+	var out []airport.LatLon
+	for _, p := range c.ProcedurePlan() {
+		out = append(out, p.Position)
+	}
+	return out
+}
+
+// mslAltitude is w's altitude in feet MSL, 0 (none) for one above ground.
+func mslAltitude(w types.SIMCONNECT_DATA_WAYPOINT) float64 {
+	if w.Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 {
+		return 0
+	}
+	return w.Altitude
+}
+
+// ProcedurePlan is ProcedureRoute with the altitude and speed of each
+// point: the vertical profile ahead, for predicting conflicts (#657).
+func (c *ArrivalController) ProcedurePlan() []RoutePoint {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.flyingProc || c.proc == nil {
 		return nil
 	}
 	wps := c.proc.Waypoints
+	var out []RoutePoint
+	from := 0
 	if h := c.holding; h != nil { // from the fix on, where it will go on
-		out := []airport.LatLon{h.hold.Fix}
-		for _, w := range wps[min(h.resume, len(wps)):] {
-			out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
-		}
-		return out
+		out = append(out, RoutePoint{Position: h.hold.Fix, AltFt: h.altFt})
+		from = min(h.resume, len(wps))
+	} else {
+		from = c.procWaypoint(wps)
 	}
-	next := c.procWaypoint(wps)
-	var out []airport.LatLon
-	for _, w := range wps[next:] {
-		out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
+	for _, w := range wps[from:] {
+		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: mslAltitude(w), Kts: w.KtsSpeed})
 	}
 	return out
 }

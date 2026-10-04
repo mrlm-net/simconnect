@@ -172,6 +172,28 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		return nil
 	}
+	// And vertically along their profile: climbing and descending as the
+	// SID, STAR and plan have them, not at the vertical speed now for
+	// ever (live, TVS524 and BAW1413 on their SID and STAR, #657).
+	opts.Profile = func(a traffic.TrackedAircraft) []traffic.RoutePoint {
+		if !a.Ours {
+			return nil
+		}
+		if e := enroute(a); e != nil {
+			return traffic.ProfileAhead(a.Position, e.route)
+		}
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.objectID != a.ObjectID {
+			return nil
+		}
+		if it.dep != nil {
+			return it.dep.ClimbPlan(a.Position)
+		}
+		if it.arr != nil && it.arr.State() == traffic.ArrivalApproaching {
+			return it.arr.ProcedurePlan()
+		}
+		return nil
+	}
 	cs := traffic.PredictConflicts(aircraft, opts)
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
@@ -298,6 +320,15 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevel(st.pos, cs, st.altFt, st.climb))
 	}
 	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
+}
+
+// isStopped reports cs told to stop its climb or descent for traffic and
+// not yet cleared on.
+func (w *conflictWatch) isStopped(cs string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.stopped[cs]
+	return ok
 }
 
 // inConflict reports that a and b are predicted to lose separation (the

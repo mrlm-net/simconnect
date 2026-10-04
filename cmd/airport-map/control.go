@@ -238,6 +238,9 @@ type controlCenter struct {
 	extra func(engine.Message) bool
 	// pending runs clearances and actions at their traffic time (#462).
 	pending *pending
+	// climbStopped reports a climb or descent stopped for traffic and not
+	// yet cleared on (the conflict watch); nil none.
+	climbStopped func(cs string) bool
 	// agenda: the controllers' calls, most urgent first (agenda.go).
 	agenda *agenda
 	// saidCallsign writes a call sign as said (#462); set once the schedule
@@ -2699,7 +2702,14 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
 		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, departureClimbSaid))
+			// Stopped for traffic since the check-in: identified only, the
+			// climb is cleared on once clear of it (live, TVS524 "stop climb
+			// at 4000 feet" then "identified, climb to flight level 240").
+			level := departureClimbSaid
+			if stopped := it.cc.climbStopped; stopped != nil && stopped(it.Tail) {
+				level = ""
+			}
+			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, level))
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)
