@@ -65,6 +65,7 @@ const (
 	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
 	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
 	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
+	IntentVector             Intent = "vector"              // a radar vector off the STAR, or back onto it (#661)
 	IntentUnableDirect       Intent = "unable_direct"       // a crew's direct refused for traffic (#621)
 	IntentVFRDeparture       Intent = "vfr_departure"       // VFR departure instructions (CAP 413 Figure 24)
 	// VFR in the aerodrome traffic circuit (#569; Doc 4444 12.3.4.13–17).
@@ -154,6 +155,8 @@ const (
 	ParamQNH        = "qnh"         // hPa: "1013" (FAA: inches, ParamAltimeter)
 	ParamAltimeter  = "altimeter"   // inches of mercury ×100: "2992"
 	ParamReport     = "report"      // what to report: "established"
+	ParamFor        = "for"         // a vector's reason: "spacing", "base"
+	ParamIntercept  = "intercept"   // the heading to intercept the final, three digits
 	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
 	ParamNoDelay    = "no_delay"    // a take-off with traffic on final: its distance in whole NM, "5"
 	ParamCircuit    = "circuit"     // a position in the circuit as said: "left downwind", "base", "final"
@@ -237,11 +240,14 @@ func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
 	case IntentLanding:
 		return fmt.Sprintf("%s, runway %s, cleared to land", cs, p[ParamRunway]), true // 3-10-5
 	case IntentApproachClearance:
-		kind := p[ParamApproach]
-		if kind == "" {
-			return fmt.Sprintf("%s, cleared approach runway %s", cs, p[ParamRunway]), true
+		kind, turn := p[ParamApproach], ""
+		if p[ParamIntercept] != "" { // on vectors: the turn first (5-9-4)
+			turn = "turn " + p[ParamTurn] + " heading " + p[ParamIntercept] + ", "
 		}
-		return fmt.Sprintf("%s, cleared %s runway %s approach", cs, kind, p[ParamRunway]), true // 4-8-1
+		if kind == "" {
+			return fmt.Sprintf("%s, %scleared approach runway %s", cs, turn, p[ParamRunway]), true
+		}
+		return fmt.Sprintf("%s, %scleared %s runway %s approach", cs, turn, kind, p[ParamRunway]), true // 4-8-1
 	case IntentArrivalClearance:
 		s := cs + ", cleared " + p[ParamSTAR] + " arrival"
 		if lvl := faaLevel(p[ParamLevel]); lvl != "" {
@@ -477,6 +483,18 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return s
 	case IntentDirectTo:
 		return fmt.Sprintf("%s, cleared direct to %s", cs, p[ParamFix]) // CAP 413 6.8
+	case IntentVector:
+		if p[ParamFix] != "" {
+			return fmt.Sprintf("%s, resume own navigation direct %s", cs, p[ParamFix]) // 12.4.1.4 b
+		}
+		s := fmt.Sprintf("%s, fly heading %s", cs, p[ParamHeading]) // 12.4.1.3 d
+		if p[ParamTurn] != "" {
+			s = fmt.Sprintf("%s, turn %s heading %s", cs, p[ParamTurn], p[ParamHeading]) // 12.4.1.3 e
+		}
+		if p[ParamFor] != "" {
+			s += ", for " + p[ParamFor] // 12.4.1.5 note b, d
+		}
+		return s
 	case IntentUnableDirect:
 		return cs + ", unable direct due traffic, continue on the departure"
 	case IntentIdentified:
@@ -564,6 +582,9 @@ func approachClearance(p map[string]string) string {
 	s := "cleared approach runway " + p[ParamRunway]
 	if p[ParamApproach] != "" {
 		s = "cleared " + p[ParamApproach] + " approach runway " + p[ParamRunway] // 12.3.3.2 f
+	}
+	if p[ParamIntercept] != "" { // on vectors: the intercept first (12.4.2.2 g)
+		s = "turn " + p[ParamTurn] + " heading " + p[ParamIntercept] + " to intercept, " + s
 	}
 	if p[ParamQNH] != "" {
 		s += ", QNH " + p[ParamQNH] // CAP 413 6.28
@@ -744,6 +765,9 @@ type ApproachClearance struct {
 	// ReportEstablished asks the crew to report established on the
 	// localizer before the tower (Doc 4444 12.4.2.2 e).
 	ReportEstablished bool
+	// Intercept and Turn: on vectors, the heading to intercept the final
+	// (HeadingSaid) and the way to turn to it, said first (#661).
+	Intercept, Turn string
 }
 
 // ClearedApproachTo clears an approach with its QNH, asking for the
@@ -751,6 +775,9 @@ type ApproachClearance struct {
 // report established".
 func ClearedApproachTo(cs string, a ApproachClearance) Transmission {
 	p := map[string]string{ParamApproach: a.Kind, ParamRunway: a.Runway, ParamQNH: a.QNH}
+	if a.Intercept != "" {
+		p[ParamIntercept], p[ParamTurn] = a.Intercept, a.Turn
+	}
 	if a.ReportEstablished {
 		p[ParamReport] = "established"
 	}

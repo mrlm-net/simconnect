@@ -101,6 +101,16 @@ func (cc *controlCenter) windSaid(icao string) string {
 	return traffic.WindSaid(math.Mod(w.WindDirTrue+mv+720, 360), w.WindKts, w.GustKts)
 }
 
+// magVar is icao's magnetic variation (airport.Procedures.MagVar), 0 unknown.
+func (cc *controlCenter) magVar(icao string) float64 {
+	if cc.procedures != nil {
+		if p, ok := cc.procedures(icao); ok {
+			return p.MagVar
+		}
+	}
+	return 0
+}
+
 // oneDesignator is one runway designator of a runway named "12/30": a crossing
 // clearance names one (Doc 4444 12.3.4.9).
 func oneDesignator(name string) string {

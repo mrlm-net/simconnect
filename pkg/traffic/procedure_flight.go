@@ -114,6 +114,9 @@ func DepartureWaypoints(pos airport.LatLon, hdg, altFt float64, route []airport.
 type ArrivalProcedure struct {
 	Spawn      types.SIMCONNECT_DATA_INITPOSITION
 	Waypoints  []types.SIMCONNECT_DATA_WAYPOINT
+	// Names are the fixes of Waypoints ("" none), alike: the radar
+	// vectors back onto the STAR name them (#661).
+	Names      []string
 	Join       airport.LatLon
 	JoinMeters float64
 	// MinJoinMeters is the nearest to the threshold the injected approach
@@ -183,10 +186,12 @@ func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinM
 			kts = math.Min(kts, n.SpeedMax)
 		}
 		ap.Waypoints = append(ap.Waypoints, procedureWaypoint(n.Position, alts[i], kts))
+		ap.Names = append(ap.Names, n.Ident)
 	}
 	ap.Waypoints = append(ap.Waypoints,
 		procedureWaypoint(align, joinFt+ProcedureAlignNm*ProcedureDescentFtPerNm, ProcedureApproachSpeedKts),
 		procedureWaypoint(join, joinFt, ProcedureApproachSpeedKts))
+	ap.Names = append(ap.Names, "", "")
 	first, toward := pts[0].Position, align
 	if len(pts) > 1 {
 		toward = pts[1].Position
@@ -197,7 +202,7 @@ func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinM
 		Airspeed: types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ProcedureSpeedKts),
 	}
 	// The waypoints start after the spawn point.
-	ap.Waypoints = ap.Waypoints[1:]
+	ap.Waypoints, ap.Names = ap.Waypoints[1:], ap.Names[1:]
 	return ap, nil
 }
 

@@ -235,6 +235,15 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentDirectTo:
 		s = "Cleared direct to " + p[ParamFix]
+	case IntentVector:
+		switch {
+		case p[ParamFix] != "":
+			s = "Resume own navigation direct " + p[ParamFix]
+		case p[ParamTurn] != "":
+			s = "Turn " + p[ParamTurn] + " heading " + p[ParamHeading]
+		default:
+			s = "Fly heading " + p[ParamHeading]
+		}
 	case IntentIdentified:
 		if p[ParamLevel] == "" {
 			return Transmission{}, false // identification alone needs no readback

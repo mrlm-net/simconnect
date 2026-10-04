@@ -2679,10 +2679,23 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// On the base, before the turn onto the final, approach clears the
 	// approach; the crew reports established on the final, and approach
 	// hands it to tower then (Doc 4444 12.4.2.2 e; CAP 413 6.27, 6.28).
+	// Off the STAR on a dog-leg or an extended downwind: approach vectors
+	// it, each turn as it comes (#661).
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
+		!it.approachSaid && !it.gates.Load() {
+		if v, ok := it.arr.VectorDue(); ok {
+			it.say(traffic.Vectored(it.Tail, v, it.cc.magVar(it.ICAO)))
+		}
+	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
 		!it.approachSaid && !it.gates.Load() && it.arr.TurningFinal() {
 		qnh, _ := it.cc.qnh()
-		it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
+		ac := traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}
+		// On vectors: the heading to intercept with the clearance (#661).
+		if h, ok := it.arr.InterceptHeading(); ok {
+			ac.Intercept, ac.Turn = traffic.HeadingSaid(h, it.cc.magVar(it.ICAO)), traffic.TurnTo(ev.arr.Heading, h)
+		}
+		it.say(traffic.ClearedApproachTo(it.Tail, ac))
 		it.approachSaid = true
 	}
 	station, freq := it.cc.stationOf(it.ICAO, pos)
