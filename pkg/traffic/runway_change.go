@@ -224,7 +224,7 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	if c.last.Position.Lat != 0 || c.last.Position.Lon != 0 {
 		from = c.last.Position
 	}
-	c.setCorners(proc.Waypoints, nil)
+	c.setCorners(proc.Waypoints, proc.Names)
 	proc.Waypoints = roundedChain(from, proc.Waypoints, MaxBankDeg(*req.Aircraft))
 	plan.Spawn = c.plan.Spawn
 	req.Runway, req.Procedure, req.MissedApproach, req.Exit = runway, procedure, missed, nil

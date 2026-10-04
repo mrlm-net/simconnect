@@ -294,6 +294,11 @@ type ArrivalController struct {
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
 	tromboneNM        float64
+	// vectors are the radar vectors still to say for a dog-leg or an
+	// extended downwind, each at its corner; vectored: off the STAR on
+	// vectors, cleared for the approach with the intercept heading (#661).
+	vectors  []Vector
+	vectored bool
 	blend             joinBlend
 	flapsPct          float64       // injected flap setting
 	seq               sequence      // the landing's steps (Sequence)
@@ -430,8 +435,8 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 				return err
 			}
 			plan.Spawn = proc.Spawn
-			// Its corners are the aircraft's turns (roundCorners).
-			c.setCorners(proc.Waypoints, nil)
+			// Its corners are the aircraft's turns (roundCorners), named.
+			c.setCorners(proc.Waypoints, proc.Names)
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
 			c.proc, c.procNext = proc, -1
 		}

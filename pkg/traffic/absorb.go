@@ -193,6 +193,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		out = append(out, w)
 	}
 	stretched := false
+	baseAt, apexAt := -1, -1 // the new base turn, the dog-leg's apex (in out)
 	// A longer downwind, the way a controller extends it: on along the
 	// downwind past its last point, the base turn and the final that much
 	// further out (each mile on adds two), again as more is asked, up to
@@ -201,7 +202,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		x := math.Min(a.ExtraNM/2, MaxStretchNM/2-c.tromboneNM)
 		if x > 0.2 {
 			if ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x); ok {
-				out, c.tromboneNM, stretched = ext, c.tromboneNM+x, true
+				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
 				// The old base turn is on the downwind now; the new one after it.
 				kept := append([]string(nil), outNames[:k+1]...)
 				for i := range kept {
@@ -274,6 +275,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			wp := procedureWaypoint(apex, alt, kts)
 			out = append(out[:at-1], append([]types.SIMCONNECT_DATA_WAYPOINT{wp}, out[at-1:]...)...)
 			outNames = append(outNames[:at-1], append([]string{""}, outNames[at-1:]...)...)
+			apexAt = at - 1
 		}
 	}
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
@@ -288,6 +290,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	}
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, plainNames, 0
+	if v := vectorsFor(pos, plain, plainNames, baseAt, apexAt); len(v) > 0 {
+		c.vectors, c.vectored = v, true
+	}
 	if a.SpeedKts > 0 {
 		c.procSpeed = a.SpeedKts
 	}
@@ -366,6 +371,7 @@ func (c *ArrivalController) setCorners(wps []types.SIMCONNECT_DATA_WAYPOINT, nam
 	c.cornerNames = make([]string, len(wps))
 	copy(c.cornerNames, names)
 	c.cornerNext = -1
+	c.vectors, c.vectored = nil, false // a new procedure: on its own navigation
 }
 
 // cornerAhead is the index of the corner the aircraft flies to, tracked
@@ -705,6 +711,7 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error)
 	fix := c.cornerName(best)
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
+	c.vectors, c.vectored = nil, false // direct to a fix of its STAR: its own navigation
 	c.note(fmt.Sprintf("direct %s: %.1f NM shorter", fix, bestSave), nil)
 	return fix, bestSave, nil
 }
