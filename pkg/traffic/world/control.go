@@ -2578,9 +2578,9 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	case "cross":
 		return traffic.ClearedCross(call, oneDesignator(v.HoldingShortOf)) // one designator (#462)
 	case "lineup":
-		return traffic.ClearedLineUp(call, rwy)
+		return traffic.AtEntry(traffic.ClearedLineUp(call, rwy), v.Entry)
 	case "takeoff":
-		return traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO))
+		return traffic.AtEntry(traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO)), v.Entry)
 	case "hold":
 		return traffic.HoldPosition(call)
 	case "land":

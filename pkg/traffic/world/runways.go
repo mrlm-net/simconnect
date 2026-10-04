@@ -526,12 +526,21 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		return rwy
 	}
+	// From an intersection: said with the runway ("runway 24 at B").
+	entry := func(tail string) string {
+		if it := ours[tail]; it != nil {
+			it.mu.Lock()
+			defer it.mu.Unlock()
+			return it.view.Entry
+		}
+		return ""
+	}
 	// Traffic close behind on final: "no delay, traffic on 5 mile final".
 	takeoffSaid := func(cs string) traffic.Transmission {
 		if nm, ok := c.NoDelay[cs]; ok {
-			return traffic.ClearedTakeoffNoDelay(cs, end(cs), t.cc.windSaid(icao), nm)
+			return traffic.AtEntry(traffic.ClearedTakeoffNoDelay(cs, end(cs), t.cc.windSaid(icao), nm), entry(cs))
 		}
-		return traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao))
+		return traffic.AtEntry(traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), entry(cs))
 	}
 	for _, cs := range c.LineUp {
 		if takeoff[cs] {
@@ -541,7 +550,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			})
 			continue
 		}
-		give(cs, "lineup", traffic.ClearedLineUp(cs, end(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
+		give(cs, "lineup", traffic.AtEntry(traffic.ClearedLineUp(cs, end(cs)), entry(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
 	}
 	// Waiting only for the next arrival: line up behind it once it has
 	// passed (#509).
