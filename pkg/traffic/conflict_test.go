@@ -518,3 +518,29 @@ func TestPastRouteEnd(t *testing.T) {
 		t.Errorf("not straight on west: %.4f %.4f", lat, lon)
 	}
 }
+
+// TestDirectWorthIt: a direct not for spacing saves at least 10 % of the
+// way and ShortcutMinNM (#670).
+func TestDirectWorthIt(t *testing.T) {
+	for _, c := range []struct {
+		along, direct float64
+		want          bool
+	}{
+		{40, 38.5, false}, // 1.5 NM: under ShortcutMinNM
+		{40, 37, false},   // 3 NM of 40: 7.5 %
+		{40, 35, true},    // 5 NM of 40: 12.5 %
+		{15, 12.5, true},  // 2.5 NM of 15: 17 %
+	} {
+		if got := DirectWorthIt(c.along, c.direct); got != c.want {
+			t.Errorf("%.1f along, %.1f direct: %v, want %v", c.along, c.direct, got, c.want)
+		}
+	}
+	// Along a straight route a fix saves nothing; around a right angle a lot.
+	route := []airport.LatLon{pt(10, 0, 0).Position, pt(20, 0, 0).Position, pt(20, 20, 0).Position}
+	if along, d := AlongTo(pt(0, 0, 0).Position, route, route[1]); DirectWorthIt(along, d) {
+		t.Errorf("straight on: %.1f along, %.1f direct, worth it", along, d)
+	}
+	if along, d := AlongTo(pt(0, 0, 0).Position, route, route[2]); !DirectWorthIt(along, d) {
+		t.Errorf("around the corner: %.1f along, %.1f direct, not worth it", along, d)
+	}
+}

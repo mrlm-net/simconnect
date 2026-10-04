@@ -638,6 +638,32 @@ const ShortcutMinKts = 100.0
 // ShortcutMinNM: a shortcut saving less is not worth the call.
 const ShortcutMinNM = 2.0
 
+// ShortcutMinShare: nor one saving less than this share of the way to the
+// fix: a direct for anything but spacing is worth a call only when it saves
+// a real part of the way (the user, #670: BALTU or LOMKI to runway 24 were
+// sent direct for a mile or two of a nearly straight route).
+const ShortcutMinShare = 0.10
+
+// DirectWorthIt reports whether flying directNM straight to a fix instead
+// of alongNM along the route saves enough for a direct not given for
+// spacing: ShortcutMinNM and ShortcutMinShare of the way (#670).
+func DirectWorthIt(alongNM, directNM float64) bool {
+	save := alongNM - directNM
+	return save >= ShortcutMinNM && save >= ShortcutMinShare*alongNM
+}
+
+// AlongTo is how far it is from pos along route (the points ahead, in
+// order) to the point of route nearest fix, and straight to fix.
+func AlongTo(pos airport.LatLon, route []airport.LatLon, fix airport.LatLon) (alongNM, directNM float64) {
+	k := nearestOn(route, fix)
+	prev := pos
+	for i := 0; i <= k; i++ {
+		alongNM += calc.HaversineNM(prev.Lat, prev.Lon, route[i].Lat, route[i].Lon)
+		prev = route[i]
+	}
+	return alongNM, calc.HaversineNM(pos.Lat, pos.Lon, fix.Lat, fix.Lon)
+}
+
 // Shortcut sends an arrival on its STAR direct to a named fix further on,
 // saving up to maxSaveNM of track (the room ahead of it in the sequence)
 // where it can still descend to that fix's altitude at
@@ -688,7 +714,7 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error)
 		}
 		direct := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon)
 		save := along - direct
-		if save <= bestSave || save > maxSaveNM || save < ShortcutMinNM {
+		if save <= bestSave || save > maxSaveNM || !DirectWorthIt(along, direct) {
 			continue
 		}
 		if c.overAirport(pos, p) || !c.shortcutSensible(pos, p) {
