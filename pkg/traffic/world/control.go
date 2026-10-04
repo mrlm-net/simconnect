@@ -257,8 +257,8 @@ type controlCenter struct {
 	// director).
 	sim      simPort
 	onModels func([]string)
-	inj  *traffic.Injector
-	cmds chan func()
+	inj      *traffic.Injector
+	cmds     chan func()
 
 	mu    sync.Mutex
 	next  int
