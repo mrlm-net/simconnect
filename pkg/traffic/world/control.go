@@ -58,8 +58,8 @@ type controlled struct {
 	Kind   string `json:"kind"` // departure | arrival
 	Tail   string `json:"tail"`
 	ICAO   string `json:"icao"`
-	dep    *traffic.TaxiController
-	arr    *traffic.ArrivalController
+	dep    departureCtl // nil: not a departure
+	arr    arrivalCtl   // nil: not an arrival
 	graph  *airport.Graph
 	stands *traffic.StandAllocator
 	stand  int  // parking index held for this aircraft
@@ -1173,7 +1173,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 }
 
-func departureActions(s traffic.TaxiState, holdingShortOf string, ctl *traffic.TaxiController) []string {
+func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureCtl) []string {
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		if ctl != nil && ctl.FacesOut() {
