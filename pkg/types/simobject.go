@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package types
 
 type SIMCONNECT_SIMOBJECT_TYPE DWORD

@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Command airport-map loads the complete ground layout of an airport from the
 // simulator with pkg/airport (runways, taxi paths, taxi points, taxi names and
 // parking spots) and serves it on an interactive Leaflet map at
@@ -32,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mrlm-net/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
@@ -329,26 +325,6 @@ func (s *state) finish(icao string, err error) {
 	delete(s.waiters, icao)
 }
 
-// runConnection handles one connection lifecycle. It returns nil when the
-// simulator disconnects (so the caller reconnects) and ctx.Err() on shutdown.
-func runConnection(ctx context.Context, st *state, requests <-chan string, dumpDir string) error {
-	client := simconnect.NewClient("GO Example - airport map", engine.WithContext(ctx))
-
-	fmt.Println("⏳ Waiting for simulator to start...")
-	for {
-		if err := client.Connect(); err == nil {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(2 * time.Second):
-		}
-	}
-	fmt.Println("✅ Connected to SimConnect")
-	defer client.Disconnect()
-	return runOn(ctx, st, client, client.Stream(), requests, dumpDir)
-}
 
 // runOn runs the traffic on a connected client whose messages arrive on
 // stream (the client's own, or a host's fed through World.Feed), until ctx
@@ -357,7 +333,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
 		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Frame):", err)
 	}
-	if e, ok := client.(*engine.Engine); ok {
+	if e, ok := client.(systemEventStater); ok {
 		e.SetSystemEventState(evFrame, types.SIMCONNECT_STATE_OFF) // on with the camera
 	}
 	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
@@ -535,7 +511,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		if on {
 			state = types.SIMCONNECT_STATE_ON
 		}
-		if e, ok := client.(*engine.Engine); ok {
+		if e, ok := client.(systemEventStater); ok {
 			go cc.do(func() error { return e.SetSystemEventState(evFrame, state) })
 		}
 	}

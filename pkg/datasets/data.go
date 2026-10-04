@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package datasets
 
 import "github.com/mrlm-net/simconnect/pkg/types"

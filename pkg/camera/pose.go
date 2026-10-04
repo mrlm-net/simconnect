@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 // Package camera drives the MSFS 2024 add-on camera: poses relative to the
 // world, an aircraft or the pilot's eyepoint, shots that hold or move
 // between them over time with eased motion, and a Director that plays a

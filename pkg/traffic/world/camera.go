@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package world
 
 import (
@@ -94,7 +91,7 @@ type cameraMan struct {
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
 	m := &cameraMan{cc: cc, mode: "off", sim: &simCamera{client: client}}
-	if e, ok := client.(*engine.Engine); ok {
+	if e, ok := client.(camera.API); ok {
 		m.dir = camera.NewDirector(e, "airport-map")
 		m.dir.OnShot(func(s camera.Shot) {
 			m.mu.Lock()

@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package airport
 
 // Tracker follows one aircraft from airport to airport: Locate on the

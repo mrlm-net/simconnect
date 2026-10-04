@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package traffic
 
 // Aircraft is a handle for a spawned AI aircraft whose ObjectID has been

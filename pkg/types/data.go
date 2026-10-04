@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package types
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATATYPE.htm
