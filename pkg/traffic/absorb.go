@@ -254,12 +254,10 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		}
 		if at > 0 {
 			from, to := pts[at-1], pts[at]
-			side := 1.0
-			thr := c.plan.End.Threshold
-			if calc.CrossTrackMeters(from.Lat, from.Lon, to.Lat, to.Lon, thr.Lat, thr.Lon) > 0 {
-				side = -1 // the runway is to the right: stretch to the left
-			}
-			apex := StretchLeg(from, to, a.ExtraNM, side)
+			// The side with more room: the apex farther from the final
+			// approach path, where arrivals join base and final (live, FINZX
+			// vectored toward them, #706).
+			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
 			ref := wps[final] // no STAR point left: the align point's
 			if at-1 < len(out) {
 				ref = out[at-1]
@@ -845,4 +843,31 @@ func (c *ArrivalController) pastIAF(fix string) bool {
 		}
 	}
 	return iaf >= 0 && at > iaf
+}
+
+// dogLegApex is the apex of a dog-leg adding extraNM to the leg from-to,
+// on the side farther from the final approach path (threshold thr, runway
+// heading hdg).
+func dogLegApex(from, to airport.LatLon, extraNM float64, thr airport.LatLon, hdg float64) airport.LatLon {
+	apex := StretchLeg(from, to, extraNM, 1)
+	if other := StretchLeg(from, to, extraNM, -1); finalDistanceNM(other, thr, hdg) > finalDistanceNM(apex, thr, hdg) {
+		apex = other
+	}
+	return apex
+}
+
+// finalAreaNM is how far out the final approach path counts for a
+// dog-leg's room: where arrivals join base and final.
+const finalAreaNM = 15.0
+
+// finalDistanceNM is how far p is from the final approach path: the
+// extended centreline from the threshold thr (runway heading hdg) out to
+// finalAreaNM.
+func finalDistanceNM(p, thr airport.LatLon, hdg float64) float64 {
+	best := math.Inf(1)
+	for d := 0.0; d <= finalAreaNM; d += 0.5 {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, hdg+180, d*1852)
+		best = math.Min(best, calc.HaversineNM(p.Lat, p.Lon, lat, lon))
+	}
+	return best
 }

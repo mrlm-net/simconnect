@@ -501,3 +501,23 @@ func TestArrivalAdopts(t *testing.T) {
 		t.Error("adopted without a procedure")
 	}
 }
+
+// TestDogLegApexSide: a leg running alongside the final, the dog-leg goes
+// to the side away from it, where there is room (live, FINZX, #706).
+func TestDogLegApexSide(t *testing.T) {
+	thr := airport.LatLon{Lat: 50, Lon: 14}
+	// Runway heading 090: the final comes from the west. A leg 4 NM north
+	// of the centreline, running east, 10 to 2 NM out.
+	at := func(westNM, northNM float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(thr.Lat, thr.Lon, 270, westNM*1852)
+		lat, lon = calc.DisplaceByHeading(lat, lon, 0, northNM*1852)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	apex := dogLegApex(at(10, 4), at(2, 4), 6, thr, 90)
+	if n := calc.AlongTrackMeters(thr.Lat, thr.Lon, thr.Lat+1, thr.Lon, apex.Lat, apex.Lon) / 1852; n < 4 {
+		t.Errorf("apex %.1f NM north of the centreline, want north of the leg (away from the final)", n)
+	}
+	if finalDistanceNM(at(5, 0), thr, 90) > 0.3 || math.Abs(finalDistanceNM(at(5, 3), thr, 90)-3) > 0.3 {
+		t.Error("finalDistanceNM off")
+	}
+}
