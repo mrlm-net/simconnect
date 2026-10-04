@@ -23,6 +23,7 @@ const (
 	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
 	IntentRequestPushback  Intent = "request_pushback"  // ready for push
 	IntentRequestTaxi      Intent = "request_taxi"      // ready to taxi
+	IntentRequestDescent   Intent = "request_descent"   // ready to descend, to the centre or approach (#686)
 	IntentReadyDeparture   Intent = "ready_departure"   // holding short of the runway, ready for departure
 	IntentHoldingShort     Intent = "holding_short"     // stopped short of a runway to cross
 	IntentCheckIn          Intent = "check_in"          // first call on a frequency
@@ -113,6 +114,12 @@ func RequestWeather(pos Position, cs string) Transmission {
 // direct GOLOP" (the project's wording); the answer is ClearedDirectTo.
 func RequestDirect(pos Position, cs, fix string) Transmission {
 	return pilotTx(pos, cs, IntentRequestDirect, map[string]string{ParamFix: fix}, cs+", request direct "+fix)
+}
+
+// RequestDescent is a crew ready to descend, to the centre or approach:
+// "CSA123, request descent" (#686).
+func RequestDescent(pos Position, cs string) Transmission {
+	return pilotTx(pos, cs, IntentRequestDescent, nil, cs+", request descent")
 }
 
 // RequestTaxi is a departure pushed back and ready to taxi.
@@ -372,7 +379,7 @@ func Readback(t Transmission) (Transmission, bool) {
 		case "stop climb":
 			s = "Stop climb at " + p[ParamLevel]
 		case "continue climb", "continue descent":
-			s = capital(strings.TrimPrefix(p[ParamClimb], "continue ")) + " to " + p[ParamLevel]
+			s = capital(levelVerb(p[ParamClimb])) + " to " + p[ParamLevel]
 		}
 	case IntentCrossLevel:
 		s = "Cross " + p[ParamFix] + " at or " + p[ParamClimb] + " " + p[ParamLevel]
