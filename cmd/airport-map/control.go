@@ -118,6 +118,9 @@ type controlled struct {
 	// identified: departure has identified it (its check-in answered,
 	// "identified[, climb to ...]"), it.mu (#698).
 	identified bool
+	// directAnswer: the crew's request for direct asked before it was
+	// identified, answered in the same call, it.mu.
+	directAnswer func() (traffic.Transmission, bool)
 	// rush: told to hurry (#510): its clearances are the expedited ones.
 	rush atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
@@ -2770,8 +2773,16 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			}
 			it.mu.Lock()
 			it.identified = true
+			answer := it.directAnswer
+			it.directAnswer = nil
 			it.mu.Unlock()
-			it.say(traffic.Identified(traffic.PosDeparture, it.Tail, level))
+			tx := traffic.Identified(traffic.PosDeparture, it.Tail, level)
+			if answer != nil {
+				if u, ok := answer(); ok {
+					tx = traffic.Joined(tx, u)
+				}
+			}
+			it.say(tx)
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)

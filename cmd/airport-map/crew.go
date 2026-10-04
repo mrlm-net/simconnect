@@ -163,7 +163,7 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 		cs, a, f := a.Tail, a, *fix
 		tlog.printf("%-6s crew: request direct %s", cs, f.Ident)
 		it.say(traffic.RequestDirect(traffic.PosDeparture, cs, f.Ident))
-		it.call(traffic.PosDeparture, prioApproach, func() {
+		answer := func() (traffic.Transmission, bool) {
 			w.mu.Lock()
 			busy := now.Before(w.busy[cs])
 			w.mu.Unlock()
@@ -173,15 +173,29 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			path := append([]airport.LatLon{f.LatLon}, traffic.RouteAhead(f.LatLon, it.dep.ClimbRoute(a.Position))...)
 			if busy || w.inConflictAny(cs) || !traffic.PathClear(a, path, aircraft, opts) {
 				tlog.printf("%-6s direct %s: unable, traffic", cs, f.Ident)
-				it.say(traffic.UnableDirect(traffic.PosDeparture, cs))
-				return
+				return traffic.UnableDirect(traffic.PosDeparture, cs), true
 			}
 			if err := w.s.cc.do(func() error { return it.dep.DirectTo(a.Position, a.AltFt, a.GroundKts, f.LatLon) }); err != nil {
 				tlog.printf("%-6s direct %s refused: %v", cs, f.Ident, err)
-				return
+				return traffic.Transmission{}, false
 			}
-			it.say(traffic.ClearedDirectTo(traffic.PosDeparture, cs, f.Ident))
-		})
+			return traffic.ClearedDirectTo(traffic.PosDeparture, cs, f.Ident), true
+		}
+		// Not identified yet: answered with "identified, climb", one call,
+		// not two in a row (live, LOT924).
+		it.mu.Lock()
+		identified := it.identified
+		if !identified {
+			it.directAnswer = answer
+		}
+		it.mu.Unlock()
+		if identified {
+			it.call(traffic.PosDeparture, prioApproach, func() {
+				if tx, ok := answer(); ok {
+					it.say(tx)
+				}
+			})
+		}
 	}
 }
 

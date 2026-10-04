@@ -6,6 +6,7 @@ package traffic
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -155,4 +156,40 @@ func Vectored(cs string, v Vector, magVar float64) Transmission {
 		p[ParamHeading] = HeadingSaid(v.HeadingDeg, magVar)
 	}
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentVector, Params: p})
+}
+
+// WithVector adds radar vector v to transmission t, one call instead of
+// two in a row: "KLM868, number 3, for spacing reduce speed to 210 knots,
+// fly heading 142"; its readback reads back both (live, KLM868 heard the
+// two 0.1 s apart).
+func WithVector(t Transmission, v Vector, magVar float64) Transmission {
+	return Joined(t, Vectored(t.Callsign, v, magVar))
+}
+
+// Joined is t with u (another instruction to the same aircraft) said in
+// the same call, read back together: "CSA1, identified, climb to flight
+// level 240, cleared direct to ARTUP" (live, LOT924 two calls, #707).
+func Joined(t, u Transmission) Transmission {
+	said := strings.TrimPrefix(u.Text, u.Callsign+", ")
+	rb := ""
+	if r, ok := Readback(u); ok {
+		rb = strings.TrimSuffix(r.Text, ", "+u.Callsign)
+		rb = strings.ToLower(rb[:1]) + rb[1:]
+	}
+	p := map[string]string{}
+	for k, x := range t.Params {
+		p[k] = x
+	}
+	if s := p[ParamAlsoSaid]; s != "" {
+		said = s + ", " + said
+	}
+	if r := p[ParamAlsoReadback]; r != "" && rb != "" {
+		rb = r + ", " + rb
+	} else if r != "" {
+		rb = r
+	}
+	p[ParamAlsoSaid], p[ParamAlsoReadback] = said, rb
+	t.Params = p
+	t.Text += ", " + strings.TrimPrefix(u.Text, u.Callsign+", ")
+	return t
 }

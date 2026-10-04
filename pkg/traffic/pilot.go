@@ -393,7 +393,17 @@ func Readback(t Transmission) (Transmission, bool) {
 			s = capital(p[ParamWhen]) + " " + s // CAP 413 4.68
 		}
 	default:
-		return Transmission{}, false
+		if p[ParamAlsoReadback] == "" {
+			return Transmission{}, false
+		}
+	}
+	// An instruction joined to the call (Joined): read back after it.
+	if v := p[ParamAlsoReadback]; v != "" {
+		if s == "" {
+			s = capital(v)
+		} else {
+			s += ", " + v
+		}
 	}
 	return pilotTx(t.Position, cs, IntentReadback, cloneParams(p, ParamIntent, string(t.Intent)), s+", "+cs), true
 }
