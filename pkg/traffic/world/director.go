@@ -103,6 +103,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 	out := &wireFeedOut{send: l.Send}
 	srv := newWireServer()
 	a := &actuatorSim{localSim: cc.sim.(*localSim), srv: srv, send: l.Send, graph: st.cache.Graph, reqs: st.requests,
+		alloc: cc.allocator, pushes: st.core.pushes.want,
 		tug: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug {
 			t := traffic.NewSimObjectTug(client, cc.inj, w.Tug, w.ReqBase+controlIDBlock-1, prof)
 			t.Layout = g.Layout // from its depot on the vehicle roads, and back

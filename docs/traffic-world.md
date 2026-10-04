@@ -73,3 +73,17 @@ The World uses these definition, request and event IDs on the connection; a host
 | 10010–10011 | weather at the user aircraft |
 | 20000–21279, 30000–31279 | the controllers' ID blocks (128 × 10) |
 | 41000–41999 | enroute traffic |
+
+## Split: a director anywhere, an actuator beside the simulator
+
+The World can run in two parts (#710). The **actuator** runs beside Microsoft Flight Simulator. It keeps the SimConnect connection, each aircraft's controller and their injection at frame rate. The **director** takes every decision (schedule, ATC, sequencing, separation, conflicts) and needs no simulator, so it can run on Linux. Decisions cross the network about once a second; injection never does.
+
+```sh
+traffic-actuator -listen :7710 -token s3cret                      # on the simulator's PC (Windows)
+traffic-director -actuator simpc:7710 -token s3cret -addr :8080 \
+                 -web cmd/airport-map/web -airways airways.json   # anywhere; the map's page on :8080
+```
+
+The link is JSON lines over TCP, and the director opens it with the token. If the director goes away, the actuator keeps flying, and the next director to connect takes over. In a program, `world.ServeActuator(ctx, w, addr, token)` and `world.DialDirector(ctx, w, addr, token)` do the same. `world.Loopback(ctx, actuator, director)` links the two parts in one process (the airport map's `-split`) to check the split against the World in one piece.
+
+Not yet in the split: fuel trucks, and the tug and fuel-truck routes on the director's map. Each read of an aircraft's controller is a call across the network, which suits a LAN better than the internet.
