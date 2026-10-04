@@ -37,10 +37,19 @@ func Default() Profile {
 		v[EngineRunning(n)] = one(fmtIndexed("GENERAL ENG COMBUSTION", n), "bool")
 		v[Starter(n)] = one(fmtIndexed("GENERAL ENG STARTER", n), "bool")
 	}
+	a := map[string]Action{
+		// The standard key events (#667): the exit toggled only when it is
+		// not as wanted, by its index from 1 (EXIT OPEN:n is exit n+1); the
+		// parking brake toggled likewise. No chocks or GPU: a model that has
+		// them gives them.
+		ParkingBrake: {Event: "PARKING_BRAKES", Toggle: true},
+	}
 	for n := 0; n <= 3; n++ {
 		v[Door(n)] = one(fmtIndexed("EXIT OPEN", n), "percent")
+		exit := uint32(n + 1)
+		a[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
 	}
-	return Profile{Name: "default", Values: v}
+	return Profile{Name: "default", Values: v, Actions: a}
 }
 
 func fmtIndexed(name string, n int) string { return name + ":" + string(rune('0'+n)) }

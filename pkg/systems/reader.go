@@ -30,6 +30,9 @@ type State struct {
 	Squawk                                           string  // e.g. "4521"
 	FlapsPct                                         float64
 	GearDown                                         bool
+	// Chocks in place and the aircraft's own GPU connected (#667);
+	// HasChocks, HasGPU: the profile gives them (the model has them).
+	Chocks, GPU, HasChocks, HasGPU bool
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
 	Values map[string]float64
@@ -154,6 +157,9 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 		s.Squawk = squawkOf(uint32(s.Values[XPDRCode]))
 	}
 	s.FlapsPct, s.GearDown = s.Values[FlapsPct], on(GearDown)
+	_, s.HasChocks = p.Values[Chocks]
+	_, s.HasGPU = p.Values[GPU]
+	s.Chocks, s.GPU = on(Chocks), on(GPU)
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
 	return s
 }
