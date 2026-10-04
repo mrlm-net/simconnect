@@ -149,6 +149,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 		return err
 	}
 	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
+	c.noLogo = WakeFor(c.req.Model).ICAO == WakeLight
 	// Cold on the stand: the engines start once the tug has gone.
 	c.note("engines off", c.inj.SetEngines(c.objectID, c.aircraft().EngineCount(), false))
 	c.enginesOn = false

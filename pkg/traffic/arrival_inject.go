@@ -236,6 +236,7 @@ func (c *ArrivalController) step() GroundPose {
 // initDrive points the shared ground driving at this arrival's aircraft.
 func (c *ArrivalController) initDrive() {
 	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
+	c.noLogo = WakeFor(c.req.Model).ICAO == WakeLight
 	c.holdAtCrossings = c.req.HoldAtCrossings
 }
 

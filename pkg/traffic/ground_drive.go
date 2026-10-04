@@ -29,6 +29,9 @@ type groundDrive struct {
 	frameDt  float64 // seconds since the previous frame
 
 	lights   Lights // phase lights; logo and wing stay as the aircraft had them
+	// noLogo: a light aircraft, with neither logo nor wing light (live,
+	// OKFHP: an FSLTL King Air parked with its tail light flashing).
+	noLogo bool
 	crossing bool   // strobes and landing lights added for a runway crossing
 	// ignoreRunway is excluded from the geometric crossing check (the runway
 	// being vacated or lined up on); -1 for none.
@@ -78,6 +81,9 @@ func (d *groundDrive) advance() (GroundPose, error) {
 // the aircraft had them.
 func (d *groundDrive) setInjectedLights(l Lights, desc string) {
 	l.Logo, l.Wing = d.lights.Logo, d.lights.Wing
+	if d.noLogo {
+		l.Logo, l.Wing = false, false
+	}
 	d.lights = l
 	d.applyLights(desc)
 }
