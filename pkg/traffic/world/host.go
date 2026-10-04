@@ -64,8 +64,27 @@ type Snapshot struct {
 	// Aircraft are ours: state, ATC position and frequency, routes, the
 	// clearances available (Actions) and the ground vehicles.
 	Aircraft []ControlView `json:"aircraft"`
+	// Player is the user aircraft's place in a landing sequence while the
+	// host has cleared it to land (ClearPlayer); nil otherwise.
+	Player *PlayerPlace `json:"player,omitempty"`
 	// Dropped is how many fed messages were dropped (Feed).
 	Dropped uint64 `json:"dropped"`
+}
+
+// PlayerPlace is where the user aircraft is in its runway's landing
+// sequence: "number 2, follow the Airbus A320".
+type PlayerPlace struct {
+	ICAO   string `json:"icao"`
+	Runway string `json:"runway"`
+	Number int    `json:"number"` // 1 lands first
+	// Leader is the call sign landing before it ("" none); LeaderType its
+	// type as said ("Airbus A320"), "" when not one of ours.
+	Leader     string  `json:"leader,omitempty"`
+	LeaderType string  `json:"leaderType,omitempty"`
+	SpacingNM  float64 `json:"spacingNM,omitempty"`
+	// DistanceToGoNM: the player's, and the leader's (-1 none).
+	DistanceToGoNM       float64 `json:"distanceToGoNM"`
+	LeaderDistanceToGoNM float64 `json:"leaderDistanceToGoNM"`
 }
 
 // Snapshot is the picture now. The rest — an airport's runways in use,
@@ -79,6 +98,7 @@ func (w *World) Snapshot() Snapshot {
 	w.st.mu.Unlock()
 	if cc != nil {
 		out.Connected, out.At, out.Aircraft = true, cc.clock.Now(), cc.views()
+		out.Player = cc.playerPlace()
 	}
 	return out
 }
@@ -213,4 +233,63 @@ func (k *core) playerLanding() (PlayerClearance, bool) {
 		return *c, true
 	}
 	return PlayerClearance{}, false
+}
+
+// playerPlace is the user aircraft's place in its landing sequence.
+func (cc *controlCenter) playerPlace() *PlayerPlace {
+	p, ok := cc.core.playerLanding()
+	if !ok || cc.sequencesAt == nil {
+		return nil
+	}
+	cs := p.Callsign
+	if cs == "" {
+		cs = "Player"
+	}
+	seq := cc.sequencesAt(p.ICAO)[p.Runway]
+	for _, e := range seq {
+		if e.Callsign != cs {
+			continue
+		}
+		out := &PlayerPlace{ICAO: p.ICAO, Runway: p.Runway, Number: e.Number, Leader: e.Leader, SpacingNM: e.SpacingNM, DistanceToGoNM: e.DistanceToGoNM, LeaderDistanceToGoNM: -1}
+		for _, l := range seq {
+			if l.Callsign == e.Leader && e.Leader != "" {
+				out.LeaderDistanceToGoNM = l.DistanceToGoNM
+			}
+		}
+		if it := cc.byTail(e.Leader); it != nil && e.Leader != "" {
+			it.mu.Lock()
+			out.LeaderType = typeSaid(traffic.ProfileFor(it.view.Model).Type)
+			it.mu.Unlock()
+		}
+		return out
+	}
+	return nil
+}
+
+// ScheduleSettings start or stop the scheduled traffic (POST /api/schedule).
+type ScheduleSettings struct {
+	Enabled     bool    `json:"enabled"`
+	ICAO        string  `json:"icao"`
+	Density     float64 `json:"density,omitempty"`     // 1: the timetable as it is
+	MaxAircraft int     `json:"maxAircraft,omitempty"` // 0: no limit
+	Seed        uint64  `json:"seed,omitempty"`
+}
+
+// SetSchedule starts or stops the scheduled traffic.
+func (w *World) SetSchedule(s ScheduleSettings) error {
+	_, err := w.Do(http.MethodPost, "/api/schedule", s)
+	return err
+}
+
+// Clear gives one of ours (ControlView.ID) a clearance from its Actions:
+// pushback, startup, taxi, lineup, takeoff, land, goaround, remove, …
+func (w *World) Clear(id int, action string) error {
+	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/%s", id, action), nil)
+	return err
+}
+
+// Approach acts on an arrival in icao's sequence: slow, direct, goaround.
+func (w *World) Approach(icao, callsign, action string) error {
+	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/approach/%s/%s/%s", icao, callsign, action), nil)
+	return err
 }
