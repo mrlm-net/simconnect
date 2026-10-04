@@ -234,10 +234,18 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
 		if e := enroute(a); e != nil {
 			icao, planned = e.f.Airport, e.route
+			resolved := traffic.ResolvedRoute(e.route, a, r, conflictLookAhead)
 			var wps []types.SIMCONNECT_DATA_WAYPOINT
-			_, wps, err = traffic.EnrouteStart(traffic.ResolvedRoute(e.route, a, r, conflictLookAhead))
+			_, wps, err = traffic.EnrouteStart(resolved)
 			if err == nil {
 				err = w.s.cc.do(func() error { return w.s.cc.fleet.SetWaypoints(e.objectID, enrouteDefWaypoints, wps) })
+			}
+			if err == nil {
+				// Predicted on the route it flies now, the change in it
+				// (#657 review: a stop predicted climbing on through).
+				w.s.mu.Lock()
+				e.route = resolved
+				w.s.mu.Unlock()
 			}
 		} else if it := departed(a); it != nil {
 			// A departure: the departure radar that has it.
@@ -258,7 +266,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
-		delete(w.stopped, r.Callsign)
+		if r.Kind == traffic.ResolveLevel {
+			delete(w.stopped, r.Callsign) // a new level replaces the stop; another change keeps it to be cleared on
+		}
 		if r.Kind == traffic.ResolveLevel && r.Stop {
 			on, ok := levelOn(planned, r.AltFt, r.AltFt > a.AltFt)
 			if pos == traffic.PosDeparture && r.AltFt > a.AltFt {
@@ -298,13 +308,27 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			delete(w.seen, p) // over: a new one is logged again
 		}
 	}
-	var cleared []string
 	for cs, until := range w.busy {
 		if now.After(until) {
 			delete(w.busy, cs)
-			if _, ok := w.stopped[cs]; ok && !involved[cs] {
-				cleared = append(cleared, cs)
-			}
+		}
+	}
+	// Stopped and clear now: cleared on at any look, not only the one its
+	// change ends on (#657 review: involved then, stopped for good); gone
+	// from the sky, forgotten.
+	airborne := map[string]bool{}
+	for _, a := range aircraft {
+		if !a.OnGround && a.Tail != "" {
+			airborne[a.Tail] = true
+		}
+	}
+	var cleared []string
+	for cs := range w.stopped {
+		switch {
+		case !airborne[cs]:
+			delete(w.stopped, cs)
+		case !involved[cs] && !now.Before(w.busy[cs]):
+			cleared = append(cleared, cs)
 		}
 	}
 	resume := map[string]stoppedLevel{}

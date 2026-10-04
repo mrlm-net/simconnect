@@ -541,7 +541,7 @@ Pairs are skipped when the tower separates them (`TowerPair`: same airport, one 
 | Heading 30° right / left | 3.67 / 3.77 | 3.67 / 3.77 |
 | Heading 45° right / left | 4.0 / 4.1 | 4.0 / 4.1 |
 
-On the map a departure is never given a speed change (live, AUA818 was told "reduce speed to 200 knots" climbing out). A stopped climb or descent goes on once the look-ahead has run and the aircraft is out of conflict: "clear of traffic, climb to flight level 240", to the highest (lowest) level of its planned route.
+On the map a departure is never given a speed change (live, AUA818 was told "reduce speed to 200 knots" climbing out). A stopped climb or descent goes on at the first look after the look-ahead has run with the aircraft out of conflict: "climb to flight level 240" for a departure (the level departure clears it to), else to the highest (lowest) level of its planned route. A departure stopped before departure answers its check-in is told "identified" alone: the climb comes with the clearance on. Another kind of change given meanwhile keeps the stop to be cleared on.
 
 The resolved aircraft flies the change for the look-ahead and then goes back to its route (`ResolvedRoute`). On the map it is not steered again for 5 min. Two of our arrivals on their STARs are not steered by the en-route resolver. Instead, the one landing later loses time (speed, then a dog-leg). If it is still in conflict 90 s later, it holds (#455, `cmd/airport-map/conflicts.go`).
 

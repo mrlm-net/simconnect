@@ -445,14 +445,16 @@ func (c *ArrivalController) ProcedurePlan() []RoutePoint {
 	}
 	wps := c.proc.Waypoints
 	var out []RoutePoint
-	from := 0
 	if h := c.holding; h != nil { // from the fix on, where it will go on
+		// Holding: at the hold's altitude until cleared out of it, not
+		// down the STAR (two stacked a level apart are no conflict).
 		out = append(out, RoutePoint{Position: h.hold.Fix, AltFt: h.altFt})
-		from = min(h.resume, len(wps))
-	} else {
-		from = c.procWaypoint(wps)
+		for _, w := range wps[min(h.resume, len(wps)):] {
+			out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: h.altFt, Kts: w.KtsSpeed})
+		}
+		return out
 	}
-	for _, w := range wps[from:] {
+	for _, w := range wps[c.procWaypoint(wps):] {
 		out = append(out, RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: mslAltitude(w), Kts: w.KtsSpeed})
 	}
 	return out
