@@ -504,8 +504,8 @@ func TestPlaceAirRestsOnTheRunway(t *testing.T) {
 		return got
 	}
 	roll := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, GroundSpeedKts: 80})
-	if math.Abs(roll.Altitude-1209.35) > 1e-6 || math.Abs(roll.Pitch-0.8) > 1e-6 {
-		t.Errorf("on the roll at %.2f ft pitch %.2f, want its rest 1209.35 ft, 0.80", roll.Altitude, roll.Pitch)
+	if math.Abs(roll.Altitude-1209.35) > 1e-6 || math.Abs(roll.Pitch-(0.8+MovingPitchDeg)) > 1e-6 { // rolling: struts drawn extended (#676)
+		t.Errorf("on the roll at %.2f ft pitch %.2f, want its rest 1209.35 ft, 0.80 + 1 nose down rolling", roll.Altitude, roll.Pitch)
 	}
 	rot := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, PitchDeg: 5})
 	if math.Abs(rot.Pitch-(0.8-5)) > 1e-6 {
