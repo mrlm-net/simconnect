@@ -33,6 +33,8 @@ type State struct {
 	// Chocks in place and the aircraft's own GPU connected (#667);
 	// HasChocks, HasGPU: the profile gives them (the model has them).
 	Chocks, GPU, HasChocks, HasGPU bool
+	// The sim's pushback (#666): a tug attached, possible here, waiting.
+	PushbackAttached, PushbackAvailable, PushbackWait bool
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
 	Values map[string]float64
@@ -160,6 +162,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	_, s.HasChocks = p.Values[Chocks]
 	_, s.HasGPU = p.Values[GPU]
 	s.Chocks, s.GPU = on(Chocks), on(GPU)
+	s.PushbackAttached, s.PushbackAvailable, s.PushbackWait = on(PushbackAttached), on(PushbackAvailable), on(PushbackWait)
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
 	return s
 }

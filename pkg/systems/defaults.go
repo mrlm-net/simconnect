@@ -32,6 +32,10 @@ func Default() Profile {
 		COM1Standby:  one("COM STANDBY FREQUENCY:1", "MHz"),
 		COM2Active:   one("COM ACTIVE FREQUENCY:2", "MHz"),
 		COM2Standby:  one("COM STANDBY FREQUENCY:2", "MHz"),
+		// The sim's pushback (#666).
+		PushbackAttached:  one("PUSHBACK ATTACHED", "bool"),
+		PushbackAvailable: one("PUSHBACK AVAILABLE", "bool"),
+		PushbackWait:      one("PUSHBACK WAIT", "bool"),
 	}
 	for n := 1; n <= 4; n++ {
 		v[EngineRunning(n)] = one(fmtIndexed("GENERAL ENG COMBUSTION", n), "bool")
@@ -43,6 +47,14 @@ func Default() Profile {
 		// parking brake toggled likewise. No chocks or GPU: a model that has
 		// them gives them.
 		ParkingBrake: {Event: "PARKING_BRAKES", Toggle: true},
+		// The sim's ground services (#666): requests, sent as asked.
+		Jetway:      {Event: "TOGGLE_JETWAY"},
+		Stairs:      {Event: "TOGGLE_RAMPTRUCK"},
+		Baggage:     {Event: "REQUEST_LUGGAGE"},
+		Catering:    {Event: "REQUEST_CATERING"},
+		PowerSupply: {Event: "REQUEST_POWER_SUPPLY"},
+		FuelTruck:   {Event: "REQUEST_FUEL_KEY"},
+		Pushback:    {Event: "TOGGLE_PUSHBACK"},
 	}
 	for n := 0; n <= 3; n++ {
 		v[Door(n)] = one(fmtIndexed("EXIT OPEN", n), "percent")

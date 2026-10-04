@@ -124,6 +124,14 @@ func (c *Controls) Set(name string, on bool, now State) error {
 	return fmt.Errorf("%w: %s (an empty action)", ErrNoControl, name)
 }
 
+// Request asks for ground service name (Jetway, Stairs, Baggage, Catering,
+// PowerSupply, FuelTruck, Pushback): its event or variable sent once, as a
+// crew's request; the toggling ones (jetway, stairs, pushback) send it away
+// again when asked again (#666).
+func (c *Controls) Request(name string) error {
+	return c.Set(name, true, State{})
+}
+
 // pressHold is how long a pressed button is held.
 const pressHold = 300 * time.Millisecond
 
