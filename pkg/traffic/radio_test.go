@@ -332,3 +332,30 @@ func TestNumberSaidOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestLevelClearances: "descend to", not "descent to", and levels against
+// the airport's transition altitude; their readbacks; the crew's request
+// for descent (#686).
+func TestLevelClearances(t *testing.T) {
+	for _, c := range []struct {
+		tx       Transmission
+		said, rb string
+	}{
+		{ContinueLevelAbove(PosCenter, "CEF007", 10000, false, 5000), "CEF007, descend to flight level 100", "Descend to flight level 100, CEF007"},
+		{ContinueLevel(PosCenter, "CEF007", 10000, false), "CEF007, descend to 10000 feet", "Descend to 10000 feet, CEF007"},
+		{ContinueLevelAbove(PosDeparture, "CSA1", 24000, true, 5000), "CSA1, climb to flight level 240", "Climb to flight level 240, CSA1"},
+		{Descend(PosCenter, "CSA1", 10000, 5000), "CSA1, descend to flight level 100", "Descend to flight level 100, CSA1"},
+		{Descend(PosApproach, "CSA1", 4000, 5000), "CSA1, descend to 4000 feet", "Descend to 4000 feet, CSA1"},
+		{Climb(PosDeparture, "CSA1", 7000, 5000), "CSA1, climb to flight level 070", "Climb to flight level 070, CSA1"},
+	} {
+		if c.tx.Text != c.said {
+			t.Errorf("%q, want %q", c.tx.Text, c.said)
+		}
+		if rb, ok := Readback(c.tx); !ok || rb.Text != c.rb {
+			t.Errorf("readback %q %v, want %q", rb.Text, ok, c.rb)
+		}
+	}
+	if tx := RequestDescent(PosCenter, "CSA123"); tx.Text != "CSA123, request descent" {
+		t.Errorf("%q, want CSA123, request descent", tx.Text)
+	}
+}

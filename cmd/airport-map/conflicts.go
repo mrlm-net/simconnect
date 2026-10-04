@@ -341,7 +341,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// (the route resumes it as the change ends).
 	for cs, st := range resume {
 		tlog.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
-		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevel(st.pos, cs, st.altFt, st.climb))
+		ta := 0.0 // the airport's transition altitude: "flight level 100" at LKPR (#686)
+		if g, err := w.s.st.cache.Graph(st.icao); err == nil {
+			ta = w.s.cc.limitsOf(g).TransitionAltitudeFt
+		}
+		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevelAbove(st.pos, cs, st.altFt, st.climb, ta))
 	}
 	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
 }

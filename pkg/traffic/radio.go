@@ -471,7 +471,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			// Plain "climb (or descend) to (level)" (12.3.1.2 a): the traffic it
 			// was stopped for is known. Doc 4444's "clear of traffic [appropriate
 			// instructions]" is for passing unknown traffic (12.4.1.8 d).
-			return fmt.Sprintf("%s, %s to %s", cs, strings.TrimPrefix(p[ParamClimb], "continue "), p[ParamLevel])
+			return fmt.Sprintf("%s, %s to %s", cs, levelVerb(p[ParamClimb]), p[ParamLevel])
 		}
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentCrossLevel:
@@ -1291,12 +1291,44 @@ func (r *Radio) Recent(airport string, n int) []Transmission {
 // ContinueLevel lets an aircraft stopped for traffic climb or descend on
 // to altFt: "RYR1527, climb to flight level 240" (Doc 4444 12.3.1.2 a).
 func ContinueLevel(pos Position, cs string, altFt float64, climb bool) Transmission {
+	return ContinueLevelAbove(pos, cs, altFt, climb, 10000)
+}
+
+// ContinueLevelAbove is ContinueLevel with the airport's transition
+// altitude (airport.Limits.TransitionAltitudeFt): "descend to flight level
+// 100" at LKPR (TA 5000), not "10000 feet" (#686).
+func ContinueLevelAbove(pos Position, cs string, altFt float64, climb bool, transitionFt float64) Transmission {
 	verb := "continue descent"
 	if climb {
 		verb = "continue climb"
 	}
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
-		Params: map[string]string{ParamLevel: LevelSaid(altFt), ParamClimb: verb}})
+		Params: map[string]string{ParamLevel: LevelSaidAbove(altFt, transitionFt), ParamClimb: verb}})
+}
+
+// Climb and Descend clear an aircraft to a level, said against the
+// airport's transition altitude: "CSA1, descend to flight level 100",
+// "CSA1, climb to 5000 feet" (Doc 4444 12.3.1.2 a; #686).
+func Climb(pos Position, cs string, altFt, transitionFt float64) Transmission {
+	return levelTo(pos, cs, altFt, transitionFt, "climb")
+}
+
+func Descend(pos Position, cs string, altFt, transitionFt float64) Transmission {
+	return levelTo(pos, cs, altFt, transitionFt, "descend")
+}
+
+func levelTo(pos Position, cs string, altFt, transitionFt float64, verb string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
+		Params: map[string]string{ParamLevel: LevelSaidAbove(altFt, transitionFt), ParamClimb: verb}})
+}
+
+// levelVerb is the verb of a resumed climb or descent: "continue descent"
+// is said "descend", not the noun (#686).
+func levelVerb(climb string) string {
+	if climb == "continue descent" {
+		return "descend"
+	}
+	return "climb"
 }
 
 // StopDescent has a descending arrival level off at altFt for traffic
