@@ -217,3 +217,9 @@ In the world, each aircraft talks to the station of its sector. Taxiing into ano
 [{"position":"ground","name":"Ruzyne Ground","freq":"121.91","controller":"LKPR night"},
  {"position":"tower","name":"Ruzyne Tower","freq":"134.56","controller":"LKPR night"}]
 ```
+
+## Descend via the STAR
+
+`DescendVia(pos, cs, star, levelFt, transitionFt)` clears an arrival down its STAR, keeping the published level and speed restrictions (#754). ICAO: "CSA1, descend via STAR to flight level 100" (Doc 4444 6.5.2.4.1 a); `WithCancelled(t, "level")` or `"speed"` adds "cancel level restrictions" or "cancel speed restrictions" (6.5.2.4.1 b, d). FAA: "CSA1, descend via the VOZ 5A arrival", the published altitudes and no level (JO 7110.65 4-5-7 h). The readback repeats it and `CheckReadback` checks the level. `CrossAt(pos, cs, fix, altFt, transitionFt, above)` is "CSA1, cross VOZ at or above flight level 120" (Doc 4444 12.3.2.4 a; 7110.65 4-5-7).
+
+The constraints come from the procedures: `airport.LegConstraints(legs)` lists each constrained fix with `AtOrAboveFt`, `AtOrBelowFt` and `SpeedKts`. `Procedures.FitSTAR(filed, runway, entryFix)` keeps a filed STAR that serves the runway in use, else picks one from the entry fix of the same family (LKPR: VLM5S filed for 24, VLM6T for 06) (#755). `Procedures.MissedOf(approach)` sums up the published missed approach: its points, first fix and climb altitude (#756).

@@ -386,3 +386,32 @@ func TestWindSaidAs(t *testing.T) {
 		t.Errorf("WindSaid variable: %q", got)
 	}
 }
+
+// Descend via the STAR, ICAO and FAA, its readback, and crossing a fix
+// at or above a level (#754).
+func TestDescendVia(t *testing.T) {
+	t1 := DescendVia(PosApproach, "CSA1", "VOZ 5A", 10000, 5000)
+	if t1.Text != "CSA1, descend via STAR to flight level 100" {
+		t.Errorf("ICAO %q", t1.Text)
+	}
+	if rb, ok := Readback(t1); !ok || rb.Text != "Descend via STAR to flight level 100, CSA1" {
+		t.Errorf("readback %q", rb.Text)
+	}
+	if c := WithCancelled(t1, "speed"); c.Text != "CSA1, descend via STAR to flight level 100, cancel speed restrictions" {
+		t.Errorf("cancelled %q", c.Text)
+	}
+	f := t1
+	f.Phraseology = PhraseologyFAA
+	if f = Say(f); f.Text != "CSA1, descend via the VOZ 5A arrival" {
+		t.Errorf("FAA %q", f.Text)
+	}
+	if rb, ok := Readback(f); !ok || rb.Text != "Descend via the VOZ 5A arrival, CSA1" {
+		t.Errorf("FAA readback %q", rb.Text)
+	}
+	if _, ok := CheckReadback(t1, map[string]string{ParamLevel: "flight level 110"}); ok {
+		t.Error("a wrong level read back passed")
+	}
+	if c := CrossAt(PosApproach, "CSA1", "VOZ", 12000, 5000, true); c.Text != "CSA1, cross VOZ at or above flight level 120" {
+		t.Errorf("cross %q", c.Text)
+	}
+}
