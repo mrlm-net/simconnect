@@ -108,3 +108,12 @@ The link is JSON lines over TCP, and the director opens it with the token. If th
 Not yet in the split: fuel trucks, and the tug and fuel-truck routes on the director's map. Each read of an aircraft's controller is a call across the network, which suits a LAN better than the internet.
 
 `ScheduleSettings.OffsetMin` (`"offsetMin"`) flies the airline timetable of that many minutes later now (#738): `600` puts a morning wave into an evening. VFR flights keep the daylight of now.
+
+### Multiplayer: local first, one director for several sims
+
+In multiplayer each player's sim is an actuator; the director (on a server) decides for all of them (#774, #779). Motion stays local: every aircraft and vehicle is moved and injected by the actuator on the player's PC at the sim's frame rate. Only decisions cross the network.
+
+- **On the player's PC, with the host's own connection:** `w.LinkDirector(ctx, "director:7710", token)` before `RunOn`. It dials out (no way in needed), dials again 5 s after the director is lost, and keeps the link across sim reconnects (`RunOn` restarted per connection). `Snapshot().Link` is "dialling", "attached" or "gone". `DialActuator` does the same with a connection of its own (`traffic-actuator -director`).
+- **On the server:** `ListenDirector(ctx, w, ":7710", token)` (`traffic-director -listen :7710`). The first actuator to dial in is the primary: its replies, events and feed drive the director. Later ones follow: they get the same commands, so each sim creates and moves the same traffic; what they send back is dropped. A follower joining late gets the flights started after it; a model a follower does not have is not created there. When the primary is gone the director starts again with the next one.
+- **Radio:** every transmission is relayed to the actuators and reaches their host's `OnTransmission`, so each player's voice speaks it locally.
+- **What the host does on the director, not locally:** in multiplayer the schedule, flights, corridor and player clearances (`SetSchedule`, `AddFlights`, `SetCorridor`, `ClearPlayer`) go to the director's HTTP API. The actuator's own `Snapshot().Aircraft` is empty: the aircraft are listed by the director (`GET /api/control`).

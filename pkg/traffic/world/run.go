@@ -535,8 +535,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	var feed simFeed = localFeed{st: st, cc: cc}
 	// An actuator (#710): its simulator side served to a director.
 	var act *actuatorSim
-	if st.actLink != nil {
-		act, feed = st.actuate(ctx, cc, client, st.actLink)
+	st.mu.Lock()
+	actLink := st.actLink
+	st.mu.Unlock()
+	if actLink != nil {
+		act, feed = st.actuate(ctx, cc, client, actLink)
 	}
 	// The airports around, for the traffic picture: now and every minute.
 	airports := traffic.NewAirportLister(client, ids.airportList)
