@@ -3,6 +3,7 @@ package traffic
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -1209,6 +1210,9 @@ type RadioOptions struct {
 	// Phraseology is the wording at an airport; nil: PhraseologyFor (FAA in
 	// the United States, ICAO elsewhere, #463).
 	Phraseology func(airport string) Phraseology
+	// Variety varies what crews and controllers say and when (#721); nil:
+	// off. Radio.SetVariety changes it.
+	Variety *Variety
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -1218,6 +1222,7 @@ type Radio struct {
 	mu   sync.Mutex
 	kept []Transmission
 	busy map[string]time.Time // by frequency: said until
+	rng  *rand.Rand           // the variety's; nil: off
 }
 
 // NewRadio creates a radio.
@@ -1228,7 +1233,9 @@ func NewRadio(opts RadioOptions) *Radio {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Radio{opts: opts, busy: map[string]time.Time{}}
+	r := &Radio{opts: opts, busy: map[string]time.Time{}}
+	r.SetVariety(opts.Variety)
+	return r
 }
 
 // Transmit sends t: stamped (when not already) at airport, on its
@@ -1237,6 +1244,11 @@ func NewRadio(opts RadioOptions) *Radio {
 // (SpeakingTime and a second's pause), so a voice plays them in turn. It
 // returns t as sent: stamped, on its frequency.
 func (r *Radio) Transmit(airport string, t Transmission) Transmission {
+	return r.transmit(airport, t, r.opts.ReadBack)
+}
+
+// transmit sends t, read back by its crew when readBack.
+func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmission {
 	if t.At.IsZero() {
 		t.At = r.opts.Now()
 	}
@@ -1258,21 +1270,25 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 			t = Say(t)
 		}
 	}
+	if t.Frequency == "" && r.opts.FrequencyOf != nil {
+		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)
+	}
+	plain := t // as worded, for the crew's readback and a correction
+	r.mu.Lock()
+	busy := false
+	if t.Frequency != "" {
+		if until := r.busy[t.Airport+" "+t.Frequency]; t.At.Before(until) {
+			t.At, busy = until, true
+		}
+	}
+	t = r.varied(t, busy)
 	if r.opts.SaidCallsign != nil && t.Callsign != "" {
 		if said := r.opts.SaidCallsign(t.Callsign); said != t.Callsign {
 			t.Text = strings.ReplaceAll(t.Text, t.Callsign, said)
 		}
 	}
-	if t.Frequency == "" && r.opts.FrequencyOf != nil {
-		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)
-	}
-	r.mu.Lock()
 	if t.Frequency != "" {
-		key := t.Airport + " " + t.Frequency
-		if until := r.busy[key]; t.At.Before(until) {
-			t.At = until
-		}
-		r.busy[key] = t.At.Add(SpeakingTime(t.Text) + time.Second)
+		r.busy[t.Airport+" "+t.Frequency] = t.At.Add(SpeakingTime(t.Text) + time.Second)
 	}
 	r.kept = append(r.kept, t)
 	if len(r.kept) > r.opts.Keep {
@@ -1283,11 +1299,9 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	if on != nil {
 		on(t)
 	}
-	if r.opts.ReadBack && !t.Pilot && t.Callsign != "" {
-		if rb, ok := Readback(t); ok {
-			rb.Airport, rb.Frequency = t.Airport, t.Frequency
-			r.Transmit(t.Airport, rb)
-		}
+	if readBack && !t.Pilot && t.Callsign != "" {
+		plain.At = t.At
+		r.readBack(t.Airport, plain, busy)
 	}
 	return t
 }

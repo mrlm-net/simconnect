@@ -1,0 +1,214 @@
+package traffic
+
+import (
+	"hash/fnv"
+	"maps"
+	"math/rand/v2"
+	"strings"
+	"time"
+)
+
+// Variety makes the radio a little less predictable, as a real frequency
+// is (#721): crews answer after their own pause, word the pleasantries
+// their own way, now and then ask for a clearance again or read it back
+// wrong (the controller corrects it). Only what is said and when varies:
+// every transmission keeps its intent and parameters, so readback checks
+// and the API stay exact, and no clearance changes. It is seeded: the same
+// seed and the same traffic say the same.
+type Variety struct {
+	// Seed picks the crews' styles and the variations.
+	Seed uint64 `json:"seed"`
+	// SayAgain is the share of clearances a crew asks to be said again
+	// (default 0.02; below 0 none).
+	SayAgain float64 `json:"sayAgain,omitempty"`
+	// ReadbackError is the share of clearances read back with an error the
+	// controller corrects (default 0.01; below 0 none).
+	ReadbackError float64 `json:"readbackError,omitempty"`
+}
+
+// IntentPilotSayAgain is a crew asking the controller to say a clearance
+// again: "Say again, CSA1" (#721).
+const IntentPilotSayAgain Intent = "pilot_say_again"
+
+// ParamRepeat on a controller's transmission: "1", said again after a
+// crew's "say again" (#721).
+const ParamRepeat = "repeat"
+
+// CrewStyle is how a crew talks on the radio (#721), the same for a call
+// sign through its flight: Quick or slow to answer, Chatty with "good day"
+// and "bye" or terse.
+type CrewStyle struct {
+	Quick  bool `json:"quick"`
+	Slow   bool `json:"slow"`
+	Chatty bool `json:"chatty"`
+}
+
+// StyleOf is the crew style of call sign cs under v.
+func (v Variety) StyleOf(cs string) CrewStyle {
+	h := fnv.New64a()
+	h.Write([]byte(cs))
+	n := h.Sum64() ^ v.Seed
+	n ^= n >> 29
+	n *= 0xbf58476d1ce4e5b9
+	n ^= n >> 32
+	return CrewStyle{Quick: n%4 == 0, Slow: n%4 == 3, Chatty: (n>>8)%3 != 0}
+}
+
+// pause is the extra time a crew of style s takes before it answers, on
+// top of the radio's breath: about 0.5–3 s in all.
+func (s CrewStyle) pause(rng *rand.Rand) time.Duration {
+	lo, hi := 0.0, 1.2 // seconds
+	switch {
+	case s.Quick:
+		lo, hi = 0, 0.5
+	case s.Slow:
+		lo, hi = 0.8, 2.0
+	}
+	return time.Duration((lo + rng.Float64()*(hi-lo)) * float64(time.Second))
+}
+
+func (v Variety) rate(r, def float64) float64 {
+	if r == 0 {
+		return def
+	}
+	return max(r, 0)
+}
+
+// varied is a controller's t worded with a pleasantry when the frequency
+// is quiet (busy: the frequency had to wait): "…, good day" on a handoff.
+func (r *Radio) varied(t Transmission, busy bool) Transmission {
+	if r.rng == nil || busy || t.Pilot || t.Intent != IntentContact {
+		return t
+	}
+	if r.rng.Float64() < 0.4 {
+		t.Text += ", good day"
+	}
+	return t
+}
+
+// variedReadback is rb, the readback of t, with crew cs's style: a
+// goodbye on a handoff for a chatty crew, a different "looking out".
+func (r *Radio) variedReadback(t, rb Transmission, busy bool) Transmission {
+	style := r.opts.Variety.StyleOf(t.Callsign)
+	switch {
+	case t.Intent == IntentContact && style.Chatty && !busy:
+		rb.Text += []string{", good day", ", bye", ", bye bye"}[r.rng.IntN(3)]
+	case t.Intent == IntentTrafficInfo && r.rng.IntN(2) == 0:
+		rb.Text = strings.Replace(rb.Text, "Looking out", "Looking", 1)
+	}
+	return rb
+}
+
+// readbackErrorKeys are what a crew may read back wrong (#721): numbers a
+// correction fixes, not the runway.
+var readbackErrorKeys = []string{ParamFreq, ParamHeading, ParamLevel, ParamSquawk, ParamSpeed, ParamAltitude}
+
+// wrongReadback is rb with one of t's numbers read back wrong, and what
+// the controller heard; false when t has none to get wrong.
+func wrongReadback(t, rb Transmission, rng *rand.Rand) (Transmission, map[string]string, bool) {
+	var keys []string
+	for _, k := range readbackErrorKeys {
+		if v := t.Params[k]; v != "" && strings.Contains(rb.Text, v) && wrongDigit(v) != v {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return rb, nil, false
+	}
+	k := keys[rng.IntN(len(keys))]
+	wrong := wrongDigit(t.Params[k])
+	rb.Text = strings.Replace(rb.Text, t.Params[k], wrong, 1)
+	heard := maps.Clone(t.Params)
+	heard[k] = wrong
+	return rb, heard, true
+}
+
+// wrongDigit is s with the digit before its last one a step up ("270" →
+// "280", "121.910" → "121.920", "4521" → "4531"); s when it has fewer than
+// two digits.
+func wrongDigit(s string) string {
+	b := []byte(s)
+	seen := 0
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i] < '0' || b[i] > '9' {
+			continue
+		}
+		if seen++; seen == 2 {
+			b[i] = '0' + (b[i]-'0'+1)%10
+			return string(b)
+		}
+	}
+	return s
+}
+
+// readBack has the crew of t read it back, with the radio's variety: after
+// the crew's pause; now and then a "say again" and t again, or a wrong
+// readback, the controller's correction and the right one.
+func (r *Radio) readBack(airport string, t Transmission, busy bool) {
+	rb, ok := Readback(t)
+	if !ok {
+		return
+	}
+	rb.Airport, rb.Frequency = t.Airport, t.Frequency
+	v := r.opts.Variety
+	if r.rng == nil || v == nil {
+		r.Transmit(airport, rb)
+		return
+	}
+	r.mu.Lock()
+	style := v.StyleOf(t.Callsign)
+	pause := style.pause(r.rng)
+	roll := r.rng.Float64()
+	sayAgain := t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)
+	var wrong Transmission
+	var heard map[string]string
+	wrongOK := false
+	if !sayAgain && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)+v.rate(v.ReadbackError, 0.01) {
+		wrong, heard, wrongOK = wrongReadback(t, rb, r.rng)
+	}
+	if !sayAgain {
+		rb = r.variedReadback(t, rb, busy)
+	}
+	r.mu.Unlock()
+	at := func() time.Time { return r.ClearAt(t.Airport, t.Frequency).Add(pause) }
+	switch {
+	case sayAgain:
+		sa := pilotTx(t.Position, t.Callsign, IntentPilotSayAgain, nil, "Say again, "+t.Callsign)
+		sa.Airport, sa.Frequency, sa.At = t.Airport, t.Frequency, at()
+		r.transmit(airport, sa, false)
+		again := t
+		again.At = time.Time{}
+		again.Params = cloneParams(t.Params, ParamRepeat, "1")
+		r.Transmit(airport, again) // read back in its turn
+	case wrongOK:
+		wrong.At = at()
+		r.transmit(airport, wrong, false)
+		if c, ok := CheckReadback(t, heard); !ok {
+			c.At = time.Time{}
+			r.transmit(airport, c, false)
+		}
+		rb.At = at()
+		r.transmit(airport, rb, false)
+	default:
+		rb.At = at()
+		r.transmit(airport, rb, false)
+	}
+}
+
+// SetVariety switches the radio's variety on (v) or off (nil), #721.
+func (r *Radio) SetVariety(v *Variety) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.opts.Variety = v
+	r.rng = nil
+	if v != nil {
+		r.rng = rand.New(rand.NewPCG(v.Seed, 0x721))
+	}
+}
+
+// Variety is the radio's variety, nil when off.
+func (r *Radio) Variety() *Variety {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.opts.Variety
+}
