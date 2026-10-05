@@ -213,6 +213,13 @@ type playerState struct {
 	at airport.LatLon
 }
 
+// userAt is where the user aircraft is (zero: not known yet).
+func (k *core) userAt() airport.LatLon {
+	k.player.mu.Lock()
+	defer k.player.mu.Unlock()
+	return k.player.at
+}
+
 // setUserAt keeps where the user aircraft is.
 func (k *core) setUserAt(p airport.LatLon) {
 	k.player.mu.Lock()

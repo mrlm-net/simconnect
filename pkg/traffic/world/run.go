@@ -888,6 +888,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerPushback(mux, st)
 	registerStations(mux, st)
 	registerPlayer(mux, st)
+	registerCorridor(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

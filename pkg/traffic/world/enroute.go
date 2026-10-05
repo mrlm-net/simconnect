@@ -51,6 +51,10 @@ type enrouteAC struct {
 	route     []traffic.RoutePoint
 	fixes     []airFix // the named fixes of route, for shortcuts (conflicts)
 	handing   bool
+	// corridor: one of the traffic along the user's route (#740), not the
+	// schedule's.
+	corridor   traffic.CorridorKind
+	corridorNM float64 // its distance from the user at the last look
 }
 
 // spawnEnroute creates an enroute arrival or an overflight where its
@@ -200,6 +204,9 @@ func (s *scheduler) handle(msg engine.Message) bool {
 	}
 	cc.addOwn(e.objectID)
 	cc.world.SetOwn(e.objectID, traffic.PhaseEnroute, "")
+	if e.corridor != "" {
+		return true // not the schedule's
+	}
 	s.mgr.Attach(e.f.Callsign, e.objectID)
 	s.mgr.Describe(e.f.Callsign, e.model, "", "")
 	s.mgr.Update(e.f.Callsign, traffic.FlightEnroute, s.cc.clock.Now())
