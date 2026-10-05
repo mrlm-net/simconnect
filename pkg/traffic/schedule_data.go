@@ -1,6 +1,10 @@
 package traffic
 
-import "github.com/mrlm-net/simconnect/pkg/airport"
+import (
+	"slices"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+)
 
 // DefaultScheduleConfig is the built-in schedule data: European airlines
 // with their fleets and bases, the airports they fly to, and a day of
@@ -8,7 +12,7 @@ import "github.com/mrlm-net/simconnect/pkg/airport"
 // SaveScheduleConfig to edit it.
 func DefaultScheduleConfig() ScheduleConfig {
 	return ScheduleConfig{
-		Airlines: defaultAirlines(),
+		Airlines: slices.Clone(airlinesNow.Load()),
 		Airports: defaultScheduleAirports(),
 		Waves: [24]float64{
 			0.05, 0.02, 0.02, 0.02, 0.05, 0.3, // 00–05
@@ -82,7 +86,7 @@ var scheduleAirportNames = map[string]string{
 
 func defaultScheduleAirports() []ScheduleAirport {
 	a := func(icao string, lat, lon float64, size int, rwy float64) ScheduleAirport {
-		return ScheduleAirport{ICAO: icao, Name: scheduleAirportNames[icao], Position: airport.LatLon{Lat: lat, Lon: lon}, Size: size, RunwayM: rwy}
+		return ScheduleAirport{ICAO: icao, Name: airportNamesNow.Load()[icao], Position: airport.LatLon{Lat: lat, Lon: lon}, Size: size, RunwayM: rwy}
 	}
 	return []ScheduleAirport{
 		// Czechia and neighbours

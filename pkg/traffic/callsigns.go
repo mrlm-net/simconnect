@@ -3,7 +3,6 @@ package traffic
 import (
 	_ "embed"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/mrlm-net/simconnect/pkg/nav"
@@ -42,7 +41,7 @@ func initialism(w string) bool {
 	if len(w) > 3 {
 		return false
 	}
-	return initialisms[w] || !strings.ContainsAny(w, "AEIOUY") || len(w) == 1
+	return initialismsNow.Load()[w] || !strings.ContainsAny(w, "AEIOUY") || len(w) == 1
 }
 
 // SaidCallsign is flight call sign cs as said: the airline's telephony
@@ -79,25 +78,12 @@ var telephonyTSV string
 
 type telephonyEntry struct{ tel, name string }
 
-var telephonyTable = sync.OnceValue(func() map[string]telephonyEntry {
-	m := make(map[string]telephonyEntry, 6000)
-	for _, line := range strings.Split(telephonyTSV, "\n") {
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		f := strings.SplitN(strings.TrimRight(line, ""), "	", 3)
-		if len(f) == 3 {
-			m[f[0]] = telephonyEntry{tel: f[1], name: f[2]}
-		}
-	}
-	return m
-})
 
 // Telephony is the radio call sign of the operator with ICAO designator
 // icao ("CEF" → "CZECH AIR FORCE", operator "Czech Air Force"), from the
 // built-in list of about 5500 airlines and air forces.
 func Telephony(icao string) (tel, operator string, ok bool) {
-	e, ok := telephonyTable()[strings.ToUpper(icao)]
+	e, ok := telephonyNow.Load()[strings.ToUpper(icao)]
 	return e.tel, e.name, ok
 }
 
