@@ -77,11 +77,72 @@ func (v Variety) rate(r, def float64) float64 {
 // varied is a controller's t worded with a pleasantry when the frequency
 // is quiet (busy: the frequency had to wait): "…, good day" on a handoff.
 func (r *Radio) varied(t Transmission, busy bool) Transmission {
-	if r.rng == nil || busy || t.Pilot || t.Intent != IntentContact {
+	if r.rng == nil {
+		return t
+	}
+	if t.Pilot {
+		return r.greeted(t, busy)
+	}
+	if busy || t.Intent != IntentContact {
 		return t
 	}
 	if r.rng.Float64() < 0.4 {
-		t.Text += ", good day"
+		t.Text += []string{", good day", ", good day", ", bye"}[r.rng.IntN(3)]
+	}
+	return t
+}
+
+// greetingCalls are a crew's first calls on a frequency: "Ruzyne Radar,
+// good morning, CSA1, …".
+var greetingCalls = map[Intent]bool{
+	IntentCheckIn: true, IntentRequestClearance: true, IntentRequestStartUp: true,
+	IntentRequestPushback: true, IntentVFRForLanding: true,
+}
+
+// greeted is a crew's first call t with a greeting after the station
+// (#721): most crews greet, chatty ones nearly always, fewer on a busy
+// frequency; the words vary, by the time of day (t.At, the traffic's
+// clock) or a plain "hello" / "good day".
+func (r *Radio) greeted(t Transmission, busy bool) Transmission {
+	station := t.Params[ParamStation]
+	if !greetingCalls[t.Intent] || station == "" || !strings.HasPrefix(t.Text, station+", ") {
+		return t
+	}
+	share := 0.6
+	if r.opts.Variety.StyleOf(t.Callsign).Chatty {
+		share = 0.9
+	}
+	if busy {
+		share /= 2
+	}
+	if r.rng.Float64() >= share {
+		return t
+	}
+	daytime := "good evening"
+	switch h := t.At.Hour(); {
+	case h >= 4 && h < 12:
+		daytime = "good morning"
+	case h >= 12 && h < 18:
+		daytime = "good afternoon"
+	}
+	// The words: the time of day most, its short form ("morning"), "good
+	// day", "hello".
+	short := strings.TrimPrefix(daytime, "good ")
+	words := []string{daytime, daytime, daytime, daytime, short, "good day", "good day", "hello"}[r.rng.IntN(8)]
+	// Where: after the station most, before it, or after the call sign.
+	rest := strings.TrimPrefix(t.Text, station+", ")
+	switch n := r.rng.IntN(10); {
+	case n < 6:
+		t.Text = station + ", " + words + ", " + rest
+	case n < 8:
+		t.Text = capital(words) + ", " + station + ", " + rest
+	default:
+		cs, after, more := strings.Cut(rest, ", ")
+		if !more {
+			t.Text = station + ", " + words + ", " + rest
+			break
+		}
+		t.Text = station + ", " + cs + ", " + words + ", " + after
 	}
 	return t
 }
@@ -92,7 +153,7 @@ func (r *Radio) variedReadback(t, rb Transmission, busy bool) Transmission {
 	style := r.opts.Variety.StyleOf(t.Callsign)
 	switch {
 	case t.Intent == IntentContact && style.Chatty && !busy:
-		rb.Text += []string{", good day", ", bye", ", bye bye"}[r.rng.IntN(3)]
+		rb.Text += []string{", good day", ", good day", ", bye", ", bye bye", ", cheers", ", see you"}[r.rng.IntN(6)]
 	case t.Intent == IntentTrafficInfo && r.rng.IntN(2) == 0:
 		rb.Text = strings.Replace(rb.Text, "Looking out", "Looking", 1)
 	}

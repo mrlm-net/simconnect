@@ -84,3 +84,56 @@ func TestWrongDigit(t *testing.T) {
 		}
 	}
 }
+
+// Crews greet on their first call to a station, in varied words and
+// places; a call that is not a first call is not greeted (#721).
+func TestCrewsGreetOnFirstCalls(t *testing.T) {
+	r, said := varietyRadio(&Variety{Seed: 3, SayAgain: -1, ReadbackError: -1})
+	for i := range 60 {
+		cs := fmt.Sprintf("CSA%d", i)
+		r.Transmit("LKPR", CheckIn(PosApproach, "Ruzyne Radar", cs, "flight level 100", ""))
+		r.Transmit("LKPR", RequestTaxi(cs))
+	}
+	words := []string{"good morning", "good afternoon", "good evening", "good day", "hello", "morning", "afternoon", "evening"}
+	forms, greeted := map[string]bool{}, 0
+	for _, s := range *said {
+		var w string
+		for _, x := range words {
+			if strings.Contains(strings.ToLower(s.Text), x) {
+				w = x
+				break
+			}
+		}
+		if s.Intent == IntentRequestTaxi {
+			if w != "" {
+				t.Errorf("not a first call, greeted: %q", s.Text)
+			}
+			continue
+		}
+		if s.Params[ParamStation] != "Ruzyne Radar" || s.Intent != IntentCheckIn || !strings.Contains(s.Text, "flight level 100") {
+			t.Errorf("changed: %+v", s)
+		}
+		if w == "" {
+			continue
+		}
+		greeted++
+		cs := s.Callsign
+		switch {
+		case strings.HasPrefix(s.Text, "Ruzyne Radar, "+cs):
+			forms["after the call sign"] = true
+		case strings.HasPrefix(s.Text, "Ruzyne Radar, "):
+			forms["after the station"] = true
+		default:
+			forms["first"] = true
+		}
+		forms[w] = true
+	}
+	if greeted < 30 || greeted == 60 {
+		t.Errorf("%d of 60 greeted: most crews should, not all", greeted)
+	}
+	for _, f := range []string{"after the call sign", "after the station", "first", "good afternoon", "good day", "hello"} {
+		if !forms[f] {
+			t.Errorf("no greeting %q in 60 calls: %v", f, forms)
+		}
+	}
+}
