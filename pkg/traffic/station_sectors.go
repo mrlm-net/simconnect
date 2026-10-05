@@ -1,6 +1,8 @@
 package traffic
 
 import (
+	"fmt"
+	"hash/fnv"
 	"slices"
 	"strings"
 
@@ -180,6 +182,49 @@ func BandBoxed(stations []Station) []Station {
 		if out[i].Position == PosGround || out[i].Position == PosDelivery {
 			out[i].Controller = tower.Controller
 		}
+	}
+	return out
+}
+
+// DefaultStationsAt are DefaultStations with, where the airport has
+// several frequencies for one unit (LKPR: Ruzyne Radar 118.31 and 119.01,
+// Ruzyne Ground 121.91 and 131.95), the one in use picked for block: one
+// at a time, another in another block (the World's three-hour blocks of
+// traffic time, #772). A unit is its name as said (AIP or scenery); a
+// unit's positions (approach, departure) share its pick.
+func DefaultStationsAt(l *airport.Layout, block uint64) []Station {
+	out := DefaultStations(l)
+	if l == nil {
+		return out
+	}
+	for i, s := range out {
+		var kind string
+		for _, f := range l.Frequencies {
+			if f.String() == s.Freq {
+				kind = f.Kind
+				break
+			}
+		}
+		var group []string
+		for _, f := range l.Frequencies {
+			if f.Kind != kind {
+				continue
+			}
+			name := AIPUnitName(l.ICAO, f.String())
+			if name == "" {
+				name = StationName(f.Name, KindPosition(f.Kind, s.Position))
+			}
+			if name == s.Name && !slices.Contains(group, f.String()) {
+				group = append(group, f.String())
+			}
+		}
+		if len(group) < 2 {
+			continue
+		}
+		h := fnv.New64a()
+		fmt.Fprintf(h, "%s %s %d", l.ICAO, s.Name, block)
+		pick := group[h.Sum64()%uint64(len(group))]
+		out[i].Freq, out[i].Controller = pick, l.ICAO+" "+pick
 	}
 	return out
 }

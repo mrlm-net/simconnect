@@ -72,7 +72,12 @@ func (cc *controlCenter) stations(icao string) []traffic.Station {
 	if cc.localStations != nil {
 		mine = cc.localStations(icao)
 	}
-	st := traffic.StationsWith(icao, traffic.DefaultStations(l), mine)
+	// One of a unit's frequencies in use, by three-hour block (#772).
+	block := uint64(0)
+	if cc.clock != nil {
+		block = uint64(cc.clock.Now().Unix() / (3 * 3600))
+	}
+	st := traffic.StationsWith(icao, traffic.DefaultStationsAt(l, block), mine)
 	if len(mine) == 0 && cc.night() {
 		st = traffic.BandBoxed(st)
 	}
