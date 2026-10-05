@@ -194,7 +194,8 @@ The airport map speaks the radio through [voice-goio](https://github.com/mrlm-ne
 A real frequency is not a script (#721). `RadioOptions.Variety` (or `Radio.SetVariety`; nil is off) varies what is said and when, never what is cleared: every transmission keeps its intent and parameters.
 
 - **Crew style:** each call sign gets a style from the seed: quick, normal or slow to answer (about 0.5–3 s with the breath), chatty or terse.
-- **Pleasantries:** a controller may end a handoff with "good day" when the frequency is quiet, never when it is busy. A chatty crew answers a handoff with "good day" or "bye".
+- **Greetings:** most crews greet on their first call to a station (chatty ones nearly always, fewer on a busy frequency), in words and places picked at random: "Ruzyne Radar, good morning, CSA1, …", "Good afternoon, Ruzyne Radar, CSA1, …", "Ruzyne Radar, CSA1, hello, …" (by the time of day, its short form, "good day", "hello").
+- **Pleasantries:** a controller may end a handoff with "good day" or "bye" when the frequency is quiet, never when it is busy. A chatty crew answers a handoff with "good day", "bye", "bye bye", "cheers" or "see you".
 - **Say again:** about 2 % of clearances. The crew asks "Say again", the controller repeats the clearance (`ParamRepeat`), then the crew reads it back.
 - **Readback errors:** about 1 % of clearances. The crew reads one number back wrong: frequency, heading, level, squawk, speed or altitude, never the runway. The controller corrects it with `CheckReadback` ("negative, …"), and the crew reads it back right.
 
