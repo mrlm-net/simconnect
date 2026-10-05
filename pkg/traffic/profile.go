@@ -119,7 +119,7 @@ func a320Profile() AircraftProfile {
 // GenericProfile for a fallback by size when the span is known.
 func ProfileFor(model string) AircraftProfile {
 	t := strings.ToUpper(model)
-	for _, k := range knownTypes {
+	for _, k := range knownTypesNow.Load() {
 		for _, m := range k.match {
 			if strings.Contains(t, m) {
 				return k.profile()
@@ -131,8 +131,9 @@ func ProfileFor(model string) AircraftProfile {
 
 // KnownTypes lists the ICAO type designators ProfileFor knows.
 func KnownTypes() []string {
-	out := make([]string, 0, len(knownTypes))
-	for _, k := range knownTypes {
+	types := knownTypesNow.Load()
+	out := make([]string, 0, len(types))
+	for _, k := range types {
 		out = append(out, k.Type)
 	}
 	return out

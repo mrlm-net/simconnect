@@ -18,6 +18,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/dict"
 )
 
 // The values a profile resolves. A profile gives some or all of them; the
@@ -269,8 +271,23 @@ func Merge(base, over Profile) Profile {
 //go:embed profiles/*.json
 var shipped embed.FS
 
-// Profiles are the shipped per-model profiles.
+// Profiles are the per-model and type profiles in use: the shipped ones,
+// with a host's merged over them by name (pkg/dict "systems.profiles",
+// #768).
 func Profiles() []Profile {
+	return slices.Clone(profilesNow.Load())
+}
+
+var profilesNow dict.Value[[]Profile]
+
+func init() {
+	dict.Register(dict.Keyed("systems.profiles", "name", "", "", shippedProfiles,
+		func(p Profile) string { return p.Name }, func(items []Profile) { profilesNow.Store(items) }))
+	_ = dict.Reset("systems.profiles")
+}
+
+// shippedProfiles are the embedded profiles.
+func shippedProfiles() []Profile {
 	var out []Profile
 	ents, _ := shipped.ReadDir("profiles")
 	for _, e := range ents {

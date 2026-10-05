@@ -1,10 +1,12 @@
 package airport
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/convert"
+	"github.com/mrlm-net/simconnect/pkg/dict"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -141,7 +143,7 @@ func LimitsFor(l *Layout, p *Procedures) Limits {
 		icao = p.ICAO
 	}
 	icao = strings.ToUpper(strings.TrimSpace(icao))
-	lim := KnownLimits[icao]
+	lim := knownLimitsNow.Load()[icao]
 	lim.ICAO = icao
 	lim.PreferredRunways = slices.Clone(lim.PreferredRunways)
 	lim.DeicingPads = slices.Clone(lim.DeicingPads)
@@ -196,4 +198,29 @@ func initialClimbFt(p *Procedures) float64 {
 		}
 	}
 	return best
+}
+
+// The airports' limits, replaceable at runtime (pkg/dict, #768): items are
+// Limits by ICAO, with the field names as they are (no JSON tags).
+var knownLimitsNow dict.Value[map[string]Limits]
+
+func init() {
+	dict.Register(dict.Keyed("airport.limits", "ICAO", "", "",
+		func() []Limits {
+			var out []Limits
+			for _, k := range slices.Sorted(maps.Keys(KnownLimits)) {
+				l := KnownLimits[k]
+				l.ICAO = k
+				out = append(out, l)
+			}
+			return out
+		}, func(l Limits) string { return strings.ToUpper(l.ICAO) },
+		func(items []Limits) {
+			m := map[string]Limits{}
+			for _, l := range items {
+				m[strings.ToUpper(l.ICAO)] = l
+			}
+			knownLimitsNow.Store(m)
+		}))
+	_ = dict.Reset("airport.limits")
 }

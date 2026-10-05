@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -32,6 +33,15 @@ func (w WakeCategory) String() string { return string(w) }
 // MarshalText makes the category its letter in JSON.
 func (w WakeCategory) MarshalText() ([]byte, error) { return []byte{byte(w)}, nil }
 
+// UnmarshalText reads the letter back (#768).
+func (w *WakeCategory) UnmarshalText(b []byte) error {
+	if len(b) != 1 {
+		return fmt.Errorf("traffic: wake category %q", b)
+	}
+	*w = WakeCategory(b[0])
+	return nil
+}
+
 // RecatCategory is the RECAT-EU wake category, A (super heavy) to F
 // (light).
 type RecatCategory byte
@@ -49,6 +59,15 @@ func (r RecatCategory) String() string { return string(r) }
 
 // MarshalText makes the category its letter in JSON.
 func (r RecatCategory) MarshalText() ([]byte, error) { return []byte{byte(r)}, nil }
+
+// UnmarshalText reads the letter back (#768).
+func (r *RecatCategory) UnmarshalText(b []byte) error {
+	if len(b) != 1 {
+		return fmt.Errorf("traffic: RECAT category %q", b)
+	}
+	*r = RecatCategory(b[0])
+	return nil
+}
 
 // Wake is a type's wake categories.
 type Wake struct {
@@ -91,11 +110,12 @@ var wakeTypes = map[string]Wake{
 // super above); unknown altogether, medium.
 func WakeFor(typ string) Wake {
 	t := strings.ToUpper(strings.TrimSpace(typ))
-	if w, ok := wakeTypes[t]; ok {
+	wake := wakeNow.Load()
+	if w, ok := wake[t]; ok {
 		return w
 	}
 	p := ProfileFor(typ)
-	if w, ok := wakeTypes[p.Type]; ok {
+	if w, ok := wake[p.Type]; ok {
 		return w
 	}
 	switch s := p.WingspanM; {

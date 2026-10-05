@@ -35,10 +35,7 @@ type GAAircraft struct {
 
 // gaTypes are the types each kind of operator flies, by weight; a private
 // owner flies VFRTypes.
-var gaTypes = map[GAKind][]struct {
-	Type   string
-	Weight float64
-}{
+var gaTypes = map[GAKind][]gaType{
 	GASchool: {{"C152", 40}, {"C172", 35}, {"P28A", 15}, {"DA40", 10}},
 	GAClub:   {{"C172", 40}, {"P28A", 30}, {"DA40", 20}, {"SR22", 10}},
 }
@@ -56,7 +53,7 @@ func GAOperatorsAt(icao string) []GAOperator {
 	rng := rand.New(rand.NewPCG(h, 0x6a))
 	seen := map[string]bool{}
 	fleet := func(kind GAKind, n int) []GAAircraft {
-		ts := gaTypes[kind]
+		ts := gaTypesNow.Load()[kind]
 		w := make([]float64, len(ts))
 		for i, t := range ts {
 			w[i] = t.Weight

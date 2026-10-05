@@ -78,5 +78,5 @@ var aipUnitNames = map[string]map[string]string{
 // AIPUnitName is the AIP's call sign of the unit on freq ("134.56") at
 // icao, "" when none is known.
 func AIPUnitName(icao, freq string) string {
-	return aipUnitNames[icao][freq]
+	return aipUnitsNow.Load()[icao][freq]
 }

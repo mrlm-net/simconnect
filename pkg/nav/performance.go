@@ -1,6 +1,12 @@
 package nav
 
-import "strings"
+import (
+	"maps"
+	"slices"
+	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/dict"
+)
 
 // Performance is the planning data of an aircraft type: typical, not a
 // particular airframe's. Speeds are true airspeeds in knots, rates feet per
@@ -53,10 +59,34 @@ var genericPerformance = Performance{CruiseTASKts: 440, ClimbTASKts: 290, Descen
 // ("A20N", "b738"); unknown types get a generic medium jet with Type "".
 func PerformanceFor(icaoType string) Performance {
 	t := strings.ToUpper(strings.TrimSpace(icaoType))
-	p, ok := performances[t]
+	p, ok := performancesNow.Load()[t]
 	if !ok {
 		return genericPerformance
 	}
 	p.Type = t
 	return p
+}
+
+// The performance table, replaceable at runtime (pkg/dict, #768).
+var performancesNow dict.Value[map[string]Performance]
+
+func init() {
+	dict.Register(dict.Keyed("nav.performance", "type", "", "",
+		func() []Performance {
+			var out []Performance
+			for _, t := range slices.Sorted(maps.Keys(performances)) {
+				p := performances[t]
+				p.Type = t
+				out = append(out, p)
+			}
+			return out
+		}, func(p Performance) string { return strings.ToUpper(p.Type) },
+		func(items []Performance) {
+			m := map[string]Performance{}
+			for _, p := range items {
+				m[strings.ToUpper(p.Type)] = p
+			}
+			performancesNow.Store(m)
+		}))
+	_ = dict.Reset("nav.performance")
 }
