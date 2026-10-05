@@ -24,6 +24,9 @@ type Variety struct {
 	// ReadbackError is the share of clearances read back with an error the
 	// controller corrects (default 0.01; below 0 none).
 	ReadbackError float64 `json:"readbackError,omitempty"`
+	// MissedCall is the share of handoffs a crew does not answer: the
+	// controller calls again after a pause (default 0.03; below 0 none).
+	MissedCall float64 `json:"missedCall,omitempty"`
 }
 
 // IntentPilotSayAgain is a crew asking the controller to say a clearance
@@ -263,12 +266,21 @@ func (r *Radio) readBack(airport string, t Transmission, busy bool) {
 	if !sayAgain && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)+v.rate(v.ReadbackError, 0.01) {
 		wrong, heard, wrongOK = wrongReadback(t, rb, r.rng)
 	}
+	missed := !sayAgain && !wrongOK && t.Intent == IntentContact && t.Params[ParamRepeat] == "" && r.rng.Float64() < v.rate(v.MissedCall, 0.03)
+	silence := time.Duration((6 + 4*r.rng.Float64()) * float64(time.Second))
 	if !sayAgain {
 		rb = r.variedReadback(t, rb, busy)
 	}
 	r.mu.Unlock()
 	at := func() time.Time { return r.ClearAt(t.Airport, t.Frequency).Add(pause) }
 	switch {
+	case missed:
+		// No answer: after a silence the controller calls again, and the
+		// crew reads it back then.
+		again := t
+		again.At = r.ClearAt(t.Airport, t.Frequency).Add(silence)
+		again.Params = cloneParams(t.Params, ParamRepeat, "1")
+		r.Transmit(airport, again)
 	case sayAgain:
 		sa := pilotTx(t.Position, t.Callsign, IntentPilotSayAgain, nil, "Say again, "+t.Callsign)
 		sa.Airport, sa.Frequency, sa.At = t.Airport, t.Frequency, at()
