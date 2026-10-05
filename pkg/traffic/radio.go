@@ -1230,6 +1230,9 @@ type Radio struct {
 	kept []Transmission
 	busy map[string]time.Time // by frequency: said until
 	rng  *rand.Rand           // the variety's; nil: off
+	// firstCalls are crews' first calls on a frequency not yet answered:
+	// whether the crew greeted (#721).
+	firstCalls map[string]bool
 }
 
 // NewRadio creates a radio.
@@ -1240,7 +1243,7 @@ func NewRadio(opts RadioOptions) *Radio {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	r := &Radio{opts: opts, busy: map[string]time.Time{}}
+	r := &Radio{opts: opts, busy: map[string]time.Time{}, firstCalls: map[string]bool{}}
 	r.SetVariety(opts.Variety)
 	return r
 }
