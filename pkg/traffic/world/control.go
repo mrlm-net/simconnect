@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math"
 	"math/rand/v2"
@@ -102,6 +103,7 @@ type controlled struct {
 	heightFt     float64
 	vacateSaid   bool
 	approachSaid bool // its approach clearance, given on the base
+	visual       bool // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
@@ -2823,12 +2825,19 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
 		!it.approachSaid && !it.gates.Load() && it.arr.TurningFinal() {
 		qnh, _ := it.cc.qnh()
-		ac := traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}
-		// On vectors: the heading to intercept with the clearance (#661).
-		if h, ok := it.arr.InterceptHeading(); ok {
-			ac.Intercept, ac.Turn = traffic.HeadingSaid(h, it.cc.magVar(it.ICAO)), traffic.TurnTo(ev.arr.Heading, h)
+		// In good visibility some crews ask for a visual approach (#766).
+		if it.wantsVisual() {
+			it.say(traffic.RequestVisual(traffic.PosApproach, it.Tail))
+			it.say(traffic.ClearedVisual(traffic.PosApproach, it.Tail, it.view.Runway))
+			it.visual = true
+		} else {
+			ac := traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}
+			// On vectors: the heading to intercept with the clearance (#661).
+			if h, ok := it.arr.InterceptHeading(); ok {
+				ac.Intercept, ac.Turn = traffic.HeadingSaid(h, it.cc.magVar(it.ICAO)), traffic.TurnTo(ev.arr.Heading, h)
+			}
+			it.say(traffic.ClearedApproachTo(it.Tail, ac))
 		}
-		it.say(traffic.ClearedApproachTo(it.Tail, ac))
 		it.approachSaid = true
 	}
 	station, freq := it.station(pos)
@@ -2861,7 +2870,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			qnh, _ := it.cc.qnh()
 			it.say(traffic.ClearedApproachTo(it.Tail, traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}))
 		}
-		it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
+		if !it.visual {
+			it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
+		}
 		it.approachSaid = false // a go-around is cleared again
 	}
 	// Gone around: tower says "go around" and hears "going around" first,
@@ -2958,7 +2969,7 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 			return fmt.Sprintf("going around, climbing %.0f feet", math.Round(fx[0].AltMin*3.28084/100)*100)
 		}
 	case it.arr != nil && pos == traffic.PosTower:
-		if kind := it.approachKind(); kind != "" {
+		if kind := it.approachKind(); kind != "" && !it.visual {
 			return "established " + kind + " runway " + rwy
 		}
 		return "final runway " + rwy // Doc 4444 7.3: position
@@ -3136,4 +3147,20 @@ func powerOut(st airport.Parking, spanM float64) bool {
 		return true
 	}
 	return false
+}
+
+// wantsVisual: this arrival's crew asks for a visual approach (#766):
+// about one crew in five (by its call sign), in visibility of 8 km or
+// more under no ceiling below 3000 ft, not in cloud (Doc 4444 6.5.3.3).
+func (it *controlled) wantsVisual() bool {
+	if it.circuit != nil || it.cc.weather == nil {
+		return false
+	}
+	w := it.cc.weather()
+	if w == nil || w.VisibilityM < 8000 || w.CeilingFt > 0 && w.CeilingFt < 3000 || w.InCloud {
+		return false
+	}
+	h := fnv.New32a()
+	h.Write([]byte(it.Tail))
+	return h.Sum32()%5 == 0
 }

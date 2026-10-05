@@ -415,3 +415,17 @@ func TestDescendVia(t *testing.T) {
 		t.Errorf("cross %q", c.Text)
 	}
 }
+
+// A crew asks for a visual approach and is cleared, read back (#766).
+func TestVisualApproach(t *testing.T) {
+	if r := RequestVisual(PosApproach, "CSA1"); r.Text != "CSA1, request visual approach" || !r.Pilot {
+		t.Errorf("request %+v", r)
+	}
+	c := ClearedVisual(PosApproach, "CSA1", "24")
+	if c.Text != "CSA1, cleared visual approach runway 24" {
+		t.Errorf("clearance %q", c.Text)
+	}
+	if rb, ok := Readback(c); !ok || rb.Text != "Cleared visual approach runway 24, CSA1" {
+		t.Errorf("readback %q", rb.Text)
+	}
+}

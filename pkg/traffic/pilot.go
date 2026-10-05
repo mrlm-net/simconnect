@@ -406,6 +406,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentDescendVia:
 		s = capital(descendVia(p))
+	case IntentVisual:
+		s = "Cleared visual approach runway " + p[ParamRunway]
 	case IntentCrossLevel:
 		s = "Cross " + p[ParamFix] + " at or " + p[ParamClimb] + " " + p[ParamLevel]
 	case IntentHeading:
@@ -454,6 +456,7 @@ var readbackKeys = map[Intent][]string{
 	IntentSpeed:              {ParamSpeed},
 	IntentLevel:              {ParamLevel},
 	IntentDescendVia:         {ParamLevel},
+	IntentVisual:             {ParamRunway},
 	IntentHeading:            {ParamHeading},
 	IntentContact:            {ParamFreq},
 }
@@ -549,3 +552,22 @@ const (
 	IntentVehicleProceed Intent = "vehicle_proceed"
 	ParamVia                    = "via" // taxiways as said: "A, B"
 )
+
+// Visual approach (#766).
+const (
+	IntentRequestVisual Intent = "request_visual"
+	IntentVisual        Intent = "visual_approach"
+)
+
+// RequestVisual is a crew asking for a visual approach: ICAO "CSA1,
+// request visual approach" (Doc 4444 12.3.3.1 n). FAA crews report the
+// airport in sight instead (JO 7110.65 7-4-3); not worded here.
+func RequestVisual(pos Position, cs string) Transmission {
+	return pilotTx(pos, cs, IntentRequestVisual, nil, cs+", request visual approach")
+}
+
+// ClearedVisual clears a visual approach: "CSA1, cleared visual approach
+// runway 24" (Doc 4444 12.3.3.1 o; JO 7110.65 7-4-3).
+func ClearedVisual(pos Position, cs, runway string) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentVisual, Params: map[string]string{ParamRunway: runway}})
+}
