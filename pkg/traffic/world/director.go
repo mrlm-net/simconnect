@@ -47,9 +47,20 @@ func (w *World) runDirector(ctx context.Context, l link) error {
 	stopWorld := st.startWorld(cc)
 	defer stopWorld()
 	feed := localFeed{st: st, cc: cc}
+	// The actuator's tugs and fuel trucks, by aircraft target.
+	var vmu sync.Mutex
+	vehicles := map[string][]VehicleView{}
+	cc.remoteVehicles = func(target string) []VehicleView {
+		vmu.Lock()
+		defer vmu.Unlock()
+		return append([]VehicleView(nil), vehicles[target]...)
+	}
 	go func() {
 		if err := cc.requestModels(); err != nil {
 			cc.log.printf("director: model list: %v", err)
+		}
+		if err := cc.requestFuelTitles(); err != nil {
+			cc.log.printf("director: fuel truck list: %v", err)
 		}
 	}()
 	tick := time.NewTicker(time.Second)
@@ -69,10 +80,23 @@ func (w *World) runDirector(ctx context.Context, l link) error {
 				}
 			}()
 		case m := <-feedCh:
-			if m.Method == "models" {
+			switch m.Method {
+			case "models", "groundTitles":
 				var titles []string
 				if len(m.Args) > 0 && json.Unmarshal(m.Args[0], &titles) == nil {
-					cc.addModelTitles(titles)
+					if m.Method == "models" {
+						cc.addModelTitles(titles)
+					} else {
+						cc.addGroundTitles(titles)
+					}
+				}
+				continue
+			case "vehicles":
+				var v map[string][]VehicleView
+				if len(m.Args) > 0 && json.Unmarshal(m.Args[0], &v) == nil {
+					vmu.Lock()
+					vehicles = v
+					vmu.Unlock()
 				}
 				continue
 			}
@@ -122,6 +146,23 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		}}
 	srv.add("sim", a)
 	cc.onModels = func(titles []string) { out.put("models", titles) }
+	cc.onGroundTitles = func(titles []string) { out.put("groundTitles", titles) }
+	// The departures' tugs and fuel trucks for the director's map, each
+	// second while there are any.
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if v := a.vehicleViews(); len(v) > 0 {
+					out.put("vehicles", v)
+				}
+			}
+		}
+	}()
 	go func() {
 		for {
 			m, err := l.Recv()
