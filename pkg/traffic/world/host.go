@@ -211,6 +211,26 @@ type playerState struct {
 	mu sync.Mutex
 	c  *PlayerClearance
 	at airport.LatLon
+	// localSec: the sim's local time at the user aircraft, seconds of the
+	// day (0 unknown).
+	localSec float64
+}
+
+// setLocalSec keeps the sim's local time of day.
+func (k *core) setLocalSec(s float64) {
+	k.player.mu.Lock()
+	k.player.localSec = s
+	k.player.mu.Unlock()
+}
+
+// localHour is the sim's local hour at the user aircraft; false unknown.
+func (k *core) localHour() (int, bool) {
+	k.player.mu.Lock()
+	defer k.player.mu.Unlock()
+	if k.player.localSec <= 0 {
+		return 0, false
+	}
+	return int(k.player.localSec/3600) % 24, true
 }
 
 // userAt is where the user aircraft is (zero: not known yet).

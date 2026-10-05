@@ -101,3 +101,18 @@ func TestPushbackAPI(t *testing.T) {
 		t.Error("not cleared")
 	}
 }
+
+// The night: 22:00 to 06:00 sim local time (#722).
+func TestNight(t *testing.T) {
+	w := New(Options{DataDir: t.TempDir()})
+	cc := &controlCenter{core: w.st.core}
+	for _, c := range []struct {
+		sec   float64
+		night bool
+	}{{0, false}, {23 * 3600, true}, {3 * 3600, true}, {12 * 3600, false}, {6 * 3600, false}} {
+		w.st.core.setLocalSec(c.sec)
+		if got := cc.night(); got != c.night {
+			t.Errorf("%v s: night %v", c.sec, got)
+		}
+	}
+}

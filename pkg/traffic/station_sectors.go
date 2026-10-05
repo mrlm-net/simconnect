@@ -166,3 +166,20 @@ func ControllerOn(stations []Station, freq string) string {
 	}
 	return ""
 }
+
+// BandBoxed are stations with ground and delivery worked by the tower's
+// controller (#722): at night one person works them all, the same voice on
+// each frequency; the frequencies and names stay.
+func BandBoxed(stations []Station) []Station {
+	tower, ok := PickStation(stations, PosTower, Where{})
+	if !ok {
+		return stations
+	}
+	out := append([]Station(nil), stations...)
+	for i := range out {
+		if out[i].Position == PosGround || out[i].Position == PosDelivery {
+			out[i].Controller = tower.Controller
+		}
+	}
+	return out
+}
