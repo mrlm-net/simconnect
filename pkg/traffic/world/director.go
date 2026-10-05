@@ -131,6 +131,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		tug: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug {
 			t := traffic.NewSimObjectTug(client, cc.inj, w.Tug, w.ReqBase+controlIDBlock-1, prof)
 			t.Layout = g.Layout // from its depot on the vehicle roads, and back
+			cc.giveATC(t, g.Layout, "tug")
 			if w.TugYaw != 0 {
 				t.YawDeg = w.TugYaw
 			}
@@ -142,6 +143,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		fuel: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService {
 			f := traffic.NewSimObjectFuelTruck(client, cc.inj, w.Fuel, w.ReqBase+controlIDBlock-2, prof)
 			f.Layout = g.Layout
+			cc.giveATC(f, g.Layout, "fuel truck")
 			return f
 		}}
 	srv.add("sim", a)

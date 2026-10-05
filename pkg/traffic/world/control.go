@@ -334,6 +334,9 @@ type controlCenter struct {
 	pads func(l *airport.Layout) []airport.DeicingPad
 	// localStations are an airport's own ATC stations (#722).
 	localStations func(icao string) []traffic.Station
+	// vehATC: the service vehicles' calls and clearances (#752).
+	vehATC  *vehicleATC
+	vehOnce sync.Once
 	// weather is the latest at the user aircraft (automatic de-icing, #323).
 	weather func() *nav.Weather
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
@@ -2524,6 +2527,7 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
 	if g, err := cc.graph(r.ICAO); err == nil {
 		t.Layout = g.Layout // from its depot on the vehicle roads, and back
+		cc.giveATC(t, g.Layout, "tug")
 	}
 	if r.TugYaw != nil {
 		t.YawDeg = *r.TugYaw

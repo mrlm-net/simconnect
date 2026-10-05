@@ -541,3 +541,11 @@ func Acknowledge(pos Position, cs string) Transmission {
 // IntentStandby: the controller has the crew wait for an answer
 // ("CSA1, standby"), #739.
 const IntentStandby Intent = "standby"
+
+// Service vehicles on the radio (#752): a vehicle's request to proceed
+// via taxiways or cross a runway, and ground's "proceed via".
+const (
+	IntentVehicleRequest Intent = "vehicle_request"
+	IntentVehicleProceed Intent = "vehicle_proceed"
+	ParamVia                    = "via" // taxiways as said: "A, B"
+)

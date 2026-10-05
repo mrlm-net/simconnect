@@ -218,3 +218,7 @@ Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):
 | Speed | capped at about 6–9 kt, abrupt | planned: eased acceleration, slowing into turns, exact stop |
 
 Events such as `FREEZE_*_SET` and `*_LIGHTS_SET` reach AI objects only with `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` = `0x10`. Earlier SDK versions had the wrong value (#310).
+
+## Service vehicles under ATC
+
+Tugs and fuel trucks drive the manoeuvring area as any other traffic on a controlled airport (#752). The vehicle roads and the aprons need no clearance. Driving along taxiways (a stretch of 30 m or more; nearby ones together), a vehicle holds 5 m short and calls ground: "Ruzyne Ground, Tug 3, request proceed via H1, H". It goes once told "Tug 3, proceed via H1, H" and has read it back. A road only crossing a taxiway needs no call; the vehicle gives way there. Before a runway it holds 40 m outside the edge and calls the tower ("request cross runway 24"). It waits in the tower's crossing queue as an aircraft does and crosses after "Tug 3, cross runway 24". Off the runway it reports "Tug 3, runway vacated". The library side is `traffic.VehicleATC` (`SetATC` on a tug or fuel truck); the World answers as ground and tower. Vehicles are called "Tug n" and "Fuel n".

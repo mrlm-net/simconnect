@@ -268,6 +268,11 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
+	// Service vehicles holding short to cross (#752): in the queue as any
+	// crossing.
+	for _, k := range t.cc.vehicles().runwaysWaiting() {
+		users[key{k[0], k[1]}] = append(users[key{k[0], k[1]}], t.cc.vehicles().crossingUsers(k[0], k[1])...)
+	}
 	// A gap for a change of the runway in use (the selector's Ready moment):
 	// no more arrivals within runwayChangeGapNM than finish on the old
 	// runway (runwayChangeKeepArrivals); take-offs under way finish there.
@@ -309,6 +314,7 @@ func (t *towers) tick(now time.Time) {
 		t.crewDecides(k.icao, list, ours)
 		t.crewRejects(ours)
 		t.apply(k.icao, k.rwy, c, ours)
+		t.cc.vehicles().crossCleared(k.icao, c.Cross)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival
 		t.mu.Unlock()

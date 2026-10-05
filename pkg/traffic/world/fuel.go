@@ -111,5 +111,6 @@ func (cc *controlCenter) fuelTruck(r SpawnRequest, g *airport.Graph, reqBase uin
 	}
 	f := traffic.NewSimObjectFuelTruck(cc.client, cc.inj, title, reqBase+controlIDBlock-2, prof)
 	f.Layout = g.Layout
+	cc.giveATC(f, g.Layout, "fuel truck")
 	return f
 }

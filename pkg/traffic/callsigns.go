@@ -54,6 +54,9 @@ func initialism(w string) bool {
 // phonetic alphabet, digits as digits ("OKVQY" → "Oscar Kilo Victor Quebec
 // Yankee", "N123AB" → "November 1 2 3 Alpha Bravo").
 func (c ScheduleConfig) SaidCallsign(cs string) string {
+	if strings.Contains(cs, " ") {
+		return cs // as said already: "Tug 3" (#752)
+	}
 	if len(cs) < 4 || cs[3] < '0' || cs[3] > '9' || strings.ContainsAny(cs[:3], "0123456789") {
 		return SaidRegistration(cs)
 	}
