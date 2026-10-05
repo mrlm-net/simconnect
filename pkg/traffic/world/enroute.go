@@ -123,7 +123,13 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		// and speed differ from the schedule's, RYR1850 appeared 230 NM out).
 		in, ok := overflightEntry(fp, cc)
 		if !ok {
-			return fmt.Errorf("%w: its plan %s → %s never enters the area", traffic.ErrSpawnImpossible, f.Origin, f.Destination)
+			// Its airways pass the area by, though the flight was picked for
+			// crossing it: across on the great circle instead (#783).
+			gc := greatCircleCrossing(fp, cc, kts)
+			if len(gc) < 2 {
+				return fmt.Errorf("%w: its plan %s → %s never enters the area", traffic.ErrSpawnImpossible, f.Origin, f.Destination)
+			}
+			return s.spawnEnrouteOn(f, e, model, gc, "great circle")
 		}
 		dist = in
 		if !f.Enter.IsZero() {
@@ -154,6 +160,15 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			e.fixes = append(e.fixes, airFix{Ident: w.Ident, LatLon: w.Position})
 		}
 	}
+	return s.spawnEnrouteOn(f, e, model, route, fp.Route)
+}
+
+// spawnEnrouteOn creates e flying route (its first point where it appears).
+func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model string, route []traffic.RoutePoint, along string) error {
+	cc := s.cc
+	if who := s.nearPoint(route[0].Position, route[0].AltFt); who != "" {
+		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
+	}
 	spawn, wps, err := traffic.EnrouteStart(route)
 	if err != nil {
 		return err
@@ -174,8 +189,8 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		s.mu.Unlock()
 		return err
 	}
-	s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d, %.0f NM along %s, %d waypoints", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type,
-		int(math.Round(altFt/100)), dist, fp.Route, len(wps))
+	s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d along %s, %d waypoints", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type,
+		int(math.Round(route[0].AltFt/100)), along, len(wps))
 	return nil
 }
 
@@ -317,4 +332,44 @@ func (s *scheduler) handEnroute(e *enrouteAC) {
 	s.mu.Unlock()
 	s.cc.dropOwn(e.objectID)
 	s.cc.world.ForgetOwn(e.objectID)
+}
+
+// greatCircleCrossing is an overflight's way across the area on the great
+// circle from its origin to its destination at its cruise level: from where
+// it enters overflightRadiusNM of the picture's centre to 60 NM past where
+// it leaves (#783); nil when it does not cross.
+func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []traffic.RoutePoint {
+	c, ok := cc.world.Centre()
+	if !ok || len(fp.Waypoints) < 2 {
+		return nil
+	}
+	from, to := fp.Waypoints[0].Position, fp.Waypoints[len(fp.Waypoints)-1].Position
+	alt := float64(fp.CruiseFL) * 100
+	if alt <= 0 {
+		alt = 35000
+	}
+	var out []traffic.RoutePoint
+	inside, past := false, 0.0
+	p := from
+	for n := 0; n < 4000; n++ {
+		d := calc.HaversineNM(p.Lat, p.Lon, to.Lat, to.Lon)
+		if d < 5 {
+			break
+		}
+		in := calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= overflightRadiusNM
+		if in || inside {
+			if !inside || n%4 == 0 { // its entry, then every 20 NM
+				out = append(out, traffic.RoutePoint{Position: p, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)})
+			}
+			inside = true
+			if !in {
+				if past += 5; past > 60 {
+					break
+				}
+			}
+		}
+		lat, lon := calc.DisplaceByHeading(p.Lat, p.Lon, calc.BearingDegrees(p.Lat, p.Lon, to.Lat, to.Lon), 5*1852)
+		p = airport.LatLon{Lat: lat, Lon: lon}
+	}
+	return out
 }
