@@ -37,6 +37,29 @@ func TestHostAPI(t *testing.T) {
 	if _, ok := w.st.core.playerLanding(); !ok {
 		t.Error("player not landing")
 	}
+	// The tower asks by runway name: the host gives an end (#739).
+	if _, ok := w.st.core.playerOn("LKPR", "06/24"); !ok {
+		t.Error("player not on 06/24")
+	}
+	if _, ok := w.st.core.playerOn("LKPR", "12/30"); ok {
+		t.Error("player on 12/30")
+	}
+	// Pushing back: ours near it wait; far off, not; taxiing, not.
+	w.st.core.setUserAt(airport.LatLon{Lat: 50.1, Lon: 14.26})
+	w.ClearPlayer(PlayerClearance{ICAO: "LKPR", Runway: "24", Phase: PlayerPushback})
+	if !w.st.core.playerPushingNear("LKPR", airport.LatLon{Lat: 50.1005, Lon: 14.26}, playerPushClearM) {
+		t.Error("55 m from the pushing player: not held")
+	}
+	if w.st.core.playerPushingNear("LKPR", airport.LatLon{Lat: 50.11, Lon: 14.26}, playerPushClearM) {
+		t.Error("1.1 km from the pushing player: held")
+	}
+	if _, ok := w.st.core.playerOn("LKPR", "24"); ok {
+		t.Error("pushing back: on the runway")
+	}
+	w.ClearPlayer(PlayerClearance{ICAO: "LKPR", Runway: "24", Phase: PlayerTaxi})
+	if w.st.core.playerPushingNear("LKPR", airport.LatLon{Lat: 50.1005, Lon: 14.26}, playerPushClearM) {
+		t.Error("taxiing: still held")
+	}
 	w.ClearPlayer(PlayerClearance{ICAO: "LKPR", Runway: "24", Phase: PlayerVacated})
 	if _, ok := w.st.core.playerOn("LKPR", "24"); ok {
 		t.Error("vacated: still on 24")

@@ -376,3 +376,27 @@ func TestDepartureSpeeds(t *testing.T) {
 		t.Errorf("the faster at the holding point 30 s later: %+v", c)
 	}
 }
+
+// The host's aircraft at the holding point takes its place, first come:
+// ours behind it wait as the next numbers; it is never cleared (#739).
+func TestHostInTheDepartureQueue(t *testing.T) {
+	rc := NewRunwayController(RunwayControllerOptions{})
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	host := RunwayUser{Callsign: "PLAYER", Wake: WakeFor("A320"), Phase: RunwayHoldingShort, Host: true}
+	ours := RunwayUser{Callsign: "CSA1", Wake: WakeFor("A320"), Phase: RunwayHoldingShort}
+	rc.Decide(now, []RunwayUser{host})
+	c := rc.Decide(now.Add(10*time.Second), []RunwayUser{host, ours})
+	if len(c.LineUp) != 0 || len(c.Takeoff) != 0 {
+		t.Fatalf("cleared with the host ahead: %+v", c)
+	}
+	if c.Waiting["CSA1"] != "number 2 for departure" {
+		t.Errorf("CSA1 waits %q", c.Waiting["CSA1"])
+	}
+	// Ours first: it goes, the host is number 2.
+	rc = NewRunwayController(RunwayControllerOptions{})
+	rc.Decide(now, []RunwayUser{ours})
+	c = rc.Decide(now.Add(10*time.Second), []RunwayUser{ours, host})
+	if !slices.Contains(c.Takeoff, "CSA1") || slices.Contains(c.Takeoff, "PLAYER") || slices.Contains(c.LineUp, "PLAYER") {
+		t.Errorf("ours first: %+v", c)
+	}
+}

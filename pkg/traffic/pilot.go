@@ -534,3 +534,7 @@ func RejectingTakeoff(cs string) Transmission {
 func Acknowledge(pos Position, cs string) Transmission {
 	return Transmission{Position: pos, Callsign: cs, Intent: IntentAcknowledge, Text: cs + ", roger"}
 }
+
+// IntentStandby: the controller has the crew wait for an answer
+// ("CSA1, standby"), #739.
+const IntentStandby Intent = "standby"
