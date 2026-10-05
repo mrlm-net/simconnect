@@ -63,6 +63,16 @@ A host can time traffic around its own flight (#737, #738): an arrival a few min
 - An arrival added later than `ArrivalLead` minus `ArrivalLate` before its STA (15 min with the defaults) is refused with 422, not cancelled later. `GET /api/flights` lists the manager's flights with their status.
 - `Options.Schedule` (`ScheduleTiming`, #741) sets the horizon, the leads and the late limits; zero values keep the defaults (2 h; 10, 25 and 8 min; 15 and 10 min).
 
+## Traffic along the user's route
+
+In cruise, the World can keep a few airliners around the host's flight (#740). `SetCorridor(CorridorSettings{...})` (`POST /api/corridor`) takes the user's route ahead (two or more points, in its direction), its cruise level and speed, and how many of each kind (default one):
+
+- **same:** ahead on the route, 25 to 45 NM, going the same way 2000 ft above or below.
+- **opposite:** 70 to 100 NM ahead, coming the other way 1000 ft above or below.
+- **crossing:** across the route 45 to 70 NM ahead, at 60 to 120 degrees, 1000 or 2000 ft above or below.
+
+They are airlines of the schedule, with a jet that cruises at that level, created airborne and flown by MSFS AI (`traffic.CorridorRoute`, the en-route machinery). Each is kept at least 15 s from the last; none appears on top of other traffic. One more than `DespawnNM` (default 80) from the user aircraft and moving away is taken out and replaced. `GET /api/corridor` shows the settings and the aircraft; `"enabled": false` takes them all out. The user aircraft's position comes from the World's feed.
+
 ## Beside the host's own ATC
 
 The World never controls nor calls the user aircraft. A host whose own ATC works the player tells the World what it does:

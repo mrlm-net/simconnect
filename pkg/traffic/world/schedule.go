@@ -46,8 +46,12 @@ type scheduler struct {
 	// Enroute aircraft (#369): by call sign once created, by request ID
 	// while the simulator creates them.
 	enroute map[string]*enrouteAC
-	pending map[uint32]*enrouteAC
-	nextReq uint32
+	// corridor: the traffic along the user's route (#740), looked after
+	// at corridorAt.
+	corridor   *CorridorSettings
+	corridorAt time.Time
+	pending    map[uint32]*enrouteAC
+	nextReq    uint32
 }
 
 // ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
@@ -464,10 +468,12 @@ func (s *scheduler) tick(now time.Time) {
 	// runway (#458; LKPR, live: the first flights took 24, then 06).
 	if s.cc.weather != nil && s.cc.weather() == nil && time.Since(s.created) < weatherWait {
 		s.handovers(now)
+		s.corridorTick(now)
 		return
 	}
 	s.mgr.Tick(now)
 	s.handovers(now)
+	s.corridorTick(now)
 }
 
 type scheduleView struct {
