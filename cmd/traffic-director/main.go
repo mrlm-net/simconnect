@@ -9,6 +9,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,6 +32,8 @@ func main() {
 	airways := flag.String("airways", "", "airway graph for flight plans; \"\": direct routes")
 	logDir := flag.String("log-dir", ".", "directory for the traffic log")
 	dataDir := flag.String("data-dir", ".", "directory for local settings")
+	apiToken := flag.String("api-token", "", "token a client needs to control the traffic over the HTTP API (\"auto\": a random one; \"\": open, trusted networks only)")
+	viewToken := flag.String("view-token", "", "token a client needs to read the HTTP API (\"auto\": a random one)")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -61,7 +65,23 @@ func main() {
 		mux.Handle("GET /", http.FileServer(http.Dir(*web)))
 	}
 	w.Register(mux)
-	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// The HTTP API behind tokens on a public server (#781): a bearer token
+	// (Authorization: Bearer …) or ?token=… once; this computer always in.
+	for _, t := range []*string{apiToken, viewToken} {
+		if *t == "auto" {
+			b := make([]byte, 16)
+			rand.Read(b)
+			*t = hex.EncodeToString(b)
+		}
+	}
+	if *apiToken != "" {
+		fmt.Printf("API control token: %s\n", *apiToken)
+	}
+	if *viewToken != "" {
+		fmt.Printf("API view token: %s\n", *viewToken)
+	}
+	world.SetTokens(*apiToken, *viewToken)
+	srv := &http.Server{Addr: *addr, Handler: world.Guard(mux), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shut, done := context.WithTimeout(context.Background(), 2*time.Second)
