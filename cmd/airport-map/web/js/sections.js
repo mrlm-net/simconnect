@@ -918,9 +918,23 @@ let radioCache = [];
 const rdKinds = { atis: 'ATIS', clearance: 'Delivery', ground: 'Ground', tower: 'Tower', approach: 'Approach', departure: 'Departure', center: 'Centre', ctaf: 'CTAF' };
 // Frequencies as the radio stamps them: 121.910 → "121.91".
 const rdMHz = (mhz) => { let s = mhz.toFixed(3); if (s.endsWith('0')) s = s.slice(0, -1); return s; };
-// The frequencies: the airport's, then any heard that it does not list.
+// The stations as worked (#722): several per position, one controller
+// on several frequencies at night.
+let stationsCache = [];
+const stPos = { delivery: 'Delivery', ground: 'Ground', tower: 'Tower', approach: 'Approach', departure: 'Departure', center: 'Centre' };
+// The frequencies: the stations, the airport's others (ATIS), then any
+// heard that it does not list.
 function radioFreqs() {
   const out = [], seen = new Set();
+  for (const s of stationsCache) {
+    if (!s.freq || seen.has(s.freq)) continue;
+    seen.add(s.freq);
+    const many = stationsCache.filter((o) => o.position === s.position && o.freq !== s.freq).length > 0;
+    const label = many ? s.name : (stPos[s.position] || s.position);
+    // One controller on other frequencies too: worked together.
+    const with_ = [...new Set(stationsCache.filter((o) => s.controller && o.controller === s.controller && o.freq !== s.freq).map((o) => stPos[o.position] || o.position))];
+    out.push({ mhz: s.freq, label, with: with_ });
+  }
   for (const f of (data && data.frequencies) || []) {
     const mhz = rdMHz(f.mhz);
     if (seen.has(mhz)) continue;
@@ -936,6 +950,8 @@ async function pollRadio() {
   const r = await api(`/api/radio?icao=${encodeURIComponent(data.icao)}&n=200`);
   if (!r.ok) return false;
   radioCache = r.data || [];
+  const st = await api(`/api/stations?icao=${encodeURIComponent(data.icao)}`);
+  if (st.ok) stationsCache = (st.data && st.data.stations) || [];
   renderRadio();
   if (selectedView()) renderCtx();
 }
@@ -958,7 +974,7 @@ function renderRadio() {
   for (const v of ctlViews) if (!v.done && v.frequency) count[v.frequency] = (count[v.frequency] || 0) + 1;
   const com1 = voice && voice.com1;
   if (!interacting($('rdFreqs'))) setHTML($('rdFreqs'), freqs.map((f) => `<button type="button" role="radio" class="freq${com1 && com1 === f.mhz ? ' is-com1' : ''}" aria-checked="${f.mhz === rdFreq}" data-f="${esc(f.mhz)}" title="${count[f.mhz] || 0} aircraft on ${esc(f.mhz)}">
-    <span class="freq__pos">${esc(f.label)}</span><span class="freq__mhz">${esc(f.mhz)}</span><span class="freq__n">${icon('i-jet', '')}${count[f.mhz] || 0}</span></button>`).join('') || '<p class="muted small">No frequencies known for this airport.</p>');
+    <span class="freq__pos">${esc(f.label)}</span><span class="freq__mhz">${esc(f.mhz)}</span><span class="freq__n">${icon('i-jet', '')}${count[f.mhz] || 0}</span>${f.with && f.with.length ? `<span class="freq__with" title="One controller works ${esc(f.label)} with ${esc(f.with.join(', '))}">with ${esc(f.with.join(', '))}</span>` : ''}</button>`).join('') || '<p class="muted small">No frequencies known for this airport.</p>');
   const log = $('rdLog');
   // Newest first: the latest call on top.
   const shown = radioCache.filter((t) => t.frequency === rdFreq).reverse();

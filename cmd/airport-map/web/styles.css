@@ -1222,3 +1222,6 @@ body.spectator [data-game-start], body.spectator .facing { display: none !import
 .m-wac--takeoff, .m-wac--landing { fill: var(--danger); }
 .m-wac--climbing { fill: var(--ac-dep); }
 .m-wac--descending, .m-wac--approach { fill: var(--route-taxi); }
+
+/* A frequency worked together with others (#722). */
+.freq__with { font-size: var(--fs-xs); color: var(--text-3); }
