@@ -40,7 +40,10 @@ type scheduler struct {
 	noIFR, noVFR bool
 	// noGen: no generated flights, only those added (POST /api/flights,
 	// #738).
-	noGen    bool
+	noGen bool
+	// offset: the airline timetable of this much later (or earlier) is
+	// flown now (#738): a morning wave in the evening.
+	offset   time.Duration
 	airlines map[string]traffic.Airline
 	focus    []string // the managed airports (the overflights avoid them)
 	// Enroute aircraft (#369): by call sign once created, by request ID
@@ -115,7 +118,7 @@ func (s *scheduler) airports() []string {
 
 func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight {
 	s.mu.Lock()
-	density, seed, noIFR, noVFR, noGen := s.density, s.seed, s.noIFR, s.noVFR, s.noGen
+	density, seed, noIFR, noVFR, noGen, off := s.density, s.seed, s.noIFR, s.noVFR, s.noGen, s.offset
 	s.mu.Unlock()
 	if noGen {
 		return nil
@@ -131,11 +134,16 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 	}
 	var flights []traffic.Flight
 	if !noIFR {
-		flights = traffic.Schedule(s.cfg, opts, from, to)
+		// The timetable of from+offset, flown now (#738).
+		ifr := traffic.Schedule(s.cfg, opts, from.Add(off), to.Add(off))
 		// Business jets and turboprops at the large airports, IFR between
 		// airports (#619).
-		flights = append(flights, traffic.BusinessFlights(s.cfg, traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
-			Seed: opts.Seed ^ 0xb1}, from, to)...)
+		ifr = append(ifr, traffic.BusinessFlights(s.cfg, traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
+			Seed: opts.Seed ^ 0xb1}, from.Add(off), to.Add(off))...)
+		for i := range ifr {
+			ifr[i].STD, ifr[i].STA = ifr[i].STD.Add(-off), ifr[i].STA.Add(-off)
+		}
+		flights = ifr
 	}
 	// Light aircraft through the circuit, by day in visual conditions (#568).
 	// Their lead is the manager's default VFRLead: Source runs under the
@@ -487,7 +495,10 @@ type scheduleView struct {
 	IFR bool `json:"ifr"`
 	VFR bool `json:"vfr"`
 	// Generator: the generated timetable runs; false only flights added.
-	Generator bool                    `json:"generator"`
+	Generator bool `json:"generator"`
+	// OffsetMin: the airline timetable this many minutes later is flown
+	// now (#738).
+	OffsetMin float64                 `json:"offsetMin,omitempty"`
 	Seed      uint64                  `json:"seed"`
 	Active    int                     `json:"active"`
 	Flights   []traffic.ManagedFlight `json:"flights"`
@@ -511,9 +522,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			return
 		}
 		s.mu.Lock()
-		density, seed, ifr, vfr, gen := s.density, s.seed, !s.noIFR, !s.noVFR, !s.noGen
+		density, seed, ifr, vfr, gen, off := s.density, s.seed, !s.noIFR, !s.noVFR, !s.noGen, s.offset.Minutes()
 		s.mu.Unlock() // never held while calling the manager (its Source takes it)
-		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr, Generator: gen,
+		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr, Generator: gen, OffsetMin: off,
 			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
@@ -533,6 +544,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			IFR         *bool    `json:"ifr"`       // airline flights and overflights
 			VFR         *bool    `json:"vfr"`       // light aircraft through the circuit
 			Generator   *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
+			OffsetMin   *float64 `json:"offsetMin"` // the airline timetable this many minutes later flown now (#738)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -553,6 +565,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		if req.Generator != nil {
 			s.noGen = !*req.Generator
+		}
+		if req.OffsetMin != nil {
+			s.offset = time.Duration(*req.OffsetMin * float64(time.Minute))
 		}
 		s.mu.Unlock()
 		// Switched off: its flights not yet in the simulator go at once (the

@@ -347,6 +347,9 @@ type ScheduleSettings struct {
 	IFR       *bool `json:"ifr,omitempty"`
 	VFR       *bool `json:"vfr,omitempty"`
 	Generator *bool `json:"generator,omitempty"`
+	// OffsetMin: the airline timetable this many minutes later (or
+	// earlier) is flown now (#738); VFR flights keep the daylight of now.
+	OffsetMin *float64 `json:"offsetMin,omitempty"`
 	// Others: "respect" or "ignore" the traffic not ours.
 	Others string `json:"others,omitempty"`
 }
