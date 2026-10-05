@@ -32,7 +32,9 @@ func (sc *SimConnect) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) 
 		case types.E_ACCESSDENIED:
 			return nil, 0, errors.New("SimConnect_GetNextDispatch failed: Access denied - check if SimConnect is properly connected")
 		case types.E_HANDLE:
-			return nil, 0, errors.New("SimConnect_GetNextDispatch failed: Invalid handle - connection may be closed")
+			return nil, 0, fmt.Errorf("%w: SimConnect_GetNextDispatch failed: Invalid handle - connection may be closed", ErrConnectionLost)
+		case statusPipeDisconnected:
+			return nil, 0, fmt.Errorf("%w: SimConnect_GetNextDispatch failed with HRESULT: 0x%08X (pipe disconnected)", ErrConnectionLost, uint32(hresult))
 		default:
 			return nil, 0, fmt.Errorf("SimConnect_GetNextDispatch failed with HRESULT: 0x%08X", uint32(hresult))
 		}
@@ -49,3 +51,11 @@ func (sc *SimConnect) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) 
 	//nolint:govet // ppData is from SimConnect DLL (C memory), not Go heap - conversion is safe
 	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(ppData)), pcbData, nil
 }
+
+// ErrConnectionLost: the simulator is gone (it quit or restarted): the
+// connection's pipe is closed and nothing more will come on it.
+var ErrConnectionLost = errors.New("simconnect: connection lost")
+
+// statusPipeDisconnected is STATUS_PIPE_DISCONNECTED (0xC00000B0), what
+// SimConnect_GetNextDispatch returns once the simulator has quit.
+const statusPipeDisconnected = 0xC00000B0
