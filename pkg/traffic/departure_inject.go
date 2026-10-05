@@ -567,9 +567,13 @@ func (c *TaxiController) tugConnected() bool {
 		return true // given up, or gone
 	}
 	if a, ok := t.(interface{ Connected() bool }); ok && !a.Connected() {
-		// Not there after TugArriveTimeout (stuck on its way), or never
+		// Not there after its way in and a margin (ArriveWithin, at least
+		// TugArriveTimeout: stuck on its way), or never
 		// created after TugCreateTimeout: the push goes on without it.
 		wait := TugArriveTimeout
+		if w, ok := t.(interface{ ArriveWithin() time.Duration }); ok {
+			wait = w.ArriveWithin()
+		}
 		if o, ok := t.(interface{ ObjectID() uint32 }); ok && o.ObjectID() == 0 {
 			wait = TugCreateTimeout
 		}

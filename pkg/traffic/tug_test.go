@@ -3,6 +3,7 @@ package traffic
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -351,5 +352,33 @@ func TestTugRetryCreate(t *testing.T) {
 	}
 	if tug.RetryCreate() {
 		t.Error("created a third time")
+	}
+}
+
+// A tug from a far depot gets the time its way in takes (#736: LKPR S20A,
+// 2.6 km from its depot, gave up after 4 min).
+func TestTugArriveWithinCoversTheWayIn(t *testing.T) {
+	l := lkprGraph(t).Layout
+	for _, c := range []struct {
+		stand string
+		min   time.Duration
+	}{{"S20A", 7 * time.Minute}, {"B9", TugArriveTimeout}} {
+		for _, p := range l.Parking {
+			if p.Label() != c.stand {
+				continue
+			}
+			tug := &SimObjectTug{Layout: l, prof: ProfileFor("PC24").Motion}
+			pose := GroundPose{Position: p.Position, Heading: p.Heading}
+			tug.pose = tug.at(pose)
+			path, _, ok := tug.inbound(pose)
+			if !ok {
+				t.Fatalf("%s: no way in", c.stand)
+			}
+			tug.inPath = path
+			drive := time.Duration(path.Length() / (TugRoadKts * 1852 / 3600) * float64(time.Second))
+			if got := tug.ArriveWithin(); got < c.min || got < drive {
+				t.Errorf("%s: %v to arrive, its way in %.0f m takes %v", c.stand, got, path.Length(), drive)
+			}
+		}
 	}
 }
