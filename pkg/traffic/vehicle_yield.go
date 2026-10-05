@@ -187,6 +187,13 @@ type vehicleYield struct {
 	self        uint32
 	waitFrom    time.Time
 	ignoreUntil time.Time
+	// ATC (#752): who clears it at the gates of its way, the airport and
+	// how it is called; gates of the mover gatesFor.
+	atc      VehicleATC
+	layout   *airport.Layout
+	kind     string
+	gates    []vehicleGate
+	gatesFor *GroundMover
 }
 
 func (y *vehicleYield) SetTraffic(t VehicleTraffic, own uint32, now func() time.Time) {
@@ -196,8 +203,14 @@ func (y *vehicleYield) SetTraffic(t VehicleTraffic, own uint32, now func() time.
 // check sets or clears m's traffic stop; it reports whether the vehicle is
 // waiting for an aircraft.
 func (y *vehicleYield) check(m *GroundMover) bool {
+	gate, atGate := y.gateStop(m)
 	if y.traffic == nil || m == nil || y.now == nil {
-		return false
+		if atGate {
+			m.SetTrafficStop(gate)
+		} else if m != nil {
+			m.ClearTrafficStop()
+		}
+		return atGate
 	}
 	path, s := m.Path(), m.Pose().Distance
 	var ahead []airport.LatLon
@@ -218,8 +231,17 @@ func (y *vehicleYield) check(m *GroundMover) bool {
 		y.waitFrom = time.Time{}
 	}
 	if ok {
-		m.SetTrafficStop(s + math.Max(0, at-VehicleStopShortMeters))
+		stop := s + math.Max(0, at-VehicleStopShortMeters)
+		if atGate {
+			stop = math.Min(stop, gate)
+		}
+		m.SetTrafficStop(stop)
 		y.waiting = true
+		return true
+	}
+	if atGate {
+		m.SetTrafficStop(gate) // holding for ATC
+		y.waiting = false
 		return true
 	}
 	m.ClearTrafficStop()

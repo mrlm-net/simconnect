@@ -261,3 +261,48 @@ func (l *Layout) NearVehicleRoad(p LatLon) bool {
 	}
 	return false
 }
+
+// TaxiwayAt is the taxiway p is on (#752): within half its width and
+// VehicleTaxiwayMarginM of a named taxi path's centreline (MSFS gives the
+// taxiways as PATH, some as TAXI) — not a vehicle road, an unnamed apron
+// path or a stand's lead-in — and its name.
+func (l *Layout) TaxiwayAt(p LatLon) (string, bool) {
+	best, name, found := math.Inf(1), "", false
+	for _, t := range l.TaxiPaths {
+		if t.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI && t.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PATH ||
+			t.Start < 0 || t.End < 0 || int(t.Start) >= len(l.TaxiPoints) || int(t.End) >= len(l.TaxiPoints) || l.PathName(t) == "" {
+			continue
+		}
+		a, b := l.TaxiPoints[t.Start].Position, l.TaxiPoints[t.End].Position
+		d := distM(p, closestOnSegment(p, a, b))
+		if d <= t.Width/2+VehicleTaxiwayMarginM && d < best {
+			best, name, found = d, l.PathName(t), true
+		}
+	}
+	return name, found
+}
+
+// VehicleTaxiwayMarginM: a vehicle this close to a taxiway's edge is on it.
+const VehicleTaxiwayMarginM = 2.0
+
+// RunwayAt is the runway p is on, its surface widened by margin meters
+// each side (#752).
+func (l *Layout) RunwayAt(p LatLon, margin float64) (Runway, bool) {
+	for _, r := range l.Runways {
+		a, b := r.Primary.Threshold, r.Secondary.Threshold
+		kx := 111320 * math.Cos(a.Lat*math.Pi/180)
+		ax, ay := 0.0, 0.0
+		bx, by := (b.Lon-a.Lon)*kx, (b.Lat-a.Lat)*111320
+		px, py := (p.Lon-a.Lon)*kx, (p.Lat-a.Lat)*111320
+		length := math.Hypot(bx-ax, by-ay)
+		if length == 0 {
+			continue
+		}
+		along := (px*bx + py*by) / length
+		cross := math.Abs(px*by-py*bx) / length
+		if along > -margin && along < length+margin && cross < r.Width/2+margin {
+			return r, true
+		}
+	}
+	return Runway{}, false
+}
