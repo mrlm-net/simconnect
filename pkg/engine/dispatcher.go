@@ -3,10 +3,13 @@
 package engine
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/mrlm-net/simconnect/internal/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -43,6 +46,15 @@ const (
 	maxSleep = 50 * time.Millisecond
 )
 
+// ErrConnectionLost ends a stream: the simulator quit or restarted (its
+// pipe closed), or GetNextDispatch failed maxErrorsInRow times in a row.
+// The last Message carries it, then the stream closes.
+var ErrConnectionLost = simconnect.ErrConnectionLost
+
+// maxErrorsInRow dispatch errors in a row (with the backoff, some seconds)
+// are a lost connection.
+const maxErrorsInRow = 100
+
 const (
 	HEARTBEAT_EVENT_ID types.DWORD = 999999999 // SimConnect_SystemState_6Hz ID
 )
@@ -67,6 +79,7 @@ func (e *Engine) dispatch() error {
 
 		// Adaptive sleep for backoff when no messages available
 		sleepDuration := minSleep
+		errorsInRow := 0
 
 		for {
 			select {
@@ -77,16 +90,32 @@ func (e *Engine) dispatch() error {
 				recv, size, err := e.api.GetNextDispatch()
 
 				if err != nil {
-					e.logger.Error("[dispatcher] Error", "error", err)
+					// The simulator gone (its pipe closed), or errors without
+					// end: the connection is lost. Said once, then the stream
+					// ends, so a manager reconnects (it spun here before, an
+					// error logged 280,000 times a second, on a sim restart).
+					errorsInRow++
+					lost := errors.Is(err, ErrConnectionLost) || errorsInRow >= maxErrorsInRow
+					if errorsInRow == 1 || lost {
+						e.logger.Error("[dispatcher] Error", "error", err, "lost", lost)
+					}
+					if lost {
+						err = fmt.Errorf("%w: %w", ErrConnectionLost, err)
+					}
 					select {
 					case <-e.ctx.Done():
 						e.logger.Debug("[dispatcher] Context cancelled, stopping dispatcher")
 						return
 					case e.queue <- Message{Err: err}:
-						continue
 					}
-
+					if lost {
+						return
+					}
+					time.Sleep(sleepDuration)
+					sleepDuration = min(sleepDuration*2, maxSleep)
+					continue
 				}
+				errorsInRow = 0
 
 				if recv == nil {
 					// No message available, apply adaptive backoff to reduce CPU usage
