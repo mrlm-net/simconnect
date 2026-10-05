@@ -248,6 +248,19 @@ func (s *scheduler) handovers(now time.Time) {
 			f.Stage = ""
 			s.cc.log.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			arrive := *e.arrive
+			// The runway in use changed since it was planned (#776: EZY1205
+			// on 24 after the change to 06): its STAR and approach again,
+			// from where it is, for the runway in use.
+			if g, err := s.st.cache.Graph(f.Airport); err == nil && arrive.plan != nil {
+				if rwy := s.cc.pickRunway(g, true, -1); rwy != "" && rwy != arrive.plan.Request.ArrivalRunway {
+					if fp, err := planBetween(context.Background(), s.st, f.Origin, f.Destination, "", rwy, f.Type); err == nil {
+						if p, err := plannedFrom(fp, "arrival"); err == nil {
+							s.cc.log.printf("%-6s schedule: runway %s in use: arrival planned again from %s", f.Callsign, rwy, arrive.plan.Request.ArrivalRunway)
+							arrive = *p
+						}
+					}
+				}
+			}
 			arrive.adopt = e.objectID
 			if err := s.spawnWith(f, &arrive, e.model); err != nil {
 				s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })

@@ -386,7 +386,9 @@ func TestPushWaitsForNeighbourPush(t *testing.T) {
 	p := NewGroundPicture()
 	now := time.Now()
 	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
-	at := func(east, north float64) airport.LatLon { return offsetHeading(offsetHeading(base, 90, east), 0, north) }
+	at := func(east, north float64) airport.LatLon {
+		return offsetHeading(offsetHeading(base, 90, east), 0, north)
+	}
 	line := func(e0, n0, e1, n1 float64) []airport.LatLon {
 		var out []airport.LatLon
 		for i := 0; i <= 20; i++ {
@@ -417,7 +419,9 @@ func TestGiveWayToPushUnderWay(t *testing.T) {
 	p := NewGroundPicture()
 	now := time.Now()
 	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
-	at := func(east, north float64) airport.LatLon { return offsetHeading(offsetHeading(base, 90, east), 0, north) }
+	at := func(east, north float64) airport.LatLon {
+		return offsetHeading(offsetHeading(base, 90, east), 0, north)
+	}
 	var corridor []airport.LatLon
 	for x := 0.0; x <= 60; x += trafficBodyStep {
 		corridor = append(corridor, at(x, 0)) // the push sweeps east along y=0
@@ -666,5 +670,44 @@ func TestGroundPictureFollowsSameWay(t *testing.T) {
 	}
 	if closest < prof.WheelbaseMeters+prof.TailMeters {
 		t.Errorf("closed to %.0f m behind it", closest)
+	}
+}
+
+// Two aircraft meaning to taxi the other way along one taxiway: exactly
+// one holds — the one further from the shared stretch, here the one still
+// short of it; a same-way intent holds nobody (#775: LKPR, live, WZZ1023
+// and TVS1771 met nose to nose on F).
+func TestOncomingHold(t *testing.T) {
+	now := time.Now()
+	line := func(lon0, lon1 float64) []airport.LatLon { // along lat 50, from lon0 to lon1
+		var out []airport.LatLon
+		n := int(math.Abs(lon1-lon0)/0.0002 + 0.5)
+		for k := 0; k <= n; k++ {
+			out = append(out, airport.LatLon{Lat: 50, Lon: lon0 + (lon1-lon0)*float64(k)/float64(n)})
+		}
+		return out
+	}
+	p := NewGroundPicture()
+	prof := DefaultMotionProfile()
+	// TVS holds short at 14.004, meaning to go west; WZZ at 14.000, still
+	// short of the shared stretch (which begins at 14.002), going east.
+	p.Report(1, airport.LatLon{Lat: 50, Lon: 14.000}, 90, prof, now)
+	p.Report(2, airport.LatLon{Lat: 50, Lon: 14.004}, 270, prof, now)
+	p.ReportIntent(2, line(14.004, 14.002))
+	p.ReportIntent(1, append(line(14.000, 14.002), line(14.002, 14.006)[1:]...))
+	pathWZZ, _ := NewGroundPath(append(line(14.000, 14.002), line(14.002, 14.006)[1:]...), prof)
+	pathTVS, _ := NewGroundPath(line(14.004, 14.002), prof)
+	atW, oW, holdW := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now)
+	_, _, holdT := p.oncoming(2, pathTVS, 0, OncomingLookMeters, 17, now)
+	if math.IsInf(atW, 1) || oW != 2 {
+		t.Fatalf("no oncoming for WZZ: %v %v", atW, oW)
+	}
+	if !holdW || holdT {
+		t.Errorf("WZZ holds %v, TVS holds %v: want WZZ only", holdW, holdT)
+	}
+	// Same way: nobody holds.
+	p.ReportIntent(2, line(14.004, 14.008))
+	if at, _, _ := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now); !math.IsInf(at, 1) {
+		t.Errorf("same way counted as oncoming at %v", at)
 	}
 }

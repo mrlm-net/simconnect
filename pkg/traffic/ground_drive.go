@@ -25,11 +25,11 @@ type groundDrive struct {
 	lastStep time.Time
 	frameDt  float64 // seconds since the previous frame
 
-	lights   Lights // phase lights; logo and wing stay as the aircraft had them
+	lights Lights // phase lights; logo and wing stay as the aircraft had them
 	// noLogo: a light aircraft, with neither logo nor wing light (live,
 	// OKFHP: an FSLTL King Air parked with its tail light flashing).
-	noLogo bool
-	crossing bool   // strobes and landing lights added for a runway crossing
+	noLogo   bool
+	crossing bool // strobes and landing lights added for a runway crossing
 	// ignoreRunway is excluded from the geometric crossing check (the runway
 	// being vacated or lined up on); -1 for none.
 	ignoreRunway int
@@ -349,6 +349,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 			d.mover.ClearTrafficStop()
 		}
 		if d.picture != nil && d.object != 0 {
+			d.picture.ReportIntent(d.object, nil) // not taxiing: no intent (#775)
 			if len(d.planned) > 0 {
 				d.picture.ReportPlanned(d.object, d.planned, d.prof.SpanMeters/2)
 			} else {
@@ -386,6 +387,16 @@ func (d *groundDrive) followAhead(now time.Time) {
 			stop = math.Min(stop, d.junctionStop(path, s0, math.Min(stop, body), noseTip, math.Max(half, oh)+GiveWayMarginMeters))
 		}
 	}
+	// One coming the other way along the same taxiway further on (#775):
+	// the one further from the shared stretch holds at its last junction
+	// before it, clear for the other to pass; the nearer goes on.
+	if at, o, hold := d.picture.oncoming(d.object, path, s0, OncomingLookMeters, half, now); hold && !math.IsInf(at, 1) {
+		hs := d.junctionStop(path, s0, at-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters)
+		if hs < stop {
+			stop = hs
+			d.blockedBy = o
+		}
+	}
 	// Give way where routes cross or merge: stop short of the conflict
 	// (its first point is already a half-span away from the other path).
 	gw, whom := d.picture.giveWayTo(d.object, path, s0, GiveWayLookMeters, half, now)
@@ -420,6 +431,12 @@ func (d *groundDrive) followAhead(now time.Time) {
 		ahead = append(ahead, path.PointAt(s))
 	}
 	d.picture.ReportPath(d.object, ahead, half)
+	// Where it means to go, past any stop: oncoming traffic holds clear.
+	var intent []airport.LatLon
+	for s := s0; s <= math.Min(path.Length(), s0+OncomingLookMeters); s += trafficBodyStep {
+		intent = append(intent, path.PointAt(s))
+	}
+	d.picture.ReportIntent(d.object, intent)
 }
 
 // oncomingDeg is how far from the path's heading an aircraft ahead faces to
