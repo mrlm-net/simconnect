@@ -156,7 +156,7 @@ func TestGroundServices(t *testing.T) {
 // by position (#700).
 func TestDoors(t *testing.T) {
 	fx := For(Aircraft{Package: "fnx-aircraft-319"})
-	if strings.Join(fx.Doors, ",") != "L1,L2,R1,R2" {
+	if strings.Join(fx.Doors, ",") != "L1,L2,R1,R2,FWD cargo,AFT cargo" {
 		t.Fatalf("Fenix doors %v", fx.Doors)
 	}
 	for n, exit := range []uint32{1, 4, 5, 8} {
@@ -167,12 +167,19 @@ func TestDoors(t *testing.T) {
 			t.Errorf("%s action %+v", fx.Doors[n], a)
 		}
 	}
-	if _, ok := fx.Values[Door(4)]; ok {
-		t.Error("a fifth Fenix door")
+	// The cargo doors: read on exits 9 and 10, moved through the EFB.
+	if v := fx.Values[Door(4)]; len(v.Vars) != 1 || v.Vars[0] != "EXIT OPEN:8" || fx.Actions[Door(4)].EFB != "doors.cargo.forward" {
+		t.Errorf("FWD cargo %+v %+v", v, fx.Actions[Door(4)])
+	}
+	if v := fx.Values[Door(5)]; len(v.Vars) != 1 || v.Vars[0] != "EXIT OPEN:9" || fx.Actions[Door(5)].EFB != "doors.cargo.aft" {
+		t.Errorf("AFT cargo %+v %+v", v, fx.Actions[Door(5)])
+	}
+	if _, ok := fx.Values[Door(6)]; ok {
+		t.Error("a seventh Fenix door")
 	}
 	// The real L2 open (exit 4): L2 reads open, nothing else.
 	s := resolveState(fx, map[varUnit]float64{{"EXIT OPEN:3", "percent"}: 100, {"EXIT OPEN:1", "percent"}: 100})
-	if len(s.DoorsOpen) != 4 || !s.DoorsOpen[1] || s.DoorsOpen[0] || s.DoorsOpen[2] || s.DoorNames[1] != "L2" {
+	if len(s.DoorsOpen) != 6 || !s.DoorsOpen[1] || s.DoorsOpen[0] || s.DoorsOpen[2] || s.DoorNames[1] != "L2" {
 		t.Errorf("state doors %v %v", s.DoorsOpen, s.DoorNames)
 	}
 	// Names alone still work: by position.
@@ -185,5 +192,58 @@ func TestDoors(t *testing.T) {
 	c.Use(def)
 	if len(def.Doors) != 4 || c.Can(Door(4)) || !c.Can(Door(3)) {
 		t.Errorf("default doors %v, door 5 %v", def.Doors, c.Can(Door(4)))
+	}
+}
+
+// TestTypeBase: the A320 family base on the standard variables for a
+// stock A320; the Fenix on top of it where it differs; an aircraft of
+// another type keeps the default (#759).
+func TestTypeBase(t *testing.T) {
+	stock := For(Aircraft{Title: "Airbus A320 Neo Asobo", ATCType: "A320"})
+	if v := stock.Values[Seatbelts]; len(v.Vars) != 1 || v.Vars[0] != "CABIN SEATBELTS ALERT SWITCH" || stock.Actions[ExtPower].Event != "TOGGLE_EXTERNAL_POWER" {
+		t.Errorf("stock A320 %+v %+v", v, stock.Actions[ExtPower])
+	}
+	fx := For(Aircraft{Package: "fnx-aircraft-319"})
+	if fx.Name != "Fenix A320 family" || fx.Values[Seatbelts].Vars[0] != "CABIN SEATBELTS ALERT SWITCH" || fx.Actions[Seatbelts].Set != "L:S_OH_SIGNS" ||
+		fx.Values[NoSmoking].Vars[0] != "L:S_OH_SIGNS_SMOKING" || fx.Actions[CabinCall].Counter != "L:S_OH_CALLS_ALL" || fx.Values[CabinCall+"Counter"].Vars[0] != "L:S_OH_CALLS_ALL" {
+		t.Errorf("Fenix on the base: %+v", fx)
+	}
+	other := For(Aircraft{Title: "Cessna 172", ATCType: "C172"})
+	if _, ok := other.Values[Seatbelts]; ok {
+		t.Error("a Cessna got the A320 base")
+	}
+}
+
+// TestCountedButtons: a counted button pressed from its count (+1, +2);
+// one stopped half way goes on from the next even count; a no smoking
+// sign set to 2 (#759).
+func TestCountedButtons(t *testing.T) {
+	fx := For(Aircraft{Package: "fnx-aircraft-319"})
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	c.Use(fx)
+	if err := c.Press(CabinCall, State{Values: map[string]float64{CabinCall + "Counter": 4}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Press(CabinCall, State{Values: map[string]float64{CabinCall + "Counter": 7}}); err != nil {
+		t.Fatal(err)
+	}
+	// External power: pressed only when it is not as wanted.
+	if err := c.Set(ExtPower, true, State{Values: map[string]float64{ExtPower: 1, ExtPower + "Counter": 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set(ExtPower, false, State{Values: map[string]float64{ExtPower: 1, ExtPower + "Counter": 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetValue(NoSmoking, 2, State{}); err != nil {
+		t.Fatal(err)
+	}
+	want := "L:S_OH_CALLS_ALL=5 L:S_OH_CALLS_ALL=6 L:S_OH_CALLS_ALL=9 L:S_OH_CALLS_ALL=10 L:S_OH_ELEC_EXT_PWR=3 L:S_OH_ELEC_EXT_PWR=4 L:S_OH_SIGNS_SMOKING=2"
+	var got []string
+	for i, v := range f.set {
+		got = append(got, f.setVar[i]+"="+strconv.Itoa(int(v)))
+	}
+	if strings.Join(got, " ") != want {
+		t.Errorf("writes\n%s\nwant\n%s", strings.Join(got, " "), want)
 	}
 }

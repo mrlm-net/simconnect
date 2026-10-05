@@ -57,7 +57,17 @@ const (
 	PushbackAttached  = "pushbackAttached"
 	PushbackAvailable = "pushbackAvailable"
 	PushbackWait      = "pushbackWait"
+	// Cabin (#759): the seat belt sign on, the no smoking sign (0 off, 1
+	// auto, 2 on; a two-way switch 0 or 1), external power on (feeding,
+	// the switch's state).
+	Seatbelts = "seatbelts"
+	NoSmoking = "noSmoking"
+	ExtPower  = "extPower"
 )
+
+// CabinCall is the action calling the cabin crew (a press, no state;
+// Controls.Press): the Fenix's CALLS ALL button (#759).
+const CabinCall = "cabinCall"
 
 // The sim's own ground services for the user aircraft, requested by name
 // with Controls.Request (#666): the standard key events by default (MSFS
@@ -122,13 +132,22 @@ type Profile struct {
 	// it has. The default: "Door 1"…"Door 4"; the Fenix: its 8 (#700). A
 	// door without its own value and action reads EXIT OPEN:n and toggles
 	// TOGGLE_AIRCRAFT_EXIT n+1. In JSON, "doors" is these names, or
-	// objects {"name": "L2", "exit": 4} naming each door's exit (Exits).
+	// objects {"name": "L2", "exit": 4} naming each door's exit (Exits),
+	// with "efb" when the door is moved through the tablet (DoorEFB).
 	Doors []string `json:"doors,omitempty"`
 	// Exits are the doors' exits (TOGGLE_AIRCRAFT_EXIT k toggles EXIT
 	// OPEN:k-1), by door; none, or 0: door n is exit n+1. With exits, the
 	// doors' values and actions are those exits' (the Fenix A319: L1 1, L2
 	// 4, R1 5, R2 8).
 	Exits []int `json:"exits,omitempty"`
+	// DoorEFB are the doors' tablet data refs, by door: "" the exit's
+	// event; the Fenix's cargo doors ("doors.cargo.forward", #759).
+	DoorEFB []string `json:"doorEFB,omitempty"`
+	// Base: a profile for an aircraft type (the A320 family on the
+	// standard SimVars), used when no model's profile matches; Extends: a
+	// model's profile goes on top of that base (#759).
+	Base    bool   `json:"base,omitempty"`
+	Extends string `json:"extends,omitempty"`
 }
 
 // UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
@@ -154,16 +173,17 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 	var doors []struct {
 		Name string `json:"name"`
 		Exit int    `json:"exit"`
+		EFB  string `json:"efb"`
 	}
 	if err := json.Unmarshal(raw.Doors, &doors); err != nil {
 		return fmt.Errorf("doors: names, or {name, exit} objects: %w", err)
 	}
-	p.Doors, p.Exits = nil, nil
+	p.Doors, p.Exits, p.DoorEFB = nil, nil, nil
 	for _, d := range doors {
 		if d.Exit < 0 {
 			return fmt.Errorf("door %q: exit %d", d.Name, d.Exit)
 		}
-		p.Doors, p.Exits = append(p.Doors, d.Name), append(p.Exits, d.Exit)
+		p.Doors, p.Exits, p.DoorEFB = append(p.Doors, d.Name), append(p.Exits, d.Exit), append(p.DoorEFB, d.EFB)
 	}
 	return nil
 }
@@ -238,7 +258,7 @@ func Merge(base, over Profile) Profile {
 		out.EFB = over.EFB
 	}
 	if len(over.Doors) > 0 {
-		out.Doors, out.Exits = over.Doors, over.Exits
+		out.Doors, out.Exits, out.DoorEFB = over.Doors, over.Exits, over.DoorEFB
 	}
 	if len(over.Match.PackagePrefix)+len(over.Match.TitleContains)+len(over.Match.ATCType) > 0 {
 		out.Match = over.Match
@@ -291,11 +311,33 @@ func ReadProfile(r io.Reader) (Profile, error) {
 // files, in order) on top of that.
 func For(a Aircraft, overrides ...Profile) Profile {
 	p := Default()
-	for _, s := range Profiles() {
-		if s.Matches(a) {
-			p = Merge(p, s)
-			break
+	// The model's profile on its type's base (#759); with no model's, the
+	// type's base alone.
+	var model, base *Profile
+	all := Profiles()
+	for i := range all {
+		s := &all[i]
+		if !s.Matches(a) {
+			continue
 		}
+		if s.Base && base == nil {
+			base = s
+		} else if !s.Base && model == nil {
+			model = s
+		}
+	}
+	if model != nil && model.Extends != "" {
+		for i := range all {
+			if all[i].Name == model.Extends {
+				base = &all[i]
+			}
+		}
+	}
+	if base != nil {
+		p = Merge(p, *base)
+	}
+	if model != nil {
+		p = Merge(p, *model)
 	}
 	for _, o := range overrides {
 		if o.Matches(a) || len(o.Match.PackagePrefix)+len(o.Match.TitleContains)+len(o.Match.ATCType) == 0 && o.Name == p.Name {
@@ -310,7 +352,7 @@ func For(a Aircraft, overrides ...Profile) Profile {
 // drops the default's doors beyond its number.
 func withDoors(p Profile) Profile {
 	if len(p.Doors) == 0 {
-		return p
+		return withCounters(p)
 	}
 	values, actions := map[string]Value{}, map[string]Action{}
 	for k, v := range p.Values {
@@ -333,9 +375,26 @@ func withDoors(p Profile) Profile {
 		if _, ok := actions[Door(n)]; !ok || mapped {
 			exit := uint32(k)
 			actions[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
+			if n < len(p.DoorEFB) && p.DoorEFB[n] != "" {
+				actions[Door(n)] = Action{EFB: p.DoorEFB[n]}
+			}
 		}
 	}
 	p.Values, p.Actions = values, actions
+	return withCounters(p)
+}
+
+// withCounters reads each counted button's counter (Action.Counter) as
+// the value "<action>Counter": Controls presses it from where it stands.
+func withCounters(p Profile) Profile {
+	for name, a := range p.Actions {
+		if a.Counter != "" {
+			if p.Values == nil {
+				p.Values = map[string]Value{}
+			}
+			p.Values[name+"Counter"] = Value{Vars: []string{a.Counter}}
+		}
+	}
 	return p
 }
 
@@ -436,7 +495,11 @@ type Action struct {
 	Toggle bool    `json:"toggle,omitempty"`
 	Data   *uint32 `json:"data,omitempty"`
 	EFB    string  `json:"efb,omitempty"` // e.g. "fenix.efb.chocks"
-	Note   string  `json:"note,omitempty"`
+	// Counter: a push button counted up (the Fenix's EXT PWR, CALLS ALL):
+	// pressed from an even count to +1, released to +2 (as FSUIPC's
+	// presets), #759.
+	Counter string `json:"counter,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // The actions a profile may give: the radios' swap (pkg/avionics), and

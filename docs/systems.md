@@ -137,3 +137,17 @@ The sim's own ground services for the user aircraft are requested by name with `
 ## EFB
 
 A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's EFB on port 8083 (`{"port": 8083, "path": "/"}`, plain HTTP, all interfaces); none in the default.
+
+## Type bases, cabin signs and counted buttons
+
+Profiles come in layers (#759): the default for any aircraft, then a base for the aircraft's type, then the model's profile where it differs. A base has `"base": true` and matches by type (`a320-family.json`: ATC TYPE A318 to A321, A20N, A21N, or the title). It is used alone when no model's profile matches. A model's profile names its base with `"extends"`: the Fenix extends "A320 family".
+
+| Name | Base (A320 family) | Fenix A319 (measured 2026-10-05) |
+|---|---|---|
+| `seatbelts` | CABIN SEATBELTS ALERT SWITCH; CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE | read the standard variable (it follows); set L:S_OH_SIGNS 0/1 |
+| `noSmoking` | CABIN NO SMOKING ALERT SWITCH; CABIN_NO_SMOKING_ALERT_SWITCH_TOGGLE | L:S_OH_SIGNS_SMOKING 0 off, 1 auto, 2 on (the standard stays 0) |
+| `extPower` | EXTERNAL POWER ON:1; TOGGLE_EXTERNAL_POWER 1 | the ON light L:I_OH_ELEC_EXT_PWR_L; pressed on the counted L:S_OH_ELEC_EXT_PWR |
+| `cabinCall` | none | pressed on the counted L:S_OH_CALLS_ALL |
+| cargo doors | none | "FWD cargo" exit 9 (EXIT OPEN:8), "AFT cargo" exit 10 (EXIT OPEN:9), moved through the EFB: `doors.cargo.forward`, `doors.cargo.aft` |
+
+A door object may carry `"efb"`: that door moves through the tablet (`Profile.DoorEFB`), not TOGGLE_AIRCRAFT_EXIT. An action's `"counter"` is a push button counted up, as FSUIPC's presets press it: from an even count to +1 (press), then +2 (release). Its count is read as the value `<action>Counter`. `Controls.Press(name, now)` presses a control once whatever its state (`cabinCall`). `Controls.SetValue(name, v, now)` sets a many-way switch (`noSmoking` 2).

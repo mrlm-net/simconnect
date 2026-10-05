@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -45,8 +46,8 @@ type Controls struct {
 
 	mu      sync.Mutex
 	actions map[string]Action
-	efb     *EFB   // the aircraft's tablet (Profile.EFB)
-	efbHost string // where the sim runs: "127.0.0.1" unless SetEFBHost
+	efb     *EFB              // the aircraft's tablet (Profile.EFB)
+	efbHost string            // where the sim runs: "127.0.0.1" unless SetEFBHost
 	events  map[string]uint32 // event name → mapped client event ID
 	defs    map[string]uint32 // variable → data definition ID
 	next    uint32
@@ -102,6 +103,11 @@ func (c *Controls) Set(name string, on bool, now State) error {
 		return c.efbWrite(a.EFB, on)
 	case a.Set != "":
 		return c.setVar(a.Set, want)
+	case a.Counter != "":
+		if now.Values[name] != 0 == on {
+			return nil // as wanted already
+		}
+		return c.count(a.Counter, now.Values[name+"Counter"])
 	case a.Press != "":
 		if now.Values[name] != 0 == on {
 			return nil // as wanted already
@@ -197,4 +203,64 @@ func (c *Controls) setVar(name string, v float64) error {
 	}
 	c.mu.Unlock()
 	return c.client.SetDataOnSimObject(def, types.SIMCONNECT_OBJECT_ID_USER, 0, 0, 8, unsafe.Pointer(&v))
+}
+
+// count presses a counted button standing at v: to the next odd count,
+// then the even one after (press and release).
+func (c *Controls) count(name string, v float64) error {
+	n := math.Floor(v)
+	if int(n)%2 != 0 {
+		n++ // released half way: from the next even count
+	}
+	if err := c.setVar(name, n+1); err != nil {
+		return err
+	}
+	time.Sleep(pressHold)
+	return c.setVar(name, n+2)
+}
+
+// Press presses control name once, whatever its state (CabinCall): a
+// counted button, a button variable or an event (#759).
+func (c *Controls) Press(name string, now State) error {
+	c.mu.Lock()
+	a, ok := c.actions[name]
+	c.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNoControl, name)
+	}
+	switch {
+	case a.Counter != "":
+		return c.count(a.Counter, now.Values[name+"Counter"])
+	case a.Press != "":
+		if err := c.setVar(a.Press, 1); err != nil {
+			return err
+		}
+		time.Sleep(pressHold)
+		return c.setVar(a.Press, 0)
+	case a.Event != "":
+		data := uint32(1)
+		if a.Data != nil {
+			data = *a.Data
+		}
+		return c.event(a.Event, data)
+	case a.EFB != "":
+		return c.efbWrite(a.EFB, true)
+	}
+	return fmt.Errorf("%w: %s (an empty action)", ErrNoControl, name)
+}
+
+// SetValue puts control name to value v (the no smoking sign: 0 off, 1
+// auto, 2 on): a variable set to v; any other action on (v != 0) or off
+// (#759).
+func (c *Controls) SetValue(name string, v float64, now State) error {
+	c.mu.Lock()
+	a, ok := c.actions[name]
+	c.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNoControl, name)
+	}
+	if a.Set != "" {
+		return c.setVar(a.Set, v)
+	}
+	return c.Set(name, v != 0, now)
 }
