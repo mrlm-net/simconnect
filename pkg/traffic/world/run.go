@@ -374,6 +374,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	sep := newSepMonitor(cc.log)
 	cw := newConflictWatch(sched)
 	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
+	seqs.engaged = cw.engaged       // no shortcut undoes a resolution (#785)
 	cc.climbStopped = cw.isStopped
 	tw := newTowers(cc, sched)
 	// A go-around is sequenced again (#394), and cleared to land again on

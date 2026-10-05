@@ -626,3 +626,27 @@ func (w *conflictWatch) restoreRoute(cs string, st stoppedLevel, aircraft []traf
 	w.s.mu.Unlock()
 	return nil
 }
+
+// engaged reports that cs has to do with a conflict (#785): predicted in
+// one now, flying a resolution, slowed, held level or stopped for traffic,
+// or resolved within engagedAfter. A sequencer shortcut is not for it:
+// shortening its way undoes the resolution (live, TVS979 sent direct
+// RATEV 30 s after it was slowed for THY319; they closed to 0.7 NM).
+func (w *conflictWatch) engaged(cs string, now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, c := range w.now {
+		if c.A == cs || c.B == cs {
+			return true
+		}
+	}
+	if until, ok := w.busy[cs]; ok && now.Before(until.Add(engagedAfter)) {
+		return true
+	}
+	_, stopped := w.stopped[cs]
+	return w.slowed[cs] || w.leveled[cs] || stopped
+}
+
+// engagedAfter: an aircraft counts as engaged this long after its
+// resolution is flown.
+const engagedAfter = 3 * time.Minute

@@ -49,6 +49,9 @@ type sequences struct {
 	// no longer predicts the pair to lose separation.
 	conflictHeld map[string]conflictHold
 	inConflict   func(a, b string) bool
+	// engaged: an aircraft in or just out of a conflict resolution gets no
+	// shortcut (#785).
+	engaged func(cs string, now time.Time) bool
 }
 
 type conflictHold struct {
@@ -824,6 +827,9 @@ const (
 func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry) {
 	if e.Fixed || e.Delay > 0 || it.circuit != nil || it.gates.Load() {
 		return
+	}
+	if q.engaged != nil && q.engaged(e.Callsign, now) {
+		return // shortening its way would undo a resolution (#785)
 	}
 	q.mu.Lock()
 	first, seen := q.shortcutAt[e.Callsign]
