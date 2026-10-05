@@ -37,6 +37,9 @@ type groundEntry struct {
 	// waiting: ahead is the way it will taxi once cleared (#452): pushes
 	// do not start into it, but it has no priority over moving traffic.
 	waiting bool
+	// intent: the way it means to taxi from where it is, past any stop
+	// (holding short to cross too), OncomingLookMeters of it (#775).
+	intent []airport.LatLon
 }
 
 // NewGroundPicture creates an empty picture.
@@ -58,8 +61,9 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
-		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
-		tail: tail + prof.RefAheadMeters,
+		intent: p.aircraft[id].intent,
+		nose:   prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
+		tail:   tail + prof.RefAheadMeters,
 	}
 }
 
@@ -324,3 +328,99 @@ func sameWayAhead(path []airport.LatLon, pos airport.LatLon, hdg, reach float64)
 // sameWayDeg: facing within this of the path's direction is going the
 // same way (sameWayAhead).
 const sameWayDeg = 45.0
+
+// ReportIntent records the way aircraft id means to taxi from where it is,
+// past any stop (nil none), for oncoming traffic to hold clear of (#775).
+func (p *GroundPicture) ReportIntent(id uint32, intent []airport.LatLon) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.intent = intent
+		p.aircraft[id] = e
+	}
+}
+
+// oncoming finds, along path from from within look, the first point where
+// another aircraft means to taxi the other way along the same pavement
+// (its intent within both half-spans and HeadOnMarginMeters, facing at
+// least oncomingDeg away) — where, on one taxiway, the two would meet
+// nose to nose (#775: LKPR, live, WZZ1023 and TVS1771 on F). hold: this
+// aircraft is the one to hold, being further from that shared stretch
+// than the other is (a tie: the higher ID holds); one already in it
+// (within headOnCommitMeters) never holds. +Inf when none.
+func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half float64, now time.Time) (at float64, other uint32, hold bool) {
+	p.mu.Lock()
+	type them struct {
+		id     uint32
+		intent []airport.LatLon
+		half   float64
+	}
+	var others []them
+	for oid, e := range p.aircraft {
+		if oid != id && len(e.intent) > 1 && now.Sub(e.at) <= TrafficStaleAfter {
+			h := e.half
+			if h <= 0 {
+				h = DefaultHalfSpanMeters
+			}
+			others = append(others, them{oid, e.intent, h})
+		}
+	}
+	p.mu.Unlock()
+	at = math.Inf(1)
+	end := math.Min(path.Length(), from+look)
+	heading := func(s float64) float64 {
+		return localBearing(path.PointAt(math.Max(0, s-1)), path.PointAt(math.Min(path.Length(), s+1)))
+	}
+	for _, o := range others {
+		cum := make([]float64, len(o.intent))
+		for i := 1; i < len(o.intent); i++ {
+			cum[i] = cum[i-1] + localDist(o.intent[i-1], o.intent[i])
+		}
+		reach := half + o.half + HeadOnMarginMeters
+		meets := func(s float64, i int) bool {
+			return localDist(path.PointAt(s), o.intent[i]) <= reach &&
+				math.Abs(headingDiff(heading(s), localBearing(o.intent[i], o.intent[i+1]))) >= oncomingDeg
+		}
+		// Where each first comes onto the shared stretch, along its own way:
+		// the same pair of numbers whichever of the two looks.
+		mine, theirs := math.Inf(1), math.Inf(1)
+		for s := from; s <= end && math.IsInf(mine, 1); s += vehicleGateStep {
+			for i := 0; i+1 < len(o.intent); i++ {
+				if meets(s, i) {
+					mine = s - from
+					break
+				}
+			}
+		}
+		if math.IsInf(mine, 1) {
+			continue
+		}
+		for i := 0; i+1 < len(o.intent) && math.IsInf(theirs, 1); i++ {
+			for s := from; s <= end; s += vehicleGateStep {
+				if meets(s, i) {
+					theirs = cum[i]
+					break
+				}
+			}
+		}
+		me := mine > theirs || mine == theirs && id > o.id
+		if mine <= headOnCommitMeters && theirs > headOnCommitMeters {
+			me = false // in it already, the other not: the other holds
+		}
+		if from+mine < at {
+			at, other, hold = from+mine, o.id, me
+		}
+	}
+	return at, other, hold
+}
+
+// Head-on: HeadOnMarginMeters added to both half-spans for two ways to be
+// the same pavement; an aircraft within headOnCommitMeters of the shared
+// stretch is in it (#775).
+const (
+	HeadOnMarginMeters = 5.0
+	headOnCommitMeters = 15.0
+	// OncomingLookMeters: how far ahead a taxiing aircraft reports its
+	// intent and looks for one coming the other way.
+	OncomingLookMeters = 400.0
+)
