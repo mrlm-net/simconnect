@@ -491,6 +491,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, cross %s at or %s %s%s", cs, p[ParamFix], p[ParamClimb], p[ParamLevel], why) // 12.3.2.4 a
 	case IntentDescendVia:
 		return cs + ", " + descendVia(p) // 6.5.2.4.1
+	case IntentVisual:
+		return cs + ", cleared visual approach runway " + p[ParamRunway] // 12.3.3.1 o
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
 	case IntentWeather:
