@@ -38,13 +38,32 @@ type scheduler struct {
 	// noIFR and noVFR switch the airline (and overflying) and the light
 	// aircraft flights off; both run by default.
 	noIFR, noVFR bool
-	airlines     map[string]traffic.Airline
-	focus        []string // the managed airports (the overflights avoid them)
+	// noGen: no generated flights, only those added (POST /api/flights,
+	// #738).
+	noGen    bool
+	airlines map[string]traffic.Airline
+	focus    []string // the managed airports (the overflights avoid them)
 	// Enroute aircraft (#369): by call sign once created, by request ID
 	// while the simulator creates them.
 	enroute map[string]*enrouteAC
 	pending map[uint32]*enrouteAC
 	nextReq uint32
+}
+
+// ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
+// zero: the default in brackets.
+type ScheduleTiming struct {
+	// Horizon: how far ahead the timetable is planned (2 h).
+	Horizon time.Duration
+	// DepartureLead: a departure appears on its stand this long before its
+	// STD (10 min); ArrivalLead: an arrival appears this long before its
+	// STA to fly the STAR and approach (25 min); VFRLead: a VFR arrival,
+	// near the airport (8 min).
+	DepartureLead, ArrivalLead, VFRLead time.Duration
+	// DepartureLate: a departure not started by STD plus this is cancelled
+	// (15 min); ArrivalLate: an arrival not by STA-ArrivalLead plus this
+	// (10 min).
+	DepartureLate, ArrivalLate time.Duration
 }
 
 func newScheduler(st *state, cc *controlCenter) *scheduler {
@@ -53,7 +72,10 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 	for _, a := range s.cfg.Airlines {
 		s.airlines[a.ICAO] = a
 	}
+	t := st.core.hooks.Schedule
 	s.mgr = traffic.NewTrafficManager(s, traffic.ManagerOptions{Source: s.source, MaxAircraft: 12, MaxPerAirport: 12, OnEvent: s.event,
+		Horizon: t.Horizon, DepartureLead: t.DepartureLead, ArrivalLead: t.ArrivalLead, VFRLead: t.VFRLead,
+		DepartureLate: t.DepartureLate, ArrivalLate: t.ArrivalLate,
 		Picture: cc.world, Overflights: s.overflights, Conditions: s.conditions}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
 	return s
@@ -89,8 +111,11 @@ func (s *scheduler) airports() []string {
 
 func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight {
 	s.mu.Lock()
-	density, seed, noIFR, noVFR := s.density, s.seed, s.noIFR, s.noVFR
+	density, seed, noIFR, noVFR, noGen := s.density, s.seed, s.noIFR, s.noVFR, s.noGen
 	s.mu.Unlock()
+	if noGen {
+		return nil
+	}
 	opts := traffic.ScheduleOptions{Focus: focus, Density: density, Seed: seed ^ uint64(from.Unix()/3600)}
 	for _, icao := range focus {
 		if l, ok := s.st.cache.Layout(icao); ok {
@@ -147,7 +172,7 @@ func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {
 		return nil
 	}
 	s.mu.Lock()
-	density, seed, focus, noIFR := s.density, s.seed, s.focus, s.noIFR
+	density, seed, focus, noIFR := s.density, s.seed, s.focus, s.noIFR || s.noGen
 	s.mu.Unlock()
 	if noIFR {
 		return nil // airliners crossing the area are IFR traffic too
@@ -453,11 +478,13 @@ type scheduleView struct {
 	Others      traffic.OtherTrafficMode `json:"others"`
 	// IFR and VFR: the airline flights (and overflights) and the light
 	// aircraft flights run.
-	IFR     bool                    `json:"ifr"`
-	VFR     bool                    `json:"vfr"`
-	Seed    uint64                  `json:"seed"`
-	Active  int                     `json:"active"`
-	Flights []traffic.ManagedFlight `json:"flights"`
+	IFR bool `json:"ifr"`
+	VFR bool `json:"vfr"`
+	// Generator: the generated timetable runs; false only flights added.
+	Generator bool                    `json:"generator"`
+	Seed      uint64                  `json:"seed"`
+	Active    int                     `json:"active"`
+	Flights   []traffic.ManagedFlight `json:"flights"`
 	// Now is the traffic time the flights' times are in (#413).
 	Now time.Time `json:"now"`
 }
@@ -478,9 +505,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			return
 		}
 		s.mu.Lock()
-		density, seed, ifr, vfr := s.density, s.seed, !s.noIFR, !s.noVFR
+		density, seed, ifr, vfr, gen := s.density, s.seed, !s.noIFR, !s.noVFR, !s.noGen
 		s.mu.Unlock() // never held while calling the manager (its Source takes it)
-		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr,
+		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr, Generator: gen,
 			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
@@ -496,9 +523,10 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			Density     float64  `json:"density"`
 			MaxAircraft int      `json:"maxAircraft"`
 			Seed        *uint64  `json:"seed"`
-			Others      string   `json:"others"` // respect | ignore
-			IFR         *bool    `json:"ifr"`    // airline flights and overflights
-			VFR         *bool    `json:"vfr"`    // light aircraft through the circuit
+			Others      string   `json:"others"`    // respect | ignore
+			IFR         *bool    `json:"ifr"`       // airline flights and overflights
+			VFR         *bool    `json:"vfr"`       // light aircraft through the circuit
+			Generator   *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -516,6 +544,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		if req.VFR != nil {
 			s.noVFR = !*req.VFR
+		}
+		if req.Generator != nil {
+			s.noGen = !*req.Generator
 		}
 		s.mu.Unlock()
 		// Switched off: its flights not yet in the simulator go at once (the
@@ -577,6 +608,70 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, IFR %s, VFR %s, other traffic: %s", onOff[s.mgr.Enabled()],
 			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, onOff[ifr], onOff[vfr], o.Others)
 		w.WriteHeader(http.StatusNoContent)
+	})
+	// POST /api/flights [traffic.Flight] — flights at a chosen time (#737):
+	// a callsign, origin and destination (one of them a scheduled airport),
+	// the STD and STA in traffic time (GET /api/schedule's now), and an
+	// airline or type; the manager spawns them as it does the timetable's.
+	// Answers the flights taken; 422 when one cannot be.
+	mux.HandleFunc("POST /api/flights", func(w http.ResponseWriter, r *http.Request) {
+		s := sched(w)
+		if s == nil {
+			return
+		}
+		var flights []traffic.Flight
+		if err := json.NewDecoder(r.Body).Decode(&flights); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		managed, now := s.mgr.Airports(), s.cc.clock.Now()
+		for i := range flights {
+			f := &flights[i]
+			f.Callsign, f.Origin, f.Destination = strings.ToUpper(f.Callsign), strings.ToUpper(f.Origin), strings.ToUpper(f.Destination)
+			if f.Airline == "" && len(f.Callsign) > 3 {
+				f.Airline = f.Callsign[:3]
+			}
+			switch {
+			case f.Callsign == "" || f.Origin == "" || f.Destination == "":
+				http.Error(w, fmt.Sprintf("flight %d: callsign, origin and destination are needed", i), http.StatusUnprocessableEntity)
+				return
+			case !slices.Contains(managed, f.Origin) && !slices.Contains(managed, f.Destination):
+				http.Error(w, fmt.Sprintf("%s: neither %s nor %s is a scheduled airport (%s)", f.Callsign, f.Origin, f.Destination, strings.Join(managed, ",")), http.StatusUnprocessableEntity)
+				return
+			case slices.Contains(managed, f.Origin) && f.STD.IsZero(), slices.Contains(managed, f.Destination) && f.STA.IsZero():
+				http.Error(w, f.Callsign+": an STD from a scheduled airport and an STA to one are needed", http.StatusUnprocessableEntity)
+				return
+			}
+			if f.Type == "" {
+				f.Type = "A320"
+			}
+			// An arrival appears ArrivalLead before its STA to fly the STAR
+			// and approach: one added later than that (and ArrivalLate) is
+			// refused here rather than cancelled at once.
+			o := s.mgr.Options()
+			lead := o.ArrivalLead
+			if f.Rules == "VFR" {
+				lead = o.VFRLead
+			}
+			if slices.Contains(managed, f.Destination) && now.After(f.STA.Add(-lead).Add(o.ArrivalLate)) {
+				http.Error(w, fmt.Sprintf("%s: STA %s is too soon: an arrival is added at least %v before its STA (it appears %v before, to fly the STAR and approach)",
+					f.Callsign, f.STA.In(now.Location()).Format("15:04"), lead-o.ArrivalLate, lead), http.StatusUnprocessableEntity)
+				return
+			}
+		}
+		s.mgr.Add(flights)
+		for _, f := range flights {
+			tlog.printf("%-6s schedule: added %s → %s, %s, STD %s, STA %s", f.Callsign, f.Origin, f.Destination, f.Type, f.STD.In(now.Location()).Format("15:04"), f.STA.In(now.Location()).Format("15:04"))
+		}
+		writeJSON(w, flights)
+	})
+	// GET /api/flights — the manager's flights (as GET /api/schedule's).
+	mux.HandleFunc("GET /api/flights", func(w http.ResponseWriter, r *http.Request) {
+		s := sched(w)
+		if s == nil {
+			return
+		}
+		writeJSON(w, s.mgr.Flights())
 	})
 	mux.HandleFunc("GET /api/boards", func(w http.ResponseWriter, r *http.Request) {
 		s := sched(w)

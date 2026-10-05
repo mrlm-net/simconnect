@@ -270,11 +270,29 @@ type ScheduleSettings struct {
 	Density     float64 `json:"density,omitempty"`     // 1: the timetable as it is
 	MaxAircraft int     `json:"maxAircraft,omitempty"` // 0: no limit
 	Seed        uint64  `json:"seed,omitempty"`
+	// Airports are several scheduled airports (ICAO, with ICAO).
+	Airports []string `json:"airports,omitempty"`
+	// IFR, VFR: the airline and the light aircraft flights (nil: as
+	// they are). Generator false: only flights added (AddFlights, #738).
+	IFR       *bool `json:"ifr,omitempty"`
+	VFR       *bool `json:"vfr,omitempty"`
+	Generator *bool `json:"generator,omitempty"`
+	// Others: "respect" or "ignore" the traffic not ours.
+	Others string `json:"others,omitempty"`
 }
 
 // SetSchedule starts or stops the scheduled traffic.
 func (w *World) SetSchedule(s ScheduleSettings) error {
 	_, err := w.Do(http.MethodPost, "/api/schedule", s)
+	return err
+}
+
+// AddFlights adds flights at chosen times (#737): each with a callsign,
+// origin and destination (one a scheduled airport, SetSchedule), STD and
+// STA in traffic time, and an airline or type (default A320). The manager
+// spawns them as the timetable's.
+func (w *World) AddFlights(flights []traffic.Flight) error {
+	_, err := w.Do(http.MethodPost, "/api/flights", flights)
 	return err
 }
 
