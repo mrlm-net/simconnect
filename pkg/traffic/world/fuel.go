@@ -39,11 +39,22 @@ func (cc *controlCenter) addFuelTitles(msg engine.Message) {
 		return
 	}
 	base := uintptr(unsafe.Pointer(e)) + uintptr(header)
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
+	var titles []string
 	for i := uint32(0); i < n; i++ {
 		entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))
-		t := engine.BytesToString(entry.AircraftTitle[:])
+		titles = append(titles, engine.BytesToString(entry.AircraftTitle[:]))
+	}
+	cc.addGroundTitles(titles)
+	if cc.onGroundTitles != nil {
+		go cc.onGroundTitles(titles)
+	}
+}
+
+// addGroundTitles keeps the fuel vehicles among ground vehicle titles.
+func (cc *controlCenter) addGroundTitles(titles []string) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	for _, t := range titles {
 		switch {
 		case strings.HasPrefix(t, "FSDT_FuelTruck_"):
 			cc.fuelTitles.trucks = insertSorted(cc.fuelTitles.trucks, t)

@@ -258,8 +258,13 @@ type controlCenter struct {
 	// director).
 	sim      simPort
 	onModels func([]string)
-	inj      *traffic.Injector
-	cmds     chan func()
+	// onGroundTitles is told the ground vehicle titles found (an
+	// actuator's); remoteVehicles gives a remote aircraft's vehicles (a
+	// director's, nil otherwise).
+	onGroundTitles func([]string)
+	remoteVehicles func(target string) []VehicleView
+	inj            *traffic.Injector
+	cmds           chan func()
 
 	mu    sync.Mutex
 	next  int
@@ -1333,12 +1338,30 @@ func (cc *controlCenter) views() []ControlView {
 				v.Hold = &holdView{Ident: h.Ident, AltFt: alt, Racetrack: h.Racetrack(alt)}
 			}
 		}
-		if it.tug != nil {
+		remote := false
+		if rd, ok := it.dep.(*remoteDep); ok && cc.remoteVehicles != nil {
+			// Split (#710): its tug and fuel truck drive on the actuator,
+			// which tells how.
+			remote = true
+			for _, rv := range cc.remoteVehicles(rd.t) {
+				v.Vehicles = append(v.Vehicles, rv)
+				if rv.State == traffic.VehicleWaiting || rv.State == traffic.VehicleRemoved {
+					continue
+				}
+				tv := &tugView{Position: rv.Position, Heading: rv.Heading, Route: rv.Route}
+				if rv.Kind == "tug" {
+					v.Tug = tv
+				} else {
+					v.Fuel = tv
+				}
+			}
+		}
+		if it.tug != nil && !remote {
 			if p, route, ok := it.tug.Track(); ok {
 				v.Tug = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
 			}
 		}
-		if it.fuel != nil {
+		if it.fuel != nil && !remote {
 			if p, route, ok := it.fuel.Track(); ok {
 				v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
 			}
@@ -1351,10 +1374,10 @@ func (cc *controlCenter) views() []ControlView {
 			}
 		}
 		// Its ground vehicles, with what they say of themselves (#710).
-		if it.tug != nil {
+		if it.tug != nil && !remote {
 			v.Vehicles = append(v.Vehicles, vehicleView("tug", it.tug.ObjectID(), it.tug.Title(), it.tug.State(), it.tug.Track))
 		}
-		if it.fuel != nil {
+		if it.fuel != nil && !remote {
 			v.Vehicles = append(v.Vehicles, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
 		}
 		out = append(out, v)

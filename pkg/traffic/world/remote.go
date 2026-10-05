@@ -130,6 +130,9 @@ type actuatorSim struct {
 
 	mu   sync.Mutex
 	ctls []interface{ Handle(engine.Message) bool } // started off the wire
+	// vehicles: each departure's tug and fuel truck, by target, for the
+	// director's map (sendVehicles).
+	vehicles map[string]actuatorVehicles
 }
 
 // StartDeparture starts a departure off the wire and serves its controller
@@ -163,6 +166,16 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	}
 	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
+	tug, _ := req.Tug.(*traffic.SimObjectTug)
+	fuel, _ := req.Fuel.(*traffic.SimObjectFuelTruck)
+	if tug != nil || fuel != nil {
+		a.mu.Lock()
+		if a.vehicles == nil {
+			a.vehicles = map[string]actuatorVehicles{}
+		}
+		a.vehicles[w.Target] = actuatorVehicles{tug: tug, fuel: fuel}
+		a.mu.Unlock()
+	}
 	go a.pump(w.Target, func(yield func(any, error) bool) {
 		for ev := range evs {
 			if !yield(ev, ev.Err) {
@@ -200,6 +213,11 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 // pump sends target's events until they end, then forgets the target.
 func (a *actuatorSim) pump(target string, events func(yield func(any, error) bool)) {
 	defer a.srv.remove(target)
+	defer func() {
+		a.mu.Lock()
+		delete(a.vehicles, target)
+		a.mu.Unlock()
+	}()
 	events(func(ev any, evErr error) bool {
 		b, err := json.Marshal(ev)
 		if err != nil {
@@ -349,3 +367,25 @@ func feedIn(m wireMsg, to simFeed, cache *airport.Cache) error {
 }
 
 var _ engine.Message
+
+// actuatorVehicles are a departure's tug and fuel truck on the actuator.
+type actuatorVehicles struct {
+	tug  *traffic.SimObjectTug
+	fuel *traffic.SimObjectFuelTruck
+}
+
+// vehicleViews are the departures' vehicles now, by target.
+func (a *actuatorSim) vehicleViews() map[string][]VehicleView {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := map[string][]VehicleView{}
+	for t, v := range a.vehicles {
+		if v.tug != nil {
+			out[t] = append(out[t], vehicleView("tug", v.tug.ObjectID(), v.tug.Title(), v.tug.State(), v.tug.Track))
+		}
+		if v.fuel != nil {
+			out[t] = append(out[t], vehicleView("fuel", v.fuel.ObjectID(), v.fuel.Title(), v.fuel.State(), v.fuel.Track))
+		}
+	}
+	return out
+}
