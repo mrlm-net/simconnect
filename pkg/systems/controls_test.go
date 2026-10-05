@@ -151,22 +151,34 @@ func TestGroundServices(t *testing.T) {
 	}
 }
 
-// TestDoors: a profile's doors by name and number; the Fenix's 8 read and
-// toggled by the standard exit events, the default's 4 (#700).
+// TestDoors: a profile's doors by name and exit; the Fenix's passenger
+// doors on the exits measured (L1 1, L2 4, R1 5, R2 8), the default's 4
+// by position (#700).
 func TestDoors(t *testing.T) {
 	fx := For(Aircraft{Package: "fnx-aircraft-319"})
-	if len(fx.Doors) != 8 || fx.Doors[0] != "L1" || fx.Doors[5] != "AFT cargo" {
+	if strings.Join(fx.Doors, ",") != "L1,L2,R1,R2" {
 		t.Fatalf("Fenix doors %v", fx.Doors)
 	}
-	if v := fx.Values[Door(7)]; len(v.Vars) != 1 || v.Vars[0] != "EXIT OPEN:7" {
-		t.Errorf("door 8 value %+v", v)
+	for n, exit := range []uint32{1, 4, 5, 8} {
+		if v := fx.Values[Door(n)]; len(v.Vars) != 1 || v.Vars[0] != fmt.Sprintf("EXIT OPEN:%d", exit-1) {
+			t.Errorf("%s value %+v", fx.Doors[n], v)
+		}
+		if a := fx.Actions[Door(n)]; a.Event != "TOGGLE_AIRCRAFT_EXIT" || a.Data == nil || *a.Data != exit {
+			t.Errorf("%s action %+v", fx.Doors[n], a)
+		}
 	}
-	if a := fx.Actions[Door(7)]; a.Event != "TOGGLE_AIRCRAFT_EXIT" || a.Data == nil || *a.Data != 8 {
-		t.Errorf("door 8 action %+v", a)
+	if _, ok := fx.Values[Door(4)]; ok {
+		t.Error("a fifth Fenix door")
 	}
-	s := resolveState(fx, map[varUnit]float64{{"EXIT OPEN:5", "percent"}: 100})
-	if len(s.DoorsOpen) != 8 || !s.DoorsOpen[5] || s.DoorsOpen[0] || s.DoorNames[5] != "AFT cargo" {
+	// The real L2 open (exit 4): L2 reads open, nothing else.
+	s := resolveState(fx, map[varUnit]float64{{"EXIT OPEN:3", "percent"}: 100, {"EXIT OPEN:1", "percent"}: 100})
+	if len(s.DoorsOpen) != 4 || !s.DoorsOpen[1] || s.DoorsOpen[0] || s.DoorsOpen[2] || s.DoorNames[1] != "L2" {
 		t.Errorf("state doors %v %v", s.DoorsOpen, s.DoorNames)
+	}
+	// Names alone still work: by position.
+	var p Profile
+	if err := json.Unmarshal([]byte(`{"name":"x","doors":["A","B"]}`), &p); err != nil || len(p.Doors) != 2 || len(p.Exits) != 0 {
+		t.Errorf("names: %+v %v", p, err)
 	}
 	def := For(Aircraft{Title: "Asobo A320neo"})
 	c := NewControls(&fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}, 0)

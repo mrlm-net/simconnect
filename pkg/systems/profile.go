@@ -121,8 +121,59 @@ type Profile struct {
 	// and TOGGLE_AIRCRAFT_EXIT (Door(0) is exit 1); their number is how many
 	// it has. The default: "Door 1"…"Door 4"; the Fenix: its 8 (#700). A
 	// door without its own value and action reads EXIT OPEN:n and toggles
-	// TOGGLE_AIRCRAFT_EXIT n+1.
+	// TOGGLE_AIRCRAFT_EXIT n+1. In JSON, "doors" is these names, or
+	// objects {"name": "L2", "exit": 4} naming each door's exit (Exits).
 	Doors []string `json:"doors,omitempty"`
+	// Exits are the doors' exits (TOGGLE_AIRCRAFT_EXIT k toggles EXIT
+	// OPEN:k-1), by door; none, or 0: door n is exit n+1. With exits, the
+	// doors' values and actions are those exits' (the Fenix A319: L1 1, L2
+	// 4, R1 5, R2 8).
+	Exits []int `json:"exits,omitempty"`
+}
+
+// UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
+// objects.
+func (p *Profile) UnmarshalJSON(b []byte) error {
+	type plain Profile
+	var raw struct {
+		plain
+		Doors json.RawMessage `json:"doors"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*p = Profile(raw.plain)
+	if len(raw.Doors) == 0 || string(raw.Doors) == "null" {
+		return nil
+	}
+	var names []string
+	if json.Unmarshal(raw.Doors, &names) == nil {
+		p.Doors = names
+		return nil
+	}
+	var doors []struct {
+		Name string `json:"name"`
+		Exit int    `json:"exit"`
+	}
+	if err := json.Unmarshal(raw.Doors, &doors); err != nil {
+		return fmt.Errorf("doors: names, or {name, exit} objects: %w", err)
+	}
+	p.Doors, p.Exits = nil, nil
+	for _, d := range doors {
+		if d.Exit < 0 {
+			return fmt.Errorf("door %q: exit %d", d.Name, d.Exit)
+		}
+		p.Doors, p.Exits = append(p.Doors, d.Name), append(p.Exits, d.Exit)
+	}
+	return nil
+}
+
+// exit is door n's exit (1-based, TOGGLE_AIRCRAFT_EXIT).
+func (p Profile) exit(n int) int {
+	if n < len(p.Exits) && p.Exits[n] > 0 {
+		return p.Exits[n]
+	}
+	return n + 1
 }
 
 // EFB is where an aircraft's tablet is served: http://<sim host>:Port+Path.
@@ -187,7 +238,7 @@ func Merge(base, over Profile) Profile {
 		out.EFB = over.EFB
 	}
 	if len(over.Doors) > 0 {
-		out.Doors = over.Doors
+		out.Doors, out.Exits = over.Doors, over.Exits
 	}
 	if len(over.Match.PackagePrefix)+len(over.Match.TitleContains)+len(over.Match.ATCType) > 0 {
 		out.Match = over.Match
@@ -268,17 +319,19 @@ func withDoors(p Profile) Profile {
 	for k, a := range p.Actions {
 		actions[k] = a
 	}
-	for n := 0; n < 10; n++ {
+	mapped := len(p.Exits) > 0
+	for n := 0; n < max(10, len(p.Doors)); n++ {
 		if n >= len(p.Doors) {
 			delete(values, Door(n))
 			delete(actions, Door(n))
 			continue
 		}
-		if _, ok := values[Door(n)]; !ok {
-			values[Door(n)] = Value{Vars: []string{fmtIndexed("EXIT OPEN", n)}, Unit: "percent"}
+		k := p.exit(n)
+		if _, ok := values[Door(n)]; !ok || mapped {
+			values[Door(n)] = Value{Vars: []string{fmt.Sprintf("EXIT OPEN:%d", k-1)}, Unit: "percent"}
 		}
-		if _, ok := actions[Door(n)]; !ok {
-			exit := uint32(n + 1)
+		if _, ok := actions[Door(n)]; !ok || mapped {
+			exit := uint32(k)
 			actions[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
 		}
 	}

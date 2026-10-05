@@ -126,7 +126,7 @@ if ctl.Can(systems.Chocks) {
 ctl.Set(systems.Door(0), true, reader.State()) // open the main door
 ```
 
-A profile's `doors` names its exits in the order of EXIT OPEN and TOGGLE_AIRCRAFT_EXIT (`Door(0)` is exit 1); their number is how many it has: "Door 1"…"Door 4" by default, the Fenix's 8 (L1, R1, L2, R2, FWD cargo, AFT cargo, Bulk cargo, Other; measured: TOGGLE_AIRCRAFT_EXIT 1–8 each toggle one, #700). A door without its own value and action reads EXIT OPEN:n and toggles TOGGLE_AIRCRAFT_EXIT n+1. `State.DoorsOpen` and `DoorNames` are all of them (`Doors` keeps the first four).
+A profile's `doors` names its exits. As names (`["Door 1", "Door 2"]`) they go in the order of EXIT OPEN and TOGGLE_AIRCRAFT_EXIT (`Door(0)` is exit 1): "Door 1"…"Door 4" by default. As objects they name each door's exit (`Profile.Exits`): the Fenix A319's passenger doors `[{"name":"L1","exit":1},{"name":"L2","exit":4},{"name":"R1","exit":5},{"name":"R2","exit":8}]` (measured 2026-10-05; exits 2, 3, 6, 7, 12 and 13 move but are no passenger door, not named yet). TOGGLE_AIRCRAFT_EXIT k toggles EXIT OPEN:k-1, so each door reads and toggles its exit. Their number is how many it has. `State.DoorsOpen` and `DoorNames` are all of them (`Doors` keeps the first four).
 
 `State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show.
 
