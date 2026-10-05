@@ -71,3 +71,20 @@ func TestOneControllerOneMouth(t *testing.T) {
 		t.Errorf("another controller waited: %v", d.At)
 	}
 }
+
+// At night the tower's controller works ground and delivery too (#722).
+func TestBandBoxed(t *testing.T) {
+	st := []Station{
+		{Position: PosDelivery, Freq: "120.06", Controller: "LKPR 120.06"},
+		{Position: PosGround, Freq: "121.91", Controller: "LKPR 121.91"},
+		{Position: PosTower, Freq: "134.56", Controller: "LKPR 134.56"},
+		{Position: PosApproach, Freq: "118.31", Controller: "LKPR 118.31"},
+	}
+	b := BandBoxed(st)
+	if b[0].Controller != "LKPR 134.56" || b[1].Controller != "LKPR 134.56" || b[3].Controller != "LKPR 118.31" || b[1].Freq != "121.91" {
+		t.Errorf("%+v", b)
+	}
+	if st[1].Controller != "LKPR 121.91" {
+		t.Error("the input changed")
+	}
+}

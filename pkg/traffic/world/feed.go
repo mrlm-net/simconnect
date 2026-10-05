@@ -73,6 +73,7 @@ func (f localFeed) UserAircraft(a Aircraft, rate float64, com1 string) {
 	f.st.aircraft = &a
 	f.st.mu.Unlock()
 	f.st.core.setUserAt(airport.LatLon{Lat: a.Latitude, Lon: a.Longitude})
+	f.st.core.setLocalSec(a.LocalSec)
 	if h := f.st.core.hooks.OnCom1; h != nil && com1 != "" {
 		h(com1) // a voice follows it when synced
 	}

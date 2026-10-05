@@ -72,8 +72,28 @@ func (cc *controlCenter) stations(icao string) []traffic.Station {
 	if cc.localStations != nil {
 		mine = cc.localStations(icao)
 	}
-	return traffic.StationsWith(icao, traffic.DefaultStations(l), mine)
+	st := traffic.StationsWith(icao, traffic.DefaultStations(l), mine)
+	if len(mine) == 0 && cc.night() {
+		st = traffic.BandBoxed(st)
+	}
+	return st
 }
+
+// night: 22:00 to 06:00 sim local time at the user aircraft, when quiet
+// airports have the tower work ground and delivery (#722).
+func (cc *controlCenter) night() bool {
+	if cc.core == nil {
+		return false
+	}
+	h, ok := cc.core.localHour()
+	return ok && (h >= nightFrom || h < nightTo)
+}
+
+// The night band-boxing hours (sim local).
+const (
+	nightFrom = 22
+	nightTo   = 6
+)
 
 // station is the station of position pos working it now (#722): by the
 // taxiways it is on, its runway, where it is; name as said and frequency.
