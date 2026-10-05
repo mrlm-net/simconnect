@@ -168,3 +168,17 @@ func TestControllersGreetBack(t *testing.T) {
 		t.Errorf("%d of 40 first answers greeted back", back)
 	}
 }
+
+// A crew that misses a handoff: no readback, the controller calls again
+// after a silence, then the readback (#721).
+func TestMissedCall(t *testing.T) {
+	r, said := varietyRadio(&Variety{Seed: 2, SayAgain: -1, ReadbackError: -1, MissedCall: 1})
+	r.Transmit("LKPR", Handoff("CSA1", PosGround, PosTower, "Ruzyne Tower", "118.105"))
+	s := *said
+	if len(s) != 3 || s[0].Pilot || s[1].Pilot || !s[2].Pilot || s[1].Params[ParamRepeat] != "1" {
+		t.Fatalf("said %+v", s)
+	}
+	if gap := s[1].At.Sub(s[0].At.Add(SpeakingTime(s[0].Text))); gap < 6*time.Second {
+		t.Errorf("called again %v after the first call", gap)
+	}
+}

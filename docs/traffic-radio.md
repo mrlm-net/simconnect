@@ -198,6 +198,7 @@ A real frequency is not a script (#721). `RadioOptions.Variety` (or `Radio.SetVa
 - **Greeted back:** the controller's first answer to a first call often greets after the call sign ("CSA1, good morning, cleared …"): mostly when the crew greeted, now and then when it did not.
 - **Pleasantries:** a controller may end a handoff with "good day" or "bye" when the frequency is quiet, never when it is busy. A chatty crew answers a handoff with "good day", "bye", "bye bye", "cheers" or "see you".
 - **Say again:** about 2 % of clearances. The crew asks "Say again", the controller repeats the clearance (`ParamRepeat`), then the crew reads it back.
+- **Missed calls:** about 3 % of handoffs get no answer; after 6 to 10 s of silence the controller calls again, then the crew reads it back (`MissedCall`).
 - **Readback errors:** about 1 % of clearances. The crew reads one number back wrong: frequency, heading, level, squawk, speed or altitude, never the runway. The controller corrects it with `CheckReadback` ("negative, …"), and the crew reads it back right.
 
 The same seed and the same traffic give the same radio. The world turns it on by default (seed 721). `GET /api/radio/variety` shows it; `POST` `{"enabled":false}` turns it off; `{"enabled":true,"seed":7,"sayAgain":0.05,"readbackError":0.02}` sets it.
