@@ -24,6 +24,7 @@ import (
 func main() {
 	actuator := flag.String("actuator", "127.0.0.1:7710", "the traffic-actuator to drive")
 	token := flag.String("token", "", "the actuator's token")
+	listen := flag.String("listen", "", "wait on this address (\":7710\") for an actuator that dials in, instead of dialling -actuator (#774)")
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP address of the World's API")
 	web := flag.String("web", "", "directory of the airport map's page to serve (cmd/airport-map/web); \"\": the API only")
 	airways := flag.String("airways", "", "airway graph for flight plans; \"\": direct routes")
@@ -43,7 +44,17 @@ func main() {
 		}
 	}
 	w := world.New(world.Options{LogDir: *logDir, Airways: graph, DataDir: *dataDir})
-	go world.DialDirector(ctx, w, *actuator, *token)
+	if *listen != "" {
+		// Actuators behind routers dial in (#774).
+		go func() {
+			if err := world.ListenDirector(ctx, w, *listen, *token); err != nil {
+				fmt.Fprintln(os.Stderr, "❌", err)
+				cancel()
+			}
+		}()
+	} else {
+		go world.DialDirector(ctx, w, *actuator, *token)
+	}
 
 	mux := http.NewServeMux()
 	if *web != "" {
@@ -57,7 +68,11 @@ func main() {
 		defer done()
 		srv.Shutdown(shut)
 	}()
-	fmt.Printf("🧠 director of %s, API on http://%s\n", *actuator, *addr)
+	of := *actuator
+	if *listen != "" {
+		of = "actuators dialling " + *listen
+	}
+	fmt.Printf("director of %s, API on http://%s\n", of, *addr)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, "❌", err)
 		os.Exit(1)
