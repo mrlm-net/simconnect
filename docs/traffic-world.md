@@ -106,3 +106,5 @@ traffic-director -actuator simpc:7710 -token s3cret -addr :8080 \
 The link is JSON lines over TCP, and the director opens it with the token. If the director goes away, the actuator keeps flying, and the next director to connect takes over. In a program, `world.ServeActuator(ctx, w, addr, token)` and `world.DialDirector(ctx, w, addr, token)` do the same. `world.Loopback(ctx, actuator, director)` links the two parts in one process (the airport map's `-split`) to check the split against the World in one piece.
 
 Not yet in the split: fuel trucks, and the tug and fuel-truck routes on the director's map. Each read of an aircraft's controller is a call across the network, which suits a LAN better than the internet.
+
+`ScheduleSettings.OffsetMin` (`"offsetMin"`) flies the airline timetable of that many minutes later now (#738): `600` puts a morning wave into an evening. VFR flights keep the daylight of now.
