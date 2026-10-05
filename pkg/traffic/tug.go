@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -218,6 +219,20 @@ func nearestDepot(l *airport.Layout, p airport.LatLon) (airport.LatLon, bool) {
 		}
 	}
 	return best, !math.IsInf(bestD, 1)
+}
+
+// ArriveWithin is how long the tug may take to reach the nose: its way in
+// at road speed and half as long again, and at least TugArriveTimeout
+// (#736: from the depot far off the LKPR S apron, 2.6–2.9 km, it takes six
+// minutes).
+func (t *SimObjectTug) ArriveWithin() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.inPath == nil {
+		return TugArriveTimeout
+	}
+	drive := time.Duration(t.inPath.Length() / (TugRoadKts * 1852 / 3600) * 1.5 * float64(time.Second))
+	return max(TugArriveTimeout, drive)
 }
 
 // Connected reports that the tug is at the nose: the push may start. A
