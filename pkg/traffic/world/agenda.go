@@ -118,7 +118,7 @@ func (it *controlled) call(pos traffic.Position, prio callPrio, f func()) {
 // callIf is call with still (nil: always wanted) checked when its turn
 // comes, dropped run when it is no longer wanted.
 func (it *controlled) callIf(pos traffic.Position, prio callPrio, still func() bool, dropped func(), f func()) {
-	_, freq := it.cc.stationOf(it.ICAO, pos)
+	_, freq := it.station(pos)
 	now := it.cc.clock.Now()
 	p := it.cc.pending
 	it.cc.agenda.add(call{icao: it.ICAO, freq: freq, prio: prio, tail: it.Tail,

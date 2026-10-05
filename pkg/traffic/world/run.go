@@ -213,6 +213,8 @@ type state struct {
 	// pushbacks drawn by hand.
 	pads   *padStore
 	pushes *pushStore
+	// stations: the airports' own ATC stations (#722).
+	stations *stationStore
 }
 
 func (s *state) setLive(v bool) {
@@ -353,6 +355,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.graph = st.cache.Graph
 	cc.layout = st.cache.Layout
 	cc.pads = st.pads.forAirport
+	cc.localStations = st.stations.forAirport
 	cc.weather = func() *nav.Weather {
 		st.mu.Lock()
 		defer st.mu.Unlock()
@@ -883,6 +886,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerApproach(mux, st)
 	registerStatus(mux, st)
 	registerPushback(mux, st)
+	registerStations(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
 		l, ok := st.cache.Layout(icaoParam(r))

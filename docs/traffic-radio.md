@@ -188,3 +188,30 @@ The airport map's **Radio** tab (#425) shows what is said on the airport's frequ
 ## Voice
 
 The airport map speaks the radio through [voice-goio](https://github.com/mrlm-net/voice-goio) (#419). The Radio tab's **🔇 Sound off** switch turns the voice on for the frequency you follow. Tuned to the ATIS, you join its continuous broadcast where it is. Each controller position has a voice and radio sound of its own, each crew its own voice, and the ATIS plays on a loop in its broadcast voice while its frequency is followed. To stay live on a busy frequency, anything not said within 20 s is dropped. The map is its own module, so the SDK keeps zero dependencies. The [airport-map README](../cmd/airport-map/README.md#voice) covers installing piper and the voice models.
+
+## Variety
+
+A real frequency is not a script (#721). `RadioOptions.Variety` (or `Radio.SetVariety`; nil is off) varies what is said and when, never what is cleared: every transmission keeps its intent and parameters.
+
+- **Crew style:** each call sign gets a style from the seed: quick, normal or slow to answer (about 0.5–3 s with the breath), chatty or terse.
+- **Pleasantries:** a controller may end a handoff with "good day" when the frequency is quiet, never when it is busy. A chatty crew answers a handoff with "good day" or "bye".
+- **Say again:** about 2 % of clearances. The crew asks "Say again", the controller repeats the clearance (`ParamRepeat`), then the crew reads it back.
+- **Readback errors:** about 1 % of clearances. The crew reads one number back wrong: frequency, heading, level, squawk, speed or altitude, never the runway. The controller corrects it with `CheckReadback` ("negative, …"), and the crew reads it back right.
+
+The same seed and the same traffic give the same radio. The world turns it on by default (seed 721). `GET /api/radio/variety` shows it; `POST` `{"enabled":false}` turns it off; `{"enabled":true,"seed":7,"sayAgain":0.05,"readbackError":0.02}` sets it.
+
+## Stations and controllers
+
+An airport may have several stations per position, and one controller may work several frequencies (#722). `traffic.Station` is a position, a name, a frequency, a controller and a sector:
+
+- **Sector:** `taxiways` (ground: by taxiway name), `area` (a polygon, an apron) or `runways` (tower). A station without a sector takes the rest of its position's traffic.
+- **Controller:** stations with the same `controller` are one person. The same voice speaks on each frequency (voice-goio `Utterance.Controller`), and the radio lets one controller say one thing at a time across all of them (`RadioOptions.ControllerOf`). The default is the airport and frequency, so positions on one frequency share a controller (approach and departure on 118.31 at LKPR).
+
+`DefaultStations` builds them from the scenery's frequencies. `StationsWith` adds an airport's own stations: a position the override gives replaces its defaults. `PickStation` picks the station that works an aircraft by its taxiways, runway and position.
+
+In the world, each aircraft talks to the station of its sector. Taxiing into another ground station's sector, it is handed over: "CSA1, contact Ruzyne Apron 121.8". An airport's own stations live in the local settings (`stations.json` beside the other overrides), set with `PUT /api/stations?icao=LKPR` and a list of stations. `DELETE` goes back to the defaults; `GET` shows the stations as worked. A night with ground and tower combined:
+
+```json
+[{"position":"ground","name":"Ruzyne Ground","freq":"121.91","controller":"LKPR night"},
+ {"position":"tower","name":"Ruzyne Tower","freq":"134.56","controller":"LKPR night"}]
+```

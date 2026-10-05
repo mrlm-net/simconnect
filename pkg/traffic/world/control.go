@@ -332,6 +332,8 @@ type controlCenter struct {
 	ticks int
 	// pads are an airport's de-icing pads (picked on the map, #323).
 	pads func(l *airport.Layout) []airport.DeicingPad
+	// localStations are an airport's own ATC stations (#722).
+	localStations func(icao string) []traffic.Station
 	// weather is the latest at the user aircraft (automatic de-icing, #323).
 	weather func() *nav.Weather
 	// procedures gives an airport's SIDs, STARs and approaches (#315).
@@ -376,8 +378,10 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
 		// Crews answer their own way (#721); POST /api/radio/variety.
-		Variety: &traffic.Variety{Seed: 721},
+		Variety:     &traffic.Variety{Seed: 721},
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
+		// One person on several frequencies: one voice (#722).
+		ControllerOf: func(icao, freq string) string { return traffic.ControllerOn(cc.stations(icao), freq) },
 		// Call signs as said, in the text and so in the voice (#462).
 		SaidCallsign: func(cs string) string {
 			if f := cc.saidCallsign; f != nil {
@@ -2797,7 +2801,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && it.arr.TouchAndGosLeft() == 0 && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
-		gs, gf := it.cc.stationOf(it.ICAO, traffic.PosGround)
+		gs, gf := it.station(traffic.PosGround)
 		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
 		it.vacateSaid = true
 	}
@@ -2823,13 +2827,20 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.say(traffic.ClearedApproachTo(it.Tail, ac))
 		it.approachSaid = true
 	}
-	station, freq := it.cc.stationOf(it.ICAO, pos)
+	station, freq := it.station(pos)
+	was := it.view.Frequency
 	it.view.ATC, it.view.Frequency = string(pos), freq
 	if it.atc == "" || it.view.Done {
 		it.atc = pos
 		return
 	}
 	if pos == it.atc {
+		// Into another station's sector of the same position (Ground to
+		// Apron, #722): handed over, on the ground only, not mid-clearance.
+		if was != "" && freq != "" && was != freq && pos == traffic.PosGround && !it.gates.Load() {
+			it.say(traffic.Transmission{Position: pos, Frequency: was, Callsign: it.Tail, Intent: traffic.IntentContact,
+				Params: map[string]string{traffic.ParamPosition: string(pos), traffic.ParamStation: station, traffic.ParamFreq: freq}})
+		}
 		return
 	}
 	if ev.dep != nil && it.atc == traffic.PosDelivery && !it.delivered {
@@ -2965,16 +2976,13 @@ func (it *controlled) approachKind() string {
 }
 
 // stationOf is position pos at icao as said, and its frequency ("" none):
-// traffic.StationFor at the airport's layout.
+// the position's station without a sector (#722), else traffic.StationFor
+// at the airport's layout.
 func (cc *controlCenter) stationOf(icao string, pos traffic.Position) (string, string) {
-	if cc.graph == nil {
-		return traffic.PositionName(pos), ""
+	if s, ok := traffic.PickStation(cc.stations(icao), pos, traffic.Where{}); ok {
+		return s.Name, s.Freq
 	}
-	g, err := cc.graph(icao)
-	if err != nil {
-		return traffic.PositionName(pos), ""
-	}
-	return traffic.StationFor(g.Layout, pos)
+	return traffic.PositionName(pos), ""
 }
 
 // departureHandoffFt: a departure is handed from tower to departure this
@@ -2987,6 +2995,10 @@ const (
 
 // say sends t on the radio: logged as ATC and kept for /api/radio.
 func (it *controlled) say(t traffic.Transmission) {
+	// On the frequency of the station working it where it is (#722).
+	if t.Frequency == "" && t.Position != "" && t.Position != traffic.PosATIS {
+		_, t.Frequency = it.station(t.Position)
+	}
 	it.cc.radio.Transmit(it.ICAO, t)
 }
 

@@ -77,7 +77,7 @@ func (p *pending) run(now time.Time) {
 // clearAt is when the frequency of position pos at the aircraft's airport
 // is clear: what is said on it said, readbacks included.
 func (it *controlled) clearAt(pos traffic.Position) time.Time {
-	_, freq := it.cc.stationOf(it.ICAO, pos)
+	_, freq := it.station(pos)
 	at := it.cc.radio.ClearAt(it.ICAO, freq)
 	if now := it.cc.clock.Now(); at.Before(now) {
 		return now
@@ -103,7 +103,7 @@ func (it *controlled) onRequest(req string) {
 		if !it.atisSaid && it.cc.atisLetter != nil {
 			info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 		}
-		station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
+		station, _ := it.station(traffic.PosGround)
 		// Asked separately, the start-up comes once the tug has gone
 		// (TaxiEvent.Request "start_up").
 		it.pushAndStart = float64(it.cc.pending.jitter(time.Second)) < pushAndStartShare*float64(time.Second)
@@ -119,7 +119,7 @@ func (it *controlled) onRequest(req string) {
 			if !it.atisSaid && it.cc.atisLetter != nil {
 				info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 			}
-			station, _ := it.cc.stationOf(it.ICAO, traffic.PosGround)
+			station, _ := it.station(traffic.PosGround)
 			it.say(it.initial(traffic.RequestStartUp(station, it.Tail, it.view.Stand, info)))
 			break
 		}
@@ -217,7 +217,7 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 		it.say(clr) // read back by the crew
 		p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
-			station, freq := it.cc.stationOf(it.ICAO, traffic.PosGround)
+			station, freq := it.station(traffic.PosGround)
 			it.say(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq))
 			p.later(it.clearAt(traffic.PosDelivery).Add(crewActDelay+p.jitter(crewActJitter)), func() {
 				it.mu.Lock()

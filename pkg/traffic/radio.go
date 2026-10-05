@@ -159,25 +159,28 @@ const (
 	// readback, after the call's own.
 	ParamAlsoSaid     = "alsoSaid"
 	ParamAlsoReadback = "alsoReadback"
-	ParamIntercept  = "intercept"   // the heading to intercept the final, three digits
-	ParamRush       = "rush"        // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
-	ParamNoDelay    = "no_delay"    // a take-off with traffic on final: its distance in whole NM, "5"
-	ParamCircuit    = "circuit"     // a position in the circuit as said: "left downwind", "base", "final"
-	ParamInstr      = "instr"       // an approach instruction or delay as said: "extend downwind", "orbit right"
-	ParamType       = "type"        // an aircraft type as said: "Cessna 172"
+	ParamIntercept    = "intercept" // the heading to intercept the final, three digits
+	ParamRush         = "rush"      // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
+	ParamNoDelay      = "no_delay"  // a take-off with traffic on final: its distance in whole NM, "5"
+	ParamCircuit      = "circuit"   // a position in the circuit as said: "left downwind", "base", "final"
+	ParamInstr        = "instr"     // an approach instruction or delay as said: "extend downwind", "orbit right"
+	ParamType         = "type"      // an aircraft type as said: "Cessna 172"
 )
 
 // Transmission is one message on the radio.
 type Transmission struct {
-	At        time.Time         `json:"at"`
-	Airport   string            `json:"airport,omitempty"`
-	Frequency string            `json:"frequency,omitempty"` // with #416
-	Position  Position          `json:"position"`            // the controller's
-	Pilot     bool              `json:"pilot,omitempty"`     // said by the pilot (#417)
-	Callsign  string            `json:"callsign"`
-	Intent    Intent            `json:"intent"`
-	Params    map[string]string `json:"params,omitempty"`
-	Text      string            `json:"text"`
+	At        time.Time `json:"at"`
+	Airport   string    `json:"airport,omitempty"`
+	Frequency string    `json:"frequency,omitempty"` // with #416
+	Position  Position  `json:"position"`            // the controller's
+	// Controller is who works the frequency (#722): the same on every
+	// frequency one person works, so one voice; "" unknown.
+	Controller string            `json:"controller,omitempty"`
+	Pilot      bool              `json:"pilot,omitempty"` // said by the pilot (#417)
+	Callsign   string            `json:"callsign"`
+	Intent     Intent            `json:"intent"`
+	Params     map[string]string `json:"params,omitempty"`
+	Text       string            `json:"text"`
 	// Phraseology is the wording of Text ("" ICAO); the Radio sets FAA at
 	// US airports (RadioOptions.Phraseology).
 	Phraseology Phraseology `json:"phraseology,omitempty"`
@@ -1199,6 +1202,10 @@ type RadioOptions struct {
 	// FrequencyOf is the frequency of position pos at airport, as set
 	// ("118.105"; "" none): filled into transmissions without one (#416).
 	FrequencyOf func(airport string, pos Position) string
+	// ControllerOf is who works freq at airport (#722, "" none): filled
+	// into transmissions without one. One controller says one thing at a
+	// time, whichever of its frequencies.
+	ControllerOf func(airport, freq string) string
 	// ReadBack: our pilots read back every clearance to them (#417), on
 	// the same frequency, after it.
 	ReadBack bool
@@ -1273,12 +1280,22 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	if t.Frequency == "" && r.opts.FrequencyOf != nil {
 		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)
 	}
+	if t.Controller == "" && t.Frequency != "" && r.opts.ControllerOf != nil {
+		t.Controller = r.opts.ControllerOf(t.Airport, t.Frequency)
+	}
 	plain := t // as worded, for the crew's readback and a correction
 	r.mu.Lock()
 	busy := false
 	if t.Frequency != "" {
 		if until := r.busy[t.Airport+" "+t.Frequency]; t.At.Before(until) {
 			t.At, busy = until, true
+		}
+	}
+	mouth := ""
+	if !t.Pilot && t.Controller != "" {
+		mouth = "controller " + t.Airport + " " + t.Controller
+		if until := r.busy[mouth]; t.At.Before(until) {
+			t.At = until
 		}
 	}
 	t = r.varied(t, busy)
@@ -1289,6 +1306,9 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	}
 	if t.Frequency != "" {
 		r.busy[t.Airport+" "+t.Frequency] = t.At.Add(SpeakingTime(t.Text) + time.Second)
+	}
+	if mouth != "" {
+		r.busy[mouth] = t.At.Add(SpeakingTime(t.Text))
 	}
 	r.kept = append(r.kept, t)
 	if len(r.kept) > r.opts.Keep {
