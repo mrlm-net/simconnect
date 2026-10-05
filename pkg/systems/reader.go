@@ -30,10 +30,10 @@ type State struct {
 	// open and by name, in exit order (#700).
 	DoorsOpen []bool
 	DoorNames []string
-	XPDRState                                        int     // 0 off, 1 standby, 2 test, 3 on, 4 alt
-	Squawk                                           string  // e.g. "4521"
-	FlapsPct                                         float64
-	GearDown                                         bool
+	XPDRState int    // 0 off, 1 standby, 2 test, 3 on, 4 alt
+	Squawk    string // e.g. "4521"
+	FlapsPct  float64
+	GearDown  bool
 	// Chocks in place and the aircraft's own GPU connected (#667);
 	// HasChocks, HasGPU: the profile gives them (the model has them).
 	Chocks, GPU, HasChocks, HasGPU bool
