@@ -167,6 +167,19 @@ func (it *controlled) answer(req string) {
 		it.mu.Unlock()
 		return // answered, or no longer asking
 	}
+	// The user aircraft pushing back near it (#739): ground has it wait,
+	// told once, and answers when the user is done.
+	if req == "pushback" && it.cc.core.playerPushingNear(it.ICAO, it.view.Position, playerPushClearM) {
+		first := !it.spoken["standby push"]
+		it.spoken["standby push"] = true
+		it.mu.Unlock()
+		if first {
+			it.say(traffic.Transmission{Position: traffic.PosGround, Callsign: it.Tail, Intent: traffic.IntentStandby,
+				Text: it.Tail + ", standby, traffic pushing behind"})
+		}
+		it.cc.pending.later(it.cc.clock.Now().Add(15*time.Second), func() { it.askGround(req) })
+		return
+	}
 	it.spoken[req] = true // said here: the state change is not said again
 	for _, k := range impliedBy(req) {
 		it.spoken[k] = true
@@ -251,3 +264,7 @@ func (it *controlled) actAfterReadback(pos traffic.Position, what string, f func
 		}
 	})
 }
+
+// playerPushClearM: ours on a stand within this of the user aircraft
+// pushing back wait to push (#739).
+const playerPushClearM = 150.0

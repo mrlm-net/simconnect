@@ -46,8 +46,12 @@ type RunwayUser struct {
 	// ClimbKts: a departure's climb speed (TAS), for the interval and the
 	// order behind a slower one on the same route; 0 unknown.
 	ClimbKts float64
-		// Other traffic: counted, never cleared.
+	// Other traffic: counted, never cleared.
 	Other bool
+	// Host: the host's aircraft (the user's, cleared by the host's own
+	// ATC, #739): holding short, it takes its place in the queue, first
+	// come, and those behind it wait for it; it is never cleared here.
+	Host bool
 }
 
 // RunwayClearances are the controller's decisions this time.
@@ -216,7 +220,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		case RunwayLinedUp:
 			occupied = u.Callsign
 			onRunway = append(onRunway, u.Callsign)
-			if !u.Other {
+			if !u.Other && !u.Host {
 				linedUp = u.Callsign
 			}
 		case RunwayFinal:
@@ -336,6 +340,17 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	}
 	number := 1
 	for _, u := range holding {
+		if u.Host {
+			// Its turn: ours behind it are the next numbers; behind ours, it
+			// is a number too.
+			if occupied == "" {
+				occupied, linedUp = u.Callsign, u.Callsign
+			} else {
+				number++
+			}
+			out.Waiting[u.Callsign] = "cleared by its own ATC"
+			continue
+		}
 		if u.Crossing {
 			switch {
 			case occupied != "":

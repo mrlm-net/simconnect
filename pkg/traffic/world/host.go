@@ -8,10 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -169,10 +172,15 @@ func (w *World) Heard(t traffic.Transmission) {
 type PlayerPhase string
 
 const (
-	PlayerLineUp  PlayerPhase = "lineup"  // line up and wait
-	PlayerTakeoff PlayerPhase = "takeoff" // cleared for take-off
-	PlayerLanding PlayerPhase = "landing" // on approach to (or cleared to land on) the runway
-	PlayerVacated PlayerPhase = "vacated" // off the runway: it is free again
+	// On the ground (#739): pushing back (ours near its stand wait), taxiing
+	// to Runway, holding short of it (its place in the departure queue).
+	PlayerPushback     PlayerPhase = "pushback"
+	PlayerTaxi         PlayerPhase = "taxi"
+	PlayerHoldingShort PlayerPhase = "holding_short"
+	PlayerLineUp       PlayerPhase = "lineup"  // line up and wait
+	PlayerTakeoff      PlayerPhase = "takeoff" // cleared for take-off
+	PlayerLanding      PlayerPhase = "landing" // on approach to (or cleared to land on) the runway
+	PlayerVacated      PlayerPhase = "vacated" // off the runway: it is free again
 )
 
 // PlayerClearance is a clearance the host's ATC gave the user aircraft.
@@ -187,7 +195,9 @@ type PlayerClearance struct {
 }
 
 // ClearPlayer tells the World what the host cleared the user aircraft to
-// (the World never controls nor calls it). While it lines up, takes off or
+// (the World never controls nor calls it). Pushing back, ours on stands
+// near it wait to push; holding short of Runway, it takes its place in the
+// departure queue (ours behind it wait for it). While it lines up, takes off or
 // lands on a runway, the World clears none of its traffic onto it; landing,
 // it is in that runway's landing sequence, as "Player" unless Callsign is
 // given, so its traffic fits behind or ahead of it. PlayerVacated ends it.
@@ -195,10 +205,38 @@ func (w *World) ClearPlayer(c PlayerClearance) {
 	w.st.core.setPlayer(c)
 }
 
-// player is the host's clearance of the user aircraft (#710).
+// player is the host's clearance of the user aircraft (#710), and where
+// the user aircraft is (the feed).
 type playerState struct {
 	mu sync.Mutex
 	c  *PlayerClearance
+	at airport.LatLon
+}
+
+// setUserAt keeps where the user aircraft is.
+func (k *core) setUserAt(p airport.LatLon) {
+	k.player.mu.Lock()
+	k.player.at = p
+	k.player.mu.Unlock()
+}
+
+// playerPushingNear reports whether the user aircraft pushes back at icao
+// within m meters of p (#739).
+func (k *core) playerPushingNear(icao string, p airport.LatLon, m float64) bool {
+	k.player.mu.Lock()
+	defer k.player.mu.Unlock()
+	c := k.player.c
+	return c != nil && c.Phase == PlayerPushback && c.ICAO == icao && calc.HaversineMeters(k.player.at.Lat, k.player.at.Lon, p.Lat, p.Lon) < m
+}
+
+// playerClearance is the host's clearance of the user aircraft, if any.
+func (k *core) playerClearance() (PlayerClearance, bool) {
+	k.player.mu.Lock()
+	defer k.player.mu.Unlock()
+	if c := k.player.c; c != nil {
+		return *c, true
+	}
+	return PlayerClearance{}, false
 }
 
 func (k *core) setPlayer(c PlayerClearance) {
@@ -212,11 +250,16 @@ func (k *core) setPlayer(c PlayerClearance) {
 	k.player.c = &c
 }
 
-// playerOn is the user aircraft's clearance onto icao's runway rwy, if any.
+// playerOn is the user aircraft's clearance onto icao's runway rwy (a
+// runway end "24" or the runway "06/24": the host gives an end), if it
+// lines up, takes off or lands there.
 func (k *core) playerOn(icao, rwy string) (PlayerClearance, bool) {
 	k.player.mu.Lock()
 	defer k.player.mu.Unlock()
-	if c := k.player.c; c != nil && c.ICAO == icao && c.Runway == rwy {
+	onIt := func(c *PlayerClearance) bool {
+		return c.Runway == rwy || slices.Contains(strings.Split(rwy, "/"), c.Runway)
+	}
+	if c := k.player.c; c != nil && c.ICAO == icao && onIt(c) && (c.Phase == PlayerLineUp || c.Phase == PlayerTakeoff || c.Phase == PlayerLanding) {
 		return *c, true
 	}
 	return PlayerClearance{}, false
@@ -307,4 +350,24 @@ func (w *World) Clear(id int, action string) error {
 func (w *World) Approach(icao, callsign, action string) error {
 	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/approach/%s/%s/%s", icao, callsign, action), nil)
 	return err
+}
+
+// registerPlayer serves the host's clearance of the user aircraft (#739):
+// POST /api/player a PlayerClearance (as ClearPlayer; phase "vacated"
+// ends it), GET /api/player the clearance now ({} none).
+func registerPlayer(mux *http.ServeMux, st *state) {
+	mux.HandleFunc("GET /api/player", func(w http.ResponseWriter, r *http.Request) {
+		c, _ := st.core.playerClearance()
+		writeJSON(w, c)
+	})
+	mux.HandleFunc("POST /api/player", func(w http.ResponseWriter, r *http.Request) {
+		var c PlayerClearance
+		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		st.core.setPlayer(c)
+		st.core.log.printf("player: %s %s %s", c.Phase, strings.ToUpper(c.ICAO), c.Runway)
+		w.WriteHeader(http.StatusNoContent)
+	})
 }

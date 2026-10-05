@@ -244,6 +244,30 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
+	// The user aircraft as the host's ATC cleared it (#739): holding short,
+	// in the departure queue; lined up or rolling, on the runway.
+	if p, ok := t.cc.core.playerClearance(); ok {
+		if l := layout(p.ICAO); l != nil {
+			if r, ok := runwayOf(l, p.Runway); ok {
+				name := p.Callsign
+				if name == "" {
+					name = "Player"
+				}
+				u := traffic.RunwayUser{Callsign: name, Wake: traffic.WakeFor(p.Model)}
+				switch p.Phase {
+				case PlayerHoldingShort:
+					u.Phase, u.Host = traffic.RunwayHoldingShort, true
+				case PlayerLineUp:
+					u.Phase, u.Other = traffic.RunwayLinedUp, true
+				case PlayerTakeoff:
+					u.Phase, u.Other = traffic.RunwayRolling, true
+				}
+				if p.Phase == PlayerHoldingShort || p.Phase == PlayerLineUp || p.Phase == PlayerTakeoff {
+					users[key{p.ICAO, r.Name()}] = append(users[key{p.ICAO, r.Name()}], u)
+				}
+			}
+		}
+	}
 	// A gap for a change of the runway in use (the selector's Ready moment):
 	// no more arrivals within runwayChangeGapNM than finish on the old
 	// runway (runwayChangeKeepArrivals); take-offs under way finish there.
