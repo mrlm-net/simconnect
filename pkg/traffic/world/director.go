@@ -46,6 +46,15 @@ func (w *World) runDirector(ctx context.Context, l link) error {
 	c.onError = func(err error) { cc.log.printf("director: wire: %v", err) }
 	stopWorld := st.startWorld(cc)
 	defer stopWorld()
+	// The radio to the actuators too: each player's host speaks it locally
+	// (#779; its OnTransmission).
+	heardHere := cc.onTransmission
+	cc.onTransmission = func(t traffic.Transmission) {
+		if heardHere != nil {
+			heardHere(t)
+		}
+		go c.call("sim", "Transmission", []any{t})
+	}
 	feed := localFeed{st: st, cc: cc}
 	// The actuator's tugs and fuel trucks, by aircraft target.
 	var vmu sync.Mutex
@@ -146,6 +155,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 			cc.giveATC(f, g.Layout, "fuel truck")
 			return f
 		}}
+	a.heard = st.core.hooks.OnTransmission
 	srv.add("sim", a)
 	cc.onModels = func(titles []string) { out.put("models", titles) }
 	cc.onGroundTitles = func(titles []string) { out.put("groundTitles", titles) }
@@ -167,9 +177,15 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 			}
 		}
 	}()
+	recv := l.Recv
+	if r, ok := l.(interface {
+		RecvCtx(context.Context) (wireMsg, error)
+	}); ok {
+		recv = func() (wireMsg, error) { return r.RecvCtx(ctx) } // ends with this connection (#779)
+	}
 	go func() {
 		for {
-			m, err := l.Recv()
+			m, err := recv()
 			if err != nil {
 				return
 			}
@@ -185,10 +201,15 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 			}()
 		}
 	}()
-	go func() {
-		<-ctx.Done()
-		l.Close()
-	}()
+	// A director link of the World's own (LinkDirector, ServeActuator,
+	// DialActuator) outlives this connection: a sim reconnect keeps it
+	// (#779). Others end with it.
+	if _, own := l.(*hubLink); !own {
+		go func() {
+			<-ctx.Done()
+			l.Close()
+		}()
+	}
 	return a, teeFeed{localFeed{st: st, cc: cc}, out}
 }
 
@@ -238,3 +259,13 @@ func (t teeFeed) Paused(p bool)          { t.a.Paused(p); t.b.Paused(p) }
 func (t teeFeed) Traffic(scan []Traffic) { t.a.Traffic(scan); t.b.Traffic(scan) }
 
 var _ sync.Mutex
+
+// Transmission is one the director's controllers or crews said (#779):
+// the actuator's host hears it (OnTransmission), its voice speaks it
+// locally.
+func (a *actuatorSim) Transmission(t traffic.Transmission) error {
+	if a.heard != nil {
+		a.heard(t)
+	}
+	return nil
+}

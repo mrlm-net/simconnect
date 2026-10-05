@@ -113,6 +113,8 @@ func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalReq
 // actuatorSim is the sim port the actuator serves: the local one, with the
 // starts taken off the wire (wireServer target "sim").
 type actuatorSim struct {
+	// heard: the host's OnTransmission, for the director's radio (#779).
+	heard func(traffic.Transmission)
 	*localSim
 	srv   *wireServer
 	send  func(wireMsg) error

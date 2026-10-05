@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -143,5 +144,65 @@ func TestDialOut(t *testing.T) {
 	c2.l.Close()
 	if _, _, ok := accept("other"); ok {
 		t.Error("a wrong token let in")
+	}
+}
+
+// A connection's reader stops with its connection; the link and what the
+// director sends next go to the next connection's reader (#779: a sim
+// reconnect under LinkDirector).
+func TestHubOutlivesConnection(t *testing.T) {
+	hub := newHubLink()
+	defer hub.Close()
+	a, b := net.Pipe()
+	hub.attach(newConnLink(a))
+	dir := newConnLink(b)
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	cancel1() // the first connection is gone
+	if _, err := hub.RecvCtx(ctx1); err == nil {
+		t.Fatal("a reader of an ended connection got a message")
+	}
+	go dir.Send(wireMsg{Kind: wireCall, ID: 7, Method: "State"})
+	m, err := hub.RecvCtx(context.Background())
+	if err != nil || m.ID != 7 {
+		t.Fatalf("the next connection's reader: %+v %v", m, err)
+	}
+}
+
+// bumper counts the calls it gets.
+type bumper struct{ n atomic.Int32 }
+
+func (b *bumper) Bump() error { b.n.Add(1); return nil }
+
+// One director, two actuators (#779): a command reaches both, so each sim
+// does the same; the reply comes from the primary; a follower that leaves
+// does not stop the director.
+func TestFanOut(t *testing.T) {
+	a1, b1 := net.Pipe()
+	a2, b2 := net.Pipe()
+	var p, f bumper
+	s1, s2 := newWireServer(), newWireServer()
+	s1.add("ctr", &p)
+	s2.add("ctr", &f)
+	go serve(newConnLink(b1), s1)
+	go serve(newConnLink(b2), s2)
+	fan := &fanLink{primary: newConnLink(a1)}
+	fan.follow(newConnLink(a2))
+	c := newWireClient(fan, func(wireMsg) {})
+	for range 3 {
+		if err := c.call("ctr", "Bump", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for f.n.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if p.n.Load() != 3 || f.n.Load() != 3 {
+		t.Fatalf("primary %d, follower %d calls: want 3 each", p.n.Load(), f.n.Load())
+	}
+	b2.Close() // the follower leaves
+	time.Sleep(50 * time.Millisecond)
+	if err := c.call("ctr", "Bump", nil); err != nil || p.n.Load() != 4 {
+		t.Errorf("after the follower left: %v, primary %d", err, p.n.Load())
 	}
 }

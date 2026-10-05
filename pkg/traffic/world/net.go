@@ -54,10 +54,49 @@ type hubLink struct {
 	next chan *connLink
 	done chan struct{}
 	once sync.Once
+	in   chan wireMsg // what the director sends, for whoever reads now
+	// state: "dialling", "attached", "gone" (LinkState).
+	state string
 }
 
 func newHubLink() *hubLink {
-	return &hubLink{next: make(chan *connLink, 1), done: make(chan struct{})}
+	h := &hubLink{next: make(chan *connLink, 1), done: make(chan struct{}), in: make(chan wireMsg, 256)}
+	go h.pump()
+	return h
+}
+
+// pump reads the director attached now into in, until the hub closes.
+func (h *hubLink) pump() {
+	for {
+		m, err := h.recvDirect()
+		if err != nil {
+			return
+		}
+		select {
+		case h.in <- m:
+		case <-h.done:
+			return
+		}
+	}
+}
+
+// RecvCtx is Recv until ctx ends: a connection's reader stops with it and
+// leaves the link to the next one (#779).
+func (h *hubLink) RecvCtx(ctx context.Context) (wireMsg, error) {
+	select {
+	case m := <-h.in:
+		return m, nil
+	case <-h.done:
+		return wireMsg{}, errLinkClosed
+	case <-ctx.Done():
+		return wireMsg{}, ctx.Err()
+	}
+}
+
+func (h *hubLink) setState(s string) {
+	h.mu.Lock()
+	h.state = s
+	h.mu.Unlock()
 }
 
 // attach makes c the director, dropping the one before.
@@ -88,7 +127,10 @@ func (h *hubLink) Send(m wireMsg) error {
 	return nil
 }
 
-func (h *hubLink) Recv() (wireMsg, error) {
+func (h *hubLink) Recv() (wireMsg, error) { return h.RecvCtx(context.Background()) }
+
+// recvDirect reads the director attached now, waiting for one.
+func (h *hubLink) recvDirect() (wireMsg, error) {
 	for {
 		h.mu.Lock()
 		c := h.cur
@@ -236,6 +278,7 @@ func DialActuator(ctx context.Context, w *World, addr, token string) error {
 // with token, dialled again 5 s after it is lost, until ctx ends.
 func (h *hubLink) dialOut(ctx context.Context, addr, token string, logf func(string, ...any)) error {
 	for {
+		h.setState("dialling")
 		var d net.Dialer
 		c, err := d.DialContext(ctx, "tcp", addr)
 		if err == nil {
@@ -243,6 +286,7 @@ func (h *hubLink) dialOut(ctx context.Context, addr, token string, logf func(str
 			if err = l.enc.Encode(hello{Token: token}); err == nil {
 				logf("actuator: attached to director %s", addr)
 				h.attach(l)
+				h.setState("attached")
 				// Until this director is gone (dropped on a failed read or send).
 				for h.current() == l && ctx.Err() == nil {
 					select {
@@ -251,6 +295,7 @@ func (h *hubLink) dialOut(ctx context.Context, addr, token string, logf func(str
 					}
 				}
 				logf("actuator: director %s gone", addr)
+				h.setState("gone")
 			} else {
 				c.Close()
 			}
@@ -272,10 +317,15 @@ func (h *hubLink) dialOut(ctx context.Context, addr, token string, logf func(str
 // redialEvery: a lost director is dialled again after this (tests shorten it).
 var redialEvery = 5 * time.Second
 
-// ListenDirector runs w as a director waiting on addr for an actuator that
-// dials in with token (any when ""), #774: one at a time; when it is gone,
-// the next one that dials in. It returns when ctx ends or the listener
-// fails.
+// ListenDirector runs w as a director waiting on addr for actuators that
+// dial in with token (any when ""), #774, #779. The first is the primary:
+// its replies, its aircraft's events and its simulator's feed drive the
+// director. Every later one follows: it gets the same commands, so each
+// player's sim creates and moves the same traffic locally; what it sends
+// back is dropped. A follower joining late gets the flights started after
+// it. When the primary is gone the director starts again with the next
+// actuator to dial in (the followers dial again too). It returns when ctx
+// ends or the listener fails.
 func ListenDirector(ctx context.Context, w *World, addr, token string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -285,6 +335,8 @@ func ListenDirector(ctx context.Context, w *World, addr, token string) error {
 		<-ctx.Done()
 		ln.Close()
 	}()
+	var mu sync.Mutex
+	var cur *fanLink
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -293,18 +345,93 @@ func ListenDirector(ctx context.Context, w *World, addr, token string) error {
 			}
 			return err
 		}
-		l, ok := greeted(c, token)
-		if !ok {
-			continue
-		}
-		w.st.core.log.printf("director: actuator %s attached", c.RemoteAddr())
-		err = w.runDirector(ctx, l)
-		l.Close()
-		if ctx.Err() != nil {
-			return nil
-		}
-		w.st.core.log.printf("director: actuator %s gone: %v", c.RemoteAddr(), err)
+		go func() {
+			l, ok := greeted(c, token)
+			if !ok {
+				return
+			}
+			mu.Lock()
+			if cur != nil {
+				cur.follow(l)
+				mu.Unlock()
+				w.st.core.log.printf("director: actuator %s follows", c.RemoteAddr())
+				return
+			}
+			fan := &fanLink{primary: l}
+			cur = fan
+			mu.Unlock()
+			w.st.core.log.printf("director: actuator %s attached (primary)", c.RemoteAddr())
+			err := w.runDirector(ctx, fan)
+			mu.Lock()
+			cur = nil
+			mu.Unlock()
+			fan.Close()
+			if ctx.Err() == nil {
+				w.st.core.log.printf("director: primary actuator %s gone: %v", c.RemoteAddr(), err)
+			}
+		}()
 	}
+}
+
+// fanLink is a director's link to several actuators (#779): sent to all,
+// received from the primary.
+type fanLink struct {
+	primary   *connLink
+	mu        sync.Mutex
+	followers []*connLink
+}
+
+// follow adds a follower: what it sends is read and dropped.
+func (f *fanLink) follow(l *connLink) {
+	f.mu.Lock()
+	f.followers = append(f.followers, l)
+	f.mu.Unlock()
+	go func() {
+		for {
+			if _, err := l.Recv(); err != nil {
+				f.drop(l)
+				return
+			}
+		}
+	}()
+}
+
+func (f *fanLink) drop(l *connLink) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, x := range f.followers {
+		if x == l {
+			f.followers = append(f.followers[:i], f.followers[i+1:]...)
+			break
+		}
+	}
+	l.Close()
+}
+
+func (f *fanLink) Send(m wireMsg) error {
+	err := f.primary.Send(m)
+	f.mu.Lock()
+	fs := append([]*connLink(nil), f.followers...)
+	f.mu.Unlock()
+	for _, l := range fs {
+		if l.Send(m) != nil {
+			f.drop(l)
+		}
+	}
+	return err
+}
+
+func (f *fanLink) Recv() (wireMsg, error) { return f.primary.Recv() }
+
+func (f *fanLink) Close() error {
+	f.mu.Lock()
+	fs := f.followers
+	f.followers = nil
+	f.mu.Unlock()
+	for _, l := range fs {
+		l.Close()
+	}
+	return f.primary.Close()
 }
 
 // current is the director attached now (nil none).
@@ -312,4 +439,28 @@ func (h *hubLink) current() *connLink {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.cur
+}
+
+// LinkDirector makes w an actuator of the director at addr ("host:port",
+// greeting with token) on the host's own simulator connection: the host
+// keeps calling RunOn per connection (#779). It dials out (a player behind
+// a router needs no way in), dials again 5 s after the director is lost,
+// and keeps the link across sim reconnects. Call it before RunOn: a
+// connection already running stays as it was until the next one. When ctx
+// ends the World decides on its own again from the next connection.
+// Snapshot.Link says how the link is.
+func (w *World) LinkDirector(ctx context.Context, addr, token string) error {
+	hub := newHubLink()
+	w.st.mu.Lock()
+	w.st.actLink = hub
+	w.st.mu.Unlock()
+	defer func() {
+		w.st.mu.Lock()
+		if w.st.actLink == link(hub) {
+			w.st.actLink = nil
+		}
+		w.st.mu.Unlock()
+		hub.Close()
+	}()
+	return hub.dialOut(ctx, addr, token, w.st.core.log.printf)
 }

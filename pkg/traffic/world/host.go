@@ -69,6 +69,9 @@ type Snapshot struct {
 	Player *PlayerPlace `json:"player,omitempty"`
 	// Dropped is how many fed messages were dropped (Feed).
 	Dropped uint64 `json:"dropped"`
+	// Link is the director link of an actuator (LinkDirector, #779):
+	// "dialling", "attached", "gone"; "" none (the World decides).
+	Link string `json:"link,omitempty"`
 }
 
 // PlayerPlace is where the user aircraft is in its runway's landing
@@ -100,6 +103,13 @@ func (w *World) Snapshot() Snapshot {
 		out.Connected, out.At, out.Aircraft = true, cc.clock.Now(), cc.views()
 		out.Player = cc.playerPlace()
 	}
+	w.st.mu.Lock()
+	if h, ok := w.st.actLink.(*hubLink); ok {
+		h.mu.Lock()
+		out.Link = h.state
+		h.mu.Unlock()
+	}
+	w.st.mu.Unlock()
 	return out
 }
 
