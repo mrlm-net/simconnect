@@ -121,11 +121,19 @@ func vehicleGates(l *airport.Layout, path *GroundPath) []vehicleGate {
 // not cleared (false: none ahead), asking ATC as it comes; a runway
 // crossed behind it is reported vacated.
 func (y *vehicleYield) gateStop(m *GroundMover) (float64, bool) {
-	if y.atc == nil || m == nil {
+	// Not created yet (no object): it neither drives nor asks.
+	if y.atc == nil || m == nil || y.self == 0 {
 		return 0, false
 	}
 	if y.gatesFor != m {
 		y.gates, y.gatesFor = vehicleGates(y.layout, m.Path()), m
+		// Starting on a taxiway (a tug at the nose after the push): part of
+		// the push, no call; holding it where it stands jerked it (#769).
+		for i := range y.gates {
+			if y.gates[i].at <= VehicleHoldTaxiwayM && y.gates[i].Gate == GateTaxiway {
+				y.gates[i].cleared = true
+			}
+		}
 	}
 	s := m.Pose().Distance
 	for i := range y.gates {

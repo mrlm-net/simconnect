@@ -98,7 +98,7 @@ func TestVehicleHoldsUntilCleared(t *testing.T) {
 		t.Skip("no EGLL vehicle route across a runway")
 	}
 	atc := &fakeVehicleATC{asks: 5, got: map[string]int{}}
-	y := &vehicleYield{}
+	y := &vehicleYield{self: 7}
 	y.SetATC(atc, l, "tug")
 	a, b := path.PointAt(0), path.PointAt(5)
 	m := NewGroundMoverFrom(path, tugRoadProfile(), localBearing(a, b), 0)
