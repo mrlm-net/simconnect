@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func TestTransmissionPhrases(t *testing.T) {
 		{GoAround("CSA1", ""), PosTower, IntentGoAround, "CSA1, go around, I say again, go around", "", ""},
 		{GoAround("CSA1", "traffic on the runway"), PosTower, IntentGoAround, "CSA1, go around, I say again, go around, traffic on the runway", ParamReason, "traffic on the runway"},
 		{Sequenced("CSA1", 2, 8*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9, Left: 3 * time.Minute}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots, expect 8 minutes delay", ParamNumber, "2"}, // CAP 413 6.23, 6.24
-		{Sequenced("CSA1", 2, 5*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots", ParamNumber, "2"}, // five minutes or less: not said
+		{Sequenced("CSA1", 2, 5*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots", ParamNumber, "2"},                                                // five minutes or less: not said
 		{Sequenced("OKYDV", 3, 2*time.Minute, Absorption{ExtraNM: 4, Orbit: "left"}), PosApproach, IntentSequence, "OKYDV, number 3, orbit left for spacing", ParamNumber, "3"},
 		{Sequenced("CSA1", 0, 2*time.Minute, Absorption{SpeedKts: 190}), PosApproach, IntentSequence, "CSA1, for spacing reduce speed to 190 knots", ParamSpeed, "190"}, // the number told already
 		{Sequenced("CSA1", 1, 0, Absorption{SpeedKts: 233}), PosApproach, IntentSequence, "CSA1, number 1, for spacing reduce speed to 233 knots", ParamSpeed, "233"},
@@ -354,5 +355,34 @@ func TestLevelClearances(t *testing.T) {
 	}
 	if tx := RequestDescent(PosCenter, "CSA123"); tx.Text != "CSA123, request descent" {
 		t.Errorf("%q, want CSA123, request descent", tx.Text)
+	}
+}
+
+// The surface wind as ICAO and the FAA say it, variable and calm too
+// (#753).
+func TestWindSaidAs(t *testing.T) {
+	nan := math.NaN()
+	for _, c := range []struct {
+		ph             Phraseology
+		dir, kts, gust float64
+		want           string
+	}{
+		{PhraseologyICAO, 264, 12, 0, "wind 260 degrees 12 knots"},
+		{PhraseologyICAO, 270, 18, 28, "wind 270 degrees 18 knots gusting 28 knots"},
+		{PhraseologyICAO, nan, 2, 0, "wind variable 2 knots"},
+		{PhraseologyICAO, 100, 0.4, 0, "wind calm"},
+		{PhraseologyICAO, 100, 2, 0, "wind 100 degrees 2 knots"},
+		{PhraseologyFAA, 264, 12, 0, "wind 260 at 12"},
+		{PhraseologyFAA, 360, 12, 20, "wind 360 at 12"},
+		{PhraseologyFAA, 360, 12, 22, "wind 360 at 12 gusts 22"},
+		{PhraseologyFAA, nan, 4, 0, "wind variable at 4"},
+		{PhraseologyFAA, 100, 2, 0, "wind calm"},
+	} {
+		if got := WindSaidAs(c.ph, c.dir, c.kts, c.gust); got != c.want {
+			t.Errorf("%s %v/%v G%v: %q, want %q", c.ph, c.dir, c.kts, c.gust, got, c.want)
+		}
+	}
+	if got := WindSaid(math.NaN(), 3, 0); got != "wind variable 3 knots" {
+		t.Errorf("WindSaid variable: %q", got)
 	}
 }

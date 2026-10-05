@@ -157,6 +157,16 @@ func TestATISText(t *testing.T) {
 	if got := lkprATIS(t, StaticWeather(0, 0.4, 7300, 15, 8, 1013)).Text(); !strings.Contains(got, "wind calm, visibility 7 kilometers") {
 		t.Errorf("calm: %s", got)
 	}
+	// A METAR's VRB02KT (#753): variable, not 360 degrees; no runway is
+	// into it.
+	vrb := StaticWeather(0, 2, 9999, 15, 8, 1013)
+	vrb.Variable = true
+	if got := lkprATIS(t, vrb).Text(); !strings.Contains(got, "wind variable 2 knots,") || strings.Contains(got, "360") {
+		t.Errorf("variable: %s", got)
+	}
+	if h, x := vrb.Components(240); h != 0 || x != 0 {
+		t.Errorf("variable wind components %v %v", h, x)
+	}
 }
 
 func TestATISSpoken(t *testing.T) {
