@@ -88,3 +88,32 @@ func TestBandBoxed(t *testing.T) {
 		t.Error("the input changed")
 	}
 }
+
+// One of a unit's frequencies at a time, another in other blocks; Praha
+// Radar never stands in for Ruzyne Radar; approach and departure share
+// their unit's pick (#772).
+func TestDefaultStationsAt(t *testing.T) {
+	l := &airport.Layout{ICAO: "LKPR", Frequencies: []airport.Frequency{
+		{Kind: airport.FreqApproach, MHz: 118.31, Name: "RUZYNE"}, {Kind: airport.FreqApproach, MHz: 119.01, Name: "RUZYNE"},
+		{Kind: airport.FreqApproach, MHz: 120.53, Name: "PRAGUE"}, {Kind: airport.FreqApproach, MHz: 127.58, Name: "PRAGUE"},
+		{Kind: airport.FreqGround, MHz: 121.91, Name: "RUZYNE"}, {Kind: airport.FreqGround, MHz: 131.95, Name: "RUZYNE"},
+		{Kind: airport.FreqTower, MHz: 134.56, Name: "RUZYNE"},
+	}}
+	seen := map[string]map[string]bool{"approach": {}, "ground": {}}
+	for b := range uint64(40) {
+		st := DefaultStationsAt(l, b)
+		app, _ := PickStation(st, PosApproach, Where{})
+		dep, _ := PickStation(st, PosDeparture, Where{})
+		gnd, _ := PickStation(st, PosGround, Where{})
+		if app.Freq != dep.Freq || app.Controller != dep.Controller {
+			t.Errorf("block %d: approach %s, departure %s", b, app.Freq, dep.Freq)
+		}
+		if app.Freq != "118.31" && app.Freq != "119.01" {
+			t.Errorf("block %d: approach on %s (Praha Radar)", b, app.Freq)
+		}
+		seen["approach"][app.Freq], seen["ground"][gnd.Freq] = true, true
+	}
+	if len(seen["approach"]) != 2 || len(seen["ground"]) != 2 {
+		t.Errorf("rotation %v", seen)
+	}
+}
