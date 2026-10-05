@@ -160,7 +160,11 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			e.fixes = append(e.fixes, airFix{Ident: w.Ident, LatLon: w.Position})
 		}
 	}
-	return s.spawnEnrouteOn(f, e, model, route, fp.Route)
+	along := fp.Route
+	if along == "" {
+		along = "direct"
+	}
+	return s.spawnEnrouteOn(f, e, model, route, along)
 }
 
 // spawnEnrouteOn creates e flying route (its first point where it appears).
