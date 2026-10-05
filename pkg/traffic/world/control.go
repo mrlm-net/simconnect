@@ -375,6 +375,8 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 	cc.pending = newPending()
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
+		// Crews answer their own way (#721); POST /api/radio/variety.
+		Variety: &traffic.Variety{Seed: 721},
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		// Call signs as said, in the text and so in the voice (#462).
 		SaidCallsign: func(cs string) string {
@@ -1450,6 +1452,46 @@ func registerControl(mux *http.ServeMux, st *state) {
 			out = append(out, cc.radio.Recent(strings.ToUpper(r.URL.Query().Get("icao")), n)...)
 		}
 		writeJSON(w, out)
+	})
+
+	// GET /api/radio/variety — the radio's variety (#721): {"enabled", "seed",
+	// "sayAgain", "readbackError"}; POST the same to change it
+	// ("enabled":false: every crew answers at once, as worded).
+	type varietyView struct {
+		Enabled bool `json:"enabled"`
+		traffic.Variety
+	}
+	mux.HandleFunc("GET /api/radio/variety", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		v := varietyView{}
+		if cc != nil {
+			if cur := cc.radio.Variety(); cur != nil {
+				v = varietyView{Enabled: true, Variety: *cur}
+			}
+		}
+		writeJSON(w, v)
+	})
+	mux.HandleFunc("POST /api/radio/variety", func(w http.ResponseWriter, r *http.Request) {
+		var v varietyView
+		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		if cc == nil {
+			http.Error(w, "not connected", http.StatusServiceUnavailable)
+			return
+		}
+		if v.Enabled {
+			cc.radio.SetVariety(&v.Variety)
+		} else {
+			cc.radio.SetVariety(nil)
+		}
+		writeJSON(w, v)
 	})
 
 	// POST /api/radio/pilot {icao, callsign, intent, tags} — a call from the
