@@ -51,8 +51,11 @@ const (
 	// asks for them; a shorter stretch is a road crossing one.
 	VehicleTaxiwayAlongM = 30.0
 	VehicleHoldTaxiwayM  = 5.0
-	VehicleHoldRunwayM   = 40.0
-	vehicleGateStep      = 2.0
+	// VehicleTaxiwayJoinM: taxiway stretches this close are asked for
+	// together.
+	VehicleTaxiwayJoinM = 60.0
+	VehicleHoldRunwayM  = 40.0
+	vehicleGateStep     = 2.0
 )
 
 // vehicleGate is a gate on a path: from at to end (meters along it).
@@ -97,7 +100,14 @@ func vehicleGates(l *airport.Layout, path *GroundPath) []vehicleGate {
 		}
 		if cur == nil || cur.Gate != GateTaxiway {
 			closeCur(s)
-			cur = &vehicleGate{VehicleRequest: VehicleRequest{Gate: GateTaxiway, At: p}, at: math.Max(0, s-VehicleHoldTaxiwayM)}
+			// Taxiways a short way after the last ones: the same clearance
+			// ("proceed via H1, H, G").
+			if n := len(out); n > 0 && out[n-1].Gate == GateTaxiway && s-out[n-1].end <= VehicleTaxiwayJoinM {
+				g := out[n-1]
+				out, cur = out[:n-1], &g
+			} else {
+				cur = &vehicleGate{VehicleRequest: VehicleRequest{Gate: GateTaxiway, At: p}, at: math.Max(0, s-VehicleHoldTaxiwayM)}
+			}
 		}
 		if name != "" && (len(cur.Taxiways) == 0 || cur.Taxiways[len(cur.Taxiways)-1] != name) {
 			cur.Taxiways = append(cur.Taxiways, name)
