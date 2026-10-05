@@ -33,6 +33,16 @@ type ApproachAircraft struct {
 	// dependent parallel approaches the arrivals of the adjacent final are
 	// given too (Fixed, with their runway): only DiagonalNM is kept to them.
 	Runway string
+	// Fixes are the named fixes ahead on its route, in order, with the
+	// track distance to each: arrivals sharing one are put in trail there
+	// (MergeSpacingNM), not only on the final.
+	Fixes []FixAhead
+}
+
+// FixAhead is a named fix on an arrival's route and its track distance.
+type FixAhead struct {
+	Name string
+	NM   float64
 }
 
 // SequenceEntry is an arrival's place in the landing sequence.
@@ -117,6 +127,12 @@ type SequencerOptions struct {
 	// SetDepartureSlots, that many gaps open in front of the next arrivals
 	// not yet established.
 	DepartureGapNM float64
+	// MergeSpacingNM: two arrivals whose routes merge at a fix outside the
+	// final pass it in trail, the second at least this far behind the
+	// first (0: DefaultMergeSpacingNM; negative: landings only). Live,
+	// LKPR: THY319 and TVS979 from two STARs met at PR574 at 0.7 NM,
+	// spaced for landing only.
+	MergeSpacingNM float64
 	// OnChange is called with every change of place or delay.
 	OnChange func(SequenceChange)
 }
@@ -189,6 +205,9 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	}
 	if opts.FinalNM == 0 {
 		opts.FinalNM = 10
+	}
+	if opts.MergeSpacingNM == 0 {
+		opts.MergeSpacingNM = DefaultMergeSpacingNM
 	}
 	if opts.DelayStep == 0 {
 		opts.DelayStep = 30 * time.Second
@@ -545,6 +564,12 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 				at = ahead.at.Add(g)
 			}
 		}
+		// In trail where its route merges with one landing before it.
+		for _, p := range planned {
+			if need := s.mergeDelay(p.a, p.at.Sub(p.eta), f.a); f.eta.Add(need).After(at) {
+				at = f.eta.Add(need)
+			}
+		}
 		for {
 			moved := false
 			for _, p := range planned {
@@ -738,6 +763,53 @@ const (
 	CompressionNMPer30Kts   = 1.0
 	DefaultCompressionMaxNM = 2.0
 )
+
+// DefaultMergeSpacingNM is the spacing at a merge point: the 5 NM radar
+// minimum away from the terminal area (ConflictOptions.MinNM) and a mile
+// for the turns onto the common route.
+const DefaultMergeSpacingNM = 6.0
+
+// mergeKts is the least speed a time to a merge point is flown at.
+const mergeKts = 150.0
+
+// mergeDelay is the delay follow must lose before the first fix its route
+// shares with lead, so it passes it MergeSpacingNM behind: lead at its
+// speed now, late by leadDelay (absorbed on the way). A fix on the final
+// is the final's spacing, and one follow reaches first plainly ahead is
+// no merge it trails in.
+func (s *ApproachSequencer) mergeDelay(lead ApproachAircraft, leadDelay time.Duration, follow ApproachAircraft) time.Duration {
+	sep := s.opts.MergeSpacingNM
+	if sep <= 0 || lead.Runway != follow.Runway {
+		return 0
+	}
+	for _, ff := range follow.Fixes {
+		if follow.DistanceToGoNM-ff.NM <= s.opts.FinalNM {
+			return 0 // on the final from here on
+		}
+		for _, lf := range lead.Fixes {
+			if lf.Name != ff.Name {
+				continue
+			}
+			kl, kf := mergeSpeed(lead), mergeSpeed(follow)
+			tl := time.Duration(lf.NM/kl*float64(time.Hour)) + max(0, leadDelay)
+			tf := time.Duration(ff.NM / kf * float64(time.Hour))
+			if tf+SeparationTime(sep, kf) <= tl {
+				return 0 // there well before it
+			}
+			return max(0, tl+SeparationTime(sep, kl)-tf)
+		}
+	}
+	return 0
+}
+
+// mergeSpeed is a's speed to a merge point: its ground speed now, at
+// least mergeKts (TerminalKts before it reports one).
+func mergeSpeed(a ApproachAircraft) float64 {
+	if a.GroundKts < 1 {
+		return TerminalKts
+	}
+	return max(mergeKts, a.GroundKts)
+}
 
 // finalKtsOf is a's approach speed on final (140 when not given).
 func finalKtsOf(a ApproachAircraft) float64 {

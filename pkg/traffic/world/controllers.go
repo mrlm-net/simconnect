@@ -66,7 +66,7 @@ type arrivalCtl interface {
 	ProcedurePlan() []traffic.RoutePoint
 	ProcedureRoute() []airport.LatLon
 	ReduceToFinalSpeed() (time.Duration, error)
-	Shortcut(maxSaveNM float64) (string, float64, error)
+	Shortcut(maxSaveNM float64, keep []string) (string, float64, error)
 	State() traffic.ArrivalState
 	StopDescent(altFt, forNM float64) error
 	TouchAndGosLeft() int

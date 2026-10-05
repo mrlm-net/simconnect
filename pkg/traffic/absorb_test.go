@@ -430,17 +430,17 @@ func TestShortcut(t *testing.T) {
 	}
 	ctl := start(6000)
 	before := pathNM(ctl.ProcedureRoute())
-	fix, saved, err := ctl.Shortcut(30)
+	fix, saved, err := ctl.Shortcut(30, nil)
 	if err != nil || fix == "" || saved <= 0 || saved > 30 {
 		t.Fatalf("shortcut %q %.1f NM, %v", fix, saved, err)
 	}
 	if after := pathNM(ctl.ProcedureRoute()); before-after < saved-1.5 {
 		t.Errorf("route %.1f → %.1f NM for %.1f saved", before, after, saved)
 	}
-	if fix, _, _ := start(40000).Shortcut(30); fix != "" {
+	if fix, _, _ := start(40000).Shortcut(30, nil); fix != "" {
 		t.Errorf("40000 ft up: direct %s, want none (too high)", fix)
 	}
-	if fix, _, _ := start(6000).Shortcut(0.5); fix != "" {
+	if fix, _, _ := start(6000).Shortcut(0.5, nil); fix != "" {
 		t.Errorf("room for 0.5 NM: direct %s", fix)
 	}
 }

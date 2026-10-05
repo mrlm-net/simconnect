@@ -271,10 +271,10 @@ func (r *remoteArr) ReduceToFinalSpeed() (time.Duration, error) {
 	return o0, err
 }
 
-func (r *remoteArr) Shortcut(maxSaveNM float64) (string, float64, error) {
+func (r *remoteArr) Shortcut(maxSaveNM float64, keep []string) (string, float64, error) {
 	var o0 string
 	var o1 float64
-	err := r.c.call(r.t, "Shortcut", []any{maxSaveNM}, &o0, &o1)
+	err := r.c.call(r.t, "Shortcut", []any{maxSaveNM, keep}, &o0, &o1)
 	return o0, o1, err
 }
 
@@ -338,3 +338,4 @@ func (r *remoteSim) ListGroundVehicles() error {
 	err := r.c.call(r.t, "ListGroundVehicles", []any{})
 	return err
 }
+

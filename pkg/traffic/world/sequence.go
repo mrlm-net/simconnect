@@ -1,10 +1,12 @@
 package world
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -43,6 +45,9 @@ type sequences struct {
 	seqSaid map[string]seqSaid
 	// shortcutAt: when each arrival was last looked at for a shortcut.
 	shortcutAt map[string]time.Time
+	// fixesAhead: each arrival's named fixes ahead at the last tick, for
+	// the merge points a shortcut keeps (#788).
+	fixesAhead map[string][]traffic.FixAhead
 	// conflictHeld: arrivals holding for a conflict with another (the
 	// conflict watch, #455): the sequence does not release them, however
 	// small their delay, before conflictHoldMin has passed and inConflict
@@ -485,6 +490,7 @@ func (q *sequences) tick(now time.Time) {
 	}
 	// flying: route starts at the point it flies to (DistanceVia); else it
 	// is the planned route, found from where the aircraft is (DistanceToGo).
+	fixesOf := map[string][]traffic.FixAhead{} // named fixes ahead: merge points (#788)
 	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed bool) {
 		t, ok := threshold(icao, rwy)
 		if !ok {
@@ -496,7 +502,7 @@ func (q *sequences) tick(now time.Time) {
 		}
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
-			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed})
+			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Fixes: fixesOf[cs]})
 	}
 	// Controlled arrivals, airborne.
 	q.cc.mu.Lock()
@@ -527,6 +533,7 @@ func (q *sequences) tick(now time.Time) {
 		// procedure): straight to the threshold — the planned approach from
 		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
+			fixesOf[v.Tail] = namedAhead(p, r, fixesAhead(it.fixes, r))
 			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
 			continue
 		}
@@ -571,6 +578,13 @@ func (q *sequences) tick(now time.Time) {
 		if e.arrive.plan != nil {
 			rwy = e.arrive.plan.ArrivalRunway
 		}
+		var named []airFix
+		for _, n := range e.arrive.route {
+			if n.Ident != "" {
+				named = append(named, airFix{Ident: n.Ident, LatLon: n.Position})
+			}
+		}
+		fixesOf[e.f.Callsign] = namedAhead(a.Position, remaining(a.Position, route), named)
 		add(e.f.Airport, rwy, e.f.Callsign, e.model, a.Position, a.GroundKts, route, false, false)
 	}
 	// Other traffic arriving, respected: it keeps its slot.
@@ -591,6 +605,9 @@ func (q *sequences) tick(now time.Time) {
 	// Dependent parallel approaches: each final's sequence also keeps the
 	// adjacent final's arrivals, ParallelDiagonalNM away (fixed: that
 	// final places them).
+	q.mu.Lock()
+	q.fixesAhead = fixesOf
+	q.mu.Unlock()
 	adjacent := map[key][]traffic.ApproachAircraft{}
 	done := map[string]bool{}
 	for k := range feed {
@@ -695,6 +712,39 @@ func nameOf(a traffic.TrackedAircraft) string {
 		return a.Tail
 	}
 	return a.Title
+}
+
+// namedAhead are the fixes on route ahead of p, nearest first, with the
+// track distance to each.
+func namedAhead(p airport.LatLon, route []airport.LatLon, fixes []airFix) []traffic.FixAhead {
+	var out []traffic.FixAhead
+	for _, f := range fixesAhead(fixes, route) {
+		nm, _ := traffic.AlongTo(p, route, f.LatLon)
+		out = append(out, traffic.FixAhead{Name: f.Ident, NM: nm})
+	}
+	slices.SortStableFunc(out, func(a, b traffic.FixAhead) int { return cmp.Compare(a.NM, b.NM) })
+	return out
+}
+
+// mergePoints are e's fixes ahead an arrival landing before it on the same
+// runway still has to pass: where it follows in trail, never cut past by a
+// shortcut (#788).
+func (q *sequences) mergePoints(e traffic.SequenceEntry, seq []traffic.SequenceEntry) []string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var keep []string
+	for _, f := range q.fixesAhead[e.Callsign] {
+		for _, o := range seq {
+			if o.Number >= e.Number || o.Runway != e.Runway {
+				continue
+			}
+			if slices.ContainsFunc(q.fixesAhead[o.Callsign], func(g traffic.FixAhead) bool { return g.Name == f.Name }) {
+				keep = append(keep, f.Name)
+				break
+			}
+		}
+	}
+	return keep
 }
 
 // remaining is the part of route still ahead of p: from the point after
@@ -865,9 +915,10 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 		it.mu.Unlock()
 		maxNM = min(maxNM, room.Hours()*max(gs, 180)*shortcutShare)
 	}
+	keep := q.mergePoints(e, seq)
 	var fix string
 	var saved float64
-	err := q.cc.do(func() (err error) { fix, saved, err = it.arr.Shortcut(maxNM); return err })
+	err := q.cc.do(func() (err error) { fix, saved, err = it.arr.Shortcut(maxNM, keep); return err })
 	q.mu.Lock()
 	q.shortcutAt[e.Callsign] = now
 	q.mu.Unlock()

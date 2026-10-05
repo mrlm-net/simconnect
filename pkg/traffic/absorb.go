@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -683,8 +684,10 @@ func AlongTo(pos airport.LatLon, route []airport.LatLon, fix airport.LatLon) (al
 // ShortcutDescentFtPerNM or less, the longest such saving. It returns the
 // fix and the track saved; "" when none fits (too high, too little room,
 // none named). ErrNotOnProcedure on the final or in a circuit, ErrHolding
-// in the hold.
-func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error) {
+// in the hold. It goes no further than a fix named in keep: a merge point
+// an arrival ahead of it still has to pass, where it follows in trail
+// instead of cutting across that one's way (#788).
+func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, float64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.flyingProc || c.proc == nil || c.req.Circuit != nil || len(c.corners) < 3 {
@@ -717,7 +720,14 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64) (string, float64, error)
 	best, bestSave := -1, 0.0
 	along := 0.0
 	prev := pos
-	for j := k; j < final; j++ {
+	last := final - 1
+	for j := k + 1; j < final; j++ {
+		if slices.Contains(keep, c.cornerName(j)) {
+			last = j // never past a merge point kept
+			break
+		}
+	}
+	for j := k; j <= last; j++ {
 		w := c.corners[j]
 		p := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
 		along += calc.HaversineNM(prev.Lat, prev.Lon, p.Lat, p.Lon)

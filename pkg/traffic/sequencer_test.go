@@ -465,3 +465,37 @@ func TestETANoSpeedYet(t *testing.T) {
 		t.Errorf("no speed %s, at 250 kt %s: want the same", none.Sub(now).Round(time.Second), flying.Sub(now).Round(time.Second))
 	}
 }
+
+// Two arrivals from two STARs merging at a fix outside the final pass it
+// in trail, MergeSpacingNM apart, not only spaced for landing (#788, live:
+// THY319 and TVS979 met at PR574 at 0.7 NM).
+func TestSequencerMergePoint(t *testing.T) {
+	now := time.Date(2026, 10, 5, 21, 36, 0, 0, time.UTC)
+	s := NewApproachSequencer("24", SequencerOptions{})
+	a320 := WakeFor("A320")
+	lead := ApproachAircraft{Callsign: "THY319", Wake: a320, DistanceToGoNM: 50, GroundKts: 250,
+		Fixes: []FixAhead{{"PR573", 8}, {"PR574", 20}, {"RATEV", 30}}}
+	follow := ApproachAircraft{Callsign: "TVS979", Wake: a320, DistanceToGoNM: 53, GroundKts: 250,
+		Fixes: []FixAhead{{"PR521", 5}, {"PR574", 21}, {"RATEV", 31}}}
+	seq := s.Update(now, []ApproachAircraft{lead, follow})
+	if seq[1].Callsign != "TVS979" {
+		t.Fatalf("order %s, %s", seq[0].Callsign, seq[1].Callsign)
+	}
+	// At PR574: THY319 in 20 NM, TVS979 in 21 NM, both at 250 kt: 1 NM
+	// behind, it must lose 5 NM more there (72 s).
+	want := SeparationTime(DefaultMergeSpacingNM-1, 250)
+	if d := seq[1].Delay; d < want-time.Second {
+		t.Errorf("delay %v, want at least %v to trail at PR574", d, want)
+	}
+	// Without the merge point: the landing spacing alone, less.
+	s2 := NewApproachSequencer("24", SequencerOptions{MergeSpacingNM: -1})
+	if d := s2.Update(now, []ApproachAircraft{lead, follow})[1].Delay; d >= want {
+		t.Errorf("landing spacing alone %v: the test shows nothing", d)
+	}
+	// A common fix on the final is the final's spacing: no merge delay.
+	lead.Fixes = []FixAhead{{"RATEV", 42}}
+	follow.Fixes = []FixAhead{{"RATEV", 45}}
+	if got, base := s.mergeDelay(lead, 0, follow), time.Duration(0); got != base {
+		t.Errorf("fix on the final: merge delay %v", got)
+	}
+}
