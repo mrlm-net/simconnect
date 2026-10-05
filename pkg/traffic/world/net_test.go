@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -78,5 +79,69 @@ func TestNetLink(t *testing.T) {
 	case <-c3.done:
 	case <-time.After(12 * time.Second):
 		t.Error("a wrong token was let in")
+	}
+}
+
+// TestDialOut: the actuator dials the director (#774): the director greets
+// it, calls its objects and hears its feed; a director that drops the link
+// is dialled again; a director listening with another token turns it away.
+func TestDialOut(t *testing.T) {
+	redialEvery = 200 * time.Millisecond
+	defer func() { redialEvery = 5 * time.Second }()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	hub := newHubLink()
+	defer hub.Close()
+	srv := newWireServer()
+	srv.add("dep/1", &fakeDep{})
+	go serve(hub, srv)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.dialOut(ctx, ln.Addr().String(), "s3cret", func(string, ...any) {})
+
+	accept := func(token string) (*wireClient, chan wireMsg, bool) {
+		c, err := ln.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		l, ok := greeted(c, token)
+		if !ok {
+			return nil, nil, false
+		}
+		feed := make(chan wireMsg, 8)
+		return newWireClient(l, func(m wireMsg) { feed <- m }), feed, true
+	}
+	c1, feed1, ok := accept("s3cret")
+	if !ok {
+		t.Fatal("the actuator's hello refused")
+	}
+	if s := (&remoteDep{c: c1, t: "dep/1"}).State(); s != traffic.TaxiHoldingShort {
+		t.Fatalf("state over the dialled-out link: %v", s)
+	}
+	(&wireFeedOut{send: hub.Send}).Paused(true)
+	select {
+	case m := <-feed1:
+		if m.Method != "paused" {
+			t.Errorf("fed %+v", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("feed not delivered")
+	}
+	// The director drops it: the actuator dials again.
+	c1.l.Close()
+	c2, _, ok := accept("s3cret")
+	if !ok {
+		t.Fatal("not dialled again")
+	}
+	if s := (&remoteDep{c: c2, t: "dep/1"}).State(); s != traffic.TaxiHoldingShort {
+		t.Errorf("after the redial: %v", s)
+	}
+	// A director with another token turns it away.
+	c2.l.Close()
+	if _, _, ok := accept("other"); ok {
+		t.Error("a wrong token let in")
 	}
 }
