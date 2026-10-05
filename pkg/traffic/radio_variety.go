@@ -83,6 +83,7 @@ func (r *Radio) varied(t Transmission, busy bool) Transmission {
 	if t.Pilot {
 		return r.greeted(t, busy)
 	}
+	t = r.greetedBack(t, busy)
 	if busy || t.Intent != IntentContact {
 		return t
 	}
@@ -108,6 +109,8 @@ func (r *Radio) greeted(t Transmission, busy bool) Transmission {
 	if !greetingCalls[t.Intent] || station == "" || !strings.HasPrefix(t.Text, station+", ") {
 		return t
 	}
+	key := t.Airport + " " + t.Frequency + " " + t.Callsign
+	r.firstCalls[key] = false // answered next, perhaps greeted back
 	share := 0.6
 	if r.opts.Variety.StyleOf(t.Callsign).Chatty {
 		share = 0.9
@@ -118,17 +121,8 @@ func (r *Radio) greeted(t Transmission, busy bool) Transmission {
 	if r.rng.Float64() >= share {
 		return t
 	}
-	daytime := "good evening"
-	switch h := t.At.Hour(); {
-	case h >= 4 && h < 12:
-		daytime = "good morning"
-	case h >= 12 && h < 18:
-		daytime = "good afternoon"
-	}
-	// The words: the time of day most, its short form ("morning"), "good
-	// day", "hello".
-	short := strings.TrimPrefix(daytime, "good ")
-	words := []string{daytime, daytime, daytime, daytime, short, "good day", "good day", "hello"}[r.rng.IntN(8)]
+	r.firstCalls[key] = true
+	words := r.greeting(t.At, true)
 	// Where: after the station most, before it, or after the call sign.
 	rest := strings.TrimPrefix(t.Text, station+", ")
 	switch n := r.rng.IntN(10); {
@@ -144,6 +138,48 @@ func (r *Radio) greeted(t Transmission, busy bool) Transmission {
 		}
 		t.Text = station + ", " + cs + ", " + words + ", " + after
 	}
+	return t
+}
+
+// greeting is a greeting at the time at, picked at random: the time of
+// day most, its short form ("morning", a crew's only), "good day", "hello".
+func (r *Radio) greeting(at time.Time, crew bool) string {
+	daytime := "good evening"
+	switch h := at.Hour(); {
+	case h >= 4 && h < 12:
+		daytime = "good morning"
+	case h >= 12 && h < 18:
+		daytime = "good afternoon"
+	}
+	short := daytime
+	if crew {
+		short = strings.TrimPrefix(daytime, "good ")
+	}
+	return []string{daytime, daytime, daytime, daytime, short, "good day", "good day", "hello"}[r.rng.IntN(8)]
+}
+
+// greetedBack is a controller's t, its first answer to a crew's first call
+// on the frequency, with a greeting after the call sign: "CSA1, good
+// morning, identified" — mostly when the crew greeted, now and then when
+// it did not; less on a busy frequency.
+func (r *Radio) greetedBack(t Transmission, busy bool) Transmission {
+	key := t.Airport + " " + t.Frequency + " " + t.Callsign
+	crewGreeted, ok := r.firstCalls[key]
+	if !ok || t.Callsign == "" {
+		return t
+	}
+	delete(r.firstCalls, key)
+	share := 0.25
+	if crewGreeted {
+		share = 0.75
+	}
+	if busy {
+		share /= 2
+	}
+	if !strings.HasPrefix(t.Text, t.Callsign+", ") || r.rng.Float64() >= share {
+		return t
+	}
+	t.Text = t.Callsign + ", " + r.greeting(t.At, false) + ", " + strings.TrimPrefix(t.Text, t.Callsign+", ")
 	return t
 }
 

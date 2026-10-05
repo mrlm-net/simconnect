@@ -137,3 +137,34 @@ func TestCrewsGreetOnFirstCalls(t *testing.T) {
 		}
 	}
 }
+
+// The controller's first answer to a first call is often greeted back,
+// after the call sign; later ones are not (#721).
+func TestControllersGreetBack(t *testing.T) {
+	r, said := varietyRadio(&Variety{Seed: 5, SayAgain: -1, ReadbackError: -1})
+	for i := range 40 {
+		cs := fmt.Sprintf("CSA%d", i)
+		r.Transmit("LKPR", CheckIn(PosApproach, "Ruzyne Radar", cs, "flight level 100", ""))
+		r.Transmit("LKPR", Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHeading, Params: map[string]string{ParamTurn: "left", ParamHeading: "270"}})
+		r.Transmit("LKPR", Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHeading, Params: map[string]string{ParamTurn: "left", ParamHeading: "250"}})
+	}
+	back := 0
+	for _, s := range *said {
+		if s.Pilot {
+			continue
+		}
+		g := strings.Contains(s.Text, "good ") || strings.Contains(s.Text, "hello")
+		if g && s.Params[ParamHeading] == "250" {
+			t.Errorf("a later call greeted: %q", s.Text)
+		}
+		if g {
+			back++
+			if !strings.HasPrefix(s.Text, s.Callsign+", ") || !strings.HasSuffix(s.Text, "turn left heading 270") {
+				t.Errorf("greeting not after the call sign: %q", s.Text)
+			}
+		}
+	}
+	if back < 12 || back == 40 {
+		t.Errorf("%d of 40 first answers greeted back", back)
+	}
+}
