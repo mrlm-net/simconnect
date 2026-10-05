@@ -160,6 +160,8 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 				if v := a.vehicleViews(); len(v) > 0 {
 					out.put("vehicles", v)
 				}
+				// The controllers' state for the director's reads (wirecache.go).
+				out.put("ctlstate", srv.snapshot())
 			}
 		}
 	}()

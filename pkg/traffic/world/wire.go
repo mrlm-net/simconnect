@@ -91,14 +91,19 @@ type wireClient struct {
 	next    uint64
 	waiting map[uint64]chan wireMsg
 	events  map[string]chan wireMsg // by target
-	onFeed  func(wireMsg)
-	onError func(error)   // a call's error with nowhere to go
-	done    chan struct{} // closed once the link is gone
-	err     error         // the link's, once it broke
+	// cache: each controller's reads from the actuator's snapshot;
+	// inflight: commands on their way, by target (wirecache.go).
+	cache    map[string]map[string][]json.RawMessage
+	inflight map[string]int
+	onFeed   func(wireMsg)
+	onError  func(error)   // a call's error with nowhere to go
+	done     chan struct{} // closed once the link is gone
+	err      error         // the link's, once it broke
 }
 
 func newWireClient(l link, onFeed func(wireMsg)) *wireClient {
-	c := &wireClient{l: l, waiting: map[uint64]chan wireMsg{}, events: map[string]chan wireMsg{}, onFeed: onFeed, done: make(chan struct{})}
+	c := &wireClient{l: l, waiting: map[uint64]chan wireMsg{}, events: map[string]chan wireMsg{}, onFeed: onFeed, done: make(chan struct{}),
+		cache: map[string]map[string][]json.RawMessage{}, inflight: map[string]int{}}
 	go c.read()
 	return c
 }
@@ -138,6 +143,10 @@ func (c *wireClient) read() {
 				ch <- m
 			}
 		case wireFeed:
+			if m.Method == "ctlstate" {
+				c.takeSnapshot(m)
+				continue
+			}
 			if c.onFeed != nil {
 				c.onFeed(m)
 			}
@@ -157,6 +166,10 @@ func (c *wireClient) subscribe(target string) <-chan wireMsg {
 // call calls target's method with args and decodes its results into outs
 // (pointers, the error left out): its error, or the wire's.
 func (c *wireClient) call(target, method string, args []any, outs ...any) error {
+	if len(args) == 0 && c.fromCache(target, method, outs) {
+		return nil
+	}
+	defer c.commanding(target, method)()
 	m := wireMsg{Kind: wireCall, Target: target, Method: method}
 	for _, a := range args {
 		b, err := json.Marshal(a)
