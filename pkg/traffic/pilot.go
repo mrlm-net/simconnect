@@ -404,6 +404,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		case "continue climb", "continue descent":
 			s = capital(levelVerb(p[ParamClimb])) + " to " + p[ParamLevel]
 		}
+	case IntentDescendVia:
+		s = capital(descendVia(p))
 	case IntentCrossLevel:
 		s = "Cross " + p[ParamFix] + " at or " + p[ParamClimb] + " " + p[ParamLevel]
 	case IntentHeading:
@@ -451,6 +453,7 @@ var readbackKeys = map[Intent][]string{
 	IntentHoldLevel:          {ParamAltitude},
 	IntentSpeed:              {ParamSpeed},
 	IntentLevel:              {ParamLevel},
+	IntentDescendVia:         {ParamLevel},
 	IntentHeading:            {ParamHeading},
 	IntentContact:            {ParamFreq},
 }

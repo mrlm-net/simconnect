@@ -553,3 +553,74 @@ func lastFix(legs []Leg) string {
 	}
 	return ""
 }
+
+// FitSTAR is the STAR for an arrival to runway entering at entryFix, as
+// ATC would replace a filed STAR that does not serve the runway in use
+// (#755): the filed one when it serves runway (with the enroute transition
+// from entryFix, if any); else one from entryFix, the filed one's family
+// first (LKPR: "VLM5S" filed for 24, "VLM6T" for 06); else false.
+func (p Procedures) FitSTAR(filed, runway, entryFix string) (Procedure, string, bool) {
+	filed = strings.ToUpper(strings.TrimSpace(filed))
+	enrouteOf := func(s Procedure) string {
+		for _, et := range s.EnrouteTransitions {
+			if firstFix(et.Legs) == strings.ToUpper(entryFix) || strings.EqualFold(et.Name, entryFix) {
+				return et.Name
+			}
+		}
+		return ""
+	}
+	for _, s := range p.STARsFor(runway) {
+		if strings.EqualFold(s.Name, filed) {
+			return s, enrouteOf(s), true
+		}
+	}
+	// The family: the letters before the number, the fix it is named
+	// after ("VLM5S" for 24, "VLM6T" for 06).
+	family := strings.TrimRightFunc(filed, func(r rune) bool { return r < 'A' || r > 'Z' })
+	if i := strings.IndexFunc(filed, func(r rune) bool { return r >= '0' && r <= '9' }); i > 0 {
+		family = filed[:i]
+	}
+	var from []Procedure
+	for _, s := range p.STARsFor(runway) {
+		rt, _ := runwayTransition(s.RunwayTransitions, runway)
+		starts := firstFix(append(append([]Leg(nil), s.Legs...), rt.Legs...)) == strings.ToUpper(entryFix) || enrouteOf(s) != ""
+		if starts {
+			from = append(from, s)
+		}
+	}
+	for _, s := range from {
+		if family != "" && strings.HasPrefix(strings.ToUpper(s.Name), family) {
+			return s, enrouteOf(s), true
+		}
+	}
+	if len(from) > 0 {
+		return from[0], enrouteOf(from[0]), true
+	}
+	return Procedure{}, "", false
+}
+
+// Missed is an approach's published missed approach (#756): its points
+// from the missed approach point, the first charted fix and the altitude
+// it climbs to (feet; 0 unknown).
+type Missed struct {
+	Points     []NavPoint `json:"points"`
+	Fix        string     `json:"fix,omitempty"`
+	AltitudeFt float64    `json:"altitudeFt,omitempty"`
+}
+
+// MissedOf is approach name's missed approach, summed up for a go-around
+// instruction (#756).
+func (p Procedures) MissedOf(name string) (Missed, error) {
+	pts, err := p.MissedApproach(name)
+	if err != nil {
+		return Missed{}, err
+	}
+	m := Missed{Points: pts}
+	for _, n := range pts {
+		if m.Fix == "" && !n.Computed() {
+			m.Fix = n.Ident
+		}
+		m.AltitudeFt = math.Max(m.AltitudeFt, math.Round(math.Max(n.AltMin, n.AltMax)/0.3048))
+	}
+	return m, nil
+}

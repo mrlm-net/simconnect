@@ -465,3 +465,49 @@ func (l Leg) Constraint() string {
 	}
 	return s
 }
+
+// LegConstraint is a leg's altitude and speed constraint in feet and knots
+// (#754): AtOrAboveFt and AtOrBelowFt (both for an "at" or a window, 0
+// none), SpeedKts the speed limit (0 none).
+type LegConstraint struct {
+	AtOrAboveFt float64 `json:"atOrAboveFt,omitempty"`
+	AtOrBelowFt float64 `json:"atOrBelowFt,omitempty"`
+	SpeedKts    float64 `json:"speedKts,omitempty"`
+}
+
+// Constraints is the leg's constraint; false when it has none.
+func (l Leg) Constraints() (LegConstraint, bool) {
+	ft := func(m float64) float64 { return math.Round(m / 0.3048) }
+	var c LegConstraint
+	switch l.AltDesc {
+	case types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT:
+		c.AtOrAboveFt, c.AtOrBelowFt = ft(l.Alt1), ft(l.Alt1)
+	case types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT_OR_ABOVE:
+		c.AtOrAboveFt = ft(l.Alt1)
+	case types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT_OR_BELOW:
+		c.AtOrBelowFt = ft(l.Alt1)
+	case types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_BETWEEN:
+		c.AtOrAboveFt, c.AtOrBelowFt = ft(l.Alt2), ft(l.Alt1)
+	}
+	c.SpeedKts = l.Speed
+	return c, c != LegConstraint{}
+}
+
+// FixConstraint is a fix of a procedure with its constraint.
+type FixConstraint struct {
+	Fix      string `json:"fix"`
+	Position LatLon `json:"position"`
+	LegConstraint
+}
+
+// LegConstraints are the constrained fixes of legs, in order (#754): what
+// "descend via" keeps, and what to say "cross (fix) at or above" of.
+func LegConstraints(legs []Leg) []FixConstraint {
+	var out []FixConstraint
+	for _, l := range legs {
+		if c, ok := l.Constraints(); ok && l.HasFix() {
+			out = append(out, FixConstraint{Fix: l.Fix, Position: l.Position, LegConstraint: c})
+		}
+	}
+	return out
+}

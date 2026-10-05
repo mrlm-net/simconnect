@@ -59,6 +59,7 @@ const (
 	IntentSpeed              Intent = "speed"               // reduce or increase speed
 	IntentLevel              Intent = "level"               // climb or descend
 	IntentCrossLevel         Intent = "cross_level"         // cross a fix at or above (below) a level (#662)
+	IntentDescendVia         Intent = "descend_via"         // descend via the STAR to a level (#754)
 	IntentHeading            Intent = "heading"             // turn left or right heading
 	IntentContact            Intent = "contact"             // a handoff: contact the next position (#416)
 	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
@@ -203,6 +204,11 @@ func Say(t Transmission) Transmission {
 // docs/traffic-phraseology.md) where it differs from ICAO's; false: the
 // ICAO text stands.
 func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
+	if in == IntentDescendVia {
+		// 4-5-7 h: "Descend via the Eagul Five arrival.", the STAR's
+		// published altitudes; no level.
+		return cs + ", descend via the " + p[ParamSTAR] + " arrival", true
+	}
 	rwy := "runway " + p[ParamRunway]
 	if p[ParamEntry] != "" {
 		rwy += " at " + p[ParamEntry] // intersection (3-9-4, 3-9-10)
@@ -483,6 +489,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, %s to %s%s", cs, p[ParamClimb], p[ParamLevel], why) // 12.3.1.2 a
 	case IntentCrossLevel:
 		return fmt.Sprintf("%s, cross %s at or %s %s%s", cs, p[ParamFix], p[ParamClimb], p[ParamLevel], why) // 12.3.2.4 a
+	case IntentDescendVia:
+		return cs + ", " + descendVia(p) // 6.5.2.4.1
 	case IntentHeading:
 		return fmt.Sprintf("%s, turn %s heading %s%s", cs, p[ParamTurn], p[ParamHeading], why) // 12.4.1.3
 	case IntentWeather:
@@ -1465,4 +1473,48 @@ func numberParam(p map[string]string, number int) map[string]string {
 		p[ParamNumber] = fmt.Sprint(number)
 	}
 	return p
+}
+
+// ParamCancel on a descent via the STAR: "level" or "speed" restrictions
+// cancelled (#754).
+const ParamCancel = "cancel"
+
+// DescendVia clears an arrival on its STAR down to a level, keeping the
+// STAR's published level and speed restrictions (#754): ICAO "CSA1,
+// descend via STAR to flight level 100" (Doc 4444 6.5.2.4.1 a); FAA "CSA1,
+// descend via the VOZ 5A arrival" (JO 7110.65 4-5-7 h, the published
+// altitudes, no level). star is the STAR as said (SaidProcedure).
+func DescendVia(pos Position, cs, star string, levelFt, transitionFt float64) Transmission {
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentDescendVia,
+		Params: map[string]string{ParamSTAR: star, ParamLevel: LevelSaidAbove(levelFt, transitionFt)}})
+}
+
+// WithCancelled is a descent via the STAR with its level or speed
+// restrictions cancelled ("level", "speed"): "…, cancel level
+// restrictions" (Doc 4444 6.5.2.4.1 b, d). The FAA wording has none.
+func WithCancelled(t Transmission, what string) Transmission {
+	t.Params = cloneParams(t.Params, ParamCancel, what)
+	t.Text = ""
+	return Say(t)
+}
+
+func descendVia(p map[string]string) string {
+	s := "descend via STAR to " + p[ParamLevel]
+	if c := p[ParamCancel]; c != "" {
+		s += ", cancel " + c + " restrictions"
+	}
+	return s
+}
+
+// CrossAt has an aircraft cross fix at or above (above) or at or below a
+// level: "CSA1, cross VOZ at or above flight level 120" (Doc 4444
+// 12.3.2.4 a; JO 7110.65 4-5-7 "Cross Gramm at or above flight level one
+// eight zero"), #754.
+func CrossAt(pos Position, cs, fix string, altFt, transitionFt float64, above bool) Transmission {
+	way := "below"
+	if above {
+		way = "above"
+	}
+	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentCrossLevel,
+		Params: map[string]string{ParamFix: fix, ParamLevel: LevelSaidAbove(altFt, transitionFt), ParamClimb: way}})
 }

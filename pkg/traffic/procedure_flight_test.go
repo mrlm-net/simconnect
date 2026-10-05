@@ -168,3 +168,25 @@ func TestArrivalControllerFliesProcedure(t *testing.T) {
 		}
 	}
 }
+
+// The STAR that fits the runway in use replaces a filed one that does not
+// (#755); the missed approach summed up (#756).
+func TestFitSTARAndMissed(t *testing.T) {
+	p := lkprProcedures(t)
+	if s, _, ok := p.FitSTAR("VLM5S", "24", "VLM"); !ok || s.Name != "VLM5S" {
+		t.Errorf("filed fits: %v %v", s.Name, ok)
+	}
+	if s, _, ok := p.FitSTAR("VLM5S", "06", "VLM"); !ok || s.Name != "VLM6T" {
+		t.Errorf("filed for 24, runway 06: %v %v", s.Name, ok)
+	}
+	if s, _, ok := p.FitSTAR("", "06", "GOLOP"); !ok || s.Name != "GOLO4T" {
+		t.Errorf("by the entry fix: %v %v", s.Name, ok)
+	}
+	if _, _, ok := p.FitSTAR("VLM5S", "06", "NOWHERE"); ok {
+		t.Error("a STAR from nowhere")
+	}
+	m, err := p.MissedOf("ILS 24")
+	if err != nil || m.AltitudeFt != 4000 || len(m.Points) == 0 {
+		t.Errorf("missed %+v %v", m, err)
+	}
+}

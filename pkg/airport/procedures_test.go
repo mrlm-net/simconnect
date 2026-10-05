@@ -196,3 +196,17 @@ func TestProcedureLoaderWithIDs(t *testing.T) {
 		t.Error("its own replies did not finish the airport")
 	}
 }
+
+// The constrained fixes of a leg list, in feet and knots (#754).
+func TestLegConstraints(t *testing.T) {
+	legs := []Leg{
+		{Fix: "AAA", Position: LatLon{Lat: 50, Lon: 14}, AltDesc: types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_AT_OR_ABOVE, Alt1: 3657.6},
+		{Fix: "BBB", Position: LatLon{Lat: 50, Lon: 15}},
+		{Fix: "CCC", Position: LatLon{Lat: 50, Lon: 16}, AltDesc: types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR_BETWEEN, Alt1: 3048, Alt2: 2133.6, Speed: 220},
+	}
+	got := LegConstraints(legs)
+	if len(got) != 2 || got[0].Fix != "AAA" || got[0].AtOrAboveFt != 12000 || got[0].AtOrBelowFt != 0 ||
+		got[1].AtOrAboveFt != 7000 || got[1].AtOrBelowFt != 10000 || got[1].SpeedKts != 220 {
+		t.Errorf("%+v", got)
+	}
+}
