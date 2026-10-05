@@ -51,6 +51,9 @@ type Options struct {
 	IDBase uint32
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
+	// Schedule times the scheduled traffic (#741); zero values keep the
+	// manager's defaults.
+	Schedule ScheduleTiming
 
 	// OnTransmission hears every transmission, once logged: the host says
 	// it (its voice) or shows it. Called on the engine's goroutines; it

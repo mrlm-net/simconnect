@@ -51,8 +51,17 @@ A transmission (`traffic.Transmission`) has everything a voice needs: the text, 
 
 - `Snapshot()`: our aircraft (`ControlView`: state, ATC position and frequency, routes still to fly, the clearances available now) with their ground vehicles (`VehicleView`: tug or fuel truck, its sim object id, model, state, position and the way still ahead), whether the traffic runs, and how many fed messages were dropped. A vehicle's state is what it says of itself (`traffic.VehicleState`: waiting, inbound, attached, fuelling, outbound, removed).
 - `Do(method, path, body)` and `Get(path, &v)`: the HTTP API in process, the same calls a remote client makes. For example, `Get("/api/airportinfo?icao=LKPR", &v)` gives the runways in use, the ATIS (letter and text: the World owns it), the ILS and the weather. `/api/sequence?icao=` gives the landing sequences, `/api/stands?icao=` the stands, and `POST /api/schedule {"enabled":true,"icao":"LKPR","density":1}` starts the schedule. `POST /api/control/{id}/{action}` gives a clearance.
-- Typed actions over the same API: `SetSchedule(ScheduleSettings{Enabled, ICAO, Density})`, `Clear(id, action)` and `Approach(icao, callsign, action)`.
+- Typed actions over the same API: `SetSchedule(ScheduleSettings{Enabled, ICAO, Airports, Density, IFR, VFR, Generator, Others})`, `AddFlights(flights)`, `Clear(id, action)` and `Approach(icao, callsign, action)`.
 - `Register(mux)`: serve that API on the host's own server (the airport map does).
+
+## Flights at a chosen time
+
+A host can time traffic around its own flight (#737, #738): an arrival a few minutes before the player's ETA, a departure just after the player's off-block.
+
+- `SetSchedule(ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Generator: &off})` runs the scheduled airports with no generated timetable: only the flights added.
+- `AddFlights([]traffic.Flight{...})` (`POST /api/flights`) adds flights. Each needs a call sign, an origin and destination (one of them a scheduled airport), the STD and STA in traffic time (`GET /api/schedule`'s `now`), and an airline or type (default A320). The manager spawns them as it spawns the timetable's: a departure on its stand `DepartureLead` before its STD, an arrival `ArrivalLead` before its STA to fly the STAR and approach.
+- An arrival added later than `ArrivalLead` minus `ArrivalLate` before its STA (15 min with the defaults) is refused with 422, not cancelled later. `GET /api/flights` lists the manager's flights with their status.
+- `Options.Schedule` (`ScheduleTiming`, #741) sets the horizon, the leads and the late limits; zero values keep the defaults (2 h; 10, 25 and 8 min; 15 and 10 min).
 
 ## Beside the host's own ATC
 
