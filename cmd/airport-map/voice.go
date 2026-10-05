@@ -86,7 +86,7 @@ func utterance(t traffic.Transmission) speaker.Utterance {
 	if t.Phraseology == traffic.PhraseologyFAA {
 		ph = voicegoio.FAA
 	}
-	return speaker.Utterance{Airport: t.Airport, Position: string(t.Position), Callsign: t.Callsign,
+	return speaker.Utterance{Airport: t.Airport, Position: string(t.Position), Controller: t.Controller, Callsign: t.Callsign,
 		Pilot: t.Pilot, Frequency: t.Frequency, Text: t.Text, Phraseology: ph}
 }
 
