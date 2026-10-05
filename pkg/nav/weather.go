@@ -21,6 +21,10 @@ const (
 type Weather struct {
 	WindDirTrue float64 // degrees true the wind blows from
 	WindKts     float64
+	// Variable: the wind direction varies (a METAR's VRB, #753):
+	// WindDirTrue means nothing; said "wind variable 2 knots", and no
+	// runway gets a head- or crosswind from it.
+	Variable bool
 	GustKts     float64 // 0 when there are no gusts
 	VisibilityM float64
 	CeilingFt   float64 // 0 when there is no ceiling or it is unknown
@@ -55,7 +59,12 @@ func (w Weather) IsCalm() bool { return math.Round(w.WindKts) < 1 }
 // Components returns the headwind (negative for a tailwind) and crosswind
 // (always ≥ 0) components of the mean wind on a runway heading in degrees
 // true.
+//
+// A variable wind has no components (0, 0): no runway is into it.
 func (w Weather) Components(headingTrue float64) (headwind, crosswind float64) {
+	if w.Variable {
+		return 0, 0
+	}
 	d := (w.WindDirTrue - headingTrue) * math.Pi / 180
 	return w.WindKts * math.Cos(d), math.Abs(w.WindKts * math.Sin(d))
 }

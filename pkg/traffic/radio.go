@@ -605,10 +605,51 @@ func approachClearance(p map[string]string) string {
 	return s
 }
 
-// WindSaid is the surface wind as a tower says it, magnetic degrees:
+// WindSaid is the surface wind as a tower says it, magnetic degrees, ICAO:
 // "wind 100 degrees 6 knots", "wind 270 degrees 18 knots gusting 28 knots",
-// "wind calm" below a knot (Doc 4444 12.3.1.8 a).
+// "wind calm" below a knot (Doc 4444 12.3.1.8 a). A NaN direction is a
+// variable wind: "wind variable 2 knots" (#753).
 func WindSaid(dirMag, kts, gustKts float64) string {
+	return WindSaidAs(PhraseologyICAO, dirMag, kts, gustKts)
+}
+
+// WindSaidAs is the surface wind in phraseology ph (#753); a NaN direction
+// is a variable wind.
+//
+// ICAO: "wind 270 degrees 12 knots", "gusting 28 knots" (Doc 4444
+// 12.3.1.8 a; CAP 413 "280 degrees 37 knots gusting 50"), "wind calm"
+// under a knot; variable "wind variable 2 knots" — the Doc 4444 pattern
+// with "variable" for the direction (neither Doc 4444 nor CAP 413 words
+// VRB: unverified).
+//
+// FAA: "wind 270 at 12", "gusts 20" (JO 7110.65 2-4-17; JO 7110.10 TBL
+// 12-1-2), "wind calm" under 3 knots (JO 7110.65 2-6-5), "wind variable at
+// 4" (JO 7110.10 TBL 12-1-2).
+func WindSaidAs(ph Phraseology, dirMag, kts, gustKts float64) string {
+	calm := 1.0
+	if ph == PhraseologyFAA {
+		calm = 3
+	}
+	if math.Round(kts) < calm {
+		return "wind calm"
+	}
+	if math.IsNaN(dirMag) {
+		if ph == PhraseologyFAA {
+			return fmt.Sprintf("wind variable at %.0f", kts)
+		}
+		return fmt.Sprintf("wind variable %.0f knots", kts)
+	}
+	if ph == PhraseologyFAA {
+		dir := int(math.Round(dirMag/10)*10) % 360
+		if dir == 0 {
+			dir = 360
+		}
+		s := fmt.Sprintf("wind %03d at %.0f", dir, kts)
+		if gustKts >= kts+10 {
+			s += fmt.Sprintf(" gusts %.0f", gustKts)
+		}
+		return s
+	}
 	if kts < 1 {
 		return "wind calm"
 	}

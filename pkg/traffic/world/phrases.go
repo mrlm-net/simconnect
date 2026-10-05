@@ -96,7 +96,11 @@ func (cc *controlCenter) windSaid(icao string) string {
 			mv = p.MagVar
 		}
 	}
-	return traffic.WindSaid(math.Mod(w.WindDirTrue+mv+720, 360), w.WindKts, w.GustKts)
+	dir := math.Mod(w.WindDirTrue+mv+720, 360)
+	if w.Variable {
+		dir = math.NaN() // said variable (#753)
+	}
+	return traffic.WindSaidAs(traffic.PhraseologyFor(icao), dir, w.WindKts, w.GustKts)
 }
 
 // magVar is icao's magnetic variation (airport.Procedures.MagVar), 0 unknown.

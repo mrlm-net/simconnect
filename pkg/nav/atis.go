@@ -146,6 +146,8 @@ func (a ATIS) render(spoken bool) string {
 	}
 	if w.IsCalm() {
 		add("wind calm")
+	} else if w.Variable {
+		add("wind variable", n.digits(itoa(math.Round(w.WindKts))), "knots") // #753
 	} else {
 		dir := int(math.Round(math.Mod(w.WindDirTrue+a.MagVar+720, 360)/10)) * 10
 		if dir == 0 {
