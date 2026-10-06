@@ -19,6 +19,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -252,5 +255,37 @@ func TestSecureLink(t *testing.T) {
 	if c, err := untrusting.dial(dctx, ln.Addr().String()); err == nil {
 		c.Close()
 		t.Error("dialled a director whose certificate it does not trust")
+	}
+}
+
+// The keys may be a JWKS file (-jwks /path/jwks.json), read like the URL;
+// a refusal names the check that failed (the API team: a file path was
+// refused silently).
+func TestJWKSFile(t *testing.T) {
+	keys := newTestKeys(t)
+	path := filepath.Join(t.TempDir(), "jwks.json")
+	if err := os.WriteFile(path, keys.jwks(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	j := NewJWKS(path, "", "mycrew-traffic-director")
+	if n, err := j.Load(context.Background()); err != nil || n != 3 {
+		t.Fatalf("loaded %d keys, %v", n, err)
+	}
+	good := map[string]any{"sub": "p1", "aud": "mycrew-traffic-director", "exp": time.Now().Add(time.Hour).Unix()}
+	if _, err := j.Verify(context.Background(), keys.sign(t, "ES256", "e1", good)); err != nil {
+		t.Fatalf("ES256 from the file: %v", err)
+	}
+	_, err := j.Verify(context.Background(), keys.sign(t, "ES256", "e1", map[string]any{"aud": "other", "exp": time.Now().Add(time.Hour).Unix()}))
+	if !errors.Is(err, ErrTokenClaims) || !strings.Contains(err.Error(), `want "mycrew-traffic-director"`) {
+		t.Errorf("wrong audience: %v", err)
+	}
+	j.mu.Lock()
+	j.fetched = time.Now().Add(-time.Minute)
+	j.mu.Unlock()
+	if _, err := j.Verify(context.Background(), keys.sign(t, "ES256", "zz", good)); err == nil || !strings.Contains(err.Error(), `unknown kid "zz"`) {
+		t.Errorf("unknown kid: %v", err)
+	}
+	if _, err := NewJWKS(filepath.Join(t.TempDir(), "none.json"), "", "").Load(context.Background()); err == nil {
+		t.Error("a missing file loaded")
 	}
 }
