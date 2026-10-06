@@ -3,6 +3,7 @@ package world
 import (
 	"sync"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -45,11 +46,56 @@ type localSim struct {
 	detail *traffic.Detail
 	world  *traffic.TrafficPicture
 	clock  *traffic.SimClock
+	// services are the airports' tug and fuel truck fleets (#830), made on
+	// first use; logf is told when a departure waits for one.
+	servicesMu sync.Mutex
+	services   map[string]*traffic.VehicleFleet
+	logf       func(string, ...any)
+}
+
+// servicesAt is the fleet of l's airport: its limits' sizes, else by its
+// stands.
+func (l *localSim) servicesAt(layout *airport.Layout) *traffic.VehicleFleet {
+	l.servicesMu.Lock()
+	defer l.servicesMu.Unlock()
+	if f, ok := l.services[layout.ICAO]; ok {
+		return f
+	}
+	stands := 0
+	for _, p := range layout.Parking {
+		if p.Size() != airport.StandNone {
+			stands++
+		}
+	}
+	size := traffic.DefaultFleetSize(stands)
+	lim := airport.LimitsFor(layout, nil)
+	if lim.Tugs > 0 {
+		size[traffic.VehicleTug] = lim.Tugs
+	}
+	if lim.FuelTrucks > 0 {
+		size[traffic.VehicleFuel] = lim.FuelTrucks
+	}
+	f := traffic.NewVehicleFleet(size)
+	icao := layout.ICAO
+	f.OnWait = func(kind traffic.VehicleKind, owner string, busy int) {
+		if l.logf != nil {
+			l.logf("%-6s waits for a %s at %s: all %d busy", owner, map[traffic.VehicleKind]string{traffic.VehicleTug: "tug", traffic.VehicleFuel: "fuel truck"}[kind], icao, busy)
+		}
+	}
+	if l.services == nil {
+		l.services = map[string]*traffic.VehicleFleet{}
+	}
+	l.services[layout.ICAO] = f
+	if l.logf != nil {
+		l.logf("ground services at %s: %d tugs, %d fuel trucks (%d stands)", icao, size[traffic.VehicleTug], size[traffic.VehicleFuel], stands)
+	}
+	return f
 }
 
 func (l *localSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequest) (departureCtl, <-chan traffic.TaxiEvent, error) {
 	ctl := traffic.NewTaxiController(l.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(l.inj), traffic.TaxiWithDetail(l.detail),
-		traffic.TaxiWithGroundPicture(l.world.Ground(req.Graph.Layout.ICAO)), traffic.TaxiWithClock(l.clock.Now))
+		traffic.TaxiWithGroundPicture(l.world.Ground(req.Graph.Layout.ICAO)), traffic.TaxiWithClock(l.clock.Now),
+		traffic.TaxiWithServices(l.servicesAt(req.Graph.Layout)))
 	if err := ctl.Start(req); err != nil {
 		return nil, nil, err
 	}

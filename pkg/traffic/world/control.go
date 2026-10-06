@@ -382,7 +382,7 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 			}
 			return nil
 		}})
-	cc.sim = &localSim{client: client, fleet: cc.fleet, inj: cc.inj, detail: cc.detail, world: cc.world, clock: cc.clock}
+	cc.sim = &localSim{client: client, fleet: cc.fleet, inj: cc.inj, detail: cc.detail, world: cc.world, clock: cc.clock, logf: cc.log.printf}
 	cc.pending = newPending()
 	cc.agenda = &agenda{radio: func(icao, freq string) time.Time { return cc.radio.ClearAt(icao, freq) }}
 	cc.radio = traffic.NewRadio(traffic.RadioOptions{Now: cc.clock.Now, ReadBack: true,
