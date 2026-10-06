@@ -215,6 +215,7 @@ type RunwaySelector struct {
 	since      time.Time // when the choice first differed
 	pending    string    // the better choice (RunwayUse.key)
 	pendingUse RunwayUse
+	gone       time.Time // when the better choice was last gone
 }
 
 // RunwayChangeMaxWait is how long a change that is due waits for its
@@ -253,6 +254,14 @@ func (s *RunwaySelector) Pending() (RunwayUse, time.Time, bool) {
 // later, flights spawned for both).
 const RunwayChoiceMarginKts = 2.0
 
+// RunwayCalmKts: a wind below this keeps the runway in use while it is
+// within its limits; no change is chosen for it.
+const RunwayCalmKts = 3.0
+
+// RunwayPendingClearAfter is how long the better choice must be gone
+// before its pending change is dropped.
+const RunwayPendingClearAfter = time.Minute
+
 // Choose is the runway in use at now: ActiveRunways with the wind limits
 // RunwayChoiceMarginKts tighter, held as above.
 func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
@@ -268,9 +277,28 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		return fresh
 	}
 	if fresh.key() == s.use.key() {
-		s.since, s.use = time.Time{}, fresh // the same runways: current wind figures
+		// The same runways: current wind figures. A pending change goes only
+		// once the better choice has been gone RunwayPendingClearAfter (a
+		// puff to it and back flickered Pending every few seconds).
+		if s.gone.IsZero() {
+			s.gone = now
+		}
+		if now.Sub(s.gone) >= RunwayPendingClearAfter {
+			s.since = time.Time{}
+		}
+		s.use = fresh
 		return fresh
 	}
+	// Near calm: the runway in use stays while within its limits, no
+	// better choice (live LKPR: 083/2–3 kt made 06 the choice at each puff).
+	if w.WindKts < RunwayCalmKts && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+		s.since = time.Time{}
+		kept := s.use
+		kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
+		kept.Approach = ApproachFor(w)
+		return kept
+	}
+	s.gone = time.Time{}
 	// Out of limits: change now, to one within them (none within them, the
 	// best of the out-of-limits ones would flip with every gust).
 	if fresh.WithinLimits && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
