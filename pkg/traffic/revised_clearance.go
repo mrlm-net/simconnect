@@ -28,21 +28,33 @@ const (
 	ParamHoldPosition = "holdPosition" // "1": prefixed "hold position"
 )
 
+// RevisedAt is where a departure is when its clearance is revised: before
+// taxi (the usual case: the runway changed between the clearance and the
+// taxi), taxiing, or at the holding position or on the runway.
+type RevisedAt int
+
+const (
+	RevisedBeforeTaxi RevisedAt = iota // delivery, at the stand
+	RevisedTaxiing                     // ground
+	RevisedHolding                     // tower: "hold position" first (CAP 413 4.38)
+)
+
 // RevisedDepartureClearance is the departure clearance again for a runway
 // change: c with its new SID and runway, oldSID the SID cleared before
-// (SaidProcedure; "" unknown), holdPosition when the aircraft is on the
-// runway or at the holding position (CAP 413 4.38). ICAO: "CSA123, hold
-// position, cleared to Frankfurt, VOZ 5M departure, flight planned route,
-// runway 06, climb via SID to flight level 100, squawk 4521". FAA: "CSA123,
-// hold position, change VOZ 5D departure to read VOZ 5M departure".
-func RevisedDepartureClearance(cs string, c DepartureClearance, oldSID string, holdPosition bool, ph Phraseology) Transmission {
+// (SaidProcedure; "" unknown), said by the unit the aircraft is with at
+// (delivery, ground, tower). ICAO: "CSA123, cleared to Frankfurt, VOZ 5D
+// departure, flight planned route, runway 06, climb via SID to flight
+// level 100, squawk 4521", at the holding position after "hold position".
+// FAA: "CSA123, change VOZ 5M departure to read VOZ 5D departure".
+func RevisedDepartureClearance(cs string, c DepartureClearance, oldSID string, at RevisedAt, ph Phraseology) Transmission {
 	p := map[string]string{ParamDest: c.Destination, ParamSID: c.SID, ParamRunway: c.Runway, ParamLevel: c.Level, ParamSquawk: c.Squawk, ParamOldSID: oldSID}
-	if holdPosition {
+	pos := PosDelivery
+	switch at {
+	case RevisedTaxiing:
+		pos = PosGround
+	case RevisedHolding:
+		pos = PosTower
 		p[ParamHoldPosition] = "1"
-	}
-	pos := PosGround // taxiing out
-	if holdPosition {
-		pos = PosTower // at the holding position or on the runway
 	}
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentRevisedDeparture, Params: p, Phraseology: ph})
 }
