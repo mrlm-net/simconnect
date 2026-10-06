@@ -111,7 +111,7 @@ var loaderDefinitions = [][]string{
 	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "TOWER_LATITUDE", "TOWER_LONGITUDE", "TOWER_ALTITUDE", "TRANSITION_ALTITUDE", "TRANSITION_LEVEL", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN RUNWAY", "LATITUDE", "LONGITUDE", "ALTITUDE", "HEADING", "LENGTH", "WIDTH",
 		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR",
-		"PRIMARY_ILS_ICAO", "PRIMARY_ILS_REGION", "SECONDARY_ILS_ICAO", "SECONDARY_ILS_REGION", "CLOSE RUNWAY", "CLOSE AIRPORT"},
+		"PRIMARY_ILS_ICAO", "PRIMARY_ILS_REGION", "SECONDARY_ILS_ICAO", "SECONDARY_ILS_REGION", "SURFACE", "CLOSE RUNWAY", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_PARKING", "NAME", "SUFFIX", "NUMBER", "TYPE", "HEADING", "RADIUS", "BIAS_X", "BIAS_Z",
 		"OPEN AIRLINE", "NAME", "CLOSE AIRLINE", "CLOSE TAXI_PARKING", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN TAXI_POINT", "TYPE", "ORIENTATION", "BIAS_X", "BIAS_Z", "CLOSE TAXI_POINT", "CLOSE AIRPORT"},
@@ -334,8 +334,14 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 		}
 	case partRunway:
 		// The whole record, its ILS fields included, or it is not read.
-		if m.Type == types.SIMCONNECT_FACILITY_DATA_RUNWAY && int(m.DwSize)-int(unsafe.Offsetof(m.Data)) >= runwayWireSize {
-			s.raw.Runways = setAt(s.raw.Runways, i, decodeRunway(data))
+		if n := int(m.DwSize) - int(unsafe.Offsetof(m.Data)); m.Type == types.SIMCONNECT_FACILITY_DATA_RUNWAY && n >= runwayWireSize {
+			r := decodeRunway(data)
+			if n >= runwaySurfaceSize {
+				b := unsafe.Slice((*byte)(unsafe.Pointer(data)), runwaySurfaceSize)
+				surface := int32(binary.LittleEndian.Uint32(b[runwayWireSize:]))
+				r.Surface = &surface
+			}
+			s.raw.Runways = setAt(s.raw.Runways, i, r)
 		}
 	case partParking:
 		switch m.Type {
@@ -380,8 +386,12 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 }
 
 // runwayWireSize is the packed RUNWAY record: 3×f64, 3×f32, 4×i32, then
-// each end's ILS: ICAO and REGION, 8 characters each.
-const runwayWireSize = 84
+// each end's ILS: ICAO and REGION, 8 characters each; runwaySurfaceSize
+// with its SURFACE (i32) after them.
+const (
+	runwayWireSize    = 84
+	runwaySurfaceSize = 88
+)
 
 // decodeRunway reads the packed RUNWAY record field by field; the 52-byte
 // record would be read past its end by a cast to an 8-byte aligned struct.

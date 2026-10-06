@@ -47,12 +47,17 @@ type Layout struct {
 
 // Runway is a runway with both of its ends.
 type Runway struct {
-	Index     int       `json:"index"`
-	Center    LatLon    `json:"center"`
-	Altitude  float64   `json:"alt"`     // meters MSL
-	Heading   float64   `json:"heading"` // degrees true, in the direction of the primary end
-	Length    float64   `json:"length"`  // meters
-	Width     float64   `json:"width"`   // meters
+	Index    int     `json:"index"`
+	Center   LatLon  `json:"center"`
+	Altitude float64 `json:"alt"`     // meters MSL
+	Heading  float64 `json:"heading"` // degrees true, in the direction of the primary end
+	Length   float64 `json:"length"`  // meters
+	Width    float64 `json:"width"`   // meters
+	// Surface is what it is made of ("concrete", "asphalt", "grass",
+	// "gravel", "water", …; "" not known), Hard whether it is paved:
+	// concrete, asphalt, bitumen, macadam, tarmac, brick.
+	Surface   string    `json:"surface,omitempty"`
+	Hard      bool      `json:"hard,omitempty"`
 	Primary   RunwayEnd `json:"primary"`
 	Secondary RunwayEnd `json:"secondary"`
 }
