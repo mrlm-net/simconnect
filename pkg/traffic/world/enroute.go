@@ -181,7 +181,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
 	s.nextReq = (s.nextReq + 1) % enrouteReqCount
-	e.reqID = enrouteReqBase + s.nextReq
+	e.reqID = s.st.core.libIDs().enrouteReq + s.nextReq
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = cc.do(func() error {
