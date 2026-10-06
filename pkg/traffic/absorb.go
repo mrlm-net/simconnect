@@ -679,6 +679,9 @@ const ShortcutAirportClearNM = 4.0
 // (flying, its heading known).
 const ShortcutMinKts = 100.0
 
+// ErrNoShortcut: no direct fits now; the error says why (Shortcut).
+var ErrNoShortcut = errors.New("no shortcut")
+
 // ShortcutMinNM: a shortcut saving less is not worth the call.
 const ShortcutMinNM = 2.0
 
@@ -733,7 +736,7 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 		return "", 0, ErrNotOnProcedure
 	}
 	if c.last.GroundSpeed < ShortcutMinKts {
-		return "", 0, nil // not reported flying yet: no heading to turn from
+		return "", 0, fmt.Errorf("%w: not reported flying yet", ErrNoShortcut) // no heading to turn from
 	}
 	// Only with a long way to go: near the end of the STAR a direct only
 	// muddles the join.
@@ -744,10 +747,11 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 		q = airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
 	}
 	if togo < ShortcutMinToGoNM {
-		return "", 0, nil
+		return "", 0, fmt.Errorf("%w: %.0f NM to go", ErrNoShortcut, togo)
 	}
 	altFt := c.last.AGL + convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 	best, bestSave := -1, 0.0
+	why := "no named fix ahead before the IAF" // why none fits: the last named one's
 	along := 0.0
 	prev := pos
 	last := final - 1
@@ -767,19 +771,30 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 		}
 		direct := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon)
 		save := along - direct
-		if save <= bestSave || save > maxSaveNM || !DirectWorthIt(along, direct) {
+		name := c.cornerName(j)
+		switch {
+		case save <= bestSave:
 			continue
-		}
-		if c.overAirport(pos, p) || !c.shortcutSensible(pos, p) {
-			continue // across the field or the final, too sharp a turn, too close in
-		}
-		if altFt-w.Altitude > direct*ShortcutDescentFtPerNM {
+		case save > maxSaveNM:
+			why = fmt.Sprintf("%s saves %.1f NM, more than the room (%.1f)", name, save, maxSaveNM)
+			continue
+		case !DirectWorthIt(along, direct):
+			why = fmt.Sprintf("%s saves %.1f NM, not worth a call", name, save)
+			continue
+		case c.overAirport(pos, p):
+			why = fmt.Sprintf("%s: across the field", name)
+			continue
+		case !c.shortcutSensible(pos, p):
+			why = fmt.Sprintf("%s: too sharp a turn or too close in", name)
+			continue // across the final, too sharp a turn, too close in
+		case altFt-w.Altitude > direct*ShortcutDescentFtPerNM:
+			why = fmt.Sprintf("%s: too high (%.0f ft for %.0f ft in %.1f NM)", name, altFt, w.Altitude, direct)
 			continue // too high to make its altitude
 		}
 		best, bestSave = j, save
 	}
 	if best < 0 {
-		return "", 0, nil
+		return "", 0, fmt.Errorf("%w: %s", ErrNoShortcut, why)
 	}
 	plain := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[best:]...)
 	names := append([]string(nil), c.cornerNames[best:]...)
