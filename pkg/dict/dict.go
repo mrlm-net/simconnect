@@ -13,7 +13,8 @@
 //	{"name": "traffic.telephony", "id": "icao", "source": "…", "licence": "…",
 //	 "items": [{"icao": "CSA", "telephony": "CSA-LINES", …}, …]}
 //
-// Use takes the envelope or the bare items array.
+// Use takes the envelope or the bare items array, or the MyCrew API's
+// envelope (UseSet).
 package dict
 
 import (
@@ -46,6 +47,19 @@ type Table struct {
 	export func() (any, error)
 	use    func(items json.RawMessage) error
 	reset  func()
+	// shipped is the shipped item of an id as JSON fields; set the API's
+	// set the table is fed from, aliases its fields renamed (ForSet).
+	shipped func(id string) (map[string]json.RawMessage, bool)
+	set     string
+	aliases map[string]string
+}
+
+// ForSet feeds t from the MyCrew API's set (UseSet): the API's payload
+// fields named in aliases are taken, renamed to t's (none: every field as
+// it is).
+func (t Table) ForSet(set string, aliases map[string]string) Table {
+	t.set, t.aliases = set, aliases
+	return t
 }
 
 var (
@@ -114,10 +128,110 @@ func Use(name string, data []byte) error {
 		}
 		items = env.Items
 	}
+	if api, ok := apiItems(items); ok {
+		if items, err = t.fromAPI(api); err != nil {
+			return fmt.Errorf("dict: %s: %w", name, err)
+		}
+	}
 	if err := t.use(items); err != nil {
 		return fmt.Errorf("dict: %s: %w", name, err)
 	}
 	return nil
+}
+
+// UseSet feeds a set of the MyCrew API (GET /v1/aviation/{set}) to every
+// table fed from it (ForSet): {"items": [{"key": "A319", "closed": false,
+// "deprecated": false, "payload": {…}}]}. Closed and deprecated items are
+// left out; key is the item's id, and the payload's fields replace the
+// shipped item's one by one, so a field the API leaves out keeps its
+// shipped value. It returns the tables fed (none: no table takes the set).
+func UseSet(set string, data []byte) ([]string, error) {
+	mu.Lock()
+	var fed []string
+	for n, t := range tables {
+		if t.set == set {
+			fed = append(fed, n)
+		}
+	}
+	mu.Unlock()
+	sort.Strings(fed)
+	var errs []error
+	for _, n := range fed {
+		errs = append(errs, Use(n, data))
+	}
+	return fed, errors.Join(errs...)
+}
+
+// Sets are the API's sets the tables are fed from, sorted.
+func Sets() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	var out []string
+	for _, t := range tables {
+		if t.set != "" && !slices.Contains(out, t.set) {
+			out = append(out, t.set)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// apiItem is an item of the MyCrew API.
+type apiItem struct {
+	Key        string                     `json:"key"`
+	Closed     bool                       `json:"closed"`
+	Deprecated bool                       `json:"deprecated"`
+	Payload    map[string]json.RawMessage `json:"payload"`
+}
+
+// apiItems are raw's items when they are the API's (a key and a payload).
+func apiItems(raw json.RawMessage) ([]apiItem, bool) {
+	var items []apiItem
+	if json.Unmarshal(raw, &items) != nil || len(items) == 0 {
+		return nil, false
+	}
+	for _, it := range items {
+		if it.Key == "" || it.Payload == nil {
+			return nil, false
+		}
+	}
+	return items, true
+}
+
+// fromAPI makes the API's items t's: each the shipped item of its key,
+// with the payload's fields (renamed by aliases) over it.
+func (t Table) fromAPI(items []apiItem) (json.RawMessage, error) {
+	var out []map[string]json.RawMessage
+	for _, it := range items {
+		if it.Closed || it.Deprecated {
+			continue
+		}
+		obj := map[string]json.RawMessage{}
+		if t.shipped != nil {
+			if s, ok := t.shipped(it.Key); ok {
+				obj = s
+			}
+		}
+		for k, v := range it.Payload {
+			if t.aliases != nil {
+				var ok bool
+				if k, ok = t.aliases[k]; !ok {
+					continue
+				}
+			}
+			if s := string(v); s == "null" || s == `""` {
+				continue // not given: the shipped value
+			}
+			obj[k] = v
+		}
+		key, err := json.Marshal(it.Key)
+		if err != nil {
+			return nil, err
+		}
+		obj[t.ID] = key
+		out = append(out, obj)
+	}
+	return json.Marshal(out)
 }
 
 // Reset puts table name back to its shipped copy.
@@ -145,6 +259,20 @@ func Keyed[T any](name, idField, source, licence string, shipped func() []T, id 
 			return nil
 		},
 		reset: func() { apply(shipped()) },
+		shipped: func(key string) (map[string]json.RawMessage, bool) {
+			for _, it := range shipped() {
+				if id(it) != key {
+					continue
+				}
+				b, err := json.Marshal(it)
+				var m map[string]json.RawMessage
+				if err != nil || json.Unmarshal(b, &m) != nil {
+					return nil, false
+				}
+				return m, true
+			}
+			return nil, false
+		},
 	}
 }
 
