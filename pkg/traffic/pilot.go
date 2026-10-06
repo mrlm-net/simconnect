@@ -279,6 +279,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Climb to " + p[ParamLevel]
 	case IntentDepartureClearance:
 		s = capital(departureClearance(p)) // CAP 413 2.68
+	case IntentRevisedDeparture:
+		s = readbackRevised(t) // CAP 413 4.38: "Holding, …"
 	case IntentArrivalClearance:
 		s = capital(arrivalClearance(p))
 	case IntentApproachClearance:
@@ -445,6 +447,7 @@ func cloneParams(p map[string]string, k, v string) map[string]string {
 // readbackKeys are what must be read back right, by clearance.
 var readbackKeys = map[Intent][]string{
 	IntentDepartureClearance: {ParamSID, ParamRunway, ParamSquawk},
+	IntentRevisedDeparture:   {ParamSID},
 	IntentTaxi:               {ParamRunway, ParamStand},
 	IntentTaxiLimit:          {ParamLimit},
 	IntentCross:              {ParamRunway},

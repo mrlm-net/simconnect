@@ -209,6 +209,9 @@ func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
 		// published altitudes; no level.
 		return cs + ", descend via the " + p[ParamSTAR] + " arrival", true
 	}
+	if in == IntentRevisedDeparture {
+		return cs + ", " + revisedDeparture(p, true), true
+	}
 	rwy := "runway " + p[ParamRunway]
 	if p[ParamEntry] != "" {
 		rwy += " at " + p[ParamEntry] // intersection (3-9-4, 3-9-10)
@@ -308,6 +311,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		why = ", due traffic" // Doc 4444 12.4.1.5: the reason, not the numbers
 	}
 	switch in {
+	case IntentRevisedDeparture:
+		return cs + ", " + revisedDeparture(p, false)
 	case IntentDepartureClearance:
 		// Identification, limit, route (the SID), runway, level, SSR code
 		// (Doc 4444 6.3.2.3, 11.4.2.6.2.1; CAP 413 2.68).
