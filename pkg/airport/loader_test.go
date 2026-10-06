@@ -70,7 +70,10 @@ func bytesOf[T any](v *T) []byte {
 }
 
 func runwayBytes(r RawRunway) []byte {
-	b := make([]byte, runwayWireSize)
+	b := make([]byte, runwaySurfaceSize)
+	if r.Surface != nil {
+		binary.LittleEndian.PutUint32(b[runwayWireSize:], uint32(*r.Surface))
+	}
 	binary.LittleEndian.PutUint64(b[0:], math.Float64bits(r.Latitude))
 	binary.LittleEndian.PutUint64(b[8:], math.Float64bits(r.Longitude))
 	binary.LittleEndian.PutUint64(b[16:], math.Float64bits(r.Altitude))
@@ -90,6 +93,16 @@ func lkprRaw(t *testing.T) RawAirport {
 		t.Fatal(err)
 	}
 	var raw RawAirport
+	defer func() {
+		// The records sent carry SURFACE: the captured ones (before it was
+		// read) as concrete, the loader reads it so.
+		for i := range raw.Runways {
+			if raw.Runways[i].Surface == nil {
+				zero := int32(0)
+				raw.Runways[i].Surface = &zero
+			}
+		}
+	}()
 	if err := json.Unmarshal(b, &raw); err != nil {
 		t.Fatal(err)
 	}

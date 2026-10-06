@@ -76,6 +76,9 @@ type RawRunway struct {
 	PrimaryILSRegion   string `json:"primaryIlsRegion,omitempty"`
 	SecondaryILS       string `json:"secondaryIls,omitempty"`
 	SecondaryILSRegion string `json:"secondaryIlsRegion,omitempty"`
+	// Surface is the SURFACE (SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE); nil
+	// when not read (data captured before it was).
+	Surface *int32 `json:"surface,omitempty"`
 }
 
 // RawParking is a TAXI_PARKING record: NAME, SUFFIX, NUMBER, TYPE, HEADING,
@@ -203,6 +206,8 @@ func buildRunway(i int, r RawRunway) Runway {
 		Heading:  hdg,
 		Length:   float64(r.Length),
 		Width:    float64(r.Width),
+		Surface:  surfaceName(r.Surface),
+		Hard:     hardSurface(r.Surface),
 		Primary: RunwayEnd{
 			Number: r.PrimaryNumber, Designator: pDes, Name: runwayEndName(r.PrimaryNumber, pDes),
 			Heading: hdg, Threshold: LatLon{Lat: pLat, Lon: pLon}, ILS: r.PrimaryILS, ILSRegion: r.PrimaryILSRegion,
