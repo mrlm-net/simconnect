@@ -5,11 +5,18 @@
 // airport map's), and the map's page with -web.
 //
 //	traffic-director -actuator simpc:7710 -token s3cret -addr :8080 -web cmd/airport-map/web
+//
+// For multiplayer it waits for the players' actuators to dial in, over
+// TLS, each greeting with its MyCrew API session token (#792):
+//
+//	traffic-director -listen :7710 -jwks https://mycrew.outlays.dev/v1/traffic/jwks \
+//	  -tls-cert director.crt -tls-key director.key
 package main
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -34,7 +41,31 @@ func main() {
 	dataDir := flag.String("data-dir", ".", "directory for local settings")
 	apiToken := flag.String("api-token", "", "token a client needs to control the traffic over the HTTP API (\"auto\": a random one; \"\": open, trusted networks only)")
 	viewToken := flag.String("view-token", "", "token a client needs to read the HTTP API (\"auto\": a random one)")
+	jwksURL := flag.String("jwks", "", "with -listen: verify each actuator's session token against the keys at this JWKS address (the MyCrew API's), instead of -token")
+	jwksIss := flag.String("jwks-iss", "", "with -jwks: the issuer a token must name")
+	jwksAud := flag.String("jwks-aud", "", "with -jwks: the audience a token must include")
+	jwksAPI := flag.String("jwks-api", "control", "with -jwks: what a session token gives on the HTTP API: control, view or none")
+	tlsCert := flag.String("tls-cert", "", "with -listen: serve the link over TLS with this certificate (PEM)")
+	tlsKey := flag.String("tls-key", "", "with -listen: the certificate's private key (PEM)")
 	flag.Parse()
+	if (*jwksURL != "" || *tlsCert != "") && *listen == "" {
+		fmt.Fprintln(os.Stderr, "❌ -jwks and -tls-cert need -listen")
+		os.Exit(2)
+	}
+	link := world.LinkOptions{Token: *token}
+	var jwks *world.JWKS
+	if *jwksURL != "" {
+		jwks = world.NewJWKS(*jwksURL, *jwksIss, *jwksAud)
+		link.Verify = jwks.LinkVerify
+	}
+	if *tlsCert != "" || *tlsKey != "" {
+		cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "❌ TLS:", err)
+			os.Exit(2)
+		}
+		link.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -51,7 +82,7 @@ func main() {
 	if *listen != "" {
 		// Actuators behind routers dial in (#774).
 		go func() {
-			if err := world.ListenDirector(ctx, w, *listen, *token); err != nil {
+			if err := world.ListenDirectorWith(ctx, w, *listen, link); err != nil {
 				fmt.Fprintln(os.Stderr, "❌", err)
 				cancel()
 			}
@@ -81,6 +112,12 @@ func main() {
 		fmt.Printf("API view token: %s\n", *viewToken)
 	}
 	world.SetTokens(*apiToken, *viewToken)
+	if jwks != nil && *jwksAPI != "none" {
+		world.SetTokenVerifier(func(ctx context.Context, t string) error {
+			_, err := jwks.Verify(ctx, t)
+			return err
+		}, *jwksAPI == "control")
+	}
 	srv := &http.Server{Addr: *addr, Handler: world.Guard(mux), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()

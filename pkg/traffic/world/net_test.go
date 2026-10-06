@@ -28,7 +28,7 @@ func TestNetLink(t *testing.T) {
 				return
 			}
 			go func() {
-				if l, ok := greeted(c, "s3cret"); ok {
+				if l, ok := (LinkOptions{Token: "s3cret"}).greeted(context.Background(), c, t.Logf); ok {
 					hub.attach(l)
 				}
 			}()
@@ -101,14 +101,14 @@ func TestDialOut(t *testing.T) {
 	go serve(hub, srv)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go hub.dialOut(ctx, ln.Addr().String(), "s3cret", func(string, ...any) {})
+	go hub.dialOut(ctx, ln.Addr().String(), LinkOptions{Token: "s3cret"}, func(string, ...any) {})
 
 	accept := func(token string) (*wireClient, chan wireMsg, bool) {
 		c, err := ln.Accept()
 		if err != nil {
 			t.Fatal(err)
 		}
-		l, ok := greeted(c, token)
+		l, ok := LinkOptions{Token: token}.greeted(context.Background(), c, func(string, ...any) {})
 		if !ok {
 			return nil, nil, false
 		}

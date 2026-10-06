@@ -12,6 +12,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"os"
@@ -25,14 +27,29 @@ func main() {
 	token := flag.String("token", "", "token a director must give (\"\": none, trusted network only)")
 	director := flag.String("director", "", "dial this director (host:port) instead of listening: for a PC behind a router (#774)")
 	dataDir := flag.String("data-dir", ".", "directory for local settings (custom pushes, de-icing pads)")
+	useTLS := flag.Bool("tls", false, "with -director: the link over TLS, the director's certificate verified with the system roots (#792)")
+	caFile := flag.String("tls-ca", "", "with -tls: verify the director with this CA certificate (PEM) instead of the system roots")
 	flag.Parse()
+	link := world.LinkOptions{Token: *token}
+	if *useTLS || *caFile != "" {
+		link.TLS = &tls.Config{MinVersion: tls.VersionTLS12}
+		if *caFile != "" {
+			pem, err := os.ReadFile(*caFile)
+			pool := x509.NewCertPool()
+			if err != nil || !pool.AppendCertsFromPEM(pem) {
+				fmt.Fprintln(os.Stderr, "❌ -tls-ca: no certificate in", *caFile)
+				os.Exit(2)
+			}
+			link.TLS.RootCAs = pool
+		}
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	w := world.New(world.Options{DataDir: *dataDir})
 	var err error
 	if *director != "" {
 		fmt.Printf("actuator dialling director %s\n", *director)
-		err = world.DialActuator(ctx, w, *director, *token)
+		err = world.DialActuatorWith(ctx, w, *director, link)
 	} else {
 		fmt.Printf("actuator on %s\n", *listen)
 		err = world.ServeActuator(ctx, w, *listen, *token)

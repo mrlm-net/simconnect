@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,7 +179,12 @@ func (h *hubLink) Close() error {
 // each greeting with token (any when token is ""). It returns when ctx ends
 // or the listener fails.
 func ServeActuator(ctx context.Context, w *World, addr, token string) error {
-	ln, err := net.Listen("tcp", addr)
+	return ServeActuatorWith(ctx, w, addr, LinkOptions{Token: token})
+}
+
+// ServeActuatorWith is ServeActuator with o's TLS and token check (#792).
+func ServeActuatorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	ln, err := o.listen(addr)
 	if err != nil {
 		return err
 	}
@@ -199,7 +205,7 @@ func ServeActuator(ctx context.Context, w *World, addr, token string) error {
 			return err
 		}
 		go func() {
-			if l, ok := greeted(c, token); ok {
+			if l, ok := o.greeted(ctx, c, w.st.core.log.printf); ok {
 				w.st.core.log.printf("actuator: director %s attached", c.RemoteAddr())
 				hub.attach(l)
 			}
@@ -210,8 +216,13 @@ func ServeActuator(ctx context.Context, w *World, addr, token string) error {
 // DialDirector runs w as a director of the actuator at addr, greeting with
 // token, until ctx ends; a lost actuator is dialled again.
 func DialDirector(ctx context.Context, w *World, addr, token string) error {
+	return DialDirectorWith(ctx, w, addr, LinkOptions{Token: token})
+}
+
+// DialDirectorWith is DialDirector with o's TLS and token (#792).
+func DialDirectorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
 	for {
-		err := dialOnce(ctx, w, addr, token)
+		err := dialOnce(ctx, w, addr, o)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -226,9 +237,12 @@ func DialDirector(ctx context.Context, w *World, addr, token string) error {
 	}
 }
 
-func dialOnce(ctx context.Context, w *World, addr, token string) error {
-	var d net.Dialer
-	c, err := d.DialContext(ctx, "tcp", addr)
+func dialOnce(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	token, err := o.token(ctx)
+	if err != nil {
+		return err
+	}
+	c, err := o.dial(ctx, addr)
 	if err != nil {
 		return err
 	}
@@ -248,18 +262,94 @@ func dialOnce(ctx context.Context, w *World, addr, token string) error {
 	return err
 }
 
-// greeted reads a director's hello on c: its link, or false (c closed)
-// when the token is wrong or none comes within 10 s.
-func greeted(c net.Conn, token string) (*connLink, bool) {
+// greeted reads the other side's hello on c: its link, or false (c
+// closed) when the token is refused or none comes within 10 s. A token
+// that expires (Verify) closes c when it does: the other side dials again
+// with a fresh one.
+func (o LinkOptions) greeted(ctx context.Context, c net.Conn, logf func(string, ...any)) (*connLink, bool) {
 	l := newConnLink(c)
 	c.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var h hello
-	if err := l.dec.Decode(&h); err != nil || token != "" && subtle.ConstantTimeCompare([]byte(h.Token), []byte(token)) != 1 {
+	if err := l.dec.Decode(&h); err != nil {
+		c.Close()
+		return nil, false
+	}
+	var expires time.Time
+	switch {
+	case o.Verify != nil:
+		var err error
+		if expires, err = o.Verify(ctx, h.Token); err != nil {
+			logf("link: %s refused: %v", c.RemoteAddr(), err)
+			c.Close()
+			return nil, false
+		}
+	case o.Token != "" && subtle.ConstantTimeCompare([]byte(h.Token), []byte(o.Token)) != 1:
+		logf("link: %s refused: wrong token", c.RemoteAddr())
 		c.Close()
 		return nil, false
 	}
 	c.SetReadDeadline(time.Time{})
+	if !expires.IsZero() {
+		time.AfterFunc(time.Until(expires), func() { c.Close() })
+	}
 	return l, true
+}
+
+// LinkOptions secure a link between director and actuator (#792).
+type LinkOptions struct {
+	// Token is the token the dialling side greets with and the listening
+	// side wants ("": any, a trusted network only); TokenFunc, when set,
+	// gives the dialling side a fresh one for every greeting (a session
+	// token that expires).
+	Token     string
+	TokenFunc func(ctx context.Context) (string, error)
+	// Verify, when set, checks the greeting's token on the listening side
+	// instead of Token: when it expires (zero: never) the link is closed
+	// and the other side dials again with a fresh one. JWKS.LinkVerify
+	// checks the MyCrew API's session tokens.
+	Verify func(ctx context.Context, token string) (expires time.Time, err error)
+	// TLS: the dialling side verifies the server with it (an empty Config:
+	// the system roots), the listening side serves its certificate (nil:
+	// plain TCP).
+	TLS *tls.Config
+}
+
+func (o LinkOptions) token(ctx context.Context) (string, error) {
+	if o.TokenFunc != nil {
+		t, err := o.TokenFunc(ctx)
+		if err != nil {
+			return "", fmt.Errorf("link token: %w", err)
+		}
+		return t, nil
+	}
+	return o.Token, nil
+}
+
+func (o LinkOptions) listen(addr string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil || o.TLS == nil {
+		return ln, err
+	}
+	return tls.NewListener(ln, o.TLS), nil
+}
+
+func (o LinkOptions) dial(ctx context.Context, addr string) (net.Conn, error) {
+	if o.TLS == nil {
+		var d net.Dialer
+		return d.DialContext(ctx, "tcp", addr)
+	}
+	d := tls.Dialer{Config: o.TLS}
+	return d.DialContext(ctx, "tcp", addr)
+}
+
+// LinkVerify is j as a LinkOptions.Verify: when the link must close (the
+// token's expiry and the leeway Verify allows), or why it is refused.
+func (j *JWKS) LinkVerify(ctx context.Context, token string) (time.Time, error) {
+	c, err := j.Verify(ctx, token)
+	if err != nil || c.Expires.IsZero() {
+		return time.Time{}, err
+	}
+	return c.Expires.Add(tokenLeeway), nil
 }
 
 // DialActuator runs w as an actuator on its own simulator connection (Run)
@@ -267,20 +357,28 @@ func greeted(c net.Conn, token string) (*connLink, bool) {
 // behind a router (#774): the director needs no way in. A lost director
 // is dialled again every 5 s until ctx ends.
 func DialActuator(ctx context.Context, w *World, addr, token string) error {
+	return DialActuatorWith(ctx, w, addr, LinkOptions{Token: token})
+}
+
+// DialActuatorWith is DialActuator with o's TLS and token (#792).
+func DialActuatorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
 	hub := newHubLink()
 	w.st.actLink = hub
 	go w.Run(ctx)
 	defer hub.Close()
-	return hub.dialOut(ctx, addr, token, w.st.core.log.printf)
+	return hub.dialOut(ctx, addr, o, w.st.core.log.printf)
 }
 
 // dialOut keeps the hub attached to the director at addr: dialled, greeted
 // with token, dialled again 5 s after it is lost, until ctx ends.
-func (h *hubLink) dialOut(ctx context.Context, addr, token string, logf func(string, ...any)) error {
+func (h *hubLink) dialOut(ctx context.Context, addr string, o LinkOptions, logf func(string, ...any)) error {
 	for {
 		h.setState("dialling")
-		var d net.Dialer
-		c, err := d.DialContext(ctx, "tcp", addr)
+		token, err := o.token(ctx)
+		var c net.Conn
+		if err == nil {
+			c, err = o.dial(ctx, addr)
+		}
 		if err == nil {
 			l := newConnLink(c)
 			if err = l.enc.Encode(hello{Token: token}); err == nil {
@@ -327,7 +425,13 @@ var redialEvery = 5 * time.Second
 // actuator to dial in (the followers dial again too). It returns when ctx
 // ends or the listener fails.
 func ListenDirector(ctx context.Context, w *World, addr, token string) error {
-	ln, err := net.Listen("tcp", addr)
+	return ListenDirectorWith(ctx, w, addr, LinkOptions{Token: token})
+}
+
+// ListenDirectorWith is ListenDirector with o's TLS and token check: the
+// MyCrew API's session tokens with Verify (JWKS.LinkVerify), #792.
+func ListenDirectorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	ln, err := o.listen(addr)
 	if err != nil {
 		return err
 	}
@@ -346,7 +450,7 @@ func ListenDirector(ctx context.Context, w *World, addr, token string) error {
 			return err
 		}
 		go func() {
-			l, ok := greeted(c, token)
+			l, ok := o.greeted(ctx, c, w.st.core.log.printf)
 			if !ok {
 				return
 			}
@@ -450,6 +554,12 @@ func (h *hubLink) current() *connLink {
 // ends the World decides on its own again from the next connection.
 // Snapshot.Link says how the link is.
 func (w *World) LinkDirector(ctx context.Context, addr, token string) error {
+	return w.LinkDirectorWith(ctx, addr, LinkOptions{Token: token})
+}
+
+// LinkDirectorWith is LinkDirector with o's TLS and token: TokenFunc gives
+// a fresh session token for every greeting (#792).
+func (w *World) LinkDirectorWith(ctx context.Context, addr string, o LinkOptions) error {
 	hub := newHubLink()
 	w.st.mu.Lock()
 	w.st.actLink = hub
@@ -462,5 +572,5 @@ func (w *World) LinkDirector(ctx context.Context, addr, token string) error {
 		w.st.mu.Unlock()
 		hub.Close()
 	}()
-	return hub.dialOut(ctx, addr, token, w.st.core.log.printf)
+	return hub.dialOut(ctx, addr, o, w.st.core.log.printf)
 }

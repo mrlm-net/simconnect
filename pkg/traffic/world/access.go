@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Access for network play: without tokens the map is open to anyone who
@@ -31,6 +33,19 @@ const tokenCookie = "airport_map_token"
 // access holds the tokens (empty: not required).
 var access struct {
 	control, view string
+	// verify checks a session token (SetTokenVerifier); it gives verifyRole.
+	verify     func(ctx context.Context, token string) error
+	verifyRole string
+}
+
+// SetTokenVerifier lets a request in with a token verify accepts (the
+// MyCrew API's session tokens, JWKS.Verify, #792), as a controller when
+// control, else as a spectator; nil: none. The static tokens still work.
+func SetTokenVerifier(verify func(ctx context.Context, token string) error, control bool) {
+	access.verify, access.verifyRole = verify, roleSpectator
+	if control {
+		access.verifyRole = roleControl
+	}
 }
 
 // newToken is a random token for -token auto.
@@ -51,7 +66,7 @@ func setTokens(control, view string) {
 	access.control, access.view = control, view
 }
 
-func tokensOn() bool { return access.control != "" || access.view != "" }
+func tokensOn() bool { return access.control != "" || access.view != "" || access.verify != nil }
 
 // fromThisComputer reports whether r comes from the map's own computer.
 func fromThisComputer(r *http.Request) bool {
@@ -74,6 +89,12 @@ func roleOf(token string) string {
 		return roleControl
 	case same(token, access.view):
 		return roleSpectator
+	case token != "" && access.verify != nil:
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if access.verify(ctx, token) == nil {
+			return access.verifyRole
+		}
 	}
 	return ""
 }
