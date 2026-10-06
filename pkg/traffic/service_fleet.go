@@ -15,8 +15,10 @@ import (
 type VehicleKind string
 
 const (
-	VehicleTug  VehicleKind = "tug"
-	VehicleFuel VehicleKind = "fuel"
+	VehicleTug    VehicleKind = "tug"
+	VehicleFuel   VehicleKind = "fuel"
+	VehicleStairs VehicleKind = "stairs"
+	VehicleGPU    VehicleKind = "gpu"
 )
 
 // ServiceFleet hands out an airport's service vehicles.
@@ -94,6 +96,8 @@ const (
 	FuelTrucksPerStands = 15.0
 	MinTugs             = 2
 	MinFuelTrucks       = 1
+	StairsPerStands     = 10.0
+	MinStairs           = 2
 )
 
 // DefaultFleetSize is an airport's fleet for its number of stands.
@@ -101,5 +105,8 @@ func DefaultFleetSize(stands int) map[VehicleKind]int {
 	return map[VehicleKind]int{
 		VehicleTug:  max(MinTugs, int(math.Ceil(float64(stands)/TugsPerStands))),
 		VehicleFuel: max(MinFuelTrucks, int(math.Ceil(float64(stands)/FuelTrucksPerStands))),
+		// Stairs serve the remote stands only: one set per StairsPerStands.
+		VehicleStairs: max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleGPU:    max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
 	}
 }

@@ -209,7 +209,7 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	}
 	tugDriving := c.req.Tug != nil && !c.req.Tug.Done() &&
 		(c.state == TaxiAwaitingPushback && (!c.tugAttached || !c.pushAt.IsZero() || arriving) || c.state >= TaxiPushback && c.tugAttached)
-	tugDriving = tugDriving || c.fuelDriving()
+	tugDriving = tugDriving || c.fuelDriving() || c.stairsDriving()
 	moving := c.state == TaxiPushback || speed > 0.5 || tugDriving
 	full := c.state >= TaxiLiningUp || tugDriving
 	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
@@ -258,6 +258,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	if !c.frameAt.IsZero() {
 		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 		c.updateFuel(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
+		c.updateStairs(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 	}
 	c.frameAt = now
 	c.setRequest(now)
@@ -287,7 +288,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if !c.pushAt.IsZero() && !now.Before(c.pushAt) {
 			// Nobody pushes into traffic: wait while the corridor behind
 			// the stand is not clear.
-			if !c.facesOut() && c.pushBlocked(now) || !c.fuelClear() {
+			if !c.facesOut() && c.pushBlocked(now) || !c.fuelClear() || !c.stairsClear() {
 				c.emit(nil, false)
 				return
 			}

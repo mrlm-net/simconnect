@@ -577,6 +577,9 @@ type SpawnRequest struct {
 	// StandUse: the stands it takes first (#833): "" a passenger
 	// airline's (gates), "ga" (GA ramps; a circuit flight always), "cargo".
 	StandUse string `json:"standUse,omitempty"`
+	// PushInMin: a departure's push this many minutes from now, its stand
+	// services (fuel, stairs, the tug) timed by it; 0: none set.
+	PushInMin float64 `json:"pushInMin,omitempty"`
 	Model  string `json:"model"`
 	Tail   string `json:"tail"`
 	// Squawk: a departure's SSR code, four octal digits; "": its own
@@ -819,9 +822,16 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if f := cc.fuelTruck(r, g, reqBase, prof); f != nil {
 			fuel, it.fuel = f, f
 		}
+		var stairs, gpu traffic.FuelService
+		if s := cc.stairs(r, g, reqBase, prof); s != nil {
+			stairs = s
+		}
+		if u := cc.gpu(r, g, reqBase, prof); u != nil {
+			gpu = u
+		}
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Stairs: stairs, GPU: gpu, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },
@@ -1616,6 +1626,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if err := json.Unmarshal(body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if req.Kind == "departure" && req.PushInMin > 0 {
+			req.pushAt = cc.clock.Now().Add(time.Duration(req.PushInMin * float64(time.Minute)))
 		}
 		// MSFS AI lands an arrival only when asked: injectApproach false.
 		var given map[string]json.RawMessage

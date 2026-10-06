@@ -52,3 +52,6 @@ func (f *SimObjectFuelTruck) State() VehicleState {
 
 // Title is the fuel truck's model.
 func (f *SimObjectFuelTruck) Title() string { return f.title }
+
+// Title is the stairs' ground vehicle title.
+func (s *SimObjectStairs) Title() string { return s.title }

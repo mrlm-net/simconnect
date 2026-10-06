@@ -35,6 +35,8 @@ type (
 		Req     traffic.TaxiRequest `json:"req"`
 		Tug     string              `json:"tug,omitempty"`
 		Fuel    string              `json:"fuel,omitempty"`
+		Stairs  string              `json:"stairs,omitempty"` // #831
+		GPU     string              `json:"gpu,omitempty"`    // #832
 		// TugYaw and TugAhead: the tug's place on the nose gear (0: its own).
 		TugYaw   float64 `json:"tugYaw,omitempty"`
 		TugAhead float64 `json:"tugAhead,omitempty"`
@@ -60,6 +62,12 @@ func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequ
 	}
 	if f, ok := req.Fuel.(*traffic.SimObjectFuelTruck); ok && f != nil {
 		w.Fuel = f.Title()
+	}
+	if s, ok := req.Stairs.(*traffic.SimObjectStairs); ok && s != nil {
+		w.Stairs = s.Title()
+	}
+	if u, ok := req.GPU.(*traffic.SimObjectFuelTruck); ok && u != nil {
+		w.GPU = u.Title()
 	}
 	evs := r.c.subscribe(w.Target)
 	if err := r.c.call(r.t, "StartDeparture", []any{w}); err != nil {
@@ -128,8 +136,10 @@ type actuatorSim struct {
 	pushes func(g *airport.Graph)
 	// tug and fuel make an aircraft's tug and fuel truck from their models
 	// on its request IDs (nil: none).
-	tug  func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug
-	fuel func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
+	tug    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug
+	fuel   func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
+	stairs func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
+	gpu    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
 
 	mu   sync.Mutex
 	ctls []interface{ Handle(engine.Message) bool } // started off the wire
@@ -162,6 +172,12 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	}
 	if w.Fuel != "" && a.fuel != nil {
 		req.Fuel = a.fuel(w, g, req.Profile)
+	}
+	if w.Stairs != "" && a.stairs != nil {
+		req.Stairs = a.stairs(w, g, req.Profile)
+	}
+	if w.GPU != "" && a.gpu != nil {
+		req.GPU = a.gpu(w, g, req.Profile)
 	}
 	ctl, evs, err := a.localSim.StartDeparture(w.DefBase, w.ReqBase, req)
 	if err != nil {

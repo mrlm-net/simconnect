@@ -154,6 +154,15 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 			f.Layout = g.Layout
 			cc.giveATC(f, g.Layout, "fuel truck")
 			return f
+		},
+		stairs: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService {
+			s := traffic.NewSimObjectStairs(client, cc.inj, w.Stairs, w.ReqBase+controlIDBlock-3, prof)
+			s.Layout = g.Layout
+			cc.giveATC(s, g.Layout, "stairs")
+			return s
+		},
+		gpu: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService {
+			return newGPU(cc, w.GPU, g, w.ReqBase, prof)
 		}}
 	a.heard = st.core.hooks.OnTransmission
 	srv.add("sim", a)
