@@ -471,7 +471,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamSlower] == "true" {
 			verb = "reduce"
 		}
-		return fmt.Sprintf("%s, %s speed to %s knots%s", cs, verb, p[ParamSpeed], why) // 12.4.1.6
+		return fmt.Sprintf("%s, %s speed to %s%s", cs, verb, spokenSpeed(p[ParamSpeed]), why) // 12.4.1.6
 	case IntentLevel:
 		switch p[ParamClimb] {
 		case "stop":
@@ -1103,6 +1103,12 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 	case ResolveSpeed:
 		t.Intent = IntentSpeed
 		t.Params[ParamSpeed] = fmt.Sprintf("%.0f", r.Kts)
+		switch {
+		case r.Said.Mach > 0:
+			t.Params[ParamSpeed] = fmt.Sprintf("Mach %.2f", r.Said.Mach) // Doc 4444 4.6.1.6
+		case r.Said.IASKts > 0:
+			t.Params[ParamSpeed] = fmt.Sprintf("%.0f", r.Said.IASKts)
+		}
 		if r.Kts < kts {
 			t.Params[ParamSlower] = "true"
 		}
@@ -1519,4 +1525,13 @@ func CrossAt(pos Position, cs, fix string, altFt, transitionFt float64, above bo
 	}
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentCrossLevel,
 		Params: map[string]string{ParamFix: fix, ParamLevel: LevelSaidAbove(altFt, transitionFt), ParamClimb: way}})
+}
+
+// spokenSpeed is ParamSpeed as said: "Mach 0.78" as it is, a bare number
+// in knots ("250 knots").
+func spokenSpeed(s string) string {
+	if strings.HasPrefix(s, "Mach") {
+		return s
+	}
+	return s + " knots"
 }

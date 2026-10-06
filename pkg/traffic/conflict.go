@@ -296,6 +296,9 @@ type Resolution struct {
 	// then resume).
 	Kts        float64 `json:"kts,omitempty"`
 	AltFt      float64 `json:"altFt,omitempty"`
+	// Said (speed): Kts as the controller gives it, Mach or IAS (Kts is
+	// rounded to match it).
+	Said SaidSpeed `json:"said,omitempty"`
 	HeadingDeg float64 `json:"headingDeg,omitempty"`
 	// Stop (level): a climb or descent stopped at AltFt on its way, to
 	// go on once clear of the traffic ("stop climb at 5000 feet").
@@ -343,13 +346,13 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 		out = append(out, resolutionCandidate{r, t, cost})
 	}
 	for _, f := range []float64{0.9, 1.1, 0.8, 1.2} {
-		kts := base.kts * f
-		if a.AltFt < 10000 && kts > 250 {
+		said, kts := SpeedSaidAt(a.AltFt, base.kts*f)
+		if a.AltFt < 10000 && said.IASKts > 250 {
 			continue
 		}
 		t := base
 		t.kts = kts
-		add(Resolution{Kind: ResolveSpeed, Kts: math.Round(kts)}, t, speedCost+1+math.Abs(1-f)*5)
+		add(Resolution{Kind: ResolveSpeed, Kts: math.Round(kts), Said: said}, t, speedCost+1+math.Abs(1-f)*5)
 	}
 	// Climbing or descending toward the traffic's level: stopped as close to
 	// it as the vertical minimum allows (THY1463 climbing to FL240 through
