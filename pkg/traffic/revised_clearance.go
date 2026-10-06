@@ -76,9 +76,11 @@ func revisedDeparture(p map[string]string, faa bool) string {
 }
 
 // readbackRevised is the crew's readback: "Holding, cleared to …" after
-// the prefix (CAP 413 4.38), else the clearance.
+// the prefix (CAP 413 4.38), else the clearance. Built from the params,
+// not the text: a transmitted text carries the spoken call sign ("CSA
+// Lines 123"), not t.Callsign (found by the MyCrew app).
 func readbackRevised(t Transmission) string {
-	body := strings.TrimPrefix(t.Text, t.Callsign+", ")
+	body := revisedDeparture(t.Params, false)
 	if rest, ok := strings.CutPrefix(body, "hold position, "); ok {
 		return "Holding, " + rest
 	}
