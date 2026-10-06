@@ -148,7 +148,7 @@ func init() {
 				m[strings.ToUpper(i.Type)] = i.Wake
 			}
 			wakeNow.Store(m)
-		}))
+		}).ForSet("aircraft-types", map[string]string{"wtc": "icao", "recatEU": "recat"}))
 	reg(dict.Keyed("traffic.airportNames", "icao", "", "",
 		func() []AirportNameItem {
 			var out []AirportNameItem
