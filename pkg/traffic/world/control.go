@@ -574,6 +574,9 @@ type SpawnRequest struct {
 	Runway string `json:"runway"`
 	Entry  string `json:"entry"` // departure: runway entry taxiway
 	Exit   *int   `json:"exit"`  // arrival: runway exit, an index into /api/exits; nil = the controller's choice
+	// StandUse: the stands it takes first (#833): "" a passenger
+	// airline's (gates), "ga" (GA ramps; a circuit flight always), "cargo".
+	StandUse string `json:"standUse,omitempty"`
 	Model  string `json:"model"`
 	Tail   string `json:"tail"`
 	// Squawk: a departure's SSR code, four octal digits; "": its own
@@ -700,19 +703,16 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
-		var s int
-		err := traffic.ErrNoStand
+		// By its use (#833): a light aircraft (VFR) on a GA ramp where the
+		// airport has one free (#568), an airliner at a gate, a freighter
+		// on a cargo stand; then on another that fits.
+		use := r.StandUse
 		if r.Circuit {
-			// A light aircraft (VFR) stands on a GA ramp where
-			// the airport has one free (#568), else on any stand that fits.
-			ga := req
-			ga.Types = gaRamps
-			s, err = alloc.Assign(ga)
+			use = standGA
 		}
+		s, err := assignStand(alloc, req, use)
 		if err != nil {
-			if s, err = alloc.Assign(req); err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
 		r.Stand = s
 	} else if err := alloc.Occupy(r.Stand, r.Tail, prof.SpanMeters/2); err != nil {
