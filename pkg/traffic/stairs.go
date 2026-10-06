@@ -35,6 +35,7 @@ type SimObjectStairs struct {
 	mu       sync.Mutex
 	objectID uint32
 	pose     GroundPose
+	spot     GroundPose   // at the door: where it stops, square to it
 	arrive   *GroundMover // driving in; nil once at the door
 	back     *GroundMover // backing out
 	away     *GroundMover // driving home
@@ -83,7 +84,7 @@ func (s *SimObjectStairs) Attach(pose GroundPose) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	spot := StairsSpot(pose, s.prof, s.DoorAftMeters, s.SideMeters)
-	s.pose = spot
+	s.pose, s.spot = spot, spot
 	if path, depot, ok := s.inbound(spot); ok {
 		s.arrive, s.depot, s.hasDepot = NewGroundMoverFrom(path, stairsProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
 		s.pose = s.arrive.Pose()
@@ -153,7 +154,9 @@ func (s *SimObjectStairs) Update(pose GroundPose, leave bool, dt float64) error 
 		s.check(s.arrive)
 		s.pose = s.arrive.Step(dt)
 		if s.pose.Arrived {
-			s.arrive = nil
+			// Square to the door: the short wheelbase leaves it a few
+			// degrees off the last turn (live: 108° to the fuselage, not 90).
+			s.arrive, s.pose.Heading = nil, s.spot.Heading
 		}
 		return s.place()
 	case s.back == nil && s.away == nil:
