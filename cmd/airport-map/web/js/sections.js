@@ -863,7 +863,7 @@ function ladderSVG(r) {
       const lead = seq[i - 1], gap = e.distanceToGoNM - lead.distanceToGoNM, xp = x0 + Math.min(lead.distanceToGoNM, 20) * sc;
       const k = gap < (e.spacingNM || 0) - 0.3 ? 'short' : 'ok';
       s += `<line class="lad-gap--${k}" x1="${xp + 7}" y1="${y + 26}" x2="${Math.max(xp + 8, x - 7)}" y2="${y + 26}" stroke-width="2"/>`;
-      s += `<text class="lad-gaptxt--${k}" x="${(x + xp) / 2}" y="${y + 37}" text-anchor="middle">${gap.toFixed(1)}/${e.spacingNM || 0} NM</text>`;
+      s += `<text class="lad-gaptxt--${k}" x="${(x + xp) / 2}" y="${y + 37}" text-anchor="middle">${gap.toFixed(1)}/${+(e.spacingNM || 0).toFixed(2)} NM</text>`;
     }
     if (e.distanceToGoNM <= 20.5) {
       s += `<circle class="lad-ac ${cls}" cx="${x}" cy="${y}" r="6"/>`;
@@ -890,7 +890,7 @@ function renderApproach(tower, sep) {
         return `<tr class="${e.fixed ? 'is-fix' : ''} ${v || sf ? '' : 'is-other'} ${short ? 'is-short' : ''}">
           <td class="num mono">${e.number}</td>
           <td><span class="mono strong cs" title="${esc(v ? v.model || '' : '')}">${esc(e.callsign)}</span><br><span class="muted small mono" title="wake ${esc(e.wake.icao)}, RECAT-EU ${esc(e.wake.recat)}">${esc(e.wake.icao)}/${esc(e.wake.recat)}</span></td>
-          <td class="mono dist" title="${lead ? `${gap.toFixed(1)} NM behind ${esc(lead.callsign)}, ${e.spacingNM} NM needed${e.spacingWhy ? ' — ' + esc(e.spacingWhy) : ''}` : ''}">${e.distanceToGoNM.toFixed(1)}<span class="muted"> NM</span>${lead ? `<br><span class="small">${short ? '▲ ' : ''}${gap.toFixed(1)}/${e.spacingNM}</span>` : ''}${e.delay > 0 ? `<br><span class="small muted">+${Math.round(e.delay / 6e10)} min</span>` : ''}</td>
+          <td class="mono dist" title="${lead ? `${gap.toFixed(1)} NM behind ${esc(lead.callsign)}, ${+(e.spacingNM || 0).toFixed(2)} NM needed${e.spacingWhy ? ' — ' + esc(e.spacingWhy) : ''}` : ''}">${e.distanceToGoNM.toFixed(1)}<span class="muted"> NM</span>${lead ? `<br><span class="small">${short ? '▲ ' : ''}${gap.toFixed(1)}/${+(e.spacingNM || 0).toFixed(2)}</span>` : ''}${e.delay > 0 ? `<br><span class="small muted">+${Math.round(e.delay / 6e10)} min</span>` : ''}</td>
           <td class="small">${esc(what)}${v || sf ? '' : '<br><span class="muted">not ours</span>'}${btns ? `<div class="seq-acts">${btns}</div>` : ''}</td></tr>`;
       }).join('');
       const c = r.conditions || {};

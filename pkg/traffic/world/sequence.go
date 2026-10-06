@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -155,7 +156,7 @@ func behind(e traffic.SequenceEntry) string {
 	if e.SpacingWhy != "" {
 		why = " (" + e.SpacingWhy + ")"
 	}
-	return fmt.Sprintf(" behind %s, %g NM%s", e.Leader, e.SpacingNM, why)
+	return fmt.Sprintf(" behind %s, %s NM%s", e.Leader, strconv.FormatFloat(math.Round(e.SpacingNM*100)/100, 'f', -1, 64), why)
 }
 
 // Delays: absorbed from 30 s on, at most every absorbEvery per arrival so
