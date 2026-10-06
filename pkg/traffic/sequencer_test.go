@@ -524,3 +524,19 @@ func TestSequencerInTrailCatchUp(t *testing.T) {
 		t.Errorf("10 NM behind and faster: delay %v, want about 2.3 min to keep 6 NM at PR512", d)
 	}
 }
+
+// MinimumNM is the spacing without the compression buffer (a go-around
+// is for the minimum, the buffer is speed's): a B738 behind a PC-12 needs
+// the buffer on top of its minimum.
+func TestSequencerMinimumNM(t *testing.T) {
+	now := time.Date(2026, 10, 6, 12, 40, 0, 0, time.UTC)
+	s := NewApproachSequencer("24", SequencerOptions{MinSpacingNM: 5})
+	seq := s.Update(now, []ApproachAircraft{
+		{Callsign: "OKZWR", Wake: WakeFor("PC12"), DistanceToGoNM: 10, GroundKts: 120, FinalKts: 100},
+		{Callsign: "RYR270", Wake: WakeFor("B738"), DistanceToGoNM: 20, GroundKts: 180, FinalKts: 145},
+	})
+	e := seq[1]
+	if e.MinimumNM != 5 || e.SpacingNM <= e.MinimumNM || e.SpacingWhy != "compression" {
+		t.Errorf("RYR270: spacing %.2f (%s), minimum %.2f; want a compression buffer over 5", e.SpacingNM, e.SpacingWhy, e.MinimumNM)
+	}
+}
