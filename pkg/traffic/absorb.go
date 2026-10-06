@@ -277,6 +277,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		}
 	}
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
+	noClimb(plain, c.altitudeNow())
 	plainNames := append(outNames, names[final:]...)
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 	if apexAt >= 0 && a.ExtraNM > 0 {
@@ -318,7 +319,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 // downwind extended by x NM: on along it past its last point, the base turn
 // that much further out and onto the centreline x NM beyond where the STAR
 // joined it (its own base turn may be well beyond the align point: LKPR
-// VLM6T turns base some 16 NM out), on the glide path's height there. The
+// VLM6T turns base some 16 NM out), at the intercept altitude (#797). The
 // downwind is the last point ahead more than a mile beside the centreline
 // reached flying away from the runway; the base turn after it is replaced.
 // False where the STAR does not end on a downwind.
@@ -361,11 +362,40 @@ func extendDownwindAt(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, 
 		d2, e := out[k], onto
 		d2.Latitude, d2.Longitude = dLat, dLon
 		e.Latitude, e.Longitude = eLat, eLon
-		e.Altitude = onto.Altitude + x*ProcedureDescentFtPerNm
+		e.Altitude = onto.Altitude // the intercept altitude: joined level, the glide slope from below (#797)
 		ext := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out[:k+1]...), d2, e)
 		return append(ext, out[f:]...), k, f, true
 	}
 	return nil, 0, 0, false
+}
+
+// noClimb caps chain's MSL altitudes at fromFt (0: not known) and each at
+// the one before it: an arrival losing time is never sent up (live, LKPR:
+// SWR1813 at 7200 ft climbed toward FL080 on an extended downwind, #797).
+func noClimb(chain []types.SIMCONNECT_DATA_WAYPOINT, fromFt float64) {
+	top := math.Inf(1)
+	if fromFt > 0 {
+		top = fromFt
+	}
+	for i := range chain {
+		alt := mslAltitude(chain[i])
+		if alt <= 0 {
+			continue
+		}
+		if alt > top {
+			chain[i].Altitude = top
+		}
+		top = chain[i].Altitude
+	}
+}
+
+// altitudeNow is the aircraft's altitude in feet MSL (0: not reported).
+// c.mu held.
+func (c *ArrivalController) altitudeNow() float64 {
+	if c.last.AGL <= 0 {
+		return 0
+	}
+	return c.last.AGL + convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 }
 
 // pathNMOf is the track from pos along wps to the point to, in NM.
