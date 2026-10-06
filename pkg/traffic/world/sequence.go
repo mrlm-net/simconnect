@@ -46,6 +46,8 @@ type sequences struct {
 	seqSaid map[string]seqSaid
 	// shortcutAt: when each arrival was last looked at for a shortcut.
 	shortcutAt map[string]time.Time
+	// noShortcut: why each arrival's last shortcut did not fit, logged on change.
+	noShortcut map[string]string
 	// seenAt: when each arrival joined the sequence (settling).
 	seenAt map[string]time.Time
 	// fixesAhead: each arrival's named fixes ahead at the last tick, for
@@ -90,7 +92,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, noShortcut: map[string]string{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -955,8 +957,20 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 	err := q.cc.do(func() (err error) { fix, saved, err = it.arr.Shortcut(maxNM, keep); return err })
 	q.mu.Lock()
 	q.shortcutAt[e.Callsign] = now
+	said := q.noShortcut[e.Callsign]
+	if err != nil && err.Error() != said {
+		q.noShortcut[e.Callsign] = err.Error()
+	}
 	q.mu.Unlock()
-	if err != nil || fix == "" {
+	if err != nil {
+		// Why not, when that changes (live: TVS1796, number 1 with nothing
+		// ahead, got no direct and the log said nothing).
+		if errors.Is(err, traffic.ErrNoShortcut) && err.Error() != said {
+			q.cc.log.printf("%-6s sequence: %v", e.Callsign, err)
+		}
+		return
+	}
+	if fix == "" {
 		return
 	}
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
