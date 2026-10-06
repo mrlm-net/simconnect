@@ -182,3 +182,18 @@ func TestMissedCall(t *testing.T) {
 		t.Errorf("called again %v after the first call", gap)
 	}
 }
+
+// A wrong altitude is a thousand feet off, never "6010" (live, TVS1539).
+func TestWrongValue(t *testing.T) {
+	for _, c := range []struct{ k, v, want string }{
+		{ParamAltitude, "6000", "7000"},
+		{ParamAltitude, "12000", "13000"},
+		{ParamAltitude, "900", "900"}, // too few digits: not made wrong
+		{ParamHeading, "270", "280"},
+		{ParamSquawk, "4521", "4531"},
+	} {
+		if got := wrongValue(c.k, c.v); got != c.want {
+			t.Errorf("%s %s: %s, want %s", c.k, c.v, got, c.want)
+		}
+	}
+}

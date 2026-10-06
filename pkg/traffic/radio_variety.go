@@ -208,7 +208,7 @@ var readbackErrorKeys = []string{ParamFreq, ParamHeading, ParamLevel, ParamSquaw
 func wrongReadback(t, rb Transmission, rng *rand.Rand) (Transmission, map[string]string, bool) {
 	var keys []string
 	for _, k := range readbackErrorKeys {
-		if v := t.Params[k]; v != "" && strings.Contains(rb.Text, v) && wrongDigit(v) != v {
+		if v := t.Params[k]; v != "" && strings.Contains(rb.Text, v) && wrongValue(k, v) != v {
 			keys = append(keys, k)
 		}
 	}
@@ -216,24 +216,38 @@ func wrongReadback(t, rb Transmission, rng *rand.Rand) (Transmission, map[string
 		return rb, nil, false
 	}
 	k := keys[rng.IntN(len(keys))]
-	wrong := wrongDigit(t.Params[k])
+	wrong := wrongValue(k, t.Params[k])
 	rb.Text = strings.Replace(rb.Text, t.Params[k], wrong, 1)
 	heard := maps.Clone(t.Params)
 	heard[k] = wrong
 	return rb, heard, true
 }
 
+// wrongValue is v (the value of param k) as a crew might mishear it: an
+// altitude a thousand feet off ("6000" → "7000", not "6010", which nobody
+// says), else wrongDigit.
+func wrongValue(k, v string) string {
+	if k == ParamAltitude {
+		return wrongDigitAt(v, 4)
+	}
+	return wrongDigit(v)
+}
+
 // wrongDigit is s with the digit before its last one a step up ("270" →
 // "280", "121.910" → "121.920", "4521" → "4531"); s when it has fewer than
 // two digits.
-func wrongDigit(s string) string {
+func wrongDigit(s string) string { return wrongDigitAt(s, 2) }
+
+// wrongDigitAt is s with its n-th digit from the end a step up; s when it
+// has fewer digits.
+func wrongDigitAt(s string, n int) string {
 	b := []byte(s)
 	seen := 0
 	for i := len(b) - 1; i >= 0; i-- {
 		if b[i] < '0' || b[i] > '9' {
 			continue
 		}
-		if seen++; seen == 2 {
+		if seen++; seen == n {
 			b[i] = '0' + (b[i]-'0'+1)%10
 			return string(b)
 		}
@@ -263,7 +277,10 @@ func (r *Radio) readBack(airport string, t Transmission, busy bool) {
 	var wrong Transmission
 	var heard map[string]string
 	wrongOK := false
-	if !sayAgain && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)+v.rate(v.ReadbackError, 0.01) {
+	// One slip per exchange: a clearance said again (a missed call, a
+	// "say again") is read back right (live, TVS1539: "say again", then
+	// "6010 feet" read back and the right readback after it, uncorrected).
+	if !sayAgain && t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)+v.rate(v.ReadbackError, 0.01) {
 		wrong, heard, wrongOK = wrongReadback(t, rb, r.rng)
 	}
 	missed := !sayAgain && !wrongOK && t.Intent == IntentContact && t.Params[ParamRepeat] == "" && r.rng.Float64() < v.rate(v.MissedCall, 0.03)
