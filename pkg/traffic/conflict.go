@@ -217,7 +217,11 @@ const (
 )
 
 func (o ConflictOptions) minFor(a, b TrackedAircraft) float64 {
-	if a.Airport != "" && b.Airport != "" && a.AltFt < o.TerminalBelowFt && b.AltFt < o.TerminalBelowFt {
+	// Up to the terminal area's top level, as flown (live: TVS1750 at 10016 ft
+	// and TVS554 at 10000 ft, in trail on their STARs 5 NM apart, held to
+	// the en-route 5 NM and slowed again and again).
+	top := o.TerminalBelowFt + LevelToleranceFt
+	if a.Airport != "" && b.Airport != "" && a.AltFt < top && b.AltFt < top {
 		return o.TerminalNM
 	}
 	return o.MinNM
