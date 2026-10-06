@@ -71,3 +71,40 @@ func TestMissedJoin(t *testing.T) {
 		t.Fatal("flying away past its procedure's end: no MissedJoin")
 	}
 }
+
+// Appearing at the STAR's entry (before its first waypoint) is on its
+// route: no MissedJoin on the first frames (live, every arrival flagged).
+func TestMissedJoinNotAtSpawn(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("24", "LOMKI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA454",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	missed := make(chan string, 8)
+	go func() {
+		for ev := range ctl.Events() {
+			if ev.MissedJoin != "" {
+				missed <- ev.MissedJoin
+			}
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	ctl.mu.Lock()
+	sp := airport.LatLon{Lat: ctl.proc.Spawn.Latitude, Lon: ctl.proc.Spawn.Longitude}
+	ctl.mu.Unlock()
+	for range 3 {
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, sp, 10000, 93, 250, false))
+	}
+	select {
+	case m := <-missed:
+		t.Errorf("at its STAR entry: %q", m)
+	case <-time.After(300 * time.Millisecond):
+	}
+}

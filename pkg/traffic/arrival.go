@@ -287,6 +287,8 @@ type ArrivalController struct {
 	// joinMinM: -1 once off its route and reported as MissedJoin, 0
 	// otherwise.
 	joinMinM float64
+	// lastRunwayM is its distance from the threshold at the frame before.
+	lastRunwayM float64
 	// circuit: flying a go-around's missed approach and circuit; the final
 	// is joined again only from its last two points (align, join) — climbing
 	// out along the centreline it would look established at once.
