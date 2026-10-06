@@ -65,9 +65,10 @@ type Limits struct {
 	// Tower is where the control tower stands, when the facility data puts
 	// it elsewhere (its TOWER_* fields); nil: the facility's.
 	Tower *TowerSite
-	// Tugs and FuelTrucks are the airport's pushback tugs and fuel trucks
-	// (#830); 0: sized by its stands (traffic.DefaultFleetSize).
-	Tugs, FuelTrucks int
+	// Tugs, FuelTrucks, Stairs and GPUs are the airport's pushback tugs,
+	// fuel trucks, boarding stairs and ground power units (#830–#832); 0:
+	// sized by its stands (traffic.DefaultFleetSize).
+	Tugs, FuelTrucks, Stairs, GPUs int
 }
 
 // TowerSite is a control tower: its position and the height of its cab

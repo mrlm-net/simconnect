@@ -23,6 +23,10 @@ const reqGroundVehicles uint32 = 2005
 // fuelTitles are the fuel vehicles the simulator offers.
 type fuelTitles struct {
 	trucks, hydrants, stock []string
+	// stairs (#831): GSX staircases (their base models), MSFS's own; gpus
+	// (#832) likewise.
+	stairs, stairsStock []string
+	gpus, gpusStock     []string
 }
 
 func (cc *controlCenter) requestFuelTitles() error {
@@ -62,6 +66,14 @@ func (cc *controlCenter) addGroundTitles(titles []string) {
 			cc.fuelTitles.hydrants = insertSorted(cc.fuelTitles.hydrants, t)
 		case strings.HasPrefix(t, "Fuel Truck Long"):
 			cc.fuelTitles.stock = insertSorted(cc.fuelTitles.stock, t)
+		case gsxStairs[t]:
+			cc.fuelTitles.stairs = insertSorted(cc.fuelTitles.stairs, t)
+		case t == "ASO_Boarding_Stairs":
+			cc.fuelTitles.stairsStock = insertSorted(cc.fuelTitles.stairsStock, t)
+		case t == "FSDT_GPU_TLD_406" || t == "FSDT_GPU_Hobart_4400":
+			cc.fuelTitles.gpus = insertSorted(cc.fuelTitles.gpus, t)
+		case t == "Car Ground Power Unit":
+			cc.fuelTitles.gpusStock = insertSorted(cc.fuelTitles.gpusStock, t)
 		}
 	}
 }
@@ -112,5 +124,74 @@ func (cc *controlCenter) fuelTruck(r SpawnRequest, g *airport.Graph, reqBase uin
 	f := traffic.NewSimObjectFuelTruck(cc.client, cc.inj, title, reqBase+controlIDBlock-2, prof)
 	f.Layout = g.Layout
 	cc.giveATC(f, g.Layout, "fuel truck")
+	return f
+}
+
+// gsxStairs are GSX's passenger staircases, their base models (each has
+// some 630 liveries by handler; the cargo ones and the ladder left out).
+var gsxStairs = map[string]bool{
+	"FSDT_Staircase_CDS_2438": true, "FSDT_Staircase_CDS_2445": true, "FSDT_Staircase_TLD_ABS-580": true,
+	"FSDT_Staircase_TLD_ABS-1740": true, "FSDT_Staircase_FW2458PE": true, "FSDT_Staircase_Aviramp_Continental": true,
+}
+
+// stairs are the boarding stairs of a departure (#831): an airliner (not
+// GA or cargo) on a remote stand (not a gate), when the simulator has
+// stairs; created with the third last request ID of the aircraft's block.
+func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectStairs {
+	if r.Kind != "departure" || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+		return nil
+	}
+	stand := g.Layout.Parking[r.Stand]
+	if stand.IsGate() {
+		return nil // a jetway
+	}
+	cc.mu.Lock()
+	list := cc.fuelTitles.stairs
+	if len(list) == 0 {
+		list = cc.fuelTitles.stairsStock
+	}
+	cc.mu.Unlock()
+	if len(list) == 0 {
+		return nil
+	}
+	h := fnv.New32a()
+	h.Write([]byte(g.Layout.ICAO))
+	title := list[int(h.Sum32()%uint32(len(list)))] // one handler's stairs per airport
+	s := traffic.NewSimObjectStairs(cc.client, cc.inj, title, reqBase+controlIDBlock-3, prof)
+	s.Layout = g.Layout
+	cc.giveATC(s, g.Layout, "stairs")
+	return s
+}
+
+// gpu is the ground power unit of a departure (#832): an airliner on a
+// remote stand (a gate has its own power), when the simulator has one;
+// created with the fourth last request ID of the aircraft's block.
+func (cc *controlCenter) gpu(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFuelTruck {
+	if r.Kind != "departure" || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+		return nil
+	}
+	if g.Layout.Parking[r.Stand].IsGate() {
+		return nil
+	}
+	cc.mu.Lock()
+	list := cc.fuelTitles.gpus
+	if len(list) == 0 {
+		list = cc.fuelTitles.gpusStock
+	}
+	cc.mu.Unlock()
+	if len(list) == 0 {
+		return nil
+	}
+	h := fnv.New32a()
+	h.Write([]byte(g.Layout.ICAO))
+	return newGPU(cc, list[int(h.Sum32()%uint32(len(list)))], g, reqBase, prof)
+}
+
+// newGPU is a GPU of title: a fuel-truck-driven vehicle parking at the nose.
+func newGPU(cc *controlCenter, title string, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFuelTruck {
+	f := traffic.NewSimObjectFuelTruck(cc.client, cc.inj, title, reqBase+controlIDBlock-4, prof)
+	f.Layout = g.Layout
+	f.Spot = traffic.GPUSpot
+	cc.giveATC(f, g.Layout, "GPU")
 	return f
 }

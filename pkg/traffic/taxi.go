@@ -140,6 +140,12 @@ type TaxiRequest struct {
 	// e.g. NewSimObjectFuelTruck. Nil: no refuelling shown. The controller
 	// passes it its messages.
 	Fuel FuelService `json:"-"`
+	// Stairs stand at the front left door on a remote stand while it
+	// waits (#831): e.g. NewSimObjectStairs. Nil: none.
+	Stairs FuelService `json:"-"`
+	// GPU powers it on a remote stand while it waits (#832): e.g. a
+	// NewSimObjectFuelTruck with GPUSpot. Nil: none.
+	GPU FuelService `json:"-"`
 	// StandOccupied reports whether a stand is taken now (an aircraft on it
 	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
 	// through an empty neighbouring stand (EHAM E3: back into the empty
@@ -288,19 +294,21 @@ type TaxiController struct {
 	tugAttached     bool
 	tugAttachedAt   time.Time // when the tug was sent for
 	fuelAttached    bool
-	fuelWaitFrom    time.Time      // first frame waiting on the stand
-	fuelUntil       time.Time      // refuelling done (set once at the wing)
-	fuelClearFrom   time.Time      // the push first waited for it to leave
-	pushBranch      airport.NodeID // taxiway the tail is pushed onto (planPushback)
-	havePushBranch  bool
-	pushJunction    int              // route index of the junction the tail swings at (planPushback; 1: the first)
-	pushPts         []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
-	pushTurn        bool             // push and turn on the apron (only taxiway at the junction is the way out)
-	pushPlanned     *GroundPath      // the push path, planned before it starts (pushPath)
-	pushTurnDir     float64          // the way out from the junction
-	pushPose        *pushPose        // where the push ends (planPushPose), nil for the older plans
-	faceOut         bool             // a self-manoeuvring stand (standFacesOut, at the start)
-	powerOut        []airport.LatLon // the loop out of the stand under its own power (PowerOut)
+	fuelWaitFrom    time.Time // first frame waiting on the stand
+	fuelUntil       time.Time // refuelling done (set once at the wing)
+	fuelClearFrom   time.Time // the push first waited for it to leave
+	// stairsSvc, gpuSvc: the stand services (#831, #832).
+	stairsSvc, gpuSvc standService
+	pushBranch        airport.NodeID // taxiway the tail is pushed onto (planPushback)
+	havePushBranch    bool
+	pushJunction      int              // route index of the junction the tail swings at (planPushback; 1: the first)
+	pushPts           []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
+	pushTurn          bool             // push and turn on the apron (only taxiway at the junction is the way out)
+	pushPlanned       *GroundPath      // the push path, planned before it starts (pushPath)
+	pushTurnDir       float64          // the way out from the junction
+	pushPose          *pushPose        // where the push ends (planPushPose), nil for the older plans
+	faceOut           bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	powerOut          []airport.LatLon // the loop out of the stand under its own power (PowerOut)
 	// pushFacing: the heading a push ends facing, asked for with the
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
@@ -539,6 +547,12 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 	if c.req.Tug != nil && c.req.Tug.Handle(msg) {
 		return true
 	}
+	if c.req.Stairs != nil && c.req.Stairs.Handle(msg) {
+		return true
+	}
+	if c.req.GPU != nil && c.req.GPU.Handle(msg) {
+		return true
+	}
 	if c.req.Fuel != nil && c.req.Fuel.Handle(msg) {
 		return true
 	}
@@ -713,6 +727,7 @@ func (c *TaxiController) removeTug() {
 	}
 	c.give(VehicleTug)
 	c.removeFuel()
+	c.removeStairs()
 }
 
 // setState records a state change and publishes it.
@@ -722,6 +737,8 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 	if s.Terminal() {
 		c.give(VehicleTug) // whatever it still holds goes back (#830)
 		c.give(VehicleFuel)
+		c.give(VehicleStairs)
+		c.give(VehicleGPU)
 		c.detail.forget(c.objectID)
 		close(c.events)
 	}

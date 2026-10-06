@@ -75,11 +75,17 @@ func (l *localSim) servicesAt(layout *airport.Layout) *traffic.VehicleFleet {
 	if lim.FuelTrucks > 0 {
 		size[traffic.VehicleFuel] = lim.FuelTrucks
 	}
+	if lim.Stairs > 0 {
+		size[traffic.VehicleStairs] = lim.Stairs
+	}
+	if lim.GPUs > 0 {
+		size[traffic.VehicleGPU] = lim.GPUs
+	}
 	f := traffic.NewVehicleFleet(size)
 	icao := layout.ICAO
 	f.OnWait = func(kind traffic.VehicleKind, owner string, busy int) {
 		if l.logf != nil {
-			l.logf("%-6s waits for a %s at %s: all %d busy", owner, map[traffic.VehicleKind]string{traffic.VehicleTug: "tug", traffic.VehicleFuel: "fuel truck"}[kind], icao, busy)
+			l.logf("%-6s waits for a %s at %s: all %d busy", owner, map[traffic.VehicleKind]string{traffic.VehicleTug: "tug", traffic.VehicleFuel: "fuel truck", traffic.VehicleStairs: "set of stairs", traffic.VehicleGPU: "GPU"}[kind], icao, busy)
 		}
 	}
 	if l.services == nil {
@@ -87,7 +93,8 @@ func (l *localSim) servicesAt(layout *airport.Layout) *traffic.VehicleFleet {
 	}
 	l.services[layout.ICAO] = f
 	if l.logf != nil {
-		l.logf("ground services at %s: %d tugs, %d fuel trucks (%d stands)", icao, size[traffic.VehicleTug], size[traffic.VehicleFuel], stands)
+		l.logf("ground services at %s: %d tugs, %d fuel trucks, %d stairs, %d GPUs (%d stands)", icao,
+			size[traffic.VehicleTug], size[traffic.VehicleFuel], size[traffic.VehicleStairs], size[traffic.VehicleGPU], stands)
 	}
 	return f
 }

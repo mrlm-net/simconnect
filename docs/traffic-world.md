@@ -80,9 +80,29 @@ The World never controls nor calls the user aircraft. A host whose own ATC works
 - `Heard(t)`: the host's ATC said `t` on `t.Frequency` at `t.Airport`. The World's traffic waits for the frequency instead of talking over it.
 - `ClearPlayer(world.PlayerClearance{ICAO, Runway, Phase})`, where the phase is `lineup`, `takeoff`, `landing` or `vacated`. While the player lines up, takes off or lands on a runway, none of the World's traffic is cleared onto it (line up, take-off, landing, crossing). Landing, the player is in that runway's landing sequence (as `Callsign`, else "Player"), so the traffic fits around it; `Snapshot().Player` is its place (number, the call sign and type it follows, the spacing and both distances to go). `vacated` ends it.
 
+## Ground services (v0.20)
+
+Each airport has a fleet of service vehicles. The defaults are sized by its stands:
+
+| Vehicle | Default size | Model (GSX first, then MSFS's own) | Where it parks | When it comes |
+|---|---|---|---|---|
+| Pushback tug | 1 per 10 stands, at least 2 | GSX tug | Nose gear | Before the push |
+| Fuel truck | 1 per 15 stands, at least 1 | GSX fuel truck or hydrant dispenser | Right wing | While the departure waits |
+| Boarding stairs | 1 per 10 stands, at least 2 | `FSDT_Staircase_*`, else `ASO_Boarding_Stairs` | Front left door, square to the fuselage; backs straight out | Remote stands only (no jetway) |
+| GPU | 1 per 10 stands, at least 2 | `FSDT_GPU_TLD_406` or `FSDT_GPU_Hobart_4400`, else `Car Ground Power Unit` | Forward right of the nose gear | Remote stands only |
+
+- **Overrides:** `airport.Limits` sets `Tugs`, `FuelTrucks`, `Stairs` and `GPUs` per airport, and a local override file wins per value.
+- **Taking and giving back:** a departure takes each vehicle from the fleet before it is sent, and gives it back once the vehicle has driven off, or when the flight ends or is cancelled.
+- **When none is free:**
+  - The push waits for a tug.
+  - Fuelling, stairs and the GPU are left out once it is too late for them. Stairs and the GPU leave 2 minutes before the tug comes, and the push waits for them to clear.
+- **Log:** the traffic log gives each airport's fleet sizes, and logs a departure waiting for one ("waits for a tug at LKPR: all 8 busy").
+- **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs` and `TaxiRequest.GPU`.
+- **Control API:** `pushInMin` gives a manual departure a push time, so its stand services have a window.
+
 ## SimConnect IDs
 
-The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099.
+The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last four are its GPU, stairs, fuel truck and tug.
 
 | IDs | What |
 |---|---|

@@ -51,7 +51,10 @@ type SimObjectFuelTruck struct {
 	Layout *airport.Layout
 	// SideMeters is how far right of the aircraft's axis it parks; 0 uses
 	// FuelTruckSideShare of the span (at least FuelTruckMinSideMeters).
-	SideMeters   float64
+	SideMeters float64
+	// Spot, when set, is where it parks instead (FuelSpot): GPUSpot drives
+	// a ground power unit to the nose (#832).
+	Spot         func(pose GroundPose, prof MotionProfile) GroundPose
 	vehicleYield // gives way to aircraft on its way (SetTraffic)
 
 	mu        sync.Mutex
@@ -99,6 +102,9 @@ func (f *SimObjectFuelTruck) Attach(pose GroundPose) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	spot := FuelSpot(pose, f.prof, f.SideMeters)
+	if f.Spot != nil {
+		spot = f.Spot(pose, f.prof)
+	}
 	f.pose = spot
 	if path, depot, ok := f.inbound(&spot); ok {
 		f.arrive, f.depot, f.hasDepot = NewGroundMoverFrom(path, fuelRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
@@ -364,3 +370,21 @@ const (
 	FuelClearMargin  = time.Minute
 	FuelClearTimeout = 2 * time.Minute
 )
+
+// Ground power units (#832): a GPU cart parks GPUAheadMeters ahead of the
+// nose gear and GPUSideMeters right of the axis, facing the way the
+// aircraft does, by the external power receptacle under the nose. Driven
+// like a fuel truck (SimObjectFuelTruck with Spot GPUSpot). Estimates,
+// tuned by eye.
+const (
+	GPUAheadMeters = 1.0
+	GPUSideMeters  = 3.0
+)
+
+// GPUSpot is where a GPU parks for an aircraft at pose with profile prof.
+func GPUSpot(pose GroundPose, prof MotionProfile) GroundPose {
+	main := offsetHeading(pose.Position, pose.Heading+180, prof.RefAheadMeters)
+	nose := offsetHeading(main, pose.Heading, prof.WheelbaseMeters)
+	p := offsetHeading(offsetHeading(nose, pose.Heading, GPUAheadMeters), pose.Heading+90, GPUSideMeters)
+	return GroundPose{Position: p, Heading: normDeg(pose.Heading)}
+}
