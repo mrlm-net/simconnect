@@ -384,6 +384,22 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	if broke || now.Sub(slowedAt) < breakOffAfter || e.ShortBy < breakOffFrom || e.DistanceToGoNM <= breakOffNM || gapNM >= e.SpacingNM {
 		return
 	}
+	// Short of the compression buffer only: it still lands beyond the
+	// minimum, the buffer is speed's to work off — around only for the
+	// minimum itself (live, RYR270 sent around 6.2 NM behind OKZWR, a
+	// PC-12, for the 7 NM of 5 and a 2 NM buffer).
+	if e.MinimumNM > 0 && e.SpacingNM > e.MinimumNM {
+		it.mu.Lock()
+		kts := it.view.GroundSpeed
+		it.mu.Unlock()
+		if kts < 60 {
+			kts = 140
+		}
+		landsAt := e.SpacingNM - e.ShortBy.Hours()*kts
+		if landsAt >= e.MinimumNM {
+			return
+		}
+	}
 	q.mu.Lock()
 	q.brokeOff[e.Callsign] = true
 	q.mu.Unlock()

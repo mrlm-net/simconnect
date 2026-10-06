@@ -56,6 +56,10 @@ type SequenceEntry struct {
 	// procedures, contaminated runway, reduced separation, runway occupancy).
 	SpacingNM  float64 `json:"spacingNM,omitempty"`
 	SpacingWhy string  `json:"spacingWhy,omitempty"`
+	// MinimumNM is the spacing it must not land closer than: SpacingNM
+	// without the compression buffer (worked off with speed; live, RYR270
+	// sent around 6.2 NM behind a PC-12 for the 7 NM with its buffer).
+	MinimumNM float64 `json:"minimumNM,omitempty"`
 	// ETA is when it would land flying on as it is; Landing when it lands
 	// in the sequence; Delay the difference it must absorb.
 	ETA     time.Time     `json:"eta"`
@@ -156,7 +160,7 @@ type ApproachSequencer struct {
 	behind map[string]string
 	// swappedAt: when each arrival last changed places in a tactical swap.
 	swappedAt map[string]time.Time
-	cond   ApproachConditions
+	cond      ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
 }
@@ -385,6 +389,20 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditi
 		}
 	}
 	return g, nm, why
+}
+
+// minimumNM is follow's spacing behind lead without the compression
+// buffer: the diagonal on adjacent finals, else the wake or radar minimum
+// in the conditions (at least MinSpacingNM).
+func (s *ApproachSequencer) minimumNM(lead, follow ApproachAircraft, c ApproachConditions) float64 {
+	if lead.Runway != follow.Runway {
+		if s.opts.DiagonalNM > 0 {
+			return s.opts.DiagonalNM
+		}
+		return 2
+	}
+	nm, _ := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced && s.opts.MinSpacingNM == 0)
+	return math.Max(nm, s.opts.MinSpacingNM)
 }
 
 // SetConditions sets the weather on final the spacing follows
@@ -635,6 +653,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			e.Leader = planned[i-1].a.Callsign
 			var g time.Duration
 			g, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
+			e.MinimumNM = s.minimumNM(planned[i-1].a, p.a, c)
 			if short := g - p.at.Sub(planned[i-1].at); short > 0 {
 				e.ShortBy = short
 			}
