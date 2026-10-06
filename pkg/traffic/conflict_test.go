@@ -624,3 +624,22 @@ func TestMaintainLevel(t *testing.T) {
 		t.Errorf("readback %q %v", rb.Text, ok)
 	}
 }
+
+// Two level a standard level apart are separated though the altimetry reads
+// a little under 1000 ft (live: CSA111 at 36997 ft and CSA1811 at 35932 ft
+// predicted 999 ft apart, CSA111 sent up to FL390); one climbing or
+// descending is held to the full minimum.
+func TestPredictConflictsLevelTolerance(t *testing.T) {
+	level := []TrackedAircraft{air(1, "CSA111", 0, 0, 36997, 90, 450, 0, true), air(2, "CSA1811", 40, 0, 35998, 270, 450, -5, true)}
+	if cs := PredictConflicts(level, ConflictOptions{}); len(cs) != 0 {
+		t.Errorf("FL370 over FL360, both level: %+v", cs)
+	}
+	low := []TrackedAircraft{air(1, "CSA111", 0, 0, 36997, 90, 450, 0, true), air(2, "CSA1811", 40, 0, 36100, 270, 450, 0, true)}
+	if cs := PredictConflicts(low, ConflictOptions{}); len(cs) == 0 {
+		t.Error("897 ft apart, both level: no conflict")
+	}
+	climbing := []TrackedAircraft{air(1, "CSA111", 0, 0, 36997, 90, 450, 0, true), air(2, "CSA1811", 40, 0, 35600, 270, 450, 400, true)}
+	if cs := PredictConflicts(climbing, ConflictOptions{}); len(cs) == 0 {
+		t.Error("one climbing toward it: no conflict")
+	}
+}
