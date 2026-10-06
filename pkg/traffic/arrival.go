@@ -158,7 +158,10 @@ type ArrivalEvent struct {
 	// taxiing in, 0 for none (TaxiEvent.GivingWayTo).
 	GivingWayTo uint32
 	// StoppedBy is why it stands still while taxiing in (TaxiEvent.StoppedBy).
-	StoppedBy   string
+	StoppedBy string
+	// MissedJoin: MSFS AI flew past the end of its procedure without
+	// joining the final (where, how): it needs a direct to the final.
+	MissedJoin  string
 	Position    airport.LatLon
 	AGL         float64 // feet
 	Heading     float64
@@ -281,6 +284,9 @@ type ArrivalController struct {
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
 	// or a hold left. -1: the nearest (a STAR does not loop).
 	procNext int
+	// joinMinM: -1 once off its route and reported as MissedJoin, 0
+	// otherwise.
+	joinMinM float64
 	// circuit: flying a go-around's missed approach and circuit; the final
 	// is joined again only from its last two points (align, join) — climbing
 	// out along the centreline it would look established at once.

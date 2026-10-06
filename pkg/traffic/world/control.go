@@ -153,6 +153,8 @@ type controlled struct {
 	givingWay uint32
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
+	// missedJoin is the arrival's last MissedJoin, acted on once.
+	missedJoin string
 	// fixes: the named points of its procedure (STAR and approach, or SID),
 	// the dots of its air route on the map — not the points of the turns.
 	fixes []airFix
@@ -328,6 +330,8 @@ type controlCenter struct {
 	// forgetTower drops what the tower gave a call sign (spawned again).
 	forgetTower func(tail string)
 	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
+	// toFinal clears an arrival that missed its join direct to the final.
+	toFinal func(icao, tail string)
 	// world is the traffic picture around the centre of the world (#366):
 	// every aircraft, the airports in range, a ground picture per airport.
 	world *traffic.TrafficPicture
@@ -1102,6 +1106,17 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.stoppedBy = by
 			if by != "" && it.cc != nil {
 				it.cc.pending.later(it.cc.clock.Now().Add(stoppedLogAfter), func() { it.logStopped(by) })
+			}
+		}
+		// Past its procedure's end without joining the final: logged, and
+		// cleared direct to it (live, TVS1972 flew on 38 minutes).
+		if ev.arr != nil && ev.arr.MissedJoin != it.missedJoin {
+			it.missedJoin = ev.arr.MissedJoin
+			if it.missedJoin != "" && it.cc != nil {
+				it.cc.log.printf("%-6s arrival: %s; direct to the final", it.Tail, it.missedJoin)
+				if f := it.cc.toFinal; f != nil {
+					go f(it.ICAO, it.Tail) // through the connection's goroutine, not on it
+				}
 			}
 		}
 	}()

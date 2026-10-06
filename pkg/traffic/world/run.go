@@ -394,6 +394,11 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at
+	cc.toFinal = func(icao, tail string) {
+		if err := seqs.approachAction(icao, tail, "direct"); err != nil {
+			cc.log.printf("%-6s arrival: direct to the final failed: %v", tail, err)
+		}
+	}
 	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
 	cc.namedAirport = sched.cfg.AirportName
 	cc.atisLetter = st.atisLetter

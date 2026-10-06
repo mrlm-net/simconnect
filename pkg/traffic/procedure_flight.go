@@ -224,6 +224,37 @@ func (b *joinBlend) apply(p ApproachPose, dt float64) ApproachPose {
 	return p
 }
 
+// MissedJoinNM: an arrival flown by MSFS AI this much farther from the
+// threshold than any point left on its route (its dog-legs, orbits and
+// extended downwind included) is off its route and will not join the final
+// (live, TVS1972 flew heading 065 off LOMK8S's end for 38 minutes until
+// cancelled as stuck).
+const MissedJoinNM = 5.0
+
+// watchJoin reports an arrival off its route (MissedJoin), once until it
+// is back within it.
+func (c *ArrivalController) watchJoin(pos airport.LatLon, m arrivalMonitor) {
+	if c.circuit || c.holding != nil {
+		return
+	}
+	wps := c.proc.Waypoints
+	thr := c.plan.End.Threshold
+	far := 0.0
+	for _, w := range wps[max(0, c.procWaypoint(wps)-1):] {
+		far = math.Max(far, calc.HaversineMeters(thr.Lat, thr.Lon, w.Latitude, w.Longitude))
+	}
+	d := calc.HaversineMeters(thr.Lat, thr.Lon, pos.Lat, pos.Lon)
+	switch {
+	case far == 0:
+	case d > far+MissedJoinNM*1852 && c.joinMinM >= 0:
+		c.last.MissedJoin = fmt.Sprintf("off its route: %.1f NM from the runway, its route %.1f NM at most; heading %03.0f, %.0f ft, %.0f kt",
+			d/1852, far/1852, m.Heading, m.AltFt, m.GroundKts)
+		c.joinMinM = -1
+	case d <= far:
+		c.joinMinM = 0 // back on it: a new report if it strays again
+	}
+}
+
 // startProcedure hands the arrival to MSFS AI for the STAR and approach:
 // gear up, arrival lights, the procedure waypoints, position every second.
 func (c *ArrivalController) startProcedure() error {
@@ -269,9 +300,11 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		near, established = false, false // still going around
 	}
 	if !near && !established {
-		c.emit(nil, false)
+		c.watchJoin(pos, m)
+		c.emit(nil, c.last.MissedJoin != "" && c.joinMinM < 0)
 		return
 	}
+	c.last.MissedJoin, c.joinMinM = "", 0
 	c.flyingProc, c.circuit = false, false
 	start := math.Max(c.proc.minJoin(), math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
 	if err := c.startInjectedApproach(start); err != nil {
