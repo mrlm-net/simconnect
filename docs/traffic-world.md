@@ -82,13 +82,13 @@ The World never controls nor calls the user aircraft. A host whose own ATC works
 
 ## SimConnect IDs
 
-The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900.
+The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010.
 
 | IDs | What |
 |---|---|
 | 2000–2021 | user aircraft, traffic scan, model and vehicle lists, sim events, camera state |
 | 7100–7999 | library defaults: airport loader 7100/7200, taxi 7300/7400, arrivals 7500/7600, injector 7700–7999 |
-| 8200–8999 | stand allocators 8200/8300 (+4 per airport), procedures 8400/8500, nav loader 8700/8800, airport list 8900 |
+| 8200–8999 | stand allocators 8200/8300 (+4 per airport), procedures 8400/8500, airway crawl 8600/8610–8625, nav loader 8700/8800, airport list 8900 |
 | 10010–10011 | weather at the user aircraft |
 | 20000–21279, 30000–31279 | the controllers' ID blocks (128 × 10) |
 | 41000–41999 | enroute traffic |

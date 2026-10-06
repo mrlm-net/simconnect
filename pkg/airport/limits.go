@@ -2,6 +2,7 @@ package airport
 
 import (
 	"maps"
+	"math"
 	"slices"
 	"strings"
 
@@ -147,6 +148,10 @@ func LimitsFor(l *Layout, p *Procedures) Limits {
 	lim.ICAO = icao
 	lim.PreferredRunways = slices.Clone(lim.PreferredRunways)
 	lim.DeicingPads = slices.Clone(lim.DeicingPads)
+	if lim.TransitionAltitudeFt == 0 && l != nil && l.TransitionAltitude > 0 {
+		// The sim's own (the AIRPORT record): every airport, not a table.
+		lim.TransitionAltitudeFt = math.Round(convert.MetersToFeet(l.TransitionAltitude)/100) * 100
+	}
 	if lim.TransitionAltitudeFt == 0 {
 		lim.TransitionAltitudeFt = DefaultTransitionAltitudeFt
 		if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {

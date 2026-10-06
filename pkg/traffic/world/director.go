@@ -247,6 +247,10 @@ func (t teeFeed) Airports(list []traffic.AirportRef) { t.a.Airports(list); t.b.A
 func (t teeFeed) Weather(w nav.Weather)              { t.a.Weather(w); t.b.Weather(w) }
 func (t teeFeed) ILS(r nav.NavResult)                { t.a.ILS(r); t.b.ILS(r) }
 func (t teeFeed) Procedures(p airport.Procedures)    { t.a.Procedures(p); t.b.Procedures(p) }
+func (t teeFeed) Airways(icao string, g *nav.AirwayGraph) {
+	t.a.Airways(icao, g)
+	t.b.Airways(icao, g)
+}
 func (t teeFeed) Layout(icao string, l *airport.Layout, err error) {
 	t.a.Layout(icao, l, err)
 	t.b.Layout(icao, l, err)

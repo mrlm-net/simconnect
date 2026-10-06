@@ -32,8 +32,12 @@ type Options struct {
 	// LogDir is where the traffic log is written (traffic-*.log); "": no
 	// file (console and the API's recent lines only).
 	LogDir string
-	// Airways is the airway graph for flight plans; nil: direct routes.
+	// Airways is an airway graph for flight plans; the airways around
+	// every airport loaded are read from the sim and added (#799).
 	Airways *nav.AirwayGraph
+	// AirwaysMaxAge: an airport's airways read from the sim are kept in
+	// DataDir/airways and read again once older (0: DefaultAirwaysMaxAge).
+	AirwaysMaxAge time.Duration
 	// Airspace is the managed airports' control zone class for VFR rules
 	// (#570); zero: class D.
 	Airspace traffic.AirspaceClass
@@ -47,7 +51,8 @@ type Options struct {
 	// SimConnect IDs, for a host using the same helpers on its connection:
 	// airport loader at IDBase (definitions) and +100 (requests), procedure
 	// loader +200/+300, nav loader +400/+500, airport list +600, injector
-	// +700/+800/+900 (events). 0: the defaults (docs/traffic-world.md).
+	// +700/+800/+900 (events), airway crawl +1000/+1010. 0: the defaults
+	// (docs/traffic-world.md).
 	IDBase uint32
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
@@ -111,7 +116,7 @@ func New(o Options) *World {
 	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
-	st.airways = o.Airways
+	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	return &World{st: st, opts: o, reqs: reqs}
 }
 

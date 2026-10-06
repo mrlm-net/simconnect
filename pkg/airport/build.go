@@ -34,6 +34,10 @@ type RawAirport struct {
 	// Tower is the airport's tower, nil when it has none (or the data was
 	// captured without it).
 	Tower *RawTower `json:"tower,omitempty"`
+	// TransitionAltitude and TransitionLevel: the AIRPORT record's, meters
+	// (0: not given).
+	TransitionAltitude float64 `json:"transitionAlt,omitempty"`
+	TransitionLevel    float64 `json:"transitionLevel,omitempty"`
 }
 
 // RawFrequency is a FREQUENCY record: TYPE
@@ -116,13 +120,15 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 		return nil, ErrNoData
 	}
 	l := &Layout{
-		ICAO:        raw.ICAO,
-		Name:        raw.Name,
-		Latitude:    raw.Latitude,
-		Longitude:   raw.Longitude,
-		Altitude:    raw.Altitude,
-		TaxiNames:   append([]string(nil), raw.TaxiNames...),
-		Frequencies: frequenciesOf(raw.Frequencies),
+		ICAO:               raw.ICAO,
+		Name:               raw.Name,
+		Latitude:           raw.Latitude,
+		Longitude:          raw.Longitude,
+		Altitude:           raw.Altitude,
+		TaxiNames:          append([]string(nil), raw.TaxiNames...),
+		Frequencies:        frequenciesOf(raw.Frequencies),
+		TransitionAltitude: raw.TransitionAltitude,
+		TransitionLevel:    raw.TransitionLevel,
 	}
 	if t := raw.Tower; t != nil {
 		l.Tower, l.TowerAltitude, l.HasTower = LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Altitude, true

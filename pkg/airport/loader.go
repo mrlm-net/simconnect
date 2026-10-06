@@ -108,7 +108,7 @@ type loadState struct {
 // loaderDefinitions are the facility definitions, in request order. The
 // field order of each must match the wire decoding in handleData.
 var loaderDefinitions = [][]string{
-	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "TOWER_LATITUDE", "TOWER_LONGITUDE", "TOWER_ALTITUDE", "CLOSE AIRPORT"},
+	{"OPEN AIRPORT", "LATITUDE", "LONGITUDE", "ALTITUDE", "ICAO", "NAME", "NAME64", "TOWER_LATITUDE", "TOWER_LONGITUDE", "TOWER_ALTITUDE", "TRANSITION_ALTITUDE", "TRANSITION_LEVEL", "CLOSE AIRPORT"},
 	{"OPEN AIRPORT", "OPEN RUNWAY", "LATITUDE", "LONGITUDE", "ALTITUDE", "HEADING", "LENGTH", "WIDTH",
 		"PRIMARY_NUMBER", "PRIMARY_DESIGNATOR", "SECONDARY_NUMBER", "SECONDARY_DESIGNATOR",
 		"PRIMARY_ILS_ICAO", "PRIMARY_ILS_REGION", "SECONDARY_ILS_ICAO", "SECONDARY_ILS_REGION", "CLOSE RUNWAY", "CLOSE AIRPORT"},
@@ -301,6 +301,12 @@ type airportWire struct {
 	TowerLatitude  float64
 	TowerLongitude float64
 	TowerAltitude  float64
+	// The transition altitude and level, meters (0: not given; the level
+	// only where it is fixed, as in the US: FL180). Read live, MSFS 2024:
+	// LKPR 1524 (5000 ft), LOWW 3048, EGLL 1828.8, EHAM 914.4, KJFK 5486.4
+	// with the level 5486.4.
+	TransitionAltitude float32
+	TransitionLevel    float32
 }
 
 // add stores one FACILITY_DATA record. Every request first delivers the
@@ -320,6 +326,7 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 			if icao := engine.BytesToString(a.ICAO[:]); icao != "" {
 				s.raw.ICAO = icao
 			}
+			s.raw.TransitionAltitude, s.raw.TransitionLevel = float64(a.TransitionAltitude), float64(a.TransitionLevel)
 			s.raw.Name = engine.BytesToString(a.Name64[:])
 			if s.raw.Name == "" {
 				s.raw.Name = engine.BytesToString(a.Name[:])

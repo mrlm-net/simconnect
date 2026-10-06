@@ -38,6 +38,11 @@ type Layout struct {
 	Tower         LatLon  `json:"tower,omitempty"`
 	TowerAltitude float64 `json:"towerAlt,omitempty"`
 	HasTower      bool    `json:"hasTower,omitempty"`
+	// TransitionAltitude and TransitionLevel are the scenery's, meters (0:
+	// not given; LimitsFor takes the altitude where no published value is
+	// known).
+	TransitionAltitude float64 `json:"transitionAlt,omitempty"`
+	TransitionLevel    float64 `json:"transitionLevel,omitempty"`
 }
 
 // Runway is a runway with both of its ends.
