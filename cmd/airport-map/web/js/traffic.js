@@ -50,6 +50,8 @@ const AP_ACT = {
   up: { label: 'Earlier', title: 'Earlier in the sequence', icon: 'i-up' },
   down: { label: 'Later', title: 'Later in the sequence', icon: 'i-down' },
   direct: { label: 'Direct', title: 'Direct to the final', icon: 'i-direct' },
+  directpick: { label: 'Direct…', title: 'Direct to a point: click it on the map (a fix near it, else a heading)', icon: 'i-direct' },
+  holdpick: { label: 'Hold…', title: 'Hold at a point: click it on the map', icon: 'i-hold' },
   slow: { label: 'Slow', title: 'Lose a minute: speed, then a dog-leg', icon: 'i-slow' },
   hold: { label: 'Hold fix', title: 'Hold at the STAR fix', icon: 'i-hold' },
   release: { label: 'Leave hold', title: 'Leave the hold', icon: 'i-release' },
@@ -89,7 +91,7 @@ function seqEntry(tail) {
 function seqActs(v, s) {
   if (!s) return [];
   if (s.e.fixed) return ['goaround'];
-  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'slow', v.hold ? 'release' : 'hold', 'goaround'];
+  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'directpick', 'slow', ...(v.hold ? ['release'] : ['hold', 'holdpick']), 'goaround'];
 }
 
 async function ctlAct(id, action, node, facing) {
@@ -109,13 +111,23 @@ async function ctlAct(id, action, node, facing) {
   ctlBusy.delete(id);
   controlPoll.now();
 }
-async function approachAct(tail, action) {
+// apPick: an approach action waiting for its point on the map (#443):
+// {tail, action}; the next click on the map sends it.
+let apPick = null;
+async function approachAct(tail, action, at) {
   if (!data) { $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; }); return; }
+  if (action === 'directpick' || action === 'holdpick') {
+    apPick = { tail, action: action === 'directpick' ? 'direct' : 'holdat', title: AP_ACT[action].title };
+    toast(`${tail}: click the point on the map (Esc cancels)`);
+    $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; });
+    return;
+  }
   // Its own airport's sequence, not the one on the map.
   const own = ctlViews.find((v) => v.tail === tail);
   const icao = (own && own.icao) || data.icao;
-  const r = await send(`/api/approach/${icao}/${encodeURIComponent(tail)}/${action}`);
-  const msg = r.ok ? `${tail}: ${AP_ACT[action].title.toLowerCase()}` : `${tail}: ${r.error}`;
+  const r = await send(`/api/approach/${icao}/${encodeURIComponent(tail)}/${action}`, at ? { lat: at.lat, lon: at.lng } : undefined);
+  const what = AP_ACT[action] ? AP_ACT[action].title.toLowerCase() : (action === 'holdat' ? 'hold at the point' : 'direct to the point');
+  const msg = r.ok ? `${tail}: ${what}` : `${tail}: ${r.error}`;
   $('apMsg').textContent = msg;
   toast(msg, r.ok ? '' : 'err');
   $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; });
@@ -697,6 +709,7 @@ function initTraffic() {
   let downOnBackdrop = false;
   $('nfModal').addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === e.currentTarget; });
   $('nfModal').addEventListener('click', (e) => { if (downOnBackdrop && e.target === e.currentTarget) openNewFlight(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && apPick) { apPick = null; toast('Picking cancelled'); } });
   // Esc: the window closes (the stand stays); picking, back to the window.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !nfOpen()) return;
@@ -811,6 +824,7 @@ function initTraffic() {
   // A map click: a de-icing pad (Airport), or a via point (custom route).
   map.on('click', async (e) => {
     if (!data) return;
+    if (apPick) { const p = apPick; apPick = null; approachAct(p.tail, p.action, e.latlng); return; }
     if ($('dePick').checked) { addPadAt(e.latlng); return; }
     if ($('vpPick').checked) { addVfrPointAt(e.latlng); return; }
     if (!$('rViaPick').checked || !nfOpen()) return;

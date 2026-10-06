@@ -67,6 +67,8 @@ type sequences struct {
 type conflictHold struct {
 	other string
 	at    time.Time
+	// manual: told by a controller to hold (#443): until released.
+	manual bool
 }
 
 // conflictHoldMin is the least an arrival holds for a conflict.
@@ -80,6 +82,9 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 	q.mu.Unlock()
 	if !ok {
 		return false
+	}
+	if h.manual {
+		return true
 	}
 	if now.Sub(h.at) < conflictHoldMin || q.inConflict != nil && q.inConflict(cs, h.other) {
 		return true

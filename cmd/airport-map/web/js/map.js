@@ -481,7 +481,7 @@ function buildRoute(v, sel, ground, air, canUpTo) {
     }
   }
   if (air) {
-    const line = smoothLine([[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])]);
+    const line = [[v.position.lat, v.position.lon], ...v.airRoute.map((p) => [p.lat, p.lon])]; // straight, fix to fix, as on the chart
     out.air = [L.polyline(line, { className: 'm-air' + (sel ? '' : ' m-air--faint'), interactive: false }).addTo(g)];
     if (sel) {
       // Dots at the procedure's fixes only, not at the points of its rounded turns.

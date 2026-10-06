@@ -1354,7 +1354,9 @@ func (cc *controlCenter) views() []ControlView {
 		v := it.view
 		it.mu.Unlock()
 		if it.arr != nil && !v.OnGround {
-			v.AirRoute = it.arr.ProcedureRoute()
+			if v.AirRoute = it.arr.ProcedureCorners(); v.AirRoute == nil {
+				v.AirRoute = it.arr.ProcedureRoute()
+			}
 			v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
 			// Going around: the circuit's track points back to the final.
 			for _, n := range it.arr.CircuitFixes() {

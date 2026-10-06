@@ -187,6 +187,13 @@ func (r *remoteArr) DirectToJoin() error {
 	return err
 }
 
+func (r *remoteArr) DirectTo(p airport.LatLon) (string, traffic.Vector, error) {
+	var o0 string
+	var o1 traffic.Vector
+	err := r.c.call(r.t, "DirectTo", []any{p}, &o0, &o1)
+	return o0, o1, err
+}
+
 func (r *remoteArr) EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error) {
 	var o0 traffic.HoldEntry
 	err := r.c.call(r.t, "EnterHold", []any{h, altFt}, &o0)
@@ -262,6 +269,12 @@ func (r *remoteArr) ProcedurePlan() []traffic.RoutePoint {
 func (r *remoteArr) ProcedureRoute() []airport.LatLon {
 	var o0 []airport.LatLon
 	r.c.dropped(r.c.call(r.t, "ProcedureRoute", []any{}, &o0))
+	return o0
+}
+
+func (r *remoteArr) ProcedureCorners() []airport.LatLon {
+	var o0 []airport.LatLon
+	r.c.dropped(r.c.call(r.t, "ProcedureCorners", []any{}, &o0))
 	return o0
 }
 

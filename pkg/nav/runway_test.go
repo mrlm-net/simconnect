@@ -154,3 +154,33 @@ func TestRunwaySelectorReadyAndSeed(t *testing.T) {
 		t.Errorf("seeded with %s, chose %s at once", seeded.Arrival.Name, u.Arrival.Name)
 	}
 }
+
+// Near calm the runway in use stays with no change pending; a better choice
+// gone for a moment keeps its pending change (live LKPR, 083/2–3 kt:
+// Pending came and went every few seconds).
+func TestRunwaySelectorCalmAndFlicker(t *testing.T) {
+	l := lkprInfo(t).Layout
+	now := time.Now()
+	west := StaticWeather(250, 8, 9999, 15, 5, 1013)
+	east := StaticWeather(70, 4, 9999, 15, 5, 1013)
+	var s RunwaySelector
+	first := s.Choose(now, l, west, RunwayLimits{}).Arrival.Name
+	if u := s.Choose(now.Add(time.Second), l, StaticWeather(83, 2, 9999, 15, 5, 1013), RunwayLimits{}); u.Arrival.Name != first {
+		t.Fatalf("calm: changed to %s", u.Arrival.Name)
+	}
+	if _, _, ok := s.Pending(); ok {
+		t.Fatal("calm: a change pending")
+	}
+	s.Choose(now.Add(10*time.Second), l, east, RunwayLimits{})
+	if _, _, ok := s.Pending(); !ok {
+		t.Skip("the east wind does not change the choice at this airport")
+	}
+	s.Choose(now.Add(20*time.Second), l, west, RunwayLimits{})
+	if _, _, ok := s.Pending(); !ok {
+		t.Fatal("pending dropped at once")
+	}
+	s.Choose(now.Add(2*time.Minute), l, west, RunwayLimits{})
+	if _, _, ok := s.Pending(); ok {
+		t.Error("still pending after the better choice was gone a minute")
+	}
+}

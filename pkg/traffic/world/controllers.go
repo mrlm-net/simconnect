@@ -51,6 +51,7 @@ type arrivalCtl interface {
 	ClearToTaxi()
 	ClearUpTo(node airport.NodeID) error
 	DirectToJoin() error
+	DirectTo(p airport.LatLon) (string, traffic.Vector, error)
 	EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error)
 	Expedite(on bool)
 	GoAround() error
@@ -65,6 +66,7 @@ type arrivalCtl interface {
 	Plan() *traffic.ArrivalPlan
 	ProcedurePlan() []traffic.RoutePoint
 	ProcedureRoute() []airport.LatLon
+	ProcedureCorners() []airport.LatLon
 	ReduceToFinalSpeed() (time.Duration, error)
 	Shortcut(maxSaveNM float64, keep []string) (string, float64, error)
 	State() traffic.ArrivalState

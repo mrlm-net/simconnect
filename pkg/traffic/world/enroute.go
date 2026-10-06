@@ -36,7 +36,24 @@ const (
 const (
 	handoverNM    = 8.0
 	handoverAfter = 2 * time.Minute
+	// handoverLateNM: a late one is handed over by time only this near.
+	handoverLateNM = 40.0
+	// enrouteSlowNM: an arrival keeps its cruise speed down to this far
+	// before its STAR entry.
+	enrouteSlowNM = 30.0
 )
+
+// slowDownBefore is the point enrouteSlowNM before entry on the leg from
+// prev, at cruise speed, when the leg is longer than that; none otherwise.
+func slowDownBefore(prev traffic.RoutePoint, entry airport.LatLon, entryAltFt, kts float64) []traffic.RoutePoint {
+	if calc.HaversineNM(prev.Position.Lat, prev.Position.Lon, entry.Lat, entry.Lon) <= enrouteSlowNM+10 {
+		return nil
+	}
+	brg := calc.BearingDegrees(entry.Lat, entry.Lon, prev.Position.Lat, prev.Position.Lon)
+	lat, lon := calc.DisplaceByHeading(entry.Lat, entry.Lon, brg, enrouteSlowNM*1852)
+	alt := math.Max(entryAltFt, math.Min(prev.AltFt, entryAltFt+enrouteSlowNM*300))
+	return []traffic.RoutePoint{{Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: alt, Kts: traffic.EnrouteSpeedKts(math.Max(alt, 10000), kts)}}
+}
 
 // enrouteAC is an aircraft of ours flown by MSFS AI on its flight plan.
 type enrouteAC struct {
@@ -151,6 +168,11 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		}
 		if w.Phase == nav.PhaseSTAR || w.Phase == nav.PhaseApproach {
 			if f.Arrival() {
+				// MSFS AI flies a leg at the speed of the point it heads for:
+				// the entry's 250 kt below FL100 slowed the whole DCT (live:
+				// QTR1636 and OKOEX at 250 kt GS, late, handed over 100 to
+				// 400 NM out). At cruise down to enrouteSlowNM before it.
+				route = append(route, slowDownBefore(route[len(route)-1], w.Position, w.AltFt, kts)...)
 				route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: w.AltFt, Kts: traffic.EnrouteSpeedKts(w.AltFt, kts)})
 			}
 			break
@@ -256,7 +278,14 @@ func (s *scheduler) handovers(now time.Time) {
 		}
 		entry := e.arrive.route[0].Position
 		p, seen := pos[e.objectID]
-		if seen && calc.HaversineNM(p.Lat, p.Lon, entry.Lat, entry.Lon) < handoverNM || now.After(e.f.STA.Add(-lead).Add(handoverAfter)) {
+		far := math.Inf(1)
+		if seen {
+			far = calc.HaversineNM(p.Lat, p.Lon, entry.Lat, entry.Lon)
+		}
+		// Late at the entry: handed over where it is only near it (or unseen,
+		// or past its STA), never from hundreds of miles out.
+		late := now.After(e.f.STA.Add(-lead).Add(handoverAfter)) && (!seen || far < handoverLateNM || now.After(e.f.STA))
+		if far < handoverNM || late {
 			// Not onto other traffic at the entry: the handover waits.
 			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" {
 				continue

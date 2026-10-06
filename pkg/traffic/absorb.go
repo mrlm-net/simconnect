@@ -941,3 +941,19 @@ func finalDistanceNM(p, thr airport.LatLon, hdg float64) float64 {
 	}
 	return best
 }
+
+// ProcedureCorners is the procedure still ahead as flown on the chart: its
+// corners from where it is, fix to fix without the rounded turns (the map's
+// line). Nil when not on its procedure or holding: ProcedureRoute then.
+func (c *ArrivalController) ProcedureCorners() []airport.LatLon {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || c.holding != nil || len(c.corners) < 2 {
+		return nil
+	}
+	var out []airport.LatLon
+	for _, w := range c.corners[c.cornerAhead():] {
+		out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
+	}
+	return out
+}
