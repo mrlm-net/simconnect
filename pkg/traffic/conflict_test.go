@@ -643,3 +643,20 @@ func TestPredictConflictsLevelTolerance(t *testing.T) {
 		t.Error("one climbing toward it: no conflict")
 	}
 }
+
+// Two arrivals at the terminal area's top level (10000 ft) are in it: the
+// terminal minimum applies to them (live: TVS1750 at 10016 ft and TVS554 at
+// 10000 ft held to the en-route 5 NM in trail).
+func TestTerminalTopLevel(t *testing.T) {
+	o := ConflictOptions{}.withDefaults()
+	a := air(1, "TVS1750", 0, 0, 10016, 240, 230, 0, true)
+	b := air(2, "TVS554", 5, 0, 10000, 240, 230, 0, true)
+	a.Airport, b.Airport = "LKPR", "LKPR"
+	if m := o.minFor(a, b); m != o.TerminalNM {
+		t.Errorf("at 10000 ft arriving: %.0f NM, want the terminal %.0f", m, o.TerminalNM)
+	}
+	a.AltFt = 11000
+	if m := o.minFor(a, b); m != o.MinNM {
+		t.Errorf("one at 11000 ft: %.0f NM, want the en-route %.0f", m, o.MinNM)
+	}
+}

@@ -91,7 +91,10 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 		// The number once, as the sequence says it (live, AFR850 heard
 		// "number 4" from a conflict that only stretched its route).
 		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != ""); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "") {
-			it.say(traffic.Sequenced(callsign, n, 0, a))
+			tx := traffic.Sequenced(callsign, n, 0, a)
+			// In radio order: after its arrival clearance (live, TVS554 told to
+			// slow 21 s before it was cleared its STAR).
+			it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })
 		}
 	case "direct":
 		if err := q.cc.do(it.arr.DirectToJoin); err != nil {
