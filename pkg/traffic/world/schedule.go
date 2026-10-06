@@ -221,6 +221,12 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Fuel: true, Deice: "auto"}
 	vfr := f.Rules == "VFR"
+	switch {
+	case vfr || f.Operator == "business":
+		req.StandUse = standGA // a light aircraft or a business jet (#568, #619)
+	case s.airlines[airlineOf(f.Callsign)].Cargo:
+		req.StandUse = standCargo
+	}
 	if vfr {
 		// A light aircraft joining the circuit (#568): no plan, no STAR.
 		req.Circuit, req.Tug, req.Fuel, req.Deice = true, false, false, ""
@@ -280,17 +286,10 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
 		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD}
-		s, err := -1, traffic.ErrNoStand
-		if vfr || f.Operator == "business" {
-			// A light aircraft or a business jet on a GA ramp where one is
-			// free (#568, #619).
-			ga := sr
-			ga.Types = gaRamps
-			s, err = cc.allocator(g).Assign(ga)
-		}
-		if err != nil {
-			s, err = cc.allocator(g).Assign(sr)
-		}
+		// By its use (#833): gates for an airliner, GA ramps for a light
+		// aircraft or a business jet (#568, #619), cargo stands for a
+		// freighter; then another that fits.
+		s, err := assignStand(cc.allocator(g), sr, req.StandUse)
 		if err != nil {
 			return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err) // no stand free now: tried again
 		}

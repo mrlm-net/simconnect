@@ -49,6 +49,8 @@ type Flight struct {
 type Airline struct {
 	ICAO string `json:"icao"`
 	Name string `json:"name,omitempty"`
+	// Cargo: a freighter airline, on cargo stands first (#833).
+	Cargo bool `json:"cargo,omitempty"`
 	// Telephony is the radio call sign ("SPEEDBIRD").
 	Telephony string `json:"telephony,omitempty"`
 	// Fleet is the types it flies with their weights.
