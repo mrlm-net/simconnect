@@ -907,6 +907,7 @@ const (
 	shortcutShare = 0.7
 	shortcutMaxNM = 15.0
 	shortcutEvery = 3 * time.Minute
+	shortcutFirst = 30 * time.Second
 )
 
 // shortcut squeezes it in when there is room (see the constants).
@@ -920,10 +921,12 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 	q.mu.Lock()
 	first, seen := q.shortcutAt[e.Callsign]
 	if !seen {
-		// Just appeared: not before it has flown a while, heading set and
-		// cleared for its STAR (live, TVS1442 sent direct 2 s after it
-		// appeared, its heading still 0).
-		q.shortcutAt[e.Callsign] = now
+		// Just appeared (and settled): first looked at shortcutFirst on,
+		// heading set and cleared for its STAR (live, TVS1442 sent direct
+		// 2 s after it appeared, its heading still 0) — not shortcutEvery
+		// on: by then the big saving is flown (live, TVS1796 and AUA1045
+		// on VLM6T: direct AKEVA saves 12 NM at PR721, nothing at PR723).
+		q.shortcutAt[e.Callsign] = now.Add(shortcutFirst - shortcutEvery)
 	}
 	recent := !seen || now.Sub(first) < shortcutEvery
 	q.mu.Unlock()
@@ -979,7 +982,8 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 		it.mu.Unlock()
 	}
 	q.cc.log.printf("%-6s sequence: room ahead, direct %s (%.1f NM shorter)", e.Callsign, fix, saved)
-	it.say(traffic.ClearedDirectTo(traffic.PosApproach, e.Callsign, fix))
+	tx := traffic.ClearedDirectTo(traffic.PosApproach, e.Callsign, fix)
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) }) // after its STAR clearance
 }
 
 // departureGapLeadM: a departure taxiing this close to its runway (about 5
