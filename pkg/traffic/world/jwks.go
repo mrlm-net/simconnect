@@ -14,8 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +42,7 @@ type Claims struct {
 }
 
 // JWKS verifies signed session tokens (JWT, compact form) against the keys
-// a server publishes at a JWKS address (#792): the MyCrew API issues a
+// a server publishes at a JWKS address, or in a JWKS file (#792): the MyCrew API issues a
 // player's token for the director, GET /v1/traffic/jwks its keys. RS256,
 // RS384, RS512, PS256, ES256, ES384 and EdDSA (Ed25519); exp and nbf with
 // a minute of leeway, iss and aud when set. Keys are fetched on first use,
@@ -128,17 +130,17 @@ func (j *JWKS) claims(part string) (Claims, error) {
 	if exp, ok := raw["exp"].(float64); ok {
 		c.Expires = time.Unix(int64(exp), 0)
 		if now.After(c.Expires.Add(tokenLeeway)) {
-			return c, ErrTokenExpired
+			return c, fmt.Errorf("%w: expired at %s", ErrTokenExpired, c.Expires.UTC().Format(time.RFC3339))
 		}
 	}
 	if nbf, ok := raw["nbf"].(float64); ok && now.Add(tokenLeeway).Before(time.Unix(int64(nbf), 0)) {
-		return c, ErrTokenExpired
+		return c, fmt.Errorf("%w: not before %s", ErrTokenExpired, time.Unix(int64(nbf), 0).UTC().Format(time.RFC3339))
 	}
 	if j.Issuer != "" && c.Issuer != j.Issuer {
-		return c, ErrTokenClaims
+		return c, fmt.Errorf("%w: issuer %q, want %q", ErrTokenClaims, c.Issuer, j.Issuer)
 	}
 	if j.Audience != "" && !containsString(c.Audience, j.Audience) {
-		return c, ErrTokenClaims
+		return c, fmt.Errorf("%w: audience %q, want %q", ErrTokenClaims, c.Audience, j.Audience)
 	}
 	return c, nil
 }
@@ -194,11 +196,36 @@ func (j *JWKS) key(ctx context.Context, kid string) (crypto.PublicKey, error) {
 	if k, ok := pick(); ok {
 		return k, nil
 	}
-	return nil, ErrTokenKey
+	if len(j.keys) == 0 {
+		return nil, fmt.Errorf("%w: no keys at %s", ErrTokenKey, j.URL)
+	}
+	return nil, fmt.Errorf("%w: unknown kid %q (%d keys at %s)", ErrTokenKey, kid, len(j.keys), j.URL)
+}
+
+// Load reads the key set now, as Verify would: how many keys it has, or
+// why it could not be read (a director checks its -jwks at start).
+func (j *JWKS) Load(ctx context.Context) (int, error) {
+	keys, err := j.fetch(ctx)
+	if err != nil {
+		return 0, err
+	}
+	j.mu.Lock()
+	j.keys, j.fetched = keys, j.clock()
+	j.mu.Unlock()
+	return len(keys), nil
 }
 
 // fetch reads the key set at j.URL.
 func (j *JWKS) fetch(ctx context.Context) (map[string]crypto.PublicKey, error) {
+	if !strings.HasPrefix(j.URL, "http://") && !strings.HasPrefix(j.URL, "https://") {
+		// A file (a path, or file://path): read again on every fetch.
+		f, err := os.Open(strings.TrimPrefix(j.URL, "file://"))
+		if err != nil {
+			return nil, fmt.Errorf("jwks: %w", err)
+		}
+		defer f.Close()
+		return decodeKeySet(f, j.URL)
+	}
 	client := j.Client
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
@@ -215,11 +242,16 @@ func (j *JWKS) fetch(ctx context.Context) (map[string]crypto.PublicKey, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jwks %s: %s", j.URL, res.Status)
 	}
+	return decodeKeySet(res.Body, j.URL)
+}
+
+// decodeKeySet reads a JWKS document: its signing keys by kid.
+func decodeKeySet(r io.Reader, from string) (map[string]crypto.PublicKey, error) {
 	var set struct {
 		Keys []jwk `json:"keys"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&set); err != nil {
-		return nil, fmt.Errorf("jwks %s: %w", j.URL, err)
+	if err := json.NewDecoder(r).Decode(&set); err != nil {
+		return nil, fmt.Errorf("jwks %s: %w", from, err)
 	}
 	keys := map[string]crypto.PublicKey{}
 	for _, k := range set.Keys {

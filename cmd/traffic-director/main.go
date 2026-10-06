@@ -24,6 +24,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/nav"
@@ -41,7 +43,7 @@ func main() {
 	dataDir := flag.String("data-dir", ".", "directory for local settings")
 	apiToken := flag.String("api-token", "", "token a client needs to control the traffic over the HTTP API (\"auto\": a random one; \"\": open, trusted networks only)")
 	viewToken := flag.String("view-token", "", "token a client needs to read the HTTP API (\"auto\": a random one)")
-	jwksURL := flag.String("jwks", "", "with -listen: verify each actuator's session token against the keys at this JWKS address (the MyCrew API's), instead of -token")
+	jwksURL := flag.String("jwks", "", "with -listen: verify each actuator's session token against the keys at this JWKS address (the MyCrew API's) or in this JWKS file, instead of -token")
 	jwksIss := flag.String("jwks-iss", "", "with -jwks: the issuer a token must name")
 	jwksAud := flag.String("jwks-aud", "", "with -jwks: the audience a token must include")
 	jwksAPI := flag.String("jwks-api", "control", "with -jwks: what a session token gives on the HTTP API: control, view or none")
@@ -57,6 +59,23 @@ func main() {
 	if *jwksURL != "" {
 		jwks = world.NewJWKS(*jwksURL, *jwksIss, *jwksAud)
 		link.Verify = jwks.LinkVerify
+		// Checked now: a JWKS that cannot be read is said at start, not
+		// found out from refused players (an empty set may be published
+		// later, so it only warns).
+		lctx, done := context.WithTimeout(context.Background(), 15*time.Second)
+		n, err := jwks.Load(lctx)
+		done()
+		switch {
+		case err != nil && !strings.HasPrefix(*jwksURL, "http"):
+			fmt.Fprintln(os.Stderr, "❌ -jwks:", err)
+			os.Exit(2)
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "⚠️  -jwks: %v (tried again on the first token)\n", err)
+		case n == 0:
+			fmt.Fprintf(os.Stderr, "⚠️  -jwks %s has no keys yet: every token is refused until it has\n", *jwksURL)
+		default:
+			fmt.Printf("JWKS %s: %d key(s)\n", *jwksURL, n)
+		}
 	}
 	if *tlsCert != "" || *tlsKey != "" {
 		cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
@@ -113,8 +132,12 @@ func main() {
 	}
 	world.SetTokens(*apiToken, *viewToken)
 	if jwks != nil && *jwksAPI != "none" {
+		refused := newRefusalLog()
 		world.SetTokenVerifier(func(ctx context.Context, t string) error {
-			_, err := jwks.Verify(ctx, t)
+			c, err := jwks.Verify(ctx, t)
+			if err != nil {
+				refused.log(t, c.Subject, err)
+			}
 			return err
 		}, *jwksAPI == "control")
 	}
@@ -134,4 +157,31 @@ func main() {
 		fmt.Fprintln(os.Stderr, "❌", err)
 		os.Exit(1)
 	}
+}
+
+// refusalLog prints why an HTTP API token was refused, once a minute per
+// token and reason: a page polls with the same cookie every second.
+type refusalLog struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+func newRefusalLog() *refusalLog { return &refusalLog{last: map[string]time.Time{}} }
+
+func (r *refusalLog) log(token, subject string, err error) {
+	k := token + "\x00" + err.Error()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if at, ok := r.last[k]; ok && time.Since(at) < time.Minute {
+		return
+	}
+	if len(r.last) > 1000 {
+		r.last = map[string]time.Time{}
+	}
+	r.last[k] = time.Now()
+	who := subject
+	if who == "" {
+		who = "?"
+	}
+	fmt.Fprintf(os.Stderr, "%s  api: token of %s refused: %v\n", time.Now().Format("15:04:05.000"), who, err)
 }
