@@ -13,6 +13,13 @@ func TestRevisedDepartureClearance(t *testing.T) {
 	if tx.Text != want || tx.Position != PosTower {
 		t.Errorf("ICAO: %q at %s\nwant %q", tx.Text, tx.Position, want)
 	}
+	// Transmitted, the text carries the spoken call sign: the readback is
+	// the same.
+	spoken := tx
+	spoken.Text = "CSA Lines 123" + tx.Text[len("CSA123"):]
+	if rb, _ := Readback(spoken); rb.Text[:len("Holding, cleared")] != "Holding, cleared" {
+		t.Errorf("readback of the transmitted text %q", rb.Text)
+	}
 	rb, ok := Readback(tx)
 	if wantRB := "Holding, cleared to Budapest, VOZ 5D departure, flight planned route, runway 06, climb via SID to flight level 100, squawk 4521, CSA123"; !ok || rb.Text != wantRB {
 		t.Errorf("readback %q\nwant %q", rb.Text, wantRB)
