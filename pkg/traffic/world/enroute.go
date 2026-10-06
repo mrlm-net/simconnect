@@ -164,6 +164,14 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	if along == "" {
 		along = "direct"
 	}
+	if len(route) < 2 && !f.Arrival() {
+		// Its plan enters the area only where it starts down its
+		// destination's STAR: across on the great circle instead (live:
+		// DLH1163 KJFK → LHBP failed "an enroute flight needs two points").
+		if gc := greatCircleCrossing(fp, cc, kts); len(gc) >= 2 {
+			return s.spawnEnrouteOn(f, e, model, gc, "great circle")
+		}
+	}
 	return s.spawnEnrouteOn(f, e, model, route, along)
 }
 
