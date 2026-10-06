@@ -185,6 +185,13 @@ func (t track) at(d time.Duration) (lat, lon, altFt float64) {
 // the minima and the closest point; ok when they lose separation.
 func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, ok bool) {
 	c.ClosestNM, c.In = math.Inf(1), -1
+	// Both level: a standard level apart is separated, whatever the
+	// altimetry's few feet say (live: CSA111 at FL370 and CSA1811 at FL360
+	// predicted 999 ft apart and CSA111 sent up to FL390).
+	minFt := o.MinFt
+	if math.Abs(a.fpm) < LevelFlightFpm && math.Abs(b.fpm) < LevelFlightFpm {
+		minFt -= LevelToleranceFt
+	}
 	for d := time.Duration(0); d <= o.LookAhead; d += o.Step {
 		alat, alon, aft := a.at(d)
 		blat, blon, bft := b.at(d)
@@ -193,13 +200,21 @@ func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, 
 		if l < c.ClosestNM {
 			c.ClosestNM, c.ClosestIn, c.VerticalFt = l, d, v
 		}
-		if l < minNM && v < o.MinFt && c.In < 0 {
+		if l < minNM && v < minFt && c.In < 0 {
 			c.In, c.LossNM, c.LossFt = d, l, v
 		}
 	}
 	c.MinNM = minNM
 	return c, c.In >= 0
 }
+
+// LevelFlightFpm: slower than this an aircraft is level; LevelToleranceFt
+// is how far two level ones may read under the vertical minimum and still
+// be separated (one standard level apart).
+const (
+	LevelFlightFpm   = 300.0
+	LevelToleranceFt = 100.0
+)
 
 func (o ConflictOptions) minFor(a, b TrackedAircraft) float64 {
 	if a.Airport != "" && b.Airport != "" && a.AltFt < o.TerminalBelowFt && b.AltFt < o.TerminalBelowFt {
