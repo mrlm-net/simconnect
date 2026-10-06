@@ -45,6 +45,8 @@ type sequences struct {
 	seqSaid map[string]seqSaid
 	// shortcutAt: when each arrival was last looked at for a shortcut.
 	shortcutAt map[string]time.Time
+	// seenAt: when each arrival joined the sequence (settling).
+	seenAt map[string]time.Time
 	// fixesAhead: each arrival's named fixes ahead at the last tick, for
 	// the merge points a shortcut keeps (#788).
 	fixesAhead map[string][]traffic.FixAhead
@@ -87,7 +89,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -183,6 +185,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		if it == nil || it.joinPending.Load() {
 			continue // VFR: told to join first (#711)
+		}
+		if q.settling(now, icao, e.Callsign, seq) {
+			continue // its prediction is not settled yet: nothing decided on it
 		}
 		// Looking ahead: an established arrival (fixed, it keeps its time)
 		// acts only when predicted to land short of its spacing behind its
@@ -392,6 +397,34 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 // after speed and path stretching holds at the first STAR point holdFixNM
 // or more from the threshold, in that fix's stack from holdBaseFt; it leaves once its delay
 // is down to holdRelease, and the ones above step down.
+// settleFor: an arrival new to the sequence is left alone this long. Its
+// first predictions swing by minutes while it reports its first speed and
+// route (live, LKPR: LOT1477 at 15 min 31 s, then 6 min 45 s seven
+// seconds later, was sent to hold on the first; MRG1 told to expect 10
+// minutes with 10 s left). Speed, a dog-leg or a hold is decided on the
+// settled delay.
+const settleFor = 30 * time.Second
+
+// settling reports whether cs joined icao's sequence seq less than
+// settleFor ago; those no longer in it are forgotten (a call sign flown
+// again later settles again).
+func (q *sequences) settling(now time.Time, icao, cs string, seq []traffic.SequenceEntry) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for k := range q.seenAt {
+		if rest, ok := strings.CutPrefix(k, icao+" "); ok && !slices.ContainsFunc(seq, func(e traffic.SequenceEntry) bool { return e.Callsign == rest }) {
+			delete(q.seenAt, k)
+		}
+	}
+	k := icao + " " + cs
+	first, ok := q.seenAt[k]
+	if !ok {
+		q.seenAt[k] = now
+		return true
+	}
+	return now.Sub(first) < settleFor
+}
+
 const (
 	holdFrom    = 4 * time.Minute // one racetrack: less is left to speed and vectors, asked again
 	holdRelease = time.Minute

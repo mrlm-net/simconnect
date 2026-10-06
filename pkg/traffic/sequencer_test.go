@@ -499,3 +499,28 @@ func TestSequencerMergePoint(t *testing.T) {
 		t.Errorf("fix on the final: merge delay %v", got)
 	}
 }
+
+// A faster arrival behind a slower one on the same route is held back for
+// the whole common route, not only to its first fix (live, LKPR: RYR270 at
+// 210 kt about 20 NM behind OKZWR, a PC-12 at 170, on LOMK8S).
+func TestSequencerInTrailCatchUp(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{})
+	pc12 := ApproachAircraft{Callsign: "OKZWR", Wake: WakeFor("PC12"), DistanceToGoNM: 60, GroundKts: 170,
+		Fixes: []FixAhead{{"LOMKI", 5}, {"PR511", 25}, {"PR512", 45}}}
+	b738 := ApproachAircraft{Callsign: "RYR270", Wake: WakeFor("B738"), DistanceToGoNM: 80, GroundKts: 210,
+		Fixes: []FixAhead{{"LOMKI", 25}, {"PR511", 45}, {"PR512", 65}}}
+	// At LOMKI: 7.1 min vs 1.8 min + 6 NM: well apart. At PR512 (15 NM
+	// out): the B738 in 18.6 min, the PC-12 in 15.9 min: 2.7 min, 7.6 NM at
+	// 170 kt, enough; at 5 more NM closer it would not be.
+	if d := s.mergeDelay(pc12, 0, b738); d != 0 {
+		t.Errorf("20 NM behind, closing 7 NM by PR512: delay %v, want none", d)
+	}
+	b738.Fixes = []FixAhead{{"LOMKI", 15}, {"PR511", 35}, {"PR512", 55}}
+	b738.DistanceToGoNM = 70
+	// 10 NM behind: at PR512 the B738 in 15.7 min, the PC-12 in 15.9 min
+	// plus 6 NM at 170 kt (2.1 min): 2.3 min short; at LOMKI it is fine.
+	d := s.mergeDelay(pc12, 0, b738)
+	if d < 2*time.Minute || d > 3*time.Minute {
+		t.Errorf("10 NM behind and faster: delay %v, want about 2.3 min to keep 6 NM at PR512", d)
+	}
+}

@@ -57,3 +57,26 @@ func TestEngaged(t *testing.T) {
 		t.Error("slowed for a conflict: not engaged")
 	}
 }
+
+// A newcomer's first predictions swing by minutes: nothing is decided on
+// it for settleFor (live: LOT1477 sent to hold on a first 15 min 31 s that
+// was 6 min 45 s seven seconds later). Gone from the sequence, it settles
+// again when it comes back.
+func TestSettling(t *testing.T) {
+	now := time.Date(2026, 10, 6, 12, 24, 3, 0, time.UTC)
+	q := &sequences{seenAt: map[string]time.Time{}}
+	seq := []traffic.SequenceEntry{{Callsign: "LOT1477"}}
+	if !q.settling(now, "LKPR", "LOT1477", seq) {
+		t.Fatal("decided on its first look")
+	}
+	if !q.settling(now.Add(10*time.Second), "LKPR", "LOT1477", seq) {
+		t.Error("decided 10 s after it joined")
+	}
+	if q.settling(now.Add(settleFor), "LKPR", "LOT1477", seq) {
+		t.Error("still settling after settleFor")
+	}
+	q.settling(now.Add(time.Hour), "LKPR", "OTHER", []traffic.SequenceEntry{{Callsign: "OTHER"}})
+	if !q.settling(now.Add(time.Hour), "LKPR", "LOT1477", seq) {
+		t.Error("back an hour later without settling again")
+	}
+}

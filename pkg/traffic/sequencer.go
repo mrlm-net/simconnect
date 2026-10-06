@@ -782,24 +782,31 @@ func (s *ApproachSequencer) mergeDelay(lead ApproachAircraft, leadDelay time.Dur
 	if sep <= 0 || lead.Runway != follow.Runway {
 		return 0
 	}
+	// Every fix they share outside the final, not only the first: a faster
+	// one behind closes all along the common route (live, LKPR: RYR270 at
+	// 210 kt 20 NM behind OKZWR, a PC-12 at 170, on LOMK8S).
+	kl, kf := mergeSpeed(lead), mergeSpeed(follow)
+	var need time.Duration
+	first := true
 	for _, ff := range follow.Fixes {
 		if follow.DistanceToGoNM-ff.NM <= s.opts.FinalNM {
-			return 0 // on the final from here on
+			break // on the final from here on
 		}
 		for _, lf := range lead.Fixes {
 			if lf.Name != ff.Name {
 				continue
 			}
-			kl, kf := mergeSpeed(lead), mergeSpeed(follow)
 			tl := time.Duration(lf.NM/kl*float64(time.Hour)) + max(0, leadDelay)
 			tf := time.Duration(ff.NM / kf * float64(time.Hour))
-			if tf+SeparationTime(sep, kf) <= tl {
-				return 0 // there well before it
+			if first && tf+SeparationTime(sep, kf) <= tl {
+				return 0 // at the merge well before it: not in trail behind it
 			}
-			return max(0, tl+SeparationTime(sep, kl)-tf)
+			first = false
+			need = max(need, tl+SeparationTime(sep, kl)-tf)
+			break
 		}
 	}
-	return 0
+	return need
 }
 
 // mergeSpeed is a's speed to a merge point: its ground speed now, at
