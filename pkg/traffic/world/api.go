@@ -51,7 +51,8 @@ type Options struct {
 	// SimConnect IDs, for a host using the same helpers on its connection:
 	// airport loader at IDBase (definitions) and +100 (requests), procedure
 	// loader +200/+300, nav loader +400/+500, airport list +600, injector
-	// +700/+800/+900 (events), airway crawl +1000/+1010. 0: the defaults
+	// +700/+800/+900 (events), airway crawl +1000/+1010, enroute creations
+	// +1100–+2099 (requests). 0: the defaults
 	// (docs/traffic-world.md).
 	IDBase uint32
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
