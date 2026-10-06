@@ -191,7 +191,7 @@ func TestExtendDownwind(t *testing.T) {
 	if near(d2, at(9, 4)) > 0.05 || near(e, at(14, 0)) > 0.05 {
 		t.Errorf("downwind to %.2f NM off 9 NM out, final from %.2f NM off 14 NM out", near(d2, at(9, 4)), near(e, at(14, 0)))
 	}
-	if want := 4700 + 3*ProcedureDescentFtPerNm; math.Abs(e.Altitude-want) > 1 {
+	if want := 4700.0; math.Abs(e.Altitude-want) > 1 { // the intercept altitude, never above it (#797)
 		t.Errorf("onto the final at %.0f ft, want %.0f", e.Altitude, want)
 	}
 	if grown := pathNMOf(pos, ext, align) - pathNMOf(pos, chain, align); math.Abs(grown-6) > 0.5 {
@@ -516,5 +516,20 @@ func TestDogLegApexSide(t *testing.T) {
 	}
 	if finalDistanceNM(at(5, 0), thr, 90) > 0.3 || math.Abs(finalDistanceNM(at(5, 3), thr, 90)-3) > 0.3 {
 		t.Error("finalDistanceNM off")
+	}
+}
+
+// An arrival losing time is never sent up: altitudes ahead are capped at
+// its own and never rise along the way (#797, SWR1813 climbed toward FL080
+// on an extended downwind).
+func TestNoClimb(t *testing.T) {
+	wp := func(alt float64) types.SIMCONNECT_DATA_WAYPOINT { return types.SIMCONNECT_DATA_WAYPOINT{Altitude: alt} }
+	chain := []types.SIMCONNECT_DATA_WAYPOINT{wp(8000), wp(6000), wp(8180), wp(4000), wp(0)}
+	noClimb(chain, 7200)
+	want := []float64{7200, 6000, 6000, 4000, 0}
+	for i, w := range want {
+		if chain[i].Altitude != w {
+			t.Errorf("point %d at %.0f ft, want %.0f", i, chain[i].Altitude, w)
+		}
 	}
 }
