@@ -51,6 +51,8 @@ type groundDrive struct {
 	givingWay uint32
 	// blockedBy is the aircraft ahead it stops behind (followAhead), 0 none.
 	blockedBy uint32
+	// facing: blockedBy is oncoming, held clear of at a junction (#775).
+	facing bool
 	trafficAt time.Time // last look ahead (every TrafficCheckEvery)
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
@@ -148,6 +150,9 @@ func (d *groundDrive) stoppedBy(pose GroundPose) string {
 	if m.hasTraffic && m.trafficAt <= m.hold && s >= m.trafficAt-2 {
 		if m.giveWay {
 			return fmt.Sprintf("giving way to #%d", d.givingWay)
+		}
+		if d.facing {
+			return fmt.Sprintf("holding for oncoming #%d", d.blockedBy)
 		}
 		return fmt.Sprintf("traffic ahead #%d", d.blockedBy)
 	}
@@ -369,7 +374,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 	s0 := d.mover.Pose().Distance
 	path := d.mover.Path()
 	body, who := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
-	d.blockedBy = 0
+	d.blockedBy, d.facing = 0, false
 	if !math.IsInf(body, 1) {
 		d.blockedBy = who.id
 	}
@@ -394,7 +399,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 		hs := d.junctionStop(path, s0, at-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters)
 		if hs < stop {
 			stop = hs
-			d.blockedBy = o
+			d.blockedBy, d.facing = o, true
 		}
 	}
 	// Give way where routes cross or merge: stop short of the conflict
