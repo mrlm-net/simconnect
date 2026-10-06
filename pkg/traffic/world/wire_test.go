@@ -124,12 +124,14 @@ type recFeed struct {
 	traffic []Traffic
 	layout  string
 	paused  bool
+	airways int // segments of the airways fed
 }
 
 func (r *recFeed) Airports([]traffic.AirportRef)                  {}
 func (r *recFeed) Weather(nav.Weather)                            {}
 func (r *recFeed) ILS(nav.NavResult)                              {}
 func (r *recFeed) Procedures(airport.Procedures)                  {}
+func (r *recFeed) Airways(_ string, g *nav.AirwayGraph)           { r.airways = g.SegmentCount() }
 func (r *recFeed) Layout(icao string, _ *airport.Layout, _ error) { r.layout = icao }
 func (r *recFeed) UserAircraft(Aircraft, float64, string)         {}
 func (r *recFeed) Paused(p bool)                                  { r.paused = p }
@@ -152,7 +154,12 @@ func TestWireFeed(t *testing.T) {
 	out.Traffic([]Traffic{{ObjectID: 7, Tail: "CSA1", Latitude: 50.1, Longitude: 14.26}})
 	out.Paused(true)
 	out.Layout("LKXX", &airport.Layout{ICAO: "LKXX", Name: "Test"}, nil)
-	for range 3 {
+	g, err := nav.LoadAirwayGraph("../../nav/testdata/LKPR-airways.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Airways("LKPR", g)
+	for range 4 {
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
@@ -164,6 +171,9 @@ func TestWireFeed(t *testing.T) {
 	}
 	if l, ok := cache.Layout("LKXX"); !ok || l.Name != "Test" {
 		t.Error("layout not in the cache")
+	}
+	if rec.airways != g.SegmentCount() {
+		t.Errorf("airways fed with %d segments, want %d", rec.airways, g.SegmentCount())
 	}
 }
 

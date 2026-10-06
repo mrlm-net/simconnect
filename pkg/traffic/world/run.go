@@ -205,6 +205,10 @@ type state struct {
 	// the airway graph for flight plans (#331), nil for direct routes.
 	requests chan<- string
 	airways  *nav.AirwayGraph
+	// airwaysGiven is Options.Airways; airwaysBy each airport's read
+	// from the sim (#799), merged into airways.
+	airwaysGiven *nav.AirwayGraph
+	airwaysBy    map[string]*nav.AirwayGraph
 	// weather is the latest at the user aircraft; atis the information
 	// services by ICAO (#357).
 	weather *nav.Weather
@@ -542,6 +546,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	if actLink != nil {
 		act, feed = st.actuate(ctx, cc, client, actLink)
 	}
+	// The airways around each airport loaded, from the sim (#799).
+	airways := newAirwayKeeper(client, feed, st.core.hooks.DataDir, st.core.hooks.AirwaysMaxAge, ids.crawlDef, ids.crawlReq, st.core.log.printf)
 	// The airports around, for the traffic picture: now and every minute.
 	airports := traffic.NewAirportLister(client, ids.airportList)
 	if err := airports.Request(); err != nil {
@@ -653,6 +659,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			// Every aircraft within TrafficRadius of the user aircraft.
 			scan = scan[:0]
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+			airways.tick(now)
 			for _, r := range navLoader.Expire(now) {
 				feed.ILS(r)
 			}
@@ -686,8 +693,12 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				feed.ILS(r)
 				continue
 			}
+			if airways.handle(msg) {
+				continue
+			}
 			if p, done := procLoader.Handle(msg); done {
 				feed.Procedures(p)
+				airways.want(p, time.Now())
 				continue
 			}
 			if res, done := loader.Handle(msg); done {

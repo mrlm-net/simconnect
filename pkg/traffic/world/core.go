@@ -109,14 +109,15 @@ func (k *core) logRunwayChange(icao string, use nav.RunwayUse, w nav.Weather) {
 // creates (Options.IDBase).
 type libraryIDs struct {
 	loaderDef, loaderReq, procDef, procReq, navDef, navReq, airportList, injDef, injReq, injEvt uint32
+	crawlDef, crawlReq                                                                          uint32
 }
 
 // libIDs are the helpers' IDs: the library defaults, or moved to IDBase.
 func (k *core) libIDs() libraryIDs {
 	if b := k.hooks.IDBase; b != 0 {
-		return libraryIDs{b, b + 100, b + 200, b + 300, b + 400, b + 500, b + 600, b + 700, b + 800, b + 900}
+		return libraryIDs{b, b + 100, b + 200, b + 300, b + 400, b + 500, b + 600, b + 700, b + 800, b + 900, b + 1000, b + 1010}
 	}
 	return libraryIDs{airport.DefaultLoaderDefinitionBase, airport.DefaultLoaderRequestBase, airport.DefaultProcedureDefinitionBase, airport.DefaultProcedureRequestBase,
 		nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, traffic.DefaultAirportListRequestID,
-		traffic.DefaultInjectDefinitionBase, traffic.DefaultInjectRequestBase, traffic.DefaultInjectEventBase}
+		traffic.DefaultInjectDefinitionBase, traffic.DefaultInjectRequestBase, traffic.DefaultInjectEventBase, airwayCrawlDefBase, airwayCrawlReqBase}
 }

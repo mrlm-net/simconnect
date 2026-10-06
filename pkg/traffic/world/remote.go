@@ -1,6 +1,7 @@
 package world
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -272,6 +273,9 @@ type wireWeather struct {
 
 func (f *wireFeedOut) ILS(r nav.NavResult)             { f.put("ils", r) }
 func (f *wireFeedOut) Procedures(p airport.Procedures) { f.put("procedures", p) }
+func (f *wireFeedOut) Airways(icao string, g *nav.AirwayGraph) {
+	f.put("airways", icao, g)
+}
 func (f *wireFeedOut) Layout(icao string, l *airport.Layout, err error) {
 	e := ""
 	if err != nil {
@@ -318,6 +322,20 @@ func feedIn(m wireMsg, to simFeed, cache *airport.Cache) error {
 			return err
 		}
 		to.ILS(v)
+	case "airways":
+		var icao string
+		var raw json.RawMessage
+		if err := arg(0, &icao); err != nil {
+			return err
+		}
+		if err := arg(1, &raw); err != nil {
+			return err
+		}
+		g, err := nav.ReadAirwayGraph(bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		to.Airways(icao, g)
 	case "procedures":
 		var v airport.Procedures
 		if err := arg(0, &v); err != nil {

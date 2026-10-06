@@ -22,6 +22,8 @@ type simFeed interface {
 	ILS(r nav.NavResult)
 	// Procedures are an airport's SIDs, STARs and approaches.
 	Procedures(p airport.Procedures)
+	// Airways are an airport's airways read from the sim (#799).
+	Airways(icao string, g *nav.AirwayGraph)
 	// Layout is an airport loaded (l), or why it was not (err).
 	Layout(icao string, l *airport.Layout, err error)
 	// UserAircraft is the user's aircraft each second, with the simulation
@@ -49,6 +51,8 @@ func (f localFeed) Weather(w nav.Weather) {
 }
 
 func (f localFeed) ILS(r nav.NavResult) { f.st.core.gotILS(r) }
+
+func (f localFeed) Airways(icao string, g *nav.AirwayGraph) { f.st.addAirways(icao, g) }
 
 func (f localFeed) Procedures(p airport.Procedures) {
 	fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))

@@ -105,3 +105,26 @@ func TestLimitsForValidatedAirports(t *testing.T) {
 		}
 	}
 }
+
+// The sim's transition altitude (the AIRPORT record, meters) is used where
+// no published value is known; a published one wins (read live, MSFS
+// 2024: EHAM 914.4 m, KJFK 5486.4 m).
+func TestLimitsTransitionFromSim(t *testing.T) {
+	cases := []struct {
+		icao   string
+		meters float64
+		want   float64
+	}{
+		{"EHAM", 914.4, 3000},
+		{"KJFK", 5486.4, 18000},
+		{"LOWW", 0, 10000},   // published (AIP), nothing from the sim
+		{"LKPR", 3048, 5000}, // published wins over the sim
+		{"ZZZZ", 0, DefaultTransitionAltitudeFt},
+	}
+	for _, c := range cases {
+		got := LimitsFor(&Layout{ICAO: c.icao, TransitionAltitude: c.meters}, nil).TransitionAltitudeFt
+		if got != c.want {
+			t.Errorf("%s: %.0f ft, want %.0f", c.icao, got, c.want)
+		}
+	}
+}
