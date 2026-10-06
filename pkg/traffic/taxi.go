@@ -235,10 +235,12 @@ type TaxiController struct {
 	detailS detailState
 	mu      sync.Mutex
 	fleet   *Fleet
-	defBase uint32
-	reqBase uint32
-	events  chan TaxiEvent
-	now     func() time.Time
+	// services: the airport's tugs and fuel trucks (#830), nil unlimited.
+	services ServiceFleet
+	defBase  uint32
+	reqBase  uint32
+	events   chan TaxiEvent
+	now      func() time.Time
 
 	req       TaxiRequest
 	route     *airport.Route
@@ -709,6 +711,7 @@ func (c *TaxiController) removeTug() {
 	if c.req.Tug != nil {
 		c.note("tug", c.req.Tug.Remove())
 	}
+	c.give(VehicleTug)
 	c.removeFuel()
 }
 
@@ -717,6 +720,8 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 	c.state = s
 	c.emit(err, true)
 	if s.Terminal() {
+		c.give(VehicleTug) // whatever it still holds goes back (#830)
+		c.give(VehicleFuel)
 		c.detail.forget(c.objectID)
 		close(c.events)
 	}

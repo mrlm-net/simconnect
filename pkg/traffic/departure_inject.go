@@ -45,6 +45,24 @@ func TaxiWithGroundPicture(p *GroundPicture) TaxiOption {
 	return func(c *TaxiController) { c.picture = p }
 }
 
+// TaxiWithServices takes the departure's tug and fuel truck from the
+// airport's fleet (#830): sent only when one is free.
+func TaxiWithServices(f ServiceFleet) TaxiOption {
+	return func(c *TaxiController) { c.services = f }
+}
+
+// take reserves a vehicle of kind from the fleet (none: always).
+func (c *TaxiController) take(kind VehicleKind) bool {
+	return c.services == nil || c.services.Take(kind, c.req.Tail)
+}
+
+// give returns the departure's vehicle of kind to the fleet.
+func (c *TaxiController) give(kind VehicleKind) {
+	if c.services != nil {
+		c.services.Give(kind, c.req.Tail)
+	}
+}
+
 // Departure lights by phase: parked with nav lights, beacon on from the
 // pushback clearance, taxi light for taxiing, strobes when entering the
 // runway, landing lights with the take-off clearance, taxi light off once
@@ -500,7 +518,11 @@ const faceOutMaxDeg = 60.0
 // and moves it with the aircraft until it has driven off.
 func (c *TaxiController) updateTug(dt float64) {
 	t := c.req.Tug
-	if t == nil || t.Done() {
+	if t == nil {
+		return
+	}
+	if t.Done() {
+		c.give(VehicleTug) // driven off (or given up): free for the next
 		return
 	}
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
@@ -517,6 +539,9 @@ func (c *TaxiController) updateTug(dt float64) {
 		// minutes early at the nose (live, EZY775 at C29).
 		if !c.pushCleared && c.now().Before(c.gateAt.Add(-TugLeadTime)) {
 			return
+		}
+		if !c.take(VehicleTug) {
+			return // all the airport's tugs out: the push waits for one
 		}
 		c.tugAttached, c.tugAttachedAt = true, c.now()
 		c.giveTraffic(t)

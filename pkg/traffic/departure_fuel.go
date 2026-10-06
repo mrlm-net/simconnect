@@ -30,7 +30,11 @@ func (c *TaxiController) fuelLeaveBy() time.Time {
 // and drives it until it has left.
 func (c *TaxiController) updateFuel(dt float64) {
 	f := c.req.Fuel
-	if f == nil || f.Done() {
+	if f == nil {
+		return
+	}
+	if f.Done() {
+		c.give(VehicleFuel)
 		return
 	}
 	now := c.now()
@@ -48,6 +52,9 @@ func (c *TaxiController) updateFuel(dt float64) {
 		}
 		if now.Before(c.fuelWaitFrom.Add(FuelStartDelay)) || c.fuelLeaveBy().Sub(now) < FuelMinService {
 			return
+		}
+		if !c.take(VehicleFuel) {
+			return // none free: tried again until too late to fuel
 		}
 		c.fuelAttached = true
 		c.giveTraffic(f)
@@ -113,6 +120,7 @@ func (c *TaxiController) removeFuel() {
 	if c.req.Fuel != nil {
 		c.note("fuel truck", c.req.Fuel.Remove())
 	}
+	c.give(VehicleFuel)
 }
 
 // fuelErr reports a fuel vehicle error as an event; the departure goes on
