@@ -520,7 +520,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 	// The loader sends facility requests; this loop hands it every message.
 	ids := st.core.libIDs()
-	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache), airport.LoaderWithIDs(ids.loaderDef, ids.loaderReq))
+	loader := airport.NewLoader(client, airport.LoaderWithCache(st.cache), airport.LoaderWithIDs(ids.loaderDef, ids.loaderReq),
+		airport.LoaderWithTimeout(loaderTimeout)) // its error before the callers' 30 s
 	procLoader := airport.NewProcedureLoaderWithIDs(client, ids.procDef, ids.procReq)
 	// The runways' ILS: frequency and name from their navaid records.
 	navLoader := nav.NewNavLoaderWithIDs(client, ids.navDef, ids.navReq, 8)
@@ -635,6 +636,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	defer camTick.Stop()
 	var lastFrame time.Time          // the simulator's last frame event
 	droppedAt := map[string]uint64{} // by ICAO: Feed's drop count when its layout was asked
+	var excWindow time.Time          // SimConnect exceptions logged since
+	excLogged := 0
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
@@ -656,6 +659,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
 			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
+			tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
 			if err := loader.Request(icao); err != nil {
 				feed.Layout(icao, nil, err)
 			}
@@ -676,6 +680,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				feed.ILS(r)
 			}
 			for _, res := range loader.Expire(now) {
+				tlog.printf("%s: airport not loaded: %v", res.ICAO, res.Err)
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				feed.Layout(res.ICAO, nil, res.Err)
 			}
@@ -722,6 +727,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				}
 				delete(droppedAt, res.ICAO)
 				if res.Err != nil {
+					tlog.printf("%s: airport not loaded: %v", res.ICAO, res.Err)
+				} else {
+					tlog.printf("%s: airport loaded: %d runways, %d stands, %d taxi points", res.ICAO, len(res.Layout.Runways), len(res.Layout.Parking), len(res.Layout.TaxiPoints))
+				}
+				if res.Err != nil {
 					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				} else {
 					l := res.Layout
@@ -757,6 +767,14 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			case types.SIMCONNECT_RECV_ID_EXCEPTION:
 				e := msg.AsException()
 				fmt.Fprintf(os.Stderr, "⚠️  SimConnect exception %d (sendID=%d, index=%d)\n", e.DwException, e.DwSendID, e.DwIndex)
+				// In the log too, at most excLogPerMinute a minute: what the
+				// simulator refused (a host may not show stderr).
+				if time.Since(excWindow) > time.Minute {
+					excWindow, excLogged = time.Now(), 0
+				}
+				if excLogged++; excLogged <= excLogPerMinute {
+					tlog.printf("simconnect exception %d (send %d, index %d)", e.DwException, e.DwSendID, e.DwIndex)
+				}
 
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
 				d := msg.AsSimObjectData()
@@ -1276,3 +1294,12 @@ var (
 	typeTitlesMu sync.Mutex
 	typeTitles   = map[string]string{}
 )
+
+// excLogPerMinute: SimConnect exceptions written to the traffic log a
+// minute at most.
+const excLogPerMinute = 20
+
+// loaderTimeout: an airport load not answered by then ends in
+// airport.ErrTimeout, before the 30 s its callers wait (a director's
+// SetSchedule saw only "context deadline exceeded").
+const loaderTimeout = 25 * time.Second
