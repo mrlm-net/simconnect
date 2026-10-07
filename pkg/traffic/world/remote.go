@@ -53,7 +53,9 @@ type (
 // StartDeparture starts the departure on the actuator: its events come
 // from its target, subscribed before it starts.
 func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequest) (departureCtl, <-chan traffic.TaxiEvent, error) {
-	w := departureStart{Target: fmt.Sprintf("dep/%d", defBase), DefBase: defBase, ReqBase: reqBase, Req: req}
+	// A target of its own (#53: "dep/<defBase>" came back with a reused ID
+	// block, and the old controller's end removed the new one).
+	w := departureStart{Target: fmt.Sprintf("dep/%d/%d", defBase, wireTargetSeq.Add(1)), DefBase: defBase, ReqBase: reqBase, Req: req}
 	if req.Graph != nil {
 		w.ICAO = req.Graph.Layout.ICAO
 	}
@@ -92,7 +94,7 @@ func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequ
 
 // StartArrival starts the arrival on the actuator, as StartDeparture.
 func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalRequest) (arrivalCtl, <-chan traffic.ArrivalEvent, error) {
-	w := arrivalStart{Target: fmt.Sprintf("arr/%d", defBase), DefBase: defBase, ReqBase: reqBase, Req: req}
+	w := arrivalStart{Target: fmt.Sprintf("arr/%d/%d", defBase, wireTargetSeq.Add(1)), DefBase: defBase, ReqBase: reqBase, Req: req}
 	if req.Graph != nil {
 		w.ICAO = req.Graph.Layout.ICAO
 	}
@@ -195,7 +197,7 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 		a.vehicles[w.Target] = actuatorVehicles{tug: tug, fuel: fuel}
 		a.mu.Unlock()
 	}
-	go a.pump(w.Target, func(yield func(any, error) bool) {
+	go a.pump(w.Target, ctl, func(yield func(any, error) bool) {
 		for ev := range evs {
 			if !yield(ev, ev.Err) {
 				return
@@ -219,7 +221,7 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 	}
 	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
-	go a.pump(w.Target, func(yield func(any, error) bool) {
+	go a.pump(w.Target, ctl, func(yield func(any, error) bool) {
 		for ev := range evs {
 			if !yield(ev, ev.Err) {
 				return
@@ -230,8 +232,9 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 }
 
 // pump sends target's events until they end, then forgets the target.
-func (a *actuatorSim) pump(target string, events func(yield func(any, error) bool)) {
+func (a *actuatorSim) pump(target string, ctl interface{ Handle(engine.Message) bool }, events func(yield func(any, error) bool)) {
 	defer a.srv.remove(target)
+	defer a.drop(ctl) // done: no more messages for it (#65)
 	defer func() {
 		a.mu.Lock()
 		delete(a.vehicles, target)
@@ -248,6 +251,9 @@ func (a *actuatorSim) pump(target string, events func(yield func(any, error) boo
 		}
 		return a.send(m) == nil
 	})
+	// Its events are over: the director's channel closes, as a local
+	// controller's does (#52: the flight never ended on the director).
+	_ = a.send(wireMsg{Kind: wireEvent, Target: target, Method: wireEnd})
 }
 
 // ── The feed over the wire ─────────────────────────────────────────────────

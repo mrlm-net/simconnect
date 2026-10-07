@@ -116,6 +116,9 @@ type ApproachMover struct {
 	// aim shifts the whole path along the runway, meters (SetAimShift): the
 	// touchdown point varies from landing to landing.
 	aim float64
+	// side shifts it across, meters right of the centreline (SetSideShift),
+	// faded in on short final.
+	side float64
 }
 
 // SetAimShift moves the aiming point, and so the touchdown, by meters
@@ -125,6 +128,22 @@ func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
 // TouchdownSpreadMeters: an injected landing touches down up to this much
 // before or past its type's usual point.
 const TouchdownSpreadMeters = 10.0
+
+// SetSideShift moves the touchdown meters right of the centreline
+// (negative: left), faded in over the last sideFadeMeters of the final:
+// no two landings on the same line (live: every one the same bit off).
+func (m *ApproachMover) SetSideShift(meters float64) { m.side = meters }
+
+// TouchdownSideMeters: an injected landing touches down up to this much
+// either side of the centreline.
+const TouchdownSideMeters = 3.0
+
+// The side shift fades in from sideFadeFromMeters before the threshold to
+// full sideFadeMeters later.
+const (
+	sideFadeFromMeters = 3000.0
+	sideFadeMeters     = 2500.0
+)
 
 // bankDeg is the wing low into a crosswind: none on final (crabbed), into
 // the wind as the crab comes out in the flare (the upwind main gear first),
@@ -187,8 +206,13 @@ func NewApproachMover(threshold airport.LatLon, heading, startMeters float64, p 
 
 // Pose returns the current pose.
 func (m *ApproachMover) Pose() ApproachPose {
+	pos := offsetHeading(m.thr, m.heading, m.x+m.aim)
+	if m.side != 0 {
+		fade := math.Max(0, math.Min(1, (m.x+m.aim+sideFadeFromMeters)/sideFadeMeters))
+		pos = offsetHeading(pos, m.heading+90, m.side*fade)
+	}
 	return ApproachPose{
-		Position: offsetHeading(m.thr, m.heading, m.x+m.aim), Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
+		Position: pos, Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
 		HeightFt: m.h, PitchDeg: m.pitch, BankDeg: m.bankDeg(), GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x + m.aim, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
 		Touchdown: m.touchX + m.aim, TouchdownFpm: m.touchFpm,

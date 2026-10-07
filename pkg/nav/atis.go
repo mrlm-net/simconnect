@@ -36,7 +36,8 @@ type ATIS struct {
 }
 
 // NewATIS assembles a broadcast: QNH is Weather.QNHhPa rounded down, the
-// transition level follows from it and transitionAltitudeFt (0: none).
+// transition level follows from it and transitionAltitudeFt (0: none; no
+// transition level either without a QNH).
 func NewATIS(airportName string, letter byte, now time.Time, w Weather, use RunwayUse, transitionAltitudeFt int, magVar float64) ATIS {
 	a := ATIS{
 		Airport:              airportName,
@@ -48,7 +49,7 @@ func NewATIS(airportName string, letter byte, now time.Time, w Weather, use Runw
 		QNH:                  int(math.Floor(w.QNHhPa)),
 		MagVar:               magVar,
 	}
-	if transitionAltitudeFt > 0 {
+	if transitionAltitudeFt > 0 && a.QNH > 0 {
 		a.TransitionLevel = TransitionLevel(transitionAltitudeFt, float64(a.QNH))
 	}
 	return a

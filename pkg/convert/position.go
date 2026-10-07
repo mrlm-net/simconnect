@@ -30,6 +30,10 @@ func OffsetToLatLon(latRef, lonRef, xEast, zNorth float64) (lat, lon float64) {
 
 	lat = latRef + deltaLat
 	lon = lonRef + deltaLon
+	// Across the antimeridian: back into [-180, 180].
+	if lon > 180 || lon < -180 {
+		lon = NormalizeAngle(lon)
+	}
 	return
 }
 
@@ -62,7 +66,12 @@ func LatLonToOffset(latRef, lonRef, lat, lon float64) (xEast, zNorth float64) {
 
 	zNorth = (lat - latRef) * (math.Pi / 180.0) * M
 	if math.Abs(latRef) < 90.0 {
-		xEast = (lon - lonRef) * (math.Pi / 180.0) * N * math.Cos(latRefRad)
+		// The short way round: 179.9 to -179.9 is 0.2° east, not 359.8° west.
+		dLon := lon - lonRef
+		if dLon > 180 || dLon < -180 {
+			dLon = NormalizeAngle(dLon)
+		}
+		xEast = dLon * (math.Pi / 180.0) * N * math.Cos(latRefRad)
 	}
 	return
 }

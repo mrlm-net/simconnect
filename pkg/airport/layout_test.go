@@ -219,7 +219,8 @@ func TestLayoutJSONRoundTrip(t *testing.T) {
 }
 
 func TestNormalizeRunwayEnd(t *testing.T) {
-	for in, want := range map[string]string{"6": "06", "06": "06", " rw6l ": "06L", "RWY27R": "27R", "36": "36", "N": "N"} {
+	for in, want := range map[string]string{"6": "06", "06": "06", " rw6l ": "06L", "RWY27R": "27R", "36": "36", "N": "N",
+		"RW 24": "24", "rwy 6l": "06L"} {
 		if got := normalizeRunwayEnd(in); got != want {
 			t.Errorf("normalizeRunwayEnd(%q) = %q, want %q", in, got, want)
 		}

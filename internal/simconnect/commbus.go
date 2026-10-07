@@ -18,7 +18,7 @@ func (sc *SimConnect) SubscribeToCommBusEvent(eventID uint32, eventName string) 
 	if err != nil {
 		return err
 	}
-	hresult, _, _ := sc.library.LoadProcedure("SimConnect_SubscribeToCommBusEvent").Call(sc.getConnection(), uintptr(eventID), uintptr(unsafe.Pointer(name)))
+	hresult, _, _ := sc.proc("SimConnect_SubscribeToCommBusEvent").Call(sc.getConnection(), uintptr(eventID), uintptr(unsafe.Pointer(name)))
 	if !isHRESULTSuccess(hresult) {
 		return fmt.Errorf("SimConnect_SubscribeToCommBusEvent failed with HRESULT: 0x%08X", uint32(hresult))
 	}
@@ -27,7 +27,7 @@ func (sc *SimConnect) SubscribeToCommBusEvent(eventID uint32, eventName string) 
 
 // UnsubscribeToCommBusEvent ends the subscription with eventID. MSFS 2024 only.
 func (sc *SimConnect) UnsubscribeToCommBusEvent(eventID uint32) error {
-	hresult, _, _ := sc.library.LoadProcedure("SimConnect_UnsubscribeToCommBusEvent").Call(sc.getConnection(), uintptr(eventID))
+	hresult, _, _ := sc.proc("SimConnect_UnsubscribeToCommBusEvent").Call(sc.getConnection(), uintptr(eventID))
 	if !isHRESULTSuccess(hresult) {
 		return fmt.Errorf("SimConnect_UnsubscribeToCommBusEvent failed with HRESULT: 0x%08X", uint32(hresult))
 	}
@@ -42,7 +42,7 @@ func (sc *SimConnect) CallCommBusEvent(eventName string, broadcastTo types.SIMCO
 		return err
 	}
 	buf := append([]byte(data), 0) // NUL-terminated, its size with the NUL
-	hresult, _, _ := sc.library.LoadProcedure("SimConnect_CallCommBusEvent").Call(sc.getConnection(), uintptr(unsafe.Pointer(name)), uintptr(broadcastTo), uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])))
+	hresult, _, _ := sc.proc("SimConnect_CallCommBusEvent").Call(sc.getConnection(), uintptr(unsafe.Pointer(name)), uintptr(broadcastTo), uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])))
 	if !isHRESULTSuccess(hresult) {
 		return fmt.Errorf("SimConnect_CallCommBusEvent failed with HRESULT: 0x%08X", uint32(hresult))
 	}

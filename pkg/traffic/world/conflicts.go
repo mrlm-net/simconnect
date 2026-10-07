@@ -3,6 +3,7 @@ package world
 import (
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +134,10 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		busy := now.Before(w.busy[a.Tail])
 		w.mu.Unlock()
 		if !a.Ours || busy {
+			return false
+		}
+		// Flying a TCAS RA: nothing contrary to it (FAA JO 7110.65 2-1-28).
+		if it := w.s.cc.byTail(a.Tail); it != nil && it.tcasRA.Load() {
 			return false
 		}
 		if enroute(a) != nil {
@@ -287,7 +292,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			w.s.cc.log.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
 		}
-		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts)
+		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)})
 		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
 		w.s.cc.radio.Transmit(icao, tx)
 		said := tx.Text
@@ -340,7 +345,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 	}
 	for cs, until := range w.busy {
-		if now.After(until) {
+		// Kept through engagedAfter: engaged says "just out of a resolution"
+		// from it (#76: deleted at expiry, the grace never applied).
+		if now.After(until.Add(engagedAfter)) {
 			delete(w.busy, cs)
 		}
 	}
@@ -525,7 +532,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(level, arrivalLevelForNM) })
 				if err == nil {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
-					trailer.it.say(traffic.StopDescent(traffic.PosApproach, cs, level, oth))
+					trailer.it.say(traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO)))
 					recheck()
 					return
 				}
@@ -663,3 +670,20 @@ const engagedAfter = 3 * time.Minute
 // conflictRefusedWait: an arrival approach could do nothing for in a
 // conflict is not asked again for this long.
 const conflictRefusedWait = 2 * time.Minute
+
+// forget drops what the watch remembers of a call sign, spawned again as a
+// new flight (#75, #85).
+func (w *conflictWatch) forget(tail string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	delete(w.busy, tail)
+	delete(w.slowed, tail)
+	delete(w.asked, tail)
+	delete(w.leveled, tail)
+	delete(w.stopped, tail)
+	for k := range w.informed {
+		if strings.Contains(k, tail) {
+			delete(w.informed, k) // by pair
+		}
+	}
+}

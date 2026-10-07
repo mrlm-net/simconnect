@@ -12,7 +12,7 @@ import (
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_MapClientEventToSimEvent.htm
 func (sc *SimConnect) MapClientEventToSimEvent(eventID uint32, eventName string) error {
-	procedure := sc.library.LoadProcedure("SimConnect_MapClientEventToSimEvent")
+	procedure := sc.proc("SimConnect_MapClientEventToSimEvent")
 
 	eventNamePtr, err := stringToBytePtr(eventName)
 	if err != nil {
@@ -34,7 +34,7 @@ func (sc *SimConnect) MapClientEventToSimEvent(eventID uint32, eventName string)
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_RemoveClientEvent.htm
 func (sc *SimConnect) RemoveClientEvent(groupID uint32, eventID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RemoveClientEvent")
+	procedure := sc.proc("SimConnect_RemoveClientEvent")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -51,7 +51,7 @@ func (sc *SimConnect) RemoveClientEvent(groupID uint32, eventID uint32) error {
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_TransmitClientEvent.htm
 func (sc *SimConnect) TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error {
-	procedure := sc.library.LoadProcedure("SimConnect_TransmitClientEvent")
+	procedure := sc.proc("SimConnect_TransmitClientEvent")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -71,7 +71,7 @@ func (sc *SimConnect) TransmitClientEvent(objectID uint32, eventID uint32, data 
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_TransmitClientEvent_EX1.htm
 func (sc *SimConnect) TransmitClientEventEx1(objectID uint32, eventID uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG, data [5]uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_TransmitClientEvent_EX1")
+	procedure := sc.proc("SimConnect_TransmitClientEvent_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -95,7 +95,7 @@ func (sc *SimConnect) TransmitClientEventEx1(objectID uint32, eventID uint32, gr
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_MapClientDataNameToID.htm
 func (sc *SimConnect) MapClientDataNameToID(clientDataName string, clientDataID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_MapClientDataNameToID")
+	procedure := sc.proc("SimConnect_MapClientDataNameToID")
 
 	clientDataNamePtr, err := stringToBytePtr(clientDataName)
 	if err != nil {

@@ -66,8 +66,8 @@ type Client interface {
 	AddToFacilityDefinition(definitionID uint32, fieldName string) error
 	AddFacilityDataDefinitionFilter(definitionID uint32, filterPath string, filterData unsafe.Pointer, filterDataSize uint32) error
 	ClearAllFacilityDataDefinitionFilters(definitionID uint32) error
-	RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
-	RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilitiesList(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilitiesListEX1(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
 	RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error
 	RequestFacilityDataEX1(definitionID uint32, requestID uint32, icao string, region string, facilityType byte) error
 	RequestJetwayData(airportICAO string, arrayCount uint32, indexes *int32) error

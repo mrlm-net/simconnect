@@ -12,6 +12,8 @@ import (
 // (traffic.TaxiController): the line between the decisions and the
 // simulator side, where a remote actuator's proxy can stand in (#710).
 type departureCtl interface {
+	Occupies() (airport.Occupied, bool)
+	AvoidOccupied(occ []airport.Occupied) bool
 	SetPushbackAt(at time.Time) bool
 	ClearPushback()
 	FacesOut() bool
@@ -43,6 +45,7 @@ type departureCtl interface {
 // arrivalCtl is what the World asks of an arrival's controller
 // (traffic.ArrivalController), as departureCtl.
 type arrivalCtl interface {
+	AvoidOccupied(occ []airport.Occupied) bool
 	AbsorbDelay(delay time.Duration) (traffic.Absorption, error)
 	AnotherCircuit() (time.Duration, error)
 	Cancel() error

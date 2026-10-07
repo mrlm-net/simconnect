@@ -22,7 +22,8 @@ type SimState struct {
 	IsInRTC                  bool
 	IsAvatar                 bool
 	IsAircraft               bool
-	// Crash and sound flags
+	// Crash and sound flags. Crashed is true from a Crashed system event until
+	// the next CrashReset; CrashReset from a CrashReset until the next Crashed.
 	Crashed    bool
 	CrashReset bool
 	Sound      uint32

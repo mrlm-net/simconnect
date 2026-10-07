@@ -33,11 +33,11 @@ const (
 	PauseEventID uint32 = 999999998 // Manager ID for tracking pause event subscription
 	SimEventID   uint32 = 999999997 // Manager ID for tracking sim event subscription
 	// Crash and Sound Events
-	CrashedEventID    uint32 = 999999991 // Manager ID for tracking 'Crashed' system event
-	CrashResetEventID uint32 = 999999990 // Manager ID for tracking 'Crash Reset' system event
-	SoundEventID      uint32 = 999999989 // Manager ID for tracking 'Sound' system event
-	ViewEventID                    uint32 = 999999988 // Manager ID for tracking 'View' system event
-	FlightPlanDeactivatedEventID   uint32 = 999999987 // Manager ID for tracking 'FlightPlanDeactivated' system event
+	CrashedEventID               uint32 = 999999991 // Manager ID for tracking 'Crashed' system event
+	CrashResetEventID            uint32 = 999999990 // Manager ID for tracking 'Crash Reset' system event
+	SoundEventID                 uint32 = 999999989 // Manager ID for tracking 'Sound' system event
+	ViewEventID                  uint32 = 999999988 // Manager ID for tracking 'View' system event
+	FlightPlanDeactivatedEventID uint32 = 999999987 // Manager ID for tracking 'FlightPlanDeactivated' system event
 
 	// Additional Manager Event IDs
 	// These IDs map internal manager subscriptions for SimConnect system events.
@@ -48,14 +48,17 @@ const (
 	FlightPlanActivatedEventID uint32 = 999999992 // Flight plan activated
 	// Position change event removed
 
-	// Custom System Event Range — dynamically allocated for user-defined system events
-	CustomEventIDMin uint32 = 999999850
-	CustomEventIDMax uint32 = 999999886
+	// Custom System Event Range — dynamically allocated for user-defined system events.
+	// Inside the manager range (it was 999999850-999999886, inside the user range
+	// IsValidUserID accepts, review #31), clear of the fixed IDs above and of the
+	// engine heartbeat event (999999999).
+	CustomEventIDMin uint32 = 999999910
+	CustomEventIDMax uint32 = 999999979
 
 	// ID Range Documentation:
 	// User-Available Range: 1 - 999999899 (999,999,899 IDs available for user requests)
 	// Manager Reserved Range: 999999900 - 999999999 (100 IDs reserved for manager operations)
-	// Custom Event Range: 999999850 - 999999886 (37 IDs for custom system events)
+	// Custom Event Range: 999999910 - 999999979 (70 IDs for custom system events, inside the manager range)
 )
 
 // IDRange defines the boundaries for ID allocation

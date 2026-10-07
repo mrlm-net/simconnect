@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/binary"
 	"math"
+	"sync"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -46,8 +47,15 @@ type Message struct {
 	Size uint32
 	Err  error
 
-	data    []byte // Internal field to keep the copied data alive
-	release func() // Internal function to return buffer to pool
+	data    []byte    // Internal field to keep the copied data alive
+	release *releaser // Internal: returns the buffer to the pool, shared by copies
+}
+
+// releaser returns a message's buffer to its pool once, however many copies
+// of the Message call Release (Message is passed by value).
+type releaser struct {
+	once sync.Once
+	fn   func()
 }
 
 // newMessage creates a new Message with pooled buffer.
@@ -55,22 +63,26 @@ type Message struct {
 // the buffer to the pool. If Release() is not called, the buffer will be garbage
 // collected but pool efficiency will be reduced under high load.
 func newMessage(recv *types.SIMCONNECT_RECV, size uint32, err error, data []byte, release func()) Message {
-	return Message{
+	m := Message{
 		SIMCONNECT_RECV: recv,
 		Size:            size,
 		Err:             err,
 		data:            data,
-		release:         release,
 	}
+	if release != nil {
+		m.release = &releaser{fn: release}
+	}
+	return m
 }
 
 // Release returns the message's buffer to the appropriate pool.
 // Call this when the message is no longer needed for best performance.
-// Safe to call multiple times (no-op after first call).
+// Safe to call multiple times, also on copies of the message: the buffer
+// is returned once.
 func (m *Message) Release() {
 	if m.release != nil {
-		m.release()
-		m.release = nil // Prevent double-release
+		m.release.once.Do(m.release.fn)
+		m.release = nil
 	}
 }
 
@@ -91,12 +103,17 @@ func (m Message) Detach() Message {
 }
 
 func CastAs[T any](m *Message) T {
-	switch types.SIMCONNECT_RECV_ID(m.DwID) {
-	case types.SIMCONNECT_RECV_ID_EVENT:
+	if m.is(types.SIMCONNECT_RECV_ID_EVENT) {
 		return any((*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))).(T)
 	}
 	var zero T
 	return zero
+}
+
+// is reports whether m carries a message of the ID: false for an error
+// Message, which has no SIMCONNECT_RECV.
+func (m *Message) is(id types.SIMCONNECT_RECV_ID) bool {
+	return m.SIMCONNECT_RECV != nil && types.SIMCONNECT_RECV_ID(m.DwID) == id
 }
 
 // CastData casts the DwData field from a SimObject data response to the specified struct type.
@@ -115,73 +132,73 @@ func BytesToString(data []byte) string {
 }
 
 func (m *Message) AsEvent() *types.SIMCONNECT_RECV_EVENT {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
+	if !m.is(types.SIMCONNECT_RECV_ID_EVENT) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsEventFrame() *types.SIMCONNECT_RECV_EVENT_FRAME {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_FRAME {
+	if !m.is(types.SIMCONNECT_RECV_ID_EVENT_FRAME) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EVENT_FRAME)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsEventFilename() *types.SIMCONNECT_RECV_EVENT_FILENAME {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_FILENAME {
+	if !m.is(types.SIMCONNECT_RECV_ID_EVENT_FILENAME) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EVENT_FILENAME)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsEventObjectAddRemove() *types.SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE {
+	if !m.is(types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsOpen() *types.SIMCONNECT_RECV_OPEN {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_OPEN {
+	if !m.is(types.SIMCONNECT_RECV_ID_OPEN) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_OPEN)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsSimObjectData() *types.SIMCONNECT_RECV_SIMOBJECT_DATA {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
+	if !m.is(types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_SIMOBJECT_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsSimObjectDataBType() *types.SIMCONNECT_RECV_SIMOBJECT_DATA_BTYPE {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE {
+	if !m.is(types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_SIMOBJECT_DATA_BTYPE)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsSimObjectAndLiveryEnumeration() *types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
+	if !m.is(types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsFacilityData() *types.SIMCONNECT_RECV_FACILITY_DATA {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FACILITY_DATA {
+	if !m.is(types.SIMCONNECT_RECV_ID_FACILITY_DATA) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_FACILITY_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsFacilityList() *types.SIMCONNECT_RECV_FACILITIES_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_AIRPORT_LIST ||
-		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_VOR_LIST ||
-		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_NDB_LIST ||
-		types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_WAYPOINT_LIST {
+	if m.is(types.SIMCONNECT_RECV_ID_AIRPORT_LIST) ||
+		m.is(types.SIMCONNECT_RECV_ID_VOR_LIST) ||
+		m.is(types.SIMCONNECT_RECV_ID_NDB_LIST) ||
+		m.is(types.SIMCONNECT_RECV_ID_WAYPOINT_LIST) {
 		return (*types.SIMCONNECT_RECV_FACILITIES_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 
 	}
@@ -189,49 +206,49 @@ func (m *Message) AsFacilityList() *types.SIMCONNECT_RECV_FACILITIES_LIST {
 }
 
 func (m *Message) AsAirportList() *types.SIMCONNECT_RECV_AIRPORT_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_AIRPORT_LIST {
+	if !m.is(types.SIMCONNECT_RECV_ID_AIRPORT_LIST) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_AIRPORT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsNDBList() *types.SIMCONNECT_RECV_NDB_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_NDB_LIST {
+	if !m.is(types.SIMCONNECT_RECV_ID_NDB_LIST) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_NDB_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsVORList() *types.SIMCONNECT_RECV_VOR_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_VOR_LIST {
+	if !m.is(types.SIMCONNECT_RECV_ID_VOR_LIST) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_VOR_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsWaypointList() *types.SIMCONNECT_RECV_WAYPOINT_LIST {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_WAYPOINT_LIST {
+	if !m.is(types.SIMCONNECT_RECV_ID_WAYPOINT_LIST) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_WAYPOINT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsAssignedObjectID() *types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+	if !m.is(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsFacilityDataEnd() *types.SIMCONNECT_RECV_FACILITY_DATA_END {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FACILITY_DATA_END {
+	if !m.is(types.SIMCONNECT_RECV_ID_FACILITY_DATA_END) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_FACILITY_DATA_END)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
 func (m *Message) AsException() *types.SIMCONNECT_RECV_EXCEPTION {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_EXCEPTION {
+	if !m.is(types.SIMCONNECT_RECV_ID_EXCEPTION) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -241,7 +258,7 @@ func (m *Message) AsException() *types.SIMCONNECT_RECV_EXCEPTION {
 // Returns nil if the message is not a flow event.
 // Note: MSFS 2024 only.
 func (m *Message) AsFlowEvent() *types.SIMCONNECT_RECV_FLOW_EVENT {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_FLOW_EVENT {
+	if !m.is(types.SIMCONNECT_RECV_ID_FLOW_EVENT) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_FLOW_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -250,7 +267,7 @@ func (m *Message) AsFlowEvent() *types.SIMCONNECT_RECV_FLOW_EVENT {
 // AsCameraStatus casts the message to SIMCONNECT_RECV_CAMERA_STATUS; nil
 // if it is not one. MSFS 2024 only.
 func (m *Message) AsCameraStatus() *types.SIMCONNECT_RECV_CAMERA_STATUS {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CAMERA_STATUS {
+	if !m.is(types.SIMCONNECT_RECV_ID_CAMERA_STATUS) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_CAMERA_STATUS)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -260,7 +277,7 @@ func (m *Message) AsCameraStatus() *types.SIMCONNECT_RECV_CAMERA_STATUS {
 // so it is decoded rather than cast); false if the message is not one.
 // MSFS 2024 only.
 func (m *Message) AsCameraData() (types.SIMCONNECT_DATA_CAMERA, bool) {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CAMERA_DATA || m.DwSize < 12+types.SimConnectCameraDataSize {
+	if !m.is(types.SIMCONNECT_RECV_ID_CAMERA_DATA) || m.DwSize < 12+types.SimConnectCameraDataSize {
 		return types.SIMCONNECT_DATA_CAMERA{}, false
 	}
 	b := unsafe.Slice((*byte)(unsafe.Pointer(m.SIMCONNECT_RECV)), m.DwSize)
@@ -271,7 +288,7 @@ func (m *Message) AsCameraData() (types.SIMCONNECT_DATA_CAMERA, bool) {
 // Returns nil if the message is not an enumerate input events response.
 // Note: MSFS 2024 only.
 func (m *Message) AsEnumerateInputEvents() *types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENTS {
+	if !m.is(types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENTS) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -281,7 +298,7 @@ func (m *Message) AsEnumerateInputEvents() *types.SIMCONNECT_RECV_ENUMERATE_INPU
 // Returns nil if the message is not a get input event response.
 // Note: MSFS 2024 only.
 func (m *Message) AsGetInputEvent() *types.SIMCONNECT_RECV_GET_INPUT_EVENT {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_GET_INPUT_EVENT {
+	if !m.is(types.SIMCONNECT_RECV_ID_GET_INPUT_EVENT) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_GET_INPUT_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -291,7 +308,7 @@ func (m *Message) AsGetInputEvent() *types.SIMCONNECT_RECV_GET_INPUT_EVENT {
 // Returns nil if the message is not a subscribe input event notification.
 // Note: MSFS 2024 only.
 func (m *Message) AsSubscribeInputEvent() *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT {
+	if !m.is(types.SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT)(unsafe.Pointer(m.SIMCONNECT_RECV))
@@ -300,7 +317,7 @@ func (m *Message) AsSubscribeInputEvent() *types.SIMCONNECT_RECV_SUBSCRIBE_INPUT
 // AsClientData casts the message to SIMCONNECT_RECV_CLIENT_DATA.
 // Returns nil if the message is not a client data notification.
 func (m *Message) AsClientData() *types.SIMCONNECT_RECV_CLIENT_DATA {
-	if types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_CLIENT_DATA {
+	if !m.is(types.SIMCONNECT_RECV_ID_CLIENT_DATA) {
 		return nil
 	}
 	return (*types.SIMCONNECT_RECV_CLIENT_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))

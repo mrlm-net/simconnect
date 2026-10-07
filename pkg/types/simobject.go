@@ -14,7 +14,9 @@ const (
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST.htm
 type SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST struct {
 	SIMCONNECT_RECV_LIST_TEMPLATE
-	RgData []SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY
+	// RgData marks offset 28, where DwArraySize entries follow (the Go struct
+	// matches the wire, 512 bytes): read them with Entries.
+	RgData [0]SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY.htm

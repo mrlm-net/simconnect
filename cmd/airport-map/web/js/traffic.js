@@ -79,7 +79,7 @@ function nextAction(v) {
   return waits(v) || !has(v, 'hold') ? c[0] : null;
 }
 function statusText(v) {
-  return [v.state, v.deicing && 'de-icing', v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`,
+  return [v.tcas && `TCAS ${v.tcas.advisory}: ${v.tcas.aural || 'traffic'} (${v.tcas.intruder})`, v.state, v.deicing && 'de-icing', v.pushbackHeld && 'waiting for traffic behind', v.holdingShortOf && `short of ${v.holdingShortOf}`,
     v.atLimit && (v.limitNode >= 0 ? 'at limit' : 'holding position')].filter(Boolean).join(' · ');
 }
 const routeText = (v) => v.kind === 'arrival' ? `RWY ${v.runway} → ${v.stand}` : `${v.stand} → RWY ${v.runway}`;

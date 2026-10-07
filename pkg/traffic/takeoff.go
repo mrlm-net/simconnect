@@ -43,8 +43,17 @@ type TakeoffProfile struct {
 // far below ClimbPitch after gear-up (TakeoffProfile.SettlePitch unset), at
 // this rate (°/s).
 const (
-	SettleBelowClimbDeg = 5.0
+	SettleBelowClimbDeg = 3.0
 	SettlePitchRate     = 1.0
+)
+
+// AirbornePullDeg: fully airborne (AirbornePullFt), the nose comes up this
+// much past ClimbPitch for the first climb: "getting off the runway is
+// perfect but usually there is a bit of pulling more once airborne fully"
+// (user, 2026-10-07).
+const (
+	AirbornePullDeg = 2.5
+	AirbornePullFt  = 50.0
 )
 
 // settlePitch is the profile's pitch after gear-up, the default where unset.
@@ -270,7 +279,11 @@ func (m *TakeoffMover) step(dt float64) {
 			m.pitch = math.Max(math.Min(m.pitch, p.settlePitch()), m.pitch-SettlePitchRate*dt)
 		} else if m.h >= PositiveClimbFt {
 			limit := m.groundPitchLimit() + m.h/TailClearFtPerDeg
-			m.pitch = math.Max(m.pitch, math.Min(math.Min(p.ClimbPitch, limit), m.pitch+p.RotateRate*dt))
+			target := p.ClimbPitch
+			if m.h >= AirbornePullFt {
+				target += AirbornePullDeg
+			}
+			m.pitch = math.Max(m.pitch, math.Min(math.Min(target, limit), m.pitch+p.RotateRate*dt))
 		}
 		f := math.Min(1, m.airborneFor/math.Max(p.ClimbRampSeconds, 0.01))
 		m.vs = p.ClimbFpm * f * f * (3 - 2*f) // eases into the climb

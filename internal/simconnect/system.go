@@ -20,7 +20,7 @@ func (sc *SimConnect) RequestSystemState(requestID uint32, state types.SIMCONNEC
 		return fmt.Errorf("failed to convert state string to C string: %v", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_RequestSystemState")
+	procedure := sc.proc("SimConnect_RequestSystemState")
 
 	// Request the system state from SimConnect
 	// Note: Use e.handle directly, not e.getHandle() which is for receiving handles
@@ -44,7 +44,7 @@ func (sc *SimConnect) SubscribeToSystemEvent(eventID uint32, eventName string) e
 		return fmt.Errorf("failed to convert event name to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_SubscribeToSystemEvent")
+	procedure := sc.proc("SimConnect_SubscribeToSystemEvent")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -61,7 +61,7 @@ func (sc *SimConnect) SubscribeToSystemEvent(eventID uint32, eventName string) e
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_UnsubscribeFromSystemEvent.htm
 func (sc *SimConnect) UnsubscribeFromSystemEvent(eventID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_UnsubscribeFromSystemEvent")
+	procedure := sc.proc("SimConnect_UnsubscribeFromSystemEvent")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -77,7 +77,7 @@ func (sc *SimConnect) UnsubscribeFromSystemEvent(eventID uint32) error {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_SetSystemEventState.htm
 func (sc *SimConnect) SetSystemEventState(eventID uint32, state types.SIMCONNECT_STATE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SetSystemEventState")
+	procedure := sc.proc("SimConnect_SetSystemEventState")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -95,7 +95,7 @@ func (sc *SimConnect) SetSystemEventState(eventID uint32, state types.SIMCONNECT
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/General/SimConnect_GetLastSentPacketID.htm
 func (sc *SimConnect) GetLastSentPacketID() (uint32, error) {
 	var id uint32
-	procedure := sc.library.LoadProcedure("SimConnect_GetLastSentPacketID")
+	procedure := sc.proc("SimConnect_GetLastSentPacketID")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(),   // hSimConnect

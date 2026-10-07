@@ -33,18 +33,18 @@ const (
 // use [8]byte (alignment 1) to land at exactly the wire offsets 1060 and 1068.
 // Use encoding/binary.LittleEndian.Uint64 + math.Float64frombits to read values.
 type SIMCONNECT_DATA_RACE_RESULT struct {
-	DwNumberOfRacers  DWORD     // DWORD dwNumberOfRacers; offset 0
-	MissionGUID       [16]byte  // GUID MissionGUID (16 bytes); offset 4
-	SzPlayerName      [260]byte // char szPlayerName[MAX_PATH]; offset 20
-	SzSessionType     [260]byte // char szSessionType[MAX_PATH]; offset 280
-	SzAircraft        [260]byte // char szAircraft[MAX_PATH]; offset 540
-	SzPlayerRole      [260]byte // char szPlayerRole[MAX_PATH]; offset 800
+	DwNumberOfRacers DWORD     // DWORD dwNumberOfRacers; offset 0
+	MissionGUID      [16]byte  // GUID MissionGUID (16 bytes); offset 4
+	SzPlayerName     [260]byte // char szPlayerName[MAX_PATH]; offset 20
+	SzSessionType    [260]byte // char szSessionType[MAX_PATH]; offset 280
+	SzAircraft       [260]byte // char szAircraft[MAX_PATH]; offset 540
+	SzPlayerRole     [260]byte // char szPlayerRole[MAX_PATH]; offset 800
 	// FTotalTimeByte holds the wire-packed double fTotalTime at offset 1060.
 	// float64 at Go offset 1060 would be padded to 1064 (1060 % 8 == 4) — wrong.
-	FTotalTimeBytes   [8]byte   // double fTotalTime; wire offset 1060
+	FTotalTimeBytes [8]byte // double fTotalTime; wire offset 1060
 	// FPenaltyTimeByte holds the wire-packed double fPenaltyTime at offset 1068.
-	FPenaltyTimeBytes [8]byte   // double fPenaltyTime; wire offset 1068
-	DwIsDisqualified  DWORD     // DWORD dwIsDisqualified; wire offset 1076
+	FPenaltyTimeBytes [8]byte // double fPenaltyTime; wire offset 1068
+	DwIsDisqualified  DWORD   // DWORD dwIsDisqualified; wire offset 1076
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_LATLONALT.htm
@@ -56,10 +56,9 @@ type SIMCONNECT_DATA_LATLONALT struct {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_PBH.htm
 type SIMCONNECT_DATA_PBH struct {
-	Pitch   float64 // double Pitch
-	Bank    float64 // double Bank
-	Heading float64 // double Heading
-
+	Pitch   float32 // float Pitch
+	Bank    float32 // float Bank
+	Heading float32 // float Heading
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_XYZ.htm
@@ -83,9 +82,10 @@ type SIMCONNECT_DATA_INITPOSITION struct {
 
 type SIMCONNECT_DATA_INITPOSITION_AIRSPEED DWORD
 
+// INITPOSITION_AIRSPEED_CRUISE and _KEEP are the DWORDs -1 and -2.
 const (
-	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE = -1 // DWORD Airspeed
-	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_KEEP   = -2 // DWORD Airspeed
+	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE SIMCONNECT_DATA_INITPOSITION_AIRSPEED = 0xFFFFFFFF // the aircraft's cruise airspeed
+	SIMCONNECT_DATA_INITPOSITION_AIRSPEED_KEEP   SIMCONNECT_DATA_INITPOSITION_AIRSPEED = 0xFFFFFFFE // keep the current airspeed
 )
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_DATA_WAYPOINT.htm
@@ -116,7 +116,8 @@ type SIMCONNECT_DATA_MARKERSTATE struct {
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_AIRPORT_LIST.htm
 type SIMCONNECT_RECV_AIRPORT_LIST struct {
 	SIMCONNECT_RECV_FACILITIES_LIST
-	RgData []SIMCONNECT_DATA_FACILITY_AIRPORT
+	// DwArraySize packed SIMCONNECT_DATA_FACILITY_AIRPORT entries follow,
+	// FacilityAirportSize bytes each (the Go struct is padded): read them with Entries.
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_ASSIGNED_OBJECT_ID.htm
@@ -133,8 +134,10 @@ type SIMCONNECT_RECV_CLIENT_DATA struct {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_CONTROLLERS_LIST.htm
 type SIMCONNECT_RECV_CONTROLLERS_LIST struct {
-	SIMCONNECT_RECV
-	RgData []SIMCONNECT_CONTROLLER_ITEM
+	SIMCONNECT_RECV_LIST_TEMPLATE
+	// RgData marks offset 28, where DwArraySize items follow (the Go struct
+	// matches the wire, 276 bytes): read them with Entries.
+	RgData [0]SIMCONNECT_CONTROLLER_ITEM
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_AddToClientDataDefinition.htm

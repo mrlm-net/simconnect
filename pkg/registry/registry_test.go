@@ -360,3 +360,33 @@ func TestStripIndexSuffix(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateUnitFamily: any unit of a dimension the SimVar lists is
+// accepted (SimConnect converts); another dimension is not.
+func TestValidateUnitFamily(t *testing.T) {
+	for _, c := range [][2]string{
+		{"PLANE ALTITUDE", "meter"}, {"PLANE ALTITUDE", "Nautical Miles"}, {"PLANE LATITUDE", "radian"},
+		{"VERTICAL SPEED", "feet per second"}, {"AMBIENT TEMPERATURE", "fahrenheit"}, {"AMBIENT PRESSURE", "hectopascals"},
+		{"COM ACTIVE FREQUENCY:1", "khz"},
+	} {
+		if err := Validate(c[0], c[1]); err != nil {
+			t.Errorf("Validate(%q, %q): %v", c[0], c[1], err)
+		}
+	}
+	if err := Validate("PLANE ALTITUDE", "knots"); err == nil {
+		t.Error("a speed unit accepted for an altitude")
+	}
+}
+
+// TestNamesAndWritable: the camera view SimVar by its SDK name (#21);
+// pitch and bank are settable (#36).
+func TestNamesAndWritable(t *testing.T) {
+	if _, ok := Lookup("CAMERA VIEW TYPE AND INDEX:1"); !ok {
+		t.Error("CAMERA VIEW TYPE AND INDEX unknown")
+	}
+	for _, n := range []string{"PLANE PITCH DEGREES", "PLANE BANK DEGREES"} {
+		if sv, _ := Lookup(n); !sv.Writable {
+			t.Errorf("%s not writable", n)
+		}
+	}
+}

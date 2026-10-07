@@ -15,7 +15,7 @@ func (sc *SimConnect) FlightLoad(flightFile string) error {
 		return fmt.Errorf("failed to convert flight file to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_FlightLoad")
+	procedure := sc.proc("SimConnect_FlightLoad")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -46,7 +46,7 @@ func (sc *SimConnect) FlightSave(flightFile string, title string, description st
 		return fmt.Errorf("failed to convert description to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_FlightSave")
+	procedure := sc.proc("SimConnect_FlightSave")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -70,7 +70,7 @@ func (sc *SimConnect) FlightPlanLoad(flightPlanFile string) error {
 		return fmt.Errorf("failed to convert flight plan file to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_FlightPlanLoad")
+	procedure := sc.proc("SimConnect_FlightPlanLoad")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle

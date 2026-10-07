@@ -1,6 +1,5 @@
 package types
 
-
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV.htm
 type SIMCONNECT_RECV struct {
 	DwSize    DWORD // Size of the nested SIMCONNECT_RECV structure in bytes
@@ -63,7 +62,7 @@ const (
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_OPEN.htm
 type SIMCONNECT_RECV_OPEN struct {
 	SIMCONNECT_RECV
-	SzApplicationName         [260]byte // Name of the application that opened the connection
+	SzApplicationName         [256]byte // Name of the application that opened the connection (SimConnect.h: 256, not MAX_PATH)
 	DwApplicationVersionMajor DWORD
 	DwApplicationVersionMinor DWORD
 	DwApplicationBuildMajor   DWORD
@@ -142,8 +141,8 @@ type SIMCONNECT_RECV_EVENT_FILENAME struct {
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_EVENT_FRAME.htm
 type SIMCONNECT_RECV_EVENT_FRAME struct {
 	SIMCONNECT_RECV_EVENT
-	FFrameRate float64 // Frame rate at the time of the SIMCONNECT_RECV_EVENT_FRAME
-	FSimSpeed  float64 // Simulation speed at the time of the event
+	FFrameRate float32 // float fFrameRate: frame rate at the time of the SIMCONNECT_RECV_EVENT_FRAME
+	FSimSpeed  float32 // float fSimSpeed: simulation speed at the time of the event
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_EVENT_MULTIPLAYER_CLIENT_STARTED.htm
@@ -220,31 +219,35 @@ type SIMCONNECT_RECV_FACILITY_DATA_END struct {
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_FACILITY_MINIMAL_LIST.htm
 type SIMCONNECT_RECV_FACILITY_MINIMAL_LIST struct {
 	SIMCONNECT_RECV
-	RequestID   DWORD                         // Request ID for the minimal facility list
-	ArraySize   DWORD                         // Size of the array of facilities
-	EntryNumber DWORD                         // Entry number in the minimal facility list
-	OutOf       DWORD                         // Out of for the minimal facility list
-	RgData      []SIMCONNECT_FACILITY_MINIMAL // Array of minimal facility data
+	RequestID   DWORD // Request ID for the minimal facility list
+	ArraySize   DWORD // Size of the array of facilities
+	EntryNumber DWORD // Entry number in the minimal facility list
+	OutOf       DWORD // Out of for the minimal facility list
+	// ArraySize packed SIMCONNECT_FACILITY_MINIMAL entries follow, FacilityMinimalSize
+	// bytes each (the Go struct is padded): read them with Entries.
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_GET_INPUT_EVENT.htm
 type SIMCONNECT_RECV_GET_INPUT_EVENT struct {
 	SIMCONNECT_RECV
-	RequestID DWORD                      // Request ID for the input event
+	RequestID DWORD                       // Request ID for the input event
 	Type      SIMCONNECT_INPUT_EVENT_TYPE // SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE or _STRING
-	Value     [260]byte                  // Inline value: 8 bytes (float64) for DOUBLE, null-terminated for STRING
+	Value     [260]byte                   // Inline value: 8 bytes (float64) for DOUBLE, null-terminated for STRING
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS.htm
 type SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS struct {
-	SIMCONNECT_RECV_LIST_TEMPLATE                      // offset 0–27
-	RgData [1]SIMCONNECT_INPUT_EVENT_DESCRIPTOR        // sentinel element; DwArraySize elements follow at &RgData[0] in the DLL buffer
+	SIMCONNECT_RECV_LIST_TEMPLATE // offset 0–27
+	// RgData marks offset 28, where DwArraySize descriptors follow,
+	// InputEventDescriptorSize bytes each: read them with Entries.
+	RgData [0]SIMCONNECT_INPUT_EVENT_DESCRIPTOR
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_JETWAY_DATA.htm
 type SIMCONNECT_RECV_JETWAY_DATA struct {
 	SIMCONNECT_RECV_LIST_TEMPLATE
-	RgData []SIMCONNECT_JETWAY_DATA // Array of jetway data
+	// DwArraySize packed SIMCONNECT_JETWAY_DATA entries follow, JetwayDataSize
+	// bytes each (the Go struct is padded): read them with Entries.
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_LIST_TEMPLATE.htm
@@ -259,7 +262,8 @@ type SIMCONNECT_RECV_LIST_TEMPLATE struct {
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_NDB_LIST.htm
 type SIMCONNECT_RECV_NDB_LIST struct {
 	SIMCONNECT_RECV_FACILITIES_LIST
-	RgData []SIMCONNECT_DATA_FACILITY_NDB
+	// DwArraySize packed SIMCONNECT_DATA_FACILITY_NDB entries follow,
+	// FacilityNDBSize bytes each (the Go struct is padded): read them with Entries.
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_RESERVED_KEY.htm
@@ -289,11 +293,13 @@ type SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT struct {
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_VOR_LIST.htm
 type SIMCONNECT_RECV_VOR_LIST struct {
 	SIMCONNECT_RECV_FACILITIES_LIST
-	RgData []SIMCONNECT_DATA_FACILITY_VOR
+	// DwArraySize packed SIMCONNECT_DATA_FACILITY_VOR entries follow,
+	// FacilityVORSize bytes each (the Go struct is padded): read them with Entries.
 }
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_RECV_WAYPOINT_LIST.htm
 type SIMCONNECT_RECV_WAYPOINT_LIST struct {
 	SIMCONNECT_RECV_FACILITIES_LIST
-	RgData []SIMCONNECT_DATA_FACILITY_WAYPOINT // Array of waypoint data
+	// DwArraySize packed SIMCONNECT_DATA_FACILITY_WAYPOINT entries follow,
+	// FacilityWaypointSize bytes each (the Go struct is padded): read them with Entries.
 }

@@ -7,8 +7,13 @@ import "math"
 // heading2 (true degrees), sampled every step meters, as [lat, lon] points
 // starting with the first position. first restricts the direction of the
 // first turn: +1 right (clockwise), -1 left, 0 either (a charted turn
-// direction). It returns nil when no such path exists.
+// direction). It returns nil when no such path exists, or when r or step
+// is not positive.
 func Dubins(lat1, lon1, heading1, lat2, lon2, heading2, r, step float64, first int) [][2]float64 {
+	// No radius or no step: no path (the sampling would never advance).
+	if !(r > 0) || !(step > 0) || math.IsInf(r, 0) {
+		return nil
+	}
 	// Local metres around the start, math angles (counter-clockwise from
 	// east): a left turn has curvature +1/r.
 	north := HaversineMeters(lat1, lon1, lat2, lon1)
@@ -16,7 +21,8 @@ func Dubins(lat1, lon1, heading1, lat2, lon2, heading2, r, step float64, first i
 		north = -north
 	}
 	east := HaversineMeters(lat1, lon1, lat1, lon2)
-	if lon2 < lon1 {
+	// West the short way round, also across the antimeridian.
+	if dLon := math.Mod(lon2-lon1+540, 360) - 180; dLon < 0 {
 		east = -east
 	}
 	th0, th1 := (90-heading1)*math.Pi/180, (90-heading2)*math.Pi/180

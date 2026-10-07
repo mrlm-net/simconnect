@@ -4,8 +4,7 @@
 package manager
 
 import (
-	"sync"
-
+	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/manager/internal/subscriptions"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -24,107 +23,30 @@ type ObjectSubscription interface {
 	Unsubscribe()
 }
 
-type objectSubscription struct {
-	id      string
-	sub     Subscription
-	ch      chan ObjectEvent
-	done    chan struct{}
-	mgr     *Instance
-	closeMu sync.Mutex
-}
-
-func (s *objectSubscription) ID() string                 { return s.id }
-func (s *objectSubscription) Events() <-chan ObjectEvent { return s.ch }
-func (s *objectSubscription) Done() <-chan struct{}      { return s.done }
-func (s *objectSubscription) Unsubscribe() {
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
-	if s.sub != nil {
-		s.sub.Unsubscribe()
-		s.sub = nil
-	}
-	select {
-	case <-s.done:
-	default:
-		close(s.done)
-	}
-	select {
-	case <-s.ch:
-	default:
-		close(s.ch)
-	}
-}
-
 // SubscribeOnObjectAdded returns a subscription delivering ObjectAdded events
 func (m *Instance) SubscribeOnObjectAdded(id string, bufferSize int) ObjectSubscription {
-	id = subscriptions.GenerateID(id)
-	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
-	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
-	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
-
-	go func() {
-		defer os.Unsubscribe()
-		for {
-			select {
-			case <-m.ctx.Done():
-				return
-			case <-os.sub.Done():
-				return
-			case msg, ok := <-os.sub.Messages():
-				if !ok {
-					return
-				}
-				o := msg.AsEventObjectAddRemove()
-				if o == nil {
-					continue
-				}
-				if o.UEventID != types.DWORD(m.objectAddedEventID) {
-					continue
-				}
-				select {
-				case os.ch <- ObjectEvent{ObjectID: uint32(o.DwData), ObjType: o.EObjType}:
-				default:
-					m.logger.Debug("[manager] ObjectAdded subscription channel full, dropping event")
-				}
-			}
-		}
-	}()
-	return os
+	return m.subscribeObjectEvent(id, bufferSize, "-objadded", "ObjectAdded", m.objectAddedEventID)
 }
 
 // SubscribeOnObjectRemoved returns a subscription delivering ObjectRemoved events
 func (m *Instance) SubscribeOnObjectRemoved(id string, bufferSize int) ObjectSubscription {
+	return m.subscribeObjectEvent(id, bufferSize, "-objremoved", "ObjectRemoved", m.objectRemovedEventID)
+}
+
+// subscribeObjectEvent is an object subscription for eventID. Its message
+// subscription is id+suffix, a suffix of its own per kind: ObjectAdded and
+// ObjectRemoved with the same id do not replace each other (review #19).
+func (m *Instance) subscribeObjectEvent(id string, bufferSize int, suffix, kind string, eventID uint32) ObjectSubscription {
 	id = subscriptions.GenerateID(id)
 	bufferSize = subscriptions.ValidateBufferSize(bufferSize)
-	msgSub := m.SubscribeWithType(id+"-obj", bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
-	os := &objectSubscription{id: id, sub: msgSub, ch: make(chan ObjectEvent, bufferSize), done: make(chan struct{}), mgr: m}
-
-	go func() {
-		defer os.Unsubscribe()
-		for {
-			select {
-			case <-m.ctx.Done():
-				return
-			case <-os.sub.Done():
-				return
-			case msg, ok := <-os.sub.Messages():
-				if !ok {
-					return
-				}
-				o := msg.AsEventObjectAddRemove()
-				if o == nil {
-					continue
-				}
-				if o.UEventID != types.DWORD(m.objectRemovedEventID) {
-					continue
-				}
-				select {
-				case os.ch <- ObjectEvent{ObjectID: uint32(o.DwData), ObjType: o.EObjType}:
-				default:
-					m.logger.Debug("[manager] ObjectRemoved subscription channel full, dropping event")
-				}
-			}
+	msgSub := m.SubscribeWithType(id+suffix, bufferSize, []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE})
+	os := newTypedSubscription[ObjectEvent](id, msgSub, bufferSize)
+	forwardTyped(m, os, kind, func(msg engine.Message) (ObjectEvent, bool) {
+		o := msg.AsEventObjectAddRemove()
+		if o == nil || o.UEventID != types.DWORD(eventID) {
+			return ObjectEvent{}, false
 		}
-	}()
+		return ObjectEvent{ObjectID: uint32(o.DwData), ObjType: o.EObjType}, true
+	})
 	return os
 }

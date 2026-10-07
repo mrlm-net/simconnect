@@ -85,6 +85,13 @@ type controlled struct {
 	// firstPending: its first-contact clearance (the STAR) is not said yet;
 	// the approach clearance waits for it (live: ILS before the STAR).
 	firstPending atomic.Bool
+	// tcasRA: its crew flies a TCAS RA (#450): approach gives it nothing
+	// until clear of conflict.
+	tcasRA atomic.Bool
+	// finished: its controller is done (view.Done), read without it.mu;
+	// doneAt when.
+	finished atomic.Bool
+	doneAt   time.Time
 	// observed: a real aircraft's sighting (#841), nil one of the schedule.
 	observed *traffic.Sighting
 	// deliver: a parked real aircraft's call to delivery, made when its
@@ -252,9 +259,11 @@ type ControlView struct {
 	// (#443), InstructionAt the point it was about, if any.
 	Instruction   string          `json:"instruction,omitempty"`
 	InstructionAt *airport.LatLon `json:"instructionAt,omitempty"`
-	Real          bool            `json:"real,omitempty"`
-	ObservedID    string          `json:"observedId,omitempty"`
-	Registration  string          `json:"registration,omitempty"`
+	// TCAS is its advisory now (#450): TA or RA; nil none.
+	TCAS         *TCASView `json:"tcas,omitempty"`
+	Real         bool      `json:"real,omitempty"`
+	ObservedID   string    `json:"observedId,omitempty"`
+	Registration string    `json:"registration,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
 	// route itself also runs through the points of its rounded turns).
 	AirFixes []airFix  `json:"airFixes,omitempty"`
@@ -296,9 +305,12 @@ type controlCenter struct {
 	runwayCheckAt time.Time
 	runwaysNow    map[string]string
 	standCheckAt  time.Time
-	models        map[string]bool                    // aircraft titles the simulator offers
-	fuelTitles    fuelTitles                         // fuel vehicles the simulator offers (#582)
-	stands        map[string]*traffic.StandAllocator // by ICAO
+	// keepClearAt, keepClearKey: the last keepClear and the places taken then.
+	keepClearAt  time.Time
+	keepClearKey string
+	models       map[string]bool                    // aircraft titles the simulator offers
+	fuelTitles   fuelTitles                         // fuel vehicles the simulator offers (#582)
+	stands       map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
 	// ids hands out the controllers' ID blocks and takes them back (#370);
@@ -325,6 +337,8 @@ type controlCenter struct {
 	// climbStopped reports a climb or descent stopped for traffic and not
 	// yet cleared on (the conflict watch); nil none.
 	climbStopped func(cs string) bool
+	// tcasView is one of ours' TCAS advisory now (#450); nil hook or quiet: nil.
+	tcasView func(objectID uint32) *TCASView
 	// agenda: the controllers' calls, most urgent first (agenda.go).
 	agenda *agenda
 	// saidCallsign writes a call sign as said (#462); set once the schedule
@@ -346,7 +360,10 @@ type controlCenter struct {
 	followed func(icao, tail, lead string)
 	// forgetTower drops what the tower gave a call sign (spawned again).
 	forgetTower func(tail string)
-	sequencesAt func(icao string) map[string][]traffic.SequenceEntry
+	// forgetFlight drops what approach and the conflict watch remember of a
+	// call sign, spawned again as a new flight (#75).
+	forgetFlight func(tail string)
+	sequencesAt  func(icao string) map[string][]traffic.SequenceEntry
 	// toFinal clears an arrival that missed its join direct to the final.
 	toFinal func(icao, tail string)
 	// world is the traffic picture around the centre of the world (#366):
@@ -444,8 +461,17 @@ func (cc *controlCenter) changed(topic string) {
 // do runs f in the connection goroutine and waits for it.
 func (cc *controlCenter) do(f func() error) error {
 	done := make(chan error, 1)
+	// 0 waiting, 1 running, 2 given up: what times out never runs later, and
+	// what runs is waited for (#74: reported failed, it ran on anyway: an
+	// orphan spawn, a stand released under an aircraft).
+	var state atomic.Int32
+	run := func() {
+		if state.CompareAndSwap(0, 1) {
+			done <- f()
+		}
+	}
 	select {
-	case cc.cmds <- func() { done <- f() }:
+	case cc.cmds <- run:
 	case <-time.After(5 * time.Second):
 		return errors.New("simulator connection busy")
 	}
@@ -453,7 +479,10 @@ func (cc *controlCenter) do(f func() error) error {
 	case err := <-done:
 		return err
 	case <-time.After(10 * time.Second):
-		return errors.New("simulator did not answer")
+		if state.CompareAndSwap(0, 2) {
+			return errors.New("simulator did not answer")
+		}
+		return <-done // running: its own result
 	}
 }
 
@@ -483,6 +512,34 @@ func (cc *controlCenter) tick() {
 	if now := cc.clock.Now(); now.Sub(cc.standCheckAt) >= 10*time.Second {
 		cc.standCheckAt = now
 		cc.recheckArrivalStands()
+		cc.pruneDone()
+	}
+	cc.keepClear()
+}
+
+// pruneDone drops the flights whose controller is done and whose aircraft
+// has gone from the simulator (#79: they stayed for good, their ID blocks
+// ran out after 128, ErrNoIDs).
+func (cc *controlCenter) pruneDone() {
+	present := map[uint32]bool{}
+	for _, a := range cc.world.Aircraft() {
+		present[a.ObjectID] = true
+	}
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		id, since := it.objectID, time.Since(it.doneAt)
+		it.mu.Unlock()
+		// One that never got its aircraft waits a minute: a late creation
+		// still reaches it, to be removed (#89).
+		if it.finished.Load() && (id != 0 && !present[id] || id == 0 && since > time.Minute) {
+			cc.forget(it)
+		}
 	}
 }
 
@@ -565,7 +622,7 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 	}
 	if ok, err := cc.inj.Handle(msg); ok {
 		if err != nil {
-			fmt.Printf("⚠️  injector: %v\n", err)
+			fmt.Fprintf(stdout, "⚠️  injector: %v\n", err)
 		}
 		return true
 	}
@@ -677,6 +734,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// the less busy one (its stand is then found near it), a departure the
 	// one nearest its stand once that is known.
 	auto := r.Runway == "" || strings.EqualFold(r.Runway, "active")
+	if cc.forgetFlight != nil && r.Tail != "" && r.adopt == 0 {
+		cc.forgetFlight(r.Tail)
+	}
 	if cc.forgetTower != nil && r.Tail != "" && r.adopt == 0 {
 		cc.forgetTower(r.Tail)
 	}
@@ -789,9 +849,25 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if who := cc.nearAirborne(p.Position, alt, r.Tail, cc.clock.Now()); who != "" {
 			return nil, fmt.Errorf("%w: %s is near %s; try again in a minute", traffic.ErrSpawnBlocked, who, p.Ident)
 		}
+		sp := spawnPoint{tail: r.Tail, at: p.Position, altFt: alt, when: cc.clock.Now()}
 		cc.mu.Lock()
-		cc.spawnedAt = append(cc.spawnedAt, spawnPoint{tail: r.Tail, at: p.Position, altFt: alt, when: cc.clock.Now()})
+		cc.spawnedAt = append(cc.spawnedAt, sp)
 		cc.mu.Unlock()
+		// Not spawned after all: the point is free again (#83: a failed spawn
+		// blocked the STAR entry for a minute).
+		defer func() {
+			if started {
+				return
+			}
+			cc.mu.Lock()
+			for i, x := range cc.spawnedAt {
+				if x == sp {
+					cc.spawnedAt = append(cc.spawnedAt[:i:i], cc.spawnedAt[i+1:]...)
+					break
+				}
+			}
+			cc.mu.Unlock()
+		}()
 	}
 	// The airport's limits (#335): climb-out hand-over from the SIDs, taxi speeds.
 	var procs *airport.Procedures
@@ -1042,8 +1118,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			ev, ok := events()
 			if !ok {
 				it.mu.Lock()
-				it.view.Done = true
+				it.view.Done, it.doneAt = true, time.Now()
 				it.mu.Unlock()
+				it.finished.Store(true)
 				return
 			}
 			it.update(ev)
@@ -1391,6 +1468,9 @@ func (cc *controlCenter) views() []ControlView {
 		it.mu.Lock()
 		v := it.view
 		it.mu.Unlock()
+		if cc.tcasView != nil && it.objectID != 0 {
+			v.TCAS = cc.tcasView(it.objectID)
+		}
 		if o := it.observed; o != nil {
 			v.Real, v.ObservedID, v.Registration = true, o.ID, o.Registration
 		}
@@ -2267,6 +2347,11 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 	}
 	d := *it.turn
 	d.adopt = objectID
+	// From the stand it is on now: changed since it spawned (#72: a stand
+	// picked on the map or retaken, and the departure left the old one).
+	it.mu.Lock()
+	d.Stand = it.stand
+	it.mu.Unlock()
 	var dep *controlled
 	err := cc.do(func() error {
 		var err error
@@ -2393,15 +2478,25 @@ func headingDiff(a, b float64) float64 {
 	return d
 }
 
+// byTail is the flight of a call sign: one still going before a finished
+// one (#79: a done flight answered for its successor).
 func (cc *controlCenter) byTail(tail string) *controlled {
 	cc.mu.Lock()
-	defer cc.mu.Unlock()
+	var found []*controlled
 	for _, it := range cc.items {
 		if it.Tail == tail {
-			return it
+			found = append(found, it)
 		}
 	}
-	return nil
+	cc.mu.Unlock()
+	var done *controlled
+	for _, it := range found {
+		if !it.finished.Load() {
+			return it
+		}
+		done = it
+	}
+	return done
 }
 
 // ownIDs are the object IDs of the controlled aircraft.
@@ -2514,10 +2609,21 @@ func (cc *controlCenter) nearAirborne(p airport.LatLon, altFt float64, tail stri
 // forget drops a controlled aircraft from the list (its aircraft stays).
 func (cc *controlCenter) forget(it *controlled) {
 	cc.mu.Lock()
-	defer cc.mu.Unlock()
 	if cc.items[it.ID] == it {
 		delete(cc.items, it.ID)
 		cc.ids.Release(it.defBase) // its controller is done: the IDs are free
+	}
+	v := cc.vehATC
+	cc.mu.Unlock()
+	// Its vehicles' calls go with it: an object ID used again is a new
+	// vehicle, asking anew (#64).
+	if v != nil {
+		if it.tug != nil {
+			v.forget(it.tug.ObjectID())
+		}
+		if it.fuel != nil {
+			v.forget(it.fuel.ObjectID())
+		}
 	}
 }
 

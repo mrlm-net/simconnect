@@ -22,6 +22,7 @@ func CrossTrackMeters(latA, lonA, latB, lonB, latD, lonD float64) float64 {
 	Δλ := λD - λA
 	a := math.Sin(Δφ/2)*math.Sin(Δφ/2) +
 		math.Cos(φA)*math.Cos(φD)*math.Sin(Δλ/2)*math.Sin(Δλ/2)
+	a = clamp01(a)
 	δAD := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	// Initial bearing from A to D
@@ -59,6 +60,7 @@ func AlongTrackMeters(latA, lonA, latB, lonB, latD, lonD float64) float64 {
 	Δλ := λD - λA
 	a := math.Sin(Δφ/2)*math.Sin(Δφ/2) +
 		math.Cos(φA)*math.Cos(φD)*math.Sin(Δλ/2)*math.Sin(Δλ/2)
+	a = clamp01(a)
 	δAD := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	// Cross-track angular distance (reuse the logic from CrossTrackMeters)

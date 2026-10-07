@@ -210,6 +210,18 @@ func (it *controlled) answer(req string) {
 	}
 	if req == "taxi" {
 		it.grantEntry()
+		// Round the places other aircraft take now, so the clearance names
+		// the route it will taxi.
+		if occ := it.cc.occupiedFor(it); len(occ) > 0 {
+			it.cc.do(func() error {
+				if it.avoidOccupied(occ) {
+					it.mu.Lock()
+					it.setRoute()
+					it.mu.Unlock()
+				}
+				return nil
+			})
+		}
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
 	it.say(tx)

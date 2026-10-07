@@ -28,12 +28,17 @@ import (
 // Feed drops them.
 const DefaultQueueSize = 4096
 
-// Feed hands the World one message of the host's connection without
-// blocking: with the queue full it is dropped and counted (Snapshot.
-// Dropped). A dropped facility reply is asked again when its loader
-// expires. Call it for every message, from the host's dispatch.
+// Feed hands the World one message of the host's connection, copied
+// (Detach; the host may release it at once), without blocking: with the
+// queue full it is dropped and counted (Snapshot.Dropped). A dropped
+// facility reply is asked again when its loader expires. Call it for every
+// message, from the host's dispatch.
 func (w *World) Feed(msg engine.Message) {
 	q := w.queue()
+	// Its own copy: the host's dispatcher reuses the message's buffer once
+	// its handler returns, before the World reads it (#404; live, MyCrew:
+	// facility data lost, a garbage simulation rate).
+	msg = msg.Detach()
 	select {
 	case q <- msg:
 	default:

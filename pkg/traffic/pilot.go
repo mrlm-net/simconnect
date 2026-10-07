@@ -24,6 +24,8 @@ const (
 	IntentReadyDeparture   Intent = "ready_departure"   // holding short of the runway, ready for departure
 	IntentHoldingShort     Intent = "holding_short"     // stopped short of a runway to cross
 	IntentCheckIn          Intent = "check_in"          // first call on a frequency
+	IntentTCASRA           Intent = "tcas_ra"           // a crew flying a TCAS RA (#450)
+	IntentClearOfConflict  Intent = "clear_of_conflict" // the RA over, back to the clearance
 	IntentVacated          Intent = "vacated"           // runway vacated
 	IntentCorrection       Intent = "correction"        // controller: negative, the clearance again
 	IntentSayAgain         Intent = "say_again"         // controller: say again
@@ -576,4 +578,26 @@ func RequestVisual(pos Position, cs string) Transmission {
 // runway 24" (Doc 4444 12.3.3.1 o; JO 7110.65 7-4-3).
 func ClearedVisual(pos Position, cs, runway string) Transmission {
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentVisual, Params: map[string]string{ParamRunway: runway}})
+}
+
+// TCASRAReport is a crew's report that it is flying a TCAS resolution
+// advisory, to station on pos (FAA JO 7110.65 2-1-28, example: "New
+// York Center, United 321, TCAS RA").
+func TCASRAReport(pos Position, station, cs string) Transmission {
+	text := cs + ", TCAS RA"
+	if station != "" {
+		text = station + ", " + text
+	}
+	return pilotTx(pos, cs, IntentTCASRA, map[string]string{ParamStation: station}, text)
+}
+
+// ClearOfConflict is a crew's report that the RA is over and it returns
+// to its clearance (FAA JO 7110.65 2-1-28, example: "New York Center,
+// United 321, clear of conflict, returning to assigned altitude").
+func ClearOfConflict(pos Position, station, cs string) Transmission {
+	text := cs + ", clear of conflict, returning to assigned altitude"
+	if station != "" {
+		text = station + ", " + text
+	}
+	return pilotTx(pos, cs, IntentClearOfConflict, map[string]string{ParamStation: station}, text)
 }

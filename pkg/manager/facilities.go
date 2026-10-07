@@ -117,7 +117,13 @@ func (m *Instance) SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST
 	if m.engine == nil {
 		return ErrNotConnected
 	}
-	return m.engine.SubscribeToFacilities(listType, requestID)
+	if err := m.engine.SubscribeToFacilities(listType, requestID); err != nil {
+		return err
+	}
+	if on, gen := m.recordingLocked(); on {
+		m.userSubs.setFacilities(listType, facilitySub{requestID: requestID, gen: gen})
+	}
+	return nil
 }
 
 // SubscribeToFacilitiesEX1 subscribes to facility list updates with separate in-range and out-of-range request IDs.
@@ -128,7 +134,13 @@ func (m *Instance) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_L
 	if m.engine == nil {
 		return ErrNotConnected
 	}
-	return m.engine.SubscribeToFacilitiesEX1(listType, newElemInRangeRequestID, oldElemOutRangeRequestID)
+	if err := m.engine.SubscribeToFacilitiesEX1(listType, newElemInRangeRequestID, oldElemOutRangeRequestID); err != nil {
+		return err
+	}
+	if on, gen := m.recordingLocked(); on {
+		m.userSubs.setFacilities(listType, facilitySub{ex1: true, newReq: newElemInRangeRequestID, oldReq: oldElemOutRangeRequestID, newOn: true, oldOn: true, gen: gen})
+	}
+	return nil
 }
 
 // UnsubscribeToFacilitiesEX1 unsubscribes from facility list updates.
@@ -136,6 +148,8 @@ func (m *Instance) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_L
 func (m *Instance) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	// forgotten for ResubscribeOnReconnect even while disconnected
+	m.userSubs.unsubscribeFacilities(listType, unsubscribeNewInRange, unsubscribeOldOutRange)
 	if m.engine == nil {
 		return ErrNotConnected
 	}

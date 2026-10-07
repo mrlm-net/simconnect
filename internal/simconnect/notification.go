@@ -7,7 +7,7 @@ import "fmt"
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_AddClientEventToNotificationGroup.htm
 func (sc *SimConnect) AddClientEventToNotificationGroup(groupID uint32, eventID uint32, mask bool) error {
-	procedure := sc.library.LoadProcedure("SimConnect_AddClientEventToNotificationGroup")
+	procedure := sc.proc("SimConnect_AddClientEventToNotificationGroup")
 
 	var maskable uint32
 	if mask {
@@ -32,7 +32,7 @@ func (sc *SimConnect) AddClientEventToNotificationGroup(groupID uint32, eventID 
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_ClearNotificationGroup.htm
 func (sc *SimConnect) ClearNotificationGroup(groupID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_ClearNotificationGroup")
+	procedure := sc.proc("SimConnect_ClearNotificationGroup")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -48,7 +48,7 @@ func (sc *SimConnect) ClearNotificationGroup(groupID uint32) error {
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestNotificationGroup.htm
 func (sc *SimConnect) RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestNotificationGroup")
+	procedure := sc.proc("SimConnect_RequestNotificationGroup")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -66,7 +66,7 @@ func (sc *SimConnect) RequestNotificationGroup(groupID uint32, dwReserved uint32
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/General/SimConnect_SetNotificationGroupPriority.htm
 func (sc *SimConnect) SetNotificationGroupPriority(groupID uint32, priority uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SetNotificationGroupPriority")
+	procedure := sc.proc("SimConnect_SetNotificationGroupPriority")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle

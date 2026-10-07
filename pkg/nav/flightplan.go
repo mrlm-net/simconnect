@@ -426,7 +426,9 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 // highest level of the semicircular rule (RVSM: odd levels — FL350, FL370
 // — on tracks 000–179°, even — FL340, FL360 — on 180–359°) up to the
 // type's MaxFL at which climb and descent leave at least 15% of the
-// distance level; at least 2000 ft above the higher airport.
+// distance level; at least 2000 ft above the higher airport, but never above
+// the type's MaxFL (the highest valid level up to it, when the airports are
+// that high).
 func CruiseLevel(p Performance, magTrack, distanceNM, depFt, arrFt float64) int {
 	east := math.Mod(magTrack+360, 360) < 180
 	valid := func(fl int) bool { return fl%10 == 0 && (fl/10)%2 == 1 == east }
@@ -444,6 +446,11 @@ func CruiseLevel(p Performance, magTrack, distanceNM, depFt, arrFt float64) int 
 	fl := floor
 	for !valid(fl) {
 		fl++
+	}
+	// The floor (or the next valid level) is above what the type flies: its
+	// ceiling, not a level it cannot reach (E21).
+	if top > 0 && fl > top {
+		fl = top
 	}
 	return fl
 }
@@ -821,8 +828,9 @@ func insertProfilePoint(wps []Waypoint, d float64, ident string, altFt float64) 
 		leg := b.DistanceNM - a.DistanceNM
 		pos := a.Position
 		if leg > 0 {
-			brg := calc.BearingDegrees(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
-			lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, brg, (d-a.DistanceNM)*1852)
+			// Along the great circle: a flat displacement drifts far off on
+			// long legs (#41), and the longitude stays within ±180.
+			lat, lon := calc.IntermediatePoint(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon, (d-a.DistanceNM)/leg)
 			pos = airport.LatLon{Lat: lat, Lon: lon}
 		}
 		phase := PhaseEnroute // between two phases, e.g. from the SID's last fix onto an airway
@@ -919,8 +927,18 @@ func (fp *FlightPlan) PositionAt(distNM float64) (airport.LatLon, float64, float
 		if leg := b.DistanceNM - a.DistanceNM; leg > 0 {
 			t = math.Max(0, math.Min(1, (distNM-a.DistanceNM)/leg))
 		}
-		p := airport.LatLon{Lat: a.Position.Lat + t*(b.Position.Lat-a.Position.Lat), Lon: a.Position.Lon + t*(b.Position.Lon-a.Position.Lon)}
-		return p, a.AltFt + t*(b.AltFt-a.AltFt), calc.BearingDegrees(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
+		// On the great circle, the short way across ±180, and the track
+		// there toward b, not the leg's initial bearing (#42).
+		lat, lon := calc.IntermediatePoint(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon, t)
+		p := airport.LatLon{Lat: lat, Lon: lon}
+		var trk float64
+		if calc.HaversineMeters(lat, lon, b.Position.Lat, b.Position.Lon) > 1 {
+			trk = calc.BearingDegrees(lat, lon, b.Position.Lat, b.Position.Lon)
+		} else if calc.HaversineMeters(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon) > 1 {
+			// At b: the track arriving there.
+			trk = math.Mod(calc.BearingDegrees(b.Position.Lat, b.Position.Lon, a.Position.Lat, a.Position.Lon)+180, 360)
+		}
+		return p, a.AltFt + t*(b.AltFt-a.AltFt), trk
 	}
 	return w[0].Position, w[0].AltFt, 0
 }

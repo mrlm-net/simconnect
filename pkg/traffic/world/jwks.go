@@ -58,6 +58,7 @@ type JWKS struct {
 	mu      sync.Mutex
 	keys    map[string]crypto.PublicKey
 	fetched time.Time
+	tried   time.Time        // the last fetch, failed or not: at most one each jwksMinFetch (#58)
 	now     func() time.Time // tests
 }
 
@@ -86,12 +87,20 @@ func (j *JWKS) Verify(ctx context.Context, token string) (Claims, error) {
 	if len(parts) != 3 {
 		return Claims{}, ErrTokenMalformed
 	}
+	// Scoped to this service: a key signs tokens for others too (#59).
+	if j.Issuer == "" && j.Audience == "" {
+		return Claims{}, fmt.Errorf("%w: neither issuer nor audience is set to check", ErrTokenClaims)
+	}
 	var head struct {
-		Alg string `json:"alg"`
-		Kid string `json:"kid"`
+		Alg  string   `json:"alg"`
+		Kid  string   `json:"kid"`
+		Crit []string `json:"crit"`
 	}
 	if err := decodePart(parts[0], &head); err != nil {
 		return Claims{}, err
+	}
+	if len(head.Crit) > 0 {
+		return Claims{}, fmt.Errorf("%w: critical header %q not understood", ErrTokenMalformed, head.Crit) // RFC 7515 4.1.11
 	}
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -127,11 +136,13 @@ func (j *JWKS) claims(part string) (Claims, error) {
 		}
 	}
 	now := j.clock()
-	if exp, ok := raw["exp"].(float64); ok {
-		c.Expires = time.Unix(int64(exp), 0)
-		if now.After(c.Expires.Add(tokenLeeway)) {
-			return c, fmt.Errorf("%w: expired at %s", ErrTokenExpired, c.Expires.UTC().Format(time.RFC3339))
-		}
+	exp, ok := raw["exp"].(float64)
+	if !ok {
+		return c, fmt.Errorf("%w: no expiry (exp)", ErrTokenClaims) // never good for ever (#59)
+	}
+	c.Expires = time.Unix(int64(exp), 0)
+	if now.After(c.Expires.Add(tokenLeeway)) {
+		return c, fmt.Errorf("%w: expired at %s", ErrTokenExpired, c.Expires.UTC().Format(time.RFC3339))
 	}
 	if nbf, ok := raw["nbf"].(float64); ok && now.Add(tokenLeeway).Before(time.Unix(int64(nbf), 0)) {
 		return c, fmt.Errorf("%w: not before %s", ErrTokenExpired, time.Unix(int64(nbf), 0).UTC().Format(time.RFC3339))
@@ -183,7 +194,8 @@ func (j *JWKS) key(ctx context.Context, kid string) (crypto.PublicKey, error) {
 	if k, ok := pick(); ok && now.Sub(j.fetched) < jwksRefresh {
 		return k, nil
 	}
-	if now.Sub(j.fetched) >= jwksMinFetch || j.keys == nil {
+	if now.Sub(j.tried) >= jwksMinFetch {
+		j.tried = now
 		keys, err := j.fetch(ctx)
 		if err != nil {
 			if k, ok := pick(); ok {

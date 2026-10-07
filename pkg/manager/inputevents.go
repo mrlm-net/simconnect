@@ -70,7 +70,13 @@ func (m *Instance) SubscribeInputEvent(hash uint64) error {
 	if m.engine == nil {
 		return ErrNotConnected
 	}
-	return m.engine.SubscribeInputEvent(hash)
+	if err := m.engine.SubscribeInputEvent(hash); err != nil {
+		return err
+	}
+	if on, gen := m.recordingLocked(); on {
+		m.userSubs.addInputEvent(hash, gen)
+	}
+	return nil
 }
 
 // UnsubscribeInputEvent cancels the subscription for the input event
@@ -81,6 +87,8 @@ func (m *Instance) SubscribeInputEvent(hash uint64) error {
 func (m *Instance) UnsubscribeInputEvent(hash uint64) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	// forgotten for ResubscribeOnReconnect even while disconnected
+	m.userSubs.removeInputEvent(hash)
 	if m.engine == nil {
 		return ErrNotConnected
 	}

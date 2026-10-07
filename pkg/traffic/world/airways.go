@@ -230,7 +230,7 @@ func (st *state) addAirways(icao string, g *nav.AirwayGraph) {
 		all = append(all, x)
 	}
 	st.airways = nav.MergeAirwayGraphs(all...)
-	fmt.Printf("🛣️  airways %s added: %d fixes in all\n", icao, len(st.airways.Fixes))
+	fmt.Fprintf(stdout, "🛣️  airways %s added: %d fixes in all\n", icao, len(st.airways.Fixes))
 }
 
 // The crawl's IDs (nav loader: definitions +0..2, requests +0..15): clear of

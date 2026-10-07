@@ -63,6 +63,11 @@ func TestArrivalDirectTo(t *testing.T) {
 	if len(ctl.vectors) != 1 || ctl.vectors[0].Fix == "" {
 		t.Errorf("no resume direct after the point: %+v", ctl.vectors)
 	}
+	// Not due before the point is reached (live, OKRVJ: told to resume 0.5 s
+	// after its heading to a point off the route).
+	if v, due := ctl.VectorDue(); due {
+		t.Errorf("resume due before the point: %+v", v)
+	}
 	if r := ctl.ProcedureRoute(); len(r) == 0 || calc.HaversineNM(r[0].Lat, r[0].Lon, off.Lat, off.Lon) > 3 {
 		t.Errorf("route does not go to the point first")
 	}

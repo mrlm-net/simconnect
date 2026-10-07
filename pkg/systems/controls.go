@@ -70,6 +70,35 @@ func (c *Controls) SetEFBHost(host string) {
 	c.efbHost = host
 }
 
+// Reset forgets the mapped events and defined variables (a new
+// connection): they are mapped and defined again on first use, on client
+// (nil: the same client).
+func (c *Controls) Reset(client ControlClient) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if client != nil {
+		c.client = client
+	}
+	c.events, c.defs, c.next = map[string]uint32{}, map[string]uint32{}, 0
+}
+
+// ControlIDs is how many client event and data definition IDs Controls
+// takes from its base.
+const ControlIDs = 64
+
+// ErrNoIDs: Controls has used all its IDs (ControlIDs).
+var ErrNoIDs = errors.New("systems: no control IDs left")
+
+// nextID takes the next ID; c.mu held.
+func (c *Controls) nextID() (uint32, error) {
+	if c.next >= ControlIDs {
+		return 0, ErrNoIDs
+	}
+	id := c.base + c.next
+	c.next++
+	return id, nil
+}
+
 // Use takes the aircraft's profile (For): its actions from now on.
 func (c *Controls) Use(p Profile) {
 	c.mu.Lock()
@@ -144,17 +173,21 @@ const pressHold = 300 * time.Millisecond
 func (c *Controls) event(name string, data uint32) error {
 	c.mu.Lock()
 	id, ok := c.events[name]
+	client := c.client
 	if !ok {
-		id = c.base + c.next
-		c.next++
-		if err := c.client.MapClientEventToSimEvent(id, name); err != nil {
+		var err error
+		if id, err = c.nextID(); err != nil {
+			c.mu.Unlock()
+			return fmt.Errorf("systems: mapping %s: %w", name, err)
+		}
+		if err := client.MapClientEventToSimEvent(id, name); err != nil {
 			c.mu.Unlock()
 			return fmt.Errorf("systems: mapping %s: %w", name, err)
 		}
 		c.events[name] = id
 	}
 	c.mu.Unlock()
-	return c.client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, id, data,
+	return client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, id, data,
 		types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY)
 }
 
@@ -192,17 +225,21 @@ func (c *Controls) efbWrite(name string, v bool) error {
 func (c *Controls) setVar(name string, v float64) error {
 	c.mu.Lock()
 	def, ok := c.defs[name]
+	client := c.client
 	if !ok {
-		def = c.base + c.next
-		c.next++
-		if err := c.client.AddToDataDefinition(def, name, "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
+		var err error
+		if def, err = c.nextID(); err != nil {
+			c.mu.Unlock()
+			return fmt.Errorf("systems: define %s: %w", name, err)
+		}
+		if err := client.AddToDataDefinition(def, name, "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 			c.mu.Unlock()
 			return fmt.Errorf("systems: define %s: %w", name, err)
 		}
 		c.defs[name] = def
 	}
 	c.mu.Unlock()
-	return c.client.SetDataOnSimObject(def, types.SIMCONNECT_OBJECT_ID_USER, 0, 0, 8, unsafe.Pointer(&v))
+	return client.SetDataOnSimObject(def, types.SIMCONNECT_OBJECT_ID_USER, 0, 0, 8, unsafe.Pointer(&v))
 }
 
 // count presses a counted button standing at v: to the next odd count,

@@ -410,6 +410,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.note("gear down", c.inj.SetGear(c.objectID, true))
 	c.flapsPct = c.aircraft().Flaps.ApproachPct
 	c.note("approach flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+	c.note("approach thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), ApproachThrottlePct))
 
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
@@ -417,6 +418,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, startMeters, c.approachProfile())
 	c.approach.SetCrosswind(c.req.CrosswindKts)
 	c.approach.SetAimShift(TouchdownSpreadMeters * (2*c.rng.Float64() - 1))
+	c.approach.SetSideShift(TouchdownSideMeters * (2*c.rng.Float64() - 1))
 	at := c.approach.Pose()
 	c.seq.add(c.now(), "takeover on final: gear down, approach flaps", at.HeightFt, at.GroundSpeedKts)
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)
@@ -430,7 +432,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 // the injected rollout once the nose wheel is down.
 func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	now := c.now()
-	dt := math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds)
+	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds)) // no step back with the clock (#105)
 	c.lastStep = now
 	if !c.approachLightsSet {
 		c.approachLightsSet = true
@@ -475,6 +477,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	}
 	switch {
 	case c.state == ArrivalApproaching && pose.HeightFt < LandingAGLFt:
+		c.note("thrust idle", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), 0)) // the flare: idle
 		c.setState(ArrivalLanding, nil)
 		return
 	case c.state == ArrivalLanding && pose.OnGround:

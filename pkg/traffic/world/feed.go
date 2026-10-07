@@ -55,7 +55,7 @@ func (f localFeed) ILS(r nav.NavResult) { f.st.core.gotILS(r) }
 func (f localFeed) Airways(icao string, g *nav.AirwayGraph) { f.st.addAirways(icao, g) }
 
 func (f localFeed) Procedures(p airport.Procedures) {
-	fmt.Printf("🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
+	fmt.Fprintf(stdout, "🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
 	f.st.mu.Lock()
 	if f.st.procedures == nil {
 		f.st.procedures = map[string]airport.Procedures{}

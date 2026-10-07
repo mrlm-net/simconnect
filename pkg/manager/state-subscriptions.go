@@ -54,9 +54,15 @@ func (m *Instance) SubscribeConnectionStateChange(id string, bufferSize int) Con
 	}
 
 	m.mu.Lock()
+	old := m.connectionStateSubscriptions[id]
 	m.connectionStateSubscriptions[id] = sub
 	m.connectionStateSubsWg.Add(1)
 	m.mu.Unlock()
+	if old != nil {
+		// the same ID again: the previous one is closed, not left silent (review #19)
+		m.logger.Warn("[manager] Subscription ID already in use, the previous subscription is closed", "id", id)
+		old.Unsubscribe()
+	}
 
 	// Start goroutine to watch for context cancellation
 	go sub.watchContext()
@@ -99,9 +105,15 @@ func (m *Instance) SubscribeSimStateChange(id string, bufferSize int) SimStateSu
 	}
 
 	m.mu.Lock()
+	old := m.simStateSubscriptions[id]
 	m.simStateSubscriptions[id] = sub
 	m.simStateSubsWg.Add(1)
 	m.mu.Unlock()
+	if old != nil {
+		// the same ID again: the previous one is closed, not left silent (review #19)
+		m.logger.Warn("[manager] Subscription ID already in use, the previous subscription is closed", "id", id)
+		old.Unsubscribe()
+	}
 
 	// Start goroutine to watch for context cancellation
 	go sub.watchContext()
@@ -151,7 +163,9 @@ func (s *connectionStateSubscription) Unsubscribe() {
 
 	// Remove from manager's state subscription map
 	s.manager.mu.Lock()
-	delete(s.manager.connectionStateSubscriptions, s.id)
+	if s.manager.connectionStateSubscriptions[s.id] == s {
+		delete(s.manager.connectionStateSubscriptions, s.id)
+	}
 	s.manager.mu.Unlock()
 
 	// Signal WaitGroup that this subscription is done
@@ -174,7 +188,9 @@ func (s *simStateSubscription) Unsubscribe() {
 	s.closeMu.Unlock()
 	s.cancel()
 	s.manager.mu.Lock()
-	delete(s.manager.simStateSubscriptions, s.id)
+	if s.manager.simStateSubscriptions[s.id] == s {
+		delete(s.manager.simStateSubscriptions, s.id)
+	}
 	s.manager.mu.Unlock()
 	s.manager.simStateSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] SimState subscription unsubscribed: %s", s.id))

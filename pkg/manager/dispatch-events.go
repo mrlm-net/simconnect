@@ -82,73 +82,72 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 		}
 
 	case m.crashedEventID:
-		// Handle crashed event
-		newCrashed := eventData == 1
-
+		// Crashed and CrashReset are treated as pulses, not toggles (review
+		// #20): the installed SDK (SimConnect.h of the MSFS 2024 SDK, no
+		// event docs ship with it) gives no dwData state for them, so the
+		// event itself is the news. Every Crashed fires OnCrashed; the state
+		// is crashed until the next CrashReset.
 		m.mu.Lock()
-		if m.simState.Crashed != newCrashed {
-			oldState := m.simState
-			m.simState.Crashed = newCrashed
-			newState := m.simState
+		oldState := m.simState
+		m.simState.Crashed = true
+		m.simState.CrashReset = false
+		newState := m.simState
 
-			// Copy handlers under lock using pre-allocated buffer
-			if cap(m.crashedHandlersBuf) < len(m.crashedHandlers) {
-				m.crashedHandlersBuf = make([]CrashedHandler, len(m.crashedHandlers))
-			} else {
-				m.crashedHandlersBuf = m.crashedHandlersBuf[:len(m.crashedHandlers)]
-			}
-			for i, e := range m.crashedHandlers {
-				m.crashedHandlersBuf[i] = e.Fn.(CrashedHandler)
-			}
-			hs := m.crashedHandlersBuf
-			m.mu.Unlock()
-
-			m.notifySimStateChange(oldState, newState)
-
-			// Invoke handlers outside lock with panic recovery
-			for _, h := range hs {
-				handler := h // capture for closure
-				safeCallHandler(m.logger, "CrashedHandler", func() {
-					handler()
-				})
-			}
+		// Copy handlers under lock using pre-allocated buffer
+		if cap(m.crashedHandlersBuf) < len(m.crashedHandlers) {
+			m.crashedHandlersBuf = make([]CrashedHandler, len(m.crashedHandlers))
 		} else {
-			m.mu.Unlock()
+			m.crashedHandlersBuf = m.crashedHandlersBuf[:len(m.crashedHandlers)]
+		}
+		for i, e := range m.crashedHandlers {
+			m.crashedHandlersBuf[i] = e.Fn.(CrashedHandler)
+		}
+		hs := m.crashedHandlersBuf
+		m.mu.Unlock()
+
+		if !oldState.Equal(newState) {
+			m.notifySimStateChange(oldState, newState)
+		}
+
+		// Invoke handlers outside lock with panic recovery
+		for _, h := range hs {
+			handler := h // capture for closure
+			safeCallHandler(m.logger, "CrashedHandler", func() {
+				handler()
+			})
 		}
 
 	case m.crashResetEventID:
-		// Handle crash reset event
-		newReset := eventData == 1
-
+		// A pulse too (see Crashed): every CrashReset fires OnCrashReset and
+		// clears Crashed; CrashReset stays true until the next Crashed.
 		m.mu.Lock()
-		if m.simState.CrashReset != newReset {
-			oldState := m.simState
-			m.simState.CrashReset = newReset
-			newState := m.simState
+		oldState := m.simState
+		m.simState.Crashed = false
+		m.simState.CrashReset = true
+		newState := m.simState
 
-			// Copy handlers under lock using pre-allocated buffer
-			if cap(m.crashResetHandlersBuf) < len(m.crashResetHandlers) {
-				m.crashResetHandlersBuf = make([]CrashResetHandler, len(m.crashResetHandlers))
-			} else {
-				m.crashResetHandlersBuf = m.crashResetHandlersBuf[:len(m.crashResetHandlers)]
-			}
-			for i, e := range m.crashResetHandlers {
-				m.crashResetHandlersBuf[i] = e.Fn.(CrashResetHandler)
-			}
-			hs := m.crashResetHandlersBuf
-			m.mu.Unlock()
-
-			m.notifySimStateChange(oldState, newState)
-
-			// Invoke handlers outside lock with panic recovery
-			for _, h := range hs {
-				handler := h // capture for closure
-				safeCallHandler(m.logger, "CrashResetHandler", func() {
-					handler()
-				})
-			}
+		// Copy handlers under lock using pre-allocated buffer
+		if cap(m.crashResetHandlersBuf) < len(m.crashResetHandlers) {
+			m.crashResetHandlersBuf = make([]CrashResetHandler, len(m.crashResetHandlers))
 		} else {
-			m.mu.Unlock()
+			m.crashResetHandlersBuf = m.crashResetHandlersBuf[:len(m.crashResetHandlers)]
+		}
+		for i, e := range m.crashResetHandlers {
+			m.crashResetHandlersBuf[i] = e.Fn.(CrashResetHandler)
+		}
+		hs := m.crashResetHandlersBuf
+		m.mu.Unlock()
+
+		if !oldState.Equal(newState) {
+			m.notifySimStateChange(oldState, newState)
+		}
+
+		// Invoke handlers outside lock with panic recovery
+		for _, h := range hs {
+			handler := h // capture for closure
+			safeCallHandler(m.logger, "CrashResetHandler", func() {
+				handler()
+			})
 		}
 
 	case m.soundEventID:

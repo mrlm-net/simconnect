@@ -1,6 +1,10 @@
 package camera
 
-import "time"
+import (
+	"cmp"
+	"slices"
+	"time"
+)
 
 // Key is one keyframe of a Path: the pose at At (0..1 through the shot).
 type Key struct {
@@ -21,6 +25,8 @@ type path struct {
 // while circling while pushing in. Keys should share their frames; they are
 // sorted by At, the first at 0 and the last at 1.
 func Path(name string, d time.Duration, ease Ease, keys ...Key) Shot {
+	keys = slices.Clone(keys)
+	slices.SortStableFunc(keys, func(a, b Key) int { return cmp.Compare(a.At, b.At) })
 	return path{name, keys, clamp(d), ease}
 }
 

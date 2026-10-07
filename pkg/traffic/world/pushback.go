@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -63,6 +64,9 @@ func (s *pushStore) set(icao, stand string, r *traffic.PushRoute) error {
 	}
 	b, err := json.MarshalIndent(s.pushes, "", "  ")
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.file), 0o755); err != nil { // a data folder not made yet (#86)
 		return err
 	}
 	return os.WriteFile(s.file, b, 0o644)

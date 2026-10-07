@@ -104,3 +104,30 @@ func TestSwapByPress(t *testing.T) {
 		t.Errorf("COM 2 without an action: %v, events %v", err, p.sent)
 	}
 }
+
+// A model's actions taken again (Use) keep the variables defined: a new
+// variable gets a new definition, never one already holding another
+// (#23); Reset (a new connection) defines them afresh.
+func TestPressDefsAcrossUse(t *testing.T) {
+	p := &pressClient{}
+	r := New(p, 0)
+	r.Use(map[string]systems.Action{systems.COM1Swap: {Press: "L:A"}})
+	if err := r.SwapCOM(1); err != nil {
+		t.Fatal(err)
+	}
+	r.Use(map[string]systems.Action{systems.COM1Swap: {Press: "L:A"}, systems.COM2Swap: {Press: "L:B"}})
+	if err := r.SwapCOM(2); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.defs) != 2 || p.defs[DefaultEventBase] != "L:A" || p.defs[DefaultEventBase+1] != "L:B" {
+		t.Fatalf("defined %v", p.defs)
+	}
+	r.Reset()
+	p.defs = nil
+	if err := r.SwapCOM(2); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.defs) != 1 || p.defs[DefaultEventBase] != "L:B" {
+		t.Errorf("after Reset defined %v", p.defs)
+	}
+}

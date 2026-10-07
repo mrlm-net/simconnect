@@ -13,8 +13,15 @@ func HaversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
 	dLat := toRad(lat2 - lat1)
 	dLon := toRad(lon2 - lon1)
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(toRad(lat1))*math.Cos(toRad(lat2))*math.Sin(dLon/2)*math.Sin(dLon/2)
+	// Rounding can push a just past 1 near antipodes: sqrt(1-a) would be NaN.
+	a = clamp01(a)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 	return earthRadiusM * c
+}
+
+// clamp01 keeps a haversine term inside [0, 1].
+func clamp01(a float64) float64 {
+	return math.Max(0, math.Min(1, a))
 }
 
 // HaversineNM calculates the great-circle distance in nautical miles between

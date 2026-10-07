@@ -826,6 +826,26 @@ func TestArrivalChangeStand(t *testing.T) {
 	if p.Exit.Node != exit.Node || p.Route.Nodes[len(p.Route.Nodes)-1] != stand || ctl.req.Parking != a4 {
 		t.Errorf("exit %v→%v, route ends at %d (stand node %d), parking %d", exit.Node, p.Exit.Node, p.Route.Nodes[len(p.Route.Nodes)-1], stand, ctl.req.Parking)
 	}
+	// The whole ground part follows (#87): the stop on the new stand, the
+	// taxi-in ending there, the vacate stop on the new route.
+	nose := ctl.req.NoseOffset
+	if nose <= 0 {
+		nose = DefaultNoseOffsetMeters
+	}
+	want, err := StandStop(g, p.Route, nose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := calc.HaversineMeters(p.Stop.Lat, p.Stop.Lon, want.Lat, want.Lon); d > 1 {
+		t.Errorf("stop %.0f m from A4's", d)
+	}
+	standAt := g.Layout.Parking[a4].Position
+	if n := len(p.TaxiWaypoints); n == 0 || calc.HaversineMeters(p.TaxiWaypoints[n-1].Latitude, p.TaxiWaypoints[n-1].Longitude, standAt.Lat, standAt.Lon) > 80 {
+		t.Error("taxi-in does not end at A4")
+	}
+	if p.VacateIndex >= len(p.Route.Nodes) || ctl.vacateAlong != ctl.track.cum[p.VacateIndex] {
+		t.Errorf("vacate stop %d not on the new route", p.VacateIndex)
+	}
 	if err := ctl.ChangeStand(-1); err == nil {
 		t.Error("an unknown stand was taken")
 	}

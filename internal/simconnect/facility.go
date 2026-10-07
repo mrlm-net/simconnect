@@ -17,7 +17,7 @@ func (sc *SimConnect) AddToFacilityDefinition(definitionID uint32, fieldName str
 		return fmt.Errorf("failed to convert field name to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AddToFacilityDefinition")
+	procedure := sc.proc("SimConnect_AddToFacilityDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -39,7 +39,7 @@ func (sc *SimConnect) AddFacilityDataDefinitionFilter(definitionID uint32, filte
 		return fmt.Errorf("failed to convert filter path to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AddFacilityDataDefinitionFilter")
+	procedure := sc.proc("SimConnect_AddFacilityDataDefinitionFilter")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(definitionID),
@@ -57,7 +57,7 @@ func (sc *SimConnect) AddFacilityDataDefinitionFilter(definitionID uint32, filte
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_ClearAllFacilityDataDefinitionFilters.htm
 func (sc *SimConnect) ClearAllFacilityDataDefinitionFilters(definitionID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_ClearAllFacilityDataDefinitionFilters")
+	procedure := sc.proc("SimConnect_ClearAllFacilityDataDefinitionFilters")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -72,13 +72,13 @@ func (sc *SimConnect) ClearAllFacilityDataDefinitionFilters(definitionID uint32)
 }
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilitesList.htm
-func (sc *SimConnect) RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitiesList")
+func (sc *SimConnect) RequestFacilitiesList(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	procedure := sc.proc("SimConnect_RequestFacilitiesList")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(listType),
-		uintptr(definitionID),
+		uintptr(requestID), // SIMCONNECT_DATA_REQUEST_ID RequestID
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -88,13 +88,13 @@ func (sc *SimConnect) RequestFacilitiesList(definitionID uint32, listType types.
 }
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_RequestFacilitiesList_EX1.htm
-func (sc *SimConnect) RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilitiesList_EX1")
+func (sc *SimConnect) RequestFacilitiesListEX1(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	procedure := sc.proc("SimConnect_RequestFacilitiesList_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(listType),
-		uintptr(definitionID),
+		uintptr(requestID), // SIMCONNECT_DATA_REQUEST_ID RequestID
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -115,7 +115,7 @@ func (sc *SimConnect) RequestFacilityData(definitionID uint32, requestID uint32,
 		return fmt.Errorf("failed to convert region to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilityData")
+	procedure := sc.proc("SimConnect_RequestFacilityData")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -144,7 +144,7 @@ func (sc *SimConnect) RequestFacilityDataEX1(definitionID uint32, requestID uint
 		return fmt.Errorf("failed to convert region to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_RequestFacilityData_EX1")
+	procedure := sc.proc("SimConnect_RequestFacilityData_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -169,7 +169,7 @@ func (sc *SimConnect) RequestJetwayData(airportICAO string, arrayCount uint32, i
 		return fmt.Errorf("failed to convert airport ICAO to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_RequestJetwayData")
+	procedure := sc.proc("SimConnect_RequestJetwayData")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -187,7 +187,7 @@ func (sc *SimConnect) RequestJetwayData(airportICAO string, arrayCount uint32, i
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_SubscribeToFacilities.htm
 func (sc *SimConnect) SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SubscribeToFacilities")
+	procedure := sc.proc("SimConnect_SubscribeToFacilities")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -204,7 +204,7 @@ func (sc *SimConnect) SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_L
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_SubscribeToFacilities_EX1.htm
 func (sc *SimConnect) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, newElemInRangeRequestID uint32, oldElemOutRangeRequestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SubscribeToFacilities_EX1")
+	procedure := sc.proc("SimConnect_SubscribeToFacilities_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -222,7 +222,7 @@ func (sc *SimConnect) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILIT
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_UnsubscribeToFacilities.htm
 func (sc *SimConnect) UnsubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_UnsubscribeToFacilities")
+	procedure := sc.proc("SimConnect_UnsubscribeToFacilities")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -237,7 +237,7 @@ func (sc *SimConnect) UnsubscribeToFacilities(listType types.SIMCONNECT_FACILITY
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Facilities/SimConnect_UnsubscribeToFacilities_EX1.htm
 func (sc *SimConnect) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error {
-	procedure := sc.library.LoadProcedure("SimConnect_UnsubscribeToFacilities_EX1")
+	procedure := sc.proc("SimConnect_UnsubscribeToFacilities_EX1")
 
 	var unsubNew uint8
 	if unsubscribeNewInRange {
@@ -268,7 +268,7 @@ func (sc *SimConnect) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACIL
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_RequestAllFacilities.htm
 func (sc *SimConnect) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestAllFacilities")
+	procedure := sc.proc("SimConnect_RequestAllFacilities")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle

@@ -45,3 +45,32 @@ func TestSetFlight(t *testing.T) {
 		t.Error("an 8-character flight number accepted")
 	}
 }
+
+type clearingSetter struct {
+	fakeSetter
+	adds map[uint32]int // datums in each definition
+}
+
+func (c *clearingSetter) AddToDataDefinition(def uint32, name, u string, typ types.SIMCONNECT_DATATYPE, e float32, id uint32) error {
+	c.adds[def]++
+	return c.fakeSetter.AddToDataDefinition(def, name, u, typ, e, id)
+}
+
+func (c *clearingSetter) ClearDataDefinition(def uint32) error {
+	delete(c.adds, def)
+	return nil
+}
+
+// TestSetFlightAgain: a second call defines the datum afresh, not twice in
+// one definition (#22).
+func TestSetFlightAgain(t *testing.T) {
+	c := &clearingSetter{fakeSetter: fakeSetter{names: map[uint32]string{}, set: map[string]string{}}, adds: map[uint32]int{}}
+	for _, n := range []string{"007", "008"} {
+		if err := SetFlight(c, 0x7D00, "Czech Air Force", n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.adds[0x7D00] != 1 || c.adds[0x7D01] != 1 || c.set["ATC FLIGHT NUMBER"] != "008" {
+		t.Errorf("datums %v, set %v", c.adds, c.set)
+	}
+}

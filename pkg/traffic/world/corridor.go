@@ -166,8 +166,7 @@ func (s *scheduler) spawnCorridor(kind traffic.CorridorKind, c CorridorSettings,
 		model: model, waypoints: wps, route: route, corridor: kind}
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
-	s.nextReq = (s.nextReq + 1) % enrouteReqCount
-	e.reqID = s.st.core.libIDs().enrouteReq + s.nextReq
+	e.reqID, e.pendingAt = s.freeEnrouteReq(), time.Now()
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = s.cc.do(func() error {

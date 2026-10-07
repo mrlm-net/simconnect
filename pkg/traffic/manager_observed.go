@@ -85,8 +85,18 @@ func (m *TrafficManager) Drop(kind, callsign string, now time.Time) {
 	}
 	switch f.Status {
 	case FlightScheduled, FlightBoarding, FlightParked:
+		// This flight, by its kind: by call sign alone the other one of a
+		// pair could go (#92).
+		var remove []ManagedFlight
+		if f.Status.active() {
+			remove = append(remove, *f)
+		}
+		m.set(f, FlightDone, now)
+		m.unpair(f)
 		m.unlock()
-		m.Remove(callsign, now)
+		for _, r := range remove {
+			m.removeNow(r)
+		}
 		return
 	}
 	f.dropped = true

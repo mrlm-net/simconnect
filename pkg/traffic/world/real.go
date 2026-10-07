@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -232,6 +231,14 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 	}
 	arr, dep := id.arrival, id.departure
 	s.mu.Unlock()
+	// Nothing flown for it (ignored): no entry kept (#68).
+	defer func() {
+		s.mu.Lock()
+		if r := s.real[o.ID]; r != nil && r.arrival == "" && r.departure == "" {
+			delete(s.real, o.ID)
+		}
+		s.mu.Unlock()
+	}()
 	live := func(kind, callsign string) (traffic.ManagedFlight, bool) {
 		if callsign == "" {
 			return traffic.ManagedFlight{}, false
@@ -395,10 +402,14 @@ func realAirline(cs string) string {
 	if len(cs) < 4 {
 		return ""
 	}
-	for i, r := range cs[:3] {
-		if !unicode.IsLetter(r) || i == 2 && !unicode.IsDigit(rune(cs[3])) {
+	// Bytes, ASCII only: a call sign is (#69: runes and bytes mixed).
+	for i := range 3 {
+		if c := cs[i]; c < 'A' || c > 'Z' {
 			return ""
 		}
+	}
+	if c := cs[3]; c < '0' || c > '9' {
+		return ""
 	}
 	return cs[:3]
 }
@@ -429,8 +440,8 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 		return fmt.Errorf("no model of a %s", f.Type)
 	}
 	model := models[(f.Attempts-1)%len(models)]
-	e := &enrouteAC{f: f, model: model, arrive: &planned{route: pts, name: name, expect: expect, runway: rwy}}
 	kts := math.Max(f.Observed.GroundKts, realMinKts)
+	e := &enrouteAC{f: f, model: model, cruiseKts: kts, arrive: &planned{route: pts, name: name, expect: expect, runway: rwy}}
 	join := pts[0]
 	joinAlt := math.Min(alt, 10000)
 	if join.AltMax > 0 {
@@ -441,7 +452,7 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 	}
 	route := []traffic.RoutePoint{{Position: pos, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)}}
 	route = append(route, slowDownBefore(route[0], join.Position, joinAlt, kts)...)
-	route = append(route, traffic.RoutePoint{Position: join.Position, AltFt: joinAlt, Kts: traffic.EnrouteSpeedKts(joinAlt, kts)})
+	route = append(route, traffic.RoutePoint{Position: join.Position, AltFt: joinAlt, Kts: entryKts(joinAlt, kts)})
 	return s.spawnEnrouteOn(f, e, model, route, "its track to "+join.Ident)
 }
 

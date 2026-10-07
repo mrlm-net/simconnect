@@ -15,7 +15,9 @@ import (
 func (m *Instance) Start() error {
 	m.logger.Debug("[manager] Starting connection lifecycle management")
 
-	// Reconnection loop
+	// Reconnection loop: reconnect is true once a connection has been made
+	// and lost (ReconnectMaxRetries applies from then on)
+	reconnect := false
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -25,7 +27,8 @@ func (m *Instance) Start() error {
 		default:
 		}
 
-		err := m.runConnection()
+		err := m.runConnection(reconnect)
+		reconnect = true
 		if err != nil {
 			// Context cancelled - exit completely
 			m.logger.Debug("[manager] Connection ended with error", "error", err)
@@ -55,22 +58,18 @@ func (m *Instance) Start() error {
 // runConnection handles a single connection lifecycle to the simulator.
 // Returns nil when the simulator disconnects (allowing reconnection),
 // or an error if cancelled via context.
-func (m *Instance) runConnection() error {
-	// Create engine options: start with manager's context, then add user options
-	opts := []engine.Option{engine.WithContext(m.ctx)}
-	opts = append(opts, m.config.EngineOptions...)
-	// Manager's logger always takes precedence over any logger in EngineOptions
-	if m.config.Logger != nil {
-		opts = append(opts, engine.WithLogger(m.config.Logger))
-	}
-
+func (m *Instance) runConnection(reconnect bool) error {
 	// Create a new engine instance for this connection
 	m.mu.Lock()
-	m.engine = engine.New(m.name, opts...)
+	m.engine = m.newEngineLocked()
 	m.mu.Unlock()
 
 	// Attempt to connect with retry
-	if err := m.connectWithRetry(); err != nil {
+	maxRetries := m.config.MaxRetries
+	if reconnect && m.config.ReconnectMaxRetries >= 0 {
+		maxRetries = m.config.ReconnectMaxRetries
+	}
+	if err := m.connectWithRetry(maxRetries); err != nil {
 		m.mu.Lock()
 		m.engine = nil
 		m.mu.Unlock()
@@ -105,8 +104,9 @@ func (m *Instance) runConnection() error {
 	}
 }
 
-// connectWithRetry attempts to connect to the simulator with fixed retry interval
-func (m *Instance) connectWithRetry() error {
+// connectWithRetry attempts to connect to the simulator with fixed retry
+// interval, at most maxRetries attempts (0 = unlimited)
+func (m *Instance) connectWithRetry(maxRetries int) error {
 	m.setState(StateConnecting)
 
 	attempts := 0
@@ -130,9 +130,9 @@ func (m *Instance) connectWithRetry() error {
 		}
 
 		attempts++
-		if m.config.MaxRetries > 0 && attempts >= m.config.MaxRetries {
+		if maxRetries > 0 && attempts >= maxRetries {
 			m.setState(StateDisconnected)
-			return fmt.Errorf("max connection retries (%d) exceeded: %w", m.config.MaxRetries, err)
+			return fmt.Errorf("max connection retries (%d) exceeded: %w", maxRetries, err)
 		}
 
 		m.logger.Debug("[manager] Connection attempt failed, retrying", "attempt", attempts, "error", err, "retryInterval", m.config.RetryInterval)
@@ -146,20 +146,69 @@ func (m *Instance) connectWithRetry() error {
 	}
 }
 
-// connectWithTimeout attempts a single connection with timeout
+// connectWithTimeout attempts a single connection with timeout. An attempt
+// that times out keeps running (the DLL call cannot be cancelled): its
+// engine is left to it and a new engine takes the next attempt, so the two
+// never race on one engine, and a late success is disconnected rather
+// than leaking a SimConnect handle (review #33).
 func (m *Instance) connectWithTimeout(ctx context.Context) error {
+	m.mu.RLock()
+	eng := m.engine
+	m.mu.RUnlock()
+	if eng == nil {
+		return ErrNotConnected
+	}
+
 	done := make(chan error, 1)
 
 	go func() {
-		done <- m.engine.Connect()
+		done <- eng.Connect()
 	}()
 
 	select {
 	case <-ctx.Done():
+		m.mu.Lock()
+		if m.engine == eng {
+			m.engine = m.newEngineLocked()
+		}
+		m.mu.Unlock()
+		go m.discardLateConnect(eng, done)
 		return ctx.Err()
 	case err := <-done:
 		return err
 	}
+}
+
+// lateConnector is the part of an engine discardLateConnect uses.
+type lateConnector interface {
+	Disconnect() error
+}
+
+// discardLateConnect waits for the result of an abandoned connection
+// attempt on eng and disconnects it if it succeeded after all (review #33).
+func (m *Instance) discardLateConnect(eng lateConnector, done <-chan error) {
+	if err := <-done; err != nil {
+		return
+	}
+	m.logger.Debug("[manager] A timed-out connection attempt succeeded late, disconnecting it")
+	if err := eng.Disconnect(); err != nil {
+		m.logger.Error("[manager] Disconnect of a late connection", "error", err)
+	}
+}
+
+// newEngineLocked is a new engine for a connection, with the manager's
+// context, the configured engine options and the manager's logger; it
+// starts a new connection generation (connGen). m.mu must be held.
+func (m *Instance) newEngineLocked() *engine.Engine {
+	// Create engine options: start with manager's context, then add user options
+	opts := []engine.Option{engine.WithContext(m.ctx)}
+	opts = append(opts, m.config.EngineOptions...)
+	// Manager's logger always takes precedence over any logger in EngineOptions
+	if m.config.Logger != nil {
+		opts = append(opts, engine.WithLogger(m.config.Logger))
+	}
+	m.connGen++
+	return engine.New(m.name, opts...)
 }
 
 // connectionLost is the simulator gone (its stream closed, #405): what
@@ -195,15 +244,26 @@ func (m *Instance) connectionLost() {
 // lost connection again on client, with their IDs (#405).
 func (m *Instance) resubscribeCustomEvents(client systemEventSubscriber) {
 	m.mu.Lock()
+	gen := m.connGen
 	evs := make([]instance.CustomSystemEvent, 0, len(m.customSystemEvents))
 	for _, ce := range m.customSystemEvents {
+		// Subscribed on this connection already (before its OPEN): not twice (review #32)
+		if gen != 0 && ce.Conn == gen {
+			continue
+		}
 		evs = append(evs, *ce)
 	}
 	m.mu.Unlock()
 	for _, ce := range evs {
 		if err := client.SubscribeToSystemEvent(ce.ID, ce.Name); err != nil {
 			m.logger.Error("[manager] Failed to subscribe a custom system event again", "event", ce.Name, "error", err)
+			continue
 		}
+		m.mu.Lock()
+		if cur, ok := m.customSystemEvents[ce.Name]; ok && cur.ID == ce.ID {
+			cur.Conn = gen
+		}
+		m.mu.Unlock()
 	}
 }
 
@@ -242,7 +302,9 @@ func (m *Instance) disconnect() {
 	m.mu.Lock()
 	m.customSystemEvents = make(map[string]*instance.CustomSystemEvent)
 	m.customEventIDAlloc = CustomEventIDMin
+	m.customEventSubs = make(map[string][]*subscription)
 	m.mu.Unlock()
+	m.userSubs.reset()
 
 	// and the request registry.
 	m.requestRegistry.Clear()
@@ -262,6 +324,9 @@ func (m *Instance) Stop() error {
 		m.subsWg.Wait()
 		m.connectionStateSubsWg.Wait()
 		m.simStateSubsWg.Wait()
+		// the open and quit subscriptions too (review #35)
+		m.openSubsWg.Wait()
+		m.quitSubsWg.Wait()
 		close(done)
 	}()
 

@@ -82,10 +82,11 @@ func New(client Client, base uint32) *Radios {
 	return &Radios{client: client, base: base}
 }
 
-// Reset forgets the event mapping (a new connection).
+// Reset forgets the event mapping and the pressed variables' data
+// definitions (a new connection).
 func (r *Radios) Reset() {
 	r.mu.Lock()
-	r.mapped = false
+	r.mapped, r.pressDefs = false, nil
 	r.mu.Unlock()
 }
 
@@ -186,11 +187,12 @@ type Presser interface {
 
 // Use takes a model's actions (systems.Profile.Actions): a COM swap that is
 // a button press there ("com1Swap": the Fenix's RMP transfer key) replaces
-// the swap event. nil goes back to the key events.
+// the swap event. nil goes back to the key events. The variables already
+// defined stay defined (their IDs taken), until Reset.
 func (r *Radios) Use(actions map[string]systems.Action) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.actions, r.pressDefs = actions, map[string]uint32{}
+	r.actions = actions
 }
 
 // press presses var name: 1, then 0 after pressHold, as a click. r.mu held
@@ -202,6 +204,9 @@ func (r *Radios) press(name string) error {
 	}
 	def, ok := r.pressDefs[name]
 	if !ok {
+		if r.pressDefs == nil {
+			r.pressDefs = map[string]uint32{}
+		}
 		def = r.base + uint32(len(r.pressDefs)) // data definition IDs: their own space
 		if err := p.AddToDataDefinition(def, name, "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 			return fmt.Errorf("avionics: define %s: %w", name, err)

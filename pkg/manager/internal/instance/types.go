@@ -103,4 +103,7 @@ type CustomSystemEvent struct {
 	Name     string
 	ID       uint32
 	Handlers []CustomSystemEventHandlerEntry
+	// Conn is the connection (the manager's connection generation) it
+	// was last subscribed on; 0 when unknown
+	Conn uint64
 }

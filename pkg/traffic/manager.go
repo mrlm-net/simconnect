@@ -324,6 +324,7 @@ func (m *TrafficManager) SetAirports(airports ...string) {
 	}
 	for k, f := range m.flights {
 		if !m.airports[f.Airport] && f.Status == FlightScheduled {
+			m.unpair(f) // its arrival no longer waits for it (#88)
 			delete(m.flights, k)
 		}
 	}
@@ -852,11 +853,22 @@ func (m *TrafficManager) SetLimits(maxAircraft, maxPerAirport int) {
 // check runs the situation checks at every managed airport and applies
 // their advice; it returns the departures whose hold changed.
 func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []ManagedFlight {
+	// Its events at the end, in the order they happened (#95: deferred one
+	// by one, they came out reversed, Delayed after Held).
+	var emits []func()
+	defer func() {
+		for _, e := range emits {
+			e()
+		}
+	}()
 	if len(m.opts.Checks) == 0 {
 		return nil
 	}
 	by := map[string][]ManagedFlight{}
 	for _, f := range m.flights {
+		if f.Airport == "" {
+			continue // an overflight: at no airport, nothing to check (E35)
+		}
 		by[f.Airport] = append(by[f.Airport], *f)
 	}
 	hold := map[string]string{}
@@ -887,7 +899,8 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 						// Announced when it moves a minute or more (the prediction
 						// drifts by seconds each tick).
 						if a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason {
-							defer m.emit(EventDelayed, f, now, a.Reason)
+							f, reason := f, a.Reason
+							emits = append(emits, func() { m.emit(EventDelayed, f, now, reason) })
 						}
 						f.retryAt, f.Note = a.Until, a.Reason
 					}
@@ -900,7 +913,8 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 					// by seconds each tick is not news.
 					if f.Estimated.IsZero() || absDuration(f.Estimated.Sub(a.Until)) >= time.Minute {
 						f.Estimated = a.Until.Truncate(time.Minute)
-						defer m.emit(EventEstimated, f, now, a.Reason) // with the new time
+						f, reason := f, a.Reason
+						emits = append(emits, func() { m.emit(EventEstimated, f, now, reason) }) // with the new time
 					}
 					estimated[a.Key] = true
 					if a.Reason != "" {
@@ -924,10 +938,10 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 			f.Held = held
 			if held {
 				f.Note = reason
-				m.emit(EventHeld, f, now, reason)
+				emits = append(emits, func() { m.emit(EventHeld, f, now, reason) })
 			} else {
 				f.Note = ""
-				m.emit(EventReleased, f, now, "")
+				emits = append(emits, func() { m.emit(EventReleased, f, now, "") })
 			}
 			changed = append(changed, *f)
 		}

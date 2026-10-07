@@ -153,3 +153,25 @@ func TestInstalled(t *testing.T) {
 	}
 	t.Logf("MSFS %s %s: %d packages, %d streamed airports, fingerprint %s", in.Sim, in.Store, len(pkgs), airports, Fingerprint(pkgs)[:12])
 }
+
+// TestLayoutCache: a layout.json is read once while unchanged, and again
+// when it changes (E13).
+func TestLayoutCache(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "layout.json")
+	write(t, file, `{"content":[{"path":"SimObjects/Airplanes/A/aircraft.cfg"},{"path":"scenery/x.bgl"}]}`)
+	if p := layoutSimObjects(file); !p["simobjects/airplanes/a/aircraft.cfg"] || len(p) != 1 {
+		t.Fatalf("paths %v", p)
+	}
+	layoutCache.Lock()
+	e := layoutCache.m[file]
+	e.paths = map[string]bool{"cached": true}
+	layoutCache.m[file] = e
+	layoutCache.Unlock()
+	if !layoutSimObjects(file)["cached"] {
+		t.Error("read again while unchanged")
+	}
+	write(t, file, `{"content":[{"path":"SimObjects/Airplanes/B/aircraft.cfg"},{"path":"SimObjects/Airplanes/B/model.cfg"}]}`)
+	if p := layoutSimObjects(file); !p["simobjects/airplanes/b/aircraft.cfg"] {
+		t.Errorf("changed file not read again: %v", p)
+	}
+}

@@ -98,7 +98,7 @@ func TestWireEvents(t *testing.T) {
 	in <- traffic.TaxiEvent{State: traffic.TaxiPushback}
 	in <- traffic.TaxiEvent{State: traffic.TaxiTaxiing, Err: errors.New("held")}
 	close(in)
-	go a.pump("dep/1", func(yield func(any, error) bool) {
+	go a.pump("dep/1", nil, func(yield func(any, error) bool) {
 		for ev := range in {
 			if !yield(ev, ev.Err) {
 				return

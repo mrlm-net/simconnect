@@ -16,13 +16,16 @@ func (sc *SimConnect) Connect() error {
 
 	procedure := sc.library.LoadProcedure("SimConnect_Open")
 
+	// The DLL writes the handle into a local, stored under the lock after:
+	// writing it straight into sc.connection raced with readers.
+	var handle uintptr
 	hresult, _, _ := procedure.Call(
-		sc.getConnectionPtr(),            // phSimConnect - pointer to connection handle
-		uintptr(unsafe.Pointer(szName)), // szName
-		0,                     // hWnd (NULL)
-		0,                     // UserEventWin32
-		0,                     // hEventHandle
-		uintptr(0),            // ConfigIndex
+		uintptr(unsafe.Pointer(&handle)), // phSimConnect - pointer to connection handle
+		uintptr(unsafe.Pointer(szName)),  // szName
+		0,                                // hWnd (NULL)
+		0,                                // UserEventWin32
+		0,                                // hEventHandle
+		uintptr(0),                       // ConfigIndex
 	)
 
 	if !isHRESULTSuccess(hresult) {
@@ -31,34 +34,36 @@ func (sc *SimConnect) Connect() error {
 	}
 
 	// Verify handle was set or return an error
-	handle := sc.getConnection()
-
 	if handle == 0 {
 		return fmt.Errorf("SimConnect_Open succeeded but handle is null")
 	}
 
+	sc.sync.Lock()
+	sc.connection = handle
+	sc.sync.Unlock()
+
 	return nil
 }
 
+// Disconnect closes the connection. It holds the lock across
+// SimConnect_Close, so it waits for calls in flight and no call starts on
+// the handle being closed.
 func (sc *SimConnect) Disconnect() error {
 	procedure := sc.library.LoadProcedure("SimConnect_Close")
 
 	sc.sync.Lock()
-	conn := sc.connection
-	sc.sync.Unlock()
+	defer sc.sync.Unlock()
 
-	if conn != 0 {
+	if sc.connection != 0 {
 		hresult, _, _ := procedure.Call(
-			uintptr(conn), // hSimConnect
+			sc.connection, // hSimConnect
 		)
 
 		if !isHRESULTSuccess(hresult) {
 			return fmt.Errorf("SimConnect_Close failed with HRESULT: 0x%08X", hresult)
 		}
 
-		sc.sync.Lock()
 		sc.connection = 0
-		sc.sync.Unlock()
 	}
 
 	return nil

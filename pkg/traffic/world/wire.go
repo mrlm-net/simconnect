@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // The wire between a director (the World's decisions, anywhere) and an
 // actuator (its simulator side, beside the simulator) (#710, option 3).
 // The director calls methods of the actuator's objects — the sim port
-// ("sim") and each aircraft's controller ("dep/3", "arr/5") — and the
+// ("sim") and each aircraft's controller ("dep/3/1", "arr/5/2") — and the
 // actuator sends back their replies, the controllers' events and what the
 // simulator tells (the feed).
 
@@ -136,6 +138,10 @@ func (c *wireClient) read() {
 				ch <- m
 			}
 		case wireEvent:
+			if m.Method == wireEnd {
+				c.unsubscribe(m.Target) // the controller is done: its events end
+				continue
+			}
 			c.mu.Lock()
 			ch := c.events[m.Target]
 			c.mu.Unlock()
@@ -194,7 +200,18 @@ func (c *wireClient) call(target, method string, args []any, outs ...any) error 
 		c.mu.Unlock()
 		return err
 	}
-	r, ok := <-ch
+	var r wireMsg
+	var ok bool
+	select {
+	case r, ok = <-ch:
+	case <-time.After(wireCallTimeout):
+		// The other side gone quiet: not waited for forever (#56: the
+		// director's loop froze while the actuator's sim was down).
+		c.mu.Lock()
+		delete(c.waiting, m.ID)
+		c.mu.Unlock()
+		return fmt.Errorf("world: wire %s.%s: no reply in %s", target, method, wireCallTimeout)
+	}
 	if !ok {
 		return errLinkClosed
 	}
@@ -315,3 +332,12 @@ func (c *wireClient) unsubscribe(target string) {
 	}
 	c.mu.Unlock()
 }
+
+// wireEnd is an event's method when a controller's events are over (#52).
+const wireEnd = "end"
+
+// wireTargetSeq makes every controller's wire target its own (#53).
+var wireTargetSeq atomic.Uint64
+
+// wireCallTimeout: a wire call not answered by then fails (#56).
+const wireCallTimeout = 20 * time.Second

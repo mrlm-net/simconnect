@@ -78,8 +78,13 @@ type navState struct {
 	pending  int
 	sendIDs  []uint32
 	wpt, aid bool // records received
-	fix      Fix
-	routes   []RouteLink
+	// expired: given up (Expire, a failed send) while replies may still
+	// come; the slot keeps its request IDs out of use until they have, or
+	// for another timeout from started, so a late reply never lands in a
+	// new fix (#45).
+	expired bool
+	fix     Fix
+	routes  []RouteLink
 }
 
 // NewNavLoader creates a loader sending its requests through client, with
@@ -115,8 +120,19 @@ func (l *NavLoader) Free() int {
 	return n
 }
 
-// Pending returns how many fixes are loading.
-func (l *NavLoader) Pending() int { return len(l.slots) - l.Free() }
+// Pending returns how many fixes are loading (not counting slots waiting
+// for the late replies of an ended request, which are not Free either).
+func (l *NavLoader) Pending() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, s := range l.slots {
+		if s != nil && !s.expired {
+			n++
+		}
+	}
+	return n
+}
 
 // Request starts loading a fix. A VOR or NDB is requested twice: as a
 // waypoint (for its airways) and as a navaid (for frequency and name).
@@ -169,8 +185,14 @@ func (l *NavLoader) Request(key FixKey) error {
 	} else if err == nil && key.Kind == KindNDB {
 		err = send(l.defBase+2, 1)
 	}
-	if err != nil && st.pending == 0 {
+	switch {
+	case err != nil && st.pending == 0:
 		l.slots[slot] = nil
+		return err
+	case err != nil:
+		// The navaid request failed after the waypoint one went out (#47):
+		// the fix is not loaded; the slot waits for the waypoint's reply.
+		st.expired = true
 		return err
 	}
 	return nil
@@ -197,7 +219,7 @@ func (l *NavLoader) Handle(msg engine.Message) (NavResult, bool) {
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
 		m := msg.AsFacilityData()
-		if st, _, ok := l.lookup(uint32(m.UserRequestId)); ok {
+		if st, _, ok := l.lookup(uint32(m.UserRequestId)); ok && !st.expired {
 			n := int(m.DwSize) - int(unsafe.Offsetof(m.Data))
 			if n > 0 {
 				st.add(m.Type, unsafe.Slice((*byte)(unsafe.Pointer(&m.Data)), n))
@@ -222,29 +244,50 @@ func (l *NavLoader) Handle(msg engine.Message) (NavResult, bool) {
 	if st.pending--; st.pending > 0 {
 		return NavResult{}, false
 	}
+	if st.expired {
+		l.release(slot) // the late replies are in: the slot is free again
+		return NavResult{}, false
+	}
 	return l.finish(slot), true
 }
 
 // Expire ends the requests older than the loader's timeout and returns
-// them (Found set if a record did arrive).
+// them (Found set if a record did arrive). An ended request's slot stays
+// out of use until its late replies are in, or for another timeout.
 func (l *NavLoader) Expire(now time.Time) []NavResult {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var out []NavResult
 	for i, s := range l.slots {
-		if s != nil && now.Sub(s.started) > l.timeout {
-			out = append(out, l.finish(i))
+		switch {
+		case s == nil || now.Sub(s.started) <= l.timeout:
+		case s.expired:
+			l.release(i)
+		default:
+			out = append(out, l.result(s))
+			s.expired, s.started = true, now
 		}
 	}
 	return out
 }
 
-func (l *NavLoader) finish(slot int) NavResult {
+// release frees a slot and forgets its send IDs.
+func (l *NavLoader) release(slot int) {
 	st := l.slots[slot]
 	l.slots[slot] = nil
 	for _, id := range st.sendIDs {
 		delete(l.sendID, id)
 	}
+}
+
+func (l *NavLoader) finish(slot int) NavResult {
+	st := l.slots[slot]
+	l.release(slot)
+	return l.result(st)
+}
+
+// result is the fix loaded so far.
+func (l *NavLoader) result(st *navState) NavResult {
 	if st.routes == nil {
 		st.routes = []RouteLink{}
 	}

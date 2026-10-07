@@ -93,14 +93,32 @@ func (s *subscription) Unsubscribe() {
 
 	s.cancel() // Cancel the subscription's context
 
-	// Remove from manager's subscription map
+	// Remove from manager's subscription map, only while it is still this
+	// one: a newer subscription with the same ID stays (review #19)
 	s.manager.mu.Lock()
-	delete(s.manager.subscriptions, s.id)
+	if s.manager.subscriptions[s.id] == s {
+		delete(s.manager.subscriptions, s.id)
+	}
 	s.manager.mu.Unlock()
 
 	// Signal WaitGroup that this subscription is done
 	s.manager.subsWg.Done()
 	s.manager.logger.Debug("[manager] Unsubscribed: " + s.id)
+}
+
+// addSubscription registers sub under its ID. A subscription already
+// registered with that ID is replaced and closed (its consumer sees Done)
+// rather than left open and silent (review #19).
+func (m *Instance) addSubscription(sub *subscription) {
+	m.mu.Lock()
+	old := m.subscriptions[sub.id]
+	m.subscriptions[sub.id] = sub
+	m.subsWg.Add(1)
+	m.mu.Unlock()
+	if old != nil {
+		m.logger.Warn("[manager] Subscription ID already in use, the previous subscription is closed", "id", sub.id)
+		old.Unsubscribe()
+	}
 }
 
 // SubscriptionOption is a functional option for configuring subscriptions
@@ -144,10 +162,7 @@ func (m *Instance) Subscribe(id string, bufferSize int, opts ...SubscriptionOpti
 		opt(sub)
 	}
 
-	m.mu.Lock()
-	m.subscriptions[id] = sub
-	m.subsWg.Add(1)
-	m.mu.Unlock()
+	m.addSubscription(sub)
 
 	// Start goroutine to watch for context cancellation with tracking
 	sub.watchWg.Add(1)
@@ -183,10 +198,7 @@ func (m *Instance) SubscribeWithFilter(id string, bufferSize int, filter func(en
 		opt(sub)
 	}
 
-	m.mu.Lock()
-	m.subscriptions[id] = sub
-	m.subsWg.Add(1)
-	m.mu.Unlock()
+	m.addSubscription(sub)
 
 	// Start goroutine to watch for context cancellation with tracking
 	sub.watchWg.Add(1)
@@ -227,10 +239,7 @@ func (m *Instance) SubscribeWithType(id string, bufferSize int, recvIDs []types.
 		opt(sub)
 	}
 
-	m.mu.Lock()
-	m.subscriptions[id] = sub
-	m.subsWg.Add(1)
-	m.mu.Unlock()
+	m.addSubscription(sub)
 
 	// Start goroutine to watch for context cancellation with tracking
 	sub.watchWg.Add(1)

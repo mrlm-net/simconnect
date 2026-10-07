@@ -314,7 +314,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {
-			q.enterHold(now, icao, it, e, a.Left)
+			_ = q.enterHold(now, icao, it, e, a.Left) // logged
 		}
 	}
 }
@@ -473,11 +473,13 @@ func (q *sequences) stack(icao string, h traffic.Hold) *traffic.HoldStack {
 	return st
 }
 
-func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration) {
+// enterHold sends it into the hold, its error when it did not go (#78:
+// only logged, the map and the conflict watch took it as held).
+func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration) error {
 	h, ok := it.arr.HoldFix(holdFixNM)
 	if !ok {
 		q.cc.log.printf("%-6s sequence: %s to lose, no fix to hold at", e.Callsign, left.Round(time.Second))
-		return
+		return errors.New("no fix to hold at")
 	}
 	st := q.stack(icao, h)
 	h = st.Hold // the stack's: the same racetrack for all
@@ -486,14 +488,15 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 	if err := q.cc.do(func() (err error) { entry, err = it.arr.EnterHold(h, alt); return err }); err != nil {
 		st.Release(e.Callsign)
 		q.cc.log.printf("%-6s sequence: hold failed: %v", e.Callsign, err)
-		return
+		return err
 	}
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
 		it.mu.Unlock()
 	}
-	it.say(traffic.HoldAt(e.Callsign, fixName(h), entry, alt, now.Add(left)))
+	it.say(traffic.HoldAt(e.Callsign, fixName(h), entry, alt, now.Add(left), q.cc.taOf(icao)))
+	return nil
 }
 
 func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry) {
@@ -511,7 +514,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 	for cs, alt := range q.stack(icao, h).Release(e.Callsign) {
 		if above := q.cc.byTail(cs); above != nil && above.arr != nil {
 			if err := q.cc.do(func() error { return above.arr.HoldAltitude(alt) }); err == nil {
-				above.say(traffic.HoldDescend(cs, alt))
+				above.say(traffic.HoldDescend(cs, alt, q.cc.taOf(above.ICAO)))
 			}
 		}
 	}
@@ -1014,3 +1017,21 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 // departureGapLeadM: a departure taxiing this close to its runway (about 5
 // min at taxi speed) already counts for a departure gap in the arrivals.
 const departureGapLeadM = 2500.0
+
+// forget drops what the sequence remembers of a call sign: spawned again,
+// it is a new flight (#75: a reused call sign kept "broke off", a manual
+// hold, the numbers said; and the maps only grew).
+func (q *sequences) forget(tail string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.absorbed, tail)
+	delete(q.refused, tail)
+	delete(q.slowedFinal, tail)
+	delete(q.brokeOff, tail)
+	delete(q.seqSaid, tail)
+	delete(q.shortcutAt, tail)
+	delete(q.noShortcut, tail)
+	delete(q.seenAt, tail)
+	delete(q.fixesAhead, tail)
+	delete(q.conflictHeld, tail)
+}

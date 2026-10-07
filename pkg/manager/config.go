@@ -39,10 +39,24 @@ type Config struct {
 	ConnectionTimeout time.Duration // Timeout for each connection attempt
 	ReconnectDelay    time.Duration // Delay before reconnecting after disconnect
 	ShutdownTimeout   time.Duration // Timeout for graceful shutdown of subscriptions
-	MaxRetries        int           // Maximum number of connection retries (0 = unlimited)
+	// MaxRetries is the maximum number of connection attempts (0 = unlimited).
+	// Reaching it ends Start with an error and the manager stops for good, also
+	// with AutoReconnect: after a lost connection the limit applies again, so
+	// a simulator restart slower than MaxRetries x RetryInterval stops the
+	// manager. ReconnectMaxRetries sets a separate limit for those reconnects.
+	MaxRetries int
+	// ReconnectMaxRetries is the attempt limit after a connection was made and
+	// lost (AutoReconnect): 0 = unlimited, below 0 (the default) = MaxRetries.
+	ReconnectMaxRetries int
 
 	// Behavior settings
 	AutoReconnect bool // Whether to automatically reconnect on disconnect
+	// ResubscribeOnReconnect subscribes again, on each new connection, what
+	// the application subscribed through the manager's pass-through calls:
+	// SubscribeToFlowEvent, SubscribeInputEvent, SubscribeToSystemEvent and
+	// SubscribeToFacilities[EX1]. Off by default: they belong to the
+	// connection they were made on and are lost with it.
+	ResubscribeOnReconnect bool
 
 	// SimStatePeriod controls how often the manager requests SimState data from SimConnect.
 	// Default is SIMCONNECT_PERIOD_SIM_FRAME (every simulation frame).
@@ -120,6 +134,26 @@ func WithMaxRetries(n int) Option {
 	}
 }
 
+// WithReconnectMaxRetries sets the connection attempt limit after a lost
+// connection (0 = unlimited), apart from MaxRetries, which then applies only
+// to the first connection. Without it reconnects use MaxRetries; see
+// Config.MaxRetries.
+func WithReconnectMaxRetries(n int) Option {
+	return func(c *Config) {
+		c.ReconnectMaxRetries = n
+	}
+}
+
+// WithResubscribeOnReconnect makes the manager subscribe again, on every new
+// connection, the flow events, input events, raw system events and facility
+// subscriptions the application made through it (Config.ResubscribeOnReconnect).
+// Off by default.
+func WithResubscribeOnReconnect(enabled bool) Option {
+	return func(c *Config) {
+		c.ResubscribeOnReconnect = enabled
+	}
+}
+
 // WithAutoReconnect enables or disables automatic reconnection
 func WithAutoReconnect(enabled bool) Option {
 	return func(c *Config) {
@@ -193,16 +227,17 @@ func defaultConfig() *Config {
 		Context: context.Background(),
 		// Defer creating a concrete logger until constructor time so that
 		// WithLogLevel and WithLogger options can be applied in any order.
-		Logger:            nil,
-		LogLevel:          slog.LevelInfo,
-		RetryInterval:     DEFAULT_RETRY_INTERVAL,
-		ConnectionTimeout: DEFAULT_CONNECTION_TIMEOUT,
-		ReconnectDelay:    DEFAULT_RECONNECT_DELAY,
-		ShutdownTimeout:   DEFAULT_SHUTDOWN_TIMEOUT,
-		MaxRetries:        DEFAULT_MAX_RETRIES,
-		AutoReconnect:     DEFAULT_AUTO_RECONNECT,
-		SimStatePeriod:    types.SIMCONNECT_PERIOD_SIM_FRAME,
-		EngineOptions:     []engine.Option{},
+		Logger:              nil,
+		LogLevel:            slog.LevelInfo,
+		RetryInterval:       DEFAULT_RETRY_INTERVAL,
+		ConnectionTimeout:   DEFAULT_CONNECTION_TIMEOUT,
+		ReconnectDelay:      DEFAULT_RECONNECT_DELAY,
+		ShutdownTimeout:     DEFAULT_SHUTDOWN_TIMEOUT,
+		MaxRetries:          DEFAULT_MAX_RETRIES,
+		ReconnectMaxRetries: -1,
+		AutoReconnect:       DEFAULT_AUTO_RECONNECT,
+		SimStatePeriod:      types.SIMCONNECT_PERIOD_SIM_FRAME,
+		EngineOptions:       []engine.Option{},
 	}
 }
 

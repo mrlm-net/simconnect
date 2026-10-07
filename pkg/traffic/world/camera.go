@@ -59,17 +59,19 @@ type cameraMan struct {
 	// ours, off otherwise (60 messages a second for nothing).
 	frames func(on bool)
 
-	mu      sync.Mutex
-	mode    string // off, follow, auto, demo
-	follow  int    // the card followed
-	subject string // the aircraft on screen
-	since   time.Time
-	shots   int // shots of the subject in a row
-	shot    string
-	err     string
-	locked  string // the airport the world is kept loaded around
-	scene   *sceneRun
-	picking atomic.Bool // a next shot being picked
+	mu   sync.Mutex
+	mode string // off, follow, auto, demo
+	// sceneStarting: a scene asked for and not yet playing (#62: two at once).
+	sceneStarting bool
+	follow        int    // the card followed
+	subject       string // the aircraft on screen
+	since         time.Time
+	shots         int // shots of the subject in a row
+	shot          string
+	err           string
+	locked        string // the airport the world is kept loaded around
+	scene         *sceneRun
+	picking       atomic.Bool // a next shot being picked
 	// lookAt: in the tower, when to look for another aircraft to watch
 	// (its view holds meanwhile, turning with its aircraft).
 	lookAt time.Time

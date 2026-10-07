@@ -128,7 +128,9 @@ func Use(name string, data []byte) error {
 		}
 		items = env.Items
 	}
-	if api, ok := apiItems(items); ok {
+	if api, ok, err := apiItems(items); err != nil {
+		return fmt.Errorf("dict: %s: %w", name, err)
+	} else if ok {
 		if items, err = t.fromAPI(api); err != nil {
 			return fmt.Errorf("dict: %s: %w", name, err)
 		}
@@ -184,18 +186,34 @@ type apiItem struct {
 	Payload    map[string]json.RawMessage `json:"payload"`
 }
 
-// apiItems are raw's items when they are the API's (a key and a payload).
-func apiItems(raw json.RawMessage) ([]apiItem, bool) {
-	var items []apiItem
-	if json.Unmarshal(raw, &items) != nil || len(items) == 0 {
-		return nil, false
+// apiItems are raw's items when they are the API's (each with a payload,
+// null included): those with a payload; an item without a key is an
+// error, not a reason to read the set as the table's own items (#28).
+func apiItems(raw json.RawMessage) ([]apiItem, bool, error) {
+	var fields []map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) == 0 {
+		return nil, false, nil
 	}
-	for _, it := range items {
-		if it.Key == "" || it.Payload == nil {
-			return nil, false
+	for _, f := range fields {
+		if _, ok := f["payload"]; !ok {
+			return nil, false, nil
 		}
 	}
-	return items, true
+	var items []apiItem
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, true, err
+	}
+	out := items[:0]
+	for i, it := range items {
+		if it.Key == "" {
+			return nil, true, fmt.Errorf("item %d: no key", i)
+		}
+		if it.Payload == nil {
+			continue // nothing given: the shipped item stays
+		}
+		out = append(out, it)
+	}
+	return out, true, nil
 }
 
 // fromAPI makes the API's items t's: each the shipped item of its key,
@@ -246,16 +264,43 @@ func Reset(name string) error {
 
 // Keyed makes a table of items T with an id: shipped is the embedded copy
 // (in its order), id an item's id, apply makes items the table in use.
-// Use keeps the shipped order, replaces items by id and appends new ones.
+// Use keeps the shipped order and appends new items; an item of a shipped
+// id is read onto a copy of the shipped item, so it replaces only the
+// values it gives (local wins per value). An item without an id is
+// refused.
 func Keyed[T any](name, idField, source, licence string, shipped func() []T, id func(T) string, apply func([]T)) Table {
 	return Table{Name: name, ID: idField, Source: source, Licence: licence,
 		export: func() (any, error) { return shipped(), nil },
 		use: func(raw json.RawMessage) error {
-			var items []T
-			if err := json.Unmarshal(raw, &items); err != nil {
+			var raws []json.RawMessage
+			if err := json.Unmarshal(raw, &raws); err != nil {
 				return err
 			}
-			apply(Merge(shipped(), items, id))
+			base := shipped()
+			at := map[string]int{}
+			for i, b := range base {
+				at[id(b)] = i
+			}
+			items := make([]T, 0, len(raws))
+			for n, r := range raws {
+				var item T
+				if err := json.Unmarshal(r, &item); err != nil {
+					return fmt.Errorf("item %d: %w", n, err)
+				}
+				key := id(item)
+				if key == "" {
+					return fmt.Errorf("item %d: no %s", n, idField)
+				}
+				if i, ok := at[key]; ok {
+					over, err := overlay(base[i], r)
+					if err != nil {
+						return fmt.Errorf("item %s: %w", key, err)
+					}
+					item = over
+				}
+				items = append(items, item)
+			}
+			apply(Merge(base, items, id))
 			return nil
 		},
 		reset: func() { apply(shipped()) },
@@ -274,6 +319,24 @@ func Keyed[T any](name, idField, source, licence string, shipped func() []T, id 
 			return nil, false
 		},
 	}
+}
+
+// overlay is item with r (an item's JSON) read onto a deep copy of it: the
+// fields r gives replace item's, the others stay. The copy goes through
+// JSON, so the shipped item (and maps it shares) is never written to.
+func overlay[T any](item T, r json.RawMessage) (T, error) {
+	var out T
+	b, err := json.Marshal(item)
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(r, &out); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 // Merge is base with over's items replacing those of the same id and the

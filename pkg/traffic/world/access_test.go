@@ -16,6 +16,9 @@ func TestGuard(t *testing.T) {
 	do := func(method, target, remote, cookie string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, target, nil)
 		r.RemoteAddr = remote
+		if remote == "127.0.0.1:5000" {
+			r.Host = "127.0.0.1:8080" // the map asked for by its loopback name
+		}
 		if cookie != "" {
 			r.AddCookie(&http.Cookie{Name: tokenCookie, Value: cookie})
 		}
@@ -52,6 +55,29 @@ func TestGuard(t *testing.T) {
 	// A bad link sets no cookie.
 	if ck := do("GET", "/?token=nope", lan, "").Result().Cookies(); len(ck) != 0 {
 		t.Errorf("bad link set %+v", ck)
+	}
+	// Not off-site from a link (#61).
+	if loc := do("GET", "//evil.example/x?token=view456", lan, "").Header().Get("Location"); loc != "/evil.example/x" {
+		t.Errorf("redirect to %q", loc)
+	}
+	// This computer only by a loopback name, and not from another site's
+	// page (#60).
+	rebound := httptest.NewRequest("POST", "/api/control", nil)
+	rebound.RemoteAddr, rebound.Host = here, "evil.example:8080"
+	if fromThisComputer(rebound) {
+		t.Error("a rebound name came in as this computer")
+	}
+	csrf := httptest.NewRequest("POST", "/api/control", nil)
+	csrf.RemoteAddr, csrf.Host = here, "127.0.0.1:8080"
+	csrf.Header.Set("Origin", "https://evil.example")
+	if fromThisComputer(csrf) {
+		t.Error("another site's POST came in as this computer")
+	}
+	own := httptest.NewRequest("POST", "/api/control", nil)
+	own.RemoteAddr, own.Host = here, "127.0.0.1:8080"
+	own.Header.Set("Origin", "http://127.0.0.1:8080")
+	if !fromThisComputer(own) {
+		t.Error("the map's own POST refused")
 	}
 	setTokens("", "")
 	if c := do("POST", "/api/control", lan, "").Code; c != http.StatusOK {
