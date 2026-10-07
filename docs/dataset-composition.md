@@ -7,7 +7,7 @@ section: "datasets"
 
 # Dataset Composition
 
-The `pkg/datasets` package provides four complementary APIs for constructing and combining datasets without touching raw `DataDefinition` slices directly: `Clone`, `Merge`, `Builder`, and the global `Registry`.
+The `pkg/datasets` package provides four complementary APIs for constructing and combining datasets without touching raw `DataDefinition` slices directly: `Clone`, `Merge`, `Builder`, and the global registry (`Register`, `Get`, `List`, `Categories`, `ListByCategory`).
 
 ## Clone
 
@@ -201,6 +201,8 @@ import (
 ```
 
 The blank import `_` is the Go idiom for importing a package solely for its `init()` side-effects.
+
+Today `pkg/datasets/traffic` is the only sub-package that registers a dataset (`"traffic/aircraft"`, category `"traffic"`, Windows builds). The other sub-packages' constructors are called directly.
 
 ### Get
 

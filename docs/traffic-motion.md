@@ -57,7 +57,11 @@ if ok, err := inj.Handle(msg); ok && err != nil { log.Print(err) }
 inj.Release(objectID)                   // unfreeze
 ```
 
-`Place` puts the aircraft on the ground (ground altitude + `STATIC CG TO GROUND`, requested every sim frame). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`. `Injector` uses 5 definition IDs, 2 request IDs per aircraft (up to 96 aircraft and tugs, see [Many aircraft](#many-aircraft)) and 10 event IDs; move them with `InjectorWithIDs`.
+`Place` puts the aircraft on the ground, resting on its gear: ground altitude + `STATIC CG TO GROUND` at `STATIC PITCH` (requested every sim frame), or the height and pitch the sim showed it resting at before the first placement, and `MovingPitchDeg` (1°) nose down while moving, faded in up to `MovingPitchFullKts` (5 kt). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`.
+
+Other calls on a taken-over aircraft: `SetGear`, `HoldGearDown`, `SetFlaps`, `SetSpoilers`, `SetEngines(id, n, on)` and `SetThrottle(id, n, percent)` for engines 1 to n (at most 4). An injected aircraft's engines follow the throttle and are heard as they spool: the controllers set `TakeoffThrottlePct` (90 %) for the take-off roll, `ApproachThrottlePct` (45 %) on an injected final and idle from the flare. `SetModel(id, title)` tells the injector the aircraft's title: rolling at 30 kt or more after a few placements, it learns the height the sim rests that model at and uses it for every aircraft of that title in the air (`PlaceAir`), so lift-off and touchdown do not jump. Until then a model is taken to rest `RestAboveStaticShare` (8.5 %) of its static CG height higher.
+
+`Injector` uses 14 definition IDs, 2 request IDs per aircraft (up to 96 aircraft and tugs, see [Many aircraft](#many-aircraft)) and 10 event IDs from `DefaultInjectDefinitionBase` (7700), `DefaultInjectRequestBase` (7800) and `DefaultInjectEventBase` (7900); move them with `InjectorWithIDs`.
 
 ## Pushback
 
@@ -90,7 +94,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: mo
 3. **Rollout and exit** (`ArrivalRequest.Rollout`, a `RolloutProfile` per aircraft type; A320 defaults). The aircraft brakes hard (2.5 m/s²) to 80 kt, then slows gently and evenly, reaching the exit speed at the exit: 32 kt at a high-speed exit, 12 kt at any other. Clear of the runway it slows to taxi speed. This is how crews fly it.
 4. **Vacate stop:** the aircraft stops there and waits for `ClearToTaxi` (`HoldForClearance`) or the after-landing dwell, which varies by ±10 %. With `RollThroughChance` (default 30 %, only without `HoldForClearance`) it only slows to 0.5 kt and taxis on, like a rolling clearance.
 5. **Runway crossings:** with `HoldAtCrossings` the aircraft stops with its nose gear `HoldShortStopMeters` before the hold-short line of every runway it crosses, reports `ArrivalHoldingShort` (with `ArrivalEvent.HoldingShortOf`), and waits for `ClearToCross()`. Runway lights stay off while it holds. A clearance given earlier means it does not stop. Without `HoldAtCrossings`, crossings count as cleared in advance. `ClearUpTo(node)` gives a progressive taxi: the aircraft holds at a route node until cleared further ([Progressive taxi](traffic-arrival.md#progressive-taxi)). Departure gates (pushback, taxi, line-up, take-off) are in [Injected departure](traffic-taxi.md#injected-departure).
-6. **Taxi-in and parking:** the path ends straight along the stand axis, the last 30 m at 5 kt, with the reference point on the stop mark. The aircraft stays frozen on the stand; `Release` hands it back to MSFS AI.
+6. **Taxi-in and parking:** the path ends straight along the stand axis, the last 30 m at 5 kt, with the reference point on the stop mark. On arrival the engines are shut down (`SetEngines`). The aircraft stays frozen on the stand; `Release` hands it back to MSFS AI.
 
 Lights, all set by the controller once it has taken over:
 
@@ -100,7 +104,7 @@ Lights, all set by the controller once it has taken over:
 | Clear of the runway | strobes off |
 | Vacate stop (or slowest point when rolling through) | landing off, taxi on `TaxiLightDelay` (1.5 s) later |
 | Crossing a runway | strobes and landing on from just past the hold-short line before it until a moment after the tail has passed the opposite one |
-| Parked | nav only (beacon and taxi off) |
+| Parked | nav only (beacon and taxi off), engines off |
 
 Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` reports what the sim shows. [`examples/ai-arrival`](../examples/ai-arrival) runs it with `-inject`; `-roll-through 1` forces a rolling clearance.
 

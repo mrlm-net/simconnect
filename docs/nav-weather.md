@@ -50,7 +50,7 @@ It reads these SimVars of the user aircraft (`SIMCONNECT_OBJECT_ID_USER`):
 | `AMBIENT PRECIP STATE` | mask | `Precip` (`none`, `rain`, `snow`) |
 | `AMBIENT IN CLOUD` | bool | `InCloud` |
 
-**Limitation:** SimConnect gives the ambient weather where the user aircraft is, not per airport. That is the airport's weather while the user is on the ground there or close by, which is the case when the airport is the world centre around the user; for other airports it is only an approximation. Gusts, ceiling and dewpoint have no SimVar: the reader leaves `GustKts` and `CeilingFt` at 0 and `DewpointC` NaN, and the ATIS leaves them out. Set them yourself (or build the whole `Weather` with `StaticWeather`) when you have them from elsewhere.
+**Limitation:** SimConnect gives the ambient weather where the user aircraft is, not per airport. That is the airport's weather while the user is on the ground there or close by, which is the case when the airport is the world centre around the user; for other airports it is only an approximation. Gusts, ceiling and dewpoint have no SimVar: the reader leaves `GustKts` and `CeilingFt` at 0 and `DewpointC` NaN, and the ATIS leaves them out. Set them yourself (or build the whole `Weather` with `StaticWeather`) when you have them from elsewhere. `Weather.Variable` marks a variable wind (a METAR's VRB): no runway gets a head- or crosswind from it (`Components` returns 0, 0) and the ATIS says "wind variable". `Stop` ends a subscription, `Last` returns the latest weather read, and `Reset` registers the definition again after a reconnect.
 
 The same `Weather` sets the spacing on final: `traffic.ConditionsFrom(weather, runwayHeadingTrue)` turns it into approach conditions (low visibility, runway surface, headwind), see [Weather on final](traffic-separation.md#weather-on-final).
 
@@ -71,7 +71,7 @@ For every runway end of the layout (at least `MinLengthM` long), the headwind an
 2. Otherwise the end with the most headwind among those within the limits, ties (within 1 kt) going to the longer runway.
 3. When no end is within the limits, the one with the most headwind is taken and `WithinLimits` is false.
 
-`PreferredArrival` gives arrivals their own preference list, for split operations (`RunwayUse.Single()` is then false). `Approach` is `ApproachILS` when visibility is below 5000 m or the ceiling below 1500 ft, else `ApproachVisual` ("visual/RNAV"); pick the actual procedure from `airport.Procedures`.
+`PreferredArrival` gives arrivals their own preference list, for split operations (`RunwayUse.Single()` is then false). `nav.RunwayLimitsFrom(airport.LimitsFor(...))` fills `Preferred` from the airport limits. `Approach` (also `ApproachFor(w)`) is `ApproachILS` when visibility is below 5000 m or the ceiling below 1500 ft, else `ApproachVisual` ("visual/RNAV"); pick the actual procedure from `airport.Procedures`.
 
 ### Parallel runways used together
 
@@ -99,6 +99,8 @@ var sel nav.RunwaySelector // one per airport, kept
 use := sel.Choose(time.Now(), layout, weather, limits)
 ```
 
+A runway is only chosen when it is `RunwayChoiceMarginKts` (2 kt) within its wind limits; one in use is kept up to the limits themselves. Below `RunwayCalmKts` (3 kt) the runway in use stays while it is within its limits. An out-of-limits runway changes at once only when another is within them. `Ready`, when set, picks the moment of a due change (a gap in the traffic), waiting at most `MaxChangeWait` (`RunwayChangeMaxWait`, 15 min); `Pending` reports the change coming, and `Seed` starts a selector from a runway already in use.
+
 While it holds, the headwind and crosswind it reports are those of the runway kept. The airport map uses a selector per airport for traffic and for the Airport panel. Near a tailwind limit in light, variable wind, the runway had flipped between 06 and 24 from one minute to the next.
 
 ## ATIS
@@ -124,7 +126,7 @@ Ruzyne information Alpha, time 1320, runway in use 24, wind 240 degrees 8 knots,
 Ruzyne information Alpha, time one three two zero, runway in use two four, wind two four zero degrees eight knots, visibility one zero kilometers or more, temperature one five, dewpoint eight, QNH one zero one three, transition level seven zero, advise on initial contact you have information Alpha.
 ```
 
-The broadcast includes, when known: split landing/departure runways, "expect ILS approach", gusts (10 kt or more above the mean wind), visibility in kilometers from 5 km and in meters below, rain or snow, the ceiling, and a negative temperature as "minus". The wind is reported magnetic when a magnetic variation is given, in the facility data convention of `airport.Procedures.MagVar` (magnetic = true + MagVar; LKPR 356).
+The broadcast includes, when known: split landing/departure runways, "wind calm" or "wind variable", "expect ILS approach", gusts (10 kt or more above the mean wind), visibility in kilometers from 5 km and in meters below, rain or snow, the ceiling, and a negative temperature as "minus". The wind is reported magnetic when a magnetic variation is given, in the facility data convention of `airport.Procedures.MagVar` (magnetic = true + MagVar; LKPR 356).
 
 **QNH and transition level.** QNH is rounded down to a whole hPa. `TransitionLevel(ta, qnh)` is the lowest flight level in tens at least 1000 ft above the transition altitude at that QNH (27 ft per hPa); at LKPR (TA 5000 ft) that is FL 60 from QNH 1014 up, FL 70 from 1013 down to 977, FL 80 below.
 
@@ -137,7 +139,7 @@ The broadcast includes, when known: split landing/departure runways, "expect ILS
 
 The runway in use holds through wind shifts near a limit: the service keeps a `RunwaySelector`, or shares the traffic's with `ATISWithSelector(sel)`, so the ATIS says the runway the traffic uses (#454).
 
-Smaller changes keep the current broadcast, as a real ATIS does between reports.
+Smaller changes keep the current broadcast, as a real ATIS does between reports. `Current()` returns it; `NewATIS` builds a single broadcast without the service.
 
 ## Example
 

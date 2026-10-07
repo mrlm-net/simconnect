@@ -61,7 +61,7 @@ On the airport map every ATC line of the traffic log comes from its radio: the g
 
 ### Whom the controller calls first
 
-On the airport map each controller decides whom to call next (`cmd/airport-map/agenda.go`). A clearance it has decided waits on its frequency's agenda until the controller's answer time (1–5 s). It goes out once the frequency has been quiet for `atcAnswerDelay` (1 s), one call at a time. The most urgent ready call goes first, by class:
+On the airport map each controller decides whom to call next (`pkg/traffic/world/agenda.go`). A clearance it has decided waits on its frequency's agenda until the controller's answer time (1–5 s). It goes out once the frequency has been quiet for `atcAnswerDelay` (1 s), one call at a time. The most urgent ready call goes first, by class:
 
 1. a go-around;
 2. a landing clearance;
@@ -104,7 +104,7 @@ Clearances follow requests in radio order (#462). Held for clearances (`TaxiRequ
 
 Our pilots talk too (#417). A pilot's transmission has `Pilot` set, on the same frequency as the controller's.
 
-- **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`.
+- **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`. A crew flying a TCAS RA reports `TCASRAReport` ("CSA123, TCAS RA") and, the RA over, `ClearOfConflict` ("CSA123, clear of conflict, returning to assigned altitude"), FAA JO 7110.65 2-1-28 ([TCAS](traffic-world.md#tcas-v024)).
 - **The first call on a frequency:** `CheckIn`: "Ruzyne Tower, CSA123, holding point runway 24, ready for departure", with the ATIS letter on the first call of all.
 - **Readbacks:** `Readback` reads a clearance back the ICAO way, what must be read back and then the call sign: "Taxi to and hold short of runway 24 at B via H, A, CSA123"; "Ruzyne Tower 134.56, CSA123"; "Climb flight level 210, CSA123"; "Hold position, CSA123" (the project reads hold position back as given, where Doc 4444 has "holding"), and "Continue taxi, CSA123" after it. With `RadioOptions.ReadBack` the radio has our pilots read back every clearance, after it, on its frequency.
 - **Checking a readback:** `CheckReadback(clearance, heard)` compares what was read back (parameters as recognised, e.g. a voice recogniser's tags) with the clearance. It ignores case, spacing and leading zeros ("6" for "06", "FL210" for "flight level 210"). A wrong or missing item gets the controller's correction: "CSA123, negative, taxi via H, hold short of A". `SayAgain` asks a call sign, or "station calling", to say again.

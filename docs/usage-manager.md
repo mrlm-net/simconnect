@@ -47,6 +47,10 @@ The manager will:
 3. Automatically reconnect if the connection drops (when enabled)
 4. Continue until `Stop()` is called or context is cancelled
 
+`Start()` returns the context error when cancelled, `nil` after a disconnect with auto-reconnect off, and an error when `MaxRetries` (or `ReconnectMaxRetries` after a lost connection) is used up. See [Configuration Options](config-manager.md#withmaxretries).
+
+On a lost connection the manager keeps its handlers, subscriptions and custom system events; custom system events are subscribed again on the next connection. Subscriptions made through the pass-through calls (`SubscribeToSystemEvent`, `SubscribeInputEvent`, `SubscribeToFlowEvent`, `SubscribeToFacilities*`) and data definitions/requests belong to the old connection; `WithResubscribeOnReconnect(true)` replays the subscriptions, data definitions must be set up again (for example on `StateAvailable` or `OnOpen`).
+
 ### Stop
 
 Gracefully stops the manager and closes the connection.
@@ -77,14 +81,19 @@ case manager.StateReconnecting:
 
 ### Client
 
-Returns the underlying engine client when connected. Returns `nil` when disconnected.
+Returns the underlying engine client of the current connection. A new engine is made for each connection (and connection attempt), so do not keep the client across reconnects.
+
+Without an engine, `Client()` returns an `engine.Client` interface holding a nil `*engine.Engine`, which is not equal to `nil`. Check the connection state instead of comparing with `nil`:
 
 ```go
-if client := mgr.Client(); client != nil {
+if mgr.ConnectionState() == manager.StateAvailable {
+    client := mgr.Client()
     // Use client for SimConnect operations
     client.AddToDataDefinition(...)
 }
 ```
+
+Most client calls are also available on the manager itself and return `manager.ErrNotConnected` without a connection.
 
 ## Callback-Based Event Handlers
 
@@ -110,7 +119,7 @@ mgr.RemoveConnectionStateChange(handlerID)
 
 ### OnSimStateChange
 
-Called when the simulator state changes (camera, pause/sim running state, crash and sound flags).
+Called when the simulator state changes (camera, pause/sim running state, crash and sound flags). Only the fields `SimState.Equal` compares trigger it (camera, pause, sim running, simulation rate, the `Is*` flags, crash, sound, realism settings, `SimOnGround`, `SmartCameraActive` and the avatar/mission fields); position, time and weather changes alone do not. `SimState()` always returns the latest values.
 
 ```go
 handlerID := mgr.OnSimStateChange(func(oldState, newState manager.SimState) {
@@ -200,7 +209,7 @@ For more control over message handling, use channel-based subscriptions. These a
 
 ### Subscribe
 
-Creates a subscription that receives all SimConnect messages.
+Creates a subscription that receives all SimConnect messages. An empty `id` generates one; a `bufferSize` of 0 or less uses 16. Reusing an ID closes the previous subscription with that ID. When the buffer is full, messages are dropped; the optional `manager.WithOnDrop(func(dropped int))` option reports drops (it must not block). `Subscribe`, `SubscribeWithFilter` and `SubscribeWithType` all accept it.
 
 ```go
 sub := mgr.Subscribe("my-subscription", 10)  // Buffer size of 10
@@ -341,11 +350,11 @@ For more control over event handling (e.g., goroutine-based processing), use cha
 - `SubscribeOnFlightLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded flight filename.
 - `SubscribeOnAircraftLoaded(id, bufferSize)` — delivers `FilenameEvent` with the loaded aircraft `.AIR` filename.
 - `SubscribeOnFlightPlanActivated(id, bufferSize)` — delivers `FilenameEvent` with the activated flight plan filename.
-- `SubscribeOnFlightPlanDeactivated(id, bufferSize)` — delivers raw `engine.Message` for the `Flight Plan Deactivated` system event (void event, no data).
+- `SubscribeOnFlightPlanDeactivated(id, bufferSize)` — delivers raw `engine.Message` for the `FlightPlanDeactivated` system event (void event, no data).
 - `SubscribeOnObjectAdded(id, bufferSize)` — delivers `ObjectEvent` when an AI object is added (contains `ObjectID` and `ObjType`).
 - `SubscribeOnObjectRemoved(id, bufferSize)` — delivers `ObjectEvent` when an AI object is removed (contains `ObjectID` and `ObjType`).
 - `SubscribeOnCrashed(id, bufferSize)` — delivers raw `engine.Message` for the `Crashed` system event (filter pre-applied).
-- `SubscribeOnCrashReset(id, bufferSize)` — delivers raw `engine.Message` for the `Crash Reset` system event.
+- `SubscribeOnCrashReset(id, bufferSize)` — delivers raw `engine.Message` for the `CrashReset` system event.
 - `SubscribeOnSoundEvent(id, bufferSize)` — delivers raw `engine.Message` for the `Sound` system event (sound ID available in `DwData`).
 - `SubscribeOnView(id, bufferSize)` — delivers raw `engine.Message` for the `View` system event (view ID available in `DwData`).
 
@@ -483,6 +492,8 @@ go func() {
 
 Notes:
 - These helpers filter and forward the appropriate SimConnect message types. They are safe to use concurrently and will automatically cancel when the manager stops.
+- The filename and object helpers return typed subscriptions (`FilenameSubscription`, `ObjectSubscription`) with `ID()`, `Events()`, `Done()` and `Unsubscribe()`; `Events()` is closed when the subscription ends, and a full buffer drops the event.
+- Each helper registers its underlying message subscription under the given ID plus a suffix of its own (for example `-pause`, `-crashed`, `-flightloaded`, `-objadded`), so one ID can be used for several kinds without them replacing each other. `GetSubscription` with the bare ID does not find them.
 - The manager already subscribes to the corresponding SimConnect system events on connection open; these helpers simply provide typed channels for consumers.
 
 ## Custom System Events
@@ -546,11 +557,13 @@ The following event names are reserved for built-in manager subscriptions and ca
 - `FlightLoaded`, `AircraftLoaded`, `FlightPlanActivated`, `FlightPlanDeactivated`
 - `ObjectAdded`, `ObjectRemoved`
 
-Attempting to subscribe to a reserved event name using the custom APIs will return an error.
+Attempting to subscribe to a reserved event name using the custom APIs will return `ErrReservedEventName`.
+
+Other errors: `SubscribeToCustomSystemEvent` returns `ErrNotConnected` for a new event while disconnected (subscribing again to an event already subscribed works without a connection) and `ErrCustomEventIDExhausted` when all IDs are taken; `UnsubscribeFromCustomSystemEvent` and `RemoveCustomSystemEvent` return `ErrCustomEventNotFound` for an unknown event, `RemoveCustomSystemEvent` `ErrCustomEventHandlerNotFound` for an unknown handler ID. Each `SubscribeToCustomSystemEvent` call returns a subscription of its own; `UnsubscribeFromCustomSystemEvent` closes all of them and drops the event's handlers.
 
 ### Custom Event ID Allocation
 
-Custom system events are assigned IDs from a dedicated range (999,999,850 - 999,999,886, 37 slots, `CustomEventIDMin`–`CustomEventIDMax`). See [ID Management](#id-management) for details. Custom event subscriptions are cleared by `Stop()`. When the simulator goes away they are kept, and the manager subscribes them again with the same IDs on the next connection, so their subscriptions and handlers go on working.
+Custom system events are assigned IDs from a dedicated range inside the manager's reserved range (999,999,910 - 999,999,979, 70 slots, `CustomEventIDMin`–`CustomEventIDMax`); IDs of unsubscribed events are used again. See [ID Management](#id-management) for details. Custom event subscriptions are cleared by `Stop()`. When the simulator goes away they are kept, and the manager subscribes them again with the same IDs on the next connection, so their subscriptions and handlers go on working.
 
 ### Example: Multiple Custom Events
 
@@ -860,11 +873,12 @@ fmt.Printf("Connection timeout: %v\n", mgr.ConnectionTimeout())
 fmt.Printf("Reconnect delay: %v\n", mgr.ReconnectDelay())
 fmt.Printf("Shutdown timeout: %v\n", mgr.ShutdownTimeout())
 fmt.Printf("Max retries: %d\n", mgr.MaxRetries())
+fmt.Printf("SimState period: %v\n", mgr.SimStatePeriod())
 ```
 
 ## ID Management
 
-The manager reserves IDs 999,999,850-999,999,999: custom system events use 999,999,850-999,999,886 and internal requests 999,999,900-999,999,999. Keep your IDs at or below 999,999,849. See [Request ID Management](manager-requests-ids.md) for details.
+The manager reserves IDs 999,999,900-999,999,999 for its internal requests and events; custom system events use 999,999,910-999,999,979 inside that range. Use IDs from 1 to 999,999,899. See [Request ID Management](manager-requests-ids.md) for details.
 
 ### Validating User IDs
 
@@ -1117,7 +1131,6 @@ import (
     "context"
     "fmt"
 
-    "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/manager"
     "github.com/mrlm-net/simconnect/pkg/types"
 )

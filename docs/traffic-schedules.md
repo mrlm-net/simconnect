@@ -34,9 +34,16 @@ Each `Flight` either departs from a focus airport or arrives at one between `fro
 - **Where to:** a visiting airline flies to one of its bases. A home carrier flies anywhere in its regions, and bigger airports are picked more often.
 - **Which type:** a type from the airline's fleet whose range (`Types[t].MinNM`–`MaxNM`) covers the distance and whose runway need fits both airports. For example, an ATR flies short hops and a 777 flies to Dubai.
 - **Times:** STD and STA fall on whole five minutes. Block time is 20 minutes plus the distance at cruise speed.
-- **Call signs:** the airline ICAO code plus a flight number, each used once in a schedule.
+- **Call signs:** the airline ICAO code plus a flight number, each used once in a schedule. `ScheduleOptions.Used` lists call signs already flying or planned (the hours scheduled before), and none of them is given again.
 
 A focus airport that is missing from the config still gets traffic when its layout is passed (as a regional airport). The runway lengths then come from the layout.
+
+## Business and light aircraft
+
+Two more generators add general aviation:
+
+- `traffic.BusinessFlights(cfg, BusinessOptions{Focus, Layouts, PerHour, Density, Seed}, from, to)` gives business jets and turboprops flying IFR in to and out of the large focus airports (#619). An airport is large with a runway of `LargeRunwayMeters` (3000 m) or more and `LargeGates` (10) gates or more (`LargeAirport`). It gives on average `BusinessPerHour` (1.5) arrivals and as many departures an hour at the peak, following the waves. The types come from `BusinessTypes` by weight, within their range and runway. The call sign is a registration, and `Operator` is "business".
+- `traffic.VFRFlights` gives light aircraft through the circuit at the smaller fields ([VFR traffic](traffic-vfr.md)).
 
 ## Overflights
 

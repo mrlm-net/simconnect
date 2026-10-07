@@ -30,6 +30,7 @@ go run -C cmd/airport-map .
 | A flight waiting for your clearance over a minute | −1 every 30 s |
 | Wingtip separation lost on the ground (safe zones overlap, one of them moving) | −50 |
 | Two aircraft on one runway (lining up, lined up or rolling, landing or rolling out) | −100 |
+| An arrival within 10 NM of the threshold closer to the one ahead than its spacing on final | −25 |
 
 The same conflict counts again only after a minute. The panel shows the score, flights handled and the next flight; the events log what happened, and the traffic log file keeps every clearance.
 

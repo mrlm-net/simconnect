@@ -23,10 +23,14 @@ func (m *Instance) SimState() SimState {
 	return m.simState
 }
 
-// Client returns the underlying engine client for direct API access
+// Client returns the underlying engine client for direct API access; nil
+// (a nil interface, so Client() == nil holds) without an engine.
 func (m *Instance) Client() engine.Client {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.engine == nil {
+		return nil
+	}
 	return m.engine
 }
 

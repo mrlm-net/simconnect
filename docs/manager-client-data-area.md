@@ -29,7 +29,7 @@ The manager wraps the same underlying SimConnect calls as the engine client. The
 Before calling any CDA method:
 
 1. The manager must be connected to the simulator. Use `OnConnectionStateChange` or `SubscribeOnOpen` to detect when the connection is ready.
-2. Choose define IDs and request IDs in the user range. See [Request and ID Management](manager-requests-ids.md) for the ID ranges. All user IDs must be between 1 and 999,999,849.
+2. Choose define IDs and request IDs in the user range. See [Request and ID Management](manager-requests-ids.md) for the ID ranges. All user IDs must be between 1 and 999,999,899.
 3. The `requestID` passed to `RequestClientData` identifies responses in the dispatch loop. It must be unique within your application and within the user range.
 
 ## Workflow
@@ -304,7 +304,7 @@ The manager does not queue or retry failed calls. Register your CDA setup inside
 
 ## ID Range
 
-The `requestID` parameter in `RequestClientData` must be within the user range: **1 to 999,999,849**. The manager reserves 999,999,850–999,999,999 for internal use.
+The `requestID` parameter in `RequestClientData` must be within the user range: **1 to 999,999,899**. The manager reserves 999,999,900–999,999,999 for internal use (its custom system events included).
 
 Use `manager.IsValidUserID(id)` to validate an ID before use:
 
@@ -315,8 +315,6 @@ if !manager.IsValidUserID(WeatherReqID) {
     log.Fatal("ID conflicts with manager reserved range")
 }
 ```
-
-`IsValidUserID` accepts IDs up to 999,999,899, so it does not catch the custom-event range 999,999,850–999,999,886; keep your IDs at or below 999,999,849.
 
 See [Request and ID Management](manager-requests-ids.md) for the complete ID allocation table and validation helpers.
 

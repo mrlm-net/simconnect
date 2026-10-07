@@ -41,6 +41,7 @@ const (
 	IntentTaxi               Intent = "taxi"                // taxi to and hold short of the runway, or to the stand
 	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
 	IntentGiveWay            Intent = "give_way"            // give way to other traffic on the ground
+	IntentFollowTaxi         Intent = "follow_taxi"         // follow another aircraft on the ground ("follow the company Airbus")
 	IntentRunwayChange       Intent = "runway_change"       // a new runway in use: new SID or STAR (#456)
 	IntentCross              Intent = "cross"               // cross a runway
 	IntentLineUp             Intent = "line_up"             // line up and wait
@@ -349,6 +350,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s", cs, p[ParamRunway], entry, via)
 	case IntentGiveWay:
 		return fmt.Sprintf("%s, give way to the %s", cs, p[ParamGiveWay])
+	case IntentFollowTaxi:
+		return fmt.Sprintf("%s, follow the %s", cs, p[ParamGiveWay])
 	case IntentRunwayChange:
 		return cs + ", " + runwayChange(p)
 	case IntentTaxiLimit:
@@ -869,6 +872,14 @@ func Rushed(t Transmission) Transmission {
 	}
 	t.Params = p
 	return Say(t)
+}
+
+// FollowTaxi tells an aircraft on the ground to follow another, described
+// by its operator and type, "the company" for its own airline's: "CSA1,
+// follow the company Airbus A320", "CSA1, follow the Lufthansa Boeing
+// 737". Joined to a taxi clearance it is read back with it.
+func FollowTaxi(cs, traffic string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentFollowTaxi, Params: map[string]string{ParamGiveWay: traffic}})
 }
 
 // GiveWay tells a taxiing aircraft to give way to other traffic,

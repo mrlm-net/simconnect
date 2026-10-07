@@ -103,7 +103,7 @@ func init() {
 				m[strings.ToUpper(i.ICAO)] = telephonyEntry{tel: i.Telephony, name: i.Name}
 			}
 			telephonyNow.Store(m)
-		}))
+		}).ForSet("airlines", map[string]string{"callsign": "telephony", "name": "name"})) // the MyCrew API's call signs over the shipped list
 	reg(dict.Keyed("traffic.initialisms", "word", "", "",
 		func() []InitialismItem {
 			var out []InitialismItem

@@ -19,6 +19,8 @@ type GroundPicture struct {
 	mu       sync.Mutex
 	aircraft map[uint32]groundEntry
 	vehicles map[uint32]vehicleEntry // service vehicles (ReportVehicle)
+	// follows: by aircraft, the one ground told it to follow (Follow).
+	follows map[uint32]uint32
 }
 
 type groundEntry struct {
@@ -140,6 +142,13 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		}
 	}
 	me, haveMe := p.aircraft[id]
+	lead := p.follows[id]
+	followers := map[uint32]bool{}
+	for f, l := range p.follows {
+		if l == id {
+			followers[f] = true
+		}
+	}
 	p.mu.Unlock()
 	// bodyInPush: this aircraft's body is where a push under way stops for
 	// it (corridorBlocked: the push's half-span and PushClearMarginMeters
@@ -193,6 +202,19 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		// until the other was 250 m on (live, OKOPA behind a B737).
 		if !o.e.pushing && sameWayAhead(mine, o.e.pos, o.e.hdg, half+o.e.half) {
 			continue
+		}
+		// Told to follow: behind its leader wherever their ways meet; a
+		// follower is never given way to.
+		if followers[o.id] {
+			continue
+		}
+		if o.id == lead {
+			if at := first(mine, o.e.ahead, reach); at >= 0 {
+				if from+at < best {
+					best, to = from+at, o.id
+				}
+				continue
+			}
 		}
 		// Its body still across this path, its way ahead no longer meeting
 		// it: the tail of one that has crossed (live, LKPR J/H: CSA194's
@@ -306,6 +328,35 @@ func (p *GroundPicture) Forget(id uint32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.aircraft, id)
+	delete(p.follows, id)
+	for f, l := range p.follows {
+		if l == id {
+			delete(p.follows, f) // its leader gone
+		}
+	}
+}
+
+// Follow records that aircraft id was told to follow leader on the ground
+// ("follow the company Airbus"): it gives way to the leader wherever their
+// ways meet, and the leader never to it. A zero leader ends it.
+func (p *GroundPicture) Follow(id, leader uint32) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if leader == 0 || leader == id {
+		delete(p.follows, id)
+		return
+	}
+	if p.follows == nil {
+		p.follows = map[uint32]uint32{}
+	}
+	p.follows[id] = leader
+}
+
+// Following is the aircraft id was told to follow, 0 for none.
+func (p *GroundPicture) Following(id uint32) uint32 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.follows[id]
 }
 
 // blocking is how far along path (between from and from+look) the nearest

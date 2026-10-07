@@ -751,3 +751,54 @@ func TestGiveWayToCrossingTail(t *testing.T) {
 		}
 	}
 }
+
+// Told to follow another, an aircraft gives way to it where their ways
+// meet even when it would have been first there; the leader never gives way
+// to its follower.
+func TestFollowOnGround(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	at := func(east, north float64) airport.LatLon {
+		return offsetHeading(offsetHeading(base, 90, east), 0, north)
+	}
+	line := func(e0, n0, e1, n1 float64) []airport.LatLon {
+		var out []airport.LatLon
+		for i := 0; i <= 60; i++ {
+			f := float64(i) / 60
+			out = append(out, at(e0+(e1-e0)*f, n0+(n1-n0)*f))
+		}
+		return out
+	}
+	// 1 comes from the west, 40 m from the junction at 0,0; 2 from the
+	// south, 150 m out: 1 is there first.
+	me := at(-40, 0)
+	p.Report(1, me, 90, MotionProfile{}, now)
+	p.ReportPath(1, line(-40, 0, 200, 0), 17)
+	p.Report(2, at(0, -150), 0, MotionProfile{}, now)
+	p.ReportPath(2, line(0, -150, 0, 200), 17)
+	path, err := NewGroundPath([]airport.LatLon{me, at(200, 0)}, DefaultMotionProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gw := p.giveWay(1, path, 0, GiveWayLookMeters, 17, now); !math.IsInf(gw, 1) {
+		t.Fatalf("first at the junction, gives way at %.0f m", gw)
+	}
+	p.Follow(1, 2)
+	if gw := p.giveWay(1, path, 0, GiveWayLookMeters, 17, now); math.IsInf(gw, 1) {
+		t.Error("told to follow 2, does not give way to it")
+	}
+	lead, err := NewGroundPath([]airport.LatLon{at(0, -150), at(0, 200)}, DefaultMotionProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gw := p.giveWay(2, lead, 0, GiveWayLookMeters, 17, now); !math.IsInf(gw, 1) {
+		t.Errorf("the leader gives way to its follower at %.0f m", gw)
+	}
+	if got := Say(FollowTaxi("CSA1", "company Airbus A320")).Text; got != "CSA1, follow the company Airbus A320" {
+		t.Errorf("said %q", got)
+	}
+	if rb, ok := Readback(FollowTaxi("CSA1", "Lufthansa Boeing 737")); !ok || rb.Text != "Follow the Lufthansa Boeing 737, CSA1" {
+		t.Errorf("read back %q", rb.Text)
+	}
+}

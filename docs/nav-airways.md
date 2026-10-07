@@ -46,7 +46,7 @@ A VOR or NDB is requested twice: as a `WAYPOINT` (for its airways) and as a nava
 Like `airport.Loader`, `NavLoader` never reads the stream itself: call `Request`, hand it every message, and it returns each fix when complete. Both `engine.Client` and `manager.Manager` satisfy `nav.FacilityClient`.
 
 ```go
-loader := nav.NewNavLoader(client) // 16 fixes in flight, IDs 8700+/8800+
+loader := nav.NewNavLoader(client) // 16 fixes in flight, IDs 8700+/8800+, 10 s timeout
 loader.Request(nav.Key("VOZ", "LK", nav.KindVOR))
 for msg := range client.Stream() {
     if res, ok := loader.Handle(msg); ok {
@@ -95,4 +95,4 @@ fmt.Println(nav.FormatRoute(steps)) // VOZ M725 OKF
 
 `Route` is A* over (fix, airway) states by great-circle distance, adding `DefaultAirwayChangePenaltyNM` (10 NM) at every change of airway; `RouteWithPenalty` takes another value. It returns `ErrNoRoute` when the fixes are not connected. Each `RouteStep` names the airway flown to reach its fix (empty for the first step).
 
-The network can make long detours between nearby fixes — VOZ to GOLOP is 65 NM direct but 331 NM by airway, around the Prague TMA. `RouteOrDirect(from, to, maxStretch)` falls back to a single `DCT` step when there is no route or the route is longer than `maxStretch` times the direct distance; `DirectTo` gives the direct leg on its own. `Nearest(pos)` finds the closest fix on an airway, to join the network from an airport.
+The network can make long detours between nearby fixes — VOZ to GOLOP is 65 NM direct but 331 NM by airway, around the Prague TMA. `RouteOrDirect(from, to, maxStretch)` falls back to a single `DCT` step when there is no route or the route is longer than `maxStretch` times the direct distance; `DirectTo` gives the direct leg on its own. `Nearest(pos)` finds the closest fix on an airway (and its distance in NM), to join the network from an airport. `Find(ident)` lists the fixes of an identifier, `RouteDistanceNM(steps)` sums a route, and `MergeAirwayGraphs(gs...)` joins graphs crawled around several airports into one (each fix and segment once, the higher minimum altitude kept).

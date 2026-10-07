@@ -31,11 +31,14 @@ for now := range time.Tick(time.Second) {
 |---|---|
 | STD − `DepartureLead` (10 min) | A departure is **spawned on a stand** and boards; it pushes at its STD (`TaxiRequest.PushbackAt`). |
 | STA − `ArrivalLead` (25 min) | An arrival is **spawned at its STAR entry** and flies the STAR and approach, lands and taxis to a stand. |
+| STA − `VFRLead` (8 min) | A VFR arrival (`Flight.Rules`) appears near the airport to join the circuit ([VFR traffic](traffic-vfr.md)). |
 | Arrival parked | If the arrival pairs with a later departure of the same airline and type from that airport (`MinTurn` 40 min – `MaxTurn` 3 h after the STA), that departure **adopts the aircraft on its stand** (turnaround). Otherwise the aircraft is removed after `RemoveParkedAfter`. |
 | Departure airborne | Flies on along its plan and is removed once it leaves the area (see [Leaving](#enroute-traffic-and-overflights)), at the latest `RemoveDepartedAfter` (30 min) after it leaves the controllers. |
-| Too late | A departure is cancelled 15 min after its STD without an aircraft. An arrival is cancelled 10 min after it should have appeared. A departure waits as long as its inbound aircraft is still on its way. |
+| Too late | A departure is cancelled 15 min (`DepartureLate`) after its STD without an aircraft. An arrival is cancelled 10 min (`ArrivalLate`) after it should have appeared. A departure waits as long as its inbound aircraft is still on its way. |
 
-The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled.
+The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled. A failed spawn is tried again after `RetryAfter` (30 s), up to `MaxAttempts` (3); one unanswered for `SpawnTimeout` (2 min) counts as failed. Done and cancelled flights stay on the boards for `Keep` (1 h).
+
+`Add(flights)` adds flights beside the Source's (flights at chosen times); a flight already known by kind and call sign keeps its state. `SetAirports`, `SetEnabled` and `SetLimits` change the managed airports, spawning and the limits while it runs; `Replan` asks the Source again for the hours ahead.
 
 ## The Spawner
 
@@ -100,6 +103,8 @@ Traffic flies between airports, not only at one (#369).
 
 `Attach(callsign, objectID)` tells the manager which aircraft flies a flight, so that it can follow it in the picture.
 
+On the map an enroute arrival keeps its distance to the one ahead of it in the landing sequence (`pkg/traffic/world/enroute_pace.go`). Every 10 s, once it is within 10 NM of its leader and faster, its route ahead is flown no faster than the leader's ground speed (at least 210 kt). It gets its planned speeds back once the gap has opened past 14 NM. A change under 10 kt is not made.
+
 ### Appearing airborne
 
 `traffic.EnrouteStart(route []RoutePoint)` turns the rest of a flight (points with altitude and speed, `EnrouteSpeedKts`) into two things:
@@ -109,6 +114,18 @@ Traffic flies between airports, not only at one (#369).
 Create the aircraft with `Fleet.RequestNonATC` at that position, then `ReleaseControl` and `SetWaypoints` once it exists. `nav.FlightPlan.PositionAt(distNM)` gives the point, planned altitude and track along a plan.
 
 A flight plan cannot start an aircraft mid-route in MSFS 2024. `AICreateEnrouteATCAircraft` puts it on the ground at the plan's departure airport whatever the phase. It also refuses a plan whose departure airport the simulator has not loaded.
+
+## Real-world flights
+
+A flight with `Observed` set is a real aircraft a feed sees (#841, `manager_observed.go`; the World drives it, see [Traffic World](traffic-world.md#real-world-traffic-v022)). It is added with `Add` like any flight and handled differently:
+
+- it is not spaced from other spawns, never cancelled as too late, and a real arrival is never delayed by a check (it is in the air already);
+- it turns around only as the feed says: `Turn(arrival, departure)` makes the departure adopt the arrival's aircraft once it has parked;
+- `Observe(kind, callsign, sighting, origin, destination)` takes a later sighting: all of it before the spawn, only the registration, origin and destination after;
+- `Retime(callsign, std)` moves a departure's STD while it is still on its stand;
+- `Drop(kind, callsign, now)` ends it: not spawned, boarding or parked, it goes now; in progress it plays out (an arrival lands and parks, then goes; a departure leaves).
+
+`Flight(kind, callsign)` returns one managed flight.
 
 ## Lifecycle events
 
@@ -137,12 +154,13 @@ The Schedule section has **Scheduled traffic**: ▶ Start / ■ Stop, density an
 The spawner for scheduled flights (enroute arrivals and overflights appear airborne, see above; their labels show call sign, flight level and destination, and **Overflights** is a third board):
 - picks a model in the airline's livery (`ModelsFor`);
 - plans the flight to or from the other end (SID, airways, level), or falls back to the runway's SID or STAR;
-- uses the runway in use, a free stand, a tug and automatic de-icing.
+- uses the runway in use, a free stand, the airport's service vehicles (tug, fuel truck, stairs, GPU: [Ground services](traffic-world.md#ground-services-v020)) and automatic de-icing.
 
 Other traffic is a layer in the Map section (**Other traffic**), drawn in blue. It is off by default and listed apart from ours. There you can set whether the schedule respects or ignores it, and ✕ removes one of those aircraft from the simulator.
 
 The API:
 - `GET /api/schedule` returns the settings and every flight.
-- `POST /api/schedule` takes `{"enabled", "airports": ["LKPR", "LKTB"] (or "icao"), "density", "maxAircraft", "seed", "others": "respect"|"ignore"}`.
+- `POST /api/schedule` takes `{"enabled", "airports": ["LKPR", "LKTB"] (or "icao"), "density", "maxAircraft", "seed", "ifr", "vfr", "generator", "offsetMin", "others": "respect"|"ignore"}` (`world.ScheduleSettings`).
+- `GET /api/flights` lists the manager's flights; `POST /api/flights` adds flights ([Traffic World](traffic-world.md#flights-at-a-chosen-time)).
 - `GET /api/boards?icao=` returns an airport's departures and arrivals.
 - `POST /api/world/remove {"objectId"}` removes an aircraft that is not ours.

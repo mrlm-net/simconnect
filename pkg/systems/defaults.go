@@ -28,6 +28,8 @@ func Default() Profile {
 		XPDRCode:     one("TRANSPONDER CODE:1", "Bco16"),
 		FlapsPct:     one("FLAPS HANDLE PERCENT", "percent"),
 		GearDown:     one("GEAR HANDLE POSITION", "bool"),
+		Weight:       one("TOTAL WEIGHT", "kilograms"),
+		FlapsIndex:   one("FLAPS HANDLE INDEX", "number"),
 		COM1Active:   one("COM ACTIVE FREQUENCY:1", "MHz"),
 		COM1Standby:  one("COM STANDBY FREQUENCY:1", "MHz"),
 		COM2Active:   one("COM ACTIVE FREQUENCY:2", "MHz"),
@@ -61,7 +63,7 @@ func Default() Profile {
 		exit := uint32(n + 1)
 		a[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
 	}
-	return Profile{Name: "default", Values: v, Actions: a, Doors: []string{"Door 1", "Door 2", "Door 3", "Door 4"}}
+	return Profile{Name: "default", Values: v, Actions: a, Doors: []string{"Door 1", "Door 2", "Door 3", "Door 4"}, SpeedCheckKt: 80}
 }
 
 func fmtIndexed(name string, n int) string { return name + ":" + string(rune('0'+n)) }

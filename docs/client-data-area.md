@@ -31,6 +31,8 @@ Setting up a client data area follows four steps:
 3. **Define fields** — describe the layout of data within the area.
 4. **Request or write data** — subscribe to updates with `RequestClientData`, or write data with `SetClientData`.
 
+`ClearClientDataDefinition` removes a definition's fields when the layout is no longer needed.
+
 A *reader* performs steps 1, 3, and 4 (request). A *writer* performs all four steps, using `SetClientData` instead of `RequestClientData`.
 
 ## API Reference
@@ -146,6 +148,16 @@ err := client.SetClientData(
 | `dwReserved` | `uint32` | Reserved; must always be `0` |
 | `cbUnitSize` | `uint32` | Size of the data being written in bytes |
 | `data` | `unsafe.Pointer` | Pointer to the data struct |
+
+### ClearClientDataDefinition
+
+Removes all fields from a client data definition, for example before defining a new layout under the same ID.
+
+```go
+err := client.ClearClientDataDefinition(defineID)
+```
+
+**Signature:** `ClearClientDataDefinition(defineID uint32) error`
 
 ### message.AsClientData
 

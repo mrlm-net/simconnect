@@ -41,3 +41,22 @@ func TestWakeFromAPISet(t *testing.T) {
 		t.Errorf("B738, not in the set, %c/%c: not the shipped value", got.ICAO, got.Recat)
 	}
 }
+
+// The MyCrew API's airlines set feeds the call signs (traffic.telephony):
+// its spoken call sign and name over the shipped entry.
+func TestAirlinesSetFeedsTelephony(t *testing.T) {
+	defer dict.Reset("traffic.telephony")
+	if !slices.Contains(dict.Sets(), "airlines") {
+		t.Fatalf("sets %v: no airlines", dict.Sets())
+	}
+	fed, err := dict.UseSet("airlines", []byte(`{"items": [{"key": "DLH", "payload": {"icao": "DLH", "iata": "LH", "name": "Lufthansa Test", "country": "DE", "callsign": "HANSA TEST"}}]}`))
+	if err != nil || !slices.Contains(fed, "traffic.telephony") {
+		t.Fatalf("fed %v, %v", fed, err)
+	}
+	if tel, name, ok := Telephony("DLH"); !ok || tel != "HANSA TEST" || name != "Lufthansa Test" {
+		t.Errorf("DLH: %q %q %v", tel, name, ok)
+	}
+	if _, _, ok := Telephony("CSA"); !ok {
+		t.Error("CSA dropped: the set replaced the list")
+	}
+}

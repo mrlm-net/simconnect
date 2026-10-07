@@ -23,13 +23,15 @@ The tool lives in `cmd/simvar-cli/` and has its own `go.mod`. It cannot be built
 | `watch` | Stream a SimVar continuously at a chosen interval |
 | `list` | List SimVar metadata from the built-in [registry](pkg-registry.md) (no simulator needed) |
 
+Every command that needs the simulator retries the connection every 2 seconds until it connects or you press Ctrl+C. `--timeout` then bounds the wait for the simulator's answer.
+
 ## Installation
 
 ### Pre-built binary (recommended)
 
 Download the latest `simvar-cli-vX.Y.Z-windows-amd64.zip` from the [GitHub Releases page](https://github.com/mrlm-net/simconnect/releases/latest), extract it, and place `simvar-cli.exe` anywhere on your `PATH`.
 
-Each release zip contains the binary and this README.
+Each release zip contains the binary and the tool's `README.md` (`cmd/simvar-cli/README.md`).
 
 ### Build from source
 
@@ -166,7 +168,7 @@ simvar-cli [global flags] list [--category <name>] [--search <text>]
 
 - `--category` filters by category: `aircraft`, `environment`, `simulator`, `autopilot`, `navigation`.
 - `--search` matches a case-insensitive substring of the name or description.
-- Output follows `--format`: a table (name, category, type, default unit, writable), NDJSON, or CSV.
+- Output follows `--format`: a table (name, category, type, default unit, writable) with an entry count, NDJSON (`name`, `category`, `type`, `default_unit`, `units`, `writable`, `indexed`, `description`), or CSV with a header (`name,category,type,default_unit,writable,indexed,description`).
 
 ```
 simvar-cli list --category navigation

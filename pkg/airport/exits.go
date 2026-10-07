@@ -213,7 +213,7 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 	}
 	nodes := append(append([]NodeID(nil), exit.Path...), in.Nodes[1:]...)
 	r := g.routeFromNodes(nodes)
-	r.Tight = in.Tight
+	r.Tight, r.Occupied = in.Tight, in.Occupied
 	// The runway being vacated is not a crossing.
 	r.RunwayCrossings = g.runwayCrossings(r.Points[len(exit.Path)-1:])
 	return r, nil

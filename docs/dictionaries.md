@@ -35,4 +35,8 @@ A table's JSON is an envelope; `Use` also takes the bare items array:
 | `traffic.gaTypes` | `kind` | the types each kind of GA operator flies, by weight |
 | `systems.profiles` | `name` | aircraft systems profiles (`systems.Profile`; Windows builds) |
 
-An item replaces the shipped item of the same id whole: send all its fields. Items with a new id are added after the shipped ones.
+An item of a shipped id is read onto a copy of the shipped item, so it replaces only the fields it gives; the others keep their shipped value. Items with a new id are added after the shipped ones. An item without an id is refused. A name not in `Names()` gives `dict.ErrNoTable`.
+
+## MyCrew API sets
+
+`UseSet(set, data)` feeds a set of the MyCrew API (`GET /v1/aviation/{set}`) to every table fed from it and returns the tables fed; `Sets()` lists the sets in use. The set's items are `{"key": "A319", "closed": false, "deprecated": false, "payload": {…}}`: closed and deprecated items are left out, `key` is the item's id, and each payload field replaces the shipped item's field (null or empty strings keep the shipped value). `Use` takes this form too. Two tables are fed from sets: `traffic.wake` from `aircraft-types` (its `wtc` and `recatEU` fields), and `traffic.telephony` from `airlines` (its `callsign` as the spoken call sign, and `name`), over the shipped list.

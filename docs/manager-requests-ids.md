@@ -17,10 +17,9 @@ The manager uses a **high-number ID reservation strategy** to maximize flexibili
 
 | Range | Owner | Count | Purpose |
 |-------|-------|-------|---------|
-| 1 - 999,999,849 | **User Applications** | 999,999,849 | User-defined data definitions and requests |
-| 999,999,850 - 999,999,886 | **Manager** | 37 | Custom system event IDs (dynamic allocation) |
-| 999,999,887 - 999,999,899 | **Reserved** | 13 | Unallocated buffer for future use |
-| 999,999,900 - 999,999,999 | **Manager** | 100 | Internal manager operations (reserved) |
+| 1 - 999,999,899 | **User Applications** | 999,999,899 | User-defined data definitions and requests (`IDRange.UserMin`–`UserMax`) |
+| 999,999,900 - 999,999,999 | **Manager** | 100 | Internal manager operations (reserved, `IDRange.ManagerMin`–`ManagerMax`) |
+| 999,999,910 - 999,999,979 | **Manager** | 70 | Custom system event IDs (dynamic allocation), inside the manager range |
 
 ### Why High Numbers for Manager?
 
@@ -44,6 +43,8 @@ CameraRequestID    = 999999901  // Periodic camera state data polling
 
 The manager's simulator state data definition now includes additional environment, simulation, and aircraft telemetry variables which are exposed on `SimState`:
 
+- `CAMERA STATE`, `CAMERA SUBSTATE` (Number) — camera state
+- `REALISM`, `VISUAL MODEL RADIUS` (Meters), `SIM DISABLED`, `REALISM CRASH DETECTION`, `REALISM CRASH WITH OTHERS`, `TRACK IR ENABLE`, `USER INPUT ENABLED`, `SIM ON GROUND`
 - `SIMULATION RATE` (Number) — internal rate of passing time
 - `SIMULATION TIME` (Seconds) — seconds since the simulation started
 - `LOCAL TIME` (Seconds) — seconds since local midnight
@@ -63,7 +64,7 @@ The manager's simulator state data definition now includes additional environmen
 - `HAND ANIM STATE` (Number, 0-12 frame IDs), `HIDE AVATAR IN AIRCRAFT` (Boolean), `MISSION SCORE` (Number), `PARACHUTE OPEN` (Boolean)
 - `ZULU SUNRISE TIME` (Seconds), `ZULU SUNSET TIME` (Seconds), `TIME ZONE OFFSET` (Seconds)
 - `TOOLTIP UNITS` (Enum: 0=Default, 1=Metric, 2=US), `UNITS OF MEASURE` (Enum: 0=English, 1=Metric/feet, 2=Metric/meters)
-- `AMBIENT IN SMOKE` (Boolean), `ENV SMOKE DENSITY` (Percent), `ENV CLOUD DENSITY` (Percent)
+- `AMBIENT IN SMOKE` (Boolean), `ENV SMOKE DENSITY` (Percent Over 100), `ENV CLOUD DENSITY` (Percent Over 100)
 - `DENSITY ALTITUDE` (Feet), `SEA LEVEL AMBIENT TEMPERATURE` (Celsius)
 
 ### Event System (manager-reserved IDs)
@@ -113,7 +114,7 @@ Besides the manager's reserved range, several packages use fixed default IDs whe
 | `airport.Loader` | airport facilities | 7100–7106 (`DefaultLoaderDefinitionBase`, 7 `loaderDefinitions`) | 7200–7311 (`DefaultLoaderRequestBase`, `loaderSlots` 16 × 7) | — |
 | `traffic.TaxiController` | taxiing aircraft | 7300–7301 (`DefaultTaxiDefinitionBase`, `taxiDefinitionCount` 2) | 7400–7403 (`DefaultTaxiRequestBase`, `taxiRequestCount` 4) | — |
 | `traffic.ArrivalController` | arriving aircraft | 7500–7503 (`DefaultArrivalDefinitionBase`, `arrDef*` 4) | 7600–7603 (`DefaultArrivalRequestBase`, `arrReq*` 4) | — |
-| `traffic.Injector` | injected aircraft and tugs | 7700–7709 (`DefaultInjectDefinitionBase`, up to `injDefGearDown`) | 7800–7991 (`DefaultInjectRequestBase`, 2 × `injectMaxAircraft` 96) | 7900–7909 (`DefaultInjectEventBase`, `injectEventCount` 10) |
+| `traffic.Injector` | injected aircraft and tugs | 7700–7713 (`DefaultInjectDefinitionBase`, up to `injDefThrottle1` + 3 engines) | 7800–7991 (`DefaultInjectRequestBase`, 2 × `injectMaxAircraft` 96) | 7900–7909 (`DefaultInjectEventBase`, `injectEventCount` 10) |
 | `traffic.StandAllocator` | stand scan | 8200 (`DefaultStandDefinitionBase`) | 8300–8301 (`DefaultStandRequestBase`, `standReqAircraft`, `standReqUser`) | — |
 | `airport.ProcedureLoader` | SIDs, STARs, approaches | 8400–8402 (`DefaultProcedureDefinitionBase`, `procedureParts` 3) | 8500–8523 (`DefaultProcedureRequestBase`, `procedureSlots` 8 × 3) | — |
 | `nav.NavLoader` | waypoints, VORs, NDBs | 8700–8702 (`DefaultNavDefinitionBase`, 3 `navDefinitions`) | 8800–8831 (`DefaultNavRequestBase`, `DefaultNavSlots` 16 × `navParts` 2) | — |
@@ -180,7 +181,7 @@ RequestTypeCustom          // User-defined or other request types
 
 ### 1. Choose Your ID Range
 
-Pick a sub-range within 1-999,999,849 for your application:
+Pick a sub-range within 1-999,999,899 for your application:
 
 ```go
 const (
@@ -199,12 +200,12 @@ const (
 Use the provided validation functions:
 
 ```go
-if !manager.IsValidUserID(myID) || myID >= manager.CustomEventIDMin {
+if !manager.IsValidUserID(myID) {
     return fmt.Errorf("invalid user ID: %d (reserved for manager)", myID)
 }
 ```
 
-`IsValidUserID` accepts IDs up to 999,999,899 (`IDRange.UserMax`), so it does not catch the custom-event range 999,999,850–999,999,886. Keep your IDs at or below 999,999,849.
+`IsValidUserID` accepts IDs 1 to 999,999,899 (`IDRange.UserMax`). The custom-event range lies inside the manager range, so it rejects those too.
 
 ### 3. Document Your ID Assignments
 
@@ -272,9 +273,9 @@ Manager registers internal requests at these points:
 1. **On OPEN (via `processMessage` → `registerSimStateSubscriptions`)**:
     - Simulator State Definition (999999900) — registers camera state, simulation/time variables, date fields, IS_* flags, environment SimVars, aircraft telemetry, and extended variables
     - Simulator State Request (999999901)
-    - Pause Event (999999998)
-    - Crashed/CrashReset/Sound event subscriptions (manager reserved IDs listed above)
+    - System event subscriptions: Pause, Sim, FlightLoaded, AircraftLoaded, FlightPlanActivated, ObjectAdded, ObjectRemoved, Crashed, CrashReset, Sound, View, FlightPlanDeactivated (manager reserved IDs listed above)
     - Custom system events kept from a lost connection, subscribed again with their IDs (`resubscribeCustomEvents`)
+    - With `WithResubscribeOnReconnect(true)`: the application's flow, input event, system event and facility subscriptions, subscribed again with the application's own IDs (`replayUserSubscriptions`)
 
 2. **On a lost connection (via `connectionLost`, the stream closed after QUIT or a drop)**:
    - The engine disconnected: the SimConnect handle closed
@@ -284,10 +285,11 @@ Manager registers internal requests at these points:
 3. **On Stop (via `disconnect`)**:
    - All requests cleared via `requestRegistry.Clear()`
    - Custom system events cleared, their ID allocator reset
+   - Recorded application subscriptions (`WithResubscribeOnReconnect`) cleared
 
 ### Request Types Used by Manager
 
-- `RequestTypeEvent`: Pause event subscription
+- `RequestTypeEvent`: the system event subscriptions listed above
 - `RequestTypeDataDefinition`: Camera state definition
 - `RequestTypeDataRequest`: Camera state periodic request
 
@@ -297,7 +299,8 @@ When the manager stops (`disconnect`):
 1. Clear the simulator state data definition (if its request was submitted)
 2. Disconnect the engine
 3. Clear custom system events and reset their ID allocator
-4. Clear all entries in request registry
-5. Reset `cameraDataRequestPending` flag
+4. Clear the recorded application subscriptions (`WithResubscribeOnReconnect`)
+5. Clear all entries in request registry
+6. Reset `cameraDataRequestPending` flag
 
-When the connection is lost (`connectionLost`): the same, except that the data definition is not cleared (the link is gone) and the custom system events are kept, to be subscribed again with the same IDs on the next OPEN. An application need not subscribe to them again after a reconnect; each `SubscribeToCustomSystemEvent` call returns a subscription of its own.
+When the connection is lost (`connectionLost`): the same, except that the data definition is not cleared (the link is gone) and the custom system events (and, with `WithResubscribeOnReconnect`, the recorded application subscriptions) are kept, to be subscribed again with the same IDs on the next OPEN. An application need not subscribe to them again after a reconnect; each `SubscribeToCustomSystemEvent` call returns a subscription of its own.

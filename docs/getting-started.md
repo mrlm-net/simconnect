@@ -14,7 +14,7 @@ This guide walks you through installing the library, connecting to Microsoft Fli
 - **Windows only.** SimConnect is a Windows-native DLL. The library will not compile on other platforms.
 - **Go 1.27+**
 - **Microsoft Flight Simulator 2020 or 2024** installed and running when you test your add-on.
-- **SimConnect.dll** — bundled with MSFS. By default the library loads `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll`. Pass `simconnect.ClientWithDLLPath(...)` to use another path, or `simconnect.ClientWithAutoDetect()` to search the `SIMCONNECT_DLL` variable, the SDK root variables and common SDK installation paths.
+- **SimConnect.dll** — from the MSFS SDK. By default the library loads `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll`. Pass `simconnect.ClientWithDLLPath(...)` to use another path, or `simconnect.ClientWithAutoDetect()` to search the `SIMCONNECT_DLL` variable, the SDK root variables and common SDK installation paths.
 
 ## Install
 
@@ -120,6 +120,10 @@ func main() {
 
     // Read messages until we receive the response.
     for msg := range client.Stream() {
+        if msg.Err != nil { // dispatch error: no SIMCONNECT_RECV to read
+            fmt.Fprintln(os.Stderr, "stream error:", msg.Err)
+            continue
+        }
         switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 
         case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:

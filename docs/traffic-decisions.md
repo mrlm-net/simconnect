@@ -64,7 +64,9 @@ Every pose gets a lower bound on its cost: `max(0, distance − wheelbase) × 3`
            [stand]
 ```
 
-`pushTo` takes the main gear `PushStraightMeters` (6 m) straight back off the stand, then the shortest path of turn radius `r` (a Dubins path, `pushturn.go`) to the point one wheelbase behind the pose's nose gear. The path arrives along the pose's heading. Radii run from `PushbackArcMeters` (45 m) downwards in 4 m steps while `r ≥ PushbackMinArcMeters − 0.01`. With `PushbackMinArcMeters` at 14 m, the tightest radius tried is 17 m. Each radius below 45 m costs `pushTurnRadiusCost` (1.5) per meter, and the cheapest radius that fits is kept for the pose.
+`pushTo` takes the main gear `PushStraightMeters` (6 m) straight back off the stand, then the shortest path of turn radius `r` (a Dubins path, `pushturn.go`) to the point one wheelbase behind the pose's nose gear. The path arrives along the pose's heading. Radii run from `PushbackArcMeters` (45 m) downwards in 4 m steps while `r ≥ PushbackMinArcMeters − 0.01`. With `PushbackMinArcMeters` at 14 m, the tightest radius tried is 17 m. Each radius below 45 m costs `PushTurnRadiusCost` (1.5) per meter, and the cheapest radius that fits is kept for the pose.
+
+**Wide turns.** The whole choice is planned twice: with `PushWideRadiusCost` (3) per meter of radius given up, which favours wide turns that end aligned on the taxiway, and with `PushTurnRadiusCost` (1.5). The wide plan is kept when it is the same push, only smoother (`wideKeeps`): it ends facing within `pushWideFacingDeg` (20°) of the other, neither has a tow, it is aligned and no hairpin wherever the other is, and it is at most `PushWideMaxExtraMeters` (25 m) longer. Otherwise the 1.5 plan is taken. Setting `PushWideRadiusCost` equal to `PushTurnRadiusCost` plans once. A push drawn for the stand (`SetCustomPush`) skips all of this and is flown as drawn.
 
 A push **fits** (`pushFits`) when all of these hold:
 
@@ -101,7 +103,7 @@ Each push to a pose costs (`planPushPose`, the `choose` closure):
 | Term | Value | Constant (file) |
 |---|---|---|
 | Push length | 3 × meters pushed | `pushCostFactor` (departure_inject.go) |
-| Turn radius given up | 1.5 × (45 − r) | `pushTurnRadiusCost` |
+| Turn radius given up | 1.5 × (45 − r), or 3 × in the wide plan | `PushTurnRadiusCost`, `PushWideRadiusCost` |
 | Taxi from the nose to the far node of the pose's edge | meters | `pushPose.taxi` |
 | Taxi-out from that node to the runway | the route's search cost (length plus the [routing penalties](#taxi-routing)) | `Graph.RouteToRunwayFrom` |
 | Each junction of another named taxiway under the aircraft at the pose | +400 | `pushBlockPenalty` |
@@ -157,7 +159,7 @@ The early-turn cost decides between two poses that are both aligned: the one alr
 5. **Standard push.** If the stand has a standard push (see below), no facing was asked, and the winner ends in another pose, the pushes ending in the standard pose are considered (one tier, extra budget). One is taken if it costs at most `standardPushMargin` (150) more than the winner and its taxi-out is no hairpin. Two poses are the same if they are on the same edge, in the same direction, within 30° (`samePose`).
 6. The departure route becomes the pose's edge plus its taxi-out. The push (and the tow) ends with the nose gear on the pose, along it.
 
-**Standard push per stand** (`PlanStandardPushes(graph, model, stands)`). For each stand, the push is planned for each end of the airport's two longest runways, with the stand's neighbours all taken. If one pose is chosen by more than half of those ends, and by at least two of them, it becomes the stand's standard push. Departures planned before this finishes plan as usual. `SaveStandardPushes` writes the plans so far (each stand: the pose edge and heading, or none), and `LoadStandardPushes` reads them back. A file saved for another layout of the airport, or by another planning version, is refused with `ErrStandardStale`. The airport map plans an airport when its first departure appears, for `FSLTL_B738_RYR` (`standardPushModel` in `cmd/airport-map/main.go`). It plans one airport at a time and one stand at a time, resting after each stand so it uses about 30% of one core. The plans are saved to the user cache folder (`mrlm-simconnect/airport-map/pushes/ICAO.json`), so later starts load them instead of planning again. The standard pose is only a preference. A type that cannot make that push gets no candidate in that pose and keeps its own choice.
+**Standard push per stand** (`PlanStandardPushes(graph, model, stands)`). For each stand, the push is planned for each end of the airport's two longest runways, with the stand's neighbours all taken. If one pose is chosen by more than half of those ends, and by at least two of them, it becomes the stand's standard push. Departures planned before this finishes plan as usual. `SaveStandardPushes` writes the plans so far (each stand: the pose edge and heading, or none), and `LoadStandardPushes` reads them back. A file saved for another layout of the airport, or by another planning version, is refused with `ErrStandardStale`. The airport map plans an airport when its first departure appears, for `FSLTL_B738_RYR` (`standardPushModel` in `pkg/traffic/world/run.go`). It plans one airport at a time and one stand at a time, resting after each stand so it uses about 30% of one core. The plans are saved to the user cache folder (`mrlm-simconnect/airport-map/pushes/ICAO.json`), so later starts load them instead of planning again. The standard pose is only a preference. A type that cannot make that push gets no candidate in that pose and keeps its own choice.
 
 ### When no pose is reachable
 
@@ -321,8 +323,11 @@ While taxiing it also reports its **path ahead** every `trafficBodyStep` (5 m), 
 
 - **Already in it.** The meeting point is closer than the aircraft's own half-span, so it goes on through. Beside a push under way this applies only if its first point is already within both half-spans plus `PushClearMarginMeters` (3 m) of the push corridor. Otherwise each would wait for the other (#452).
 - **Who goes.** Each side measures how far along its own path the meeting point lies; the other's distance gets +5 m because its reported path starts one step ahead of it. The aircraft further from the point waits. On a tie the lower object ID goes. Both sides compute the same thing, so exactly one of them stops.
-- **A push under way always has priority.** Taxiing traffic whose path meets the push corridor gives way whatever the distances.
-- The one giving way stops with its nose tip 15 m short of the meeting point. If both a body stop and a give-way stop apply, the nearer one wins.
+- **A push under way always has priority.** Taxiing traffic whose path meets the push corridor gives way whatever the distances. The exception is an aircraft whose own body (nose to tail, every 5 m) is already within the push's half-span plus 3 m of its corridor (`bodyInPush`): the push stops for it, so it goes on through, or each would wait for the other.
+- **Going the same way.** One ahead on the aircraft's path facing the same way is not given way to; it is followed at the gap (`sameWayAhead`).
+- **A crossing tail.** When the other's path ahead no longer meets this path but its body is still across it (it has crossed, its tail has not), the aircraft stops short of that body. The reach is its own half-span + 10 m + `TailplaneShare` (0.35) of the other's half-span, the tailplane being narrower than the wing.
+- **Told to follow.** An aircraft told to follow another on the ground (ground's "follow the company Airbus A320", `GroundPicture.Follow`) gives way to it wherever their ways meet, even when it would have been there first; the leader never gives way to its follower. Ground says it with a taxi clearance when one of ours taxis ahead on the same route (within 40 m of it, up to 800 m along it, heading its way within 45°), or when the map's Follow button is pressed (`POST /api/control/{id}/follow?tail=`).
+- The one giving way stops with its nose tip 15 m short of the meeting point, slowing on a gentler braking curve (`GiveWayDecelFactor`, 0.4 of its deceleration). If both a body stop and a give-way stop apply, the nearer one wins.
 
 ### Oncoming traffic keeps the junction clear
 
@@ -392,8 +397,8 @@ For example, a 90° turn from B1 onto H at a junction costs 50 + 40 = 90 m of ta
 The map checks this each second when the places taken change (`keepClear`, `pkg/traffic/world/keepclear.go`), and once more just before a taxi clearance is said. A taxiing aircraft whose route ahead passes a place too near is re-planned (`ArrivalController.AvoidOccupied`, `TaxiController.AvoidOccupied`), but only when all of these hold:
 
 - the new route keeps clear and still fits the aircraft;
-- it crosses the same runways;
-- no clearance limit or custom route is set;
+- a departure's new route crosses the same runways; an arrival has no runway crossing left ahead and its new route crosses none;
+- no clearance limit (and for a departure no custom route) is set;
 - the user does not control the aircraft (Manual).
 
 Ground then says the new route from where the aircraft is. An arrival turns off at a route node beyond its stopping distance plus 10 m (`avoidTurnMeters`). Without a new route it keeps its route and gives way as before.
@@ -436,7 +441,7 @@ At LKPR a B738 pushed from C19 onto JB leaves J beside it too narrow: a CRJ on J
 
 The occupancy is `RunwayOccupancyIn`: departing 40 s (light), 45 s (medium), 50 s (heavy), 60 s (super). It is 15 % longer on a wet runway and 40 % longer on a contaminated one. A medium on a dry runway lined up needs the next arrival 75 s away, about 2.9 NM at 140 kt, so the 4 NM rule decides first. From a holding point it needs 135 s, about 5.3 NM at 140 kt.
 
-Only an arrival established on the final is sent around (`GoAround`); one on its procedure passing near the threshold is not. On the airport map, a take-off clearance given to a departure not yet rolling is cancelled ("hold position, cancel take-off") for someone on the runway, or for an arrival inside 3 NM (`cancelInsideNM`), not one just under the 4 NM it was cleared at. A departure told to line up behind an arrival that then goes around is cleared afresh.
+Only an arrival established on the final is sent around (`GoAround`); one on its procedure passing near the threshold is not. On the airport map, a take-off clearance given to a departure lining up or lined up, not yet rolling, is cancelled ("hold position, cancel take-off") only for someone on the runway (`cancelTakeoffFor`), never for an arrival closing in: stopped on the runway it would send the arrival around. A departure told to line up behind an arrival that then goes around is cleared afresh.
 
 At the holding points, departures and crossings go first come, first served, by when each was first seen holding:
 
@@ -505,10 +510,14 @@ The code comments attribute these values to ICAO Doc 4444 and RECAT-EU. The cond
 `PlanAbsorption` and `ArrivalController.AbsorbDelay` (`absorb.go`, #391) lose a delay on the STAR, before the final. The align and join points are never changed.
 
 1. **Speed.** The new speed is `STAR NM ÷ (STAR NM ÷ speed + delay)`, rounded down to tens of knots, if that is not below `MinProcedureSpeedKts` (210 kt, turboprops `MinProcedureSpeedTurbopropKts` 170 kt). For example, 40 NM at 250 kt with a 1 min delay gives 226 kt, assigned as 220 kt. An arrival already flying that speed is not told it again.
-2. **Path.** At the minimum speed, the rest is extra track: `remaining time × minimum speed`, at most `MaxStretchNM` (30 NM). Where the STAR ends on a downwind, the downwind is extended (a trombone, each mile out adds two). Otherwise a dog-leg is flown on the longest leg ahead, away from the centreline, if that leg is at least `MinStretchLegNM` (3 NM). Less than 1 NM is not worth a turn. For example, 40 NM at 250 kt with a 3 min delay: 210 kt absorbs 110 s, and the other 70 s is 4.1 NM of track.
+2. **Path.** At the minimum speed, the rest is extra track: `remaining time × minimum speed`, at most `MaxStretchNM` (30 NM). Where the STAR ends on a downwind, the downwind is extended (a trombone, each mile out adds two). Otherwise a dog-leg is flown on the longest leg ahead (not the leg into the align point), its apex on the side farther from the final approach path (`dogLegApex`), if that leg is at least `MinStretchLegNM` (3 NM). Less than 1 NM is not worth a turn. For example, 40 NM at 250 kt with a 3 min delay: 210 kt absorbs 110 s, and the other 70 s is 4.1 NM of track.
+   - **One dog-leg.** A later absorption moves the apex of the dog-leg already given further out while it is still ahead, as a controller lengthens one vector. Once the aircraft has flown past it, no second one is given: the rest goes to the hold.
+   - **No leg long enough** (near the end of the STAR): a 360 where it is when the stretch is at least `OrbitFromShare` (0.7) of a 360's track, else out and back from where it is.
+   - **As flown.** The rounded turns cut the apex, so it is pushed out (up to three times, at most twice the stretch) until the rounded track adds what was asked. The `ExtraNM` reported is the track added as flown.
+   - **Corners.** The re-plan starts from the corner the aircraft is flying to. A corner counts as passed within 1.5 NM of it. Farther out, a corner of a turn of 30° or more (`turnedPastMinDeg`) is passed once the aircraft is within 5 NM (`turnedPastNM`) and has turned more than halfway onto the next leg (`turnedPast`): a wide turn passes well inside it. A nearly straight one is passed once the aircraft is nearer the next corner than it is.
 3. **Hold.** Whatever is left goes to the hold.
 
-On the airport map (`cmd/airport-map/sequence.go`):
+On the airport map (`pkg/traffic/world/sequence.go`):
 
 - a delay is absorbed once it reaches 30 s (`absorbFrom`), at most every 90 s per arrival (`absorbEvery`);
 - an arrival holds only when 4 min or more is left (`holdFrom`, one racetrack);
@@ -532,17 +541,20 @@ The holds are ours, not the simulator's (`hold.go`, #392):
 
 ### Conflicts
 
-`PredictConflicts` (`conflict.go`, #395) flies every pair of airborne aircraft on as they are: track, ground speed and vertical speed. A vertical speed under 300 fpm counts as level. It looks ahead `LookAhead` (5 min) in `Step` (10 s) steps. A pair is in conflict when it is closer than both minima at the same step:
+`PredictConflicts` (`conflict.go`, #395) flies every pair of airborne aircraft on as they are: track, ground speed and vertical speed. A vertical speed under 300 fpm counts as level. With `ConflictOptions.Route` an aircraft is flown along its route's points ahead, turning where they turn; with `Profile` also toward each point's altitude (#657). The map gives ours their routes: arrivals their STAR and approach, departures their climb, en-route traffic its plan. It looks ahead `LookAhead` (5 min) in `Step` (10 s) steps. A pair is in conflict when it is closer than both minima at the same step:
 
 - lateral `EnrouteSeparationNM` (5 NM), or `TerminalSeparationNM` (3 NM) when both are at an airport and below 10,000 ft;
 - vertical `VerticalSeparationFt` (1000 ft).
 
-Pairs are skipped when the tower separates them (`TowerPair`: same airport, one below `TowerBelowFt`, 2500 ft above the ground) or when they cannot meet within the look-ahead. The airport map uses 5 NM in both cases (`conflictOpts`) and checks every 5 s.
+Pairs are skipped when the tower separates them (`TowerPair`: same airport, one below `TowerBelowFt`, 2500 ft above the ground) or when they cannot meet within the look-ahead. The airport map uses the same 5 NM and 3 NM (`conflictOpts`, `sepTerminalNM`) and checks every 5 s.
 
 `ResolveConflict` tries changes to one of ours, cheapest first, and takes the first that keeps it clear of everyone through the look-ahead. Both aircraft are tried; on equal cost the first aircraft of the pair is chosen. Other traffic is never steered. What comes first depends on the geometry: tracks within `SameRouteDeg` (45°) of each other are on the same route (in trail), more apart they cross.
 
 | Change | Crossing | Same route |
 |---|---|---|
+| Climbing (descending) toward the traffic: cross a fix of its route ahead at or above (below) the traffic's level plus the vertical minimum, where it makes that at its rate now (the nearest such fix) | 0.6 | 3.6 |
+| Climbing (descending) toward the traffic: stop as close to its level as the vertical minimum allows, every level back to the next one, closest first | 0.7 (+0.002 per level back) | 3.7 |
+| Level now, its route climbing or descending ahead: maintain the level | 0.7 | 3.7 |
 | Stop the climb or descent at the next 1000 ft on its way / the one after | 0.8 / 1.3 | 3.8 / 4.3 |
 | Level ±1000 ft (at 1500 fpm, not below 1500 ft above the ground; never back against a climb or descent) | 2.5 | 5.5 |
 | Level ±2000 ft | 3.0 | 6.0 |
@@ -554,16 +566,22 @@ Pairs are skipped when the tower separates them (`TowerPair`: same airport, one 
 | Heading 30° right / left | 3.67 / 3.77 | 3.67 / 3.77 |
 | Heading 45° right / left | 4.0 / 4.1 | 4.0 / 4.1 |
 
-On the map a departure is never given a speed change (live, AUA818 was told "reduce speed to 200 knots" climbing out). A stopped climb or descent goes on at the first look after the look-ahead has run with the aircraft out of conflict: "climb to flight level 240" for a departure (the level departure clears it to), else to the highest (lowest) level of its planned route. A departure stopped before departure answers its check-in is told "identified" alone: the climb comes with the clearance on. Another kind of change given meanwhile keeps the stop to be cleared on.
+On the map only ours en route and our departures handed to MSFS AI are steered, and an aircraft flying a TCAS RA is not ([TCAS](traffic-world.md#tcas-v024)). A departure is never given a speed change (live, AUA818 was told "reduce speed to 200 knots" climbing out). A stopped climb or descent goes on at the first look where the aircraft is out of conflict and either the look-ahead has run or it is moving apart from the traffic it was stopped for, at least 3 NM away (that traffic gone counts too). It is cleared on to the level departure cleared it to ("climb to flight level 240", `departureClimbFt`) for a climbing departure, else to the highest (lowest) level of its planned route. A departure given a level below that cleared level counts as stopped too, so a capped climb is always resumed. Ended before the change runs out, the route planned before the change is flown again from where it is. A departure stopped before departure answers its check-in is told "identified" alone: the climb comes with the clearance on. Another kind of change given meanwhile keeps the stop to be cleared on.
 
-The resolved aircraft flies the change for the look-ahead and then goes back to its route (`ResolvedRoute`). On the map it is not steered again for 5 min. Two of our arrivals on their STARs are not steered by the en-route resolver. Instead, the one landing later loses time (speed, then a dog-leg). If it is still in conflict 90 s later, it holds (#455, `cmd/airport-map/conflicts.go`).
+A departure handed to MSFS AI climbs to the cleared level, not only to the top of its SID: on its identification ("identified, climb to flight level 240") and when a stop is cleared, `TaxiController.ClimbTo` raises the rest of its climb route to that level (`climbOn`). Cleared before the hand-over, the climb waypoints are raised as they are made.
+
+The resolved aircraft flies the change for the look-ahead and then goes back to its route (`ResolvedRoute`). On the map it is not steered again for 5 min. Two of our arrivals on their STARs are not steered by the en-route resolver (#455, `resolveArrivals` in `pkg/traffic/world/conflicts.go`). The one landing later acts, looked at again every 90 s (`arrivalConflictRecheck`):
+
+1. More than 20 NM to go (`arrivalLevelFromNM`), once: it stops its descent 1000 ft above the other, rounded up to 500 ft, for 20 NM of its STAR.
+2. Otherwise it loses time as the approach "slow" does (speed, then a dog-leg). Just slowed by the sequence and the conflict more than a little way off (`arrivalConflictSoon`), that speed is left to work first.
+3. Once nothing more can be absorbed, it holds, until the conflict is over.
 
 ## Checking a decision
 
 These are the places that show a decision:
 
 - **Pushback:** `TaxiController.PushFacing()` gives the compass facing of the planned push. The [taxi route on the map](examples.md) shows the push and the route.
-- **Ground stops:** `TaxiEvent.PushbackHeld` reports a held push. The aircraft a taxiing one gives way to is kept in `groundDrive.givingWay`, which is internal.
+- **Ground stops:** `TaxiEvent.PushbackHeld` reports a held push. The aircraft a taxiing one gives way to is reported as `GivingWayTo` (its object ID) on `TaxiEvent` and `ArrivalEvent`.
 - **Runway:** `RunwayClearances.Waiting` gives the reason each departure or crossing waits. `GET /api/runways?icao=` lists each runway's users on the map.
 - **Sequence:** `SequenceEntry` has `Number`, `Leader`, `SpacingNM`, `SpacingWhy`, `ETA`, `Landing` and `Delay`. `Absorption.String()` says how a delay is lost ("210 kt, +4.1 NM").
 - **Conflicts:** `GET /api/separation` returns the closest pairs, the conflicts and the resolutions on the map ([Keeping apart](traffic-separation.md#keeping-apart)).

@@ -47,11 +47,11 @@ These events update `SimState` fields and trigger `OnSimStateChange` notificatio
 |-------|----------------|----------------|-------------------|------|
 | Pause | `"Pause"` | `Paused` | `func(paused bool)` | `DwData == 1` means paused |
 | Sim | `"Sim"` | `SimRunning` | `func(running bool)` | `DwData == 1` means running |
-| Crashed | `"Crashed"` | `Crashed` | `func()` | `DwData == 1` means crashed |
-| CrashReset | `"CrashReset"` | `CrashReset` | `func()` | `DwData == 1` means reset |
+| Crashed | `"Crashed"` | `Crashed` | `func()` | None used: the event itself is the news. Sets `Crashed`, clears `CrashReset` |
+| CrashReset | `"CrashReset"` | `CrashReset` | `func()` | None used. Sets `CrashReset`, clears `Crashed` |
 | Sound | `"Sound"` | `Sound` | `func(soundID uint32)` | `DwData` is the sound event ID |
 
-**Dispatch behavior:** The manager acquires a write lock (`mu.Lock`), compares the new value against the current `SimState` field, and only fires handlers if the value changed. Handlers are copied under the lock and invoked outside it.
+**Dispatch behavior:** The manager acquires a write lock (`mu.Lock`) and compares the new value against the current `SimState` field. Pause, Sim and Sound fire their handlers and `OnSimStateChange` only if the value changed. Crashed and CrashReset are pulses: every event fires its handlers, and `OnSimStateChange` fires when the state changed. Handlers are copied under the lock and invoked outside it.
 
 ### Non-State Events
 
@@ -384,7 +384,7 @@ for ev := range sub.Events() {
 
 ## Custom System Events
 
-Beyond the 12 built-in events, users can subscribe to any SimConnect system event by name. Custom events use a dynamic ID pool (999,999,850 - 999,999,886, 37 slots) allocated at runtime.
+Beyond the 12 built-in events, users can subscribe to any SimConnect system event by name. Custom events use a dynamic ID pool (999,999,910 - 999,999,979, 70 slots, `CustomEventIDMin`/`CustomEventIDMax`) allocated at runtime; the manager must be connected (`ErrNotConnected` otherwise), and a full pool returns `ErrCustomEventIDExhausted`.
 
 ### Subscribing
 
@@ -422,7 +422,8 @@ The following names are reserved for built-in events and will return `ErrReserve
 
 - Custom events are registered with SimConnect when `SubscribeToCustomSystemEvent` is called.
 - Custom event subscriptions are **cleared by `Stop()`**. When the simulator goes away (it quits, or the connection drops) they are kept and subscribed again with the same IDs on the next connection; the request registry and the camera request of the lost connection are cleared.
-- The ID pool resets on `Stop()`, so the same 37 slots are available after it.
+- `UnsubscribeFromCustomSystemEvent` frees the event's ID for reuse and closes the subscriptions returned for it.
+- The ID pool resets on `Stop()`, so the same 70 slots are available after it.
 
 ## Internal vs User-Facing Events
 
@@ -455,7 +456,8 @@ The following names are reserved for built-in events and will return `ErrReserve
        ├── SubscribeToSystemEvent("ObjectRemoved", ...)
        ├── AddToDataDefinition(camera/sim state, ...)
        ├── RequestDataOnSimObject(periodic polling, ...)
-       └── resubscribeCustomEvents(): custom events kept from a lost connection, same IDs
+       ├── resubscribeCustomEvents(): custom events kept from a lost connection, same IDs
+       └── replayUserSubscriptions(): only with WithResubscribeOnReconnect(true)
 
 3. Events flow through processMessage()
    ├── Typed handlers invoked (OnPause, OnCrashed, etc.)
