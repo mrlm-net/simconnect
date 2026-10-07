@@ -82,6 +82,9 @@ type controlled struct {
 	// hears the controller's progress. objectID is the aircraft once known.
 	managed  *traffic.TrafficManager
 	objectID uint32
+	// firstPending: its first-contact clearance (the STAR) is not said yet;
+	// the approach clearance waits for it (live: ILS before the STAR).
+	firstPending atomic.Bool
 	// observed: a real aircraft's sighting (#841), nil one of the schedule.
 	observed *traffic.Sighting
 	// deliver: a parked real aircraft's call to delivery, made when its
@@ -1009,6 +1012,15 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			level := ""
 			if p := it.arr.Plan(); p != nil && p.Spawn.Altitude > 0 {
 				level = traffic.LevelSaidAbove(p.Spawn.Altitude, lim.TransitionAltitudeFt)
+			}
+			// Adopted in the air (en route, a real aircraft): its own level,
+			// not the plan's (live: "flight level 081" at 3,860 ft).
+			if r.adopt != 0 {
+				for _, a := range cc.world.Aircraft() {
+					if a.ObjectID == r.adopt && a.AltFt > 0 {
+						level = traffic.LevelSaidAbove(a.AltFt, lim.TransitionAltitudeFt)
+					}
+				}
 			}
 			it.say(it.initial(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info)))
 			qnh, _ := cc.qnh()
@@ -2878,7 +2890,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		}
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
-		!it.approachSaid && !it.gates.Load() && it.arr.TurningFinal() {
+		!it.approachSaid && !it.gates.Load() && !it.firstPending.Load() && it.arr.TurningFinal() {
 		qnh, _ := it.cc.qnh()
 		// In good visibility some crews ask for a visual approach (#766).
 		if it.wantsVisual() {

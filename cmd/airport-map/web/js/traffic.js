@@ -52,6 +52,7 @@ const AP_ACT = {
   direct: { label: 'Direct', title: 'Direct to the final', icon: 'i-direct' },
   directpick: { label: 'Direct…', title: 'Direct to a point: click it on the map (a fix near it, else a heading)', icon: 'i-direct' },
   holdpick: { label: 'Hold…', title: 'Hold at a point: click it on the map', icon: 'i-hold' },
+  finalpick: { label: 'Final…', title: 'Join the final: click where along the extended centreline', icon: 'i-direct' },
   slow: { label: 'Slow', title: 'Lose a minute: speed, then a dog-leg', icon: 'i-slow' },
   hold: { label: 'Hold fix', title: 'Hold at the STAR fix', icon: 'i-hold' },
   release: { label: 'Leave hold', title: 'Leave the hold', icon: 'i-release' },
@@ -91,7 +92,7 @@ function seqEntry(tail) {
 function seqActs(v, s) {
   if (!s) return [];
   if (s.e.fixed) return ['goaround'];
-  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'directpick', 'slow', ...(v.hold ? ['release'] : ['hold', 'holdpick']), 'goaround'];
+  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'directpick', 'finalpick', 'slow', ...(v.hold ? ['release'] : ['hold', 'holdpick']), 'goaround'];
 }
 
 async function ctlAct(id, action, node, facing) {
@@ -116,8 +117,8 @@ async function ctlAct(id, action, node, facing) {
 let apPick = null;
 async function approachAct(tail, action, at) {
   if (!data) { $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; }); return; }
-  if (action === 'directpick' || action === 'holdpick') {
-    apPick = { tail, action: action === 'directpick' ? 'direct' : 'holdat', title: AP_ACT[action].title };
+  if (action === 'directpick' || action === 'holdpick' || action === 'finalpick') {
+    apPick = { tail, action: { directpick: 'direct', holdpick: 'holdat', finalpick: 'joinfinal' }[action], title: AP_ACT[action].title };
     toast(`${tail}: click the point on the map (Esc cancels)`);
     $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; });
     return;

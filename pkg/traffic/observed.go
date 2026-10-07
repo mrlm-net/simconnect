@@ -58,12 +58,19 @@ func (o Observed) Sighting() Sighting {
 		AltFt: o.AltFt, GroundKts: o.GroundKts, TrackDeg: o.TrackDeg, VSFpm: o.VSFpm, OnGround: o.OnGround, SeenAt: o.SeenAt}
 }
 
-// ObservedProjectMax: a sighting is projected at most this far ahead.
-const ObservedProjectMax = 10 * time.Minute
+// ObservedProjectMax: a sighting is projected at most this far ahead;
+// ObservedClimbProjectMax its vertical rate at most this long (a climb or
+// descent levels off: live, AFR34UP at 4850 ft and -1408 fpm projected
+// ten minutes was at 0 ft).
+const (
+	ObservedProjectMax      = 10 * time.Minute
+	ObservedClimbProjectMax = time.Minute
+)
 
-// At is where the aircraft is at t: on along its track at its ground
-// speed and vertical rate since it was seen (at most ObservedProjectMax),
-// not below the ground.
+// At is where the aircraft is at t, a wall-clock time as the feed's
+// SeenAt (not the simulator's): on along its track at its ground speed
+// since it was seen (at most ObservedProjectMax), its vertical rate for at
+// most ObservedClimbProjectMax, not below the ground.
 func (o Sighting) At(t time.Time) (airport.LatLon, float64) {
 	dt := t.Sub(o.SeenAt)
 	if o.SeenAt.IsZero() || dt < 0 {
@@ -76,7 +83,7 @@ func (o Sighting) At(t time.Time) (airport.LatLon, float64) {
 		lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, o.TrackDeg, o.GroundKts*h*1852)
 		pos = airport.LatLon{Lat: lat, Lon: lon}
 	}
-	return pos, math.Max(0, o.AltFt+o.VSFpm*h*60)
+	return pos, math.Max(0, o.AltFt+o.VSFpm*min(dt, ObservedClimbProjectMax).Minutes())
 }
 
 // Observed kinds.
@@ -115,6 +122,10 @@ func ClassifyObserved(o Observed, field airport.LatLon) (string, string) {
 			return k, ""
 		}
 		return "", "unknown kind " + o.Kind
+	}
+	switch strings.ToUpper(strings.TrimSpace(o.Type)) {
+	case "TWR", "GND", "GRND", "SVC", "VEH":
+		return "", "a ground station or vehicle" // ADS-B gives these too (live: TXLU00, PLET 1)
 	}
 	d := calc.HaversineNM(o.Lat, o.Lon, field.Lat, field.Lon)
 	if o.OnGround {

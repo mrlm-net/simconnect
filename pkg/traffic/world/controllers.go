@@ -53,6 +53,7 @@ type arrivalCtl interface {
 	ClearUpTo(node airport.NodeID) error
 	DirectToJoin() error
 	DirectTo(p airport.LatLon) (string, traffic.Vector, error)
+	JoinFinal(p airport.LatLon) (float64, traffic.Vector, error)
 	EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error)
 	Expedite(on bool)
 	GoAround() error

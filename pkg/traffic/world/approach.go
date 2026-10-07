@@ -95,6 +95,18 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		delete(q.conflictHeld, callsign) // a controller's hold (holdat) too
 		q.mu.Unlock()
 		q.leaveHold(icao, it, h, e)
+	case "joinfinal":
+		// Join the final where a point picked on the map lies along it.
+		if at == nil {
+			return errors.New("joinfinal needs a point")
+		}
+		var nm float64
+		var v traffic.Vector
+		if err := q.cc.do(func() (err error) { nm, v, err = it.arr.JoinFinal(*at); return err }); err != nil {
+			return err
+		}
+		it.say(traffic.Vectored(callsign, v, q.cc.magVar(icao)))
+		q.cc.log.printf("%-6s approach: join the final at %.0f NM (on the map)", callsign, nm)
 	case "holdat":
 		if at == nil {
 			return errors.New("holdat needs a position")

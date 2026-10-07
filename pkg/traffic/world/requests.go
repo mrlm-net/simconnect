@@ -250,7 +250,8 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 // firstContact is an arrival's first call to approach (said already), then
 // the approach controller's clearance once it has been heard.
 func (it *controlled) firstContact(clr traffic.Transmission) {
-	it.call(traffic.PosApproach, prioApproach, func() { it.say(clr) })
+	it.firstPending.Store(true)
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(clr); it.firstPending.Store(false) })
 }
 
 // actAfterReadback runs f in the simulator's goroutine once the clearance

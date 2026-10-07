@@ -543,6 +543,12 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		recheck()
 		return
 	}
+	q.mu.Lock()
+	refused := q.refused[cs]
+	q.mu.Unlock()
+	if now.Sub(refused) < conflictRefusedWait {
+		return // nothing approach can do for it yet (live: "slow refused" every 5 s)
+	}
 	action := "slow"
 	err := q.approachAction(trailer.it.ICAO, cs, action)
 	if errors.Is(err, errNothingToSlow) {
@@ -554,6 +560,9 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	}
 	if err != nil {
 		w.s.cc.log.printf("%-6s conflict with %s: %s refused: %v", cs, oth, action, err)
+		q.mu.Lock()
+		q.refused[cs] = now
+		q.mu.Unlock()
 		return
 	}
 	if action == "hold" {
@@ -650,3 +659,7 @@ func (w *conflictWatch) engaged(cs string, now time.Time) bool {
 // engagedAfter: an aircraft counts as engaged this long after its
 // resolution is flown.
 const engagedAfter = 3 * time.Minute
+
+// conflictRefusedWait: an arrival approach could do nothing for in a
+// conflict is not asked again for this long.
+const conflictRefusedWait = 2 * time.Minute

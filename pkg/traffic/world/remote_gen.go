@@ -200,6 +200,13 @@ func (r *remoteArr) DirectTo(p airport.LatLon) (string, traffic.Vector, error) {
 	return o0, o1, err
 }
 
+func (r *remoteArr) JoinFinal(p airport.LatLon) (float64, traffic.Vector, error) {
+	var o0 float64
+	var o1 traffic.Vector
+	err := r.c.call(r.t, "JoinFinal", []any{p}, &o0, &o1)
+	return o0, o1, err
+}
+
 func (r *remoteArr) EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error) {
 	var o0 traffic.HoldEntry
 	err := r.c.call(r.t, "EnterHold", []any{h, altFt}, &o0)

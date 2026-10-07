@@ -24,6 +24,7 @@ func TestClassifyObserved(t *testing.T) {
 		{"inbound", Observed{Lat: flat, Lon: flon, AltFt: 12000, TrackDeg: 270, VSFpm: -1500}, ObservedArrival},
 		{"outbound", Observed{Lat: flat, Lon: flon, AltFt: 32000, TrackDeg: 90}, ObservedOverflight},
 		{"given", Observed{Lat: flat, Lon: flon, Kind: "Departure"}, ObservedDeparture},
+		{"ground station", Observed{Lat: lat, Lon: lon, OnGround: true, Type: "TWR"}, ""},
 	}
 	for _, c := range cases {
 		if got, why := ClassifyObserved(c.o, field); got != c.want {

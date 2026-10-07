@@ -39,6 +39,9 @@ const (
 	realParkedFor = 24 * time.Hour
 	// realMinKts: the speed a slow or unknown sighting is flown at.
 	realMinKts = 180.0
+	// realMinAGLFt: an airborne sighting appears no lower than this over
+	// the field's elevation.
+	realMinAGLFt = 1500.0
 )
 
 // errNoOther: a flight with no other end known (a real aircraft's): the
@@ -179,6 +182,8 @@ func (s *scheduler) setReal(on bool) {
 			}
 		}
 		s.mgr.SetEnabled(true)
+	} else if changed {
+		s.mgr.Replan() // the generator back: the hours ahead asked again
 	}
 	if changed {
 		s.cc.log.printf("schedule: real-world traffic %s", map[bool]string{true: "on", false: "off"}[on])
@@ -204,6 +209,9 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 		return ignore("no managed airport")
 	}
 	res.Airport = icao
+	if l, ok := s.st.cache.Layout(icao); !ok || len(l.Runways) == 0 {
+		return ignore("no runways known at " + icao) // nothing could land or leave (live: runway "")
+	}
 	kind, why := traffic.ClassifyObserved(o, field)
 	if kind == "" {
 		return ignore(why)
@@ -262,7 +270,7 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 		default:
 			f := base
 			f.Origin, f.Destination = strings.ToUpper(o.Origin), icao
-			pos, _ := sight.At(now)
+			pos, _ := sight.At(time.Now()) // the feed's clock, not the simulator's
 			kts := math.Max(o.GroundKts, realMinKts)
 			f.STA = now.Add(time.Duration(calc.HaversineNM(pos.Lat, pos.Lon, field.Lat, field.Lon) / kts * float64(time.Hour)))
 			f.DistanceNM = calc.HaversineNM(pos.Lat, pos.Lon, field.Lat, field.Lon)
@@ -405,7 +413,9 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 		return err
 	}
 	rwy := cc.pickRunway(g, true, -1)
-	pos, alt := f.Observed.At(cc.clock.Now())
+	pos, alt := f.Observed.At(time.Now()) // the feed's clock, not the simulator's
+	// Airborne: not below realMinAGLFt over the field.
+	alt = math.Max(alt, g.Layout.Altitude/0.3048+realMinAGLFt)
 	pts, name, expect, err := s.arrivalJoin(g, rwy, pos)
 	if err != nil {
 		// No STAR to join: it appears on the runway's approach instead.
