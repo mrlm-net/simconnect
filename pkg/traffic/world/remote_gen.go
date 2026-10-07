@@ -32,6 +32,11 @@ func (r *remoteDep) AvoidOccupied(occ []airport.Occupied) bool {
 	return o0
 }
 
+func (r *remoteDep) ClimbTo(pos airport.LatLon, altFt float64, ft float64) error {
+	err := r.c.call(r.t, "ClimbTo", []any{pos, altFt, ft})
+	return err
+}
+
 func (r *remoteDep) SetPushbackAt(at time.Time) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "SetPushbackAt", []any{at}, &o0))

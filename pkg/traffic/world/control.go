@@ -3175,6 +3175,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			answer := it.directAnswer
 			it.directAnswer = nil
 			it.mu.Unlock()
+			if level != "" {
+				it.climbOn()
+			}
 			tx := traffic.Identified(traffic.PosDeparture, it.Tail, level)
 			if answer != nil {
 				if u, ok := answer(); ok {

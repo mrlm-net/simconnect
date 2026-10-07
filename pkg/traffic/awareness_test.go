@@ -711,3 +711,43 @@ func TestOncomingHold(t *testing.T) {
 		t.Errorf("same way counted as oncoming at %v", at)
 	}
 }
+
+// An aircraft that has crossed this path, its way ahead clear of it, still
+// has its tail across it: this one stops short until the tail is clear
+// (LKPR J/H, live: CSA194's wing and QTR1709's B77W tail).
+func TestGiveWayToCrossingTail(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	at := func(east, north float64) airport.LatLon {
+		return offsetHeading(offsetHeading(base, 90, east), 0, north)
+	}
+	b77w := DefaultMotionProfile()
+	b77w.TailMeters = 45
+	half := 17.0
+	for _, c := range []struct {
+		name  string
+		north float64 // the crossing aircraft's reference point north of my path
+		wait  bool
+	}{
+		{"tail across the path", 70, true},
+		{"tail clear", 120, false},
+	} {
+		p.Report(1, at(0, c.north), 0, b77w, now)
+		var ahead []airport.LatLon
+		for n := c.north + 5; n <= c.north+250; n += trafficBodyStep {
+			ahead = append(ahead, at(0, n))
+		}
+		p.ReportPath(1, ahead, 32.4)
+		me := at(-120, 0)
+		p.Report(2, me, 90, MotionProfile{}, now)
+		path, err := NewGroundPath([]airport.LatLon{me, at(120, 0)}, DefaultMotionProfile())
+		if err != nil {
+			t.Fatal(err)
+		}
+		gw := p.giveWay(2, path, 0, GiveWayLookMeters, half, now)
+		if waits := !math.IsInf(gw, 1); waits != c.wait {
+			t.Errorf("%s: gives way %v (at %.1f m), want %v", c.name, waits, gw, c.wait)
+		}
+	}
+}

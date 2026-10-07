@@ -194,6 +194,23 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		if !o.e.pushing && sameWayAhead(mine, o.e.pos, o.e.hdg, half+o.e.half) {
 			continue
 		}
+		// Its body still across this path, its way ahead no longer meeting
+		// it: the tail of one that has crossed (live, LKPR J/H: CSA194's
+		// wing and the tail of QTR1709's B77W, whose path ahead had left the
+		// junction). Stop short until it is clear; while their ways still
+		// meet, the path rules below decide.
+		if first(o.e.ahead, mine, reach) < 0 && !(o.e.pushing && bodyInPush(o.e)) {
+			var body []airport.LatLon
+			for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
+				body = append(body, offsetHeading(o.e.pos, o.e.hdg, d))
+			}
+			if bodyTo := first(mine, body, half+GiveWayMarginMeters+TailplaneShare*o.e.half); bodyTo >= 0 {
+				if from+bodyTo < best {
+					best, to = from+bodyTo, o.id
+				}
+				continue
+			}
+		}
 		mineTo := first(mine, o.e.ahead, reach)
 		// Beside a push under way only an aircraft already close enough for
 		// the push to stop for it (corridorBlocked: both half-spans and
