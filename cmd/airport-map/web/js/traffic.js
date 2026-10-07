@@ -53,6 +53,7 @@ const AP_ACT = {
   directpick: { label: 'Direct…', title: 'Direct to a point: click it on the map (a fix near it, else a heading)', icon: 'i-direct' },
   holdpick: { label: 'Hold…', title: 'Hold at a point: click it on the map', icon: 'i-hold' },
   finalpick: { label: 'Final…', title: 'Join the final: click where along the extended centreline', icon: 'i-direct' },
+  standpick: { label: 'Stand…', title: 'Another stand: click it on the map', icon: 'i-direct' },
   slow: { label: 'Slow', title: 'Lose a minute: speed, then a dog-leg', icon: 'i-slow' },
   speed: { label: 'Speed', title: 'Assign a speed for the rest of the STAR', icon: 'i-slow' },
   hold: { label: 'Hold fix', title: 'Hold at the STAR fix', icon: 'i-hold' },
@@ -93,7 +94,7 @@ function seqEntry(tail) {
 function seqActs(v, s) {
   if (!s) return [];
   if (s.e.fixed) return ['goaround'];
-  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'directpick', 'finalpick', ...(v.hold ? ['release'] : ['hold', 'holdpick']), 'goaround'];
+  return [...(s.i > 0 ? ['up'] : []), ...(s.i < s.r.sequence.length - 1 ? ['down'] : []), 'direct', 'directpick', 'finalpick', 'standpick', ...(v.hold ? ['release'] : ['hold', 'holdpick']), 'goaround'];
 }
 
 async function ctlAct(id, action, node, facing) {
@@ -126,6 +127,32 @@ function startPick(tail, action) {
   apPick = { tail, action };
   const v = ctlViews.find((x) => x.tail === tail);
   const seen = new Set();
+  // A stand for an arrival (#443): the stands are the targets, a click on
+  // one sends it there.
+  if (action === 'standto') {
+    for (const p of data.parking || []) {
+      L.circleMarker([p.lat, p.lon], { radius: 9, className: 'm-pick', bubblingMouseEvents: false })
+        .bindTooltip(esc(parkingLabel(p)), { direction: 'top', className: 'map-lbl' })
+        .on('click', async () => {
+          stopPick();
+          const r = await send(`/api/control/${v.id}/standto?stand=${p.index}`);
+          toast(r.ok ? `${tail}: stand ${parkingLabel(p)}` : `${tail}: ${r.error}`, r.ok ? '' : 'err');
+          controlPoll.now();
+        })
+        .addTo(pickLayer);
+    }
+    pickLayer.addTo(map);
+    map.getContainer().classList.add('is-picking');
+    pickBar();
+    return;
+  }
+  if (action === 'via') {
+    apPick.nodes = [];
+    pickLayer.addTo(map);
+    map.getContainer().classList.add('is-picking');
+    pickBar();
+    return;
+  }
   const fixes = [...((v && v.airFixes) || []).map((f) => ({ ident: f.ident, lat: f.lat, lon: f.lon })),
     ...((typeof procs !== 'undefined' && procs && procs.fixes) || []).map((f) => ({ ident: f.ident, lat: f.position.lat, lon: f.position.lon }))];
   for (const f of fixes) {
@@ -138,17 +165,70 @@ function startPick(tail, action) {
   }
   pickLayer.addTo(map);
   map.getContainer().classList.add('is-picking');
-  toast(`${tail}: click a fix or any point on the map (Esc cancels)`);
+  pickBar();
 }
 function stopPick() {
   apPick = null;
   pickLayer.clearLayers();
   map.getContainer().classList.remove('is-picking');
+  const bar = document.getElementById('pickBar');
+  if (bar) bar.remove();
+}
+// What a pick asks for, said on the bar over the map while it lasts.
+const PICK_TEXT = {
+  direct: 'Direct to: click a fix or any point',
+  holdat: 'Hold at: click a fix or any point',
+  joinfinal: 'Join the final: click on the extended centreline',
+  standto: 'New stand: click a stand',
+  via: 'Taxi via: click points on the taxiways, in order',
+};
+// pickBar shows what is being picked for whom and how to finish: always
+// in view while picking, not a toast that goes.
+function pickBar() {
+  if (!apPick) return;
+  let bar = document.getElementById('pickBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'pickBar';
+    bar.className = 'pick-bar';
+    map.getContainer().appendChild(bar);
+    L.DomEvent.disableClickPropagation(bar);
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pickbar]');
+      if (!b) return;
+      if (b.dataset.pickbar === 'cancel') { stopPick(); toast('Picking cancelled'); }
+      if (b.dataset.pickbar === 'undo' && apPick.nodes.length) { apPick.nodes.pop(); drawViaPick(); pickBar(); }
+      if (b.dataset.pickbar === 'send') sendViaPick();
+    });
+  }
+  const n = apPick.nodes ? apPick.nodes.length : 0;
+  const via = apPick.action === 'via';
+  bar.innerHTML = `<b>${esc(apPick.tail)}</b> · ${PICK_TEXT[apPick.action] || 'click the map'}` +
+    (via ? ` · <span class="mono">${n}</span> picked <button type="button" class="btn btn--sm" data-pickbar="undo"${n ? '' : ' disabled'}>Undo</button><button type="button" class="btn btn--sm btn--primary" data-pickbar="send"${n ? '' : ' disabled'}>Send (Enter)</button>` : '') +
+    `<button type="button" class="btn btn--sm" data-pickbar="cancel">Cancel (Esc)</button>`;
+}
+// The via points picked so far, numbered on the map.
+function drawViaPick() {
+  pickLayer.clearLayers();
+  (apPick.nodes || []).forEach((n, i) => {
+    L.circleMarker([n.position.lat, n.position.lon], { radius: 9, className: 'm-pick', interactive: false })
+      .bindTooltip(String(i + 1), { permanent: true, direction: 'center', className: 'map-lbl' }).addTo(pickLayer);
+  });
+}
+async function sendViaPick() {
+  if (!apPick || !apPick.nodes.length) return;
+  const p = apPick;
+  stopPick();
+  const v = ctlViews.find((x) => x.tail === p.tail);
+  if (!v) return;
+  const r = await send(`/api/control/${v.id}/via?nodes=${p.nodes.map((n) => n.id).join(',')}`);
+  toast(r.ok ? `${p.tail}: taxi via ${p.nodes.length} points` : `${p.tail}: ${r.error}`, r.ok ? '' : 'err');
+  controlPoll.now();
 }
 async function approachAct(tail, action, at, kts) {
   if (!data) { $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; }); return; }
-  if (action === 'directpick' || action === 'holdpick' || action === 'finalpick') {
-    startPick(tail, { directpick: 'direct', holdpick: 'holdat', finalpick: 'joinfinal' }[action]);
+  if (action === 'directpick' || action === 'holdpick' || action === 'finalpick' || action === 'standpick') {
+    startPick(tail, { directpick: 'direct', holdpick: 'holdat', finalpick: 'joinfinal', standpick: 'standto' }[action]);
     $$('[data-ap][disabled]').forEach((b) => { b.disabled = false; });
     return;
   }
@@ -347,6 +427,7 @@ function renderCtx() {
     const groups = PHASES.filter((p) => p.acts.some((a) => has(v, a))).map((p) => {
       let g = `<div class="phase"><div class="phase__name">${p.name}</div><div class="acts">${p.acts.map((a) => actBtn(v, a, busy)).join('')}</div>`;
       if (p.key === 'ground' && has(v, 'pushback') && !facingShown) g += facingRow(v, busy);
+      if (p.key === 'ground' && v.kind === 'departure') g += `<div class="acts"><button type="button" class="btn btn--sm" data-pick="via" data-cs="${esc(v.tail)}" title="Taxi via points picked on the map"${other ? ' disabled' : ''}>Via…</button></div>`;
       return g + '</div>';
     });
     const s = v.kind === 'arrival' && !v.onGround ? seqEntry(v.tail) : null;
@@ -743,7 +824,10 @@ function initTraffic() {
   let downOnBackdrop = false;
   $('nfModal').addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === e.currentTarget; });
   $('nfModal').addEventListener('click', (e) => { if (downOnBackdrop && e.target === e.currentTarget) openNewFlight(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && apPick) { stopPick(); toast('Picking cancelled'); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && apPick) { stopPick(); toast('Picking cancelled'); }
+    if (e.key === 'Enter' && apPick && apPick.action === 'via' && apPick.nodes.length) { e.preventDefault(); sendViaPick(); }
+  });
   // Esc: the window closes (the stand stays); picking, back to the window.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !nfOpen()) return;
@@ -809,6 +893,8 @@ function initTraffic() {
   document.addEventListener('click', (e) => {
     const tune = e.target.closest('[data-tune]');
     if (tune) { e.stopPropagation(); tuneTo(tune.dataset.tune); return; }
+    const pk = e.target.closest('[data-pick]');
+    if (pk) { if (!pk.disabled) startPick(pk.dataset.cs, pk.dataset.pick); return; }
     const ap = e.target.closest('[data-ap]');
     if (ap) { if (!ap.disabled) { ap.disabled = true; approachAct(ap.dataset.cs, ap.dataset.ap, undefined, ap.dataset.kts !== undefined ? Number(ap.dataset.kts) : undefined); } return; }
     const ws = e.target.closest('[data-withstart]');
@@ -858,6 +944,16 @@ function initTraffic() {
   // A map click: a de-icing pad (Airport), or a via point (custom route).
   map.on('click', async (e) => {
     if (!data) return;
+    if (apPick && apPick.action === 'via') {
+      // A via point: the taxiway node nearest the click.
+      const r = await api(`/api/node?${new URLSearchParams({ icao: data.icao, lat: e.latlng.lat, lon: e.latlng.lng })}`);
+      if (!r.ok) { toast(r.error, 'err'); return; }
+      if (!apPick) return;
+      apPick.nodes.push(r.data);
+      drawViaPick();
+      pickBar();
+      return;
+    }
     if (apPick) { const p = apPick; stopPick(); approachAct(p.tail, p.action, e.latlng); return; }
     if ($('dePick').checked) { addPadAt(e.latlng); return; }
     if ($('vpPick').checked) { addVfrPointAt(e.latlng); return; }

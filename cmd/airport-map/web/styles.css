@@ -1235,3 +1235,6 @@ body.spectator [data-game-start], body.spectator .facing { display: none !import
 .phase__told { font-size: var(--fs-sm); color: var(--text-2); margin: 2px 0 6px; }
 .acts--speed { margin-top: 6px; align-items: center; }
 .acts__lbl { font-size: var(--fs-sm); color: var(--text-2); margin-right: 4px; }
+
+.pick-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: var(--radius, 8px); background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / 0.25); font-size: var(--fs-sm); }

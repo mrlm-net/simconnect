@@ -1744,6 +1744,51 @@ func registerControl(mux *http.ServeMux, st *state) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		// Stand (?stand=N, a parking index; #443): an arrival not yet down
+		// goes to another stand, picked on the map; it is reserved for it.
+		if r.PathValue("action") == "standto" && it.arr != nil {
+			to, err := strconv.Atoi(r.URL.Query().Get("stand"))
+			if err != nil || it.stands == nil || to < 0 || to >= len(it.graph.Layout.Parking) {
+				http.Error(w, "stand: a parking index of this airport", http.StatusBadRequest)
+				return
+			}
+			it.mu.Lock()
+			old, tail, rwy := it.stand, it.Tail, it.view.Runway
+			it.mu.Unlock()
+			half := traffic.DefaultHalfSpanMeters
+			if o, ok := it.stands.Occupant(old); ok && o.HalfSpan > 0 {
+				half = o.HalfSpan
+			}
+			if to != old {
+				if why := it.stands.TakenFrom(to, tail, 0); why != "" || !it.stands.Free(to, half) {
+					http.Error(w, it.graph.Layout.Parking[to].Label()+" is not free", http.StatusConflict)
+					return
+				}
+				if err := it.stands.Occupy(to, tail, half); err != nil {
+					http.Error(w, err.Error(), http.StatusConflict)
+					return
+				}
+				if err := cc.do(func() error { return it.arr.ChangeStand(to) }); err != nil {
+					it.stands.Release(to)
+					http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+					return
+				}
+				it.stands.Release(old)
+			}
+			l := it.graph.Layout
+			it.mu.Lock()
+			it.stand, it.view.Stand = to, l.Parking[to].Label()
+			it.view.Instruction, it.view.InstructionAt = "stand "+l.Parking[to].Label(), &l.Parking[to].Position
+			mgr, model, label := it.managed, it.view.Model, it.view.Stand
+			it.mu.Unlock()
+			if mgr != nil {
+				mgr.Describe(tail, model, label, rwy)
+			}
+			cc.log.printf("%-6s arrival: stand %s (on the map, was %s)", tail, label, l.Parking[old].Label())
+			cc.changed("control")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		// Entry (?entry=B, "" full length): the departure takes its runway
 		// from another intersection, re-planned from where it is; taxiing,
 		// ground gives the new route.
@@ -1760,6 +1805,38 @@ func registerControl(mux *http.ServeMux, st *state) {
 			state := it.view.State
 			it.mu.Unlock()
 			tlog.printf("%-6s runway entry %s", it.Tail, orNone(entry))
+			if state == traffic.TaxiTaxiing.String() { // on along the new route at once
+				it.say(it.phrase("taxi", -1))
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Via (?nodes=12,40,7; #443): the departure taxis to its runway
+		// through these nodes, picked on the map, re-planned from where it
+		// is; taxiing, ground gives the new route.
+		if r.PathValue("action") == "via" && it.dep != nil {
+			var via []airport.NodeID
+			for _, s := range strings.Split(r.URL.Query().Get("nodes"), ",") {
+				n, err := strconv.Atoi(strings.TrimSpace(s))
+				if err != nil {
+					http.Error(w, "nodes: comma-separated node IDs", http.StatusBadRequest)
+					return
+				}
+				via = append(via, airport.NodeID(n))
+			}
+			if err := cc.do(func() error { return it.dep.TaxiVia(via) }); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			it.gates.Store(true) // the user's clearance: manual from here
+			it.mu.Lock()
+			it.view.Manual = true
+			it.setRoute()
+			state := it.view.State
+			p := it.graph.Nodes[via[len(via)-1]].Position
+			it.view.Instruction, it.view.InstructionAt = fmt.Sprintf("taxi via %d points", len(via)), &p
+			it.mu.Unlock()
+			tlog.printf("%-6s taxi via %d points (on the map)", it.Tail, len(via))
 			if state == traffic.TaxiTaxiing.String() { // on along the new route at once
 				it.say(it.phrase("taxi", -1))
 			}
