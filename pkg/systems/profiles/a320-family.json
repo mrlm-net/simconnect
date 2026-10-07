@@ -4,15 +4,6 @@
   "match": { "atcType": ["A318", "A319", "A320", "A321", "A20N", "A21N"], "titleContains": ["A318", "A319", "A320", "A321"] },
   "measured": "Type base (#759): the A320 family on the standard SimVars and key events (MSFS 2024 SDK); a model's profile (the Fenix) goes on top where it differs. The cabin signs and external power by the standard variables and events, not measured on a stock A320.",
   "speedCheckKt": 100,
-  "takeoffSpeeds": {
-    "measured": "Approximate typical A320 take-off speeds (dry runway, sea level, ISA), not from an FCOM: a starting point for the copilot's calls, to be replaced by a local override. Flaps by FLAPS HANDLE INDEX: 1 (CONF 1+F), 2, 3.",
-    "weightsKg": [50000, 55000, 60000, 65000, 70000, 75000, 78000],
-    "flaps": {
-      "1": { "v1": [120, 126, 132, 138, 144, 149, 152], "vr": [121, 127, 133, 139, 145, 151, 154], "v2": [126, 131, 137, 142, 148, 153, 156] },
-      "2": { "v1": [117, 123, 129, 135, 141, 146, 149], "vr": [118, 124, 130, 136, 142, 148, 151], "v2": [123, 128, 134, 139, 145, 150, 153] },
-      "3": { "v1": [114, 120, 126, 132, 138, 143, 146], "vr": [115, 121, 127, 133, 139, 145, 148], "v2": [120, 125, 131, 136, 142, 147, 150] }
-    }
-  },
   "values": {
     "seatbelts": { "vars": ["CABIN SEATBELTS ALERT SWITCH"], "unit": "bool", "note": "standard; the Fenix's follows its switch (measured 2026-10-05)" },
     "noSmoking": { "vars": ["CABIN NO SMOKING ALERT SWITCH"], "unit": "bool", "note": "standard: on or off" },

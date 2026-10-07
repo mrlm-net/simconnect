@@ -388,7 +388,7 @@ func For(a Aircraft, overrides ...Profile) Profile {
 			p = Merge(p, o)
 		}
 	}
-	return withDoors(p)
+	return withDoors(withSpeeds(p, a))
 }
 
 // withDoors gives every door of p.Doors its value and action (the
