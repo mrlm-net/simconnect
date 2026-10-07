@@ -193,6 +193,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── manager.go       #   TrafficManager: schedule → spawn/remove, turnarounds, limits, retries, boards, other traffic
 │       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
 │       ├── manager_enroute.go # Enroute arrivals, overflights, leaving the area, Attach
+│       ├── manager_observed.go # Real flights in the manager: Observe, Retime, Turn, Drop (#841)
+│       ├── observed.go      #   Observed (feed sighting), Sighting.At projection, ClassifyObserved (#841)
 │       ├── enroute.go       #   EnrouteStart: airborne spawn + waypoint chain (NonATC)
 │       ├── detail.go        #   Detail: level of detail (frames per aircraft by distance/motion), Load
 │       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers

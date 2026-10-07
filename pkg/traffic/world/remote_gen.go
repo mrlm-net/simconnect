@@ -19,6 +19,12 @@ var (
 )
 
 // remoteDep is the director's departureCtl: each call a wire call.
+func (r *remoteDep) SetPushbackAt(at time.Time) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "SetPushbackAt", []any{at}, &o0))
+	return o0
+}
+
 func (r *remoteDep) ClearPushback() {
 	r.c.dropped(r.c.call(r.t, "ClearPushback", []any{}))
 }

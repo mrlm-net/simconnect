@@ -3,6 +3,7 @@ package traffic
 import (
 	"errors"
 	"fmt"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -305,6 +306,31 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 		}
 	}
 	return -1, ErrNoStand
+}
+
+// AssignNear reserves the free stand nearest pos within maxMeters that
+// suits the span, of any type and airline: where a real aircraft is seen
+// standing (#841). ErrNoStand if none.
+func (a *StandAllocator) AssignNear(req StandRequirements, pos airport.LatLon, maxMeters float64) (int, error) {
+	half := req.HalfSpan
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	l := a.g.Layout
+	best, bestM := -1, maxMeters
+	a.mu.Lock()
+	for _, i := range l.SuitableStands(half) {
+		p := l.Parking[i].Position
+		if m := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon) * 1852; m <= bestM && a.blockedBy(i, half, req.Owner) == "" {
+			best, bestM = i, m
+		}
+	}
+	a.mu.Unlock()
+	if best < 0 || a.Occupy(best, req.Owner, half) != nil {
+		return -1, ErrNoStand
+	}
+	a.SetOffBlock(req.Owner, req.OffBlock)
+	return best, nil
 }
 
 // rank orders stands by taxi-in length from the runway's best exit. Only

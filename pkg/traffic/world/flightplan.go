@@ -23,6 +23,9 @@ type planned struct {
 	plan   *nav.FlightPlan
 	// adopt: an en route arrival handed over flies on as this object (#643).
 	adopt uint32
+	// runway: the arrival runway route was picked for, without a plan (a
+	// real aircraft's join, #841).
+	runway string
 }
 
 // planFor loads the other airport (waiting for the simulator) and plans

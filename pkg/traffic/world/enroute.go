@@ -223,7 +223,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		s.mu.Unlock()
 		return err
 	}
-	s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d along %s, %d waypoints", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type,
+	s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d along %s, %d waypoints", f.Callsign, f.Kind, orUnknown(f.Origin), orUnknown(f.Destination), f.Type,
 		int(math.Round(route[0].AltFt/100)), along, len(wps))
 	return nil
 }
@@ -284,7 +284,11 @@ func (s *scheduler) handovers(now time.Time) {
 		}
 		// Late at the entry: handed over where it is only near it (or unseen,
 		// or past its STA), never from hundreds of miles out.
-		late := now.After(e.f.STA.Add(-lead).Add(handoverAfter)) && (!seen || far < handoverLateNM || now.After(e.f.STA))
+		lateAt := e.f.STA.Add(-lead).Add(handoverAfter)
+		if e.f.Observed != nil {
+			lateAt = e.f.STA.Add(handoverAfter) // a real aircraft: STA is its time at the entry (#841)
+		}
+		late := now.After(lateAt) && (!seen || far < handoverLateNM || now.After(e.f.STA))
 		if far < handoverNM || late {
 			// Not onto other traffic at the entry: the handover waits.
 			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" {

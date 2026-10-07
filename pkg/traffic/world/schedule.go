@@ -55,6 +55,10 @@ type scheduler struct {
 	corridorAt time.Time
 	pending    map[uint32]*enrouteAC
 	nextReq    uint32
+	// realOn: real-world traffic (#841), the generator off; real its
+	// aircraft by their ID.
+	realOn bool
+	real   map[string]*realID
 }
 
 // ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
@@ -200,8 +204,11 @@ func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {
 func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 	go func() {
 		spawn := func() error { return s.spawnWith(f, nil, "") }
-		if f.Stage == "enroute" {
+		switch f.Stage {
+		case "enroute":
 			spawn = func() error { return s.spawnEnroute(f) }
+		case "observed":
+			spawn = func() error { return s.spawnObserved(f) } // a real aircraft in the air (#841)
 		}
 		if err := spawn(); err != nil {
 			s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
@@ -243,11 +250,16 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if pre != nil && pre.plan != nil && pre.plan.Request.ArrivalRunway != "" && !f.Departure() {
 		req.Runway = pre.plan.Request.ArrivalRunway
 	}
+	if pre != nil && pre.runway != "" && !f.Departure() {
+		req.Runway = pre.runway
+	}
 	if pre != nil && pre.adopt != 0 && !f.Departure() {
 		req.adopt = pre.adopt // the en route aircraft flies on (#643)
 	}
 	if f.Departure() {
 		req.pushAt = f.STD
+		// A real aircraft parked with no departure seen (#841).
+		req.parked = f.Observed != nil && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.
 		for _, d := range s.mgr.Flights() {
@@ -286,10 +298,17 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
 		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD}
+		// A real aircraft on the stand where it is seen (#841).
+		s, err := -1, traffic.ErrNoStand
+		if o := f.Observed; o != nil && o.OnGround {
+			s, err = cc.allocator(g).AssignNear(sr, o.Position, realStandNearM)
+		}
 		// By its use (#833): gates for an airliner, GA ramps for a light
 		// aircraft or a business jet (#568, #619), cargo stands for a
 		// freighter; then another that fits.
-		s, err := assignStand(cc.allocator(g), sr, req.StandUse)
+		if err != nil {
+			s, err = assignStand(cc.allocator(g), sr, req.StandUse)
+		}
 		if err != nil {
 			return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, err) // no stand free now: tried again
 		}
@@ -313,13 +332,19 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	p, err := pre, error(nil)
 	if vfr {
 		// Through the circuit: no flight plan, no procedure.
+	} else if pre == nil && req.Other == "" {
+		err = errNoOther // a real aircraft's other end is not known (#841)
 	} else if pre == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		p, err = planFor(ctx, st, g, req)
 		cancel()
 	}
-	if err != nil {
+	if errors.Is(err, errNoOther) {
+		// The runway's procedure, said as such.
+	} else if err != nil {
 		s.cc.log.printf("%-6s schedule: no flight plan with %s (%v): the runway's procedure", f.Callsign, req.Other, err)
+	}
+	if err != nil {
 		req.Other, req.Procedure = "", true
 		// Picked here, to see where it starts; the spawn flies the same one.
 		if pts, name, _, err := cc.procedureFor(g, req); err == nil {
@@ -350,6 +375,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	spawned = true
 	it.mu.Lock()
 	it.managed = s.mgr
+	it.observed = f.Observed
 	stand, runway := it.view.Stand, it.view.Runway
 	it.mu.Unlock()
 	s.mgr.Describe(f.Callsign, req.Model, stand, runway)
@@ -357,7 +383,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if !f.Departure() {
 		when = "STA " + f.STA.Local().Format("15:04")
 	}
-	s.cc.log.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, f.Origin, f.Destination, f.Type, when, stand)
+	s.cc.log.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, orUnknown(f.Origin), orUnknown(f.Destination), f.Type, when, stand)
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 // (traffic.TaxiController): the line between the decisions and the
 // simulator side, where a remote actuator's proxy can stand in (#710).
 type departureCtl interface {
+	SetPushbackAt(at time.Time) bool
 	ClearPushback()
 	FacesOut() bool
 	ClearToTaxi()

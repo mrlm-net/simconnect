@@ -63,6 +63,34 @@ A host can time traffic around its own flight (#737, #738): an arrival a few min
 - An arrival added later than `ArrivalLead` minus `ArrivalLate` before its STA (15 min with the defaults) is refused with 422, not cancelled later. `GET /api/flights` lists the manager's flights with their status.
 - `Options.Schedule` (`ScheduleTiming`, #741) sets the horizon, the leads and the late limits; zero values keep the defaults (2 h; 10, 25 and 8 min; 15 and 10 min).
 
+## Real-world traffic (v0.22)
+
+With real-world traffic on, the World flies the aircraft that a feed such as ADS-B observes, instead of the generated timetable (#841). Each aircraft gets everything the World's own traffic gets: stand services, push, taxi, ATC and radio.
+
+- `SetRealTraffic(true, "LKPR")` (`POST /api/realtraffic {"on":true,"icao":"LKPR"}`) turns the generator off and sets the managed airport. Generated flights not yet in the simulator go at once, and those flying finish their flight. `false` brings the generator back.
+- `Observe([]traffic.Observed)` (`POST /api/realflights`) takes a feed's snapshot. A sighting is an `id` (the ICAO 24-bit address), `callsign`, `registration`, `type`, `lat`/`lon`, `altFt`, `groundKts`, `trackDeg`, `vsFpm`, `onGround` and `seenAt`, plus optional `kind`, `origin`, `destination` and `departAt`.
+  - It returns one `ObserveResult` per sighting, with the status `added`, `updated`, `retimed`, `turnaround` or `ignored` (with a reason).
+  - The aircraft flies under its call sign, else its registration, else its ID.
+  - An unknown origin or destination stays `""` and is shown as unknown, never guessed.
+- `Drop(id)` (`DELETE /api/realflights/{id}`) ends an aircraft the feed no longer sees. One not spawned yet, waiting on its stand or parked goes at once. One in progress plays out first: an arrival lands and parks, then goes; a departure leaves. Nothing is ever taken off the final.
+
+The kind, when not given, comes from `traffic.ClassifyObserved`:
+
+| Kind | When (no `kind` given) | What the World does |
+|---|---|---|
+| parked | On the ground within 3 NM of the airport, still | It goes on the free stand within 80 m of where it is seen (else a stand by its type) and waits, with no push and no call to delivery, until a departure is seen for its ID. That departure re-times its push (`traffic.TaxiController.SetPushbackAt`), and only then does the aircraft call delivery. |
+| departure | On the ground at the airport, moving | It goes on a stand the same way and pushes at `departAt` or now. With no destination it flies a SID of the runway and leaves the area. |
+| arrival | Airborne within 150 NM, heading for the airport (within 60°), not climbing away | Its sighting is projected to now along its track (at most 10 min). It appears there, flown by MSFS AI, and joins a STAR of the runway in use at the point that gives the shortest way in, up to the initial approach fix. Approach takes it over at that point, as it takes over an en-route arrival. It is never held back by the landing flow (it is already in the air) and never cancelled by time. |
+| overflight | Anything else airborne | Not flown yet. |
+
+Each ID is one aircraft and is never spawned twice. Once the World flies an ID, later sightings don't move it; they only refresh its registration, origin and destination.
+
+Each kind of flight shows as real:
+- `ControlView` has `real`, `observedId` and `registration`.
+- The manager's flights carry their `observed` sighting.
+
+A parked aircraft keeps the call sign it was spawned with when its departure is seen under another.
+
 ## Traffic along the user's route
 
 In cruise, the World can keep a few airliners around the host's flight (#740). `SetCorridor(CorridorSettings{...})` (`POST /api/corridor`) takes the user's route ahead (two or more points, in its direction), its cruise level and speed, and how many of each kind (default one):
