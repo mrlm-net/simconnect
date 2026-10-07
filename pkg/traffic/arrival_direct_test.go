@@ -67,3 +67,44 @@ func TestArrivalDirectTo(t *testing.T) {
 		t.Errorf("route does not go to the point first")
 	}
 }
+
+// Joining the final at a picked distance (#443): the route ends on the
+// centreline that far out, intercepting from the aircraft's side.
+func TestArrivalJoinFinal(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "OKYDV",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	hdg := calc.BearingDegrees(route[0].Position.Lat, route[0].Position.Lon, route[1].Position.Lat, route[1].Position.Lon)
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, 9000, hdg, 250, false))
+	end := ctl.plan.End
+	out := end.Heading + 180
+	pLat, pLon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, out, 14*1852)
+	nm, v, err := ctl.JoinFinal(airport.LatLon{Lat: pLat + 0.01, Lon: pLon})
+	if err != nil || nm < 13 || nm > 15 || v.HeadingDeg == 0 {
+		t.Fatalf("join at 14 NM: %.1f %+v %v", nm, v, err)
+	}
+	r := ctl.ProcedureCorners()
+	found := false
+	for _, p := range r {
+		if calc.HaversineNM(p.Lat, p.Lon, pLat, pLon) < 0.3 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no point on the centreline at 14 NM: %v", r)
+	}
+}

@@ -92,3 +92,12 @@ func (m *TrafficManager) Drop(kind, callsign string, now time.Time) {
 	f.dropped = true
 	m.unlock()
 }
+
+// Replan asks the Source again for the hours ahead: after its flights
+// were off (real-world traffic, #841), the hours asked meanwhile were
+// empty.
+func (m *TrafficManager) Replan() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.until = time.Time{}
+}

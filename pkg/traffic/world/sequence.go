@@ -34,6 +34,10 @@ type sequences struct {
 	cond map[string]traffic.ApproachConditions // the conditions last logged, by sequencer
 	// absorbed: when each arrival last got a delay to absorb (#391).
 	absorbed map[string]time.Time
+	// refused: when approach could not resolve a conflict for an arrival
+	// (not on a procedure: on the approach, or a real one off a STAR); not
+	// asked again for conflictRefusedWait.
+	refused map[string]time.Time
 	// stacks: the holding stacks by airport and fix (#392).
 	stacks map[string]*traffic.HoldStack
 	// slowedFinal: when an arrival closing up on the final was told to fly
@@ -96,7 +100,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 }
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
-	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
+	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, refused: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
 		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, noShortcut: map[string]string{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
 }
 

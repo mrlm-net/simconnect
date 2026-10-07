@@ -1,6 +1,9 @@
 package traffic
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -33,7 +36,9 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 	if pos == (airport.LatLon{}) || k >= final {
 		return "", Vector{}, ErrNotOnProcedure
 	}
-	ll := func(i int) airport.LatLon { return airport.LatLon{Lat: c.corners[i].Latitude, Lon: c.corners[i].Longitude} }
+	ll := func(i int) airport.LatLon {
+		return airport.LatLon{Lat: c.corners[i].Latitude, Lon: c.corners[i].Longitude}
+	}
 	// A named fix ahead near p: there.
 	for j := k; j < final; j++ {
 		if n := c.cornerName(j); n != "" && calc.HaversineNM(p.Lat, p.Lon, ll(j).Lat, ll(j).Lon) <= PointSnapNM {
@@ -81,4 +86,63 @@ func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT
 	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
 	c.vectors = nil
 	c.joinMinM, c.lastRunwayM = 0, 0
+}
+
+// FinalInterceptDeg is the angle an arrival joining the final at a
+// distance (JoinFinal) intercepts the centreline at.
+const FinalInterceptDeg = 30.0
+
+// finalInterceptLeadNM: the intercept starts this far outside the
+// joining point.
+const finalInterceptLeadNM = 3.0
+
+// JoinFinal has an arrival on its procedure join the final where p,
+// picked on the map, lies along it (#443): nm out from the threshold, on
+// a FinalInterceptDeg intercept from its side, then the final as before.
+// Nearer than the align point it goes straight to that. v is the heading
+// it is given from where it is. ErrNotOnProcedure on the final or in a
+// circuit, ErrHolding in the hold.
+func (c *ArrivalController) JoinFinal(p airport.LatLon) (nm float64, v Vector, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || c.req.Circuit != nil || len(c.corners) < 2 {
+		return 0, Vector{}, ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return 0, Vector{}, ErrHolding
+	}
+	pos := c.last.Position
+	if pos == (airport.LatLon{}) {
+		return 0, Vector{}, ErrNotOnProcedure
+	}
+	n := len(c.corners)
+	align, join := c.corners[n-2], c.corners[n-1]
+	t := c.plan.End.Threshold
+	out := math.Mod(c.plan.End.Heading+180, 360)
+	fLat, fLon := calc.DisplaceByHeading(t.Lat, t.Lon, out, 30*1852)
+	alignNM := calc.HaversineNM(t.Lat, t.Lon, align.Latitude, align.Longitude)
+	nm = math.Max(alignNM, calc.AlongTrackMeters(t.Lat, t.Lon, fLat, fLon, p.Lat, p.Lon)/1852)
+	plain := []types.SIMCONNECT_DATA_WAYPOINT{align, join}
+	if nm > alignNM+0.5 {
+		alt := align.Altitude + (nm-alignNM)*ProcedureDescentFtPerNm
+		jLat, jLon := calc.DisplaceByHeading(t.Lat, t.Lon, out, nm*1852)
+		at := airport.LatLon{Lat: jLat, Lon: jLon}
+		plain = append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(at, alt, align.KtsSpeed)}, plain...)
+		// From its side, a lead before: unless it is already inside it.
+		if calc.AlongTrackMeters(t.Lat, t.Lon, fLat, fLon, pos.Lat, pos.Lon)/1852 > nm+finalInterceptLeadNM {
+			side := 90.0
+			if calc.CrossTrackMeters(t.Lat, t.Lon, fLat, fLon, pos.Lat, pos.Lon) < 0 {
+				side = -90
+			}
+			qLat, qLon := calc.DisplaceByHeading(jLat, jLon, out, finalInterceptLeadNM*1852)
+			qLat, qLon = calc.DisplaceByHeading(qLat, qLon, out+side, finalInterceptLeadNM*math.Tan(FinalInterceptDeg*math.Pi/180)*1852)
+			plain = append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(airport.LatLon{Lat: qLat, Lon: qLon}, alt, align.KtsSpeed)}, plain...)
+		}
+	}
+	c.reroute(pos, plain, make([]string, len(plain)))
+	v = Vector{HeadingDeg: calc.BearingDegrees(pos.Lat, pos.Lon, plain[0].Latitude, plain[0].Longitude)}
+	v.Turn = TurnTo(c.last.Heading, v.HeadingDeg)
+	c.vectored = true
+	c.note(fmt.Sprintf("joining the final at %.0f NM", nm), nil)
+	return nm, v, nil
 }
