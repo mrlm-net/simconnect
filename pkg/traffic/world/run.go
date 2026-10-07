@@ -900,6 +900,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerDeicing(mux, st)
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
+	registerReal(mux, st)
 	registerSequence(mux, st)
 	registerSeparation(mux, st)
 	registerRunways(mux, st)

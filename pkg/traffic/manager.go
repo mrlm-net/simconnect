@@ -86,6 +86,7 @@ type ManagedFlight struct {
 	retryAt   time.Time
 	seenAt    time.Time // last seen in the picture
 	noEnroute bool      // the enroute spawn failed: straight to the STAR entry
+	dropped   bool      // a real flight the feed dropped: removed once parked (#841)
 }
 
 // Departure reports whether the flight departs from its managed airport.
@@ -424,6 +425,9 @@ func (m *TrafficManager) pair() {
 	var arrs, deps []*ManagedFlight
 	for _, f := range m.flights {
 		switch {
+		case f.Observed != nil:
+			// A real aircraft turns around as the feed says (Turn), not by
+			// its airline and type.
 		case f.Kind == "arrival" && f.TurnTo == "" && f.Status <= FlightParked:
 			arrs = append(arrs, f)
 		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled:
@@ -515,6 +519,9 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 	for k, f := range m.flights {
 		switch f.Status {
 		case FlightScheduled:
+			if f.Observed != nil {
+				break // a real aircraft goes when the feed drops it (#841)
+			}
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
 				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) ||
 				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
@@ -529,7 +536,7 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 		case FlightDeparted, FlightEnroute:
 			m.leaving(f, now, remove)
 		case FlightParked:
-			if f.TurnTo == "" && now.Sub(f.Since) >= o.RemoveParkedAfter {
+			if f.TurnTo == "" && (now.Sub(f.Since) >= o.RemoveParkedAfter || f.dropped) {
 				m.set(f, FlightDone, now)
 				*remove = append(*remove, *f)
 			}
@@ -635,7 +642,8 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			if f.Departure() {
 				spacing = o.DepartureSpacing
 			}
-			if last, ok := m.last[f.key()[:1]+f.Airport]; ok && now.Sub(last) < spacing {
+			// A real aircraft is where it is: no spacing (#841).
+			if last, ok := m.last[f.key()[:1]+f.Airport]; ok && now.Sub(last) < spacing && f.Observed == nil {
 				continue
 			}
 			m.last[f.key()[:1]+f.Airport] = now
@@ -874,7 +882,8 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 				}
 				switch a.Action {
 				case AdviceDelay:
-					if f.Status == FlightScheduled && a.Until.After(f.retryAt) {
+					// A real arrival is in the air already: the sequence absorbs it (#841).
+					if f.Status == FlightScheduled && a.Until.After(f.retryAt) && !(f.Observed != nil && f.Arrival()) {
 						// Announced when it moves a minute or more (the prediction
 						// drifts by seconds each tick).
 						if a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason {

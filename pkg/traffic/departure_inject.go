@@ -144,6 +144,23 @@ func (c *TaxiController) openGate(d time.Duration) {
 	c.gateAt = c.now().Add(time.Duration(float64(d) * (1 + DwellJitter*(2*c.rng.Float64()-1))))
 }
 
+// SetPushbackAt re-times the push of a departure still waiting on its
+// stand (a real aircraft's, #841): at at, or after the usual short wait
+// when at has come. False when it is no longer waiting.
+func (c *TaxiController) SetPushbackAt(at time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state != TaxiAwaitingPushback || c.pushCleared || !c.pushAt.IsZero() {
+		return false
+	}
+	c.req.PushbackAt = at
+	c.openGate(PushbackDelay)
+	if at.After(c.gateAt) {
+		c.gateAt = at
+	}
+	return true
+}
+
 // Expedite has the crew hurry (#510): the waits before taxi, line-up and
 // take-off shrink to RushDelayFactor; a gate already open closes sooner.
 // The clearance says it (Rushed).

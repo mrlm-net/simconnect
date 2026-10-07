@@ -82,6 +82,11 @@ type controlled struct {
 	// hears the controller's progress. objectID is the aircraft once known.
 	managed  *traffic.TrafficManager
 	objectID uint32
+	// observed: a real aircraft's sighting (#841), nil one of the schedule.
+	observed *traffic.Sighting
+	// deliver: a parked real aircraft's call to delivery, made when its
+	// departure is seen (nil: made already).
+	deliver func()
 	defBase  uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
@@ -238,6 +243,11 @@ type ControlView struct {
 	// approach (with any dog-leg), a departure's SID once handed to MSFS AI;
 	// Hold its hold when holding (#391, #392).
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
+	// Real: a real aircraft from a feed (#841), ObservedID its own ID there
+	// and Registration its registration ("" unknown).
+	Real         bool   `json:"real,omitempty"`
+	ObservedID   string `json:"observedId,omitempty"`
+	Registration string `json:"registration,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
 	// route itself also runs through the points of its rounded turns).
 	AirFixes []airFix  `json:"airFixes,omitempty"`
@@ -641,6 +651,9 @@ type SpawnRequest struct {
 
 	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
 	pushAt time.Time // departure: stay on the stand until then (its STD)
+	// parked: a real aircraft standing with no departure yet (#841): it
+	// calls delivery only when one comes (controlled.deliver).
+	parked bool
 	// offBlock: an arrival's turnaround departure time, for its stand
 	// (StandRequirements.OffBlock).
 	offBlock time.Time
@@ -737,8 +750,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	}
 	if r.planned != nil {
 		procRoute, procName, expect = r.planned.route, r.planned.name, r.planned.expect
-		cc.log.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, r.planned.plan.Request.Departure.ICAO, r.planned.plan.Request.Arrival.ICAO,
-			r.planned.plan.Route, r.planned.plan.CruiseFL, r.planned.plan.DistanceNM)
+		if fp := r.planned.plan; fp != nil {
+			cc.log.printf("%-6s flight plan %s → %s: %s, FL%03d, %.0f NM", r.Tail, fp.Request.Departure.ICAO, fp.Request.Arrival.ICAO,
+				fp.Route, fp.CruiseFL, fp.DistanceNM)
+		}
 	} else if r.Procedure {
 		var err error
 		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
@@ -940,9 +955,16 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				dest = cc.airportName(r.Other)
 			}
 			it.climbSaid = initialClimbSaid(lim, procName)
-			it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
-			it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
-				Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
+			deliver := func() {
+				it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
+				it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
+			}
+			if r.parked {
+				it.deliver = deliver // a real aircraft parked: it calls once its departure is seen (#841)
+			} else {
+				deliver()
+			}
 		} else if it.circuit != nil {
 			// VFR: the first call to the tower, for landing, then the join
 			// (Doc 4444 12.3.4.13 a, b, d).
@@ -1353,6 +1375,9 @@ func (cc *controlCenter) views() []ControlView {
 		it.mu.Lock()
 		v := it.view
 		it.mu.Unlock()
+		if o := it.observed; o != nil {
+			v.Real, v.ObservedID, v.Registration = true, o.ID, o.Registration
+		}
 		if it.arr != nil && !v.OnGround {
 			if v.AirRoute = it.arr.ProcedureCorners(); v.AirRoute == nil {
 				v.AirRoute = it.arr.ProcedureRoute()

@@ -13,6 +13,13 @@ import "time"
 // start is when f is spawned, and in which stage ("enroute" or "").
 func (m *TrafficManager) start(f *ManagedFlight, now time.Time) (time.Time, string) {
 	o := m.opts
+	if f.Observed != nil {
+		// A real aircraft (#841): there now, on its stand or in the air.
+		if f.Arrival() && !f.Observed.OnGround {
+			return now, "observed"
+		}
+		return now, ""
+	}
 	switch {
 	case f.Departure():
 		return f.STD.Add(-o.DepartureLead), ""

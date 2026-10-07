@@ -43,6 +43,9 @@ type Flight struct {
 	// stop-and-go with StopAndGo (training circuits, by its operator).
 	TouchAndGos int  `json:"touchAndGos,omitempty"`
 	StopAndGo   bool `json:"stopAndGo,omitempty"`
+	// Observed: a real aircraft seen by a feed (#841), flown from where it
+	// was seen: spawned at once, not by STD or STA; nil a scheduled one.
+	Observed *Sighting `json:"observed,omitempty"`
 }
 
 // Airline is an airline the generator schedules.
