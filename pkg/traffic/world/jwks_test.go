@@ -147,6 +147,7 @@ func TestJWKSVerify(t *testing.T) {
 	before := fetches.Load()
 	j.mu.Lock()
 	j.fetched = time.Now().Add(-time.Minute) // past jwksMinFetch
+	j.tried = j.fetched
 	j.mu.Unlock()
 	bad("unknown kid", keys.sign(t, "RS256", "r9", good), ErrTokenKey)
 	if fetches.Load() != before+1 {
@@ -185,7 +186,7 @@ func TestSecureLink(t *testing.T) {
 	keys := newTestKeys(t)
 	jw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(keys.jwks()) }))
 	defer jw.Close()
-	j := NewJWKS(jw.URL, "", "")
+	j := NewJWKS(jw.URL, "", "mycrew-traffic-director")
 	cert, pool := selfSigned(t)
 	server := LinkOptions{Verify: j.LinkVerify, TLS: &tls.Config{Certificates: []tls.Certificate{cert}}}
 	ln, err := server.listen("127.0.0.1:0")
@@ -200,7 +201,7 @@ func TestSecureLink(t *testing.T) {
 		issued.Add(1)
 		// Expired a minute ago plus the leeway: refused at once, unless
 		// life is added.
-		return keys.sign(t, "EdDSA", "d1", map[string]any{"sub": "p1", "exp": time.Now().Add(-tokenLeeway + life).Unix()}), nil
+		return keys.sign(t, "EdDSA", "d1", map[string]any{"sub": "p1", "aud": "mycrew-traffic-director", "exp": time.Now().Add(-tokenLeeway + life).Unix()}), nil
 	}}
 	hub := newHubLink()
 	defer hub.Close()
@@ -287,5 +288,19 @@ func TestJWKSFile(t *testing.T) {
 	}
 	if _, err := NewJWKS(filepath.Join(t.TempDir(), "none.json"), "", "").Load(context.Background()); err == nil {
 		t.Error("a missing file loaded")
+	}
+}
+
+// Refused (#59): no exp, a crit header, nothing to scope by.
+func TestJWKSStrict(t *testing.T) {
+	keys := newTestKeys(t)
+	jw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(keys.jwks()) }))
+	defer jw.Close()
+	j := NewJWKS(jw.URL, "", "svc")
+	if _, err := j.Verify(context.Background(), keys.sign(t, "ES256", "e1", map[string]any{"aud": "svc"})); err == nil {
+		t.Error("a token with no exp was taken")
+	}
+	if _, err := NewJWKS(jw.URL, "", "").Verify(context.Background(), keys.sign(t, "ES256", "e1", map[string]any{"aud": "svc", "exp": time.Now().Add(time.Hour).Unix()})); err == nil {
+		t.Error("an unscoped key set took a token")
 	}
 }

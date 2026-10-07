@@ -253,6 +253,15 @@ func (t *SimObjectTug) Handle(msg engine.Message) bool {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	// Removed before it existed, or a second one from a retry: away at once
+	// (#90: adopted and frozen for good, the first of a retry left behind).
+	if id := uint32(m.DwObjectID); t.done || t.objectID != 0 && t.objectID != id {
+		if t.objectID == 0 {
+			t.objectID = id
+		}
+		t.err = t.client.AIRemoveObject(id, t.reqID)
+		return true
+	}
 	t.objectID = uint32(m.DwObjectID)
 	// Frozen and placed by the injector, like the aircraft; an error comes
 	// back from the next Update.

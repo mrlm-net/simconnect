@@ -263,7 +263,7 @@ func runwayEndName(number int32, designator types.SIMCONNECT_FACILITY_RUNWAY_DES
 // normalizeRunwayEnd turns user input such as "rw6l" or "6" into "06L".
 func normalizeRunwayEnd(s string) string {
 	s = strings.ToUpper(strings.TrimSpace(s))
-	s = strings.TrimPrefix(strings.TrimPrefix(s, "RWY"), "RW")
+	s = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(s, "RWY"), "RW")) // "RW 24" too (#51)
 	i := 0
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 		i++

@@ -23,13 +23,15 @@ type Squawks struct {
 	inUse map[string]string // code → call sign
 }
 
-// SpecialSquawk reports a code that is never assigned as a discrete code.
+// SpecialSquawk reports a code that is never assigned as a discrete code:
+// the special ones (1000 Mode S conspicuity, 7400 lost link among them)
+// and any ending in 00, a non-discrete code (E36).
 func SpecialSquawk(code string) bool {
 	switch code {
-	case "0000", "1200", "2000", "7000", "7500", "7600", "7700":
+	case "0000", "1000", "1200", "2000", "7000", "7400", "7500", "7600", "7700":
 		return true
 	}
-	return false
+	return len(code) == 4 && code[2:] == "00"
 }
 
 // Assign gives cs a discrete code (its own again if it has one), or an

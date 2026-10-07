@@ -108,6 +108,11 @@ type loadState struct {
 	// parkingByID maps a parking record's unique request ID to its index,
 	// for the airline records that follow it as children.
 	parkingByID map[uint32]int
+	// expired: the request was given up (Expire, a failed send) while
+	// replies may still come. The slot keeps its request IDs out of use
+	// until they have (pending reaches 0) or until deadline, so a late
+	// reply is never taken for a new airport's (#45).
+	expired bool
 }
 
 // loaderDefinitions are the facility definitions, in request order. The
@@ -206,6 +211,11 @@ func (l *Loader) Request(icao string) error {
 	for i := range loaderDefinitions {
 		if err := l.client.RequestFacilityData(l.defBase+uint32(i), l.requestID(slot, i), icao, ""); err != nil {
 			l.slots[slot] = nil
+			if i > 0 {
+				// The parts already sent may still be answered.
+				st.pending, st.expired = i, true
+				l.slots[slot] = st
+			}
 			return fmt.Errorf("airport: request %s: %w", icao, err)
 		}
 	}
@@ -218,7 +228,7 @@ func (l *Loader) Pending() []string {
 	defer l.mu.Unlock()
 	var out []string
 	for _, s := range l.slots {
-		if s != nil {
+		if s != nil && !s.expired {
 			out = append(out, s.icao)
 		}
 	}
@@ -252,7 +262,7 @@ func (l *Loader) Handle(msg engine.Message) (Result, bool) {
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
 		m := msg.AsFacilityData()
-		if st, _, part, ok := l.lookup(uint32(m.UserRequestId)); ok {
+		if st, _, part, ok := l.lookup(uint32(m.UserRequestId)); ok && !st.expired {
 			st.add(part, m)
 		}
 	case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
@@ -266,6 +276,9 @@ func (l *Loader) Handle(msg engine.Message) (Result, bool) {
 			return Result{}, false
 		}
 		l.slots[slot] = nil
+		if st.expired {
+			return Result{}, false // the late replies are in: the slot is free again
+		}
 		layout, err := BuildLayout(st.raw)
 		if err != nil {
 			err = fmt.Errorf("%w for %s", err, st.icao)
@@ -281,15 +294,22 @@ func (l *Loader) Handle(msg engine.Message) (Result, bool) {
 }
 
 // Expire ends requests whose deadline has passed at now with ErrTimeout.
-// Call it periodically, e.g. from a ticker in the message loop.
+// Call it periodically, e.g. from a ticker in the message loop. An ended
+// request's slot stays out of use until its late replies are in, or for
+// another timeout.
 func (l *Loader) Expire(now time.Time) []Result {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var out []Result
 	for i, s := range l.slots {
-		if s != nil && now.After(s.deadline) {
-			out = append(out, Result{ICAO: s.icao, Err: fmt.Errorf("%w: %s", ErrTimeout, s.icao)})
+		switch {
+		case s == nil || !now.After(s.deadline):
+		case s.expired:
 			l.slots[i] = nil
+		default:
+			out = append(out, Result{ICAO: s.icao, Err: fmt.Errorf("%w: %s", ErrTimeout, s.icao)})
+			s.expired, s.deadline = true, now.Add(l.timeout)
+			s.raw = RawAirport{} // nothing more is kept of it
 		}
 	}
 	return out

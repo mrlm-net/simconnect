@@ -23,6 +23,21 @@ func (m *Instance) processMessage(msg engine.Message) {
 	// Check for connection ready (OPEN) message
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {
 		m.logger.Debug("[manager] Received OPEN message, connection is now available")
+
+		// Initialize simulator state and subscribe again what was kept over a
+		// lost connection first, then announce the connection: an Available or
+		// OnOpen handler subscribing a custom event is not subscribed a second
+		// time by resubscribeCustomEvents (review #32).
+		m.mu.Lock()
+		client := m.engine
+		m.mu.Unlock()
+
+		if client != nil {
+			m.registerSimStateSubscriptions(client)
+			m.resubscribeCustomEvents(client) // kept over a lost connection (#405)
+			m.replayUserSubscriptions(client) // opt-in, WithResubscribeOnReconnect (E10)
+		}
+
 		m.setState(StateAvailable)
 
 		// Extract version information from OPEN message
@@ -41,16 +56,6 @@ func (m *Instance) processMessage(msg engine.Message) {
 				SimConnectBuildMinor:    uint32(openMsg.DwSimConnectBuildMinor),
 			}
 			m.setOpen(openData)
-		}
-
-		// Initialize simulator state and request camera data
-		m.mu.Lock()
-		client := m.engine
-		m.mu.Unlock()
-
-		if client != nil {
-			m.registerSimStateSubscriptions(client)
-			m.resubscribeCustomEvents(client) // kept over a lost connection (#405)
 		}
 	}
 

@@ -55,9 +55,15 @@ func (m *Instance) SubscribeOnOpen(id string, bufferSize int) ConnectionOpenSubs
 	}
 
 	m.mu.Lock()
+	old := m.openSubscriptions[id]
 	m.openSubscriptions[id] = sub
 	m.openSubsWg.Add(1)
 	m.mu.Unlock()
+	if old != nil {
+		// the same ID again: the previous one is closed, not left silent (review #19)
+		m.logger.Warn("[manager] Subscription ID already in use, the previous subscription is closed", "id", id)
+		old.Unsubscribe()
+	}
 
 	// Start goroutine to watch for context cancellation
 	go sub.watchContext()
@@ -81,7 +87,9 @@ func (s *connectionOpenSubscription) Unsubscribe() {
 	s.closeMu.Unlock()
 	s.cancel()
 	s.manager.mu.Lock()
-	delete(s.manager.openSubscriptions, s.id)
+	if s.manager.openSubscriptions[s.id] == s {
+		delete(s.manager.openSubscriptions, s.id)
+	}
 	s.manager.mu.Unlock()
 	s.manager.openSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] Open subscription unsubscribed: %s", s.id))
@@ -115,9 +123,15 @@ func (m *Instance) SubscribeOnQuit(id string, bufferSize int) ConnectionQuitSubs
 	}
 
 	m.mu.Lock()
+	old := m.quitSubscriptions[id]
 	m.quitSubscriptions[id] = sub
 	m.quitSubsWg.Add(1)
 	m.mu.Unlock()
+	if old != nil {
+		// the same ID again: the previous one is closed, not left silent (review #19)
+		m.logger.Warn("[manager] Subscription ID already in use, the previous subscription is closed", "id", id)
+		old.Unsubscribe()
+	}
 
 	// Start goroutine to watch for context cancellation
 	go sub.watchContext()
@@ -141,7 +155,9 @@ func (s *connectionQuitSubscription) Unsubscribe() {
 	s.closeMu.Unlock()
 	s.cancel()
 	s.manager.mu.Lock()
-	delete(s.manager.quitSubscriptions, s.id)
+	if s.manager.quitSubscriptions[s.id] == s {
+		delete(s.manager.quitSubscriptions, s.id)
+	}
 	s.manager.mu.Unlock()
 	s.manager.quitSubsWg.Done()
 	s.manager.logger.Debug(fmt.Sprintf("[manager] Quit subscription unsubscribed: %s", s.id))

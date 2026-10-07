@@ -279,6 +279,11 @@ type ArrivalController struct {
 	corners     []types.SIMCONNECT_DATA_WAYPOINT
 	cornerNames []string
 	cornerNext  int
+	// reachFirst: the first corner, a point picked on the map (#443),
+	// counts as passed only once reached (off the route, the geometric test
+	// passed it at once: OKRVJ told to resume own navigation 0.5 s after
+	// its heading).
+	reachFirst bool
 	// procNext is the waypoint of proc flown to, tracked forward from a
 	// known start: after a go-around (whose circuit loops back past the
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
@@ -516,6 +521,14 @@ func (c *ArrivalController) Handle(msg engine.Message) bool {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Cancelled while the simulator was still creating it: the aircraft it
+	// gets after all is removed at once (#89: it was left in the sim).
+	if c.state == ArrivalCancelled && c.objectID == 0 && types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+		if m := msg.AsAssignedObjectID(); uint32(m.DwRequestID) == c.reqBase+arrReqSpawn {
+			c.note("removed: created after the cancel", c.fleet.Remove(uint32(m.DwObjectID), c.reqBase+arrReqRemove))
+			return true
+		}
+	}
 	if c.state == ArrivalIdle || c.state.Terminal() {
 		return false
 	}
@@ -1020,13 +1033,32 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	if parking < 0 || parking >= len(g.Layout.Parking) {
 		return fmt.Errorf("%w: index %d", airport.ErrUnknownParking, parking)
 	}
-	route, err := g.RouteFromRunway(c.plan.Exit, parking, c.req.Options)
+	// The whole ground part planned again, as Start plans it, with the same
+	// exit: the route, the vacate stop, the taxi-in waypoints and the stop
+	// on the stand (#87: only the route was replaced; it taxied the new
+	// route and parked on the old stop).
+	exit := c.plan.Exit
+	req := c.req
+	plan, err := PlanArrival(g, req.Runway, parking, ArrivalOptions{
+		SpawnNm: c.plan.SpawnNm, Exit: &exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+	})
 	if err != nil {
 		return err
 	}
+	plan.Spawn = c.plan.Spawn
+	// MSFS AI landing it (not injected, its procedure flown): the landing
+	// chain to the new vacate stop.
+	if !req.InjectApproach && !c.flyingProc && c.objectID != 0 && c.state >= ArrivalApproaching {
+		if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, plan.Waypoints); err != nil {
+			return err
+		}
+	}
 	c.req.Parking = parking
-	c.plan.Route = route
+	c.plan = plan
 	c.standHeading = g.Layout.Parking[parking].Heading
-	c.track = newRouteTracker(route)
+	c.track = newRouteTracker(plan.Route)
+	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
+	c.vacateAlong = c.track.cum[plan.VacateIndex]
 	return nil
 }

@@ -293,7 +293,7 @@ Indexed variables in this release:
 | `NAV OBS` | OBS setting for NAV radio N |
 | `ADF ACTIVE FREQUENCY` | Active frequency for ADF receiver N |
 | `ADF RADIAL` | Radial from the station tuned on ADF N |
-| `CAMERA VIEW TYPE INDEX` | Camera view type index N |
+| `CAMERA VIEW TYPE AND INDEX` | Camera view type and index N |
 
 To look up an indexed variable, pass the name with any `:N` suffix — `Lookup` strips it automatically:
 

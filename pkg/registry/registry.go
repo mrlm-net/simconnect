@@ -125,15 +125,62 @@ func Validate(name, unit string) error {
 	if unit == "" {
 		return nil
 	}
-	u := strings.ToLower(unit)
+	u := strings.ToLower(strings.TrimSpace(unit))
 	for _, valid := range sv.Units {
 		if valid == u {
 			return nil
 		}
 	}
+	// SimConnect converts between the units of a dimension: any of them
+	// is as good as the ones listed.
+	if f := unitFamilies[u]; f != "" {
+		for _, valid := range sv.Units {
+			if unitFamilies[valid] == f {
+				return nil
+			}
+		}
+	}
 	return errors.New("registry: unit \"" + unit + "\" not valid for " + sv.Name +
 		"; valid units: " + strings.Join(sv.Units, ", "))
 }
+
+// unitFamilies maps a unit string (lower case) to its dimension: Validate
+// accepts any unit of a dimension a SimVar lists, as SimConnect converts
+// between them (MSFS SDK "Simulation Variable Units").
+var unitFamilies = func() map[string]string {
+	families := map[string][]string{
+		"angle": {"degrees", "degree", "radians", "radian", "grads", "grad"},
+		"length": {"feet", "foot", "ft", "meters", "meter", "m", "kilometers", "kilometer", "km",
+			"centimeters", "centimeter", "cm", "millimeters", "millimeter", "mm", "inches", "inch", "in",
+			"miles", "mile", "nautical miles", "nautical mile", "nmiles", "nmile", "yards", "yard", "yd",
+			"decimeters", "decimeter", "dm"},
+		"speed": {"knots", "knot", "kt", "kts", "meters per second", "meter per second", "m/s",
+			"feet per second", "foot per second", "ft/s", "kilometers per hour", "kilometer per hour", "km/h", "kph",
+			"miles per hour", "mile per hour", "mph", "feet per minute", "foot per minute", "feet/minute", "ft/min",
+			"meters per minute", "meter per minute", "m/min", "centimeters per second", "centimeter per second"},
+		"time":        {"seconds", "second", "sec", "minutes", "minute", "min", "hours", "hour", "days", "day"},
+		"temperature": {"celsius", "fahrenheit", "farenheit", "kelvin", "rankine"},
+		"pressure": {"millibars", "millibar", "mbar", "mbars", "hectopascals", "hectopascal", "hpa",
+			"pascals", "pascal", "pa", "kilopascal", "kpa", "inhg", "inches of mercury", "inch of mercury",
+			"psi", "pounds per square inch", "psf", "pounds per square foot", "atmospheres", "atmosphere", "atm",
+			"millimeters of mercury", "millimeter of mercury", "mmhg", "millimeters of water", "millimeter of water"},
+		"mass":        {"pounds", "pound", "lbs", "lb", "kilograms", "kilogram", "kg", "slugs", "slug", "geepounds", "geepound"},
+		"volume":      {"gallons", "gallon", "gal", "liters", "liter", "quarts", "quart", "cubic feet", "cubic foot", "cubic meters", "cubic meter"},
+		"volume flow": {"gallons per hour", "gallon per hour", "gph", "liters per hour", "liter per hour"},
+		"frequency":   {"hz", "hertz", "khz", "kilohertz", "mhz", "megahertz", "frequency bcd16", "frequency bcd32"},
+		"ratio":       {"percent", "percentage", "percent over 100", "part", "position", "position 16k", "position 32k", "position 128"},
+		"bool":        {"bool", "boolean"},
+		"rpm":         {"rpm", "rpms", "revolutions per minute"},
+		"number":      {"number", "numbers", "enum", "mask", "flags"},
+	}
+	out := map[string]string{}
+	for f, units := range families {
+		for _, u := range units {
+			out[u] = f
+		}
+	}
+	return out
+}()
 
 // ByUnit returns all SimVar entries whose Units slice contains unit.
 // The comparison is case-insensitive. Returns nil if no entries match.

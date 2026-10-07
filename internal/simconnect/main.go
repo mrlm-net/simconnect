@@ -5,6 +5,7 @@ package simconnect
 
 import (
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/internal/dll"
@@ -83,8 +84,8 @@ type API interface {
 	AddToFacilityDefinition(definitionID uint32, fieldName string) error
 	AddFacilityDataDefinitionFilter(definitionID uint32, filterPath string, filterData unsafe.Pointer, filterDataSize uint32) error
 	ClearAllFacilityDataDefinitionFilters(definitionID uint32) error
-	RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
-	RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilitiesList(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+	RequestFacilitiesListEX1(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
 	RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error
 	RequestFacilityDataEX1(definitionID uint32, requestID uint32, icao string, region string, facilityType byte) error
 	RequestJetwayData(airportICAO string, arrayCount uint32, indexes *int32) error
@@ -114,7 +115,7 @@ type API interface {
 	// Input Event API (MSFS 2024 only)
 	EnumerateInputEvents(requestID uint32) error
 	GetInputEvent(requestID uint32, hash uint64) error
-	SetInputEvent(hash uint64, value unsafe.Pointer) error
+	SetInputEvent(hash uint64, cbUnitSize uint32, value unsafe.Pointer) error
 	SubscribeInputEvent(hash uint64) error
 	UnsubscribeInputEvent(hash uint64) error
 }
@@ -125,8 +126,28 @@ func (sc *SimConnect) getConnection() uintptr {
 	return uintptr(sc.connection)
 }
 
-func (sc *SimConnect) getConnectionPtr() uintptr {
-	sc.sync.RLock()
-	defer sc.sync.RUnlock()
-	return uintptr(unsafe.Pointer(&sc.connection))
+// boundProc is a SimConnect procedure called on the open connection.
+type boundProc struct {
+	sc   *SimConnect
+	proc *syscall.LazyProc
+}
+
+// proc loads a procedure whose first argument is the connection handle.
+func (sc *SimConnect) proc(name string) boundProc {
+	return boundProc{sc: sc, proc: sc.library.LoadProcedure(name)}
+}
+
+// Call calls the procedure with the connection held: Disconnect waits for
+// calls in flight before SimConnect_Close, so a handle is never closed under
+// a call. args[0] is the handle; it is read again under the lock (the
+// caller's copy may predate a Disconnect or a reconnect).
+//
+//go:uintptrescapes
+func (p boundProc) Call(args ...uintptr) (uintptr, uintptr, error) {
+	p.sc.sync.RLock()
+	defer p.sc.sync.RUnlock()
+	if len(args) > 0 {
+		args[0] = p.sc.connection
+	}
+	return p.proc.Call(args...)
 }

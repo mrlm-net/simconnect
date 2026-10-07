@@ -22,8 +22,8 @@ type SIMCONNECT_JETWAY_DATA struct {
 	AirportIcao         [8]byte
 	ParkingIndex        int32 // int
 	LLA                 SIMCONNECT_DATA_LATLONALT
-	PBH                 SIMCONNECT_DATA_PBH // floats on the wire
-	Status              uint32              // JETWAY_STATUS_*: 0 rest, 1 approach outside, 2 approach door, 3 hood connect, 4 hood disconnect, 5 retract outside, 6 retract home, 7 fully attached
+	PBH                 SIMCONNECT_DATA_PBH
+	Status              uint32 // JETWAY_STATUS_*: 0 rest, 1 approach outside, 2 approach door, 3 hood connect, 4 hood disconnect, 5 retract outside, 6 retract home, 7 fully attached
 	Door                uint32
 	ExitDoorRelativePos SIMCONNECT_DATA_XYZ
 	MainHandlePos       SIMCONNECT_DATA_XYZ
@@ -45,7 +45,7 @@ func DecodeJetwayData(b []byte) (SIMCONNECT_JETWAY_DATA, bool) {
 	}
 	le := binary.LittleEndian
 	f64 := func(o int) float64 { return math.Float64frombits(le.Uint64(b[o:])) }
-	f32 := func(o int) float64 { return float64(math.Float32frombits(le.Uint32(b[o:]))) }
+	f32 := func(o int) float32 { return math.Float32frombits(le.Uint32(b[o:])) }
 	xyz := func(o int) SIMCONNECT_DATA_XYZ { return SIMCONNECT_DATA_XYZ{X: f64(o), Y: f64(o + 8), Z: f64(o + 16)} }
 	copy(j.AirportIcao[:], b[0:8])
 	j.ParkingIndex = int32(le.Uint32(b[8:]))

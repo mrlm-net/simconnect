@@ -14,7 +14,9 @@ import (
 // said ("Czech Air Force", ATC AIRLINE) and flight number ("007", ATC
 // FLIGHT NUMBER); "" leaves one as it is. Measured settable in MSFS 2024
 // (#680): both read back as set. defBase and defBase+1 are the data
-// definitions it uses.
+// definitions it uses; with a client that can clear a definition
+// (engine.Engine, the manager) they are cleared before each use, so
+// SetFlight can be called again and again.
 func SetFlight(c Presser, defBase uint32, airline, number string) error {
 	if len(airline) > 63 || len(number) > 7 {
 		return fmt.Errorf("avionics: airline %q or flight number %q too long (63, 7)", airline, number)
@@ -36,7 +38,17 @@ func SetFlight(c Presser, defBase uint32, airline, number string) error {
 	return nil
 }
 
+// clearer is a client that can clear a data definition.
+type clearer interface {
+	ClearDataDefinition(definitionID uint32) error
+}
+
 func setString(c Presser, def uint32, name string, typ types.SIMCONNECT_DATATYPE, b []byte) error {
+	// Defined afresh each time: a datum added to a definition that has it
+	// already makes it longer than the data set (#22).
+	if cl, ok := c.(clearer); ok {
+		_ = cl.ClearDataDefinition(def)
+	}
 	if err := c.AddToDataDefinition(def, name, "", typ, 0, 0); err != nil {
 		return fmt.Errorf("avionics: define %s: %w", name, err)
 	}

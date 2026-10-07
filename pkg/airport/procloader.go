@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -15,25 +16,40 @@ import (
 const (
 	DefaultProcedureDefinitionBase uint32 = 8400
 	DefaultProcedureRequestBase    uint32 = 8500
-	procedureSlots                        = 8
-	procedureParts                        = 3
+	// DefaultProcedureTimeout ends a procedure load the simulator never
+	// finished (an airport it does not know sends nothing).
+	DefaultProcedureTimeout = 30 * time.Second
+	procedureSlots          = 8
+	procedureParts          = 3
 )
 
 // ProcedureLoader loads airports' departures, arrivals and approaches
 // through the facility API (#312). Call Request, feed every message to
 // Handle; it returns the Procedures once all three parts have arrived.
+// Call Expire now and then to end loads the simulator never finishes
+// (Request also frees their slots, so they never block new loads).
 type ProcedureLoader struct {
 	client           FacilityClient
 	defBase, reqBase uint32
+	timeout          time.Duration
 	registered       bool
 
 	mu    sync.Mutex
 	slots [procedureSlots]*procState
+	// timedOut are the airports ended inside Request, for the next Expire.
+	timedOut []string
 }
 
 type procState struct {
 	icao    string
 	pending int
+	// deadline: when the load is given up; for an expired one, when its
+	// slot is free again even without the late replies.
+	deadline time.Time
+	// expired: given up while replies may still come; its request IDs stay
+	// out of use until they have, so a late reply never lands in another
+	// airport's load (#45).
+	expired bool
 	// Records by unique request ID (children name their parent's), and the
 	// order they came in.
 	procs     map[uint32]*Procedure
@@ -62,7 +78,69 @@ func NewProcedureLoader(client FacilityClient) *ProcedureLoader {
 // the traffic World, #710). It uses defBase to defBase+2 and reqBase to
 // reqBase+23.
 func NewProcedureLoaderWithIDs(client FacilityClient, defBase, reqBase uint32) *ProcedureLoader {
-	return &ProcedureLoader{client: client, defBase: defBase, reqBase: reqBase}
+	return &ProcedureLoader{client: client, defBase: defBase, reqBase: reqBase, timeout: DefaultProcedureTimeout}
+}
+
+// SetTimeout sets how long a load may take before it is ended.
+func (l *ProcedureLoader) SetTimeout(d time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.timeout = d
+}
+
+// Reset forgets registered definitions and loads in flight, e.g. after the
+// simulator reconnects. A non-nil client replaces the current one.
+func (l *ProcedureLoader) Reset(client FacilityClient) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if client != nil {
+		l.client = client
+	}
+	l.registered = false
+	l.slots = [procedureSlots]*procState{}
+	l.timedOut = nil
+}
+
+// Pending returns the airports whose procedures are loading.
+func (l *ProcedureLoader) Pending() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []string
+	for _, s := range l.slots {
+		if s != nil && !s.expired {
+			out = append(out, s.icao)
+		}
+	}
+	return out
+}
+
+// Expire ends the loads not finished by their deadline and returns their
+// airports (also those Request ended to make room). A slot stays out of
+// use until the late replies are in, or for another timeout.
+func (l *ProcedureLoader) Expire(now time.Time) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.expire(now)
+	out := l.timedOut
+	l.timedOut = nil
+	return out
+}
+
+func (l *ProcedureLoader) expire(now time.Time) {
+	for i, s := range l.slots {
+		switch {
+		case s == nil || !now.After(s.deadline):
+		case s.expired:
+			l.slots[i] = nil
+		default:
+			// Bounded for a caller that never calls Expire.
+			if len(l.timedOut) >= 64 {
+				l.timedOut = l.timedOut[1:]
+			}
+			l.timedOut = append(l.timedOut, s.icao)
+			s.expired, s.deadline = true, now.Add(l.timeout)
+		}
+	}
 }
 
 // procedureDefinitions are the three facility definitions: departures,
@@ -113,13 +191,29 @@ func (l *ProcedureLoader) Request(icao string) error {
 		}
 	}
 	if slot < 0 {
+		// Loads the simulator never finished must not block new ones (#46).
+		l.expire(time.Now())
+		for i, s := range l.slots {
+			if s == nil {
+				slot = i
+				break
+			}
+		}
+	}
+	if slot < 0 {
 		return fmt.Errorf("airport: %d procedure loads already pending", procedureSlots)
 	}
-	l.slots[slot] = &procState{icao: icao, pending: procedureParts, procs: map[uint32]*Procedure{}, isDep: map[uint32]bool{},
-		approx: map[uint32]*Approach{}, trans: map[uint32]*Transition{}}
+	st := &procState{icao: icao, pending: procedureParts, deadline: time.Now().Add(l.timeout), procs: map[uint32]*Procedure{},
+		isDep: map[uint32]bool{}, approx: map[uint32]*Approach{}, trans: map[uint32]*Transition{}}
+	l.slots[slot] = st
 	for part := 0; part < procedureParts; part++ {
 		if err := l.client.RequestFacilityData(l.defBase+uint32(part), l.reqBase+uint32(slot*procedureParts+part), icao, ""); err != nil {
 			l.slots[slot] = nil
+			if part > 0 {
+				// The parts already sent may still be answered.
+				st.pending, st.expired = part, true
+				l.slots[slot] = st
+			}
 			return err
 		}
 	}
@@ -146,10 +240,10 @@ func (l *ProcedureLoader) Handle(msg engine.Message) (Procedures, bool) {
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_FACILITY_DATA:
 		m := msg.AsFacilityData()
-		if st, _, _, ok := l.lookup(uint32(m.UserRequestId)); ok {
+		if st, _, part, ok := l.lookup(uint32(m.UserRequestId)); ok && !st.expired {
 			n := int(m.DwSize) - int(unsafe.Offsetof(m.Data))
 			if n > 0 {
-				st.add(m, unsafe.Slice((*byte)(unsafe.Pointer(&m.Data)), n))
+				st.add(m, part, unsafe.Slice((*byte)(unsafe.Pointer(&m.Data)), n))
 			}
 		}
 	case types.SIMCONNECT_RECV_ID_FACILITY_DATA_END:
@@ -162,6 +256,9 @@ func (l *ProcedureLoader) Handle(msg engine.Message) (Procedures, bool) {
 			return Procedures{}, false
 		}
 		l.slots[slot] = nil
+		if st.expired {
+			return Procedures{}, false // the late replies are in: the slot is free again
+		}
 		return st.finish(), true
 	}
 	return Procedures{}, false
@@ -169,13 +266,15 @@ func (l *ProcedureLoader) Handle(msg engine.Message) (Procedures, bool) {
 
 // add stores one record; legs go straight to their parent, transitions
 // are linked to theirs in finish.
-func (s *procState) add(m *types.SIMCONNECT_RECV_FACILITY_DATA, b []byte) {
+func (s *procState) add(m *types.SIMCONNECT_RECV_FACILITY_DATA, part int, b []byte) {
 	r := recordReader{b: b}
 	id, parent := uint32(m.UniqueRequestId), uint32(m.ParentUniqueRequestId)
 	switch m.Type {
 	case types.SIMCONNECT_FACILITY_DATA_AIRPORT:
-		if len(b) >= 4 {
-			s.magVar = r.f32() // MAGVAR, on the departures request
+		// MAGVAR from the departures request only: the approaches one opens
+		// AIRPORT without fields, whatever bytes follow it (E17).
+		if part == 0 && len(b) >= 4 {
+			s.magVar = r.f32()
 		}
 	case types.SIMCONNECT_FACILITY_DATA_DEPARTURE, types.SIMCONNECT_FACILITY_DATA_ARRIVAL:
 		s.procs[id] = &Procedure{Name: r.str(8), Legs: []Leg{}, RunwayTransitions: []Transition{}, EnrouteTransitions: []Transition{}}

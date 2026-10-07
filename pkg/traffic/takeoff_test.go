@@ -38,7 +38,7 @@ func TestTakeoffMover(t *testing.T) {
 		t.Errorf("lift-off at %.0f kt", liftoff.GroundSpeedKts)
 	}
 	final := m.Pose()
-	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm*TakeoffAccelClimbFactor) > 1 || final.GroundSpeedKts <= p.ClimbKts || final.PitchDeg != p.ClimbPitch {
+	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm*TakeoffAccelClimbFactor) > 1 || final.GroundSpeedKts <= p.ClimbKts || final.PitchDeg != p.ClimbPitch+AirbornePullDeg {
 		t.Errorf("climb-out %+v", final)
 	}
 	if maxVSStep > 60 { // fpm per frame: no jolt into the climb
@@ -82,8 +82,8 @@ func TestTakeoffNoTailstrike(t *testing.T) {
 	if liftPitch == 0 || liftPitch > ground+1e-9 {
 		t.Errorf("lift-off pitch %.2f°", liftPitch)
 	}
-	if final := m.Pose(); final.PitchDeg != p.ClimbPitch {
-		t.Errorf("climb pitch %.1f°, want %.1f°", final.PitchDeg, p.ClimbPitch)
+	if final, want := m.Pose(), p.ClimbPitch+AirbornePullDeg; final.PitchDeg != want {
+		t.Errorf("climb pitch %.1f°, want %.1f°", final.PitchDeg, want)
 	}
 }
 
@@ -245,16 +245,18 @@ func TestTakeoffPitchProfile(t *testing.T) {
 	for pose.HeightFt < 600 {
 		pose = m.Step(0.05)
 	}
-	if pose.PitchDeg != p.ClimbPitch {
-		t.Errorf("first climb at %.1f°, want the climb pitch %.1f°", pose.PitchDeg, p.ClimbPitch)
+	// Fully airborne: a little more pull than the climb pitch.
+	if first := p.ClimbPitch + AirbornePullDeg; pose.PitchDeg != first {
+		t.Errorf("first climb at %.1f°, want %.1f°", pose.PitchDeg, first)
 	}
+	top := pose.PitchDeg
 	m.GearUp()
 	pose = m.Step(2)
-	if pose.PitchDeg >= p.ClimbPitch || pose.PitchDeg < p.ClimbPitch-2.5 {
+	if pose.PitchDeg >= top || pose.PitchDeg < top-2.5 {
 		t.Errorf("2 s after gear-up %.1f°: want easing down at about 1°/s", pose.PitchDeg)
 	}
 	pose = m.Step(10)
-	if pose.PitchDeg != 10 {
-		t.Errorf("settled at %.1f°, want 10°", pose.PitchDeg)
+	if want := p.ClimbPitch - SettleBelowClimbDeg; pose.PitchDeg != want {
+		t.Errorf("settled at %.1f°, want %.1f°", pose.PitchDeg, want)
 	}
 }

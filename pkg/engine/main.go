@@ -46,6 +46,9 @@ func New(name string, options ...Option) *Engine {
 	}
 }
 
+// Engine is one connection to the simulator and its message stream. It is
+// single-use: after Disconnect (or the simulator quitting) its context is
+// done and its Stream closed; make a new Engine to connect again.
 type Engine struct {
 	api          simconnect.API
 	cancel       context.CancelFunc

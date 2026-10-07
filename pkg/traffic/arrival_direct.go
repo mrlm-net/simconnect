@@ -42,7 +42,9 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 	// A named fix ahead near p: there.
 	for j := k; j < final; j++ {
 		if n := c.cornerName(j); n != "" && calc.HaversineNM(p.Lat, p.Lon, ll(j).Lat, ll(j).Lon) <= PointSnapNM {
-			c.reroute(pos, append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[j:]...), append([]string(nil), c.cornerNames[j:]...))
+			if err := c.reroute(pos, append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[j:]...), append([]string(nil), c.cornerNames[j:]...)); err != nil {
+				return "", Vector{}, err
+			}
 			c.note("direct to "+n, nil)
 			return n, Vector{}, nil
 		}
@@ -58,7 +60,10 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 	w := c.corners[near]
 	plain := append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(p, w.Altitude, w.KtsSpeed)}, c.corners[next:]...)
 	names := append([]string{""}, c.cornerNames[next:]...)
-	c.reroute(pos, plain, names)
+	if err := c.reroute(pos, plain, names); err != nil {
+		return "", Vector{}, err
+	}
+	c.reachFirst = true // the point: flown to, not passed by geometry
 	resume := ""
 	for j := 1; j < len(names) && j < len(plain)-2; j++ {
 		if names[j] != "" {
@@ -77,15 +82,21 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 }
 
 // reroute flies plain (named by names) from pos, with nothing ahead
-// climbing; earlier vectors are dropped. c.mu held.
-func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) {
+// climbing; earlier vectors are dropped. Not sent, nothing changes (#94:
+// the state changed and the command reported success all the same).
+// c.mu held.
+func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) error {
 	noClimb(plain, c.altitudeNow())
 	out := roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
-	c.note("direct", c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out))
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+		c.note("direct", err)
+		return err
+	}
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
-	c.vectors = nil
+	c.vectors, c.reachFirst = nil, false
 	c.joinMinM, c.lastRunwayM = 0, 0
+	return nil
 }
 
 // FinalInterceptDeg is the angle an arrival joining the final at a
@@ -139,7 +150,9 @@ func (c *ArrivalController) JoinFinal(p airport.LatLon) (nm float64, v Vector, e
 			plain = append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(airport.LatLon{Lat: qLat, Lon: qLon}, alt, align.KtsSpeed)}, plain...)
 		}
 	}
-	c.reroute(pos, plain, make([]string, len(plain)))
+	if err := c.reroute(pos, plain, make([]string, len(plain))); err != nil {
+		return 0, Vector{}, err
+	}
 	v = Vector{HeadingDeg: calc.BearingDegrees(pos.Lat, pos.Lon, plain[0].Latitude, plain[0].Longitude)}
 	v.Turn = TurnTo(c.last.Heading, v.HeadingDeg)
 	c.vectored = true
@@ -179,7 +192,9 @@ func (c *ArrivalController) AssignSpeed(kts float64) (float64, error) {
 		plain[i].KtsSpeed = set
 	}
 	vectors, vectored := c.vectors, c.vectored
-	c.reroute(pos, plain, append([]string(nil), c.cornerNames[k:]...))
+	if err := c.reroute(pos, plain, append([]string(nil), c.cornerNames[k:]...)); err != nil {
+		return 0, err
+	}
 	c.vectors, c.vectored = vectors, vectored
 	c.procSpeed = 0
 	if kts > 0 {

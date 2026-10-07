@@ -4,8 +4,10 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/mrlm-net/cure/pkg/terminal"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -115,8 +118,87 @@ var (
 const (
 	listenGroupID       uint32 = 900_000_000
 	listenGroupPriority uint32 = 1
-	emitGroupID         uint32 = 900_000_001
 )
+
+// commandFlags are cmd's flags as the router parsed them (tc.Flags), or
+// parsed here from tc.Args when it did not (a command run directly).
+func commandFlags(cmd interface{ Flags() *flag.FlagSet }, tc *terminal.Context) (*flag.FlagSet, error) {
+	if tc.Flags != nil {
+		return tc.Flags, nil
+	}
+	fs := cmd.Flags()
+	if err := fs.Parse(tc.Args); err != nil {
+		return nil, err
+	}
+	return fs, nil
+}
+
+// flagString is string flag name of fs ("" when it has none).
+func flagString(fs *flag.FlagSet, name string) string {
+	if f := fs.Lookup(name); f != nil {
+		return f.Value.String()
+	}
+	return ""
+}
+
+// flagBool is bool flag name of fs (false when it has none).
+func flagBool(fs *flag.FlagSet, name string) bool {
+	if f := fs.Lookup(name); f != nil {
+		if g, ok := f.Value.(flag.Getter); ok {
+			b, _ := g.Get().(bool)
+			return b
+		}
+	}
+	return false
+}
+
+// connectRetry is how long a failed connection waits before the next try.
+const connectRetry = 2 * time.Second
+
+// connectWithRetry connects client, trying again every connectRetry until
+// it connects or ctx is done (Ctrl+C).
+func connectWithRetry(ctx context.Context, client interface{ Connect() error }, stderr io.Writer) error {
+	fmt.Fprintf(stderr, "Connecting to simulator...\n")
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := client.Connect()
+		if err == nil {
+			return nil
+		}
+		fmt.Fprintf(stderr, "Connection failed: %v, retrying in %s...\n", err, connectRetry)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(connectRetry):
+		}
+	}
+}
+
+// transmitEvent fires event eventID on the user aircraft with data (up to
+// five values), at the highest priority: the group argument is a priority
+// (GROUPID_IS_PRIORITY), no notification group needed.
+func transmitEvent(client engine.Client, eventID uint32, data []uint32) error {
+	if len(data) <= 1 {
+		var d uint32
+		if len(data) == 1 {
+			d = data[0]
+		}
+		if err := client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, eventID, d,
+			types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY); err != nil {
+			return fmt.Errorf("TransmitClientEvent: %w", err)
+		}
+		return nil
+	}
+	var arr [5]uint32
+	copy(arr[:], data)
+	if err := client.TransmitClientEventEx1(types.SIMCONNECT_OBJECT_ID_USER, eventID,
+		types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY, arr); err != nil {
+		return fmt.Errorf("TransmitClientEventEx1: %w", err)
+	}
+	return nil
+}
 
 // nextEventID returns the next unique event ID.
 func nextEventID() uint32 {

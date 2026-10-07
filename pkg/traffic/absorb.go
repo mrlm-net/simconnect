@@ -429,7 +429,12 @@ func (c *ArrivalController) cornerAhead() int {
 	for i+1 < len(all) {
 		n, m := all[i], all[i+1]
 		d := calc.HaversineNM(pos.Lat, pos.Lon, n.Latitude, n.Longitude)
-		if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
+		if i == 0 && c.reachFirst {
+			if d >= 1.5 {
+				break // a picked point: not passed until reached
+			}
+			c.reachFirst = false
+		} else if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
 			break // not passed yet
 		}
 		i++
@@ -522,7 +527,12 @@ func (c *ArrivalController) procWaypoint(wps []types.SIMCONNECT_DATA_WAYPOINT) i
 	for i+1 < len(all) {
 		n, m := all[i], all[i+1]
 		d := calc.HaversineNM(pos.Lat, pos.Lon, n.Latitude, n.Longitude)
-		if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
+		if i == 0 && c.reachFirst {
+			if d >= 1.5 {
+				break // a picked point: not passed until reached
+			}
+			c.reachFirst = false
+		} else if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
 			break // not passed yet
 		}
 		i++
@@ -576,6 +586,9 @@ func (c *ArrivalController) DirectToJoin() error {
 		return err
 	}
 	c.proc.Waypoints, c.procNext = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), final...), 0
+	if n := len(c.corners); n >= 2 { // the corners too: the map draws them
+		c.corners, c.cornerNames, c.cornerNext = c.corners[n-2:], c.cornerNames[n-2:], 0
+	}
 	c.note("direct to the join point", nil)
 	return nil
 }
@@ -951,9 +964,31 @@ func (c *ArrivalController) ProcedureCorners() []airport.LatLon {
 	if !c.flyingProc || c.proc == nil || c.holding != nil || len(c.corners) < 2 {
 		return nil
 	}
+	ahead := c.corners[c.cornerAhead():]
+	// Only when it is the way it flies: the corners and the flown waypoints
+	// can part (a command that changed one, a hold left), and a straight
+	// line to the final was drawn for an arrival flying its STAR or a
+	// dog-leg (live: CSA1993, TVS1878). Apart: nil, the flown route.
+	pos := c.last.Position
+	wps := c.proc.Waypoints
+	if k := c.procWaypoint(wps); pos != (airport.LatLon{}) && k < len(wps) && len(ahead) > 0 {
+		flown := pathNMOf(pos, wps[k:len(wps)-1], wps[len(wps)-1])
+		drawn := pathNMOf(pos, ahead[:len(ahead)-1], ahead[len(ahead)-1])
+		if math.Abs(flown-drawn) > math.Max(cornersApartNM, cornersApartShare*flown) {
+			return nil
+		}
+	}
 	var out []airport.LatLon
-	for _, w := range c.corners[c.cornerAhead():] {
+	for _, w := range ahead {
 		out = append(out, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
 	}
 	return out
 }
+
+// The corners are drawn when their way is within cornersApartNM, or
+// cornersApartShare of it, of the way flown (rounded turns shorten it a
+// little).
+const (
+	cornersApartNM    = 2.0
+	cornersApartShare = 0.1
+)

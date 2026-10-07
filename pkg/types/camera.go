@@ -70,8 +70,7 @@ const (
 )
 
 // CameraPBH is the camera rotation: pitch, bank and heading in degrees, as
-// the SDK header has SIMCONNECT_DATA_PBH (floats; SIMCONNECT_DATA_PBH in
-// this package has doubles).
+// SIMCONNECT_DATA_PBH (floats, the same layout).
 type CameraPBH struct {
 	Pitch, Bank, Heading float32
 }

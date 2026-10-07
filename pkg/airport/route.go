@@ -83,6 +83,10 @@ type RouteOptions struct {
 	// followed (RemainingOptions sets it after a pushback or runway exit
 	// onto it): going on along it costs no penalty.
 	CurrentTaxiway string
+	// Occupied are places other aircraft take (Occupied): the route keeps
+	// off the edges where the aircraft (HalfSpan) could not pass them. When
+	// no route does, it is found without them, marked Route.Occupied.
+	Occupied []Occupied
 }
 
 // DefaultIntersectionTolerance is the RouteOptions.IntersectionTolerance used
@@ -111,6 +115,9 @@ type Route struct {
 	// Tight is set when no route fits the aircraft (RouteOptions.HalfSpan)
 	// and this one was found without the span check.
 	Tight bool `json:"tight,omitempty"`
+	// Occupied is set when no route kept clear of RouteOptions.Occupied and
+	// this one was found without them: it passes one.
+	Occupied bool `json:"occupied,omitempty"`
 	// HoldShort is the final node's hold-short data when the route ends at one.
 	HoldShort *HoldShort `json:"holdShort,omitempty"`
 }
@@ -418,6 +425,10 @@ type search struct {
 	from []int     // per state: previous state, -1 at the source
 	name []string  // per state: taxiway arrived on (unnamed connectors inherit the previous name)
 	cost []float64 // per state
+	// edge per state: the index in g.Adj of the previous node of the edge
+	// that reached it, -1 at the source. Of parallel edges between two
+	// nodes the route keeps the one searched, not the shortest (#48).
+	edge []int
 
 	via      []NodeID // RouteOptions.Via
 	taxiways []string // RouteOptions.Taxiways
@@ -442,7 +453,8 @@ const OffTaxiwaysFactor = 10.0
 // route names them in order (parallel edges may carry other names than the
 // search followed) and returns ErrTaxiwaysNotFollowed if not.
 func (s *search) route(g *Graph, to NodeID) (*Route, error) {
-	r := g.routeFromNodes(s.path(to))
+	nodes, edges := s.pathEdges(g, to)
+	r := g.routeFromPath(nodes, edges)
 	r.Cost = s.dist[to]
 	if n := followedTaxiways(r.Taxiways, s.taxiways); n < len(s.taxiways) {
 		return nil, &RouteError{Err: ErrTaxiwaysNotFollowed, Via: -1, Node: -1, Taxiway: s.taxiways[n]}
@@ -514,6 +526,30 @@ func (s *search) path(to NodeID) []NodeID {
 	return nodes
 }
 
+// pathEdges is path with the edges the search took between the nodes.
+func (s *search) pathEdges(g *Graph, to NodeID) ([]NodeID, []Edge) {
+	var states []int
+	for st := s.best[to]; st != -1; st = s.from[st] {
+		states = append(states, st)
+	}
+	slices.Reverse(states)
+	nodes := make([]NodeID, len(states))
+	var edges []Edge
+	for i, st := range states {
+		nodes[i] = s.node[st]
+		if i == 0 {
+			continue
+		}
+		prev := s.node[states[i-1]]
+		if k := s.edge[st]; k >= 0 && k < len(g.Adj[prev]) && g.Adj[prev][k].To == nodes[i] {
+			edges = append(edges, g.Adj[prev][k])
+		} else {
+			edges = append(edges, g.edge(prev, nodes[i]))
+		}
+	}
+	return nodes, edges
+}
+
 // shortestPaths runs the search from src; srcPrev, if valid, is the node the
 // aircraft arrived at src from (its heading), otherwise any first direction
 // is free. Parking nodes other than src are dead ends: a route may end at a
@@ -545,6 +581,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		id := len(s.node)
 		index[k] = id
 		s.node, s.from, s.name, s.cost = append(s.node, node), append(s.from, -1), append(s.name, ""), append(s.cost, math.Inf(1))
+		s.edge = append(s.edge, -1)
 		vias, tws = append(vias, via), append(tws, tw)
 		if via > s.maxVia {
 			s.maxVia = via
@@ -581,8 +618,8 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		}
 		// At a via point the route goes on the way it arrived.
 		atVia := vias[st] > 0 && s.via[vias[st]-1] == node && g.valid(prev)
-		for _, e := range g.Adj[node] {
-			if !usable(e, opts) || !opts.fits(e) {
+		for ei, e := range g.Adj[node] {
+			if !usable(e, opts) || !opts.fits(e) || !opts.clearOf(g, node, e) {
 				continue
 			}
 			if atVia && g.turnAngle(prev, node, e.To) >= UTurnAngle {
@@ -636,7 +673,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 				if nm == "" {
 					nm = s.name[st]
 				}
-				s.cost[next], s.from[next], s.name[next] = d, st, nm
+				s.cost[next], s.from[next], s.name[next], s.edge[next] = d, st, nm, ei
 				if done(next) && d < s.dist[e.To] {
 					s.dist[e.To], s.best[e.To] = d, next
 				}
@@ -649,13 +686,25 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 
 // routeFromNodes assembles a Route along consecutive, adjacent nodes.
 func (g *Graph) routeFromNodes(nodes []NodeID) *Route {
+	return g.routeFromPath(nodes, nil)
+}
+
+// routeFromPath is routeFromNodes along the given edges (edges[i-1] from
+// nodes[i-1] to nodes[i]); without them, the shortest edge between each
+// two nodes.
+func (g *Graph) routeFromPath(nodes []NodeID, edges []Edge) *Route {
 	r := &Route{Nodes: nodes, Taxiways: []string{}, RunwayCrossings: []string{}}
 	for i, id := range nodes {
 		r.Points = append(r.Points, g.Nodes[id].Position)
 		if i == 0 {
 			continue
 		}
-		e := g.edge(nodes[i-1], id)
+		var e Edge
+		if i-1 < len(edges) {
+			e = edges[i-1]
+		} else {
+			e = g.edge(nodes[i-1], id)
+		}
 		r.Edges = append(r.Edges, e)
 		r.Length += e.Length
 		if e.Name != "" && (len(r.Taxiways) == 0 || r.Taxiways[len(r.Taxiways)-1] != e.Name) {
@@ -679,24 +728,31 @@ func (g *Graph) edge(a, b NodeID) Edge {
 }
 
 // runwayCrossings lists the runways whose surface the polyline enters, in
-// order, sampling every few meters.
+// order, sampling every few meters. The runway it starts on is not one it
+// enters (#49: a route from a runway node listed that runway); left and
+// entered again, it is.
 func (g *Graph) runwayCrossings(pts []LatLon) []string {
 	out := []string{}
-	inside := -1
+	if len(pts) == 0 {
+		return out
+	}
+	onRunway := func(p LatLon) int {
+		for _, r := range g.Layout.Runways {
+			along, off := g.runwayCoords(r, p)
+			if along >= 0 && along <= r.Length && off <= r.Width/2 {
+				return r.Index
+			}
+		}
+		return -1
+	}
+	inside := onRunway(pts[0])
 	for i := 1; i < len(pts); i++ {
 		d := g.distance(pts[i-1], pts[i])
 		steps := int(d/5) + 1
 		for s := 1; s <= steps; s++ {
 			f := float64(s) / float64(steps)
 			p := LatLon{Lat: pts[i-1].Lat + (pts[i].Lat-pts[i-1].Lat)*f, Lon: pts[i-1].Lon + (pts[i].Lon-pts[i-1].Lon)*f}
-			on := -1
-			for _, r := range g.Layout.Runways {
-				along, off := g.runwayCoords(r, p)
-				if along >= 0 && along <= r.Length && off <= r.Width/2 {
-					on = r.Index
-					break
-				}
-			}
+			on := onRunway(p)
 			if on != -1 && on != inside {
 				out = append(out, g.Layout.Runways[on].Name())
 			}
@@ -823,6 +879,17 @@ func (o RouteOptions) fits(e Edge) bool {
 func (g *Graph) fitOrTight(opts RouteOptions, find func(RouteOptions) (*Route, error)) (*Route, error) {
 	if err := g.ValidateRouteOptions(opts); err != nil {
 		return nil, err
+	}
+	if len(opts.Occupied) > 0 {
+		if r, err := find(opts); err == nil {
+			return g.fewerStands(r, opts, find), nil
+		}
+		opts.Occupied = nil
+		r, err := g.fitOrTight(opts, find)
+		if r != nil {
+			r.Occupied = true
+		}
+		return r, err
 	}
 	r, err := find(opts)
 	if err == nil {

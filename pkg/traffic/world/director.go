@@ -249,6 +249,18 @@ func (a *actuatorSim) keep(c interface{ Handle(engine.Message) bool }) {
 	a.mu.Unlock()
 }
 
+// drop takes a finished controller out of those handed messages.
+func (a *actuatorSim) drop(c interface{ Handle(engine.Message) bool }) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, x := range a.ctls {
+		if x == c {
+			a.ctls = append(a.ctls[:i:i], a.ctls[i+1:]...)
+			return
+		}
+	}
+}
+
 // teeFeed tells two feeds the same.
 type teeFeed struct{ a, b simFeed }
 

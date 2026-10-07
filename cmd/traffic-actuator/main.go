@@ -30,6 +30,9 @@ func main() {
 	useTLS := flag.Bool("tls", false, "with -director: the link over TLS, the director's certificate verified with the system roots (#792)")
 	caFile := flag.String("tls-ca", "", "with -tls: verify the director with this CA certificate (PEM) instead of the system roots")
 	flag.Parse()
+	if (*useTLS || *caFile != "") && *director == "" {
+		fmt.Fprintln(os.Stderr, "⚠️  -tls and -tls-ca apply with -director only: listening on", *listen, "without TLS")
+	}
 	link := world.LinkOptions{Token: *token}
 	if *useTLS || *caFile != "" {
 		link.TLS = &tls.Config{MinVersion: tls.VersionTLS12}

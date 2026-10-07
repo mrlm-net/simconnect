@@ -1675,6 +1675,8 @@ func (c *TaxiController) startTakeoff() {
 	c.seq.add(c.lastStep, "take-off roll, landing lights on", 0, pose.GroundSpeedKts)
 	c.takeoffPhase, c.flapsUpNoted = TakeoffRoll, false
 	c.setInjectedLights(lightsTakeoff, "lights take-off (landing)")
+	// Take-off thrust: heard spooling up (left alone, the engines idle).
+	c.note("take-off thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), TakeoffThrottlePct))
 	c.setState(TaxiDeparting, nil)
 }
 

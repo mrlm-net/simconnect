@@ -45,6 +45,16 @@ const (
 
 // slowDownBefore is the point enrouteSlowNM before entry on the leg from
 // prev, at cruise speed, when the leg is longer than that; none otherwise.
+// enrouteEntryKts: an arrival reaches its STAR entry no faster than this
+// (live: TVS1878 handed over at 422 kt and FL320, swung 8 NM wide of the
+// STAR's first turn, and was sent direct to the final).
+const enrouteEntryKts = 280.0
+
+// entryKts is the speed at a STAR entry at altFt for a cruise of kts.
+func entryKts(altFt, kts float64) float64 {
+	return math.Min(traffic.EnrouteSpeedKts(altFt, kts), enrouteEntryKts)
+}
+
 func slowDownBefore(prev traffic.RoutePoint, entry airport.LatLon, entryAltFt, kts float64) []traffic.RoutePoint {
 	if calc.HaversineNM(prev.Position.Lat, prev.Position.Lon, entry.Lat, entry.Lon) <= enrouteSlowNM+10 {
 		return nil
@@ -72,6 +82,11 @@ type enrouteAC struct {
 	// schedule's.
 	corridor   traffic.CorridorKind
 	corridorNM float64 // its distance from the user at the last look
+	// cruiseKts: the speed it was planned at; pacedKts the leader's speed it
+	// flies at most now (paceEnroute), 0 its own.
+	cruiseKts, pacedKts float64
+	// pendingAt: when its creation was asked (pending until answered).
+	pendingAt time.Time
 }
 
 // spawnEnroute creates an enroute arrival or an overflight where its
@@ -116,7 +131,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		kts = 420
 	}
 	var dist float64
-	e := &enrouteAC{f: f, model: model}
+	e := &enrouteAC{f: f, model: model, cruiseKts: kts}
 	if f.Arrival() {
 		if e.arrive, err = plannedFrom(fp, "arrival"); err != nil {
 			return err
@@ -173,7 +188,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 				// QTR1636 and OKOEX at 250 kt GS, late, handed over 100 to
 				// 400 NM out). At cruise down to enrouteSlowNM before it.
 				route = append(route, slowDownBefore(route[len(route)-1], w.Position, w.AltFt, kts)...)
-				route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: w.AltFt, Kts: traffic.EnrouteSpeedKts(w.AltFt, kts)})
+				route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: w.AltFt, Kts: entryKts(w.AltFt, kts)})
 			}
 			break
 		}
@@ -210,8 +225,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	e.waypoints, e.route = wps, route
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
-	s.nextReq = (s.nextReq + 1) % enrouteReqCount
-	e.reqID = s.st.core.libIDs().enrouteReq + s.nextReq
+	e.reqID, e.pendingAt = s.freeEnrouteReq(), time.Now()
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = cc.do(func() error {
@@ -417,4 +431,33 @@ func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []t
 		p = airport.LatLon{Lat: lat, Lon: lon}
 	}
 	return out
+}
+
+// enroutePendingFor: a creation not answered by then is dropped (#63: a
+// refused one stayed pending, and its kind was never spawned again).
+const enroutePendingFor = 30 * time.Second
+
+// freeEnrouteReq is the next request ID not in use by a pending creation
+// (#63: the counter wrapped onto one still waiting). s.mu held.
+func (s *scheduler) freeEnrouteReq() uint32 {
+	base := s.st.core.libIDs().enrouteReq
+	for range enrouteReqCount {
+		s.nextReq = (s.nextReq + 1) % enrouteReqCount
+		if s.pending[base+s.nextReq] == nil {
+			break
+		}
+	}
+	return base + s.nextReq
+}
+
+// expirePending drops the creations the simulator never answered.
+func (s *scheduler) expirePending() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, e := range s.pending {
+		if !e.pendingAt.IsZero() && time.Since(e.pendingAt) > enroutePendingFor {
+			delete(s.pending, id)
+			s.cc.log.printf("%-6s en route: not created by the simulator: dropped", e.f.Callsign)
+		}
+	}
 }

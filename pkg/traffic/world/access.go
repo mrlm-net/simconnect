@@ -68,13 +68,44 @@ func setTokens(control, view string) {
 
 func tokensOn() bool { return access.control != "" || access.view != "" || access.verify != nil }
 
-// fromThisComputer reports whether r comes from the map's own computer.
+// fromThisComputer reports whether r comes from the map's own computer,
+// asked for by a loopback name (#60: a page elsewhere whose name resolves
+// to 127.0.0.1, DNS rebinding, came in as this computer), and, changing
+// something, not sent by another site's page (a cross-site POST from the
+// local browser).
 func fromThisComputer(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
 	}
-	ip := net.ParseIP(host)
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	if !loopbackName(r.Host) {
+		return false
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if o := r.Header.Get("Origin"); o != "" {
+			u, err := url.Parse(o)
+			if err != nil || !strings.EqualFold(u.Host, r.Host) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// loopbackName reports whether a Host header names this computer.
+func loopbackName(hostport string) bool {
+	h := hostport
+	if hh, _, err := net.SplitHostPort(hostport); err == nil {
+		h = hh
+	}
+	h = strings.Trim(h, "[]")
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
 	return ip != nil && ip.IsLoopback()
 }
 
@@ -120,13 +151,19 @@ func requestRole(r *http.Request) string {
 // back without it; no token, 401; a spectator, reads only (GET, HEAD).
 func guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No body larger than maxBodyBytes (#66: unbounded, a POST could
+		// exhaust the memory).
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		}
 		if t := r.URL.Query().Get("token"); t != "" && r.Method == http.MethodGet {
 			if roleOf(t) != "" {
 				http.SetCookie(w, &http.Cookie{Name: tokenCookie, Value: t, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 30 * 24 * 3600})
 			}
 			q := r.URL.Query()
 			q.Del("token")
-			u := url.URL{Path: r.URL.Path, RawQuery: q.Encode()}
+			// One leading slash: "//evil.example/x" went off-site (#61).
+			u := url.URL{Path: "/" + strings.TrimLeft(r.URL.Path, "/"), RawQuery: q.Encode()}
 			http.Redirect(w, r, u.String(), http.StatusSeeOther)
 			return
 		}
@@ -163,3 +200,6 @@ func shareLinks() map[string][]string {
 	}
 	return out
 }
+
+// maxBodyBytes: the largest request body the API takes.
+const maxBodyBytes = 32 << 20

@@ -12,7 +12,7 @@ import (
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestDataOnSimObject.htm
 func (sc *SimConnect) RequestDataOnSimObject(requestID uint32, definitionID uint32, objectID uint32, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestDataOnSimObject")
+	procedure := sc.proc("SimConnect_RequestDataOnSimObject")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -35,7 +35,7 @@ func (sc *SimConnect) RequestDataOnSimObject(requestID uint32, definitionID uint
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestDataOnSimObjectType.htm
 func (sc *SimConnect) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestDataOnSimObjectType")
+	procedure := sc.proc("SimConnect_RequestDataOnSimObjectType")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -66,7 +66,7 @@ func (sc *SimConnect) AddToDataDefinition(definitionID uint32, datumName string,
 			return fmt.Errorf("failed to convert units name to byte pointer: %w", err)
 		}
 	}
-	procedure := sc.library.LoadProcedure("SimConnect_AddToDataDefinition")
+	procedure := sc.proc("SimConnect_AddToDataDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -87,7 +87,7 @@ func (sc *SimConnect) AddToDataDefinition(definitionID uint32, datumName string,
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_ClearDataDefinition.htm
 func (sc *SimConnect) ClearDataDefinition(definitionID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_ClearDataDefinition")
+	procedure := sc.proc("SimConnect_ClearDataDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -103,7 +103,7 @@ func (sc *SimConnect) ClearDataDefinition(definitionID uint32) error {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_SetDataOnSimObject.htm
 func (sc *SimConnect) SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SetDataOnSimObject")
+	procedure := sc.proc("SimConnect_SetDataOnSimObject")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(),    // HANDLE hSimConnect

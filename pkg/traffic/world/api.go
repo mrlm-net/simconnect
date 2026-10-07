@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,6 +58,10 @@ type Options struct {
 	// QueueSize is how many fed messages (Feed) wait for the World; 0:
 	// DefaultQueueSize. A layout loaded while any was dropped is not kept.
 	QueueSize int
+	// Output is where the World writes its console lines (the traffic log
+	// echoed, what it loads); nil: stdout. A host speaking a protocol on
+	// stdout (an MCP server on stdio) gives another (stderr, or io.Discard).
+	Output io.Writer
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
 	// Schedule times the scheduled traffic (#741); zero values keep the
@@ -98,6 +103,9 @@ type World struct {
 
 // New makes a World; it connects with Run.
 func New(o Options) *World {
+	if o.Output != nil {
+		stdout = o.Output
+	}
 	if o.LogDir != "" {
 		openTrafficLog(o.LogDir)
 	}

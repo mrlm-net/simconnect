@@ -73,7 +73,7 @@ func serve(ctx context.Context, addr string, w *world.World) error {
 		rw.WriteHeader(http.StatusNoContent)
 	})
 
-	srv := &http.Server{Addr: addr, Handler: world.Guard(mux), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: world.Guard(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute} // #66; no write timeout: the event streams stay open
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

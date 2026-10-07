@@ -1104,10 +1104,21 @@ func DirectToFinal(cs string, number int) Transmission {
 }
 
 // HoldAt holds an arrival at fix with entry at altFt, expecting further
-// clearance at efc.
-func HoldAt(cs, fix string, entry HoldEntry, altFt float64, efc time.Time) Transmission {
+// clearance at efc (said in UTC, #99: it was local time). ta, when given,
+// is the airport's transition altitude: altitude or flight level by it
+// (#101: "FL070" and then "7000 feet" at LKPR); none: 10000 ft.
+func HoldAt(cs, fix string, entry HoldEntry, altFt float64, efc time.Time, ta ...float64) Transmission {
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHold, Params: map[string]string{
-		ParamFix: fix, ParamHoldIn: entry.String(), ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: LevelSaid(altFt), ParamExpect: efc.Format("1504")}})
+		ParamFix: fix, ParamHoldIn: entry.String(), ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: levelSaidTA(altFt, ta), ParamExpect: efc.UTC().Format("1504")}})
+}
+
+// levelSaidTA is LevelSaidAbove the transition altitude in ta, else
+// LevelSaid.
+func levelSaidTA(altFt float64, ta []float64) string {
+	if len(ta) > 0 && ta[0] > 0 {
+		return LevelSaidAbove(altFt, ta[0])
+	}
+	return LevelSaid(altFt)
 }
 
 // LeaveHoldAt releases an arrival from the hold at fix as number.
@@ -1115,14 +1126,27 @@ func LeaveHoldAt(cs, fix string, number int) Transmission {
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentLeaveHold, Params: numberParam(map[string]string{ParamFix: fix}, number)})
 }
 
-// HoldDescend steps a holding arrival down to altFt.
-func HoldDescend(cs string, altFt float64) Transmission {
-	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHoldLevel, Params: map[string]string{ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: LevelSaid(altFt)}})
+// HoldDescend steps a holding arrival down to altFt (ta: as HoldAt).
+func HoldDescend(cs string, altFt float64, ta ...float64) Transmission {
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentHoldLevel, Params: map[string]string{ParamAltitude: fmt.Sprintf("%.0f", altFt), ParamLevel: levelSaidTA(altFt, ta)}})
+}
+
+// SaidWhere is what a resolution is said by: the transition altitude for
+// levels (0: 10000 ft) and the magnetic variation for headings.
+type SaidWhere struct {
+	TAFt, MagVar float64
 }
 
 // Resolved is a conflict resolution for an aircraft now at altFt, heading
 // hdg and kts, said by pos (center en route, approach near the airport).
-func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission {
+// where, when given, says levels by the transition altitude and headings
+// magnetic (#100: true, and "000" for north; #101).
+func Resolved(pos Position, r Resolution, altFt, hdg, kts float64, where ...SaidWhere) Transmission {
+	var at SaidWhere
+	if len(where) > 0 {
+		at = where[0]
+	}
+	ta := []float64{at.TAFt}
 	t := Transmission{Position: pos, Callsign: r.Callsign, Params: map[string]string{ParamTraffic: r.Why}}
 	switch r.Kind {
 	case ResolveSpeed:
@@ -1139,7 +1163,7 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 		}
 	case ResolveLevel:
 		t.Intent = IntentLevel
-		t.Params[ParamLevel] = LevelSaid(r.AltFt)
+		t.Params[ParamLevel] = levelSaidTA(r.AltFt, ta)
 		t.Params[ParamClimb] = "climb"
 		if r.AltFt < altFt {
 			t.Params[ParamClimb] = "descend"
@@ -1158,13 +1182,13 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64) Transmission 
 		t.Params[ParamFix] = r.Fix
 	case ResolveCross:
 		t.Intent = IntentCrossLevel
-		t.Params[ParamFix], t.Params[ParamLevel], t.Params[ParamClimb] = r.Fix, LevelSaid(r.AltFt), "above"
+		t.Params[ParamFix], t.Params[ParamLevel], t.Params[ParamClimb] = r.Fix, levelSaidTA(r.AltFt, ta), "above"
 		if r.AltFt < altFt {
 			t.Params[ParamClimb] = "below"
 		}
 	default:
 		t.Intent = IntentHeading
-		t.Params[ParamHeading] = fmt.Sprintf("%03.0f", r.HeadingDeg)
+		t.Params[ParamHeading] = HeadingSaid(r.HeadingDeg, at.MagVar)
 		t.Params[ParamTurn] = "right"
 		if math.Mod(r.HeadingDeg-hdg+540, 360)-180 < 0 {
 			t.Params[ParamTurn] = "left"
@@ -1494,9 +1518,9 @@ func levelVerb(climb string) string {
 
 // StopDescent has a descending arrival level off at altFt for traffic
 // below it: "AUA529, stop descent at 7000 feet, due traffic".
-func StopDescent(pos Position, cs string, altFt float64, traffic string) Transmission {
+func StopDescent(pos Position, cs string, altFt float64, traffic string, ta ...float64) Transmission {
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentLevel,
-		Params: map[string]string{ParamLevel: LevelSaid(altFt), ParamClimb: "stop", ParamTraffic: traffic}})
+		Params: map[string]string{ParamLevel: levelSaidTA(altFt, ta), ParamClimb: "stop", ParamTraffic: traffic}})
 }
 
 // numberParam adds the number in traffic to p, unless it is 0 (told

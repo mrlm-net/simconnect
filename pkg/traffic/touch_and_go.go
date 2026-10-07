@@ -40,6 +40,7 @@ func (c *ArrivalController) startTouchAndGo(pose ApproachPose) {
 	c.spoilers = surfaceRamp{target: 0, rate: 100 / SpoilerDeploySeconds, pct: c.spoilers.pct}
 	c.flapsPct = c.aircraft().Flaps.TakeoffPct
 	c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
+	c.note("take-off thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), TakeoffThrottlePct)) // off again
 	c.lastStep = c.now()
 	c.seq.add(c.lastStep, "touch and go", 0, pose.GroundSpeedKts)
 	c.last.TouchAndGo = true

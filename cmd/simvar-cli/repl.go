@@ -47,22 +47,9 @@ func (c *replCommand) Run(ctx context.Context, tc *terminal.Context) error {
 	client := engine.New("SimVar CLI - REPL", opts...)
 
 	// Retry connection loop
-	fmt.Fprintf(tc.Stderr, "Connecting to simulator...\n")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err := client.Connect(); err != nil {
-				fmt.Fprintf(tc.Stderr, "Connection failed: %v, retrying in 2s...\n", err)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			goto connected
-		}
+	if err := connectWithRetry(ctx, client, tc.Stderr); err != nil {
+		return err
 	}
-
-connected:
 	defer client.Disconnect()
 
 	// Wait for OPEN message to confirm connection
@@ -106,13 +93,21 @@ ready:
 	consumerCtx, consumerCancel := context.WithCancel(ctx)
 	defer consumerCancel()
 
+	// lost is closed when the simulator goes away (QUIT, or the stream
+	// ends): the REPL ends with it.
+	lost := make(chan struct{})
 	go func() {
+		defer close(lost)
 		for {
 			select {
 			case <-consumerCtx.Done():
 				return
 			case msg, ok := <-stream:
 				if !ok {
+					return
+				}
+				if msg.Err == nil && types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_QUIT {
+					msg.Release()
 					return
 				}
 				if msg.Err != nil {
@@ -160,23 +155,39 @@ ready:
 	if tc.Stdin != nil {
 		stdinReader = tc.Stdin
 	}
-	scanner := bufio.NewScanner(stdinReader)
+	// Lines are read on their own goroutine, so Ctrl+C and a lost
+	// simulator end the REPL while it waits for input.
+	lines := make(chan string)
+	scanErr := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdinReader)
+		for scanner.Scan() {
+			select {
+			case lines <- scanner.Text():
+			case <-consumerCtx.Done():
+				return
+			}
+		}
+		scanErr <- scanner.Err() // EOF (nil) or error
+	}()
 	for {
 		fmt.Fprintf(tc.Stdout, "simvar> ")
 
-		// Check context before blocking on scan
+		var line string
 		select {
 		case <-ctx.Done():
 			return nil
-		default:
+		case <-lost:
+			if ctx.Err() != nil {
+				return nil // Ctrl+C
+			}
+			return fmt.Errorf("simulator connection lost")
+		case err := <-scanErr:
+			return err
+		case line = <-lines:
 		}
 
-		if !scanner.Scan() {
-			// EOF or error
-			return scanner.Err()
-		}
-
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -347,42 +358,10 @@ func (c *replCommand) replEmit(client engine.Client, tc *terminal.Context, event
 		return err
 	}
 
-	// Setup notification group for emit
-	if err := client.AddClientEventToNotificationGroup(emitGroupID, mapping.eventID, false); err != nil {
-		return fmt.Errorf("AddClientEventToNotificationGroup: %w", err)
-	}
-	if err := client.SetNotificationGroupPriority(emitGroupID, 1); err != nil {
-		return fmt.Errorf("SetNotificationGroupPriority: %w", err)
-	}
-
-	if len(dataValues) <= 1 {
-		var data uint32
-		if len(dataValues) == 1 {
-			data = dataValues[0]
-		}
-		if err := client.TransmitClientEvent(
-			types.SIMCONNECT_OBJECT_ID_USER,
-			mapping.eventID,
-			data,
-			emitGroupID,
-			types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
-		); err != nil {
-			return fmt.Errorf("TransmitClientEvent: %w", err)
-		}
-	} else {
-		var dataArray [5]uint32
-		for i, v := range dataValues {
-			dataArray[i] = v
-		}
-		if err := client.TransmitClientEventEx1(
-			types.SIMCONNECT_OBJECT_ID_USER,
-			mapping.eventID,
-			emitGroupID,
-			types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
-			dataArray,
-		); err != nil {
-			return fmt.Errorf("TransmitClientEventEx1: %w", err)
-		}
+	// At the highest priority: no group to set up, nothing added again on
+	// every emit
+	if err := transmitEvent(client, mapping.eventID, dataValues); err != nil {
+		return err
 	}
 
 	// Brief wait for exception (consistent with replSet pattern)

@@ -21,6 +21,8 @@ type UserPushDriver struct {
 
 	mu       sync.Mutex
 	set      bool // definitions and events registered
+	pushSeen bool // the push seen running (PUSHBACK STATE not 3)
+	notify   chan UserPushState
 	route    []airport.LatLon
 	facing   float64
 	state    UserPushState
@@ -94,6 +96,7 @@ func (d *UserPushDriver) Start(r PushRoute) error {
 		d.set = true
 	}
 	d.route, d.facing, d.started, d.lastHdg = append([]airport.LatLon(nil), r.Points...), r.Facing, false, -1
+	d.pushSeen = false
 	d.setState(UserPushPushing)
 	// Every fourth frame: steering at about 15 Hz.
 	return d.client.RequestDataOnSimObject(d.reqID, d.defID, types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_VISUAL_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 4, 0)
@@ -118,7 +121,7 @@ func (d *UserPushDriver) State() UserPushState {
 
 // Handle takes the driver's messages; true when msg was one.
 func (d *UserPushDriver) Handle(msg engine.Message) bool {
-	if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
+	if msg.SIMCONNECT_RECV == nil || types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
 		return false
 	}
 	m := msg.AsSimObjectData()
@@ -144,6 +147,16 @@ func (d *UserPushDriver) step(pos airport.LatLon, heading float64, pushState int
 			d.event(d.evToggle, 0)
 		}
 		return
+	}
+	// Stopped by the pilot meanwhile (#93: the toggle that ends a push
+	// would start it again): over, without toggling.
+	if pushState == 3 && d.pushSeen {
+		d.started = false
+		d.stopLocked(UserPushAborted)
+		return
+	}
+	if pushState != 3 {
+		d.pushSeen = true
 	}
 	near := 0
 	for i := range d.route {
@@ -191,7 +204,20 @@ func (d *UserPushDriver) event(id, data uint32) {
 
 func (d *UserPushDriver) setState(s UserPushState) {
 	d.state = s
-	if d.onChange != nil {
-		go d.onChange(s)
+	if d.onChange == nil {
+		return
+	}
+	// In order, on one goroutine (#93: one goroutine each, out of order).
+	if d.notify == nil {
+		d.notify = make(chan UserPushState, 16)
+		go func(ch <-chan UserPushState, f func(UserPushState)) {
+			for s := range ch {
+				f(s)
+			}
+		}(d.notify, d.onChange)
+	}
+	select {
+	case d.notify <- s:
+	default:
 	}
 }

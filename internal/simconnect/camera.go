@@ -16,7 +16,7 @@ import (
 
 // cameraCall calls a camera procedure and turns its HRESULT into an error.
 func (sc *SimConnect) cameraCall(name string, args ...uintptr) error {
-	procedure := sc.library.LoadProcedure(name)
+	procedure := sc.proc(name)
 	hresult, _, _ := procedure.Call(append([]uintptr{sc.getConnection()}, args...)...)
 	if !isHRESULTSuccess(hresult) {
 		return fmt.Errorf("%s failed with HRESULT: 0x%08X", name, uint32(hresult))

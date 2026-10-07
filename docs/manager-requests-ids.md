@@ -96,8 +96,8 @@ The engine's heartbeat subscription also uses an ID in this range: `engine.HEART
 The manager reserves a range of IDs for user-defined custom system events:
 
 ```go
-CustomEventIDMin = 999999850 // First ID for custom events
-CustomEventIDMax = 999999886 // Last ID for custom events (37 slots total)
+CustomEventIDMin = 999999910 // First ID for custom events
+CustomEventIDMax = 999999979 // Last ID for custom events (70 slots total; freed IDs reused)
 ```
 
 **Purpose**: These IDs are dynamically allocated when users subscribe to custom SimConnect system events by name (e.g., "6Hz", "1sec"). Custom events use the `SubscribeToCustomSystemEvent` and `OnCustomSystemEvent` APIs.
@@ -120,12 +120,12 @@ Besides the manager's reserved range, several packages use fixed default IDs whe
 | `traffic.AirportLister` | airports in the reality bubble | — | 8900 (`DefaultAirportListRequestID`) | — |
 | `avionics.Radios` | COM and transponder | — | — | 0x7A00–0x7A09 = 31232–31241 (`DefaultEventBase`, `eventCount` 10) |
 | `systems.Controls` | doors, chocks, GPU, brake | 0x7B00–0x7B3F = 31488–31551 (`DefaultControlBase`, block of 64) | — | 0x7B00–0x7B3F (same block) |
-| `manager` | custom system events | — | — | 999999850–999999886 (`CustomEventIDMin`–`CustomEventIDMax`) |
+| `manager` | custom system events | — | — | 999999910–999999979 (`CustomEventIDMin`–`CustomEventIDMax`) |
 | `manager` | system events | — | — | 999999987–999999998 (`FlightPlanDeactivatedEventID`–`PauseEventID`) |
 | `manager` | simulator state | 999999900 (`CameraDefinitionID`) | 999999901 (`CameraRequestID`) | — |
 | `engine` | heartbeat | — | — | 999999999 (`HEARTBEAT_EVENT_ID`) |
 
-`nav.WeatherReader`, `systems.Reader`, `traffic.ProfileReader`, the tugs and fuel trucks take their IDs from the application and have no defaults. Pick application IDs outside all of the ranges above (the examples use 10000/10001 for the weather reader), or move a library type off its defaults (`LoaderWithIDs`, `TaxiWithIDs`, `ArrivalWithIDs`, `InjectorWithIDs`, `StandWithIDs`, `NewNavLoaderWithIDs`, the `reqID` of `NewAirportLister`, the `base` of `avionics.New` and `systems.NewControls`). `ProcedureLoader` always uses its defaults.
+`nav.WeatherReader`, `systems.Reader`, `traffic.ProfileReader`, the tugs and fuel trucks take their IDs from the application and have no defaults. Pick application IDs outside all of the ranges above (the examples use 10000/10001 for the weather reader), or move a library type off its defaults (`LoaderWithIDs`, `TaxiWithIDs`, `ArrivalWithIDs`, `InjectorWithIDs`, `StandWithIDs`, `NewNavLoaderWithIDs`, the `reqID` of `NewAirportLister`, `NewProcedureLoaderWithIDs`, the `base` of `avionics.New` and `systems.NewControls`). A loader keeps an expired request's slot until its late replies are in (or one more timeout), so a late reply is never read into a new request; the `ProcedureLoader` has `Expire` and `Reset` like the others.
 
 ## Request Registry
 

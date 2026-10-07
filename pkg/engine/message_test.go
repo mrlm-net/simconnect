@@ -31,3 +31,42 @@ func TestDetachOutlivesRelease(t *testing.T) {
 	}
 	d.Release() // no-op: owns its buffer
 }
+
+// An error Message has no SIMCONNECT_RECV: the As helpers say nil, not panic.
+func TestErrorMessageAsHelpers(t *testing.T) {
+	m := Message{Err: ErrConnectionLost}
+	if m.AsEvent() != nil || m.AsOpen() != nil || m.AsException() != nil || m.AsFacilityList() != nil ||
+		m.AsEnumerateInputEvents() != nil || m.AsClientData() != nil || m.AsCommBus() != nil {
+		t.Error("an As helper returned a value for an error message")
+	}
+	if _, ok := m.AsCameraData(); ok {
+		t.Error("AsCameraData read an error message")
+	}
+	if CastAs[*types.SIMCONNECT_RECV_EVENT](&m) != nil {
+		t.Error("CastAs returned a value for an error message")
+	}
+}
+
+// Copies of a Message return the buffer once, whichever calls Release.
+func TestReleaseOnceAcrossCopies(t *testing.T) {
+	n := 0
+	m := newMessage(nil, 0, nil, nil, func() { n++ })
+	c := m
+	m.Release()
+	c.Release()
+	m.Release()
+	if n != 1 {
+		t.Errorf("released %d times", n)
+	}
+}
+
+func TestPooledSliceReuse(t *testing.T) {
+	b, release := getPooledSlice(100)
+	if len(b) != 100 || cap(b) != 4*1024 {
+		t.Fatalf("len %d cap %d", len(b), cap(b))
+	}
+	release()
+	if b, _ := getPooledSlice(70 * 1024); len(b) != 70*1024 {
+		t.Errorf("large slice len %d", len(b))
+	}
+}

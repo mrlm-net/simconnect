@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -22,17 +24,57 @@ type connLink struct {
 	mu  sync.Mutex // writes
 	enc *json.Encoder
 	dec *json.Decoder
+	in  *budgetReader
 }
 
 func newConnLink(c net.Conn) *connLink {
-	return &connLink{c: c, enc: json.NewEncoder(c), dec: json.NewDecoder(bufio.NewReaderSize(c, 1<<16))}
+	in := &budgetReader{r: c, left: math.MaxInt64}
+	return &connLink{c: c, enc: json.NewEncoder(c), dec: json.NewDecoder(bufio.NewReaderSize(in, 1<<16)), in: in}
 }
+
+// budgetReader reads at most left bytes: the hello before a link is
+// trusted is read within helloMaxBytes (#54: an unbounded decode let
+// anyone exhaust the director's memory before any token was checked).
+type budgetReader struct {
+	r    io.Reader
+	left int64
+}
+
+func (b *budgetReader) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		return 0, errHelloTooLarge
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.r.Read(p)
+	b.left -= int64(n)
+	return n, err
+}
+
+// Before a link is trusted: its hello within helloMaxBytes, and at most
+// maxGreetings links being greeted at once.
+const (
+	helloMaxBytes = 16 << 10
+	maxGreetings  = 32
+)
+
+var (
+	errHelloTooLarge = errors.New("world: link hello too large")
+	greetSlots       = make(chan struct{}, maxGreetings)
+)
 
 func (l *connLink) Send(m wireMsg) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// A peer that stops reading fails the write, not the sender for ever
+	// (#55: a stalled director froze the actuator's sim loop).
+	l.c.SetWriteDeadline(time.Now().Add(linkWriteTimeout))
 	return l.enc.Encode(m)
 }
+
+// linkWriteTimeout: a message not written by then fails its link.
+const linkWriteTimeout = 10 * time.Second
 
 func (l *connLink) Recv() (wireMsg, error) {
 	var m wireMsg
@@ -55,13 +97,13 @@ type hubLink struct {
 	next chan *connLink
 	done chan struct{}
 	once sync.Once
-	in   chan wireMsg // what the director sends, for whoever reads now
+	in   chan hubMsg // what the director sends, for whoever reads now
 	// state: "dialling", "attached", "gone" (LinkState).
 	state string
 }
 
 func newHubLink() *hubLink {
-	h := &hubLink{next: make(chan *connLink, 1), done: make(chan struct{}), in: make(chan wireMsg, 256)}
+	h := &hubLink{next: make(chan *connLink, 1), done: make(chan struct{}), in: make(chan hubMsg, 256)}
 	go h.pump()
 	return h
 }
@@ -69,28 +111,44 @@ func newHubLink() *hubLink {
 // pump reads the director attached now into in, until the hub closes.
 func (h *hubLink) pump() {
 	for {
-		m, err := h.recvDirect()
+		m, from, err := h.recvDirect()
 		if err != nil {
 			return
 		}
 		select {
-		case h.in <- m:
+		case h.in <- hubMsg{m, from}:
 		case <-h.done:
 			return
 		}
 	}
 }
 
+// hubMsg is a message and the director link it came on: one from a
+// director since replaced is not read (#57: its calls reached the next
+// one, whose call IDs start at 1 again, and got wrong replies).
+type hubMsg struct {
+	m    wireMsg
+	from *connLink
+}
+
 // RecvCtx is Recv until ctx ends: a connection's reader stops with it and
 // leaves the link to the next one (#779).
 func (h *hubLink) RecvCtx(ctx context.Context) (wireMsg, error) {
-	select {
-	case m := <-h.in:
-		return m, nil
-	case <-h.done:
-		return wireMsg{}, errLinkClosed
-	case <-ctx.Done():
-		return wireMsg{}, ctx.Err()
+	for {
+		select {
+		case hm := <-h.in:
+			h.mu.Lock()
+			cur := h.cur
+			h.mu.Unlock()
+			if hm.from != cur {
+				continue // the director before
+			}
+			return hm.m, nil
+		case <-h.done:
+			return wireMsg{}, errLinkClosed
+		case <-ctx.Done():
+			return wireMsg{}, ctx.Err()
+		}
 	}
 }
 
@@ -131,7 +189,7 @@ func (h *hubLink) Send(m wireMsg) error {
 func (h *hubLink) Recv() (wireMsg, error) { return h.RecvCtx(context.Background()) }
 
 // recvDirect reads the director attached now, waiting for one.
-func (h *hubLink) recvDirect() (wireMsg, error) {
+func (h *hubLink) recvDirect() (wireMsg, *connLink, error) {
 	for {
 		h.mu.Lock()
 		c := h.cur
@@ -139,14 +197,14 @@ func (h *hubLink) recvDirect() (wireMsg, error) {
 		if c == nil {
 			select {
 			case <-h.done:
-				return wireMsg{}, errLinkClosed
+				return wireMsg{}, nil, errLinkClosed
 			case <-h.next:
 				continue
 			}
 		}
 		m, err := c.Recv()
 		if err == nil {
-			return m, nil
+			return m, c, nil
 		}
 		h.drop(c)
 	}
@@ -267,13 +325,23 @@ func dialOnce(ctx context.Context, w *World, addr string, o LinkOptions) error {
 // that expires (Verify) closes c when it does: the other side dials again
 // with a fresh one.
 func (o LinkOptions) greeted(ctx context.Context, c net.Conn, logf func(string, ...any)) (*connLink, bool) {
+	select {
+	case greetSlots <- struct{}{}:
+		defer func() { <-greetSlots }()
+	default:
+		logf("link: %s refused: too many links greeting at once", c.RemoteAddr())
+		c.Close()
+		return nil, false
+	}
 	l := newConnLink(c)
+	l.in.left = helloMaxBytes
 	c.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var h hello
 	if err := l.dec.Decode(&h); err != nil {
 		c.Close()
 		return nil, false
 	}
+	l.in.left = math.MaxInt64 // trusted from here on: its messages unbounded
 	var expires time.Time
 	switch {
 	case o.Verify != nil:

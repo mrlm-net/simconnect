@@ -189,7 +189,8 @@ func (m *cameraMan) playScene(g *airport.Graph, key string) error {
 		return fmt.Errorf("no scene %q", key)
 	}
 	m.mu.Lock()
-	running := m.mode == "scene"
+	running := m.mode == "scene" || m.sceneStarting
+	m.sceneStarting = !running || m.sceneStarting
 	m.mu.Unlock()
 	if running {
 		return errors.New("a scene is playing")
@@ -261,7 +262,11 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	if limit <= 0 {
 		limit = 15 * time.Minute
 	}
-	if err := m.setMode("scene", 0); err != nil {
+	err := m.setMode("scene", 0)
+	m.mu.Lock()
+	m.sceneStarting = false
+	m.mu.Unlock()
+	if err != nil {
 		logf("camera: %v", err)
 		return
 	}
@@ -271,8 +276,11 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	defer func() {
 		m.mu.Lock()
 		m.scene = nil
+		still := m.mode == "scene"
 		m.mu.Unlock()
-		m.setMode("off", 0)
+		if still {
+			m.setMode("off", 0) // not over a mode picked meanwhile (#62)
+		}
 		logf("ended after %s", time.Since(r.start).Round(time.Second))
 	}()
 	// A scene played again: its cast from last time goes first.

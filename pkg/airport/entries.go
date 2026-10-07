@@ -66,7 +66,18 @@ func (g *Graph) RunwayEntries(runwayEnd string) ([]RunwayEntry, error) {
 			Angle: x.Angle, Taxiway: x.Taxiway, HoldShort: x.HoldShort,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].FromThreshold < out[j].FromThreshold })
+	// Entries as far from the threshold (LKPR 24: A and Z both 201 m) by
+	// taxiway name, then node: the same order every time.
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.FromThreshold != b.FromThreshold {
+			return a.FromThreshold < b.FromThreshold
+		}
+		if a.Taxiway != b.Taxiway {
+			return a.Taxiway < b.Taxiway
+		}
+		return a.Node < b.Node
+	})
 	return out, nil
 }
 
@@ -113,7 +124,10 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		if math.IsInf(s.dist[t], 1) {
 			continue
 		}
-		if best == nil || e.Remaining > best.Remaining {
+		// The same runway ahead (entries meeting the runway at one node):
+		// the nearer one, not whichever came first (#43: LKPR "30 at D"
+		// went either way, once across a runway).
+		if best == nil || e.Remaining > best.Remaining || e.Remaining == best.Remaining && s.dist[t] < s.dist[target] {
 			best, target = e, t
 		}
 	}

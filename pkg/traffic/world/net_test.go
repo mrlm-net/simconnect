@@ -2,7 +2,9 @@ package world
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -204,5 +206,31 @@ func TestFanOut(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if err := c.call("ctr", "Bump", nil); err != nil || p.n.Load() != 4 {
 		t.Errorf("after the follower left: %v, primary %d", err, p.n.Load())
+	}
+}
+
+// A hello larger than helloMaxBytes is refused before any token is looked
+// at (#54).
+func TestGreetedHelloTooLarge(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		c, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		big := strings.Repeat("x", 4*helloMaxBytes)
+		fmt.Fprintf(c, `{"token":%q}`+"\n", big)
+	}()
+	c, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := (LinkOptions{Token: "s3cret"}).greeted(context.Background(), c, func(string, ...any) {}); ok {
+		t.Error("an oversized hello was taken")
 	}
 }

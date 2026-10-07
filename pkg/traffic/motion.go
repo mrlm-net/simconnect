@@ -339,7 +339,11 @@ func (m *GroundMover) step(dt float64) {
 		// A hold: the stop as reachable from here. Still accelerating, the
 		// aircraft first covers what it rolls while that winds down (at the
 		// jerk) and the lag before it answers, then brakes (stopSpeed).
-		remEff := rem - m.v*(math.Max(0, m.a)/p.Jerk+SpeedResponseSeconds/2)
+		windDown := 0.0
+		if p.Jerk > 0 { // a profile without one winds down at once (#104: 0/0, NaN)
+			windDown = math.Max(0, m.a) / p.Jerk
+		}
+		remEff := rem - m.v*(windDown+SpeedResponseSeconds/2)
 		target = math.Min(target, stopSpeed(p.Decel, p.Jerk, remEff))
 	}
 	if m.slowKts > 0 && m.s < m.slowAt {

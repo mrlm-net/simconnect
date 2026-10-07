@@ -139,7 +139,31 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 			others = append(others, other{oid, e})
 		}
 	}
+	me, haveMe := p.aircraft[id]
 	p.mu.Unlock()
+	// bodyInPush: this aircraft's body is where a push under way stops for
+	// it (corridorBlocked: the push's half-span and PushClearMarginMeters
+	// round any point of the fuselage). It must go on then, or each waits
+	// for the other (live, LKPR: CSA383's tail in LOT277's corridor, its nose
+	// past it, waiting for the push that waited for it, 19 minutes).
+	bodyInPush := func(o groundEntry) bool {
+		if !haveMe {
+			return false
+		}
+		oh := o.half
+		if oh <= 0 {
+			oh = DefaultHalfSpanMeters
+		}
+		for d := -me.tail; d <= me.nose+0.01; d += trafficBodyStep {
+			q := offsetHeading(me.pos, me.hdg, d)
+			for _, c := range o.ahead {
+				if localDist(q, c) <= oh+PushClearMarginMeters {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	best, to := math.Inf(1), uint32(0)
 	if len(others) == 0 {
 		return best, 0
@@ -177,7 +201,7 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		// other; one merely within the margin waits where it is (#452:
 		// TVS795, waiting at the end of TVS706's corridor, drove through it).
 		inIt := mineTo == 0 && (!o.e.pushing || first(mine[:1], o.e.ahead, half+o.e.half+PushClearMarginMeters) == 0)
-		if mineTo < 0 || mineTo < half && (!o.e.pushing || inIt) {
+		if mineTo < 0 || mineTo < half && (!o.e.pushing || inIt) || o.e.pushing && bodyInPush(o.e) {
 			continue // no conflict, or already in it: go on through
 		}
 		// (Beside a push under way it waits where it is unless already in its

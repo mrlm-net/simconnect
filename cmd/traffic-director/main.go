@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/nav"
@@ -52,6 +53,12 @@ func main() {
 	flag.Parse()
 	if (*jwksURL != "" || *tlsCert != "") && *listen == "" {
 		fmt.Fprintln(os.Stderr, "❌ -jwks and -tls-cert need -listen")
+		os.Exit(2)
+	}
+	switch *jwksAPI {
+	case "control", "view", "none":
+	default:
+		fmt.Fprintf(os.Stderr, "❌ -jwks-api %q: control, view or none\n", *jwksAPI)
 		os.Exit(2)
 	}
 	link := world.LinkOptions{Token: *token}
@@ -98,11 +105,15 @@ func main() {
 		}
 	}
 	w := world.New(world.Options{LogDir: *logDir, Airways: graph, DataDir: *dataDir})
+	// linkFailed: the link could not listen; the director then stops with
+	// a failure, not as if asked to (#37).
+	var linkFailed atomic.Bool
 	if *listen != "" {
 		// Actuators behind routers dial in (#774).
 		go func() {
 			if err := world.ListenDirectorWith(ctx, w, *listen, link); err != nil {
 				fmt.Fprintln(os.Stderr, "❌", err)
+				linkFailed.Store(true)
 				cancel()
 			}
 		}()
@@ -155,6 +166,9 @@ func main() {
 	fmt.Printf("director of %s, API on http://%s\n", of, *addr)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, "❌", err)
+		os.Exit(1)
+	}
+	if linkFailed.Load() {
 		os.Exit(1)
 	}
 }

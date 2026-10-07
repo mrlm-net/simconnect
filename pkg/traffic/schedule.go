@@ -112,6 +112,10 @@ type ScheduleOptions struct {
 	// Layouts are the focus airports' layouts when loaded: runway lengths
 	// and the airlines their stands name (home carriers) come from there.
 	Layouts map[string]*airport.Layout
+	// Used are call signs already flying or planned (the hours scheduled
+	// before): none is given again (#98: numbers were unique only within one
+	// call, and a repeat was dropped or two flights shared a call sign).
+	Used map[string]bool
 }
 
 // Schedule generates the flights with a departure (at a focus airport) or
@@ -126,6 +130,9 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 	}
 	rng := rand.New(rand.NewPCG(opts.Seed, 0x5ced))
 	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	for cs := range opts.Used {
+		g.used[cs] = true
+	}
 	for _, a := range cfg.Airports {
 		g.airports[a.ICAO] = a
 	}

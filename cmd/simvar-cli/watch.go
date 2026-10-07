@@ -38,14 +38,14 @@ func (c *watchCommand) Flags() *flag.FlagSet {
 }
 
 func (c *watchCommand) Run(ctx context.Context, tc *terminal.Context) error {
-	// Parse local flags from tc.Args (CURE pre-parses and strips them; tc.Args = positional args only).
-	// Re-parse here to access flag values.
-	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
-	interval := fs.String("interval", "second", "")
-	changed := fs.Bool("changed", false, "")
-	if err := fs.Parse(tc.Args); err != nil {
+	// CURE parses the flags (Flags) and leaves the positional args in
+	// tc.Args: the values are read from tc.Flags.
+	fs, err := commandFlags(c, tc)
+	if err != nil {
 		return err
 	}
+	interval := flagString(fs, "interval")
+	changed := flagBool(fs, "changed")
 	positional := fs.Args()
 	if len(positional) < 3 {
 		return fmt.Errorf("usage: %s", c.Usage())
@@ -60,7 +60,7 @@ func (c *watchCommand) Run(ctx context.Context, tc *terminal.Context) error {
 		return err
 	}
 
-	period, err := parsePeriod(*interval)
+	period, err := parsePeriod(interval)
 	if err != nil {
 		return err
 	}
@@ -69,22 +69,9 @@ func (c *watchCommand) Run(ctx context.Context, tc *terminal.Context) error {
 	opts := append([]engine.Option{engine.WithContext(ctx)}, c.engineOpts...)
 	client := engine.New("SimVar CLI - Watch", opts...)
 
-	fmt.Fprintf(tc.Stderr, "Connecting to simulator...\n")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err := client.Connect(); err != nil {
-				fmt.Fprintf(tc.Stderr, "Connection failed: %v, retrying in 2s...\n", err)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			goto connected
-		}
+	if err := connectWithRetry(ctx, client, tc.Stderr); err != nil {
+		return err
 	}
-
-connected:
 	defer client.Disconnect()
 
 	defID := nextDefID()
@@ -134,7 +121,7 @@ connected:
 				data := msg.AsSimObjectData()
 				if data != nil && uint32(data.DwRequestID) == reqID {
 					raw := formatValue(&data.DwData, dt)
-					if *changed && raw == lastValue {
+					if changed && raw == lastValue {
 						msg.Release()
 						continue
 					}

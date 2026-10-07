@@ -80,6 +80,10 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 	if it == nil || it.arr == nil {
 		return errors.New("not one of our arrivals")
 	}
+	if it.tcasRA.Load() {
+		// Nothing contrary to an RA the crew flies (FAA JO 7110.65 2-1-28).
+		return errors.New("flying a TCAS RA: no instruction until clear of conflict")
+	}
 	// What it was told, for its card and the map (#443).
 	told, toldAt := "", at
 	defer func() {
@@ -115,7 +119,9 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		if _, _, holding := it.arr.Holding(); holding {
 			return traffic.ErrHolding
 		}
-		q.enterHold(q.cc.clock.Now(), icao, it, e, max(e.Delay, 2*time.Minute))
+		if err := q.enterHold(q.cc.clock.Now(), icao, it, e, max(e.Delay, 2*time.Minute)); err != nil {
+			return err
+		}
 	case "release":
 		h, _, holding := it.arr.Holding()
 		if !holding {
@@ -165,7 +171,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		q.mu.Lock()
 		q.conflictHeld[callsign] = conflictHold{at: q.cc.clock.Now(), manual: true}
 		q.mu.Unlock()
-		it.say(traffic.HoldAt(callsign, name, entry, altFt, q.cc.clock.Now().Add(10*time.Minute)))
+		it.say(traffic.HoldAt(callsign, name, entry, altFt, q.cc.clock.Now().Add(10*time.Minute), q.cc.taOf(icao)))
 		told, toldAt = fmt.Sprintf("hold at %s, %.0f ft", name, altFt), &fix
 		q.cc.log.printf("%-6s approach: hold at %s, %.0f ft (on the map)", callsign, name, altFt)
 	case "slow":

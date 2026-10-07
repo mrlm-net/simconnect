@@ -44,7 +44,9 @@ type SimObjectFuelTruck struct {
 	inj    *Injector
 	title  string
 	reqID  uint32
-	prof   MotionProfile // the aircraft's: its span and main gear
+	// leaveEarly: told to leave before the simulator created it (#96).
+	leaveEarly bool
+	prof       MotionProfile // the aircraft's: its span and main gear
 	// Layout is the airport, for the way from the depot and back (as
 	// SimObjectTug.Layout). nil, or no depot or road: it appears at the
 	// wing and drives off ahead.
@@ -168,7 +170,18 @@ func (f *SimObjectFuelTruck) Handle(msg engine.Message) bool {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if id := uint32(m.DwObjectID); f.objectID != 0 && f.objectID != id {
+		f.err = f.client.AIRemoveObject(id, f.reqID) // a second one from a retry (#90)
+		return true
+	}
 	f.objectID = uint32(m.DwObjectID)
+	if f.leaveEarly || f.done {
+		// Told to leave (or removed) before it existed: it never drives in
+		// (#96: a late truck drove to an aircraft being pushed).
+		f.done = true
+		f.err = f.client.AIRemoveObject(f.objectID, f.reqID)
+		return true
+	}
 	f.err = f.inj.Takeover(f.objectID)
 	return true
 }
@@ -176,6 +189,9 @@ func (f *SimObjectFuelTruck) Handle(msg engine.Message) bool {
 func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.objectID == 0 && leave {
+		f.leaveEarly = true // removed as soon as it appears
+	}
 	if f.done || f.objectID == 0 {
 		return nil
 	}

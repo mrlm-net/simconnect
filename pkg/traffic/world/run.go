@@ -91,18 +91,21 @@ type trafficRaw struct {
 
 // Traffic is one aircraft near the user, served at /api/traffic.
 type Traffic struct {
-	ObjectID    uint32  `json:"objectId"`
-	Title       string  `json:"title"`
-	Tail        string  `json:"tail"`
-	State       string  `json:"state"`
-	Latitude    float64 `json:"lat"`
-	Longitude   float64 `json:"lon"`
-	AGL         float64 `json:"agl"`
-	GroundKts   float64 `json:"groundKts"`
-	Heading     float64 `json:"heading"`
-	VerticalFpm float64 `json:"vs"`
-	OnGround    bool    `json:"onGround"`
-	Gear        float64 `json:"gear"`
+	ObjectID uint32 `json:"objectId"`
+	// Route: one of ours flown by MSFS AI, the way it still flies (its
+	// plan, then its STAR); nil otherwise.
+	Route       []airport.LatLon `json:"route,omitempty"`
+	Title       string           `json:"title"`
+	Tail        string           `json:"tail"`
+	State       string           `json:"state"`
+	Latitude    float64          `json:"lat"`
+	Longitude   float64          `json:"lon"`
+	AGL         float64          `json:"agl"`
+	GroundKts   float64          `json:"groundKts"`
+	Heading     float64          `json:"heading"`
+	VerticalFpm float64          `json:"vs"`
+	OnGround    bool             `json:"onGround"`
+	Gear        float64          `json:"gear"`
 	// Lights lists the lights that are on: L landing, T taxi, S strobe, B beacon, N nav.
 	Lights string `json:"lights"`
 	User   bool   `json:"user"`
@@ -204,6 +207,7 @@ type state struct {
 	separation *sepMonitor    // airborne separation (#395)
 	towers     *towers        // runway controllers (#393)
 	conflicts  *conflictWatch // airborne conflicts and resolutions (#395)
+	tcas       *tcasWatch     // TCAS of ours (#450)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// requests asks the connection to load an airport (load); airways is
@@ -382,6 +386,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	seqs := newSequences(cc, sched)
 	sep := newSepMonitor(cc.log)
 	cw := newConflictWatch(sched)
+	tcw := newTCASWatch(sched)
+	cc.tcasView = tcw.view
 	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
 	seqs.engaged = cw.engaged       // no shortcut undoes a resolution (#785)
 	cc.climbStopped = cw.isStopped
@@ -396,6 +402,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.followed = seqs.behind
 	// A call sign spawned again (a scene replayed): no clearance remembered.
 	cc.forgetTower = tw.forgetTail
+	cc.forgetFlight = func(tail string) { seqs.forget(tail); cw.forget(tail) }
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at
@@ -431,19 +438,20 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 				sep.needed = cc.separationNeeded(air, sched.airports())
 				sep.tick(now, air)
 				cw.tick(now, air)
+				tcw.tick(now, air)
 				tw.tick(now)
 			}
 		}
 	}()
 	st.mu.Lock()
-	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = cc, sched, seqs, sep, tw, cw
+	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts, st.tcas = cc, sched, seqs, sep, tw, cw, tcw
 	st.mu.Unlock()
 
 	st.setLive(true)
 	return func() {
 		close(stop)
 		st.mu.Lock()
-		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts = nil, nil, nil, nil, nil, nil
+		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts, st.tcas = nil, nil, nil, nil, nil, nil, nil
 		st.mu.Unlock()
 		st.setLive(false)
 	}
@@ -657,7 +665,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case icao := <-requests:
-			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
+			fmt.Fprintf(stdout, "🛫 Fetching facility data for %s...\n", icao)
 			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
 			tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
 			if err := loader.Request(icao); err != nil {
@@ -669,16 +677,21 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 		case now := <-tick.C:
 			cc.tick()
+			// The airports around once a minute (#70: ticks never counted, asked
+			// every second, a multi-part list reset half-way).
 			if cc.ticks%60 == 0 {
 				airports.Request()
 			}
-			// Every aircraft within TrafficRadius of the user aircraft.
-			scan = scan[:0]
+			cc.ticks++
+			// Every aircraft within TrafficRadius of the user aircraft; the scan
+			// restarts with its first entry, not here (#81: a reply still coming
+			// in was cut, aircraft vanished for a cycle).
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 			airways.tick(now)
 			for _, r := range navLoader.Expire(now) {
 				feed.ILS(r)
 			}
+			st.core.retryILS(navLoader)
 			for _, res := range loader.Expire(now) {
 				tlog.printf("%s: airport not loaded: %v", res.ICAO, res.Err)
 				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
@@ -687,7 +700,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 		case msg, ok := <-stream:
 			if !ok {
-				fmt.Println("📴 Simulator disconnected")
+				fmt.Fprintln(stdout, "📴 Simulator disconnected")
 				for _, icao := range loader.Pending() {
 					feed.Layout(icao, nil, errors.New("simulator disconnected"))
 				}
@@ -735,10 +748,10 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				} else {
 					l := res.Layout
-					fmt.Printf("🏁 %s %s: %d runways, %d parking, %d taxi points, %d taxi paths, %d names\n",
+					fmt.Fprintf(stdout, "🏁 %s %s: %d runways, %d parking, %d taxi points, %d taxi paths, %d names\n",
 						l.ICAO, l.Name, len(l.Runways), len(l.Parking), len(l.TaxiPoints), len(l.TaxiPaths), len(l.TaxiNames))
 					if l.HasTower {
-						fmt.Printf("🗼 %s tower %.5f, %.5f at %.0f m (airport %.0f m)\n", l.ICAO, l.Tower.Lat, l.Tower.Lon, l.TowerAltitude, l.Altitude)
+						fmt.Fprintf(stdout, "🗼 %s tower %.5f, %.5f at %.0f m (airport %.0f m)\n", l.ICAO, l.Tower.Lat, l.Tower.Lon, l.TowerAltitude, l.Altitude)
 					}
 					if dumpDir != "" {
 						writeDump(dumpDir, res.Raw)
@@ -808,6 +821,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				}
 				vs := derivedFpm(lastPos[id], t.AltFt, now)
 				lastPos[id] = fix{lat: t.Lat, lon: t.Lon, at: now, altFt: t.AltFt, vs: vs}
+				if uint32(d.DwEntryNumber) <= 1 {
+					scan = scan[:0] // a new scan
+				}
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
 					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
@@ -834,7 +850,7 @@ func writeDump(dir string, raw airport.RawAirport) {
 		fmt.Fprintf(os.Stderr, "❌ Dump %s: %v\n", path, err)
 		return
 	}
-	fmt.Printf("💾 Wrote %s\n", path)
+	fmt.Fprintf(stdout, "💾 Wrote %s\n", path)
 }
 
 // ── HTTP side ──────────────────────────────────────────────────────────────
@@ -854,10 +870,30 @@ func (s *state) load(ctx context.Context, icao string, refresh bool, requests ch
 	s.waiters[icao] = append(s.waiters[icao], done)
 	s.mu.Unlock()
 
+	// Given up: no longer waiting, so the next load asks again (#71: a first
+	// waiter cancelled before its request stayed, and the airport could never
+	// be loaded again).
+	leave := func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		ws := s.waiters[icao]
+		for i, w := range ws {
+			if w == done {
+				ws = append(ws[:i:i], ws[i+1:]...)
+				break
+			}
+		}
+		if len(ws) == 0 {
+			delete(s.waiters, icao)
+		} else {
+			s.waiters[icao] = ws
+		}
+	}
 	if first {
 		select {
 		case requests <- icao:
 		case <-ctx.Done():
+			leave()
 			return nil, ctx.Err()
 		}
 	}
@@ -869,6 +905,7 @@ func (s *state) load(ctx context.Context, icao string, refresh bool, requests ch
 		l, _ := s.cache.Layout(icao)
 		return l, nil
 	case <-ctx.Done():
+		leave()
 		return nil, ctx.Err()
 	}
 }
@@ -933,6 +970,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
 	registerReal(mux, st)
+	registerTCAS(mux, st)
 	registerSequence(mux, st)
 	registerSeparation(mux, st)
 	registerRunways(mux, st)
@@ -1118,11 +1156,19 @@ func (w *World) Register(mux *http.ServeMux) {
 		st.mu.Lock()
 		cc := st.control
 		st.mu.Unlock()
+		st.mu.Lock()
+		sched := st.schedule
+		st.mu.Unlock()
+		var routes map[uint32][]airport.LatLon
+		if sched != nil {
+			routes = sched.enrouteRoutes()
+		}
 		if cc != nil {
 			ours, tails := cc.ownIDs(), cc.ownTails()
 			t = append([]Traffic(nil), t...)
 			for i := range t {
 				t[i].Ours = ours[t[i].ObjectID]
+				t[i].Route = routes[t[i].ObjectID] // ours flown by MSFS AI: the way it goes
 				if tail := tails[t[i].ObjectID]; tail != "" {
 					t[i].Tail = tail // our call sign, not the object's first ATC ID
 				}

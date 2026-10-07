@@ -48,22 +48,9 @@ func (c *emitCommand) Run(ctx context.Context, tc *terminal.Context) error {
 	client := engine.New("SimVar CLI - Emit", opts...)
 
 	// Retry connection loop
-	fmt.Fprintf(tc.Stderr, "Connecting to simulator...\n")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err := client.Connect(); err != nil {
-				fmt.Fprintf(tc.Stderr, "Connection failed: %v, retrying in 2s...\n", err)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			goto connected
-		}
+	if err := connectWithRetry(ctx, client, tc.Stderr); err != nil {
+		return err
 	}
-
-connected:
 	defer client.Disconnect()
 
 	// Wait for OPEN message to confirm connection
@@ -100,43 +87,9 @@ ready:
 		return err
 	}
 
-	// Setup notification group for emit
-	if err := client.AddClientEventToNotificationGroup(emitGroupID, mapping.eventID, false); err != nil {
-		return fmt.Errorf("AddClientEventToNotificationGroup: %w", err)
-	}
-	if err := client.SetNotificationGroupPriority(emitGroupID, 1); err != nil {
-		return fmt.Errorf("SetNotificationGroupPriority: %w", err)
-	}
-
-	// Transmit the event
-	if len(dataValues) <= 1 {
-		var data uint32
-		if len(dataValues) == 1 {
-			data = dataValues[0]
-		}
-		if err := client.TransmitClientEvent(
-			types.SIMCONNECT_OBJECT_ID_USER,
-			mapping.eventID,
-			data,
-			emitGroupID,
-			types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
-		); err != nil {
-			return fmt.Errorf("TransmitClientEvent: %w", err)
-		}
-	} else {
-		var dataArray [5]uint32
-		for i, v := range dataValues {
-			dataArray[i] = v
-		}
-		if err := client.TransmitClientEventEx1(
-			types.SIMCONNECT_OBJECT_ID_USER,
-			mapping.eventID,
-			emitGroupID,
-			types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
-			dataArray,
-		); err != nil {
-			return fmt.Errorf("TransmitClientEventEx1: %w", err)
-		}
+	// Transmit the event (at the highest priority: no group to set up)
+	if err := transmitEvent(client, mapping.eventID, dataValues); err != nil {
+		return err
 	}
 
 	// Wait briefly for exception response

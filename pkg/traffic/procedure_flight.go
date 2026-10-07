@@ -255,7 +255,7 @@ func (c *ArrivalController) watchJoin(pos airport.LatLon, m arrivalMonitor) {
 	c.lastRunwayM = d
 	switch {
 	case far == 0:
-	case d > far+MissedJoinNM*1852 && away && c.joinMinM >= 0:
+	case d > far+MissedJoinNM*1852+swingMeters(m.GroundKts) && away && c.joinMinM >= 0:
 		c.last.MissedJoin = fmt.Sprintf("off its route: %.1f NM from the runway, its route %.1f NM at most; heading %03.0f, %.0f ft, %.0f kt",
 			d/1852, far/1852, m.Heading, m.AltFt, m.GroundKts)
 		c.joinMinM = -1
@@ -335,4 +335,12 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
 		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds}
 	c.note("joined the final: injected approach", nil)
+}
+
+// swingMeters is the radius of a turn at kts with MSFS AI's bank
+// (TurnBankDeg): how wide a fast aircraft swings out of a turn without
+// being off its route.
+func swingMeters(kts float64) float64 {
+	v := kts * 1852 / 3600
+	return v * v / (9.80665 * math.Tan(TurnBankDeg*math.Pi/180))
 }

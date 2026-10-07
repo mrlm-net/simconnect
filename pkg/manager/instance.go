@@ -83,6 +83,15 @@ type Instance struct {
 	// Custom system events
 	customSystemEvents map[string]*instance.CustomSystemEvent
 	customEventIDAlloc uint32
+	// customEventSubs are the subscriptions SubscribeToCustomSystemEvent
+	// returned per event, closed when it is unsubscribed (review #30)
+	customEventSubs map[string][]*subscription
+	// connGen counts the engines (connections) made, guarded by mu: what was
+	// subscribed on the current one is not subscribed again on its OPEN
+	connGen uint64
+	// userSubs records the pass-through subscriptions for
+	// Config.ResubscribeOnReconnect (E10)
+	userSubs userSubs
 
 	// Request tracking
 	requestRegistry *RequestRegistry // Tracks active SimConnect requests for correlation with responses
@@ -92,23 +101,23 @@ type Instance struct {
 	subsBuf     []*subscription
 
 	// Pre-allocated buffers to reduce GC pressure (reused per notification)
-	stateHandlersBuf                     []ConnectionStateChangeHandler
-	simStateHandlersBuf                  []SimStateChangeHandler
-	openHandlersBuf                      []ConnectionOpenHandler
-	quitHandlersBuf                      []ConnectionQuitHandler
-	crashedHandlersBuf                   []CrashedHandler
-	crashResetHandlersBuf                []CrashResetHandler
-	soundEventHandlersBuf                []SoundEventHandler
-	viewHandlersBuf                      []ViewHandler
-	flightPlanDeactivatedHandlersBuf     []FlightPlanDeactivatedHandler
-	pauseHandlersBuf                     []PauseHandler
-	simRunningHandlersBuf                []SimRunningHandler
-	flightLoadedHandlersBuf              []FlightLoadedHandler
-	objectChangeHandlersBuf              []ObjectChangeHandler
-	stateSubsBuf                         []*connectionStateSubscription
-	simStateSubsBuf                      []*simStateSubscription
-	openSubsBuf                          []*connectionOpenSubscription
-	quitSubsBuf                          []*connectionQuitSubscription
+	stateHandlersBuf                 []ConnectionStateChangeHandler
+	simStateHandlersBuf              []SimStateChangeHandler
+	openHandlersBuf                  []ConnectionOpenHandler
+	quitHandlersBuf                  []ConnectionQuitHandler
+	crashedHandlersBuf               []CrashedHandler
+	crashResetHandlersBuf            []CrashResetHandler
+	soundEventHandlersBuf            []SoundEventHandler
+	viewHandlersBuf                  []ViewHandler
+	flightPlanDeactivatedHandlersBuf []FlightPlanDeactivatedHandler
+	pauseHandlersBuf                 []PauseHandler
+	simRunningHandlersBuf            []SimRunningHandler
+	flightLoadedHandlersBuf          []FlightLoadedHandler
+	objectChangeHandlersBuf          []ObjectChangeHandler
+	stateSubsBuf                     []*connectionStateSubscription
+	simStateSubsBuf                  []*simStateSubscription
+	openSubsBuf                      []*connectionOpenSubscription
+	quitSubsBuf                      []*connectionQuitSubscription
 
 	// Current engine instance (recreated on each connection)
 	engine *engine.Engine

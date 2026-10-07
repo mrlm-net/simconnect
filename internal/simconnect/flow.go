@@ -12,7 +12,7 @@ import "fmt"
 //
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_SubscribeToFlowEvent.htm
 func (sc *SimConnect) SubscribeToFlowEvent() error {
-	procedure := sc.library.LoadProcedure("SimConnect_SubscribeToFlowEvent")
+	procedure := sc.proc("SimConnect_SubscribeToFlowEvent")
 
 	hresult, _, _ := procedure.Call(sc.getConnection())
 
@@ -29,7 +29,7 @@ func (sc *SimConnect) SubscribeToFlowEvent() error {
 //
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Events_And_Data/SimConnect_UnsubscribeToFlowEvent.htm
 func (sc *SimConnect) UnsubscribeFromFlowEvent() error {
-	procedure := sc.library.LoadProcedure("SimConnect_UnsubscribeToFlowEvent")
+	procedure := sc.proc("SimConnect_UnsubscribeToFlowEvent")
 
 	hresult, _, _ := procedure.Call(sc.getConnection())
 

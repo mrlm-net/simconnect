@@ -15,7 +15,7 @@ func (sc *SimConnect) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) 
 	var ppData uintptr
 	var pcbData uint32
 
-	procedure := sc.library.LoadProcedure("SimConnect_GetNextDispatch")
+	procedure := sc.proc("SimConnect_GetNextDispatch")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(),        // hSimConnect

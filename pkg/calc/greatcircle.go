@@ -10,7 +10,7 @@ func IntermediatePoint(lat1, lon1, lat2, lon2, f float64) (lat, lon float64) {
 	φ1, λ1 := lat1*math.Pi/180, lon1*math.Pi/180
 	φ2, λ2 := lat2*math.Pi/180, lon2*math.Pi/180
 	// The angular distance between the two points.
-	δ := 2 * math.Asin(math.Sqrt(math.Pow(math.Sin((φ2-φ1)/2), 2)+math.Cos(φ1)*math.Cos(φ2)*math.Pow(math.Sin((λ2-λ1)/2), 2)))
+	δ := 2 * math.Asin(math.Sqrt(clamp01(math.Pow(math.Sin((φ2-φ1)/2), 2)+math.Cos(φ1)*math.Cos(φ2)*math.Pow(math.Sin((λ2-λ1)/2), 2))))
 	if δ == 0 {
 		return lat1, lon1
 	}

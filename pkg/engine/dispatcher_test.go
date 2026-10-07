@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/internal/simconnect"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -77,5 +78,62 @@ func TestDispatchBacksOffAndGivesUpOnErrors(t *testing.T) {
 	}
 	if n := api.calls.Load(); n != maxErrorsInRow {
 		t.Errorf("%d calls", n)
+	}
+}
+
+// scriptedAPI answers GetNextDispatch with its messages, then nothing.
+type scriptedAPI struct {
+	simconnect.API
+	msgs [][]byte
+}
+
+func (s *scriptedAPI) SubscribeToSystemEvent(uint32, string) error { return errors.New("refused") }
+func (s *scriptedAPI) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) {
+	if len(s.msgs) == 0 {
+		return nil, 0, nil
+	}
+	m := s.msgs[0]
+	s.msgs = s.msgs[1:]
+	if len(m) == 0 {
+		return (*types.SIMCONNECT_RECV)(unsafe.Pointer(&s.msgs)), 0, nil // non-nil, size 0
+	}
+	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(&m[0])), uint32(len(m)), nil
+}
+
+func recvBytes(id types.SIMCONNECT_RECV_ID) []byte {
+	r := types.SIMCONNECT_RECV{DwSize: 12, DwID: types.DWORD(id)}
+	return append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(&r)), 12)...)
+}
+
+// A QUIT with a full queue nobody reads: Disconnect's cancel still ends the
+// dispatcher (it hung on a bare send).
+func TestDispatchQuitOnFullQueueEndsOnCancel(t *testing.T) {
+	api := &scriptedAPI{msgs: [][]byte{recvBytes(types.SIMCONNECT_RECV_ID_OPEN), recvBytes(types.SIMCONNECT_RECV_ID_QUIT)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	e := &Engine{api: api, ctx: ctx, cancel: cancel, config: &Config{Heartbeat: HEARTBEAT_6HZ},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), queue: make(chan Message, 1)}
+	e.dispatch()
+	time.Sleep(50 * time.Millisecond) // OPEN fills the queue, QUIT waits
+	done := make(chan struct{})
+	go func() { e.cancel(); e.sync.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the dispatcher did not stop")
+	}
+}
+
+// An empty message is dropped, not indexed (it panicked), and a refused
+// heartbeat subscription does not stop the stream.
+func TestDispatchDropsEmptyMessage(t *testing.T) {
+	api := &scriptedAPI{msgs: [][]byte{{}, recvBytes(types.SIMCONNECT_RECV_ID_QUIT)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e := &Engine{api: api, ctx: ctx, cancel: cancel, config: &Config{Heartbeat: HEARTBEAT_6HZ},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), queue: make(chan Message, 8)}
+	e.dispatch()
+	got, closed := drain(e, 2*time.Second)
+	if !closed || len(got) != 1 || types.SIMCONNECT_RECV_ID(got[0].DwID) != types.SIMCONNECT_RECV_ID_QUIT {
+		t.Fatalf("closed %v, %d messages", closed, len(got))
 	}
 }

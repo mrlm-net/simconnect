@@ -22,16 +22,17 @@ func (e *Engine) GetInputEvent(requestID uint32, hash uint64) error {
 // SetInputEventDouble sets a DOUBLE-typed input event value.
 // The float64 is stack-allocated; its address is valid for the duration of the synchronous DLL call.
 func (e *Engine) SetInputEventDouble(hash uint64, value float64) error {
-	return e.api.SetInputEvent(hash, unsafe.Pointer(&value))
+	return e.api.SetInputEvent(hash, uint32(unsafe.Sizeof(value)), unsafe.Pointer(&value))
 }
 
 // SetInputEventString sets a STRING-typed input event value.
 // value is copied into a 260-byte null-terminated buffer. Strings longer than 259
 // bytes are silently truncated to 259 bytes to preserve the null terminator at buf[259].
+// The size passed is the string's length plus its terminator.
 func (e *Engine) SetInputEventString(hash uint64, value string) error {
 	var buf [260]byte
-	copy(buf[:259], value) // reserve buf[259] as null terminator
-	return e.api.SetInputEvent(hash, unsafe.Pointer(&buf[0]))
+	n := copy(buf[:259], value) // reserve buf[259] as null terminator
+	return e.api.SetInputEvent(hash, uint32(n+1), unsafe.Pointer(&buf[0]))
 }
 
 func (e *Engine) SubscribeInputEvent(hash uint64) error {

@@ -134,6 +134,14 @@ func (s *SimObjectStairs) Handle(msg engine.Message) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Removed before it existed, or a second one from a retry: away at once (#90).
+	if id := uint32(m.DwObjectID); s.done || s.objectID != 0 && s.objectID != id {
+		if s.objectID == 0 {
+			s.objectID = id
+		}
+		s.err = s.client.AIRemoveObject(id, s.reqID)
+		return true
+	}
 	s.objectID = uint32(m.DwObjectID)
 	s.err = s.inj.Takeover(s.objectID)
 	return true

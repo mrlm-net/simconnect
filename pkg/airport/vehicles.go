@@ -4,7 +4,9 @@ import (
 	"container/heap"
 	"errors"
 	"math"
+	"runtime"
 	"sync"
+	"weak"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -41,10 +43,14 @@ type vehicleGraph struct {
 	roads [][2]int // the vehicle road segments (VEHICLE, ROAD)
 }
 
-var vehicleGraphs sync.Map // *Layout -> *vehicleGraph
+// vehicleGraphs caches each layout's vehicle graph, keyed weakly: an entry
+// goes when its layout is collected (E18: layouts loaded again, e.g. after
+// a reconnect, piled up for good).
+var vehicleGraphs sync.Map // weak.Pointer[Layout] -> *vehicleGraph
 
 func (l *Layout) vehicleGraph() *vehicleGraph {
-	if g, ok := vehicleGraphs.Load(l); ok {
+	key := weak.Make(l)
+	if g, ok := vehicleGraphs.Load(key); ok {
 		return g.(*vehicleGraph)
 	}
 	np := len(l.TaxiPoints)
@@ -85,7 +91,10 @@ func (l *Layout) vehicleGraph() *vehicleGraph {
 			g.roads = append(g.roads, [2]int{a, b})
 		}
 	}
-	got, _ := vehicleGraphs.LoadOrStore(l, g)
+	got, loaded := vehicleGraphs.LoadOrStore(key, g)
+	if !loaded {
+		runtime.AddCleanup(l, func(k weak.Pointer[Layout]) { vehicleGraphs.Delete(k) }, key)
+	}
 	return got.(*vehicleGraph)
 }
 

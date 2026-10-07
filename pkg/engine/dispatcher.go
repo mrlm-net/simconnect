@@ -14,30 +14,32 @@ import (
 )
 
 // Tiered byte pools reduce GC pressure by reusing byte slices for message copying.
-// Messages are pooled in size-appropriate tiers to minimize waste.
+// Messages are pooled in size-appropriate tiers to minimize waste. The pools
+// hold *[]byte: putting a slice header into an interface would allocate on
+// every Put.
 var (
-	pool4KB  = sync.Pool{New: func() any { return make([]byte, 4*1024) }}
-	pool16KB = sync.Pool{New: func() any { return make([]byte, 16*1024) }}
-	pool64KB = sync.Pool{New: func() any { return make([]byte, 64*1024) }}
+	pool4KB  = sync.Pool{New: func() any { b := make([]byte, 4*1024); return &b }}
+	pool16KB = sync.Pool{New: func() any { b := make([]byte, 16*1024); return &b }}
+	pool64KB = sync.Pool{New: func() any { b := make([]byte, 64*1024); return &b }}
 )
 
 // getPooledSlice returns a byte slice from the appropriate pool tier and a release function.
 // For sizes > 64KB, allocates a fresh slice without pooling to prevent memory bloat.
 func getPooledSlice(size uint32) ([]byte, func()) {
+	var pool *sync.Pool
 	switch {
 	case size <= 4*1024:
-		s := pool4KB.Get().([]byte)
-		return s[:size], func() { pool4KB.Put(s) }
+		pool = &pool4KB
 	case size <= 16*1024:
-		s := pool16KB.Get().([]byte)
-		return s[:size], func() { pool16KB.Put(s) }
+		pool = &pool16KB
 	case size <= 64*1024:
-		s := pool64KB.Get().([]byte)
-		return s[:size], func() { pool64KB.Put(s) }
+		pool = &pool64KB
 	default:
 		// No pooling for very large messages to prevent memory bloat
 		return make([]byte, size), func() {}
 	}
+	p := pool.Get().(*[]byte)
+	return (*p)[:size], func() { pool.Put(p) }
 }
 
 // Adaptive polling constants for exponential backoff
@@ -69,7 +71,11 @@ func (e *Engine) closeQueue() {
 func (e *Engine) dispatch() error {
 	e.logger.Debug("[dispatcher] Starting dispatcher goroutine")
 	// Subscribe to a system event to receive regular updates about the simulator connection state
-	e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), string(e.config.Heartbeat)) // SimConnect_SystemState_6Hz
+	// SimConnect_SystemState_6Hz. Messages still flow without it, so a
+	// failure is logged, not fatal.
+	if err := e.api.SubscribeToSystemEvent(uint32(HEARTBEAT_EVENT_ID), string(e.config.Heartbeat)); err != nil {
+		e.logger.Warn("[dispatcher] Heartbeat subscription failed", "heartbeat", e.config.Heartbeat, "error", err)
+	}
 	e.sync.Go(func() {
 		defer func() {
 			e.logger.Debug("[dispatcher] Exiting dispatcher goroutine")
@@ -133,6 +139,13 @@ func (e *Engine) dispatch() error {
 				// Reset sleep duration on activity
 				sleepDuration = minSleep
 
+				// Shorter than a SIMCONNECT_RECV header: nothing to read
+				// (and &dataCopy[0] would panic on an empty buffer).
+				if size < uint32(unsafe.Sizeof(types.SIMCONNECT_RECV{})) {
+					e.logger.Warn("[dispatcher] Message too short, dropped", "size", size)
+					continue
+				}
+
 				// Copy the received message using tiered pooling
 				dataCopy, release := getPooledSlice(size)
 				copy(dataCopy, unsafe.Slice((*byte)(unsafe.Pointer(recv)), size))
@@ -157,8 +170,14 @@ func (e *Engine) dispatch() error {
 
 				if recvID == types.SIMCONNECT_RECV_ID_QUIT {
 					e.logger.Debug("[dispatcher] Received SIMCONNECT_RECV_ID_QUIT, simulator is closing the connection")
-					// Send message that simulator is quitting
-					e.queue <- newMessage(recvCopy, size, err, dataCopy, release)
+					// Send message that simulator is quitting; a full queue
+					// nobody reads must not hang Disconnect, so the context
+					// ends the wait.
+					select {
+					case e.queue <- newMessage(recvCopy, size, err, dataCopy, release):
+					case <-e.ctx.Done():
+						release()
+					}
 					e.cancel()
 					return // closeQueue called by defer
 				}

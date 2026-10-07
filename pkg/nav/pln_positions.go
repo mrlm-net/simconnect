@@ -28,6 +28,7 @@ type PLNResolver struct {
 	queue     []FixKey
 	waiting   map[FixKey][]int // a fix → the waypoints at it
 	missing   []string
+	err       error // the first request that could not be sent
 }
 
 // NewPLNResolver resolves plan's positions with loader (NewNavLoader on the
@@ -85,17 +86,31 @@ func (r *PLNResolver) Start() error {
 	return r.next()
 }
 
-// next requests queued fixes while the loader has room.
+// next requests queued fixes while the loader has room. A fix that cannot
+// be requested is missing (no answer would ever come for it, #47); the
+// first such error is returned and kept for Err.
 func (r *PLNResolver) next() error {
+	var first error
 	for len(r.queue) > 0 && r.loader.Free() > 0 {
 		k := r.queue[0]
 		r.queue = r.queue[1:]
 		if err := r.loader.Request(k); err != nil {
-			return err
+			delete(r.waiting, k)
+			r.missing = append(r.missing, k.String())
+			if first == nil {
+				first = err
+			}
 		}
 	}
-	return nil
+	if r.err == nil {
+		r.err = first
+	}
+	return first
 }
+
+// Err returns the first error sending a request: those fixes are listed
+// in Missing.
+func (r *PLNResolver) Err() error { return r.err }
 
 // Handle feeds msg to the loader; true when it was the loader's.
 func (r *PLNResolver) Handle(msg engine.Message) bool {
@@ -128,7 +143,7 @@ func (r *PLNResolver) take(res NavResult) {
 	if !res.Found {
 		r.missing = append(r.missing, res.Key.String())
 	}
-	r.next()
+	_ = r.next() // a failure is kept in r.err, its fixes missing
 }
 
 // Done reports whether every fix has been answered (found or not).

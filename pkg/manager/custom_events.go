@@ -59,16 +59,7 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 	if ce, exists := m.customSystemEvents[eventName]; exists {
 		eventID := ce.ID
 		m.mu.Unlock()
-		// Create filtered subscription outside lock to avoid deadlock
-		// (SubscribeWithFilter also acquires mu.Lock)
-		filter := func(msg engine.Message) bool {
-			if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
-				return false
-			}
-			ev := msg.AsEvent()
-			return ev != nil && ev.UEventID == types.DWORD(eventID)
-		}
-		return m.SubscribeWithFilter(customSubscriptionID(eventName), bufferSize, filter), nil
+		return m.customEventSubscription(eventName, eventID, bufferSize)
 	}
 
 	// Connected first: an ID allocated while disconnected would be lost (#405)
@@ -96,13 +87,21 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 		Name:     eventName,
 		ID:       eventID,
 		Handlers: []instance.CustomSystemEventHandlerEntry{},
+		Conn:     m.connGen,
 	}
 
 	m.logger.Debug("[manager] Subscribed to custom system event", "event", eventName, "id", eventID)
 	m.mu.Unlock()
 
-	// Create filtered subscription outside lock to avoid deadlock
-	// (SubscribeWithFilter also acquires mu.Lock)
+	return m.customEventSubscription(eventName, eventID, bufferSize)
+}
+
+// customEventSubscription is a filtered subscription for the custom event
+// eventName with eventID, recorded with the event so that
+// UnsubscribeFromCustomSystemEvent closes it (review #30). It is created
+// outside m.mu (SubscribeWithFilter takes it); an event unsubscribed in the
+// meantime closes it at once.
+func (m *Instance) customEventSubscription(eventName string, eventID uint32, bufferSize int) (Subscription, error) {
 	filter := func(msg engine.Message) bool {
 		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_EVENT {
 			return false
@@ -110,30 +109,60 @@ func (m *Instance) SubscribeToCustomSystemEvent(eventName string, bufferSize int
 		ev := msg.AsEvent()
 		return ev != nil && ev.UEventID == types.DWORD(eventID)
 	}
-	return m.SubscribeWithFilter(customSubscriptionID(eventName), bufferSize, filter), nil
+	sub := m.SubscribeWithFilter(customSubscriptionID(eventName), bufferSize, filter)
+	m.mu.Lock()
+	ce, exists := m.customSystemEvents[eventName]
+	if !exists || ce.ID != eventID {
+		m.mu.Unlock()
+		sub.Unsubscribe()
+		return nil, ErrCustomEventNotFound
+	}
+	// drop the ones already closed, so the list does not grow
+	live := m.customEventSubs[eventName][:0]
+	for _, s := range m.customEventSubs[eventName] {
+		if !s.closed.Load() {
+			live = append(live, s)
+		}
+	}
+	m.customEventSubs[eventName] = append(live, sub.(*subscription))
+	m.mu.Unlock()
+	return sub, nil
 }
 
 // UnsubscribeFromCustomSystemEvent unsubscribes from a custom system event.
+// Its ID is free for another event, and the subscriptions
+// SubscribeToCustomSystemEvent returned for it are closed (their Done
+// channels close): they would never get a message again, or worse, get the
+// events of the next custom event given the same ID (review #30).
 func (m *Instance) UnsubscribeFromCustomSystemEvent(eventName string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	ce, exists := m.customSystemEvents[eventName]
 	if !exists {
+		m.mu.Unlock()
 		return ErrCustomEventNotFound
 	}
 
 	// Unsubscribe via engine
 	if m.engine != nil {
 		if err := m.engine.UnsubscribeFromSystemEvent(ce.ID); err != nil {
+			m.mu.Unlock()
 			return fmt.Errorf("manager: failed to unsubscribe from custom system event '%s': %w", eventName, err)
 		}
 	}
 
-	// Remove from map
+	// Remove from map: its ID is free again
 	delete(m.customSystemEvents, eventName)
+	subs := m.customEventSubs[eventName]
+	delete(m.customEventSubs, eventName)
 
 	m.logger.Debug("[manager] Unsubscribed from custom system event", "event", eventName, "id", ce.ID)
+	m.mu.Unlock()
+
+	// Closed outside the lock: Unsubscribe takes m.mu
+	for _, s := range subs {
+		s.Unsubscribe()
+	}
 	return nil
 }
 
@@ -183,12 +212,28 @@ func (m *Instance) RemoveCustomSystemEvent(eventName string, handlerID string) e
 // allocateCustomEventIDLocked allocates the next available custom event ID.
 // Must be called with m.mu held.
 func (m *Instance) allocateCustomEventIDLocked() (uint32, error) {
-	if m.customEventIDAlloc > CustomEventIDMax {
-		return 0, ErrCustomEventIDExhausted
+	// The next ID no custom event holds, from customEventIDAlloc round the
+	// range: IDs of unsubscribed events are used again (review #30, they
+	// were never freed). Round the range, not lowest first: a freed ID comes
+	// back late, so a late event of the old one hardly reaches a new one.
+	used := make(map[uint32]bool, len(m.customSystemEvents))
+	for _, ce := range m.customSystemEvents {
+		used[ce.ID] = true
 	}
-	id := m.customEventIDAlloc
-	m.customEventIDAlloc++
-	return id, nil
+	n := CustomEventIDMax - CustomEventIDMin + 1
+	next := m.customEventIDAlloc
+	for i := uint32(0); i < n; i++ {
+		if next < CustomEventIDMin || next > CustomEventIDMax {
+			next = CustomEventIDMin
+		}
+		id := next
+		next++
+		if !used[id] {
+			m.customEventIDAlloc = next
+			return id, nil
+		}
+	}
+	return 0, ErrCustomEventIDExhausted
 }
 
 // customSubscriptionID is a new subscription ID for eventName: each

@@ -17,7 +17,7 @@ func (sc *SimConnect) AICreateSimulatedObject(szContainerTitle string, initPos t
 		return fmt.Errorf("failed to convert container title to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateSimulatedObject")
+	procedure := sc.proc("SimConnect_AICreateSimulatedObject")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(unsafe.Pointer(szContainerTitlePtr)),
@@ -33,7 +33,7 @@ func (sc *SimConnect) AICreateSimulatedObject(szContainerTitle string, initPos t
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/AI_Object/SimConnect_AIReleaseControl.htm
 func (sc *SimConnect) AIReleaseControl(objectID uint32, requestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_AIReleaseControl")
+	procedure := sc.proc("SimConnect_AIReleaseControl")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -50,7 +50,7 @@ func (sc *SimConnect) AIReleaseControl(objectID uint32, requestID uint32) error 
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/AI_Object/SimConnect_AIRemoveObject.htm
 func (sc *SimConnect) AIRemoveObject(objectID uint32, requestID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_AIRemoveObject")
+	procedure := sc.proc("SimConnect_AIRemoveObject")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -66,7 +66,7 @@ func (sc *SimConnect) AIRemoveObject(objectID uint32, requestID uint32) error {
 
 // https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/AI_Object/SimConnect_EnumerateSimObjectsAndLiveries.htm
 func (sc *SimConnect) EnumerateSimObjectsAndLiveries(requestID uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
-	procedure := sc.library.LoadProcedure("SimConnect_EnumerateSimObjectsAndLiveries")
+	procedure := sc.proc("SimConnect_EnumerateSimObjectsAndLiveries")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(requestID),
@@ -88,7 +88,7 @@ func (sc *SimConnect) AICreateSimulatedObjectEX1(szContainerTitle string, szLive
 	if err != nil {
 		return fmt.Errorf("failed to convert livery to byte pointer: %w", err)
 	}
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateSimulatedObject_EX1")
+	procedure := sc.proc("SimConnect_AICreateSimulatedObject_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle

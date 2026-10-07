@@ -38,25 +38,25 @@ func (c *listCommand) Flags() *flag.FlagSet {
 }
 
 func (c *listCommand) Run(ctx context.Context, tc *terminal.Context) error {
-	// Re-parse flags from tc.Args (CURE pre-strips global flags; tc.Args = subcommand args).
-	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	category := fs.String("category", "", "")
-	search := fs.String("search", "", "")
-	if err := fs.Parse(tc.Args); err != nil {
+	// CURE parses the flags (Flags): their values are in tc.Flags.
+	fs, err := commandFlags(c, tc)
+	if err != nil {
 		return err
 	}
+	category := flagString(fs, "category")
+	search := flagString(fs, "search")
 
 	// Fetch entries — ByCategory when a category is given, otherwise all.
 	var entries []registry.SimVarMeta
-	if *category != "" {
-		entries = registry.ByCategory(*category)
+	if category != "" {
+		entries = registry.ByCategory(category)
 	} else {
 		entries = registry.All()
 	}
 
 	// Apply search filter (case-insensitive substring on Name and Description).
-	if *search != "" {
-		q := strings.ToLower(*search)
+	if search != "" {
+		q := strings.ToLower(search)
 		filtered := entries[:0]
 		for _, sv := range entries {
 			if strings.Contains(strings.ToLower(sv.Name), q) ||

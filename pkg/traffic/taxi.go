@@ -542,6 +542,14 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Cancelled while the simulator was still creating it: removed when it
+	// comes after all (#89).
+	if c.state == TaxiCancelled && c.objectID == 0 && types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+		if m := msg.AsAssignedObjectID(); uint32(m.DwRequestID) == c.reqBase+reqOffSpawn {
+			c.note("removed: created after the cancel", c.fleet.Remove(uint32(m.DwObjectID), c.reqBase+reqOffRemove))
+			return true
+		}
+	}
 	if c.state == TaxiIdle || c.state.Terminal() {
 		return false
 	}

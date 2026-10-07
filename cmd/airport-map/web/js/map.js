@@ -285,7 +285,9 @@ function tagFor(t) {
   else if (t.onGround) line = `${t.groundKts.toFixed(0)} kt`;
   else line = `${t.groundKts.toFixed(0)} kt <i>·</i> ${t.agl.toFixed(0)} ft`;
   const v = t.ours ? ctlViews.find((x) => x.tail === t.tail && !x.done) : null;
-  return `<b>${vsArrow(t)}${cs}</b>${v && v.rules === 'VFR' ? ' <span class="rules rules--v">VFR</span>' : ''}<br>${line}`;
+  // TCAS (#450): a TA in amber, an RA in red with its sense.
+  const tc = v && v.tcas ? `<br><span class="tcas tcas--${v.tcas.advisory === 'RA' ? 'ra' : 'ta'}">${v.tcas.advisory}${v.tcas.sense > 0 ? ' ↑' : v.tcas.sense < 0 ? ' ↓' : ''} ${esc(v.tcas.intruder || '')}</span>` : '';
+  return `<b>${vsArrow(t)}${cs}</b>${v && v.rules === 'VFR' ? ' <span class="rules rules--v">VFR</span>' : ''}<br>${line}${tc}`;
 }
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
 const KIND_NOTE = { enroute: 'arrival en route (MSFS AI on its plan, handed over at the STAR entry)', overflight: 'overflight (MSFS AI on its plan, crossing the area)', departed: 'departed (MSFS AI on its plan after the SID)', controlled: 'under our control', other: 'other traffic (not ours)' };
@@ -359,9 +361,17 @@ function aircraftClicked(objectId) {
   const v = t.ours && ctlViews.find((x) => x.tail === t.tail && !x.done);
   if (v) { select(v.id); return; }
   popupFor = objectId;
+  // Ours flown by MSFS AI: the way it still flies, while its popup is open
+  // (an arrival's way to its STAR looked like flying wrongly).
+  popupRoute.clearLayers();
+  if (t.route && t.route.length) {
+    L.polyline([[t.lat, t.lon], ...t.route.map((q) => [q.lat, q.lon])], { className: 'm-air', interactive: false }).addTo(popupRoute);
+    popupRoute.addTo(map);
+  }
   L.popup({ offset: [0, -8] }).setLatLng([t.lat, t.lon]).setContent(trafficDetail(t)).openOn(map);
 }
-map.on('popupclose', () => { popupFor = 0; });
+const popupRoute = L.layerGroup();
+map.on('popupclose', () => { popupFor = 0; popupRoute.clearLayers(); });
 // Highlight the selected aircraft at once, without waiting for a poll.
 function refreshSelection() {
   const selTail = selectedTail();

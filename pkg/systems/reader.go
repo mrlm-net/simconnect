@@ -100,6 +100,9 @@ func (r *Reader) Request(period types.SIMCONNECT_PERIOD) error {
 		if r.defined {
 			_ = r.client.ClearDataDefinition(r.defID)
 		}
+		// Defined (in part, if a variable fails): cleared before the next
+		// try, not added to (#25).
+		r.defined = true
 		for i, v := range r.vars {
 			if err := r.client.AddToDataDefinition(r.defID, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 				return fmt.Errorf("systems: define %s: %w", v.name, err)
@@ -116,12 +119,17 @@ func (r *Reader) Handle(msg engine.Message) (State, bool) {
 		return State{}, false
 	}
 	d := msg.AsSimObjectData()
-	if uint32(d.DwRequestID) != r.reqID {
+	if d == nil || uint32(d.DwRequestID) != r.reqID {
 		return State{}, false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	n := len(r.vars)
+	// Data of the definition as it is now: not the last profile's, still
+	// coming after a switch (Use) until the next Request (#25).
+	if !r.ready || uint32(d.DwDefineID) != r.defID || int(d.DwDefineCount) != n {
+		return State{}, false
+	}
 	// The data after the header: n FLOAT64s, as defined.
 	header := uint32(unsafe.Offsetof(d.DwData))
 	if n == 0 || msg.Size < header+uint32(8*n) {

@@ -387,6 +387,19 @@ For example, a 90° turn from B1 onto H at a junction costs 50 + 40 = 90 m of ta
 
 **Fit.** With `HalfSpan` set, an edge is used only if its clearance is at least the half-span plus `DefaultWingtipMargin` (3 m). The aircraft's own stands do not count as obstacles. The edge is also refused if the taxiway's span limit is exceeded (`KnownTaxiwayMaxSpan`). If no route fits, the search runs again without the check and the route is marked `Tight`. A custom route (`Via`, `Taxiways`) returns `ErrTooNarrow` instead.
 
+**Round aircraft in the way** (`RouteOptions.Occupied`, `occupied.go`). A departure cleared to push, pushing, or pushed back and waiting for its taxi takes a place on the taxiways: its push path still ahead, or where it stands (`TaxiController.Occupies`). A route search with `Occupied` refuses every edge that comes within both half-spans plus `DefaultWingtipMargin` (3 m) of one, since the two wings could not pass. If no route keeps clear, the search runs again without them and marks the route `Occupied`. The rule is the same at every airport; the span limits decide who has a way round.
+
+The map checks this each second when the places taken change (`keepClear`, `pkg/traffic/world/keepclear.go`), and once more just before a taxi clearance is said. A taxiing aircraft whose route ahead passes a place too near is re-planned (`ArrivalController.AvoidOccupied`, `TaxiController.AvoidOccupied`), but only when all of these hold:
+
+- the new route keeps clear and still fits the aircraft;
+- it crosses the same runways;
+- no clearance limit or custom route is set;
+- the user does not control the aircraft (Manual).
+
+Ground then says the new route from where the aircraft is. An arrival turns off at a route node beyond its stopping distance plus 10 m (`avoidTurnMeters`). Without a new route it keeps its route and gives way as before.
+
+At LKPR a B738 pushed from C19 onto JB leaves J beside it too narrow: a CRJ on J to C18 goes "J, JO, J" and passes 43 m from it. A wide-body has no way round, because JO's 36 m span limit keeps it off JO, so it keeps J and waits.
+
 **Which holding point** (`runwayRoute`). Runway holding points are preferred over ILS holds; ILS holds are used only when no runway hold is reachable. Among the holds within `DefaultIntersectionTolerance` (300 m, measured along the runway) of the one nearest the threshold, the one with the cheapest route wins.
 
 **Entries** (`entries.go`). The entries onto a runway end are the exits of the opposite end, driven backwards. Those needing a turn of more than `MaxEntryAngle` (135°) onto the runway are left out. Entries within `FullLengthMeters` (150 m) of the threshold count as full length. "24 at B" takes the reachable entry named B with the most runway ahead.

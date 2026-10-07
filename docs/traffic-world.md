@@ -91,6 +91,39 @@ Each kind of flight shows as real:
 
 A parked aircraft keeps the call sign it was spawned with when its departure is seen under another.
 
+## TCAS (v0.24)
+
+Each of the World's airborne aircraft carries TCAS II (#450). It watches every aircraft within 12 NM: the World's own, the user's and other traffic. When the test is met it gives a traffic advisory (TA) or a resolution advisory (RA): `traffic.Evaluate`, then `traffic.SelectRA`.
+
+The thresholds come from the FAA's *Introduction to TCAS II Version 7.1* (2011), Table 2:
+
+| Own altitude | SL | TA tau (s) | RA tau (s) | TA DMOD (NM) | RA DMOD (NM) | TA ZTHR (ft) | RA ZTHR (ft) | ALIM (ft) |
+|---|---|---|---|---|---|---|---|---|
+| < 1000 ft AGL | 2 | 20 | — | 0.30 | — | 850 | — | — |
+| 1000–2350 ft AGL | 3 | 25 | 15 | 0.33 | 0.20 | 850 | 600 | 300 |
+| 2350–5000 ft | 4 | 30 | 20 | 0.48 | 0.35 | 850 | 600 | 300 |
+| 5000–10000 ft | 5 | 40 | 25 | 0.75 | 0.55 | 850 | 600 | 350 |
+| 10000–20000 ft | 6 | 45 | 30 | 1.00 | 0.80 | 850 | 600 | 400 |
+| 20000–42000 ft | 7 | 48 | 35 | 1.30 | 1.10 | 850 | 700 | 600 |
+| > 42000 ft | 7 | 48 | 35 | 1.30 | 1.10 | 1200 | 800 | 700 |
+
+How an advisory is decided and flown:
+- **Advisory:** given when both the range test and the vertical test pass. The range test is the range tau, modified towards DMOD at slow closure. The vertical test is the vertical tau, or within ZTHR.
+- **Inhibits:** no RA below 1000 ft AGL, no descend RA below 1100 ft AGL, nothing on the ground.
+- **Sense:** the non-crossing sense when it gives ALIM at the closest point, otherwise the one that gives the most separation. The pilot is modelled as responding in 5 s at 0.25 g to 1500 fpm.
+- **Strength:** the least disruptive RA. *Monitor Vertical Speed* when the current rate already gives ALIM; *Level Off* when stopping the climb or descent does; otherwise *Climb* or *Descend*, crossing when it passes through the intruder's level.
+- **Coordination:** between two of the World's aircraft the second takes the opposite sense to the first.
+
+The crew flies the RA after 5 s:
+- **Level off:** holds its level.
+- **Climb or descend:** goes 1000 ft from where the RA began, as a level on its route. An arrival on its injected final takes a climb RA as a go-around.
+
+The crew reports on its frequency: "(station), (callsign), TCAS RA", then "clear of conflict, returning to assigned altitude" (FAA JO 7110.65 2-1-28, its examples). Approach gives the aircraft no instruction until then, and the conflict resolver leaves it alone.
+
+On the map and over the API:
+- `ControlView.tcas` holds the advisory (`TA`/`RA`), the intruder, the aural (Table 4, Version 7.1) and the sense. The map shows a TA in amber and an RA in red with ↑ or ↓.
+- `GET /api/tcas` returns the counts and the last 200 events (TA, RA, clear).
+
 ## Traffic along the user's route
 
 In cruise, the World can keep a few airliners around the host's flight (#740). `SetCorridor(CorridorSettings{...})` (`POST /api/corridor`) takes the user's route ahead (two or more points, in its direction), its cruise level and speed, and how many of each kind (default one):

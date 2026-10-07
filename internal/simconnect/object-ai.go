@@ -5,6 +5,7 @@ package simconnect
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -34,7 +35,7 @@ func (sc *SimConnect) AICreateEnrouteATCAircraft(szContainerTitle string, szTail
 		bTouchAndGoUintptr = 0
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateEnrouteATCAircraft")
+	procedure := sc.proc("SimConnect_AICreateEnrouteATCAircraft")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -42,7 +43,7 @@ func (sc *SimConnect) AICreateEnrouteATCAircraft(szContainerTitle string, szTail
 		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(iFlightNumber),
 		uintptr(unsafe.Pointer(szFlightPlanPathPtr)),
-		uintptr(unsafe.Pointer(&dFlightPlanPosition)),
+		float64Arg(dFlightPlanPosition), // double, by value
 		bTouchAndGoUintptr,
 		uintptr(RequestID),
 	)
@@ -66,7 +67,7 @@ func (sc *SimConnect) AICreateNonATCAircraft(szContainerTitle string, szTailNumb
 		return fmt.Errorf("failed to convert tail number to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateNonATCAircraft")
+	procedure := sc.proc("SimConnect_AICreateNonATCAircraft")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -100,7 +101,7 @@ func (sc *SimConnect) AICreateParkedATCAircraft(szContainerTitle string, szTailN
 		return fmt.Errorf("failed to convert airport ID to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateParkedATCAircraft")
+	procedure := sc.proc("SimConnect_AICreateParkedATCAircraft")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -124,7 +125,7 @@ func (sc *SimConnect) AISetAircraftFlightPlan(objectID uint32, szFlightPlanPath 
 		return fmt.Errorf("failed to convert flight plan path to byte pointer: %w", err)
 	}
 
-	procedure := sc.library.LoadProcedure("SimConnect_AISetAircraftFlightPlan")
+	procedure := sc.proc("SimConnect_AISetAircraftFlightPlan")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -164,7 +165,7 @@ func (sc *SimConnect) AICreateEnrouteATCAircraftEX1(szContainerTitle string, szL
 	} else {
 		bTouchAndGoUintptr = 0
 	}
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateEnrouteATCAircraft_EX1")
+	procedure := sc.proc("SimConnect_AICreateEnrouteATCAircraft_EX1")
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
 		uintptr(unsafe.Pointer(szContainerTitlePtr)),
@@ -172,7 +173,7 @@ func (sc *SimConnect) AICreateEnrouteATCAircraftEX1(szContainerTitle string, szL
 		uintptr(unsafe.Pointer(szTailNumberPtr)),
 		uintptr(iFlightNumber),
 		uintptr(unsafe.Pointer(szFlightPlanPathPtr)),
-		uintptr(unsafe.Pointer(&dFlightPlanPosition)),
+		float64Arg(dFlightPlanPosition), // double, by value
 		bTouchAndGoUintptr,
 		uintptr(RequestID),
 	)
@@ -196,7 +197,7 @@ func (sc *SimConnect) AICreateNonATCAircraftEX1(szContainerTitle string, szLiver
 	if err != nil {
 		return fmt.Errorf("failed to convert tail number to byte pointer: %w", err)
 	}
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateNonATCAircraft_EX1")
+	procedure := sc.proc("SimConnect_AICreateNonATCAircraft_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -230,7 +231,7 @@ func (sc *SimConnect) AICreateParkedATCAircraftEX1(szContainerTitle string, szLi
 	if err != nil {
 		return fmt.Errorf("failed to convert airport ID to byte pointer: %w", err)
 	}
-	procedure := sc.library.LoadProcedure("SimConnect_AICreateParkedATCAircraft_EX1")
+	procedure := sc.proc("SimConnect_AICreateParkedATCAircraft_EX1")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // phSimConnect - pointer to handle
@@ -244,4 +245,19 @@ func (sc *SimConnect) AICreateParkedATCAircraftEX1(szContainerTitle string, szLi
 		return fmt.Errorf("SimConnect_AICreateParkedATCAircraft_EX1 failed with HRESULT: 0x%08X", uint32(hresult))
 	}
 	return nil
+}
+
+// float64Arg passes a double by value, as the SDK declares
+// dFlightPlanPosition. It was passed as a pointer before: the DLL read the
+// pointer's bits as a tiny double (~0), so every enroute aircraft started at
+// the start of its plan.
+//
+// In the Windows x64 calling convention a double among the first four
+// arguments goes in XMM0-XMM3, any later one as its 8 raw bytes in a stack
+// slot. Go's Windows syscall path (asmstdcall) copies the first four
+// arguments into both RCX/RDX/R8/R9 and XMM0-XMM3 and puts the rest on the
+// stack as 8-byte slots, so the IEEE-754 bits in a uintptr arrive right in
+// any position. dFlightPlanPosition is argument 6 (7 in _EX1): a stack slot.
+func float64Arg(v float64) uintptr {
+	return uintptr(math.Float64bits(v))
 }

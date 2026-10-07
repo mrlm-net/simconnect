@@ -144,6 +144,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
 │   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
 │   │   ├── custom.go        #   Custom routes (Via, Taxiways): RouteError, RemainingOptions
+│   │   ├── occupied.go      #   Occupied: routes keep clear of aircraft in the way (wingspans), RouteToParkingFrom
 │   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
 │   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
 │   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
@@ -176,7 +177,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── ground_drive.go  #   Shared injected ground driving: lights, crossings, gates
 │       ├── approach.go      #   ApproachMover: injected approach, flare, touchdown
 │       ├── takeoff.go       #   TakeoffMover: injected take-off roll, rotation, climb
-│       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected)
+│       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected); arrival_occupied.go: AvoidOccupied
+│       ├── taxi_occupied.go #   Departure Occupies / AvoidOccupied: taxi round a pushback in the way
 │       ├── departure_inject.go # Injected departure with clearance gates
 │       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours, terminal
 │       ├── pushturn.go      #   Dubins push-and-turn, alley entry, pavement check

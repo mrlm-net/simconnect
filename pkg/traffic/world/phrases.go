@@ -104,6 +104,24 @@ func (cc *controlCenter) windSaid(icao string) string {
 }
 
 // magVar is icao's magnetic variation (airport.Procedures.MagVar), 0 unknown.
+// taOf is the transition altitude at icao (ft), 0 unknown: the levels
+// said by it (#101).
+func (cc *controlCenter) taOf(icao string) float64 {
+	var g *airport.Graph
+	cc.mu.Lock()
+	for _, it := range cc.items {
+		if it.ICAO == icao && it.graph != nil {
+			g = it.graph // the airport's graph, from one of ours there
+			break
+		}
+	}
+	cc.mu.Unlock()
+	if g == nil {
+		return 0
+	}
+	return cc.limitsOf(g).TransitionAltitudeFt
+}
+
 func (cc *controlCenter) magVar(icao string) float64 {
 	if cc.procedures != nil {
 		if p, ok := cc.procedures(icao); ok {

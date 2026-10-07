@@ -19,6 +19,19 @@ var (
 )
 
 // remoteDep is the director's departureCtl: each call a wire call.
+func (r *remoteDep) Occupies() (airport.Occupied, bool) {
+	var o0 airport.Occupied
+	var o1 bool
+	r.c.dropped(r.c.call(r.t, "Occupies", []any{}, &o0, &o1))
+	return o0, o1
+}
+
+func (r *remoteDep) AvoidOccupied(occ []airport.Occupied) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "AvoidOccupied", []any{occ}, &o0))
+	return o0
+}
+
 func (r *remoteDep) SetPushbackAt(at time.Time) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "SetPushbackAt", []any{at}, &o0))
@@ -147,6 +160,12 @@ func (r *remoteDep) State() traffic.TaxiState {
 }
 
 // remoteArr is the director's arrivalCtl: each call a wire call.
+func (r *remoteArr) AvoidOccupied(occ []airport.Occupied) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "AvoidOccupied", []any{occ}, &o0))
+	return o0
+}
+
 func (r *remoteArr) AbsorbDelay(delay time.Duration) (traffic.Absorption, error) {
 	var o0 traffic.Absorption
 	err := r.c.call(r.t, "AbsorbDelay", []any{delay}, &o0)

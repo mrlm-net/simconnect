@@ -16,7 +16,7 @@ import (
 func runConnection(ctx context.Context, st *state, requests <-chan string, dumpDir string) error {
 	client := simconnect.NewClient("GO Example - airport map", engine.WithContext(ctx))
 
-	fmt.Println("⏳ Waiting for simulator to start...")
+	fmt.Fprintln(stdout, "⏳ Waiting for simulator to start...")
 	for {
 		if err := client.Connect(); err == nil {
 			break
@@ -27,7 +27,7 @@ func runConnection(ctx context.Context, st *state, requests <-chan string, dumpD
 		case <-time.After(2 * time.Second):
 		}
 	}
-	fmt.Println("✅ Connected to SimConnect")
+	fmt.Fprintln(stdout, "✅ Connected to SimConnect")
 	defer client.Disconnect()
 	return runOn(ctx, st, client, client.Stream(), requests, dumpDir)
 }

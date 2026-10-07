@@ -36,15 +36,22 @@ type Director struct {
 	cur      Shot
 	started  time.Time
 	acquired bool
+	// asked: acquiring was asked at askedAt (asked again after
+	// AcquireRetry while not acquired); refused: the camera is someone
+	// else's or disabled by the user, not asked again until Release.
 	asked    bool
+	askedAt  time.Time
+	refused  bool
 	last     Pose
 	havePose bool
 	// OnShot hears each shot as it starts.
 	onShot func(Shot)
 	// lock: the point the world stays loaded around while the camera is
-	// ours (LockWorld); locked once set.
-	lock   *Point
-	locked bool
+	// ours (LockWorld); locked once set, tried again from lockRetry when
+	// it failed.
+	lock      *Point
+	locked    bool
+	lockRetry time.Time
 	// settle: a cut was made; settleUntil the new shot holds its first
 	// pose until then.
 	settle      bool
@@ -56,8 +63,26 @@ type Director struct {
 // (when the client is a Locker). Released with the camera.
 func (d *Director) LockWorld(p Point) {
 	d.mu.Lock()
-	d.lock, d.locked = &p, false
+	d.lock, d.locked, d.lockRetry = &p, false, time.Time{}
 	d.mu.Unlock()
+}
+
+// AcquireRetry is how long the Director waits before asking for the
+// camera again when it was not given (NOT_ACQUIRED, or the request
+// failed), and before trying the world lock again when it failed.
+const AcquireRetry = 5 * time.Second
+
+// Reset forgets the camera's state (a new connection): it is acquired,
+// and the world locked, again on the next Tick with something to play, on
+// api (nil: the same). The shots queued and the last pose stay.
+func (d *Director) Reset(api API) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if api != nil {
+		d.api = api
+	}
+	d.acquired, d.asked, d.askedAt, d.refused = false, false, time.Time{}, false
+	d.locked, d.lockRetry = false, time.Time{}
 }
 
 // NewDirector drives the camera through api for clientID.
@@ -122,22 +147,28 @@ func (d *Director) Tick(now time.Time) error {
 		d.mu.Unlock()
 		return nil // nothing to show: the camera stays the user's
 	}
+	api := d.api
 	if !d.acquired {
-		ask := !d.asked
-		d.asked = true
+		// Asked once, and again after AcquireRetry while the camera is
+		// not given (#26); never while someone else has it.
+		ask := !d.refused && (!d.asked || now.Sub(d.askedAt) >= AcquireRetry)
+		if ask {
+			d.asked, d.askedAt = true, now
+		}
 		d.mu.Unlock()
 		if ask {
-			return d.api.CameraAcquire(d.clientID)
+			return api.CameraAcquire(d.clientID)
 		}
 		return ErrNotAcquired
 	}
-	if l, ok := d.api.(Locker); ok && d.lock != nil && !d.locked {
-		d.locked = true
+	if l, ok := api.(Locker); ok && d.lock != nil && !d.locked && !now.Before(d.lockRetry) {
 		r, id, xyz := d.lock.referential()
 		if err := l.RequestCameraWorldLocker(xyz, r, uint32(id)); err != nil {
+			d.lockRetry = now.Add(AcquireRetry) // tried again then (#26)
 			d.mu.Unlock()
 			return err
 		}
+		d.locked = true
 	}
 	var started Shot
 	for d.cur == nil || now.Sub(d.started) >= d.cur.Length() {
@@ -176,7 +207,7 @@ func (d *Director) Tick(now time.Time) error {
 		return nil
 	}
 	data, mask := pose.Data()
-	return d.api.CameraSet(data, mask)
+	return api.CameraSet(data, mask)
 }
 
 // Handle takes the camera status messages: acquired, or lost (another
@@ -187,9 +218,18 @@ func (d *Director) Handle(msg engine.Message) bool {
 	}
 	s := msg.AsCameraStatus()
 	d.mu.Lock()
+	was := d.acquired
 	d.acquired = s.AcquiredState == types.SIMCONNECT_CAMERA_ACQUIRED
-	if !d.acquired && s.AcquiredState != types.SIMCONNECT_CAMERA_NOT_ACQUIRED {
-		d.asked = true // someone else's, or disabled: do not ask again
+	switch s.AcquiredState {
+	case types.SIMCONNECT_CAMERA_ACQUIRED:
+		d.refused = false
+	case types.SIMCONNECT_CAMERA_NOT_ACQUIRED:
+		// Asked again AcquireRetry after the ask, or after losing it.
+		if was {
+			d.asked, d.askedAt = true, time.Now()
+		}
+	default:
+		d.asked, d.refused = true, true // someone else's, or disabled: do not ask again
 	}
 	d.mu.Unlock()
 	return true
@@ -205,14 +245,15 @@ func (d *Director) Acquired() bool {
 // Release gives the camera back to the simulator and forgets the shots.
 func (d *Director) Release() error {
 	d.mu.Lock()
-	was, locked := d.acquired || d.asked, d.locked
+	was, locked, api := d.acquired || d.asked, d.locked, d.api
 	d.acquired, d.asked, d.queue, d.cur, d.havePose, d.locked = false, false, nil, nil, false, false
+	d.askedAt, d.refused, d.lockRetry = time.Time{}, false, time.Time{}
 	d.mu.Unlock()
-	if l, ok := d.api.(Locker); ok && locked {
+	if l, ok := api.(Locker); ok && locked {
 		l.DeleteCameraWorldLocker()
 	}
 	if !was {
 		return nil
 	}
-	return d.api.CameraRelease("")
+	return api.CameraRelease("")
 }

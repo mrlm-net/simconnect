@@ -45,22 +45,9 @@ func (c *getCommand) Run(ctx context.Context, tc *terminal.Context) error {
 	client := engine.New("SimVar CLI - Get", opts...)
 
 	// Retry connection loop
-	fmt.Fprintf(tc.Stderr, "Connecting to simulator...\n")
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err := client.Connect(); err != nil {
-				fmt.Fprintf(tc.Stderr, "Connection failed: %v, retrying in 2s...\n", err)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			goto connected
-		}
+	if err := connectWithRetry(ctx, client, tc.Stderr); err != nil {
+		return err
 	}
-
-connected:
 	defer client.Disconnect()
 
 	defID := nextDefID()

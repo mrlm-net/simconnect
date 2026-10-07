@@ -27,6 +27,10 @@ type ilsStore struct {
 	sync.Mutex
 	byICAO  map[string]map[string]ilsInfo // ICAO → runway end → ILS
 	pending map[nav.FixKey][]ilsRef
+	// queued: lookups the loader had no room for yet, asked again each
+	// second (#80: more than its slots at once were dropped for good).
+	queued []nav.FixKey
+	tries  map[nav.FixKey]int // retries of each queued lookup, at most ilsRetries
 }
 
 type ilsRef struct{ icao, runway string }
@@ -36,6 +40,7 @@ type ilsRef struct{ icao, runway string }
 func (k *core) resetILS() {
 	k.ils.Lock()
 	k.ils.pending = map[nav.FixKey][]ilsRef{}
+	k.ils.queued = nil
 	k.ils.Unlock()
 }
 
@@ -56,9 +61,8 @@ func (k *core) requestILS(loader *nav.NavLoader, l *airport.Layout) {
 				continue
 			}
 			if err := loader.Request(key); err != nil {
-				fmt.Fprintf(os.Stderr, "❌ ILS %s of %s %s: %v\n", e.ILS, l.ICAO, e.Name, err)
 				k.ils.Lock()
-				delete(k.ils.pending, key)
+				k.ils.queued = append(k.ils.queued, key) // asked again (retryILS)
 				k.ils.Unlock()
 			}
 		}
@@ -84,7 +88,7 @@ func (k *core) gotILS(r nav.NavResult) {
 			k.ils.byICAO[ref.icao] = map[string]ilsInfo{}
 		}
 		k.ils.byICAO[ref.icao][ref.runway] = ilsInfo{Runway: ref.runway, Ident: r.Key.Ident, MHz: r.Fix.Freq, Name: r.Fix.Name}
-		fmt.Printf("📡 %s ILS %s: %s %.2f %s\n", ref.icao, ref.runway, r.Key.Ident, r.Fix.Freq, r.Fix.Name)
+		fmt.Fprintf(stdout, "📡 %s ILS %s: %s %.2f %s\n", ref.icao, ref.runway, r.Key.Ident, r.Fix.Freq, r.Fix.Name)
 	}
 }
 
@@ -99,3 +103,29 @@ func (k *core) ilsOf(icao string) []ilsInfo {
 	sort.Slice(out, func(a, b int) bool { return out[a].Runway < out[b].Runway })
 	return out
 }
+
+// retryILS asks again for the lookups the loader had no room for. On the
+// connection's goroutine.
+func (k *core) retryILS(loader *nav.NavLoader) {
+	k.ils.Lock()
+	defer k.ils.Unlock()
+	if k.ils.tries == nil {
+		k.ils.tries = map[nav.FixKey]int{}
+	}
+	for len(k.ils.queued) > 0 {
+		key := k.ils.queued[0]
+		if err := loader.Request(key); err != nil {
+			if k.ils.tries[key]++; k.ils.tries[key] < ilsRetries {
+				return // still full: next time
+			}
+			fmt.Fprintf(os.Stderr, "❌ ILS %s: %v\n", key.Ident, err)
+			delete(k.ils.pending, key)
+		}
+		delete(k.ils.tries, key)
+		k.ils.queued = k.ils.queued[1:]
+	}
+}
+
+// ilsRetries: a lookup the loader keeps refusing is given up after this
+// many seconds.
+const ilsRetries = 60

@@ -168,7 +168,7 @@ Import path: `github.com/mrlm-net/simconnect/pkg/datasets/simulator`
 |---|---|---|
 | `CameraState` | `CAMERA STATE` | enum |
 | `CameraSubstate` | `CAMERA SUBSTATE` | enum |
-| `CameraViewType` | `CAMERA VIEW TYPE INDEX:0` | number |
+| `CameraViewType` | `CAMERA VIEW TYPE AND INDEX:0` | number |
 
 Camera state values correspond to the constants in `pkg/manager/state-enums.go` (e.g., `CameraStateCockpit = 2`, `CameraStateDrone = 4`). See [Manager Usage](usage-manager.md#camera-states) for the full list.
 

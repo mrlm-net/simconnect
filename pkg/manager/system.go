@@ -30,7 +30,13 @@ func (m *Instance) SubscribeToSystemEvent(eventID uint32, eventName string) erro
 	if m.engine == nil {
 		return ErrNotConnected
 	}
-	return m.engine.SubscribeToSystemEvent(eventID, eventName)
+	if err := m.engine.SubscribeToSystemEvent(eventID, eventName); err != nil {
+		return err
+	}
+	if on, gen := m.recordingLocked(); on {
+		m.userSubs.addSystemEvent(eventID, eventName, gen)
+	}
+	return nil
 }
 
 // UnsubscribeFromSystemEvent unsubscribes from a SimConnect system event.
@@ -38,6 +44,8 @@ func (m *Instance) SubscribeToSystemEvent(eventID uint32, eventName string) erro
 func (m *Instance) UnsubscribeFromSystemEvent(eventID uint32) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	// forgotten for ResubscribeOnReconnect even while disconnected
+	m.userSubs.removeSystemEvent(eventID)
 	if m.engine == nil {
 		return ErrNotConnected
 	}

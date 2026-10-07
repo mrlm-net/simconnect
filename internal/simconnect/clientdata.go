@@ -12,7 +12,7 @@ import (
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_CreateClientData.htm
 func (sc *SimConnect) CreateClientData(clientDataID uint32, dwSize uint32, flags types.SIMCONNECT_CREATE_CLIENT_DATA_FLAG) error {
-	procedure := sc.library.LoadProcedure("SimConnect_CreateClientData")
+	procedure := sc.proc("SimConnect_CreateClientData")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // HANDLE hSimConnect
@@ -30,7 +30,7 @@ func (sc *SimConnect) CreateClientData(clientDataID uint32, dwSize uint32, flags
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_AddToClientDataDefinition.htm
 func (sc *SimConnect) AddToClientDataDefinition(defineID uint32, dwOffset uint32, dwSizeOrType uint32, epsilon float32, datumID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_AddToClientDataDefinition")
+	procedure := sc.proc("SimConnect_AddToClientDataDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // HANDLE hSimConnect
@@ -50,7 +50,7 @@ func (sc *SimConnect) AddToClientDataDefinition(defineID uint32, dwOffset uint32
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_RequestClientData.htm
 func (sc *SimConnect) RequestClientData(clientDataID uint32, requestID uint32, defineID uint32, period types.SIMCONNECT_CLIENT_DATA_PERIOD, flags types.SIMCONNECT_CLIENT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_RequestClientData")
+	procedure := sc.proc("SimConnect_RequestClientData")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // HANDLE hSimConnect
@@ -73,7 +73,7 @@ func (sc *SimConnect) RequestClientData(clientDataID uint32, requestID uint32, d
 
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_ClearClientDataDefinition.htm
 func (sc *SimConnect) ClearClientDataDefinition(defineID uint32) error {
-	procedure := sc.library.LoadProcedure("SimConnect_ClearClientDataDefinition")
+	procedure := sc.proc("SimConnect_ClearClientDataDefinition")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // HANDLE hSimConnect
@@ -90,7 +90,7 @@ func (sc *SimConnect) ClearClientDataDefinition(defineID uint32) error {
 // https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Events_And_Data/SimConnect_SetClientData.htm
 // Note: Flags is a plain uint32 per ADR-B-01 — SimConnect.h does not define a typed enum for SetClientData flags.
 func (sc *SimConnect) SetClientData(clientDataID uint32, defineID uint32, flags uint32, dwReserved uint32, cbUnitSize uint32, data unsafe.Pointer) error {
-	procedure := sc.library.LoadProcedure("SimConnect_SetClientData")
+	procedure := sc.proc("SimConnect_SetClientData")
 
 	hresult, _, _ := procedure.Call(
 		sc.getConnection(), // HANDLE hSimConnect

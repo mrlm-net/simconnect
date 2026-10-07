@@ -690,6 +690,11 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 			delete(s.last, cs)
 			delete(s.swappedAt, cs)
 			delete(s.first, cs)
+			// Its place moved by hand and its key go too (#97: the call sign
+			// again later jumped to number 1).
+			delete(s.manual, cs)
+			delete(s.keys, cs)
+			delete(s.behind, cs)
 			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: e.Number, Gone: true})
 		}
 	}

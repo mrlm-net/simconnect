@@ -21,12 +21,12 @@ func (e *Engine) ClearAllFacilityDataDefinitionFilters(definitionID uint32) erro
 	return e.api.ClearAllFacilityDataDefinitionFilters(definitionID)
 }
 
-func (e *Engine) RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	return e.api.RequestFacilitiesList(definitionID, listType)
+func (e *Engine) RequestFacilitiesList(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	return e.api.RequestFacilitiesList(requestID, listType)
 }
 
-func (e *Engine) RequestFacilitiesListEX1(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
-	return e.api.RequestFacilitiesListEX1(definitionID, listType)
+func (e *Engine) RequestFacilitiesListEX1(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	return e.api.RequestFacilitiesListEX1(requestID, listType)
 }
 
 func (e *Engine) RequestFacilityData(definitionID uint32, requestID uint32, icao string, region string) error {

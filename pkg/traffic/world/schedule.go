@@ -57,7 +57,10 @@ type scheduler struct {
 	nextReq    uint32
 	// realOn: real-world traffic (#841), the generator off; real its
 	// aircraft by their ID.
-	realOn bool
+	realOn  bool
+	pacedAt time.Time // paceEnroute's last look
+	// usedCS: the schedule's call signs by the hour they were made (#98).
+	usedCS map[string]time.Time
 	real   map[string]*realID
 }
 
@@ -139,7 +142,26 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 	var flights []traffic.Flight
 	if !noIFR {
 		// The timetable of from+offset, flown now (#738).
+		// Call signs of the hours before kept out (#98).
+		s.mu.Lock()
+		opts.Used = map[string]bool{}
+		for cs, at := range s.usedCS {
+			if from.Sub(at) > usedCallsignFor {
+				delete(s.usedCS, cs)
+				continue
+			}
+			opts.Used[cs] = true
+		}
+		s.mu.Unlock()
 		ifr := traffic.Schedule(s.cfg, opts, from.Add(off), to.Add(off))
+		s.mu.Lock()
+		if s.usedCS == nil {
+			s.usedCS = map[string]time.Time{}
+		}
+		for _, f := range ifr {
+			s.usedCS[f.Callsign] = from
+		}
+		s.mu.Unlock()
 		// Business jets and turboprops at the large airports, IFR between
 		// airports (#619).
 		ifr = append(ifr, traffic.BusinessFlights(s.cfg, traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
@@ -269,6 +291,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		}
 	}
 	// A turnaround: the arrival's aircraft on its stand.
+	var turnFrom *controlled // a turnaround's arrival, forgotten once the departure is up
 	if f.TurnFrom != "" {
 		arr := cc.byTail(f.TurnFrom)
 		if arr == nil || arr.objectID == 0 {
@@ -276,10 +299,12 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		}
 		req.adopt, req.Stand, req.Model = arr.objectID, arr.stand, arr.view.Model
 		// The stand passes to the departure: its aircraft, detected there, is
-		// then its own and not in the way (#470).
+		// then its own and not in the way (#470). Back to the arrival if the
+		// departure fails (#73: the stand was freed under the parked aircraft
+		// and the arrival forgotten, its object orphaned).
 		arr.stands.Transfer(arr.Tail, f.Callsign)
 		arr.stands.SetOffBlock(f.Callsign, f.STD)
-		cc.forget(arr)
+		turnFrom = arr
 	} else if model != "" {
 		req.Model = model
 	} else {
@@ -316,6 +341,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	spawned := false
 	defer func() {
+		if turnFrom != nil && !spawned {
+			turnFrom.stands.Transfer(f.Callsign, turnFrom.Tail)
+		}
 		if assigned && !spawned {
 			cc.allocator(g).ReleaseOwner(f.Callsign)
 		}
@@ -373,6 +401,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		return err
 	}
 	spawned = true
+	if turnFrom != nil {
+		cc.forget(turnFrom)
+	}
 	it.mu.Lock()
 	it.managed = s.mgr
 	it.observed = f.Observed
@@ -505,6 +536,8 @@ func (s *scheduler) tick(now time.Time) {
 		return
 	}
 	s.mgr.Tick(now)
+	s.expirePending()
+	s.paceEnroute(now) // no catching up the one ahead en route
 	s.handovers(now)
 	s.corridorTick(now)
 }
@@ -734,3 +767,6 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		writeJSON(w, map[string]any{"departures": deps, "arrivals": arrs})
 	})
 }
+
+// usedCallsignFor: a scheduled call sign is not given again for this long.
+const usedCallsignFor = 12 * time.Hour

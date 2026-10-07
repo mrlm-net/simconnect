@@ -153,13 +153,16 @@ type Profile struct {
 }
 
 // UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
-// objects.
+// objects. Read onto a profile (a local override onto a copy of the
+// shipped one, pkg/dict), the fields it gives replace those of p, values
+// and actions one by one; doors replace p's doors with their exits.
 func (p *Profile) UnmarshalJSON(b []byte) error {
 	type plain Profile
 	var raw struct {
 		plain
 		Doors json.RawMessage `json:"doors"`
 	}
+	raw.plain = plain(*p)
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
@@ -170,6 +173,18 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 	var names []string
 	if json.Unmarshal(raw.Doors, &names) == nil {
 		p.Doors = names
+		// The exits of the doors before, unless given with these.
+		var given struct {
+			Exits   json.RawMessage `json:"exits"`
+			DoorEFB json.RawMessage `json:"doorEFB"`
+		}
+		_ = json.Unmarshal(b, &given)
+		if given.Exits == nil {
+			p.Exits = nil
+		}
+		if given.DoorEFB == nil {
+			p.DoorEFB = nil
+		}
 		return nil
 	}
 	var doors []struct {
@@ -378,7 +393,11 @@ func withDoors(p Profile) Profile {
 	for k, a := range p.Actions {
 		actions[k] = a
 	}
+	// With exits mapped, the default's doors (EXIT OPEN:n, exit n+1) give
+	// way to the exits'; a value or action a profile gives itself stays
+	// (E12).
 	mapped := len(p.Exits) > 0
+	def := Default()
 	for n := 0; n < max(10, len(p.Doors)); n++ {
 		if n >= len(p.Doors) {
 			delete(values, Door(n))
@@ -386,10 +405,10 @@ func withDoors(p Profile) Profile {
 			continue
 		}
 		k := p.exit(n)
-		if _, ok := values[Door(n)]; !ok || mapped {
+		if v, ok := values[Door(n)]; !ok || mapped && sameValue(v, def.Values[Door(n)]) {
 			values[Door(n)] = Value{Vars: []string{fmt.Sprintf("EXIT OPEN:%d", k-1)}, Unit: "percent"}
 		}
-		if _, ok := actions[Door(n)]; !ok || mapped {
+		if a, ok := actions[Door(n)]; !ok || mapped && sameAction(a, def.Actions[Door(n)]) {
 			exit := uint32(k)
 			actions[Door(n)] = Action{Event: "TOGGLE_AIRCRAFT_EXIT", Toggle: true, Data: &exit}
 			if n < len(p.DoorEFB) && p.DoorEFB[n] != "" {
@@ -399,6 +418,20 @@ func withDoors(p Profile) Profile {
 	}
 	p.Values, p.Actions = values, actions
 	return withCounters(p)
+}
+
+// sameValue reports whether a and b read the same way.
+func sameValue(a, b Value) bool {
+	sameAtLeast := a.AtLeast == nil && b.AtLeast == nil || a.AtLeast != nil && b.AtLeast != nil && *a.AtLeast == *b.AtLeast
+	return slices.Equal(a.Vars, b.Vars) && a.unit() == b.unit() && a.Combine == b.Combine &&
+		slices.Equal(a.TrueAt, b.TrueAt) && sameAtLeast && a.Scale == b.Scale
+}
+
+// sameAction reports whether a and b operate a control the same way.
+func sameAction(a, b Action) bool {
+	sameData := a.Data == nil && b.Data == nil || a.Data != nil && b.Data != nil && *a.Data == *b.Data
+	return a.Press == b.Press && a.Set == b.Set && a.Event == b.Event && a.Toggle == b.Toggle &&
+		sameData && a.EFB == b.EFB && a.Counter == b.Counter
 }
 
 // withCounters reads each counted button's counter (Action.Counter) as
@@ -449,6 +482,9 @@ func (v Value) unit() string {
 
 // resolve is v from the variables read (by var and unit).
 func (v Value) resolve(read map[varUnit]float64) float64 {
+	if len(v.Vars) == 0 {
+		return 0 // nothing to read (a profile not through ReadProfile)
+	}
 	vals := make([]float64, 0, len(v.Vars))
 	for _, name := range v.Vars {
 		x := read[varUnit{name, v.unit()}]

@@ -82,6 +82,10 @@ const injMaxEngines = 4
 // together by HoldGearDown (after the engines' definitions).
 const injDefGearDown = injDefEngine1 + injMaxEngines
 
+// injDefThrottle1: GENERAL ENG THROTTLE LEVER POSITION:1, one definition
+// per engine up to injMaxEngines (SetThrottle).
+const injDefThrottle1 = injDefGearDown + 1
+
 const (
 	injEvtFreezeLatLon = iota
 	injEvtFreezeAlt
@@ -204,6 +208,12 @@ func (i *Injector) register() error {
 	for k := 1; k <= injMaxEngines; k++ {
 		v := fmt.Sprintf("GENERAL ENG COMBUSTION:%d", k)
 		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefEngine1+uint32(k-1), v, "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+			return err
+		}
+	}
+	for k := 1; k <= injMaxEngines; k++ {
+		v := fmt.Sprintf("GENERAL ENG THROTTLE LEVER POSITION:%d", k)
+		if err := i.track("define "+v, c.AddToDataDefinition(i.defBase+injDefThrottle1+uint32(k-1), v, "percent", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 			return err
 		}
 	}
@@ -439,6 +449,9 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if !ok {
 			return false, nil
 		}
+		if uint32(d.DwObjectID) != obj {
+			return true, nil // the slot's former aircraft, still answering (#91)
+		}
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
@@ -497,20 +510,24 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// base fades out over the first restFadeFt in the air. Placed level
 	// with the static height instead, the nose came up as the take-off
 	// roll began (live, UAE375's B77W looked to pop a wheelie).
-	cg, base := o.cgFt, o.staticPitch
+	// Never on the ground under us (an arrival): its rest on extended gear
+	// is above the static CG height (#854, live B738: 9.54 against 8.48 ft;
+	// placed at the static height the wheels sank a foot into the runway in
+	// the last half-second, and the simulator popped it up at touchdown).
+	cg, base := o.cgFt*(1+RestAboveStaticShare), o.staticPitch
 	if o.haveRest {
 		cg, base = o.restFt, o.restPitch
-	}
-	// On the wheels and rolling: its struts drawn extended (#676); not in
-	// the flare, a moment off the ground.
-	rolling := 0.0
-	if pose.OnGround {
-		rolling = movingPitch(pose.GroundSpeedKts)
 	}
 	w := 1.0
 	if !pose.OnGround {
 		w = math.Max(0, 1-math.Max(0, pose.HeightFt)/restFadeFt)
 	}
+	// Rolling: its struts drawn extended (#676), faded with height like the
+	// rest pitch (#854: on at the wheels and off the frame after, the nose
+	// jumped about a degree at lift-off and touchdown), and with the nose up:
+	// gone once pitched rollingFadeDeg up, so the flare keeps its full
+	// attitude and the rotation lifts the nose from it smoothly.
+	rolling := w * movingPitch(pose.GroundSpeedKts) * math.Max(0, 1-math.Max(0, pose.PitchDeg)/rollingFadeDeg)
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
@@ -533,6 +550,16 @@ const AirBlendFt = 100.0
 // restFadeFt: in the air the rest height and pitch of the ground fade out
 // over this height (PlaceAir), so lift-off and touchdown do not jump.
 const restFadeFt = 50.0
+
+// RestAboveStaticShare: an aircraft whose rest height was never measured
+// (on the ground under the injector) rests this share of its static CG
+// height above it on its gear — measured live on B738s: 1.06 ft over
+// 8.48, the height the simulator puts it at once on the ground.
+const RestAboveStaticShare = 0.125
+
+// rollingFadeDeg: the rolling pitch (movingPitch) fades out as the nose
+// comes up to this pitch, at rotation and in the flare.
+const rollingFadeDeg = 3.0
 
 // airAltitude is the main wheels' altitude MSL for a pose over ground at
 // groundFt: the runway's elevation plus the height (a steady glide path,
@@ -608,6 +635,26 @@ func (i *Injector) SetEngines(objectID uint32, n int, on bool) error {
 	return nil
 }
 
+// SetThrottle sets the throttle of engines 1 to n of objectID (at most
+// injMaxEngines) to percent: an injected aircraft's engines follow it
+// (live, a B738 from N1 30 to 78 % in 12 s at 90 %), heard as they spool;
+// left alone they idle, a take-off at idle sound.
+func (i *Injector) SetThrottle(objectID uint32, n int, percent float64) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; !ok || !o.taken {
+		return ErrNotInjected
+	}
+	v := [1]float64{percent}
+	for k := 0; k < min(n, injMaxEngines); k++ {
+		if err := i.track(fmt.Sprintf("throttle %d object %d", k+1, objectID),
+			i.client.SetDataOnSimObject(i.defBase+injDefThrottle1+uint32(k), objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(v)), unsafe.Pointer(&v))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SetFlaps sets the flap surfaces of objectID to percent (0 up, 100 full);
 // the surfaces move at once, so ramp percent over time for a visible
 // extension or retraction.
@@ -633,3 +680,11 @@ func (i *Injector) SetSpoilers(objectID uint32, percent float64) error {
 	s := [3]float64{percent, percent, percent}
 	return i.client.SetDataOnSimObject(i.defBase+injDefSpoilers, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(s)), unsafe.Pointer(&s))
 }
+
+// Throttle of an injected aircraft by phase (SetThrottle): take-off
+// thrust on the roll until MSFS AI flies it, approach power on the final,
+// idle from the flare.
+const (
+	TakeoffThrottlePct  = 90.0
+	ApproachThrottlePct = 45.0
+)

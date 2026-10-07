@@ -151,11 +151,26 @@ func (g *Graph) turnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, erro
 			best[e.Node] = i
 		}
 	}
+	// In the order found, not the map's, and ties broken the same way every
+	// time (#44: EDDF 07C at 1000 m gave L16 or M28 from run to run).
 	uniq := make([]RunwayExit, 0, len(best))
-	for _, i := range best {
-		uniq = append(uniq, exits[i])
+	for i, e := range exits {
+		if best[e.Node] == i {
+			uniq = append(uniq, e)
+		}
 	}
-	sort.Slice(uniq, func(i, j int) bool { return uniq[i].Along < uniq[j].Along })
+	sort.SliceStable(uniq, func(i, j int) bool {
+		a, b := uniq[i], uniq[j]
+		switch {
+		case a.Along != b.Along:
+			return a.Along < b.Along
+		case a.Angle != b.Angle:
+			return a.Angle < b.Angle
+		case a.Side != b.Side:
+			return a.Side < b.Side
+		}
+		return a.Node < b.Node
+	})
 	return uniq, nil
 }
 

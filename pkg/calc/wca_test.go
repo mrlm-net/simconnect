@@ -33,38 +33,45 @@ func TestWindCorrectionAngle(t *testing.T) {
 		{
 			name:    "direct headwind — wind from ahead, no correction needed",
 			windDir: 360, windSpeed: 30, tas: 120, course: 360,
-			// windTo = 360+180 = 540; sin(540-360)=sin(180)=0 → WCA=0
+			// sin(360-360)=sin(0)=0 → WCA=0
 			wantWCA:   0,
 			tolerance: epsilonDeg,
 		},
 		{
 			name:    "direct tailwind — wind from behind, no correction needed",
 			windDir: 180, windSpeed: 30, tas: 120, course: 360,
-			// windTo = 180+180 = 360; sin(360-360)=sin(0)=0 → WCA=0
+			// sin(180-360)=sin(-180)=0 → WCA=0
 			wantWCA:   0,
 			tolerance: epsilonDeg,
 		},
 		{
-			name: "90-degree crosswind from left — positive WCA (correct right)",
-			// wind from 270°, course 360°: windTo=450; sin(450-360)=sin(90)=1
-			// WCA = asin(20/100) ≈ 11.537°
+			name: "90-degree crosswind from left — negative WCA (correct left, into the wind)",
+			// wind from 270°, course 360°: sin(270-360)=sin(-90)=-1
+			// WCA = asin(-20/100) ≈ -11.537° → heading ≈ 348.5°
 			windDir: 270, windSpeed: 20, tas: 100, course: 360,
-			wantWCA:   math.Asin(20.0/100.0) * 180.0 / math.Pi,
-			tolerance: epsilonDeg,
-		},
-		{
-			name: "90-degree crosswind from right — negative WCA (correct left)",
-			// wind from 90°, course 360°: windTo=270; sin(270-360)=sin(-90)=-1
-			// WCA = asin(-20/100) ≈ -11.537°
-			windDir: 90, windSpeed: 20, tas: 100, course: 360,
 			wantWCA:   math.Asin(-20.0/100.0) * 180.0 / math.Pi,
 			tolerance: epsilonDeg,
 		},
 		{
+			name: "90-degree crosswind from right — positive WCA (correct right, into the wind)",
+			// wind from 90°, course 360°: sin(90-360)=sin(-270)=1
+			// WCA = asin(20/100) ≈ 11.537° → heading ≈ 011.5°
+			windDir: 90, windSpeed: 20, tas: 100, course: 360,
+			wantWCA:   math.Asin(20.0/100.0) * 180.0 / math.Pi,
+			tolerance: epsilonDeg,
+		},
+		{
+			name: "crosswind from the right on an easterly course",
+			// wind from 180°, course 090°: sin(90)=1 → +11.537°
+			windDir: 180, windSpeed: 20, tas: 100, course: 90,
+			wantWCA:   math.Asin(20.0/100.0) * 180.0 / math.Pi,
+			tolerance: epsilonDeg,
+		},
+		{
 			name: "windSpeed exceeds TAS — clamp guards asin domain",
-			// wind from 270°, windSpeed=150, tas=100, course=360
-			// ratio = 150/100 = 1.5 → sin(90°)=1 → clamped to 1 → WCA = asin(1) = 90°
-			windDir: 270, windSpeed: 150, tas: 100, course: 360,
+			// wind from 90°, windSpeed=150, tas=100, course=360
+			// ratio = 150/100 = 1.5 → sin(-270°)=1 → clamped to 1 → WCA = asin(1) = 90°
+			windDir: 90, windSpeed: 150, tas: 100, course: 360,
 			wantWCA:   90.0,
 			tolerance: epsilonDeg,
 		},
