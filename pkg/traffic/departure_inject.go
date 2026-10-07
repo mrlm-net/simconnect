@@ -180,6 +180,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 	if err := c.inj.Takeover(c.objectID); err != nil {
 		return err
 	}
+	c.inj.SetModel(c.objectID, c.req.Model)
 	c.injector, c.object, c.graph, c.prof = c.inj, c.objectID, c.req.Graph, c.profile()
 	c.noLogo = WakeFor(c.req.Model).ICAO == WakeLight
 	// Cold on the stand: the engines start once the tug has gone.

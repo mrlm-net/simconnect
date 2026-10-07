@@ -116,6 +116,9 @@ type TakeoffMover struct {
 	x, v        float64 // m, m/s
 	h, vs       float64 // ft, fpm
 	pitch       float64
+	// shown, shownRate: the pitch as drawn, following pitch smoothly
+	// (PitchFollowRate): no corners where a rotation or settle starts or ends.
+	shown, shownRate float64
 	phase       TakeoffPhase
 	airborneFor float64
 	rollFor     float64 // s since the thrust was set
@@ -220,10 +223,27 @@ func NewTakeoffMover(start airport.LatLon, heading, speedKts float64, p TakeoffP
 func (m *TakeoffMover) Pose() TakeoffPose {
 	return TakeoffPose{
 		Position: offsetHeading(m.start, m.heading, m.x), Heading: m.heading,
-		HeightFt: m.h, PitchDeg: m.pitch, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
+		HeightFt: m.h, PitchDeg: m.shown, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x, Phase: m.phase, LiftoffDistance: m.liftoffX, AirborneSeconds: m.airborneFor,
 	}
 }
+
+// follow moves the drawn pitch towards pitch as an aircraft pitches: easing
+// in and out, without overshoot (critically damped, PitchFollowRate), and
+// never past the tail-strike limit on the runway.
+func (m *TakeoffMover) follow(dt float64) {
+	w := PitchFollowRate
+	m.shownRate += (w*w*(m.pitch-m.shown) - 2*w*m.shownRate) * dt
+	m.shown += m.shownRate * dt
+	if m.phase != TakeoffAirborne && m.shown > m.groundPitchLimit() {
+		m.shown, m.shownRate = m.groundPitchLimit(), 0
+	}
+}
+
+// PitchFollowRate (rad/s): how quickly the drawn take-off pitch follows the
+// planned one; about a quarter of a second behind it, rounding the start and
+// end of each change ("pitch more smooth as it is in reality", 2026-10-07).
+const PitchFollowRate = 4.0
 
 // groundPitchLimit is the highest pitch with the main gear on the runway.
 func (m *TakeoffMover) groundPitchLimit() float64 {
@@ -239,6 +259,7 @@ func (m *TakeoffMover) Step(dt float64) TakeoffPose {
 	for dt > 0 {
 		h := math.Min(dt, 0.05)
 		m.step(h)
+		m.follow(h)
 		dt -= h
 	}
 	return m.Pose()

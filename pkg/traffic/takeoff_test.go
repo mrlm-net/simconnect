@@ -38,7 +38,7 @@ func TestTakeoffMover(t *testing.T) {
 		t.Errorf("lift-off at %.0f kt", liftoff.GroundSpeedKts)
 	}
 	final := m.Pose()
-	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm*TakeoffAccelClimbFactor) > 1 || final.GroundSpeedKts <= p.ClimbKts || final.PitchDeg != p.ClimbPitch+AirbornePullDeg {
+	if final.HeightFt < 1500 || math.Abs(final.VerticalFpm-p.ClimbFpm*TakeoffAccelClimbFactor) > 1 || final.GroundSpeedKts <= p.ClimbKts || math.Abs(final.PitchDeg-(p.ClimbPitch+AirbornePullDeg)) > 0.05 {
 		t.Errorf("climb-out %+v", final)
 	}
 	if maxVSStep > 60 { // fpm per frame: no jolt into the climb
@@ -70,7 +70,7 @@ func TestTakeoffNoTailstrike(t *testing.T) {
 			}
 		case liftPitch == 0:
 			liftPitch = pose.PitchDeg
-		case pose.HeightFt < PositiveClimbFt && pose.PitchDeg != liftPitch:
+		case pose.HeightFt < PositiveClimbFt && pose.PitchDeg > math.Min(p.LiftoffPitch, ground)+1e-9:
 			t.Fatalf("pitch %.2f° at %.0f ft, before a positive climb", pose.PitchDeg, pose.HeightFt)
 		case pose.PitchDeg > ground+pose.HeightFt/TailClearFtPerDeg+1e-9:
 			t.Fatalf("pitch %.2f° at %.1f ft", pose.PitchDeg, pose.HeightFt)
@@ -82,7 +82,7 @@ func TestTakeoffNoTailstrike(t *testing.T) {
 	if liftPitch == 0 || liftPitch > ground+1e-9 {
 		t.Errorf("lift-off pitch %.2f°", liftPitch)
 	}
-	if final, want := m.Pose(), p.ClimbPitch+AirbornePullDeg; final.PitchDeg != want {
+	if final, want := m.Pose(), p.ClimbPitch+AirbornePullDeg; math.Abs(final.PitchDeg-want) > 0.05 {
 		t.Errorf("climb pitch %.1f°, want %.1f°", final.PitchDeg, want)
 	}
 }
@@ -246,7 +246,7 @@ func TestTakeoffPitchProfile(t *testing.T) {
 		pose = m.Step(0.05)
 	}
 	// Fully airborne: a little more pull than the climb pitch.
-	if first := p.ClimbPitch + AirbornePullDeg; pose.PitchDeg != first {
+	if first := p.ClimbPitch + AirbornePullDeg; math.Abs(pose.PitchDeg-first) > 0.05 {
 		t.Errorf("first climb at %.1f°, want %.1f°", pose.PitchDeg, first)
 	}
 	top := pose.PitchDeg
@@ -256,7 +256,7 @@ func TestTakeoffPitchProfile(t *testing.T) {
 		t.Errorf("2 s after gear-up %.1f°: want easing down at about 1°/s", pose.PitchDeg)
 	}
 	pose = m.Step(10)
-	if want := p.ClimbPitch - SettleBelowClimbDeg; pose.PitchDeg != want {
+	if want := p.ClimbPitch - SettleBelowClimbDeg; math.Abs(pose.PitchDeg-want) > 0.05 {
 		t.Errorf("settled at %.1f°, want %.1f°", pose.PitchDeg, want)
 	}
 }
