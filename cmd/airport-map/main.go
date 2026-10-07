@@ -106,7 +106,7 @@ func main() {
 	dumpDir := flag.String("dump-dir", ".", "directory for -dump files")
 	file := flag.String("file", "", "serve airport data from a -dump JSON file instead of the simulator")
 	logDir := flag.String("log-dir", ".", "directory for the traffic control log (traffic-*.log)")
-	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); \"\" for direct routes")
+	airways := flag.String("airways", "pkg/nav/testdata/LKPR-airways.json", "airway graph for flight plans (see examples/spike-airways); the airways around each loaded airport are read from the sim and added either way")
 	airspaceFlag := flag.String("airspace", "D", "class of the managed airports' control zones for VFR rules: C, D, E or G (#570)")
 	piperPath := flag.String("piper", "bin/piper/piper.exe", "piper executable for the voice (#419; see the README)")
 	voicesDir := flag.String("voices", "", "folder of piper voice models (\"\": voice-goio's user data folder)")
