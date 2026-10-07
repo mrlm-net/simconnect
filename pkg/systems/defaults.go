@@ -30,10 +30,17 @@ func Default() Profile {
 		GearDown:     one("GEAR HANDLE POSITION", "bool"),
 		Weight:       one("TOTAL WEIGHT", "kilograms"),
 		FlapsIndex:   one("FLAPS HANDLE INDEX", "number"),
-		COM1Active:   one("COM ACTIVE FREQUENCY:1", "MHz"),
-		COM1Standby:  one("COM STANDBY FREQUENCY:1", "MHz"),
-		COM2Active:   one("COM ACTIVE FREQUENCY:2", "MHz"),
-		COM2Standby:  one("COM STANDBY FREQUENCY:2", "MHz"),
+		// Design speeds and the maximum weight, for computed take-off
+		// speeds (all filled live on the Fenix A319, 2026-10-07).
+		DesignVS0:   one("DESIGN SPEED VS0", "knots"),
+		DesignVS1:   one("DESIGN SPEED VS1", "knots"),
+		DesignVR:    one("DESIGN SPEED MIN ROTATION", "knots"),
+		DesignV2:    one("DESIGN TAKEOFF SPEED", "knots"),
+		MaxWeight:   one("MAX GROSS WEIGHT", "kilograms"),
+		COM1Active:  one("COM ACTIVE FREQUENCY:1", "MHz"),
+		COM1Standby: one("COM STANDBY FREQUENCY:1", "MHz"),
+		COM2Active:  one("COM ACTIVE FREQUENCY:2", "MHz"),
+		COM2Standby: one("COM STANDBY FREQUENCY:2", "MHz"),
 		// The sim's pushback (#666).
 		PushbackAttached:  one("PUSHBACK ATTACHED", "bool"),
 		PushbackAvailable: one("PUSHBACK AVAILABLE", "bool"),

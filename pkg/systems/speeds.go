@@ -24,12 +24,20 @@ const (
 	MDA        = "mdaFt"      // minimum descent altitude, feet (0 none)
 	Weight     = "weightKg"   // total weight, kilograms
 	FlapsIndex = "flapsIndex" // flaps handle position (FLAPS HANDLE INDEX)
+	// The aircraft's design speeds (knots) and maximum weight (kg), for
+	// computed speeds (calcSpeeds).
+	DesignVS0 = "designVS0Kt"
+	DesignVS1 = "designVS1Kt"
+	DesignVR  = "designVRKt"
+	DesignV2  = "designV2Kt"
+	MaxWeight = "maxWeightKg"
 )
 
 // Where State's take-off speeds come from.
 const (
 	SpeedsFMS   = "fms"   // read from the aircraft
 	SpeedsTable = "table" // the profile's table
+	SpeedsCalc  = "calc"  // computed from the aircraft's design speeds
 )
 
 // SpeedTable is a type's take-off speeds by flaps handle position (its
@@ -87,13 +95,53 @@ func takeoffSpeeds(p Profile, s *State) {
 		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = s.Values[V1], s.Values[VR], s.Values[V2], SpeedsFMS
 		return
 	}
-	if p.TakeoffSpeeds == nil {
-		return
+	if p.TakeoffSpeeds != nil {
+		if v1, vr, v2, ok := p.TakeoffSpeeds.Speeds(int(math.Round(s.Values[FlapsIndex])), s.Values[Weight]); ok {
+			s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = v1, vr, v2, SpeedsTable
+			return
+		}
 	}
-	if v1, vr, v2, ok := p.TakeoffSpeeds.Speeds(int(math.Round(s.Values[FlapsIndex])), s.Values[Weight]); ok {
-		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = v1, vr, v2, SpeedsTable
+	if v1, vr, v2, ok := calcSpeeds(s.Values); ok {
+		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = v1, vr, v2, SpeedsCalc
 	}
 }
+
+// calcSpeeds are take-off speeds from the aircraft's own design speeds
+// (aircraft.cfg, read as SimVars: live, the Fenix A319 gives VS0 119, VS1
+// 148, min rotation 146, take-off 150 kt at 75.5 t), scaled by
+// √(weight / max weight): VR the minimum rotation speed, V2 the design
+// take-off speed (at least VR + 4), V1 two knots under VR. Without a
+// rotation speed: VR 1.1 and V2 1.2 times the stall speed between the
+// landing and clean configurations. A light aircraft (under
+// LightAircraftKg) rotates only: VR alone, V1 and V2 0.
+func calcSpeeds(v map[string]float64) (v1, vr, v2 float64, ok bool) {
+	w, mgw := v[Weight], v[MaxWeight]
+	if w <= 0 || mgw <= 0 {
+		return 0, 0, 0, false
+	}
+	f := math.Sqrt(w / mgw)
+	vs := v[DesignVS0] + takeoffStallShare*(v[DesignVS1]-v[DesignVS0])
+	vr, v2 = v[DesignVR]*f, v[DesignV2]*f
+	if vr <= 0 {
+		if vs <= 0 {
+			return 0, 0, 0, false
+		}
+		vr, v2 = 1.1*vs*f, 1.2*vs*f
+	}
+	if mgw < LightAircraftKg {
+		return 0, math.Round(vr), 0, true
+	}
+	v2 = math.Max(v2, vr+4)
+	return math.Round(vr - 2), math.Round(vr), math.Round(v2), true
+}
+
+// takeoffStallShare: the stall speed in the take-off configuration, as a
+// share of the way from VS0 (landing) to VS1 (clean).
+const takeoffStallShare = 0.25
+
+// LightAircraftKg: below this maximum weight an aircraft rotates at VR
+// without V1 and V2 calls (EASA's 5700 kg for small aeroplanes).
+const LightAircraftKg = 5700.0
 
 // DefaultSpeedCheckKt is the take-off roll's speed check of a type that
 // gives none: 80 kt, Boeing-style procedures.

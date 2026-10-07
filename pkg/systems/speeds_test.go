@@ -63,3 +63,29 @@ func TestSpeedsSet(t *testing.T) {
 		t.Error("the A321 dropped: the set replaced the table")
 	}
 }
+
+// No FMS speeds and no table: computed from the aircraft's design speeds
+// (the Fenix A319's, read live), scaled by weight; a light aircraft
+// rotates only.
+func TestCalcSpeeds(t *testing.T) {
+	read := func(vals map[string]float64) State {
+		s := State{Values: vals}
+		takeoffSpeeds(Default(), &s)
+		return s
+	}
+	a319 := map[string]float64{DesignVS0: 119, DesignVS1: 148, DesignVR: 146, DesignV2: 150, MaxWeight: 75500, Weight: 62500}
+	if s := read(a319); s.SpeedsFrom != SpeedsCalc || s.V1Kt != 131 || s.VRKt != 133 || s.V2Kt != 137 {
+		t.Errorf("A319 design speeds at 62.5 t: %+v", s)
+	}
+	noRot := map[string]float64{DesignVS0: 119, DesignVS1: 148, MaxWeight: 75500, Weight: 75500}
+	if s := read(noRot); s.VRKt != 139 || s.V2Kt != 152 {
+		t.Errorf("from the stall speeds: %+v, want VR 139, V2 152", s)
+	}
+	c172 := map[string]float64{DesignVS0: 40, DesignVS1: 48, DesignVR: 55, MaxWeight: 1157, Weight: 1100}
+	if s := read(c172); s.V1Kt != 0 || s.VRKt != 54 || s.V2Kt != 0 {
+		t.Errorf("C172: %+v, want VR 54 only", s)
+	}
+	if s := read(map[string]float64{Weight: 62500}); s.SpeedsFrom != "" {
+		t.Errorf("nothing known: %+v", s)
+	}
+}
