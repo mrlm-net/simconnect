@@ -4,8 +4,13 @@
 package systems
 
 import (
+	_ "embed"
+	"encoding/json"
 	"math"
 	"strconv"
+	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/dict"
 )
 
 // Take-off speeds (for a copilot's calls): read from the aircraft where a model
@@ -43,10 +48,14 @@ type SpeedRow struct {
 	V2 []float64 `json:"v2"`
 }
 
-// Speeds are V1, VR and V2 for flaps (the handle position) and kg; false
-// with no row for the flaps, no weight, or a row not as long as WeightsKg.
+// Speeds are V1, VR and V2 for flaps (the handle position; the "*" row for
+// a position without its own) and kg; false with no row for the flaps, no
+// weight, or a row not as long as WeightsKg.
 func (t SpeedTable) Speeds(flaps int, kg float64) (v1, vr, v2 float64, ok bool) {
 	row, found := t.Flaps[strconv.Itoa(flaps)]
+	if !found {
+		row, found = t.Flaps["*"]
+	}
 	n := len(t.WeightsKg)
 	if !found || kg <= 0 || n == 0 || len(row.V1) != n || len(row.VR) != n || len(row.V2) != n {
 		return 0, 0, 0, false
@@ -70,6 +79,9 @@ func (t SpeedTable) Speeds(flaps int, kg float64) (v1, vr, v2 float64, ok bool) 
 // them and V1 is set, else p's table.
 func takeoffSpeeds(p Profile, s *State) {
 	s.SpeedCheckKt = p.SpeedCheckKt
+	if s.SpeedCheckKt == 0 {
+		s.SpeedCheckKt = DefaultSpeedCheckKt
+	}
 	s.DAFt, s.MDAFt = s.Values[DA], s.Values[MDA]
 	if _, ok := p.Values[V1]; ok && s.Values[V1] > 0 {
 		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = s.Values[V1], s.Values[VR], s.Values[V2], SpeedsFMS
@@ -81,4 +93,94 @@ func takeoffSpeeds(p Profile, s *State) {
 	if v1, vr, v2, ok := p.TakeoffSpeeds.Speeds(int(math.Round(s.Values[FlapsIndex])), s.Values[Weight]); ok {
 		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = v1, vr, v2, SpeedsTable
 	}
+}
+
+// DefaultSpeedCheckKt is the take-off roll's speed check of a type that
+// gives none: 80 kt, Boeing-style procedures.
+const DefaultSpeedCheckKt = 80
+
+// SpeedsItem is a type's take-off speeds (dict "systems.speeds", fed from
+// the MyCrew API's "aircraft-speeds" set): its ICAO type and other codes it
+// goes by, the speed check and the table.
+type SpeedsItem struct {
+	Type         string   `json:"type"`
+	Aliases      []string `json:"aliases,omitempty"`
+	SpeedCheckKt int      `json:"speedCheckKt,omitempty"`
+	SpeedTable
+}
+
+//go:embed speeds.json
+var speedsJSON []byte
+
+func shippedSpeeds() []SpeedsItem {
+	var out []SpeedsItem
+	_ = json.Unmarshal(speedsJSON, &out)
+	return out
+}
+
+var speedsNow dict.Value[[]SpeedsItem]
+
+func init() {
+	dict.Register(dict.Keyed("systems.speeds", "type", "Approximate typical figures, not from manufacturers' documents (see each item's measured)", "",
+		shippedSpeeds, func(i SpeedsItem) string { return strings.ToUpper(i.Type) },
+		func(items []SpeedsItem) { speedsNow.Store(items) }).ForSet("aircraft-speeds", nil))
+	_ = dict.Reset("systems.speeds")
+}
+
+// SpeedsFor is the take-off speeds of a's type: by its ATC type (or model),
+// else by a type code in its title ("FenixA319": the A319's); false for
+// none.
+func SpeedsFor(a Aircraft) (SpeedsItem, bool) {
+	items := speedsNow.Load()
+	codes := func(i SpeedsItem) []string { return append([]string{i.Type}, i.Aliases...) }
+	for _, i := range items {
+		for _, c := range codes(i) {
+			if a.ATCType != "" && strings.EqualFold(a.ATCType, c) {
+				return i, true
+			}
+		}
+	}
+	title := strings.ToUpper(a.Title)
+	for _, i := range items {
+		for _, c := range codes(i) {
+			if c != "" && strings.Contains(title, strings.ToUpper(c)) {
+				return i, true
+			}
+		}
+	}
+	return SpeedsItem{}, false
+}
+
+// withSpeeds gives p its type's take-off speeds and speed check where p
+// itself gives none.
+func withSpeeds(p Profile, a Aircraft) Profile {
+	i, ok := SpeedsFor(a)
+	if !ok {
+		return p
+	}
+	if p.TakeoffSpeeds == nil {
+		t := i.SpeedTable
+		p.TakeoffSpeeds = &t
+	}
+	if p.SpeedCheckKt == 0 {
+		p.SpeedCheckKt = i.SpeedCheckKt
+	}
+	return p
+}
+
+// UnmarshalJSON reads an item; read onto a shipped one (a set's or a local
+// correction), flaps given replace its rows whole, not row by row: rows of
+// the old weights would not fit new ones.
+func (i *SpeedsItem) UnmarshalJSON(b []byte) error {
+	type plain SpeedsItem
+	var given struct {
+		Flaps json.RawMessage `json:"flaps"`
+	}
+	if err := json.Unmarshal(b, &given); err != nil {
+		return err
+	}
+	if given.Flaps != nil {
+		i.Flaps = nil
+	}
+	return json.Unmarshal(b, (*plain)(i))
 }
