@@ -45,6 +45,11 @@ type Injector struct {
 	byRequest        map[uint32]uint32    // ground request ID → object ID
 	slots            [injectMaxAircraft]bool
 	sent             map[uint32]string
+	// groundRest: by aircraft title, the CG height above the ground the
+	// simulator rests a model at while we place it on the ground (it puts
+	// it there itself, whatever altitude we send): learned on every taxi,
+	// roll and rollout, used in the air so the wheels meet the runway there.
+	groundRest map[string]float64
 }
 
 type injected struct {
@@ -63,6 +68,11 @@ type injected struct {
 	lights            Lights
 	lightsSent        bool
 	taken             bool // taken over (released and frozen), not just watched
+	// title: the aircraft title (SetModel); onGroundRun: our placements on
+	// the ground in a row (the samples after them are the simulator's
+	// resting height, groundRest).
+	title       string
+	onGroundRun int
 }
 
 // Injector definition, request and event offsets.
@@ -160,6 +170,7 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 		objects:   map[uint32]*injected{},
 		byRequest: map[uint32]uint32{},
 		sent:      map[uint32]string{},
+		groundRest: map[string]float64{},
 	}
 	for _, o := range opts {
 		o(i)
@@ -348,6 +359,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		pitch += movingPitch(pose.GroundSpeedKts)
 	}
 	o.placed = true
+	o.onGroundRun++
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
@@ -455,6 +467,9 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
+			if o.placed && o.onGroundRun >= groundRestRun && g.OnGround != 0 && g.GS >= groundRestKts && o.title != "" {
+				i.groundRest[o.title] = g.PlaneFt - g.GroundFt
+			}
 			rest := g.PlaneFt - g.GroundFt
 			if !o.placed && g.OnGround != 0 && g.GS < restMaxKts &&
 				math.Abs(rest-g.CGFt) <= restMaxOffFt && math.Abs(g.PlanePitch-g.StaticPitch) <= restMaxOffPitch {
@@ -518,6 +533,17 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	if o.haveRest {
 		cg, base = o.restFt, o.restPitch
 	}
+	// Where the simulator rests this model on the ground, once seen: in the
+	// air the same, so lift-off and touchdown do not jump (live A320 +0.6,
+	// B738 +1.06 ft over the static CG height).
+	if r, ok := i.groundRest[o.title]; ok {
+		cg = r
+	}
+	if pose.OnGround {
+		o.onGroundRun++
+	} else {
+		o.onGroundRun = 0
+	}
 	w := 1.0
 	if !pose.OnGround {
 		w = math.Max(0, 1-math.Max(0, pose.HeightFt)/restFadeFt)
@@ -551,11 +577,28 @@ const AirBlendFt = 100.0
 // over this height (PlaceAir), so lift-off and touchdown do not jump.
 const restFadeFt = 50.0
 
-// RestAboveStaticShare: an aircraft whose rest height was never measured
-// (on the ground under the injector) rests this share of its static CG
-// height above it on its gear — measured live on B738s: 1.06 ft over
-// 8.48, the height the simulator puts it at once on the ground.
-const RestAboveStaticShare = 0.125
+// RestAboveStaticShare: a model the simulator has not been seen resting on
+// the ground yet (groundRest) is taken to rest this share of its static CG
+// height above it — live: A320 0.60 over 12.25 ft, B738 1.06 over 8.48.
+const RestAboveStaticShare = 0.085
+
+// groundRestRun: the simulator's resting height is read after this many
+// of our placements on the ground in a row.
+const groundRestRun = 3
+
+// groundRestKts: and only rolling this fast (take-off roll, rollout): what
+// the simulator rests a moving model at, as at touchdown.
+const groundRestKts = 30.0
+
+// SetModel tells the injector the title of objectID (after Takeover), so
+// what it learns of the model (groundRest) serves the next of its kind.
+func (i *Injector) SetModel(objectID uint32, title string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; ok {
+		o.title = title
+	}
+}
 
 // rollingFadeDeg: the rolling pitch (movingPitch) fades out as the nose
 // comes up to this pitch, at rotation and in the flare.

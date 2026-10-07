@@ -183,6 +183,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		c.mover = nil
 		return err
 	}
+	c.inj.SetModel(c.objectID, c.req.Model)
 	c.note("injector takeover", nil)
 	c.initDrive()
 	c.ignoreRunway = c.plan.Runway.Index // runway lights come from the phase until vacated
@@ -403,6 +404,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	if err := c.inj.Takeover(c.objectID); err != nil {
 		return err
 	}
+	c.inj.SetModel(c.objectID, c.req.Model)
 	c.note("injector takeover on final", nil)
 	c.initDrive()
 	c.seq.begin(c.now())
