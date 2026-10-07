@@ -1142,7 +1142,7 @@ func (w *World) Register(mux *http.ServeMux) {
 		}{plan.Route, plan.Exit, plan.Route.Points[plan.VacateIndex], plan.Stop})
 	})
 
-	// GET /api/traffic — every aircraft within 20 km of the user aircraft.
+	// GET /api/traffic — every aircraft within MaxScanRadiusMeters (200 km) of the user aircraft.
 	mux.HandleFunc("GET /api/traffic", func(w http.ResponseWriter, r *http.Request) {
 		st.mu.Lock()
 		t, at := st.traffic, st.trafficAt

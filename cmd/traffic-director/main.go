@@ -39,7 +39,7 @@ func main() {
 	listen := flag.String("listen", "", "wait on this address (\":7710\") for an actuator that dials in, instead of dialling -actuator (#774)")
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP address of the World's API")
 	web := flag.String("web", "", "directory of the airport map's page to serve (cmd/airport-map/web); \"\": the API only")
-	airways := flag.String("airways", "", "airway graph for flight plans; \"\": direct routes")
+	airways := flag.String("airways", "", "airway graph for flight plans; the airways around each loaded airport are read from the sim and added either way")
 	logDir := flag.String("log-dir", ".", "directory for the traffic log")
 	dataDir := flag.String("data-dir", ".", "directory for local settings")
 	apiToken := flag.String("api-token", "", "token a client needs to control the traffic over the HTTP API (\"auto\": a random one; \"\": open, trusted networks only)")
