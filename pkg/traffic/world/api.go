@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -55,6 +54,9 @@ type Options struct {
 	// +1100–+2099 (requests). 0: the defaults
 	// (docs/traffic-world.md).
 	IDBase uint32
+	// QueueSize is how many fed messages (Feed) wait for the World; 0:
+	// DefaultQueueSize. A layout loaded while any was dropped is not kept.
+	QueueSize int
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
 	// Schedule times the scheduled traffic (#741); zero values keep the
@@ -88,11 +90,10 @@ type World struct {
 	reqs chan string
 
 	// A host's connection (host.go): its messages, the in-process API.
-	qOnce   sync.Once
-	q       chan engine.Message
-	dropped atomic.Uint64
-	hOnce   sync.Once
-	h       http.Handler
+	qOnce sync.Once
+	q     chan engine.Message
+	hOnce sync.Once
+	h     http.Handler
 }
 
 // New makes a World; it connects with Run.
