@@ -301,7 +301,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if r.Kind == traffic.ResolveLevel {
 			delete(w.stopped, r.Callsign) // a new level replaces the stop; another change keeps it to be cleared on
 		}
-		if r.Kind == traffic.ResolveLevel && (r.Stop || r.Maintain) {
+		// A departure capped below the level departure cleared it to counts
+		// as stopped: cleared on once clear (live, EZY516 "climb to flight
+		// level 110, due traffic" after FL240, never cleared higher).
+		capped := r.Kind == traffic.ResolveLevel && pos == traffic.PosDeparture && r.AltFt < radarFt
+		if r.Kind == traffic.ResolveLevel && (r.Stop || r.Maintain || capped) {
 			up := r.AltFt > a.AltFt
 			if r.Maintain { // level now: the way its route was going (#697)
 				up = routeClimbs(planned, r.AltFt)
@@ -421,6 +425,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			ta = w.s.cc.limitsOf(g).TransitionAltitudeFt
 		}
 		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevelAbove(st.pos, cs, st.altFt, st.climb, ta))
+		if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && st.climb && st.pos == traffic.PosDeparture {
+			it.climbOn() // its route on to the cleared level, past its SID
+		}
 	}
 	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
 }

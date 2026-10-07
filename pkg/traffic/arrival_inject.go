@@ -338,6 +338,9 @@ func (c *ArrivalController) onInjectedFrame() {
 			// The aircraft stays frozen on the stand under the injector;
 			// Release it to hand it back to MSFS AI.
 			c.setInjectedLights(LightsParked, "lights parked")
+			// Engines off on the stand: they ran on at idle (live, QTR1709's
+			// B77W at B14), and no jetway comes to a running aircraft.
+			c.note("engines off", c.inj.SetEngines(c.objectID, c.aircraft().EngineCount(), false))
 			c.stopMonitor()
 			c.setState(ArrivalParked, nil)
 			return

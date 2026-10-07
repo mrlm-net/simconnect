@@ -411,6 +411,9 @@ const (
 	// half-spans for the paths to conflict.
 	GiveWayLookMeters   = 250.0
 	GiveWayMarginMeters = 10.0
+	// TailplaneShare: the tailplane's half-span as a share of the wing's
+	// half-span (B77W 21.5 m of 64.8 m), kept clear of a crossing body.
+	TailplaneShare = 0.35
 	// GiveWayDecelFactor: an aircraft giving way slows down on a braking
 	// curve of this share of its deceleration (0.2 m/s² for an A320 from
 	// 15 kt: from about 150 m out instead of 60).

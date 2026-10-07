@@ -147,3 +147,26 @@ func (cc *controlCenter) snapshotItems() []*controlled {
 	}
 	return out
 }
+
+// climbOn has a departure handed to MSFS AI climb on to the level
+// departure cleared it to (radarFt), past the top of its SID: said alone,
+// the climb waypoints still ended there (live, EZY516 level at FL100).
+func (it *controlled) climbOn() {
+	it.mu.Lock()
+	ft, pos, alt, id := it.radarFt, it.view.Position, it.heightFt, it.objectID
+	it.mu.Unlock()
+	if ft <= 0 {
+		ft = departureClimbFt
+	}
+	if it.graph != nil {
+		alt += it.graph.Layout.Altitude / 0.3048
+	}
+	for _, a := range it.cc.world.Aircraft() { // where it is now, if seen
+		if a.ObjectID == id && id != 0 {
+			pos, alt = a.Position, a.AltFt
+		}
+	}
+	if err := it.cc.do(func() error { return it.dep.ClimbTo(pos, alt, ft) }); err != nil {
+		it.cc.log.printf("%-6s climb to %.0f ft not applied: %v", it.Tail, ft, err)
+	}
+}

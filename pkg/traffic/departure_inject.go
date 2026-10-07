@@ -1782,6 +1782,16 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 		here := types.SIMCONNECT_DATA_WAYPOINT{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, KtsSpeed: ProcedureSpeedKts}
 		wps = roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), MaxBankDeg(*c.aircraft()))[1:]
 	}
+	if c.climbToFt > 0 { // cleared higher already (ClimbTo)
+		field := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
+		for i := range wps {
+			ft := c.climbToFt
+			if wps[i].Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 {
+				ft -= field
+			}
+			wps[i].Altitude = math.Max(wps[i].Altitude, ft)
+		}
+	}
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {
 		c.emit(err, true)
 	}
@@ -2132,6 +2142,32 @@ func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix ai
 	}
 	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: kts}, {Position: fix, AltFt: plan[at].AltFt, Kts: plan[at].Kts}}
 	return c.Reroute(append(route, plan[at+1:]...))
+}
+
+// ClimbTo clears a departure handed to MSFS AI to climb to ft (feet MSL),
+// from pos at altFt: the rest of its climb route no lower than ft, so it
+// climbs on past the top of its SID ("identified, climb to flight level
+// 240": live, EZY516 levelled at the SID's 10000 ft for good).
+func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
+	c.mu.Lock()
+	if c.state != TaxiComplete {
+		// Cleared before the hand-over (identified on the take-off): its
+		// climb waypoints are raised as they are made (handOverClimb).
+		c.climbToFt = ft
+		c.mu.Unlock()
+		return nil
+	}
+	c.mu.Unlock()
+	plan := c.ClimbPlan(pos)
+	if len(plan) == 0 {
+		return errors.New("traffic: climb: not handed over to MSFS AI")
+	}
+	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: plan[0].Kts}}
+	for _, p := range plan {
+		p.AltFt = math.Max(p.AltFt, ft)
+		route = append(route, p)
+	}
+	return c.Reroute(route)
 }
 
 // Reroute sends a departure handed to MSFS AI on route (from where it is

@@ -14,6 +14,7 @@ import (
 type departureCtl interface {
 	Occupies() (airport.Occupied, bool)
 	AvoidOccupied(occ []airport.Occupied) bool
+	ClimbTo(pos airport.LatLon, altFt, ft float64) error
 	SetPushbackAt(at time.Time) bool
 	ClearPushback()
 	FacesOut() bool
