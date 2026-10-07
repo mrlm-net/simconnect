@@ -286,7 +286,7 @@ func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
 	// legs after it are all shorter than MinStretchLegNM.
 	a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
 	at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
-	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, 90, 210, false))
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, calc.BearingDegrees(a0.Latitude, a0.Longitude, b0.Latitude, b0.Longitude), 210, false)) // flying the leg
 	routeBefore := pathNM(append([]airport.LatLon{at}, ctl.ProcedureRoute()...)) // from where it is, as ExtraNM
 	a, err := ctl.AbsorbDelay(90 * time.Second)
 	if err != nil {
@@ -384,7 +384,7 @@ func TestAbsorbDelayOrbitNearTheEnd(t *testing.T) {
 		wps := ctl.proc.Waypoints
 		a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
 		at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
-		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, 90, 210, false))
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, calc.BearingDegrees(a0.Latitude, a0.Longitude, b0.Latitude, b0.Longitude), 210, false)) // flying the leg
 		return ctl
 	}
 	a, err := start().AbsorbDelay(3 * time.Minute)
@@ -531,5 +531,157 @@ func TestNoClimb(t *testing.T) {
 		if chain[i].Altitude != w {
 			t.Errorf("point %d at %.0f ft, want %.0f", i, chain[i].Altitude, w)
 		}
+	}
+}
+
+// More delay for an arrival on its dog-leg moves the apex further out: one
+// dog-leg, not a second one inserted after it (live, RYR1785 on LOMKI 8T:
+// out, back, out and round again).
+func TestAbsorbDelayLengthensTheDogLeg(t *testing.T) {
+	g := lkprGraph(t)
+	tested := 0
+	for _, star := range []string{"LOMKI", "GOLOP", "VLM", "BAROX"} {
+		route, err := lkprProcedures(t).Arrival("06", star)
+		if err != nil {
+			continue
+		}
+		ec := &eventClient{}
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA9",
+			InjectApproach: true, Procedure: route}); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, 9000, 90, 250, false))
+		if _, err := ctl.AbsorbDelay(2 * time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if ctl.dogLeg == nil {
+			continue // a downwind extended instead
+		}
+		tested++
+		flown := func() float64 {
+			pts := []airport.LatLon{route[0].Position}
+			for _, w := range ctl.proc.Waypoints {
+				pts = append(pts, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
+			}
+			return pathNM(pts)
+		}
+		corners, first, flownNM := len(ctl.corners), ctl.dogLeg.extraNM, flown()
+		a, err := ctl.AbsorbDelay(time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ctl.corners) != corners {
+			t.Errorf("%s: %d corners after more delay, was %d: a second dog-leg", star, len(ctl.corners), corners)
+		}
+		if ctl.dogLeg == nil || ctl.dogLeg.extraNM <= first {
+			t.Errorf("%s: dog-leg %+v, want longer than %.1f NM", star, ctl.dogLeg, first)
+		}
+		if grown := flown() - flownNM; a.ExtraNM <= 0 || math.Abs(grown-a.ExtraNM) > 0.5 {
+			t.Errorf("%s: flown path grew %.1f NM, stretch %.1f", star, grown, a.ExtraNM)
+		}
+		t.Logf("%s: dog-leg %.1f → %.1f NM, %d corners; flown path grew %.1f NM, stretch %.1f", star, first, ctl.dogLeg.extraNM, len(ctl.corners), flown()-flownNM, a.ExtraNM)
+	}
+	if tested == 0 {
+		t.Fatal("no STAR to 06 took a dog-leg")
+	}
+}
+
+// Round the turn back of a dog-leg, wider than 1.5 NM inside its corner:
+// once flying the new leg the corner is behind it, and the route drawn from
+// the aircraft does not go back to it (live, RYR1785 on 251° drawn back to
+// its turn point north-east).
+func TestCornerPassedRoundAWideTurn(t *testing.T) {
+	base := airport.LatLon{Lat: 49.9, Lon: 14.0}
+	at := func(east, north float64) airport.LatLon { // NM
+		return offsetHeading(offsetHeading(base, 90, east*1852), 0, north*1852)
+	}
+	wp := func(p airport.LatLon) types.SIMCONNECT_DATA_WAYPOINT {
+		return types.SIMCONNECT_DATA_WAYPOINT{Latitude: p.Lat, Longitude: p.Lon}
+	}
+	// Out south-east to the apex, back west-south-west, then north.
+	c := &ArrivalController{corners: []types.SIMCONNECT_DATA_WAYPOINT{wp(at(0, 0)), wp(at(8, -4)), wp(at(0, -7)), wp(at(0, 3))}, cornerNext: -1}
+	for _, s := range []struct {
+		name    string
+		pos     airport.LatLon
+		heading float64
+		want    int
+	}{
+		{"on the way out", at(4, -2), 117, 1},
+		{"turning, not halfway", at(7.5, -2.0), 160, 1},
+		{"round the turn, 2.5 NM inside the apex", at(6.5, -5.8), 245, 2},
+	} {
+		c.last.Position, c.last.Heading, c.cornerNext = s.pos, s.heading, -1
+		if got := c.cornerAhead(); got != s.want {
+			t.Errorf("%s: corner ahead %d, want %d", s.name, got, s.want)
+		}
+	}
+}
+
+// A dog-leg whose apex is no longer in the route (re-planned since: a
+// direct, a runway change) is forgotten, and more delay gets a dog-leg of
+// its own (live: the map crashed on the forgotten one).
+func TestAbsorbDelayAfterTheRouteChanged(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "BAROX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA10",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, route[0].Position, 9000, 90, 250, false))
+	ctl.dogLeg = &dogLegState{apex: airport.LatLon{Lat: 1, Lon: 1}, extraNM: 3} // not in the route
+	if _, err := ctl.AbsorbDelay(2 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.dogLeg == nil || ctl.dogLeg.apex.Lat == 1 {
+		t.Errorf("dog-leg %+v, want a new one", ctl.dogLeg)
+	}
+}
+
+// The map asks for the route before the first position: nothing is taken as
+// passed, and the route re-sent later starts at the STAR's next point
+// (live, TVS1012: sent straight to PR742, the STAR's south-westernmost).
+func TestCornersBeforeTheFirstPosition(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c19, _ := g.Layout.ParkingIndex("C19")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c19, Model: "FSLTL_FAIB_B738_TVS-Skytravel_TSOC", Tail: "TVS1012",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	_ = ctl.ProcedureCorners() // the map, before any position
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, airport.LatLon{Lat: 50.4887, Lon: 14.4686}, 10000, 155, 250, false))
+	if _, err := ctl.AbsorbDelay(68 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if got := ctl.cornerNames[ctl.cornerAhead()]; got != "PR711" {
+		t.Errorf("route re-sent from %q, want PR711", got)
 	}
 }

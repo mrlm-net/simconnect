@@ -108,7 +108,7 @@ heavy := l.SuitableStands(30, types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_GATE_H
 ok := l.Parking[heavy[0]].ServesAirline("DLH")
 ```
 
-- **`Parking.Size()`** classes a spot as `StandSmall`, `StandMedium` or `StandHeavy`: by `TYPE` where the scenery names a size (`GATE_SMALL`/`MEDIUM`/`HEAVY`, `RAMP_GA_SMALL`/`MEDIUM`/`LARGE`), otherwise by `RADIUS` (below 15 m small, below 25 m medium). Fuel and vehicle spots are `StandNone`.
+- **`Parking.Size()`** classes a spot as `StandSmall`, `StandMedium` or `StandHeavy`: by `TYPE` where the scenery names a size (`GATE_SMALL`/`MEDIUM`/`HEAVY`/`EXTRA`, `RAMP_GA_SMALL`/`MEDIUM`/`LARGE`/`EXTRA`; `EXTRA` is heavy), otherwise by `RADIUS` (below 15 m small, below 25 m medium). Fuel and vehicle spots are `StandNone`.
 - **`Layout.SuitableStands(minRadius, types...)`** lists the spots with at least that `RADIUS` and, if given, one of the `TYPE`s; never fuel or vehicle spots. `RADIUS` is half the space the spot offers, so pass half the aircraft span plus a margin.
 - **`Layout.ParkingConflicts(i)`** lists the spots whose `RADIUS` circles overlap spot `i` by more than half a meter: split and alternate stands (LKPR `S22`/`S22A`) and tightly packed gates. At LKPR 20 pairs overlap (two more only touch), at EDDM 4, at LROP 38. Whether two aircraft actually clash depends on their spans; the stand allocator (#292) decides that.
 - **`Parking.Airlines`** are the airline codes the scenery assigns to the stand (`TAXI_PARKING_AIRLINE` child records; EDDM assigns 10–23 airlines to 119 of its 175 stands, LKPR none). `ServesAirline(code)` is true for a listed code (case-insensitive) and for stands without airlines.
@@ -153,7 +153,10 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 | `RouteToRunwayEntry(parking, runwayEnd, entry, opts)` | Stand → hold-short of a runway end at a named entry: "24 at B" (empty entry = `RouteToRunway`) |
 | `RouteFromRunway(exit, parking, opts)` | Runway exit → stand, continuing in the exit's direction |
 | `RouteToRunwayFrom(from, prev, runwayEnd, entry, opts)` | From a node reached via `prev` (no turning back into it) → hold-short: a taxi-out after a pushback onto `prev` |
+| `RouteToParkingFrom(from, prev, parking, opts)` | From a node reached via `prev` (-1: any heading) → stand: a taxi-in re-planned on its way |
 | `RouteFromNodes(nodes)` | A route along given adjacent nodes, e.g. a pushback joined to its taxi-out |
+
+`ExitFor(runwayEnd, rollout)` picks the first exit at least `rollout` meters past the landing threshold (the last exit when none is that far). `Fits(edge, opts)` checks one edge against the aircraft size as a search would, and `SpokenTaxiways(upto)` gives a route's taxiways as a controller says them, without stubs shorter than `SpokenMinMeters` (150 m) that only lead onto the next one.
 
 `Route.Cost` is what the search minimised (length plus turn, crossing and apron penalties), to compare alternatives. `RouteOptions.OwnApronMeters` (default 250 m) waives the apron penalty around the start: an aircraft leaving its own apron uses its taxilanes (LKPR C17 leaves by JB, the nearest), while through traffic still keeps off them.
 
@@ -164,6 +167,10 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 - When no route fits, the route is found without the size check and marked `Route.Tight`. A [custom route](#custom-routes-via-points-and-taxiways) returns `ErrTooNarrow` instead.
 
 `pkg/traffic` controllers set `HalfSpan` from the aircraft's `MotionProfile`.
+
+**Aircraft in the way.** `RouteOptions.Occupied` lists places other aircraft take (`Occupied{Points, HalfSpan}`: a standing aircraft, or the path it pushes back along). The route keeps off taxiway edges that come within both half spans plus `WingtipMargin` of one. When no route does, it is found without them and marked `Route.Occupied`. `PassesOccupied(route, from, opts)` tells whether a route, from edge `from` on, comes too near any of them, e.g. to decide whether to re-plan.
+
+**Fewer stands.** Between routes of about the same length, the one past fewer stands wins: a second search prices apron taxilanes at `FewerStandsApronPenalty` (4), and its route is taken when it passes fewer stands (`StandsPassed`) and is at most 15 % (`FewerStandsTolerance`, at least 150 m) longer. Not for custom routes.
 
 `RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 
@@ -180,13 +187,16 @@ Routes are not simply the shortest. Pilots and ATC prefer fewer and gentler turn
 | Each runway crossing | 1000 m | `RunwayCrossingPenalty` |
 | Taxiway edge running along a runway surface (e.g. crossing at a runway end, LROP) | ×20 its length | `UseRunwayPaths` removes it |
 | Edge at a taxi point where a stand connects (apron taxilane), so through traffic keeps to taxiways without stands | +50 % of its length | `ApronPenalty` |
+| Entering a stand through a lead-in ahead of it (turning round on the apron), so arrivals park nose-in | 3000 m | `StandTurnAroundPenalty` |
+| Leaving a stand through a lead-in behind it (a pushback), so departures leave forward where the stand allows | 200 m | `PushbackPenalty` |
+| Named taxiway off a `Taxiways` list, until its last one is joined | ×10 its length | `OffTaxiwaysFactor` (constant) |
 | Turning back (≥ 150°) | 2000 m | — |
 
 Zero selects the default and a negative value disables a cost. `Route.Length` is always the real length.
 
 ### Custom routes: via points and taxiways
 
-Two `RouteOptions` fields shape the route itself (#340). Every routing function honours them (`Route`, `RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`, `RouteToParking`, `RouteFromRunway`):
+Two `RouteOptions` fields shape the route itself (#340). Every routing function honours them (`Route`, `RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`, `RouteToParking`, `RouteToParkingFrom`, `RouteFromRunway`):
 
 - `Via []NodeID`: the route passes these nodes in order. Every leg uses the same search and costs, and at a via point the route goes on the way it arrived. It never turns back there, so a via point at a dead end cannot be passed.
 - `Taxiways []string` ("via F, L"): the names must appear in `Route.Taxiways` in this order, matched case-insensitively. Until the last one is joined, other named taxiways cost `OffTaxiwaysFactor` (×10) their length, so they serve only as connectors. After the last one the route goes on freely to its destination.
@@ -216,17 +226,17 @@ All except `ErrUnknownTaxiway` wrap `ErrNoRoute`. These errors appear only when 
 
 ### Runway entries and exits
 
-`RunwayEntries("24")` lists the taxiways onto a runway end for departures, nearest the threshold first, with the runway remaining ahead of each (`Remaining`) and the turn onto the runway (`Angle`). `RunwayExits("24")` lists the exits for landings on it. An entry onto 24 is an exit for landings on 06 driven the other way. Exits turning more than `MaxExitAngle` (90°) point back along the runway and are left out. A departure at taxi speed turns sharper: entries may turn up to `MaxEntryAngle` (135°), because threshold entries often meet the runway square or slightly back (LKPR 12 at L, 120°).
+`RunwayEntries("24")` lists the taxiways onto a runway end for departures, nearest the threshold first (entries as far from it in taxiway name order, so the list is the same every time), with the runway remaining ahead of each (`Remaining`) and the turn onto the runway (`Angle`). `RunwayExits("24")` lists the exits for landings on it. An entry onto 24 is an exit for landings on 06 driven the other way. Exits turning more than `MaxExitAngle` (90°) point back along the runway and are left out. A departure at taxi speed turns sharper: entries may turn up to `MaxEntryAngle` (135°), because threshold entries often meet the runway square or slightly back (LKPR 12 at L, 120°).
 
 Scenery data sometimes draws a taxiway ending on another node without sharing it: at LKPR the F lead-in ends on the 06 centreline beside the runway node. `BuildGraph` joins a dead end to another node within 3 m, so the lead-in reaches the runway.
 
 ```go
-entries, _ := g.RunwayEntries("24") // A (3510 m ahead), B (2406 m), L (1549 m) at LKPR
+entries, _ := g.RunwayEntries("24") // A and Z (3510 m ahead), B (2406 m), L (1549 m) at LKPR
 route, err := g.RouteToRunwayEntry(idx, "24", "B", airport.RouteOptions{})
-// 954 m via [H1 H JO G B]; route.Entry == "B"
+// 965 m via [H1 H JO J D B]; route.Entry == "B"
 ```
 
-An unknown entry name returns `ErrUnknownEntry`.
+An unknown entry name returns `ErrUnknownEntry`. When several entries share a name, the reachable one with the most runway ahead wins.
 
 On LKPR, `BuildGraph` takes about 0.2 ms and a route a few milliseconds.
 
@@ -276,11 +286,14 @@ Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AI
 
 | Field | Source | Default |
 |-------|--------|---------|
-| `TransitionAltitudeFt` | `KnownLimits` (LKPR 5000, EDDF/EDDM 5000, LOWW 10000, EGLL 6000, LFPG 5000, EHAM 3000, EPWA 6500, LSZH 7000) | 5000; 18000 for K… and C… codes |
+| `TransitionAltitudeFt` | `KnownLimits` (LKPR 5000, EDDF/EDDM 5000, LOWW 10000, EGLL 6000, LFPG 5000, EHAM 3000, EPWA 6500, LSZH 7000), else the facility's `TRANSITION_ALTITUDE` | 5000; 18000 for K… and C… codes |
 | `ClimbHandoverFt` (above the field) | the SIDs' initial climb: the highest CA/VA/FA leg starting a runway transition, minus the elevation, at least `MinClimbHandoverFt` (1500) | `DefaultClimbHandoverFt` (1500) without procedures |
+| `InitialClimbFt`, `InitialClimbs` (per SID) | `KnownLimits` (EDDM 7000, LOWW 5000, EGLL 6000); `InitialClimbFor(sid)` picks | `DefaultInitialClimbFt` (FL100) |
 | `TaxiMaxKts` / `ApronMaxKts` | `KnownLimits` | 30 / 15 |
-| `PreferredRunways` | `KnownLimits` (LKPR 24, then 06) | none |
-| `MSAFt`, `NoReverseThrust` | `KnownLimits` | unknown / false |
+| `PreferredRunways` | `KnownLimits` (LKPR 24, then 06; EGLL 27R, 27L) | none |
+| `MSAFt`, `NoReverseThrust` | `KnownLimits` (no reverse: EDDM, LOWW) | unknown / false |
+| `Tower` | `KnownLimits` (LKPR) | nil: the facility's tower position |
+| `DeicingPads`, `Tugs`, `FuelTrucks`, `Stairs`, `GPUs` | `KnownLimits` | none / 0: sized by the stands |
 
 At LKPR the SIDs climb to 1700 ft on the runway heading first; the field is at about 1200 ft, so the hand-over stays at the 1500 ft floor. Pass the limits to `traffic.TaxiRequest.Airport` / `ArrivalRequest.Airport`, and `nav.RunwayLimitsFrom(lim)` gives the preferential runways to `nav.ActiveRunways` (or to a `nav.RunwaySelector`, which keeps the runway in use, see [Keeping the runway in use](nav-weather.md#keeping-the-runway-in-use)). `Graph.Apron(node)` reports a stand's junction with the taxilane, where `ApronMaxKts` applies.
 
@@ -312,8 +325,8 @@ The remaining misses are distinct strips on one line or crossing each other's co
 
 ## Seeing it on a map
 
-[`cmd/airport-map`](../cmd/airport-map) serves the layout on a Leaflet map with every feature's raw values, a route viewer and overlapping-stand highlighting. The route viewer has a departure mode (stand → runway, full length or at an entry) and an arrival mode (runway exit → stand, with the vacate stop and the stop point on the stand). Pick the entry or exit in the panel or click its marker on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.
+[`cmd/airport-map`](../cmd/airport-map) serves the layout on a Leaflet map with every feature's raw values and overlapping-stand highlighting. Setting up a new flight previews its route: a departure from stand to runway (full length or at an entry), an arrival from the runway exit to the stand with the vacate stop, and via points picked on the map. Run it with `-dump` to save an airport's raw records, and with `-file` to view them without the simulator. The Procedures panel draws the SIDs, STARs and approaches of a runway as charts do: pick one from the list to see its fixes (VOR, NDB, waypoint symbols), constraints, tracks and distances, direction arrows, and where a STAR ends in radar vectors.
 
-The sidebar has one tab per task: **Traffic** (new flights, aircraft cards with their clearances, the [ATC game](atc-game.md)), **Airport** (airport info, weather, ATIS, de-icing pads, procedures), **Layers** (airport data, live traffic, safe zones, raw TYPE tables) and **?** (a quick reference). Map buttons: ✈ your aircraft, ⛶ full screen with the panel, ◨ hide or show the panel.
+The sidebar has one tab per task: **Traffic** (new flights, aircraft cards with their clearances, the [ATC game](atc-game.md)), **Sequence**, **Schedule**, **Radio**, **Airport** (ATIS, tower, weather, airport info, procedures, VFR circuits and reporting points, de-icing pads) and **Map** (base map, panel position, layers such as live traffic, safe zones, overlapping and occupied stands). A Quick reference button opens a help dialog. Map buttons show the whole airport, your aircraft or the world view, open the layers, go full screen with the panel, and hide or show the panel.
 
 To drive an AI aircraft along a route, see [Departure Taxi](traffic-taxi.md). The map's scheduled traffic, world view and landing sequence are described in [Traffic Manager](traffic-manager.md#on-the-airport-map), [Traffic Picture](traffic-picture.md#on-the-airport-map) and [Airborne Separation](traffic-separation.md#the-landing-sequence).

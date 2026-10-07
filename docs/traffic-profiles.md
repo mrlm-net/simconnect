@@ -30,7 +30,7 @@ p := traffic.ProfileFor("FSLTL B77W Emirates") // p.Type == "B77W", p.ICAOCode =
 p = traffic.ProfileFor("ATCCOM.AC_MODEL A319.0.text") // ATC MODEL works too
 ```
 
-`ProfileFor` matches the container title, the `ATC MODEL` or a type designator against the known types, the most specific first: A20N, A320, A321, A21N, A319, B738, B38M, B739, B39M, B737, B77W, B77L, B772, B789, B788, B78X, A332, A333, A359, A35K, A388, B744, B748, E175, E190, E195, CRJ9, AT76 and DH8D (`KnownTypes()`). The figures are published values (span, length, wheelbase, final approach speed, Vr, take-off distance) and typical ones for what the simulator does not expose (pitch attitudes, flare, taxi speeds).
+`ProfileFor` matches the container title, the `ATC MODEL` or a type designator against the known types, the most specific first (a title containing one of a type's match strings, upper case, takes it): airliners B77W, B77L, B772, B78X, B789, B788, B748, B744, A388, A35K, A359, A332, A333, A21N, A321, A319, A20N, A320, B39M, B739, B38M, B737, B738, BCS3, E195, E190, E175, CRJ9, AT76 and DH8D; business and mid-size GA C25B, C25C, C56X, C68A, C700, C680, C750, E50P, E55P, E545, E550, PC24, SF50, PC12, TBM9, B350, BE20, DA62, DA42 and BE58; light aircraft C172, C152, P28A, DA40 and SR22 (`KnownTypes()`). The table is the `traffic.aircraftTypes` dictionary, so a host can replace or add types at runtime with `dict.Use` ([Dictionaries](dictionaries.md)). The figures are published values (span, length, wheelbase, final approach speed, Vr, take-off distance) and typical ones for what the simulator does not expose (pitch attitudes, flare, taxi speeds).
 
 Unknown titles get `DefaultAircraftProfile()` — the A320 family figures every default in the package stands for (`DefaultMotionProfile`, `DefaultTakeoffProfile`, `DefaultApproachProfile`, `DefaultRolloutProfile`, `DefaultNoseOffsetMeters`, the flap tunables). `GenericProfile(span, category)` picks a representative type by size and scales its airframe.
 
@@ -46,7 +46,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "24", Parking: stand, Model: 
     InjectApproach: true, Aircraft: &ac})
 ```
 
-`TakeoffProfileFor(model)` and `MotionProfileFor(model)` remain as shortcuts for `ProfileFor(model).Takeoff` and `.Motion`.
+`EngineCount()` gives the engines the controllers start, run and shut down: four for the 747, A340 and A380 families, one for pistons, two otherwise. `TakeoffProfileFor(model)` and `MotionProfileFor(model)` remain as shortcuts for `ProfileFor(model).Takeoff` and `.Motion`.
 
 ## Refining from SimVars
 

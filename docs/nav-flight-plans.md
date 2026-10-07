@@ -17,7 +17,7 @@ import "github.com/mrlm-net/simconnect/pkg/nav"
 |-----------------|-----------|
 | `FlightPlanRequest` | Departure and arrival (`AirportInfo`), aircraft type, cruise level, runways, weather, runway limits |
 | `AirportInfo` | An airport: `Layout` and `Procedures`, or only `Position` and `ElevationM` |
-| `Plan(req, graph)` | Plans the flight; `graph` may be nil (all direct) |
+| `Plan(req, graph)` | Plans the flight; `graph` may be nil (all direct); `ErrNoAirport` when an airport has no position |
 | `FlightPlan` | Runways, SID/STAR/approach, ICAO route, waypoints, cruise level, distance, TOC/TOD, ETE, fuel |
 | `Waypoint` | One point: ident, region, kind, position, airway, phase, constraints, planned altitude, distance |
 | `FlightPlan.PLN()` | The MSFS `.pln` (AceXML) file |

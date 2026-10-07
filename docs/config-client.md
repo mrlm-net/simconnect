@@ -70,7 +70,7 @@ engine.WithDLLPath("D:/MSFS SDK/SimConnect SDK/lib/SimConnect.dll")
 
 ### WithContext
 
-Provides a context for the engine lifecycle. When the context is cancelled, the engine will gracefully shut down.
+Provides a context for the engine lifecycle. When the context is cancelled, the dispatcher stops and the `Stream()` channel closes; call `Disconnect()` to close the connection.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())

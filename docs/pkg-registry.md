@@ -133,6 +133,8 @@ Because `All` returns a copy, each call allocates a new slice. Call it once and 
 
 `Validate` checks whether a given unit string is valid for a named variable. It returns `nil` on success and a descriptive error on failure. Both the variable name and unit comparisons are case-insensitive. A `:N` index suffix is stripped from the name before lookup.
 
+An empty unit is always valid (it asks SimConnect for the variable's default unit). Beyond the listed `Units`, any unit of the same dimension is accepted, since SimConnect converts between them: `"meters per second"`, `"mph"` or `"kph"` pass for a variable listed in knots, `"radians"` for one in degrees. The dimensions are angle, length, speed, time, temperature, pressure, mass, volume, volume flow, frequency, ratio (percent, position), bool, rpm and number (number, enum, mask, flags). `ByUnit` matches only the listed units.
+
 **Signature:**
 
 ```go

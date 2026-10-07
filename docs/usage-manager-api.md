@@ -37,7 +37,7 @@ The library exposes two distinct layers for connecting to SimConnect.
 - You need SimState (camera mode, pause state, position, environment) delivered as a unified struct.
 - You want typed, channel-based subscriptions for system events.
 
-The `manager` wraps an `engine` instance internally and exposes its full API through the `Manager` interface, so you do not lose any capability by choosing it.
+The `manager` wraps an `engine` instance internally (a new one per connection) and exposes most of its API through the `Manager` interface; the rest is reachable through `Client()`.
 
 ```go
 //go:build windows
@@ -51,6 +51,7 @@ import (
 func main() {
     // Manager: auto-reconnect, SimState, typed subscriptions
     mgr := manager.New("MyApp")
+    _ = mgr
 
     // Engine: single connection, manual lifecycle
     // client := engine.New("MyApp")
@@ -101,17 +102,21 @@ func main() {
 Each call to `Start()` runs the following loop:
 
 1. Enter `StateConnecting` and attempt `engine.Connect()` with a per-attempt timeout (`ConnectionTimeout`, default 30s).
-2. If the attempt fails, wait `RetryInterval` (default 15s) and retry. Repeat up to `MaxRetries` times (default 0 = unlimited).
-3. On success, enter `StateConnected` and begin dispatching messages.
-4. If the simulator closes the connection (stream channel closes), reset `SimState` to defaults, enter `StateDisconnected`.
-5. If `AutoReconnect` is `true` (default), enter `StateReconnecting`, wait `ReconnectDelay` (default 30s), and restart from step 1.
+2. If the attempt fails, wait `RetryInterval` (default 15s) and retry, up to `MaxRetries` attempts in all (default 0 = unlimited). After a lost connection the limit is `ReconnectMaxRetries` when set (0 or more), otherwise `MaxRetries` again. Reaching the limit enters `StateDisconnected` and `Start()` returns an error; the manager does not try again.
+3. On success, enter `StateConnected` and begin dispatching messages. When the simulator's OPEN message arrives, the manager registers its SimState request and system events, subscribes again the kept custom system events (and, with `ResubscribeOnReconnect`, the application's pass-through subscriptions), then enters `StateAvailable` and fires `OnOpen`.
+4. If the simulator closes the connection (stream channel closes), reset `SimState` to defaults, close the old engine, clear the request registry and enter `StateDisconnected`.
+5. If `AutoReconnect` is `true` (default), enter `StateReconnecting`, wait `ReconnectDelay` (default 30s), and restart from step 1. With `AutoReconnect` off, `Start()` returns `nil`.
 6. If the context is cancelled at any point, `Start()` disconnects and returns `ctx.Err()` (`context.Canceled`). Call `Stop()` to wait for subscriptions to drain.
+
+A connection attempt that runs past `ConnectionTimeout` is abandoned on its own engine and the next attempt uses a new engine; if the abandoned attempt succeeds late, the manager disconnects it.
 
 ### Subscription Behaviour on Reconnect
 
 Subscriptions created before `Start()` (or while connected) survive reconnections. The manager does **not** destroy and recreate channels on reconnect — the same `Subscription`, `SimStateSubscription`, `ConnectionOpenSubscription`, and `ConnectionQuitSubscription` instances remain valid across connection cycles.
 
 However, **data definitions and data requests are not automatically re-registered** after a reconnect. Re-register them inside an `OnConnectionStateChange` handler that fires when the state transitions to `StateConnected`.
+
+The same goes for subscriptions made through the manager's pass-through calls (`SubscribeToSystemEvent`, `SubscribeInputEvent`, `SubscribeToFlowEvent`, `SubscribeToFacilities`, `SubscribeToFacilitiesEX1`): they belong to the connection they were made on. Create the manager with `WithResubscribeOnReconnect(true)` to have them subscribed again, with the same IDs, on every new connection; the matching unsubscribe calls remove them from that list, and `Stop()` clears it.
 
 ```go
 //go:build windows
@@ -149,7 +154,7 @@ func setupOnConnect(mgr manager.Manager) {
 
 ### Custom System Events on Reconnect
 
-Custom system events registered with `SubscribeToCustomSystemEvent` or `OnCustomSystemEvent` are **cleared on disconnect** and must be re-registered on the next connection. The manager resets its internal custom event ID allocator and map on every `disconnect()` call.
+Custom system events registered with `SubscribeToCustomSystemEvent` (with their `OnCustomSystemEvent` handlers and channel subscriptions) are **kept over a lost connection** and subscribed again with the same IDs when the next connection opens; the application need not register them again. `Stop()` clears them and resets the custom event ID allocator.
 
 ### Stop and Shutdown Timeout
 
@@ -164,7 +169,9 @@ Custom system events registered with `SubscribeToCustomSystemEvent` or `OnCustom
 | `WithReconnectDelay` | 30s | Delay before reconnecting after a disconnect |
 | `WithShutdownTimeout` | 10s | Maximum wait for subscriptions to close on stop |
 | `WithMaxRetries` | 0 (unlimited) | Maximum connection attempts before giving up |
+| `WithReconnectMaxRetries` | -1 (use `MaxRetries`) | Attempt limit after a lost connection (0 = unlimited) |
 | `WithAutoReconnect` | true | Whether to reconnect after a disconnect |
+| `WithResubscribeOnReconnect` | false | Subscribe pass-through subscriptions again on each new connection |
 
 ## SimState Subscriptions
 
@@ -487,7 +494,7 @@ Attempting to subscribe to a reserved name returns `ErrReservedEventName`.
 
 ### SubscribeToCustomSystemEvent
 
-Creates a channel subscription for a named SimConnect system event. Returns a `Subscription` that delivers raw `engine.Message` values. Calling this for the same event name a second time reuses the already-registered SimConnect event, but the new channel subscription replaces the first one (they share an internal ID); keep a single subscription per event name.
+Creates a channel subscription for a named SimConnect system event. Returns a `Subscription` that delivers raw `engine.Message` values. Calling this for the same event name a second time reuses the already-registered SimConnect event and returns a new, separate subscription; earlier ones keep working. A new event name needs a connection (`ErrNotConnected` otherwise).
 
 ```go
 //go:build windows
@@ -569,7 +576,7 @@ func register6HzCallback(mgr manager.Manager) {
 
 ### UnsubscribeFromCustomSystemEvent
 
-Removes the SimConnect system event subscription entirely and clears all associated handlers.
+Removes the SimConnect system event subscription entirely, clears all associated handlers and closes every channel subscription returned for it (their `Done` channels close). The event's ID becomes free for another event.
 
 ```go
 //go:build windows
@@ -591,7 +598,7 @@ func unsubscribe6Hz(mgr manager.Manager) {
 
 ### Custom Event ID Limit
 
-The manager allocates IDs for custom events from a reserved sub-range: 999,999,850 to 999,999,886 (37 slots). Subscribing to more than 37 distinct custom event names in a single connection cycle returns `ErrCustomEventIDExhausted`. The allocator resets on every disconnect.
+The manager allocates IDs for custom events from a sub-range of its reserved range: 999,999,910 to 999,999,979 (70 slots, `CustomEventIDMin`–`CustomEventIDMax`). Subscribing to more than 70 distinct custom event names at once returns `ErrCustomEventIDExhausted`. IDs of unsubscribed events are used again; `Stop()` resets the allocator.
 
 ### Error Values
 
@@ -599,7 +606,8 @@ The manager allocates IDs for custom events from a reserved sub-range: 999,999,8
 |---|---|
 | `ErrReservedEventName` | Event name is reserved for internal use |
 | `ErrCustomEventNotFound` | Event was not subscribed |
-| `ErrCustomEventIDExhausted` | All 37 custom event ID slots are in use |
+| `ErrCustomEventIDExhausted` | All 70 custom event ID slots are in use |
+| `ErrNotConnected` | A new custom event was subscribed without a connection |
 | `ErrCustomEventNotSubscribed` | Tried to add a callback before subscribing |
 | `ErrCustomEventHandlerNotFound` | Handler ID not found for removal |
 
@@ -611,10 +619,9 @@ SimConnect requires every data definition, data request, and system event subscr
 
 | Range | Owner | Slots |
 |---|---|---|
-| 1 — 999,999,849 | User application | 999,999,849 |
-| 999,999,850 — 999,999,886 | Manager (custom events) | 37 |
-| 999,999,887 — 999,999,899 | Reserved (unallocated) | 13 |
+| 1 — 999,999,899 | User application | 999,999,899 |
 | 999,999,900 — 999,999,999 | Manager (internal) | 100 |
+| 999,999,910 — 999,999,979 | Manager (custom events, inside the internal range) | 70 |
 
 ### Validation Helpers
 
@@ -663,7 +670,7 @@ func printRanges() {
 }
 ```
 
-> **Note:** `IDRange.UserMax` is `999,999,899` — the technical upper bound of `IsValidUserID`. However, IDs 999,999,850–999,999,899 overlap with the manager's custom event and reserved sub-ranges. Safe application IDs are `1 — 999,999,849`; treat `IDRange.UserMax` as a validation guard, not a safe upper limit for allocation.
+> **Note:** `IDRange.UserMax` is `999,999,899`, the upper bound of `IsValidUserID`. Every ID it accepts is clear of the manager's IDs, custom events included.
 
 ### Organising Application IDs
 
@@ -691,7 +698,7 @@ const (
 )
 ```
 
-> **Note:** Do not use IDs in the range 999,999,850 — 999,999,999. The manager uses those ranges internally; overlapping with them will silently corrupt your data definitions or event subscriptions.
+> **Note:** Do not use IDs in the range 999,999,900 — 999,999,999. The manager uses those ranges internally; overlapping with them will silently corrupt your data definitions or event subscriptions.
 
 ## State Accessors
 
@@ -720,6 +727,8 @@ func printConnectionState(mgr manager.Manager) {
         fmt.Println("Connecting...")
     case manager.StateConnected:
         fmt.Println("Connected")
+    case manager.StateAvailable:
+        fmt.Println("Available (OPEN received)")
     case manager.StateReconnecting:
         fmt.Println("Reconnecting...")
     }
@@ -752,7 +761,7 @@ func printSimState(mgr manager.Manager) {
 
 ### Client
 
-Returns the underlying `engine.Client` when connected, or `nil` when disconnected. Use this for operations not exposed directly on the `Manager` interface.
+Returns the underlying `engine.Client` of the current connection. Use this for operations not exposed directly on the `Manager` interface. Without an engine it returns an interface holding a nil `*engine.Engine`, which does not compare equal to `nil`, so check the connection state instead. A new engine is made per connection: do not keep the client across reconnects.
 
 ```go
 //go:build windows
@@ -762,7 +771,8 @@ package main
 import "github.com/mrlm-net/simconnect/pkg/manager"
 
 func useClient(mgr manager.Manager) {
-    if client := mgr.Client(); client != nil {
+    if mgr.ConnectionState() == manager.StateAvailable {
+        client := mgr.Client()
         // Direct engine access when needed
         _ = client
     }

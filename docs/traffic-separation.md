@@ -123,7 +123,7 @@ An arrival the sequencer delays loses the time in the air before it would hold (
 
 1. **Speed control.** It flies slower on the rest of its STAR, down to `MinProcedureSpeedKts` (210 kt, clean) or `MinProcedureSpeedTurbopropKts` (170 kt).
 2. **A longer downwind.** What slowing down cannot absorb, a longer path does, the way a controller extends it. The aircraft goes on along its downwind past the STAR's last point there, turns base that much further out, and joins the centreline that far beyond where the STAR joined it (a "trombone"). Each mile on adds about two. The STAR's own base turn may already be far out: LKPR VLM6T to 06 turns base some 16 NM out, and the extension starts beyond it. It extends again as more is asked, up to `MaxStretchNM` (30 NM) of track an approach.
-3. **A dog-leg** is only for a STAR without a downwind to extend (straight in): off the longest leg ahead, on the side away from the centreline. Less than a mile is not worth a turn and goes to the hold.
+3. **A dog-leg** is only for a STAR without a downwind to extend (straight in): off the longest leg ahead, on the side farther from the final approach path. Less than a mile is not worth a turn and goes to the hold. An arrival gets one dog-leg: asked for more while its apex is still ahead, the apex moves further out; once past it, the rest goes to the hold. With no leg long enough near the end of the STAR, it flies a 360 where it is, or out and back. The apex is pushed out until the track as flown, turns rounded, adds what was asked ([Delay absorption](traffic-decisions.md#delay-absorption)).
 4. **Holding.** Whatever is still left goes to the hold (#392).
 
 The final part of the approach, the align and join points on the centreline, is never changed.
@@ -183,7 +183,7 @@ err = arrival.HoldAltitude(6000)      // step down in the stack
 err = arrival.LeaveHold()             // on along the STAR from the fix
 ```
 
-On the airport map, an arrival that still has a minute or more left after speed control and path stretching holds. It uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when its sequencer delay is down to a minute, and those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".
+On the airport map, an arrival that still has 4 minutes or more left after speed control and path stretching holds (one racetrack's worth; less is left to speed and vectors and asked again). It uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when its sequencer delay is down to a minute, and those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".
 
 ## The runway
 

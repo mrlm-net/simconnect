@@ -155,6 +155,19 @@ func WithReconnectDelay(d time.Duration) manager.Option {
 	return manager.WithReconnectDelay(d)
 }
 
+// WithReconnectMaxRetries sets the connection attempt limit after a lost
+// connection (0 = unlimited); see manager.WithReconnectMaxRetries.
+func WithReconnectMaxRetries(n int) manager.Option {
+	return manager.WithReconnectMaxRetries(n)
+}
+
+// WithResubscribeOnReconnect makes the manager subscribe again, on every
+// new connection, what the application subscribed through it. Off by
+// default; see manager.WithResubscribeOnReconnect.
+func WithResubscribeOnReconnect(enabled bool) manager.Option {
+	return manager.WithResubscribeOnReconnect(enabled)
+}
+
 // WithShutdownTimeout sets the timeout for graceful shutdown of subscriptions.
 // Default is 10 seconds.
 func WithShutdownTimeout(d time.Duration) manager.Option {

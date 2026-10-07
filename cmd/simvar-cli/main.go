@@ -32,7 +32,7 @@ func main() {
 	fs.StringVar(&logLevel, "log-level", "", "Log level (debug, info, warn, error)")
 	fs.IntVar(&timeout, "timeout", 0, "Timeout in seconds for operations")
 	fs.StringVar(&format, "format", "", "Output format: table, json, csv (default: table)")
-	fs.StringVar(&configPath, "config", "", "Path to config file (TOML)")
+	fs.StringVar(&configPath, "config", "", "Path to config file (JSON)")
 
 	// Find the subcommand position (first non-flag argument)
 	args := os.Args[1:]

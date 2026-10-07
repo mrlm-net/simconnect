@@ -9,10 +9,11 @@
 
 ### Engine — Direct SimConnect Access
 - Full SimConnect DLL binding via syscalls — zero CGo, Windows-only
-- Typed message stream via Go channels with callback handlers
+- Typed message stream via a Go channel (callback handlers in the Manager)
 - Manual and pre-built dataset definitions across 7 domains (aircraft, environment, facilities, navigation, objects, simulator, traffic)
 - AI traffic management — create, remove, and control parked, enroute, and non-ATC aircraft with livery selection
-- Facility data queries — airports, runways, parking, frequencies, VOR, NDB, waypoints, jetways, helipads, and 14 facility types total
+- Facility data queries — airports, runways, parking, frequencies, VOR, NDB, waypoints, airways, jetways, helipads, procedures and their legs: 26 ready-made facility datasets
+- MSFS 2024 APIs — input events, flow events, CommBus, the add-on camera
 - Optional SimConnect.dll auto-detection (`ClientWithAutoDetect`) via environment variables, SDK paths, and common installation locations
 
 ### Manager — Production Lifecycle
@@ -160,8 +161,13 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - **[`pkg/types`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/types)** — Typed data structures, enums, events
 - **[`pkg/datasets`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/datasets)** — Pre-built dataset definitions (aircraft, environment, facilities, navigation, objects, simulator, traffic)
 - **[`pkg/airport`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/airport)** — Airport ground layout, taxi graph, routing, GeoJSON
-- **[`pkg/traffic`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/traffic)** — AI aircraft: departures, arrivals, injected motion, traffic picture, schedules, traffic manager
+- **[`pkg/traffic`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/traffic)** — AI aircraft: departures, arrivals, injected motion, traffic picture, schedules, traffic manager; `pkg/traffic/world` is the airport map's traffic engine as a package
 - **[`pkg/nav`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/nav)** — Airways, routing, weather, runway in use, ATIS, flight plans
+- **[`pkg/camera`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/camera)** — MSFS 2024 add-on camera: poses, shots, a Director
+- **[`pkg/avionics`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/avionics)** — User aircraft radios: COM frequencies, swap, transponder code
+- **[`pkg/systems`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/systems)** — User aircraft systems through a default profile and per-model overrides
+- **[`pkg/addons`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/addons)** — Installed packages, the loaded aircraft's package, running processes (no SimConnect)
+- **[`pkg/dict`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/dict)** — Makes the library's embedded tables replaceable at runtime
 - **[`pkg/convert`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/convert)** — Unit conversions, ICAO validation, WGS84 coordinate offsets
 - **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Calculation helpers (haversine great-circle distance)
 - **[`pkg/registry`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/registry)** — Cross-platform typed SimVar metadata catalogue (121 entries, no build tags)
@@ -180,7 +186,7 @@ go get github.com/mrlm-net/simconnect
 | Go | 1.27.1+ |
 | Operating system | Windows |
 | Microsoft Flight Simulator | 2020 / 2024 |
-| SimConnect SDK | Bundled with MSFS |
+| SimConnect.dll | From the MSFS SDK (default path `C:/MSFS 2024 SDK/SimConnect SDK/lib/SimConnect.dll`, or auto-detected) |
 
 ## Contributing
 

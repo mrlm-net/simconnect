@@ -39,6 +39,13 @@ type State struct {
 	Chocks, GPU, HasChocks, HasGPU bool
 	// The sim's pushback (#666): a tug attached, possible here, waiting.
 	PushbackAttached, PushbackAvailable, PushbackWait bool
+	// Take-off speeds, knots (0 unknown): from the FMS (SpeedsFrom "fms"),
+	// the profile's table ("table") or none (""); DAFt, MDAFt the minimums
+	// (feet, 0 unknown); SpeedCheckKt the roll's speed check (80 or 100).
+	V1Kt, VRKt, V2Kt float64
+	SpeedsFrom       string
+	DAFt, MDAFt      float64
+	SpeedCheckKt     int
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
 	Values map[string]float64
@@ -180,6 +187,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	s.Chocks, s.GPU = on(Chocks), on(GPU)
 	s.PushbackAttached, s.PushbackAvailable, s.PushbackWait = on(PushbackAttached), on(PushbackAvailable), on(PushbackWait)
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
+	takeoffSpeeds(p, &s)
 	return s
 }
 

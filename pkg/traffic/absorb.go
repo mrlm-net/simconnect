@@ -225,10 +225,38 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 		a.ExtraNM = 0
 	}
+	// A dog-leg given already: its apex further out while still ahead (one
+	// dog-leg, lengthened as a controller does); flown past it, no second
+	// one — the rest by speed, or the hold.
+	reuse, base := -1, 0.0
+	if a.ExtraNM > 0 && !stretched && c.dogLeg != nil {
+		at := -1 // its apex in the route: gone from it (re-planned since), none
+		for i, w := range wps {
+			if w.Latitude == c.dogLeg.apex.Lat && w.Longitude == c.dogLeg.apex.Lon {
+				at = i
+			}
+		}
+		switch {
+		case at < 0:
+			c.dogLeg = nil // a new route: a dog-leg of its own
+		case at >= next && at < final:
+			reuse = at - next
+		}
+		switch {
+		case c.dogLeg == nil: // re-planned since: a new dog-leg below
+		case reuse < 0: // flown past its apex: no second one
+			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+			a.ExtraNM = 0
+		default:
+			base, legFrom, legTo, apexAt = c.dogLeg.extraNM, c.dogLeg.from, c.dogLeg.to, reuse
+			p := dogLegApex(legFrom, legTo, base+a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			out[reuse].Latitude, out[reuse].Longitude = p.Lat, p.Lon
+		}
+	}
 	// The dog-leg on the longest leg ahead (from here, or between STAR
 	// points), off to the side away from the runway's centreline: only where
 	// the STAR has no downwind to extend.
-	if a.ExtraNM > 0 && !stretched {
+	if a.ExtraNM > 0 && !stretched && reuse < 0 {
 		longest, at := 0.0, -1
 		for i := 1; i < len(pts)-1; i++ { // not the leg into the align point
 			if l := calc.HaversineNM(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon); l > longest {
@@ -280,18 +308,19 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	noClimb(plain, c.altitudeNow())
 	plainNames := append(outNames, names[final:]...)
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+	extra := a.ExtraNM
 	if apexAt >= 0 && a.ExtraNM > 0 {
 		// Flown, the apex is rounded off and the dog-leg adds less than
 		// asked (live, FINZX: 16 s of 1m08s left over): stretched further
 		// until the track as flown adds it (#706).
-		want, extra := a.ExtraNM, a.ExtraNM
+		want := a.ExtraNM
 		for i := 0; i < 3; i++ {
 			got := pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
 			if got >= want-0.2 || extra >= 2*want {
 				break
 			}
 			extra = math.Min(2*want, extra+want-got)
-			p := dogLegApex(legFrom, legTo, extra, c.plan.End.Threshold, c.plan.End.Heading)
+			p := dogLegApex(legFrom, legTo, base+extra, c.plan.End.Threshold, c.plan.End.Heading)
 			plain[apexAt].Latitude, plain[apexAt].Longitude = p.Lat, p.Lon
 			out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 		}
@@ -305,7 +334,15 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	}
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, plainNames, 0
+	if apexAt >= 0 {
+		c.dogLeg = &dogLegState{apex: airport.LatLon{Lat: plain[apexAt].Latitude, Lon: plain[apexAt].Longitude}, from: legFrom, to: legTo, extraNM: base + extra}
+	}
 	if v := vectorsFor(pos, plain, plainNames, baseAt, apexAt); len(v) > 0 {
+		// Lengthened on its way out: the heading it flies, unless it changes
+		// by more than a correction; the turn back, at the new apex.
+		if reuse >= 0 && v[0].Fix == "" && math.Abs(headingDiff(v[0].HeadingDeg, c.last.Heading)) < dogLegResayDeg {
+			v = v[1:]
+		}
 		c.vectors, c.vectored = v, true
 	}
 	if a.SpeedKts > 0 {
@@ -422,6 +459,13 @@ func (c *ArrivalController) setCorners(wps []types.SIMCONNECT_DATA_WAYPOINT, nam
 // forward as procWaypoint tracks the rounded points. c.mu held.
 func (c *ArrivalController) cornerAhead() int {
 	all, pos := c.corners, c.last.Position
+	if pos == (airport.LatLon{}) {
+		// No position yet (asked for the map right after the spawn): nothing
+		// passed, and nothing latched — taken as nearest to 0°N 0°E, the
+		// STAR's south-westernmost point was "ahead" for good and the route
+		// re-sent from it went straight there (live, TVS1012 to PR742).
+		return max(c.cornerNext, 0)
+	}
 	i := c.cornerNext
 	if i < 0 {
 		i = nextWaypoint(pos, all)
@@ -434,14 +478,49 @@ func (c *ArrivalController) cornerAhead() int {
 				break // a picked point: not passed until reached
 			}
 			c.reachFirst = false
-		} else if d >= 1.5 && calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
-			break // not passed yet
+		} else if d >= 1.5 {
+			// A turn: passed once more than halfway round it. Nearly straight
+			// on: once nearer the next corner than this one is (at a turn
+			// back that holds on the way out already, live RYR1785).
+			if i > 0 && turnAt(all[i-1], n, m) >= turnedPastMinDeg {
+				if d >= turnedPastNM || !c.turnedPast(all[i-1], n, m) {
+					break // not passed yet
+				}
+			} else if calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
+				break // not passed yet
+			}
 		}
 		i++
 	}
 	c.cornerNext = i
 	return i
 }
+
+// turnedPast reports the arrival more than halfway round its turn at
+// corner n, from the leg prev→n onto n→next: its heading nearer the new
+// leg's. A wide turn (a dog-leg's turn back) passes more than 1.5 NM inside
+// its corner: still counted ahead, the route on the map went back to it
+// from an aircraft already flying the other way (live, RYR1785).
+func (c *ArrivalController) turnedPast(prev, n, next types.SIMCONNECT_DATA_WAYPOINT) bool {
+	in := calc.BearingDegrees(prev.Latitude, prev.Longitude, n.Latitude, n.Longitude)
+	out := calc.BearingDegrees(n.Latitude, n.Longitude, next.Latitude, next.Longitude)
+	h := c.last.Heading
+	return math.Abs(headingDiff(h, out)) < math.Abs(headingDiff(h, in))
+}
+
+// turnAt is the turn (degrees) at corner n from the leg prev→n onto n→next.
+func turnAt(prev, n, next types.SIMCONNECT_DATA_WAYPOINT) float64 {
+	in := calc.BearingDegrees(prev.Latitude, prev.Longitude, n.Latitude, n.Longitude)
+	out := calc.BearingDegrees(n.Latitude, n.Longitude, next.Latitude, next.Longitude)
+	return math.Abs(headingDiff(in, out))
+}
+
+// A corner is passed once the arrival has turned more than halfway onto the
+// next leg within turnedPastNM of it, for turns of turnedPastMinDeg or more.
+const (
+	turnedPastNM     = 5.0
+	turnedPastMinDeg = 30.0
+)
 
 // TurningFinal reports whether the arrival flies the last leg of its
 // procedure before the final — the base, into the turn onto the final —
@@ -519,6 +598,9 @@ func (c *ArrivalController) ProcedurePlan() []RoutePoint {
 // first of them) of the one the aircraft flies to: tracked forward from
 // procNext, else nextWaypoint. c.mu held.
 func (c *ArrivalController) procWaypoint(wps []types.SIMCONNECT_DATA_WAYPOINT) int {
+	if c.last.Position == (airport.LatLon{}) {
+		return max(c.procNext, 0) // no position yet: nothing passed (cornerAhead)
+	}
 	if c.procNext < 0 || len(wps) == 0 {
 		return nextWaypoint(c.last.Position, wps)
 	}
@@ -992,3 +1074,14 @@ const (
 	cornersApartNM    = 2.0
 	cornersApartShare = 0.1
 )
+
+// dogLegState is the dog-leg an approach was given: its apex (as in the
+// corners), the leg it stretches and how far.
+type dogLegState struct {
+	apex, from, to airport.LatLon
+	extraNM        float64
+}
+
+// dogLegResayDeg: a dog-leg lengthened on the way out is said again only
+// when its heading changes by this much or more.
+const dogLegResayDeg = 10.0

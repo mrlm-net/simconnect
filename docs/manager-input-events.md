@@ -8,7 +8,7 @@ order: 7
 
 The `manager` package exposes the full SimConnect Input Event API as direct methods on the `Manager` interface. This guide covers enumeration, value reads and writes, subscriptions, and cleanup through the manager's lifecycle-managed connection.
 
-> **MSFS 2024 only.** The Input Event API is not present in the MSFS 2020 SimConnect SDK. All six methods (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEventDouble`, `SetInputEventString`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) will return an error when called against an MSFS 2020 installation.
+> **MSFS 2024 only.** The Input Event API is not present in the MSFS 2020 SimConnect SDK. All six methods (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEventDouble`, `SetInputEventString`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) do not work with MSFS 2020: with a `SimConnect.dll` that lacks the exports the call panics (procedure not found), see [Input Events](guide-input-events.md). Without a connection they return `ErrNotConnected` before reaching the DLL.
 
 > **See also:** [Input Events](guide-input-events.md) for the engine-layer reference covering message types, descriptor fields, wire layout details, and value extraction helpers.
 
@@ -20,10 +20,10 @@ You cannot assume a fixed set of Input Events. The available set depends on the 
 
 ## How Input Event Hashes Work
 
-Each input event is identified by a hash. There are two representations:
+Each input event is identified by a 64-bit hash. It is stored as raw bytes in the received structs (so they match the packed wire layout) and read with helpers:
 
-- **Descriptor hash** (`SIMCONNECT_INPUT_EVENT_DESCRIPTOR.Hash`) — a 32-bit value returned during enumeration. Cast it to `uint64` when passing to any method: `uint64(desc.Hash)`.
-- **Subscription notification hash** — the full 64-bit hash carried in `SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT`. Extract it with `engine.SubscribeInputEventHash(recv)` rather than reading the raw bytes directly.
+- **Descriptor hash** — returned during enumeration. Read it with `desc.Hash()` (`SIMCONNECT_INPUT_EVENT_DESCRIPTOR.HashBytes`) and pass the `uint64` to any method.
+- **Subscription notification hash** — carried in `SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT`. Extract it with `engine.SubscribeInputEventHash(recv)` rather than reading the raw bytes directly.
 
 Hashes are stable for the duration of a simulator session. They may change between sessions or after loading a different aircraft. Enumerate again whenever the aircraft or simulator state changes if you need to maintain an accurate hash map.
 
@@ -64,13 +64,10 @@ go func() {
             if recv == nil {
                 continue
             }
-            count := int(recv.DwArraySize)
-            // RgData is a one-element placeholder; the entries follow it in the buffer
-            descs := unsafe.Slice(&recv.RgData[0], count)
-            for i := 0; i < count; i++ {
-                desc := descs[i]
+            // Entries reads the packed descriptors that follow the header
+            for _, desc := range recv.Entries() {
                 name := engine.BytesToString(desc.Name[:])
-                log.Printf("Event: %-64s  hash=0x%08X  type=%d", name, desc.Hash, desc.Type)
+                log.Printf("Event: %-64s  hash=0x%016X  type=%d", name, desc.Hash(), desc.Type)
             }
         case <-sub.Done():
             return
@@ -168,7 +165,6 @@ import (
     "os"
     "os/signal"
     "sync/atomic"
-    "unsafe"
 
     "github.com/mrlm-net/simconnect"
     "github.com/mrlm-net/simconnect/pkg/engine"
@@ -234,15 +230,12 @@ func handleMessage(mgr manager.Manager, msg engine.Message) {
         if recv == nil {
             return
         }
-        count := int(recv.DwArraySize)
-        descs := unsafe.Slice(&recv.RgData[0], count)
-        for i := 0; i < count; i++ {
-            desc := descs[i]
+        for i, desc := range recv.Entries() {
             name := engine.BytesToString(desc.Name[:])
-            log.Printf("Event: %-64s  hash=0x%08X  type=%d", name, desc.Hash, desc.Type)
+            h := desc.Hash()
+            log.Printf("Event: %-64s  hash=0x%016X  type=%d", name, h, desc.Type)
             // Subscribe to the first event found in the first batch
             if i == 0 && recv.DwEntryNumber == 0 && subscribedHash.Load() == 0 {
-                h := uint64(desc.Hash)
                 if err := mgr.SubscribeInputEvent(h); err == nil {
                     subscribedHash.Store(h)
                     log.Printf("Subscribed to %s (0x%016X)", name, h)
@@ -289,13 +282,13 @@ Use `SetInputEventDouble` for the vast majority of sim controls. Most Input Even
 
 Use `SetInputEventString` only when that type is `SIMCONNECT_INPUT_EVENT_TYPE_STRING`. String-typed events are rare and typically represent text-mode commands or named state identifiers in specialised aircraft implementations. Strings longer than 259 bytes are silently truncated on the DLL side to preserve the null terminator.
 
-When in doubt, read the event with `GetInputEvent` and check its `Type` before setting a value. The enumeration descriptor's `Type` is a `SIMCONNECT_DATATYPE`, not a `SIMCONNECT_INPUT_EVENT_TYPE`.
+The enumeration descriptor's `Type` is a `SIMCONNECT_INPUT_EVENT_TYPE` too, so you can pick the setter from the enumeration. When in doubt, read the event with `GetInputEvent` and check its `Type` before setting a value.
 
-## No Auto-Resubscribe on Reconnect
+## Resubscribing on Reconnect
 
-Input Event subscriptions are not restored automatically when the manager reconnects to the simulator. The SimConnect session is fully reset on each connection — all previously registered subscriptions, enumerations, and hash-to-event mappings are gone.
+By default, Input Event subscriptions are not restored when the manager reconnects to the simulator. The SimConnect session is fully reset on each connection — all previously registered subscriptions, enumerations, and hash-to-event mappings are gone.
 
-You must resubscribe in your `OnOpen` handler:
+A manager created with `manager.WithResubscribeOnReconnect(true)` records each successful `SubscribeInputEvent` (until `UnsubscribeInputEvent` for that hash) and subscribes the same hashes again when the next connection opens. As hashes may change between sessions, the usual way is still to enumerate again and resubscribe in your `OnOpen` handler:
 
 ```go
 mgr.OnOpen(func(data types.ConnectionOpenData) {
@@ -329,4 +322,4 @@ The manager does not queue or retry failed calls. Register your Input Event setu
 
 - [Input Events](guide-input-events.md) — Engine-layer reference: descriptor fields, wire layout notes, hash extraction helpers, and complete enumeration/subscribe examples using the raw client
 - [Manager Usage](usage-manager.md) — Full manager API reference including subscriptions and connection lifecycle
-- [Request and ID Management](manager-requests-ids.md) — ID allocation strategy; `requestID` in `EnumerateInputEvents` and `GetInputEvent` must be in the user range (1–999,999,849)
+- [Request and ID Management](manager-requests-ids.md) — ID allocation strategy; `requestID` in `EnumerateInputEvents` and `GetInputEvent` must be in the user range (1–999,999,899)

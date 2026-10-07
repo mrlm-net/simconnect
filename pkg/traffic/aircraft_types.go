@@ -206,6 +206,8 @@ func TakeoffProfileFor(model string) TakeoffProfile {
 // (twins and the turboprops listed).
 func (p AircraftProfile) EngineCount() int {
 	switch {
+	case p.Category == CategoryPiston && pistonTwins[p.Type]:
+		return 2
 	case p.Category == CategoryPiston:
 		return 1
 	case strings.HasPrefix(p.Type, "B74"), strings.HasPrefix(p.Type, "A34"), strings.HasPrefix(p.Type, "A38"):
@@ -255,3 +257,6 @@ func toLightTprop(rotateKts, climbKts, climbFpm float64) TakeoffProfile {
 // take-off a third, approach two thirds, landing full (typical; the types'
 // detents differ).
 var flapsBiz = FlapSchedule{TakeoffPct: 33.3, ApproachPct: 66.7, LandingPct: 100}
+
+// pistonTwins are the piston types of the table with two engines.
+var pistonTwins = map[string]bool{"DA62": true, "DA42": true, "BE58": true}

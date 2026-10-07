@@ -20,7 +20,7 @@ MSFS 2024 lets an add-on take the camera: acquire it, place it relative to the w
 | `CameraGet(referential)` | Asks where it is; `Message.AsCameraData` decodes the answer. |
 | `CameraRelease(def)` | Gives it back. |
 | `RequestCameraWorldLocker(pos, ref, id)`, `DeleteCameraWorldLocker()` | Keeps the terrain, scenery and objects around a point loaded while the camera is away from the user aircraft. |
-| `CameraGetStatus`, `SubscribeToCameraStatusUpdate`, `CameraEnableFlag`, `EnumerateCameraDefinitions`, `CameraSetUsingCameraDefinition` | The rest of the API. |
+| `CameraGetStatus`, `SubscribeToCameraStatusUpdate`, `UnsubscribeToCameraStatusUpdate`, `CameraEnableFlag`, `CameraDisableFlag`, `EnumerateCameraDefinitions`, `CameraSetUsingCameraDefinition`, `SubscribeToCameraWorldLockerStatusUpdate` | The rest of the API. |
 
 SimConnect packs `SIMCONNECT_DATA_CAMERA` to one byte (84 bytes), so it crosses the API as bytes: `Bytes()` and `types.CameraDataFrom`.
 
@@ -32,7 +32,7 @@ These were measured live with SDK 1.7.3; the SDK documentation leaves them out.
 - **Relative to an aircraft:** x points to its **left**, y up, z forward, in meters.
 - **Rotation:** what SimConnect returns does not follow the header's pitch, bank, heading order. `pkg/camera` aims with a point to look at (targeted) instead of angles.
 
-`camera.On(object, right, up, forward)` takes an offset to the right and flips it for SimConnect.
+`camera.On(object, right, up, forward)` takes an offset to the right and flips it for SimConnect (object 0 is the user aircraft). `camera.At(lat, lon, altM)` is a point in the world; a `Point` with `Frame: camera.Eyepoint` is an offset from the pilot's eyepoint.
 
 ## Poses and shots
 
@@ -44,7 +44,7 @@ p := camera.Pose{
 }
 ```
 
-A `Shot` is the camera over time: `Length()` and `PoseAt(t)`. No shot runs longer than `camera.MaxShot` (10 s).
+A pose without `FovDeg` uses `camera.DefaultFovDeg` (55°). A `Shot` is the camera over time: `Length()`, `PoseAt(t)` and `Name()`. No shot runs longer than `camera.MaxShot` (10 s).
 
 - `Hold` keeps one pose.
 - `Move` goes from one pose to another, eased (`Smooth`: no jerk at either end).
@@ -72,7 +72,7 @@ d.Tick(time.Now())
 d.Handle(msg)
 ```
 
-The director acquires the camera on the first `Tick`. It sets the current shot's pose on every tick and moves to the next shot when one ends; with nothing queued it holds the last pose. `Release` gives the camera back and deletes the world locker. Always release it: a camera left acquired stays stuck for the user.
+The director acquires the camera on the first `Tick` with a shot to play, and asks again every `AcquireRetry` (5 s) while it is not given (`ErrNotAcquired` meanwhile); a camera held by someone else or disabled by the user is not asked for again until `Release`. It sets the current shot's pose on every tick and moves to the next shot when one ends; with nothing queued it holds the last pose. After each cut the new shot holds its first pose for `CutSettle` (600 ms) while the picture settles. `OnShot` hears each shot as it starts; `Current` and `Remaining` tell what plays. After a reconnect call `Reset(api)` (nil keeps the client). `Release` gives the camera back and deletes the world locker. Always release it: a camera left acquired stays stuck for the user.
 
 ## On the airport map
 
@@ -86,7 +86,7 @@ The camera button in the status strip opens the director:
 - **Simulator camera** gives the camera back to the simulator and sets its own: `CAMERA STATE` cockpit (2), chase (3), drone (4), fixed on plane (5), free (6, environment), written as INT32 like `examples/set-variables`. Measured live in MSFS 2024: the numbering on the 2024 SDK page (drone 8, showcase 7, follow traffic 23) was refused. ◀ ▶ step through the camera's views (`CAMERA VIEW TYPE AND INDEX:1`) from the one it is on. API: `POST /api/camera {"mode":"sim","sim":"drone"}` or `{"mode":"sim","step":1}`.
 - **🎬 Scene** plays a scripted film. A scene spawns its cast, listens to one of them on the radio, and plays **beats**: each waits for its cue, then cuts to its shots. If a beat's shots end before the next cue, more shots of the same aircraft fill the gap.
 
-Scenes are JSON files in `-scenes` (default `scenes/`), read on every play, so a scene can be edited and played again without a restart.
+Scenes are JSON files in `-scenes` (default `scenes/`), read on every play, so a scene can be edited and played again without a restart. The built-in scenes come after them; a file with a built-in scene's name wins.
 
 ```json
 {

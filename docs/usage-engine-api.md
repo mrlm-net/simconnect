@@ -218,6 +218,9 @@ func main() {
 			if !ok {
 				return
 			}
+			if msg.Err != nil {
+				continue
+			}
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 			case types.SIMCONNECT_RECV_ID_CLIENT_DATA:
 				cd := msg.AsClientData()
@@ -262,27 +265,23 @@ err := client.EnumerateInputEvents(requestID)
 
 **Signature:** `EnumerateInputEvents(requestID uint32) error`
 
-Each response message contains a `RgData` array of `SIMCONNECT_INPUT_EVENT_DESCRIPTOR` elements:
+Each response message carries `DwArraySize` `SIMCONNECT_INPUT_EVENT_DESCRIPTOR` elements after its header (`RgData` is a zero-length marker). Read them with `Entries()`, which returns them in place (valid while the message is):
 
 ```go
 if recv := msg.AsEnumerateInputEvents(); recv != nil {
-    // DwArraySize tells you how many descriptors are in this batch
-    count := recv.DwArraySize
-    _ = count
-    // Access descriptors at &recv.RgData[0] through &recv.RgData[count-1]
-    name := engine.BytesToString(recv.RgData[0].Name[:])
-    fmt.Println("Event:", name)
+    for _, d := range recv.Entries() {
+        fmt.Println("Event:", engine.BytesToString(d.Name[:]), d.Hash())
+    }
 }
 ```
 
-`SIMCONNECT_INPUT_EVENT_DESCRIPTOR` fields:
+`SIMCONNECT_INPUT_EVENT_DESCRIPTOR` fields (76 bytes on the wire, `types.InputEventDescriptorSize`):
 
 | Field | Type | Description |
 |---|---|---|
 | `Name` | `[64]byte` | Human-readable event name, null-terminated |
-| `Hash` | `DWORD` | 32-bit hash (use `GetInputEvent`/`SetInputEvent` with the full `uint64` hash from subscription) |
-| `Type` | `SIMCONNECT_DATATYPE` | Data type of the event value |
-| `NodeNames` | `[1024]byte` | Associated node names, null-separated |
+| `HashBytes` | `[8]byte` | 64-bit hash, little-endian; read it with the `Hash()` method (`uint64`) |
+| `Type` | `SIMCONNECT_INPUT_EVENT_TYPE` | Value type: `DOUBLE` or `STRING` |
 
 ### GetInputEvent
 
@@ -419,6 +418,9 @@ func main() {
 			if !ok {
 				return
 			}
+			if msg.Err != nil {
+				continue
+			}
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 
 			case types.SIMCONNECT_RECV_ID_ENUMERATE_INPUT_EVENTS:
@@ -426,13 +428,13 @@ func main() {
 				if recv == nil {
 					continue
 				}
-				name := engine.BytesToString(recv.RgData[0].Name[:])
-				fmt.Printf("Found input event: %s\n", name)
-				// Subscribe to the first event found
-				if subscribedHash == 0 {
-					// hash stored as uint32 in descriptor; cast for subscribe call
-					subscribedHash = uint64(recv.RgData[0].Hash)
-					client.SubscribeInputEvent(subscribedHash)
+				for _, d := range recv.Entries() {
+					fmt.Printf("Found input event: %s\n", engine.BytesToString(d.Name[:]))
+					// Subscribe to the first event found
+					if subscribedHash == 0 {
+						subscribedHash = d.Hash()
+						client.SubscribeInputEvent(subscribedHash)
+					}
 				}
 
 			case types.SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT:
@@ -482,11 +484,8 @@ Responses arrive as one or more `SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVE
 
 ```go
 if recv := msg.AsSimObjectAndLiveryEnumeration(); recv != nil {
-    // The entries follow the list header inline; RgData is not filled in.
-    base := uintptr(unsafe.Pointer(recv)) + unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})
-    size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
-    for i := uintptr(0); i < uintptr(recv.DwArraySize); i++ {
-        item := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
+    // The entries follow the list header inline; Entries reads them in place.
+    for _, item := range recv.Entries() {
         title := engine.BytesToString(item.AircraftTitle[:])
         livery := engine.BytesToString(item.LiveryName[:])
         fmt.Printf("Model: %s  Livery: %s\n", title, livery)
@@ -502,7 +501,7 @@ if recv := msg.AsSimObjectAndLiveryEnumeration(); recv != nil {
 | `DwArraySize` | `DWORD` | Number of entries in this response batch |
 | `DwEntryNumber` | `DWORD` | Zero-based index of the first entry in this batch |
 | `DwOutOf` | `DWORD` | Total number of entries across all batches |
-| `RgData` | `[]SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` | Placeholder, not filled in; `DwArraySize` entries follow the 28-byte header inline |
+| `RgData` | `[0]SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` | Zero-length marker; `DwArraySize` entries follow the 28-byte header inline. Read them with `Entries()` |
 
 Each `SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY` element has two fields:
 
@@ -524,7 +523,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -557,6 +555,9 @@ func main() {
 			if !ok {
 				return
 			}
+			if msg.Err != nil {
+				continue
+			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
 				continue
 			}
@@ -564,10 +565,7 @@ func main() {
 			if recv == nil || recv.DwRequestID != EnumReqID {
 				continue
 			}
-			base := uintptr(unsafe.Pointer(recv)) + unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})
-			size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
-			for i := uintptr(0); i < uintptr(recv.DwArraySize); i++ {
-				item := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
+			for _, item := range recv.Entries() {
 				title := engine.BytesToString(item.AircraftTitle[:])
 				livery := engine.BytesToString(item.LiveryName[:])
 				fmt.Printf("%-60s  %s\n", title, livery)
@@ -612,8 +610,13 @@ Every incoming `Message` from `client.Stream()` carries a `DwID` field identifyi
 | `AsGetInputEvent()` | `SIMCONNECT_RECV_ID_GET_INPUT_EVENT` | `*types.SIMCONNECT_RECV_GET_INPUT_EVENT` |
 | `AsSubscribeInputEvent()` | `SIMCONNECT_RECV_ID_SUBSCRIBE_INPUT_EVENT` | `*types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT` |
 | `AsFlowEvent()` | `SIMCONNECT_RECV_ID_FLOW_EVENT` | `*types.SIMCONNECT_RECV_FLOW_EVENT` |
+| `AsCommBus()` | `SIMCONNECT_RECV_ID_COMM_BUS` | `*types.SIMCONNECT_RECV_COMM_BUS` (data via `CommBusData()`) |
+| `AsCameraStatus()` | `SIMCONNECT_RECV_ID_CAMERA_STATUS` | `*types.SIMCONNECT_RECV_CAMERA_STATUS` |
+| `AsCameraData()` | `SIMCONNECT_RECV_ID_CAMERA_DATA` | `(types.SIMCONNECT_DATA_CAMERA, bool)`: decoded, `false` instead of `nil` |
 
-> **Note:** `AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`, and `AsFlowEvent()` are MSFS 2024 only. Calling them against MSFS 2020 will always return `nil` because the simulator never sends the corresponding `DwID` values.
+The list messages (`AsAirportList`, `AsNDBList`, `AsVORList`, `AsWaypointList`, `AsEnumerateInputEvents`, `AsSimObjectAndLiveryEnumeration`) have an `Entries()` method that returns the entries following the header.
+
+> **Note:** `AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`, `AsFlowEvent()`, `AsCommBus()`, `AsCameraStatus()` and `AsCameraData()` are MSFS 2024 only. Calling them against MSFS 2020 will always return `nil` because the simulator never sends the corresponding `DwID` values.
 
 ---
 

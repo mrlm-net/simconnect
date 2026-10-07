@@ -73,6 +73,8 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and t
 | `-accents` | `false` | Controllers speak English with their airport's accent (Czech at LK, German at ED, French at LF, ...): the country's voice model on English phonemes |
 | `-token` | | Network play: the token another device needs to control the traffic (`auto`: a random one; `""`: none needed) |
 | `-view-token` | | Network play: a token to watch only, as a spectator (`auto`: a random one) |
+| `-scenes` | | Directory of camera scenes (`*.json`), read on every play; the built-in ones otherwise |
+| `-split` | `false` | Run the traffic split in this process: an actuator on the simulator and a director taking the decisions, linked as across a network |
 | `-pprof` | | Serve the Go profiler on this address (e.g. `127.0.0.1:6060`) |
 
 The page loads Leaflet from cdnjs, the IBM Plex fonts from Google Fonts and map tiles from Esri and OpenStreetMap, so the browser needs internet access.
@@ -228,12 +230,18 @@ Experiments kept as a record of how the traffic features were found. Each answer
 | [spike-flare](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-flare) | Which flare profile gives a good touchdown? |
 | [spike-gear](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-gear) | How is the gear of a non-ATC aircraft lowered? |
 | [spike-geometry](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-geometry) | What does the simulator report of an aircraft's gear, span and CG? |
+| [spike-ground-near](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-ground-near) | Which ground objects matching a title are near the user aircraft, and where? |
+| [spike-ground-titles](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-ground-titles) | Which ground vehicle titles (stairs, GPUs, loaders, buses) can be spawned? |
 | [spike-inject](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-inject) | Can a frozen AI aircraft be moved along a taxi route by injection? |
 | [spike-landing](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-landing) | Waypoints or ATC for landing, and a takeover on the ground |
 | [spike-lights](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lights) | How are the lights of a non-ATC aircraft switched? |
 | [spike-lighttiming](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lighttiming) | When does MSFS AI switch the lights of a taxiing aircraft? |
 | [spike-procedures](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-procedures) | The record layout of SIDs, STARs and approaches |
 | [spike-profile](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-profile) | Which type SimVars do AI aircraft report reliably? |
+| [spike-redefine](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-redefine) | What does a second airport loader on the same connection get? |
 | [spike-speed](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-speed) | How can an AI approach be flown slower? |
+| [spike-throttle](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-throttle) | Do an AI aircraft's engines follow a throttle set from outside? |
+| [spike-touchdown](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-touchdown) | Does an injected landing dip below the runway at touchdown? |
+| [spike-transition](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-transition) | What do an airport's `TRANSITION_ALTITUDE` and `TRANSITION_LEVEL` read as? |
 | [spike-tug](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-tug) | Which ground vehicles are pushback tugs? |
 | [spike-tugwatch](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-tugwatch) | Where is an injected tug relative to its aircraft? |

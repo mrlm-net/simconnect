@@ -304,6 +304,10 @@ type ArrivalController struct {
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
 	tromboneNM float64
+	// dogLeg: the dog-leg given on this approach (AbsorbDelay). More delay
+	// moves its apex further out while it is still ahead, never a second
+	// dog-leg (live, RYR1785: out, back out and round again).
+	dogLeg *dogLegState
 	// vectors are the radar vectors still to say for a dog-leg or an
 	// extended downwind, each at its corner; vectored: off the STAR on
 	// vectors, cleared for the approach with the intercept heading (#661).

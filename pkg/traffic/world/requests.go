@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -224,6 +225,18 @@ func (it *controlled) answer(req string) {
 		}
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
+	if req == "taxi" {
+		// One of ours taxiing ahead on the same way: follow it.
+		var r *airport.Route
+		if it.dep != nil {
+			r = it.dep.Route()
+		} else if p := it.arr.Plan(); p != nil {
+			r = p.Route
+		}
+		if lead := it.cc.leaderFor(it, r); lead != nil && it.cc.follow(it, lead) {
+			tx = traffic.Joined(tx, traffic.FollowTaxi(it.Tail, it.cc.followSaid(it, lead)))
+		}
+	}
 	it.say(tx)
 	it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 }

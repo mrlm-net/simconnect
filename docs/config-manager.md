@@ -31,7 +31,6 @@ mgr := simconnect.New("MyApp",
 import (
     "time"
     "github.com/mrlm-net/simconnect/pkg/manager"
-    "github.com/mrlm-net/simconnect/pkg/types"
 )
 
 mgr := manager.New("MyApp",
@@ -42,7 +41,7 @@ mgr := manager.New("MyApp",
 
 ## Configuration Options
 
-All manager options are available both via the root `simconnect` package (unprefixed) and the `manager` subpackage.
+The manager options are available both via the root `simconnect` package (unprefixed) and the `manager` subpackage.
 
 ### Manager-Specific Options
 
@@ -56,8 +55,10 @@ All manager options are available both via the root `simconnect` package (unpref
 | `WithConnectionTimeout(d)` <br> `manager.WithConnectionTimeout(d)` | `time.Duration` | `30s` | Timeout for each connection attempt |
 | `WithReconnectDelay(d)` <br> `manager.WithReconnectDelay(d)` | `time.Duration` | `30s` | Delay before reconnecting after disconnect |
 | `WithShutdownTimeout(d)` <br> `manager.WithShutdownTimeout(d)` | `time.Duration` | `10s` | Timeout for graceful shutdown of subscriptions |
-| `WithMaxRetries(n)` <br> `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection retries before giving up |
+| `WithMaxRetries(n)` <br> `manager.WithMaxRetries(n)` | `int` | `0` (unlimited) | Maximum connection attempts before giving up |
+| `manager.WithReconnectMaxRetries(n)` | `int` | `-1` (use `MaxRetries`) | Attempt limit after a lost connection (`0` = unlimited) |
 | `WithAutoReconnect(enabled)` <br> `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
+| `manager.WithResubscribeOnReconnect(enabled)` | `bool` | `false` | Subscribe the application's pass-through subscriptions again on each new connection |
 | `WithSimStatePeriod(period)` <br> `manager.WithSimStatePeriod(period)` | `types.SIMCONNECT_PERIOD` | `SIMCONNECT_PERIOD_SIM_FRAME` | SimState data request frequency |
 
 ### Engine Pass-Through Options
@@ -143,11 +144,20 @@ manager.WithShutdownTimeout(5 * time.Second)
 
 ### WithMaxRetries
 
-Limits the number of connection attempts. Set to `0` for unlimited retries.
+Limits the number of connection attempts. Set to `0` for unlimited retries. Reaching the limit makes `Start()` return an error (`max connection retries (n) exceeded`) and the manager stops for good. With auto-reconnect the same limit applies again after a lost connection, so a simulator restart slower than `MaxRetries × RetryInterval` stops the manager; use `WithReconnectMaxRetries` to set a separate limit for reconnects.
 
 ```go
 manager.WithMaxRetries(5)  // Give up after 5 failed attempts
 manager.WithMaxRetries(0)  // Retry forever (default)
+```
+
+### WithReconnectMaxRetries
+
+Sets the attempt limit used after a connection was made and lost. `0` means unlimited; the default (`-1`, any value below 0) uses `MaxRetries`. `MaxRetries` then applies only to the first connection.
+
+```go
+manager.WithMaxRetries(5)            // First connection: give up after 5 attempts
+manager.WithReconnectMaxRetries(0)   // After a lost connection: retry forever
 ```
 
 ### WithAutoReconnect
@@ -157,6 +167,16 @@ Controls whether the manager automatically reconnects when the simulator disconn
 ```go
 manager.WithAutoReconnect(true)   // Auto-reconnect (default)
 manager.WithAutoReconnect(false)  // Stop after first disconnect
+```
+
+### WithResubscribeOnReconnect
+
+Off by default. When enabled, the manager subscribes again, on every new connection (when its OPEN arrives), what the application subscribed through its pass-through calls: `SubscribeToFlowEvent`, `SubscribeInputEvent`, `SubscribeToSystemEvent` and `SubscribeToFacilities` / `SubscribeToFacilitiesEX1`. Without it these belong to the connection they were made on and are lost with it. Matching unsubscribe calls remove them from the replay list; `Stop()` clears it.
+
+Custom system events (`SubscribeToCustomSystemEvent`) are subscribed again after a lost connection regardless of this option.
+
+```go
+mgr := manager.New("MyApp", manager.WithResubscribeOnReconnect(true))
 ```
 
 ### WithSimStatePeriod
@@ -377,7 +397,9 @@ User Application
     ├─► manager.WithReconnectDelay() ──► Manager only
     ├─► manager.WithShutdownTimeout() ─► Manager only
     ├─► manager.WithMaxRetries() ──────► Manager only
+    ├─► WithReconnectMaxRetries()        ► Manager
     ├─► manager.WithAutoReconnect() ───► Manager only
+    ├─► WithResubscribeOnReconnect()     ► Manager
     ├─► manager.WithSimStatePeriod() ──► Manager only (SimState request period)
     │
     └─► manager.WithBufferSize() ──────► Engine.BufferSize

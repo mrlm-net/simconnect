@@ -55,7 +55,9 @@ func (e *Engine) AddToFacilityDefinition(definitionID uint32, fieldName string) 
 
 ### Using Pre-Built Facility Datasets
 
-The `pkg/datasets/facilities` package provides ready-made definitions for all facility sub-types. Use `RegisterFacilityDataset` instead of calling `AddToFacilityDefinition` manually.
+The `pkg/datasets/facilities` package provides ready-made definitions for the facility sub-types. Each constructor returns a `*datasets.FacilityDataSet` (a list of field names) that `RegisterFacilityDataset` adds to a definition in order, instead of calling `AddToFacilityDefinition` manually.
+
+Each dataset carries only its own `OPEN`/`CLOSE` pair. The airport, VOR, NDB and waypoint datasets are top-level; a child such as a runway or parking spot must be wrapped in its parent's block:
 
 ```go
 //go:build windows
@@ -63,29 +65,37 @@ The `pkg/datasets/facilities` package provides ready-made definitions for all fa
 import "github.com/mrlm-net/simconnect/pkg/datasets/facilities"
 
 client.RegisterFacilityDataset(3000, facilities.NewAirportFacilityDataset())
+
+// Runways of an airport: the child dataset inside OPEN/CLOSE AIRPORT
+client.AddToFacilityDefinition(3001, "OPEN AIRPORT")
 client.RegisterFacilityDataset(3001, facilities.NewRunwayFacilityDataset())
-client.RegisterFacilityDataset(3002, facilities.NewParkingFacilityDataset())
-client.RegisterFacilityDataset(3003, facilities.NewFrequencyFacilityDataset())
+client.AddToFacilityDefinition(3001, "CLOSE AIRPORT")
 ```
 
 Available constructors:
 
 | Constructor | Fields included |
 |-------------|----------------|
-| `NewAirportFacilityDataset()` | Name, ICAO, region, position, tower, transition altitude, country, city |
-| `NewRunwayFacilityDataset()` | Dimensions, heading, surface type, lighting |
-| `NewParkingFacilityDataset()` | Parking spots, gates, ramps |
-| `NewFrequencyFacilityDataset()` | COM/NAV frequencies and types |
-| `NewTaxiPointFacilityDataset()` | Taxiway intersection points |
-| `NewTaxiPathFacilityDataset()` | Taxiway paths and routes |
+| `NewAirportFacilityDataset()` | Position, magnetic variation, name, ICAO, region, tower position, transition altitude and level, closed flag, country, city |
+| `NewRunwayFacilityDataset()` | Position, heading, length, width, pattern altitude, slope, surface; per end: ILS, number, designator, threshold, blast pad, overrun, approach lights, VASI |
+| `NewStartFacilityDataset()` | Runway start positions |
+| `NewPavementFacilityDataset()`, `NewApproachLightsFacilityDataset()`, `NewVASIFacilityDataset()` | Runway sub-records (threshold, blast pad, overrun; approach lights; VASI) |
+| `NewParkingFacilityDataset()` | Parking type, name, suffix, number, orientation, heading, radius, position (bias) |
+| `NewFrequencyFacilityDataset()` | Frequency type, frequency, name |
+| `NewTaxiPointFacilityDataset()` | Taxiway points: type, orientation, position |
+| `NewTaxiPathFacilityDataset()` | Taxiway paths: type, widths, runway, edges and centre line, start and end points, name index |
 | `NewTaxiNameFacilityDataset()` | Taxiway names |
-| `NewHelipadFacilityDataset()` | Helipad location and properties |
-| `NewJetwayFacilityDataset()` | Jetway data |
-| `NewDepartureFacilityDataset()` | SID procedures |
-| `NewApproachFacilityDataset()` | Approach procedures |
-| `NewVORFacilityDataset()` | VOR navaid data |
-| `NewNDBFacilityDataset()` | NDB navaid data |
-| `NewWaypointFacilityDataset()` | Waypoint data |
+| `NewHelipadFacilityDataset()` | Helipad position, heading, size, surface, type |
+| `NewJetwayFacilityDataset()` | The parking gate, suffix and spot a jetway serves |
+| `NewDepartureFacilityDataset()`, `NewArrivalFacilityDataset()` | SIDs and STARs: name and transition counts |
+| `NewRunwayTransitionFacilityDataset()`, `NewEnrouteTransitionFacilityDataset()` | SID/STAR transitions |
+| `NewApproachFacilityDataset()` | Approaches: type, runway, FAF, missed altitude, LNAV/VNAV/LP/LPV, leg counts |
+| `NewApproachTransitionFacilityDataset()` | Approach transitions (IAF, DME arc) |
+| `NewApproachLegFacilityDataset()`, `NewFinalApproachLegFacilityDataset()`, `NewMissedApproachLegFacilityDataset()` | Procedure legs: fix, path, altitudes, speed limit, IAF/IF/FAF/MAP flags |
+| `NewVORFacilityDataset()` | VOR/DME/ILS/TACAN positions and flags, frequency, range, localizer, glide slope |
+| `NewNDBFacilityDataset()` | NDB position, frequency, type, range |
+| `NewWaypointFacilityDataset()` | Waypoint position, type, route count, ICAO, region |
+| `NewRouteFacilityDataset()` | A waypoint's airways: name, type, next and previous fix |
 
 ## Single Facility Request
 
@@ -207,19 +217,20 @@ client.RequestFacilityDataEX1(
 
 ### RequestFacilitiesList
 
-Requests a snapshot of all known facilities of a given type. SimConnect returns results in batches; each batch is one `SIMCONNECT_RECV_ID_AIRPORT_LIST` (or equivalent) message.
+Requests a list of facilities of a given type. SimConnect returns results in batches; each batch is one `SIMCONNECT_RECV_ID_AIRPORT_LIST` (or equivalent) message carrying your request ID. No facility definition is needed. `RequestFacilitiesListEX1` takes the same arguments and calls `SimConnect_RequestFacilitiesList_EX1`.
 
 **Signature:**
 
 ```go
 //go:build windows
 
-func (e *Engine) RequestFacilitiesList(definitionID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+func (e *Engine) RequestFacilitiesList(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+func (e *Engine) RequestFacilitiesListEX1(requestID uint32, listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
 ```
 
 ### RequestAllFacilities
 
-`RequestAllFacilities` (MSFS 2024) is similar but takes an explicit request ID and does not require a prior definition. Use it for broad database dumps.
+`RequestAllFacilities` (MSFS 2024) is similar and also needs no definition. Note the argument order: the list type comes first, then the request ID. Use it for broad database dumps.
 
 **Signature:**
 
@@ -230,6 +241,18 @@ func (e *Engine) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TY
 ```
 
 ### Example: Enumerating All Airports
+
+The list entries are packed on the wire, so a Go struct with doubles does not match them. On MSFS 2024 each list type decodes its entries for you: `list.Entries()` on `*SIMCONNECT_RECV_AIRPORT_LIST`, `_WAYPOINT_LIST`, `_NDB_LIST` and `_VOR_LIST` (sizes `types.FacilityAirportSize` 36, `FacilityWaypointSize` 40, `FacilityNDBSize` 44, `FacilityVORSize` 80 bytes), or `types.DecodeFacilityAirport` and its siblings for one entry. `Entries` reads within the message's `DwSize`, so a short message gives fewer entries.
+
+```go
+if list := msg.AsAirportList(); list != nil {
+    for _, a := range list.Entries() {
+        fmt.Printf("%s lat=%.4f lon=%.4f\n", engine.BytesToString(a.Ident[:]), a.Latitude, a.Longitude)
+    }
+}
+```
+
+`Entries` assumes the MSFS 2024 sizes. To handle other entry sizes (MSFS 2020's airports are 33 bytes), derive the stride from the message size by hand:
 
 ```go
 //go:build windows
@@ -301,7 +324,7 @@ func handleAirportList(msg engine.Message) {
 }
 ```
 
-> **Note:** The `SIMCONNECT_DATA_FACILITY_AIRPORT` struct in `pkg/types` has alignment padding that differs from the SimConnect wire format. Never cast a multi-entry list buffer directly to this struct. Use runtime stride arithmetic as shown above. See the inline comment in `pkg/types/facility.go` for details.
+> **Note:** The `SIMCONNECT_DATA_FACILITY_AIRPORT` struct in `pkg/types` has alignment padding that differs from the SimConnect wire format. Never cast a multi-entry list buffer directly to this struct. Use `Entries`, the `Decode*` functions or runtime stride arithmetic as shown above. See the comments in `pkg/types/facility.go` and `pkg/types/lists.go` for details.
 
 ### Message Helpers for List Responses
 
@@ -425,11 +448,11 @@ gates := []int32{0, 1, 2}
 client.RequestJetwayData("EGLL", uint32(len(gates)), &gates[0])
 ```
 
-Jetway responses arrive as `SIMCONNECT_RECV_ID_JETWAY_DATA` messages (`types.SIMCONNECT_RECV_JETWAY_DATA`, an array of `SIMCONNECT_JETWAY_DATA`). There is no `As*` helper for them; cast `msg.SIMCONNECT_RECV` yourself. For jetway records inside an airport, add `NewJetwayFacilityDataset()` to a `RequestFacilityData` definition instead; those arrive as `FACILITY_DATA` messages with `Type` equal to `SIMCONNECT_FACILITY_DATA_JETWAY`.
+Jetway responses arrive as `SIMCONNECT_RECV_ID_JETWAY_DATA` messages (`types.SIMCONNECT_RECV_JETWAY_DATA`, packed `SIMCONNECT_JETWAY_DATA` entries of `types.JetwayDataSize` 160 bytes). There is no `As*` helper for them; cast `msg.SIMCONNECT_RECV` to `*types.SIMCONNECT_RECV_JETWAY_DATA` and read the entries with its `Entries()` (or `types.DecodeJetwayData` for one), never by casting the entries. For jetway records inside an airport, add `NewJetwayFacilityDataset()` to a `RequestFacilityData` definition instead; those arrive as `FACILITY_DATA` messages with `Type` equal to `SIMCONNECT_FACILITY_DATA_JETWAY`.
 
 ## Filters
 
-Filters narrow the fields returned within a facility definition. They are applied per-definition, not per-request.
+Filters narrow the records returned for a facility definition. They are applied per-definition, not per-request.
 
 ### AddFacilityDataDefinitionFilter
 

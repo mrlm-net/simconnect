@@ -150,6 +150,12 @@ type Profile struct {
 	// model's profile goes on top of that base (#759).
 	Base    bool   `json:"base,omitempty"`
 	Extends string `json:"extends,omitempty"`
+	// SpeedCheckKt is the speed of the take-off roll's speed check: 80 by
+	// Boeing-style procedures, 100 by Airbus. TakeoffSpeeds is the type's
+	// table of V-speeds, for aircraft whose FMS gives none (V1, VR, V2 not
+	// read); an empty one gives none.
+	SpeedCheckKt  int         `json:"speedCheckKt,omitempty"`
+	TakeoffSpeeds *SpeedTable `json:"takeoffSpeeds,omitempty"`
 }
 
 // UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
@@ -273,6 +279,12 @@ func Merge(base, over Profile) Profile {
 	}
 	if over.EFB != nil {
 		out.EFB = over.EFB
+	}
+	if over.SpeedCheckKt != 0 {
+		out.SpeedCheckKt = over.SpeedCheckKt
+	}
+	if over.TakeoffSpeeds != nil {
+		out.TakeoffSpeeds = over.TakeoffSpeeds
 	}
 	if len(over.Doors) > 0 {
 		out.Doors, out.Exits, out.DoorEFB = over.Doors, over.Exits, over.DoorEFB

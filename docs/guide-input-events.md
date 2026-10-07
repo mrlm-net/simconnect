@@ -7,7 +7,7 @@ section: "client"
 
 # Input Events
 
-> **MSFS 2024 only.** The Input Event API (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEvent`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) is not present in the MSFS 2020 SimConnect SDK. Calling these methods with a `SimConnect.dll` that lacks the export panics (the procedure is not found), so check the simulator version before calling them. The `As*` message helpers (`AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`) will always return `nil` when connected to MSFS 2020 because the simulator never sends the corresponding `DwID` values.
+> **MSFS 2024 only.** The Input Event API (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEventDouble` / `SetInputEventString`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) is not present in the MSFS 2020 SimConnect SDK. Calling these methods with a `SimConnect.dll` that lacks the export panics (the procedure is not found), so check the simulator version before calling them. The `As*` message helpers (`AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`) will always return `nil` when connected to MSFS 2020 because the simulator never sends the corresponding `DwID` values.
 
 > **See also:** [Engine/Client API Reference](usage-engine-api.md) for the full API surface, including the Input Event section with a compact example.
 
@@ -15,7 +15,7 @@ section: "client"
 
 Input Events are hash-addressed simulator events that map to physical cockpit interactions. They represent things like button presses, switch states, and knob positions in aircraft panels. Unlike SimVars, which describe the state of the simulation world, Input Events are the raw input bindings — the same ones the simulator uses internally to trigger avionics logic.
 
-You discover available events at runtime by enumerating them. Each event has a human-readable name, a 32-bit descriptor hash, and a value type (numeric or string). Once you have the name or hash you need, you can read the current value, write a new value, or subscribe to receive a notification every time the value changes.
+You discover available events at runtime by enumerating them. Each event has a human-readable name, a 64-bit hash, and a value type (numeric or string). Once you have the name or hash you need, you can read the current value, write a new value, or subscribe to receive a notification every time the value changes.
 
 Common use cases include:
 
@@ -34,7 +34,6 @@ package main
 
 import (
     "fmt"
-    "unsafe"
 
     "github.com/mrlm-net/simconnect/pkg/engine"
     "github.com/mrlm-net/simconnect/pkg/types"
@@ -61,16 +60,11 @@ func main() {
         if recv == nil {
             continue
         }
-        // recv.DwArraySize tells you how many descriptors are in this batch.
-        // RgData is a one-element placeholder: the other descriptors follow it
-        // in the buffer, so step through by element size.
-        count := int(recv.DwArraySize)
-        base := unsafe.Pointer(&recv.RgData[0])
-        size := unsafe.Sizeof(types.SIMCONNECT_INPUT_EVENT_DESCRIPTOR{})
-        for i := 0; i < count; i++ {
-            desc := (*types.SIMCONNECT_INPUT_EVENT_DESCRIPTOR)(unsafe.Add(base, uintptr(i)*size))
+        // Entries returns the recv.DwArraySize descriptors of this batch,
+        // read in place from the packed message (valid while msg is).
+        for _, desc := range recv.Entries() {
             name := engine.BytesToString(desc.Name[:])
-            fmt.Printf("Event: %-64s  hash=0x%08X  type=%d\n", name, desc.Hash, desc.Type)
+            fmt.Printf("Event: %-64s  hash=0x%016X  type=%d\n", name, desc.Hash(), desc.Type)
         }
         // DwEntryNumber and DwOutOf let you track batched delivery.
         if recv.DwEntryNumber+1 >= recv.DwOutOf {
@@ -88,11 +82,10 @@ func main() {
 | Field | Type | Description |
 |---|---|---|
 | `Name` | `[64]byte` | Human-readable event name, null-terminated. Use `engine.BytesToString(desc.Name[:])` to convert. |
-| `Hash` | `DWORD` (32-bit) | Descriptor hash for this event. Cast to `uint64` when calling `GetInputEvent`, `SetInputEvent*`, or `SubscribeInputEvent`. |
-| `Type` | `SIMCONNECT_DATATYPE` | Value type of the event (`SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE` or `SIMCONNECT_INPUT_EVENT_TYPE_STRING`). |
-| `NodeNames` | `[1024]byte` | Null-separated list of associated node names. |
+| `HashBytes` | `[8]byte` | The event's 64-bit hash, little-endian. Read it with the `desc.Hash()` method, which returns the `uint64` that `GetInputEvent`, `SetInputEvent*`, `SubscribeInputEvent` and `UnsubscribeInputEvent` take. |
+| `Type` | `SIMCONNECT_INPUT_EVENT_TYPE` | Value type of the event (`SIMCONNECT_INPUT_EVENT_TYPE_DOUBLE` or `SIMCONNECT_INPUT_EVENT_TYPE_STRING`). |
 
-> **Note:** The `Hash` field in `SIMCONNECT_INPUT_EVENT_DESCRIPTOR` is a 32-bit `DWORD`. The DLL API calls (`GetInputEvent`, `SetInputEventDouble`, `SetInputEventString`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) all take a `uint64` hash parameter. Cast explicitly: `uint64(desc.Hash)`.
+> **Note:** A descriptor is 76 bytes on the wire (`types.InputEventDescriptorSize`). The hash is kept as `[8]byte` so the Go struct has no padding and matches that layout; a `uint64` field would make it 80 bytes and every descriptor after the first would be read from the wrong place. Read the descriptors with `recv.Entries()`, not by indexing `RgData` (a zero-length marker).
 
 ## Get Event Value
 
@@ -237,12 +230,12 @@ Call this before disconnecting if you want to be explicit, or when you no longer
 
 ## Hash Note
 
-There are two hash representations in this API, and it is important not to conflate them:
+The hash is a 64-bit value in both places it appears. Both structs store it as raw bytes to match the packed wire layout, so read it with the helpers:
 
-- **`SIMCONNECT_INPUT_EVENT_DESCRIPTOR.Hash`** — a `DWORD` (32-bit unsigned integer) returned in the enumeration response. Cast it to `uint64` when passing it to any DLL call: `uint64(desc.Hash)`.
-- **`SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT.HashBytes`** — a `[8]byte` field at wire offset 12 in the subscribe notification struct. This is a full 64-bit hash stored as raw bytes to work around Go's alignment rules. Use `engine.SubscribeInputEventHash(recv)` to decode it.
+- **`SIMCONNECT_INPUT_EVENT_DESCRIPTOR.HashBytes`** — `[8]byte` at offset 64 of each enumeration descriptor. Use `desc.Hash()` to decode it.
+- **`SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT.HashBytes`** — `[8]byte` at wire offset 12 in the subscribe notification struct. Use `engine.SubscribeInputEventHash(recv)` to decode it.
 
-The two hashes are not necessarily the same value. The descriptor hash is a compact identifier used at enumeration time. The subscription notification carries the full 64-bit hash the simulator uses internally. Use the value from the subscribe notification if you need to correlate events back to subscriptions in your own bookkeeping.
+Pass the decoded `uint64` to the API calls, and use it to match notifications to your subscriptions.
 
 ## Complete Example
 
@@ -303,13 +296,17 @@ func main() {
                 if recv == nil {
                     continue
                 }
+                descs := recv.Entries()
+                if len(descs) == 0 {
+                    continue
+                }
                 // Print the first descriptor in this batch.
-                name := engine.BytesToString(recv.RgData[0].Name[:])
+                name := engine.BytesToString(descs[0].Name[:])
                 fmt.Printf("Found event: %s\n", name)
 
                 // Subscribe to the first event we see.
                 if subscribedHash == 0 {
-                    subscribedHash = uint64(recv.RgData[0].Hash)
+                    subscribedHash = descs[0].Hash()
                     if err := client.SubscribeInputEvent(subscribedHash); err != nil {
                         fmt.Printf("SubscribeInputEvent failed: %v\n", err)
                     } else {

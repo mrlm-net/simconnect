@@ -29,6 +29,8 @@ import "github.com/mrlm-net/simconnect/pkg/engine"
 client := engine.New("MyApp")
 ```
 
+`simconnect.NewClient` returns the `engine.Client` interface; `engine.New` returns `*engine.Engine`, which also has the methods outside the interface (the camera API and `SetSystemEventState`).
+
 ## Connection Lifecycle
 
 ### Connect
@@ -43,15 +45,17 @@ if err := client.Connect(); err != nil {
 
 ### Disconnect
 
-Gracefully closes the connection and releases resources.
+Stops the dispatcher, closes the stream and closes the connection.
 
 ```go
 defer client.Disconnect()
 ```
 
+A client is single-use: after `Disconnect` (or the simulator quitting) its context is done and its stream closed. To connect again, create a new client (as `pkg/manager` does).
+
 ### Stream
 
-Returns a read-only channel for receiving SimConnect messages.
+Returns a read-only channel for receiving SimConnect messages. The first call starts the dispatcher.
 
 ```go
 stream := client.Stream()
@@ -59,6 +63,8 @@ for msg := range stream {
     // Handle incoming messages
 }
 ```
+
+The channel closes after the simulator's quit message, when the context is cancelled, or when the connection is lost: then the last message carries an `Err` wrapping `engine.ErrConnectionLost` (the pipe closed, or 100 dispatch errors in a row).
 
 ## Data Definitions
 
@@ -142,11 +148,23 @@ Available facility dataset constructors in `pkg/datasets/facilities`:
 | `NewTaxiNameFacilityDataset()` | Taxiway names |
 | `NewHelipadFacilityDataset()` | Helipad locations and properties |
 | `NewJetwayFacilityDataset()` | Jetway data |
+| `NewPavementFacilityDataset()` | Runway pavement (length, width) |
+| `NewApproachLightsFacilityDataset()` | Runway approach lights |
+| `NewVASIFacilityDataset()` | Runway VASI |
+| `NewStartFacilityDataset()` | Start positions |
 | `NewDepartureFacilityDataset()` | SID procedures |
+| `NewArrivalFacilityDataset()` | STAR procedures |
+| `NewRunwayTransitionFacilityDataset()` | SID/STAR runway transitions |
+| `NewEnrouteTransitionFacilityDataset()` | SID/STAR enroute transitions |
 | `NewApproachFacilityDataset()` | Approach procedures |
+| `NewApproachTransitionFacilityDataset()` | Approach transitions |
+| `NewApproachLegFacilityDataset()` | Procedure legs (`APPROACH_LEG`) |
+| `NewFinalApproachLegFacilityDataset()` | Final approach legs |
+| `NewMissedApproachLegFacilityDataset()` | Missed approach legs |
 | `NewVORFacilityDataset()` | VOR navaid data |
 | `NewNDBFacilityDataset()` | NDB navaid data |
 | `NewWaypointFacilityDataset()` | Waypoint data |
+| `NewRouteFacilityDataset()` | Airway segments of a waypoint (`ROUTE`) |
 
 ## Requesting Data
 
@@ -672,6 +690,16 @@ client.FlightSave(
 )
 ```
 
+## Other Client APIs
+
+Not covered above:
+
+- `SetSystemEventState`, `RequestNotificationGroup`, `RemoveClientEvent`, `RequestFacilitiesListEX1`, `UnsubscribeToFacilitiesEX1` — thin wrappers of the SimConnect functions of the same name.
+- `SubscribeToFlowEvent` / `UnsubscribeFromFlowEvent` — flow events (MSFS 2024), read with `msg.AsFlowEvent()`.
+- `engine.SystemStateFloat64(recv)` — the float value of a `SIMCONNECT_RECV_SYSTEM_STATE` reply.
+- `engine.PackWaypoints(wps)` and `engine.WaypointWireSize` — pack `SIMCONNECT_DATA_WAYPOINT` slices for `SetDataOnSimObject`.
+- Client data areas, input events and object/livery enumeration: [Engine API Reference](usage-engine-api.md). Camera (MSFS 2024, `*engine.Engine` only): [Camera](camera.md).
+
 ## Example: Complete Data Loop
 
 ```go
@@ -734,6 +762,10 @@ func main() {
         case msg, ok := <-stream:
             if !ok {
                 return
+            }
+            if msg.Err != nil {
+                fmt.Println("stream error:", msg.Err)
+                continue
             }
             if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
                 data := msg.AsSimObjectData()

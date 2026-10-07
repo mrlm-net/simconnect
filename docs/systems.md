@@ -41,8 +41,20 @@ After a reconnect, call `Reset`. When another aircraft loads, call `Use` with it
 | `door0–3` | Doors | EXIT OPEN:0–3 |
 | `xpdrState`, `xpdrCode` | XPDRState, Squawk ("4521") | TRANSPONDER STATE:1, TRANSPONDER CODE:1 (Bco16) |
 | `flapsPct`, `gearDown` | FlapsPct, GearDown | FLAPS HANDLE PERCENT, GEAR HANDLE POSITION |
+| `weightKg`, `flapsIndex` | (for the speed table) | TOTAL WEIGHT (kilograms), FLAPS HANDLE INDEX |
+| `v1Kt`, `vrKt`, `v2Kt`, `daFt`, `mdaFt` | V1Kt, VRKt, V2Kt, DAFt, MDAFt | none: a model whose FMS gives them (its L:vars) |
 
 `State.Values` holds every resolved value by name, including any that a profile adds.
+
+**Take-off speeds.** `State.V1Kt`, `VRKt` and `V2Kt` (knots, 0 unknown) come from the aircraft when its profile reads `v1Kt` and V1 is set (`SpeedsFrom` "fms": the speeds the crew entered). Otherwise they come from the profile's `takeoffSpeeds` table by `flapsIndex` and `weightKg` (`SpeedsFrom` "table"), interpolated between its weights and held at its ends; with neither, none (`SpeedsFrom` ""). `SpeedCheckKt` is the profile's speed check on the take-off roll: 80 by default (Boeing-style procedures), 100 for the A320 family. The A320 family base ships an approximate table (not from an FCOM, to be replaced by a local override); the Fenix gives none until its MCDU speeds are read from its L:vars.
+
+```json
+"speedCheckKt": 100,
+"takeoffSpeeds": {
+  "weightsKg": [50000, 60000, 70000],
+  "flaps": { "1": { "v1": [120, 132, 144], "vr": [121, 133, 145], "v2": [126, 137, 148] } }
+}
+```
 
 ## The profile format
 
@@ -69,6 +81,7 @@ After a reconnect, call `Reset`. When another aircraft loads, call `Use` with it
 **Values.** Each value lists its `vars` in `unit` (default `number`, as L:vars are read), then:
 - `combine` joins several vars: `any` is true when any is not 0; `max` and `min` take the largest or smallest; no `combine` takes the first var;
 - `trueAt` makes a var true only at those positions, e.g. a three-position switch on only at 2;
+- `scale` multiplies the result, e.g. kHz as MHz with 0.001 (applied before `atLeast`);
 - `atLeast` makes the result true at that value or more, e.g. volts as powered;
 - `note` says whether the value was measured or assumed.
 
@@ -76,8 +89,10 @@ After a reconnect, call `Reset`. When another aircraft loads, call `Use` with it
 
 **Order and overrides.** `For(aircraft, overrides...)` builds the profile in three steps:
 1. starts from `Default()`;
-2. puts the first matching shipped profile (`Profiles()`) on top;
+2. puts the matching type base on top, then the first matching model's profile (`Profiles()`; see [Type bases](#type-bases-cabin-signs-and-counted-buttons));
 3. puts each matching override on top, in the order given.
+
+`Profiles()` is the shipped set, replaceable at runtime as the `systems.profiles` table of [pkg/dict](dictionaries.md).
 
 An override wins per value: values it doesn't name stay as they were. The same applies to an override without a `match` that has the matched profile's `name`. `Merge(base, over)` is that step on its own.
 
@@ -108,7 +123,7 @@ The profile's **actions** give the COM swap as the RMP transfer key, `L:S_PED_RM
 
 `actions` names how a control is operated on a model where the standard key events do not do it: `{"com1Swap": {"press": "L:S_PED_RMP1_XFER"}}` presses that variable (1, then 0). `pkg/avionics` takes them with `Radios.Use(profile.Actions)`. They merge like values: an override wins per action.
 
-An action is one of: `press` (a button variable clicked), `set` (a variable set to the state wanted, 1 or 0), `event` (a key event; with `toggle` sent only when the state differs, with `data` for its parameter), or `efb` (a boolean data ref written through the aircraft's tablet API, `Profile.EFB`; `Controls.SetEFBHost` for an app on another machine).
+An action is one of: `press` (a button variable clicked), `set` (a variable set to the state wanted, 1 or 0), `event` (a key event; with `toggle` sent only when the state differs, with `data` for its parameter), `efb` (a boolean data ref written through the aircraft's tablet API, `Profile.EFB`; `Controls.SetEFBHost` for an app on another machine), or `counter` (a counted push button, see below). `note` documents it.
 
 ## Ground controls
 
@@ -128,7 +143,9 @@ ctl.Set(systems.Door(0), true, reader.State()) // open the main door
 
 A profile's `doors` names its exits. As names (`["Door 1", "Door 2"]`) they go in the order of EXIT OPEN and TOGGLE_AIRCRAFT_EXIT (`Door(0)` is exit 1): "Door 1"…"Door 4" by default. As objects they name each door's exit (`Profile.Exits`): the Fenix A319's passenger doors `[{"name":"L1","exit":1},{"name":"L2","exit":4},{"name":"R1","exit":5},{"name":"R2","exit":8}]` (measured 2026-10-05; exits 2, 3, 6, 7, 12 and 13 move but are no passenger door, not named yet). TOGGLE_AIRCRAFT_EXIT k toggles EXIT OPEN:k-1, so each door reads and toggles its exit. Their number is how many it has. `State.DoorsOpen` and `DoorNames` are all of them (`Doors` keeps the first four).
 
-`State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show.
+`State` reads `Chocks` and `GPU`, with `HasChocks` and `HasGPU` when the model has them. `Can` tells the app which buttons to show; a control the profile does not give returns `ErrNoControl`.
+
+`NewControls(client, 0)` takes its client event and data definition IDs from `DefaultControlBase` (0x7B00), a block of `ControlIDs` (64); past that, `ErrNoIDs`. After a reconnect call `Reset(client)` (nil keeps the client); `Reader.Reset(client)` works the same way.
 
 ## Ground services
 

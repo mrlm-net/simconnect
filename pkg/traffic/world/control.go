@@ -1945,6 +1945,25 @@ func registerControl(mux *http.ServeMux, st *state) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		// Follow on the ground (?tail= the leader): it stays behind it
+		// wherever their ways meet, told ground's way.
+		if r.PathValue("action") == "follow" {
+			lead := cc.byTail(r.URL.Query().Get("tail"))
+			if lead == nil || lead == it || lead.ICAO != it.ICAO {
+				http.Error(w, "tail: another aircraft of ours at the airport", http.StatusBadRequest)
+				return
+			}
+			if !cc.follow(it, lead) {
+				http.Error(w, "no aircraft yet", http.StatusConflict)
+				return
+			}
+			it.say(traffic.FollowTaxi(it.Tail, cc.followSaid(it, lead)))
+			it.mu.Lock()
+			it.view.Instruction, it.view.InstructionAt = "follow "+lead.Tail, nil
+			it.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		// Network play (#511): only the position working it clears it.
 		if as := positionOf(r); !mayClear(as, it) {
 			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)

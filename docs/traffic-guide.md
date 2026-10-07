@@ -14,14 +14,14 @@ section: "traffic"
 
 The rest of `pkg/traffic` builds on the `Fleet`:
 
-| Type | Does | Chapter |
+| API | Does | Chapter |
 |---|---|---|
 | `TaxiController` | one departure: stand to take-off | [Departure Taxi](traffic-taxi.md) |
 | `ArrivalController` | one arrival: approach to stand | [Arrivals & Parking](traffic-arrival.md) |
 | `Injector`, `GroundMover`, `Detail`, `IDBlocks` | injected movement, level of detail, IDs for many aircraft | [Injected Ground Movement](traffic-motion.md) |
 | `ApproachSequencer`, `HoldStack` | landing order, spacing, delays and holds | [Airborne Separation](traffic-separation.md) |
 | `TrafficPicture` | all traffic around a centre, ours and the simulator's | [Traffic Picture](traffic-picture.md) |
-| `Schedule`, `Overflights` | timetables for the focus airports, flights crossing the area | [Traffic Schedules](traffic-schedules.md) |
+| `Schedule()`, `Overflights()` (functions over a `ScheduleConfig`) | timetables for the focus airports, flights crossing the area | [Traffic Schedules](traffic-schedules.md) |
 | `TrafficManager` | runs the timetable through your `Spawner`: spawns, turnarounds, situation checks | [Traffic Manager](traffic-manager.md) |
 
 The runway in use comes from [`nav.RunwaySelector`](nav-weather.md#keeping-the-runway-in-use).
@@ -255,6 +255,9 @@ mgr.TrafficRemove(objectID, reqID)
 
 // remove all — reqIDBase is incremented per aircraft
 mgr.Fleet().RemoveAll(9000)
+
+// forget everything without asking the simulator (ObjectIDs already stale)
+mgr.Fleet().Clear()
 ```
 
 ## Manager Integration

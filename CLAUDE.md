@@ -31,6 +31,11 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── notification.go  #   Notification groups
 │       ├── object.go        #   Generic SimObject operations
 │       ├── object-ai.go     #   AI aircraft creation & management
+│       ├── clientdata.go    #   Client data areas
+│       ├── inputevent.go    #   Input events
+│       ├── flow.go          #   Flow events (MSFS 2024)
+│       ├── commbus.go       #   CommBus messages
+│       ├── camera.go        #   Camera API
 │       └── system.go        #   System events & state
 ├── pkg/
 │   ├── engine/              # High-level client, lifecycle, dispatching
@@ -49,6 +54,11 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── notification.go  #   Notification groups
 │   │   ├── object.go        #   SimObject operations
 │   │   ├── system.go        #   System events & state
+│   │   ├── clientdata.go    #   Client data areas
+│   │   ├── inputevent.go    #   Input events
+│   │   ├── flow.go          #   Flow events (MSFS 2024)
+│   │   ├── commbus.go       #   CommBus messages
+│   │   ├── camera.go        #   Camera API (MSFS 2024)
 │   │   └── logger.go        #   Structured slog logger
 │   ├── manager/             # Connection manager with auto-reconnect
 │   │   ├── main.go          #   Manager constructor & helpers
@@ -81,6 +91,18 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── subscription-base.go     # Shared subscription plumbing
 │   │   ├── notify.go        #   Notification helpers
 │   │   ├── getters.go       #   Public state accessors
+│   │   ├── events.go        #   Client events through the manager
+│   │   ├── facilities.go    #   Facility requests through the manager
+│   │   ├── flight.go        #   Flight load/save through the manager
+│   │   ├── system.go        #   System state requests
+│   │   ├── notifications.go #   Notification groups
+│   │   ├── ai-traffic.go    #   AI aircraft creation
+│   │   ├── traffic.go       #   The manager's Fleet
+│   │   ├── clientdata.go    #   Client data areas
+│   │   ├── inputevents.go   #   Input events
+│   │   ├── flow.go          #   Flow events (MSFS 2024)
+│   │   ├── resubscribe.go   #   Subscriptions re-made on reconnect (ResubscribeOnReconnect)
+│   │   ├── typed-subscription.go # Typed subscriptions
 │   │   ├── manager.go       #   Manager interface definition
 │   │   └── internal/        #   Internal utilities & helpers
 │   │       ├── instance/    #   Handler entry types (exported)
@@ -89,7 +111,6 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │       │   └── notify.go #    NotifyState, NotifySimState, NotifyOpen, NotifyQuit
 │   │       ├── handlers/    #   Handler registration & removal
 │   │       │   ├── handlers.go #  GenerateUUID, state/message/open/quit handlers
-│   │       │   ├── connection.go # Connection handler docs
 │   │       │   ├── filenames.go #  FlightLoaded/AircraftLoaded/FlightPlanActivated
 │   │       │   ├── objects.go #    ObjectAdded/ObjectRemoved
 │   │       │   ├── simstate.go #   SimState/Pause/SimRunning
@@ -131,6 +152,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   │   ├── position.go      #   Lat/lon conversion
 │   │   └── speed.go         #   Knots/km/h/m/s conversion
 │   ├── calc/                # Calculation helpers
+│   ├── dict/                # Embedded tables replaceable at runtime: telephony, types, wake, performance, airports (#768)
+│   ├── registry/            # SimVar metadata: names, units, data types, writability
 │   ├── addons/              # Installed add-ons (no SimConnect): packages path, Community/streamed scan, aircraft → package, fingerprint, processes
 │   ├── avionics/            # User aircraft radios: COM active/standby, swap, squawk (key events)
 │   ├── systems/             # User aircraft systems by profile: default SimVars, per-model JSON (Fenix L:vars), local overrides
@@ -181,9 +204,13 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── taxi_occupied.go #   Departure Occupies / AvoidOccupied: taxi round a pushback in the way
 │       ├── departure_inject.go # Injected departure with clearance gates
 │       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours, terminal
+│       ├── pushpose.go      #   Push to a pose (taxiway, facing out): poses, cost, push-and-tow, PlanStandardPushes
+│       ├── push_custom.go   #   PushRoute: drawn (SetCustomPush) and standard pushes per stand
+│       ├── standard_cache.go #  Save/LoadStandardPushes, ErrStandardStale
 │       ├── pushturn.go      #   Dubins push-and-turn, alley entry, pavement check
 │       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
 │       ├── fuel.go          #   FuelService interface, SimObjectFuelTruck (fuel truck at the wing, #582)
+│       ├── service_fleet.go #   VehicleFleet: an airport's tugs, fuel trucks, stairs, GPUs (#830)
 │       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
 │       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
 │       ├── picture.go       #   TrafficPicture: all traffic around a configurable centre, phases, feeds
@@ -191,6 +218,9 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── schedule.go      #   Schedule: flights (airlines, fleets, routes, waves), ScheduleConfig JSON
 │       ├── schedule_data.go #   DefaultScheduleConfig: built-in airlines, airports, waves, type limits
 │       ├── schedule_vfr.go  #   VFRFlights: light aircraft through the circuit, by day in visual conditions (#568)
+│       ├── schedule_business.go # BusinessFlights, LargeAirport: business aviation at large airports (#619)
+│       ├── ga_operators.go  #   GAOperatorsAt: flying school, aero club, private owners
+│       ├── corridor.go      #   Traffic along the user's route in cruise: same, opposite, crossing (#740)
 │       ├── daylight.go      #   SunElevation, Daylight (civil twilight)
 │       ├── manager.go       #   TrafficManager: schedule → spawn/remove, turnarounds, limits, retries, boards, other traffic
 │       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
@@ -205,13 +235,20 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── runway_control.go #  RunwayController: line-up, take-off, crossing clearances (#393)
 │       ├── separation.go    #   AirborneSeparation and minima (#395)
 │       ├── conflict.go      #   PredictConflicts, ResolveConflict, ResolvedRoute, TowerPair (#395)
+│       ├── tcas.go          #   TCAS II: sensitivity levels, Evaluate (TA/RA), SelectRA (#450)
+│       ├── airspace.go      #   AirspaceClass, SeparationRequired, traffic information (#570)
 │       ├── radio.go         #   Transmission, phrasebook (Say, builders), positions, handoffs, Radio (#415, #416)
 │       ├── pilot.go         #   Pilot side: requests, check-ins, Readback, CheckReadback (#417), ATISInformation (#418)
+│       ├── radio_variety.go #   Variety: crew styles, greetings, say again, readback errors (#721)
+│       ├── stations.go      #   StationFor: a position's station name and frequency
+│       ├── station_sectors.go # Station, DefaultStations, PickStation: stations per sector (#722)
+│       ├── squawk.go        #   Squawks: discrete SSR codes from a bank
 │       ├── clock.go         #   SimClock: traffic time at the simulation rate, stopped while paused (#413)
 │       ├── corners.go       #   Rounded turns: standard bank by airframe, fly-by arcs for MSFS AI chains
 │       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
 │       ├── circuit.go       #   VFR circuits: CircuitConfig per runway end, NewCircuit, JoinDownwind, Waypoints (#567)
 │       ├── absorb.go        #   AbsorbDelay: speed control and path stretching on the STAR (#391)
+│       ├── vectors.go       #   Vector: radar vectors off the STAR (dog-leg, extended downwind) (#661)
 │       ├── sequencer.go     #   ApproachSequencer: landing order, spacing and delays per runway; DistanceToGo
 │       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
 │       ├── models.go        #   ModelsFor: aircraft titles for an airline and type
@@ -222,6 +259,16 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │       ├── tunables.go      #   Taxi speeds, distances, IDs
 │       ├── vehicle_state.go #   VehicleState: tug and fuel truck State(), Title()
 │       └── world/           #   The airport map's traffic engine (#710): New/Run/RunOn/Feed, Snapshot, Do/Get, Heard, ClearPlayer, Register
+│           ├── api.go       #     Options, World, New, Run
+│           ├── host.go      #     A host's connection: Feed, RunOn, Snapshot, Do/Get, ClearPlayer, SetSchedule, AddFlights
+│           ├── real.go      #     Real-world traffic: SetRealTraffic, Observe, Drop (#841)
+│           ├── tcas.go      #     TCAS for our airborne traffic, GET /api/tcas (#450)
+│           ├── conflicts.go #     Conflict watch: resolutions, stopped levels cleared on, arrivals on STARs
+│           ├── keepclear.go #     Taxi re-plans round aircraft in the way; climbOn
+│           ├── enroute_pace.go #  En route arrivals paced behind their leader
+│           ├── sequence.go  #     Landing sequences: absorption, holds, shortcuts, spacing on final
+│           ├── corridor.go  #     Traffic along the user's route (SetCorridor)
+│           └── net.go       #     Split director/actuator link, multiplayer, TLS (#774, #779, #792)
 ├── examples/                # Example applications (one per folder)
 │   ├── basic-connection/    #   Minimal connect & disconnect
 │   ├── lifecycle-connection/ #  Connection with lifecycle hooks
@@ -231,6 +278,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── set-variables/       #   SimVar writing
 │   ├── emit-events/         #   Event emission
 │   ├── subscribe-events/    #   Event subscriptions
+│   ├── flow-events/         #   Flow event subscriptions (MSFS 2024 only)
 │   ├── read-facility/       #   Single facility lookup
 │   ├── read-facilities/     #   Bulk facility reading
 │   ├── subscribe-facilities/ #  Facility change subscriptions
@@ -257,6 +305,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
 ├── cmd/
 │   ├── airport-map/         #   The airport map: front end of pkg/traffic/world — page, voice (own go.mod: voice-goio)
+│   ├── traffic-actuator/    #   The World's simulator side beside MSFS: listens, or dials a director (#710, #774)
+│   ├── traffic-director/    #   The World's decisions without a simulator; serves the API and the map's page
 │   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
 ├── docs/                    # Documentation (source of truth for guides)
 │   ├── config-client.md     #   Client configuration reference
@@ -277,6 +327,9 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
 │   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
 │   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
+│   ├── traffic-phraseology.md # ICAO and FAA phraseology with sources, as the radio says it
+│   ├── traffic-commands.md  #   ATC commands: every clearance and command for injected departures and arrivals
+│   ├── atc-game.md          #   The airport map's ATC game: clearances and score
 │   ├── traffic-vfr.md       #   VFR traffic: light aircraft, circuits, reporting points (v0.19)
 │   ├── traffic-world.md     #   pkg/traffic/world: the map's engine as a package, host API, IDs (#710)
 │   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
@@ -284,6 +337,9 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── addons.md            #   pkg/addons: installed packages, streamed airports, aircraft package, processes
 │   ├── avionics.md          #   pkg/avionics: COM frequencies, swap, transponder
 │   ├── systems.md           #   pkg/systems: aircraft systems profiles, format, Fenix
+│   ├── dictionaries.md      #   pkg/dict: the embedded tables replaced at runtime
+│   ├── pkg-registry.md      #   pkg/registry: typed SimVar metadata
+│   ├── examples.md          #   The airport map first, then an example per part of the API
 │   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
 │   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
 └── website/                 # SvelteKit documentation site (static)
@@ -297,18 +353,20 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
         ├── app.css          #   Tailwind imports & dark theme tokens
         ├── lib/
         │   ├── plugins/     #   Custom rehype plugins
-        │   │   ├── rehype-highlight.js  # highlight.js syntax highlighting
         │   │   ├── rehype-slug.js       # Heading ID generation
+        │   │   ├── rehype-table-wrap.js # Wraps tables in a scrollable div
         │   │   └── rehype-rewrite-links.js # .md link rewriting
         │   ├── content/     #   Build-time content pipeline
         │   │   ├── pipeline.server.ts # Reads docs/*.md, extracts frontmatter
+        │   │   ├── types.ts     # DocPage and content types
         │   │   └── toc.ts       # Table of contents extraction
         │   ├── components/
-        │   │   └── layout/  #   Layout components
-        │   │       ├── Header.svelte
-        │   │       ├── Sidebar.svelte
-        │   │       ├── TableOfContents.svelte
-        │   │       └── Footer.svelte
+        │   │   ├── layout/  #   Layout components
+        │   │   │   ├── Header.svelte
+        │   │   │   ├── Sidebar.svelte
+        │   │   │   ├── TableOfContents.svelte
+        │   │   │   └── Footer.svelte
+        │   │   └── seo/     #   SeoHead.svelte, JsonLd.svelte
         │   ├── config/      #   Site configuration
         │   │   ├── site.ts      # Title, description, repo URL
         │   │   └── navigation.ts # Section ordering & sidebar builder
@@ -317,13 +375,21 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
         └── routes/          #   SvelteKit pages
             ├── +layout.svelte       # Root layout shell
             ├── +layout.server.ts    # Prerender, load navigation
-            ├── +page.svelte         # Landing page
-            ├── docs/
-            │   ├── +page.svelte     # Docs listing page
-            │   ├── +page.server.ts  # Load doc index
-            │   └── [slug]/
-            │       ├── +page.svelte     # Individual doc page
-            │       └── +page.server.ts  # Load & render doc by slug
+            ├── +error.svelte        # Error page
+            ├── (marketing)/         # Landing page (+page.svelte, +layout.svelte)
+            ├── (docs)/              # Docs layout
+            │   ├── docs/
+            │   │   ├── +page.svelte     # Docs listing page
+            │   │   ├── +page.server.ts  # Load doc index
+            │   │   ├── images/          # Doc images
+            │   │   └── [slug]/
+            │   │       ├── +page.svelte     # Individual doc page
+            │   │       └── +page.server.ts  # Load & render doc by slug
+            │   ├── changelog/       # Changelog page
+            │   └── getting-started/ # Getting started page
+            ├── examples/            # Examples page
+            ├── llm.txt/             # llm.txt endpoint
+            └── sitemap.xml/         # Sitemap endpoint
 ```
 
 ## Build & Test

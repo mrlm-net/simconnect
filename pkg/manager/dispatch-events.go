@@ -191,7 +191,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 		newView := eventData
 		m.logger.Debug("[manager] View event", "viewID", newView)
 
-		m.mu.RLock()
+		m.mu.Lock()
 		if cap(m.viewHandlersBuf) < len(m.viewHandlers) {
 			m.viewHandlersBuf = make([]ViewHandler, len(m.viewHandlers))
 		} else {
@@ -201,7 +201,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.viewHandlersBuf[i] = e.Fn.(ViewHandler)
 		}
 		hs := m.viewHandlersBuf
-		m.mu.RUnlock()
+		m.mu.Unlock()
 
 		for _, h := range hs {
 			handler := h
@@ -215,7 +215,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 		// Handle flight plan deactivated event
 		m.logger.Debug("[manager] FlightPlanDeactivated event")
 
-		m.mu.RLock()
+		m.mu.Lock()
 		if cap(m.flightPlanDeactivatedHandlersBuf) < len(m.flightPlanDeactivatedHandlers) {
 			m.flightPlanDeactivatedHandlersBuf = make([]FlightPlanDeactivatedHandler, len(m.flightPlanDeactivatedHandlers))
 		} else {
@@ -225,7 +225,7 @@ func (m *Instance) processEventMessage(msg engine.Message) {
 			m.flightPlanDeactivatedHandlersBuf[i] = e.Fn.(FlightPlanDeactivatedHandler)
 		}
 		hs := m.flightPlanDeactivatedHandlersBuf
-		m.mu.RUnlock()
+		m.mu.Unlock()
 
 		for _, h := range hs {
 			handler := h

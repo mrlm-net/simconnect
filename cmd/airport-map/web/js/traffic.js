@@ -428,6 +428,11 @@ function renderCtx() {
       let g = `<div class="phase"><div class="phase__name">${p.name}</div><div class="acts">${p.acts.map((a) => actBtn(v, a, busy)).join('')}</div>`;
       if (p.key === 'ground' && has(v, 'pushback') && !facingShown) g += facingRow(v, busy);
       if (p.key === 'ground' && v.kind === 'departure') g += `<div class="acts"><button type="button" class="btn btn--sm" data-pick="via" data-cs="${esc(v.tail)}" title="Taxi via points picked on the map"${other ? ' disabled' : ''}>Via…</button></div>`;
+      if (p.key === 'ground' && v.onGround) {
+        // Follow another of ours taxiing at the airport: it stays behind it.
+        const leaders = ctlViews.filter((x) => x.id !== v.id && x.icao === v.icao && x.onGround && x.state === 'taxiing');
+        if (leaders.length) g += `<div class="acts"><span class="phase__name">Follow</span>${leaders.slice(0, 4).map((x) => `<button type="button" class="btn btn--sm" data-followtail="${esc(x.tail)}" data-id="${v.id}" title="Follow ${esc(x.tail)} on the ground"${other ? ' disabled' : ''}>${esc(x.tail)}</button>`).join('')}</div>`;
+      }
       return g + '</div>';
     });
     const s = v.kind === 'arrival' && !v.onGround ? seqEntry(v.tail) : null;
@@ -893,6 +898,17 @@ function initTraffic() {
   document.addEventListener('click', (e) => {
     const tune = e.target.closest('[data-tune]');
     if (tune) { e.stopPropagation(); tuneTo(tune.dataset.tune); return; }
+    const fl = e.target.closest('[data-followtail]');
+    if (fl) {
+      if (!fl.disabled) {
+        fl.disabled = true;
+        send(`/api/control/${fl.dataset.id}/follow?tail=${encodeURIComponent(fl.dataset.followtail)}`).then((r) => {
+          if (!r.ok) toast(r.error, 'err');
+          controlPoll.now();
+        });
+      }
+      return;
+    }
     const pk = e.target.closest('[data-pick]');
     if (pk) { if (!pk.disabled) startPick(pk.dataset.cs, pk.dataset.pick); return; }
     const ap = e.target.closest('[data-ap]');

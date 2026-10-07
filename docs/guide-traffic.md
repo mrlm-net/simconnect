@@ -236,7 +236,7 @@ func (e *Engine) AICreateNonATCAircraft(
 | `Bank` | `float64` | Degrees, positive = right wing down |
 | `Heading` | `float64` | True degrees (0–360) |
 | `OnGround` | `DWORD` | 1 = on ground, 0 = airborne |
-| `Airspeed` | `SIMCONNECT_DATA_INITPOSITION_AIRSPEED` (`DWORD`) | Knots. The SDK value for cruise speed is -1 (`0xFFFFFFFF`); the untyped constant `SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE` (-1) cannot be assigned to the field directly in Go |
+| `Airspeed` | `SIMCONNECT_DATA_INITPOSITION_AIRSPEED` (`DWORD`) | Knots. `SIMCONNECT_DATA_INITPOSITION_AIRSPEED_CRUISE` (`0xFFFFFFFF`, the SDK's -1) selects the cruise speed and `…_KEEP` (`0xFFFFFFFE`, -2) keeps the current speed |
 
 **Example — spawn an aircraft at a specific gate:**
 
@@ -406,18 +406,14 @@ SimConnect returns one or more `SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVER
 case types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST:
     list := msg.AsSimObjectAndLiveryEnumeration()
     // list is *types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST
-    header := uintptr(unsafe.Sizeof(types.SIMCONNECT_RECV_LIST_TEMPLATE{})) // 28 bytes
-    size := unsafe.Sizeof(types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY{})
-    base := uintptr(unsafe.Pointer(list)) + header
-    for i := uintptr(0); i < uintptr(list.DwArraySize); i++ {
-        entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + i*size))
+    for _, entry := range list.Entries() {
         title := engine.BytesToString(entry.AircraftTitle[:])
         livery := engine.BytesToString(entry.LiveryName[:])
         fmt.Printf("Title: %q  Livery: %q\n", title, livery)
     }
 ```
 
-`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. `RgData` is not populated: the batch's `DwArraySize` entries follow the 28-byte list header in the message buffer, so read them as above (as `addModels` in `cmd/airport-map/control.go` does). SimConnect may send multiple messages for large model sets; collect them all before using the results.
+`AsSimObjectAndLiveryEnumeration()` returns `nil` when the message is not of that type. `RgData` is a zero-length marker: the batch's `DwArraySize` entries follow the 28-byte list header in the message buffer, and `Entries()` returns them as a slice (`addModels` in `pkg/traffic/world/control.go` reads them the same way by hand). SimConnect may send multiple messages for large model sets; collect them all before using the results.
 
 **Object type constants** for `EnumerateSimObjectsAndLiveries`:
 
