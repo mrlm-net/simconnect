@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -28,7 +29,7 @@ func main() {
 	}
 	defer client.Disconnect()
 	load := func(name string) {
-		l := airport.NewLoader(client)
+		l := airport.NewLoader(client, airport.LoaderWithIDs(0xA000, 0xA000+100))
 		if err := l.Request("LKPR"); err != nil {
 			fmt.Println(name, "request:", err)
 			return
@@ -46,7 +47,8 @@ func main() {
 					if r.Err != nil {
 						fmt.Println(name, "error:", r.Err)
 					} else {
-						fmt.Println(name, "runways", len(r.Layout.Runways), "parking", len(r.Layout.Parking))
+						_, jerr := json.Marshal(r.Layout)
+						fmt.Println(name, "runways", len(r.Layout.Runways), "parking", len(r.Layout.Parking), "json:", jerr)
 					}
 					return
 				}
