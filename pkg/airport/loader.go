@@ -20,6 +20,11 @@ import (
 // unknown ICAO code, so an unknown airport also ends in ErrTimeout.
 var ErrTimeout = errors.New("airport: timed out waiting for facility data")
 
+// ErrNoRunways: the facility data came without a runway, as the simulator
+// sometimes answers just after a connect (live, MyCrew: LKPR with none,
+// kept, and no runway in use). The layout is not cached: load it again.
+var ErrNoRunways = errors.New("airport: facility data came without runways")
+
 // FacilityClient is the part of engine.Client (and manager.Manager) the
 // Loader uses.
 type FacilityClient interface {
@@ -264,6 +269,8 @@ func (l *Loader) Handle(msg engine.Message) (Result, bool) {
 		layout, err := BuildLayout(st.raw)
 		if err != nil {
 			err = fmt.Errorf("%w for %s", err, st.icao)
+		} else if len(layout.Runways) == 0 {
+			err = fmt.Errorf("%w: %s (%d parking, %d taxi points came)", ErrNoRunways, st.icao, len(layout.Parking), len(layout.TaxiPoints))
 		}
 		if err == nil && l.cache != nil {
 			l.cache.Put(layout)

@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -170,6 +171,10 @@ type airportResponse struct {
 }
 
 type state struct {
+	// dropped counts the host's messages Feed dropped (queue full): a
+	// layout loaded meanwhile may miss records (live, MyCrew: LKPR with no
+	// runways), so it is loaded again.
+	dropped atomic.Uint64
 	// actLink, when set, makes the World an actuator: its simulator side
 	// served on it to a director (#710).
 	actLink link
@@ -628,7 +633,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	}()
 	camTick := time.NewTicker(cameraRate)
 	defer camTick.Stop()
-	var lastFrame time.Time // the simulator's last frame event
+	var lastFrame time.Time          // the simulator's last frame event
+	droppedAt := map[string]uint64{} // by ICAO: Feed's drop count when its layout was asked
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
@@ -649,6 +655,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 		case icao := <-requests:
 			fmt.Printf("🛫 Fetching facility data for %s...\n", icao)
+			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
 			if err := loader.Request(icao); err != nil {
 				feed.Layout(icao, nil, err)
 			}
@@ -707,6 +714,13 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				continue
 			}
 			if res, done := loader.Handle(msg); done {
+				// Messages dropped while it loaded: some of its records may be
+				// missing; not kept, loaded again when next asked.
+				if at, ok := droppedAt[res.ICAO]; ok && res.Err == nil && st.dropped.Load() != at {
+					st.cache.Invalidate(res.ICAO)
+					res.Err = fmt.Errorf("%s: %d messages dropped while it loaded (Options.QueueSize): load it again", res.ICAO, st.dropped.Load()-at)
+				}
+				delete(droppedAt, res.ICAO)
 				if res.Err != nil {
 					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
 				} else {

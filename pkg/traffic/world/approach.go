@@ -53,13 +53,13 @@ func (q *sequences) entryOf(icao, callsign string) (*traffic.ApproachSequencer, 
 
 // approachAction does action for callsign at icao, and says it as ATC.
 func (q *sequences) approachAction(icao, callsign, action string) error {
-	return q.approachActionAt(icao, callsign, action, nil)
+	return q.approachActionAt(icao, callsign, action, nil, 0)
 }
 
 // approachActionAt is approachAction with a position picked on the map
 // (#443): "direct" to it (a fix near it, else a vector), "holdat" a hold
 // there.
-func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon) error {
+func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts float64) error {
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
 		return traffic.ErrNotSequenced
@@ -80,7 +80,37 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 	if it == nil || it.arr == nil {
 		return errors.New("not one of our arrivals")
 	}
+	// What it was told, for its card and the map (#443).
+	told, toldAt := "", at
+	defer func() {
+		if told == "" {
+			return
+		}
+		it.mu.Lock()
+		it.view.Instruction, it.view.InstructionAt = told, toldAt
+		it.mu.Unlock()
+	}()
 	switch action {
+	case "speed":
+		// A speed for the rest of the STAR; 0 resumes normal speed.
+		now := 0.0
+		for _, a := range q.cc.world.Aircraft() {
+			if a.ObjectID == it.objectID {
+				now = a.GroundKts
+			}
+		}
+		var set float64
+		if err := q.cc.do(func() (err error) { set, err = it.arr.AssignSpeed(kts); return err }); err != nil {
+			return err
+		}
+		if kts > 0 {
+			it.say(traffic.SpeedAssigned(callsign, set, now))
+			told = fmt.Sprintf("speed %.0f kt", set)
+		} else {
+			it.say(traffic.SpeedAssigned(callsign, 0, now))
+			told = "normal speed"
+		}
+		q.cc.log.printf("%-6s approach: %s (on the map)", callsign, told)
 	case "hold":
 		if _, _, holding := it.arr.Holding(); holding {
 			return traffic.ErrHolding
@@ -95,6 +125,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		delete(q.conflictHeld, callsign) // a controller's hold (holdat) too
 		q.mu.Unlock()
 		q.leaveHold(icao, it, h, e)
+		told = "left the hold"
 	case "joinfinal":
 		// Join the final where a point picked on the map lies along it.
 		if at == nil {
@@ -106,6 +137,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 			return err
 		}
 		it.say(traffic.Vectored(callsign, v, q.cc.magVar(icao)))
+		told = fmt.Sprintf("join the final at %.0f NM, heading %03.0f", nm, v.HeadingDeg)
 		q.cc.log.printf("%-6s approach: join the final at %.0f NM (on the map)", callsign, nm)
 	case "holdat":
 		if at == nil {
@@ -134,6 +166,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		q.conflictHeld[callsign] = conflictHold{at: q.cc.clock.Now(), manual: true}
 		q.mu.Unlock()
 		it.say(traffic.HoldAt(callsign, name, entry, altFt, q.cc.clock.Now().Add(10*time.Minute)))
+		told, toldAt = fmt.Sprintf("hold at %s, %.0f ft", name, altFt), &fix
 		q.cc.log.printf("%-6s approach: hold at %s, %.0f ft (on the map)", callsign, name, altFt)
 	case "slow":
 		var a traffic.Absorption
@@ -161,8 +194,10 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 			}
 			if fix != "" {
 				it.say(traffic.ClearedDirectTo(traffic.PosApproach, callsign, fix))
+				told = "direct " + fix
 			} else {
 				it.say(traffic.Vectored(callsign, v, q.cc.magVar(icao)))
+				told = fmt.Sprintf("heading %03.0f to the point, then own navigation", v.HeadingDeg)
 			}
 			q.cc.log.printf("%-6s approach: direct %s (on the map)", callsign, map[bool]string{true: fix, false: "a point, on a vector"}[fix != ""])
 			break
@@ -171,6 +206,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 			return err
 		}
 		it.say(traffic.DirectToFinal(callsign, q.numberToSay(q.cc.clock.Now(), callsign, e.Number)))
+		told = "direct to the final"
 	case "goaround":
 		// On the connection's goroutine, as every SimConnect call.
 		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
@@ -214,11 +250,12 @@ func registerApproach(mux *http.ServeMux, st *state) {
 		var at *airport.LatLon
 		var body struct {
 			Lat, Lon *float64
+			Kts      float64 // speed: the speed, 0 normal speed
 		}
 		if json.NewDecoder(r.Body).Decode(&body) == nil && body.Lat != nil && body.Lon != nil {
 			at = &airport.LatLon{Lat: *body.Lat, Lon: *body.Lon}
 		}
-		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at)
+		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts)
 		switch {
 		case errors.Is(err, traffic.ErrNotSequenced):
 			http.Error(w, err.Error(), http.StatusNotFound)

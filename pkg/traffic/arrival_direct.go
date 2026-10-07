@@ -146,3 +146,45 @@ func (c *ArrivalController) JoinFinal(p airport.LatLon) (nm float64, v Vector, e
 	c.note(fmt.Sprintf("joining the final at %.0f NM", nm), nil)
 	return nm, v, nil
 }
+
+// AssignSpeed has an arrival on its procedure fly kts on the rest of its
+// STAR (#443), no slower than its type's minimum there; 0 resumes the
+// normal speed (ProcedureSpeedKts). The final is not touched; any
+// vectors it was given stay. It returns the speed set.
+func (c *ArrivalController) AssignSpeed(kts float64) (float64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || c.req.Circuit != nil || len(c.corners) < 3 {
+		return 0, ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return 0, ErrHolding
+	}
+	pos := c.last.Position
+	final := len(c.corners) - 2
+	k := c.cornerAhead()
+	if pos == (airport.LatLon{}) || k >= final {
+		return 0, ErrNotOnProcedure
+	}
+	minKts := MinProcedureSpeedKts
+	if c.aircraft().Category == CategoryTurboprop {
+		minKts = MinProcedureSpeedTurbopropKts
+	}
+	set := ProcedureSpeedKts
+	if kts > 0 {
+		set = math.Max(minKts, math.Min(kts, ProcedureSpeedKts))
+	}
+	plain := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[k:]...)
+	for i := range plain[:final-k] {
+		plain[i].KtsSpeed = set
+	}
+	vectors, vectored := c.vectors, c.vectored
+	c.reroute(pos, plain, append([]string(nil), c.cornerNames[k:]...))
+	c.vectors, c.vectored = vectors, vectored
+	c.procSpeed = 0
+	if kts > 0 {
+		c.procSpeed = set
+	}
+	c.note(fmt.Sprintf("speed %.0f kt", set), nil)
+	return set, nil
+}

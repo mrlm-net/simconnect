@@ -144,6 +144,7 @@ const (
 	ParamTurn       = "turn"        // left, right
 	ParamClimb      = "climb"       // climb, descend
 	ParamSlower     = "slower"      // "true": reduce, else increase
+	ParamResume     = "resume"      // "true": resume normal speed (a speed given before ends)
 	ParamTraffic    = "traffic"     // why a resolution: "traffic DLH2, 0.8 NM in 2m40s"
 	ParamPosition   = "position"    // a handoff's next position
 	ParamStation    = "station"     // … as said: "Praha Tower"
@@ -472,6 +473,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentHoldLevel:
 		return fmt.Sprintf("%s, descend to %s", cs, p[ParamLevel]) // 12.3.1.2 a
 	case IntentSpeed:
+		if p[ParamResume] == "true" {
+			return cs + ", resume normal speed"
+		}
 		verb := "increase"
 		if p[ParamSlower] == "true" {
 			verb = "reduce"
@@ -1076,6 +1080,22 @@ func SequencedFinalSpeed(pos Position, cs string, number int) Transmission {
 		p[ParamNumber] = fmt.Sprint(number) // 0: told already
 	}
 	return Say(Transmission{Position: pos, Callsign: cs, Intent: IntentSequence, Params: p})
+}
+
+// SpeedAssigned gives an arrival flying nowKts a speed of kts by
+// approach (#443): "reduce" or "increase speed to"; kts 0 resumes normal
+// speed.
+func SpeedAssigned(cs string, kts, nowKts float64) Transmission {
+	p := map[string]string{}
+	if kts <= 0 {
+		p[ParamResume] = "true"
+	} else {
+		p[ParamSpeed] = fmt.Sprintf("%.0f", kts)
+		if kts < nowKts {
+			p[ParamSlower] = "true"
+		}
+	}
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentSpeed, Params: p})
 }
 
 // DirectToFinal sends an arrival direct to the final.

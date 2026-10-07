@@ -90,7 +90,7 @@ type controlled struct {
 	// deliver: a parked real aircraft's call to delivery, made when its
 	// departure is seen (nil: made already).
 	deliver func()
-	defBase  uint32 // its ID block (cc.ids)
+	defBase uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
@@ -248,9 +248,13 @@ type ControlView struct {
 	AirRoute []airport.LatLon `json:"airRoute,omitempty"`
 	// Real: a real aircraft from a feed (#841), ObservedID its own ID there
 	// and Registration its registration ("" unknown).
-	Real         bool   `json:"real,omitempty"`
-	ObservedID   string `json:"observedId,omitempty"`
-	Registration string `json:"registration,omitempty"`
+	// Instruction is the last approach instruction given on the map
+	// (#443), InstructionAt the point it was about, if any.
+	Instruction   string          `json:"instruction,omitempty"`
+	InstructionAt *airport.LatLon `json:"instructionAt,omitempty"`
+	Real          bool            `json:"real,omitempty"`
+	ObservedID    string          `json:"observedId,omitempty"`
+	Registration  string          `json:"registration,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
 	// route itself also runs through the points of its rounded turns).
 	AirFixes []airFix  `json:"airFixes,omitempty"`
@@ -593,8 +597,8 @@ type SpawnRequest struct {
 	// PushInMin: a departure's push this many minutes from now, its stand
 	// services (fuel, stairs, the tug) timed by it; 0: none set.
 	PushInMin float64 `json:"pushInMin,omitempty"`
-	Model  string `json:"model"`
-	Tail   string `json:"tail"`
+	Model     string  `json:"model"`
+	Tail      string  `json:"tail"`
 	// Squawk: a departure's SSR code, four octal digits; "": its own
 	// (squawkFor).
 	Squawk         string `json:"squawk"`

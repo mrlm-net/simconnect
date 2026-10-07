@@ -1225,3 +1225,13 @@ body.spectator [data-game-start], body.spectator .facing { display: none !import
 
 /* A frequency worked together with others (#722). */
 .freq__with { font-size: var(--fs-xs); color: var(--text-3); }
+
+/* Picking a point for an approach instruction (#443): a crosshair, the
+   fixes as big targets, nothing else catching the click. */
+.is-picking, .is-picking .leaflet-interactive { cursor: crosshair; }
+.is-picking .leaflet-interactive:not(.m-pick) { pointer-events: none; }
+.m-pick { fill: var(--route-air); fill-opacity: 0.35; stroke: var(--route-air); stroke-width: 2; cursor: pointer; }
+.m-pick:hover { fill-opacity: 0.7; }
+.phase__told { font-size: var(--fs-sm); color: var(--text-2); margin: 2px 0 6px; }
+.acts--speed { margin-top: 6px; align-items: center; }
+.acts__lbl { font-size: var(--fs-sm); color: var(--text-2); margin-right: 4px; }

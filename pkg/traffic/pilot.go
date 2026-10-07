@@ -394,6 +394,9 @@ func Readback(t Transmission) (Transmission, bool) {
 			verb = "Reduce"
 		}
 		s = verb + " speed to " + spokenSpeed(p[ParamSpeed])
+		if p[ParamResume] == "true" {
+			s = "Resume normal speed"
+		}
 	case IntentLevel:
 		s = capital(p[ParamClimb]) + " to " + p[ParamLevel]
 		switch p[ParamClimb] {

@@ -37,12 +37,18 @@ func (w *World) Feed(msg engine.Message) {
 	select {
 	case q <- msg:
 	default:
-		w.dropped.Add(1)
+		w.st.dropped.Add(1)
 	}
 }
 
 func (w *World) queue() chan engine.Message {
-	w.qOnce.Do(func() { w.q = make(chan engine.Message, DefaultQueueSize) })
+	w.qOnce.Do(func() {
+		n := w.opts.QueueSize
+		if n <= 0 {
+			n = DefaultQueueSize
+		}
+		w.q = make(chan engine.Message, n)
+	})
 	return w.q
 }
 
@@ -95,7 +101,7 @@ type PlayerPlace struct {
 // is in the API: Get("/api/airportinfo?icao=LKPR", &v), as a remote client
 // reads it (docs/traffic-world.md).
 func (w *World) Snapshot() Snapshot {
-	out := Snapshot{At: time.Now(), Aircraft: []ControlView{}, Dropped: w.dropped.Load()}
+	out := Snapshot{At: time.Now(), Aircraft: []ControlView{}, Dropped: w.st.dropped.Load()}
 	w.st.mu.Lock()
 	cc := w.st.control
 	w.st.mu.Unlock()
