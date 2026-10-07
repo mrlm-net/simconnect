@@ -2,8 +2,8 @@ package traffic
 
 import (
 	"fmt"
-	"strings"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -61,6 +61,24 @@ func (c *TaxiController) ChangeEntry(entry string) error {
 // clearance. Lining up or later it is ErrTooLate: the tower lets it go or
 // cancels its take-off.
 func (c *TaxiController) ChangeRunway(runway, entry string, departure []airport.NavPoint) error {
+	return c.changeRoute(runway, entry, departure, nil)
+}
+
+// TaxiVia re-plans a departure's taxi-out to its runway through via, graph
+// nodes picked on the map in order (#443), as a runway change re-plans it:
+// on the stand all of it, pushed back or taxiing from where it is.
+func (c *TaxiController) TaxiVia(via []airport.NodeID) error {
+	if len(via) == 0 {
+		return fmt.Errorf("%w: no via point", ErrBadTaxiRequest)
+	}
+	c.mu.Lock()
+	runway, entry := c.req.Runway, c.req.Entry
+	c.mu.Unlock()
+	return c.changeRoute(runway, entry, nil, via)
+}
+
+// changeRoute is ChangeRunway, through via when set (TaxiVia).
+func (c *TaxiController) changeRoute(runway, entry string, departure []airport.NavPoint, via []airport.NodeID) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.inj == nil {
@@ -79,6 +97,10 @@ func (c *TaxiController) ChangeRunway(runway, entry string, departure []airport.
 	req.Runway, req.Entry = runway, entry
 	if departure != nil {
 		req.Departure = departure
+	}
+	c.hereVia = via
+	if via != nil {
+		req.Options.Via, req.Options.Taxiways = append([]airport.NodeID(nil), via...), nil
 	}
 	switch c.state {
 	case TaxiIdle, TaxiSpawning, TaxiAwaitingPushback:
@@ -169,7 +191,7 @@ func (c *TaxiController) routeFromHere() error {
 		return fmt.Errorf("%w: not on a taxiway to re-plan from", airport.ErrNoRoute)
 	}
 	opts := c.req.Options
-	opts.Via, opts.Taxiways = nil, nil
+	opts.Via, opts.Taxiways = c.hereVia, nil
 	r, err := g.RouteToRunwayFrom(to, from, c.req.Runway, c.req.Entry, opts)
 	if err != nil {
 		return err

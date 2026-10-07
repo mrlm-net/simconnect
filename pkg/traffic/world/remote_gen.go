@@ -64,6 +64,11 @@ func (r *remoteDep) ChangeEntry(entry string) error {
 	return err
 }
 
+func (r *remoteDep) TaxiVia(via []airport.NodeID) error {
+	err := r.c.call(r.t, "TaxiVia", []any{via})
+	return err
+}
+
 func (r *remoteDep) ChangeRunway(runway string, entry string, departure []airport.NavPoint) error {
 	err := r.c.call(r.t, "ChangeRunway", []any{runway, entry, departure})
 	return err

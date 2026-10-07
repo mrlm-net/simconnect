@@ -317,15 +317,16 @@ type TaxiController struct {
 	noStandard bool
 	// rush: expedited (Expedite, #510).
 	rush           bool
-	emptyNear      []int          // the neighbouring stands empty when the push was planned (StandOccupied)
-	origRoute      *airport.Route // the route planned from the stand, before the push re-planned it
-	seq            sequence       // the take-off's steps (Sequence)
-	startUpCleared bool           // ClearStartUp: the engines may start
-	enginesOn      bool           // started (combustion on)
-	enginesReadyAt time.Time      // started up, ready to taxi
-	reroute        bool           // ChangeRunway: plan the taxi-out from where it stands when it starts
-	fromHere       bool           // the route starts on the edge under the nose (routeFromHere)
-	takeoffPhase   TakeoffPhase   // the take-off's phase last frame
+	emptyNear      []int            // the neighbouring stands empty when the push was planned (StandOccupied)
+	origRoute      *airport.Route   // the route planned from the stand, before the push re-planned it
+	seq            sequence         // the take-off's steps (Sequence)
+	startUpCleared bool             // ClearStartUp: the engines may start
+	enginesOn      bool             // started (combustion on)
+	enginesReadyAt time.Time        // started up, ready to taxi
+	reroute        bool             // ChangeRunway: plan the taxi-out from where it stands when it starts
+	fromHere       bool             // the route starts on the edge under the nose (routeFromHere)
+	hereVia        []airport.NodeID // TaxiVia: the via points a route from here passes (#443)
+	takeoffPhase   TakeoffPhase     // the take-off's phase last frame
 	flapsUpNoted   bool
 	towPts         []airport.LatLon // the nose gear towed forward after the push (planPushPose), nil for none
 	towing         bool             // the tow after the push is under way

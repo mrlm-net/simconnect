@@ -438,7 +438,7 @@ function drawRoutes() {
     if (!ground && !air && !v.hold) continue;
     keep.add(v.id);
     const canUpTo = !!(v.actions && v.actions.includes('upto')) && onMyFrequency(v);
-    const sig = JSON.stringify([sel, canUpTo, ground ? v.route : 0, v.limitNode, v.atLimit, air ? v.airRoute : 0, v.airFixes || 0, v.hold || 0]);
+    const sig = JSON.stringify([sel, canUpTo, ground ? v.route : 0, v.limitNode, v.atLimit, air ? v.airRoute : 0, v.airFixes || 0, v.hold || 0, v.instruction || 0]);
     let r = routeLayers.get(v.id);
     if (!r || r.sig !== sig) {
       if (r) r.group.remove();
@@ -490,6 +490,11 @@ function buildRoute(v, sel, ground, air, canUpTo) {
           .bindTooltip(esc(f.ident), { permanent: true, direction: 'right', offset: [6, 0], className: 'map-lbl' }).addTo(g);
       }
     }
+  }
+  // The point of its last instruction given on the map (#443), until flown.
+  if (sel && v.instructionAt && v.instruction) {
+    L.circleMarker([v.instructionAt.lat, v.instructionAt.lon], { radius: 7, className: 'm-pick', interactive: false })
+      .bindTooltip(esc(v.instruction), { permanent: true, direction: 'top', className: 'map-lbl' }).addTo(g);
   }
   if (v.hold && v.hold.racetrack && v.hold.racetrack.length) {
     const rt = v.hold.racetrack.map((p) => [p.lat, p.lon]);
