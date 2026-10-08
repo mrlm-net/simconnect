@@ -206,6 +206,8 @@ arr := traffic.NewArrivalController(fleet, traffic.ArrivalWithClock(clock.Now) /
 manager.Tick(clock.Now()) // and the sequencer, the tower, the picture: pass it the same time
 ```
 
+Call `clock.Frame()` on every simulator frame (`EVENT_FRAME`): a gap between frames longer than `SimHitch` (100 ms) is the simulator standing still, loading a model for example, and the clock counts only `SimHitch` of it. Driven by the wall clock, every injected aircraft jumped ahead after such a hitch (5–14 m at approach speed, measured live) while MSFS's own traffic paused with the simulator. `Now` never goes back: a time read during the gap is the least it gives after it.
+
 A controller moves by the clock's time between frames, at most `MaxFrameStepSeconds` (1 s) a frame. At a high rate with fewer frames far away (level of detail) a frame can be a quarter of a second or more; a longer gap, a stall, is not made up at once.
 
 The airport map reads `SIMULATION RATE` with the user aircraft every second and subscribes to "Pause". All its traffic runs on the clock: controllers, the schedule, sequencing, the tower, conflicts, spawn separation and the runway in use. The aircraft line shows "sim 2×" or "⏸ sim paused", and markers glide at the rate. Logs keep the wall clock.

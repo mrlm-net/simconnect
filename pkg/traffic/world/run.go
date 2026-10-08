@@ -826,6 +826,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {
 				lastFrame = time.Now()
+				cc.clock.Frame() // the simulator standing still (a model loading): the traffic too
 				cam.tick(lastFrame)
 				continue
 			}

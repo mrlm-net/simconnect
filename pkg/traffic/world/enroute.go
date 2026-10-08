@@ -125,7 +125,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	var fp *nav.FlightPlan
 	var err error
 	if f.Arrival() {
-		fp, err = planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type)
+		fp, err = planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type, f.Destination)
 	} else { // an overflight: its ends where they are, not loaded
 		fp, err = planOverflight(context.Background(), st, f.Origin, f.Destination, f.Type)
 	}
@@ -333,7 +333,7 @@ func (s *scheduler) handovers(now time.Time) {
 			// from where it is, for the runway in use.
 			if g, err := s.st.cache.Graph(f.Airport); err == nil && arrive.plan != nil {
 				if rwy := s.cc.pickRunway(g, true, -1); rwy != "" && rwy != arrive.plan.Request.ArrivalRunway {
-					if fp, err := planBetween(context.Background(), s.st, f.Origin, f.Destination, "", rwy, f.Type); err == nil {
+					if fp, err := planBetween(context.Background(), s.st, f.Origin, f.Destination, "", rwy, f.Type, f.Destination); err == nil {
 						if p, err := plannedFrom(fp, "arrival"); err == nil {
 							s.cc.log.printf("%-6s schedule: runway %s in use: arrival planned again from %s", f.Callsign, rwy, arrive.plan.Request.ArrivalRunway)
 							arrive = *p
