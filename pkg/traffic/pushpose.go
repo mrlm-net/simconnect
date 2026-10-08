@@ -1006,7 +1006,7 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	g, prof := c.req.Graph, c.profile()
 	stand := g.Layout.Parking[c.req.Parking]
 	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
-	poses := c.pushPoses(gear)
+	poses := c.configuredPoses(c.pushPoses(gear))
 	if len(poses) == 0 {
 		return false
 	}

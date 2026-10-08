@@ -26,3 +26,30 @@ func TestDepartureOrder(t *testing.T) {
 		t.Errorf("continue approach readback %q (%v)", rb.Text, ok)
 	}
 }
+
+// TestClearOfConflictTo: the crew names the clearance it returns to, the
+// ICAO way (Doc 4444 12.3.1.2 t); none: the FAA's "assigned altitude".
+func TestClearOfConflictTo(t *testing.T) {
+	for _, c := range []struct {
+		tx   Transmission
+		want string
+	}{
+		{Descend(PosApproach, "CSA1", 10000, 5000), "flight level 100"},
+		{Descend(PosApproach, "CSA1", 4000, 5000), "4000 feet"},
+		{ClearedVisual(PosApproach, "CSA1", "24"), "visual approach runway 24"},
+	} {
+		got, ok := AssignedClearance(c.tx)
+		if !ok || got != c.want {
+			t.Errorf("%q: %q (%v), want %q", c.tx.Text, got, ok, c.want)
+		}
+	}
+	if _, ok := AssignedClearance(GoingAround("CSA1")); ok {
+		t.Error("a pilot's call taken as a clearance")
+	}
+	if s := ClearOfConflictTo(PosTower, "Ruzyne Tower", "CSA1", "4000 feet").Text; s != "Ruzyne Tower, CSA1, clear of conflict, returning to 4000 feet" {
+		t.Errorf("%q", s)
+	}
+	if s := ClearOfConflict(PosCenter, "", "UAL321").Text; s != "UAL321, clear of conflict, returning to assigned altitude" {
+		t.Errorf("FAA: %q", s)
+	}
+}

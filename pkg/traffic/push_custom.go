@@ -74,8 +74,9 @@ func customKeyOf(icao, stand string) customKey {
 
 // SetCustomPush makes r the push from stand (its name, "S6") at icao for
 // every departure planned from now on: flown as drawn instead of the
-// planned one, its facing said (PushFacingSaid). r.Said is set from
-// r.Facing when empty.
+// planned one, its facing said (PushFacingSaid). r with no Points is an
+// end pose only (Nose, Facing): the push is planned to it (#493). r.Said
+// is set from r.Facing when empty.
 func SetCustomPush(icao, stand string, r PushRoute) {
 	if r.Said == "" {
 		r.Said = CompassName8(r.Facing)
@@ -142,6 +143,32 @@ func (c *TaxiController) customPushTo() bool {
 	c.route, c.pushJunction, c.pushPts, c.towPts, c.pushPose = full, 0, slices.Clone(r.Points), slices.Clone(r.Tow), &best
 	return true
 }
+
+// configuredPoses is poses kept to the stand's configured end pose (#493):
+// a custom push with no points, only where the nose ends (Nose) and its
+// facing, is planned like any push but to there — the poses within
+// customPushEdgeMeters of it facing within customPoseDeg. All of poses
+// without one, or when none is near it.
+func (c *TaxiController) configuredPoses(poses []pushPose) []pushPose {
+	g := c.req.Graph
+	r, ok := CustomPush(g.Layout.ICAO, g.Layout.Parking[c.req.Parking].Label())
+	if !ok || len(r.Points) >= 2 || r.Nose == (airport.LatLon{}) {
+		return poses
+	}
+	var near []pushPose
+	for _, p := range poses {
+		if localDist(p.nose, r.Nose) <= customPushEdgeMeters && math.Abs(headingDiff(p.heading, r.Facing)) <= customPoseDeg {
+			near = append(near, p)
+		}
+	}
+	if len(near) == 0 {
+		return poses
+	}
+	return near
+}
+
+// customPoseDeg: a configured end pose is met facing within this of it.
+const customPoseDeg = 30.0
 
 // customPushEdgeMeters: a drawn push ends on a taxiway edge within this of
 // its nose.

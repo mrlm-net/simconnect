@@ -602,9 +602,47 @@ func TCASRAReport(pos Position, station, cs string) Transmission {
 // to its clearance (FAA JO 7110.65 2-1-28, example: "New York Center,
 // United 321, clear of conflict, returning to assigned altitude").
 func ClearOfConflict(pos Position, station, cs string) Transmission {
-	text := cs + ", clear of conflict, returning to assigned altitude"
+	return ClearOfConflictTo(pos, station, cs, "")
+}
+
+// ClearOfConflictTo is ClearOfConflict naming the clearance it returns to
+// (AssignedClearance), the ICAO way: "CSA1, clear of conflict, returning
+// to flight level 100" (Doc 4444 12.3.1.2 t; CAP 413 5.33). clearance ""
+// is the FAA's "assigned altitude".
+func ClearOfConflictTo(pos Position, station, cs, clearance string) Transmission {
+	if clearance == "" {
+		clearance = "assigned altitude"
+	}
+	text := cs + ", clear of conflict, returning to " + clearance
 	if station != "" {
 		text = station + ", " + text
 	}
 	return pilotTx(pos, cs, IntentClearOfConflict, map[string]string{ParamStation: station}, text)
+}
+
+// AssignedClearance is what ATC transmission t assigns, as a crew names it
+// returning to it after an RA (ClearOfConflictTo): the level ("flight level
+// 100", "5000 feet"), the approach ("ILS approach runway 24"), or the
+// circuit ("right downwind runway 24"); false: t assigns none of these.
+func AssignedClearance(t Transmission) (string, bool) {
+	if t.Pilot {
+		return "", false
+	}
+	p := t.Params
+	switch t.Intent {
+	case IntentApproachClearance:
+		if p[ParamApproach] != "" {
+			return p[ParamApproach] + " approach runway " + p[ParamRunway], true
+		}
+		return "approach runway " + p[ParamRunway], true
+	case IntentVisual:
+		return "visual approach runway " + p[ParamRunway], true
+	case IntentJoinCircuit:
+		return p[ParamCircuit] + " runway " + p[ParamRunway], true
+	case IntentLevel, IntentDescendVia, IntentIdentified, IntentArrivalClearance, IntentDepartureClearance, IntentHold, IntentHoldLevel:
+		if p[ParamLevel] != "" {
+			return p[ParamLevel], true
+		}
+	}
+	return "", false
 }

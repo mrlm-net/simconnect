@@ -224,8 +224,16 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			q.shortcut(now, it, e, seq)
 			continue
 		}
+		// A circuit arrival is looked at again soon: its downwind is short,
+		// and once on base nothing delays it any more (live, OKJZE told to
+		// follow the A220 turned base 21 s into a 90 s wait, in front of it:
+		// TCAS RA, the A220 went around).
+		every := absorbEvery
+		if it.circuit != nil {
+			every = circuitAbsorbEvery
+		}
 		q.mu.Lock()
-		recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
+		recent := now.Sub(q.absorbed[e.Callsign]) < every
 		q.mu.Unlock()
 		if recent {
 			continue
@@ -271,31 +279,28 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			// Much more than a longer downwind can take: another circuit
 			// (12.3.4.17 c), said alone; a little more: an orbit.
 			extend := a.ExtraNM > 0 && a.Left < anotherCircuitFrom
-			if extend {
-				tx := traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind)
-				if n, tr, lead := it.circuitPlace(); n > 1 && tr != "" {
-					tx = traffic.Joined(traffic.FollowTraffic(e.Callsign, n, tr), tx)
-					it.placeSaid.Store(int32(n))
-					if lead != "" && q.cc.followed != nil {
-						q.cc.followed(it.ICAO, it.Tail, lead)
-					}
-				}
-				it.say(tx)
+			if extend && !it.extendSaid.Swap(true) {
+				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
 			}
 			if a.Left >= anotherCircuitFrom {
-				if err := q.cc.do(func() error { _, err := it.arr.AnotherCircuit(); return err }); err == nil {
+				var d time.Duration
+				if err := q.cc.do(func() (err error) { d, err = it.arr.AnotherCircuit(); return err }); err == nil {
+					q.busyFor(it, e.Callsign, now, d)
+					it.extendSaid.Store(false) // a new downwind
 					it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))
 					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: another circuit", e.Callsign, a.Left.Round(time.Second))
 					continue
 				}
 			}
 			if a.Left >= circuitOrbitFrom {
-				if err := q.cc.do(func() error { _, err := it.arr.Orbit(); return err }); err == nil {
+				var d time.Duration
+				if err := q.cc.do(func() (err error) { d, err = it.arr.Orbit(); return err }); err == nil {
+					q.busyFor(it, e.Callsign, now, d)
 					orbit := traffic.DelayOrbitLeft
 					if it.circuit.Side == traffic.CircuitRight {
 						orbit = traffic.DelayOrbitRight
 					}
-					it.say(traffic.CircuitDelay(e.Callsign, orbit))
+					q.sayInCircuit(it, e, traffic.CircuitDelay(e.Callsign, orbit))
 					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: %s", e.Callsign, a.Left.Round(time.Second), orbit)
 				}
 			}
@@ -316,6 +321,38 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if a.Left >= holdFrom {
 			_ = q.enterHold(now, icao, it, e, a.Left) // logged
 		}
+	}
+}
+
+// sayInCircuit says tx, a delay in the circuit (extend downwind, orbit),
+// to a VFR arrival with its place and whom it follows the first time
+// (12.3.4.14 b): "number 2, follow the Citation on short final, orbit
+// right" — not the orbit alone and the place after it (live, OKWEK).
+func (q *sequences) sayInCircuit(it *controlled, e traffic.SequenceEntry, tx traffic.Transmission) {
+	if n, tr, lead := it.circuitPlace(); n > 1 && tr != "" && int32(n) != it.placeSaid.Load() {
+		tx = traffic.Joined(traffic.FollowTraffic(e.Callsign, n, tr), tx)
+		it.placeSaid.Store(int32(n))
+		if lead != "" && q.cc.followed != nil {
+			q.cc.followed(it.ICAO, it.Tail, lead)
+		}
+	}
+	it.say(tx)
+}
+
+// circuitAbsorbEvery: how often a VFR circuit arrival's delay is acted on
+// (absorbEvery for the others).
+const circuitAbsorbEvery = 10 * time.Second
+
+// busyFor has cs, sent on an orbit or another circuit taking d, left alone
+// until it has flown it, its route (the distance to go) the new one.
+func (q *sequences) busyFor(it *controlled, cs string, now time.Time, d time.Duration) {
+	q.mu.Lock()
+	q.absorbed[cs] = now.Add(d)
+	q.mu.Unlock()
+	if r := it.arr.ProcedureRoute(); len(r) > 0 {
+		it.mu.Lock()
+		it.approach = r
+		it.mu.Unlock()
 	}
 }
 
@@ -357,12 +394,14 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		if broke {
 			return
 		}
-		if err := q.cc.do(func() error { _, err := it.arr.Orbit(); return err }); err == nil {
+		var d time.Duration
+		if err := q.cc.do(func() (err error) { d, err = it.arr.Orbit(); return err }); err == nil {
+			q.busyFor(it, e.Callsign, now, d)
 			orbit := traffic.DelayOrbitLeft
 			if it.circuit.Side == traffic.CircuitRight {
 				orbit = traffic.DelayOrbitRight
 			}
-			it.say(traffic.CircuitDelay(e.Callsign, orbit))
+			q.sayInCircuit(it, e, traffic.CircuitDelay(e.Callsign, orbit))
 			q.cc.log.printf("%-6s sequence: %s short behind %s: %s", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, orbit)
 		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
 			q.cc.log.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
