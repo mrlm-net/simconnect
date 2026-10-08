@@ -211,6 +211,10 @@ type state struct {
 	tcas       *tcasWatch     // TCAS of ours (#450)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
+	// airportRefs: every airport the simulator knows, worldwide, where it
+	// is (ICAO → its list entry), asked once a connection: an overflight's
+	// ends without loading them (planOverflight).
+	airportRefs map[string]traffic.AirportRef
 	// requests asks the connection to load an airport (load); airways is
 	// the airway graph for flight plans (#331), nil for direct routes.
 	requests chan<- string
@@ -613,6 +617,13 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	if err := airports.Request(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  airport list: %v\n", err)
 	}
+	// Every airport worldwide, once: where an overflight's ends are, not
+	// loaded in full for it (live: KJFK's taxiways loaded at LKPR for a
+	// Bucharest–New York overflight, the frame loop stood still meanwhile).
+	everywhere := traffic.NewAirportLister(client, ids.airportList+1)
+	if err := everywhere.RequestAll(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  worldwide airport list: %v\n", err)
+	}
 	if err := cc.requestFuelTitles(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  fuel truck list: %v\n", err)
 	}
@@ -752,6 +763,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				continue
 			}
 
+			if list, ok := everywhere.Handle(msg); ok {
+				refs := make(map[string]traffic.AirportRef, len(list))
+				for _, a := range list {
+					refs[strings.ToUpper(a.ICAO)] = a
+				}
+				st.mu.Lock()
+				st.airportRefs = refs
+				st.mu.Unlock()
+				tlog.printf("airports worldwide: %d", len(refs))
+				continue
+			}
 			if list, ok := airports.Handle(msg); ok {
 				feed.Airports(list)
 				continue

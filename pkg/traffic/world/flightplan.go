@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/nav"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // Traffic with generated flight plans (#331): a departure given a
@@ -73,6 +74,25 @@ func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ s
 	graph := st.airways
 	st.mu.Unlock()
 	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: d, Arrival: a, DepartureRunway: depRwy, ArrivalRunway: arrRwy}, graph)
+}
+
+// planOverflight plans an overflight from dep to arr from where the two
+// airports are (the worldwide list), without loading them: it flies none
+// of their runways, procedures or taxiways. One not in the list (not asked
+// yet): planned as any flight (planBetween).
+func planOverflight(ctx context.Context, st *state, dep, arr, typ string) (*nav.FlightPlan, error) {
+	st.mu.Lock()
+	d, okD := st.airportRefs[strings.ToUpper(dep)]
+	a, okA := st.airportRefs[strings.ToUpper(arr)]
+	graph := st.airways
+	st.mu.Unlock()
+	if !okD || !okA {
+		return planBetween(ctx, st, dep, arr, "", "", typ)
+	}
+	info := func(r traffic.AirportRef) nav.AirportInfo {
+		return nav.AirportInfo{ICAO: strings.ToUpper(r.ICAO), Position: r.Position, ElevationM: r.AltM}
+	}
+	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: info(d), Arrival: info(a)}, graph)
 }
 
 // plannedFrom is what a spawn flies of a plan: a departure the whole
