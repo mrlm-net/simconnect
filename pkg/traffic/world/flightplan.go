@@ -37,19 +37,33 @@ func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (
 	if r.Kind != "departure" {
 		dep, arr, depRwy, arrRwy = other, g.Layout.ICAO, "", r.Runway
 	}
-	fp, err := planBetween(ctx, st, dep, arr, depRwy, arrRwy, typeOf(r.Model))
+	fp, err := planBetween(ctx, st, dep, arr, depRwy, arrRwy, typeOf(r.Model), g.Layout.ICAO)
 	if err != nil {
 		return nil, err
 	}
 	return plannedFrom(fp, r.Kind)
 }
 
-// planBetween loads both airports (waiting for the simulator) and plans a
-// flight between them: runways "" are chosen by the plan (#369).
-func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ string) (*nav.FlightPlan, error) {
+// planBetween plans a flight from dep to arr (runways "" chosen by the
+// plan, #369), loading in full (waiting for the simulator) only local, the
+// airport whose procedures it flies here; the other end is its layout if
+// loaded already, else where it is (the worldwide list): loading it,
+// LFPG's or KJFK's whole airport for a flight to or past LKPR, stood
+// every aircraft still meanwhile (#898). local "": both loaded.
+func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ, local string) (*nav.FlightPlan, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	info := func(icao string) (nav.AirportInfo, error) {
+		if local != "" && !strings.EqualFold(icao, local) {
+			if _, ok := st.cache.Layout(icao); !ok {
+				st.mu.Lock()
+				r, ok := st.airportRefs[strings.ToUpper(icao)]
+				st.mu.Unlock()
+				if ok {
+					return nav.AirportInfo{ICAO: strings.ToUpper(r.ICAO), Position: r.Position, ElevationM: r.AltM}, nil
+				}
+			}
+		}
 		l, err := st.load(ctx, icao, false, st.requests)
 		if err != nil {
 			return nav.AirportInfo{}, fmt.Errorf("loading %s: %w", icao, err)
@@ -87,7 +101,7 @@ func planOverflight(ctx context.Context, st *state, dep, arr, typ string) (*nav.
 	graph := st.airways
 	st.mu.Unlock()
 	if !okD || !okA {
-		return planBetween(ctx, st, dep, arr, "", "", typ)
+		return planBetween(ctx, st, dep, arr, "", "", typ, "")
 	}
 	info := func(r traffic.AirportRef) nav.AirportInfo {
 		return nav.AirportInfo{ICAO: strings.ToUpper(r.ICAO), Position: r.Position, ElevationM: r.AltM}

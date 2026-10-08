@@ -72,3 +72,40 @@ func TestTaxiOnSimClock(t *testing.T) {
 		t.Errorf("paused: moved %.2f m", still)
 	}
 }
+
+// TestSimClockHitch: a gap between frames longer than SimHitch counts
+// SimHitch of it, the clock never goes back, and the frames after a pause
+// are no hitch.
+func TestSimClockHitch(t *testing.T) {
+	w := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	c := newSimClock(func() time.Time { return w })
+	start := c.Now()
+	step := func(d time.Duration) { w = w.Add(d); c.Frame() }
+	for i := 0; i < 10; i++ {
+		step(16 * time.Millisecond)
+	}
+	if got := c.Now().Sub(start); got != 160*time.Millisecond {
+		t.Fatalf("10 frames: %v", got)
+	}
+	// The sim stands still 400 ms: only SimHitch of it counts.
+	w = w.Add(200 * time.Millisecond)
+	mid := c.Now() // read during the gap
+	w = w.Add(200 * time.Millisecond)
+	c.Frame()
+	got := c.Now()
+	if got.Before(mid) {
+		t.Fatalf("went back: %v before %v", got, mid)
+	}
+	if d := got.Sub(start); d != 160*time.Millisecond+200*time.Millisecond {
+		t.Errorf("after the hitch: %v, want 360ms (the 200 ms read during it kept)", d)
+	}
+	// Paused 5 s: no hitch on the first frame after it.
+	c.SetPaused(true)
+	w = w.Add(5 * time.Second)
+	c.SetPaused(false)
+	before := c.Now()
+	step(16 * time.Millisecond)
+	if d := c.Now().Sub(before); d != 16*time.Millisecond {
+		t.Errorf("first frame after a pause: %v", d)
+	}
+}

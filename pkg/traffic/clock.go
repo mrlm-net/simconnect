@@ -28,6 +28,10 @@ type SimClock struct {
 	wallAt time.Time
 	rate   float64
 	paused bool
+	// lastFrame: the last simulator frame (Frame); read: the latest time
+	// Now gave, the least it gives after a hitch.
+	lastFrame time.Time
+	read      time.Time
 }
 
 // NewSimClock creates a clock at the wall clock's time, rate 1, running.
@@ -44,7 +48,12 @@ func newSimClock(wall func() time.Time) *SimClock {
 func (c *SimClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.nowLocked()
+	t := c.nowLocked()
+	if t.Before(c.read) {
+		t = c.read
+	}
+	c.read = t
+	return t
 }
 
 func (c *SimClock) nowLocked() time.Time {
@@ -85,7 +94,37 @@ func (c *SimClock) SetPaused(paused bool) {
 	}
 	c.rebase()
 	c.paused = paused
+	c.lastFrame = time.Time{} // the frames after a pause: no hitch
 }
+
+// Frame tells the clock a simulator frame came (each EVENT_FRAME). A gap
+// since the last one longer than SimHitch is the simulator standing still
+// (loading a model: live, the sim time advanced 16 ms over such a frame,
+// and every aircraft driven by the wall clock jumped ahead, 5–14 m at
+// approach speed); the clock counts SimHitch of it, so what it drives
+// pauses with the simulator. It never goes back: a time already read
+// (Now during the gap) stays the least it gives.
+func (c *SimClock) Frame() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	w := c.wall()
+	last := c.lastFrame
+	c.lastFrame = w
+	if last.IsZero() || c.paused {
+		return
+	}
+	if gap := w.Sub(last); gap > SimHitch {
+		at := c.at.Add(time.Duration(float64(last.Sub(c.wallAt)+SimHitch) * c.rate))
+		if at.Before(c.read) {
+			at = c.read
+		}
+		c.at, c.wallAt = at, w
+	}
+}
+
+// SimHitch: a pause between simulator frames longer than this is the
+// simulator standing still (Frame).
+const SimHitch = 100 * time.Millisecond
 
 // Rate is the simulation rate; Paused whether the clock stands still.
 func (c *SimClock) Rate() float64 {
