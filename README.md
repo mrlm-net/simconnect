@@ -126,32 +126,20 @@ simvar-cli --format json watch "PLANE ALTITUDE" feet float64
 simvar-cli repl
 ```
 
-See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli.md`](docs/simvar-cli.md) for the complete reference.
+See [`cmd/simvar-cli`](cmd/simvar-cli) for a quick start and [`docs/simvar-cli.md`](docs/simvar-cli.md) for the complete reference.
 
 ## Documentation
 
-**[simconnect.mrlm.net](https://simconnect.mrlm.net/)** — Full documentation website with getting started guide, configuration reference, and usage guides.
+**[simconnect.mrlm.net](https://simconnect.mrlm.net/)** — the documentation website, built from [`docs/`](docs).
 
-- [Examples](https://simconnect.mrlm.net/docs/examples) — The airport map and every other example
-- [Client Configuration](https://simconnect.mrlm.net/docs/config-client) — Engine/Client functional options
-- [Client API Reference](https://simconnect.mrlm.net/docs/usage-client) — Complete Engine/Client API
-- [Manager Configuration](https://simconnect.mrlm.net/docs/config-manager) — Manager functional options
-- [Manager Usage](https://simconnect.mrlm.net/docs/usage-manager) — Lifecycle management, subscriptions, state handling
-- [Request ID Management](https://simconnect.mrlm.net/docs/manager-requests-ids) — ID allocation strategy and conflict prevention
-- [Event Lifecycle](https://simconnect.mrlm.net/docs/events-lifecycle) — Event lifecycle reference
-- [Airport Layout & Taxi Routing](https://simconnect.mrlm.net/docs/airport-layout) — `pkg/airport` loading, layout model, facility data semantics, routing
-- [Traffic Guide](https://simconnect.mrlm.net/docs/traffic-guide) — AI aircraft with `pkg/traffic`
-- [Departure Taxi](https://simconnect.mrlm.net/docs/traffic-taxi) — Stand → runway taxi controller
-- [Arrivals](https://simconnect.mrlm.net/docs/traffic-arrival) — Landing, runway exit, taxi-in and parking
-- [Injected Ground Movement](https://simconnect.mrlm.net/docs/traffic-motion) — Motion, pushback, natural timing, many aircraft (level of detail, ID blocks)
-- [Traffic Commands](https://simconnect.mrlm.net/docs/traffic-commands) — Hold position, go around, abort take-off
-- [Aircraft Profiles](https://simconnect.mrlm.net/docs/traffic-profiles) — Per-type profiles, SimVar refinement, telemetry
-- [Traffic Picture](https://simconnect.mrlm.net/docs/traffic-picture) — All traffic around a centre of the world
-- [Traffic World](https://simconnect.mrlm.net/docs/traffic-world) — The airport map's traffic engine as a package: run it, feed it, its API and hooks
-- [Traffic Schedules](https://simconnect.mrlm.net/docs/traffic-schedules) — Airlines, routes and time-of-day waves
-- [Traffic Manager](https://simconnect.mrlm.net/docs/traffic-manager) — Schedule to traffic, situation checks, other traffic, enroute and overflights, events
-- [Airborne Separation](https://simconnect.mrlm.net/docs/traffic-separation) — Wake categories, spacing on final, landing sequence, delays and holding, the runway controller, go-arounds, conflicts, working the approach
-- [Airways](https://simconnect.mrlm.net/docs/nav-airways), [Weather & ATIS](https://simconnect.mrlm.net/docs/nav-weather), [Flight Plans](https://simconnect.mrlm.net/docs/nav-flight-plans) — `pkg/nav`
+- **Start** — [Getting Started](docs/getting-started.md), [Examples](docs/examples.md)
+- **Engine** — [Configuration](docs/config-client.md), [Usage](docs/usage-client.md), [AI Objects](docs/engine-ai-objects.md), [Facility Data](docs/guide-facilities.md), [Input Events](docs/guide-input-events.md), [Client Data Areas](docs/client-data-area.md), [Event Lifecycle](docs/events-lifecycle.md)
+- **Manager** — [Configuration](docs/config-manager.md), [Usage](docs/usage-manager.md), [Request and ID Management](docs/manager-requests-ids.md), [Input Events](docs/manager-input-events.md), [Client Data Areas](docs/manager-client-data-area.md)
+- **Data** — [Using Datasets](docs/usage-datasets.md), [Dataset Composition](docs/dataset-composition.md), [SimVar Registry](docs/pkg-registry.md), [Dictionaries](docs/dictionaries.md), [Geodesy and Unit Conversion](docs/utilities.md)
+- **Airport & nav** — [Airport Layout & Taxi Routing](docs/airport-layout.md), [Airways](docs/nav-airways.md), [Weather & ATIS](docs/nav-weather.md), [Flight Plans](docs/nav-flight-plans.md)
+- **Traffic** — [Traffic Guide](docs/traffic-guide.md), [Departure Taxi](docs/traffic-taxi.md), [Arrivals & Parking](docs/traffic-arrival.md), [Injected Ground Movement](docs/traffic-motion.md), [ATC Commands](docs/traffic-commands.md), [Aircraft Profiles](docs/traffic-profiles.md), [Traffic Picture](docs/traffic-picture.md), [Schedules](docs/traffic-schedules.md), [Traffic Manager](docs/traffic-manager.md), [Airborne Separation](docs/traffic-separation.md), [Radio](docs/traffic-radio.md), [Phraseology](docs/traffic-phraseology.md), [VFR Traffic](docs/traffic-vfr.md), [Traffic Decisions](docs/traffic-decisions.md), [Traffic World](docs/traffic-world.md), [ATC Game](docs/atc-game.md), [Camera](docs/camera.md)
+- **Aircraft & add-ons** — [Aircraft Systems Profiles](docs/systems.md), [Radios and Transponder](docs/avionics.md), [GSX](docs/gsx.md), [L:vars](docs/lvars.md), [Installed Add-ons](docs/addons.md)
+- **Tools** — [SimVar CLI](docs/simvar-cli.md)
 
 ## Packages
 
@@ -169,7 +157,9 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for the full README and [`docs/simvar-cli
 - **[`pkg/addons`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/addons)** — Installed packages, the loaded aircraft's package, running processes (no SimConnect)
 - **[`pkg/dict`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/dict)** — Makes the library's embedded tables replaceable at runtime
 - **[`pkg/convert`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/convert)** — Unit conversions, ICAO validation, WGS84 coordinate offsets
-- **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Calculation helpers (haversine great-circle distance)
+- **[`pkg/calc`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/calc)** — Geodesy: great-circle distance and bearing, cross/along-track, displacement, Dubins paths, magnetic variation, wind components
+- **[`pkg/gsx`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/gsx)** — GSX Pro state from its L:vars, and the names add-ons may set
+- **[`pkg/lvars`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/lvars)** — Write L:vars on the user aircraft
 - **[`pkg/registry`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/registry)** — Cross-platform typed SimVar metadata catalogue (121 entries, no build tags)
 - **[`cmd/simvar-cli`](cmd/simvar-cli)** — Interactive CLI tool for reading, writing, and streaming SimVars
 

@@ -223,7 +223,7 @@ func main() {
 	})
 
 	// Alternative: Subscribe to state changes via channel (demonstrates the new pattern)
-	// This is equivalent to using OnStateChange but with channel-based consumption
+	// This is equivalent to using OnConnectionStateChange but with channel-based consumption
 	stateSub := mgr.SubscribeConnectionStateChange("state-subscriber", 16)
 
 	// Start a goroutine to process state changes from the subscription channel

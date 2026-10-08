@@ -9,7 +9,20 @@ section: "manager"
 
 The `manager` package provides automatic connection lifecycle management with reconnection support. This document covers the complete API for robust, long-running SimConnect applications.
 
-> **See also:** [Configuration Options](config-manager.md) for all available options when creating a manager.
+> **See also:** [Configuration Options](config-manager.md) for all available options (and their defaults) when creating a manager, and [Request ID Management](manager-requests-ids.md) for the ID ranges.
+
+## Manager vs Engine
+
+| Concern | `engine` (direct) | `manager` (recommended) |
+|---|---|---|
+| Connection lifecycle | Manual `Connect` / `Disconnect` | Automatic with reconnect loop |
+| Auto-reconnect | No | Yes (configurable) |
+| SimState tracking | No | Yes (camera, pause, position, environment) |
+| Built-in system event subscriptions | No | Yes (Pause, Sim, Crash, View, FlightLoaded, ...) |
+| ID allocation helpers | No | Yes (`IsValidUserID`, `IsManagerID`) |
+| Concurrent subscriptions | No | Yes (channel-based, callback-based) |
+
+Use `engine` ([Client Usage](usage-client.md)) for short-lived scripts and one-shot tools that need full control of the connection and message loop. Use `manager` for long-running add-ons that must survive simulator restarts, want SimState as one struct, or want typed channel subscriptions. The manager wraps a new `engine` per connection and exposes most of its API through the `Manager` interface; the rest is reachable through `Client()`.
 
 ## Creating a Manager
 
@@ -51,6 +64,34 @@ The manager will:
 
 On a lost connection the manager keeps its handlers, subscriptions and custom system events; custom system events are subscribed again on the next connection. Subscriptions made through the pass-through calls (`SubscribeToSystemEvent`, `SubscribeInputEvent`, `SubscribeToFlowEvent`, `SubscribeToFacilities*`) and data definitions/requests belong to the old connection; `WithResubscribeOnReconnect(true)` replays the subscriptions, data definitions must be set up again (for example on `StateAvailable` or `OnOpen`).
 
+#### Reconnect loop
+
+Each call to `Start()` runs this loop:
+
+1. Enter `StateConnecting` and attempt `engine.Connect()` with a per-attempt timeout (`ConnectionTimeout`).
+2. If the attempt fails, wait `RetryInterval` and retry, up to `MaxRetries` attempts in all (0 = unlimited). After a lost connection the limit is `ReconnectMaxRetries` when set (0 or more), otherwise `MaxRetries` again. Reaching the limit enters `StateDisconnected` and `Start()` returns an error.
+3. On success, enter `StateConnected` and dispatch messages. When the simulator's OPEN message arrives, the manager registers its SimState request and system events, subscribes the kept custom system events again (and, with `ResubscribeOnReconnect`, the pass-through subscriptions), then enters `StateAvailable` and fires `OnOpen`.
+4. If the simulator closes the connection, reset `SimState` to defaults, close the old engine, clear the request registry and enter `StateDisconnected`.
+5. With `AutoReconnect` on (default), enter `StateReconnecting`, wait `ReconnectDelay` and restart from step 1. With it off, `Start()` returns `nil`.
+6. If the context is cancelled at any point, `Start()` disconnects and returns `ctx.Err()`.
+
+A connection attempt that runs past `ConnectionTimeout` is abandoned on its own engine and the next attempt uses a new engine; if the abandoned attempt succeeds late, the manager disconnects it. Defaults for every timing option are in [Manager Configuration](config-manager.md).
+
+Subscription objects (`Subscription`, `SimStateSubscription`, `ConnectionOpenSubscription`, `ConnectionQuitSubscription`) stay valid across connection cycles; their channels are not recreated. Re-register data definitions and requests on every connection:
+
+```go
+mgr.OnConnectionStateChange(func(old, new manager.ConnectionState) {
+    if new != manager.StateConnected {
+        return
+    }
+    mgr.AddToDataDefinition(DataDefID, "PLANE LATITUDE", "degrees",
+        types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)
+    mgr.RequestDataOnSimObject(DataReqID, DataDefID,
+        types.SIMCONNECT_OBJECT_ID_USER, types.SIMCONNECT_PERIOD_SECOND,
+        types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)
+})
+```
+
 ### Stop
 
 Gracefully stops the manager and closes the connection.
@@ -58,6 +99,8 @@ Gracefully stops the manager and closes the connection.
 ```go
 mgr.Stop()
 ```
+
+`Stop()` cancels the manager context and waits for all subscriptions to call `Unsubscribe()`. If they do not drain within `ShutdownTimeout`, it proceeds and logs a warning. It also clears the custom system events and the `ResubscribeOnReconnect` list.
 
 ### ConnectionState
 
@@ -616,7 +659,14 @@ All subscriptions implement the `Subscription` interface:
 
 ## State Subscriptions
 
-Specialized subscriptions for state changes.
+Specialized subscriptions for state changes. Each has `ID()`, `Done()` and `Unsubscribe()` like `Subscription`, a channel of its own, and a getter that returns an existing one by ID (`nil` if not found):
+
+| Subscribe | Channel | Getter |
+|---|---|---|
+| `SubscribeConnectionStateChange` | `ConnectionStateChanges() <-chan ConnectionStateChange` | `GetConnectionStateSubscription` |
+| `SubscribeSimStateChange` | `SimStateChanges() <-chan SimStateChange` | `GetSimStateSubscription` |
+| `SubscribeOnOpen` | `Opens() <-chan types.ConnectionOpenData` | `GetOpenSubscription` |
+| `SubscribeOnQuit` | `Quits() <-chan types.ConnectionQuitData` | `GetQuitSubscription` |
 
 ### SubscribeConnectionStateChange
 

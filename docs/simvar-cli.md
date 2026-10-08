@@ -370,6 +370,12 @@ simvar-cli --format csv watch "PLANE ALTITUDE" feet float64
 
 Most positional and rate SimVars use `float64`. State and enum SimVars typically use `int32`.
 
+## Notes
+
+- Quote variable names with spaces (`"PLANE ALTITUDE"`), on the command line and in the REPL alike; pass `""` as the unit of unitless variables.
+- Each `get`, `set`, `emit`, `listen` and `watch` run opens a fresh connection, named `SimVar CLI - Get`, `- Set`, `- Emit`, `- Listen`, `- Watch` (`- REPL` for the REPL). Use the REPL for repeated operations; it caches event mappings for the session.
+- The tool routes commands with [CURE](https://github.com/mrlm-net/cure), the only dependency in its own `go.mod`.
+
 ## See Also
 
 - [MSFS 2024 Simulation Variables reference](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimVars/Simulation_Variables.htm)

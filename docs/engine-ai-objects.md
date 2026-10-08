@@ -1,15 +1,15 @@
 ---
-title: "AI Traffic"
-description: "Inject and manage AI aircraft using the Engine client AI object API."
+title: "Engine AI Objects"
+description: "Create, remove and release AI aircraft and simulated objects with the Engine client's raw AICreate* API."
 order: 7
 section: "client"
 ---
 
-# AI Traffic
+# Engine AI Objects
 
 This guide covers AI aircraft injection using the Engine client's `AICreate*` methods — thin, typed wrappers over the raw SimConnect DLL. Every call maps directly to a single SimConnect API function with no extra abstraction.
 
-> **Scope:** This guide covers the raw Engine-layer `AICreate*` / `AIRemove*` / `AIRelease*` API. Manager-layer wrappers (`TrafficParked`, `TrafficEnroute`, `TrafficNonATC`, fleet tracking) and the `pkg/traffic.Fleet` abstraction are out of scope — see [traffic-guide.md](traffic-guide.md) for those. For complete movement built on top of them, see [Departure Taxi](traffic-taxi.md), [Arrivals & Parking](traffic-arrival.md), [Injected Ground Movement](traffic-motion.md), [Traffic Picture](traffic-picture.md) and [Traffic Manager](traffic-manager.md).
+> **Scope:** This guide covers the raw Engine-layer `AICreate*` / `AIRemove*` / `AIRelease*` API. Manager-layer wrappers (`TrafficParked`, `TrafficEnroute`, `TrafficNonATC`, fleet tracking) and the `pkg/traffic.Fleet` abstraction are out of scope — for the high-level Fleet see the [Traffic Guide](traffic-guide.md). For complete movement built on top of them, see [Departure Taxi](traffic-taxi.md), [Arrivals & Parking](traffic-arrival.md), [Injected Ground Movement](traffic-motion.md), [Traffic Picture](traffic-picture.md) and [Traffic Manager](traffic-manager.md).
 
 ## Aircraft Kinds
 

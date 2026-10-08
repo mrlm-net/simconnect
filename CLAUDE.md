@@ -15,384 +15,34 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 
 ## Project Structure
 
-```
-├── main.go                  # Package entry point (New, NewClient)
-├── go.mod
-├── internal/
-│   ├── dll/                 # Raw DLL syscall bindings (detect, main)
-│   └── simconnect/          # Low-level SimConnect API wrapper
-│       ├── config.go        #   Client configuration
-│       ├── connection.go    #   Open/Close lifecycle
-│       ├── data.go          #   Data definitions & requests
-│       ├── dispatch.go      #   Message dispatching
-│       ├── event.go         #   Event mapping & transmission
-│       ├── facility.go      #   Facility data requests
-│       ├── flight.go        #   Flight plan operations
-│       ├── notification.go  #   Notification groups
-│       ├── object.go        #   Generic SimObject operations
-│       ├── object-ai.go     #   AI aircraft creation & management
-│       ├── clientdata.go    #   Client data areas
-│       ├── inputevent.go    #   Input events
-│       ├── flow.go          #   Flow events (MSFS 2024)
-│       ├── commbus.go       #   CommBus messages
-│       ├── camera.go        #   Camera API
-│       └── system.go        #   System events & state
-├── pkg/
-│   ├── engine/              # High-level client, lifecycle, dispatching
-│   │   ├── client.go        #   Client struct & options
-│   │   ├── config.go        #   Engine configuration
-│   │   ├── connection.go    #   Connection lifecycle
-│   │   ├── dispatcher.go    #   Tiered buffer pool dispatch loop
-│   │   ├── stream.go        #   Streaming data helpers
-│   │   ├── message.go       #   Message type handling
-│   │   ├── data.go          #   Data definition registration
-│   │   ├── datasets.go      #   Dataset registration helpers
-│   │   ├── event.go         #   Event subscription & emit
-│   │   ├── facility.go      #   Facility data requests
-│   │   ├── facility_datasets.go # Facility dataset helpers
-│   │   ├── flight.go        #   Flight plan operations
-│   │   ├── notification.go  #   Notification groups
-│   │   ├── object.go        #   SimObject operations
-│   │   ├── system.go        #   System events & state
-│   │   ├── clientdata.go    #   Client data areas
-│   │   ├── inputevent.go    #   Input events
-│   │   ├── flow.go          #   Flow events (MSFS 2024)
-│   │   ├── commbus.go       #   CommBus messages
-│   │   ├── camera.go        #   Camera API (MSFS 2024)
-│   │   └── logger.go        #   Structured slog logger
-│   ├── manager/             # Connection manager with auto-reconnect
-│   │   ├── main.go          #   Manager constructor & helpers
-│   │   ├── instance.go      #   Instance struct
-│   │   ├── config.go        #   Manager options (ManagerWith*)
-│   │   ├── lifecycle.go     #   Start/Stop/reconnect loop
-│   │   ├── connection.go    #   Connection state management
-│   │   ├── dispatch.go      #   Dispatch routing hub
-│   │   ├── dispatch-events.go      # System event dispatch
-│   │   ├── dispatch-filenames.go   # Filename event dispatch
-│   │   ├── dispatch-objects.go     # Object event dispatch
-│   │   ├── dispatch-simstate.go    # SimState data dispatch
-│   │   ├── handlers-connection.go  # Connection/message/open/quit handlers
-│   │   ├── handlers-filename-events.go # Flight/aircraft file handlers
-│   │   ├── handlers-object-events.go  # Object add/remove handlers
-│   │   ├── handlers-system-events.go  # Crash/sound/view handlers
-│   │   ├── handlers-simstate.go    # SimState/pause/sim running handlers
-│   │   ├── custom_events.go #   Custom system event support
-│   │   ├── datasets.go      #   Dataset registration
-│   │   ├── request.go       #   Data request helpers
-│   │   ├── ids.go           #   Define/Request ID allocation
-│   │   ├── state.go         #   SimState struct & types
-│   │   ├── state-enums.go   #   CameraState/CameraSubstate enums
-│   │   ├── state-helpers.go #   SimState comparison & diffing
-│   │   ├── simstate_registration.go # SimState dataset setup
-│   │   ├── state-subscriptions.go   # State/SimState change subscriptions
-│   │   ├── connection-event-subscriptions.go # Open/Quit subscriptions
-│   │   ├── object-subscriptions.go  # Object add/remove subscriptions
-│   │   ├── filename-subscriptions.go # Flight/aircraft file subscriptions
-│   │   ├── subscription-base.go     # Shared subscription plumbing
-│   │   ├── notify.go        #   Notification helpers
-│   │   ├── getters.go       #   Public state accessors
-│   │   ├── events.go        #   Client events through the manager
-│   │   ├── facilities.go    #   Facility requests through the manager
-│   │   ├── flight.go        #   Flight load/save through the manager
-│   │   ├── system.go        #   System state requests
-│   │   ├── notifications.go #   Notification groups
-│   │   ├── ai-traffic.go    #   AI aircraft creation
-│   │   ├── traffic.go       #   The manager's Fleet
-│   │   ├── clientdata.go    #   Client data areas
-│   │   ├── inputevents.go   #   Input events
-│   │   ├── flow.go          #   Flow events (MSFS 2024)
-│   │   ├── resubscribe.go   #   Subscriptions re-made on reconnect (ResubscribeOnReconnect)
-│   │   ├── typed-subscription.go # Typed subscriptions
-│   │   ├── manager.go       #   Manager interface definition
-│   │   └── internal/        #   Internal utilities & helpers
-│   │       ├── instance/    #   Handler entry types (exported)
-│   │       │   └── types.go #     StateHandlerEntry, MessageHandlerEntry, etc.
-│   │       ├── notify/      #   Notification dispatch functions
-│   │       │   └── notify.go #    NotifyState, NotifySimState, NotifyOpen, NotifyQuit
-│   │       ├── handlers/    #   Handler registration & removal
-│   │       │   ├── handlers.go #  GenerateUUID, state/message/open/quit handlers
-│   │       │   ├── filenames.go #  FlightLoaded/AircraftLoaded/FlightPlanActivated
-│   │       │   ├── objects.go #    ObjectAdded/ObjectRemoved
-│   │       │   ├── simstate.go #   SimState/Pause/SimRunning
-│   │       │   └── system.go #     Crashed/CrashReset/Sound/View/FlightPlanDeactivated
-│   │       ├── subscriptions/ # Subscription utilities
-│   │       │   └── subscriptions.go # GenerateID, ValidateBufferSize
-│   │       └── dispatch/    #   Message parsing & routing helpers
-│   │           └── helpers.go #    ExtractEventData, ExtractFilenameEventData, etc.
-│   ├── types/               # Typed data structures, enums, events
-│   │   ├── data.go          #   Data definition types
-│   │   ├── event.go         #   Event ID enums
-│   │   ├── exception.go     #   Exception types
-│   │   ├── facility.go      #   Facility structs
-│   │   ├── facility_enums.go #  Facility enum constants
-│   │   ├── group.go         #   Group priority types
-│   │   ├── hresult.go       #   HRESULT error codes
-│   │   ├── object.go        #   Object types
-│   │   ├── period.go        #   Period enums
-│   │   ├── receiver.go      #   Receiver interfaces
-│   │   ├── simobject.go     #   SimObject type constants
-│   │   ├── system.go        #   System event/state types
-│   │   └── others.go        #   Miscellaneous types
-│   ├── datasets/            # Ready-made dataset definitions
-│   │   ├── data.go          #   Base data interface
-│   │   ├── dataset.go       #   Dataset registration helpers
-│   │   ├── facility-data.go #   Facility data interface
-│   │   ├── facility-dataset.go # Facility dataset helpers
-│   │   ├── aircraft/        #   Aircraft position, attitude, engine
-│   │   ├── environment/     #   Weather, time, ambient conditions
-│   │   ├── facilities/      #   Airports, runways, taxiways, VORs, NDBs, ...
-│   │   ├── objects/         #   SimObject data definitions
-│   │   ├── simulator/       #   Simulator state variables
-│   │   └── traffic/         #   AI traffic data definitions
-│   ├── convert/             # Type conversion utilities
-│   │   ├── altitude.go      #   Feet/meters conversion
-│   │   ├── distance.go      #   NM/km/mi conversion
-│   │   ├── icao.go          #   ICAO code validation & lookup
-│   │   ├── icao-data.go     #   ICAO prefix region/country map
-│   │   ├── position.go      #   Lat/lon conversion
-│   │   └── speed.go         #   Knots/km/h/m/s conversion
-│   ├── calc/                # Calculation helpers
-│   ├── dict/                # Embedded tables replaceable at runtime: telephony, types, wake, performance, airports (#768)
-│   ├── registry/            # SimVar metadata: names, units, data types, writability
-│   ├── addons/              # Installed add-ons (no SimConnect): packages path, Community/streamed scan, aircraft → package, fingerprint, processes
-│   ├── avionics/            # User aircraft radios: COM active/standby, swap, squawk (key events)
-│   ├── gsx/                 # GSX Pro state from its L:vars (services, passengers, cargo, doors, gate), settable names
-│   ├── lvars/               # Write L:vars on the user aircraft (our own signals, GSX settings)
-│   ├── systems/             # User aircraft systems by profile: default SimVars, per-model JSON (Fenix L:vars), local overrides
-│   ├── camera/              # Add-on camera (MSFS 2024): poses, shots, drone moves, Director
-│   ├── airport/             # Airport ground layout, taxi graph, routing
-│   │   ├── layout.go        #   Layout, Runway(End), Parking, TaxiPoint, TaxiPath
-│   │   ├── build.go         #   RawAirport records → BuildLayout
-│   │   ├── loader.go        #   Loader: facility requests fed by Handle(msg)
-│   │   ├── cache.go         #   Per-ICAO layout + lazily built graph
-│   │   ├── graph.go         #   BuildGraph, nodes/edges, hold-short → runway
-│   │   ├── route.go         #   Turn-aware search, RouteToRunway, RouteToParking
-│   │   ├── entries.go       #   RunwayEntries, RouteToRunwayEntry ("24 at B")
-│   │   ├── custom.go        #   Custom routes (Via, Taxiways): RouteError, RemainingOptions
-│   │   ├── occupied.go      #   Occupied: routes keep clear of aircraft in the way (wingspans), RouteToParkingFrom
-│   │   ├── stands.go        #   Stand size, suitability, overlapping stands, airlines
-│   │   ├── procedures.go    #   SIDs/STARs/approaches: legs, ProcedurePath, constraints
-│   │   ├── procloader.go    #   ProcedureLoader: facility requests fed by Handle(msg)
-│   │   ├── navlegs.go       #   Procedures → NavPoints (SID/STAR/approach), ATC selection, Arrival
-│   │   ├── limits.go        #   Limits, LimitsFor, KnownLimits: TA, climb hand-over, taxi limits, preferential runways
-│   │   ├── deicing.go       #   DeicingPad, Graph.NearestNode
-│   │   ├── geojson.go       #   Layout/Route GeoJSON export
-│   │   ├── locate.go        #   Locate: which airport a position is at (surfaces, corridors, aliases)
-│   │   ├── locate_track.go  #   Tracker: Locate through whole flights (origin, destination, stickiness)
-│   │   └── testdata/        #   LKPR facility data captured from MSFS 2024
-│   ├── nav/                 # Navigation: fixes, airways, routing, weather and ATIS, flight plans
-│   │   ├── navdata.go       #   FixKey, Fix, WaypointType, AirwayType, RouteLink
-│   │   ├── navloader.go     #   NavLoader: WAYPOINT/ROUTE, VOR, NDB requests fed by Handle(msg)
-│   │   ├── crawl.go         #   AirwayCrawler: breadth-first airway crawl within a radius
-│   │   ├── airways.go       #   AirwayGraph: Route (A*), DirectTo, JSON cache
-│   │   ├── weather.go       #   Weather, StaticWeather, WeatherReader (ambient SimVars at the user aircraft)
-│   │   ├── runway.go        #   ActiveRunways: runway in use from wind, limits, preferential runways
-│   │   ├── atis.go          #   ATIS Text/Spoken, TransitionLevel, ATISService (letters)
-│   │   ├── flightplan.go    #   Plan: runways, SID/airways/STAR/approach, CruiseLevel, profile, fuel
-│   │   ├── pln.go           #   FlightPlan.PLN: MSFS .pln (AceXML) export, FormatLLA
-│   │   ├── performance.go   #   Performance, PerformanceFor (per-type planning data)
-│   │   └── testdata/        #   LKPR-area airway graph captured from MSFS 2024
-│   └── traffic/             # AI aircraft
-│       ├── fleet.go         #   Fleet: create/acknowledge/remove, waypoints
-│       ├── waypoints.go     #   Pushback/Taxi/Lineup/Climb waypoint helpers
-│       ├── taxi.go          #   TaxiController: stand → runway departure
-│       ├── taxiroute.go     #   Route → AI waypoints, line-up waypoints
-│       ├── motion.go        #   GroundPath/GroundMover: injected ground motion
-│       ├── inject.go        #   Injector: takeover, Place, SetLights, Release
-│       ├── ground_drive.go  #   Shared injected ground driving: lights, crossings, gates
-│       ├── approach.go      #   ApproachMover: injected approach, flare, touchdown
-│       ├── takeoff.go       #   TakeoffMover: injected take-off roll, rotation, climb
-│       ├── arrival*.go      #   ArrivalController (AI, hybrid, fully injected); arrival_occupied.go: AvoidOccupied
-│       ├── taxi_occupied.go #   Departure Occupies / AvoidOccupied: taxi round a pushback in the way
-│       ├── departure_inject.go # Injected departure with clearance gates
-│       ├── pushback.go      #   Pushback fitted to the stand: arc radius, neighbours, terminal
-│       ├── pushpose.go      #   Push to a pose (taxiway, facing out): poses, cost, push-and-tow, PlanStandardPushes
-│       ├── push_custom.go   #   PushRoute: drawn (SetCustomPush) and standard pushes per stand
-│       ├── standard_cache.go #  Save/LoadStandardPushes, ErrStandardStale
-│       ├── pushturn.go      #   Dubins push-and-turn, alley entry, pavement check
-│       ├── tug.go           #   PushbackTug interface, SimObjectTug (GSX tug models)
-│       ├── fuel.go          #   FuelService interface, SimObjectFuelTruck (fuel truck at the wing, #582)
-│       ├── service_fleet.go #   VehicleFleet: an airport's tugs, fuel trucks, stairs, GPUs (#830)
-│       ├── stands.go        #   StandAllocator: reservations, overlap blocking, stand scan
-│       ├── awareness.go     #   GroundPicture: aircraft queue and follow at a safe gap
-│       ├── picture.go       #   TrafficPicture: all traffic around a configurable centre, phases, feeds
-│       ├── picture_airports.go # AirportLister: airports around (facilities list)
-│       ├── schedule.go      #   Schedule: flights (airlines, fleets, routes, waves), ScheduleConfig JSON
-│       ├── schedule_data.go #   DefaultScheduleConfig: built-in airlines, airports, waves, type limits
-│       ├── schedule_vfr.go  #   VFRFlights: light aircraft through the circuit, by day in visual conditions (#568)
-│       ├── schedule_business.go # BusinessFlights, LargeAirport: business aviation at large airports (#619)
-│       ├── ga_operators.go  #   GAOperatorsAt: flying school, aero club, private owners
-│       ├── corridor.go      #   Traffic along the user's route in cruise: same, opposite, crossing (#740)
-│       ├── daylight.go      #   SunElevation, Daylight (civil twilight)
-│       ├── manager.go       #   TrafficManager: schedule → spawn/remove, turnarounds, limits, retries, boards, other traffic
-│       ├── manager_events.go #  ManagerEvent lifecycle events (OnEvent, Events)
-│       ├── manager_enroute.go # Enroute arrivals, overflights, leaving the area, Attach
-│       ├── manager_observed.go # Real flights in the manager: Observe, Retime, Turn, Drop (#841)
-│       ├── observed.go      #   Observed (feed sighting), Sighting.At projection, ClassifyObserved (#841)
-│       ├── enroute.go       #   EnrouteStart: airborne spawn + waypoint chain (NonATC)
-│       ├── detail.go        #   Detail: level of detail (frames per aircraft by distance/motion), Load
-│       ├── ids.go           #   IDBlocks: reusable definition/request ID blocks for controllers
-│       ├── wake.go          #   WakeFor (ICAO/RECAT-EU), ArrivalSeparationNM, DepartureInterval, RunwayOccupancy
-│       ├── conditions.go    #   ApproachConditions: weather on final → spacing (LVP, reduced, contaminated, wind)
-│       ├── runway_control.go #  RunwayController: line-up, take-off, crossing clearances (#393)
-│       ├── separation.go    #   AirborneSeparation and minima (#395)
-│       ├── conflict.go      #   PredictConflicts, ResolveConflict, ResolvedRoute, TowerPair (#395)
-│       ├── tcas.go          #   TCAS II: sensitivity levels, Evaluate (TA/RA), SelectRA (#450)
-│       ├── airspace.go      #   AirspaceClass, SeparationRequired, traffic information (#570)
-│       ├── radio.go         #   Transmission, phrasebook (Say, builders), positions, handoffs, Radio (#415, #416)
-│       ├── pilot.go         #   Pilot side: requests, check-ins, Readback, CheckReadback (#417), ATISInformation (#418)
-│       ├── radio_variety.go #   Variety: crew styles, greetings, say again, readback errors (#721)
-│       ├── stations.go      #   StationFor: a position's station name and frequency
-│       ├── station_sectors.go # Station, DefaultStations, PickStation: stations per sector (#722)
-│       ├── squawk.go        #   Squawks: discrete SSR codes from a bank
-│       ├── clock.go         #   SimClock: traffic time at the simulation rate, stopped while paused (#413)
-│       ├── corners.go       #   Rounded turns: standard bank by airframe, fly-by arcs for MSFS AI chains
-│       ├── hold.go          #   Hold, entries, racetrack, HoldStack; EnterHold/LeaveHold (#392)
-│       ├── circuit.go       #   VFR circuits: CircuitConfig per runway end, NewCircuit, JoinDownwind, Waypoints (#567)
-│       ├── absorb.go        #   AbsorbDelay: speed control and path stretching on the STAR (#391)
-│       ├── vectors.go       #   Vector: radar vectors off the STAR (dog-leg, extended downwind) (#661)
-│       ├── sequencer.go     #   ApproachSequencer: landing order, spacing and delays per runway; DistanceToGo
-│       ├── situation.go     #   Situation checks: landing flow, ground stop, turnaround estimate, stuck
-│       ├── models.go        #   ModelsFor: aircraft titles for an airline and type
-│       ├── profile.go       #   AircraftProfile, ProfileFor, GenericProfile, ICAOCodeFor, request filling
-│       ├── aircraft_types.go #  Known-type table (A20N…B77W…AT76), TakeoffProfileFor, MotionProfileFor
-│       ├── profile_simvars.go # ProfileReader (type SimVars fed by Handle(msg)), Refine
-│       ├── telemetry.go     #   Recorder: per-movement JSON lines, Summary per type
-│       ├── tunables.go      #   Taxi speeds, distances, IDs
-│       ├── vehicle_state.go #   VehicleState: tug and fuel truck State(), Title()
-│       └── world/           #   The airport map's traffic engine (#710): New/Run/RunOn/Feed, Snapshot, Do/Get, Heard, ClearPlayer, Register
-│           ├── api.go       #     Options, World, New, Run
-│           ├── host.go      #     A host's connection: Feed, RunOn, Snapshot, Do/Get, ClearPlayer, SetSchedule, AddFlights
-│           ├── real.go      #     Real-world traffic: SetRealTraffic, Observe, Drop (#841)
-│           ├── tcas.go      #     TCAS for our airborne traffic, GET /api/tcas (#450)
-│           ├── conflicts.go #     Conflict watch: resolutions, stopped levels cleared on, arrivals on STARs
-│           ├── keepclear.go #     Taxi re-plans round aircraft in the way; climbOn
-│           ├── enroute_pace.go #  En route arrivals paced behind their leader
-│           ├── sequence.go  #     Landing sequences: absorption, holds, shortcuts, spacing on final
-│           ├── corridor.go  #     Traffic along the user's route (SetCorridor)
-│           └── net.go       #     Split director/actuator link, multiplayer, TLS (#774, #779, #792)
-├── examples/                # Example applications (one per folder)
-│   ├── basic-connection/    #   Minimal connect & disconnect
-│   ├── lifecycle-connection/ #  Connection with lifecycle hooks
-│   ├── await-connection/    #   Blocking connection wait
-│   ├── read-messages/       #   Raw message reading
-│   ├── read-objects/        #   SimObject data reading
-│   ├── set-variables/       #   SimVar writing
-│   ├── emit-events/         #   Event emission
-│   ├── subscribe-events/    #   Event subscriptions
-│   ├── flow-events/         #   Flow event subscriptions (MSFS 2024 only)
-│   ├── read-facility/       #   Single facility lookup
-│   ├── read-facilities/     #   Bulk facility reading
-│   ├── subscribe-facilities/ #  Facility change subscriptions
-│   ├── all-facilities/      #   Enumerate all facility types
-│   ├── airport-details/     #   Airport detail inspection
-│   ├── locate-airport/      #   Airport search by location
-│   ├── read-waypoints/      #   Waypoint data reading
-│   ├── using-datasets/      #   Pre-built dataset usage
-│   ├── ai-traffic/          #   AI traffic injection
-│   ├── manage-traffic/      #   AI traffic management
-│   ├── monitor-traffic/     #   AI traffic monitoring
-│   ├── simconnect-manager/  #   Manager with auto-reconnect
-│   ├── simconnect-subscribe/ #  Manager subscriptions
-│   ├── simconnect-state/    #   SimState tracking
-│   ├── simconnect-events/   #   Manager event handling
-│   ├── simconnect-facilities/ # Manager facility queries
-│   ├── simconnect-traffic/  #   Manager traffic operations
-│   ├── simconnect-benchmark/ #  Performance benchmarking
-│   ├── ai-taxi/             #   AI departure taxi (stand → runway)
-│   ├── ai-arrival/          #   AI arrival (land, exit, taxi in, park; hybrid or injected)
-│   ├── spike-airways/       #   Airway crawl → JSON (or raw WAYPOINT/ROUTE/VOR/NDB dump)
-│   ├── atis/                #   Weather at the user aircraft → runway in use → ATIS text
-│   ├── flight-plan/         #   Plan a flight between two loaded airports, write .pln
-│   ├── spike-*/             #   Throwaway experiments (injection, lights, approach, tug)
-├── cmd/
-│   ├── airport-map/         #   The airport map: front end of pkg/traffic/world — page, voice (own go.mod: voice-goio)
-│   ├── traffic-actuator/    #   The World's simulator side beside MSFS: listens, or dials a director (#710, #774)
-│   ├── traffic-director/    #   The World's decisions without a simulator; serves the API and the map's page
-│   └── simvar-cli/          #   Interactive SimVar get/set CLI (own go.mod)
-├── docs/                    # Documentation (source of truth for guides)
-│   ├── config-client.md     #   Client configuration reference
-│   ├── config-manager.md    #   Manager configuration reference
-│   ├── usage-client.md      #   Client usage guide
-│   ├── usage-manager.md     #   Manager usage guide
-│   ├── events-lifecycle.md  #   Event lifecycle reference
-│   ├── manager-requests-ids.md # ID allocation reference
-│   ├── airport-layout.md    #   pkg/airport: loading, layout, routing
-│   ├── nav-airways.md       #   pkg/nav: airway crawl, fixes, enroute routing
-│   ├── traffic-guide.md     #   pkg/traffic: Fleet and waypoints
-│   ├── traffic-taxi.md      #   Departure taxi controller (AI waypoints or injected)
-│   ├── traffic-arrival.md   #   Arrivals: AI, hybrid, injected approach, exits, stands
-│   ├── traffic-motion.md    #   Injected ground movement (GroundMover, Injector)
-│   ├── traffic-profiles.md  #   Aircraft profiles per type, SimVar refinement, telemetry Recorder
-│   ├── traffic-picture.md   #   TrafficPicture: world traffic around a centre, airports in range
-│   ├── traffic-schedules.md #   Schedule: timetables for the focus airports
-│   ├── traffic-manager.md   #   TrafficManager: spawning the schedule, situation checks, other traffic, events
-│   ├── traffic-separation.md #  Airborne separation: wake categories, minima, sequencing (v0.16)
-│   ├── traffic-radio.md     #   Radio: transmissions, frequencies, pilot side, ATIS, voice (v0.17)
-│   ├── traffic-phraseology.md # ICAO and FAA phraseology with sources, as the radio says it
-│   ├── traffic-commands.md  #   ATC commands: every clearance and command for injected departures and arrivals
-│   ├── atc-game.md          #   The airport map's ATC game: clearances and score
-│   ├── traffic-vfr.md       #   VFR traffic: light aircraft, circuits, reporting points (v0.19)
-│   ├── traffic-world.md     #   pkg/traffic/world: the map's engine as a package, host API, IDs (#710)
-│   ├── camera.md            #   Add-on camera: bindings, pkg/camera shots and director, map scenes
-│   ├── traffic-decisions.md #   How the traffic decides, with the numbers: push choice, give way, routing, runway, sequencing, conflicts
-│   ├── addons.md            #   pkg/addons: installed packages, streamed airports, aircraft package, processes
-│   ├── avionics.md          #   pkg/avionics: COM frequencies, swap, transponder
-│   ├── systems.md           #   pkg/systems: aircraft systems profiles, format, Fenix
-│   ├── dictionaries.md      #   pkg/dict: the embedded tables replaced at runtime
-│   ├── pkg-registry.md      #   pkg/registry: typed SimVar metadata
-│   ├── examples.md          #   The airport map first, then an example per part of the API
-│   ├── nav-weather.md       #   pkg/nav: weather, runway in use, ATIS
-│   └── nav-flight-plans.md  #   pkg/nav: flight plans (route, procedures, levels, fuel, .pln)
-└── website/                 # SvelteKit documentation site (static)
-    ├── package.json         #   Dependencies & scripts
-    ├── svelte.config.js     #   SvelteKit + mdsvex + rehype config
-    ├── vite.config.js       #   Vite build configuration
-    ├── tsconfig.json        #   TypeScript configuration
-    ├── static/              #   Static assets (favicon, .nojekyll)
-    └── src/
-        ├── app.html         #   HTML shell
-        ├── app.css          #   Tailwind imports & dark theme tokens
-        ├── lib/
-        │   ├── plugins/     #   Custom rehype plugins
-        │   │   ├── rehype-slug.js       # Heading ID generation
-        │   │   ├── rehype-table-wrap.js # Wraps tables in a scrollable div
-        │   │   └── rehype-rewrite-links.js # .md link rewriting
-        │   ├── content/     #   Build-time content pipeline
-        │   │   ├── pipeline.server.ts # Reads docs/*.md, extracts frontmatter
-        │   │   ├── types.ts     # DocPage and content types
-        │   │   └── toc.ts       # Table of contents extraction
-        │   ├── components/
-        │   │   ├── layout/  #   Layout components
-        │   │   │   ├── Header.svelte
-        │   │   │   ├── Sidebar.svelte
-        │   │   │   ├── TableOfContents.svelte
-        │   │   │   └── Footer.svelte
-        │   │   └── seo/     #   SeoHead.svelte, JsonLd.svelte
-        │   ├── config/      #   Site configuration
-        │   │   ├── site.ts      # Title, description, repo URL
-        │   │   └── navigation.ts # Section ordering & sidebar builder
-        │   └── types/       #   TypeScript interfaces
-        │       └── index.ts     # NavItem, NavSection, DocMeta, etc.
-        └── routes/          #   SvelteKit pages
-            ├── +layout.svelte       # Root layout shell
-            ├── +layout.server.ts    # Prerender, load navigation
-            ├── +error.svelte        # Error page
-            ├── (marketing)/         # Landing page (+page.svelte, +layout.svelte)
-            ├── (docs)/              # Docs layout
-            │   ├── docs/
-            │   │   ├── +page.svelte     # Docs listing page
-            │   │   ├── +page.server.ts  # Load doc index
-            │   │   ├── images/          # Doc images
-            │   │   └── [slug]/
-            │   │       ├── +page.svelte     # Individual doc page
-            │   │       └── +page.server.ts  # Load & render doc by slug
-            │   ├── changelog/       # Changelog page
-            │   └── getting-started/ # Getting started page
-            ├── examples/            # Examples page
-            ├── llm.txt/             # llm.txt endpoint
-            └── sitemap.xml/         # Sitemap endpoint
-```
+- `main.go` — package entry point (New, NewClient)
+- `internal/dll` — raw DLL syscall bindings (detect, main)
+- `internal/simconnect` — low-level SimConnect API wrapper: data, events, facilities, flight plans, AI objects, client data, input/flow events, CommBus, camera
+- `pkg/engine` — high-level client: options, connection lifecycle, tiered-buffer dispatch loop, streams, datasets, slog logger
+- `pkg/manager` — connection manager with auto-reconnect: SimState, connection/sim state subscriptions, object/filename/system events, ID allocation, the manager's Fleet, resubscribe on reconnect
+- `pkg/types` — typed structs, enums, events, exceptions, HRESULTs, receivers
+- `pkg/datasets` — ready-made dataset definitions by domain (aircraft, environment, facilities, objects, simulator, traffic)
+- `pkg/convert` — unit conversions (altitude, distance, speed, pressure, temperature, weight, angles), lat/lon ↔ offsets, ICAO codes
+- `pkg/calc` — geodesy: haversine, bearing, cross/along-track, displacement, great circle, Dubins paths, magnetic variation, wind components
+- `pkg/dict` — embedded tables replaceable at runtime: telephony, types, wake, performance, airports (#768)
+- `pkg/registry` — SimVar metadata: names, units, data types, writability
+- `pkg/addons` — installed add-ons (no SimConnect): packages path, Community/streamed scan, aircraft → package, processes
+- `pkg/avionics` — user aircraft radios: COM active/standby, swap, squawk
+- `pkg/gsx` — GSX Pro state from its L:vars (services, passengers, cargo, doors, gate), settable names
+- `pkg/lvars` — write L:vars on the user aircraft (our own signals, GSX settings)
+- `pkg/systems` — user aircraft systems by profile: default SimVars, per-model JSON (Fenix L:vars), local overrides, take-off speeds
+- `pkg/camera` — add-on camera (MSFS 2024): poses, shots, drone moves, Director
+- `pkg/airport` — ground layout, taxi graph, routing, stands, SIDs/STARs/approaches, limits, Locate/Tracker; `testdata/` LKPR capture
+- `pkg/nav` — fixes, airway crawl and routing, weather, runway in use, ATIS, flight plans and .pln, performance
+- `pkg/traffic` — AI aircraft: Fleet, taxi/arrival controllers, injected motion, pushback and tugs, service vehicles, schedules, TrafficManager, separation, sequencing, holds, TCAS, radio and phraseology, profiles
+- `pkg/traffic/world` — the airport map's traffic engine as a package (#710): New/Run/RunOn/Feed, Snapshot, Do/Get, real traffic, director/actuator link; `world/gen` — `remote.js`, the `go generate` script that writes `remote_gen.go`; `world/scenes` — built-in scripted camera scenes (cast, cues, shots) as embedded JSON: departure, arrival, mixed
+- `examples/` — one standalone `main` per folder; `spike-*` are throwaway experiments
+- `cmd/airport-map` — the airport map: front end of pkg/traffic/world, page, voice (own go.mod: voice-goio)
+- `cmd/traffic-actuator` — the World's simulator side beside MSFS: listens, or dials a director
+- `cmd/traffic-director` — the World's decisions without a simulator; serves the API and the map's page
+- `cmd/simvar-cli` — interactive SimVar get/set CLI (own go.mod)
+- `docs/` — `docs/*.md`, one page per area, site front matter; start at `docs/getting-started.md`; grep `docs/` before writing new pages
+- `website/` — SvelteKit static docs site; reads `docs/*.md` (not subfolders); sidebar sections in `src/lib/config/navigation.ts`
 
 ## Build & Test
 
@@ -417,6 +67,17 @@ go vet -unsafeptr=false ./...
 golangci-lint run ./...
 ```
 
+## Consumers
+
+- `mycrew-online/app` and `simconnect-mcp` import this library (pkg/traffic/world, pkg/nav, pkg/airport, pkg/systems, pkg/gsx, ...). Check their callers before changing exported API.
+- `simconnect-mcp` bundles `docs/*.md` at its go.mod version via `go generate`, so doc renames reach it on its next bump.
+
+## Release
+
+- Features = minor, fixes = patch; add a `CHANGELOG.md` entry.
+- Squash-merge the PR, then tag the squash commit (verify it before tagging).
+- Chain push / PR / merge / tag with `&&` only, so a failed step stops the chain.
+
 ## Conventions
 
 - Functional options pattern for configuration (`ClientWith*`, `ManagerWith*`)
@@ -429,75 +90,7 @@ golangci-lint run ./...
 
 ## Workload Management
 
-Agents track work decisions, blockers, and outcomes in GitHub Issues.
-
-**System**: GitHub Issues
-**Repository**: `mrlm-net/simconnect`
-**Configuration**:
-- Use the `github-issues` skill for issue management
-- Each task/feature gets its own GitHub Issue and a dedicated branch + PR
-- Branch naming: `feat/<issue-number>-<short-description>`, `fix/<issue-number>-<short-description>`
-- One PR per task — PRs reference the issue they resolve (e.g., `Closes #42`)
-- Agents post decisions (e.g., "Chose X over Y because Z"), blockers, quality gate failures, and phase outcomes
-- Agents do NOT post progress notifications or status updates — keep it human-consumable
-
-## GitHub Projects v2
-
-**Project**: SimConnect GoLang SDK
-**URL**: https://github.com/orgs/mrlm-net/projects/7
-**Project number**: 7
-**Owner**: mrlm-net
-**Project ID**: PVT_kwDOBxaH0c4A9IjR
-
-### Custom Fields
-
-| Field | Field ID | Options |
-|-------|----------|---------|
-| Status | `PVTSSF_lADOBxaH0c4A9IjRzgw7UX8` | Backlog=`f75ad846`, Ready=`61e4505c`, In progress=`47fc9ee4`, In review=`df73e18b`, Done=`98236657` |
-| Priority | `PVTSSF_lADOBxaH0c4A9IjRzgw7UcQ` | P0=`79628723`, P1=`0a877460`, P2=`da944a9c` |
-| Size | `PVTSSF_lADOBxaH0c4A9IjRzgw7UcU` | XS=`6c6483d2`, S=`f784b110`, M=`7515a9f1`, L=`817d0097`, XL=`db339eb2` |
-
-### Board Update Commands
-
-```bash
-# Add issue to board
-gh project item-add 7 --owner mrlm-net --url <ISSUE_URL>
-
-# Get item ID
-gh project item-list 7 --owner mrlm-net --format json -L 100
-
-# Update field
-gh project item-edit --project-id PVT_kwDOBxaH0c4A9IjR --id <ITEM_ID> --field-id <FIELD_ID> --single-select-option-id <OPTION_ID>
-```
-
-## MRLM Plugin Usage
-
-This project uses the [mrlm devstack plugin](https://github.com/mrlm-net/devstack) for AI-assisted development. Available commands:
-
-| Command | What it does |
-|---------|-------------|
-| `/spec` | Gather requirements, write user stories and acceptance criteria |
-| `/design` | Design system architecture, define interfaces and technical patterns |
-| `/build` | Implement code and unit tests (engineer only, no review) |
-| `/review` | Systematic code review for correctness, style, and performance |
-| `/test` | Run E2E, performance, UX, and accessibility testing |
-| `/secure` | Vulnerability scan, SBOM generation, OWASP compliance check |
-| `/deploy` | Infrastructure provisioning and deployment automation |
-| `/make` | Full SDLC pipeline — from requirements through security scan |
-| `/ask` | Ask any question using full agent toolkit (read-only) |
-| `/write` | Generate articles, documentation, or marketing content |
-| `/release` | Publish versioned release with changelog, git tag, and GitHub Release |
-| `/scope` | Plan from GitHub issue or topic — analysis, design, planning, and backlog creation |
-| `/init` | Initialize project structure and CLAUDE.md |
-
-### Recommended Workflow
-
-For new features, use the full pipeline: `/make [feature description]`
-
-For focused work, chain individual commands:
-1. `/spec` — define what to build
-2. `/design` — plan how to build it
-3. `/build` — implement it
-4. `/review` — review the code
-5. `/test` — verify it works
-6. `/secure` — check for vulnerabilities
+- Work is tracked in GitHub Issues on `mrlm-net/simconnect` (use the `github-issues` skill).
+- Each task gets its own issue, branch (`feat/<issue>-<short>` / `fix/<issue>-<short>`) and one PR referencing it (`Closes #42`).
+- Post decisions, blockers and quality-gate failures on the issue; no progress chatter.
+- Project board IDs and `gh project` commands: [docs/dev/github-board.md](docs/dev/github-board.md).

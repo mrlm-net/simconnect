@@ -82,7 +82,7 @@ case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
     }
 ```
 
-The waypoints use rough LKPR coordinates. For real taxi routes from the airport's layout see [`ai-taxi`](../ai-taxi) and the [airport map](../airport-map).
+The waypoints use rough LKPR coordinates. For real taxi routes from the airport's layout see [`ai-taxi`](../ai-taxi) and the [airport map](../../cmd/airport-map).
 
 ## Related Examples
 

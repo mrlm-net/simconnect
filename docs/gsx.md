@@ -48,19 +48,9 @@ if s, ok := r.Handle(msg); ok {
 
 Read live, the Fenix A319 at LKPR before any service: running, every service callable, 150 passengers maximum.
 
-## Writing L:vars (`pkg/lvars`)
+## Writing GSX settings
 
-An L:var exists once it is written: writing a new name creates it, and every other client reads it. That includes the aircraft's gauges, GSX, FSUIPC and an in-sim package. Measured live in MSFS 2024: `L:MYCREW_TEST` written as 42 by one connection was read as 42 by another.
-
-```go
-w := lvars.NewWriter(client, defBase, 0) // definitions defBase … defBase+63
-_ = w.Set("MYCREW_BOARDING", 1)          // our own signal
-_ = w.Set(gsx.SetPassengers, 111)        // a GSX setting
-// on a new connection:
-w.Reset(newClient)
-```
-
-Each name gets a data definition of its own, defined once per connection.
+L:vars are written with `pkg/lvars` ([L:vars](lvars.md)): `w.Set(gsx.SetPassengers, 111)`.
 
 The GSX variables add-ons may write are constants in `pkg/gsx`:
 

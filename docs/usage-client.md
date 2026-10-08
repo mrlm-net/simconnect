@@ -284,20 +284,34 @@ The struct layout must exactly match the SimConnect data definition order and ty
 
 ### Message Type Methods
 
-The `Message` struct provides helper methods to cast to specific types:
+The `Message` struct provides helper methods that cast the raw pointer to a typed struct. Each returns `nil` when `DwID` does not match:
 
-| Method | Returns | Use Case |
-|--------|---------|----------|
-| `AsOpen()` | Connection open data | Initial connection info |
-| `AsException()` | Exception details | Error handling |
-| `AsEvent()` | Event data | System events |
-| `AsSimObjectData()` | Object data | Data definition responses |
-| `AsSimObjectDataBType()` | Object type data | Type-based queries |
-| `AsFacilityData()` | Facility data | Airport/waypoint info |
-| `AsFacilityList()` | Facilities list | Facility enumerations |
-| `AsAssignedObjectID()` | Assigned ID | AI object creation |
+| Method | `SIMCONNECT_RECV_ID` checked | Return type |
+|---|---|---|
+| `AsOpen()` | `OPEN` | `*types.SIMCONNECT_RECV_OPEN` |
+| `AsException()` | `EXCEPTION` | `*types.SIMCONNECT_RECV_EXCEPTION` |
+| `AsEvent()` | `EVENT` | `*types.SIMCONNECT_RECV_EVENT` |
+| `AsEventFrame()` | `EVENT_FRAME` | `*types.SIMCONNECT_RECV_EVENT_FRAME` |
+| `AsEventFilename()` | `EVENT_FILENAME` | `*types.SIMCONNECT_RECV_EVENT_FILENAME` |
+| `AsEventObjectAddRemove()` | `EVENT_OBJECT_ADDREMOVE` | `*types.SIMCONNECT_RECV_EVENT_OBJECT_ADDREMOVE` |
+| `AsSimObjectData()` | `SIMOBJECT_DATA` | `*types.SIMCONNECT_RECV_SIMOBJECT_DATA` |
+| `AsSimObjectDataBType()` | `SIMOBJECT_DATA_BYTYPE` | `*types.SIMCONNECT_RECV_SIMOBJECT_DATA_BTYPE` |
+| `AsClientData()` | `CLIENT_DATA` | `*types.SIMCONNECT_RECV_CLIENT_DATA` |
+| `AsAssignedObjectID()` | `ASSIGNED_OBJECT_ID` | `*types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID` |
+| `AsFacilityData()` | `FACILITY_DATA` | `*types.SIMCONNECT_RECV_FACILITY_DATA` |
+| `AsFacilityDataEnd()` | `FACILITY_DATA_END` | `*types.SIMCONNECT_RECV_FACILITY_DATA_END` |
+| `AsFacilityList()` | `AIRPORT_LIST`, `VOR_LIST`, `NDB_LIST` or `WAYPOINT_LIST` | `*types.SIMCONNECT_RECV_FACILITIES_LIST` |
+| `AsAirportList()` / `AsNDBList()` / `AsVORList()` / `AsWaypointList()` | the matching `*_LIST` | `*types.SIMCONNECT_RECV_AIRPORT_LIST` etc. |
+| `AsSimObjectAndLiveryEnumeration()` | `ENUMERATE_SIMOBJECT_AND_LIVERY_LIST` | `*types.SIMCONNECT_RECV_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST` |
+| `AsEnumerateInputEvents()` | `ENUMERATE_INPUT_EVENTS` | `*types.SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS` |
+| `AsGetInputEvent()` | `GET_INPUT_EVENT` | `*types.SIMCONNECT_RECV_GET_INPUT_EVENT` |
+| `AsSubscribeInputEvent()` | `SUBSCRIBE_INPUT_EVENT` | `*types.SIMCONNECT_RECV_SUBSCRIBE_INPUT_EVENT` |
+| `AsFlowEvent()` | `FLOW_EVENT` | `*types.SIMCONNECT_RECV_FLOW_EVENT` |
+| `AsCommBus()` | `COMM_BUS` | `*types.SIMCONNECT_RECV_COMM_BUS` (data via `CommBusData()`) |
+| `AsCameraStatus()` | `CAMERA_STATUS` | `*types.SIMCONNECT_RECV_CAMERA_STATUS` |
+| `AsCameraData()` | `CAMERA_DATA` | `(types.SIMCONNECT_DATA_CAMERA, bool)`: decoded, `false` instead of `nil` |
 
-The full list is in the [Engine API Reference](usage-engine-api.md). There is no helper for the quit message (`SIMCONNECT_RECV_ID_QUIT`); the stream closes after it.
+The list messages (`AsAirportList`, `AsNDBList`, `AsVORList`, `AsWaypointList`, `AsEnumerateInputEvents`, `AsSimObjectAndLiveryEnumeration`) have an `Entries()` method that returns the entries following the header. The input event, flow event, CommBus and camera helpers are MSFS 2024 only: against MSFS 2020 they always return `nil`. There is no helper for the quit message (`SIMCONNECT_RECV_ID_QUIT`); the stream closes after it.
 
 ### Parsing Strings
 
@@ -444,6 +458,8 @@ client.ClearNotificationGroup(FlightControlsGroup)
 
 ## AI Traffic
 
+A guide with the kinds, IDs and lifecycle: [Engine AI Objects](engine-ai-objects.md).
+
 ### AICreateParkedATCAircraft
 
 Creates an AI aircraft parked at an airport.
@@ -539,11 +555,25 @@ client.AICreateNonATCAircraftEX1("Cessna Skyhawk Asobo", "Blue", "N12345", initP
 
 ### EnumerateSimObjectsAndLiveries
 
-Lists available aircraft/objects and their liveries.
+Lists the installed models of an object type (`SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT`, `HELICOPTER`, `BOAT`, `GROUND`, `ALL`, `USER`) and their liveries, for traffic injection or aircraft pickers.
 
 ```go
 client.EnumerateSimObjectsAndLiveries(EnumReqID, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+
+// in the message loop
+if recv := msg.AsSimObjectAndLiveryEnumeration(); recv != nil && recv.DwRequestID == EnumReqID {
+    for _, item := range recv.Entries() {
+        title := engine.BytesToString(item.AircraftTitle[:]) // aircraft.cfg title
+        livery := engine.BytesToString(item.LiveryName[:])   // empty without separate liveries
+        fmt.Printf("%-60s  %s\n", title, livery)
+    }
+    if recv.DwEntryNumber+recv.DwArraySize >= recv.DwOutOf {
+        // last batch
+    }
+}
 ```
+
+Replies come in batches (`SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST`): `DwArraySize` entries from `DwEntryNumber`, `DwOutOf` in all. `Entries()` reads the `[256]byte` `AircraftTitle` / `LiveryName` pairs in place after the 28-byte header.
 
 ## Facilities
 
@@ -698,7 +728,7 @@ Not covered above:
 - `SubscribeToFlowEvent` / `UnsubscribeFromFlowEvent` — flow events (MSFS 2024), read with `msg.AsFlowEvent()`.
 - `engine.SystemStateFloat64(recv)` — the float value of a `SIMCONNECT_RECV_SYSTEM_STATE` reply.
 - `engine.PackWaypoints(wps)` and `engine.WaypointWireSize` — pack `SIMCONNECT_DATA_WAYPOINT` slices for `SetDataOnSimObject`.
-- Client data areas, input events and object/livery enumeration: [Engine API Reference](usage-engine-api.md). Camera (MSFS 2024, `*engine.Engine` only): [Camera](camera.md).
+- Client data areas (`MapClientDataNameToID`, `CreateClientData`, `AddToClientDataDefinition`, `RequestClientData`, `SetClientData`, `ClearClientDataDefinition`, all on the `engine.Client` interface): [Client Data Areas](client-data-area.md). Input events (MSFS 2024): [Input Events](guide-input-events.md). Camera (MSFS 2024, `*engine.Engine` only): [Camera](camera.md).
 
 ## Example: Complete Data Loop
 

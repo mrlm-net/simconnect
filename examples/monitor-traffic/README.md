@@ -83,7 +83,7 @@ The `ParkedAircraft` and `IFRAircraft` types and the commented-out `AICreate...`
 
 - [`simconnect-traffic`](../simconnect-traffic) — Spawn traffic through the manager's fleet
 - [`ai-traffic`](../ai-traffic) — Spawn parked and en route aircraft from `planes.json`
-- [`airport-map`](../airport-map) — All traffic around an airport on a live map
+- [`airport-map`](../../cmd/airport-map) — All traffic around an airport on a live map
 
 ## See Also
 
