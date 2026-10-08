@@ -65,10 +65,17 @@ func (m *Message) CommBusData() string {
 }
 
 // CommBusAssembler joins CommBus data sent in several messages
-// (DwEntryNumber of DwOutOf) back into one, per event ID.
+// (DwEntryNumber of DwOutOf) back into one, per event ID. A call with a
+// part missing when its last arrives is dropped, not joined with a gap
+// (E8: corrupt data); a new call's first part starts it afresh.
 type CommBusAssembler struct {
 	mu    sync.Mutex
-	parts map[uint32][]string
+	parts map[uint32]*commBusCall
+}
+
+type commBusCall struct {
+	parts []string
+	got   []bool
 }
 
 // Add takes a message: when it completes a CommBus call (the last part, or
@@ -86,19 +93,24 @@ func (a *CommBusAssembler) Add(m *Message) (eventID uint32, data string, ok bool
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.parts == nil {
-		a.parts = map[uint32][]string{}
+		a.parts = map[uint32]*commBusCall{}
 	}
-	p := a.parts[id]
-	if len(p) != of || n == 0 {
-		p = make([]string, of) // a new call: its first part, or another length
+	c := a.parts[id]
+	if c == nil || len(c.parts) != of || n == 0 {
+		c = &commBusCall{parts: make([]string, of), got: make([]bool, of)} // a new call: its first part, or another length
+		a.parts[id] = c
 	}
 	if n >= 0 && n < of {
-		p[n] = part
+		c.parts[n], c.got[n] = part, true
 	}
-	a.parts[id] = p
 	if n != of-1 {
 		return 0, "", false
 	}
 	delete(a.parts, id)
-	return id, strings.Join(p, ""), true
+	for _, g := range c.got {
+		if !g {
+			return 0, "", false // a part lost on the way
+		}
+	}
+	return id, strings.Join(c.parts, ""), true
 }

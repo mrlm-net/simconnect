@@ -51,3 +51,18 @@ func TestCommBus(t *testing.T) {
 		t.Error("an event read as CommBus")
 	}
 }
+
+// A call whose middle part was lost is dropped, not joined with a gap (E8).
+func TestCommBusPartLost(t *testing.T) {
+	var a CommBusAssembler
+	for _, i := range []int{0, 2} {
+		m := commBusMsg(9, "x", i, 3)
+		if _, _, ok := a.Add(&m); ok {
+			t.Fatalf("part %d completed a call missing part 1", i)
+		}
+	}
+	m := commBusMsg(9, "whole", 0, 1)
+	if _, data, ok := a.Add(&m); !ok || data != "whole" {
+		t.Errorf("next call: %q %v", data, ok)
+	}
+}

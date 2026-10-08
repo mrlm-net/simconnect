@@ -11,12 +11,15 @@ import (
 
 // callTrace keeps the last calls made with their send IDs (Config.TraceCalls):
 // an exception names the call it was raised for. Recorded after the call
-// with GetLastSentPacketID, so a call made on another goroutine in between
-// can take the label.
+// with GetLastSentPacketID, the two serialized while tracing (callMu): no
+// call made on another goroutine in between takes or loses the label.
 type callTrace struct {
-	mu   sync.Mutex
-	ring [traceKeep]tracedCall
-	next int
+	// callMu makes a call and its GetLastSentPacketID one step; mu guards
+	// the ring.
+	callMu sync.Mutex
+	mu     sync.Mutex
+	ring   [traceKeep]tracedCall
+	next   int
 }
 
 type tracedCall struct {
