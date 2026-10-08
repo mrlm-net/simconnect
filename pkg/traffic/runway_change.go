@@ -105,24 +105,23 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 	switch c.state {
 	case TaxiIdle, TaxiSpawning, TaxiAwaitingPushback:
 		// Still on the stand: plan it all again, the push included.
-		route, err := g.RouteToRunwayEntry(req.Parking, runway, entry, req.Options)
-		if err != nil {
+		if err := c.planFromStand(req, rwy, end); err != nil {
 			return err
-		}
-		if err := entryLongEnough(req, route); err != nil {
-			return err
-		}
-		c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
-		c.route, c.origRoute, c.pushJunction, c.pushPlanned = route, nil, 1, nil
-		c.faceOut, c.powerOut = c.standFacesOut(), nil
-		if c.req.PowerOut && !c.faceOut {
-			if loop, ok := c.planPowerOut(); ok {
-				c.powerOut, c.faceOut = loop, true
-			}
 		}
 		c.planPushback()
-		c.track = newRouteTracker(c.route)
-	case TaxiPushback, TaxiAwaitingTaxi:
+	case TaxiAwaitingTaxi:
+		// Waiting for the taxi on a stand it leaves without a push (no
+		// taxiway under it to plan from; live, SPDPS PC12 on N63 asking for
+		// B): the taxi-out from the stand, as before the push.
+		if c.mover != nil && c.onStand() {
+			if err := c.planFromStand(req, rwy, end); err != nil {
+				return err
+			}
+			c.reroute, c.fromHere = false, false
+			break
+		}
+		fallthrough
+	case TaxiPushback:
 		// The taxi-out, from where the aircraft stands when it starts;
 		// standing already (waiting for the taxi), planned now as well, so
 		// the taxi clearance names the new route (a crew's intersection
@@ -154,6 +153,37 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 	c.emit(nil, true)
 	return nil
 }
+
+// planFromStand plans the departure from its stand again for req (rwy, end
+// its runway): the route, and how it leaves the stand. c.mu is held.
+func (c *TaxiController) planFromStand(req TaxiRequest, rwy airport.Runway, end airport.RunwayEnd) error {
+	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
+	if err != nil {
+		return err
+	}
+	if err := entryLongEnough(req, route); err != nil {
+		return err
+	}
+	c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
+	c.route, c.origRoute, c.pushJunction, c.pushPlanned = route, nil, 1, nil
+	c.faceOut, c.powerOut = c.standFacesOut(), nil
+	if c.req.PowerOut && !c.faceOut {
+		if loop, ok := c.planPowerOut(); ok {
+			c.powerOut, c.faceOut = loop, true
+		}
+	}
+	c.track = newRouteTracker(c.route)
+	return nil
+}
+
+// onStand: the aircraft stands where it was parked (within onStandMeters),
+// not pushed back. c.mu is held.
+func (c *TaxiController) onStand() bool {
+	stand := c.req.Graph.Layout.Parking[c.req.Parking]
+	return localDist(c.mover.Pose().Position, StandPoint(stand, c.req.NoseOffset)) <= onStandMeters
+}
+
+const onStandMeters = 5.0
 
 // routeFromHere plans the route to the request's runway from where the
 // aircraft is: from the taxiway edge under its nose gear that runs its way

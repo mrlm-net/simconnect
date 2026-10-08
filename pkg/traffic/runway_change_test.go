@@ -205,3 +205,76 @@ func TestChangeEntryWaitingForTaxi(t *testing.T) {
 		t.Fatalf("route entry %q right after the change, want %s", r.Entry, named)
 	}
 }
+
+// TestChangeEntryWaitingOnStand: on a stand it leaves without a push,
+// waiting for its taxi clearance, a departure given an intersection plans
+// the taxi-out from the stand and taxis (live, SPDPS PC12 on N63 failed:
+// "not on a taxiway to re-plan from").
+func TestChangeEntryWaitingOnStand(t *testing.T) {
+	g := lkprGraph(t)
+	entries, err := g.RunwayEntries("24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var named string
+	for _, e := range entries[1:] {
+		if e.Taxiway != "" && e.FromThreshold >= airport.FullLengthMeters {
+			named = e.Taxiway
+			break
+		}
+	}
+	if named == "" {
+		t.Skip("no named intersection on 24")
+	}
+	var stand airport.Parking
+	for _, p := range g.Layout.Parking {
+		if standFacesOut(g, p.Index) && p.Radius >= 15 {
+			if r, err := g.RouteToRunway(p.Index, "24", airport.RouteOptions{}); err == nil && leadInAhead(g, p.Index, r.Points[1]) {
+				stand = p
+				break
+			}
+		}
+	}
+	if stand.Radius == 0 {
+		t.Skip("no face-out stand routable to 24")
+	}
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: stand.Index, Runway: "24", Model: "A320", HoldForClearances: true, RollingTakeoffChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultTaxiRequestBase+reqOffSpawn, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	mon := DefaultTaxiRequestBase + reqOffMonitor
+	run := func(until TaxiState, maxFrames int) bool {
+		for i := 0; i < maxFrames && ctl.State() != until && !ctl.State().Terminal(); i++ {
+			now = now.Add(time.Second / 60)
+			ctl.Handle(positionMsg(mon, 77, stand.Position, 0, 0, true))
+		}
+		return ctl.State() == until
+	}
+	if !run(TaxiAwaitingPushback, 60*300) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	ctl.ClearPushback()
+	if !run(TaxiAwaitingTaxi, 60*900) {
+		t.Fatalf("never waited for the taxi: %v", ctl.State())
+	}
+	if err := ctl.ChangeEntry(named); err != nil {
+		t.Fatal(err)
+	}
+	if r := ctl.Route(); r == nil || !strings.EqualFold(r.Entry, named) {
+		t.Fatalf("route entry %q right after the change, want %s", r.Entry, named)
+	}
+	ctl.ClearToTaxi()
+	if !run(TaxiTaxiing, 60*300) {
+		t.Fatalf("never taxied after the change: %v", ctl.State())
+	}
+}

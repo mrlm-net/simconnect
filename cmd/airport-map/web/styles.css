@@ -1243,3 +1243,6 @@ body.spectator [data-game-start], body.spectator .facing { display: none !import
 .tcas { font-weight: 600; padding: 0 4px; border-radius: 3px; }
 .tcas--ta { color: #000; background: #f5b400; }
 .tcas--ra { color: #fff; background: #d6312b; }
+
+/* Approach sequence on an arrival's tag: its number and distance to go. */
+.seqtag { font-weight: 600; }

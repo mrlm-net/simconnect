@@ -353,6 +353,12 @@ type controlCenter struct {
 	// climbStopped reports a climb or descent stopped for traffic and not
 	// yet cleared on (the conflict watch); nil none.
 	climbStopped func(cs string) bool
+	// landCleared reports an arrival cleared to land (the tower); nil none.
+	landCleared func(cs string) bool
+	// departureCleared reports a departure cleared to line up or take off,
+	// departuresAhead the departures to go before one (the tower); nil none.
+	departureCleared func(cs string) bool
+	departuresAhead  func(icao, runway, cs string) int
 	// tcasView is one of ours' TCAS advisory now (#450); nil hook or quiet: nil.
 	tcasView func(objectID uint32) *TCASView
 	// agenda: the controllers' calls, most urgent first (agenda.go).
@@ -2508,6 +2514,14 @@ func typeSaid(icao string) string {
 		return "Airbus A3" + icao[1:3] + "neo" // A20N: A320neo
 	case strings.HasPrefix(icao, "A3") && len(icao) >= 4:
 		return "Airbus A3" + icao[2:4]
+	case len(icao) == 4 && icao[0] == 'B' && icao[1] == '3' && icao[3] == 'M':
+		return "Boeing 737 MAX" // B38M
+	case icao == "BCS1", icao == "BCS3":
+		return "Airbus A220"
+	case strings.HasPrefix(icao, "DH8"):
+		return "Dash 8"
+	case icao == "PC12":
+		return "Pilatus PC-12"
 	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:
 		return "Boeing 7" + icao[2:3] + "7"
 	case strings.HasPrefix(icao, "E1") || strings.HasPrefix(icao, "E7"):
@@ -3244,6 +3258,34 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)
+		// The tower answers the check-in: line-up or take-off when it gives
+		// it then, else report ready, or hold short behind those to depart
+		// first (CAP 413 4.19, 4.20; live, TVS1359 heard nothing for 2m50s).
+		p := it.cc.pending
+		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+			if cleared := it.cc.departureCleared; cleared != nil && cleared(it.Tail) {
+				return
+			}
+			it.mu.Lock()
+			rwy := it.view.Runway
+			it.mu.Unlock()
+			ahead := 0
+			if n := it.cc.departuresAhead; n != nil {
+				ahead = n(it.ICAO, rwy, it.Tail)
+			}
+			it.say(traffic.DepartureOrder(it.Tail, rwy, ahead))
+		})
+	case ev.arr != nil && pos == traffic.PosTower && !it.visual:
+		// The tower answers the check-in at once: cleared to land when it
+		// can be, else "continue approach" (12.3.4.15; live, AUA762 heard
+		// nothing for 1m45s with a departure on the runway).
+		p := it.cc.pending
+		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+			if cleared := it.cc.landCleared; cleared != nil && cleared(it.Tail) {
+				return
+			}
+			it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrContinue))
+		})
 	}
 }
 

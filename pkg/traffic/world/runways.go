@@ -57,6 +57,9 @@ type runwayUserView struct {
 	Callsign string `json:"callsign"`
 	Phase    string `json:"phase"`
 	Waiting  string `json:"waiting,omitempty"`
+	// departure: a departure (not crossing, not landing), for the number
+	// to depart before a new one (departuresAhead).
+	departure bool
 }
 
 func newTowers(cc *controlCenter, s *scheduler) *towers {
@@ -320,7 +323,7 @@ func (t *towers) tick(now time.Time) {
 		t.mu.Unlock()
 		var view []runwayUserView
 		for _, u := range list {
-			view = append(view, runwayUserView{Callsign: u.Callsign, Phase: phaseNames[u.Phase], Waiting: c.Waiting[u.Callsign]})
+			view = append(view, runwayUserView{Callsign: u.Callsign, Phase: phaseNames[u.Phase], Waiting: c.Waiting[u.Callsign], departure: !u.Arrival && !u.Crossing})
 		}
 		t.mu.Lock()
 		t.last[k.icao+" "+k.rwy] = view
@@ -720,6 +723,40 @@ func waitKind(why string) string {
 		}
 		return r
 	}, why)
+}
+
+// departureCleared: tail is cleared to line up or take off.
+func (t *towers) departureCleared(tail string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.given[tail+" lineup"] || t.given[tail+" takeoff"] || t.given[tail+" lineupbehind"]
+}
+
+// departuresAhead is how many departures hold short of, or are lined up on,
+// runway end at icao, tail aside: those to depart before it.
+func (t *towers) departuresAhead(icao, end, tail string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 0
+	for k, list := range t.last {
+		i, rwy, _ := strings.Cut(k, " ")
+		if i != icao || !slices.Contains(strings.Split(rwy, "/"), end) {
+			continue
+		}
+		for _, u := range list {
+			if u.departure && u.Callsign != tail && (u.Phase == "holding short" || u.Phase == "lined up") {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// landCleared: tail is cleared to land.
+func (t *towers) landCleared(tail string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.given[tail+" land"]
 }
 
 // forgetLanding lets an arrival that went around be cleared to land on its

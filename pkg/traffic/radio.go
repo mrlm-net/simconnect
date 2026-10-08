@@ -85,6 +85,10 @@ const (
 	IntentPilotReject   Intent = "pilot_reject" // the crew rejects the take-off: "stopping"
 	IntentAcknowledge   Intent = "acknowledge"
 	IntentTrafficInfo   Intent = "traffic_info" // traffic, (o'clock), (distance), (direction), (type), (level) (#570)
+	// The tower's answer to a departure checking in while taxiing: report
+	// ready for departure, or hold short with the number to depart before
+	// it (CAP 413 4.19, 4.20).
+	IntentDepartureOrder Intent = "departure_order"
 )
 
 // Phraseology is the wording a transmission is said in: ICAO (Doc 4444,
@@ -393,6 +397,13 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return cs + ", continue taxi"
 	case IntentHoldPosition:
 		return cs + ", hold position" // 12.3.4.8
+	case IntentDepartureOrder:
+		if p[ParamNumber] == "" || p[ParamNumber] == "0" {
+			return cs + ", report ready for departure" // CAP 413 4.20
+		}
+		// CAP 413 4.19 ("hold at Bravo 1, 2 aircraft to depart before you
+		// from runway 20"), the limit as the taxi clearance names it.
+		return fmt.Sprintf("%s, hold short of runway %s, %s aircraft to depart before you", cs, p[ParamRunway], p[ParamNumber])
 	case IntentStop:
 		return fmt.Sprintf("%s, stop immediately, %s, stop immediately", cs, cs) // 12.3.4.11 e
 	case IntentCancelTakeoff:
@@ -1032,6 +1043,15 @@ func ClearedToLand(cs, runway, wind string) Transmission {
 // GoAround sends an arrival around (reason "": none said).
 func HoldPosition(cs string) Transmission {
 	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentHoldPosition})
+}
+
+// DepartureOrder is the tower's answer to a departure checking in while
+// taxiing to runway, ahead the departures to go before it: "CSA1, report
+// ready for departure", or "CSA1, hold short of runway 24, 2 aircraft to
+// depart before you".
+func DepartureOrder(cs, runway string, ahead int) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentDepartureOrder,
+		Params: map[string]string{ParamRunway: runway, ParamNumber: fmt.Sprint(ahead)}})
 }
 
 // ContinueTaxi resumes the taxi of an aircraft told to hold position, on

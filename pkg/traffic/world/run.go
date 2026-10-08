@@ -421,6 +421,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	seqs.engaged = cw.engaged       // no shortcut undoes a resolution (#785)
 	cc.climbStopped = cw.isStopped
 	tw := newTowers(cc, sched)
+	cc.landCleared = tw.landCleared
+	cc.departureCleared, cc.departuresAhead = tw.departureCleared, tw.departuresAhead
 	// A go-around is sequenced again (#394), and cleared to land again on
 	// its next approach (#486).
 	cc.rejoin = func(icao, tail string) {
