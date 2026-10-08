@@ -124,7 +124,7 @@ The crew flies the RA after 5 s:
 - **Level off:** holds its level.
 - **Climb or descend:** goes 1000 ft from where the RA began, as a level on its route. An arrival on its injected final takes a climb RA as a go-around.
 
-The crew reports on its frequency: "(station), (callsign), TCAS RA", then "clear of conflict, returning to assigned altitude" (FAA JO 7110.65 2-1-28, its examples). Approach gives the aircraft no instruction until then, and the conflict resolver leaves it alone.
+The crew reports on its frequency: "(station), (callsign), TCAS RA", then "clear of conflict, returning to (assigned clearance)": the level or approach it was last cleared to, "returning to flight level 100" (Doc 4444 12.3.1.2 r, t; CAP 413 5.32, 5.33). The controller answers each "roger" (12.3.1.2 s, u). At an FAA airport it is "returning to assigned altitude" (JO 7110.65 2-1-28, its examples). Approach gives the aircraft no instruction until then, and the conflict resolver leaves it alone.
 
 On the map and over the API:
 - `ControlView.tcas` holds the advisory (`TA`/`RA`), the intruder, the aural (Table 4, Version 7.1) and the sense. The map shows a TA in amber and an RA in red with ↑ or ↓.

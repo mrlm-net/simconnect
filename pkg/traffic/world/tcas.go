@@ -254,7 +254,10 @@ func (w *tcasWatch) release(a traffic.TrackedAircraft) {
 }
 
 // report has the crew say "TCAS RA" or, over, "clear of conflict,
-// returning to assigned altitude" on the frequency it is on.
+// returning to (assigned clearance)" on the frequency it is on: the level
+// or approach it was last cleared to (Doc 4444 12.3.1.2 r, t; CAP 413
+// 5.32, 5.33), "assigned altitude" the FAA way. The controller answers
+// "roger" (12.3.1.2 s, u).
 func (w *tcasWatch) report(a traffic.TrackedAircraft, ra bool) {
 	cc := w.s.cc
 	it := cc.byTail(a.Tail)
@@ -265,15 +268,25 @@ func (w *tcasWatch) report(a traffic.TrackedAircraft, ra bool) {
 		it.mu.Unlock()
 	}
 	station, _ := cc.stationOf(icao, pos)
-	tx := traffic.ClearOfConflict(pos, station, a.Tail)
+	clearance := ""
+	if traffic.PhraseologyFor(icao) != traffic.PhraseologyFAA {
+		cc.assignedMu.Lock()
+		clearance = cc.assigned[a.Tail]
+		cc.assignedMu.Unlock()
+	}
+	tx := traffic.ClearOfConflictTo(pos, station, a.Tail, clearance)
 	if ra {
 		tx = traffic.TCASRAReport(pos, station, a.Tail)
 	}
-	if it != nil {
-		it.say(tx)
+	if it == nil {
+		cc.radio.Transmit(icao, tx)
 		return
 	}
-	cc.radio.Transmit(icao, tx)
+	it.say(tx)
+	p := cc.pending
+	p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.say(traffic.Acknowledge(pos, a.Tail))
+	})
 }
 
 // view is one of ours' TCAS for its ControlView; nil when quiet.

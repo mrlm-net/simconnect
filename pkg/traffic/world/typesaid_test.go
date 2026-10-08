@@ -7,7 +7,7 @@ import "testing"
 func TestTypeSaid(t *testing.T) {
 	for icao, want := range map[string]string{
 		"DH8D": "Dash 8", "B38M": "Boeing 737 MAX", "B738": "Boeing 737", "BCS3": "Airbus A220",
-		"PC12": "Pilatus PC-12", "A20N": "Airbus A320neo", "A321": "Airbus A321", "": "aircraft",
+		"PC12": "Pilatus PC-12", "C700": "Citation", "C25B": "Citation", "C172": "Cessna 172", "A20N": "Airbus A320neo", "A321": "Airbus A321", "": "aircraft",
 	} {
 		if got := typeSaid(icao); got != want {
 			t.Errorf("%q: %q, want %q", icao, got, want)

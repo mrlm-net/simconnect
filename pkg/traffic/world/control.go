@@ -154,6 +154,9 @@ type controlled struct {
 	// wake: its wake category, said in its first calls (initial).
 	wake      traffic.WakeCategory
 	placeSaid atomic.Int32
+	// extendSaid: told to extend its downwind on this circuit (said once,
+	// however often it is extended further).
+	extendSaid atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -297,8 +300,12 @@ type controlCenter struct {
 	// voice, camera and open maps. Set before the connection runs; nil none.
 	onTransmission func(traffic.Transmission)
 	onChange       func(topic string)
-	client         engine.Client
-	fleet          *traffic.Fleet
+	// assigned is each aircraft's last clearance as said (its level, its
+	// approach), named when it returns to it after a TCAS RA.
+	assignedMu sync.Mutex
+	assigned   map[string]string
+	client     engine.Client
+	fleet      *traffic.Fleet
 	// sim is what it does to the simulator beside the controllers (#710);
 	// onModels is told the aircraft titles found (an actuator's, for its
 	// director).
@@ -419,12 +426,13 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 	cc := &controlCenter{
 		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
-		models: map[string]bool{},
-		own:    map[uint32]bool{},
-		ids:    traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
-		detail: traffic.NewDetail(),
-		stands: map[string]*traffic.StandAllocator{},
-		game:   &game{log: log},
+		models:   map[string]bool{},
+		own:      map[uint32]bool{},
+		assigned: map[string]string{},
+		ids:      traffic.NewIDBlocks(controlDefBase, controlReqBase, controlIDBlock, controlBlocks),
+		detail:   traffic.NewDetail(),
+		stands:   map[string]*traffic.StandAllocator{},
+		game:     &game{log: log},
 	}
 	// Other traffic's phase by where it is on the airfield: the loaded
 	// layouts (cc.layout, set once the cache is there).
@@ -460,6 +468,11 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 				who = "pilot"
 			}
 			cc.log.printf("%-6s %s: %s", t.Callsign, who, t.Text)
+			if s, ok := traffic.AssignedClearance(t); ok {
+				cc.assignedMu.Lock()
+				cc.assigned[t.Callsign] = s
+				cc.assignedMu.Unlock()
+			}
 			if f := cc.onTransmission; f != nil {
 				f(t) // the front end: its voice, camera, open maps
 			}
@@ -2522,6 +2535,12 @@ func typeSaid(icao string) string {
 		return "Dash 8"
 	case icao == "PC12":
 		return "Pilatus PC-12"
+	case len(icao) == 4 && icao[0] == 'C' && (icao[1] == '5' || icao[1] == '6' || icao[1] == '7'):
+		return "Citation" // C56X Excel, C68A Latitude, C700 Longitude
+	case strings.HasPrefix(icao, "C25"):
+		return "Citation" // C25A, C25B: the CJs
+	case icao == "C208":
+		return "Caravan"
 	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:
 		return "Boeing 7" + icao[2:3] + "7"
 	case strings.HasPrefix(icao, "E1") || strings.HasPrefix(icao, "E7"):

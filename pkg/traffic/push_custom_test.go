@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"math"
 	"testing"
 )
 
@@ -43,5 +44,40 @@ func TestStandardPushAirports(t *testing.T) {
 		if found == 0 {
 			t.Errorf("%s: no stand with a standard push", icao)
 		}
+	}
+}
+
+// TestConfiguredPushPose: a stand's end pose configured without a drawn
+// path (#493) is where the planned push ends, whatever the runway would
+// choose: the pose a departure for 06 takes, given to one for 24.
+func TestConfiguredPushPose(t *testing.T) {
+	g := lkprGraph(t)
+	tried := 0
+	for _, p := range g.Layout.Parking {
+		if p.Radius < 15 || standFacesOut(g, p.Index) {
+			continue
+		}
+		a, errA := PlanPush(TaxiRequest{Graph: g, Parking: p.Index, Model: "A320", Runway: "24"})
+		b, errB := PlanPush(TaxiRequest{Graph: g, Parking: p.Index, Model: "A320", Runway: "06"})
+		if errA != nil || errB != nil || math.Abs(headingDiff(a.Heading, b.Heading)) < 90 {
+			continue
+		}
+		tried++
+		name := p.Label()
+		SetCustomPush("LKPR", name, PushRoute{Nose: b.Pose, Facing: b.Heading})
+		got, err := PlanPush(TaxiRequest{Graph: g, Parking: p.Index, Model: "A320", Runway: "24"})
+		ClearCustomPush("LKPR", name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if localDist(got.Pose, b.Pose) > customPushEdgeMeters || math.Abs(headingDiff(got.Heading, b.Heading)) > customPoseDeg {
+			t.Errorf("%s: push for 24 ends facing %.0f, configured %.0f (planned %.0f)", name, got.Heading, b.Heading, a.Heading)
+		}
+		if tried == 3 {
+			break
+		}
+	}
+	if tried == 0 {
+		t.Skip("no stand pushed differently for 24 and 06")
 	}
 }
