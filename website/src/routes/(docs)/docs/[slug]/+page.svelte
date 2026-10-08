@@ -34,8 +34,8 @@
 	}}
 />
 
-<div class="flex">
-	<article class="prose max-w-none min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
+<div class="flex justify-center">
+	<article class="doc prose min-w-0 flex-1 px-6 py-10 sm:px-10 lg:py-14">
 		{@html data.doc.renderedContent}
 
 		<!-- Prev/Next navigation -->
@@ -48,13 +48,12 @@
 				{#if data.prev}
 					<a
 						href="{base}/docs/{data.prev.slug}"
-						class="group flex flex-1 flex-col rounded-lg border p-4 transition-all duration-200"
-						style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+						class="card group flex flex-1 flex-col px-4 py-3 "
 					>
-						<span class="text-xs uppercase tracking-wider" style="color: var(--color-text-muted);">
+						<span class="eyebrow">
 							Previous
 						</span>
-						<span class="mt-1 font-medium" style="color: var(--color-link);">
+						<span class="mt-1 font-medium" style="color: var(--text);">
 							&larr; {data.prev.title}
 						</span>
 					</a>
@@ -64,13 +63,12 @@
 				{#if data.next}
 					<a
 						href="{base}/docs/{data.next.slug}"
-						class="group flex flex-1 flex-col items-end rounded-lg border p-4 text-right transition-all duration-200"
-						style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+						class="card group flex flex-1 flex-col items-end px-4 py-3 text-right "
 					>
-						<span class="text-xs uppercase tracking-wider" style="color: var(--color-text-muted);">
+						<span class="eyebrow">
 							Next
 						</span>
-						<span class="mt-1 font-medium" style="color: var(--color-link);">
+						<span class="mt-1 font-medium" style="color: var(--text);">
 							{data.next.title} &rarr;
 						</span>
 					</a>
@@ -86,7 +84,9 @@
 
 <style>
 	a.group:hover {
-		border-color: var(--color-link) !important;
-		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
+		border-color: var(--border-strong) !important;
+	}
+	.doc {
+		max-width: 52rem;
 	}
 </style>

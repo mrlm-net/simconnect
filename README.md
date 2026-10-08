@@ -1,7 +1,8 @@
 # mrlm-net/simconnect
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/mrlm-net/simconnect.svg)](https://pkg.go.dev/github.com/mrlm-net/simconnect)
-[![Documentation](https://img.shields.io/badge/docs-simconnect.mrlm.net-blue)](https://simconnect.mrlm.net/)
+[![Docs](https://img.shields.io/badge/docs-simconnect.mrlm.net-4a6884)](https://simconnect.mrlm.net/)
+[![License: BSL 1.1 · non-commercial](https://img.shields.io/badge/license-BSL%201.1%20%C2%B7%20non--commercial-6c7480)](LICENSE)
 
 > **Go wrapper for SimConnect.dll** — build Microsoft Flight Simulator 2020/2024 add-ons with type-safe, zero-dependency Go code.
 

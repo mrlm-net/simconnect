@@ -28,6 +28,14 @@ export interface SiteConfig {
 	ogImageHeight: number;
 	locale: string;
 	license: string;
+	/** Short label for the license pill, e.g. "BSL 1.1 · non-commercial". */
+	licenseLabel: string;
+	/** First year of the copyright line. */
+	since: number;
+	/** One or two characters in the brand mark. */
+	glyph: string;
+	/** Header links; match is the path prefix that marks a link active (default href). */
+	nav: { title: string; href: string; match?: string }[];
 }
 
 export interface DocMeta {

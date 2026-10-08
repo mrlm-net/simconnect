@@ -70,8 +70,8 @@
 	}}
 />
 
-<div class="px-8 py-6 lg:px-12 lg:py-10">
-	<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">Changelog</h1>
+<div class="mx-auto px-6 py-10 sm:px-10 lg:py-14" style="max-width: 52rem;">
+	<h1 class="mb-2 text-3xl font-semibold tracking-tight" style="color: var(--color-text-primary);">Changelog</h1>
 	<p class="mb-6" style="color: var(--color-text-secondary);">
 		Release history for the SimConnect Go SDK.
 	</p>
@@ -87,7 +87,7 @@
 				target="_blank"
 				rel="noopener noreferrer"
 				class="text-sm"
-				style="color: var(--color-link);"
+				style="color: var(--text);"
 			>
 				View releases on GitHub &nearr;
 			</a>
@@ -107,7 +107,7 @@
 					onclick={() => (activeTab = key)}
 					class="whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors"
 					style={isActive
-						? 'color: var(--color-text-primary); border-bottom: 2px solid var(--color-border-active); margin-bottom: -1px;'
+						? 'color: var(--color-text-primary); border-bottom: 2px solid var(--brand); margin-bottom: -1px;'
 						: 'color: var(--color-text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px;'}
 				>
 					{key}.x
@@ -128,7 +128,7 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							class="text-xl font-semibold transition-colors"
-							style="color: var(--color-link);"
+							style="color: var(--text);"
 						>
 							{release.tag}
 						</a>
@@ -140,7 +140,7 @@
 						{#if release.prerelease}
 							<span
 								class="rounded-full px-2 py-0.5 text-xs font-medium"
-								style="background-color: rgba(210, 153, 34, 0.15); color: #d2992a;"
+								style="background-color: var(--warn-soft); color: var(--warn);"
 							>
 								pre-release
 							</span>

@@ -137,8 +137,8 @@ func main() {
 	path="/getting-started"
 />
 
-<div class="flex">
-	<article class="prose max-w-none min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
+<div class="flex justify-center">
+	<article class="doc prose min-w-0 flex-1 px-6 py-10 sm:px-10 lg:py-14">
 		<h1>Getting Started</h1>
 		<p>
 			This guide walks you through installing the SimConnect Go SDK and connecting to Microsoft
@@ -168,7 +168,7 @@ func main() {
 		<div class="relative">
 			<button
 				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
-				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'install' ? '#3fb950' : 'var(--color-text-muted)'};"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'install' ? 'var(--ok)' : 'var(--color-text-muted)'};"
 				aria-label="Copy code"
 				onclick={() => copyCode('install', installCode)}
 			>
@@ -197,7 +197,7 @@ func main() {
 		<div class="relative">
 			<button
 				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
-				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'first-connection' ? '#3fb950' : 'var(--color-text-muted)'};"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'first-connection' ? 'var(--ok)' : 'var(--color-text-muted)'};"
 				aria-label="Copy code"
 				onclick={() => copyCode('first-connection', firstConnectionCode)}
 			>
@@ -216,7 +216,7 @@ func main() {
 		<div class="relative">
 			<button
 				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
-				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'run' ? '#3fb950' : 'var(--color-text-muted)'};"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'run' ? 'var(--ok)' : 'var(--color-text-muted)'};"
 				aria-label="Copy code"
 				onclick={() => copyCode('run', 'go run .')}
 			>
@@ -247,7 +247,7 @@ func main() {
 		<div class="relative">
 			<button
 				class="absolute top-2 right-2 flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors"
-				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'manager' ? '#3fb950' : 'var(--color-text-muted)'};"
+				style="background-color: var(--color-bg-tertiary); color: {copiedBlock === 'manager' ? 'var(--ok)' : 'var(--color-text-muted)'};"
 				aria-label="Copy code"
 				onclick={() => copyCode('manager', managerCode)}
 			>
@@ -285,8 +285,7 @@ func main() {
 					href={link.href}
 					target={link.external ? '_blank' : undefined}
 					rel={link.external ? 'noopener noreferrer' : undefined}
-					class="group rounded-lg border p-5 transition-all duration-200"
-					style="background-color: var(--color-bg-secondary); border-color: var(--color-border);"
+					class="card group block p-5"
 				>
 					<h3
 						class="mb-1 flex items-center gap-2 text-base font-semibold"
@@ -315,7 +314,9 @@ func main() {
 
 <style>
 	a.group:hover {
-		border-color: var(--color-link) !important;
-		box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.25);
+		border-color: var(--border-strong) !important;
+	}
+	.doc {
+		max-width: 52rem;
 	}
 </style>

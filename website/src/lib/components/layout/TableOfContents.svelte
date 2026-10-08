@@ -34,25 +34,17 @@
 </script>
 
 {#if headings.length > 0}
-	<nav
-		class="pt-12 pb-6 pr-6"
-		style="min-width: 280px;"
-		aria-label="Table of contents"
-	>
-		<p
-			class="mb-3 text-xs font-semibold uppercase tracking-wider"
-			style="color: var(--color-text-muted);"
-		>
-			On this page
-		</p>
-		<ul class="space-y-1 text-sm">
+	<nav class="toc pt-10 pb-6 pr-6" aria-label="Table of contents">
+		<p class="eyebrow mb-3">On this page</p>
+		<ul class="text-[0.8125rem]">
 			{#each headings as heading (heading.id)}
 				{@const active = activeId === heading.id}
 				<li>
 					<a
 						href="#{heading.id}"
-						class="block py-0.5 transition-colors"
-						style="color: {active ? 'var(--color-link)' : 'var(--color-text-muted)'};"
+						class="entry"
+						class:on={active}
+						style="padding-left: {heading.depth >= 4 ? 1.75 : heading.depth === 3 ? 1.15 : 0.75}rem;"
 					>
 						{heading.text}
 					</a>
@@ -61,3 +53,26 @@
 		</ul>
 	</nav>
 {/if}
+
+<style>
+	.toc {
+		width: 260px;
+	}
+	.entry {
+		display: block;
+		padding-top: 0.22rem;
+		padding-bottom: 0.22rem;
+		border-left: 1px solid var(--border);
+		color: var(--text-3);
+		line-height: 1.4;
+		transition: color 120ms, border-color 120ms;
+	}
+	.entry:hover {
+		color: var(--text);
+	}
+	.entry.on {
+		color: var(--text);
+		border-left-color: var(--brand);
+		box-shadow: inset 1px 0 0 var(--brand);
+	}
+</style>
