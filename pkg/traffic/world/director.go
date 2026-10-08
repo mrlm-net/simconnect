@@ -166,6 +166,9 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		},
 		bus: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile, title string, n int) traffic.FuelService {
 			return newBus(cc, client, title, g, w.ReqBase, prof, n)
+		},
+		followMe: func(w arrivalStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FollowMeService {
+			return newFollowMe(cc, client, w.FollowMe, g, w.ReqBase, prof)
 		}}
 	a.heard = st.core.hooks.OnTransmission
 	srv.add("sim", a)

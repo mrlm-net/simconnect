@@ -15,11 +15,12 @@ import (
 type VehicleKind string
 
 const (
-	VehicleTug    VehicleKind = "tug"
-	VehicleFuel   VehicleKind = "fuel"
-	VehicleStairs VehicleKind = "stairs"
-	VehicleGPU    VehicleKind = "gpu"
-	VehicleBus    VehicleKind = "bus" // #887
+	VehicleTug      VehicleKind = "tug"
+	VehicleFuel     VehicleKind = "fuel"
+	VehicleStairs   VehicleKind = "stairs"
+	VehicleGPU      VehicleKind = "gpu"
+	VehicleBus      VehicleKind = "bus"      // #887
+	VehicleFollowMe VehicleKind = "followme" // #890
 )
 
 // ServiceFleet hands out an airport's service vehicles.
@@ -102,6 +103,10 @@ const (
 	// BusesPerStairs: buses per set of stairs (#887), enough for two large
 	// aircraft boarding at once on every set.
 	BusesPerStairs = BusesLarge
+	// Follow-me cars (#890): one per FollowMePerStands stands, at least
+	// MinFollowMe.
+	FollowMePerStands = 30.0
+	MinFollowMe       = 1
 )
 
 // DefaultFleetSize is an airport's fleet for its number of stands.
@@ -110,8 +115,9 @@ func DefaultFleetSize(stands int) map[VehicleKind]int {
 		VehicleTug:  max(MinTugs, int(math.Ceil(float64(stands)/TugsPerStands))),
 		VehicleFuel: max(MinFuelTrucks, int(math.Ceil(float64(stands)/FuelTrucksPerStands))),
 		// Stairs serve the remote stands only: one set per StairsPerStands.
-		VehicleStairs: max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
-		VehicleGPU:    max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
-		VehicleBus:    BusesPerStairs * max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleStairs:   max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleGPU:      max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleBus:      BusesPerStairs * max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleFollowMe: max(MinFollowMe, int(math.Ceil(float64(stands)/FollowMePerStands))),
 	}
 }

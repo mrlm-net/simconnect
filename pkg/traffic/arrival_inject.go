@@ -242,7 +242,7 @@ func (c *ArrivalController) frameDetail(pose GroundPose) {
 	if c.detail == nil {
 		return
 	}
-	full := c.state <= ArrivalVacating
+	full := c.state <= ArrivalVacating || c.followMeDriving()
 	if n, changed := c.detailS.want(c.detail, c.now(), pose.Position, pose.GroundSpeedKts > 0.5, full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
 			c.note("monitor detail", requestFrames(client, c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID, n))
@@ -257,6 +257,7 @@ func (c *ArrivalController) onInjectedFrame() {
 	// Off the runway the arrival follows the traffic ahead (#334).
 	c.followTraffic = c.state == ArrivalVacating || c.state == ArrivalTaxiing || c.state == ArrivalParking
 	pose := c.step()
+	c.updateFollowMe(pose)
 	c.frameDetail(pose)
 	path := c.mover.Path()
 	c.last.Position, c.last.Heading, c.last.GroundSpeed, c.last.OnGround = pose.Position, pose.Heading, pose.GroundSpeedKts, true
@@ -338,7 +339,9 @@ func (c *ArrivalController) onInjectedFrame() {
 			// Engines off on the stand: they ran on at idle (live, QTR1709's
 			// B77W at B14), and no jetway comes to a running aircraft.
 			c.note("engines off", c.inj.SetEngines(c.objectID, c.aircraft().EngineCount(), false))
-			c.stopMonitor()
+			if c.fm == nil {
+				c.stopMonitor() // else its frames drive the follow-me car home (#890)
+			}
 			c.setState(ArrivalParked, nil)
 			return
 		}
