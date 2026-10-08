@@ -613,14 +613,17 @@ func TestMaintainLevel(t *testing.T) {
 		t.Fatalf("conflicts %+v", cs)
 	}
 	r, ok := ResolveConflict(cs[0], all, ours, o)
-	if !ok || r.Kind != ResolveLevel || !r.Maintain || r.AltFt != 10000 {
-		t.Fatalf("%+v %v, want maintain 10000", r, ok)
+	// Down as close to the traffic as the minimum allows, as a climb or
+	// descent under way is stopped (GHLIQ held at 2800 ft for traffic at
+	// 10000 ft): "descend to 7000 feet", gone on from once clear.
+	if !ok || r.Kind != ResolveLevel || !r.Stop || !r.FromLevel || r.AltFt != 7000 {
+		t.Fatalf("%+v %v, want descend to 7000 (a stop from level)", r, ok)
 	}
 	tx := Resolved(PosCenter, r, arr.AltFt, arr.Heading, arr.GroundKts)
-	if !strings.HasPrefix(tx.Text, "BAW1413, maintain 10000 feet") {
+	if !strings.HasPrefix(tx.Text, "BAW1413, descend to 7000 feet") {
 		t.Errorf("%q", tx.Text)
 	}
-	if rb, ok := Readback(tx); !ok || rb.Text != "Maintain 10000 feet, BAW1413" {
+	if rb, ok := Readback(tx); !ok || !strings.HasPrefix(rb.Text, "Descend to 7000 feet") {
 		t.Errorf("readback %q %v", rb.Text, ok)
 	}
 }
@@ -669,5 +672,32 @@ func TestPastEndTrimsPassedPoints(t *testing.T) {
 		alts: []float64{10000, 10000}}.pastEnd()
 	if len(tr.path) != 1 || tr.path[0].Lon != 14.2 || len(tr.alts) != 1 {
 		t.Errorf("path %v alts %v, want the point ahead only", tr.path, tr.alts)
+	}
+}
+
+// TestClimbFromLevelTowardTraffic: a departure level on its SID with its
+// route climbing on, traffic level above: cleared up to the minimum below
+// the traffic, "climb to 9000 feet", not held where it is (live, GHLIQ
+// "maintain 2800 feet" for traffic at 10000 ft 4 minutes off).
+func TestClimbFromLevelTowardTraffic(t *testing.T) {
+	dep := air(1, "GHLIQ", 0, 0, 2800, 270, 250, 0, true)
+	other := air(2, "OKXEJ", -25, 0, 10000, 90, 250, 0, false)
+	all := []TrackedAircraft{dep, other}
+	o := ConflictOptions{Profile: func(a TrackedAircraft) []RoutePoint {
+		if a.ObjectID == 1 {
+			return []RoutePoint{pt(-5, 0, 10000), pt(-40, 0, 10000)}
+		}
+		return nil
+	}}
+	cs := PredictConflicts(all, o)
+	if len(cs) != 1 {
+		t.Fatalf("conflicts %+v", cs)
+	}
+	r, ok := ResolveConflict(cs[0], all, ours, o)
+	if !ok || r.Kind != ResolveLevel || r.AltFt != 9000 || !r.FromLevel {
+		t.Fatalf("%+v %v, want climb to 9000", r, ok)
+	}
+	if tx := Resolved(PosDeparture, r, dep.AltFt, dep.Heading, dep.GroundKts); !strings.HasPrefix(tx.Text, "GHLIQ, climb to 9000 feet") {
+		t.Errorf("%q", tx.Text)
 	}
 }

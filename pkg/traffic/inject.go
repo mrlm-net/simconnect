@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -36,6 +37,7 @@ var (
 // Like the other types in this package, Injector never reads the client's
 // stream.
 type Injector struct {
+	now              func() time.Time // the wall clock (tests set it)
 	client           engine.Client
 	defBase, reqBase uint32
 	evtBase          uint32
@@ -71,6 +73,7 @@ type injected struct {
 	// title: the aircraft title (SetModel); onGroundRun: our placements on
 	// the ground in a row.
 	title       string
+	placedAt    time.Time // when it was last placed on the ground (place)
 	onGroundRun int
 }
 
@@ -170,6 +173,7 @@ func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOpti
 func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 	i := &Injector{
 		client:    client,
+		now:       time.Now,
 		defBase:   DefaultInjectDefinitionBase,
 		reqBase:   DefaultInjectRequestBase,
 		evtBase:   DefaultInjectEventBase,
@@ -366,6 +370,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	}
 	if !moving { // an aircraft (vehicles are placed moving): its struts drawn extended (#676)
 		pitch += movingPitch(pose.GroundSpeedKts)
+		o.placedAt = i.now()
 	}
 	o.placed = true
 	o.onGroundRun++
@@ -477,7 +482,13 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
 			rest := g.PlaneFt - g.GroundFt
-			if !o.placed && g.OnGround != 0 && g.GS < restMaxKts &&
+			// Placed and left alone a while (standing, placed at the standing
+			// rate): where the simulator settled it is its rest, not where it
+			// was first seen (frozen at its static height as created); placed
+			// there, it no longer sinks 0.3 ft as it stops nor rises as it
+			// starts (live, RYR852 8.48 → 8.13 ft).
+			settled := o.placed && !o.placedAt.IsZero() && i.now().Sub(o.placedAt) >= restSettleAfter
+			if (!o.placed || settled) && g.OnGround != 0 && g.GS < restMaxKts &&
 				math.Abs(rest-g.CGFt) <= restMaxOffFt && math.Abs(g.PlanePitch-g.StaticPitch) <= restMaxOffPitch {
 				o.restFt, o.restPitch, o.haveRest = rest, g.PlanePitch, true
 				if o.title != "" {
@@ -734,3 +745,8 @@ const (
 	TakeoffThrottlePct  = 90.0
 	ApproachThrottlePct = 45.0
 )
+
+// restSettleAfter: an aircraft on the ground not placed for this long (its
+// standing rate) has been settled by the simulator: its rest is learnt
+// again from what it shows.
+const restSettleAfter = 250 * time.Millisecond

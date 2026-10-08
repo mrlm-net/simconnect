@@ -1200,7 +1200,7 @@ func Resolved(pos Position, r Resolution, altFt, hdg, kts float64, where ...Said
 		if r.AltFt < altFt {
 			t.Params[ParamClimb] = "descend"
 		}
-		if r.Stop {
+		if r.Stop && !r.FromLevel { // level now: "climb to" / "descend to" it, as set above
 			t.Params[ParamClimb] = "stop climb"
 			if r.AltFt < altFt {
 				t.Params[ParamClimb] = "stop" // stop descent

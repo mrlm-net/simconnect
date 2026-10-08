@@ -3,6 +3,7 @@ package traffic
 import (
 	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -61,5 +62,41 @@ func TestInjectorRestByModel(t *testing.T) {
 	}
 	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
 		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
+	}
+}
+
+// TestInjectorLearnsSettledRest: placed standing and then left alone, the
+// height the simulator settles an aircraft at becomes its rest; a sample
+// right after a placement (our own) does not.
+func TestInjectorLearnsSettledRest(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	w := time.Date(2026, 10, 8, 23, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { return w }
+	const obj = 42
+	if err := inj.Takeover(obj); err != nil {
+		t.Fatal(err)
+	}
+	created := injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.7, PlaneFt: 1208.48, PlanePitch: 0.7, OnGround: 1}
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, created))
+	pose := GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}
+	placedAlt := func() float64 {
+		var got types.SIMCONNECT_DATA_INITPOSITION
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+		return got.Altitude
+	}
+	inj.Place(obj, pose)
+	settled := created
+	settled.PlaneFt = 1208.13
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, settled)) // at once: ours
+	inj.Place(obj, pose)
+	if got := placedAlt(); math.Abs(got-1208.48) > 1e-6 {
+		t.Fatalf("learnt from a sample right after placing: %.2f", got)
+	}
+	w = w.Add(300 * time.Millisecond)
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, settled)) // the sim settled it
+	inj.Place(obj, pose)
+	if got := placedAlt(); math.Abs(got-1208.13) > 1e-6 {
+		t.Errorf("placed at %.2f, want the settled 1208.13", got)
 	}
 }
