@@ -72,23 +72,15 @@ client.SubscribeToSystemEvent(1002, "Sound")  // Sound on/off events
 
 Each subscription assigns a unique event ID that will be returned in the `UEventID` field of received event messages.
 
-### Available System Events
+### The Events This Example Subscribes To
 
-SimConnect provides various system events you can subscribe to:
+| Event ID | Event Name | Description |
+|----------|------------|-------------|
+| 1000 | `Pause` | Simulator paused/unpaused (0=unpaused, 1=paused) |
+| 1001 | `Sim` | Simulation started/stopped (0=stopped, 1=started) |
+| 1002 | `Sound` | Master sound toggled (0=off, 1=on) |
 
-| Event Name | Description |
-|------------|-------------|
-| `Pause` | Triggered when simulator is paused/unpaused (0=unpaused, 1=paused) |
-| `Sim` | Triggered when simulation starts/stops (0=stopped, 1=started) |
-| `Sound` | Triggered when master sound is toggled (0=off, 1=on) |
-| `1sec` | Triggered every second |
-| `4sec` | Triggered every 4 seconds |
-| `6Hz` | Triggered 6 times per second |
-| `Frame` | Triggered every frame |
-| `AircraftLoaded` | Triggered when aircraft is loaded |
-| `FlightLoaded` | Triggered when flight is loaded |
-| `FlightSaved` | Triggered when flight is saved |
-| `Crashed` | Triggered when aircraft crashes |
+SimConnect has more system events (timers, aircraft/flight loaded, crashes and others); see [Events Lifecycle](../../docs/events-lifecycle.md) and the SDK's `SubscribeToSystemEvent` reference.
 
 ### Event Processing
 

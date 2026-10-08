@@ -267,6 +267,6 @@ client.TransmitClientEvent(objectID, doorCloseEvent, 0, eventGroupPriority)
 
 ## See Also
 
-- [AI Traffic API](../../docs/config-client.md) — Complete AI traffic methods
+- [AI Traffic API](../../docs/engine-ai-objects.md) — Complete AI traffic methods
 - [Datasets Package](../../pkg/datasets/traffic) — Pre-built traffic data definitions
 - [MSFS Flight Plans](https://www.microsoft.com/en-us/p/microsoft-flight-simulator/9nxbk56z6h0t) — Flight plan format documentation

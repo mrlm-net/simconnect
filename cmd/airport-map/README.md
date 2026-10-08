@@ -49,7 +49,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and t
 | `-piper` | `bin/piper/piper.exe` | piper executable for the voice (see [Voice](#voice)) |
 | `-voices` | | Folder of piper voice models; empty: voice-goio's user data folder |
 | `-accents` | `false` | Controllers speak English with their airport's accent (the country's voice model on English phonemes); off until those models are trained for English |
-| `-airways` | `pkg/nav/testdata/LKPR-airways.json` | Airway graph for flight plans (see [`spike-airways`](../spike-airways)); `""` for direct routes |
+| `-airways` | `pkg/nav/testdata/LKPR-airways.json` | Airway graph for flight plans (see [`spike-airways`](../../examples/spike-airways)); `""` for direct routes |
 
 The map page loads Leaflet from cdnjs and map tiles from OpenStreetMap and Esri, so the browser needs internet access.
 

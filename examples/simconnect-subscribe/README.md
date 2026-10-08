@@ -2,12 +2,12 @@
 
 ## Overview
 
-This example demonstrates how to use the **Subscribe pattern** for receiving messages and state changes from the Manager interface. Instead of using callbacks (`OnMessage`, `OnStateChange`), this example shows how to create channel-based subscriptions for both message handling and state change monitoring, which is useful for isolating processing in separate goroutines or implementing fan-out patterns.
+This example demonstrates how to use the **Subscribe pattern** for receiving messages and state changes from the Manager interface. Instead of using callbacks (`OnMessage`, `OnConnectionStateChange`), this example shows how to create channel-based subscriptions for both message handling and state change monitoring, which is useful for isolating processing in separate goroutines or implementing fan-out patterns.
 
 ## What It Does
 
 1. **Channel-based message delivery** - Uses `Subscribe()` to receive messages via Go channels
-2. **Channel-based state change delivery** - Uses `SubscribeStateChange()` to receive state changes via Go channels
+2. **Channel-based state change delivery** - Uses `SubscribeConnectionStateChange()` to receive state changes via Go channels
 3. **Automatic connection management** - Manager handles connect/disconnect lifecycle automatically
 4. **State-based setup** - Registers data definitions and subscriptions when connection becomes available
 5. **Automatic reconnection** - Reconnects automatically if the simulator disconnects or restarts
@@ -87,7 +87,7 @@ This example uses the **Subscribe pattern** for both messages and state changes:
 
 #### State Change Subscriptions
 
-| Feature | SubscribeStateChange (`mgr.SubscribeStateChange`) | OnStateChange (`mgr.OnStateChange`) |
+| Feature | SubscribeConnectionStateChange (`mgr.SubscribeConnectionStateChange`) | OnConnectionStateChange (`mgr.OnConnectionStateChange`) |
 |---------|--------------------------------------------------|-----------------------------------|
 | State delivery | Via Go channel | Via callback function |
 | Concurrency | Consumer controls processing | Callback runs in state updater |
@@ -110,7 +110,7 @@ Parameters:
 
 ```go
 // Create a state change subscription with ID and buffer size
-stateSub := mgr.SubscribeStateChange("state-subscriber", 16)
+stateSub := mgr.SubscribeConnectionStateChange("state-subscriber", 16)
 ```
 
 Parameters:
@@ -150,7 +150,7 @@ The subscription provides:
 go func() {
     for {
         select {
-        case change, ok := <-stateSub.StateChanges():
+        case change, ok := <-stateSub.ConnectionStateChanges():
             if !ok {
                 // Channel closed, subscription ended
                 return
@@ -171,14 +171,16 @@ go func() {
 ```
 
 The state subscription provides:
-- `StateChanges()` - Returns a receive-only channel for `StateChange` events
+- `ConnectionStateChanges()` - Returns a receive-only channel for `ConnectionStateChange` events
 - `Done()` - Returns a channel that closes when the subscription ends
 - `ID()` - Returns the subscription identifier
 - `Unsubscribe()` - Cancels the subscription and releases resources
 
-The `StateChange` struct contains:
+The `ConnectionStateChange` struct contains:
 - `OldState` - The previous connection state
 - `NewState` - The new connection state
+
+Simulator state (pause, sim running, camera and the rest of `SimState`) has the same pair: `OnSimStateChange` and `SubscribeSimStateChange`.
 
 ### Cleanup
 
@@ -196,7 +198,7 @@ You can use both callbacks and subscriptions simultaneously. This example demons
 
 ```go
 // Callback-based state handling (immediate, synchronous)
-mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
+mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
     switch newState {
     case manager.StateConnected:
         // Setup data definitions when connected
@@ -209,16 +211,15 @@ mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
 })
 
 // Channel-based state handling (asynchronous, independent goroutine)
-stateSub := mgr.SubscribeStateChange("state-logger", 16)
+stateSub := mgr.SubscribeConnectionStateChange("state-logger", 16)
 go func() {
-    for change := range stateSub.StateChanges() {
+    for change := range stateSub.ConnectionStateChanges() {
         log.Printf("State: %s -> %s", change.OldState, change.NewState)
     }
 }()
 ```
 
 Both callbacks and subscriptions receive the same state changes, allowing different components to handle them independently.
-```
 
 ## Data Structures
 
@@ -265,14 +266,14 @@ type AircraftData struct {
 
 ### State Change Subscriptions
 
-**Use SubscribeStateChange when:**
+**Use SubscribeConnectionStateChange when:**
 - You need to monitor state changes in isolated goroutines
 - You want to decouple state handling from the main flow
 - You need multiple independent state change consumers
 - Building reactive architectures with state-driven behavior
 - You prefer channel-based concurrency patterns
 
-**Use OnStateChange when:**
+**Use OnConnectionStateChange when:**
 - You need immediate, synchronous reaction to state changes
 - Setting up resources (data definitions) when connection is ready
 - Simple callback-based handling is sufficient
@@ -300,8 +301,8 @@ go updateUI(sub3)
 
 ```go
 // Create multiple state subscriptions
-stateSub1 := mgr.SubscribeStateChange("connection-monitor", 16)
-stateSub2 := mgr.SubscribeStateChange("metrics-collector", 16)
+stateSub1 := mgr.SubscribeConnectionStateChange("connection-monitor", 16)
+stateSub2 := mgr.SubscribeConnectionStateChange("metrics-collector", 16)
 
 // Each subscription receives all state changes independently
 go monitorConnection(stateSub1)

@@ -218,7 +218,7 @@ Smaller examples, each showing one part of the API.
 | [flight-plan](https://github.com/mrlm-net/simconnect/tree/main/examples/flight-plan) | An IFR plan between two airports over the airways, printed, and written as a `.pln` with `-out` | [Flight Plans](nav-flight-plans.md) |
 | [spike-airways](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airways) | Crawl the airway network around a centre and save it as JSON (the map's `-airways`) | [Airways](nav-airways.md) |
 
-### Spikes
+### Spikes (throwaway experiments)
 
 Experiments kept as a record of how the traffic features were found. Each answers one question about the simulator; they are not maintained as examples.
 
@@ -227,19 +227,26 @@ Experiments kept as a record of how the traffic features were found. Each answer
 | [spike-airlines](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airlines) | Can the airlines of a parking spot be read? |
 | [spike-approach](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-approach) | Can a final approach, flare and rollout be flown by position injection? |
 | [spike-camera](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-camera) | What does the MSFS 2024 add-on camera API report, and can it hold a camera behind and above the aircraft? |
+| [spike-coldspawn](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-coldspawn) | How does a non-ATC departure appear on its stand: when assigned, are its engines running, how do they run down? |
+| [spike-designspeeds](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-designspeeds) | Which design and stall speed SimVars does MSFS fill, for computed take-off speeds? |
 | [spike-flare](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-flare) | Which flare profile gives a good touchdown? |
 | [spike-gear](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-gear) | How is the gear of a non-ATC aircraft lowered? |
 | [spike-geometry](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-geometry) | What does the simulator report of an aircraft's gear, span and CG? |
 | [spike-ground-near](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-ground-near) | Which ground objects matching a title are near the user aircraft, and where? |
 | [spike-ground-titles](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-ground-titles) | Which ground vehicle titles (stairs, GPUs, loaders, buses) can be spawned? |
+| [spike-gsx](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-gsx) | What is GSX's state on the user aircraft (`pkg/gsx`, printed once)? |
 | [spike-inject](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-inject) | Can a frozen AI aircraft be moved along a taxi route by injection? |
 | [spike-landing](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-landing) | Waypoints or ATC for landing, and a takeover on the ground |
 | [spike-lights](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lights) | How are the lights of a non-ATC aircraft switched? |
 | [spike-lighttiming](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lighttiming) | When does MSFS AI switch the lights of a taxiing aircraft? |
+| [spike-lvars](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lvars) | Which switch moves which variable? Watches L:vars or SimVars of the user aircraft every 200 ms |
+| [spike-lvarwrite](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-lvarwrite) | Can an app create an L:var of its own for others to read? Writes it and reads it back |
 | [spike-procedures](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-procedures) | The record layout of SIDs, STARs and approaches |
 | [spike-profile](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-profile) | Which type SimVars do AI aircraft report reliably? |
 | [spike-redefine](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-redefine) | What does a second airport loader on the same connection get? |
 | [spike-speed](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-speed) | How can an AI approach be flown slower? |
+| [spike-speeds](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-speeds) | Which take-off speeds does the user aircraft's systems profile give? |
+| [spike-tcas](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-tcas) | Does the map's TCAS see a head-on intruder (polls `/api/tcas` for two minutes)? |
 | [spike-throttle](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-throttle) | Do an AI aircraft's engines follow a throttle set from outside? |
 | [spike-touchdown](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-touchdown) | Does an injected landing dip below the runway at touchdown? |
 | [spike-transition](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-transition) | What do an airport's `TRANSITION_ALTITUDE` and `TRANSITION_LEVEL` read as? |

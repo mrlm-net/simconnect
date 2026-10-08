@@ -1,6 +1,8 @@
 ---
 title: "Dictionaries"
 description: "Replace the library's embedded tables at runtime with pkg/dict: airlines, aircraft types, wake, performance, airport names and limits, ATC units, GA types, systems profiles."
+order: 17
+section: "packages"
 ---
 
 # Dictionaries

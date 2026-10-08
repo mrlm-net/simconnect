@@ -9,7 +9,7 @@ section: "client"
 
 > **MSFS 2024 only.** The Input Event API (`EnumerateInputEvents`, `GetInputEvent`, `SetInputEventDouble` / `SetInputEventString`, `SubscribeInputEvent`, `UnsubscribeInputEvent`) is not present in the MSFS 2020 SimConnect SDK. Calling these methods with a `SimConnect.dll` that lacks the export panics (the procedure is not found), so check the simulator version before calling them. The `As*` message helpers (`AsEnumerateInputEvents()`, `AsGetInputEvent()`, `AsSubscribeInputEvent()`) will always return `nil` when connected to MSFS 2020 because the simulator never sends the corresponding `DwID` values.
 
-> **See also:** [Engine/Client API Reference](usage-engine-api.md) for the full API surface, including the Input Event section with a compact example.
+> **See also:** [Engine/Client Usage](usage-client.md) for the client API and the full list of message helpers.
 
 ## What Are Input Events?
 
@@ -340,7 +340,6 @@ func main() {
 
 ## See Also
 
-- [Engine/Client API Reference](usage-engine-api.md) — Full Input Event API section with the complete method reference table
 - [Engine/Client Usage](usage-client.md) — General dispatch loop patterns and message handling
 - [Input Events (Manager)](manager-input-events.md) — Using Input Events through the manager with lifecycle-managed reconnection and auto-reconnect considerations
 - [Client Configuration](config-client.md) — Connection options

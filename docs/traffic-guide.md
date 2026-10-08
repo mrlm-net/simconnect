@@ -10,7 +10,8 @@ section: "traffic"
 > **Ground routing:** taxi routes between stands and runways come from
 > [pkg/airport](airport-layout.md), and [Departure Taxi](traffic-taxi.md) drives an AI
 > aircraft along them (pushback, taxi, hold short, take-off). This guide covers the
-> underlying `Fleet` and waypoint helpers.
+> underlying `Fleet` and waypoint helpers. For the raw Engine `AICreate*` calls the
+> Fleet wraps, see [Engine AI Objects](engine-ai-objects.md).
 
 The rest of `pkg/traffic` builds on the `Fleet`:
 

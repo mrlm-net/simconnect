@@ -102,10 +102,10 @@ The Manager tracks these connection states:
 
 ### State Change Handler
 
-Register a callback to respond to state transitions:
+Register a callback to respond to connection state transitions (`OnConnectionStateChange` returns a handler ID for `RemoveConnectionStateChange`):
 
 ```go
-mgr.OnStateChange(func(oldState, newState manager.ConnectionState) {
+_ = mgr.OnConnectionStateChange(func(oldState, newState manager.ConnectionState) {
     switch newState {
     case manager.StateConnected:
         // Setup data definitions when connected
