@@ -122,7 +122,13 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		return fmt.Errorf("no model of a %s", f.Type)
 	}
 	model := models[(f.Attempts-1)%len(models)]
-	fp, err := planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type)
+	var fp *nav.FlightPlan
+	var err error
+	if f.Arrival() {
+		fp, err = planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type)
+	} else { // an overflight: its ends where they are, not loaded
+		fp, err = planOverflight(context.Background(), st, f.Origin, f.Destination, f.Type)
+	}
 	if err != nil {
 		return fmt.Errorf("flight plan %s → %s: %w", f.Origin, f.Destination, err)
 	}
