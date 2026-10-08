@@ -335,6 +335,10 @@ type Resolution struct {
 	// descend is held at AltFt ("maintain flight level 100", Doc 4444
 	// 12.3.2.3 a), to go on once clear of the traffic (#697).
 	Maintain bool `json:"maintain,omitempty"`
+	// FromLevel (a Stop): the aircraft is level now, its route climbing
+	// (descending) ahead: said "climb to 9000 feet", not "stop climb", and
+	// gone on from once clear like any stop.
+	FromLevel bool `json:"fromLevel,omitempty"`
 	// Fix and Direct (direct): the fix of the route flown to.
 	Fix    string          `json:"fix,omitempty"`
 	Direct *airport.LatLon `json:"direct,omitempty"`
@@ -389,8 +393,15 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 	// back to the next one on its way, the highest first: the traffic may
 	// itself be descending (climbing) toward it, and the first that keeps
 	// clear of it all the look-ahead is taken.
-	if base.fpm != 0 {
-		up := base.fpm > 0
+	// Level now with its route climbing (descending) ahead counts too: a
+	// departure level on its SID's 3000 ft was told "maintain 2800 feet"
+	// for traffic at 10000 ft 4 minutes off (live, GHLIQ), not 9000.
+	dir := base.fpm
+	if dir == 0 {
+		dir = float64(profileWay(base))
+	}
+	if dir != 0 {
+		up := dir > 0
 		next := math.Ceil((a.AltFt+500)/1000) * 1000
 		top := math.Floor((other.AltFt-minFt)/1000) * 1000
 		step := -1000.0
@@ -406,7 +417,7 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 				}
 				t := base
 				t.level = alt
-				add(Resolution{Kind: ResolveLevel, AltFt: alt, Stop: true}, t, levelCost+0.7+float64(k)*0.002)
+				add(Resolution{Kind: ResolveLevel, AltFt: alt, Stop: true, FromLevel: base.fpm == 0}, t, levelCost+0.7+float64(k)*0.002)
 			}
 		}
 	}
