@@ -287,7 +287,11 @@ function tagFor(t) {
   const v = t.ours ? ctlViews.find((x) => x.tail === t.tail && !x.done) : null;
   // TCAS (#450): a TA in amber, an RA in red with its sense.
   const tc = v && v.tcas ? `<br><span class="tcas tcas--${v.tcas.advisory === 'RA' ? 'ra' : 'ta'}">${v.tcas.advisory}${v.tcas.sense > 0 ? ' ↑' : v.tcas.sense < 0 ? ' ↓' : ''} ${esc(v.tcas.intruder || '')}</span>` : '';
-  return `<b>${vsArrow(t)}${cs}</b>${v && v.rules === 'VFR' ? ' <span class="rules rules--v">VFR</span>' : ''}<br>${line}${tc}`;
+  // Its place in the approach sequence and the distance to go, so the order
+  // reads right on a STAR that loops past the field.
+  const s = t.ours && !t.onGround ? seqEntry(t.tail) : null;
+  const sq = s ? `<br><span class="seqtag">#${s.e.number || s.i + 1} <i>·</i> ${s.e.distanceToGoNM.toFixed(0)} NM</span>` : '';
+  return `<b>${vsArrow(t)}${cs}</b>${v && v.rules === 'VFR' ? ' <span class="rules rules--v">VFR</span>' : ''}<br>${line}${sq}${tc}`;
 }
 const shortState = (s) => (s || '').replace(/^STATE_/, '').toLowerCase().replace(/_/g, ' ');
 const KIND_NOTE = { enroute: 'arrival en route (MSFS AI on its plan, handed over at the STAR entry)', overflight: 'overflight (MSFS AI on its plan, crossing the area)', departed: 'departed (MSFS AI on its plan after the SID)', controlled: 'under our control', other: 'other traffic (not ours)' };
