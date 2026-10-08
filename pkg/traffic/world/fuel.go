@@ -29,6 +29,8 @@ type fuelTitles struct {
 	gpus, gpusStock     []string
 	// buses (#887): GSX's apron buses (base models), MSFS's own.
 	buses, busesStock []string
+	// followMe (#890): GSX's follow-me cars (base models).
+	followMe []string
 }
 
 func (cc *controlCenter) requestFuelTitles() error {
@@ -80,6 +82,8 @@ func (cc *controlCenter) addGroundTitles(titles []string) {
 			cc.fuelTitles.buses = insertSorted(cc.fuelTitles.buses, t)
 		case t == "Bus Apron 02":
 			cc.fuelTitles.busesStock = insertSorted(cc.fuelTitles.busesStock, t)
+		case gsxFollowMe[t]:
+			cc.fuelTitles.followMe = insertSorted(cc.fuelTitles.followMe, t)
 		}
 	}
 }
@@ -258,4 +262,37 @@ func newBus(cc *controlCenter, client engine.Client, title string, g *airport.Gr
 	b.Layout = g.Layout
 	cc.giveATC(b, g.Layout, "bus")
 	return b
+}
+
+// GSX's follow-me cars (#890), base models (some 200 liveries each). MSFS
+// 2024 ships none of its own (live, 2026-10-08): without GSX, no car.
+var gsxFollowMe = map[string]bool{"FSDT_FollowMe_Hilux": true, "FSDT_FollowMe_class_B": true}
+
+// followMe is the follow-me car of an arrival (#890): an airliner to a
+// remote stand (not a gate), landing injected, when the simulator has one;
+// created with the last request ID of its block (an arrival has no tug).
+func (cc *controlCenter) followMe(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) traffic.FollowMeService {
+	if r.Kind != "arrival" || r.AILanding || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+		return nil
+	}
+	if g.Layout.Parking[r.Stand].IsGate() {
+		return nil
+	}
+	cc.mu.Lock()
+	list := cc.fuelTitles.followMe
+	cc.mu.Unlock()
+	if len(list) == 0 {
+		return nil
+	}
+	h := fnv.New32a()
+	h.Write([]byte(g.Layout.ICAO))
+	return newFollowMe(cc, cc.client, list[int(h.Sum32()%uint32(len(list)))], g, reqBase, prof)
+}
+
+// newFollowMe is the follow-me car of an arrival, of title.
+func newFollowMe(cc *controlCenter, client engine.Client, title string, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFollowMe {
+	f := traffic.NewSimObjectFollowMe(client, cc.inj, title, reqBase+controlIDBlock-1, prof)
+	f.Layout = g.Layout
+	cc.giveATC(f, g.Layout, "follow-me")
+	return f
 }

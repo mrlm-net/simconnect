@@ -164,18 +164,24 @@ Each airport has a fleet of service vehicles. The defaults are sized by its stan
   - **Deboarding:** on a turnaround, buses come a minute after the stairs, stay 5 minutes and drive home. The boarding bus on the same spot comes only once that one is home.
   - **The way:** in from the nose side, out turning round away from the aircraft. A way that would cross the aircraft, or pass within 15 m of its nose or tail, goes round it.
   - **Not yet:** an arrival that parks without a turnaround gets no buses. GSX serves only the user's aircraft, so our buses never meet its own.
-- **Overrides:** `airport.Limits` sets `Tugs`, `FuelTrucks`, `Stairs`, `GPUs` and `Buses` per airport, and a local override file wins per value.
+- **Follow-me car (#890):** GSX only, `FSDT_FollowMe_Hilux` or `FSDT_FollowMe_class_B` (MSFS 2024 has none of its own). One per 30 stands, at least one.
+  - **Which arrivals:** airliners landing injected and bound for a remote stand.
+  - **Meeting:** sent once the aircraft is down, it starts from the vehicle road nearest its meeting point (cars wait near the exits) and drives to 100 m past the vacate stop on the aircraft's taxi path, where it waits.
+  - **Leading:** it drives ahead along the aircraft's path, about 105 m ahead; the aircraft never comes within 45 m, and stops when the car does. A re-route moves the car onto the new path.
+  - **Leaving:** 120 m before the stand it pulls aside, away from the stand, and drives home round the aircraft; the parked aircraft's frames drive it until it is home.
+  - **No car:** none free, a short taxi-in, or a car that has not come within 4 minutes: the aircraft taxis in on its own.
+- **Overrides:** `airport.Limits` sets `Tugs`, `FuelTrucks`, `Stairs`, `GPUs`, `Buses` and `FollowMe` per airport, and a local override file wins per value.
 - **Taking and giving back:** a departure takes each vehicle from the fleet before it is sent, and gives it back once the vehicle has driven off, or when the flight ends or is cancelled.
 - **When none is free:**
   - The push waits for a tug.
   - Fuelling, stairs and the GPU are left out once it is too late for them. Stairs and the GPU leave 2 minutes before the tug comes, and the push waits for them to clear.
 - **Log:** the traffic log gives each airport's fleet sizes, and logs a departure waiting for one ("waits for a tug at LKPR: all 8 busy").
-- **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs`, `TaxiRequest.GPU`, `TaxiRequest.Buses` and `TaxiRequest.Deboard` (`traffic.SimObjectBus`, `BusSpot`, `BusesFor`).
+- **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs`, `TaxiRequest.GPU`, `TaxiRequest.Buses` and `TaxiRequest.Deboard` (`traffic.SimObjectBus`, `BusSpot`, `BusesFor`); `ArrivalRequest.FollowMe` with `ArrivalWithServices` (`traffic.SimObjectFollowMe`).
 - **Control API:** `pushInMin` gives a manual departure a push time, so its stand services have a window.
 
 ## SimConnect IDs
 
-The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last six are its two buses, GPU, stairs, fuel truck and tug; a deboarding bus and the boarding bus after it share one.
+The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last six are its two buses, GPU, stairs, fuel truck and tug (an arrival's follow-me car takes the tug's); a deboarding bus and the boarding bus after it share one.
 
 | IDs | What |
 |---|---|

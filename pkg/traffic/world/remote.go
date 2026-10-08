@@ -49,6 +49,8 @@ type (
 		ReqBase uint32                 `json:"reqBase"`
 		ICAO    string                 `json:"icao"`
 		Req     traffic.ArrivalRequest `json:"req"`
+		// FollowMe is its follow-me car's model (#890), "" for none.
+		FollowMe string `json:"followMe,omitempty"`
 	}
 )
 
@@ -110,6 +112,9 @@ func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalReq
 	if req.Graph != nil {
 		w.ICAO = req.Graph.Layout.ICAO
 	}
+	if f, ok := req.FollowMe.(*traffic.SimObjectFollowMe); ok && f != nil {
+		w.FollowMe = f.Title()
+	}
 	evs := r.c.subscribe(w.Target)
 	if err := r.c.call(r.t, "StartArrival", []any{w}); err != nil {
 		r.c.unsubscribe(w.Target)
@@ -155,6 +160,8 @@ type actuatorSim struct {
 	stairs func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
 	gpu    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
 	bus    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile, title string, n int) traffic.FuelService
+	// followMe makes an arrival's follow-me car (#890).
+	followMe func(w arrivalStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FollowMeService
 
 	mu   sync.Mutex
 	ctls []interface{ Handle(engine.Message) bool } // started off the wire
@@ -236,6 +243,9 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 	}
 	req := w.Req
 	req.Graph = g
+	if w.FollowMe != "" && a.followMe != nil {
+		req.FollowMe = a.followMe(w, g, req.Profile)
+	}
 	ctl, evs, err := a.localSim.StartArrival(w.DefBase, w.ReqBase, req)
 	if err != nil {
 		return err

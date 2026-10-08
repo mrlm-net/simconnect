@@ -24,6 +24,9 @@ type groundDrive struct {
 	mover    *GroundMover
 	lastStep time.Time
 	frameDt  float64 // seconds since the previous frame
+	// lead, when set, is how far along the path a follow-me car ahead lets
+	// the aircraft go (#890); ok false: no limit.
+	lead func() (at float64, ok bool)
 
 	lights Lights // phase lights; logo and wing stay as the aircraft had them
 	// noLogo: a light aircraft, with neither logo nor wing light (live,
@@ -72,6 +75,12 @@ func (d *groundDrive) advance() (GroundPose, error) {
 	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), MaxFrameStepSeconds))
 	d.lastStep, d.frameDt = now, dt
 	d.followAhead(now)
+	if d.lead != nil && !d.mover.reverse {
+		// Behind the follow-me car, whatever the traffic ahead allows.
+		if at, ok := d.lead(); ok && (!d.mover.hasTraffic || at < d.mover.trafficAt) {
+			d.mover.SetTrafficStop(at)
+		}
+	}
 	pose := d.mover.Step(dt)
 	return pose, d.injector.Place(d.object, pose)
 }

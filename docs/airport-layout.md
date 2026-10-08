@@ -293,7 +293,7 @@ Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AI
 | `PreferredRunways` | `KnownLimits` (LKPR 24, then 06; EGLL 27R, 27L) | none |
 | `MSAFt`, `NoReverseThrust` | `KnownLimits` (no reverse: EDDM, LOWW) | unknown / false |
 | `Tower` | `KnownLimits` (LKPR) | nil: the facility's tower position |
-| `DeicingPads`, `Tugs`, `FuelTrucks`, `Stairs`, `GPUs`, `Buses` | `KnownLimits` | none / 0: sized by the stands |
+| `DeicingPads`, `Tugs`, `FuelTrucks`, `Stairs`, `GPUs`, `Buses`, `FollowMe` | `KnownLimits` | none / 0: sized by the stands |
 
 At LKPR the SIDs climb to 1700 ft on the runway heading first; the field is at about 1200 ft, so the hand-over stays at the 1500 ft floor. Pass the limits to `traffic.TaxiRequest.Airport` / `ArrivalRequest.Airport`, and `nav.RunwayLimitsFrom(lim)` gives the preferential runways to `nav.ActiveRunways` (or to a `nav.RunwaySelector`, which keeps the runway in use, see [Keeping the runway in use](nav-weather.md#keeping-the-runway-in-use)). `Graph.Apron(node)` reports a stand's junction with the taxilane, where `ApronMaxKts` applies.
 

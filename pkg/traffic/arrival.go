@@ -113,6 +113,11 @@ type ArrivalRequest struct {
 	Rollout RolloutProfile
 	// Approach is the injected approach; zero means DefaultApproachProfile.
 	Approach ApproachProfile
+	// FollowMe leads the injected taxi-in to the stand (#890): e.g.
+	// NewSimObjectFollowMe. Sent once the aircraft is down, from the fleet
+	// (ArrivalWithServices); nil: none. The controller passes it its
+	// messages.
+	FollowMe FollowMeService `json:"-"`
 	// Procedure (with InjectApproach) is the STAR and approach to fly
 	// before the final, e.g. from airport.Procedures.Arrival: the aircraft
 	// appears at its first point, MSFS AI flies it to a join point on the
@@ -200,6 +205,12 @@ func ArrivalWithSeed(seed uint64) ArrivalOption {
 	return func(c *ArrivalController) { c.rng = rand.New(rand.NewPCG(seed, 0x5eed)) }
 }
 
+// ArrivalWithServices takes the arrival's service vehicles (its follow-me
+// car, #890) from f.
+func ArrivalWithServices(f ServiceFleet) ArrivalOption {
+	return func(c *ArrivalController) { c.services = f }
+}
+
 // ArrivalWithIDs sets the first data definition ID and request ID; an
 // ArrivalController uses 4 definition IDs and 4 request IDs from them.
 func ArrivalWithIDs(defBase, reqBase uint32) ArrivalOption {
@@ -214,6 +225,13 @@ func ArrivalWithIDs(defBase, reqBase uint32) ArrivalOption {
 // Like TaxiController it never reads the engine stream: pass every message to
 // Handle and read progress from Events. A controller is single use.
 type ArrivalController struct {
+	// services hands out the follow-me car (#890); fm is the car while it
+	// is out, fmSent once it was sent for (or given up), fmStopped since
+	// when the aircraft has stood held by it.
+	services  ServiceFleet
+	fm        FollowMeService
+	fmSent    bool
+	fmStopped time.Time
 	// Level of detail (#370): how often the injected aircraft is driven.
 	detail  *Detail
 	detailS detailState
@@ -533,8 +551,14 @@ func (c *ArrivalController) Handle(msg engine.Message) bool {
 			return true
 		}
 	}
+	if c.state == ArrivalParked && c.fm != nil {
+		return c.handleParked(msg) // the follow-me car on its way home (#890)
+	}
 	if c.state == ArrivalIdle || c.state.Terminal() {
 		return false
+	}
+	if c.fm != nil && c.fm.Handle(msg) {
+		return true
 	}
 	switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 	case types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
@@ -782,6 +806,7 @@ func (c *ArrivalController) Cancel() error {
 		c.picture.Forget(c.objectID)
 	}
 	var err error
+	c.dropFollowMe()
 	if c.objectID != 0 {
 		c.stopMonitor()
 		c.detail.forget(c.objectID)
@@ -805,6 +830,7 @@ func (c *ArrivalController) stopMonitor() {
 }
 
 func (c *ArrivalController) fail(err error) {
+	c.dropFollowMe()
 	c.stopMonitor()
 	c.setState(ArrivalFailed, err)
 }
