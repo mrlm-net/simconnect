@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mrlm-net/simconnect"
@@ -31,7 +32,11 @@ func main() {
 	}
 	defer client.Disconnect()
 	r := systems.NewReader(client, 6400, 6400)
-	r.Use(systems.For(systems.Aircraft{Title: title}))
+	a := systems.Aircraft{Title: title}
+	if strings.Contains(title, "Fenix") {
+		a.Package = "fnx-aircraft-320"
+	}
+	r.Use(systems.For(a))
 	if err := r.Request(types.SIMCONNECT_PERIOD_ONCE); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
