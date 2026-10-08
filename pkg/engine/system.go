@@ -42,3 +42,13 @@ func SystemStateFloat64(recv *types.SIMCONNECT_RECV_SYSTEM_STATE) float64 {
 func (e *Engine) GetLastSentPacketID() (uint32, error) {
 	return e.api.GetLastSentPacketID()
 }
+
+// CallFor is the call that had send ID id, with its arguments, when the
+// engine traces calls (WithCallTrace) and still remembers it: what an
+// exception's DwSendID was raised for.
+func (e *Engine) CallFor(id uint32) (string, bool) {
+	if t, ok := e.api.(interface{ CallFor(uint32) (string, bool) }); ok {
+		return t.CallFor(id)
+	}
+	return "", false
+}

@@ -13,9 +13,11 @@ import (
 )
 
 func New(name string, config *Config) *SimConnect {
-	return &SimConnect{
-		0, dll.New(config.DLLPath), name, sync.RWMutex{},
+	sc := &SimConnect{connection: 0, library: dll.New(config.DLLPath), name: name}
+	if config.TraceCalls {
+		sc.trace = &callTrace{}
 	}
+	return sc
 }
 
 type SimConnect struct {
@@ -24,6 +26,7 @@ type SimConnect struct {
 	library    *dll.DLL
 	name       string
 	sync       sync.RWMutex
+	trace      *callTrace // Config.TraceCalls; nil off
 }
 
 type API interface {
@@ -149,5 +152,9 @@ func (p boundProc) Call(args ...uintptr) (uintptr, uintptr, error) {
 	if len(args) > 0 {
 		args[0] = p.sc.connection
 	}
-	return p.proc.Call(args...)
+	r1, r2, err := p.proc.Call(args...)
+	if p.sc.trace != nil && isHRESULTSuccess(r1) {
+		p.sc.traced(p.proc.Name, args)
+	}
+	return r1, r2, err
 }

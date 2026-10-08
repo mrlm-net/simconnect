@@ -184,7 +184,11 @@ func (e *Engine) dispatch() error {
 
 				if recvID == types.SIMCONNECT_RECV_ID_EXCEPTION {
 					exception := (*types.SIMCONNECT_RECV_EXCEPTION)(unsafe.Pointer(recvCopy))
-					e.logger.Error("[dispatcher] Exception received", "exceptionID", exception.DwException, "sendID", exception.DwSendID)
+					if call, ok := e.CallFor(uint32(exception.DwSendID)); ok {
+						e.logger.Error("[dispatcher] Exception received", "exceptionID", exception.DwException, "sendID", exception.DwSendID, "index", exception.DwIndex, "call", call)
+					} else {
+						e.logger.Error("[dispatcher] Exception received", "exceptionID", exception.DwException, "sendID", exception.DwSendID)
+					}
 				}
 
 				if size > 0 {
