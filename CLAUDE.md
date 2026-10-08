@@ -156,6 +156,8 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 │   ├── registry/            # SimVar metadata: names, units, data types, writability
 │   ├── addons/              # Installed add-ons (no SimConnect): packages path, Community/streamed scan, aircraft → package, fingerprint, processes
 │   ├── avionics/            # User aircraft radios: COM active/standby, swap, squawk (key events)
+│   ├── gsx/                 # GSX Pro state from its L:vars (services, passengers, cargo, doors, gate), settable names
+│   ├── lvars/               # Write L:vars on the user aircraft (our own signals, GSX settings)
 │   ├── systems/             # User aircraft systems by profile: default SimVars, per-model JSON (Fenix L:vars), local overrides
 │   ├── camera/              # Add-on camera (MSFS 2024): poses, shots, drone moves, Director
 │   ├── airport/             # Airport ground layout, taxi graph, routing
