@@ -5,6 +5,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -21,10 +22,11 @@ func sampleMsg(req, obj uint32, g injectGround) engine.Message {
 	return engine.Message{SIMCONNECT_RECV: (*types.SIMCONNECT_RECV)(unsafe.Pointer(&buf[0]))}
 }
 
-// The simulator rests a rolling A320 0.6 ft above its static CG height
-// whatever we send: learned on one aircraft's roll, the next A320 comes down
-// to that height in the air, so its wheels meet the runway there (#854).
-func TestInjectorLearnsGroundRest(t *testing.T) {
+// A model seen resting on its stand (a departure) rests the next of its
+// kind (an arrival, created in the air) at that height and pitch: it
+// touches down there, not on extended struts (MovingPitchDeg); one of a kind
+// not seen resting is placed RestAboveStaticShare above its static height.
+func TestInjectorRestByModel(t *testing.T) {
 	c := &eventClient{}
 	inj := NewInjector(c)
 	const a, b, title = 42, 43, "FSLTL A320 Air France SL"
@@ -34,31 +36,30 @@ func TestInjectorLearnsGroundRest(t *testing.T) {
 		}
 		inj.SetModel(id, title)
 	}
-	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 12.25}))
-	inj.Handle(sampleMsg(DefaultInjectRequestBase+3, b, injectGround{GroundFt: 1200, CGFt: 12.25}))
-	placedAlt := func() float64 {
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+3, b, injectGround{GroundFt: 1200, CGFt: 12.25, PlaneFt: 1500, StaticPitch: 0.9})) // b in the air
+	placedAlt := func() (float64, float64) {
 		var got types.SIMCONNECT_DATA_INITPOSITION
 		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
-		return got.Altitude
+		return got.Altitude, got.Pitch
 	}
-	// Before anything is learned: the default share above the static height.
 	if err := inj.PlaceAir(b, ApproachPose{HeightFt: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := placedAlt(), 1200+12.25*(1+RestAboveStaticShare); math.Abs(got-want) > 1e-6 {
-		t.Errorf("unlearned touchdown at %.3f ft, want %.3f", got, want)
+	if got, _ := placedAlt(); math.Abs(got-(1200+12.25*(1+RestAboveStaticShare))) > 1e-6 {
+		t.Errorf("unknown kind: touchdown at %.3f ft", got)
 	}
-	// a rolls on the runway; the simulator shows it 0.6 ft higher.
-	for i := 0; i < groundRestRun; i++ {
-		if err := inj.PlaceAir(a, ApproachPose{OnGround: true, GroundSpeedKts: 120}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 12.25, PlaneFt: 1212.85, OnGround: 1, GS: 120}))
-	if err := inj.PlaceAir(b, ApproachPose{HeightFt: 0}); err != nil {
+	// a stands on its stand: 11.9 ft, 0.71°.
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 12.25, StaticPitch: 0.9, PlaneFt: 1211.9, PlanePitch: 0.71, OnGround: 1}))
+	if err := inj.PlaceAir(b, ApproachPose{HeightFt: 0, OnGround: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := placedAlt(); math.Abs(got-1212.85) > 1e-6 {
-		t.Errorf("touchdown at %.3f ft, want the learned 1212.85", got)
+	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
+		t.Errorf("touchdown at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
+	}
+	if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
+		t.Fatal(err)
+	}
+	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
+		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
 	}
 }

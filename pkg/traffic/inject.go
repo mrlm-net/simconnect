@@ -45,11 +45,11 @@ type Injector struct {
 	byRequest        map[uint32]uint32    // ground request ID → object ID
 	slots            [injectMaxAircraft]bool
 	sent             map[uint32]string
-	// groundRest: by aircraft title, the CG height above the ground the
-	// simulator rests a model at while we place it on the ground (it puts
-	// it there itself, whatever altitude we send): learned on every taxi,
-	// roll and rollout, used in the air so the wheels meet the runway there.
-	groundRest map[string]float64
+	// rests: by aircraft title, how a model rests standing (CG height,
+	// pitch) as last seen before we placed one: for one not seen standing
+	// (an arrival, created in the air), so it is placed at its rest pitch
+	// too, not on extended struts (MovingPitchDeg).
+	rests map[string][2]float64
 }
 
 type injected struct {
@@ -69,8 +69,7 @@ type injected struct {
 	lightsSent        bool
 	taken             bool // taken over (released and frozen), not just watched
 	// title: the aircraft title (SetModel); onGroundRun: our placements on
-	// the ground in a row (the samples after them are the simulator's
-	// resting height, groundRest).
+	// the ground in a row.
 	title       string
 	onGroundRun int
 }
@@ -140,8 +139,15 @@ const (
 // rolling (live, a Phenom 300 and A320s; at rest right): it is pitched
 // MovingPitchDeg nose down while moving, faded in up to MovingPitchFullKts
 // (the user picked it from five Phenoms moving side by side, #676).
+//
+// Now 0: placed at any other pitch than its rest one, however little, the
+// sim shows an aircraft on extended struts (measured live: a B738 at
+// +0.05° sat 8.48 → 9.05 ft, at +1° 9.75; at its rest pitch, standing or
+// moving, 8.48), so it rose as a push or taxi began and dropped as it
+// stopped or the tug let go. Placed at its rest pitch it never does, and
+// the nose-up of #676 was that same extended-strut state.
 const (
-	MovingPitchDeg     = 1.0
+	MovingPitchDeg     = 0.0
 	MovingPitchFullKts = 5.0
 )
 
@@ -170,7 +176,7 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 		objects:   map[uint32]*injected{},
 		byRequest: map[uint32]uint32{},
 		sent:      map[uint32]string{},
-		groundRest: map[string]float64{},
+		rests:      map[string][2]float64{},
 	}
 	for _, o := range opts {
 		o(i)
@@ -352,6 +358,9 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		return ErrGroundUnknown
 	}
 	cg, pitch := o.cgFt, o.staticPitch // resting on its gear, not level
+	if r, ok := i.rests[o.title]; ok && !o.haveRest { // not seen standing: as its kind rests
+		cg, pitch = r[0], r[1]
+	}
 	if o.haveRest {
 		cg, pitch = o.restFt, o.restPitch
 	}
@@ -467,13 +476,13 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
-			if o.placed && o.onGroundRun >= groundRestRun && g.OnGround != 0 && g.GS >= groundRestKts && o.title != "" {
-				i.groundRest[o.title] = g.PlaneFt - g.GroundFt
-			}
 			rest := g.PlaneFt - g.GroundFt
 			if !o.placed && g.OnGround != 0 && g.GS < restMaxKts &&
 				math.Abs(rest-g.CGFt) <= restMaxOffFt && math.Abs(g.PlanePitch-g.StaticPitch) <= restMaxOffPitch {
 				o.restFt, o.restPitch, o.haveRest = rest, g.PlanePitch, true
+				if o.title != "" {
+					i.rests[o.title] = [2]float64{rest, g.PlanePitch}
+				}
 			}
 		}
 		return true, nil
@@ -530,14 +539,11 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// placed at the static height the wheels sank a foot into the runway in
 	// the last half-second, and the simulator popped it up at touchdown).
 	cg, base := o.cgFt*(1+RestAboveStaticShare), o.staticPitch
+	if r, ok := i.rests[o.title]; ok && !o.haveRest { // not seen standing: as its kind rests
+		cg, base = r[0], r[1]
+	}
 	if o.haveRest {
 		cg, base = o.restFt, o.restPitch
-	}
-	// Where the simulator rests this model on the ground, once seen: in the
-	// air the same, so lift-off and touchdown do not jump (live A320 +0.6,
-	// B738 +1.06 ft over the static CG height).
-	if r, ok := i.groundRest[o.title]; ok {
-		cg = r
 	}
 	if pose.OnGround {
 		o.onGroundRun++
@@ -577,26 +583,23 @@ const AirBlendFt = 100.0
 // over this height (PlaceAir), so lift-off and touchdown do not jump.
 const restFadeFt = 50.0
 
-// RestAboveStaticShare: a model the simulator has not been seen resting on
-// the ground yet (groundRest) is taken to rest this share of its static CG
-// height above it — live: A320 0.60 over 12.25 ft, B738 1.06 over 8.48.
+// RestAboveStaticShare: a model not seen resting yet (rests: an arrival
+// of a kind no departure stood as) is placed this share of its static CG
+// height above it near the ground (PlaceAir), at its static pitch
+// (the sim shows it a little above: A320 0.60 over 12.25 ft, B738 1.06
+// over 8.48, measured with the moving pitch of #676).
 const RestAboveStaticShare = 0.085
 
-// groundRestRun: the simulator's resting height is read after this many
-// of our placements on the ground in a row.
-const groundRestRun = 3
-
-// groundRestKts: and only rolling this fast (take-off roll, rollout): what
-// the simulator rests a moving model at, as at touchdown.
-const groundRestKts = 30.0
-
 // SetModel tells the injector the title of objectID (after Takeover), so
-// what it learns of the model (groundRest) serves the next of its kind.
+// how the model rests (rests) serves the next of its kind.
 func (i *Injector) SetModel(objectID uint32, title string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if o, ok := i.objects[objectID]; ok {
 		o.title = title
+		if o.haveRest && title != "" { // seen standing before its title came
+			i.rests[title] = [2]float64{o.restFt, o.restPitch}
+		}
 	}
 }
 

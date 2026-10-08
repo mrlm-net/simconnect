@@ -108,7 +108,7 @@ func (l *localSim) servicesAt(layout *airport.Layout) *traffic.VehicleFleet {
 func (l *localSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequest) (departureCtl, <-chan traffic.TaxiEvent, error) {
 	ctl := traffic.NewTaxiController(l.fleet, traffic.TaxiWithIDs(defBase, reqBase), traffic.TaxiWithInjector(l.inj), traffic.TaxiWithDetail(l.detail),
 		traffic.TaxiWithGroundPicture(l.world.Ground(req.Graph.Layout.ICAO)), traffic.TaxiWithClock(l.clock.Now),
-		traffic.TaxiWithServices(l.servicesAt(req.Graph.Layout)))
+		traffic.TaxiWithServices(l.servicesAt(req.Graph.Layout)), traffic.TaxiWithPushInBackground())
 	if err := ctl.Start(req); err != nil {
 		return nil, nil, err
 	}

@@ -128,6 +128,7 @@ const (
 	ParamBehind     = "behind"   // a conditional line-up: the landing traffic as said ("A320")
 	ParamGiveWay    = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways   = "taxiways" // as said: "B2, H, A"
+	ParamHoldShort  = "holdShort" // runways to hold short of on the way: "12", "12, 31"
 	ParamStand      = "stand"
 	ParamLimit      = "limit" // a taxiway to hold short of; "" a marked point
 	ParamSID        = "sid"
@@ -252,7 +253,7 @@ func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
 		if p[ParamTaxiways] != "" {
 			via = " via " + p[ParamTaxiways]
 		}
-		return fmt.Sprintf("%s, %s, taxi%s", cs, rwy, via), true // 3-7-2: runway first
+		return fmt.Sprintf("%s, %s, taxi%s%s", cs, rwy, via, holdShortSaid(p)), true // 3-7-2: runway first, then hold short
 	case IntentLineUp:
 		// No conditional clearances on the runway in the FAA's rules.
 		return fmt.Sprintf("%s, %s, line up and wait", cs, rwy), true // 3-9-4
@@ -342,7 +343,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return s
 	case IntentTaxi:
 		if p[ParamStand] != "" {
-			return fmt.Sprintf("%s, taxi to stand %s%s", cs, p[ParamStand], via) // CAP 413 4.68
+			return fmt.Sprintf("%s, taxi to stand %s%s%s", cs, p[ParamStand], via, holdShortSaid(p)) // CAP 413 4.68
 		}
 		// To the runway and hold short of it, as the project uses (the user's
 		// choice over Doc 4444's "taxi to holding point"): an intersection is
@@ -351,7 +352,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamEntry] != "" {
 			entry = " at " + p[ParamEntry]
 		}
-		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s", cs, p[ParamRunway], entry, via)
+		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s%s", cs, p[ParamRunway], entry, via, holdShortSaid(p))
 	case IntentGiveWay:
 		return fmt.Sprintf("%s, give way to the %s", cs, p[ParamGiveWay])
 	case IntentFollowTaxi:
@@ -1614,4 +1615,30 @@ func spokenSpeed(s string) string {
 		return s
 	}
 	return s + " knots"
+}
+
+// WithHoldShort is taxi clearance t with the runways the route crosses to
+// hold short of: "CSA1, taxi to and hold short of runway 24 via A, B, hold
+// short of runway 12" (Doc 4444 12.3.4.7 e; JO 7110.65 3-7-2), read back
+// with them (4.5.7.5.1 b). None: t as it is.
+func WithHoldShort(t Transmission, runways ...string) Transmission {
+	if len(runways) == 0 {
+		return t
+	}
+	t.Params = cloneParams(t.Params, ParamHoldShort, strings.Join(runways, ", "))
+	t.Text = ""
+	return Say(t)
+}
+
+// holdShortSaid is the hold short part of a taxi clearance (WithHoldShort):
+// ", hold short of runway 12", ", hold short of runways 12 and 31".
+func holdShortSaid(p map[string]string) string {
+	r := p[ParamHoldShort]
+	if r == "" {
+		return ""
+	}
+	if i := strings.LastIndex(r, ", "); i >= 0 {
+		return ", hold short of runways " + r[:i] + " and " + r[i+2:]
+	}
+	return ", hold short of runway " + r
 }

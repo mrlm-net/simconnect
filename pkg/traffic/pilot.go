@@ -102,6 +102,18 @@ func EstablishedReport(cs, runway string) Transmission {
 	return pilotTx(PosApproach, cs, IntentEstablished, map[string]string{ParamRunway: runway}, "Localizer established runway "+runway+", "+cs)
 }
 
+// EstablishedReportFor is EstablishedReport for an approach of kind (as
+// ApproachClearance.Kind: "ILS", "RNP", "VOR"; "" or ILS the localizer):
+// "Established RNP runway 25R, CSA1", as the tower check-in says it (the
+// project's wording for other than the localizer).
+func EstablishedReportFor(cs, runway, kind string) Transmission {
+	if kind == "" || strings.EqualFold(kind, "ILS") || strings.EqualFold(kind, "LOC") {
+		return EstablishedReport(cs, runway)
+	}
+	return pilotTx(PosApproach, cs, IntentEstablished, map[string]string{ParamRunway: runway, ParamApproach: kind},
+		"Established "+kind+" runway "+runway+", "+cs)
+}
+
 // RequestWeather is a crew asking for the weather: "Ruzyne Tower, CSA1,
 // request weather". The wording is the project's (no source read gives
 // one); the answer is WeatherReport.
@@ -151,6 +163,18 @@ func ReadyForDeparture(cs, runway, entry string) Transmission {
 		fmt.Sprintf("%s, %s, ready for departure", cs, HoldingShortSaid(runway, entry)))
 }
 
+// ReadyForDepartureTo is ReadyForDeparture as the first call on the
+// tower's frequency, the station first: "Ruzyne Tower, CSA1, holding short
+// runway 24, ready for departure" (CAP 413 Figure 6).
+func ReadyForDepartureTo(station, cs, runway, entry string) Transmission {
+	t := ReadyForDeparture(cs, runway, entry)
+	if station != "" {
+		t.Text = station + ", " + t.Text
+		t.Params = cloneParams(t.Params, ParamStation, station)
+	}
+	return t
+}
+
 // HoldingShortSaid is where a departure holds as its crew says it:
 // "holding short runway 24", "holding short runway 24 at Z" for an
 // intersection.
@@ -177,6 +201,24 @@ func TaxiingToSaid(runway, entry string) string {
 // 12.3.4.7 z).
 func Vacated(cs, runway string) Transmission {
 	return pilotTx(PosGround, cs, IntentVacated, map[string]string{ParamRunway: runway}, cs+", runway vacated")
+}
+
+// VacatedAt is Vacated as the first call on ground's frequency, with the
+// runway and the taxiway it left by ("" none; station "" none): "Ruzyne
+// Ground, CSA1, runway 24 vacated via D" (the project's wording, as its
+// own arrivals call ground).
+func VacatedAt(station, cs, runway, via string) Transmission {
+	text := cs + ", runway " + runway + " vacated"
+	if runway == "" {
+		text = cs + ", runway vacated"
+	}
+	if via != "" {
+		text += " via " + via
+	}
+	if station != "" {
+		text = station + ", " + text
+	}
+	return pilotTx(PosGround, cs, IntentVacated, map[string]string{ParamRunway: runway, ParamStation: station, ParamTaxiways: via}, text)
 }
 
 // CheckIn is the first call on a new frequency: "Ruzyne Tower, CSA123,
@@ -306,6 +348,7 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamTaxiways] != "" {
 			s += " via " + p[ParamTaxiways]
 		}
+		s += holdShortSaid(p) // read back (Doc 4444 4.5.7.5.1 b)
 	case IntentGiveWay:
 		s = "Giving way to the " + p[ParamGiveWay]
 	case IntentFollowTaxi:
