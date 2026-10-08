@@ -71,6 +71,9 @@ func (cc *controlCenter) keepClear() {
 		if len(mine) == 0 {
 			continue
 		}
+		it.mu.Lock()
+		before := it.rerouteSaid().Text
+		it.mu.Unlock()
 		if !it.avoidOccupied(mine) {
 			continue
 		}
@@ -80,7 +83,9 @@ func (cc *controlCenter) keepClear() {
 		it.view.Instruction, it.view.InstructionAt = "taxi round traffic", nil
 		it.mu.Unlock()
 		tlog.printf("%-6s ground: new route round traffic in the way: %s", it.Tail, tx.Text)
-		if tx.Text != "" {
+		// Said only when the taxiways changed: the same "via J, H, A" again
+		// is no new clearance (live, SWR1216 heard it twice in 19 s).
+		if tx.Text != "" && tx.Text != before {
 			it.say(tx)
 		}
 	}

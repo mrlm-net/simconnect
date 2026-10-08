@@ -3,6 +3,7 @@ package world
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -105,8 +106,8 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 	for _, cs := range []string{c.A, c.B} {
 		me, other := by[cs], by[otherOf(c, cs)]
 		it := w.s.cc.byTail(cs)
-		if it == nil || me.OnGround || other.Tail == "" {
-			continue
+		if it == nil || me.OnGround || other.Tail == "" || me.AGLFt < trafficInfoMinAGLFt {
+			continue // nothing to an aircraft taking off or landing (CAP 413 4.26)
 		}
 		it.mu.Lock()
 		pos := it.atc
@@ -121,10 +122,27 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 			level = "flight level " + fmt.Sprintf("%03.0f", math.Round(other.AltFt/100))
 		}
 		tx := traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, level)
-		it.call(pos, prioUrgent, func() { it.say(tx) })
+		it.call(pos, prioUrgent, func() {
+			// Landing or taking off by the time it is said: dropped (live,
+			// AFR1602 told of a DA62 climbing away 14 s before touchdown).
+			it.mu.Lock()
+			state := it.view.State
+			it.mu.Unlock()
+			if slices.Contains(finalStageStates, state) {
+				return
+			}
+			it.say(tx)
+		})
 		w.s.cc.log.printf("%-6s traffic information on %s (no separation required here)", cs, other.Tail)
 	}
 }
+
+// No traffic information to an aircraft "in the process of taking off or
+// in the final stages of an approach and landing" (CAP 413 4.26): below
+// trafficInfoMinAGLFt, or in one of finalStageStates when it would be said.
+const trafficInfoMinAGLFt = 1000.0
+
+var finalStageStates = []string{"lining up", "lined up", "departing", "landing", "rollout"}
 
 // trafficInfoNearNM: traffic already at its closest point is told of
 // only when nearer than this.
