@@ -383,7 +383,14 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 		lo++
 	}
 	best, who := math.Inf(1), groundEntry{}
+	start := path.PointAt(from)
 	for _, o := range others {
+		// Out of reach of the path ahead (no point of it is further than
+		// look from start along it): not tested point by point, the most
+		// of the frame's time with many taxiing (#370).
+		if localDist(start, o.pos) > look+half+math.Max(o.nose, o.tail)+1 {
+			continue
+		}
 		// Points along the other aircraft's axis, nose to tail.
 		for d := -o.tail; d <= o.nose+0.01; d += trafficBodyStep {
 			q := offsetHeading(o.pos, o.hdg, d)
@@ -463,12 +470,26 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 	heading := func(s float64) float64 {
 		return localBearing(path.PointAt(math.Max(0, s-1)), path.PointAt(math.Min(path.Length(), s+1)))
 	}
+	start := path.PointAt(from)
 	for _, o := range others {
+		reach := half + o.half + HeadOnMarginMeters
+		// None of its way within reach of this one's ahead (no point of
+		// which is further than end-from from start): not looked at
+		// closer, the most of the frame's time with many taxiing (#370).
+		near := false
+		for _, q := range o.intent {
+			if localDist(start, q) <= end-from+reach {
+				near = true
+				break
+			}
+		}
+		if !near {
+			continue
+		}
 		cum := make([]float64, len(o.intent))
 		for i := 1; i < len(o.intent); i++ {
 			cum[i] = cum[i-1] + localDist(o.intent[i-1], o.intent[i])
 		}
-		reach := half + o.half + HeadOnMarginMeters
 		meets := func(s float64, i int) bool {
 			return localDist(path.PointAt(s), o.intent[i]) <= reach &&
 				math.Abs(headingDiff(heading(s), localBearing(o.intent[i], o.intent[i+1]))) >= oncomingDeg

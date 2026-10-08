@@ -53,3 +53,31 @@ func TestClearOfConflictTo(t *testing.T) {
 		t.Errorf("FAA: %q", s)
 	}
 }
+
+// TestPhraseGaps: the hold short in a taxi clearance and its readback, the
+// ready and vacated calls with the station, the established report by
+// approach kind.
+func TestPhraseGaps(t *testing.T) {
+	tx := WithHoldShort(ClearedTaxiToRunway("CSA1", "24", "", []string{"A", "B"}), "12")
+	if tx.Text != "CSA1, taxi to and hold short of runway 24 via A, B, hold short of runway 12" {
+		t.Errorf("taxi: %q", tx.Text)
+	}
+	if rb, _ := Readback(tx); rb.Text != "Taxi to and hold short of runway 24 via A, B, hold short of runway 12, CSA1" {
+		t.Errorf("readback: %q", rb.Text)
+	}
+	if s := WithHoldShort(ClearedTaxiToRunway("CSA1", "24", "", []string{"A"}), "12", "30").Text; s != "CSA1, taxi to and hold short of runway 24 via A, hold short of runways 12 and 30" {
+		t.Errorf("two: %q", s)
+	}
+	if s := ReadyForDepartureTo("Ruzyne Tower", "CSA1", "24", "").Text; s != "Ruzyne Tower, CSA1, holding short runway 24, ready for departure" {
+		t.Errorf("ready: %q", s)
+	}
+	if s := VacatedAt("Frankfurt Ground", "CSA1", "25R", "N8").Text; s != "Frankfurt Ground, CSA1, runway 25R vacated via N8" {
+		t.Errorf("vacated: %q", s)
+	}
+	if s := EstablishedReportFor("CSA1", "25R", "RNP").Text; s != "Established RNP runway 25R, CSA1" {
+		t.Errorf("RNP: %q", s)
+	}
+	if s := EstablishedReportFor("CSA1", "24", "ILS").Text; s != "Localizer established runway 24, CSA1" {
+		t.Errorf("ILS: %q", s)
+	}
+}

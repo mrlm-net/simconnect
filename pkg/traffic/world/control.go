@@ -1210,6 +1210,11 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	// On the stand: the route with its push, planned in the background
+	// (TaxiWithPushInBackground), drawn once it is in.
+	if ev.dep != nil && it.dep != nil && (ev.dep.State == traffic.TaxiSpawning || ev.dep.State == traffic.TaxiAwaitingPushback) {
+		it.setRoute()
+	}
 	if ev.arr != nil && (ev.arr.State == traffic.ArrivalVacating || ev.arr.State == traffic.ArrivalRollout) && ev.arr.Taxiway != "" {
 		it.exitTwy = ev.arr.Taxiway
 	}
@@ -2584,6 +2589,8 @@ func typeSaid(icao string) string {
 		return "Airbus A220"
 	case strings.HasPrefix(icao, "DH8"):
 		return "Dash 8"
+	case icao == "PC24":
+		return "Pilatus PC-24"
 	case icao == "PC12":
 		return "Pilatus PC-12"
 	case len(icao) == 4 && icao[0] == 'C' && (icao[1] == '5' || icao[1] == '6' || icao[1] == '7'):
@@ -2592,6 +2599,12 @@ func typeSaid(icao string) string {
 		return "Citation" // C25A, C25B: the CJs
 	case icao == "C208":
 		return "Caravan"
+	case icao == "DA42" || icao == "DA62":
+		return "Diamond " + icao[:2] + "-" + icao[2:] // "Diamond DA-62"
+	case icao == "E50P" || icao == "E55P":
+		return "Phenom"
+	case icao == "E545" || icao == "E550":
+		return "Praetor"
 	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:
 		return "Boeing 7" + icao[2:3] + "7"
 	case strings.HasPrefix(icao, "E1") || strings.HasPrefix(icao, "E7"):
@@ -3345,7 +3358,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			}
 			it.say(traffic.DepartureOrder(it.Tail, rwy, ahead))
 		})
-	case ev.arr != nil && pos == traffic.PosTower && !it.visual:
+	case ev.arr != nil && pos == traffic.PosTower:
 		// The tower answers the check-in at once: cleared to land when it
 		// can be, else "continue approach" (12.3.4.15; live, AUA762 heard
 		// nothing for 1m45s with a departure on the runway).

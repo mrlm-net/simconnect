@@ -215,6 +215,14 @@ type TaxiEvent struct {
 // TaxiOption configures a TaxiController.
 type TaxiOption func(*TaxiController)
 
+// TaxiWithPushInBackground plans the pushback on a goroutine of its own
+// (0.1-0.8 s an aircraft), not in Start on the caller's: a host driving
+// many aircraft on one goroutine does not stand them all still while a
+// departure spawns. The push waits for its plan.
+func TaxiWithPushInBackground() TaxiOption {
+	return func(c *TaxiController) { c.pushInBackground = true }
+}
+
 // TaxiWithSeed seeds the controller's random choices and timing spreads
 // (#343), so a run can be repeated.
 func TaxiWithSeed(seed uint64) TaxiOption {
@@ -324,6 +332,11 @@ type TaxiController struct {
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
 	havePushFacing bool
+	// pushPending: the push still being planned (planPushbackLater), the
+	// plan to take its pushGen; pushInBackground: Start plans it so.
+	pushPending      bool
+	pushGen          int
+	pushInBackground bool
 	// noStandard: planning a stand's standard push itself (standardPush).
 	noStandard bool
 	// rush: expedited (Expedite, #510).
@@ -504,7 +517,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 			}
 		}
 		if c.inj != nil {
-			c.planPushback()
+			c.planPushbackLater()
 		}
 		c.track = newRouteTracker(c.route)
 		c.setState(TaxiSpawning, nil)
@@ -538,7 +551,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		}
 	}
 	if c.inj != nil {
-		c.planPushback() // may re-plan the route from the push
+		c.planPushbackLater() // may re-plan the route from the push; off the connection's goroutine
 	}
 	c.track = newRouteTracker(c.route)
 	c.setState(TaxiSpawning, nil)

@@ -372,11 +372,15 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	for cs, st := range w.stopped {
 		// Past the traffic it was stopped for, moving apart and clear of
 		// the terminal minimum: over, whatever the change was to last.
-		apart := false
+		// With a margin: cleared on at the minimum itself, its climb took
+		// it straight into the traffic again (live, DLH1245 under OKOXX at
+		// 3.4 NM: stopped, cleared, stopped, cleared within 50 s).
+		apart, clear := false, true
 		if p, ok := at[cs]; ok {
 			if q, ok := at[st.other]; ok {
 				d := calc.HaversineMeters(p.Lat, p.Lon, q.Lat, q.Lon) / 1852
-				apart = st.lastNM > 0 && d > st.lastNM && d >= sepTerminalNM
+				apart = st.lastNM > 0 && d > st.lastNM && d >= sepTerminalNM+resumeApartNM
+				clear = d >= sepTerminalNM+resumeTimedNM
 				st.lastNM = d
 				w.stopped[cs] = st
 			} else if st.other != "" {
@@ -386,7 +390,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		switch {
 		case !airborne[cs]:
 			delete(w.stopped, cs)
-		case !involved[cs] && (apart || !now.Before(w.busy[cs])):
+		case !involved[cs] && (apart || !now.Before(w.busy[cs]) && clear):
 			cleared = append(cleared, cs)
 		}
 	}
@@ -697,3 +701,12 @@ func (w *conflictWatch) forget(tail string) {
 		}
 	}
 }
+
+// A climb or descent stopped for traffic resumes once moving apart and
+// resumeApartNM beyond the terminal minimum, or, its change run out,
+// resumeTimedNM beyond it (or the traffic gone): at the minimum itself it
+// met the traffic again at once.
+const (
+	resumeApartNM = 2.0
+	resumeTimedNM = 1.0
+)

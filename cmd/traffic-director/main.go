@@ -152,7 +152,15 @@ func main() {
 			return err
 		}, *jwksAPI == "control")
 	}
-	srv := &http.Server{Addr: *addr, Handler: world.Guard(mux), ReadHeaderTimeout: 5 * time.Second}
+	// /healthz outside the tokens: for a container's or load balancer's
+	// health check, which has none (and no TLS client certificate).
+	top := http.NewServeMux()
+	top.HandleFunc("GET /healthz", func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Content-Type", "text/plain")
+		rw.Write([]byte("ok\n"))
+	})
+	top.Handle("/", world.Guard(mux))
+	srv := &http.Server{Addr: *addr, Handler: top, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shut, done := context.WithTimeout(context.Background(), 2*time.Second)

@@ -315,8 +315,20 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 				c.setState(TaxiAwaitingTaxi, nil)
 				return
 			}
-			// The tug drives in from its depot first.
-			if !c.tugConnected() {
+			// The tug drives in from its depot first; the push is planned
+			// (planPushbackLater).
+			if !c.tugConnected() || c.pushPending {
+				c.emit(nil, false)
+				return
+			}
+			// The stands around changed since it was planned: planned again
+			// in the background, the push waiting for it (startPushback did
+			// it here: live, every aircraft stood still 0.5 s as TVS1072's
+			// push began, UAE718 on its take-off roll).
+			if c.pushInBackground && c.standsChanged() {
+				c.note("stands around changed: pushback planned again", nil)
+				c.route = c.origRoute
+				c.planPushbackLater()
 				c.emit(nil, false)
 				return
 			}
@@ -672,7 +684,7 @@ func (c *TaxiController) standInPlace() error {
 func (c *TaxiController) startPushback() error {
 	// The stands around as they are now: a neighbour taken or freed since
 	// the push was planned plans it again.
-	if c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear) {
+	if c.standsChanged() {
 		c.note("stands around changed: pushback planned again", nil)
 		c.route = c.origRoute
 		c.planPushback()
@@ -868,6 +880,8 @@ func pushEdge(g *airport.Graph, e airport.Edge) bool {
 // the route planned from the stand, which at LKPR C17 went on straight
 // ahead of the push and left the aircraft facing away from its route.
 func (c *TaxiController) planPushback() {
+	c.pushGen++ // a plan still being made (planPushbackLater) is dropped
+	c.pushPending = false
 	if c.origRoute == nil {
 		c.origRoute = c.route
 	}
@@ -891,6 +905,39 @@ func (c *TaxiController) planPushback() {
 		excl[pushChoice{c.pushJunction, c.pushBranch}] = true
 	}
 	c.pushPlanned = nil
+}
+
+// planPushbackLater is planPushback, on a goroutine of its own with
+// TaxiWithPushInBackground: planning a
+// push takes 0.1-0.8 s (LKPR S20 762 ms), and on the connection's
+// goroutine every aircraft stood still that long as a departure spawned
+// (live: a 31 m jump at 153 kt on the climb-out). The plan is taken once
+// done unless planned again since (pushGen); until then the push waits
+// (pushPending). c.mu is held.
+func (c *TaxiController) planPushbackLater() {
+	if !c.pushInBackground {
+		c.planPushback()
+		return
+	}
+	c.pushGen++
+	gen := c.pushGen
+	p := &TaxiController{req: c.req, route: c.route, origRoute: c.origRoute, pushJunction: c.pushJunction, timing: c.timing,
+		faceOut: c.faceOut, powerOut: c.powerOut, pushFacing: c.pushFacing, havePushFacing: c.havePushFacing}
+	c.pushPending = true
+	go func() {
+		p.planPushback()
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if gen != c.pushGen {
+			return // planned again meanwhile: that one stands
+		}
+		c.pushPending = false
+		c.route, c.origRoute, c.pushJunction, c.pushPlanned = p.route, p.origRoute, p.pushJunction, p.pushPlanned
+		c.pushTurn, c.pushTurnDir, c.havePushBranch, c.pushBranch = p.pushTurn, p.pushTurnDir, p.havePushBranch, p.pushBranch
+		c.pushPts, c.pushPose, c.towPts, c.emptyNear = p.pushPts, p.pushPose, p.towPts, p.emptyNear
+		c.track = newRouteTracker(c.route)
+		c.emit(nil, true) // the route with its push, for the host to draw
+	}()
 }
 
 // pushChoice is a candidate push: onto branch at the route's junction at.
@@ -2235,4 +2282,10 @@ func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
 		}
 	}
 	return best, best != nil
+}
+
+// standsChanged reports whether a stand around has been taken or freed
+// since the push to a pose was planned (emptyNear): it is planned again.
+func (c *TaxiController) standsChanged() bool {
+	return c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear)
 }
