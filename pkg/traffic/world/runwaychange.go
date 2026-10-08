@@ -56,7 +56,7 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		keep := cc.lastOnOldRunway(g, items, arrs)
 		for _, it := range items {
 			it.mu.Lock()
-			v := it.view
+			v, stand := it.view, it.stand
 			it.mu.Unlock()
 			if keep[it.Tail] {
 				cc.log.printf("%-6s runway change: finishes on %s", it.Tail, v.Runway)
@@ -67,9 +67,9 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 			switch {
 			case v.Done:
 			case it.dep != nil && !slices.Contains(deps, v.Runway):
-				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, it.stand))
+				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, stand))
 			case it.arr != nil && !slices.Contains(arrs, v.Runway):
-				cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, it.stand))
+				cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, stand))
 			}
 		}
 	}
@@ -123,6 +123,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	}
 	it.mu.Lock()
 	it.view.Runway, it.view.Procedure = runway, sid
+	it.keepSpot()
 	it.procSaid = ""
 	it.fixes = nil
 	if sid != "" {
@@ -180,6 +181,7 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	}
 	it.mu.Lock()
 	it.view.Runway, it.view.Procedure = runway, star
+	it.keepSpot()
 	if expect != "" {
 		it.view.Procedure += " → " + expect
 	}

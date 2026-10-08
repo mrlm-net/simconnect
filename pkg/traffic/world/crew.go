@@ -130,13 +130,13 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			continue
 		}
 		it := w.s.cc.byTail(a.Tail)
-		if it == nil || it.dep == nil || it.objectID != a.ObjectID || it.gates.Load() {
+		if it == nil || it.dep == nil || it.gates.Load() {
 			continue
 		}
 		it.mu.Lock()
-		radar := it.atc == traffic.PosDeparture
+		radar, id, fixes := it.atc == traffic.PosDeparture, it.objectID, it.fixes
 		it.mu.Unlock()
-		if !radar || len(it.dep.ClimbPlan(a.Position)) == 0 {
+		if id != a.ObjectID || !radar || len(it.dep.ClimbPlan(a.Position)) == 0 {
 			continue
 		}
 		w.mu.Lock()
@@ -146,7 +146,7 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 		if asked || rand.Float64() >= crewDirectShare {
 			continue
 		}
-		ahead := fixesAhead(it.fixes, it.dep.ClimbRoute(a.Position))
+		ahead := fixesAhead(fixes, it.dep.ClimbRoute(a.Position))
 		var fix *airFix
 		for i := len(ahead) - 1; i >= 1; i-- { // the furthest, past the next
 			// Worth asking for: it saves a real part of the way (#670).

@@ -170,12 +170,17 @@ func (v *voiceOut) tuneCom1(freq string) error {
 	}
 	v.mu.Lock()
 	tune := v.tune
-	v.com = freq
 	v.mu.Unlock()
 	if tune == nil {
 		return errors.New("not connected to the simulator")
 	}
-	return tune(mhz)
+	if err := tune(mhz); err != nil {
+		return err // COM1 stays as it was (#39: taken as tuned before)
+	}
+	v.mu.Lock()
+	v.com = freq
+	v.mu.Unlock()
+	return nil
 }
 
 // follow turns the COM1 sync on or off; on, it follows COM1 now.
@@ -211,14 +216,16 @@ func registerVoice(mux *http.ServeMux, v *voiceOut) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if req.SyncCom != nil {
-			v.follow(*req.SyncCom)
-		}
+		// The device first: refused, nothing else of the request is applied
+		// (#39: the COM1 sync was switched before).
 		if req.Device != nil {
 			if err := v.speakerOf().SetDevice(*req.Device); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
+		}
+		if req.SyncCom != nil {
+			v.follow(*req.SyncCom)
 		}
 		if req.Tune && req.Frequency != "" {
 			if err := v.tuneCom1(req.Frequency); err != nil {

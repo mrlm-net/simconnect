@@ -102,15 +102,19 @@ const (
 
 // station is the station of position pos working it now (#722): by the
 // taxiways it is on, its runway, where it is; name as said and frequency.
+// With it.mu held or not: where it is comes from spot.
 func (it *controlled) station(pos traffic.Position) (string, string) {
-	w := traffic.Where{Runway: it.view.Runway}
-	if p := it.view.Position; p.Lat != 0 || p.Lon != 0 {
-		w.At = &p
-		if it.graph != nil {
-			if n, ok := it.graph.NearestNode(p, 60); ok {
-				for _, e := range it.graph.Adj[n] {
-					if e.Name != "" {
-						w.Taxiways = append(w.Taxiways, e.Name)
+	var w traffic.Where
+	if s := it.spot.Load(); s != nil {
+		w.Runway = s.runway
+		if p := s.pos; p.Lat != 0 || p.Lon != 0 {
+			w.At = &p
+			if it.graph != nil {
+				if n, ok := it.graph.NearestNode(p, 60); ok {
+					for _, e := range it.graph.Adj[n] {
+						if e.Name != "" {
+							w.Taxiways = append(w.Taxiways, e.Name)
+						}
 					}
 				}
 			}

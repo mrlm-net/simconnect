@@ -129,10 +129,12 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)
 		} else {
 			g.Spawned++
+			it.mu.Lock()
 			what := "ready for pushback at " + it.view.Stand
 			if kind == "arrival" {
 				what = "inbound on " + it.view.Procedure
 			}
+			it.mu.Unlock()
 			g.event(0, "%s %s", tail, what)
 		}
 	}

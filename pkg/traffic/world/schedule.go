@@ -175,8 +175,14 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 	// Their lead is the manager's default VFRLead: Source runs under the
 	// manager's lock, so its options are not asked for.
 	if !noVFR {
-		flights = append(flights, traffic.VFRFlights(traffic.VFROptions{Focus: focus, Layouts: opts.Layouts, Density: density, Seed: opts.Seed ^ 0x7f,
-			Visual: s.visual}, from, to)...)
+		// On the schedule's clock like the others (E31): by day is the
+		// simulator's day, not the wall clock's.
+		vfr := traffic.VFRFlights(traffic.VFROptions{Focus: focus, Layouts: opts.Layouts, Density: density, Seed: opts.Seed ^ 0x7f,
+			Visual: s.visual}, from.Add(off), to.Add(off))
+		for i := range vfr {
+			vfr[i].STD, vfr[i].STA = vfr[i].STD.Add(-off), vfr[i].STA.Add(-off)
+		}
+		flights = append(flights, vfr...)
 	}
 	return flights
 }
@@ -294,10 +300,16 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	var turnFrom *controlled // a turnaround's arrival, forgotten once the departure is up
 	if f.TurnFrom != "" {
 		arr := cc.byTail(f.TurnFrom)
-		if arr == nil || arr.objectID == 0 {
+		var id uint32
+		if arr != nil {
+			arr.mu.Lock()
+			id, req.Stand, req.Model = arr.objectID, arr.stand, arr.view.Model
+			arr.mu.Unlock()
+		}
+		if id == 0 {
 			return fmt.Errorf("turnaround: %s is not on its stand", f.TurnFrom)
 		}
-		req.adopt, req.Stand, req.Model = arr.objectID, arr.stand, arr.view.Model
+		req.adopt = id
 		// The stand passes to the departure: its aircraft, detected there, is
 		// then its own and not in the way (#470). Back to the arrival if the
 		// departure fails (#73: the stand was freed under the parked aircraft

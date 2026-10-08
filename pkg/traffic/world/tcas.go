@@ -312,7 +312,7 @@ func (cc *controlCenter) clearTCAS(objectID uint32) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	for _, it := range cc.items {
-		if it.objectID == objectID {
+		if it.object() == objectID {
 			it.tcasRA.Store(false)
 		}
 	}

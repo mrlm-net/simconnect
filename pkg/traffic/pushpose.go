@@ -747,6 +747,14 @@ func PlanStandardPushes(g *airport.Graph, model string, stands []int) {
 			stands = append(stands, i)
 		}
 	}
+	// The airport loaded again (a new graph): its old graph's pushes go,
+	// kept for good before (E33).
+	standardPushes.Range(func(k, _ any) bool {
+		if old := k.(standardKey).g; old != g && old.Layout.ICAO == g.Layout.ICAO {
+			standardPushes.Delete(k)
+		}
+		return true
+	})
 	for _, i := range stands {
 		key := standardKey{g, i}
 		if _, ok := standardPushes.Load(key); ok {

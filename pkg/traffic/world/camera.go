@@ -187,14 +187,17 @@ func (m *cameraMan) setView(view string, id int, icao string) error {
 		m.cc.mu.Lock()
 		it := m.cc.items[id]
 		m.cc.mu.Unlock()
-		if it == nil || it.objectID == 0 {
+		if it == nil {
 			return errors.New("no such aircraft in the simulator yet")
 		}
 		it.mu.Lock()
-		model := it.view.Model
+		model, own := it.view.Model, it.objectID
 		it.mu.Unlock()
+		if own == 0 {
+			return errors.New("no such aircraft in the simulator yet")
+		}
 		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
-		obj, size, name, l = it.objectID, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.Tail, it.graph.Layout
+		obj, size, name, l = own, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, it.Tail, it.graph.Layout
 	}
 	// The tower with no aircraft picked: from the tower, the camera turns to
 	// who is on the radio, else the busiest aircraft (next).
@@ -374,7 +377,7 @@ func (m *cameraMan) heard(t traffic.Transmission) {
 		return
 	}
 	it := m.cc.byTail(t.Callsign)
-	if it == nil || it.objectID == 0 {
+	if it == nil || it.object() == 0 {
 		return
 	}
 	m.cut(it, now)
@@ -396,11 +399,11 @@ func (m *cameraMan) cut(it *controlled, now time.Time) {
 	if tower {
 		// One view, held: it keeps turning with the aircraft.
 		it.mu.Lock()
-		model := it.view.Model
+		model, obj := it.view.Model, it.objectID
 		it.mu.Unlock()
 		p := traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Motion
 		eye := m.towerEye(it.graph)
-		if shot, err := viewShot("tower", it.objectID, false, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, &eye); err == nil {
+		if shot, err := viewShot("tower", obj, false, camera.Size{Span: p.SpanMeters, Length: p.SpanMeters * 1.05}, &eye); err == nil {
 			m.dir.Play(shot)
 		}
 		return
@@ -437,9 +440,9 @@ func (m *cameraMan) next(now time.Time) {
 	best := -1
 	for _, it := range items {
 		it.mu.Lock()
-		done, id := it.view.Done, it.ID
+		done, id, obj := it.view.Done, it.ID, it.objectID
 		it.mu.Unlock()
-		if done || it.objectID == 0 {
+		if done || obj == 0 {
 			continue
 		}
 		if mode == "follow" {
@@ -542,9 +545,9 @@ func phaseOf(v ControlView) string {
 // the other side.
 func sequenceFor(it *controlled, n int) []camera.Shot {
 	it.mu.Lock()
-	v := it.view
+	v, obj := it.view, it.objectID
 	it.mu.Unlock()
-	obj, l := it.objectID, it.graph.Layout
+	l := it.graph.Layout
 	m := traffic.ProfileFor(strings.SplitN(v.Model, liverySep, 2)[0]).Motion
 	size := camera.Size{Span: m.SpanMeters, Length: m.SpanMeters * 1.05}
 	side := 1.0
