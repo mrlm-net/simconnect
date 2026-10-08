@@ -84,8 +84,8 @@
 />
 
 <div class="flex">
-	<div class="min-w-0 flex-1 px-8 py-6 lg:px-12 lg:py-10">
-		<h1 class="mb-2 text-3xl font-bold" style="color: var(--color-text-primary);">
+	<div class="min-w-0 flex-1 px-6 py-10 sm:px-10 lg:py-14">
+		<h1 class="mb-2 text-3xl font-semibold tracking-tight" style="color: var(--color-text-primary);">
 			Documentation
 		</h1>
 		<p class="mb-8" style="color: var(--color-text-secondary);">
@@ -95,8 +95,7 @@
 		{#each [...groups.entries()] as [section, docs]}
 			<div class="mb-8">
 				<h2
-					class="mb-4 text-lg font-semibold uppercase tracking-wider"
-					style="color: var(--color-text-muted);"
+					class="eyebrow mb-3"
 				>
 					{sectionLabels[section] ?? section}
 				</h2>
@@ -104,10 +103,9 @@
 					{#each docs as doc}
 						<a
 							href="{base}/docs/{doc.slug}"
-							class="block rounded-lg border p-4 transition-colors"
-							style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+							class="card group block p-4"
 						>
-							<h3 class="mb-1 font-medium" style="color: var(--color-link);">
+							<h3 class="mb-1 font-medium" style="color: var(--text);">
 								{doc.title}
 							</h3>
 							{#if doc.description}
@@ -127,8 +125,7 @@
 			{#each externalLinks as group}
 				<div class="mb-5">
 					<p
-						class="mb-2 text-xs font-semibold uppercase tracking-wider"
-						style="color: var(--color-text-muted);"
+						class="eyebrow mb-2"
 					>
 						{group.section}
 					</p>
@@ -143,7 +140,7 @@
 								>
 									<span
 										class="flex items-center gap-1 text-sm transition-colors"
-										style="color: var(--color-link);"
+										style="color: var(--text);"
 									>
 										{link.title}
 										{#if !link.internal}

@@ -10,5 +10,14 @@ export const siteConfig: SiteConfig = {
 	ogImageWidth: 1057,
 	ogImageHeight: 639,
 	locale: 'en_US',
-	license: 'BUSL-1.1'
+	license: 'BUSL-1.1',
+	licenseLabel: 'BSL 1.1 · non-commercial',
+	since: 2025,
+	glyph: 'sc',
+	nav: [
+		{ title: 'Docs', href: '/docs' },
+		{ title: 'Getting started', href: '/getting-started' },
+		{ title: 'Examples', href: '/docs/examples' },
+		{ title: 'Changelog', href: '/changelog' }
+	]
 };
