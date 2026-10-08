@@ -169,8 +169,10 @@ type controlled struct {
 	// call, approved together.
 	pushAndStart bool
 	// givingWay is the aircraft it gives way to (TaxiEvent.GivingWayTo),
-	// told by ground once.
+	// told by ground once; toldWay the last one it was told to give way to
+	// (tellGiveWay, tellStandingInWay), not told again.
 	givingWay uint32
+	toldWay   uint32
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
 	// missedJoin is the arrival's last MissedJoin, acted on once.
@@ -1276,6 +1278,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.stoppedBy = by
 			if by != "" && it.cc != nil {
 				it.cc.pending.later(it.cc.clock.Now().Add(stoppedLogAfter), func() { it.logStopped(by) })
+				if strings.HasPrefix(by, "traffic ahead #") {
+					it.cc.pending.later(it.cc.clock.Now().Add(standingInWayAfter), func() { it.tellStandingInWay(by) })
+				}
 			}
 		}
 		// Past its procedure's end without joining the final: logged, and
@@ -2486,6 +2491,44 @@ func (it *controlled) logStopped(by string) {
 	it.cc.log.printf("%-6s %s: stopped %s — %s", it.Tail, it.Kind, stoppedLogAfter, said)
 }
 
+// standingInWayAfter: stopped this long by traffic standing in its way,
+// ground tells it to give way (tellStandingInWay).
+const standingInWayAfter = 5 * time.Second
+
+// tellStandingInWay tells a taxiing aircraft stopped by traffic ahead
+// (by: "traffic ahead #123") to give way to it, when that one stands on
+// the taxiway — pushing back or waiting for its own taxi — not in a queue
+// that moves on by itself (live, SWR1216 stopped behind DLH1487 on JB
+// heard "give way" only 52 s later, when the routes crossed).
+func (it *controlled) tellStandingInWay(by string) {
+	it.mu.Lock()
+	still := it.stoppedBy == by
+	it.mu.Unlock()
+	id, err := strconv.ParseUint(strings.TrimPrefix(by, "traffic ahead #"), 10, 32)
+	if !still || err != nil {
+		return
+	}
+	o := it.cc.byObject(uint32(id))
+	if o == nil || o == it {
+		return
+	}
+	o.mu.Lock()
+	state, model := o.view.State, o.view.Model
+	o.mu.Unlock()
+	if state != "pushback" && state != "awaiting taxi" {
+		return
+	}
+	it.mu.Lock()
+	told := it.toldWay == uint32(id)
+	it.toldWay = uint32(id) // not said again when the routes cross
+	it.mu.Unlock()
+	if told {
+		return
+	}
+	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
+	it.say(traffic.GiveWay(it.Tail, desc+" ahead"))
+}
+
 // objectIDs are the object IDs in a StoppedBy reason.
 var objectIDs = regexp.MustCompile(`#[0-9]+`)
 
@@ -2498,9 +2541,12 @@ func (it *controlled) tellGiveWay(other uint32) {
 	model, oh := o.view.Model, o.view.Heading
 	o.mu.Unlock()
 	it.mu.Lock()
-	still, h := it.givingWay == other, it.view.Heading
+	still, h, told := it.givingWay == other, it.view.Heading, it.toldWay == other
+	if still {
+		it.toldWay = other
+	}
 	it.mu.Unlock()
-	if !still {
+	if !still || told {
 		return
 	}
 	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
