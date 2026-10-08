@@ -168,3 +168,23 @@ func TestPLNResolverRequestError(t *testing.T) {
 		t.Errorf("done %v missing %v err %v", r.Done(), r.Missing(), r.Err())
 	}
 }
+
+// An ILS localiser is asked for as a navaid only, not as a waypoint (#853:
+// asked as one, the simulator answered exception 1); its reply completes
+// the load.
+func TestRequestNavaidOnly(t *testing.T) {
+	c := &fakeNavClient{}
+	l := NewNavLoader(c)
+	if err := l.RequestNavaid(Key("PH", "LK", KindVOR)); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.reqs) != 1 {
+		t.Fatalf("%d requests, want the navaid's alone", len(c.reqs))
+	}
+	if _, done := l.Handle(navEndMsg(c.reqs[0])); !done {
+		t.Error("not complete after the navaid's reply")
+	}
+	if err := l.RequestNavaid(Key("GOLOP", "LK", KindWaypoint)); err == nil {
+		t.Error("a waypoint asked for as a navaid")
+	}
+}
