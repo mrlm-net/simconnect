@@ -973,9 +973,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if u := cc.gpu(r, g, reqBase, prof); u != nil {
 			gpu = u
 		}
+		buses := cc.buses(g, reqBase, prof, stairs)
+		var deboard []traffic.FuelService
+		if r.adopt != 0 { // a turnaround: the passengers off first
+			deboard = cc.buses(g, reqBase, prof, stairs)
+		}
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Stairs: stairs, GPU: gpu, Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },

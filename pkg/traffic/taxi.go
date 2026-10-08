@@ -146,6 +146,14 @@ type TaxiRequest struct {
 	// GPU powers it on a remote stand while it waits (#832): e.g. a
 	// NewSimObjectFuelTruck with GPUSpot. Nil: none.
 	GPU FuelService `json:"-"`
+	// Buses bring the passengers to the stairs on a remote stand (#887):
+	// e.g. NewSimObjectFuelTruck with BusSpot(n), BusesFor of them. They
+	// come only with Stairs. Empty: none.
+	Buses []FuelService `json:"-"`
+	// Deboard are the buses taking the passengers off first, on a
+	// turnaround (#887): as Buses, BusDeboardTime at the aircraft. Bus n
+	// may share bus n's request ID: it boards once that one is home.
+	Deboard []FuelService `json:"-"`
 	// StandOccupied reports whether a stand is taken now (an aircraft on it
 	// or a reservation, e.g. StandAllocator.Occupant). The push may swing
 	// through an empty neighbouring stand (EHAM E3: back into the empty
@@ -298,8 +306,10 @@ type TaxiController struct {
 	fuelWaitFrom    time.Time // first frame waiting on the stand
 	fuelUntil       time.Time // refuelling done (set once at the wing)
 	fuelClearFrom   time.Time // the push first waited for it to leave
-	// stairsSvc, gpuSvc: the stand services (#831, #832).
-	stairsSvc, gpuSvc standService
+	// stairsSvc, gpuSvc, busSvc, deboardSvc: the stand services (#831,
+	// #832, #887).
+	stairsSvc, gpuSvc  standService
+	busSvc, deboardSvc []standService
 	pushBranch        airport.NodeID // taxiway the tail is pushed onto (planPushback)
 	havePushBranch    bool
 	pushJunction      int              // route index of the junction the tail swings at (planPushback; 1: the first)
@@ -563,6 +573,11 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 	if c.req.GPU != nil && c.req.GPU.Handle(msg) {
 		return true
 	}
+	for _, b := range append(c.req.Deboard[:len(c.req.Deboard):len(c.req.Deboard)], c.req.Buses...) {
+		if b != nil && b.Handle(msg) {
+			return true
+		}
+	}
 	if c.req.Fuel != nil && c.req.Fuel.Handle(msg) {
 		return true
 	}
@@ -749,6 +764,7 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 		c.give(VehicleFuel)
 		c.give(VehicleStairs)
 		c.give(VehicleGPU)
+		c.giveBuses()
 		c.detail.forget(c.objectID)
 		close(c.events)
 	}

@@ -163,6 +163,9 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		},
 		gpu: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService {
 			return newGPU(cc, w.GPU, g, w.ReqBase, prof)
+		},
+		bus: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile, title string, n int) traffic.FuelService {
+			return newBus(cc, client, title, g, w.ReqBase, prof, n)
 		}}
 	a.heard = st.core.hooks.OnTransmission
 	srv.add("sim", a)
