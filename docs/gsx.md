@@ -1,5 +1,7 @@
 ---
-title: GSX and L:vars
+title: "GSX and L:vars"
+order: 14
+section: "packages"
 description: Read GSX Pro's state and write L:vars of your own for other add-ons.
 ---
 
