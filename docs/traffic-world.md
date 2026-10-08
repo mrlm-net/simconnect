@@ -157,19 +157,25 @@ Each airport has a fleet of service vehicles. The defaults are sized by its stan
 | Fuel truck | 1 per 15 stands, at least 1 | GSX fuel truck or hydrant dispenser | Right wing | While the departure waits |
 | Boarding stairs | 1 per 10 stands, at least 2 | `FSDT_Staircase_*`, else `ASO_Boarding_Stairs` | Front left door, square to the fuselage; backs straight out | Remote stands only (no jetway) |
 | GPU | 1 per 10 stands, at least 2 | `FSDT_GPU_TLD_406` or `FSDT_GPU_Hobart_4400`, else `Car Ground Power Unit` | Forward right of the nose gear | Remote stands only |
+| Passenger buses | 2 per set of stairs | `FSDT_Cobus_3000` (ICAO regions E, L, K, C) or `FSDT_neoplan_bus` (O, Z, V, W, U), else `Bus Apron 02` | 15 m left of the axis, outside the stairs, facing the tail: the first 4 m behind the front door, the second 20 m ahead of it | Remote stands, with the stairs only |
 
-- **Overrides:** `airport.Limits` sets `Tugs`, `FuelTrucks`, `Stairs` and `GPUs` per airport, and a local override file wins per value.
+- **Passenger buses (#887):** one for an aircraft under 30 m of span, two from an A320 or 737 up.
+  - **Boarding:** in the last 15 minutes before the stairs leave, a minute after the stairs came; the second once the first is at its spot. They leave a minute before the stairs.
+  - **Deboarding:** on a turnaround, buses come a minute after the stairs, stay 5 minutes and drive home. The boarding bus on the same spot comes only once that one is home.
+  - **The way:** in from the nose side, out turning round away from the aircraft. A way that would cross the aircraft, or pass within 15 m of its nose or tail, goes round it.
+  - **Not yet:** an arrival that parks without a turnaround gets no buses. GSX serves only the user's aircraft, so our buses never meet its own.
+- **Overrides:** `airport.Limits` sets `Tugs`, `FuelTrucks`, `Stairs`, `GPUs` and `Buses` per airport, and a local override file wins per value.
 - **Taking and giving back:** a departure takes each vehicle from the fleet before it is sent, and gives it back once the vehicle has driven off, or when the flight ends or is cancelled.
 - **When none is free:**
   - The push waits for a tug.
   - Fuelling, stairs and the GPU are left out once it is too late for them. Stairs and the GPU leave 2 minutes before the tug comes, and the push waits for them to clear.
 - **Log:** the traffic log gives each airport's fleet sizes, and logs a departure waiting for one ("waits for a tug at LKPR: all 8 busy").
-- **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs` and `TaxiRequest.GPU`.
+- **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs`, `TaxiRequest.GPU`, `TaxiRequest.Buses` and `TaxiRequest.Deboard` (`traffic.SimObjectBus`, `BusSpot`, `BusesFor`).
 - **Control API:** `pushInMin` gives a manual departure a push time, so its stand services have a window.
 
 ## SimConnect IDs
 
-The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last four are its GPU, stairs, fuel truck and tug.
+The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last six are its two buses, GPU, stairs, fuel truck and tug; a deboarding bus and the boarding bus after it share one.
 
 | IDs | What |
 |---|---|

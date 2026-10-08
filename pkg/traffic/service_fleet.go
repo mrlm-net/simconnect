@@ -19,6 +19,7 @@ const (
 	VehicleFuel   VehicleKind = "fuel"
 	VehicleStairs VehicleKind = "stairs"
 	VehicleGPU    VehicleKind = "gpu"
+	VehicleBus    VehicleKind = "bus" // #887
 )
 
 // ServiceFleet hands out an airport's service vehicles.
@@ -98,6 +99,9 @@ const (
 	MinFuelTrucks       = 1
 	StairsPerStands     = 10.0
 	MinStairs           = 2
+	// BusesPerStairs: buses per set of stairs (#887), enough for two large
+	// aircraft boarding at once on every set.
+	BusesPerStairs = BusesLarge
 )
 
 // DefaultFleetSize is an airport's fleet for its number of stands.
@@ -108,5 +112,6 @@ func DefaultFleetSize(stands int) map[VehicleKind]int {
 		// Stairs serve the remote stands only: one set per StairsPerStands.
 		VehicleStairs: max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
 		VehicleGPU:    max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
+		VehicleBus:    BusesPerStairs * max(MinStairs, int(math.Ceil(float64(stands)/StairsPerStands))),
 	}
 }

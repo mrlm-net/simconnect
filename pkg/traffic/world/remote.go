@@ -37,6 +37,8 @@ type (
 		Fuel    string              `json:"fuel,omitempty"`
 		Stairs  string              `json:"stairs,omitempty"` // #831
 		GPU     string              `json:"gpu,omitempty"`    // #832
+		Buses   []string            `json:"buses,omitempty"`  // #887: a title per bus
+		Deboard []string            `json:"deboard,omitempty"`
 		// TugYaw and TugAhead: the tug's place on the nose gear (0: its own).
 		TugYaw   float64 `json:"tugYaw,omitempty"`
 		TugAhead float64 `json:"tugAhead,omitempty"`
@@ -70,6 +72,16 @@ func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequ
 	}
 	if u, ok := req.GPU.(*traffic.SimObjectFuelTruck); ok && u != nil {
 		w.GPU = u.Title()
+	}
+	for _, b := range req.Buses {
+		if b, ok := b.(*traffic.SimObjectBus); ok && b != nil {
+			w.Buses = append(w.Buses, b.Title())
+		}
+	}
+	for _, b := range req.Deboard {
+		if b, ok := b.(*traffic.SimObjectBus); ok && b != nil {
+			w.Deboard = append(w.Deboard, b.Title())
+		}
 	}
 	evs := r.c.subscribe(w.Target)
 	if err := r.c.call(r.t, "StartDeparture", []any{w}); err != nil {
@@ -142,6 +154,7 @@ type actuatorSim struct {
 	fuel   func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
 	stairs func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
 	gpu    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService
+	bus    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile, title string, n int) traffic.FuelService
 
 	mu   sync.Mutex
 	ctls []interface{ Handle(engine.Message) bool } // started off the wire
@@ -180,6 +193,14 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	}
 	if w.GPU != "" && a.gpu != nil {
 		req.GPU = a.gpu(w, g, req.Profile)
+	}
+	if a.bus != nil {
+		for i, title := range w.Buses {
+			req.Buses = append(req.Buses, a.bus(w, g, req.Profile, title, i))
+		}
+		for i, title := range w.Deboard {
+			req.Deboard = append(req.Deboard, a.bus(w, g, req.Profile, title, i))
+		}
 	}
 	ctl, evs, err := a.localSim.StartDeparture(w.DefBase, w.ReqBase, req)
 	if err != nil {

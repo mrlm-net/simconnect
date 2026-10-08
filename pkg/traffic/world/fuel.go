@@ -27,6 +27,8 @@ type fuelTitles struct {
 	// (#832) likewise.
 	stairs, stairsStock []string
 	gpus, gpusStock     []string
+	// buses (#887): GSX's apron buses (base models), MSFS's own.
+	buses, busesStock []string
 }
 
 func (cc *controlCenter) requestFuelTitles() error {
@@ -74,6 +76,10 @@ func (cc *controlCenter) addGroundTitles(titles []string) {
 			cc.fuelTitles.gpus = insertSorted(cc.fuelTitles.gpus, t)
 		case t == "Car Ground Power Unit":
 			cc.fuelTitles.gpusStock = insertSorted(cc.fuelTitles.gpusStock, t)
+		case t == gsxBusEurope || t == gsxBusOther:
+			cc.fuelTitles.buses = insertSorted(cc.fuelTitles.buses, t)
+		case t == "Bus Apron 02":
+			cc.fuelTitles.busesStock = insertSorted(cc.fuelTitles.busesStock, t)
 		}
 	}
 }
@@ -194,4 +200,62 @@ func newGPU(cc *controlCenter, title string, g *airport.Graph, reqBase uint32, p
 	f.Spot = traffic.GPUSpot
 	cc.giveATC(f, g.Layout, "GPU")
 	return f
+}
+
+// GSX's apron buses (#887), base models (each has some 465 liveries by
+// handler): the Cobus where GSX's rules_passengerbus.cfg puts it (ICAO
+// regions E, L, K, C), the Neoplan in O, Z, V, W, U, either elsewhere. Live
+// 2026-10-08 MSFS 2024 also offered its own "Bus Apron 02".
+const (
+	gsxBusEurope = "FSDT_Cobus_3000"
+	gsxBusOther  = "FSDT_neoplan_bus"
+)
+
+// busTitle is the bus model for an airport: GSX's for its region, else
+// either GSX bus, else MSFS's own; "" when the simulator offers none.
+func (cc *controlCenter) busTitle(icao string) string {
+	cc.mu.Lock()
+	gsx, stock := cc.fuelTitles.buses, cc.fuelTitles.busesStock
+	cc.mu.Unlock()
+	want := gsxBusEurope
+	if icao != "" && strings.ContainsRune("OZVWU", rune(icao[0])) {
+		want = gsxBusOther
+	}
+	if i := sort.SearchStrings(gsx, want); i < len(gsx) && gsx[i] == want {
+		return want
+	}
+	if len(gsx) > 0 {
+		return gsx[0]
+	}
+	if len(stock) > 0 {
+		return stock[0]
+	}
+	return ""
+}
+
+// buses are the passenger buses of a departure (#887), with its stairs
+// only: BusesFor the aircraft, created with the sixth and fifth last
+// request IDs of its block.
+func (cc *controlCenter) buses(g *airport.Graph, reqBase uint32, prof traffic.MotionProfile, stairs traffic.FuelService) []traffic.FuelService {
+	if stairs == nil {
+		return nil
+	}
+	title := cc.busTitle(g.Layout.ICAO)
+	if title == "" {
+		return nil
+	}
+	var out []traffic.FuelService
+	for i := range traffic.BusesFor(prof) {
+		out = append(out, newBus(cc, cc.client, title, g, reqBase, prof, i))
+	}
+	return out
+}
+
+// newBus is bus n of a departure, of title: it parks beside the stairs
+// (traffic.BusSpot).
+func newBus(cc *controlCenter, client engine.Client, title string, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile, n int) *traffic.SimObjectBus {
+	b := traffic.NewSimObjectBus(client, cc.inj, title, reqBase+controlIDBlock-5-uint32(n), n, prof)
+	b.Layout = g.Layout
+	cc.giveATC(b, g.Layout, "bus")
+	return b
 }
