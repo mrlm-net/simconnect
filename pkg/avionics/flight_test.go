@@ -74,3 +74,41 @@ func TestSetFlightAgain(t *testing.T) {
 		t.Errorf("datums %v, set %v", c.adds, c.set)
 	}
 }
+
+// countingClearer counts the clears.
+type countingClearer struct {
+	clearingSetter
+	clears int
+}
+
+func (c *countingClearer) ClearDataDefinition(def uint32) error {
+	c.clears++
+	return c.clearingSetter.ClearDataDefinition(def)
+}
+
+// TestSetFlightClearsOnlyWhatItAdded: the first SetFlight of a connection
+// clears nothing (a definition never added raised exception 3), a second
+// clears what the first added, and after Reset (a new connection) nothing
+// again.
+func TestSetFlightClearsOnlyWhatItAdded(t *testing.T) {
+	c := &countingClearer{clearingSetter: clearingSetter{fakeSetter: fakeSetter{names: map[uint32]string{}, set: map[string]string{}}, adds: map[uint32]int{}}}
+	if err := SetFlight(c, 0x7E00, "", "007"); err != nil {
+		t.Fatal(err)
+	}
+	if c.clears != 0 {
+		t.Errorf("first call cleared %d definitions, want none", c.clears)
+	}
+	if err := SetFlight(c, 0x7E00, "", "008"); err != nil {
+		t.Fatal(err)
+	}
+	if c.clears != 1 || c.adds[0x7E01] != 1 {
+		t.Errorf("second call: %d clears, datums %v", c.clears, c.adds)
+	}
+	Reset(c)
+	if err := SetFlight(c, 0x7E00, "", "009"); err != nil {
+		t.Fatal(err)
+	}
+	if c.clears != 1 {
+		t.Errorf("after Reset: %d clears, want still 1", c.clears)
+	}
+}

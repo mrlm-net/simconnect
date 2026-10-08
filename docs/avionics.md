@@ -49,4 +49,4 @@ Stock aircraft have not been checked yet.
 
 ## The call sign for ATC
 
-`SetFlight(client, defBase, airline, number)` sets the user aircraft's ATC AIRLINE ("Czech Air Force", the call sign as said) and ATC FLIGHT NUMBER ("007"); "" leaves one as it is (#680). Measured in MSFS 2024: both are settable and read back as set (ATC ID, the registration, is separate). An app can offer to use the flight plan's call sign in the sim.
+`SetFlight(client, defBase, airline, number)` sets the user aircraft's ATC AIRLINE ("Czech Air Force", the call sign as said) and ATC FLIGHT NUMBER ("007"); "" leaves one as it is (#680). Measured in MSFS 2024: both are settable and read back as set (ATC ID, the registration, is separate). An app can offer to use the flight plan's call sign in the sim. It uses the definitions `defBase` and `defBase+1`, defined afresh each call; it clears only those it added on the connection, so call `Reset(client)` on a new connection (without it the first call after a reconnect raises a harmless exception 3).
