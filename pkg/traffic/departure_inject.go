@@ -321,6 +321,17 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 				c.emit(nil, false)
 				return
 			}
+			// The stands around changed since it was planned: planned again
+			// in the background, the push waiting for it (startPushback did
+			// it here: live, every aircraft stood still 0.5 s as TVS1072's
+			// push began, UAE718 on its take-off roll).
+			if c.pushInBackground && c.standsChanged() {
+				c.note("stands around changed: pushback planned again", nil)
+				c.route = c.origRoute
+				c.planPushbackLater()
+				c.emit(nil, false)
+				return
+			}
 			if err := c.startPushback(); err != nil {
 				c.fail(err)
 				return
@@ -673,7 +684,7 @@ func (c *TaxiController) standInPlace() error {
 func (c *TaxiController) startPushback() error {
 	// The stands around as they are now: a neighbour taken or freed since
 	// the push was planned plans it again.
-	if c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear) {
+	if c.standsChanged() {
 		c.note("stands around changed: pushback planned again", nil)
 		c.route = c.origRoute
 		c.planPushback()
@@ -2271,4 +2282,10 @@ func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
 		}
 	}
 	return best, best != nil
+}
+
+// standsChanged reports whether a stand around has been taken or freed
+// since the push to a pose was planned (emptyNear): it is planned again.
+func (c *TaxiController) standsChanged() bool {
+	return c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear)
 }
