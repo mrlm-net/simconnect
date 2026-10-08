@@ -40,7 +40,7 @@ var vars = []struct{ name, unit string }{
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	client := simconnect.NewClient("spike-designspeeds", engine.WithContext(ctx))
+	client := simconnect.NewClient("spike-designspeeds", engine.WithContext(ctx), engine.WithCallTrace())
 	if err := client.Connect(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

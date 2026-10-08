@@ -51,6 +51,16 @@ func WithAutoDetect() Option {
 	}
 }
 
+// WithCallTrace keeps the last calls with their send IDs, so an exception
+// is logged with the call it was raised for (and CallFor names it). Each
+// call costs one more SimConnect_GetLastSentPacketID; meant for tracking
+// an exception down.
+func WithCallTrace() Option {
+	return func(c *Config) {
+		c.TraceCalls = true
+	}
+}
+
 func WithContext(ctx context.Context) Option {
 	return func(c *Config) {
 		c.Context = ctx
