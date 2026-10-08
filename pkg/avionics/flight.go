@@ -5,6 +5,7 @@ package avionics
 
 import (
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -45,15 +46,49 @@ type clearer interface {
 
 func setString(c Presser, def uint32, name string, typ types.SIMCONNECT_DATATYPE, b []byte) error {
 	// Defined afresh each time: a datum added to a definition that has it
-	// already makes it longer than the data set (#22).
-	if cl, ok := c.(clearer); ok {
+	// already makes it longer than the data set (#22). Cleared only once
+	// added on this connection: clearing one never added raised exception 3
+	// (UNRECOGNIZED_ID) on the first SetFlight (MyCrew, call trace).
+	if cl, ok := c.(clearer); ok && definedOn(c, def) {
 		_ = cl.ClearDataDefinition(def)
 	}
 	if err := c.AddToDataDefinition(def, name, "", typ, 0, 0); err != nil {
 		return fmt.Errorf("avionics: define %s: %w", name, err)
 	}
+	markDefined(c, def)
 	if err := c.SetDataOnSimObject(def, types.SIMCONNECT_OBJECT_ID_USER, 0, 0, uint32(len(b)), unsafe.Pointer(&b[0])); err != nil {
 		return fmt.Errorf("avionics: set %s: %w", name, err)
 	}
 	return nil
+}
+
+// defined: by client, the definitions SetFlight added on its connection.
+var defined = struct {
+	sync.Mutex
+	by map[Presser]map[uint32]bool
+}{by: map[Presser]map[uint32]bool{}}
+
+func definedOn(c Presser, def uint32) bool {
+	defined.Lock()
+	defer defined.Unlock()
+	return defined.by[c][def]
+}
+
+func markDefined(c Presser, def uint32) {
+	defined.Lock()
+	defer defined.Unlock()
+	if defined.by[c] == nil {
+		defined.by[c] = map[uint32]bool{}
+	}
+	defined.by[c][def] = true
+}
+
+// Reset forgets the definitions SetFlight added through c: call it on a new
+// connection, which has none of them. Without it the first SetFlight after
+// a reconnect clears a definition the new connection does not know
+// (exception 3, harmless) before adding it again.
+func Reset(c Presser) {
+	defined.Lock()
+	defer defined.Unlock()
+	delete(defined.by, c)
 }
