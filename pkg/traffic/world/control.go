@@ -2589,6 +2589,8 @@ func typeSaid(icao string) string {
 		return "Airbus A220"
 	case strings.HasPrefix(icao, "DH8"):
 		return "Dash 8"
+	case icao == "PC24":
+		return "Pilatus PC-24"
 	case icao == "PC12":
 		return "Pilatus PC-12"
 	case len(icao) == 4 && icao[0] == 'C' && (icao[1] == '5' || icao[1] == '6' || icao[1] == '7'):
