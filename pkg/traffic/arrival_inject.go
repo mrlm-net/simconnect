@@ -203,10 +203,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 }
 
 func (c *ArrivalController) profile() MotionProfile {
-	p := DefaultMotionProfile()
-	if c.req.Profile != (MotionProfile{}) {
-		p = c.req.Profile
-	}
+	p := withDefaults(c.req.Profile, DefaultMotionProfile())
 	limit := 0.0
 	if c.req.Airport != nil {
 		limit = c.req.Airport.TaxiMaxKts
@@ -392,10 +389,7 @@ func (c *ArrivalController) ClearToCross() {
 const spawnCGFt = 12.0
 
 func approachProfileOf(req ArrivalRequest) ApproachProfile {
-	if req.Approach != (ApproachProfile{}) {
-		return req.Approach
-	}
-	return DefaultApproachProfile()
+	return withDefaults(req.Approach, DefaultApproachProfile())
 }
 
 func (c *ArrivalController) approachProfile() ApproachProfile { return approachProfileOf(c.req) }
@@ -580,10 +574,7 @@ func DefaultRolloutProfile() RolloutProfile {
 }
 
 func (c *ArrivalController) rolloutProfile() RolloutProfile {
-	if c.req.Rollout != (RolloutProfile{}) {
-		return c.req.Rollout
-	}
-	return DefaultRolloutProfile()
+	return withDefaults(c.req.Rollout, DefaultRolloutProfile())
 }
 
 // ClearUpTo clears an injected arrival to taxi up to a node of its route and

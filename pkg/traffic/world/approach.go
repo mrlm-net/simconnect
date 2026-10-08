@@ -97,9 +97,9 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 	switch action {
 	case "speed":
 		// A speed for the rest of the STAR; 0 resumes normal speed.
-		now := 0.0
+		now, id := 0.0, it.object()
 		for _, a := range q.cc.world.Aircraft() {
-			if a.ObjectID == it.objectID {
+			if a.ObjectID == id {
 				now = a.GroundKts
 			}
 		}
@@ -153,11 +153,11 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 			return traffic.ErrHolding
 		}
 		it.mu.Lock()
-		pos := it.view.Position
+		pos, id := it.view.Position, it.objectID
 		it.mu.Unlock()
 		alt := 0.0
 		for _, a := range q.cc.world.Aircraft() {
-			if a.ObjectID == it.objectID {
+			if a.ObjectID == id {
 				pos, alt = a.Position, a.AltFt
 			}
 		}
@@ -278,7 +278,10 @@ func registerApproach(mux *http.ServeMux, st *state) {
 // else so many miles from the nearest one ("5 miles east of VLM").
 func (q *sequences) pointName(it *controlled, p airport.LatLon) (string, airport.LatLon) {
 	best, bestNM := airFix{}, math.Inf(1)
-	for _, f := range it.fixes {
+	it.mu.Lock()
+	fixes := it.fixes
+	it.mu.Unlock()
+	for _, f := range fixes {
 		if d := calc.HaversineNM(p.Lat, p.Lon, f.Lat, f.Lon); d < bestNM {
 			best, bestNM = f, d
 		}

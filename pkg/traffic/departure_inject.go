@@ -74,10 +74,7 @@ var (
 )
 
 func (c *TaxiController) profile() MotionProfile {
-	p := DefaultMotionProfile()
-	if c.req.Profile != (MotionProfile{}) {
-		p = c.req.Profile
-	}
+	p := withDefaults(c.req.Profile, DefaultMotionProfile())
 	limit := 0.0
 	if c.req.Airport != nil {
 		limit = c.req.Airport.TaxiMaxKts
@@ -86,17 +83,14 @@ func (c *TaxiController) profile() MotionProfile {
 }
 
 func (c *TaxiController) takeoffProfile() TakeoffProfile {
-	if c.req.Takeoff != (TakeoffProfile{}) {
-		return c.req.Takeoff
-	}
-	return DefaultTakeoffProfile()
+	return withDefaults(c.req.Takeoff, DefaultTakeoffProfile())
 }
 
 // note records the send ID of the request just made for exception reports.
 func (c *TaxiController) note(desc string, err error) {
 	if client := c.fleet.clientOrNil(); client != nil && c.sent != nil {
 		if id, idErr := client.GetLastSentPacketID(); idErr == nil {
-			c.sent[id] = desc
+			noteSent(c.sent, id, desc)
 		}
 	}
 	_ = err

@@ -357,12 +357,40 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 			h(topic)
 		}
 	}
+	// The host hears each transmission on a goroutine of its own, in order:
+	// called where it is said, with an aircraft's lock held, a host that
+	// asked the World for its views from the callback deadlocked (E28).
+	heard := make(chan traffic.Transmission, heardQueue)
+	var heardMu sync.Mutex
+	heardClosed := false
+	go func() {
+		for t := range heard {
+			if h := st.core.hooks.OnTransmission; h != nil {
+				h(t) // the host: its voice (#419), which cuts the camera as heard
+			} else {
+				heardOnCamera(t) // no voice: the camera cuts as it is said
+			}
+		}
+	}()
 	cc.onTransmission = func(t traffic.Transmission) {
 		cc.changed("radio") // the open maps fetch it now (push.go)
-		if h := st.core.hooks.OnTransmission; h != nil {
-			h(t) // the host: its voice (#419), which cuts the camera as heard
-		} else {
-			heardOnCamera(t) // no voice: the camera cuts as it is said
+		heardMu.Lock()
+		defer heardMu.Unlock()
+		if heardClosed {
+			return
+		}
+		select {
+		case heard <- t:
+		default:
+			fmt.Fprintf(os.Stderr, "⚠️  transmission not heard (the host is %d behind): %s\n", heardQueue, t.Text)
+		}
+	}
+	stopHeard := func() {
+		heardMu.Lock()
+		defer heardMu.Unlock()
+		if !heardClosed {
+			heardClosed = true
+			close(heard)
 		}
 	}
 	cc.graph = st.cache.Graph
@@ -450,12 +478,17 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	st.setLive(true)
 	return func() {
 		close(stop)
+		stopHeard()
 		st.mu.Lock()
 		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts, st.tcas = nil, nil, nil, nil, nil, nil, nil
 		st.mu.Unlock()
 		st.setLive(false)
 	}
 }
+
+// heardQueue: transmissions waiting for the host (OnTransmission) at most;
+// beyond, one is dropped with a warning rather than blocking the engine.
+const heardQueue = 256
 
 // runOn runs the traffic on a connected client whose messages arrive on
 // stream (the client's own, or a host's fed through World.Feed), until ctx

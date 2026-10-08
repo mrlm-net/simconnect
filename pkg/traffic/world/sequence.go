@@ -580,13 +580,13 @@ func (q *sequences) tick(now time.Time) {
 			continue
 		}
 		it.mu.Lock()
-		v, route := it.view, it.approach
+		v, route, id, fixes := it.view, it.approach, it.objectID, it.fixes
 		it.mu.Unlock()
 		if v.OnGround || v.Done || (v.State != "approaching" && v.State != "landing" && v.State != "spawning") {
 			continue
 		}
 		p, kts := v.Position, v.GroundSpeed
-		if a, ok := pos[it.objectID]; ok {
+		if a, ok := pos[id]; ok {
 			p, kts = a.Position, a.GroundKts
 		}
 		if p == (airport.LatLon{}) {
@@ -597,7 +597,7 @@ func (q *sequences) tick(now time.Time) {
 		// procedure): straight to the threshold — the planned approach from
 		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
-			fixesOf[v.Tail] = namedAhead(p, r, fixesAhead(it.fixes, r))
+			fixesOf[v.Tail] = namedAhead(p, r, fixesAhead(fixes, r))
 			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
 			continue
 		}
@@ -641,6 +641,14 @@ func (q *sequences) tick(now time.Time) {
 		rwy := ""
 		if e.arrive.plan != nil {
 			rwy = e.arrive.plan.ArrivalRunway
+		}
+		// The runway in use now: its plan, made at the spawn, is planned
+		// again for a new runway only at the hand-over (enroute.go), and
+		// was sequenced on the old one meanwhile (E29).
+		if g, err := q.cc.graph(e.f.Airport); err == nil && !slices.ContainsFunc(q.cc.runwaysInUse(g, true), func(r airport.RunwayEnd) bool { return r.Name == rwy }) {
+			if now := q.cc.activeRunway(g, true); now != "" {
+				rwy = now
+			}
 		}
 		var named []airFix
 		for _, n := range e.arrive.route {

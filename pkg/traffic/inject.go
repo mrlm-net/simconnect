@@ -181,7 +181,7 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 // track remembers which call a send ID belongs to, for exception reports.
 func (i *Injector) track(call string, err error) error {
 	if id, e := i.client.GetLastSentPacketID(); e == nil {
-		i.sent[id] = call
+		noteSent(i.sent, id, call)
 	}
 	return err
 }

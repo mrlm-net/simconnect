@@ -35,7 +35,9 @@ func parseAirspaceClass(s string) (traffic.AirspaceClass, error) {
 }
 
 // rulesOf is the flight rules an aircraft flies under: ours as spawned
-// (ControlView.Rules); others IFR, but a light single VFR.
+// (ControlView.Rules). Others' the simulator does not give: unknown,
+// treated as IFR, so separated (E22: guessed VFR from a light type's
+// title, against showing only what the sim gives).
 func (cc *controlCenter) rulesOf(a traffic.TrackedAircraft) string {
 	if a.Ours {
 		if it := cc.byTail(a.Tail); it != nil {
@@ -46,9 +48,6 @@ func (cc *controlCenter) rulesOf(a traffic.TrackedAircraft) string {
 				return r
 			}
 		}
-	}
-	if traffic.ProfileFor(a.Title).Category == traffic.CategoryPiston {
-		return "VFR"
 	}
 	return "IFR"
 }
@@ -118,7 +117,7 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 		clock, nm, dir := traffic.TrafficRelative(me.Position, me.Heading, other.Position, other.Heading)
 		typ := typeSaid(traffic.ProfileFor(other.Title).Type)
 		level := fmt.Sprintf("%.0f feet", math.Round(other.AltFt/100)*100)
-		if other.AltFt >= 5500 {
+		if ta := w.s.cc.taOf(it.ICAO); ta > 0 && other.AltFt >= ta || ta <= 0 && other.AltFt >= 5500 { // flight levels above the transition altitude (E23)
 			level = "flight level " + fmt.Sprintf("%03.0f", math.Round(other.AltFt/100))
 		}
 		tx := traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, level)

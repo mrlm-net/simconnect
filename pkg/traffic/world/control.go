@@ -132,8 +132,10 @@ type controlled struct {
 	// circuitJoin: where the tower joins it (LegFinal: straight in).
 	circuitJoin traffic.CircuitLeg
 	// exitTwy: the taxiway an arrival vacated by, for its report.
-	exitTwy   string
-	readySaid bool // a departure's "ready for departure"
+	exitTwy string
+	// standTakenSaid: the last "stand taken, no other" logged (E30).
+	standTakenSaid string
+	readySaid      bool // a departure's "ready for departure"
 	// askedEntry: the intersection the crew asked to depart from with its
 	// taxi request, answered with the taxi clearance (#621).
 	askedEntry string
@@ -176,6 +178,20 @@ type controlled struct {
 
 	mu   sync.Mutex
 	view ControlView
+	// spot: view's runway and position for station, which runs with it.mu
+	// held and without; stored with them (keepSpot).
+	spot atomic.Pointer[stationSpot]
+}
+
+// stationSpot is where it is for picking its station.
+type stationSpot struct {
+	runway string
+	pos    airport.LatLon
+}
+
+// keepSpot stores view's runway and position in spot; it.mu is held.
+func (it *controlled) keepSpot() {
+	it.spot.Store(&stationSpot{runway: it.view.Runway, pos: it.view.Position})
 }
 
 // ControlView is what the map shows of a controlled aircraft.
@@ -580,7 +596,16 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		if err != nil {
 			_ = it.stands.Occupy(old, tail, half) // keep what it had; it will wait there
-			cc.log.printf("%-6s arrival: stand %s taken (%s), no other: %v", tail, l.Parking[old].Label(), why, err)
+			// Once per stand and reason: looked at every 10 s, the same line
+			// filled the log while it lasted (E30).
+			msg := fmt.Sprintf("stand %s taken (%s), no other: %v", l.Parking[old].Label(), why, err)
+			it.mu.Lock()
+			said := it.standTakenSaid == msg
+			it.standTakenSaid = msg
+			it.mu.Unlock()
+			if !said {
+				cc.log.printf("%-6s arrival: %s", tail, msg)
+			}
 			continue
 		}
 		it.mu.Lock()
@@ -1008,6 +1033,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
 	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Rules: flightRules(r), Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.keepSpot()
 	cc.log.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.Kind == "arrival" && !r.AILanding)
 	it.setRoute()
 	// Every departure starts with delivery, a SID or not: the first call,
@@ -1336,6 +1362,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.stands.ReleaseOwner(it.Tail)
 		}
 	}
+	it.keepSpot()
 }
 
 func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureCtl) []string {
@@ -1466,10 +1493,10 @@ func (cc *controlCenter) views() []ControlView {
 	cc.mu.Lock()
 	for _, it := range cc.items {
 		it.mu.Lock()
-		v := it.view
+		v, id, fixes := it.view, it.objectID, it.fixes
 		it.mu.Unlock()
-		if cc.tcasView != nil && it.objectID != 0 {
-			v.TCAS = cc.tcasView(it.objectID)
+		if cc.tcasView != nil && id != 0 {
+			v.TCAS = cc.tcasView(id)
 		}
 		if o := it.observed; o != nil {
 			v.Real, v.ObservedID, v.Registration = true, o.ID, o.Registration
@@ -1478,7 +1505,7 @@ func (cc *controlCenter) views() []ControlView {
 			if v.AirRoute = it.arr.ProcedureCorners(); v.AirRoute == nil {
 				v.AirRoute = it.arr.ProcedureRoute()
 			}
-			v.AirFixes = fixesAhead(it.fixes, v.AirRoute)
+			v.AirFixes = fixesAhead(fixes, v.AirRoute)
 			// Going around: the circuit's track points back to the final.
 			for _, n := range it.arr.CircuitFixes() {
 				v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
@@ -1526,10 +1553,10 @@ func (cc *controlCenter) views() []ControlView {
 			}
 		}
 		// A departure in the air: its SID still to fly, like a STAR.
-		if a, ok := air[it.objectID]; it.dep != nil && ok && !a.OnGround {
+		if a, ok := air[id]; it.dep != nil && ok && !a.OnGround {
 			if r := it.dep.ClimbRoute(a.Position); len(r) > 0 {
 				v.AirRoute, v.Position, v.Heading, v.GroundSpeed = r, a.Position, a.Heading, a.GroundKts
-				v.AirFixes = fixesAhead(it.fixes, r)
+				v.AirFixes = fixesAhead(fixes, r)
 			}
 		}
 		// Its ground vehicles, with what they say of themselves (#710).
@@ -2381,8 +2408,18 @@ func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 		cc.log.printf("%-6s turnaround: departure failed: %v", it.Tail, err)
 		return
 	}
-	cc.log.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, dep.view.Stand, d.Runway, dep.ID)
+	dep.mu.Lock()
+	stand := dep.view.Stand
+	dep.mu.Unlock()
+	cc.log.printf("%-6s turnaround: departing from %s, runway %s (now #%d)", it.Tail, stand, d.Runway, dep.ID)
 	cc.forget(it) // its ID block released too
+}
+
+// object is its sim object ID (0: not known yet), taking it.mu.
+func (it *controlled) object() uint32 {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+	return it.objectID
 }
 
 // byTail is the controlled aircraft of a call sign, nil if none.

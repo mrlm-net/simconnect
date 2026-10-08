@@ -123,7 +123,7 @@ func (t *towers) tick(now time.Time) {
 			continue
 		}
 		it.mu.Lock()
-		v := it.view
+		v, id := it.view, it.objectID
 		it.mu.Unlock()
 		if v.Done {
 			continue
@@ -189,7 +189,7 @@ func (t *towers) tick(now time.Time) {
 			}
 			u.Phase, u.Arrival, u.DistanceNM, u.GroundKts = traffic.RunwayFinal, true, d, v.GroundSpeed
 			// Established: its STAR and approach flown, on the final (#486).
-			u.Established = it.objectID != 0 && len(it.arr.ProcedureRoute()) == 0
+			u.Established = id != 0 && len(it.arr.ProcedureRoute()) == 0
 		case it.arr != nil && (v.State == "landing" || v.State == "rollout"):
 			u.Phase, u.Arrival = traffic.RunwayRolling, true
 		case it.arr != nil && v.State == "vacating":
@@ -359,7 +359,10 @@ func (t *towers) behindNext(it *controlled) error {
 	if arr == "" {
 		return errors.New("no arrival to line up behind")
 	}
-	r, _ := runwayOf(it.graph.Layout, it.view.Runway)
+	it.mu.Lock()
+	rwy := it.view.Runway
+	it.mu.Unlock()
+	r, _ := runwayOf(it.graph.Layout, rwy)
 	t.clearBehind(it, arr, it.ICAO, r.Name())
 	return nil
 }
@@ -549,6 +552,8 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	end := func(tail string) string {
 		if it := ours[tail]; it != nil {
+			it.mu.Lock()
+			defer it.mu.Unlock()
 			return it.view.Runway
 		}
 		return rwy

@@ -304,7 +304,10 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 				var it *controlled
 				err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e })
 				if err == nil {
-					logf("%s %s at %s", c.Role, c.Tail, it.view.Stand)
+					it.mu.Lock()
+					stand := it.view.Stand
+					it.mu.Unlock()
+					logf("%s %s at %s", c.Role, c.Tail, stand)
 					m.mu.Lock()
 					r.cast[c.Role] = it
 					m.mu.Unlock()
@@ -373,10 +376,11 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 
 // ready reports whether the aircraft of b's shots are there to film.
 func (r *sceneRun) ready(b SceneBeat) bool {
-	r.m.mu.Lock()
-	defer r.m.mu.Unlock()
 	for _, s := range b.Shots {
-		if it := r.cast[s.Who]; it == nil || it.objectID == 0 {
+		r.m.mu.Lock()
+		it := r.cast[s.Who]
+		r.m.mu.Unlock()
+		if it == nil || it.object() == 0 {
 			return false
 		}
 	}
@@ -394,10 +398,13 @@ func (r *sceneRun) cued(cue string) bool {
 	}
 	role, what, _ := strings.Cut(cue, ":")
 	r.m.mu.Lock()
-	defer r.m.mu.Unlock()
-	if it := r.cast[role]; it == nil || it.objectID == 0 {
+	it := r.cast[role]
+	r.m.mu.Unlock()
+	if it == nil || it.object() == 0 {
 		return false
 	}
+	r.m.mu.Lock()
+	defer r.m.mu.Unlock()
 	switch {
 	case what == "heard":
 		return r.heard[role]
@@ -415,12 +422,15 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 		r.m.mu.Lock()
 		it := r.cast[s.Who]
 		r.m.mu.Unlock()
-		if it == nil || it.objectID == 0 {
+		if it == nil {
 			continue
 		}
 		it.mu.Lock()
-		v := it.view
+		v, obj := it.view, it.objectID
 		it.mu.Unlock()
+		if obj == 0 {
+			continue
+		}
 		// Slower than written: the moves read better unhurried (at most
 		// camera.MaxShot).
 		d := min(time.Duration(s.Sec*scenePace*float64(time.Second)), camera.MaxShot)
@@ -440,7 +450,7 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 		var shot camera.Shot
 		switch s.Move {
 		case "crane":
-			shot = craneShot(it.objectID, size, side, d)
+			shot = craneShot(obj, size, side, d)
 		case "runwaySide", "underApproach":
 			along, right, up := s.Along, s.Right, s.Up
 			if s.Move == "underApproach" && along == 0 {
@@ -460,11 +470,11 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 				to = fov * 0.6
 			}
 			if eye, ok := runwaySide(g.Layout, v.Runway, along, right*side, up); ok {
-				shot = camera.TrackZoom(s.Move, eye, it.objectID, fov, to, d)
+				shot = camera.TrackZoom(s.Move, eye, obj, fov, to, d)
 			}
 		default:
 			if f, ok := sceneMoves[s.Move]; ok {
-				shot = f(it.objectID, size, side, d)
+				shot = f(obj, size, side, d)
 			}
 		}
 		if shot == nil {

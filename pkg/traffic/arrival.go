@@ -936,7 +936,7 @@ func (c *ArrivalController) note(desc string, err error) {
 		return
 	}
 	if id, idErr := client.GetLastSentPacketID(); idErr == nil {
-		c.sent[id] = desc
+		noteSent(c.sent, id, desc)
 	}
 	_ = err
 }

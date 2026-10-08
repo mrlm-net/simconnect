@@ -121,7 +121,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// same SID, both handed the same climb).
 	departed := func(a traffic.TrackedAircraft) *controlled {
 		it := w.s.cc.byTail(a.Tail)
-		if it == nil || it.dep == nil || it.objectID != a.ObjectID || len(it.dep.ClimbPlan(a.Position)) == 0 {
+		if it == nil || it.dep == nil || it.object() != a.ObjectID || len(it.dep.ClimbPlan(a.Position)) == 0 {
 			return nil
 		}
 		return it
@@ -152,7 +152,10 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if e := enroute(a); e != nil {
 			fixes = e.fixes
 		} else if it := departed(a); it != nil {
-			fixes = fixesAhead(it.fixes, it.dep.ClimbRoute(a.Position))
+			it.mu.Lock()
+			own := it.fixes
+			it.mu.Unlock()
+			fixes = fixesAhead(own, it.dep.ClimbRoute(a.Position))
 		}
 		var out []traffic.DirectFix
 		for _, f := range fixes {
@@ -179,7 +182,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return traffic.RouteAhead(a.Position, pts)
 		}
 		it := w.s.cc.byTail(a.Tail)
-		if it == nil || it.objectID != a.ObjectID {
+		if it == nil || it.object() != a.ObjectID {
 			return nil
 		}
 		if it.dep != nil {
@@ -204,7 +207,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return traffic.ProfileAhead(a.Position, e.route)
 		}
 		it := w.s.cc.byTail(a.Tail)
-		if it == nil || it.objectID != a.ObjectID {
+		if it == nil || it.object() != a.ObjectID {
 			return nil
 		}
 		if it.dep != nil {
@@ -623,7 +626,7 @@ func (w *conflictWatch) restoreRoute(cs string, st stoppedLevel, aircraft []traf
 		return errors.New("not seen")
 	}
 	route := append([]traffic.RoutePoint{{Position: a.Position, AltFt: a.AltFt, Kts: a.GroundKts}}, traffic.ProfileAhead(a.Position, st.planned)...)
-	if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && it.objectID == a.ObjectID {
+	if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && it.object() == a.ObjectID {
 		return w.s.cc.do(func() error { return it.dep.Reroute(route) })
 	}
 	w.s.mu.Lock()
