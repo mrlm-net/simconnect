@@ -136,7 +136,20 @@ func (l *NavLoader) Pending() int {
 
 // Request starts loading a fix. A VOR or NDB is requested twice: as a
 // waypoint (for its airways) and as a navaid (for frequency and name).
-func (l *NavLoader) Request(key FixKey) error {
+func (l *NavLoader) Request(key FixKey) error { return l.request(key, true) }
+
+// RequestNavaid loads a VOR or NDB as a navaid only (frequency, name and
+// position), not as a waypoint: an ILS localiser ("PH" at LKPR) is no
+// waypoint, and asked as one the simulator answered SimConnect exception 1
+// on the ident (#853).
+func (l *NavLoader) RequestNavaid(key FixKey) error {
+	if key.Kind != KindVOR && key.Kind != KindNDB {
+		return fmt.Errorf("nav: fix %s is no navaid", key)
+	}
+	return l.request(key, false)
+}
+
+func (l *NavLoader) request(key FixKey, asWaypoint bool) error {
 	key = Key(key.Ident, key.Region, key.Kind)
 	if key.Kind != KindWaypoint && key.Kind != KindVOR && key.Kind != KindNDB {
 		return fmt.Errorf("nav: fix %s has no kind", key)
@@ -179,7 +192,10 @@ func (l *NavLoader) Request(key FixKey) error {
 		}
 		return nil
 	}
-	err := send(l.defBase, 0)
+	var err error
+	if asWaypoint {
+		err = send(l.defBase, 0)
+	}
 	if err == nil && key.Kind == KindVOR {
 		err = send(l.defBase+1, 1)
 	} else if err == nil && key.Kind == KindNDB {

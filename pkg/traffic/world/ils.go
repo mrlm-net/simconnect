@@ -60,7 +60,7 @@ func (k *core) requestILS(loader *nav.NavLoader, l *airport.Layout) {
 			if !first {
 				continue
 			}
-			if err := loader.Request(key); err != nil {
+			if err := loader.RequestNavaid(key); err != nil {
 				k.ils.Lock()
 				k.ils.queued = append(k.ils.queued, key) // asked again (retryILS)
 				k.ils.Unlock()
@@ -114,7 +114,7 @@ func (k *core) retryILS(loader *nav.NavLoader) {
 	}
 	for len(k.ils.queued) > 0 {
 		key := k.ils.queued[0]
-		if err := loader.Request(key); err != nil {
+		if err := loader.RequestNavaid(key); err != nil {
 			if k.ils.tries[key]++; k.ils.tries[key] < ilsRetries {
 				return // still full: next time
 			}
