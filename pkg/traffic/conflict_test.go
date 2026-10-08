@@ -660,3 +660,14 @@ func TestTerminalTopLevel(t *testing.T) {
 		t.Errorf("one at 11000 ft: %.0f NM, want the en-route %.0f", m, o.MinNM)
 	}
 }
+
+// A route point already passed is left out of the prediction: flown back
+// to, the predicted track turned round (E37).
+func TestPastEndTrimsPassedPoints(t *testing.T) {
+	tr := track{lat: 50, lon: 14, hdg: 90, kts: 250,
+		path: []airport.LatLon{{Lat: 50, Lon: 13.9}, {Lat: 50, Lon: 14.2}},
+		alts: []float64{10000, 10000}}.pastEnd()
+	if len(tr.path) != 1 || tr.path[0].Lon != 14.2 || len(tr.alts) != 1 {
+		t.Errorf("path %v alts %v, want the point ahead only", tr.path, tr.alts)
+	}
+}

@@ -134,14 +134,42 @@ func trackFor(a TrackedAircraft, o ConflictOptions) track {
 // predicted turning back to its last waypoint, 0.2 NM from THY1463 ahead
 // of it on the same route, and THY1463 vectored for it, #657).
 func (t track) pastEnd() track {
-	for _, p := range t.path {
+	for i, p := range t.path {
 		b := calc.BearingDegrees(t.lat, t.lon, p.Lat, p.Lon)
 		if math.Abs(math.Mod(b-t.hdg+540, 360)-180) <= 90 {
+			// From the first point ahead: those before it are passed, and
+			// flown back to the prediction turned round (E37).
+			if len(t.alts) == len(t.path) {
+				t.alts = t.alts[i:]
+			}
+			t.path = t.path[i:]
 			return t
 		}
 	}
 	t.path, t.alts = nil, nil
 	return t
+}
+
+// levelOn reports t level now and along its profile within the look-ahead:
+// a level aircraft about to climb or descend on its profile is not
+// "level" for the level tolerance (E37); a descent planned beyond it
+// does not count (the cruise pair CSA111/CSA1811 stays separated).
+func (t track) levelOn(lookAhead time.Duration) bool {
+	if math.Abs(t.fpm) >= LevelFlightFpm {
+		return false
+	}
+	reach := t.kts * lookAhead.Hours() // NM flown in the look-ahead
+	lat, lon, nm := t.lat, t.lon, 0.0
+	for i, p := range t.path {
+		if nm += calc.HaversineNM(lat, lon, p.Lat, p.Lon); nm > reach || i >= len(t.alts) {
+			break
+		}
+		if math.Abs(t.alts[i]-t.altFt) > LevelToleranceFt {
+			return false
+		}
+		lat, lon = p.Lat, p.Lon
+	}
+	return true
 }
 
 func trackOf(a TrackedAircraft) track {
@@ -189,7 +217,7 @@ func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, 
 	// altimetry's few feet say (live: CSA111 at FL370 and CSA1811 at FL360
 	// predicted 999 ft apart and CSA111 sent up to FL390).
 	minFt := o.MinFt
-	if math.Abs(a.fpm) < LevelFlightFpm && math.Abs(b.fpm) < LevelFlightFpm {
+	if a.levelOn(o.LookAhead) && b.levelOn(o.LookAhead) {
 		minFt -= LevelToleranceFt
 	}
 	for d := time.Duration(0); d <= o.LookAhead; d += o.Step {

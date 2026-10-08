@@ -152,9 +152,17 @@ func (p boundProc) Call(args ...uintptr) (uintptr, uintptr, error) {
 	if len(args) > 0 {
 		args[0] = p.sc.connection
 	}
-	r1, r2, err := p.proc.Call(args...)
-	if p.sc.trace != nil && isHRESULTSuccess(r1) {
-		p.sc.traced(p.proc.Name, args)
+	if t := p.sc.trace; t != nil && p.proc.Name != "SimConnect_GetNextDispatch" {
+		// Traced: the call and its send ID read as one, no other call in
+		// between to take or lose the label (an exception at start-up came
+		// without one while several goroutines called at once).
+		t.callMu.Lock()
+		defer t.callMu.Unlock()
+		r1, r2, err := p.proc.Call(args...)
+		if isHRESULTSuccess(r1) {
+			p.sc.traced(p.proc.Name, args)
+		}
+		return r1, r2, err
 	}
-	return r1, r2, err
+	return p.proc.Call(args...)
 }

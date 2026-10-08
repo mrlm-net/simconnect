@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -453,21 +454,26 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 				return
 			case <-t.C:
 				now := cc.clock.Now() // traffic time (#413)
+				// Each part on its own: a panic in one is logged and the rest
+				// go on, the next second too (E27: it ended the World).
+				safe := func(part string, f func()) { recoverTick(part, f) }
 				if now.Sub(atisAt) >= time.Minute {
 					atisAt = now
-					st.atisTick(now, cc, sched.airports())
+					safe("atis", func() { st.atisTick(now, cc, sched.airports()) })
 				}
-				cc.pending.run(now)  // clearances and actions in radio order (#462)
-				cc.agenda.run(now)   // the controllers' calls, most urgent first
-				cc.checkRunways(now) // a new runway in use re-plans the traffic (#456)
-				sched.tick(now)
-				seqs.tick(now)
+				safe("pending", func() { cc.pending.run(now) })  // clearances and actions in radio order (#462)
+				safe("agenda", func() { cc.agenda.run(now) })    // the controllers' calls, most urgent first
+				safe("runways", func() { cc.checkRunways(now) }) // a new runway in use re-plans the traffic (#456)
+				safe("schedule", func() { sched.tick(now) })
+				safe("sequences", func() { seqs.tick(now) })
 				air := cc.world.Aircraft()
-				sep.needed = cc.separationNeeded(air, sched.airports())
-				sep.tick(now, air)
-				cw.tick(now, air)
-				tcw.tick(now, air)
-				tw.tick(now)
+				safe("separation", func() {
+					sep.needed = cc.separationNeeded(air, sched.airports())
+					sep.tick(now, air)
+				})
+				safe("conflicts", func() { cw.tick(now, air) })
+				safe("tcas", func() { tcw.tick(now, air) })
+				safe("towers", func() { tw.tick(now) })
 			}
 		}
 	}()
@@ -1382,3 +1388,27 @@ const excLogPerMinute = 20
 // airport.ErrTimeout, before the 30 s its callers wait (a director's
 // SetSchedule saw only "context deadline exceeded").
 const loaderTimeout = 25 * time.Second
+
+// recoverTick runs f, one part of the World's second, and logs a panic in
+// it with its stack (once a minute per part) instead of ending the World.
+func recoverTick(part string, f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			tickPanics.Lock()
+			defer tickPanics.Unlock()
+			if time.Since(tickPanics.at[part]) < time.Minute {
+				return
+			}
+			tickPanics.at[part] = time.Now()
+			tlog.printf("world: %s panicked: %v", part, r)
+			fmt.Fprintf(os.Stderr, "❌ world: %s panicked: %v\n%s\n", part, r, debug.Stack())
+		}
+	}()
+	f()
+}
+
+// tickPanics: when each part last logged a panic.
+var tickPanics = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
