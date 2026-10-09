@@ -52,8 +52,11 @@ func TestOpenQuitForwarded(t *testing.T) {
 	sub := m.Subscribe("all", 4)
 	defer sub.Unsubscribe()
 	for _, id := range []types.SIMCONNECT_RECV_ID{types.SIMCONNECT_RECV_ID_OPEN, types.SIMCONNECT_RECV_ID_QUIT} {
-		recv := &types.SIMCONNECT_RECV{DwID: types.DWORD(id)}
-		m.processMessage(engine.Message{SIMCONNECT_RECV: recv})
+		// A whole OPEN record, as the simulator sends: AsOpen reads it all
+		// (checkptr under -race refused a bare header).
+		open := &types.SIMCONNECT_RECV_OPEN{}
+		open.DwID = types.DWORD(id)
+		m.processMessage(engine.Message{SIMCONNECT_RECV: &open.SIMCONNECT_RECV})
 		select {
 		case msg := <-sub.Messages():
 			if types.SIMCONNECT_RECV_ID(msg.DwID) != id {

@@ -915,6 +915,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					feed.Traffic(scan)
 					scan = nil
+					for k, f := range lastPos {
+						if now.Sub(f.at) > time.Minute {
+							delete(lastPos, k) // gone from the scans (#85)
+						}
+					}
 				}
 			}
 		}
