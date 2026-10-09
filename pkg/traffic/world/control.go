@@ -961,7 +961,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	switch r.Kind {
 	case "departure":
 		cc.core.pushes.want(g) // its stands' standard pushes, once
-		tug := cc.tug(r, reqBase, prof)
+		tug := cc.tug(r, reqBase, prof, ac.WingspanM)
 		if t, ok := tug.(*traffic.SimObjectTug); ok {
 			it.tug = t // its way shown on the map
 		}
@@ -2930,13 +2930,13 @@ func airlineOf(tail string) string {
 // tug is the pushback tug of a departure, if asked for: a GSX tug model
 // driven by the injector, created with the last request ID of the
 // aircraft's block.
-func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.MotionProfile) traffic.PushbackTug {
+func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.MotionProfile, spanM float64) traffic.PushbackTug {
 	if !r.Tug {
 		return nil
 	}
 	title := r.TugTitle
 	if title == "" {
-		title = traffic.DefaultTugTitle
+		title = traffic.TugTitleFor(spanM) // sized to the aircraft
 	}
 	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
 	if g, err := cc.graph(r.ICAO); err == nil {
@@ -2945,6 +2945,9 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 	}
 	if r.TugYaw != nil {
 		t.YawDeg = *r.TugYaw
+	}
+	if ahead, ok := traffic.TugAheadFor(title); ok && r.TugAhead == nil {
+		t.AheadMeters = ahead
 	}
 	if r.TugAhead != nil {
 		t.AheadMeters = *r.TugAhead
@@ -3577,10 +3580,12 @@ var gaRamps = []types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{
 	types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_RAMP_GA_EXTRA,
 }
 
-// powerOutMaxSpanM: an aircraft this small or smaller leaves a GA ramp
+// powerOutMaxSpanM: an aircraft this small or smaller (business jets up to
+// a Citation Latitude or a Praetor 600, live: pushed from S14A and S20A
+// facing the taxiway) leaves a GA ramp
 // stand under its own power, no tug (traffic.TaxiRequest.PowerOut), where
 // its loop out fits; else it is pushed.
-const powerOutMaxSpanM = 20.0
+const powerOutMaxSpanM = 25.0
 
 // powerOut reports whether a departure of span spanM from stand st taxis
 // out under its own power: a small aircraft on a general aviation ramp.

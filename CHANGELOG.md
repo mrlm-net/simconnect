@@ -57,6 +57,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.35.0] - 2026-10-09
+
+### Added
+
+- Tugs sized to the aircraft (`TugTitleFor`): GSX's Mototok Spacer 200 for light aircraft (span up to 16 m), the Mototok 8600MA for business and regional jets (up to 30 m), the airliner tug for the rest. The towbarless Mototoks sit closer to the nose wheel (`TugAheadFor`; their placement is still to be checked live). A spawn request's own `tugTitle` still wins.
+
+### Changed
+
+- Power-out from GA stands up to 25 m span (was 20 m): business jets such as the Citation Latitude, Legacy 500 and Praetor 600 taxi out under their own power where the stand faces the taxiway and the loop fits (live, pushed from S14A, S20A and S24).
+
 ## [0.34.1] - 2026-10-09
 
 ### Fixed
