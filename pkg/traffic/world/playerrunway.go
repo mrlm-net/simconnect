@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -14,7 +15,7 @@ import (
 type PlayerQuery struct {
 	ICAO   string      `json:"icao"`
 	Runway string      `json:"runway"` // runway end ("24")
-	Phase  PlayerPhase `json:"phase"`  // PlayerLineUp, PlayerTakeoff or PlayerLanding
+	Phase  PlayerPhase `json:"phase"`  // PlayerLineUp, PlayerTakeoff, PlayerLanding or PlayerCrossing
 	// Callsign and Model: the user aircraft as said and its model (its wake
 	// and departure interval); optional.
 	Callsign string `json:"callsign,omitempty"`
@@ -25,7 +26,8 @@ type PlayerQuery struct {
 // user aircraft may be cleared now; else what to tell it (Say) and why.
 type RunwayAnswer struct {
 	Free bool `json:"free"`
-	// Say is what to clear it to instead: "line up and wait", "hold
+	// Say is what to clear it to instead: "line up and wait", "hold short"
+	// (crossing), "cross behind" (with Behind), "hold
 	// position", "continue approach" or "go around"; "" when Free.
 	Say string `json:"say,omitempty"`
 	// Behind is a conditional line-up's traffic as said: "the departing
@@ -90,7 +92,9 @@ func (w *World) PlayerRunway(q PlayerQuery) RunwayAnswer {
 	}
 	u := traffic.RunwayUser{Callsign: name, Wake: traffic.WakeFor(q.Model)}
 	landing := q.Phase == PlayerLanding
-	if landing {
+	if q.Phase == PlayerCrossing {
+		u.Phase, u.Crossing = traffic.RunwayHoldingShort, true
+	} else if landing {
 		_, end, _ := g.Layout.RunwayEnd(q.Runway)
 		at := st.core.userAt()
 		u.Phase, u.Arrival, u.Established = traffic.RunwayFinal, true, true
@@ -99,8 +103,44 @@ func (w *World) PlayerRunway(q PlayerQuery) RunwayAnswer {
 		u.Phase = traffic.RunwayHoldingShort
 	}
 	d := rc.Clone().Decide(t.cc.clock.Now(), append(list, u))
-	return playerAnswer(t, q.Phase, name, d)
+	a := playerAnswer(t, q.Phase, name, d)
+	if a.Free && q.Phase != PlayerCrossing {
+		// A runway crossing this one in use: not through it (a take-off on
+		// 24 runs through 12/30).
+		if x, why := t.crossingBusy(icao, r, g.Layout.Runways); x != "" {
+			a = RunwayAnswer{Say: "hold position", Traffic: "traffic on runway " + x, Why: why, AskAgainIn: playerAskAgain}
+			if landing {
+				a.Say = "continue approach"
+			}
+		}
+	}
+	return a
 }
+
+// crossingBusy is a runway crossing r at icao with traffic on it or close
+// in on its final ("" none), and who.
+func (t *towers) crossingBusy(icao string, r airport.Runway, runways []airport.Runway) (string, string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, x := range runways {
+		if x.Name() == r.Name() || !runwaysCross(r, x) {
+			continue
+		}
+		for _, u := range t.users[icao+" "+x.Name()] {
+			switch {
+			case u.Phase == traffic.RunwayRolling || u.Phase == traffic.RunwayLinedUp:
+				return x.Name(), u.Callsign + " on " + x.Name()
+			case u.Phase == traffic.RunwayFinal && u.DistanceNM < crossingFinalNM:
+				return x.Name(), u.Callsign + " on final " + x.Name()
+			}
+		}
+	}
+	return "", ""
+}
+
+// crossingFinalNM: traffic this close in on the final of a crossing runway
+// keeps the player off its own.
+const crossingFinalNM = 3.0
 
 // playerAnswer reads the tower's decision d for the user aircraft name.
 func playerAnswer(t *towers, phase PlayerPhase, name string, d traffic.RunwayClearances) RunwayAnswer {
@@ -116,6 +156,16 @@ func playerAnswer(t *towers, phase PlayerPhase, name string, d traffic.RunwayCle
 	a := RunwayAnswer{Why: why, Traffic: trafficSaid(why), AskAgainIn: playerAskAgain}
 	fmt.Sscanf(why, "number %d for departure", &a.Number)
 	switch phase {
+	case PlayerCrossing:
+		switch {
+		case has(d.Cross):
+			return RunwayAnswer{Free: true}
+		case d.CrossBehind[name] != "":
+			a.Say, a.Behind = "cross behind", "the landing "+t.arrivalSaid(d.CrossBehind[name])
+		default:
+			a.Say = "hold short"
+		}
+		return a
 	case PlayerLanding:
 		switch {
 		case has(d.Land):

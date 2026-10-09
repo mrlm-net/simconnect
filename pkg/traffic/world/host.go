@@ -201,7 +201,10 @@ const (
 	PlayerLineUp       PlayerPhase = "lineup"  // line up and wait
 	PlayerTakeoff      PlayerPhase = "takeoff" // cleared for take-off
 	PlayerLanding      PlayerPhase = "landing" // on approach to (or cleared to land on) the runway
-	PlayerVacated      PlayerPhase = "vacated" // off the runway: it is free again
+	// PlayerCrossing: cleared to cross Runway while taxiing; ends on its own
+	// once the user aircraft has been on it and is off again.
+	PlayerCrossing PlayerPhase = "crossing"
+	PlayerVacated  PlayerPhase = "vacated" // off the runway: it is free again
 )
 
 // PlayerClearance is a clearance the host's ATC gave the user aircraft.
@@ -213,6 +216,10 @@ type PlayerClearance struct {
 	// wake and speed in a landing sequence); optional.
 	Callsign string `json:"callsign,omitempty"`
 	Model    string `json:"model,omitempty"`
+	// Stand: the stand the user aircraft is parked on, pushes from or taxis
+	// to (its label, "C22"); held for it, so none of ours is given it (an
+	// arrival of ours not yet landed is moved to another).
+	Stand string `json:"stand,omitempty"`
 }
 
 // ClearPlayer tells the World what the host cleared the user aircraft to
@@ -235,6 +242,10 @@ type playerState struct {
 	// localSec: the sim's local time at the user aircraft, seconds of the
 	// day (0 unknown).
 	localSec float64
+	// since: when the clearance c was given; onRunway: the user aircraft
+	// was seen on its runway since (a crossing ends once it is off again).
+	since    time.Time
+	onRunway bool
 }
 
 // setLocalSec keeps the sim's local time of day.
@@ -296,6 +307,7 @@ func (k *core) setPlayer(c PlayerClearance) {
 	}
 	c.ICAO = strings.ToUpper(c.ICAO)
 	k.player.c = &c
+	k.player.since, k.player.onRunway = time.Now(), false
 }
 
 // playerOn is the user aircraft's clearance onto icao's runway rwy (a
@@ -307,7 +319,7 @@ func (k *core) playerOn(icao, rwy string) (PlayerClearance, bool) {
 	onIt := func(c *PlayerClearance) bool {
 		return c.Runway == rwy || slices.Contains(strings.Split(rwy, "/"), c.Runway)
 	}
-	if c := k.player.c; c != nil && c.ICAO == icao && onIt(c) && (c.Phase == PlayerLineUp || c.Phase == PlayerTakeoff || c.Phase == PlayerLanding) {
+	if c := k.player.c; c != nil && c.ICAO == icao && onIt(c) && (c.Phase == PlayerLineUp || c.Phase == PlayerTakeoff || c.Phase == PlayerLanding || c.Phase == PlayerCrossing) {
 		return *c, true
 	}
 	return PlayerClearance{}, false
