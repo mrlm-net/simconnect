@@ -73,6 +73,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Spoken taxi routes: a single short taxiway between longer ones is said. Only chains of short stubs are left out (live, AFR898 "via JB, J, B" skipped 128 m of D).
 - Crews ask "say again" for 1 in 200 clearances by default, down from 1 in 50, which came up too often.
 - Sequencing: a newcomer, or an arrival moving up, passes one already sequenced only when that costs the one behind no more than a tactical swap may (live, OKUFC, a DA62 joining 11 NM out, moved up past TVS220 and TVS1568 and cost them minutes).
+- Take-off clearances: an arrival lined up on the final within 4 NM counts by its straight distance, not along its route (live, OKUFC on a 1 NM final after another circuit counted as minutes out; OKQOL was cleared for take-off in front of it).
 - Holds only at a named STAR fix, never at a point of a rounded turn (live, TVS1568 told "hold at WP0"). The dog-leg's vectors are dropped on entering the hold (it was told "fly heading 061" right after "hold").
 - `DescendTo` and `BaseDue` are on the World's arrival interface and the remote actuator.
 
