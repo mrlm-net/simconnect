@@ -65,7 +65,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 				t.cc.log.printf("%-6s crew go-around: %v", cs, err)
 			}
 		}()
-		it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.Acknowledge(traffic.PosTower, cs)) })
+		it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
 	}
 }
 

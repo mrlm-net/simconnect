@@ -350,3 +350,69 @@ func goAroundStretched(t *testing.T, along float64) {
 		}
 	}
 }
+
+// TestGoAroundToDownwind: an IFR arrival on LOMK8S sent around climbs out
+// and rejoins its STAR's downwind (5 NM off the centreline, ERASU), not the
+// 3.5 NM go-around circuit; one on a straight-in keeps the circuit.
+func TestGoAroundToDownwind(t *testing.T) {
+	g := lkprGraph(t)
+	procs := lkprProcedures(t)
+	for _, c := range []struct {
+		fix      string
+		downwind bool
+	}{{"LOMKI", true}, {"", false}} {
+		var route []airport.NavPoint
+		if c.fix != "" {
+			r, err := procs.Arrival("24", c.fix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			route = r
+		}
+		ec := &eventClient{}
+		inj := NewInjector(ec)
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "A320", Tail: "CSA1958",
+			InjectApproach: true, RollThroughChance: -1, Procedure: route}); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		now := time.Now()
+		ctl.now = func() time.Time { return now }
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+		mon := DefaultArrivalRequestBase + arrReqMonitor
+		p := ctl.Plan()
+		// Onto the injected final: past the procedure first.
+		ctl.mu.Lock()
+		if ctl.proc != nil {
+			joinAt := ctl.proc.Join
+			ctl.mu.Unlock()
+			ctl.Handle(arrivalPositionMsg(mon, 77, joinAt, 3000, p.End.Heading, 160, false))
+		} else {
+			ctl.mu.Unlock()
+		}
+		for i := 0; i < 60*600 && (ctl.approach == nil || ctl.approach.Pose().HeightFt > 300); i++ {
+			now = now.Add(time.Second / 60)
+			ctl.Handle(arrivalPositionMsg(mon, 77, p.End.Threshold, 0, 0, 0, false))
+		}
+		if ctl.approach == nil {
+			t.Fatalf("%s: never on the injected final", c.fix)
+		}
+		if err := ctl.GoAround(); err != nil {
+			t.Fatal(err)
+		}
+		far := 0.0
+		ahead := offsetHeading(p.End.Threshold, p.End.Heading, 10*1852)
+		for _, q := range ctl.ProcedureCorners() {
+			far = math.Max(far, math.Abs(calc.CrossTrackMeters(p.End.Threshold.Lat, p.End.Threshold.Lon, ahead.Lat, ahead.Lon, q.Lat, q.Lon))/1852)
+		}
+		if got := far >= 4.5; got != c.downwind {
+			t.Errorf("%s: farthest %.1f NM off the centreline; on the STAR's downwind %v, want %v", c.fix, far, got, c.downwind)
+		}
+	}
+}

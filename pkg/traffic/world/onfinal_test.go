@@ -5,6 +5,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // TestOnFinalNear: lined up on the final close in counts as on the final
@@ -53,5 +54,27 @@ func TestOverRunway(t *testing.T) {
 	}
 	if overRunway(at(243, 300), 63, end, 3700) {
 		t.Error("heading the other way: over the runway")
+	}
+}
+
+// TestBehindAway: traffic behind and moving away has passed; behind and
+// closing, or ahead, has not.
+func TestBehindAway(t *testing.T) {
+	me := traffic.TrackedAircraft{}
+	me.Position, me.Heading, me.GroundKts = airport.LatLon{Lat: 50.1, Lon: 14.3}, 240, 120
+	at := func(bearing, nm, hdg, kts float64) traffic.TrackedAircraft {
+		lat, lon := calc.DisplaceByHeading(me.Position.Lat, me.Position.Lon, bearing, nm*1852)
+		o := traffic.TrackedAircraft{}
+		o.Position, o.Heading, o.GroundKts = airport.LatLon{Lat: lat, Lon: lon}, hdg, kts
+		return o
+	}
+	if !behindAway(7, me, at(60, 1, 60, 120)) {
+		t.Error("opposite direction, gone by: not passed")
+	}
+	if behindAway(6, me, at(60, 2, 240, 180)) {
+		t.Error("same direction behind, faster, closing: passed")
+	}
+	if behindAway(12, me, at(240, 2, 60, 120)) {
+		t.Error("ahead, head-on: passed")
 	}
 }

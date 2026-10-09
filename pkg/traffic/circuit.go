@@ -245,13 +245,18 @@ func PlanCircuitArrival(c Circuit) *ArrivalProcedure {
 }
 
 // VFR departures (#568): out of the circuit to an exit point VFRExitNM from
-// the field, VFRExitAboveFt above circuit height; the injected take-off
+// the field, VFRDepartAboveFt above circuit height; the injected take-off
 // hands over to MSFS AI at VFRHandoverFt above the runway, so MSFS AI
 // flies the circuit's turns.
 var (
 	VFRExitNM      = 5.0
-	VFRExitAboveFt = 1000.0
-	VFRHandoverFt  = 400.0
+	VFRExitAboveFt = 1500.0
+	// VFRDepartAboveFt: departures leave this far above circuit height,
+	// arrivals come in at VFRExitAboveFt: 1000 ft apart on the same
+	// reporting point (the user: 1000 ft, VFR too) (live, OKLOF out and OKVML in via NOVEMBER at the same
+	// height: TCAS RA at 0.8 NM, 88 ft).
+	VFRDepartAboveFt = 500.0
+	VFRHandoverFt    = 400.0
 )
 
 // Departure is the way out of the circuit towards exitBearing (true
@@ -265,7 +270,7 @@ var (
 //     downwind departure); behind on the other side, by the mirror of
 //     those legs, never across the circuit.
 //
-// The points are at circuit height, the exit point VFRExitAboveFt above
+// The points are at circuit height, the exit point VFRDepartAboveFt above
 // it; each at the circuit speed.
 func (c Circuit) Departure(exitBearing float64) []airport.NavPoint {
 	up, _ := c.Point(LegUpwind)
@@ -300,7 +305,7 @@ func (c Circuit) Departure(exitBearing float64) []airport.NavPoint {
 	default:
 		pts = append(pts, mirror(cw), mirror(dw))
 	}
-	exit := CircuitPoint{Position: offsetHeading(field, exitBearing, VFRExitNM*1852), AltFt: c.HeightFt + VFRExitAboveFt, Kts: up.Kts}
+	exit := CircuitPoint{Position: offsetHeading(field, exitBearing, VFRExitNM*1852), AltFt: c.HeightFt + VFRDepartAboveFt, Kts: up.Kts}
 	pts = append(pts, exit)
 	out := make([]airport.NavPoint, len(pts))
 	prev := rwy.Position

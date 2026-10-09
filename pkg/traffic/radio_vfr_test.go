@@ -1,6 +1,9 @@
 package traffic
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // The VFR circuit calls (#569), as Doc 4444 12.3.4.13–17 words them, and
 // their readbacks.
@@ -58,5 +61,31 @@ func TestRunwayRequestPhrases(t *testing.T) {
 	}
 	if got := UnableRunway("CSA1", "24").Text; got != "CSA1, unable, runway 24 in use" {
 		t.Errorf("answer %q", got)
+	}
+}
+
+func TestGoAroundPhrases(t *testing.T) {
+	tx := GoAroundWith("CSA1958", "traffic on the runway", "4200 feet", "runway heading")
+	if want := "CSA1958, go around, I say again, go around, traffic on the runway, climb to 4200 feet, fly runway heading"; tx.Text != want {
+		t.Errorf("go around %q", tx.Text)
+	}
+	if rb, _ := Readback(tx); rb.Text != "Going around, climb to 4200 feet, fly runway heading, CSA1958" {
+		t.Errorf("readback %q", rb.Text)
+	}
+	if got := GoAroundAcknowledged("CSA1", "4200 feet", "runway heading").Text; got != "CSA1, roger, climb to 4200 feet, fly runway heading" {
+		t.Errorf("ack %q", got)
+	}
+	if got := RadarContactAfterGoAround("CSA1", "4200 feet", "ILS", "24").Text; got != "CSA1, radar contact, maintain 4200 feet, expect ILS approach runway 24" {
+		t.Errorf("approach %q", got)
+	}
+}
+
+func TestSequencedExtendDownwind(t *testing.T) {
+	tx := Sequenced("CSA1", 3, 2*time.Minute, Absorption{ExtraNM: 6, Downwind: true})
+	if want := "CSA1, number 3, extend downwind, expect vectors"; tx.Text != want {
+		t.Errorf("said %q", tx.Text)
+	}
+	if rb, _ := Readback(tx); rb.Text != "Number 3, extend downwind, CSA1" {
+		t.Errorf("readback %q", rb.Text)
 	}
 }

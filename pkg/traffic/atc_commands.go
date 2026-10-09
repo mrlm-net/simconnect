@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -247,6 +248,15 @@ func (c *ArrivalController) GoAround() error {
 	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
 	// the circuit keeps too; then round the circuit onto the final.
 	missed, circuitFt := missedWaypoints(c.req.MissedApproach, circuitFt)
+	// Without a published missed approach: out and back onto its own
+	// STAR's downwind, sequenced again with the others there (live,
+	// CSA1958 sent round a 3.5 NM circuit inside the 5 NM downwind of
+	// LOMK8S and back in at 10 NM, cutting into the stream).
+	if len(missed) == 0 {
+		if ok, err := c.goAroundToDownwind(join, joinFt, circuitFt); ok || err != nil {
+			return err
+		}
+	}
 	t, hdg := end.Threshold, end.Heading
 	left := hdg - 90 // left-hand circuit
 	at := func(alongNm, sideNm float64) airport.LatLon {
@@ -337,4 +347,81 @@ func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNE
 		wps = append(wps, procedureWaypoint(n.Position, top, ProcedureApproachSpeedKts))
 	}
 	return wps, top
+}
+
+// GoAroundRejoinMinNM: a STAR point this far or more off the extended
+// centreline, abeam the runway or behind it, is on its downwind: a
+// go-around rejoins there (goAroundToDownwind).
+const GoAroundRejoinMinNM = 3.0
+
+// goAroundToDownwind sends an IFR arrival going around (c.mu held) out
+// ahead and across onto its own STAR's downwind, then along the rest of
+// its STAR and approach to the final as before, at circuitFt at most on
+// the way: back in the stream with the others, where the sequencer can
+// stretch its downwind again. False when its STAR has no downwind (a
+// straight-in): the go-around circuit then.
+func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) (bool, error) {
+	end := c.plan.End
+	t, hdg := end.Threshold, end.Heading
+	ahead := offsetHeading(t, hdg, 10*1852)
+	cross := func(p airport.LatLon) float64 { return calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon) }
+	route := c.req.Procedure
+	k := -1
+	for i, n := range route {
+		if n.Kind == "R" || n.Position == (airport.LatLon{}) {
+			continue
+		}
+		if math.Abs(cross(n.Position)) >= GoAroundRejoinMinNM*1852 && alongHeading(t, hdg, n.Position) <= GoAroundClimbNm*1852 {
+			k = i
+			break
+		}
+	}
+	if k < 0 {
+		return false, nil
+	}
+	proc, err := PlanArrivalProcedure(route[k:], end, join, joinFt)
+	if err != nil || len(proc.Waypoints) < 3 {
+		return false, nil
+	}
+	side := cross(route[k].Position)
+	off := math.Abs(side)
+	turn := hdg + 90
+	if probe := offsetHeading(t, turn, off); (cross(probe) > 0) != (side > 0) {
+		turn = hdg - 90
+	}
+	climb := offsetHeading(t, hdg, GoAroundClimbNm*1852)
+	wps := []types.SIMCONNECT_DATA_WAYPOINT{
+		procedureWaypoint(climb, circuitFt, ProcedureApproachSpeedKts),
+		procedureWaypoint(offsetHeading(climb, turn, off), circuitFt, ProcedureApproachSpeedKts),
+	}
+	names := []string{"UPWIND", "CROSSWIND"}
+	if alongHeading(t, hdg, route[k].Position) < 0 {
+		wps = append(wps, procedureWaypoint(offsetHeading(t, turn, off), circuitFt, ProcedureApproachSpeedKts))
+		names = append(names, "DOWNWIND")
+	}
+	star := proc.Waypoints
+	for i := range star[:len(star)-2] { // the STAR's points no higher than the go-around's level
+		star[i].Altitude = math.Min(star[i].Altitude, circuitFt)
+	}
+	wps = append(wps, star...)
+	starNames := proc.Names
+	if len(starNames) != len(star) {
+		starNames = make([]string, len(star))
+	}
+	names = append(names, starNames...)
+	c.setCorners(wps, names)
+	c.cornerNext = 0
+	rounded := roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
+	c.note("go around: back to the downwind at "+route[k].Ident, nil)
+	c.note("release", c.inj.Release(c.objectID))
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, rounded); err != nil {
+		return true, err
+	}
+	c.approach = nil
+	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: rounded, Join: proc.Join, JoinMeters: proc.JoinMeters, MinJoinMeters: proc.MinJoinMeters}, 0, true, 0
+	c.flyingProc, c.blend, c.gaGearUp = true, joinBlend{}, false
+	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
+	c.goArounds++
+	c.setState(ArrivalApproaching, nil)
+	return true, nil
 }

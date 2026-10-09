@@ -67,10 +67,11 @@ func flyTo(t *testing.T, ctl *ArrivalController, p airport.LatLon) []Vector {
 	return said
 }
 
-// TestVectorsExtendedDownwind: an extended downwind is flown on vectors —
-// "fly heading, for spacing" leaving the STAR, "turn heading, for base" at
-// the new base turn — and cleared for the approach with the intercept
-// heading, along the final (#661).
+// TestVectorsExtendedDownwind: an extended downwind is told with the
+// sequence call ("extend downwind, expect vectors": Absorption.Downwind),
+// then vectored, "turn heading, for base" at the new base turn, and cleared
+// for the approach with the intercept heading, along the final (#661; no
+// silent extension, no late "fly heading, for spacing" before the base).
 func TestVectorsExtendedDownwind(t *testing.T) {
 	ctl, _ := vectorArrival(t, "VLM")
 	if _, ok := ctl.InterceptHeading(); ok {
@@ -80,22 +81,18 @@ func TestVectorsExtendedDownwind(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, err := ctl.AbsorbDelay(3 * time.Minute)
-	if err != nil || a.ExtraNM < 5 {
+	if err != nil || a.ExtraNM < 5 || !a.Downwind {
 		t.Fatalf("%+v %v, want the downwind extended", a, err)
 	}
-	if len(ctl.vectors) != 2 || ctl.vectors[0].For != "spacing" || ctl.vectors[1].For != "base" {
-		t.Fatalf("vectors %+v, want spacing then base", ctl.vectors)
+	if len(ctl.vectors) != 1 || ctl.vectors[0].For != "base" {
+		t.Fatalf("vectors %+v, want the base turn", ctl.vectors)
 	}
 	if v, ok := ctl.VectorDue(); ok {
 		t.Fatalf("due at the start of the STAR: %+v", v)
 	}
-	spacing, base := ctl.vectors[0], ctl.vectors[1]
-	// Up to the last downwind point: the vector off the STAR, nothing else.
-	if said := flyTo(t, ctl, spacing.At); len(said) != 1 || said[0].For != "spacing" || said[0].Turn != "" {
-		t.Fatalf("to the last downwind point: %+v, want fly heading for spacing", said)
-	}
-	// On to the new base turn: the turn for base, the way to it.
-	if said := flyTo(t, ctl, base.At); len(said) != 1 || said[0].For != "base" || said[0].Turn != TurnTo(spacing.HeadingDeg, base.HeadingDeg) {
+	base := ctl.vectors[0]
+	// On to the new base turn: the turn for base.
+	if said := flyTo(t, ctl, base.At); len(said) != 1 || said[0].For != "base" || said[0].Turn == "" {
 		t.Fatalf("to the base turn: %+v, want the turn for base", said)
 	}
 	h, ok := ctl.InterceptHeading()

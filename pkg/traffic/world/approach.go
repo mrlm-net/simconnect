@@ -84,6 +84,15 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		// Nothing contrary to an RA the crew flies (FAA JO 7110.65 2-1-28).
 		return errors.New("flying a TCAS RA: no instruction until clear of conflict")
 	}
+	// Going around with the tower, not handed back: approach has nothing to
+	// say to it yet (live, CSA1958 told "number 4, reduce speed to 210
+	// knots" by the conflict watch 12 s into its go-around).
+	it.mu.Lock()
+	withTower := it.atc == traffic.PosTower
+	it.mu.Unlock()
+	if withTower && it.circuit == nil && action != "goaround" && len(it.arr.ProcedureRoute()) > 0 {
+		return errors.New("going around with the tower: approach takes it once handed over")
+	}
 	// What it was told, for its card and the map (#443).
 	told, toldAt := "", at
 	defer func() {
@@ -184,7 +193,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		}
 		// The number once, as the sequence says it (live, AFR850 heard
 		// "number 4" from a conflict that only stretched its route).
-		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != ""); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "") {
+		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != "" || a.Downwind); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "" || a.Downwind) {
 			tx := traffic.Sequenced(callsign, n, 0, a)
 			// In radio order: after its arrival clearance (live, TVS554 told to
 			// slow 21 s before it was cleared its STAR).
@@ -218,7 +227,7 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
 			return err
 		}
-		it.say(traffic.GoAround(callsign, ""))
+		it.say(it.goAround(""))
 		q.s.st.mu.Lock()
 		tw := q.s.st.towers
 		q.s.st.mu.Unlock()

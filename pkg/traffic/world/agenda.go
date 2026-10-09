@@ -24,7 +24,7 @@ const (
 	prioUrgent     callPrio = iota // go around
 	prioSeparation                 // a conflict's resolution: stop descent, descend, turn
 	prioTraffic                    // traffic information
-	prioLanding                    // cleared to land
+	prioLanding                    // cleared to land; circuit instructions (extend downwind, another circuit)
 	prioRunway                     // take-off, line-up, crossing
 	prioApproach                   // approach clearances
 	prioClearing                   // taxi for an aircraft in the way: a vacated arrival
