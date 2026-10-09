@@ -277,7 +277,8 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			// whom it follows (12.3.4.14 b: the slower one fitted in behind,
 			// #711); no speed for a light aircraft and no hold (12.3.4.15 c).
 			// Much more than a longer downwind can take: another circuit
-			// (12.3.4.17 c), said alone; a little more: an orbit.
+			// (12.3.4.17 c), said alone. No orbit for spacing: orbits are
+			// for emergencies (the user, live OKKKQ).
 			extend := a.ExtraNM > 0 && a.Left < anotherCircuitFrom
 			if extend && !it.extendSaid.Swap(true) {
 				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
@@ -290,18 +291,6 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 					it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))
 					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: another circuit", e.Callsign, a.Left.Round(time.Second))
 					continue
-				}
-			}
-			if a.Left >= circuitOrbitFrom {
-				var d time.Duration
-				if err := q.cc.do(func() (err error) { d, err = it.arr.Orbit(); return err }); err == nil {
-					q.busyFor(it, e.Callsign, now, d)
-					orbit := traffic.DelayOrbitLeft
-					if it.circuit.Side == traffic.CircuitRight {
-						orbit = traffic.DelayOrbitRight
-					}
-					q.sayInCircuit(it, e, traffic.CircuitDelay(e.Callsign, orbit))
-					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: %s", e.Callsign, a.Left.Round(time.Second), orbit)
 				}
 			}
 			continue
@@ -356,12 +345,10 @@ func (q *sequences) busyFor(it *controlled, cs string, now time.Time, d time.Dur
 	}
 }
 
-// circuitOrbitFrom: a VFR arrival in the circuit with this much more to lose
-// than its extended downwind takes orbits (#569).
-const circuitOrbitFrom = 45 * time.Second
-
-// anotherCircuitFrom: this much or more to lose: another circuit.
-const anotherCircuitFrom = 3 * time.Minute
+// anotherCircuitFrom: a VFR arrival in the circuit with this much more to
+// lose than its extended downwind takes makes another circuit (#569; no
+// orbit for spacing).
+const anotherCircuitFrom = 45 * time.Second
 
 // Spacing on the final: an arrival predicted spacingActFrom or more short
 // of its spacing acts; still breakOffFrom short breakOffAfter it was
@@ -387,22 +374,20 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	it.mu.Lock()
 	pos := it.atc
 	it.mu.Unlock()
-	// VFR in the circuit behind an arrival established on the final: an
-	// orbit while it can, else around; no speed for a light aircraft (live,
-	// OKKSF on a short base ahead of AUA529 on a 5 NM final).
+	// VFR in the circuit behind an arrival established on the final:
+	// another circuit while it can, else around; no speed for a light
+	// aircraft (live, OKKSF on a short base ahead of AUA529 on a 5 NM
+	// final) and no orbit (for emergencies only).
 	if it.circuit != nil {
 		if broke {
 			return
 		}
 		var d time.Duration
-		if err := q.cc.do(func() (err error) { d, err = it.arr.Orbit(); return err }); err == nil {
+		if err := q.cc.do(func() (err error) { d, err = it.arr.AnotherCircuit(); return err }); err == nil {
 			q.busyFor(it, e.Callsign, now, d)
-			orbit := traffic.DelayOrbitLeft
-			if it.circuit.Side == traffic.CircuitRight {
-				orbit = traffic.DelayOrbitRight
-			}
-			q.sayInCircuit(it, e, traffic.CircuitDelay(e.Callsign, orbit))
-			q.cc.log.printf("%-6s sequence: %s short behind %s: %s", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, orbit)
+			it.extendSaid.Store(false) // a new downwind
+			q.sayInCircuit(it, e, traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))
+			q.cc.log.printf("%-6s sequence: %s short behind %s: another circuit", e.Callsign, e.ShortBy.Round(time.Second), e.Leader)
 		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
 			q.cc.log.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
 			it.say(traffic.GoAround(e.Callsign, "spacing"))

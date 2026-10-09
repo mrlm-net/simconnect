@@ -96,3 +96,50 @@ func TestCircuitOrbit(t *testing.T) {
 	}
 	t.Logf("absorbed %+v, orbit %v", a, d.Round(time.Second))
 }
+
+// TestCircuitExtendWhileJoining: a VFR arrival still flying in to its
+// downwind from beyond the base turn (live, OKKKQ from N63) is not on base:
+// its delay goes into a longer downwind, by its join first.
+func TestCircuitExtendWhileJoining(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("BE58")
+	c, err := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := c.Point(LegBase)
+	thr, _ := c.Point(LegRunway)
+	// 3 NM on beyond the base turn, away from the runway.
+	from := offsetHeading(base.Position, localBearing(thr.Position, base.Position), 3*1852)
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft Baron G58", Tail: "OKKKQ",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 79))
+	entry, _ := c.JoinDownwind()
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 79, from, c.HeightFt, localBearing(from, entry.Position), CircuitKts(p), false))
+	a, err := ctl.AbsorbDelay(40 * time.Second)
+	if err != nil {
+		t.Fatalf("joining from beyond the base turn: %v, want a longer downwind", err)
+	}
+	if a.ExtraNM <= 0 {
+		t.Fatalf("absorption %+v: want a longer downwind", a)
+	}
+	// Still by its downwind: a point of the route abeam the runway.
+	abeam := false
+	for _, q := range ctl.ProcedureRoute() {
+		if alongHeading(thr.Position, c.heading, q) > 300 {
+			abeam = true
+		}
+	}
+	if !abeam {
+		t.Errorf("route %v skips the downwind", ctl.ProcedureRoute())
+	}
+}

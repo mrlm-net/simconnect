@@ -458,7 +458,10 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 			plan.Spawn = proc.Spawn
 			c.setCorners(proc.Waypoints, nil)
 			proc.Waypoints = roundedChain(airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}, proc.Waypoints, MaxBankDeg(*req.Aircraft))
-			c.proc, c.procNext = proc, -1
+			// Tracked from its first point: a join from beyond the base turn
+			// passes near it on the way in (live, OKKKQ from N63 taken for
+			// on base, the nearest point).
+			c.proc, c.procNext = proc, 0
 		} else if len(req.Procedure) > 0 {
 			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
 			jp := NewApproachMover(plan.End.Threshold, plan.End.Heading, join, approachProfileOf(req)).Pose()

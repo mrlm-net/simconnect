@@ -582,6 +582,9 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
 	}
 	o.placed = true
+	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
+	// take-off roll learnt its own placements, 8.48 → 8.08 → 9.00 ft).
+	o.placedAt = i.now()
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }

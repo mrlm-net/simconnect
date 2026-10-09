@@ -1069,7 +1069,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.view.Procedure = procName
 			it.procSaid = procedureSaid(procName, r.planned)
 		}
-		if r.Kind == "departure" {
+		// VFR: no level from radar (live, OKQQS out VFR via NOVEMBER told
+		// "climb to flight level 240").
+		if r.Kind == "departure" && !r.Circuit {
 			it.radarSaid, it.radarFt = departureLevel(r.planned, lim)
 		}
 		info := ""

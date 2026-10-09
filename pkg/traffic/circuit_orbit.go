@@ -10,7 +10,8 @@ import (
 )
 
 // CircuitMaxExtendNM: a circuit's downwind is extended at most this far
-// (AbsorbDelay); more delay is lost in an orbit (Orbit, #569).
+// (AbsorbDelay); more delay is lost in another circuit (#569). Orbit is
+// for emergencies only, never for spacing.
 const CircuitMaxExtendNM = 2.0
 
 // Orbit has a VFR circuit arrival fly an orbit where it is (Doc 4444
@@ -55,7 +56,8 @@ func (c *ArrivalController) Orbit() (time.Duration, error) {
 // absorbInCircuit is AbsorbDelay for a VFR circuit arrival: on along its
 // downwind and the base turn further out, up to CircuitMaxExtendNM in all
 // (each mile on adds two), at circuit speed; what that cannot take is
-// Left, for an orbit. ErrNotOnProcedure once it turns base. c.mu held.
+// Left, for another circuit. ErrNotOnProcedure once it turns base (still
+// joining from beyond the base turn is not on base). c.mu held.
 func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, error) {
 	ci := c.req.Circuit
 	pos := c.last.Position
@@ -68,7 +70,20 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	dw, _ := ci.Point(LegDownwind)
 	along := alongHeading(thr.Position, ci.heading, pos) // ahead of the threshold: + on the upwind side
 	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
-	if along <= baseAlong+300 {
+	// Still to fly: the join and downwind points ahead of the base turn —
+	// joining from beyond the base turn is not on base yet (live, OKKKQ
+	// from N63 told to orbit before it reached its downwind).
+	var join []types.SIMCONNECT_DATA_WAYPOINT
+	if along <= baseAlong+300 && c.proc != nil {
+		for _, w := range c.proc.Waypoints[min(c.procWaypoint(c.proc.Waypoints), len(c.proc.Waypoints)):] {
+			p := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+			if alongHeading(thr.Position, ci.heading, p) <= baseAlong+300 {
+				break
+			}
+			join = append(join, w)
+		}
+	}
+	if along <= baseAlong+300 && len(join) == 0 {
 		return Absorption{}, ErrNotOnProcedure // turning base, or on the final
 	}
 	kts := CircuitKts(*c.aircraft())
@@ -80,8 +95,11 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	away := ci.heading + 180
 	out := (c.tromboneNM + x) * 1852
 	var wps []types.SIMCONNECT_DATA_WAYPOINT
-	// Not yet abeam the threshold: by the downwind's point there.
-	if along > 300 {
+	// Not yet abeam the threshold: by the downwind's point there; still
+	// joining: by the join's points first.
+	if len(join) > 0 {
+		wps = append(wps, join...)
+	} else if along > 300 {
 		wps = append(wps, procedureWaypoint(dw.Position, dw.AltFt, dw.Kts))
 	}
 	baseExt := offsetHeading(base.Position, away, out)

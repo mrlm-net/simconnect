@@ -267,17 +267,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 			// No leg long enough (near the end of the STAR): vectors from
 			// where it is, out and back to its next point — a hold is for
 			// long delays only (live, LOT775 held at PR532 for a minute).
-			// About one turn's worth or more: a 360 where it is, smoother
-			// than out and back on a short leg (live, OKYDV).
+			// No 360 for spacing: orbits are for emergencies, a standard
+			// operation is vectors, a longer leg or the hold.
 			at = 1
-			if orbit, nm, side, ok := c.orbitHere(pts, a, speed); ok && a.ExtraNM >= OrbitFromShare*nm {
-				if lost := a.ExtraNM - nm; lost > 0 {
-					a.Left += time.Duration(lost / math.Max(a.SpeedKts, speed) * float64(time.Hour))
-				}
-				out = append(orbit, out...)
-				outNames = append(make([]string, len(orbit)), outNames...)
-				a.Orbit, at = side, -1
-			}
 		}
 		if at > 0 {
 			from, to := pts[at-1], pts[at]
@@ -722,42 +714,6 @@ func (c *ArrivalController) StopDescent(altFt, forNM float64) error {
 	}
 	c.note(fmt.Sprintf("stop descent at %.0f ft for %.0f NM", altFt, forNM), nil)
 	return nil
-}
-
-// OrbitFromShare: near the end of the STAR, a stretch of at least this
-// share of a 360's track is flown as the 360 (AbsorbDelay).
-const OrbitFromShare = 0.7
-
-// orbitHere is a 360 where the arrival is, at kts (a.SpeedKts when slower),
-// standard rate for that speed, turning away from the final (pts: from its
-// position on along the STAR), at the altitude it flies to next; and the
-// track it adds (NM). c.mu held.
-func (c *ArrivalController) orbitHere(pts []airport.LatLon, a Absorption, kts float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64, string, bool) {
-	if len(pts) < 2 || c.proc == nil || len(c.proc.Waypoints) == 0 {
-		return nil, 0, "", false
-	}
-	if a.SpeedKts > 0 && a.SpeedKts < kts {
-		kts = a.SpeedKts
-	}
-	pos, hdg := pts[0], c.last.Heading
-	r := turnRadiusMeters(kts, StandardBankDeg(kts, MaxBankDeg(*c.aircraft())))
-	turn := 1.0 // right
-	thr := c.plan.End.Threshold
-	if calc.CrossTrackMeters(pts[0].Lat, pts[0].Lon, pts[1].Lat, pts[1].Lon, thr.Lat, thr.Lon) > 0 {
-		turn = -1 // the runway to the right: turn left, away from it
-	}
-	alt := c.proc.Waypoints[c.procWaypoint(c.proc.Waypoints)].Altitude
-	centre := offsetHeading(pos, hdg+90*turn, r)
-	from := localBearing(centre, pos)
-	var orbit []types.SIMCONNECT_DATA_WAYPOINT
-	for k := 1; k <= 8; k++ {
-		orbit = append(orbit, procedureWaypoint(offsetHeading(centre, from+turn*45*float64(k), r), alt, kts))
-	}
-	side := "right"
-	if turn < 0 {
-		side = "left"
-	}
-	return orbit, 2 * math.Pi * r / 1852, side, true
 }
 
 // ShortcutDescentFtPerNM is the steepest descent a shortcut may leave an

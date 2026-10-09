@@ -359,10 +359,9 @@ func TestStopDescent(t *testing.T) {
 	}
 }
 
-// Near the end of the STAR, about a turn's worth of delay is a 360 where
-// it is, not out and back on a short leg (live, OKYDV); a little is still
-// a small dog-leg.
-func TestAbsorbDelayOrbitNearTheEnd(t *testing.T) {
+// Near the end of the STAR a delay is vectors out and back, never a 360:
+// orbits are for emergencies (the user, after OKYDV and OKKKQ).
+func TestAbsorbDelayNoOrbitNearTheEnd(t *testing.T) {
 	g := lkprGraph(t)
 	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
 	if err != nil {
@@ -391,8 +390,8 @@ func TestAbsorbDelayOrbitNearTheEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Orbit == "" || a.ExtraNM <= 0 {
-		t.Errorf("3 minutes near the end: %+v, want a 360", a)
+	if a.Orbit != "" || a.ExtraNM <= 0 {
+		t.Errorf("3 minutes near the end: %+v, want vectors, no 360 (orbits for emergencies only)", a)
 	}
 	a, err = start().AbsorbDelay(20 * time.Second)
 	if err != nil {
