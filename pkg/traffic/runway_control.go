@@ -455,3 +455,20 @@ func (r *RunwayController) intervalLeft(now time.Time, u RunwayUser) time.Durati
 	iv := DepartureIntervalSpeeds(r.lastDep.Wake, u.Wake, r.lastDep.Route != "" && r.lastDep.Route == u.Route, r.lastDep.ClimbKts, u.ClimbKts)
 	return max(0, iv-now.Sub(r.lastAt))
 }
+
+// Clone is a copy of r with its state now (the last departure, the queue
+// at the holding points): deciding on it leaves r as it is — for a "what
+// if" (a player's ATC asking before it clears the user aircraft).
+func (r *RunwayController) Clone() *RunwayController {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := &RunwayController{opts: r.opts, lastAt: r.lastAt, queue: make(map[string]time.Time, len(r.queue))}
+	if r.lastDep != nil {
+		d := *r.lastDep
+		c.lastDep = &d
+	}
+	for k, v := range r.queue {
+		c.queue[k] = v
+	}
+	return c
+}

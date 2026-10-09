@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.40.0] - 2026-10-09
+
+### Added
+
+- `World.PlayerRunway(PlayerQuery)`: the player's ATC asks before clearing the user aircraft to line up, take off or land, and the World's tower answers as it decides for its own traffic, on a copy of the runway's state (`RunwayController.Clone`): free, or what to say instead ("line up and wait", "hold position", "continue approach", "go around") with the traffic as said, its number for departure and when to ask again (`RunwayAnswer`). Live, the MyCrew app's tower cleared the player for take-off while OKRAX, cleared already, was lined up on 24.
+
 ## [0.39.0] - 2026-10-09
 
 ### Added
