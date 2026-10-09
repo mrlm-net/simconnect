@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.52.0] - 2026-10-09
+
+### Added
+
+- `pkg/pilot` (#965, iteration A): a pilot flying for the user aircraft, logic only. It engages the autopilot at 1000 ft climbing ("I have control"). It climbs to the cleared level at 250 kt below FL100 and 290 above, asking the player as pilot monitoring for the gear and the flaps up as the speed allows. It descends from the 3-to-1 rule, asking for descent when none is cleared. On the approach it slows down configuration by configuration (each flown 10 kt under the next detent's limit), with gear down by 2000 ft or on the glideslope, landing flaps by 1500 ft and the approach armed when cleared. At minimums it disconnects and says "Your controls". Requests are done when the aircraft shows them, or by the copilot after `PMTimeout` when `CopilotActs`. Every height and speed is in `Config`. Docs: `docs/pilot.md`.
+
 ## [0.51.1] - 2026-10-09
 
 ### Fixed
