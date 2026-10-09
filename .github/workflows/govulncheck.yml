@@ -19,6 +19,14 @@ jobs:
           go-version: '1.27.x' # the latest patch: stdlib fixes (Go 1.27.2 fixed GO-2026-6603…6617)
           cache: true
 
+      # The traffic director ships as a Linux image (release-director.yml):
+      # it must build there, not only on Windows (v0.51–0.61 images failed).
+      - name: Build the traffic director for Linux
+        run: go build -o /dev/null ./cmd/traffic-director
+        env:
+          GOOS: linux
+          CGO_ENABLED: '0'
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
