@@ -121,7 +121,11 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 		if ta := w.s.cc.taOf(it.ICAO); ta > 0 && other.AltFt >= ta || ta <= 0 && other.AltFt >= 5500 { // flight levels above the transition altitude (E23)
 			level = "flight level " + fmt.Sprintf("%03.0f", math.Round(other.AltFt/100))
 		}
+		if behindAway(clock, me, other) {
+			continue // passed already: nothing to look out for
+		}
 		tx := traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, level)
+		meID, otherID, d0 := me.ObjectID, other.ObjectID, calc.HaversineNM(me.Position.Lat, me.Position.Lon, other.Position.Lat, other.Position.Lon)
 		it.call(pos, prioTraffic, func() {
 			// Landing or taking off by the time it is said: dropped (live,
 			// AFR1602 told of a DA62 climbing away 14 s before touchdown).
@@ -130,6 +134,26 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 			it.mu.Unlock()
 			if slices.Contains(finalStageStates, state) {
 				return
+			}
+			// Said late on a busy frequency: where they are now, or not at
+			// all once passed (live, OKVML told "7 o'clock, 1 mile, opposite
+			// direction" 37 s after, the SR22 gone by).
+			var m, o traffic.TrackedAircraft
+			for _, a := range w.s.cc.world.Aircraft() {
+				switch a.ObjectID {
+				case meID:
+					m = a
+				case otherID:
+					o = a
+				}
+			}
+			if m.ObjectID != 0 && o.ObjectID != 0 {
+				clock, nm, dir := traffic.TrafficRelative(m.Position, m.Heading, o.Position, o.Heading)
+				d := calc.HaversineNM(m.Position.Lat, m.Position.Lon, o.Position.Lat, o.Position.Lon)
+				if behindAway(clock, m, o) || clock >= 4 && clock <= 8 && d > d0 {
+					return
+				}
+				tx = traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, levelSaid(w.s.cc.taOf(it.ICAO), o.AltFt))
 			}
 			it.say(tx)
 		})
@@ -154,4 +178,32 @@ func otherOf(c traffic.Conflict, cs string) string {
 		return c.B
 	}
 	return c.A
+}
+
+// behindAway: other, at clock from me, is behind it (4 to 8 o'clock) and
+// the two move apart: passed, nothing to look out for.
+func behindAway(clock int, me, other traffic.TrackedAircraft) bool {
+	if clock < 4 || clock > 8 {
+		return false
+	}
+	// Moving apart: the closing speed along the line between them is
+	// negative (each one's velocity projected on it).
+	brg := calc.BearingDegrees(me.Position.Lat, me.Position.Lon, other.Position.Lat, other.Position.Lon) * math.Pi / 180
+	vel := func(a traffic.TrackedAircraft) (float64, float64) {
+		h := a.Heading * math.Pi / 180
+		return a.GroundKts * math.Sin(h), a.GroundKts * math.Cos(h)
+	}
+	mx, my := vel(me)
+	ox, oy := vel(other)
+	closing := (mx-ox)*math.Sin(brg) + (my-oy)*math.Cos(brg)
+	return closing < 0
+}
+
+// levelSaid is altFt as a tower says it in traffic information: feet below
+// the transition altitude ta, a flight level from it (5500 ft without one).
+func levelSaid(ta, altFt float64) string {
+	if ta > 0 && altFt >= ta || ta <= 0 && altFt >= 5500 {
+		return "flight level " + fmt.Sprintf("%03.0f", math.Round(altFt/100))
+	}
+	return fmt.Sprintf("%.0f feet", math.Round(altFt/100)*100)
 }

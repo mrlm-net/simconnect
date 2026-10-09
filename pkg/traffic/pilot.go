@@ -444,7 +444,7 @@ func Readback(t Transmission) (Transmission, bool) {
 	case IntentStop:
 		s = "Stopping"
 	case IntentGoAround:
-		s = "Going around"
+		s = "Going around" + goAroundInstr(p)
 	case IntentSequence:
 		var parts []string
 		if p[ParamNumber] != "" {
@@ -455,6 +455,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 		if p[ParamOrbit] != "" {
 			parts = append(parts, "orbit "+p[ParamOrbit])
+		}
+		if p[ParamExtendDownwind] != "" {
+			parts = append(parts, "extend downwind")
 		}
 		if p[ParamFinalSpeed] != "" {
 			parts = append(parts, "reduce to final approach speed")

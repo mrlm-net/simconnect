@@ -3115,7 +3115,7 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		}
 		return traffic.ClearedLineUpBehind(call, what, rwy)
 	case "goaround":
-		return traffic.GoAround(call, "")
+		return it.goAround("")
 	case "abort":
 		if v.State == traffic.TaxiDeparting.String() {
 			return traffic.Stop(call)
@@ -3306,6 +3306,14 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		p.later(it.cc.clock.Now().Add(goAroundHandoffAfter+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
 			it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), "")))
+			// Approach takes it in: radar contact, its level, the approach to
+			// expect; vectors and the sequence follow.
+			it.call(traffic.PosApproach, prioApproach, func() {
+				it.mu.Lock()
+				rwy, kind := it.view.Runway, it.approachKind()
+				it.mu.Unlock()
+				it.say(traffic.RadarContactAfterGoAround(it.Tail, it.goAroundLevel(), kind, rwy))
+			})
 		})
 		return
 	}
@@ -3420,7 +3428,8 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 	case it.arr != nil && pos == traffic.PosApproach:
 		// Back from a go-around: climbing to the circuit's altitude.
 		if fx := it.arr.CircuitFixes(); len(fx) > 0 {
-			return fmt.Sprintf("going around, climbing %.0f feet", math.Round(fx[0].AltMin*3.28084/100)*100)
+			passing := math.Round((it.heightFt+it.graph.Layout.Altitude*3.28084)/100) * 100
+			return fmt.Sprintf("going around, passing %.0f feet climbing %s", passing, it.goAroundLevel())
 		}
 	case it.arr != nil && pos == traffic.PosTower:
 		if kind := it.approachKind(); kind != "" && !it.visual {

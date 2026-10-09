@@ -41,7 +41,10 @@ type Absorption struct {
 	// Orbit: the stretch is a 360 where it is (near the end of the STAR),
 	// the way it turns.
 	Orbit string `json:"orbit,omitempty"` // "left" or "right"
-		// Left is what neither absorbs: for the hold.
+	// Downwind: the stretch is the STAR's downwind extended (a trombone):
+	// said "extend downwind, expect vectors", the base turn vectored.
+	Downwind bool `json:"downwind,omitempty"`
+	// Left is what neither absorbs: for the hold.
 	Left time.Duration `json:"left,omitempty"`
 }
 
@@ -202,6 +205,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		if x > 0.2 {
 			if ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x); ok {
 				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
+				a.Downwind = true
 				// The old base turn is on the downwind now; the new one after it.
 				kept := append([]string(nil), outNames[:k+1]...)
 				for i := range kept {

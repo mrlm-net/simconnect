@@ -56,7 +56,12 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 	if at < 0 || at+1 >= len(plain) {
 		return nil
 	}
-	out := []Vector{{At: ll(at - 1), HeadingDeg: into(at), For: "spacing"}}
+	// A downwind extended: told "extend downwind, expect vectors" with the
+	// sequence call, the base turn its vector; a dog-leg: out, then back.
+	var out []Vector
+	if baseAt < 0 {
+		out = []Vector{{At: ll(at - 1), HeadingDeg: into(at), For: "spacing"}}
+	}
 	turn := Vector{At: ll(at), HeadingDeg: into(at + 1)}
 	switch {
 	case baseAt >= 0:

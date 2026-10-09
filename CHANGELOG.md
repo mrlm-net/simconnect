@@ -57,7 +57,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
-## [0.37.0] - 2026-10-09
+## [0.38.0] - 2026-10-09
+
+### Added
+
+- IFR go-arounds rejoin their own STAR's downwind (`goAroundToDownwind`): out ahead, across to it (5 NM off the centreline at LKPR, ERASU or RATEV), then the rest of the STAR and approach. They are back in the stream, where the sequencer can extend their downwind again. A straight-in without a downwind keeps the go-around circuit (live, CSA1958 sent round a 3.5 NM circuit inside the stream's downwind and back in at 10 NM).
+- Go-around radio by the conventions:
+  - The tower orders "go around, I say again, go around, traffic on the runway, climb to 4200 feet, fly runway heading", read back with the climb and heading (`GoAroundWith`). The reason names no call sign.
+  - A crew going around on its own hears "roger, climb to 4200 feet, fly runway heading" (`GoAroundAcknowledged`).
+  - The crew checks in with approach "going around, passing 2100 feet climbing 4200 feet", and approach answers "radar contact, maintain 4200 feet, expect ILS approach runway 24" (`RadarContactAfterGoAround`).
+  - VFR circuit go-arounds are as before.
+- A stretched STAR downwind is told when it is decided: "number 3, extend downwind, expect vectors" (`Absorption.Downwind`), with the base turn vectored. It is no longer a silent extension with a late "fly heading, for spacing" just before the base.
+
+### Fixed
+
+- "Make another circuit" is flown when it is said, not when it is decided. It is dropped if the arrival has been cleared to land or is landing by its turn on the frequency (live, OKVML re-routed 55 s before it was told, and told "make another circuit" after "cleared to land").
+- VFR departures leave `VFRDepartAboveFt` (500 ft) above circuit height and arrivals come in at `VFRExitAboveFt` 1500 ft (was 1000 for both): 1000 ft apart on the same reporting point (live, OKLOF out and OKVML in via NOVEMBER at one height: TCAS RA at 0.8 NM, 88 ft).
+- Traffic information is checked when it is said: dropped once the traffic is behind and moving away, else with the clock position and distance of that moment (live, "7 o'clock, 1 mile, opposite direction" 37 s late, the traffic gone by).
+- Circuit instructions rank with landing clearances on the agenda, ahead of traffic information.
+- Approach no longer gives instructions to an IFR arrival still going around with the tower, from the conflict watch either (live, CSA1958 "number 4, reduce speed" 12 s into its go-around).
 
 ### Changed
 

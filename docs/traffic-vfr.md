@@ -100,7 +100,7 @@ With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to
 
 ### VFR departures
 
-`Circuit.Departure(exitBearing)` is the way out of the circuit towards an exit point `VFRExitNM` (5 NM) from the field, `VFRExitAboveFt` (1,000 ft) above circuit height. It leaves the circuit by the side the exit is on:
+`Circuit.Departure(exitBearing)` is the way out of the circuit towards an exit point `VFRExitNM` (5 NM) from the field, `VFRDepartAboveFt` (500 ft) above circuit height; arrivals come in over a reporting point `VFRExitAboveFt` (1,500 ft) above it, 1,000 ft apart. It leaves the circuit by the side the exit is on:
 
 - **ahead** (within 45° of the runway heading): straight out from the upwind;
 - **to the circuit's side**: by its crosswind leg;

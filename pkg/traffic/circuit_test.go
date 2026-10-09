@@ -102,7 +102,7 @@ func TestPlanCircuitArrival(t *testing.T) {
 // the crosswind to one on the circuit's side, turns away to one on the
 // other side, and leaves behind by the downwind on the circuit's side or
 // the mirrored legs on the other side, never crossing the centreline
-// before the exit; the exit is VFRExitNM out, VFRExitAboveFt above circuit
+// before the exit; the exit is VFRExitNM out, VFRDepartAboveFt above circuit
 // height. MSFS AI gets it at the circuit speed, from the first point ahead.
 func TestCircuitDeparture(t *testing.T) {
 	l := lkprGraph(t).Layout
@@ -141,7 +141,7 @@ func TestCircuitDeparture(t *testing.T) {
 		if d := localDist(exit.Position, airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}) / 1852; d < VFRExitNM-1.5 || d > VFRExitNM+1.5 {
 			t.Errorf("%s: exit %.1f NM out", tc.name, d)
 		}
-		if want := (c.HeightFt + VFRExitAboveFt) * 0.3048; math.Abs(exit.AltMax-want) > 1 {
+		if want := (c.HeightFt + VFRDepartAboveFt) * 0.3048; math.Abs(exit.AltMax-want) > 1 {
 			t.Errorf("%s: exit at %.0f m, want %.0f", tc.name, exit.AltMax, want)
 		}
 		wps := VFRDepartureWaypoints(offsetHeading(up.Position, hdg+180, 600), hdg, route, MaxBankDeg(p))

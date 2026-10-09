@@ -716,7 +716,10 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 	}
 	for _, cs := range c.GoAround {
 		why := c.Waiting[cs]
-		give(cs, "goaround", traffic.GoAround(cs, why), func(it *controlled) error {
+		if ours[cs] == nil {
+			continue
+		}
+		give(cs, "goaround", ours[cs].goAround(why), func(it *controlled) error {
 			if it.arr == nil {
 				return nil
 			}

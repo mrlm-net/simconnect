@@ -456,7 +456,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamReason] != "" {
 			reason = ", " + p[ParamReason]
 		}
-		return cs + ", go around, I say again, go around" + reason // 12.3.4.18; CAP 413 4.64
+		return cs + ", go around, I say again, go around" + reason + goAroundInstr(p) // 12.3.4.18; CAP 413 4.64
 	case IntentSequence:
 		// The number in traffic (CAP 413 6.23) and how it is spaced: a speed
 		// (Doc 4444 12.4.1.6), or the delay it is to expect.
@@ -471,6 +471,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		if p[ParamOrbit] != "" {
 			s += fmt.Sprintf(", orbit %s for spacing", p[ParamOrbit])
+		}
+		if p[ParamExtendDownwind] != "" {
+			s += ", extend downwind, expect vectors"
 		}
 		if p[ParamFinalSpeed] != "" {
 			s += ", for spacing reduce to final approach speed"
@@ -1104,6 +1107,9 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 	if a.Orbit != "" {
 		p[ParamOrbit] = a.Orbit
 	}
+	if a.Downwind {
+		p[ParamExtendDownwind] = "1"
+	}
 	if a.SpeedKts > 0 {
 		p[ParamSpeed] = fmt.Sprintf("%.0f", a.SpeedKts)
 	}
@@ -1687,3 +1693,72 @@ func behindHow(p map[string]string) string {
 	}
 	return "landing"
 }
+
+// ParamGoAroundHeading: a go-around's heading as said: "runway heading" or
+// a three-digit heading.
+const ParamGoAroundHeading = "goAroundHeading"
+
+// goAroundInstr is a go-around's climb and heading as said after it (Doc
+// 4444 12.3.4.18 with the missed approach instructions): ", climb to 4200
+// feet, fly runway heading"; "" without them.
+func goAroundInstr(p map[string]string) string {
+	s := ""
+	if p[ParamLevel] != "" {
+		s += ", climb to " + p[ParamLevel]
+	}
+	if h := p[ParamGoAroundHeading]; h != "" {
+		if h != "runway heading" {
+			h = "heading " + h
+		}
+		s += ", fly " + h
+	}
+	return s
+}
+
+// GoAroundWith is GoAround with the climb and heading the tower gives:
+// "CSA1, go around, I say again, go around, traffic on the runway, climb
+// to 4200 feet, fly runway heading". level is as said ("4200 feet"),
+// heading "runway heading" or three digits; either may be "".
+func GoAroundWith(cs, reason, level, heading string) Transmission {
+	p := map[string]string{}
+	if reason != "" {
+		p[ParamReason] = reason
+	}
+	if level != "" {
+		p[ParamLevel] = level
+	}
+	if heading != "" {
+		p[ParamGoAroundHeading] = heading
+	}
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentGoAround, Params: p})
+}
+
+// GoAroundAcknowledged is the tower's answer to a crew going around on its
+// own: "CSA1, roger, climb to 4200 feet, fly runway heading" (#621).
+func GoAroundAcknowledged(cs, level, heading string) Transmission {
+	p := map[string]string{}
+	if level != "" {
+		p[ParamLevel] = level
+	}
+	if heading != "" {
+		p[ParamGoAroundHeading] = heading
+	}
+	return Transmission{Position: PosTower, Callsign: cs, Intent: IntentAcknowledge, Params: p, Text: cs + ", roger" + goAroundInstr(p)}
+}
+
+// RadarContactAfterGoAround is approach's answer to a go-around's check-in:
+// "CSA1, radar contact, maintain 4200 feet, expect ILS approach runway 24".
+func RadarContactAfterGoAround(cs, level, approach, runway string) Transmission {
+	text := cs + ", radar contact"
+	if level != "" {
+		text += ", maintain " + level
+	}
+	if approach != "" {
+		text += ", expect " + approach + " approach runway " + runway
+	}
+	return Transmission{Position: PosApproach, Callsign: cs, Intent: IntentAcknowledge, Text: text}
+}
+
+// ParamExtendDownwind: a sequence call extending the STAR's downwind
+// ("extend downwind, expect vectors"; Absorption.Downwind).
+const ParamExtendDownwind = "extendDownwind"

@@ -137,3 +137,39 @@ func oneDesignator(name string) string {
 	first, _, _ := strings.Cut(name, "/")
 	return first
 }
+
+// goAround is the tower's go-around for it: an IFR arrival told its climb
+// and heading (Doc 4444 12.3.4.18 with the missed approach), the reason
+// said as traffic, not a call sign ("CSA821 on the runway" → "traffic on
+// the runway"); a VFR circuit arrival goes round its circuit, no climb.
+func (it *controlled) goAround(why string) traffic.Transmission {
+	if strings.HasSuffix(why, " on the runway") {
+		why = "traffic on the runway"
+	}
+	if it.circuit != nil {
+		return traffic.GoAround(it.Tail, why)
+	}
+	return traffic.GoAroundWith(it.Tail, why, it.goAroundLevel(), "runway heading")
+}
+
+// goAroundAck is the tower's answer to a crew going around on its own: its
+// climb and heading for an IFR arrival, "roger" for a circuit one.
+func (it *controlled) goAroundAck() traffic.Transmission {
+	if it.circuit != nil {
+		return traffic.Acknowledge(traffic.PosTower, it.Tail)
+	}
+	return traffic.GoAroundAcknowledged(it.Tail, it.goAroundLevel(), "runway heading")
+}
+
+// goAroundLevel is the altitude a go-around climbs to, as said: its
+// circuit's once it flies one, else traffic.GoAroundHeightFt above the
+// field, to the hundred feet.
+func (it *controlled) goAroundLevel() string {
+	ft := it.graph.Layout.Altitude/0.3048 + traffic.GoAroundHeightFt
+	if it.arr != nil {
+		if fx := it.arr.CircuitFixes(); len(fx) > 0 && fx[0].AltMin > 0 {
+			ft = fx[0].AltMin / 0.3048
+		}
+	}
+	return traffic.LevelSaidAbove(math.Round(ft/100)*100, it.cc.taOf(it.ICAO))
+}
