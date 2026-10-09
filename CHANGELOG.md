@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.61.0] - 2026-10-09
+
+### Added
+
+- `flight`: `Recorder.Watch(objectID, everyFrames)` and `Unwatch` stream an object's samples to the listeners without keeping a Track, for a pilot flying by hand every frame. Watched and recorded at once, one request serves both at the finer interval, and the Track keeps only its own share. `Recorder.Listen(f)` adds listeners beside `OnSample`.
+
 ## [0.60.0] - 2026-10-09
 
 ### Added

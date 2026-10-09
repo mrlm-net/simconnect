@@ -104,3 +104,65 @@ func TestRecorder(t *testing.T) {
 		t.Error("snapshots")
 	}
 }
+
+type intervalClient struct {
+	fakeClient
+	reqs      []uint32
+	intervals []uint32
+}
+
+func (f *intervalClient) RequestDataOnSimObject(req, _, _ uint32, p types.SIMCONNECT_PERIOD, _ types.SIMCONNECT_DATA_REQUEST_FLAG, _, interval, _ uint32) error {
+	f.requests = append(f.requests, p)
+	f.reqs, f.intervals = append(f.reqs, req), append(f.intervals, interval)
+	return nil
+}
+
+// TestRecorderWatch: a watch streams samples to its listeners without a
+// Track; a recording of the same object shares its request, at the finer
+// interval, keeping only its own share of the frames; the watch ended,
+// the recording asks its own interval; both ended, nothing more.
+func TestRecorderWatch(t *testing.T) {
+	c := &intervalClient{}
+	r := NewRecorder(c, 0)
+	var heard, heard2 int
+	r.Listen(func(uint32, Sample) { heard++ })
+	stop2 := r.Listen(func(uint32, Sample) { heard2++ })
+	user := types.SIMCONNECT_OBJECT_ID_USER
+	if err := r.Watch(user, 1); err != nil {
+		t.Fatal(err)
+	}
+	vals := make([]float64, len(recVars))
+	frame := func() {
+		msg, _ := frameMessage(r.base, r.byObj[user], vals)
+		if !r.Handle(msg) {
+			t.Fatal("frame not taken")
+		}
+	}
+	frame()
+	if heard != 1 || heard2 != 1 || r.Snapshot(user) != nil {
+		t.Fatalf("watched: heard %d/%d, track %v", heard, heard2, r.Snapshot(user))
+	}
+	if err := r.Start(user, RecordOptions{EveryFrames: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(c.reqs); c.reqs[n-1] != c.reqs[0] || c.intervals[n-1] != 0 {
+		t.Errorf("recording while watched: request %d interval %d", c.reqs[n-1], c.intervals[n-1])
+	}
+	stop2()
+	for range 8 {
+		frame()
+	}
+	if got := len(r.Snapshot(user).Samples); got != 2 || heard != 9 || heard2 != 1 {
+		t.Errorf("8 frames: %d kept (every 4th), heard %d/%d", got, heard, heard2)
+	}
+	r.Unwatch(user)
+	if n := len(c.intervals); c.intervals[n-1] != 3 {
+		t.Errorf("watch over: interval %d, want 3", c.intervals[n-1])
+	}
+	if tr := r.Stop(user); tr == nil || len(tr.Samples) != 2 {
+		t.Errorf("stopped: %+v", tr)
+	}
+	if c.requests[len(c.requests)-1] != types.SIMCONNECT_PERIOD_NEVER {
+		t.Error("still asked for")
+	}
+}
