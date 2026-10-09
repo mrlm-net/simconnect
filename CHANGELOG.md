@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.53.1] - 2026-10-09
+
+### Fixed
+
+- `traffic`: `AirportLister` decodes an airport list by the entry size that fits the message and gives every entry a clean ident, a position on the globe and a sane elevation, trying the known sizes (MSFS 2024's 36, 40 or 41, MSFS 2020's 33). Before, it divided the message's bytes by the entries, and with a few bytes of padding in a short part 40-byte entries came out 41: every entry after the first was read a byte further off (live, MSFS 2024 at LROP: "?0?", "P", ",?R@@" thousands of miles away). Entries still not clean are left out, and the message is never read past its buffer.
+
 ## [0.53.0] - 2026-10-09
 
 ### Added
