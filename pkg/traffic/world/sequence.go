@@ -289,7 +289,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				if err := q.cc.do(func() (err error) { d, err = it.arr.AnotherCircuit(); return err }); err == nil {
 					q.busyFor(it, e.Callsign, now, d)
 					it.extendSaid.Store(false) // a new downwind
-					it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit))
+					it.call(traffic.PosTower, prioApproach, func() { it.say(traffic.CircuitDelay(e.Callsign, traffic.DelayAnotherCircuit)) })
 					q.cc.log.printf("%-6s sequence: %s to lose in the circuit: another circuit", e.Callsign, a.Left.Round(time.Second))
 					continue
 				}
@@ -326,7 +326,7 @@ func (q *sequences) sayInCircuit(it *controlled, e traffic.SequenceEntry, tx tra
 			q.cc.followed(it.ICAO, it.Tail, lead)
 		}
 	}
-	it.say(tx)
+	it.call(traffic.PosTower, prioApproach, func() { it.say(tx) })
 }
 
 // circuitAbsorbEvery: how often a VFR circuit arrival's delay is acted on
@@ -391,7 +391,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 			q.cc.log.printf("%-6s sequence: %s short behind %s: another circuit", e.Callsign, e.ShortBy.Round(time.Second), e.Leader)
 		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
 			q.cc.log.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
-			it.say(traffic.GoAround(e.Callsign, "spacing"))
+			it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.GoAround(e.Callsign, "spacing")) })
 			q.cc.rejoin(it.ICAO, it.Tail)
 		} else {
 			return
@@ -411,7 +411,8 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		q.mu.Unlock()
 		q.cc.log.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
 		if gain > 0 {
-			it.say(traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number)))
+			tx := traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number))
+			it.call(pos, prioLanding, func() { it.say(tx) })
 		}
 		return
 	}
@@ -442,7 +443,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		return
 	}
 	q.cc.log.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
-	it.say(traffic.GoAround(e.Callsign, "spacing"))
+	it.call(traffic.PosTower, prioUrgent, func() { it.say(traffic.GoAround(e.Callsign, "spacing")) })
 	q.cc.rejoin(it.ICAO, it.Tail)
 }
 
@@ -520,7 +521,8 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 		it.approach = r
 		it.mu.Unlock()
 	}
-	it.say(traffic.HoldAt(e.Callsign, fixName(h), entry, alt, now.Add(left), q.cc.taOf(icao)))
+	tx := traffic.HoldAt(e.Callsign, fixName(h), entry, alt, now.Add(left), q.cc.taOf(icao))
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })
 	return nil
 }
 
@@ -529,7 +531,8 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 		q.cc.log.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
 		return
 	}
-	it.say(traffic.LeaveHoldAt(e.Callsign, fixName(h), q.numberToSay(q.cc.clock.Now(), e.Callsign, e.Number)))
+	tx := traffic.LeaveHoldAt(e.Callsign, fixName(h), q.numberToSay(q.cc.clock.Now(), e.Callsign, e.Number))
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })
 	if r := it.arr.ProcedureRoute(); len(r) > 0 {
 		it.mu.Lock()
 		it.approach = r
@@ -539,7 +542,8 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 	for cs, alt := range q.stack(icao, h).Release(e.Callsign) {
 		if above := q.cc.byTail(cs); above != nil && above.arr != nil {
 			if err := q.cc.do(func() error { return above.arr.HoldAltitude(alt) }); err == nil {
-				above.say(traffic.HoldDescend(cs, alt, q.cc.taOf(above.ICAO)))
+				tx := traffic.HoldDescend(cs, alt, q.cc.taOf(above.ICAO))
+				above.call(traffic.PosApproach, prioApproach, func() { above.say(tx) })
 			}
 		}
 	}

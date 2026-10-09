@@ -122,7 +122,7 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 			level = "flight level " + fmt.Sprintf("%03.0f", math.Round(other.AltFt/100))
 		}
 		tx := traffic.TrafficInformation(pos, cs, clock, nm, dir, typ, level)
-		it.call(pos, prioUrgent, func() {
+		it.call(pos, prioTraffic, func() {
 			// Landing or taking off by the time it is said: dropped (live,
 			// AFR1602 told of a DA62 climbing away 14 s before touchdown).
 			it.mu.Lock()

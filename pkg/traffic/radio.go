@@ -192,6 +192,10 @@ type Transmission struct {
 	// Phraseology is the wording of Text ("" ICAO); the Radio sets FAA at
 	// US airports (RadioOptions.Phraseology).
 	Phraseology Phraseology `json:"phraseology,omitempty"`
+	// Tempo is how fast it is said against a normal pace (0 or 1 normal,
+	// above 1 faster): a busy frequency, an urgent call (RadioOptions.TempoOf).
+	// SpeakingTime shrinks with it.
+	Tempo float64 `json:"tempo,omitempty"`
 }
 
 // Say is t with its text: the ATC phrase (ICAO phraseology, the
@@ -1348,6 +1352,10 @@ type RadioOptions struct {
 	// into transmissions without one. One controller says one thing at a
 	// time, whichever of its frequencies.
 	ControllerOf func(airport, freq string) string
+	// TempoOf is how fast transmissions on freq at airport are said now
+	// (1 normal, nil always 1): filled into transmissions without one,
+	// readbacks too, so a busy frequency speeds up as a controller does.
+	TempoOf func(airport, freq string) float64
 	// ReadBack: our pilots read back every clearance to them (#417), on
 	// the same frequency, after it.
 	ReadBack bool
@@ -1428,6 +1436,9 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	if t.Controller == "" && t.Frequency != "" && r.opts.ControllerOf != nil {
 		t.Controller = r.opts.ControllerOf(t.Airport, t.Frequency)
 	}
+	if t.Tempo == 0 && t.Frequency != "" && r.opts.TempoOf != nil {
+		t.Tempo = r.opts.TempoOf(t.Airport, t.Frequency)
+	}
 	plain := t // as worded, for the crew's readback and a correction
 	r.mu.Lock()
 	busy := false
@@ -1450,10 +1461,10 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 		}
 	}
 	if t.Frequency != "" {
-		r.busy[t.Airport+" "+t.Frequency] = t.At.Add(SpeakingTime(t.Text) + time.Second)
+		r.busy[t.Airport+" "+t.Frequency] = t.At.Add(t.SpeakingTime() + time.Second)
 	}
 	if mouth != "" {
-		r.busy[mouth] = t.At.Add(SpeakingTime(t.Text))
+		r.busy[mouth] = t.At.Add(t.SpeakingTime())
 	}
 	r.kept = append(r.kept, t)
 	if len(r.kept) > r.opts.Keep {
@@ -1645,4 +1656,14 @@ func holdShortSaid(p map[string]string) string {
 		return ", hold short of runways " + r[:i] + " and " + r[i+2:]
 	}
 	return ", hold short of runway " + r
+}
+
+// SpeakingTime is how long t takes to say: SpeakingTime of its text at its
+// Tempo.
+func (t Transmission) SpeakingTime() time.Duration {
+	d := SpeakingTime(t.Text)
+	if t.Tempo > 0 {
+		d = time.Duration(float64(d) / t.Tempo)
+	}
+	return d
 }

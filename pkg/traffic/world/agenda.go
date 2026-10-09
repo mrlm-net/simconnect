@@ -21,8 +21,10 @@ import (
 type callPrio int
 
 const (
-	prioUrgent   callPrio = iota // go around
-	prioLanding                  // cleared to land
+	prioUrgent     callPrio = iota // go around
+	prioSeparation                 // a conflict's resolution: stop descent, descend, turn
+	prioTraffic                    // traffic information
+	prioLanding                    // cleared to land
 	prioRunway                   // take-off, line-up, crossing
 	prioApproach                 // approach clearances
 	prioClearing                 // taxi for an aircraft in the way: a vacated arrival
@@ -30,6 +32,19 @@ const (
 	prioStand                    // pushback, start-up
 	prioDelivery                 // departure clearance
 )
+
+// safety: a go-around or a separation instruction, said at once: no
+// answer time, the first gap on the frequency.
+func (p callPrio) safety() bool { return p <= prioSeparation }
+
+// pause is how long the frequency is quiet before a call of p: none for
+// safety, atcAnswerDelay for the rest.
+func (p callPrio) pause() time.Duration {
+	if p.safety() {
+		return 0
+	}
+	return atcAnswerDelay
+}
 
 // call is one transmission a controller has decided on.
 type call struct {
@@ -48,6 +63,8 @@ type agenda struct {
 	mu    sync.Mutex
 	calls []call
 	radio func(icao, freq string) time.Time // when the frequency is clear
+	// urgent: until when a frequency is spoken fast after a safety call.
+	urgent map[string]time.Time
 }
 
 func (a *agenda) add(c call) {
@@ -77,11 +94,17 @@ func (a *agenda) next(now time.Time) (run, drop []call) {
 			keep = append(keep, c)
 		case c.still != nil && !c.still():
 			drop = append(drop, c)
-		case a.radio != nil && now.Before(a.radio(c.icao, c.freq).Add(atcAnswerDelay)):
+		case a.radio != nil && now.Before(a.radio(c.icao, c.freq).Add(c.prio.pause())):
 			busy[key] = true
 			keep = append(keep, c)
 		default:
 			busy[key] = true // one call per frequency: the next once this one is said
+			if c.prio.safety() {
+				if a.urgent == nil {
+					a.urgent = map[string]time.Time{}
+				}
+				a.urgent[key] = now.Add(tempoUrgentFor)
+			}
 			run = append(run, c)
 		}
 	}
@@ -121,6 +144,49 @@ func (it *controlled) callIf(pos traffic.Position, prio callPrio, still func() b
 	_, freq := it.station(pos)
 	now := it.cc.clock.Now()
 	p := it.cc.pending
+	ready := now.Add(atcAnswerDelay + p.jitter(atcAnswerJitter))
+	if prio.safety() {
+		ready = now // a controller says these at once
+	}
 	it.cc.agenda.add(call{icao: it.ICAO, freq: freq, prio: prio, tail: it.Tail,
-		ready: now.Add(atcAnswerDelay + p.jitter(atcAnswerJitter)), since: now, still: still, dropped: dropped, f: f})
+		ready: ready, since: now, still: still, dropped: dropped, f: f})
+}
+
+// callAt is call for an aircraft without its controller here (one of ours
+// en route, a departure handed on): on icao's frequency for pos.
+func (cc *controlCenter) callAt(icao string, pos traffic.Position, tail string, prio callPrio, f func()) {
+	_, freq := cc.stationOf(icao, pos)
+	now := cc.clock.Now()
+	ready := now.Add(atcAnswerDelay + cc.pending.jitter(atcAnswerJitter))
+	if prio.safety() {
+		ready = now
+	}
+	cc.agenda.add(call{icao: icao, freq: freq, prio: prio, tail: tail, ready: ready, since: now, f: f})
+}
+
+// Talking speed: each call waiting on a frequency adds tempoPerCall to the
+// pace, up to tempoMax; for tempoUrgentFor after a safety call it is at
+// least tempoUrgent.
+const (
+	tempoPerCall   = 0.05
+	tempoMax       = 1.3
+	tempoUrgent    = 1.15
+	tempoUrgentFor = 15 * time.Second
+)
+
+// tempo is how fast freq at icao is spoken at now (1 normal).
+func (a *agenda) tempo(icao, freq string, now time.Time) float64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := 0
+	for _, c := range a.calls {
+		if c.icao == icao && c.freq == freq {
+			n++
+		}
+	}
+	t := 1 + tempoPerCall*float64(n)
+	if now.Before(a.urgent[icao+" "+freq]) {
+		t = max(t, tempoUrgent)
+	}
+	return min(t, tempoMax)
 }

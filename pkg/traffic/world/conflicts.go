@@ -297,7 +297,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)})
 		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
-		w.s.cc.radio.Transmit(icao, tx)
+		// Before routine calls on the frequency: a separation instruction.
+		w.s.cc.callAt(icao, pos, r.Callsign, prioSeparation, func() { w.s.cc.radio.Transmit(icao, tx) })
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
@@ -432,7 +433,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if g, err := w.s.st.cache.Graph(st.icao); err == nil {
 			ta = w.s.cc.limitsOf(g).TransitionAltitudeFt
 		}
-		w.s.cc.radio.Transmit(st.icao, traffic.ContinueLevelAbove(st.pos, cs, st.altFt, st.climb, ta))
+		resume := traffic.ContinueLevelAbove(st.pos, cs, st.altFt, st.climb, ta)
+		w.s.cc.callAt(st.icao, st.pos, cs, prioApproach, func() { w.s.cc.radio.Transmit(st.icao, resume) })
 		if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && st.climb && st.pos == traffic.PosDeparture {
 			it.climbOn() // its route on to the cleared level, past its SID
 		}
@@ -549,7 +551,8 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(level, arrivalLevelForNM) })
 				if err == nil {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
-					trailer.it.say(traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO)))
+					tx := traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO))
+					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
 					recheck()
 					return
 				}
@@ -561,7 +564,8 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				err := w.s.cc.do(func() error { return trailer.it.arr.DescendTo(below) })
 				if err == nil {
 					w.s.cc.log.printf("%-6s conflict with %s: descend to %.0f ft (arrival on its STAR)", cs, oth, below)
-					trailer.it.say(traffic.Descend(traffic.PosApproach, cs, below, w.s.cc.taOf(trailer.it.ICAO)))
+					tx := traffic.Descend(traffic.PosApproach, cs, below, w.s.cc.taOf(trailer.it.ICAO))
+					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
 					recheck()
 					return
 				}
