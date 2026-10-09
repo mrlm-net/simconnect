@@ -85,6 +85,18 @@ func (m *Instance) stallSeen() {
 	}
 }
 
+// stallReset forgets a stall and the silence with the connection: the next
+// connection's first message is no resume of the last one's stall, and
+// its silence is counted from that message.
+func (m *Instance) stallReset() {
+	m.stall.mu.Lock()
+	m.stall.stalled.Store(false)
+	m.stall.last.Store(0)
+	m.stall.loaded = ""
+	m.stall.resumedAt = time.Time{}
+	m.stall.mu.Unlock()
+}
+
 // stallFlightLoaded notes a flight loaded while stalled; loaded within
 // newSessionWithin after a resume (its message is the first one again), it
 // is told as a resume of its own with the flight: a new session.

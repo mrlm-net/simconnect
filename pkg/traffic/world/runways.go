@@ -290,7 +290,7 @@ func (t *towers) tick(now time.Time) {
 	}
 	t.mu.Unlock()
 	t.reportUserGround(ua, prev, t.s.mgr.Airports(), layout)
-	t.syncPlayerStand(pc)
+	t.syncPlayerStand(pc, ua)
 	// Service vehicles holding short to cross (#752): in the queue as any
 	// crossing.
 	for _, k := range t.cc.vehicles().runwaysWaiting() {
