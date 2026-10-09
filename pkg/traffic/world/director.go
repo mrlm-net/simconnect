@@ -72,6 +72,13 @@ func (w *World) runDirector(ctx context.Context, l link) error {
 			cc.log.printf("director: fuel truck list: %v", err)
 		}
 	}()
+	// Followers joining late fly the flights going on as puppets (#964).
+	var relay *puppetRelay
+	if fan, ok := l.(*fanLink); ok {
+		relay = newPuppetRelay(fan, func(method string, args []any, outs ...any) error {
+			return c.callVia(fan.primary.Send, "sim", method, args, outs...) // the primary only
+		}, cc.log.printf)
+	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -89,6 +96,9 @@ func (w *World) runDirector(ctx context.Context, l link) error {
 				}
 			}()
 		case m := <-feedCh:
+			if relay != nil && relay.feed(m) {
+				continue // the primary's puppets, for late followers (#964)
+			}
 			switch m.Method {
 			case "models", "groundTitles":
 				var titles []string
@@ -135,7 +145,8 @@ func (cc *controlCenter) addModelTitles(titles []string) {
 func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.Client, l link) (*actuatorSim, simFeed) {
 	out := &wireFeedOut{send: l.Send}
 	srv := newWireServer()
-	a := &actuatorSim{localSim: cc.sim.(*localSim), srv: srv, send: l.Send, graph: st.cache.Graph, reqs: st.requests,
+	ids := st.core.libIDs()
+	a := &actuatorSim{localSim: cc.sim.(*localSim), srv: srv, puppetRec: ids.puppetRec, puppetReq: ids.puppetReq, send: l.Send, graph: st.cache.Graph, reqs: st.requests,
 		alloc: cc.allocator, pushes: st.core.pushes.want,
 		tug: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug {
 			t := traffic.NewSimObjectTug(client, cc.inj, w.Tug, w.ReqBase+controlIDBlock-1, prof)
@@ -194,6 +205,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 				// The controllers' state for the director's reads
 				// (wirecache.go): whole now and then, else what changed.
 				ctl.send(srv.snapshot(), out.put)
+				a.syncPuppetStream() // late followers' puppets (#964)
 			}
 		}
 	}()
