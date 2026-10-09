@@ -32,3 +32,26 @@ func TestOnFinalNear(t *testing.T) {
 		}
 	}
 }
+
+// TestOverRunway: in the flare past the threshold, along the runway, it is
+// over the runway (live, OKZLK 2 s from touchdown taken for minutes out);
+// beside it or beyond its end, not.
+func TestOverRunway(t *testing.T) {
+	end := airport.RunwayEnd{Name: "24", Heading: 243, Threshold: airport.LatLon{Lat: 50.1, Lon: 14.28}}
+	at := func(bearing, m float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, bearing, m)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	if !overRunway(at(243, 300), 243, end, 3700) {
+		t.Error("300 m past the threshold in the flare: not over the runway")
+	}
+	if overRunway(at(333, 300), 243, end, 3700) {
+		t.Error("300 m beside the threshold: over the runway")
+	}
+	if overRunway(at(243, 4000), 243, end, 3700) {
+		t.Error("past the runway's end: over the runway")
+	}
+	if overRunway(at(243, 300), 63, end, 3700) {
+		t.Error("heading the other way: over the runway")
+	}
+}

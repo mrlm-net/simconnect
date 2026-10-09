@@ -175,7 +175,7 @@ func (t *towers) tick(now time.Time) {
 		case it.dep != nil && v.State == "departing":
 			u.Phase = traffic.RunwayAirborne
 		case it.arr != nil && (v.State == "approaching" || v.State == "landing") && !v.OnGround:
-			_, end, _ := l.RunwayEnd(v.Runway)
+			rw, end, _ := l.RunwayEnd(v.Runway)
 			// Along the way it still flies, as the sequence counts it: in a
 			// straight line, an arrival passing near the field on its STAR or
 			// downwind "landed in 1m38s" eleven minutes early and held every
@@ -188,7 +188,13 @@ func (t *towers) tick(now time.Time) {
 			// a route round another circuit passes the runway twice, and
 			// measured along it OKUFC on a 1 NM final "landed" minutes later
 			// (live, OKQOL cleared for take-off in front of it).
-			if len(route) > 0 && !onFinalNear(v.Position, v.Heading, d, end) {
+			switch {
+			case overRunway(v.Position, v.Heading, end, rw.Length):
+				// In its flare past the threshold: landing now, not minutes
+				// out along its route (live, TVS837 cleared for take-off 2 s
+				// before OKZLK touched down, then cancelled).
+				d = 0
+			case len(route) > 0 && !onFinalNear(v.Position, v.Heading, d, end):
 				d = math.Max(d, traffic.DistanceToGo(v.Position, route, end.Threshold))
 			}
 			if d > 3 {
@@ -915,3 +921,14 @@ func onFinalNear(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool
 // roll from the full length lines up once that one rolls this fast (well
 // away down the runway).
 const behindDepartingKts = 40.0
+
+// overRunway: at p, heading hdg, an arrival is over end's runway (length
+// m) past its threshold, heading along it: in its flare.
+func overRunway(p airport.LatLon, hdg float64, end airport.RunwayEnd, length float64) bool {
+	along := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	if along > length {
+		return false
+	}
+	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	return along < 50 || math.Abs(headingDiff(end.Heading, from)) <= 10 && math.Abs(headingDiff(end.Heading, hdg)) <= onFinalSectorDeg
+}

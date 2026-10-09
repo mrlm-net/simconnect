@@ -12,7 +12,8 @@ import (
 
 // The crew decides on its own (#621): our arrivals on final go around
 // without being told when the landing clearance has not come by their
-// decision point, and now and then from an approach that is not stable.
+// decision point. No random "not stable" go-arounds: our approaches are
+// flown stable, and one with the runway free looked wrong (live, FTHAB).
 // The tower acknowledges and the arrival is sequenced again, as after a
 // go-around the tower orders. Not with held gates: there the user is the
 // tower and gives the landing clearances.
@@ -20,9 +21,6 @@ const (
 	// crewDecisionNM: not cleared to land this close to the threshold
 	// (about 200 ft on a 3° path), the crew goes around.
 	crewDecisionNM = 0.6
-	// crewUnstableShare: the share of approaches the crew finds not stable
-	// and goes around from, decided once per approach.
-	crewUnstableShare = 0.01
 )
 
 // crewDecides lets the crews of icao's arrivals in list decide.
@@ -37,8 +35,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		}
 		cs := u.Callsign
 		t.mu.Lock()
-		cleared, sent, checked := t.given[cs+" land"], t.given[cs+" goaround"], t.given[cs+" crew"]
-		t.given[cs+" crew"] = true // the stability is judged once an approach
+		cleared, sent := t.given[cs+" land"], t.given[cs+" goaround"]
 		t.mu.Unlock()
 		if sent {
 			continue
@@ -47,8 +44,6 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		switch {
 		case !cleared:
 			why = "no landing clearance"
-		case !checked && rand.Float64() < crewUnstableShare:
-			why = "approach not stable"
 		}
 		if why == "" {
 			continue
