@@ -160,6 +160,9 @@ The sim's own ground services for the user aircraft are requested by name with `
 - `SpoilersArmed` and `SpoilersPct`, the higher of the left and right ground spoilers deployed (`spoilersArmed`, `spoilersPct`; `SPOILERS ARMED`, `SPOILERS LEFT/RIGHT POSITION`): "spoilers" on touchdown.
 - Per engine 1–4: `Reverser[i]` engaged and `ReverserPct[i]` nozzle deployed (`Reverser(n)`, `ReverserPct(n)`; `GENERAL ENG REVERSE THRUST ENGAGED:n`, `TURB ENG REVERSE NOZZLE PERCENT:n`): "reverse green".
 - Per engine 1–4: `N1[i]` (`N1(n)`; `TURB ENG N1:n`, percent): "thrust set" once stable.
+- `FlapsSaid`: the flap lever's position as said, from the profile's `flapDetents` by `FLAPS HANDLE INDEX`. The A320 family has "zero", "one", "two", "three", "full", and the 737 base profile "up", "1", "2", "5", "10", "15", "25", "30", "40". It is "" when the profile gives none.
+- `DAFt` (`DECISION ALTITUDE MSL`) and `DHFt` (`DECISION HEIGHT`, radio minimums): "one hundred above" and "minimums". A model with its own (an MCDU's) overrides them.
+- The landing lights are a control: `Controls.Set(LightLanding, on, state)` sends `LANDING_LIGHTS_ON` or `LANDING_LIGHTS_OFF`. The Fenix sets its switch `L:S_OH_EXT_LT_LANDING_BOTH` to 2 (on) or 1 (off), not yet measured. An action may give its own `on` and `off` values (a switch of more positions) and an `offEvent`.
 
 These are the default SimVars and have not been measured live yet. A model that drives its own (the Fenix may) overrides them in its profile like any other value.
 
