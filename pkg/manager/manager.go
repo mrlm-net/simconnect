@@ -442,6 +442,10 @@ type Manager interface {
 	// Returns ErrNotConnected if not connected to the simulator.
 	UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, unsubscribeNewInRange bool, unsubscribeOldOutRange bool) error
 
+	// UnsubscribeToFacilities ends a SubscribeToFacilities subscription.
+	// Returns ErrNotConnected if not connected to the simulator.
+	UnsubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE) error
+
 	// RequestAllFacilities requests all facilities of the specified type.
 	// Returns ErrNotConnected if not connected to the simulator.
 	RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error
@@ -469,6 +473,10 @@ type Manager interface {
 	// AICreateSimulatedObject creates a simulated object at a specific position.
 	// Returns ErrNotConnected if not connected to the simulator.
 	AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
+
+	// AICreateSimulatedObjectEX1 is AICreateSimulatedObject with a livery.
+	// Returns ErrNotConnected if not connected to the simulator.
+	AICreateSimulatedObjectEX1(szContainerTitle string, szLivery string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
 
 	// AIReleaseControl releases control of an AI object back to the simulator.
 	// Returns ErrNotConnected if not connected to the simulator.

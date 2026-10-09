@@ -156,6 +156,19 @@ func (m *Instance) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY
 	return m.engine.UnsubscribeToFacilitiesEX1(listType, unsubscribeNewInRange, unsubscribeOldOutRange)
 }
 
+// UnsubscribeToFacilities ends a SubscribeToFacilities subscription.
+// Returns ErrNotConnected if not connected to the simulator.
+func (m *Instance) UnsubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	// forgotten for ResubscribeOnReconnect even while disconnected
+	m.userSubs.unsubscribeFacilities(listType, true, true)
+	if m.engine == nil {
+		return ErrNotConnected
+	}
+	return m.engine.UnsubscribeToFacilities(listType)
+}
+
 // RequestAllFacilities requests all facilities of the specified type.
 // Returns ErrNotConnected if not connected to the simulator.
 func (m *Instance) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {

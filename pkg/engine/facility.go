@@ -45,6 +45,12 @@ func (e *Engine) SubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_T
 	return e.api.SubscribeToFacilities(listType, requestID)
 }
 
+// UnsubscribeToFacilities ends a SubscribeToFacilities subscription of
+// listType.
+func (e *Engine) UnsubscribeToFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE) error {
+	return e.api.UnsubscribeToFacilities(listType)
+}
+
 func (e *Engine) SubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY_LIST_TYPE, newElemInRangeRequestID uint32, oldElemOutRangeRequestID uint32) error {
 	return e.api.SubscribeToFacilitiesEX1(listType, newElemInRangeRequestID, oldElemOutRangeRequestID)
 }

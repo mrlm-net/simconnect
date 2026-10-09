@@ -242,6 +242,7 @@ func ServeActuator(ctx context.Context, w *World, addr, token string) error {
 
 // ServeActuatorWith is ServeActuator with o's TLS and token check (#792).
 func ServeActuatorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	o.warnPlain(w.st.core.log.printf)
 	ln, err := o.listen(addr)
 	if err != nil {
 		return err
@@ -279,6 +280,7 @@ func DialDirector(ctx context.Context, w *World, addr, token string) error {
 
 // DialDirectorWith is DialDirector with o's TLS and token (#792).
 func DialDirectorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	o.warnPlain(w.st.core.log.printf)
 	for {
 		err := dialOnce(ctx, w, addr, o)
 		if ctx.Err() != nil {
@@ -393,6 +395,15 @@ func (o LinkOptions) token(ctx context.Context) (string, error) {
 	return o.Token, nil
 }
 
+// warnPlain logs session tokens going over plain TCP (Verify or TokenFunc
+// without TLS): anyone on the way can read and replay them (E25). Allowed,
+// for a TLS proxy in front or a test.
+func (o LinkOptions) warnPlain(logf func(string, ...any)) {
+	if o.TLS == nil && (o.Verify != nil || o.TokenFunc != nil) {
+		logf("link: session tokens over plain TCP, without TLS: use TLS outside a trusted network")
+	}
+}
+
 func (o LinkOptions) listen(addr string) (net.Listener, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil || o.TLS == nil {
@@ -430,6 +441,7 @@ func DialActuator(ctx context.Context, w *World, addr, token string) error {
 
 // DialActuatorWith is DialActuator with o's TLS and token (#792).
 func DialActuatorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	o.warnPlain(w.st.core.log.printf)
 	hub := newHubLink()
 	w.st.actLink = hub
 	go w.Run(ctx)
@@ -499,6 +511,7 @@ func ListenDirector(ctx context.Context, w *World, addr, token string) error {
 // ListenDirectorWith is ListenDirector with o's TLS and token check: the
 // MyCrew API's session tokens with Verify (JWKS.LinkVerify), #792.
 func ListenDirectorWith(ctx context.Context, w *World, addr string, o LinkOptions) error {
+	o.warnPlain(w.st.core.log.printf)
 	ln, err := o.listen(addr)
 	if err != nil {
 		return err
@@ -628,6 +641,7 @@ func (w *World) LinkDirector(ctx context.Context, addr, token string) error {
 // LinkDirectorWith is LinkDirector with o's TLS and token: TokenFunc gives
 // a fresh session token for every greeting (#792).
 func (w *World) LinkDirectorWith(ctx context.Context, addr string, o LinkOptions) error {
+	o.warnPlain(w.st.core.log.printf)
 	hub := newHubLink()
 	w.st.mu.Lock()
 	w.st.actLink = hub

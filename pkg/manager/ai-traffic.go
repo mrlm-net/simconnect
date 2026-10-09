@@ -60,6 +60,17 @@ func (m *Instance) AICreateSimulatedObject(szContainerTitle string, initPos type
 	return m.engine.AICreateSimulatedObject(szContainerTitle, initPos, RequestID)
 }
 
+// AICreateSimulatedObjectEX1 creates a simulated object with a livery.
+// Returns ErrNotConnected if not connected to the simulator.
+func (m *Instance) AICreateSimulatedObjectEX1(szContainerTitle string, szLivery string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.engine == nil {
+		return ErrNotConnected
+	}
+	return m.engine.AICreateSimulatedObjectEX1(szContainerTitle, szLivery, initPos, RequestID)
+}
+
 // AIReleaseControl releases control of an AI object back to the simulator.
 // Returns ErrNotConnected if not connected to the simulator.
 func (m *Instance) AIReleaseControl(objectID uint32, requestID uint32) error {
