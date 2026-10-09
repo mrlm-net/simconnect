@@ -121,11 +121,14 @@ func PhraseologyFor(icao string) Phraseology {
 // Parameter keys of a transmission. Values are the text as said (a runway
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
-	ParamRunway     = "runway"
-	ParamEntry      = "entry"     // where an intersection departure enters its runway ("B")
-	ParamStartUp    = "startup"   // "1": the start-up asked for or approved with the pushback
-	ParamFacing     = "facing"    // where a push ends facing: "east"
-	ParamBehind     = "behind"    // a conditional line-up: the landing traffic as said ("A320")
+	ParamRunway  = "runway"
+	ParamEntry   = "entry"   // where an intersection departure enters its runway ("B")
+	ParamStartUp = "startup" // "1": the start-up asked for or approved with the pushback
+	ParamFacing  = "facing"  // where a push ends facing: "east"
+	ParamBehind  = "behind"  // a conditional line-up: the landing traffic as said ("A320")
+	// ParamBehindHow: what the traffic of a conditional line-up does,
+	// "landing" ("" too) or "departing".
+	ParamBehindHow  = "behindHow"
 	ParamGiveWay    = "giveway"   // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways   = "taxiways"  // as said: "B2, H, A"
 	ParamHoldShort  = "holdShort" // runways to hold short of on the way: "12", "12, 31"
@@ -381,7 +384,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentLineUp:
 		if p[ParamBehind] != "" {
 			// Conditional: the condition first, "behind" again at the end.
-			return fmt.Sprintf("%s, behind the landing %s, line up and wait runway %s, behind", cs, p[ParamBehind], p[ParamRunway])
+			return fmt.Sprintf("%s, behind the %s %s, line up and wait runway %s, behind", cs, behindHow(p), p[ParamBehind], p[ParamRunway])
 		}
 		if p[ParamRush] != "" {
 			return fmt.Sprintf("%s, %s, line up, be ready for immediate departure", cs, runwayAt(p)) // 12.3.4.10 h
@@ -1666,4 +1669,21 @@ func (t Transmission) SpeakingTime() time.Duration {
 		d = time.Duration(float64(d) / t.Tempo)
 	}
 	return d
+}
+
+// ClearedLineUpBehindDeparting is a conditional line-up behind the
+// departure ahead on its take-off roll (traffic: its type as said): "CSA1,
+// behind the departing A320, line up and wait runway 24, behind" — given
+// when the runway is busy, so the next is lined up as the first rolls.
+func ClearedLineUpBehindDeparting(cs, traffic, runway string) Transmission {
+	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentLineUp, Params: map[string]string{ParamRunway: runway, ParamBehind: traffic, ParamBehindHow: "departing"}})
+}
+
+// behindHow is what the traffic of a conditional clearance does: "landing"
+// unless said otherwise (ParamBehindHow).
+func behindHow(p map[string]string) string {
+	if h := p[ParamBehindHow]; h != "" {
+		return h
+	}
+	return "landing"
 }
