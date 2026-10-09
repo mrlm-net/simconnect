@@ -220,7 +220,10 @@ type state struct {
 	// requests asks the connection to load an airport (load); airways is
 	// the airway graph for flight plans (#331), nil for direct routes.
 	requests chan<- string
-	airways  *nav.AirwayGraph
+	// airwayRoutes asks the connection for the airways along a flight's
+	// way (PlanFlight).
+	airwayRoutes chan airwayRoute
+	airways      *nav.AirwayGraph
 	// airwaysGiven is Options.Airways; airwaysBy each airport's read
 	// from the sim (#799), merged into airways.
 	airwaysGiven *nav.AirwayGraph
@@ -734,6 +737,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			if now.Sub(lastFrame) > 3*cameraRate {
 				cam.tick(now)
 			}
+
+		case r := <-st.airwayRoutes:
+			airways.route(r, time.Now())
 
 		case icao := <-requests:
 			fmt.Fprintf(stdout, "🛫 Fetching facility data for %s...\n", icao)

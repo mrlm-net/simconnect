@@ -77,3 +77,68 @@ func containsKey(keys []nav.FixKey, k nav.FixKey) bool {
 	}
 	return false
 }
+
+// TestAirwayRoute: the airways along a flight's way are taken from a
+// fresh cache at once; else queued once, with a corridor and the request
+// cap by length, every asker told when the crawl ends; without seeds,
+// nothing to wait for.
+func TestAirwayRoute(t *testing.T) {
+	dir := t.TempDir()
+	rec := &recFeed{}
+	now := time.Now()
+	k := newAirwayKeeper(nil, rec, dir, 24*time.Hour, 1, 2, t.Logf)
+	corr := nav.Corridor{From: airport.LatLon{Lat: 50.1, Lon: 14.26}, To: airport.LatLon{Lat: 38.78, Lon: -9.13}, HalfWidthNM: routeCorridorHalfNM}
+	seed := nav.Key("VLM", "LK", nav.KindVOR)
+
+	none := airwayRoute{key: "LKPR-LPPT", corridor: corr, done: make(chan struct{})}
+	k.route(none, now)
+	select {
+	case <-none.done:
+	default:
+		t.Error("no seeds: still waited for")
+	}
+
+	a := airwayRoute{key: "LKPR-LPPT", seeds: []nav.FixKey{seed}, corridor: corr, done: make(chan struct{})}
+	b := airwayRoute{key: "lkpr-lppt", seeds: []nav.FixKey{seed}, corridor: corr, done: make(chan struct{})}
+	k.route(a, now)
+	k.route(b, now)
+	if len(k.queue) != 1 || len(k.queue[0].done) != 2 || k.queue[0].opts == nil || k.queue[0].opts.Corridor == nil {
+		t.Fatalf("queue %+v, want one corridor crawl both wait for", k.queue)
+	}
+	if n := k.queue[0].opts.MaxRequests; n <= nav.DefaultCrawlMaxRequests || n > routeCrawlMaxRequest {
+		t.Errorf("request cap %d for ~1200 NM", n)
+	}
+	// Its end (nothing found here) tells both.
+	job := k.queue[0]
+	k.queue = nil
+	job.crawler = nav.NewAirwayCrawler(nav.NewNavLoaderWithIDs(nil, 1, 2, 1), *job.opts)
+	k.cur = &job
+	k.finish(now)
+	for _, d := range []chan struct{}{a.done, b.done} {
+		select {
+		case <-d:
+		default:
+			t.Error("an asker not told the crawl ended")
+		}
+	}
+
+	// A fresh cache: fed at once.
+	g, err := nav.LoadAirwayGraph("../../nav/testdata/LKPR-airways.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(dir, "airways"), 0o755)
+	if err := g.SaveJSON(k.path("route-LKPR-LPPT")); err != nil {
+		t.Fatal(err)
+	}
+	c := airwayRoute{key: "LKPR-LPPT", seeds: []nav.FixKey{seed}, corridor: corr, done: make(chan struct{})}
+	k.route(c, now)
+	select {
+	case <-c.done:
+	default:
+		t.Error("a fresh cache: still waited for")
+	}
+	if rec.airways != g.SegmentCount() || len(k.queue) != 0 {
+		t.Errorf("fresh cache: fed %d segments, %d queued", rec.airways, len(k.queue))
+	}
+}

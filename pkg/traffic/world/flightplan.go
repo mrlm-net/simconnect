@@ -100,6 +100,9 @@ type PlanRequest struct {
 	Type            string `json:"type,omitempty"`
 	DepartureRunway string `json:"departureRunway,omitempty"`
 	ArrivalRunway   string `json:"arrivalRunway,omitempty"`
+	// NoRouteAirways plans with the airways known now only: no reading of
+	// those along the way first (quicker; direct where none are known).
+	NoRouteAirways bool `json:"noRouteAirways,omitempty"`
 }
 
 // PlanFlight plans an IFR flight the way the World plans its own traffic's
@@ -115,7 +118,87 @@ func (w *World) PlanFlight(ctx context.Context, r PlanRequest) (*nav.FlightPlan,
 	if dep == "" || arr == "" {
 		return nil, fmt.Errorf("world: plan: departure and arrival needed")
 	}
+	if !r.NoRouteAirways {
+		w.st.routeAirways(ctx, dep, arr)
+	}
 	return planBetween(ctx, w.st, dep, arr, r.DepartureRunway, r.ArrivalRunway, r.Type, "")
+}
+
+// routeAirwaysWait: how long PlanFlight waits for the airways along the
+// way (a few seconds for most; the plan goes direct where they are missing).
+const routeAirwaysWait = 60 * time.Second
+
+// routeAirways has the airways along the great circle dep → arr read from
+// the simulator (cached in DataDir/airways/route-DEP-ARR.json like an
+// airport's), seeded from both airports' SID and STAR fixes and the known
+// airway fixes nearest each, and waits for them (routeAirwaysWait, ctx).
+// Without a connection, airports or seeds it returns at once.
+func (st *state) routeAirways(ctx context.Context, dep, arr string) {
+	lctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	ld, err1 := st.load(lctx, dep, false, st.requests)
+	la, err2 := st.load(lctx, arr, false, st.requests)
+	if err1 != nil || err2 != nil || st.airwayRoutes == nil {
+		return
+	}
+	from := airport.LatLon{Lat: ld.Latitude, Lon: ld.Longitude}
+	to := airport.LatLon{Lat: la.Latitude, Lon: la.Longitude}
+	r := airwayRoute{key: dep + "-" + arr, corridor: nav.Corridor{From: from, To: to, HalfWidthNM: routeCorridorHalfNM}, done: make(chan struct{})}
+	seen := map[nav.FixKey]bool{}
+	add := func(keys ...nav.FixKey) {
+		for _, k := range keys {
+			if !seen[k] {
+				seen[k] = true
+				r.seeds = append(r.seeds, k)
+			}
+		}
+	}
+	// The procedures come with the airport, a moment after its layout.
+	for wait := time.Now().Add(5 * time.Second); ; {
+		st.mu.Lock()
+		pd, okD := st.procedures[ld.ICAO]
+		pa, okA := st.procedures[la.ICAO]
+		g := st.airways
+		st.mu.Unlock()
+		if (okD && okA) || time.Now().After(wait) {
+			for _, p := range []struct {
+				procs airport.Procedures
+				ok    bool
+			}{{pd, okD}, {pa, okA}} {
+				if j, ok := airwayJobOf(p.procs); p.ok && ok {
+					add(j.seeds...)
+				}
+			}
+			if g != nil {
+				for _, at := range []airport.LatLon{from, to} {
+					if f, d, ok := g.Nearest(at); ok && d <= routeCorridorHalfNM {
+						add(f.Key())
+					}
+				}
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	if len(r.seeds) == 0 {
+		return
+	}
+	select {
+	case st.airwayRoutes <- r:
+	case <-ctx.Done():
+		return
+	case <-time.After(5 * time.Second):
+		return // no connection loop to read it (a director)
+	}
+	select {
+	case <-r.done:
+	case <-ctx.Done():
+	case <-time.After(routeAirwaysWait):
+	}
 }
 
 // planOverflight plans an overflight from dep to arr from where the two

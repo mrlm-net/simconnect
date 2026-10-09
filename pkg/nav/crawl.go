@@ -1,6 +1,7 @@
 package nav
 
 import (
+	"math"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -21,6 +22,37 @@ type CrawlOptions struct {
 	Center      airport.LatLon
 	RadiusNM    float64
 	MaxRequests int
+	// Corridor, when set, bounds the crawl instead of Center and RadiusNM:
+	// the airways along a route (a flight plan's whole way).
+	Corridor *Corridor
+}
+
+// Corridor is a band HalfWidthNM either side of the great circle From →
+// To, rounded at its ends.
+type Corridor struct {
+	From, To    airport.LatLon
+	HalfWidthNM float64
+}
+
+// Contains reports whether p is in the band.
+func (k Corridor) Contains(p airport.LatLon) bool {
+	length := calc.HaversineNM(k.From.Lat, k.From.Lon, k.To.Lat, k.To.Lon)
+	along := calc.AlongTrackMeters(k.From.Lat, k.From.Lon, k.To.Lat, k.To.Lon, p.Lat, p.Lon) / 1852
+	switch {
+	case along < 0 || length == 0:
+		return calc.HaversineNM(k.From.Lat, k.From.Lon, p.Lat, p.Lon) <= k.HalfWidthNM
+	case along > length:
+		return calc.HaversineNM(k.To.Lat, k.To.Lon, p.Lat, p.Lon) <= k.HalfWidthNM
+	}
+	return math.Abs(calc.CrossTrackMeters(k.From.Lat, k.From.Lon, k.To.Lat, k.To.Lon, p.Lat, p.Lon))/1852 <= k.HalfWidthNM
+}
+
+// inRange reports whether a fix at p is crawled.
+func (o CrawlOptions) inRange(p airport.LatLon) bool {
+	if o.Corridor != nil {
+		return o.Corridor.Contains(p)
+	}
+	return calc.HaversineNM(o.Center.Lat, o.Center.Lon, p.Lat, p.Lon) <= o.RadiusNM
 }
 
 // AirwayCrawler builds an AirwayGraph by following the airways from seed
@@ -135,7 +167,7 @@ func (c *AirwayCrawler) add(res NavResult) {
 			if ref == nil || c.seen[ref.Key] {
 				continue
 			}
-			if calc.HaversineNM(c.opts.Center.Lat, c.opts.Center.Lon, ref.Position.Lat, ref.Position.Lon) <= c.opts.RadiusNM {
+			if c.opts.inRange(ref.Position) {
 				c.enqueue(ref.Key)
 			}
 		}
