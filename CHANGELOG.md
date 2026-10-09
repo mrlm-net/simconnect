@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.58.1] - 2026-10-09
+
+### Fixed
+
+- `traffic`: a pushback tug's straight leg between the vehicle roads and the aircraft's nose, driving in and home after the push, goes round the aircraft instead of through it. The aircraft is kept clear as its fuselage and its wing with the engines, each with a margin, and a leg into it goes by the nearer way round a wingtip. Live at LROP, a tug drove through a fuselage: 18 of LROP's 67 stands for an A320 had the way in across the aircraft.
+
 ## [0.58.0] - 2026-10-09
 
 ### Added
