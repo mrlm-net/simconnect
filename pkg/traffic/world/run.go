@@ -226,6 +226,10 @@ type state struct {
 	// airwayRoutes asks the connection for the airways along a flight's
 	// way (PlanFlight).
 	airwayRoutes chan airwayRoute
+	// procRequests asks the connection for an airport's procedures alone (a
+	// layout found in the cache without them); procAsked: asked already.
+	procRequests chan string
+	procAsked    map[string]bool
 	airways      *nav.AirwayGraph
 	// airwaysGiven is Options.Airways; airwaysBy each airport's read
 	// from the sim (#799), merged into airways.
@@ -741,6 +745,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				cam.tick(now)
 			}
 
+		case icao := <-st.procRequests:
+			if err := procLoader.Request(icao); err != nil {
+				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
+			}
+
 		case r := <-st.airwayRoutes:
 			airways.route(r, time.Now())
 
@@ -955,6 +964,7 @@ func writeDump(dir string, raw airport.RawAirport) {
 // load returns a cached layout or fetches it from the simulator.
 func (s *state) load(ctx context.Context, icao string, refresh bool, requests chan<- string) (*airport.Layout, error) {
 	if l, ok := s.cache.Layout(icao); ok && !refresh {
+		s.wantProcedures(l.ICAO) // a layout the host put in the cache: its procedures too
 		return l, nil
 	}
 	s.mu.Lock()
@@ -1504,5 +1514,31 @@ func removeOurs(cc *controlCenter, sched *scheduler) {
 	sched.mu.Unlock()
 	for _, id := range enroute {
 		_ = cc.sim.RemoveObject(id, reqRemoveEnroute)
+	}
+}
+
+// wantProcedures asks the connection for icao's procedures when a layout
+// is in the cache without them (a host's Options.Cache: the app put its
+// own layouts there, and every departure failed "procedures of LROP not
+// loaded"). Once an airport, while connected.
+func (s *state) wantProcedures(icao string) {
+	icao = strings.ToUpper(icao)
+	s.mu.Lock()
+	_, have := s.procedures[icao]
+	if have || !s.live || s.procRequests == nil || s.procAsked[icao] {
+		s.mu.Unlock()
+		return
+	}
+	if s.procAsked == nil {
+		s.procAsked = map[string]bool{}
+	}
+	s.procAsked[icao] = true
+	s.mu.Unlock()
+	select {
+	case s.procRequests <- icao:
+	default: // the loop is busy: asked again next time
+		s.mu.Lock()
+		delete(s.procAsked, icao)
+		s.mu.Unlock()
 	}
 }
