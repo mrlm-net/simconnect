@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.49.0] - 2026-10-09
+
+### Added
+
+- `systems` (#962): the autopilot by generic names. `State.AP` reads AP master, FD, A/THR armed and active, the selected heading, altitude, vertical speed, speed and Mach, managed or selected (the slot indexes), the modes engaged (HDG, ALT, VS, FLC, SPD, MACH, NAV, APPR, G/S) and armed (APPR, G/S, ALT). `Controls` sets them: AP and A/THR on and off, the selected values (`SetValue`), push and pull, the modes on and off, LOC armed. Flight controls for a pilot flying by hand: elevator, ailerons, rudder, throttles (all or per engine), flap lever, flaps one detent, gear, ground spoilers armed. The default profile uses the standard SimVars and key events, all checked against the SDK pages; an add-on's profile overrides them by the same names. Actions take `value` and `scale` for an event that carries a value (a negative one as two's complement). Not measured live: the slot meaning managed (2 assumed), negative vertical speeds, the elevator axis's sign.
+- `registry`: the autopilot's slot indexes.
+
 ## [0.48.0] - 2026-10-09
 
 ### Added
