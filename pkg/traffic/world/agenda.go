@@ -56,6 +56,7 @@ type call struct {
 	still      func() bool // nil: always wanted
 	dropped    func()      // run when still says no
 	f          func()      // says it (and has the crew act)
+	why        string      // why it waited the last time it could have gone (agendaSlowAfter)
 }
 
 // agenda holds the calls waiting for their frequency.
@@ -65,6 +66,9 @@ type agenda struct {
 	radio func(icao, freq string) time.Time // when the frequency is clear
 	// urgent: until when a frequency is spoken fast after a safety call.
 	urgent map[string]time.Time
+	// log, when set, reports calls said agendaSlowAfter or more after they
+	// were decided, with why they waited.
+	log func(format string, args ...any)
 }
 
 func (a *agenda) add(c call) {
@@ -85,20 +89,24 @@ func (a *agenda) next(now time.Time) (run, drop []call) {
 		}
 		return a.calls[i].since.Before(a.calls[j].since)
 	})
-	busy := map[string]bool{}
+	busy := map[string]string{} // by frequency: the call going first (or why it is not free)
 	var keep []call
 	for _, c := range a.calls {
 		key := c.icao + " " + c.freq
 		switch {
-		case now.Before(c.ready) || busy[key]:
+		case now.Before(c.ready):
+			keep = append(keep, c)
+		case busy[key] != "":
+			c.why = busy[key]
 			keep = append(keep, c)
 		case c.still != nil && !c.still():
 			drop = append(drop, c)
 		case a.radio != nil && now.Before(a.radio(c.icao, c.freq).Add(c.prio.pause())):
-			busy[key] = true
+			c.why = "the frequency busy until " + a.radio(c.icao, c.freq).Format("15:04:05")
+			busy[key] = c.why
 			keep = append(keep, c)
 		default:
-			busy[key] = true // one call per frequency: the next once this one is said
+			busy[key] = "behind " + c.tail // one call per frequency: the next once this one is said
 			if c.prio.safety() {
 				if a.urgent == nil {
 					a.urgent = map[string]time.Time{}
@@ -121,6 +129,9 @@ func (a *agenda) run(now time.Time) {
 		}
 	}
 	for _, c := range run {
+		if w := now.Sub(c.since); a.log != nil && w >= agendaSlowAfter {
+			a.log("%-6s agenda: said %s after it was decided on %s (%s)", c.tail, w.Round(time.Second), c.freq, c.why)
+		}
 		c.f()
 	}
 }
@@ -190,3 +201,8 @@ func (a *agenda) tempo(icao, freq string, now time.Time) float64 {
 	}
 	return min(t, tempoMax)
 }
+
+// agendaSlowAfter: a call said this long or more after it was decided is
+// logged with why it waited (live, FVKNF's taxi request answered after
+// 46 s on a quiet ground frequency).
+const agendaSlowAfter = 20 * time.Second

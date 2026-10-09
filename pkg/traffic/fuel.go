@@ -94,6 +94,11 @@ func (f *SimObjectFuelTruck) ObjectID() uint32 {
 func FuelSpot(pose GroundPose, prof MotionProfile, side float64) GroundPose {
 	if side <= 0 {
 		side = math.Max(FuelTruckMinSideMeters, prof.SpanMeters*FuelTruckSideShare)
+		// A low wing (light aircraft, business jets): beyond the tip, not
+		// through it (live, a fuel truck parked in a DA62's wing).
+		if prof.SpanMeters > 0 && prof.SpanMeters <= FuelOffWingMaxSpanM {
+			side = math.Max(side, prof.SpanMeters/2+FuelWingtipClearMeters)
+		}
 	}
 	main := offsetHeading(pose.Position, pose.Heading+180, prof.RefAheadMeters)
 	p := offsetHeading(offsetHeading(main, pose.Heading, FuelTruckAheadMeters), pose.Heading+90, side)
@@ -370,6 +375,10 @@ const (
 	FuelDriveOffTurnDeg    = 60.0
 	FuelDriveOffMeters     = 40.0
 	FuelTruckKts           = 12.0
+	// Aircraft of FuelOffWingMaxSpanM span or less have a low wing: the
+	// truck parks FuelWingtipClearMeters beyond its tip.
+	FuelOffWingMaxSpanM    = 25.0
+	FuelWingtipClearMeters = 2.5
 )
 
 // Refuelling times (TaxiRequest.Fuel), estimates: it starts FuelStartDelay
