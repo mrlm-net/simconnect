@@ -143,6 +143,8 @@ type Graph struct {
 	// stands marks taxi points with a PARKING path to a stand: apron
 	// taxilanes, which routes avoid when a through taxiway will do.
 	stands []bool
+	// bridges are the taxiway gaps joined (bridgeTaxiwayGaps).
+	bridges []TaxiBridge
 }
 
 // Taxiway, runway and parking path types taken into the graph. CLOSED,
@@ -338,6 +340,8 @@ func (g *Graph) bridgeTaxiwayGaps() {
 			continue
 		}
 		b := ends[best]
+		g.bridges = append(g.bridges, TaxiBridge{Name: a.name, From: g.Nodes[a.node].Position, To: g.Nodes[b.node].Position,
+			FromPoint: int(a.node), ToPoint: int(b.node), Length: bestD})
 		g.Adj[a.node] = append(g.Adj[a.node], Edge{To: b.node, Length: bestD, Type: types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI, Name: a.name, Path: a.path})
 		g.Adj[b.node] = append(g.Adj[b.node], Edge{To: a.node, Length: bestD, Type: types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI, Name: a.name, Path: b.path})
 		for _, n := range []NodeID{a.node, b.node} {
@@ -347,6 +351,31 @@ func (g *Graph) bridgeTaxiwayGaps() {
 			joined[n][a.name] = true
 		}
 	}
+}
+
+// TaxiBridge is a gap in a taxiway the scenery left, joined in the taxi
+// graph (bridgeTaxiwayGaps): drawn as a piece of the taxiway Name from
+// From to To (taxi points FromPoint and ToPoint), Length meters.
+type TaxiBridge struct {
+	Name      string  `json:"name"`
+	From      LatLon  `json:"from"`
+	To        LatLon  `json:"to"`
+	FromPoint int     `json:"fromPoint"`
+	ToPoint   int     `json:"toPoint"`
+	Length    float64 `json:"length"`
+}
+
+// Bridges are the taxiway gaps the graph joined.
+func (g *Graph) Bridges() []TaxiBridge { return append([]TaxiBridge(nil), g.bridges...) }
+
+// TaxiwayBridges are the taxiway gaps a graph of l joins (Graph.Bridges),
+// for a map that draws the layout's paths: nil without a taxi network.
+func (l *Layout) TaxiwayBridges() []TaxiBridge {
+	g, err := BuildGraph(l)
+	if err != nil {
+		return nil
+	}
+	return g.bridges
 }
 
 // acrossRunway reports whether a gap between a and b is a runway's: either

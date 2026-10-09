@@ -67,6 +67,13 @@ func (l *Layout) FeatureCollection() FeatureCollection {
 			"start": p.Start, "end": p.End, "endsAtParking": p.EndsAtParking(),
 		}))
 	}
+	// The taxiway gaps the taxi graph joins (TaxiwayBridges), as taxi paths
+	// of their taxiway marked "bridge".
+	for _, br := range l.TaxiwayBridges() {
+		fc.Features = append(fc.Features, line([]LatLon{br.From, br.To}, map[string]any{
+			"kind": "taxiPath", "index": -1, "type": 1, "name": br.Name, "start": br.FromPoint, "end": br.ToPoint, "bridge": true,
+		}))
+	}
 	for _, p := range l.Parking {
 		fc.Features = append(fc.Features, point(p.Position, map[string]any{
 			"kind": "parking", "index": p.Index, "label": p.Label(), "name": p.Name, "suffix": p.Suffix,
