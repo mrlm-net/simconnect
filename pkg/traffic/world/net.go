@@ -100,6 +100,16 @@ type hubLink struct {
 	in   chan hubMsg // what the director sends, for whoever reads now
 	// state: "dialling", "attached", "gone" (LinkState).
 	state string
+	// attached counts the directors attached: a new one is sent the whole
+	// snapshot (ctlSender).
+	attached uint64
+}
+
+// Attached counts the directors attached so far.
+func (h *hubLink) Attached() uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.attached
 }
 
 func newHubLink() *hubLink {
@@ -163,6 +173,7 @@ func (h *hubLink) attach(c *connLink) {
 	h.mu.Lock()
 	old := h.cur
 	h.cur = c
+	h.attached++
 	h.mu.Unlock()
 	if old != nil {
 		old.Close()

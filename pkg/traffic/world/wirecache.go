@@ -1,6 +1,7 @@
 package world
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 )
@@ -70,6 +71,10 @@ func (c *wireClient) takeSnapshot(m wireMsg) {
 	if len(m.Args) == 0 {
 		return
 	}
+	if len(m.Args) > 1 {
+		c.takeDelta(m.Args[1]) // a delta (E24)
+		return
+	}
 	var snap map[string]map[string][]json.RawMessage
 	if json.Unmarshal(m.Args[0], &snap) != nil {
 		return
@@ -127,6 +132,113 @@ func (s *wireServer) snapshot() map[string]map[string][]json.RawMessage {
 		out[t] = reads
 	}
 	return out
+}
+
+// Deltas (review E24): the actuator sends the whole snapshot every
+// ctlFullEvery seconds and on a new link, and in between only the reads that
+// changed and the controllers gone, as a "ctlstate" feed with an empty array
+// first and the delta second. A director from before takes the first
+// argument for a snapshot, fails to read an array as one and leaves its
+// cache as it is: it keeps the whole snapshots.
+const ctlFullEvery = 10
+
+// ctlDelta is what changed between two snapshots.
+type ctlDelta struct {
+	Set  map[string]map[string][]json.RawMessage `json:"set,omitempty"`
+	Gone []string                                `json:"gone,omitempty"`
+}
+
+// ctlDiff is the delta from last to now; false when nothing changed.
+func ctlDiff(last, now map[string]map[string][]json.RawMessage) (ctlDelta, bool) {
+	var d ctlDelta
+	for t, reads := range now {
+		for name, res := range reads {
+			if sameResults(last[t][name], res) {
+				continue
+			}
+			if d.Set == nil {
+				d.Set = map[string]map[string][]json.RawMessage{}
+			}
+			if d.Set[t] == nil {
+				d.Set[t] = map[string][]json.RawMessage{}
+			}
+			d.Set[t][name] = res
+		}
+	}
+	for t := range last {
+		if _, ok := now[t]; !ok {
+			d.Gone = append(d.Gone, t)
+		}
+	}
+	return d, d.Set != nil || d.Gone != nil
+}
+
+func sameResults(a, b []json.RawMessage) bool {
+	if len(a) != len(b) || a == nil {
+		return false
+	}
+	for i := range a {
+		if !bytes.Equal(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// ctlSender sends the controllers' snapshots over one link: whole or as a
+// delta (put: the feed's put).
+type ctlSender struct {
+	last map[string]map[string][]json.RawMessage
+	n    int
+	// attached, when set, counts the directors attached to the link (a
+	// hub's): a new one gets the whole snapshot at once.
+	attached func() uint64
+	seen     uint64
+}
+
+func (s *ctlSender) send(now map[string]map[string][]json.RawMessage, put func(kind string, vs ...any)) {
+	fresh := false
+	if s.attached != nil {
+		if a := s.attached(); a != s.seen {
+			s.seen, fresh = a, true
+		}
+	}
+	switch {
+	case fresh || s.last == nil || s.n%ctlFullEvery == 0:
+		put("ctlstate", now)
+	default:
+		if d, ok := ctlDiff(s.last, now); ok {
+			put("ctlstate", []any{}, d)
+		}
+	}
+	s.last = now
+	s.n++
+}
+
+// takeDelta applies a delta to the snapshots kept, but not to a controller
+// a command is on its way to (its snapshot dropped; a read missing is
+// asked over the link).
+func (c *wireClient) takeDelta(raw json.RawMessage) {
+	var d ctlDelta
+	if json.Unmarshal(raw, &d) != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for t, reads := range d.Set {
+		if c.inflight[t] != 0 {
+			continue
+		}
+		if c.cache[t] == nil {
+			c.cache[t] = map[string][]json.RawMessage{}
+		}
+		for name, res := range reads {
+			c.cache[t][name] = res
+		}
+	}
+	for _, t := range d.Gone {
+		delete(c.cache, t)
+	}
 }
 
 // safeCall calls fn with no arguments; nil when it panics (a read that
