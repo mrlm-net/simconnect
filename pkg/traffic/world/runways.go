@@ -38,6 +38,9 @@ type towers struct {
 	// (#509), by call sign: that aircraft, and the departure's runway.
 	behind map[string]behindClearance
 	next   map[string]string // the next arrival to land, by "ICAO runway"
+	// users: each runway's users as last decided on, by "ICAO runway", for
+	// the player's ATC asking (PlayerRunway).
+	users map[string][]traffic.RunwayUser
 	// grantAt: when the runway controller last granted each clearance
 	// ("tail action"): one waiting on the agenda is dropped once it is
 	// no longer granted.
@@ -309,6 +312,7 @@ func (t *towers) tick(now time.Time) {
 		icao, rwy, _ := strings.Cut(name, " ")
 		if _, used := users[key{icao, rwy}]; !used {
 			delete(t.last, name)
+			delete(t.users, name)
 		}
 	}
 	t.mu.Unlock()
@@ -333,6 +337,10 @@ func (t *towers) tick(now time.Time) {
 		t.cc.vehicles().crossCleared(k.icao, c.Cross)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival
+		if t.users == nil {
+			t.users = map[string][]traffic.RunwayUser{}
+		}
+		t.users[k.icao+" "+k.rwy] = append([]traffic.RunwayUser(nil), list...)
 		t.mu.Unlock()
 		var view []runwayUserView
 		for _, u := range list {
