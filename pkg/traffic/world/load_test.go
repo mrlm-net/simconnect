@@ -34,3 +34,23 @@ func TestLoadCancelledFirstAsksAgain(t *testing.T) {
 		t.Fatal("the next load never asked")
 	}
 }
+
+// TestCachedLayoutProcedures: a layout a host put in the cache without
+// its procedures has them asked of the connection, once; with them, not.
+func TestCachedLayoutProcedures(t *testing.T) {
+	st := &state{cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}, live: true,
+		procRequests: make(chan string, 4), procedures: map[string]airport.Procedures{}}
+	st.cache.Put(&airport.Layout{ICAO: "LROP"})
+	st.cache.Put(&airport.Layout{ICAO: "LKPR"})
+	st.procedures["LKPR"] = airport.Procedures{ICAO: "LKPR"}
+	for range 2 {
+		for _, icao := range []string{"lrop", "LKPR"} {
+			if _, err := st.load(context.Background(), icao, false, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if n := len(st.procRequests); n != 1 || <-st.procRequests != "LROP" {
+		t.Errorf("%d procedure requests, want LROP once", n)
+	}
+}
