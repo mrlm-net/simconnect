@@ -77,6 +77,32 @@ var KnownVFR = map[string]VFRAirport{
 		vfrPoint("CHARLIE", "Křičeň collective farm", false, 50, 6, 56, 15, 39, 10),
 		vfrPoint("DELTA", "Bohumileč, 1 NM east of golf course", false, 50, 6, 9, 15, 51, 25),
 	}},
+	"LKTB": {Source: "Czech VFR Manual, LKTB, WEF 01 OCT 26 (aim.rlp.cz)", FIS: czFIS, FISFreq: czFISFreq, Points: []VFRPoint{
+		vfrPoint("NOVEMBER", "Kuřim (railway crossing)", true, 49, 17, 32, 16, 33, 37),
+		vfrPoint("ROMEO", "Rousínov (church)", true, 49, 12, 13, 16, 53, 10),
+		vfrPoint("WHISKEY", "Ořechov (church)", true, 49, 6, 39, 16, 31, 15),
+		vfrPoint("VICTOR", "Velké Němčice (highway intersection)", true, 48, 59, 47, 16, 41, 20),
+		vfrPoint("ALFA", "Sokolnice (railway crossing)", false, 49, 7, 3, 16, 42, 12),
+		vfrPoint("BRAVO", "Podolí (highway overbridge)", false, 49, 10, 54, 16, 42, 45),
+	}},
+	"LKKV": {Source: "Czech VFR Manual, LKKV, WEF 01 OCT 26 (aim.rlp.cz)", FIS: czFIS, FISFreq: czFISFreq, Points: []VFRPoint{
+		vfrPoint("NOVEMBER", "Velká Nejda pond", true, 50, 16, 54, 12, 56, 19),
+		vfrPoint("ECHO", "Žlutice (reservoir dam)", true, 50, 5, 3, 13, 7, 36),
+		vfrPoint("SIERRA", "Bečov", true, 50, 5, 2, 12, 50, 24),
+		vfrPoint("WHISKEY", "Loket", true, 50, 11, 22, 12, 45, 29),
+		vfrPoint("ALFA", "Hotel Hubertus parking lot", false, 50, 14, 16, 12, 55, 40),
+		vfrPoint("BRAVO", "Stanovice (north bank of the dam)", false, 50, 10, 15, 12, 53, 30),
+	}},
+	"LKMT": {Source: "Czech VFR Manual, LKMT, WEF 01 OCT 26 (aim.rlp.cz)", FIS: czFIS, FISFreq: czFISFreq, Points: []VFRPoint{
+		vfrPoint("NOVEMBER", "Hrabyně", true, 49, 52, 59, 18, 3, 17),
+		vfrPoint("WHISKEY", "Vrchy (church)", true, 49, 44, 57, 17, 52, 19),
+		vfrPoint("TANGO", "Bělotín", true, 49, 35, 6, 17, 47, 59),
+		vfrPoint("SIERRA", "Hodslavice", true, 49, 32, 20, 18, 1, 25),
+		vfrPoint("ECHO", "Frýdek-Místek (reservoir dam)", true, 49, 39, 48, 18, 19, 13),
+		vfrPoint("FOXTROT", "Šenov (church)", true, 49, 47, 10, 18, 22, 29),
+		vfrPoint("ALFA", "Příbor", false, 49, 39, 0, 18, 8, 28),
+		vfrPoint("BRAVO", "Studénka (railway crossing)", false, 49, 42, 17, 18, 3, 4),
+	}},
 }
 
 var knownVFRNow dict.Value[map[string]VFRAirport]
