@@ -1578,4 +1578,14 @@ var simvars = []SimVarMeta{
 		Indexed:     false,
 		Description: "Slot the autopilot takes the vertical speed reference from.",
 	},
+	{
+		Name:        "FLAPS HANDLE PERCENT",
+		Units:       []string{"percent over 100", "percent"},
+		DefaultUnit: "percent over 100",
+		Type:        "float64",
+		Category:    "aircraft",
+		Writable:    false,
+		Indexed:     false,
+		Description: "The flap lever, share of its travel.",
+	},
 }

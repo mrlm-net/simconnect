@@ -54,3 +54,21 @@ s, ok := t.At(t.Samples[0].T + 42.5) // the aircraft 42.5 s in
 ```
 
 `At` interpolates between the samples around a time: numbers linearly, headings and longitudes the short way round, and what is on or off (gear handle, lights, flap detent, autopilot modes) as the earlier sample has it. `Lerp` does the same for two samples.
+
+## Replay
+
+`Player` is a Track's playback clock: `Play`, `Pause`, `Seek(t)`, `SetRate(r)`, `Time` and `Sample(now)`, with times in seconds from the first sample. It applies nothing itself. Each frame, give the sample to an applier.
+
+```go
+p := flight.NewPlayer(track)
+p.Play(time.Now())
+// every sim frame (SIM_FRAME event or the frame's data):
+s, done := p.Sample(time.Now())
+replay.Apply(s)
+```
+
+**On the user aircraft** (`UserReplay`): `Start` freezes it (`FREEZE_LATITUDE_LONGITUDE_SET`, `FREEZE_ALTITUDE_SET`, `FREEZE_ATTITUDE_SET`). `Apply` writes its position and attitude every frame (`PLANE LATITUDE` … `PLANE HEADING DEGREES TRUE`) and sends the rest only as it changes: the gear handle (`GEAR_SET`), the flap lever (`FLAPS_SET`), the spoilers and their arming, the lights one by one (`*_LIGHTS_SET`), the throttles per engine and the control surfaces (axis events). `Stop` frees it where the replay left it.
+
+**As a ghost** (`Ghost`): an AI object you created (`AICreateNonATCAircraft`) and the traffic `Injector` took over (`Takeover`). `Apply` places it as flown (`Injector.PlaceFlown`), with its own CG height on the ground, so another model rolls on its own wheels. Its gear, flaps, spoilers, lights, engines (running from N1 15 %) and throttle follow.
+
+A frame's sample is interpolated (`At`), so the replay is as smooth as the sim's frame rate. Not measured live yet: the elevator axis sign, and the control surfaces moving on a frozen user aircraft.
