@@ -87,7 +87,7 @@ func utterance(t traffic.Transmission) speaker.Utterance {
 		ph = voicegoio.FAA
 	}
 	return speaker.Utterance{Airport: t.Airport, Position: string(t.Position), Controller: t.Controller, Callsign: t.Callsign,
-		Pilot: t.Pilot, Frequency: t.Frequency, Text: t.Text, Phraseology: ph}
+		Pilot: t.Pilot, Frequency: t.Frequency, Text: t.Text, Phraseology: ph, Tempo: float32(t.Tempo)}
 }
 
 // set turns the voice on or off and picks the frequency followed.
