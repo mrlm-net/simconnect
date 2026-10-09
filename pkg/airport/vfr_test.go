@@ -53,3 +53,29 @@ func TestFrequencyForFIS(t *testing.T) {
 		t.Error("an approach (IFR) frequency from flight information")
 	}
 }
+
+// TestVFRPointsNearAirport: every shipped point lies within the airport's
+// control zone reach (a typo in the coordinates puts it far away).
+func TestVFRPointsNearAirport(t *testing.T) {
+	arp := map[string]LatLon{
+		"LKPR": {Lat: 50.1008, Lon: 14.26},
+		"LKPD": {Lat: 50.0134, Lon: 15.7386},
+		"LKTB": {Lat: 49.1513, Lon: 16.6944},
+		"LKKV": {Lat: 50.203, Lon: 12.915},
+		"LKMT": {Lat: 49.6963, Lon: 18.1111},
+	}
+	for icao, v := range KnownVFR {
+		c, ok := arp[icao]
+		if !ok {
+			t.Errorf("%s: no reference point in the test", icao)
+			continue
+		}
+		for _, p := range v.Points {
+			dLat := (p.Position.Lat - c.Lat) * 60
+			dLon := (p.Position.Lon - c.Lon) * 60 * math.Cos(c.Lat*math.Pi/180)
+			if nm := math.Hypot(dLat, dLon); nm > 20 {
+				t.Errorf("%s %s: %.1f NM from the airport", icao, p.Name, nm)
+			}
+		}
+	}
+}
