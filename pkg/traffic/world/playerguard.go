@@ -1,6 +1,8 @@
 package world
 
 import (
+	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -100,6 +102,11 @@ func playerUsers(p *PlayerClearance, ua *traffic.TrackedAircraft, airports []str
 		if !seen[k] {
 			seen[k] = true
 			out[k] = append(out[k], u)
+		} else if us := out[k]; len(us) > 0 && us[len(us)-1].Phase == traffic.RunwayHoldingShort && u.Phase != traffic.RunwayHoldingShort {
+			// Seen on the runway or its final, cleared to hold short only
+			// (a stale clearance; stopped on it after a rejected take-off):
+			// where it is wins.
+			us[len(us)-1] = u
 		}
 		if !crossing {
 			return
@@ -232,11 +239,28 @@ func (t *towers) reportUserGround(ua *traffic.TrackedAircraft, prev airport.LatL
 	}
 }
 
+// standIndex is the parking spot labelled label: of several with the label
+// (a scenery's duplicates), the one nearest the user aircraft ua; an error
+// without it.
+func standIndex(l *airport.Layout, label string, ua *traffic.TrackedAircraft) (int, error) {
+	idx, err := l.ParkingIndex(label)
+	if !errors.Is(err, airport.ErrAmbiguousParking) || ua == nil {
+		return idx, err
+	}
+	best := math.Inf(1)
+	for _, p := range l.ParkingByLabel(label) {
+		if d := calc.HaversineNM(ua.Position.Lat, ua.Position.Lon, p.Position.Lat, p.Position.Lon); d < best {
+			best, idx = d, p.Index
+		}
+	}
+	return idx, nil
+}
+
 // syncPlayerStand holds the stand the host gave the user aircraft (pc's
 // Stand) for it: an arrival of ours that has not landed yet and holds it
 // gives it up and is moved (recheckArrivalStands); one taxiing in or
 // parked there keeps it, logged. Without a stand, the one held is freed.
-func (t *towers) syncPlayerStand(pc *PlayerClearance) {
+func (t *towers) syncPlayerStand(pc *PlayerClearance, ua *traffic.TrackedAircraft) {
 	t.mu.Lock()
 	had := t.playerStand
 	t.mu.Unlock()
@@ -263,8 +287,9 @@ func (t *towers) syncPlayerStand(pc *PlayerClearance) {
 	if err != nil {
 		return
 	}
-	idx, err := g.Layout.ParkingIndex(pc.Stand)
+	idx, err := standIndex(g.Layout, pc.Stand, ua)
 	if err != nil {
+		t.cc.log.printf("player: stand %s not held for it: %v", pc.Stand, err)
 		return
 	}
 	alloc := t.cc.allocator(g)

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"encoding/json"
 	"os"
 	"testing"
@@ -60,6 +61,12 @@ func TestPlayerUsers(t *testing.T) {
 	if q := got[[2]string{"LKPR", "06/24"}]; len(q) != 1 || !q[0].Host || q[0].Phase != traffic.RunwayHoldingShort || len(got) != 1 {
 		t.Fatalf("holding short: %+v", got)
 	}
+	// Cleared to hold short, but stopped mid-field on 24 (a rejected
+	// take-off): where it is wins, the runway blocked.
+	got = playerUsers(hs, rolling, []string{"LKPR"}, layout)
+	if q := got[[2]string{"LKPR", "06/24"}]; len(q) != 1 || q[0].Phase != traffic.RunwayRolling || !q[0].Other {
+		t.Fatalf("on the runway, cleared to hold short: %+v, want on it", got)
+	}
 }
 
 // TestExpirePlayer: a take-off clearance ends once the user aircraft is
@@ -117,5 +124,22 @@ func TestPlayerBlocks(t *testing.T) {
 	k.setPlayer(PlayerClearance{ICAO: "LKPR", Runway: "24", Phase: PlayerHoldingShort})
 	if k.playerBlocks("LKPR", "06/24", l) {
 		t.Error("holding short blocks the runway")
+	}
+}
+
+// TestStandIndexAmbiguous: of two spots with one label, the one nearest the
+// user aircraft; without the aircraft, the ambiguity.
+func TestStandIndexAmbiguous(t *testing.T) {
+	l := &airport.Layout{Parking: []airport.Parking{
+		{Index: 0, Number: 5, Position: airport.LatLon{Lat: 50.10, Lon: 14.26}},
+		{Index: 1, Number: 5, Position: airport.LatLon{Lat: 50.11, Lon: 14.27}},
+	}}
+	label := l.Parking[0].Label()
+	ua := userAt(airport.LatLon{Lat: 50.1101, Lon: 14.2699}, 0, 0, 0, true)
+	if i, err := standIndex(l, label, ua); err != nil || i != 1 {
+		t.Errorf("near the second: %d %v", i, err)
+	}
+	if _, err := standIndex(l, label, nil); !errors.Is(err, airport.ErrAmbiguousParking) {
+		t.Errorf("without the aircraft: %v, want ambiguous", err)
 	}
 }

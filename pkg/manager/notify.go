@@ -63,6 +63,9 @@ func (m *Instance) setState(newState ConnectionState) {
 	}
 	m.state = newState
 	m.mu.Unlock()
+	if newState != StateAvailable {
+		m.stallReset() // a stall ends with its connection, no resume told
+	}
 
 	// Build subscription adapters
 	m.mu.RLock()
