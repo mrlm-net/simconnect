@@ -61,6 +61,8 @@ type State struct {
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
 	Values map[string]float64
+	// AP is the autopilot (#962).
+	AP AutopilotState
 }
 
 // Client is what a Reader needs of a connection.
@@ -204,6 +206,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	s.PushbackAttached, s.PushbackAvailable, s.PushbackWait = on(PushbackAttached), on(PushbackAvailable), on(PushbackWait)
 	s.SpoilersArmed, s.SpoilersPct = on(SpoilersArmed), s.Values[SpoilersPct]
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
+	s.AP = autopilotOf(p, s)
 	takeoffSpeeds(p, &s)
 	return s
 }

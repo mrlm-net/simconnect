@@ -166,6 +166,24 @@ The sim's own ground services for the user aircraft are requested by name with `
 
 These are the default SimVars and have not been measured live yet. A model that drives its own (the Fenix may) overrides them in its profile like any other value.
 
+## Autopilot and flight controls
+
+`State.AP` is the autopilot, and `Controls` operates it, by generic names. The default profile uses the standard SimVars and key events (SDK: Autopilot/Assistant Variables; Autopilot/Flight Assist, Flight Control, Engine and Landing Gear events). An add-on with its own FCU (the Fenix) overrides the same names in its profile JSON.
+
+| Name | Read (`State.AP`) | Operate |
+|---|---|---|
+| `apMaster`, `fd`, `athr` | `AUTOPILOT MASTER`, `…FLIGHT DIRECTOR ACTIVE`, `…THROTTLE ARM` | `Set`: `AUTOPILOT_ON`/`OFF`, `TOGGLE_FLIGHT_DIRECTOR`, `AUTO_THROTTLE_ARM` (toggled when it differs) |
+| `athrActive` | `AUTOPILOT MANAGED THROTTLE ACTIVE` | — |
+| `apHeadingSel`, `apAltitudeSel`, `apVSSel`, `apSpeedSel`, `apMachSel` | `…HEADING LOCK DIR`, `…ALTITUDE LOCK VAR`, `…VERTICAL HOLD VAR`, `…AIRSPEED HOLD VAR`, `…MACH HOLD VAR` | `SetValue`: `HEADING_BUG_SET`, `AP_ALT_VAR_SET_ENGLISH`, `AP_VS_VAR_SET_ENGLISH`, `AP_SPD_VAR_SET`, `AP_MACH_VAR_SET` (Mach × 100) |
+| `apHeadingManaged`, `apSpeedManaged`, `apAltitudeManaged`, `apVSManaged` | the slot index is 2 | `Set`: on pushes (slot 2), off pulls (slot 1): `HEADING_SLOT_INDEX_SET` … |
+| `apHeadingHold`, `apAltitudeHold`, `apVSHold`, `apFLC`, `apSpeedHold`, `apMachHold`, `apNav`, `apApproach`, `apGlideslope` | the holds engaged | `Set`: `AP_HDG_HOLD_ON`/`OFF`, `AP_ALT_HOLD_…`, `AP_VS_…`, `FLIGHT_LEVEL_CHANGE_…`, `AP_AIRSPEED_…`, `AP_MACH_…`, `AP_NAV1_HOLD_…`, `AP_APR_HOLD_…` |
+| `apLoc` | none by default | `Set`: `AP_LOC_HOLD_ON`/`OFF` |
+| `apApproachArmed`, `apGSArmed`, `apAltitudeArmed` | `…APPROACH ARM`, `…GLIDESLOPE ARM`, `…ALTITUDE ARM` | — |
+
+The flight controls are actions for a pilot flying by hand: `SetValue(Elevator, …)`, `Aileron` and `Rudder` take −100…100 (nose up, right roll, right yaw positive) as `AXIS_ELEVATOR_SET`, `AXIS_AILERONS_SET` and `AXIS_RUDDER_SET`. `Throttle` (all engines) or `ThrottleN(n)` take 0…100 as `AXIS_THROTTLE_SET` or `AXIS_THROTTLEn_SET`. `FlapsLever` takes 0…100 of its travel (`FLAPS_SET`, the nearest detent). `FlapsUp` and `FlapsDown` move one detent. `Set(GearDown, …)` sends `GEAR_DOWN` or `GEAR_UP`, and `Set(SpoilersArmed, …)` sends `SPOILERS_ARM_ON` or `SPOILERS_ARM_OFF`.
+
+An action whose event carries a value has `"value": true`, with `"scale"` multiplying it. A negative value is sent as its two's complement. Not measured live yet: which slot means managed (2 as the stock Airbus uses it is assumed), negative vertical speeds, and the elevator axis's sign.
+
 ## EFB
 
 A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's EFB on port 8083 (`{"port": 8083, "path": "/"}`, plain HTTP, all interfaces); none in the default.

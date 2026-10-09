@@ -590,7 +590,12 @@ type Action struct {
 	// Events: Set sends Event for on and OffEvent for off instead of a
 	// toggle ("LANDING_LIGHTS_ON" / "LANDING_LIGHTS_OFF").
 	OffEvent string `json:"offEvent,omitempty"`
-	Note     string `json:"note,omitempty"`
+	// Value: Event carries the value SetValue is given (a heading, an
+	// axis), times Scale (nil: 1), rounded; a negative one as its two's
+	// complement (#962).
+	Value bool     `json:"value,omitempty"`
+	Scale *float64 `json:"scale,omitempty"`
+	Note  string   `json:"note,omitempty"`
 }
 
 // The actions a profile may give: the radios' swap (pkg/avionics), and
