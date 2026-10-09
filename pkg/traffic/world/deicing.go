@@ -28,7 +28,7 @@ func loadPadStore(file string) *padStore {
 	s := &padStore{file: file, pads: map[string][]airport.DeicingPad{}}
 	if b, err := os.ReadFile(file); err == nil {
 		if err := json.Unmarshal(b, &s.pads); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", file, err)
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
 		}
 	}
 	return s

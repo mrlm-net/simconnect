@@ -4,6 +4,7 @@
   "match": { "atcType": ["A318", "A319", "A320", "A321", "A20N", "A21N"], "titleContains": ["A318", "A319", "A320", "A321"] },
   "measured": "Type base (#759): the A320 family on the standard SimVars and key events (MSFS 2024 SDK); a model's profile (the Fenix) goes on top where it differs. The cabin signs and external power by the standard variables and events, not measured on a stock A320.",
   "speedCheckKt": 100,
+  "flapDetents": ["zero", "one", "two", "three", "full"],
   "values": {
     "seatbelts": { "vars": ["CABIN SEATBELTS ALERT SWITCH"], "unit": "bool", "note": "standard; the Fenix's follows its switch (measured 2026-10-05)" },
     "noSmoking": { "vars": ["CABIN NO SMOKING ALERT SWITCH"], "unit": "bool", "note": "standard: on or off" },

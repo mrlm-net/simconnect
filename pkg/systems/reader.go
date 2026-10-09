@@ -33,6 +33,9 @@ type State struct {
 	XPDRState int    // 0 off, 1 standby, 2 test, 3 on, 4 alt
 	Squawk    string // e.g. "4521"
 	FlapsPct  float64
+	// FlapsSaid: the flap lever's position as said (Profile.FlapDetents by
+	// FlapsIndex), "" not known.
+	FlapsSaid string
 	GearDown  bool
 	// Chocks in place and the aircraft's own GPU connected (#667);
 	// HasChocks, HasGPU: the profile gives them (the model has them).
@@ -53,6 +56,7 @@ type State struct {
 	V1Kt, VRKt, V2Kt float64
 	SpeedsFrom       string
 	DAFt, MDAFt      float64
+	DHFt             float64 // decision height (radio minimums), feet above the ground; 0 none
 	SpeedCheckKt     int
 	// Values are all resolved values by name (the constants above), for
 	// values a profile adds.
@@ -191,6 +195,9 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 		s.Squawk = squawkOf(uint32(s.Values[XPDRCode]))
 	}
 	s.FlapsPct, s.GearDown = s.Values[FlapsPct], on(GearDown)
+	if i := int(s.Values[FlapsIndex] + 0.5); i >= 0 && i < len(p.FlapDetents) {
+		s.FlapsSaid = p.FlapDetents[i]
+	}
 	_, s.HasChocks = p.Values[Chocks]
 	_, s.HasGPU = p.Values[GPU]
 	s.Chocks, s.GPU = on(Chocks), on(GPU)

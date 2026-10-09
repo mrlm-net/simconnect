@@ -2,7 +2,6 @@ package world
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 
@@ -77,7 +76,7 @@ func (k *core) gotILS(r nav.NavResult) {
 	k.ils.Unlock()
 	if !r.Found || r.Fix.Freq == 0 {
 		for _, ref := range refs {
-			fmt.Fprintf(os.Stderr, "⚠️  ILS %s of %s %s: no navaid record\n", r.Key.Ident, ref.icao, ref.runway)
+			fmt.Fprintf(stdout, "⚠️  ILS %s of %s %s: no navaid record\n", r.Key.Ident, ref.icao, ref.runway)
 		}
 		return
 	}
@@ -118,7 +117,7 @@ func (k *core) retryILS(loader *nav.NavLoader) {
 			if k.ils.tries[key]++; k.ils.tries[key] < ilsRetries {
 				return // still full: next time
 			}
-			fmt.Fprintf(os.Stderr, "❌ ILS %s: %v\n", key.Ident, err)
+			fmt.Fprintf(stdout, "❌ ILS %s: %v\n", key.Ident, err)
 			delete(k.ils.pending, key)
 		}
 		delete(k.ils.tries, key)

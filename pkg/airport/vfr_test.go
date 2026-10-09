@@ -36,3 +36,20 @@ func TestVFRFor(t *testing.T) {
 		t.Error("LKPD lost by overriding LKPR")
 	}
 }
+
+// TestFrequencyForFIS: an airport with none of the frequencies asked for
+// falls back to its flight information (Praha Information 126.100) where
+// its VFR data gives one; elsewhere none.
+func TestFrequencyForFIS(t *testing.T) {
+	l := &Layout{ICAO: "LKPD"}
+	f, ok := l.FrequencyFor(FreqTower)
+	if !ok || f.Kind != FreqFIS || f.MHz != 126.1 || f.Name != "Praha Information" {
+		t.Errorf("LKPD tower: %+v %v", f, ok)
+	}
+	if _, ok := (&Layout{ICAO: "LPMA"}).FrequencyFor(FreqTower); ok {
+		t.Error("LPMA: a frequency without any data")
+	}
+	if _, ok := l.FrequencyFor(FreqApproach); ok {
+		t.Error("an approach (IFR) frequency from flight information")
+	}
+}

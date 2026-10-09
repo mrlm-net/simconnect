@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -432,5 +433,37 @@ func registerPlayer(mux *http.ServeMux, st *state) {
 		st.core.setPlayer(c)
 		st.core.log.printf("player: %s %s %s", c.Phase, strings.ToUpper(c.ICAO), c.Runway)
 		w.WriteHeader(http.StatusNoContent)
+	})
+	// The player's queries over HTTP too (a host linked to a director in
+	// multiplayer asks the director's World): POST /api/player/runway a
+	// PlayerQuery → a RunwayAnswer; GET /api/player/traffic?callsign=&icao=
+	// → []PlayerTrafficInfo; GET /api/player/circuit?icao=&runway=&lat=&lon=
+	// → {"config": CircuitConfig, "leg": "downwind"}.
+	world := &World{st: st}
+	mux.HandleFunc("POST /api/player/runway", func(w http.ResponseWriter, r *http.Request) {
+		var q PlayerQuery
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, world.PlayerRunway(q))
+	})
+	mux.HandleFunc("GET /api/player/traffic", func(w http.ResponseWriter, r *http.Request) {
+		out := world.PlayerTraffic(r.URL.Query().Get("callsign"), r.URL.Query().Get("icao"))
+		if out == nil {
+			out = []PlayerTrafficInfo{}
+		}
+		writeJSON(w, out)
+	})
+	mux.HandleFunc("GET /api/player/circuit", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		lat, _ := strconv.ParseFloat(q.Get("lat"), 64)
+		lon, _ := strconv.ParseFloat(q.Get("lon"), 64)
+		cfg, leg, err := world.PlayerCircuitJoin(q.Get("icao"), q.Get("runway"), airport.LatLon{Lat: lat, Lon: lon})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]any{"config": cfg, "leg": leg})
 	})
 }

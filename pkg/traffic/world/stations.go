@@ -30,7 +30,7 @@ func loadStationStore(file string) *stationStore {
 	s := &stationStore{file: file, airports: map[string][]traffic.Station{}}
 	if b, err := os.ReadFile(file); err == nil {
 		if err := json.Unmarshal(b, &s.airports); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", file, err)
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
 		}
 	}
 	return s

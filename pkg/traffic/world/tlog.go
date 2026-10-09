@@ -40,7 +40,7 @@ func (l *trafficLog) openLocked() {
 	name := fmt.Sprintf("%s/traffic-%s.log", l.dir, time.Now().Format("20060102-150405"))
 	f, err := os.Create(name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ traffic log: %v\n", err)
+		fmt.Fprintf(stdout, "❌ traffic log: %v\n", err)
 		return
 	}
 	if l.file != nil {

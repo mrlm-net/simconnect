@@ -62,6 +62,15 @@ type Options struct {
 	// echoed, what it loads); nil: stdout. A host speaking a protocol on
 	// stdout (an MCP server on stdio) gives another (stderr, or io.Discard).
 	Output io.Writer
+	// KeepOnStop leaves our aircraft in the simulator when RunOn's ctx
+	// ends; by default they are removed (a host restarting its traffic on
+	// the same connection found them frozen).
+	KeepOnStop bool
+	// Cache, when set, is the airport cache the World loads layouts into
+	// and reads them from, shared with the host (which loads its own beside
+	// the World's: two loads of one airport at once left the World's
+	// layout without runways); nil: its own.
+	Cache *airport.Cache
 	// Scenes is a directory of camera scenes (*.json); "": the built-in.
 	Scenes string
 	// Schedule times the scheduled traffic (#741); zero values keep the
@@ -115,7 +124,11 @@ func New(o Options) *World {
 	if o.DataDir == "" {
 		o.DataDir = "."
 	}
-	st := &state{core: newCore(tlog), cache: airport.NewCache(), fetched: map[string]time.Time{}, waiters: map[string][]chan error{}}
+	cache := o.Cache
+	if cache == nil {
+		cache = airport.NewCache()
+	}
+	st := &state{core: newCore(tlog), cache: cache, fetched: map[string]time.Time{}, waiters: map[string][]chan error{}, keepOnStop: o.KeepOnStop}
 	if o.Airspace != "" {
 		st.core.zone = o.Airspace
 	}

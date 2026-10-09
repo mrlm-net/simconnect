@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -222,4 +223,31 @@ func trafficSaid(why string) string {
 		return "departing traffic"
 	}
 	return why
+}
+
+// CircuitConfig is the circuit the World flies at icao's runway rwy (as
+// set on the map, else the default): the player's ATC joins the user
+// aircraft to the same circuit.
+func (w *World) CircuitConfig(icao, rwy string) traffic.CircuitConfig {
+	return w.st.core.circuitConfig(strings.ToUpper(icao), rwy)
+}
+
+// PlayerCircuitJoin is how the World's tower joins a VFR arrival from pos
+// to icao's runway rwy (traffic.CircuitJoinFor on the World's circuit
+// there): the circuit (its side may be turned round to the side pos is
+// on) and the leg to join — downwind, base, a straight-in final, or
+// overhead.
+func (w *World) PlayerCircuitJoin(icao, rwy string, pos airport.LatLon) (traffic.CircuitConfig, traffic.CircuitLeg, error) {
+	st := w.st
+	st.mu.Lock()
+	cc := st.control
+	st.mu.Unlock()
+	if cc == nil {
+		return traffic.CircuitConfig{}, "", errors.New("world: not connected")
+	}
+	g, err := cc.graph(strings.ToUpper(icao))
+	if err != nil {
+		return traffic.CircuitConfig{}, "", err
+	}
+	return traffic.CircuitJoinFor(g.Layout, rwy, w.CircuitConfig(icao, rwy), pos)
 }
