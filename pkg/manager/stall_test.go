@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -31,5 +32,29 @@ func TestStall(t *testing.T) {
 	defer mu.Unlock()
 	if len(got) != 3 || !got[0].Stalled || got[1].Stalled || got[1].Silent < 2*time.Second || got[2].FlightLoaded != `flights\LKKB.FLT` {
 		t.Fatalf("events %+v, want stall, resume, new session", got)
+	}
+}
+
+// TestStallPaused: the consumer's paused predicate (WithStallPaused) holds
+// a stall back; once it says running, the silence is a stall.
+func TestStallPaused(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var paused atomic.Bool
+	paused.Store(true)
+	cfg := &Config{StallAfter: time.Second}
+	WithStallPaused(paused.Load)(cfg)
+	m := &Instance{config: cfg, logger: slog.Default(), ctx: ctx}
+	m.state = StateAvailable
+	m.OnStall(func(StallEvent) {})
+	m.stallSeen()
+	time.Sleep(2500 * time.Millisecond)
+	if m.Stalled() {
+		t.Fatal("paused: stalled")
+	}
+	paused.Store(false)
+	time.Sleep(1500 * time.Millisecond)
+	if !m.Stalled() {
+		t.Fatal("running and silent: not stalled")
 	}
 }
