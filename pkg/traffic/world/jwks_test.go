@@ -304,3 +304,40 @@ func TestJWKSStrict(t *testing.T) {
 		t.Error("an unscoped key set took a token")
 	}
 }
+
+// TestJWKSHardening (E25): an RSA key under 2048 bits is left out of the
+// key set; PS256 takes only a salt as long as the hash.
+func TestJWKSHardening(t *testing.T) {
+	weak, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, _ := json.Marshal(map[string]any{"keys": []map[string]string{
+		{"kty": "RSA", "kid": "weak", "n": b64.EncodeToString(weak.N.Bytes()), "e": b64.EncodeToString(big.NewInt(int64(weak.E)).Bytes())},
+	}})
+	keys, err := decodeKeySet(strings.NewReader(string(set)), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := keys["weak"]; ok {
+		t.Error("a 1024-bit RSA key was taken")
+	}
+
+	k := newTestKeys(t)
+	signed := []byte("header.payload")
+	h := sha256.Sum256(signed)
+	good, err := rsa.SignPSS(rand.Reader, k.rsa, crypto.SHA256, h[:], &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySignature("PS256", &k.rsa.PublicKey, signed, good); err != nil {
+		t.Errorf("PS256 with a 32-byte salt: %v", err)
+	}
+	short, err := rsa.SignPSS(rand.Reader, k.rsa, crypto.SHA256, h[:], &rsa.PSSOptions{SaltLength: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verifySignature("PS256", &k.rsa.PublicKey, signed, short) == nil {
+		t.Error("PS256 with an 8-byte salt verified")
+	}
+}

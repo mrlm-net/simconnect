@@ -25,6 +25,12 @@ func (e *Engine) AICreateSimulatedObject(szContainerTitle string, initPos types.
 	return e.api.AICreateSimulatedObject(szContainerTitle, initPos, RequestID)
 }
 
+// AICreateSimulatedObjectEX1 is AICreateSimulatedObject with a livery
+// (MSFS 2024; "" the default one).
+func (e *Engine) AICreateSimulatedObjectEX1(szContainerTitle string, szLivery string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
+	return e.api.AICreateSimulatedObjectEX1(szContainerTitle, szLivery, initPos, RequestID)
+}
+
 func (e *Engine) AIReleaseControl(objectID uint32, requestID uint32) error {
 	return e.api.AIReleaseControl(objectID, requestID)
 }

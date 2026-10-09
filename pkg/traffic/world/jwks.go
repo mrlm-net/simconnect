@@ -289,6 +289,10 @@ type jwk struct {
 	Y   string `json:"y"`
 }
 
+// minRSABits: an RSA key in a key set shorter than this is refused (RFC
+// 7518 3.3: 2048 bits or larger).
+const minRSABits = 2048
+
 func (k jwk) public() (crypto.PublicKey, error) {
 	num := func(s string) (*big.Int, error) {
 		b, err := base64.RawURLEncoding.DecodeString(s)
@@ -306,6 +310,9 @@ func (k jwk) public() (crypto.PublicKey, error) {
 		e, err := num(k.E)
 		if err != nil || !e.IsInt64() {
 			return nil, ErrTokenKey
+		}
+		if n.BitLen() < minRSABits {
+			return nil, ErrTokenKey // too weak to trust (E25)
 		}
 		return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
 	case "EC":
@@ -357,7 +364,8 @@ func verifySignature(alg string, key crypto.PublicKey, signed, sig []byte) error
 		case "RS512":
 			err = rsa.VerifyPKCS1v15(pk, crypto.SHA512, digest(sha512.New()), sig)
 		case "PS256":
-			err = rsa.VerifyPSS(pk, crypto.SHA256, digest(sha256.New()), sig, nil)
+			// RFC 7518 3.5: the salt as long as the hash (E25).
+			err = rsa.VerifyPSS(pk, crypto.SHA256, digest(sha256.New()), sig, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 		}
 		if err != nil {
 			return ErrTokenSignature
