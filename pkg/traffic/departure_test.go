@@ -793,3 +793,25 @@ func TestTaxiControllerExpedite(t *testing.T) {
 	}
 	t.Logf("to the take-off roll: %s, expedited %s", slow.Round(time.Second), fast.Round(time.Second))
 }
+
+// A crew's stand delay (#621): the push request comes that much later; once
+// pushing, there is nothing to delay.
+func TestDelayPushback(t *testing.T) {
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	if !run(TaxiAwaitingPushback, 60*900) {
+		t.Fatalf("state %v", ctl.State())
+	}
+	before := ctl.gateAt
+	if !ctl.DelayPushback(10 * time.Minute) {
+		t.Fatal("not delayed while waiting on the stand")
+	}
+	if got := ctl.gateAt.Sub(before); got < 10*time.Minute-time.Second {
+		t.Errorf("push request %v later, want 10 min", got)
+	}
+	_ = now
+	ctl.ClearPushback()
+	run(TaxiPushback, 60*900)
+	if ctl.DelayPushback(time.Minute) {
+		t.Error("delayed while pushing")
+	}
+}

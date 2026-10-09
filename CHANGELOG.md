@@ -57,6 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.37.0] - 2026-10-09
+
+### Changed
+
+- Talking speed follows the frequency's queue too: per minute of transmissions queued (readbacks, crews' calls), 0.5 faster (`tempoPerQueueMinute`, up to 1.3×). Live, ground ran 45 s behind with three pushbacks asked at once, and the agenda's new log showed answers 25 s to 1m23s after they were decided.
+
+### Added
+
+- Crews ask for another runway (#621): `crewRunwayShare` (2 %) of departures with a SID ask with their taxi request for the nearest runway end that has a SID to the same fix and at most 5 kt tailwind ("request taxi, request runway 30 for departure", `RequestTaxiRunway`). Ground gives it, re-clearing them to that runway and SID, only when it crosses no runway in use and takes no arrivals: our aircraft are coordinated per runway, so a take-off through a runway in use is not. Otherwise "unable, runway 24 in use" (`UnableRunway`). At LKPR, with 12/30 crossing 06/24, the answer is mostly unable; at airports with parallel runways it is given.
+- Crews ask for a delay on the stand (#621): `standDelayShare` (3 %) of departures, once with ground and not yet ready, say "request delay on stand, about 10 minutes, waiting for passengers" (`RequestStandDelay`). Ground answers "roger, call when ready for pushback" (`StandDelayApproved`), and the push or start-up request comes 5–15 min later (`TaxiController.DelayPushback`, on the World's departure interface and the remote actuator).
+
 ## [0.36.1] - 2026-10-09
 
 ### Changed

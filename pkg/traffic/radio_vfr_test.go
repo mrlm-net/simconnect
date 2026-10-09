@@ -38,3 +38,25 @@ func TestVFRPhrases(t *testing.T) {
 		t.Errorf("report %q", s)
 	}
 }
+
+func TestStandDelayPhrases(t *testing.T) {
+	tx := RequestStandDelay("Ruzyne Ground", "CSA1", "B9", 10, "waiting for passengers")
+	if want := "Ruzyne Ground, CSA1, stand B9, request delay on stand, about 10 minutes, waiting for passengers"; tx.Text != want || !tx.Pilot {
+		t.Errorf("request %q (pilot %v)", tx.Text, tx.Pilot)
+	}
+	if got := StandDelayApproved("CSA1", false).Text; got != "CSA1, roger, call when ready for pushback" {
+		t.Errorf("answer %q", got)
+	}
+	if got := StandDelayApproved("OKABC", true).Text; got != "OKABC, roger, call when ready for start-up" {
+		t.Errorf("answer %q", got)
+	}
+}
+
+func TestRunwayRequestPhrases(t *testing.T) {
+	if got := RequestTaxiRunway("CSA1", "30").Text; got != "CSA1, request taxi, request runway 30 for departure" {
+		t.Errorf("request %q", got)
+	}
+	if got := UnableRunway("CSA1", "24").Text; got != "CSA1, unable, runway 24 in use" {
+		t.Errorf("answer %q", got)
+	}
+}
