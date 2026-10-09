@@ -179,6 +179,10 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 	go func() {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
+		var ctl ctlSender
+		if h, ok := l.(interface{ Attached() uint64 }); ok {
+			ctl.attached = h.Attached // a director attached again: the whole snapshot
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -187,8 +191,9 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 				if v := a.vehicleViews(); len(v) > 0 {
 					out.put("vehicles", v)
 				}
-				// The controllers' state for the director's reads (wirecache.go).
-				out.put("ctlstate", srv.snapshot())
+				// The controllers' state for the director's reads
+				// (wirecache.go): whole now and then, else what changed.
+				ctl.send(srv.snapshot(), out.put)
 			}
 		}
 	}()
