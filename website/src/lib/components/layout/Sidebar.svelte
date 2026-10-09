@@ -10,6 +10,12 @@
 	}: { navigation: NavSection[]; topLinks?: NavItem[]; open: boolean; onClose: () => void } =
 		$props();
 
+	// A page listed in a section is not repeated above the sections.
+	const shownTopLinks = $derived.by(() => {
+		const inSections = new Set(navigation.flatMap((s) => s.items.map((i) => i.href.replace(/\/$/, ''))));
+		return topLinks.filter((l) => !inSections.has(l.href.replace(/\/$/, '')));
+	});
+
 	let sectionState = $state<Record<string, boolean>>({});
 
 	$effect(() => {
@@ -48,9 +54,9 @@
 	class:max-md:translate-x-0={open}
 >
 	<nav class="px-3 py-5" aria-label="Documentation">
-		{#if topLinks && topLinks.length > 0}
+		{#if shownTopLinks.length > 0}
 			<ul class="mb-4 space-y-0.5">
-				{#each topLinks as link (link.href)}
+				{#each shownTopLinks as link (link.href)}
 					{@const active = isActive(link.href)}
 					<li>
 						<a href={link.href} class="item top" class:on={active} aria-current={active ? 'page' : undefined} onclick={onClose}>{link.title}</a>
