@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -281,7 +282,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			// for emergencies (the user, live OKKKQ).
 			extend := a.ExtraNM > 0 && a.Left < anotherCircuitFrom
 			if extend && !it.extendSaid.Swap(true) {
-				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendDownwind))
+				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendCallBase))
 			}
 			if a.Left >= anotherCircuitFrom {
 				var d time.Duration
@@ -978,6 +979,9 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 	if q.engaged != nil && q.engaged(e.Callsign, now) {
 		return // shortening its way would undo a resolution (#785)
 	}
+	if q.trafficNear(e.Callsign) {
+		return // cutting across with traffic close by (live, OKGOZ direct PR517 2.6 NM from EZY131 at its level)
+	}
 	q.mu.Lock()
 	first, seen := q.shortcutAt[e.Callsign]
 	if !seen {
@@ -1066,4 +1070,35 @@ func (q *sequences) forget(tail string) {
 	delete(q.seenAt, tail)
 	delete(q.fixesAhead, tail)
 	delete(q.conflictHeld, tail)
+}
+
+// shortcutClearNM, shortcutClearFt: no shortcut with another aircraft
+// within this of it.
+const (
+	shortcutClearNM = 10.0
+	shortcutClearFt = 2000.0
+)
+
+// trafficNear: another aircraft within shortcutClearNM and shortcutClearFt
+// of cs.
+func (q *sequences) trafficNear(cs string) bool {
+	air := q.cc.world.Aircraft()
+	var me *traffic.TrackedAircraft
+	for i := range air {
+		if air[i].Tail == cs {
+			me = &air[i]
+		}
+	}
+	if me == nil {
+		return false
+	}
+	for _, a := range air {
+		if a.ObjectID == me.ObjectID || a.OnGround {
+			continue
+		}
+		if math.Abs(a.AltFt-me.AltFt) < shortcutClearFt && calc.HaversineNM(me.Position.Lat, me.Position.Lon, a.Position.Lat, a.Position.Lon) < shortcutClearNM {
+			return true
+		}
+	}
+	return false
 }

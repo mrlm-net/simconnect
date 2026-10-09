@@ -19,7 +19,8 @@ type Variety struct {
 	// Seed picks the crews' styles and the variations.
 	Seed uint64 `json:"seed"`
 	// SayAgain is the share of clearances a crew asks to be said again
-	// (default 0.02; below 0 none).
+	// (default 0.005, about one in 200: more was heard too often; below 0
+	// none).
 	SayAgain float64 `json:"sayAgain,omitempty"`
 	// ReadbackError is the share of clearances read back with an error the
 	// controller corrects (default 0.01; below 0 none).
@@ -273,14 +274,14 @@ func (r *Radio) readBack(airport string, t Transmission, busy bool) {
 	style := v.StyleOf(t.Callsign)
 	pause := style.pause(r.rng)
 	roll := r.rng.Float64()
-	sayAgain := t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)
+	sayAgain := t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)
 	var wrong Transmission
 	var heard map[string]string
 	wrongOK := false
 	// One slip per exchange: a clearance said again (a missed call, a
 	// "say again") is read back right (live, TVS1539: "say again", then
 	// "6010 feet" read back and the right readback after it, uncorrected).
-	if !sayAgain && t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.02)+v.rate(v.ReadbackError, 0.01) {
+	if !sayAgain && t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)+v.rate(v.ReadbackError, 0.01) {
 		wrong, heard, wrongOK = wrongReadback(t, rb, r.rng)
 	}
 	missed := !sayAgain && !wrongOK && t.Intent == IntentContact && t.Params[ParamRepeat] == "" && r.rng.Float64() < v.rate(v.MissedCall, 0.03)

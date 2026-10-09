@@ -340,9 +340,10 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			delete(w.slowed, cs) // out of conflict: a new one starts with the level again
 		}
 	}
-	for cs := range w.leveled {
-		if !involved[cs] {
-			delete(w.leveled, cs)
+	for p := range w.leveled { // by pair "cs/other"
+		a, b, _ := strings.Cut(p, "/")
+		if !pairs[a+"/"+b] && !pairs[b+"/"+a] {
+			delete(w.leveled, p)
 		}
 	}
 	w.now = cs
@@ -511,7 +512,9 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	}
 	cs, oth := trailer.it.Tail, other(c, trailer.it.Tail)
 	w.mu.Lock()
-	busy, leveled := now.Before(w.busy[cs]), w.leveled[cs]
+	// Levelled for this pair: one for an earlier conflict does not count
+	// (live, EZY131 levelled for KLM185, then only slowed for OKGOZ).
+	busy, leveled := now.Before(w.busy[cs]), w.leveled[cs+"/"+oth]
 	w.mu.Unlock()
 	if _, _, holding := trailer.it.arr.Holding(); busy || holding {
 		return // a change is flown already: see it work
@@ -528,7 +531,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	// 108 kt on the same ILS, then sent around on the final).
 	if !leveled && trailer.e.DistanceToGoNM > arrivalLevelFromNM {
 		w.mu.Lock()
-		w.leveled[cs] = true
+		w.leveled[cs+"/"+oth] = true
 		w.mu.Unlock()
 		var me, them *traffic.TrackedAircraft
 		for _, a := range w.s.cc.world.Aircraft() {
@@ -551,6 +554,18 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 					return
 				}
 				w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
+			} else if below := math.Floor((them.AltFt-arrivalLevelAboveFt)/500) * 500; below >= arrivalDescendMinFt {
+				// Level with it or below: down to 1000 ft under it, never a
+				// climb for an arrival (live, EZY131 200 ft under OKGOZ,
+				// only slowed, met at 0.4 NM).
+				err := w.s.cc.do(func() error { return trailer.it.arr.DescendTo(below) })
+				if err == nil {
+					w.s.cc.log.printf("%-6s conflict with %s: descend to %.0f ft (arrival on its STAR)", cs, oth, below)
+					trailer.it.say(traffic.Descend(traffic.PosApproach, cs, below, w.s.cc.taOf(trailer.it.ICAO)))
+					recheck()
+					return
+				}
+				w.s.cc.log.printf("%-6s conflict with %s: descent refused: %v", cs, oth, err)
 			}
 		}
 	}
@@ -607,6 +622,9 @@ const (
 	arrivalLevelForNM   = 20.0
 	// arrivalLevelFromNM: the level is given only this far or more to go.
 	arrivalLevelFromNM = 20.0
+	// arrivalDescendMinFt: an arrival is sent down under another no lower
+	// than this on its STAR.
+	arrivalDescendMinFt = 4000.0
 )
 
 // other is the other aircraft of conflict c.
@@ -674,7 +692,12 @@ func (w *conflictWatch) engaged(cs string, now time.Time) bool {
 		return true
 	}
 	_, stopped := w.stopped[cs]
-	return w.slowed[cs] || w.leveled[cs] || stopped
+	for p := range w.leveled {
+		if strings.HasPrefix(p, cs+"/") {
+			return true
+		}
+	}
+	return w.slowed[cs] || stopped
 }
 
 // engagedAfter: an aircraft counts as engaged this long after its
@@ -693,7 +716,11 @@ func (w *conflictWatch) forget(tail string) {
 	delete(w.busy, tail)
 	delete(w.slowed, tail)
 	delete(w.asked, tail)
-	delete(w.leveled, tail)
+	for p := range w.leveled {
+		if a, b, _ := strings.Cut(p, "/"); a == tail || b == tail {
+			delete(w.leveled, p)
+		}
+	}
 	delete(w.stopped, tail)
 	for k := range w.informed {
 		if strings.Contains(k, tail) {

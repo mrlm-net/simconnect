@@ -716,6 +716,48 @@ func (c *ArrivalController) StopDescent(altFt, forNM float64) error {
 	return nil
 }
 
+// DescendTo has an arrival on its STAR descend to altFt now: its STAR
+// points ahead no higher than altFt (those already lower kept), a level
+// below traffic it merges with level or above it — never a climb (live,
+// EZY131 200 ft below OKGOZ, both at FL100 converging: only speed was
+// tried and they met at 0.4 NM). The align and join points are never
+// touched. ErrNotOnProcedure on the final, ErrHolding in the hold.
+func (c *ArrivalController) DescendTo(altFt float64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 3 {
+		return ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return ErrHolding
+	}
+	wps := c.proc.Waypoints
+	final := len(wps) - 2
+	next := c.procWaypoint(wps[:final])
+	if next >= final || c.last.Position == (airport.LatLon{}) {
+		return ErrNotOnProcedure
+	}
+	lower := func(chain []types.SIMCONNECT_DATA_WAYPOINT, end int) []types.SIMCONNECT_DATA_WAYPOINT {
+		out := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), chain...)
+		for i := range out[:end] {
+			out[i].Altitude = math.Min(out[i].Altitude, altFt)
+		}
+		return out
+	}
+	out := lower(wps[next:], final-next)
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+		return err
+	}
+	c.proc.Waypoints, c.procNext = out, 0
+	if len(c.corners) >= 3 {
+		if k := c.cornerAhead(); k < len(c.corners)-2 {
+			c.corners = append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[:k]...), lower(c.corners[k:], len(c.corners)-2-k)...)
+		}
+	}
+	c.note(fmt.Sprintf("descend to %.0f ft", altFt), nil)
+	return nil
+}
+
 // ShortcutDescentFtPerNM is the steepest descent a shortcut may leave an
 // arrival to the fix it goes direct to: about a 3° path (318 ft/NM), so
 // the descent profile still works.

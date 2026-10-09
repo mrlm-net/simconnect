@@ -540,3 +540,31 @@ func TestSequencerMinimumNM(t *testing.T) {
 		t.Errorf("RYR270: spacing %.2f (%s), minimum %.2f; want a compression buffer over 5", e.SpacingNM, e.SpacingWhy, e.MinimumNM)
 	}
 }
+
+// A newcomer with the earlier time to the runway still goes behind one
+// already sequenced that it meets at their merge fix level or behind
+// (live, OKGOZ on GOLO4S slotted ahead of EZY131 on LOMK8S, side by side
+// at FL100, met at 0.4 NM); a full spacing ahead there, it goes ahead.
+func TestSequencerNewcomerBehindAtMerge(t *testing.T) {
+	now := time.Date(2026, 10, 9, 9, 40, 0, 0, time.UTC)
+	a320 := WakeFor("A320")
+	ezy := ApproachAircraft{Callsign: "EZY131", Wake: a320, DistanceToGoNM: 40, GroundKts: 250,
+		Fixes: []FixAhead{{"ERASU", 8}, {"PR517", 20}}}
+	gozAt := func(merge float64) ApproachAircraft {
+		return ApproachAircraft{Callsign: "OKGOZ", Wake: WakeFor("C56X"), DistanceToGoNM: 37, GroundKts: 250,
+			Fixes: []FixAhead{{"ERASU", merge}, {"PR517", 17}}}
+	}
+	for _, c := range []struct {
+		merge float64
+		first string
+	}{{8.5, "EZY131"}, {2, "OKGOZ"}} {
+		s := NewApproachSequencer("24", SequencerOptions{})
+		s.Update(now, []ApproachAircraft{ezy})
+		for k := range 3 { // and stays so
+			seq := s.Update(now.Add(time.Duration(k+1)*time.Second), []ApproachAircraft{ezy, gozAt(c.merge)})
+			if seq[0].Callsign != c.first {
+				t.Fatalf("OKGOZ %.1f NM to ERASU, look %d: %s first, want %s", c.merge, k, seq[0].Callsign, c.first)
+			}
+		}
+	}
+}

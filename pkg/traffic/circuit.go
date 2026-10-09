@@ -545,6 +545,7 @@ func (c *ArrivalController) anotherCircuit() (time.Duration, error) {
 	}
 	c.proc.Waypoints, c.procNext = rounded, 0
 	c.corners, c.cornerNames, c.cornerNext = nil, nil, -1
+	c.baseCall = false // round again: its own base turn
 	c.note("another circuit", nil)
 	nm := pathNMOf(pos, rounded[:len(rounded)-1], rounded[len(rounded)-1])
 	return time.Duration(nm / CircuitKts(*c.aircraft()) * float64(time.Hour)), nil

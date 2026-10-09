@@ -122,12 +122,12 @@ func PhraseologyFor(icao string) Phraseology {
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
 	ParamRunway     = "runway"
-	ParamEntry      = "entry"    // where an intersection departure enters its runway ("B")
-	ParamStartUp    = "startup"  // "1": the start-up asked for or approved with the pushback
-	ParamFacing     = "facing"   // where a push ends facing: "east"
-	ParamBehind     = "behind"   // a conditional line-up: the landing traffic as said ("A320")
-	ParamGiveWay    = "giveway"  // the traffic given way to, as described: "A320 passing left to right"
-	ParamTaxiways   = "taxiways" // as said: "B2, H, A"
+	ParamEntry      = "entry"     // where an intersection departure enters its runway ("B")
+	ParamStartUp    = "startup"   // "1": the start-up asked for or approved with the pushback
+	ParamFacing     = "facing"    // where a push ends facing: "east"
+	ParamBehind     = "behind"    // a conditional line-up: the landing traffic as said ("A320")
+	ParamGiveWay    = "giveway"   // the traffic given way to, as described: "A320 passing left to right"
+	ParamTaxiways   = "taxiways"  // as said: "B2, H, A"
 	ParamHoldShort  = "holdShort" // runways to hold short of on the way: "12", "12, 31"
 	ParamStand      = "stand"
 	ParamLimit      = "limit" // a taxiway to hold short of; "" a marked point
@@ -947,6 +947,10 @@ const (
 	InstrShortApproach  = "make short approach"
 	InstrLongApproach   = "make long approach"
 	InstrExtendDownwind = "extend downwind"
+	// InstrExtendCallBase: extended with the base turn left to the
+	// controller, who calls it (InstrTurnBase).
+	InstrExtendCallBase = "extend downwind, I'll call your base"
+	InstrTurnBase       = "turn base now"
 	InstrReportBase     = "report base"
 	InstrReportFinal    = "report final"
 	InstrContinue       = "continue approach"

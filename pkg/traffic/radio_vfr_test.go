@@ -15,6 +15,8 @@ func TestVFRPhrases(t *testing.T) {
 		{FollowTraffic("OKABC", 2, "the Airbus A320 on final"), "OKABC, number 2, follow the Airbus A320 on final", "Number 2, OKABC"},
 		{FollowTraffic("OKABC", 1, ""), "OKABC, number 1", "Number 1, OKABC"},
 		{CircuitInstruction("OKABC", InstrExtendDownwind), "OKABC, extend downwind", "Extend downwind, OKABC"},
+		{CircuitInstruction("OKABC", InstrExtendCallBase), "OKABC, extend downwind, I'll call your base", "Extend downwind, OKABC"},
+		{CircuitInstruction("OKABC", InstrTurnBase), "OKABC, turn base now", "Turn base now, OKABC"},
 		{CircuitDelay("OKABC", DelayOrbitRight), "OKABC, orbit right", "Orbit right, OKABC"},
 		{ClearedTouchAndGo("OKABC", "24"), "OKABC, cleared touch and go", "Cleared touch and go, OKABC"},
 		{MakeFullStop("OKABC"), "OKABC, make full stop", "Make full stop, OKABC"},

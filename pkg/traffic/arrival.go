@@ -322,6 +322,9 @@ type ArrivalController struct {
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
 	tromboneNM float64
+	// baseCall: the downwind was extended with the base turn left to the
+	// controller, said once the aircraft is there (BaseDue).
+	baseCall bool
 	// dogLeg: the dog-leg given on this approach (AbsorbDelay). More delay
 	// moves its apex further out while it is still ahead, never a second
 	// dog-leg (live, RYR1785: out, back out and round again).

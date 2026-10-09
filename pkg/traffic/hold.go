@@ -273,12 +273,17 @@ func (c *ArrivalController) HoldFix(minFromThresholdNM float64) (Hold, bool) {
 		}
 		// At the STAR fix there, when it has one: a corner's fix is off the
 		// chain, whose arc turns inside it (roundCorners), by up to a mile.
-		ident := fmt.Sprintf("WP%d", i)
+		// Only at a named fix: a point of a rounded turn has no name to
+		// say (live, TVS1568 told "hold at WP0").
+		ident := ""
 		for _, n := range c.req.Procedure {
 			if n.Ident != "" && calc.HaversineNM(n.Position.Lat, n.Position.Lon, fix.Lat, fix.Lon) < 1.5 {
 				ident, fix = n.Ident, n.Position
 				break
 			}
+		}
+		if ident == "" {
+			continue
 		}
 		return Hold{Ident: ident, Fix: fix, InboundTrue: calc.BearingDegrees(from.Lat, from.Lon, fix.Lat, fix.Lon)}, true
 	}
@@ -312,6 +317,7 @@ func (c *ArrivalController) EnterHold(h Hold, altFt float64) (HoldEntry, error) 
 		return 0, err
 	}
 	c.holding = &holdState{hold: h, altFt: altFt, entry: e, resume: resume, since: c.now()}
+	c.vectors = nil // the dog-leg's turns are not said in the hold (live, TVS1568 "hold at …" then "fly heading 061")
 	c.note(fmt.Sprintf("holding at %s, %s entry, %.0f ft", h.Ident, e, altFt), nil)
 	return e, nil
 }

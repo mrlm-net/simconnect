@@ -517,6 +517,47 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		}
 		return free[i].key.Before(free[j].key)
 	})
+	// A newcomer on a route merging with one already sequenced goes ahead
+	// of it only when it passes their merge fix a full spacing ahead;
+	// level with it or behind there, it goes behind, whatever its time to
+	// the runway (live, OKGOZ on GOLO4S slotted ahead of EZY131 on
+	// LOMK8S, side by side at FL100: they met at 0.4 NM).
+	for range len(free) {
+		changed := false
+		for i := 0; i+1 < len(free); i++ {
+			n, e := &free[i], &free[i+1]
+			// n new, or moving up past e (behind it the last time: OKGOZ
+			// was number 5 behind EZY131 its first second, number 4 the
+			// next).
+			pn, nw := prev[n.a.Callsign]
+			pe, ew := prev[e.a.Callsign]
+			s.mu.Lock()
+			_, placed := s.manual[n.a.Callsign] // a controller put it there
+			s.mu.Unlock()
+			if !ew || nw && pn < pe || placed || n.a.Runway != e.a.Runway {
+				continue
+			}
+			// Behind it at their merge fix, or ahead only by costing it more
+			// than a tactical swap may (live, OKUFC, a DA62 joining 11 NM
+			// out, moved up past TVS220 and TVS1568: minutes for each).
+			tn, te, merges := firstMerge(n.a, e.a, s.opts.FinalNM)
+			atMerge := merges && tn+SeparationTime(s.opts.MergeSpacingNM, mergeSpeed(n.a)) > te
+			g, _, _ := s.gap(n.a, e.a, c)
+			costly := n.eta.Add(g).Sub(e.eta) > s.opts.TacticalSwapMaxCost
+			if !atMerge && !costly {
+				continue
+			}
+			n.key = e.key.Add(time.Second)
+			s.mu.Lock()
+			s.keys[n.a.Callsign], s.first[n.a.Callsign] = n.key, n.key
+			s.mu.Unlock()
+			free[i], free[i+1] = free[i+1], free[i]
+			changed = true
+		}
+		if !changed {
+			break
+		}
+	}
 	// Tactical swaps: two arrivals not yet fixed change places when that
 	// cuts their delay by TacticalSwapGain or more and costs the one moved
 	// back no more than TacticalSwapMaxCost; their keys change too, so the
@@ -535,6 +576,10 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		_, bw := prev[b.a.Callsign]
 		recent := now.Sub(s.swappedAt[a.a.Callsign]) < s.opts.TacticalSwapHold || now.Sub(s.swappedAt[b.a.Callsign]) < s.opts.TacticalSwapHold
 		if !aw || !bw || am || bm || ab || bb || recent || !b.eta.Before(a.eta) {
+			continue
+		}
+		// Not past one it meets at their merge fix level or behind.
+		if tb, ta, ok := firstMerge(b.a, a.a, s.opts.FinalNM); ok && tb+SeparationTime(s.opts.MergeSpacingNM, mergeSpeed(b.a)) > ta {
 			continue
 		}
 		gAB, _, _ := s.gap(a.a, b.a, c)
@@ -831,6 +876,23 @@ func (s *ApproachSequencer) mergeDelay(lead ApproachAircraft, leadDelay time.Dur
 		}
 	}
 	return need
+}
+
+// firstMerge is the time a and b take to the first fix their routes share
+// outside the final (finalNM): false when they share none.
+func firstMerge(a, b ApproachAircraft, finalNM float64) (time.Duration, time.Duration, bool) {
+	ka, kb := mergeSpeed(a), mergeSpeed(b)
+	for _, fa := range a.Fixes {
+		if a.DistanceToGoNM-fa.NM <= finalNM {
+			return 0, 0, false
+		}
+		for _, fb := range b.Fixes {
+			if fb.Name == fa.Name && b.DistanceToGoNM-fb.NM > finalNM {
+				return time.Duration(fa.NM / ka * float64(time.Hour)), time.Duration(fb.NM / kb * float64(time.Hour)), true
+			}
+		}
+	}
+	return 0, 0, false
 }
 
 // mergeSpeed is a's speed to a merge point: its ground speed now, at

@@ -143,3 +143,43 @@ func TestCircuitExtendWhileJoining(t *testing.T) {
 		t.Errorf("route %v skips the downwind", ctl.ProcedureRoute())
 	}
 }
+
+// TestCircuitBaseCall: a downwind extended with "I'll call your base" is
+// due its base call once, near the extended base turn, not before.
+func TestCircuitBaseCall(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	c, err := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKUFC",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 80))
+	dw, _ := c.Point(LegDownwind)
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 80, dw.Position, dw.AltFt, c.heading+180, CircuitKts(p), false))
+	if _, err := ctl.AbsorbDelay(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.BaseDue() {
+		t.Fatal("base call due on the downwind abeam the threshold")
+	}
+	base, _ := c.Point(LegBase)
+	at := offsetHeading(base.Position, c.heading+180, ctl.tromboneNM*1852)
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 80, at, base.AltFt, c.heading+180, CircuitKts(p), false))
+	if !ctl.BaseDue() {
+		t.Fatal("no base call at the extended base turn")
+	}
+	if ctl.BaseDue() {
+		t.Error("base call due twice")
+	}
+}

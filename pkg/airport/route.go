@@ -1037,9 +1037,13 @@ func (r *Route) SpokenTaxiways(upto int) []string {
 		}
 		runs[len(runs)-1].meters += e.Length
 	}
+	// Short: under SpokenMinMeters, not the last. Only a chain of short
+	// ones is left out: one alone between longer ones is a taxiway turned
+	// onto (live, AFR898 "JB, J, B" for 128 m of D between J and B).
+	short := func(i int) bool { return i >= 0 && i < len(runs)-1 && runs[i].meters < SpokenMinMeters }
 	var out []string
 	for i, rn := range runs {
-		if rn.meters < SpokenMinMeters && i < len(runs)-1 {
+		if short(i) && (short(i-1) || short(i+1)) {
 			continue
 		}
 		if len(out) == 0 || out[len(out)-1] != rn.name {

@@ -222,6 +222,11 @@ func (r *remoteArr) DirectToJoin() error {
 	return err
 }
 
+func (r *remoteArr) DescendTo(altFt float64) error {
+	err := r.c.call(r.t, "DescendTo", []any{altFt})
+	return err
+}
+
 func (r *remoteArr) DirectTo(p airport.LatLon) (string, traffic.Vector, error) {
 	var o0 string
 	var o1 traffic.Vector
@@ -240,6 +245,12 @@ func (r *remoteArr) AssignSpeed(kts float64) (float64, error) {
 	var o0 float64
 	err := r.c.call(r.t, "AssignSpeed", []any{kts}, &o0)
 	return o0, err
+}
+
+func (r *remoteArr) BaseDue() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "BaseDue", []any{}, &o0))
+	return o0
 }
 
 func (r *remoteArr) EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error) {

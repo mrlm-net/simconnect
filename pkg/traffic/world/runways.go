@@ -181,7 +181,11 @@ func (t *towers) tick(now time.Time) {
 			it.mu.Lock()
 			route := it.approach
 			it.mu.Unlock()
-			if len(route) > 0 {
+			// Lined up close in, it is on the final whatever its route says:
+			// a route round another circuit passes the runway twice, and
+			// measured along it OKUFC on a 1 NM final "landed" minutes later
+			// (live, OKQOL cleared for take-off in front of it).
+			if len(route) > 0 && !onFinalNear(v.Position, v.Heading, d, end) {
 				d = math.Max(d, traffic.DistanceToGo(v.Position, route, end.Threshold))
 			}
 			if d > 3 {
@@ -857,4 +861,23 @@ func climbKts(model string) float64 {
 		}
 	}
 	return 0
+}
+
+// onFinalNearNM, onFinalSectorDeg: an arrival within onFinalNearNM of the
+// threshold, on the approach side within onFinalSectorDeg of the extended
+// centreline and heading within onFinalSectorDeg of the runway, is on its
+// final.
+const (
+	onFinalNearNM    = 4.0
+	onFinalSectorDeg = 30.0
+)
+
+// onFinalNear: at p, heading hdg, dNM from end's threshold, the arrival is
+// lined up on end's final close in.
+func onFinalNear(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool {
+	if dNM > onFinalNearNM {
+		return false
+	}
+	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	return math.Abs(headingDiff(end.Heading+180, from)) <= onFinalSectorDeg && math.Abs(headingDiff(end.Heading, hdg)) <= onFinalSectorDeg
 }
