@@ -534,6 +534,10 @@ func (a *StandAllocator) TakenFrom(stand int, owner string, object uint32) strin
 	if d, ok := a.detected[stand]; ok && d.ObjectID != object {
 		return fmt.Sprintf("%s holds %s", d.describe(), l.Parking[stand].Label())
 	}
+	// Held for the user aircraft (its ATC gave it this stand, #739): taken.
+	if o, ok := a.reserved[stand]; ok && o.Owner != owner && o.Owner == PlayerStandOwner {
+		return fmt.Sprintf("held for the user aircraft (%s)", l.Parking[stand].Label())
+	}
 	for _, c := range l.ParkingConflicts(stand) {
 		d, ok := a.detected[c]
 		if !ok || d.ObjectID == object {
@@ -602,3 +606,7 @@ func (a *StandAllocator) Transfer(fromOwner, toOwner string) {
 	}
 	delete(a.routes, fromOwner)
 }
+
+// PlayerStandOwner owns the stand held for the user aircraft (its ATC
+// gave it one): an arrival of ours holding it before it lands is moved.
+const PlayerStandOwner = "Player"

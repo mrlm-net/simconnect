@@ -41,6 +41,10 @@ type towers struct {
 	// users: each runway's users as last decided on, by "ICAO runway", for
 	// the player's ATC asking (PlayerRunway).
 	users map[string][]traffic.RunwayUser
+	// userPrev: where the user aircraft was at the last look (its way).
+	userPrev airport.LatLon
+	// playerStand: the stand held for the user aircraft, "ICAO LABEL".
+	playerStand string
 	// grantAt: when the runway controller last granted each clearance
 	// ("tail action"): one waiting on the agenda is dropped once it is
 	// no longer granted.
@@ -241,7 +245,7 @@ func (t *towers) tick(now time.Time) {
 			arrRwy := t.cc.activeRunway(g, true)
 			_, end, _ := l.RunwayEnd(arrRwy)
 			for _, a := range t.s.mgr.Others(icao) {
-				if ownIDs[a.ObjectID] || (a.Tail != "" && t.cc.byTail(a.Tail) != nil) {
+				if a.User || ownIDs[a.ObjectID] || (a.Tail != "" && t.cc.byTail(a.Tail) != nil) {
 					continue
 				}
 				u := traffic.RunwayUser{Callsign: nameOf(a), Wake: traffic.WakeFor(a.Title), Other: true}
@@ -263,30 +267,30 @@ func (t *towers) tick(now time.Time) {
 			}
 		}
 	}
-	// The user aircraft as the host's ATC cleared it (#739): holding short,
-	// in the departure queue; lined up or rolling, on the runway.
+	// The user aircraft (#739): as the host's ATC cleared it (holding short
+	// in the departure queue; lined up, rolling or crossing on the runway)
+	// and as it is seen, on a runway or close in on a final, cleared or not,
+	// on every runway crossing that one too; a stale clearance expires.
+	ua := userAircraft(t.cc.world.Aircraft())
 	if p, ok := t.cc.core.playerClearance(); ok {
-		if l := layout(p.ICAO); l != nil {
-			if r, ok := runwayOf(l, p.Runway); ok {
-				name := p.Callsign
-				if name == "" {
-					name = "Player"
-				}
-				u := traffic.RunwayUser{Callsign: name, Wake: traffic.WakeFor(p.Model)}
-				switch p.Phase {
-				case PlayerHoldingShort:
-					u.Phase, u.Host = traffic.RunwayHoldingShort, true
-				case PlayerLineUp:
-					u.Phase, u.Other = traffic.RunwayLinedUp, true
-				case PlayerTakeoff:
-					u.Phase, u.Other = traffic.RunwayRolling, true
-				}
-				if p.Phase == PlayerHoldingShort || p.Phase == PlayerLineUp || p.Phase == PlayerTakeoff {
-					users[key{p.ICAO, r.Name()}] = append(users[key{p.ICAO, r.Name()}], u)
-				}
-			}
-		}
+		t.cc.core.expirePlayer(ua, layout(p.ICAO))
 	}
+	var pc *PlayerClearance
+	if p, ok := t.cc.core.playerClearance(); ok {
+		pc = &p
+	}
+	for k, list := range playerUsers(pc, ua, t.s.mgr.Airports(), layout) {
+		users[key{k[0], k[1]}] = append(users[key{k[0], k[1]}], list...)
+	}
+	// On the ground: where it is going, for ours to give way (#739).
+	t.mu.Lock()
+	prev := t.userPrev
+	if ua != nil {
+		t.userPrev = ua.Position
+	}
+	t.mu.Unlock()
+	t.reportUserGround(ua, prev, t.s.mgr.Airports(), layout)
+	t.syncPlayerStand(pc)
 	// Service vehicles holding short to cross (#752): in the queue as any
 	// crossing.
 	for _, k := range t.cc.vehicles().runwaysWaiting() {
@@ -327,7 +331,7 @@ func (t *towers) tick(now time.Time) {
 		c := rc.Decide(now, list)
 		// The host's ATC cleared the user aircraft onto it (#710): none of
 		// ours lines up, takes off, lands or crosses meanwhile.
-		if p, ok := t.cc.core.playerOn(k.icao, k.rwy); ok && p.Phase != PlayerVacated {
+		if t.cc.core.playerBlocks(k.icao, k.rwy, layout(k.icao)) {
 			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind, c.LineUpBehindDeparting = nil, nil, nil, nil, nil, nil, nil
 		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)

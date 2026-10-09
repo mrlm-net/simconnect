@@ -30,8 +30,18 @@ const TowerBelowFt = 2500.0
 // one of them below TowerBelowFt (a departure just airborne ahead of an
 // arrival on final is mixed-mode runway use, not a loss of separation).
 func TowerPair(a, b TrackedAircraft) bool {
-	return a.Airport != "" && a.Airport == b.Airport && (a.AGLFt < TowerBelowFt || b.AGLFt < TowerBelowFt)
+	below := TowerBelowFt
+	if a.User || b.User {
+		// The user aircraft: our tower does not control it (its own ATC
+		// does, unaware of ours), so only close in is it the tower's.
+		below = UserTowerBelowFt
+	}
+	return a.Airport != "" && a.Airport == b.Airport && (a.AGLFt < below || b.AGLFt < below)
 }
+
+// UserTowerBelowFt: a pair with the user aircraft is the tower's only below
+// this (TowerPair).
+const UserTowerBelowFt = 1000.0
 
 // SeparationPair is two airborne aircraft and how far apart they are.
 type SeparationPair struct {

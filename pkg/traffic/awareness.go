@@ -537,3 +537,39 @@ const (
 	// intent and looks for one coming the other way.
 	OncomingLookMeters = 400.0
 )
+
+// ReportUserMotion records where the user aircraft id (flown by the user,
+// its way unknown) is going on the ground, for ours and the service
+// vehicles to give way to: moving forward, its track ahead along its
+// heading for UserLookSeconds at its speed (at least UserLookMeters);
+// pushing back (or cleared to push), the corridor behind it,
+// UserPushMeters from its tail; stopped, nothing. half is its half-span,
+// tail how far its tail is behind pos.
+func (p *GroundPicture) ReportUserMotion(id uint32, pos airport.LatLon, hdg, kts, half, tail float64, pushing bool) {
+	var pts []airport.LatLon
+	switch {
+	case pushing:
+		from := offsetHeading(pos, hdg+180, tail)
+		for d := 0.0; d <= UserPushMeters; d += trafficBodyStep {
+			pts = append(pts, offsetHeading(from, hdg+180, d))
+		}
+		p.ReportPush(id, pts, half)
+		return
+	case kts > UserMovingKts:
+		look := math.Max(UserLookMeters, kts*ktsToMS*UserLookSeconds)
+		for d := 0.0; d <= look; d += trafficBodyStep {
+			pts = append(pts, offsetHeading(pos, hdg, d))
+		}
+	}
+	p.ReportPath(id, pts, half)
+}
+
+// The user aircraft on the ground (ReportUserMotion): moving above
+// UserMovingKts; looked ahead UserLookSeconds, at least UserLookMeters; a
+// push sweeping UserPushMeters behind its tail.
+const (
+	UserMovingKts   = 3.0
+	UserLookSeconds = 20.0
+	UserLookMeters  = 60.0
+	UserPushMeters  = 60.0
+)

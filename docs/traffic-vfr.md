@@ -158,6 +158,8 @@ For a VFR flight through a controlled aerodrome's zone, the counterpart of `VFRF
 
 An arrival's `ReportAt` comes after its first call (`VFRForLanding`) and before `JoinCircuit`; a departure's `ReportLeavingZone` with or after its departure instructions (`VFRDepartureInstructions`). `PosInformation` is flight information's position.
 
+The points and the information station come from `airport.VFRFor(icao)`: the zone's entry and exit points and route points (`Point(name)`, `EntryNearest(pos)`), and `FIS`/`FISFreq`. Shipped for LKPR (Czech VFR Manual, WEF 01 OCT 26) and LKPD (06 AUG 26), with Praha Information 126.100 (AIP ČR ENR 2.1); a host replaces or adds airports through the dict table `airport.vfr` (merged by ICAO).
+
 ## Jetbridges (#572)
 
 Jetbridges for our traffic are blocked by the simulator.

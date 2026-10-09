@@ -57,6 +57,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.41.0] - 2026-10-09
+
+### Added
+
+- The player and the World coordinated on the runways, the ground and in the air (a review after the player was cleared for take-off with OKRAX lined up; all eight gaps found). See docs/traffic-world.md.
+  - The user aircraft on a runway or close in on a final counts for the World's tower whether or not its ATC cleared it (it vanished below 3000 ft), on that runway and on every runway crossing it. A clearance onto 24 keeps ours off 12/30 too.
+  - `PlayerCrossing`: a runway crossing while taxiing, which `PlayerRunway` answers too ("hold short", "cross behind").
+  - Stale player clearances expire (airborne off the runway, landed and off it, crossed, or after a time). A take-off clearance never reported vacated sent every arrival on that runway around, forever.
+  - On the ground the user aircraft's way ahead, or its push corridor, is in the ground picture each second (`GroundPicture.ReportUserMotion`): ours and the service vehicles give way to it, not only to its body.
+  - `PlayerClearance.Stand` holds that stand for it (`PlayerStandOwner`). An arrival of ours not yet landed is moved off it.
+  - In the air, a pair with the user aircraft is the tower's only below 1000 ft (`UserTowerBelowFt`), and `World.PlayerTraffic` gives its ATC traffic information on ours.
+- `airport.VFRFor(icao)`: an airport's visual reporting points (entry and exit, route) and its flight information station, shipped for LKPR (Czech VFR Manual, WEF 01 OCT 26) and LKPD (06 AUG 26) with Praha Information 126.100 (AIP ČR ENR 2.1). Replaceable through the dict table `airport.vfr`. For the VFR phrases `ReportAt`, `AtPoint` and `ContactFIS`.
+
 ## [0.40.0] - 2026-10-09
 
 ### Added
