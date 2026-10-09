@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.55.0] - 2026-10-09
+
+### Added
+
+- `traffic/world`: with parallel runways in use together, a departure takes the runway with the shorter taxi from its stand, counting each departure already on the ground for that runway as 900 m more (about a departure interval). A quiet airport keeps the near runway; a busy one hands departures to the other (live, LROP: the stands by 26L all queued for it while 26R stood empty). `World.DepartureRunway(icao, stand)` gives the same choice for the player's departure.
+
 ## [0.54.0] - 2026-10-09
 
 ### Added
