@@ -389,6 +389,13 @@ func Readback(t Transmission) (Transmission, bool) {
 		} else {
 			s = "Holding short of " + p[ParamLimit] // 12.3.4.8 note
 		}
+	case IntentReportAt, IntentReportLeavingZone:
+		s = "Wilco" // a request to report: will comply
+	case IntentFrequencyChange:
+		s = "Frequency change approved"
+		if p[ParamSquawk] != "" {
+			s += ", squawk " + p[ParamSquawk]
+		}
 	case IntentJoinCircuit:
 		s = fmt.Sprintf("Join %s runway %s", p[ParamCircuit], p[ParamRunway])
 		if p[ParamQNH] != "" {

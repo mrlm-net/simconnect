@@ -27,6 +27,9 @@ const (
 	PosDeparture Position = "departure"
 	PosCenter    Position = "center"
 	PosATIS      Position = "atis"
+	// PosInformation: flight information (FIS), a VFR flight's station
+	// outside the zone (ContactFIS).
+	PosInformation Position = "information"
 )
 
 // Intent is what a transmission does.
