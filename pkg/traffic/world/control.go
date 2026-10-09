@@ -2163,7 +2163,76 @@ func (cc *controlCenter) runwayFor(g *airport.Graph, arrival bool, stand int) st
 	if stand < 0 || stand >= len(g.Layout.Parking) {
 		return ends[0].Name
 	}
+	if !arrival && len(ends) > 1 {
+		if r := cc.balancedDeparture(g, ends, stand); r != "" {
+			return r
+		}
+	}
 	return nav.Nearest(g.Layout, ends, g.Layout.Parking[stand].Position).Name
+}
+
+// departureQueueM: each departure already on the ground for a runway counts
+// as this much more taxi to it (about a departure interval's), so with
+// parallels in use together a busy one hands departures to the other.
+const departureQueueM = 900.0
+
+// balancedDeparture is the departure runway of parallels in use together
+// for a flight from stand: the shortest taxi there, with each departure
+// already waiting for it or taxiing to it counted as departureQueueM more
+// (live, LROP: every stand is nearest 26L, and 26R stood empty); "" when
+// no route is found.
+func (cc *controlCenter) balancedDeparture(g *airport.Graph, ends []airport.RunwayEnd, stand int) string {
+	queue := map[string]int{}
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		v := it.view
+		it.mu.Unlock()
+		if v.Kind == "departure" && v.OnGround && strings.EqualFold(v.ICAO, g.Layout.ICAO) {
+			queue[v.Runway]++
+		}
+	}
+	best, bestCost := "", math.Inf(1)
+	for _, e := range ends {
+		r, err := g.RouteToRunway(stand, e.Name, airport.RouteOptions{})
+		if err != nil {
+			continue
+		}
+		if cost := r.Length + float64(queue[e.Name])*departureQueueM; cost < bestCost {
+			best, bestCost = e.Name, cost
+		}
+	}
+	return best
+}
+
+// DepartureRunway is the runway the World would give a departure from
+// stand (its label) at icao now: with parallels in use together, the
+// shorter taxi with the queues counted (balancedDeparture), as for its own
+// traffic; "" when the airport is not loaded. For the player's runway.
+func (w *World) DepartureRunway(icao, stand string) string {
+	st := w.st
+	st.mu.Lock()
+	t := st.towers
+	st.mu.Unlock()
+	if t == nil {
+		return ""
+	}
+	g, err := t.cc.graph(icao)
+	if err != nil {
+		return ""
+	}
+	idx := -1
+	if stand != "" {
+		if i, err := g.Layout.ParkingIndex(stand); err == nil {
+			idx = i
+		}
+	}
+	return t.cc.runwayFor(g, false, idx)
 }
 
 // pickRunway is the runway in use for a new flight: from or to stand, the
