@@ -31,8 +31,22 @@ for _, r := range out.Requests { /* ask the player: r.Say ("Flaps one", "Gear do
 
 A request is done when the aircraft shows it (`Output.Done`). If the player does nothing for `PMTimeout` (8 s) and `CopilotActs` is set, the copilot does it (`Output.TimedOut`, its actions in `Output.Actions`). An action is not sent again within `Resend` (3 s) while it has not shown yet.
 
-Every height and speed is in `Config`, so a per-type profile can tune them. `Config.WithLearned` takes them from the player's recorded flights of the type (`flight.Learn`, #966). Iteration B, with the copilot also flying the take-off and the landing by hand, comes after it.
+Every height and speed is in `Config`, so a per-type profile can tune them. `Config.WithLearned` takes them from the player's recorded flights of the type (`flight.Learn`, #966). With `Config.HandFly` (iteration B) the copilot also flies the take-off and the landing by hand; see below.
 
 ## Handovers
 
 The engine takes the controls at the first `Update` where the aircraft is airborne above the engage height: climbing after the take-off, or anywhere in the flight when the copilot is switched on in cruise. It picks the phase from where the flight is: the approach when low and close in, the descent going down, the cruise at the target level, else the climb. `HandBack()` gives the controls to the player mid-flight ("Your controls"; the autopilot is left as it is), and `TakeControl()` has the engine take them again from where the flight is ("I have control").
+
+## Iteration B: hand flying
+
+With `Config.HandFly` the copilot flies the take-off and the landing too, through the flight controls (`systems.Elevator`, `Aileron`, `Rudder`, `Throttle` as `SetValue`). Give it `Input.Runway` (the threshold, its true heading, the elevation and the length of the runway end) and the clearances `Clearance.Takeoff` and `Clearance.Land`. Update it every sim frame while it flies by hand.
+
+- **Take-off.** Once cleared, it says "Takeoff" and sets the thrust (50 % for two seconds, then `TakeoffThrust`, 90 %). The rudder holds the centreline. At VR (the aircraft's, else learned, else V2 − 5) it rotates at 3°/s to the rotation pitch (learned, else 12.5°). In the air it flies the climb pitch (learned, else 15°), adjusted for V2 + 10, wings level on the runway heading, and asks "Positive climb, gear up". At the engage height it engages the autopilot and goes on as in iteration A.
+- **Landing.** At minimums, cleared to land, it disconnects the autopilot and the autothrust ("Autopilot off") and flies on by hand:
+  - On final it holds the 3° glide path through 50 ft over the threshold by pitch (the sink rate for the ground speed, corrected for the height off the path), the approach speed by throttle, and the centreline by bank. The centreline correction is slow next to the turn, so it does not overshoot.
+  - It flares at the learned height (else 30 ft), or 3 s before touching down if that is higher. The flare flies a sink rate that eases with the height (100 ft/min plus 8 a foot), and the thrust goes to idle at 20 ft ("Retard").
+  - Below 15 ft it straightens the nose with the rudder.
+  - After touchdown it lowers the nose gently, holds the centreline with the rudder, and below 40 kt says "Your controls".
+- **Not cleared to land at minimums:** it says "Go around, flaps", sets the thrust to 100 % and hands back.
+
+The loops were tuned on a simple model, so their gains and signs need a live check. The model landing touches down at about −260 ft/min, 740 m past the threshold, on the centreline. The elevator axis sign is assumed: pushed forward is positive (`systems.Elevator`).
