@@ -595,7 +595,17 @@ type Action struct {
 	// complement (#962).
 	Value bool     `json:"value,omitempty"`
 	Scale *float64 `json:"scale,omitempty"`
-	Note  string   `json:"note,omitempty"`
+	// Encoder: SetValue turns a relative knob, a counter variable
+	// ("L:E_FCU_SPEED") a click per Step of the value shown (Display, a
+	// value of the profile: "N_FCU_SPEED" read), from its count now (the
+	// value name+"Encoder", read). Wake: a display reading 0 is dashed
+	// (the Fenix's managed heading): one click shows it, and SetValue
+	// returns ErrEncoderWoken to be called again with a fresh state.
+	Encoder string  `json:"encoder,omitempty"`
+	Display string  `json:"display,omitempty"`
+	Step    float64 `json:"step,omitempty"`
+	Wake    bool    `json:"wake,omitempty"`
+	Note    string  `json:"note,omitempty"`
 }
 
 // The actions a profile may give: the radios' swap (pkg/avionics), and

@@ -311,3 +311,45 @@ func TestFlapsSaid(t *testing.T) {
 		}
 	}
 }
+
+// TestPressValueAndEncoder: a knob pushed (+1) for on and pulled (−1) for
+// off on one variable, each released to 0; a relative knob turned by the
+// clicks from the value shown, from its count; a dashed display woken by
+// one click first.
+func TestPressValueAndEncoder(t *testing.T) {
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	push, pull := 1.0, -1.0
+	c.Use(Profile{Actions: map[string]Action{
+		APSpeedManaged: {Press: "L:S_FCU_SPEED", On: &push, Off: &pull},
+		APSpeedSel:     {Encoder: "L:E_FCU_SPEED", Display: "fcuSpeed", Step: 1},
+		APHeadingSel:   {Encoder: "L:E_FCU_HEADING", Display: "fcuHeading", Step: 1, Wake: true},
+	}})
+	if err := c.Set(APSpeedManaged, true, State{Values: map[string]float64{APSpeedManaged: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set(APSpeedManaged, false, State{Values: map[string]float64{APSpeedManaged: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(f.set) != "[1 0 -1 0]" {
+		t.Errorf("push and pull wrote %v, want [1 0 -1 0]", f.set)
+	}
+	f.set = nil
+	st := State{Values: map[string]float64{"fcuSpeed": 250, APSpeedSel + "Encoder": 37}}
+	if err := c.SetValue(APSpeedSel, 230, st); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.set) != 1 || f.set[0] != 17 || f.setVar[len(f.setVar)-1] != "L:E_FCU_SPEED" {
+		t.Errorf("speed 250 → 230 from count 37: wrote %v to %v", f.set, f.setVar)
+	}
+	f.set = nil
+	dashed := State{Values: map[string]float64{"fcuHeading": 0, APHeadingSel + "Encoder": 5}}
+	if err := c.SetValue(APHeadingSel, 240, dashed); err != ErrEncoderWoken || len(f.set) != 1 || f.set[0] != 6 {
+		t.Errorf("dashed heading: %v, wrote %v", err, f.set)
+	}
+	f.set = nil
+	shown := State{Values: map[string]float64{"fcuHeading": 168, APHeadingSel + "Encoder": 6}}
+	if err := c.SetValue(APHeadingSel, 240, shown); err != nil || len(f.set) != 1 || f.set[0] != 78 {
+		t.Errorf("heading 168 → 240 from 6: %v, wrote %v", err, f.set)
+	}
+}

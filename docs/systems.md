@@ -201,3 +201,9 @@ Profiles come in layers (#759): the default for any aircraft, then a base for th
 | cargo doors | none | "FWD cargo" exit 9 (EXIT OPEN:8), "AFT cargo" exit 10 (EXIT OPEN:9), moved through the EFB: `doors.cargo.forward`, `doors.cargo.aft` |
 
 A door object may carry `"efb"`: that door moves through the tablet (`Profile.DoorEFB`), not TOGGLE_AIRCRAFT_EXIT. An action's `"counter"` is a push button counted up, as FSUIPC's presets press it: from an even count to +1 (press), then +2 (release). Its count is read as the value `<action>Counter`. `Controls.Press(name, now)` presses a control once whatever its state (`cabinCall`). `Controls.SetValue(name, v, now)` sets a many-way switch (`noSmoking` 2).
+
+### Knobs: push and pull, relative encoders
+
+An FCU knob pushed and pulled on one variable (the Fenix's `S_FCU_SPEED`: +1 push, −1 pull, 0 released) is a press with values: `{"press": "L:S_FCU_SPEED", "on": 1, "off": -1}`. `Set(name, true)` presses it with `on`, `Set(name, false)` with `off`, and each is released to 0. Without `on`/`off`, a press writes 1.
+
+A relative encoder (the Fenix's `E_FCU_SPEED`, a counter turned a click at a time) is set with `SetValue`. Its action names the counter, the value showing the setting and its step: `{"encoder": "L:E_FCU_SPEED", "display": "fcuSpeed", "step": 1}`. The profile reads both as values: the display (`"fcuSpeed": {"vars": ["L:N_FCU_SPEED"]}`) and the counter as the action's name with `Encoder` (`"apSpeedSelEncoder": {"vars": ["L:E_FCU_SPEED"]}`). `SetValue` moves the counter by the clicks from the value shown to the one wanted. With `"wake": true`, a display that reads 0 is taken as dashed (the Fenix's managed heading shows nothing until turned). One click wakes it, and `SetValue` returns `ErrEncoderWoken`: call it again with a state read after it.
