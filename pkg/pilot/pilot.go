@@ -193,6 +193,8 @@ type Engine struct {
 	sent    map[string]sentAction
 	said    map[string]bool          // once-per-flight callouts
 	dones   map[int]func(Input) bool // when each request is done
+	// taking: TakeControl asked; the next Update takes over in the air.
+	taking bool
 }
 
 type sentAction struct {
@@ -206,7 +208,7 @@ func New(cfg Config, detents []string) *Engine {
 	if cfg.FlapDetents == 0 && len(detents) > 0 {
 		cfg.FlapDetents = len(detents)
 	}
-	return &Engine{cfg: cfg, detents: detents, pending: map[string]*Request{}, sent: map[string]sentAction{}, said: map[string]bool{}, dones: map[int]func(Input) bool{}}
+	return &Engine{cfg: cfg, detents: detents, pending: map[string]*Request{}, sent: map[string]sentAction{}, said: map[string]bool{}, dones: map[int]func(Input) bool{}, taking: true}
 }
 
 // Phase is where the engine is.
@@ -232,13 +234,19 @@ func (e *Engine) Update(in Input) Output {
 	ap := in.State.AP
 	switch e.phase {
 	case PhaseTakeoff:
-		if !in.Air.OnGround && agl >= c.EngageAGLFt && in.Air.VS > 0 {
-			out.Say = append(out.Say, "Autopilot on", "I have control")
-			e.act(in, &out, set(systems.APMaster, true), true)
+		// Climbing through the engage height after take-off, or taking over
+		// anywhere above it (a handover in cruise): from where the flight is.
+		if !in.Air.OnGround && agl >= c.EngageAGLFt && (in.Air.VS > 0 || e.taking) {
+			if ap.Master {
+				out.Say = append(out.Say, "I have control")
+			} else {
+				out.Say = append(out.Say, "Autopilot on", "I have control")
+				e.act(in, &out, set(systems.APMaster, true), true)
+			}
 			if !ap.ATHR {
 				e.act(in, &out, set(systems.ATHR, true), true)
 			}
-			e.phase = PhaseClimb
+			e.phase, e.taking = e.phaseNow(in, c), false
 		}
 	case PhaseHandback:
 		out.Phase = e.phase
@@ -521,4 +529,45 @@ func (c Config) WithLearned(l flight.Learned) Config {
 		use(&c.FinalFlapsAGLFt, l.FlapsDownAGLFt[last]) // the landing flaps
 	}
 	return c
+}
+
+// phaseNow is the phase of a flight taken over in the air: the approach
+// low and close in, the descent going down, the cruise level at the
+// target, else the climb.
+func (e *Engine) phaseNow(in Input, c Config) Phase {
+	target := in.ATC.AltitudeFt
+	if target == 0 {
+		target = in.Plan.CruiseFt
+	}
+	alt := in.Air.AltFt
+	switch {
+	case in.AGLFt() < 5000 && (in.ATC.Approach || (in.Plan.DistanceToGoNM > 0 && in.Plan.DistanceToGoNM < 30)):
+		return PhaseApproach
+	case in.Air.VS < -300 || (target > 0 && target < alt-300):
+		return PhaseDescent
+	case target > 0 && math.Abs(alt-target) < 300:
+		return PhaseCruise
+	}
+	return PhaseClimb
+}
+
+// HandBack gives the controls to the player mid-flight (the player asked
+// for them): the engine stops flying, the autopilot left as it is. It
+// returns what the pilot flying says.
+func (e *Engine) HandBack() []string {
+	was := e.phase
+	e.phase, e.taking = PhaseHandback, false
+	if was == PhaseHandback || was == PhaseTakeoff {
+		return nil // it was not flying
+	}
+	return []string{"Your controls"}
+}
+
+// TakeControl has the engine fly again: at the next Update it takes over
+// from where the flight is (in the air above the engage height; on the
+// ground, after the take-off as at the start), saying "I have control".
+func (e *Engine) TakeControl() {
+	e.phase, e.taking = PhaseTakeoff, true
+	clear(e.pending)
+	clear(e.dones)
 }

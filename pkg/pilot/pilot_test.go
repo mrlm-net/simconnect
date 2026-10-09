@@ -179,3 +179,34 @@ func TestWithLearned(t *testing.T) {
 		t.Errorf("config %+v", c)
 	}
 }
+
+// TestTakeOverInCruise: switched on in cruise the engine takes the
+// controls at once, in the cruise phase; HandBack gives them back ("Your
+// controls"), TakeControl takes them again ("I have control"), the
+// autopilot already on.
+func TestTakeOverInCruise(t *testing.T) {
+	s := newSim(true)
+	s.in.Air.AltFt, s.in.Air.VS, s.in.Air.IAS, s.in.Air.GearHandle = 35000, 0, 280, false
+	s.in.ATC.AltitudeFt = 35000
+	s.flaps = 0
+	s.in.State.Values[systems.FlapsIndex] = 0
+	e := New(Config{}, nil)
+	out := s.step(e)
+	if e.Phase() != PhaseCruise || !slices.Contains(out.Say, "I have control") || !s.in.State.AP.Master {
+		t.Fatalf("phase %v, said %v, AP %v", e.Phase(), out.Say, s.in.State.AP.Master)
+	}
+	if got := e.HandBack(); len(got) != 1 || got[0] != "Your controls" || e.Phase() != PhaseHandback {
+		t.Fatalf("handback said %v, phase %v", got, e.Phase())
+	}
+	if out := s.step(e); len(out.Actions) != 0 {
+		t.Errorf("handed back, still acting: %v", out.Actions)
+	}
+	e.TakeControl()
+	out = s.step(e)
+	if e.Phase() != PhaseCruise || len(out.Say) != 1 || out.Say[0] != "I have control" {
+		t.Errorf("taken again: phase %v, said %v", e.Phase(), out.Say)
+	}
+	if New(Config{}, nil).HandBack() != nil {
+		t.Error("a handback before ever flying said something")
+	}
+}
