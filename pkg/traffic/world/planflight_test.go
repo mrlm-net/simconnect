@@ -7,8 +7,8 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
-// TestPlanFlight: a plan between two loaded airports (LKPR, and LKPR's
-// layout again as the other end, direct without airways); without both
+// TestPlanFlight: a plan between two loaded airports (LKPR, and LKTB
+// without runways; direct without airways); without both
 // codes, or without a connection for an airport not loaded, an error.
 func TestPlanFlight(t *testing.T) {
 	w := New(Options{DataDir: t.TempDir()})

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 )
@@ -50,6 +51,58 @@ type airwayJob struct {
 	seeds   []nav.FixKey
 	crawler *nav.AirwayCrawler
 	started time.Time
+	// A route's airways (route): the crawl's bounds, and who waits for it.
+	opts *nav.CrawlOptions
+	done []chan struct{}
+}
+
+// airwayRoute asks for the airways along a flight's way: key names it
+// ("LPMA-LPPT", its cache file), seeds start the crawl, corridor bounds it;
+// done is closed once they are in the flight plans' graph (or none found).
+type airwayRoute struct {
+	key      string
+	seeds    []nav.FixKey
+	corridor nav.Corridor
+	done     chan struct{}
+}
+
+// Route crawls: the band either side of the great circle, and requests
+// allowed per NM of it on top of a whole airport's crawl.
+const (
+	routeCorridorHalfNM  = 60.0
+	routeCrawlPerNM      = 6
+	routeCrawlMaxRequest = 15000
+)
+
+// route reads the airways along r's way: from the cache when fresh, else
+// from the sim after the crawls queued before it.
+func (k *airwayKeeper) route(r airwayRoute, now time.Time) {
+	key := "route-" + strings.ToUpper(r.key)
+	if k.cur != nil && k.cur.icao == key {
+		k.cur.done = append(k.cur.done, r.done)
+		return
+	}
+	for i := range k.queue {
+		if k.queue[i].icao == key {
+			k.queue[i].done = append(k.queue[i].done, r.done)
+			return
+		}
+	}
+	if info, err := os.Stat(k.path(key)); err == nil && now.Sub(info.ModTime()) < k.maxAge {
+		if g, err := nav.LoadAirwayGraph(k.path(key)); err == nil {
+			k.feed.Airways(key, g)
+			close(r.done)
+			return
+		}
+	}
+	if len(r.seeds) == 0 {
+		close(r.done)
+		return
+	}
+	c := r.corridor
+	lengthNM := calc.HaversineNM(c.From.Lat, c.From.Lon, c.To.Lat, c.To.Lon)
+	opts := nav.CrawlOptions{Corridor: &c, MaxRequests: min(routeCrawlMaxRequest, nav.DefaultCrawlMaxRequests+int(lengthNM)*routeCrawlPerNM)}
+	k.queue = append(k.queue, airwayJob{icao: key, seeds: r.seeds, opts: &opts, done: []chan struct{}{r.done}})
 }
 
 func newAirwayKeeper(client nav.FacilityClient, feed simFeed, dataDir string, maxAge time.Duration, defBase, reqBase uint32, logf func(string, ...any)) *airwayKeeper {
@@ -156,10 +209,17 @@ func (k *airwayKeeper) tick(now time.Time) {
 	job := k.queue[0]
 	k.queue = k.queue[1:]
 	loader := nav.NewNavLoaderWithIDs(k.client, k.defBase, k.reqBase, airwayCrawlSlots)
-	job.crawler = nav.NewAirwayCrawler(loader, nav.CrawlOptions{Center: job.center, RadiusNM: airwayCrawlRadiusNM})
+	opts := nav.CrawlOptions{Center: job.center, RadiusNM: airwayCrawlRadiusNM}
+	if job.opts != nil {
+		opts = *job.opts
+	}
+	job.crawler = nav.NewAirwayCrawler(loader, opts)
 	job.started = now
 	if err := job.crawler.Start(job.seeds...); err != nil {
 		k.logf("airways %s: %v", job.icao, err)
+		for _, d := range job.done {
+			close(d)
+		}
 		return
 	}
 	k.cur = &job
@@ -201,6 +261,11 @@ func (k *airwayKeeper) queued(icao string) bool {
 func (k *airwayKeeper) finish(now time.Time) {
 	job := k.cur
 	k.cur = nil
+	defer func() {
+		for _, d := range job.done {
+			close(d) // after the graph is in (or none was found)
+		}
+	}()
 	g := job.crawler.Graph()
 	if g.SegmentCount() == 0 {
 		k.logf("airways %s: none found (%d fixes asked, %d unknown)", job.icao, job.crawler.Requests(), len(job.crawler.Missing()))

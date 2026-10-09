@@ -135,6 +135,7 @@ func New(o Options) *World {
 	st.core.hooks = o
 	reqs := make(chan string)
 	st.requests = reqs
+	st.airwayRoutes = make(chan airwayRoute, 4)
 	st.pads = loadPadStore(filepath.Join(o.DataDir, "deicing.json"))
 	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
