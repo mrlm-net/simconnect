@@ -74,6 +74,12 @@ type RunwayClearances struct {
 	// behind it ("behind the landing A320, cross runway 12, behind"), by
 	// crossing aircraft, the arrival's call sign.
 	CrossBehind map[string]string `json:"crossBehind,omitempty"`
+	// LineUpBehindDeparting: when the runway is busy (RushQueue departures
+	// waiting, or an arrival within RushArrivalWithin), the first departure
+	// at the holding points behind ours on its take-off roll, by call sign,
+	// and that departure: "behind the departing A320, line up and wait",
+	// lined up as it rolls, not once it is airborne.
+	LineUpBehindDeparting map[string]string `json:"lineUpBehindDeparting,omitempty"`
 	// NoDelay: departures in Takeoff with the next arrival established
 	// within NoDelayNM, by call sign, that arrival's distance (NM): "cleared
 	// for take-off, no delay, traffic on 5 mile final".
@@ -193,13 +199,14 @@ func (r *RunwayController) SetSurface(s RunwaySurface) {
 func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClearances {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, NoDelay: map[string]float64{}}
+	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, LineUpBehindDeparting: map[string]string{}, NoDelay: map[string]float64{}}
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
 	// occupied: who is on the runway (the first seen); onRunway: all of
 	// them — a take-off waits for every one but itself.
 	occupied, linedUp := "", ""
+	rollingDep := "" // ours on its take-off roll
 	var onRunway []string
 	nextArr, nextArrName := math.Inf(1), ""
 	var nextArrUser RunwayUser
@@ -213,6 +220,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		case RunwayRolling:
 			occupied = u.Callsign
 			onRunway = append(onRunway, u.Callsign)
+			if !u.Arrival && !u.Crossing && !u.Other && !u.Host {
+				rollingDep = u.Callsign
+			}
 			if !u.Arrival && !u.Crossing && (r.lastDep == nil || r.lastDep.Callsign != u.Callsign) {
 				uu := u // a departure started its roll: the interval runs from here
 				r.lastDep, r.lastAt = &uu, now
@@ -338,6 +348,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			i++
 		}
 	}
+	// A rush: departures queueing, or an arrival soon (LineUpBehindDeparting).
+	rush := len(holding) >= RushQueue || nextArrName != "" && nextArr*float64(time.Second) <= float64(RushArrivalWithin)
 	number := 1
 	for _, u := range holding {
 		if u.Host {
@@ -372,7 +384,17 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		// A departure: one on the runway at a time — behind the one of ours
 		// lined up, it is the next number; else it waits for who is on it.
 		if occupied != "" {
-			if occupied == linedUp || slices.Contains(out.LineUp, occupied) {
+			// Busy: the first behind ours on its take-off roll lines up as
+			// it rolls, if the arrivals leave it time on the runway until its
+			// own take-off (the user: lined up earlier in a rush).
+			if occupied == rollingDep && number == 1 && rush && len(out.LineUpBehindDeparting) == 0 &&
+				arrivalClear(r.intervalLeft(now, u)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				out.LineUpBehindDeparting[u.Callsign] = rollingDep
+				out.Waiting[u.Callsign] = rollingDep + " on the runway"
+				occupied = u.Callsign
+				continue
+			}
+			if occupied == linedUp || slices.Contains(out.LineUp, occupied) || out.LineUpBehindDeparting[occupied] != "" {
 				number++
 				out.Waiting[u.Callsign] = fmt.Sprintf("number %d for departure", number)
 			} else {
@@ -414,4 +436,22 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		}
 	}
 	return out
+}
+
+// A runway is in a rush with RushQueue or more departures at its holding
+// points, or an arrival landing within RushArrivalWithin: the next
+// departure lines up behind the one rolling (LineUpBehindDeparting).
+var (
+	RushQueue         = 2
+	RushArrivalWithin = 4 * time.Minute
+)
+
+// intervalLeft is how long u still waits for the departure interval behind
+// the last departure (0 none).
+func (r *RunwayController) intervalLeft(now time.Time, u RunwayUser) time.Duration {
+	if r.lastDep == nil || r.lastDep.Callsign == u.Callsign {
+		return 0
+	}
+	iv := DepartureIntervalSpeeds(r.lastDep.Wake, u.Wake, r.lastDep.Route != "" && r.lastDep.Route == u.Route, r.lastDep.ClimbKts, u.ClimbKts)
+	return max(0, iv-now.Sub(r.lastAt))
 }

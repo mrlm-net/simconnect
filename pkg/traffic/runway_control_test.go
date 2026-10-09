@@ -400,3 +400,40 @@ func TestHostInTheDepartureQueue(t *testing.T) {
 		t.Errorf("ours first: %+v", c)
 	}
 }
+
+// In a rush the first departure behind ours on its take-off roll is lined
+// up behind it ("behind the departing ..."); without one it waits for the
+// runway, and with an arrival too close it waits too.
+func TestRunwayControllerLineUpBehindDeparting(t *testing.T) {
+	now := time.Now()
+	roll := dep("CSA1", "A320", RunwayRolling)
+	// Two waiting: a rush.
+	r := NewRunwayController(RunwayControllerOptions{})
+	c := r.Decide(now, []RunwayUser{roll, dep("EZY2", "A320", RunwayHoldingShort), dep("WZZ3", "A321", RunwayHoldingShort)})
+	if c.LineUpBehindDeparting["EZY2"] != "CSA1" || len(c.LineUpBehindDeparting) != 1 {
+		t.Fatalf("rush: %+v", c)
+	}
+	if !strings.Contains(c.Waiting["WZZ3"], "number 2") {
+		t.Errorf("the one after: %q, want number 2", c.Waiting["WZZ3"])
+	}
+	// One waiting, no arrival: no rush, it waits for the runway.
+	r = NewRunwayController(RunwayControllerOptions{})
+	c = r.Decide(now, []RunwayUser{roll, dep("EZY2", "A320", RunwayHoldingShort)})
+	if len(c.LineUpBehindDeparting) != 0 {
+		t.Fatalf("no rush: %+v", c.LineUpBehindDeparting)
+	}
+	// One waiting on another SID (a shorter interval), an arrival 3 min out:
+	// a rush; on a 2 NM final: too close.
+	other := dep("EZY2", "A320", RunwayHoldingShort)
+	other.Route = "DOBE4A"
+	r = NewRunwayController(RunwayControllerOptions{})
+	c = r.Decide(now, []RunwayUser{roll, other, final("AUA4", 7)})
+	if c.LineUpBehindDeparting["EZY2"] != "CSA1" {
+		t.Fatalf("arrival 3 min out: %+v", c)
+	}
+	r = NewRunwayController(RunwayControllerOptions{})
+	c = r.Decide(now, []RunwayUser{roll, other, final("AUA4", 2)})
+	if len(c.LineUpBehindDeparting) != 0 {
+		t.Fatalf("arrival on a 2 NM final: %+v", c.LineUpBehindDeparting)
+	}
+}

@@ -51,6 +51,9 @@ type towers struct {
 type behindClearance struct {
 	arrival, icao, rwy string
 	cross              bool
+	// departing: behind ours on its take-off roll (LineUpBehindDeparting),
+	// not a landing aircraft.
+	departing bool
 }
 
 type runwayUserView struct {
@@ -168,7 +171,7 @@ func (t *towers) tick(now time.Time) {
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
 			u.Phase = traffic.RunwayLinedUp
 		case it.dep != nil && v.State == "departing" && v.OnGround:
-			u.Phase = traffic.RunwayRolling
+			u.Phase, u.GroundKts = traffic.RunwayRolling, v.GroundSpeed
 		case it.dep != nil && v.State == "departing":
 			u.Phase = traffic.RunwayAirborne
 		case it.arr != nil && (v.State == "approaching" || v.State == "landing") && !v.OnGround:
@@ -315,7 +318,7 @@ func (t *towers) tick(now time.Time) {
 		// The host's ATC cleared the user aircraft onto it (#710): none of
 		// ours lines up, takes off, lands or crosses meanwhile.
 		if p, ok := t.cc.core.playerOn(k.icao, k.rwy); ok && p.Phase != PlayerVacated {
-			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind = nil, nil, nil, nil, nil, nil
+			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind, c.LineUpBehindDeparting = nil, nil, nil, nil, nil, nil, nil
 		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
@@ -409,7 +412,19 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 			}
 		}
 		passed := !there || phase != traffic.RunwayFinal
-		if b.cross && there {
+		if b.departing {
+			// Behind a departure: once it is airborne, or from the full
+			// length once it is well into its roll and away (from an
+			// intersection it has to pass it: airborne).
+			var lead traffic.RunwayUser
+			for _, u := range list {
+				if u.Callsign == b.arrival {
+					lead = u
+				}
+			}
+			full := it.dep == nil || it.dep.Route() == nil || it.dep.Route().Entry == ""
+			passed = !there || phase != traffic.RunwayRolling || full && lead.GroundKts >= behindDepartingKts
+		} else if b.cross && there {
 			passed = false // across once it is off the runway: where it rolls to is not known
 		} else if !b.cross {
 			if r := it.dep.Route(); r != nil && r.Entry != "" && there {
@@ -470,7 +485,7 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 			}
 			continue
 		}
-		t.cc.log.printf("%-6s lining up behind the landing traffic", dep)
+		t.cc.log.printf("%-6s lining up behind the traffic", dep)
 		if err := t.cc.do(func() error { it.dep.ClearToLineUp(); return nil }); err != nil {
 			t.cc.log.printf("%-6s line-up refused: %v", dep, err)
 		}
@@ -606,6 +621,20 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		arr := arr
 		give(cs, "lineupbehind", traffic.ClearedLineUpBehind(cs, t.arrivalSaid(arr), end(cs)), func(it *controlled) error {
 			t.clearBehind(it, arr, icao, rwy)
+			return nil
+		})
+	}
+	// Busy: behind ours on its take-off roll, lined up as it rolls.
+	for cs, dep := range c.LineUpBehindDeparting {
+		if ours[cs] == nil || ours[cs].gates.Load() {
+			continue
+		}
+		dep := dep
+		give(cs, "lineupbehind", traffic.ClearedLineUpBehindDeparting(cs, t.arrivalSaid(dep), end(cs)), func(it *controlled) error {
+			t.mu.Lock()
+			t.behind[it.Tail] = behindClearance{arrival: dep, icao: icao, rwy: rwy, departing: true}
+			t.given[it.Tail+" lineup"] = true
+			t.mu.Unlock()
 			return nil
 		})
 	}
@@ -881,3 +910,8 @@ func onFinalNear(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool
 	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
 	return math.Abs(headingDiff(end.Heading+180, from)) <= onFinalSectorDeg && math.Abs(headingDiff(end.Heading, hdg)) <= onFinalSectorDeg
 }
+
+// behindDepartingKts: a departure lined up behind ours on its take-off
+// roll from the full length lines up once that one rolls this fast (well
+// away down the runway).
+const behindDepartingKts = 40.0

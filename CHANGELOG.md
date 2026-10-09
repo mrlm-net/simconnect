@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.34.0] - 2026-10-09
+
+### Added
+
+- Line-ups in a rush: with `RushQueue` (2) departures at the holding points, or an arrival landing within `RushArrivalWithin` (4 min), the first departure behind ours on its take-off roll is told "behind the departing A320, line up and wait" (`RunwayClearances.LineUpBehindDeparting`, `ClearedLineUpBehindDeparting`). It is given only when the arrivals leave it time on the runway until its own take-off. From the full length it lines up once the leader rolls at 40 kt; from an intersection, once the leader is airborne. Before, it waited for the runway, and each gap lost a line-up.
+
 ## [0.33.0] - 2026-10-09
 
 ### Added
