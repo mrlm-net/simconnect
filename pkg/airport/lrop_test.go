@@ -47,3 +47,23 @@ func TestLROPRoutes(t *testing.T) {
 		}
 	}
 }
+
+// TestTaxiwayGapBridged: LROP's taxiway C stops at the U junction and goes
+// on 21 m further (the scenery's gap); bridged, stand 214 reaches 08R and
+// 08L along C, not round the airport by P and Q (live, 3.6 km to 08R).
+func TestTaxiwayGapBridged(t *testing.T) {
+	g := lropGraph(t)
+	s, err := g.Layout.ParkingIndex("214")
+	if err != nil {
+		t.Skip("no stand 214 in this capture:", err)
+	}
+	for _, end := range []string{"08R", "08L"} {
+		r, err := g.RouteToRunway(s, end, RouteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if via := r.SpokenTaxiways(-1); r.Length > 2500 || slices.Contains(via, "Q") {
+			t.Errorf("214 → %s: %.0f m via %v, want the short way along C", end, r.Length, via)
+		}
+	}
+}

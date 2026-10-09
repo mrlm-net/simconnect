@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -219,6 +220,7 @@ func BuildGraph(l *Layout) (*Graph, error) {
 		return nil, ErrNoTaxiNetwork
 	}
 	g.joinDeadEnds()
+	g.bridgeTaxiwayGaps()
 	g.stands = make([]bool, len(g.Nodes))
 	for id, es := range g.Adj {
 		for _, e := range es {
@@ -268,6 +270,100 @@ func (g *Graph) joinDeadEnds() {
 		g.Adj[a] = append(g.Adj[a], Edge{To: best, Length: bestD, Type: t, Name: e0.Name, Path: e0.Path})
 		g.Adj[best] = append(g.Adj[best], Edge{To: NodeID(a), Length: bestD, Type: t, Name: e0.Name, Path: e0.Path})
 	}
+}
+
+// Gaps in a taxiway: two ends of the same named taxiway at most
+// taxiwayGapMeters apart, each running on towards the other within
+// taxiwayGapAngleDeg, are one taxiway with a piece missing in the scenery.
+const (
+	taxiwayGapMeters   = 40.0
+	taxiwayGapAngleDeg = 30.0
+)
+
+// bridgeTaxiwayGaps joins the ends of a named taxiway across a gap the
+// scenery left (live, LROP: C stops at the U junction and goes on 21 m
+// further, so stands 213 and 214 taxied 3.5 km round the airport to 26R).
+// An end is a taxi point with one edge of that name; it is joined to the
+// nearest other end of the name within taxiwayGapMeters when both point
+// at each other, as a taxiway edge of that name.
+func (g *Graph) bridgeTaxiwayGaps() {
+	np := len(g.Layout.TaxiPoints)
+	type end struct {
+		node NodeID
+		from NodeID // the taxiway's previous node: the end runs on away from it
+		path int
+		name string
+	}
+	var ends []end
+	for a := 0; a < np; a++ {
+		count := map[string]int{}
+		last := map[string]Edge{}
+		for _, e := range g.Adj[a] {
+			if e.Name == "" || g.Nodes[e.To].Kind == NodeParking || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY {
+				continue
+			}
+			count[e.Name]++
+			last[e.Name] = e
+		}
+		for n, c := range count {
+			if c == 1 {
+				ends = append(ends, end{node: NodeID(a), from: last[n].To, path: last[n].Path, name: n})
+			}
+		}
+	}
+	runsTo := func(e end, to NodeID) bool {
+		p, q, r := g.Nodes[e.from].Position, g.Nodes[e.node].Position, g.Nodes[to].Position
+		on := calc.BearingDegrees(p.Lat, p.Lon, q.Lat, q.Lon)
+		gap := calc.BearingDegrees(q.Lat, q.Lon, r.Lat, r.Lon)
+		d := math.Abs(math.Mod(gap-on+540, 360) - 180)
+		return d <= taxiwayGapAngleDeg
+	}
+	joined := map[NodeID]map[string]bool{}
+	for i, a := range ends {
+		if joined[a.node][a.name] {
+			continue
+		}
+		best, bestD := -1, taxiwayGapMeters
+		for j, b := range ends {
+			if j == i || b.name != a.name || b.node == a.node || joined[b.node][b.name] {
+				continue
+			}
+			d := g.distance(g.Nodes[a.node].Position, g.Nodes[b.node].Position)
+			if d > bestD || !runsTo(a, b.node) || !runsTo(b, a.node) || g.acrossRunway(a.node, b.node) {
+				continue
+			}
+			best, bestD = j, d
+		}
+		if best < 0 {
+			continue
+		}
+		b := ends[best]
+		g.Adj[a.node] = append(g.Adj[a.node], Edge{To: b.node, Length: bestD, Type: types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI, Name: a.name, Path: a.path})
+		g.Adj[b.node] = append(g.Adj[b.node], Edge{To: a.node, Length: bestD, Type: types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI, Name: a.name, Path: b.path})
+		for _, n := range []NodeID{a.node, b.node} {
+			if joined[n] == nil {
+				joined[n] = map[string]bool{}
+			}
+			joined[n][a.name] = true
+		}
+	}
+}
+
+// acrossRunway reports whether a gap between a and b is a runway's: either
+// is a hold-short point, or the gap's ends or middle are on a runway
+// (the crossing is the runway's own edge, never a bridge).
+func (g *Graph) acrossRunway(a, b NodeID) bool {
+	if g.Nodes[a].Kind == NodeHoldShort || g.Nodes[b].Kind == NodeHoldShort {
+		return true
+	}
+	p, q := g.Nodes[a].Position, g.Nodes[b].Position
+	mid := LatLon{Lat: (p.Lat + q.Lat) / 2, Lon: (p.Lon + q.Lon) / 2}
+	for _, x := range []LatLon{p, mid, q} {
+		if g.RunwayAt(x, 0) >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ParkingNode returns the node of a parking index.
