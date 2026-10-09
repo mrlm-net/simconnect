@@ -251,10 +251,10 @@ func TestByCategoryUnknown(t *testing.T) {
 	}
 }
 
-// TestByCategoryAutopilot verifies that ByCategory("autopilot") returns exactly 8 entries.
+// TestByCategoryAutopilot verifies that ByCategory("autopilot") returns exactly 19 entries (11 added for pkg/flight, #961).
 func TestByCategoryAutopilot(t *testing.T) {
 	results := ByCategory("autopilot")
-	const wantCount = 8
+	const wantCount = 19
 	if len(results) != wantCount {
 		t.Errorf("ByCategory(\"autopilot\") returned %d entries; want %d", len(results), wantCount)
 	}
