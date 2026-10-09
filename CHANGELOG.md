@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.48.0] - 2026-10-09
+
+### Added
+
+- `pkg/flight` (#961): `Recorder` records any object, the user aircraft or AI, every sim frame into a `Track`: position, ground and CG height, attitude, IAS/GS/VS, gear, flaps (detent and %), spoilers, control surfaces, brakes, lights, throttle, N1 and reverser per engine, and the autopilot (holds engaged and the selected values). A Track is versioned JSON lines (gzipped for `.gz`) whose fields are read by name, so fields can be added; `At` and `Lerp` interpolate (headings the short way round, switches as the earlier sample). Docs: `docs/flight.md`.
+- `registry`: 24 SimVars the recorder reads, checked against the SDK's SimVar pages or used live (the autopilot's FD, A/THR arm, G/S hold and arms, FLC, Mach; brakes, centre gear, CG height, flaps percent, spoilers armed, the lights, N1 and reverser); `GEAR HANDLE POSITION` takes percent over 100 as the SDK gives it.
+
 ## [0.47.0] - 2026-10-09
 
 ### Added
