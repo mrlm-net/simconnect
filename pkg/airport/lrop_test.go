@@ -89,3 +89,25 @@ func TestTaxiwayBridgesDrawn(t *testing.T) {
 		t.Errorf("%d bridge features", n)
 	}
 }
+
+// TestLROPThresholdEntries: 26L has no taxiway at its take-off threshold
+// (its east end; a departure backtracks), 08R and 26R have.
+func TestLROPThresholdEntries(t *testing.T) {
+	g := lropGraph(t)
+	for end, want := range map[string]bool{"26L": false, "08R": true, "26R": true} {
+		if got := g.ThresholdEntry(end); got != want {
+			es, _ := g.RunwayEntries(end)
+			first := -1.0
+			if len(es) > 0 {
+				first = es[0].FromThreshold
+			}
+			t.Errorf("%s: entry at the threshold %v, want %v (first entry %.0f m in)", end, got, want, first)
+		}
+	}
+	for _, end := range []string{"08L", "08R", "26L", "26R"} {
+		es, _ := g.RunwayEntries(end)
+		if len(es) > 0 {
+			t.Logf("%s: first entry %s %.0f m from the threshold", end, es[0].Taxiway, es[0].FromThreshold)
+		}
+	}
+}

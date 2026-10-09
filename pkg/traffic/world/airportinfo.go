@@ -112,7 +112,7 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
 	}
 	lim := airport.LimitsFor(l, procs)
-	svc := nav.NewATISService(l.Name, l, nav.RunwayLimitsFrom(lim), int(lim.TransitionAltitudeFt), opts...)
+	svc := nav.NewATISService(l.Name, l, st.runwayLimits(l, lim), int(lim.TransitionAltitudeFt), opts...)
 	st.atis[icao] = svc
 	return svc, true
 }
@@ -243,7 +243,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 				wi.DistanceNM = calc.HaversineMeters(ac.Latitude, ac.Longitude, l.Latitude, l.Longitude) / 1852
 			}
 			out.Weather = wi
-			use := nav.ActiveRunways(l, *wx, nav.RunwayLimitsFrom(lim))
+			use := nav.ActiveRunways(l, *wx, st.runwayLimits(l, lim))
 			out.Use = &useInfo{Departure: use.Departure.Name, Arrival: use.Arrival.Name, HeadwindKts: use.HeadwindKts,
 				CrosswindKts: use.CrosswindKts, WithinLimits: use.WithinLimits, Approach: use.Approach}
 			// The runway in use as traffic uses it: held through wind shifts.
@@ -282,4 +282,24 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 		out.ILS = st.core.ilsOf(icao)
 		writeJSON(w, out)
 	})
+}
+
+// runwayLimits are lim's runway limits for g's airport, with its runway
+// ends' entries at the take-off threshold (parallels: take-offs where no
+// backtrack is needed).
+func runwayLimits(g *airport.Graph, lim airport.Limits) nav.RunwayLimits {
+	r := nav.RunwayLimitsFrom(lim)
+	if g != nil {
+		r.ThresholdEntry = g.ThresholdEntry
+	}
+	return r
+}
+
+// runwayLimits is runwayLimits on l's graph, when it can be built.
+func (st *state) runwayLimits(l *airport.Layout, lim airport.Limits) nav.RunwayLimits {
+	g, err := st.cache.Graph(l.ICAO)
+	if err != nil {
+		g = nil
+	}
+	return runwayLimits(g, lim)
 }

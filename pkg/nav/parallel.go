@@ -130,6 +130,26 @@ func withParallels(l *airport.Layout, u RunwayUse, cands []runwayCandidate, lim 
 		mode = lim.Parallel // the airport's rule, never more than the spacing allows
 	}
 	u.Parallel, u.SpacingM = mode, minSpacing
+	// One entered at its take-off threshold, the other only by backtracking
+	// (a 180 on the runway): take-offs from the first, landings on the
+	// other, which they vacate ahead of its far end anyway (live, LROP: 26L
+	// has no taxiway at its east end, 26R has).
+	if lim.ThresholdEntry != nil {
+		var with, without []airport.RunwayEnd
+		for _, e := range ends {
+			if lim.ThresholdEntry(e.Name) {
+				with = append(with, e)
+			} else {
+				without = append(without, e)
+			}
+		}
+		if len(with) > 0 && len(without) > 0 {
+			u.Parallel = ParallelSegregated
+			u.Departures, u.Departure = with, with[0]
+			u.Arrivals, u.Arrival = without, without[0]
+			return u
+		}
+	}
 	switch mode {
 	case ParallelSegregated:
 		u.Departures = []airport.RunwayEnd{ends[1]}
