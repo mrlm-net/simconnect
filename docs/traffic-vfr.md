@@ -143,6 +143,21 @@ Not yet:
 
 - Touch-and-goes from a straight-in or base join fly the circuit afterwards on its own side.
 
+## Through the zone: reports and leaving
+
+For a VFR flight through a controlled aerodrome's zone, the counterpart of `VFRForLanding` and `JoinCircuit`, each with its readback through `Readback`:
+
+| Who | Phrase | Said | Read back |
+|---|---|---|---|
+| Tower | `ReportAt(pos, cs, point)` | "OKABC, report at NOVEMBER" | "Wilco, OKABC" |
+| Tower | `ReportLeavingZone(pos, cs, via)` | "OKABC, report leaving the zone via NOVEMBER" | "Wilco, OKABC" |
+| Pilot | `AtPoint(pos, cs, point, level)` | "OKABC, NOVEMBER, 2500 feet" | (a report) |
+| Pilot | `LeavingZone(pos, cs, via)` | "OKABC, leaving the zone via NOVEMBER" | (a report) |
+| Tower | `FrequencyChangeApproved(pos, cs, squawk)` | "OKABC, frequency change approved, squawk 7000" | "Frequency change approved, squawk 7000, OKABC" |
+| Tower | `ContactFIS(pos, cs, station, freq)` | "OKABC, contact Praha Information 126.1" | "Praha Information 126.1, OKABC" |
+
+An arrival's `ReportAt` comes after its first call (`VFRForLanding`) and before `JoinCircuit`; a departure's `ReportLeavingZone` with or after its departure instructions (`VFRDepartureInstructions`). `PosInformation` is flight information's position.
+
 ## Jetbridges (#572)
 
 Jetbridges for our traffic are blocked by the simulator.

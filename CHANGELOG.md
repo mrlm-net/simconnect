@@ -57,6 +57,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.39.0] - 2026-10-09
+
+### Added
+
+- VFR phrases through a controlled zone, with their readbacks (the MyCrew app's request): `ReportAt` ("report at NOVEMBER") and `ReportLeavingZone` ("report leaving the zone via NOVEMBER"), both read back "wilco"; the crew's reports `AtPoint` and `LeavingZone`; `FrequencyChangeApproved` (optionally with a squawk) and `ContactFIS` to flight information (`PosInformation`). See docs/traffic-vfr.md.
+
+### Fixed
+
+- CHANGELOG: the 0.37.0 heading, lost in the 0.38.0 entry, is back.
+
 ## [0.38.0] - 2026-10-09
 
 ### Added
@@ -76,6 +86,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Traffic information is checked when it is said: dropped once the traffic is behind and moving away, else with the clock position and distance of that moment (live, "7 o'clock, 1 mile, opposite direction" 37 s late, the traffic gone by).
 - Circuit instructions rank with landing clearances on the agenda, ahead of traffic information.
 - Approach no longer gives instructions to an IFR arrival still going around with the tower, from the conflict watch either (live, CSA1958 "number 4, reduce speed" 12 s into its go-around).
+
+## [0.37.0] - 2026-10-09
 
 ### Changed
 
