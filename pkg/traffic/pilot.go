@@ -12,23 +12,24 @@ import (
 
 // Pilot intents.
 const (
-	IntentReadback         Intent = "readback"          // a clearance read back
-	IntentRequestWeather   Intent = "request_weather"   // the crew asks for the wind and QNH
-	IntentEstablished      Intent = "established"       // the crew reports established on the localizer
-	IntentRequestDirect    Intent = "request_direct"    // the crew asks to fly direct to a fix
-	IntentRequestClearance Intent = "request_clearance" // the departure clearance, first call to delivery
-	IntentRequestStartUp   Intent = "request_start_up"  // ready for start-up, first call to ground
-	IntentRequestPushback  Intent = "request_pushback"  // ready for push
-	IntentRequestTaxi      Intent = "request_taxi"      // ready to taxi
-	IntentRequestDescent   Intent = "request_descent"   // ready to descend, to the centre or approach (#686)
-	IntentReadyDeparture   Intent = "ready_departure"   // holding short of the runway, ready for departure
-	IntentHoldingShort     Intent = "holding_short"     // stopped short of a runway to cross
-	IntentCheckIn          Intent = "check_in"          // first call on a frequency
-	IntentTCASRA           Intent = "tcas_ra"           // a crew flying a TCAS RA (#450)
-	IntentClearOfConflict  Intent = "clear_of_conflict" // the RA over, back to the clearance
-	IntentVacated          Intent = "vacated"           // runway vacated
-	IntentCorrection       Intent = "correction"        // controller: negative, the clearance again
-	IntentSayAgain         Intent = "say_again"         // controller: say again
+	IntentReadback          Intent = "readback"            // a clearance read back
+	IntentRequestWeather    Intent = "request_weather"     // the crew asks for the wind and QNH
+	IntentEstablished       Intent = "established"         // the crew reports established on the localizer
+	IntentRequestDirect     Intent = "request_direct"      // the crew asks to fly direct to a fix
+	IntentRequestStandDelay Intent = "request_stand_delay" // the crew asks to stay on the stand a while (#621)
+	IntentRequestClearance  Intent = "request_clearance"   // the departure clearance, first call to delivery
+	IntentRequestStartUp    Intent = "request_start_up"    // ready for start-up, first call to ground
+	IntentRequestPushback   Intent = "request_pushback"    // ready for push
+	IntentRequestTaxi       Intent = "request_taxi"        // ready to taxi
+	IntentRequestDescent    Intent = "request_descent"     // ready to descend, to the centre or approach (#686)
+	IntentReadyDeparture    Intent = "ready_departure"     // holding short of the runway, ready for departure
+	IntentHoldingShort      Intent = "holding_short"       // stopped short of a runway to cross
+	IntentCheckIn           Intent = "check_in"            // first call on a frequency
+	IntentTCASRA            Intent = "tcas_ra"             // a crew flying a TCAS RA (#450)
+	IntentClearOfConflict   Intent = "clear_of_conflict"   // the RA over, back to the clearance
+	IntentVacated           Intent = "vacated"             // runway vacated
+	IntentCorrection        Intent = "correction"          // controller: negative, the clearance again
+	IntentSayAgain          Intent = "say_again"           // controller: say again
 )
 
 // Pilot parameters.
@@ -123,6 +124,20 @@ func RequestWeather(pos Position, cs string) Transmission {
 
 // RequestDirect is a crew asking to fly direct to fix: "CSA1, request
 // direct GOLOP" (the project's wording); the answer is ClearedDirectTo.
+// RequestStandDelay is a crew on its stand asking to push later (#621):
+// "Ruzyne Ground, CSA123, stand B9, request delay on stand, about 10
+// minutes, waiting for passengers".
+func RequestStandDelay(station, cs, stand string, minutes int, why string) Transmission {
+	text := fmt.Sprintf("%s, stand %s, request delay on stand, about %d minutes", cs, stand, minutes)
+	if why != "" {
+		text += ", " + why
+	}
+	if station != "" {
+		text = station + ", " + text
+	}
+	return pilotTx(PosGround, cs, IntentRequestStandDelay, map[string]string{ParamStand: stand}, text)
+}
+
 func RequestDirect(pos Position, cs, fix string) Transmission {
 	return pilotTx(pos, cs, IntentRequestDirect, map[string]string{ParamFix: fix}, cs+", request direct "+fix)
 }
@@ -138,6 +153,19 @@ func RequestDescent(pos Position, cs string) Transmission {
 // (Doc 4444 12.3.4.7 a, its intentions; #621).
 func RequestTaxiIntersection(cs, entry string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamEntry: entry}, cs+", request taxi, intersection "+entry)
+}
+
+// RequestTaxiRunway is a crew asking to depart from another runway than
+// the one it was cleared for (#621): "CSA1, request taxi, request runway 30
+// for departure".
+func RequestTaxiRunway(cs, runway string) Transmission {
+	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamRunway: runway}, cs+", request taxi, request runway "+runway+" for departure")
+}
+
+// UnableRunway is ground's answer when the runway a crew asked for cannot be
+// given: "CSA1, unable, runway 24 in use".
+func UnableRunway(cs, inUse string) Transmission {
+	return Transmission{Position: PosGround, Callsign: cs, Intent: IntentAcknowledge, Text: cs + ", unable, runway " + inUse + " in use"}
 }
 
 // RequestTaxi is a departure pushed back and ready to taxi.
@@ -691,4 +719,18 @@ func AssignedClearance(t Transmission) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// IntentStandDelayApproved: ground agrees to a stand delay (#621).
+const IntentStandDelayApproved Intent = "stand_delay_approved"
+
+// StandDelayApproved is ground's answer to RequestStandDelay: "CSA1, roger,
+// call when ready for pushback" ("for start-up" when it taxis out under its
+// own power).
+func StandDelayApproved(cs string, startUp bool) Transmission {
+	what := "pushback"
+	if startUp {
+		what = "start-up"
+	}
+	return Transmission{Position: PosGround, Callsign: cs, Intent: IntentStandDelayApproved, Text: cs + ", roger, call when ready for " + what}
 }

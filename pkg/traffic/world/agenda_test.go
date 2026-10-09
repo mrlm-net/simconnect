@@ -115,3 +115,18 @@ func TestAgendaTempo(t *testing.T) {
 		t.Errorf("later: %.2f, want 1", got)
 	}
 }
+
+// TestAgendaTempoQueue: half a minute queued on the frequency speeds it to
+// 1.25, a minute or more to tempoMax.
+func TestAgendaTempoQueue(t *testing.T) {
+	now := time.Date(2026, 10, 9, 14, 35, 0, 0, time.UTC)
+	clear := now.Add(30 * time.Second)
+	a := &agenda{radio: func(icao, freq string) time.Time { return clear }}
+	if got := a.tempo("LKPR", "ground", now); got < 1.24 || got > 1.26 {
+		t.Errorf("30 s queued: %.2f, want 1.25", got)
+	}
+	clear = now.Add(2 * time.Minute)
+	if got := a.tempo("LKPR", "ground", now); got != tempoMax {
+		t.Errorf("2 min queued: %.2f, want %.2f", got, tempoMax)
+	}
+}

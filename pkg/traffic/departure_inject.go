@@ -2289,3 +2289,20 @@ func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
 func (c *TaxiController) standsChanged() bool {
 	return c.pushPose != nil && c.req.StandOccupied != nil && !slices.Equal(c.emptyStands(), c.emptyNear)
 }
+
+// DelayPushback has a departure still waiting on its stand stay d longer
+// (the crew asked, #621): its push request comes d after it otherwise
+// would, at the earliest d from now. False when it is no longer waiting.
+func (c *TaxiController) DelayPushback(d time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state != TaxiAwaitingPushback || c.pushCleared || c.inj == nil {
+		return false
+	}
+	now := c.now()
+	if c.gateAt.Before(now) {
+		c.gateAt = now
+	}
+	c.gateAt = c.gateAt.Add(d)
+	return true
+}

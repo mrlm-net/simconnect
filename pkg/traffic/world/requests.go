@@ -126,6 +126,12 @@ func (it *controlled) onRequest(req string) {
 		}
 		it.say(traffic.RequestStartUp("", it.Tail, "", ""))
 	case "taxi":
+		// Some crews ask for another runway (#621).
+		if r := it.crewRunway(); r != "" {
+			it.askedRunway = r
+			it.say(traffic.RequestTaxiRunway(it.Tail, r))
+			break
+		}
 		// Some crews ask to take the runway from an intersection (#621).
 		if e := it.crewEntry(); e != "" {
 			it.askedEntry = e
@@ -210,6 +216,7 @@ func (it *controlled) answer(req string) {
 		return
 	}
 	if req == "taxi" {
+		it.grantRunway()
 		it.grantEntry()
 		// Round the places other aircraft take now, so the clearance names
 		// the route it will taxi.
@@ -267,6 +274,9 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 					it.onRequest(req)
 				}
 				it.mu.Unlock()
+				if req == "" {
+					it.maybeStandDelay()
+				}
 			})
 		})
 	})
@@ -294,3 +304,38 @@ func (it *controlled) actAfterReadback(pos traffic.Position, what string, f func
 // playerPushClearM: ours on a stand within this of the user aircraft
 // pushing back wait to push (#739).
 const playerPushClearM = 150.0
+
+// A departure's crew, now with ground and not yet ready, now and then asks
+// to stay on the stand a while (#621): standDelayShare of them, for
+// standDelayMin to standDelayMax, for one of standDelayWhy.
+const (
+	standDelayShare = 0.03
+	standDelayMin   = 5 * time.Minute
+	standDelayMax   = 15 * time.Minute
+)
+
+var standDelayWhy = []string{"waiting for passengers", "waiting for the load sheet", "a technical check", "waiting for catering", ""}
+
+// maybeStandDelay has the crew of it ask ground for a delay on the stand,
+// rarely; ground agrees and the push request comes that much later.
+func (it *controlled) maybeStandDelay() {
+	if it.dep == nil || it.gates.Load() || rand.Float64() >= standDelayShare {
+		return
+	}
+	d := standDelayMin + time.Duration(rand.Int64N(int64(standDelayMax-standDelayMin)))
+	minutes := int(d.Round(time.Minute).Minutes())
+	p := it.cc.pending
+	p.later(it.clearAt(traffic.PosGround).Add(crewActDelay+p.jitter(crewActJitter)), func() {
+		var ok bool
+		if err := it.cc.do(func() error { ok = it.dep.DelayPushback(d); return nil }); err != nil || !ok {
+			return // pushing already, or asked: no delay to ask for
+		}
+		it.mu.Lock()
+		stand := it.view.Stand
+		it.mu.Unlock()
+		station, _ := it.station(traffic.PosGround)
+		it.say(traffic.RequestStandDelay(station, it.Tail, stand, minutes, standDelayWhy[rand.IntN(len(standDelayWhy))]))
+		it.cc.log.printf("%-6s crew: delay on the stand, %d minutes", it.Tail, minutes)
+		it.call(traffic.PosGround, prioStand, func() { it.say(traffic.StandDelayApproved(it.Tail, it.dep.FacesOut())) })
+	})
+}

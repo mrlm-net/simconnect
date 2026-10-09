@@ -16,6 +16,7 @@ type departureCtl interface {
 	AvoidOccupied(occ []airport.Occupied) bool
 	ClimbTo(pos airport.LatLon, altFt, ft float64) error
 	SetPushbackAt(at time.Time) bool
+	DelayPushback(d time.Duration) bool
 	ClearPushback()
 	FacesOut() bool
 	ClearToTaxi()

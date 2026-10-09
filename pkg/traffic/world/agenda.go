@@ -25,12 +25,12 @@ const (
 	prioSeparation                 // a conflict's resolution: stop descent, descend, turn
 	prioTraffic                    // traffic information
 	prioLanding                    // cleared to land
-	prioRunway                   // take-off, line-up, crossing
-	prioApproach                 // approach clearances
-	prioClearing                 // taxi for an aircraft in the way: a vacated arrival
-	prioTaxi                     // taxi for a departure
-	prioStand                    // pushback, start-up
-	prioDelivery                 // departure clearance
+	prioRunway                     // take-off, line-up, crossing
+	prioApproach                   // approach clearances
+	prioClearing                   // taxi for an aircraft in the way: a vacated arrival
+	prioTaxi                       // taxi for a departure
+	prioStand                      // pushback, start-up
+	prioDelivery                   // departure clearance
 )
 
 // safety: a go-around or a separation instruction, said at once: no
@@ -179,10 +179,13 @@ func (cc *controlCenter) callAt(icao string, pos traffic.Position, tail string, 
 // pace, up to tempoMax; for tempoUrgentFor after a safety call it is at
 // least tempoUrgent.
 const (
-	tempoPerCall   = 0.05
-	tempoMax       = 1.3
-	tempoUrgent    = 1.15
-	tempoUrgentFor = 15 * time.Second
+	tempoPerCall = 0.05
+	// tempoPerQueueMinute: per minute of transmissions queued on the
+	// frequency.
+	tempoPerQueueMinute = 0.5
+	tempoMax            = 1.3
+	tempoUrgent         = 1.15
+	tempoUrgentFor      = 15 * time.Second
 )
 
 // tempo is how fast freq at icao is spoken at now (1 normal).
@@ -196,6 +199,14 @@ func (a *agenda) tempo(icao, freq string, now time.Time) float64 {
 		}
 	}
 	t := 1 + tempoPerCall*float64(n)
+	// What is said already and still to come on it (readbacks, crews'
+	// calls): a long queue speeds it up as well (live, ground 45 s behind
+	// with three pushbacks asked at once, TVS1040 answered after 83 s).
+	if a.radio != nil {
+		if q := a.radio(icao, freq).Sub(now); q > 0 {
+			t = max(t, 1+tempoPerQueueMinute*q.Minutes())
+		}
+	}
 	if now.Before(a.urgent[icao+" "+freq]) {
 		t = max(t, tempoUrgent)
 	}

@@ -43,6 +43,12 @@ func (r *remoteDep) SetPushbackAt(at time.Time) bool {
 	return o0
 }
 
+func (r *remoteDep) DelayPushback(d time.Duration) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "DelayPushback", []any{d}, &o0))
+	return o0
+}
+
 func (r *remoteDep) ClearPushback() {
 	r.c.dropped(r.c.call(r.t, "ClearPushback", []any{}))
 }
