@@ -78,6 +78,9 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 func (c *ArrivalController) VectorDue() (Vector, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.holding != nil {
+		return Vector{}, false // in the hold: no vectors
+	}
 	for len(c.vectors) > 0 {
 		v := c.vectors[0]
 		if v.At != (airport.LatLon{}) {

@@ -114,6 +114,7 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	c.proc.Waypoints, c.procNext = rounded, 0
 	c.corners, c.cornerNames, c.cornerNext = nil, nil, -1
 	c.tromboneNM += x
+	c.baseCall = true
 	a.ExtraNM = 2 * x
 	a.Left -= time.Duration(a.ExtraNM / kts * float64(time.Hour))
 	if a.Left < 0 {
@@ -121,4 +122,28 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	}
 	c.note(fmt.Sprintf("circuit: downwind extended %.1f NM, %s left", x, a.Left.Round(time.Second)), nil)
 	return a, nil
+}
+
+// BaseCallLeadM: the controller calls the base turn this far before the
+// aircraft reaches it, so the crew turns there.
+const BaseCallLeadM = 400.0
+
+// BaseDue reports, once, that a VFR arrival whose downwind was extended
+// with "I'll call your base" (InstrExtendCallBase) has reached its base
+// turn: the controller says InstrTurnBase now.
+func (c *ArrivalController) BaseDue() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if !c.baseCall || ci == nil || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	thr, _ := ci.Point(LegRunway)
+	base, _ := ci.Point(LegBase)
+	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
+	if alongHeading(thr.Position, ci.heading, c.last.Position) > baseAlong+BaseCallLeadM {
+		return false
+	}
+	c.baseCall = false
+	return true
 }

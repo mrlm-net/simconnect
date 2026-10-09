@@ -473,6 +473,15 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 				safe("schedule", func() { sched.tick(now) })
 				safe("sequences", func() { seqs.tick(now) })
 				air := cc.world.Aircraft()
+				// Ours by our call sign, not the object's first ATC ID: a
+				// turnaround flies on in the arrival's object (live, KLM1433
+				// seen as KLM185, not steered as our departure).
+				tails := cc.ownTails()
+				for i := range air {
+					if tail := tails[air[i].ObjectID]; tail != "" {
+						air[i].Tail = tail
+					}
+				}
 				safe("separation", func() {
 					sep.needed = cc.separationNeeded(air, sched.airports())
 					sep.tick(now, air)

@@ -57,6 +57,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.32.0] - 2026-10-09
+
+### Added
+
+- VFR circuit: "extend downwind, I'll call your base" (read back "extend downwind"), and the tower calls "turn base now" at the extended base turn (`ArrivalController.BaseDue`).
+- `ArrivalController.DescendTo`: an arrival on its STAR descends to a level now.
+
+### Fixed
+
+- Sequencing at the merge: a new arrival goes ahead of one already sequenced on a converging STAR only when it reaches their shared fix a full merge spacing ahead. Otherwise it goes behind, whatever its time to the runway. Tactical swaps follow the same rule (live, OKGOZ on GOLO4S slotted ahead of EZY131 on LOMK8S, side by side at FL100; they met at 0.4 NM with TCAS RAs).
+- No shortcut for an arrival with traffic within 10 NM and 2000 ft (live, OKGOZ sent direct PR517 2.6 NM from EZY131 at its level).
+- Arrival conflicts: the trailer level with or below the other is sent down 1000 ft under it (`ArrivalController.DescendTo`), never climbed and no longer only slowed. The one-time level step now counts per pair, not per aircraft (EZY131's earlier one skipped it for OKGOZ).
+- Conflict and TCAS checks see our turnarounds by their own call sign, not the arrival's ATC ID (live, KLM1433 seen as KLM185, so it was not steered as our departure).
+- Spoken taxi routes: a single short taxiway between longer ones is said. Only chains of short stubs are left out (live, AFR898 "via JB, J, B" skipped 128 m of D).
+- Crews ask "say again" for 1 in 200 clearances by default, down from 1 in 50, which came up too often.
+- Sequencing: a newcomer, or an arrival moving up, passes one already sequenced only when that costs the one behind no more than a tactical swap may (live, OKUFC, a DA62 joining 11 NM out, moved up past TVS220 and TVS1568 and cost them minutes).
+- Holds only at a named STAR fix, never at a point of a rounded turn (live, TVS1568 told "hold at WP0"). The dog-leg's vectors are dropped on entering the hold (it was told "fly heading 061" right after "hold").
+- `DescendTo` and `BaseDue` are on the World's arrival interface and the remote actuator.
+
 ## [0.31.5] - 2026-10-09
 
 Releases 0.19.0 to 0.31.4 are described in their GitHub release notes.

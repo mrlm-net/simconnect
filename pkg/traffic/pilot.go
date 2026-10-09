@@ -374,7 +374,10 @@ func Readback(t Transmission) (Transmission, bool) {
 	case IntentFollow:
 		s = "Number " + p[ParamNumber]
 	case IntentCircuitInstr, IntentCircuitDelay:
-		s = capital(p[ParamInstr])
+		// "extend downwind, I'll call your base" is read back "extend
+		// downwind": the base call is the controller's part.
+		instr, _, _ := strings.Cut(p[ParamInstr], ", I'll call")
+		s = capital(instr)
 	case IntentTouchAndGo:
 		s = "Cleared touch and go"
 		if p[ParamInstr] != "" {
