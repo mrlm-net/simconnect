@@ -24,7 +24,8 @@ track.WriteFile("LKPR-LPPT.jsonl.gz")
 ```
 
 - One data definition, one request per object, `SIMCONNECT_PERIOD_SIM_FRAME` (`EveryFrames` thins it). Up to 63 objects at once.
-- `OnSample` hears each sample as it comes, for a live view or a stream.
+- `OnSample` hears each sample as it comes, for a live view or a stream; `Listen(f)` adds more listeners (the function it returns removes one).
+- `Watch(objectID, everyFrames)` streams an object's samples to the listeners without keeping a Track (a pilot's every frame); `Unwatch` ends it. Watched and recorded at once, one request serves both at the finer interval, and the Track keeps only its own share of the frames.
 - `Snapshot` copies a Track while it records; `Reset` asks again on a new connection.
 - The recorder never reads the connection itself: feed it every message.
 

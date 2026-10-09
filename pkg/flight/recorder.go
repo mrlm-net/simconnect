@@ -115,14 +115,33 @@ type Recorder struct {
 	byReq   map[uint32]*recording
 	byObj   map[uint32]uint32
 	// OnSample, when set, hears each sample as it comes (a live view, a
-	// puppet's stream); it must not block.
-	OnSample func(objectID uint32, s Sample)
+	// puppet's stream); it must not block. Listen adds more.
+	OnSample  func(objectID uint32, s Sample)
+	listeners map[int]func(objectID uint32, s Sample)
+	nextL     int
 }
 
+// recording is one object asked for: recorded into track (nil while only
+// watched), watched by watchers; its frames every interval+1 (the finer of
+// the recording's and the watch's).
 type recording struct {
-	obj      uint32
-	track    *Track
-	interval uint32
+	obj        uint32
+	track      *Track
+	recEvery   uint32 // the recording's interval
+	watchers   int
+	watchEvery uint32 // the watch's interval
+	interval   uint32 // asked of the simulator
+	skipped    int    // frames since the last kept in the track
+}
+
+func (rec *recording) want() uint32 {
+	switch {
+	case rec.track != nil && rec.watchers > 0:
+		return min(rec.recEvery, rec.watchEvery)
+	case rec.track != nil:
+		return rec.recEvery
+	}
+	return rec.watchEvery
 }
 
 // NewRecorder returns a Recorder on client, its IDs from base
@@ -131,11 +150,26 @@ func NewRecorder(client Client, base uint32) *Recorder {
 	if base == 0 {
 		base = DefaultRecorderBase
 	}
-	return &Recorder{client: client, base: base, byReq: map[uint32]*recording{}, byObj: map[uint32]uint32{}}
+	return &Recorder{client: client, base: base, byReq: map[uint32]*recording{}, byObj: map[uint32]uint32{}, listeners: map[int]func(uint32, Sample){}}
+}
+
+// Listen adds f to those hearing each sample (OnSample too); the function
+// returned removes it. f must not block.
+func (r *Recorder) Listen(f func(objectID uint32, s Sample)) (remove func()) {
+	r.mu.Lock()
+	r.nextL++
+	id := r.nextL
+	r.listeners[id] = f
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		delete(r.listeners, id)
+		r.mu.Unlock()
+	}
 }
 
 // Reset forgets the definition for a new connection on client (nil: the
-// same); recordings going on are asked again.
+// same); recordings and watches going on are asked again.
 func (r *Recorder) Reset(client Client) error {
 	r.mu.Lock()
 	if client != nil {
@@ -165,40 +199,106 @@ type RecordOptions struct {
 // ErrRecording: the object is recorded already, or no request ID is left.
 var ErrRecording = fmt.Errorf("flight: cannot record")
 
-// Start records objectID from its next frame on.
-func (r *Recorder) Start(objectID uint32, o RecordOptions) error {
-	r.mu.Lock()
-	if _, ok := r.byObj[objectID]; ok {
-		r.mu.Unlock()
-		return fmt.Errorf("%w: object %d recorded already", ErrRecording, objectID)
+func every(frames uint32) uint32 {
+	if frames > 1 {
+		return frames - 1
 	}
-	req := uint32(0)
+	return 0
+}
+
+// slot is objectID's recording, made with a request ID when new; r.mu held.
+func (r *Recorder) slot(objectID uint32) (*recording, error) {
+	if req, ok := r.byObj[objectID]; ok {
+		return r.byReq[req], nil
+	}
 	for id := r.base + 1; id <= r.base+RecorderIDs; id++ {
 		if _, used := r.byReq[id]; !used {
-			req = id
-			break
+			rec := &recording{obj: objectID}
+			r.byReq[id], r.byObj[objectID] = rec, id
+			return rec, nil
 		}
 	}
-	if req == 0 {
+	return nil, fmt.Errorf("%w: %d objects recorded already", ErrRecording, RecorderIDs)
+}
+
+// Start records objectID from its next frame on (watched already: on the
+// same request).
+func (r *Recorder) Start(objectID uint32, o RecordOptions) error {
+	r.mu.Lock()
+	rec, err := r.slot(objectID)
+	if err == nil && rec.track != nil {
+		err = fmt.Errorf("%w: object %d recorded already", ErrRecording, objectID)
+	}
+	if err != nil {
 		r.mu.Unlock()
-		return fmt.Errorf("%w: %d objects recorded already", ErrRecording, RecorderIDs)
+		return err
 	}
-	interval := uint32(0)
-	if o.EveryFrames > 1 {
-		interval = o.EveryFrames - 1
-	}
-	rec := &recording{obj: objectID, interval: interval, track: &Track{Version: TrackVersion, Title: o.Title, Model: o.Model, Note: o.Note,
-		User: objectID == types.SIMCONNECT_OBJECT_ID_USER, Started: time.Now()}}
-	r.byReq[req], r.byObj[objectID] = rec, req
+	rec.recEvery = every(o.EveryFrames)
+	rec.track = &Track{Version: TrackVersion, Title: o.Title, Model: o.Model, Note: o.Note,
+		User: objectID == types.SIMCONNECT_OBJECT_ID_USER, Started: time.Now()}
 	r.mu.Unlock()
 	return r.request(rec)
 }
 
-// request defines the frame (once a connection) and asks for rec's object.
+// Watch streams objectID's samples to the listeners (OnSample, Listen)
+// every this many frames (0 or 1: every frame), without keeping a Track:
+// a pilot's or a live view's. Watched and recorded, one request serves
+// both, at the finer of the two. Each Watch wants its Unwatch.
+func (r *Recorder) Watch(objectID uint32, everyFrames uint32) error {
+	r.mu.Lock()
+	rec, err := r.slot(objectID)
+	if err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	e := every(everyFrames)
+	if rec.watchers == 0 || e < rec.watchEvery {
+		rec.watchEvery = e
+	}
+	rec.watchers++
+	r.mu.Unlock()
+	return r.request(rec)
+}
+
+// Unwatch ends a Watch of objectID; the last one, with no recording,
+// stops asking for it.
+func (r *Recorder) Unwatch(objectID uint32) {
+	r.mu.Lock()
+	req, ok := r.byObj[objectID]
+	if !ok || r.byReq[req].watchers == 0 {
+		r.mu.Unlock()
+		return
+	}
+	rec := r.byReq[req]
+	rec.watchers--
+	r.mu.Unlock()
+	r.settle(rec)
+}
+
+// settle asks for rec as it is wanted now, or no more.
+func (r *Recorder) settle(rec *recording) {
+	r.mu.Lock()
+	req := r.byObj[rec.obj]
+	if rec.track == nil && rec.watchers == 0 {
+		delete(r.byObj, rec.obj)
+		delete(r.byReq, req)
+		client := r.client
+		r.mu.Unlock()
+		_ = client.RequestDataOnSimObject(req, r.base, rec.obj, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+		return
+	}
+	r.mu.Unlock()
+	_ = r.request(rec)
+}
+
+// request defines the frame (once a connection) and asks for rec's object
+// at the interval wanted.
 func (r *Recorder) request(rec *recording) error {
 	r.mu.Lock()
 	client, defined, req := r.client, r.defined, r.byObj[rec.obj]
 	r.defined = true
+	rec.interval = rec.want()
+	interval := rec.interval
 	r.mu.Unlock()
 	if !defined {
 		for i, v := range recVars {
@@ -207,25 +307,24 @@ func (r *Recorder) request(rec *recording) error {
 			}
 		}
 	}
-	return client.RequestDataOnSimObject(req, r.base, rec.obj, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, rec.interval, 0)
+	return client.RequestDataOnSimObject(req, r.base, rec.obj, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, interval, 0)
 }
 
 // Stop ends objectID's recording and returns its Track (nil when it was
-// not recorded).
+// not recorded); a watch of it goes on.
 func (r *Recorder) Stop(objectID uint32) *Track {
 	r.mu.Lock()
 	req, ok := r.byObj[objectID]
-	if !ok {
+	if !ok || r.byReq[req].track == nil {
 		r.mu.Unlock()
 		return nil
 	}
 	rec := r.byReq[req]
-	delete(r.byObj, objectID)
-	delete(r.byReq, req)
-	client := r.client
+	t := rec.track
+	rec.track = nil
 	r.mu.Unlock()
-	_ = client.RequestDataOnSimObject(req, r.base, objectID, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
-	return rec.track
+	r.settle(rec)
+	return t
 }
 
 // Snapshot is a copy of objectID's Track so far (nil when not recorded).
@@ -233,7 +332,7 @@ func (r *Recorder) Snapshot(objectID uint32) *Track {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	req, ok := r.byObj[objectID]
-	if !ok {
+	if !ok || r.byReq[req].track == nil {
 		return nil
 	}
 	t := *r.byReq[req].track
@@ -263,11 +362,26 @@ func (r *Recorder) Handle(msg engine.Message) bool {
 	}
 	vals := unsafe.Slice((*float64)(unsafe.Pointer(&d.DwData)), len(recVars))
 	s := sampleOf(vals)
-	rec.track.Samples = append(rec.track.Samples, s)
+	if rec.track != nil {
+		// A watch asking finer frames than the recording: kept every
+		// (recEvery+1)/(interval+1)-th.
+		keepEvery := int((rec.recEvery + 1) / (rec.interval + 1))
+		if rec.skipped++; rec.skipped >= keepEvery {
+			rec.skipped = 0
+			rec.track.Samples = append(rec.track.Samples, s)
+		}
+	}
 	on, obj := r.OnSample, rec.obj
+	ls := make([]func(uint32, Sample), 0, len(r.listeners))
+	for _, l := range r.listeners {
+		ls = append(ls, l)
+	}
 	r.mu.Unlock()
 	if on != nil {
 		on(obj, s)
+	}
+	for _, l := range ls {
+		l(obj, s)
 	}
 	return true
 }
