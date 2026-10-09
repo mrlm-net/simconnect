@@ -72,3 +72,14 @@ replay.Apply(s)
 **As a ghost** (`Ghost`): an AI object you created (`AICreateNonATCAircraft`) and the traffic `Injector` took over (`Takeover`). `Apply` places it as flown (`Injector.PlaceFlown`), with its own CG height on the ground, so another model rolls on its own wheels. Its gear, flaps, spoilers, lights, engines (running from N1 15 %) and throttle follow.
 
 A frame's sample is interpolated (`At`), so the replay is as smooth as the sim's frame rate. Not measured live yet: the elevator axis sign, and the control surfaces moving on a frozen user aircraft.
+
+## Learning how a type is flown
+
+`Learn(model, tracks...)` reads the player's recorded flights of a type and gives a `Learned` profile, each value the median of the flights that show it:
+
+- the take-off: rotation speed (the nose 1° above the roll's pitch), lift-off speed and pitch, the initial climb pitch (lift-off to 1000 ft), the gear-up height;
+- the climb-out: the height of the first flap retraction, and the speed each detent was left at (`FlapsUpKts`);
+- the approach: the speed and height each detent was reached at (`FlapsDownKts`, `FlapsDownAGLFt`), the gear-down height, the final approach speed (1000 to 200 ft);
+- the landing: the flare height (where the nose started up over the final's pitch) and the sink rate at touchdown.
+
+`pilot.Config.WithLearned` takes them into the pilot flying's profile where the config leaves a value to its default.
