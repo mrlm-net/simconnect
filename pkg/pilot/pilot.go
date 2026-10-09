@@ -484,3 +484,41 @@ func (e *Engine) value(in Input, out *Output, name string, now, want, tol float6
 	}
 	e.act(in, out, setValue(name, want), false)
 }
+
+// WithLearned takes what a type's recorded flights show (flight.Learn,
+// #966) where c leaves a value to its default: the acceleration and gear
+// heights, the approach speed, each flap detent's speeds (FlapStepKts from
+// the detents' spacing on the approach).
+func (c Config) WithLearned(l flight.Learned) Config {
+	use := func(v *float64, learned float64) {
+		if *v == 0 && learned > 0 {
+			*v = learned
+		}
+	}
+	use(&c.AccelAGLFt, l.AccelAGLFt)
+	use(&c.GearDownAGLFt, l.GearDownAGLFt)
+	use(&c.ApproachKts, l.ApproachKts)
+	if c.FlapStepKts == 0 && len(l.FlapsDownKts) >= 2 {
+		var ks []int
+		for k := range l.FlapsDownKts {
+			ks = append(ks, k)
+		}
+		lo, hi := ks[0], ks[0]
+		for _, k := range ks {
+			lo, hi = min(lo, k), max(hi, k)
+		}
+		if hi > lo {
+			if step := (l.FlapsDownKts[lo] - l.FlapsDownKts[hi]) / float64(hi-lo); step > 0 {
+				c.FlapStepKts = math.Round(step)
+			}
+		}
+	}
+	last := -1
+	for k := range l.FlapsDownAGLFt {
+		last = max(last, k)
+	}
+	if last >= 0 {
+		use(&c.FinalFlapsAGLFt, l.FlapsDownAGLFt[last]) // the landing flaps
+	}
+	return c
+}

@@ -169,3 +169,13 @@ func TestPMTimeout(t *testing.T) {
 		}
 	}
 }
+
+// TestWithLearned: learned values fill the defaults, never what is set.
+func TestWithLearned(t *testing.T) {
+	l := flight.Learned{AccelAGLFt: 2000, GearDownAGLFt: 1800, ApproachKts: 137,
+		FlapsDownKts: map[int]float64{1: 205, 2: 185, 3: 170, 4: 150}, FlapsDownAGLFt: map[int]float64{1: 6000, 2: 4000, 3: 2000, 4: 1400}}
+	c := Config{ApproachKts: 140}.WithLearned(l)
+	if c.AccelAGLFt != 2000 || c.GearDownAGLFt != 1800 || c.ApproachKts != 140 || c.FlapStepKts != 18 || c.FinalFlapsAGLFt != 1400 {
+		t.Errorf("config %+v", c)
+	}
+}

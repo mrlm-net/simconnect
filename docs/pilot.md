@@ -31,4 +31,4 @@ for _, r := range out.Requests { /* ask the player: r.Say ("Flaps one", "Gear do
 
 A request is done when the aircraft shows it (`Output.Done`). If the player does nothing for `PMTimeout` (8 s) and `CopilotActs` is set, the copilot does it (`Output.TimedOut`, its actions in `Output.Actions`). An action is not sent again within `Resend` (3 s) while it has not shown yet.
 
-Every height and speed is in `Config`, so a per-type profile can tune them. Learning those values from the player's recorded flights (#966) is the next step. Iteration B, with the copilot also flying the take-off and the landing by hand, comes after it.
+Every height and speed is in `Config`, so a per-type profile can tune them. `Config.WithLearned` takes them from the player's recorded flights of the type (`flight.Learn`, #966). Iteration B, with the copilot also flying the take-off and the landing by hand, comes after it.
