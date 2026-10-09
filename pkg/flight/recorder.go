@@ -47,6 +47,7 @@ var recVars = func() []recVar {
 		{"GEAR CENTER POSITION", "percent over 100", func(s *Sample, v float64) { s.GearPct = v * 100 }},
 		{"FLAPS HANDLE INDEX", "number", func(s *Sample, v float64) { s.FlapsIndex = int(v) }},
 		{"TRAILING EDGE FLAPS LEFT PERCENT", "percent", func(s *Sample, v float64) { s.FlapsPct = v }},
+		{"FLAPS HANDLE PERCENT", "percent over 100", func(s *Sample, v float64) { s.FlapsHandle = v * 100 }},
 		{"SPOILERS HANDLE POSITION", "percent", func(s *Sample, v float64) { s.Spoilers = v }},
 		{"SPOILERS ARMED", "bool", func(s *Sample, v float64) { s.SpoilersArmed = v != 0 }},
 		{"ELEVATOR POSITION", "percent over 100", func(s *Sample, v float64) { s.Elevator = v * 100 }},

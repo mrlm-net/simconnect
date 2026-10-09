@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -584,6 +585,59 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	o.placed = true
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
 	// take-off roll learnt its own placements, 8.48 → 8.08 → 9.00 ft).
+	o.placedAt = i.now()
+	i.mu.Unlock()
+	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+}
+
+// FlownPose is an aircraft as it was flown (a recorded flight's sample,
+// another sim's aircraft): where its reference point was and its attitude,
+// for PlaceFlown.
+type FlownPose struct {
+	Position airport.LatLon
+	// AltFt is the reference point's altitude (PLANE ALTITUDE, feet MSL);
+	// CGFt the flown aircraft's static CG height above the ground (0
+	// unknown): the placed aircraft keeps its own wheels on the ground.
+	AltFt, CGFt float64
+	// PitchDeg nose up and BankDeg right wing down positive; Heading true.
+	PitchDeg, BankDeg, Heading float64
+	OnGround                   bool
+	GroundSpeedKts             float64
+}
+
+// PlaceFlown places objectID as an aircraft was flown (#963): its altitude
+// moved by the difference of the two aircraft's static CG heights, so a
+// ghost of another model rolls on its own wheels, its attitude as flown.
+// No ground height is needed.
+func (i *Injector) PlaceFlown(objectID uint32, pose FlownPose) error {
+	i.mu.Lock()
+	o, ok := i.objects[objectID]
+	if !ok || !o.taken {
+		i.mu.Unlock()
+		return ErrNotInjected
+	}
+	alt := pose.AltFt
+	if pose.CGFt > 0 && o.cgFt > 0 {
+		alt += o.cgFt - pose.CGFt
+	}
+	onGround := types.DWORD(0)
+	if pose.OnGround {
+		onGround = 1
+		o.onGroundRun++
+	} else {
+		o.onGroundRun = 0
+	}
+	p := types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude:  pose.Position.Lat,
+		Longitude: pose.Position.Lon,
+		Altitude:  alt,
+		Pitch:     -pose.PitchDeg, // SimConnect: negative is nose up
+		Bank:      -pose.BankDeg,  // as PlaceAir takes it
+		Heading:   pose.Heading,
+		OnGround:  onGround,
+		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts))),
+	}
+	o.placed = true
 	o.placedAt = i.now()
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))

@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.50.0] - 2026-10-09
+
+### Added
+
+- `pkg/flight` (#963): replay. `Player` is a Track's playback clock (play, pause, seek, rate). `UserReplay` flies the user aircraft as recorded: frozen, placed every frame, its gear, flap lever, spoilers, lights, throttles and control surfaces sent as they change; `Stop` frees it. `Ghost` flies an AI object as recorded through the traffic Injector, with its gear, flaps, spoilers, lights, engines and throttle following. Samples gain `FlapsHandle` (the lever, `FLAPS HANDLE PERCENT`).
+- `traffic`: `Injector.PlaceFlown(objectID, FlownPose)` places a taken-over object as an aircraft was flown (altitude, pitch, bank, heading, on the ground), moved by the difference of the two models' static CG heights so another model keeps its wheels on the ground.
+
 ## [0.49.0] - 2026-10-09
 
 ### Added

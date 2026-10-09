@@ -48,7 +48,9 @@ type Sample struct {
 	GearPct    float64 // the gear's extension (centre gear)
 	FlapsIndex int     // the flap lever's detent
 	FlapsPct   float64 // trailing edge flaps
-	Spoilers   float64 // spoiler handle
+	// FlapsHandle is the flap lever, percent of its travel.
+	FlapsHandle   float64
+	Spoilers      float64 // spoiler handle
 	SpoilersArmed bool
 
 	// Control surfaces, -100…100 (elevator up, aileron right, rudder right
@@ -153,7 +155,7 @@ func Lerp(a, b Sample, f float64) Sample {
 	s.Pitch, s.Bank = l(a.Pitch, b.Pitch), lerpAngle(a.Bank, b.Bank, f)
 	s.Heading = math.Mod(lerpAngle(a.Heading, b.Heading, f)+360, 360)
 	s.IAS, s.GS, s.VS = l(a.IAS, b.IAS), l(a.GS, b.GS), l(a.VS, b.VS)
-	s.GearPct, s.FlapsPct, s.Spoilers = l(a.GearPct, b.GearPct), l(a.FlapsPct, b.FlapsPct), l(a.Spoilers, b.Spoilers)
+	s.GearPct, s.FlapsPct, s.FlapsHandle, s.Spoilers = l(a.GearPct, b.GearPct), l(a.FlapsPct, b.FlapsPct), l(a.FlapsHandle, b.FlapsHandle), l(a.Spoilers, b.Spoilers)
 	s.Elevator, s.Aileron, s.Rudder, s.Brakes = l(a.Elevator, b.Elevator), l(a.Aileron, b.Aileron), l(a.Rudder, b.Rudder), l(a.Brakes, b.Brakes)
 	for i := range s.Throttle {
 		s.Throttle[i], s.N1[i], s.Reverser[i] = l(a.Throttle[i], b.Throttle[i]), l(a.N1[i], b.N1[i]), l(a.Reverser[i], b.Reverser[i])
@@ -223,6 +225,7 @@ var fields = func() []field {
 		num("gearPct", func(s *Sample) *float64 { return &s.GearPct }),
 		integer("flapsIndex", func(s *Sample) *int { return &s.FlapsIndex }),
 		num("flapsPct", func(s *Sample) *float64 { return &s.FlapsPct }),
+		num("flapsHandle", func(s *Sample) *float64 { return &s.FlapsHandle }),
 		num("spoilers", func(s *Sample) *float64 { return &s.Spoilers }),
 		flag("spoilersArmed", func(s *Sample) *bool { return &s.SpoilersArmed }),
 		num("elevator", func(s *Sample) *float64 { return &s.Elevator }),
