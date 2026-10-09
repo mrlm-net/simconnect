@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.27.1'
+          go-version: '1.27.x' # the latest patch: stdlib fixes (Go 1.27.2 fixed GO-2026-6603…6617)
           cache: true
 
       - name: Install govulncheck
