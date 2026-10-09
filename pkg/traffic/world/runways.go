@@ -852,6 +852,12 @@ func (t *towers) forgetTail(tail string) {
 			delete(t.given, k)
 		}
 	}
+	for k := range t.grantAt {
+		if strings.HasPrefix(k, tail+" ") {
+			delete(t.grantAt, k) // #85: kept for good before
+		}
+	}
+	delete(t.rtoJudged, tail)
 	delete(t.behind, tail)
 	delete(t.waiting, tail)
 }
