@@ -153,6 +153,16 @@ A profile's `doors` names its exits. As names (`["Door 1", "Door 2"]`) they go i
 
 The sim's own ground services for the user aircraft are requested by name with `Controls.Request` (#666): `Jetway` (`TOGGLE_JETWAY`, at a parking spot; asked again, sent away), `Stairs` (`TOGGLE_RAMPTRUCK`), `Baggage` (`REQUEST_LUGGAGE`), `Catering` (`REQUEST_CATERING`), `PowerSupply` (`REQUEST_POWER_SUPPLY`), `FuelTruck` (`REQUEST_FUEL_KEY`, at a parking spot) and `Pushback` (`TOGGLE_PUSHBACK`): the standard key events (MSFS 2024 SDK Key Events) by default, a model's own way where its profile gives one. `State` reads the pushback: `PushbackAttached`, `PushbackAvailable`, `PushbackWait` (Services Variables). An app that drives GSX uses it instead where GSX runs.
 
+## Copilot callouts
+
+`State` carries what a copilot calls on the take-off roll and the landing roll:
+
+- `SpoilersArmed` and `SpoilersPct`, the higher of the left and right ground spoilers deployed (`spoilersArmed`, `spoilersPct`; `SPOILERS ARMED`, `SPOILERS LEFT/RIGHT POSITION`): "spoilers" on touchdown.
+- Per engine 1–4: `Reverser[i]` engaged and `ReverserPct[i]` nozzle deployed (`Reverser(n)`, `ReverserPct(n)`; `GENERAL ENG REVERSE THRUST ENGAGED:n`, `TURB ENG REVERSE NOZZLE PERCENT:n`): "reverse green".
+- Per engine 1–4: `N1[i]` (`N1(n)`; `TURB ENG N1:n`, percent): "thrust set" once stable.
+
+These are the default SimVars and have not been measured live yet. A model that drives its own (the Fenix may) overrides them in its profile like any other value.
+
 ## EFB
 
 A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's EFB on port 8083 (`{"port": 8083, "path": "/"}`, plain HTTP, all interfaces); none in the default.

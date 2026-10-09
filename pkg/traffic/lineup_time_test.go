@@ -11,7 +11,7 @@ func TestLineUpTimeFromHoldingPoint(t *testing.T) {
 	for _, c := range []struct {
 		kts       float64
 		expedite  bool
-	}{{6, false}, {LineUpRollingKts, false}, {LineUpRollingKts, true}} {
+	}{{LineUpSpeedKts, false}, {LineUpRollingKts, false}, {LineUpRollingKts, true}} {
 		kts := c.kts
 		old := LineUpRollingKts
 		LineUpRollingKts = kts

@@ -39,6 +39,14 @@ type State struct {
 	Chocks, GPU, HasChocks, HasGPU bool
 	// The sim's pushback (#666): a tug attached, possible here, waiting.
 	PushbackAttached, PushbackAvailable, PushbackWait bool
+	// Copilot callouts: ground spoilers armed and deployed (percent);
+	// per engine 1–4, the reverser engaged, its nozzle deployed (percent) and
+	// N1 (percent).
+	SpoilersArmed bool
+	SpoilersPct   float64
+	Reverser      [4]bool
+	ReverserPct   [4]float64
+	N1            [4]float64
 	// Take-off speeds, knots (0 unknown): from the FMS (SpeedsFrom "fms"),
 	// the profile's table ("table") or none (""); DAFt, MDAFt the minimums
 	// (feet, 0 unknown); SpeedCheckKt the roll's speed check (80 or 100).
@@ -170,6 +178,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	s.Engines = int(s.Values[EngineCount])
 	for i := range 4 {
 		s.Running[i], s.Starter[i], s.Doors[i] = on(EngineRunning(i+1)), on(Starter(i+1)), on(Door(i))
+		s.Reverser[i], s.ReverserPct[i], s.N1[i] = on(Reverser(i+1)), s.Values[ReverserPct(i+1)], s.Values[N1(i+1)]
 	}
 	s.ParkingBrake = on(ParkingBrake)
 	s.DoorNames = append([]string(nil), p.Doors...)
@@ -186,6 +195,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	_, s.HasGPU = p.Values[GPU]
 	s.Chocks, s.GPU = on(Chocks), on(GPU)
 	s.PushbackAttached, s.PushbackAvailable, s.PushbackWait = on(PushbackAttached), on(PushbackAvailable), on(PushbackWait)
+	s.SpoilersArmed, s.SpoilersPct = on(SpoilersArmed), s.Values[SpoilersPct]
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
 	takeoffSpeeds(p, &s)
 	return s

@@ -45,10 +45,16 @@ func Default() Profile {
 		PushbackAttached:  one("PUSHBACK ATTACHED", "bool"),
 		PushbackAvailable: one("PUSHBACK AVAILABLE", "bool"),
 		PushbackWait:      one("PUSHBACK WAIT", "bool"),
+		// Copilot callouts (not measured live yet).
+		SpoilersArmed: one("SPOILERS ARMED", "bool"),
+		SpoilersPct:   {Vars: []string{"SPOILERS LEFT POSITION", "SPOILERS RIGHT POSITION"}, Unit: "percent", Combine: "max"},
 	}
 	for n := 1; n <= 4; n++ {
 		v[EngineRunning(n)] = one(fmtIndexed("GENERAL ENG COMBUSTION", n), "bool")
 		v[Starter(n)] = one(fmtIndexed("GENERAL ENG STARTER", n), "bool")
+		v[Reverser(n)] = one(fmtIndexed("GENERAL ENG REVERSE THRUST ENGAGED", n), "bool")
+		v[ReverserPct(n)] = one(fmtIndexed("TURB ENG REVERSE NOZZLE PERCENT", n), "percent")
+		v[N1(n)] = one(fmtIndexed("TURB ENG N1", n), "percent")
 	}
 	a := map[string]Action{
 		// The standard key events (#667): the exit toggled only when it is
