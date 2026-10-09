@@ -32,3 +32,7 @@ for _, r := range out.Requests { /* ask the player: r.Say ("Flaps one", "Gear do
 A request is done when the aircraft shows it (`Output.Done`). If the player does nothing for `PMTimeout` (8 s) and `CopilotActs` is set, the copilot does it (`Output.TimedOut`, its actions in `Output.Actions`). An action is not sent again within `Resend` (3 s) while it has not shown yet.
 
 Every height and speed is in `Config`, so a per-type profile can tune them. `Config.WithLearned` takes them from the player's recorded flights of the type (`flight.Learn`, #966). Iteration B, with the copilot also flying the take-off and the landing by hand, comes after it.
+
+## Handovers
+
+The engine takes the controls at the first `Update` where the aircraft is airborne above the engage height: climbing after the take-off, or anywhere in the flight when the copilot is switched on in cruise. It picks the phase from where the flight is: the approach when low and close in, the descent going down, the cruise at the target level, else the climb. `HandBack()` gives the controls to the player mid-flight ("Your controls"; the autopilot is left as it is), and `TakeControl()` has the engine take them again from where the flight is ("I have control").

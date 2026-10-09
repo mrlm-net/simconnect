@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.56.0] - 2026-10-09
+
+### Added
+
+- `pilot`: handovers. The engine takes the controls at the first update airborne above the engage height, also in cruise, in the phase the flight is in (approach, descent, cruise or climb from the height, vertical speed, target level and distance). Before, it only engaged climbing through 1000 ft. `Engine.HandBack()` gives the controls to the player mid-flight ("Your controls") and `Engine.TakeControl()` takes them again ("I have control").
+
 ## [0.55.0] - 2026-10-09
 
 ### Added
