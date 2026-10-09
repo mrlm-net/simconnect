@@ -266,3 +266,48 @@ func TestCalloutValues(t *testing.T) {
 		t.Errorf("N1 %v", s.N1)
 	}
 }
+
+// TestLandingLights: the default sends LANDING_LIGHTS_ON and _OFF; the
+// Fenix sets its switch to 2 (on) and 1 (off).
+func TestLandingLights(t *testing.T) {
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	c.Use(For(Aircraft{Title: "Asobo A320neo", ATCType: "A320"}))
+	if err := c.Set(LightLanding, true, State{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set(LightLanding, false, State{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.sent) != 2 || !strings.HasPrefix(f.sent[0], "LANDING_LIGHTS_ON") || !strings.HasPrefix(f.sent[1], "LANDING_LIGHTS_OFF") {
+		t.Errorf("default sent %q", f.sent)
+	}
+	f = &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c = NewControls(f, 0)
+	c.Use(For(Aircraft{Package: "fnx-aircraft-320", Title: "FenixA319 CFM WF HD"}))
+	c.Set(LightLanding, true, State{})
+	c.Set(LightLanding, false, State{})
+	if len(f.set) != 2 || f.set[0] != 2 || f.set[1] != 1 || !strings.Contains(f.setVar[0], "S_OH_EXT_LT_LANDING_BOTH") {
+		t.Errorf("Fenix set %v on %v", f.set, f.setVar)
+	}
+}
+
+// TestFlapsSaid: the flap lever's detent as said, by FLAPS HANDLE INDEX:
+// an A320 at 3 "three", a 737 at 3 "5"; an aircraft without detents "".
+func TestFlapsSaid(t *testing.T) {
+	for _, c := range []struct {
+		a    Aircraft
+		idx  float64
+		want string
+	}{
+		{Aircraft{Title: "Asobo A320neo", ATCType: "A320"}, 3, "three"},
+		{Aircraft{Title: "FenixA319 CFM", Package: "fnx-aircraft-320"}, 4, "full"},
+		{Aircraft{Title: "PMDG 737-800", ATCType: "B738"}, 3, "5"},
+		{Aircraft{Title: "Cessna 172", ATCType: "C172"}, 1, ""},
+	} {
+		s := resolveState(For(c.a), map[varUnit]float64{{"FLAPS HANDLE INDEX", "number"}: c.idx})
+		if s.FlapsSaid != c.want {
+			t.Errorf("%s at %v: %q, want %q", c.a.Title, c.idx, s.FlapsSaid, c.want)
+		}
+	}
+}

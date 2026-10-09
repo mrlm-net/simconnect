@@ -39,6 +39,9 @@ type Config struct {
 	ConnectionTimeout time.Duration // Timeout for each connection attempt
 	ReconnectDelay    time.Duration // Delay before reconnecting after disconnect
 	ShutdownTimeout   time.Duration // Timeout for graceful shutdown of subscriptions
+	// StallAfter: no message this long while Available is a stall
+	// (OnStall); 0 DEFAULT_STALL_AFTER, below 0 off.
+	StallAfter time.Duration
 	// MaxRetries is the maximum number of connection attempts (0 = unlimited).
 	// Reaching it ends Start with an error and the manager stops for good, also
 	// with AutoReconnect: after a lost connection the limit applies again, so
@@ -255,5 +258,13 @@ func parseLogLevel(v string) slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// WithStallAfter sets how long a silent simulator takes to count as
+// stalled (OnStall); below 0 turns it off.
+func WithStallAfter(d time.Duration) Option {
+	return func(c *Config) {
+		c.StallAfter = d
 	}
 }

@@ -17,6 +17,7 @@ func (m *Instance) processFilenameEvent(msg engine.Message) {
 
 	if eventID == m.flightLoadedEventID {
 		m.logger.Debug("[manager] FlightLoaded event", "filename", filename)
+		m.stallFlightLoaded(filename)
 		// Invoke registered FlightLoaded handlers with panic recovery
 		m.mu.RLock()
 		if cap(m.flightLoadedHandlersBuf) < len(m.flightLoadedHandlers) {

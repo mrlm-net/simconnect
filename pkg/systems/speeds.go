@@ -22,6 +22,7 @@ const (
 	V2         = "v2Kt"       // V2, knots
 	DA         = "daFt"       // decision altitude, feet (0 none)
 	MDA        = "mdaFt"      // minimum descent altitude, feet (0 none)
+	DH         = "dhFt"       // decision height (radio minimums), feet above the ground (0 none)
 	Weight     = "weightKg"   // total weight, kilograms
 	FlapsIndex = "flapsIndex" // flaps handle position (FLAPS HANDLE INDEX)
 	// The aircraft's design speeds (knots) and maximum weight (kg), for
@@ -90,7 +91,7 @@ func takeoffSpeeds(p Profile, s *State) {
 	if s.SpeedCheckKt == 0 {
 		s.SpeedCheckKt = DefaultSpeedCheckKt
 	}
-	s.DAFt, s.MDAFt = s.Values[DA], s.Values[MDA]
+	s.DAFt, s.MDAFt, s.DHFt = s.Values[DA], s.Values[MDA], s.Values[DH]
 	if _, ok := p.Values[V1]; ok && s.Values[V1] > 0 {
 		s.V1Kt, s.VRKt, s.V2Kt, s.SpeedsFrom = s.Values[V1], s.Values[VR], s.Values[V2], SpeedsFMS
 		return

@@ -3,6 +3,7 @@ package airport
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -18,6 +19,9 @@ const (
 	FreqDeparture = "departure"
 	FreqCenter    = "center"
 	FreqCTAF      = "ctaf" // common traffic advisory (and UNICOM, MULTICOM)
+	// FreqFIS: flight information outside controlled airspace (VFRFor's FIS),
+	// the last fallback of FrequencyFor.
+	FreqFIS = "fis"
 	FreqOther     = "other"
 )
 
@@ -76,7 +80,11 @@ func frequenciesOf(raw []RawFrequency) []Frequency {
 // FrequencyFor is the airport's frequency of kind, falling back as ATC
 // does where a position is not staffed separately: clearance to ground,
 // ground to tower, departure to approach, approach to center, and tower to
-// the common traffic frequency. ok is false when there is none.
+// the common traffic frequency; with none of these, flight information
+// (FreqFIS) for tower, ground, clearance or CTAF where the airport's VFR
+// data gives it (VFRFor: Praha
+// Information at LKPR). ok is false when there is none at all: a caller
+// says nothing, or its own station.
 func (l *Layout) FrequencyFor(kind string) (Frequency, bool) {
 	fallback := map[string][]string{
 		FreqClearance: {FreqGround, FreqTower, FreqCTAF},
@@ -89,6 +97,14 @@ func (l *Layout) FrequencyFor(kind string) (Frequency, bool) {
 		for _, f := range l.Frequencies {
 			if f.Kind == k {
 				return f, true
+			}
+		}
+	}
+	switch kind { // a field without them: flight information; not for IFR positions
+	case FreqTower, FreqGround, FreqClearance, FreqCTAF:
+		if v, ok := VFRFor(l.ICAO); ok && v.FISFreq != "" {
+			if mhz, err := strconv.ParseFloat(v.FISFreq, 64); err == nil {
+				return Frequency{Kind: FreqFIS, MHz: mhz, Name: v.FIS}, true
 			}
 		}
 	}

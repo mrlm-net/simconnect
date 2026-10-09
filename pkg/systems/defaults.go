@@ -46,6 +46,11 @@ func Default() Profile {
 		PushbackAvailable: one("PUSHBACK AVAILABLE", "bool"),
 		PushbackWait:      one("PUSHBACK WAIT", "bool"),
 		// Copilot callouts (not measured live yet).
+		// Minimums as set in the aircraft: the decision altitude (baro) and
+		// decision height (radio) the standard way; a model with its own
+		// (the Fenix MCDU) overrides them.
+		DA:            one("DECISION ALTITUDE MSL", "feet"),
+		DH:            one("DECISION HEIGHT", "feet"),
 		SpoilersArmed: one("SPOILERS ARMED", "bool"),
 		SpoilersPct:   {Vars: []string{"SPOILERS LEFT POSITION", "SPOILERS RIGHT POSITION"}, Unit: "percent", Combine: "max"},
 	}
@@ -62,6 +67,9 @@ func Default() Profile {
 		// parking brake toggled likewise. No chocks or GPU: a model that has
 		// them gives them.
 		ParkingBrake: {Event: "PARKING_BRAKES", Toggle: true},
+		// Landing lights on and off (the copilot's "landing lights", #519):
+		// the standard key events, each its own way.
+		LightLanding: {Event: "LANDING_LIGHTS_ON", OffEvent: "LANDING_LIGHTS_OFF"},
 		// The sim's ground services (#666): requests, sent as asked.
 		Jetway:      {Event: "TOGGLE_JETWAY"},
 		Stairs:      {Event: "TOGGLE_RAMPTRUCK"},

@@ -126,6 +126,11 @@ func (c *Controls) Set(name string, on bool, now State) error {
 	want := 0.0
 	if on {
 		want = 1
+		if a.On != nil {
+			want = *a.On
+		}
+	} else if a.Off != nil {
+		want = *a.Off
 	}
 	switch {
 	case a.EFB != "":
@@ -153,6 +158,9 @@ func (c *Controls) Set(name string, on bool, now State) error {
 		}
 		if a.Toggle && now.Values[name] != 0 == on {
 			return nil // as wanted already
+		}
+		if !on && a.OffEvent != "" {
+			return c.event(a.OffEvent, data) // its own event for off
 		}
 		return c.event(a.Event, data)
 	}

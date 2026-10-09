@@ -24,6 +24,9 @@ type Instance struct {
 
 	logger *slog.Logger
 
+	// stall: the simulator silent while connected (OnStall).
+	stall stallState
+
 	// Connection state
 	mu    sync.RWMutex
 	state ConnectionState

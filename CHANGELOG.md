@@ -57,6 +57,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.42.0] - 2026-10-09
+
+### Added
+
+- `manager`: `OnStall` and `Stalled()`. With no message from the simulator for `StallAfter` (5 s, `WithStallAfter`) while connected and not paused, the manager reports a stall, and a resume when data comes again, with the flight loaded meanwhile or just after (a new session). Live, MSFS died in flight with no disconnect or state change and the app saw nothing for 20 min.
+- `systems`: the landing lights as a control (`Set(LightLanding, on)`): `LANDING_LIGHTS_ON`/`OFF` by default, the Fenix's switch `S_OH_EXT_LT_LANDING_BOTH` (on 2, off 1, from its L:var list, to verify live). Actions may give their own `on`/`off` values and an `offEvent`.
+- `systems`: flap detents as said per profile (`flapDetents`, `State.FlapsSaid`): the A320 family "zero" … "full", a new 737 base profile "up", "1", "2", "5" … "40".
+- `systems`: the minimums by default from `DECISION ALTITUDE MSL` (`DAFt`) and `DECISION HEIGHT` (`DHFt`, new); a model overrides them.
+- `traffic.LandingETA`: time to landing along the route still to fly (its speed now, then 250, 180 and 140 kt from 40, 15 and 5 NM out).
+- `World.CircuitConfig` and `World.PlayerCircuitJoin`: the circuit the World flies and how its tower joins the player from where it is.
+- `world`: `Options.KeepOnStop`, `Options.Cache`, and the player's queries over HTTP (`/api/player/runway`, `/traffic`, `/circuit`).
+
+### Changed
+
+- When `RunOn`'s context ends, the World removes its aircraft, their vehicles and its en-route flights (`Options.KeepOnStop` keeps them).
+- The World's console lines, its errors included, go to `Options.Output`. Several went to stderr, lost in a windowed app.
+- `Layout.FrequencyFor`: a field without tower, ground, clearance or CTAF falls back to its flight information where the VFR data gives one (`FreqFIS`); IFR positions never do. Still false when there is none.
+
 ## [0.41.0] - 2026-10-09
 
 ### Added

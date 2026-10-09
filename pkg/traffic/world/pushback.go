@@ -32,7 +32,7 @@ func loadPushStore(file string) *pushStore {
 	s := &pushStore{file: file, pushes: map[string]map[string]traffic.PushRoute{}}
 	if b, err := os.ReadFile(file); err == nil {
 		if err := json.Unmarshal(b, &s.pushes); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  %s: %v\n", file, err)
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
 		}
 	}
 	for icao, stands := range s.pushes {

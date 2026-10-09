@@ -19,6 +19,7 @@ func (m *Instance) processMessage(msg engine.Message) {
 		m.logger.Error("[manager] Stream error", "error", msg.Err)
 		return
 	}
+	m.stallSeen() // a message: not stalled (OnStall)
 
 	// Check for connection ready (OPEN) message
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_OPEN {

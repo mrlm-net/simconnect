@@ -1,0 +1,8 @@
+{
+  "name": "Boeing 737 family",
+  "base": true,
+  "match": { "atcType": ["B736", "B737", "B738", "B739", "B37M", "B38M", "B39M"], "titleContains": ["737"] },
+  "measured": "Type base: the 737's flap lever detents as the copilot says them (UP, 1, 2, 5, 10, 15, 25, 30, 40), by FLAPS HANDLE INDEX 0–8; not measured on a model yet.",
+  "flapDetents": ["up", "1", "2", "5", "10", "15", "25", "30", "40"],
+  "values": {}
+}

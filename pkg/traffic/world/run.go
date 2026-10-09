@@ -175,6 +175,8 @@ type airportResponse struct {
 }
 
 type state struct {
+	// keepOnStop: Options.KeepOnStop.
+	keepOnStop bool
 	// dropped counts the host's messages Feed dropped (queue full): a
 	// layout loaded meanwhile may miss records (live, MyCrew: LKPR with no
 	// runways), so it is loaded again.
@@ -387,7 +389,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 		select {
 		case heard <- t:
 		default:
-			fmt.Fprintf(os.Stderr, "⚠️  transmission not heard (the host is %d behind): %s\n", heardQueue, t.Text)
+			fmt.Fprintf(stdout, "⚠️  transmission not heard (the host is %d behind): %s\n", heardQueue, t.Text)
 		}
 	}
 	stopHeard := func() {
@@ -516,21 +518,21 @@ const heardQueue = 256
 // ends (ctx.Err()) or stream closes (nil: the simulator went away).
 func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan engine.Message, requests <-chan string, dumpDir string) error {
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
-		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Frame):", err)
+		fmt.Fprintln(stdout, "❌ SubscribeToSystemEvent(Frame):", err)
 	}
 	if e, ok := client.(systemEventStater); ok {
 		e.SetSystemEventState(evFrame, types.SIMCONNECT_STATE_OFF) // on with the camera
 	}
 	if err := client.SubscribeToSystemEvent(evPause, "Pause"); err != nil {
-		fmt.Fprintln(os.Stderr, "❌ SubscribeToSystemEvent(Pause):", err)
+		fmt.Fprintln(stdout, "❌ SubscribeToSystemEvent(Pause):", err)
 	}
 	// Following COM1 both ways: a frequency picked on the map tunes it.
 	if err := client.MapClientEventToSimEvent(evCom1Set, "COM_RADIO_SET_HZ"); err != nil {
-		fmt.Fprintln(os.Stderr, "❌ MapClientEventToSimEvent(COM_RADIO_SET_HZ):", err)
+		fmt.Fprintln(stdout, "❌ MapClientEventToSimEvent(COM_RADIO_SET_HZ):", err)
 	}
 	for _, e := range simEvents {
 		if err := client.MapClientEventToSimEvent(e.id, e.event); err != nil {
-			fmt.Fprintf(os.Stderr, "❌ MapClientEventToSimEvent(%s): %v\n", e.event, err)
+			fmt.Fprintf(stdout, "❌ MapClientEventToSimEvent(%s): %v\n", e.event, err)
 		}
 	}
 	for i, v := range []struct{ name, unit string }{
@@ -551,12 +553,12 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		{"TIME OF DAY", "enum"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
-			fmt.Fprintf(os.Stderr, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
+			fmt.Fprintf(stdout, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
 		}
 	}
 	if err := client.RequestDataOnSimObject(reqAircraft, defAircraft, types.SIMCONNECT_OBJECT_ID_USER,
 		types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ RequestDataOnSimObject: %v\n", err)
+		fmt.Fprintf(stdout, "❌ RequestDataOnSimObject: %v\n", err)
 	}
 
 	// Live traffic: title, tail, AI state, position and flight parameters.
@@ -591,7 +593,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// Weather at the user aircraft, whenever it changes.
 	weather := nav.NewWeatherReader(client, weatherDefID, weatherReqID)
 	if err := weather.Subscribe(); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  weather: %v\n", err)
+		fmt.Fprintf(stdout, "⚠️  weather: %v\n", err)
 	}
 
 	// Traffic control: controllers live in this goroutine; HTTP handlers
@@ -624,20 +626,20 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// The airports around, for the traffic picture: now and every minute.
 	airports := traffic.NewAirportLister(client, ids.airportList)
 	if err := airports.Request(); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  airport list: %v\n", err)
+		fmt.Fprintf(stdout, "⚠️  airport list: %v\n", err)
 	}
 	// Every airport worldwide, once: where an overflight's ends are, not
 	// loaded in full for it (live: KJFK's taxiways loaded at LKPR for a
 	// Bucharest–New York overflight, the frame loop stood still meanwhile).
 	everywhere := traffic.NewAirportLister(client, ids.airportList+1)
 	if err := everywhere.RequestAll(); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  worldwide airport list: %v\n", err)
+		fmt.Fprintf(stdout, "⚠️  worldwide airport list: %v\n", err)
 	}
 	if err := cc.requestFuelTitles(); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  fuel truck list: %v\n", err)
+		fmt.Fprintf(stdout, "⚠️  fuel truck list: %v\n", err)
 	}
 	if err := cc.requestModels(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ model list: %v\n", err)
+		fmt.Fprintf(stdout, "❌ model list: %v\n", err)
 	}
 	// The camera on our traffic: cut to the aircraft on the radio as the
 	// call is heard.
@@ -713,6 +715,14 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	for {
 		select {
 		case <-ctx.Done():
+			// Stopped, the connection perhaps still open: ours leave the
+			// simulator (Options.KeepOnStop keeps them).
+			if !st.keepOnStop {
+				st.mu.Lock()
+				sched := st.schedule
+				st.mu.Unlock()
+				removeOurs(cc, sched)
+			}
 			return ctx.Err()
 
 		case cmd := <-cc.cmds:
@@ -733,7 +743,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				feed.Layout(icao, nil, err)
 			}
 			if err := procLoader.Request(icao); err != nil {
-				fmt.Fprintf(os.Stderr, "❌ procedures of %s: %v\n", icao, err)
+				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
 			}
 
 		case now := <-tick.C:
@@ -755,7 +765,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			st.core.retryILS(navLoader)
 			for _, res := range loader.Expire(now) {
 				tlog.printf("%s: airport not loaded: %v", res.ICAO, res.Err)
-				fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
+				fmt.Fprintf(stdout, "❌ %v\n", res.Err)
 				feed.Layout(res.ICAO, nil, res.Err)
 			}
 
@@ -768,7 +778,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				return nil
 			}
 			if msg.Err != nil {
-				fmt.Fprintf(os.Stderr, "❌ Stream error: %v\n", msg.Err)
+				fmt.Fprintf(stdout, "❌ Stream error: %v\n", msg.Err)
 				continue
 			}
 
@@ -817,7 +827,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					tlog.printf("%s: airport loaded: %d runways, %d stands, %d taxi points", res.ICAO, len(res.Layout.Runways), len(res.Layout.Parking), len(res.Layout.TaxiPoints))
 				}
 				if res.Err != nil {
-					fmt.Fprintf(os.Stderr, "❌ %v\n", res.Err)
+					fmt.Fprintf(stdout, "❌ %v\n", res.Err)
 				} else {
 					l := res.Layout
 					fmt.Fprintf(stdout, "🏁 %s %s: %d runways, %d parking, %d taxi points, %d taxi paths, %d names\n",
@@ -852,7 +862,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			switch types.SIMCONNECT_RECV_ID(msg.DwID) {
 			case types.SIMCONNECT_RECV_ID_EXCEPTION:
 				e := msg.AsException()
-				fmt.Fprintf(os.Stderr, "⚠️  SimConnect exception %d (sendID=%d, index=%d)\n", e.DwException, e.DwSendID, e.DwIndex)
+				fmt.Fprintf(stdout, "⚠️  SimConnect exception %d (sendID=%d, index=%d)\n", e.DwException, e.DwSendID, e.DwIndex)
 				// In the log too, at most excLogPerMinute a minute: what the
 				// simulator refused (a host may not show stderr).
 				if time.Since(excWindow) > time.Minute {
@@ -920,7 +930,7 @@ func writeDump(dir string, raw airport.RawAirport) {
 		err = os.WriteFile(path, b, 0o644)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Dump %s: %v\n", path, err)
+		fmt.Fprintf(stdout, "❌ Dump %s: %v\n", path, err)
 		return
 	}
 	fmt.Fprintf(stdout, "💾 Wrote %s\n", path)
@@ -1435,7 +1445,7 @@ func recoverTick(part string, f func()) {
 			}
 			tickPanics.at[part] = time.Now()
 			tlog.printf("world: %s panicked: %v", part, r)
-			fmt.Fprintf(os.Stderr, "❌ world: %s panicked: %v\n%s\n", part, r, debug.Stack())
+			fmt.Fprintf(stdout, "❌ world: %s panicked: %v\n%s\n", part, r, debug.Stack())
 		}
 	}()
 	f()
@@ -1446,3 +1456,39 @@ var tickPanics = struct {
 	sync.Mutex
 	at map[string]time.Time
 }{at: map[string]time.Time{}}
+
+// removeOurs removes every aircraft (and with them their tugs and service
+// vehicles) and en route flight of ours from the simulator, on the
+// connection's own goroutine — the World stopped (RunOn's ctx ended) while
+// the connection lives on: a host that restarts its traffic on the same
+// connection found the old aircraft left frozen where they were. Errors
+// are ignored: a connection already gone has nothing to remove.
+func removeOurs(cc *controlCenter, sched *scheduler) {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		it.managed = nil
+		it.mu.Unlock()
+		_ = it.act("remove", -1)
+		it.removeOnce.Do(func() { close(it.removed) })
+	}
+	if sched == nil {
+		return
+	}
+	sched.mu.Lock()
+	var enroute []uint32
+	for _, e := range sched.enroute {
+		if e.objectID != 0 {
+			enroute = append(enroute, e.objectID)
+		}
+	}
+	sched.mu.Unlock()
+	for _, id := range enroute {
+		_ = cc.sim.RemoveObject(id, reqRemoveEnroute)
+	}
+}

@@ -167,6 +167,10 @@ type Profile struct {
 	// read); an empty one gives none.
 	SpeedCheckKt  int         `json:"speedCheckKt,omitempty"`
 	TakeoffSpeeds *SpeedTable `json:"takeoffSpeeds,omitempty"`
+	// FlapDetents are the flap lever's positions as said, by FLAPS HANDLE
+	// INDEX: an A320 "zero", "one", "two", "three", "full"; a 737 "up", "1",
+	// "2", "5" … (the copilot's "flaps one", "flaps 5"); none: not known.
+	FlapDetents []string `json:"flapDetents,omitempty"`
 }
 
 // UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
@@ -293,6 +297,9 @@ func Merge(base, over Profile) Profile {
 	}
 	if over.SpeedCheckKt != 0 {
 		out.SpeedCheckKt = over.SpeedCheckKt
+	}
+	if len(over.FlapDetents) > 0 {
+		out.FlapDetents = over.FlapDetents
 	}
 	if over.TakeoffSpeeds != nil {
 		out.TakeoffSpeeds = over.TakeoffSpeeds
@@ -575,7 +582,15 @@ type Action struct {
 	// pressed from an even count to +1, released to +2 (as FSUIPC's
 	// presets), #759.
 	Counter string `json:"counter,omitempty"`
-	Note    string `json:"note,omitempty"`
+	// On and Off: what Set writes for on and off (nil: 1 and 0), for a
+	// switch of more positions (the Fenix's landing lights: retract 0, off
+	// 1, on 2).
+	On  *float64 `json:"on,omitempty"`
+	Off *float64 `json:"off,omitempty"`
+	// Events: Set sends Event for on and OffEvent for off instead of a
+	// toggle ("LANDING_LIGHTS_ON" / "LANDING_LIGHTS_OFF").
+	OffEvent string `json:"offEvent,omitempty"`
+	Note     string `json:"note,omitempty"`
 }
 
 // The actions a profile may give: the radios' swap (pkg/avionics), and

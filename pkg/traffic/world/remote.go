@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -298,7 +297,7 @@ func (f *wireFeedOut) put(kind string, vs ...any) {
 	for _, v := range vs {
 		b, err := json.Marshal(v)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  world: wire feed %s: %v\n", kind, err)
+			fmt.Fprintf(stdout, "⚠️  world: wire feed %s: %v\n", kind, err)
 			return
 		}
 		m.Args = append(m.Args, b)
