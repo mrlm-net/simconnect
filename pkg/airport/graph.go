@@ -3,6 +3,7 @@ package airport
 import (
 	"errors"
 	"math"
+	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -145,6 +146,9 @@ type Graph struct {
 	stands []bool
 	// bridges are the taxiway gaps joined (bridgeTaxiwayGaps).
 	bridges []TaxiBridge
+	// entryAt: ThresholdEntry by runway end, worked out once.
+	entryMu sync.Mutex
+	entryAt map[string]bool
 }
 
 // Taxiway, runway and parking path types taken into the graph. CLOSED,
@@ -376,6 +380,28 @@ func (l *Layout) TaxiwayBridges() []TaxiBridge {
 		return nil
 	}
 	return g.bridges
+}
+
+// ThresholdEntryMeters: an entry this close to a runway end's take-off
+// threshold lets a departure line up there without backtracking.
+const ThresholdEntryMeters = 400.0
+
+// ThresholdEntry reports whether runway end can be entered at its take-off
+// threshold (an entry within ThresholdEntryMeters, RunwayEntries), without
+// backtracking and a 180 on the runway. Remembered per end.
+func (g *Graph) ThresholdEntry(end string) bool {
+	g.entryMu.Lock()
+	defer g.entryMu.Unlock()
+	if v, ok := g.entryAt[end]; ok {
+		return v
+	}
+	es, err := g.RunwayEntries(end)
+	v := err == nil && len(es) > 0 && es[0].FromThreshold <= ThresholdEntryMeters
+	if g.entryAt == nil {
+		g.entryAt = map[string]bool{}
+	}
+	g.entryAt[end] = v
+	return v
 }
 
 // acrossRunway reports whether a gap between a and b is a runway's: either

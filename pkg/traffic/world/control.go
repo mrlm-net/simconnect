@@ -2314,7 +2314,7 @@ func (cc *controlCenter) runwayUse(g *airport.Graph) (nav.RunwayUse, bool) {
 	}
 	// The runway in use holds through wind shifts near a limit (#391); the
 	// ATIS says the same (#454).
-	use := cc.core.runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, nav.RunwayLimitsFrom(cc.limitsOf(g)))
+	use := cc.core.runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, runwayLimits(g, cc.limitsOf(g)))
 	cc.core.logRunwayChange(g.Layout.ICAO, use, *w)
 	return use, use.Departure.Name != ""
 }

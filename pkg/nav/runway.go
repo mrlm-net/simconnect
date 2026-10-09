@@ -49,6 +49,12 @@ type RunwayLimits struct {
 	// runway, or a mode the airport uses (never more than the spacing
 	// allows).
 	Parallel ParallelMode
+	// ThresholdEntry, when set, tells whether a runway end can be entered
+	// at its take-off threshold, without backtracking (airport.Graph's
+	// ThresholdEntry). Parallels in use together where one can and the
+	// other cannot are segregated: departures on the one with the entry,
+	// arrivals on the other.
+	ThresholdEntry func(end string) bool `json:"-"`
 }
 
 // RunwayLimitsFrom returns runway limits with the airport's preferential

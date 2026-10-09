@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.57.0] - 2026-10-09
+
+### Added
+
+- Runways: take-offs where no backtrack is needed. `airport.Graph.ThresholdEntry(end)` reports whether a runway end can be entered at its take-off threshold (an entry within 400 m, `RunwayEntries`), for that end in that direction only. `nav.RunwayLimits.ThresholdEntry` takes it. Parallels in use together where one can be entered at its threshold and the other only by backtracking (a 180 on the runway) become segregated: take-offs from the first, landings on the other, which landing traffic vacates ahead of its far end anyway. With entries on both, or on neither, the mode stays the spacing's. Live at LROP: 26L has no taxiway at its east end, so with a west wind take-offs use 26R and landings 26L; with an east wind both 08 ends have entries and the parallels stay independent. The World's tower, ATIS and airport info all take it.
+
 ## [0.56.0] - 2026-10-09
 
 ### Added
