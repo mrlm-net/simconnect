@@ -146,7 +146,15 @@ func (c *Controls) Set(name string, on bool, now State) error {
 		if now.Values[name] != 0 == on {
 			return nil // as wanted already
 		}
-		if err := c.setVar(a.Press, 1); err != nil {
+		// Pressed with 1, or with On / Off where given: a knob pushed (+1)
+		// for on and pulled (−1) for off on one variable (the Fenix's FCU).
+		press := 1.0
+		if on && a.On != nil {
+			press = *a.On
+		} else if !on && a.Off != nil {
+			press = *a.Off
+		}
+		if err := c.setVar(a.Press, press); err != nil {
 			return err
 		}
 		time.Sleep(pressHold)
@@ -307,6 +315,9 @@ func (c *Controls) SetValue(name string, v float64, now State) error {
 	if a.Set != "" {
 		return c.setVar(a.Set, v)
 	}
+	if a.Encoder != "" {
+		return c.turn(name, a, v, now)
+	}
 	if a.Event != "" && a.Value {
 		return c.event(a.Event, eventData(v, a.Scale))
 	}
@@ -320,4 +331,30 @@ func eventData(v float64, scale *float64) uint32 {
 		v *= *scale
 	}
 	return uint32(int32(math.Round(v)))
+}
+
+// ErrEncoderWoken: the knob's display was dashed (0); one click was turned
+// to show it. Call SetValue again with a state read after it.
+var ErrEncoderWoken = errors.New("systems: encoder display woken, set again")
+
+// turn sets value name to v on a relative knob (Action.Encoder): its
+// counter moved by the clicks from the value shown to v.
+func (c *Controls) turn(name string, a Action, v float64, now State) error {
+	step := a.Step
+	if step <= 0 {
+		step = 1
+	}
+	count := now.Values[name+"Encoder"]
+	shown := now.Values[a.Display]
+	if shown == 0 && a.Wake {
+		if err := c.setVar(a.Encoder, count+1); err != nil {
+			return err
+		}
+		return ErrEncoderWoken
+	}
+	clicks := math.Round((v - shown) / step)
+	if clicks == 0 {
+		return nil
+	}
+	return c.setVar(a.Encoder, count+clicks)
 }
