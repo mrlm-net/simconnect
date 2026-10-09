@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"math"
 	"strings"
 	"sync"
 	"unsafe"
@@ -79,39 +80,90 @@ func (l *AirportLister) Handle(msg engine.Message) ([]AirportRef, bool) {
 // ident, region, latitude, longitude, altitude — 33 bytes in MSFS 2020
 // (ident[6], region[3]), 36 or more in MSFS 2024 (ident[9], region[3]).
 func decodeAirportList(msg engine.Message, list *types.SIMCONNECT_RECV_AIRPORT_LIST) []AirportRef {
-	n := uintptr(list.DwArraySize)
-	if n == 0 {
+	n := int(list.DwArraySize)
+	header := int(unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{}))
+	total := int(msg.DwSize)
+	if msg.Size != 0 && int(msg.Size) < total {
+		total = int(msg.Size) // never past the buffer
+	}
+	if n == 0 || total <= header {
 		return nil
 	}
-	header := unsafe.Sizeof(types.SIMCONNECT_RECV_FACILITIES_LIST{})
-	size := (uintptr(msg.DwSize) - header) / n
-	var identLen, latOff uintptr
-	switch size {
-	case 33:
-		identLen, latOff = 6, 9
-	case 36, 40, 41:
-		identLen, latOff = 9, 12
-	default:
-		return nil
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(list)), total)[header:]
+	return decodeAirportEntries(buf, n)
+}
+
+// airportEntryLayouts are the entry sizes seen, with their ident length
+// (the latitude follows ident and region[3]).
+var airportEntryLayouts = []struct{ size, identLen int }{{36, 9}, {40, 9}, {41, 9}, {33, 6}}
+
+// decodeAirportEntries decodes n entries packed in buf. The entry size is
+// the one of airportEntryLayouts that fits buf (n entries and under 8
+// bytes of padding) and gives every entry a clean ident and a position on
+// the globe: a size worked out by dividing alone came out 41 for 40-byte
+// entries with padding in a short last part, and every entry after the
+// first was read a byte further off (live, MSFS 2024 at LROP: "?0?", "P",
+// ",?R@@" thousands of miles away). Entries that are still not clean are
+// left out.
+func decodeAirportEntries(buf []byte, n int) []AirportRef {
+	var best []AirportRef
+	for _, lay := range airportEntryLayouts {
+		if rest := len(buf) - lay.size*n; rest < 0 || rest >= 8+lay.size {
+			continue
+		}
+		out, clean := airportEntriesAs(buf, n, lay.size, lay.identLen)
+		if clean {
+			return out
+		}
+		if len(out) > len(best) {
+			best = out
+		}
 	}
-	base := uintptr(unsafe.Pointer(list)) + header
+	return best
+}
+
+// airportEntriesAs decodes n entries of size bytes; clean when every one
+// is sane, only the sane ones returned.
+func airportEntriesAs(buf []byte, n, size, identLen int) ([]AirportRef, bool) {
 	out := make([]AirportRef, 0, n)
-	for i := uintptr(0); i < n; i++ {
-		e := base + i*size
-		ident := strings.TrimRight(string(unsafe.Slice((*byte)(unsafe.Pointer(e)), identLen)), "\x00 ")
-		if j := strings.IndexByte(ident, 0); j >= 0 {
-			ident = ident[:j]
+	clean := true
+	f64 := func(b []byte) float64 { return *(*float64)(unsafe.Pointer(&b[0])) }
+	for i := range n {
+		e := buf[i*size : (i+1)*size]
+		ident := cString(e[:identLen])
+		region := cString(e[identLen : identLen+3])
+		lat, lon, alt := f64(e[identLen+3:]), f64(e[identLen+11:]), f64(e[identLen+19:])
+		if !saneAirport(ident, lat, lon, alt) {
+			clean = false
+			continue
 		}
-		region := strings.TrimRight(string(unsafe.Slice((*byte)(unsafe.Pointer(e+identLen)), 3)), "\x00 ")
-		if j := strings.IndexByte(region, 0); j >= 0 {
-			region = region[:j]
-		}
-		lat := *(*float64)(unsafe.Pointer(e + latOff))
-		lon := *(*float64)(unsafe.Pointer(e + latOff + 8))
-		alt := *(*float64)(unsafe.Pointer(e + latOff + 16))
-		if ident != "" {
-			out = append(out, AirportRef{ICAO: ident, Region: region, Position: airport.LatLon{Lat: lat, Lon: lon}, AltM: alt})
+		out = append(out, AirportRef{ICAO: ident, Region: region, Position: airport.LatLon{Lat: lat, Lon: lon}, AltM: alt})
+	}
+	return out, clean
+}
+
+func cString(b []byte) string {
+	if j := strings.IndexByte(string(b), 0); j >= 0 {
+		b = b[:j]
+	}
+	return strings.TrimRight(string(b), " ")
+}
+
+// saneAirport: an ident of 2 to 9 letters and digits, a position on the
+// globe and not 0/0 (no coordinate so near 0 it is a stray float's
+// bytes), an elevation between −500 and 6000 m.
+func saneAirport(ident string, lat, lon, altM float64) bool {
+	tiny := func(x float64) bool { return x != 0 && math.Abs(x) < 1e-6 }
+	if tiny(lat) || tiny(lon) || math.IsNaN(altM) || altM < -500 || altM > 6000 {
+		return false
+	}
+	if len(ident) < 2 || len(ident) > 9 {
+		return false
+	}
+	for _, c := range ident {
+		if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
 		}
 	}
-	return out
+	return !math.IsNaN(lat) && !math.IsNaN(lon) && math.Abs(lat) <= 90 && math.Abs(lon) <= 180 && (lat != 0 || lon != 0)
 }
