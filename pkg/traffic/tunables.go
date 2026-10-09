@@ -432,3 +432,41 @@ const (
 // aircraft needs (RequiredTakeoffRun): the 115% of certified take-off
 // distances.
 const TakeoffRunMargin = 1.15
+
+// Tugs by aircraft size (GSX models): a small electric one for light
+// aircraft (TugSmallMaxSpanM), a towbarless one for business and regional
+// jets (TugMediumMaxSpanM), DefaultTugTitle for airliners — not the
+// airliner tug for a DA62 (the user, live).
+const (
+	TugSmallTitle     = "FSDT_Pushback_Mototok_Spacer200"
+	TugSmallMaxSpanM  = 16.0
+	TugMediumTitle    = "FSDT_Pushback_Mototok_8600MA"
+	TugMediumMaxSpanM = 30.0
+)
+
+// TugTitleFor is the tug for an aircraft of span spanM (0 not known: the
+// airliner tug).
+func TugTitleFor(spanM float64) string {
+	switch {
+	case spanM <= 0:
+		return DefaultTugTitle
+	case spanM <= TugSmallMaxSpanM:
+		return TugSmallTitle
+	case spanM <= TugMediumMaxSpanM:
+		return TugMediumTitle
+	}
+	return DefaultTugTitle
+}
+
+// TugAheadFor is where tug title sits ahead of the nose gear when it is not
+// TugAheadMeters: the towbarless Mototoks hold the nose wheel itself (to be
+// checked live).
+func TugAheadFor(title string) (float64, bool) {
+	switch title {
+	case TugSmallTitle:
+		return 1.0, true
+	case TugMediumTitle:
+		return 1.5, true
+	}
+	return 0, false
+}

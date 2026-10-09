@@ -382,3 +382,19 @@ func TestTugArriveWithinCoversTheWayIn(t *testing.T) {
 		}
 	}
 }
+
+// TestTugTitleFor: a small tug for a light aircraft, a towbarless one for a
+// business jet, the airliner tug for an A320 or an unknown size.
+func TestTugTitleFor(t *testing.T) {
+	for _, c := range []struct {
+		span float64
+		want string
+	}{{13.4, TugSmallTitle}, {16, TugSmallTitle}, {21.5, TugMediumTitle}, {29, TugMediumTitle}, {35.8, DefaultTugTitle}, {0, DefaultTugTitle}} {
+		if got := TugTitleFor(c.span); got != c.want {
+			t.Errorf("span %.1f m: %s, want %s", c.span, got, c.want)
+		}
+	}
+	if _, ok := TugAheadFor(DefaultTugTitle); ok {
+		t.Error("the airliner tug sits TugAheadMeters ahead")
+	}
+}
