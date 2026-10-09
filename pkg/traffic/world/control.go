@@ -457,6 +457,9 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		// One person on several frequencies: one voice (#722).
 		ControllerOf: func(icao, freq string) string { return traffic.ControllerOn(cc.stations(icao), freq) },
+		// Faster on a busy frequency and after a safety call, as a
+		// controller speeds up.
+		TempoOf: func(icao, freq string) float64 { return cc.agenda.tempo(icao, freq, cc.clock.Now()) },
 		// Call signs as said, in the text and so in the voice (#462).
 		SaidCallsign: func(cs string) string {
 			if f := cc.saidCallsign; f != nil {

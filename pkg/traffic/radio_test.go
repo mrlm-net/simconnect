@@ -429,3 +429,13 @@ func TestVisualApproach(t *testing.T) {
 		t.Errorf("readback %q", rb.Text)
 	}
 }
+
+// A faster tempo shortens the time a transmission holds its frequency.
+func TestTransmissionTempo(t *testing.T) {
+	tx := Transmission{Text: "CSA1, descend to flight level 090, due traffic"}
+	slow := tx.SpeakingTime()
+	tx.Tempo = 1.25
+	if got := tx.SpeakingTime(); got >= slow || got < time.Duration(float64(slow)/1.25)-time.Millisecond {
+		t.Errorf("at 1.25: %v of %v", got, slow)
+	}
+}

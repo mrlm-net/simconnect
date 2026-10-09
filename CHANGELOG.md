@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.33.0] - 2026-10-09
+
+### Added
+
+- Calls by urgency: separation instructions (stop descent, descend, the en route resolutions), go-arounds for spacing and TCAS acknowledgements go on the controllers' agenda in the new `prioSeparation` class. They are said in the first gap on the frequency, with no answer pause, before any routine call. Traffic information has its own class after them (`prioTraffic`). Circuit instructions, holds, the final approach speed and resumed climbs go on the agenda too, so routine calls no longer jump the queue.
+- Talking speed adapts: `Transmission.Tempo` and `RadioOptions.TempoOf`. The World speeds a frequency up by 5% per call waiting (up to 1.3×), and to at least 1.15× for 15 s after a safety call. Readbacks follow the same pace, and the frequency is held for the shorter time (`Transmission.SpeakingTime`). The airport map passes it to its voice (voice-goio v0.14.0 `Utterance.Tempo`).
+
 ## [0.32.0] - 2026-10-09
 
 ### Added

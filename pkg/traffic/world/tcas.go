@@ -285,7 +285,7 @@ func (w *tcasWatch) report(a traffic.TrackedAircraft, ra bool) {
 	it.say(tx)
 	p := cc.pending
 	p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-		it.say(traffic.Acknowledge(pos, a.Tail))
+		it.call(pos, prioSeparation, func() { it.say(traffic.Acknowledge(pos, a.Tail)) })
 	})
 }
 
