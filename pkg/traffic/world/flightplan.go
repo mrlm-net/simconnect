@@ -90,6 +90,34 @@ func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ, 
 	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: d, Arrival: a, DepartureRunway: depRwy, ArrivalRunway: arrRwy}, graph)
 }
 
+// PlanRequest asks PlanFlight for a flight: from Departure to Arrival
+// (ICAO codes) for aircraft Type (ICAO designator; "" an A320's
+// performance). The runways are ends ("24", "06L"); "" lets the plan
+// choose them from the airports' weather.
+type PlanRequest struct {
+	Departure       string `json:"departure"`
+	Arrival         string `json:"arrival"`
+	Type            string `json:"type,omitempty"`
+	DepartureRunway string `json:"departureRunway,omitempty"`
+	ArrivalRunway   string `json:"arrivalRunway,omitempty"`
+}
+
+// PlanFlight plans an IFR flight the way the World plans its own traffic's
+// (nav.Plan): both airports loaded from the simulator (waiting for it, at
+// most 30 s; an error without a connection), their SIDs, STARs and
+// approaches, the airways the World knows between (its -airways graph and
+// those read around loaded airports; direct where it has none). The plan's
+// PLN gives a .pln file for the simulator (FlightPlanLoad). It must not be
+// called from a Do function or the World's hooks: it waits on the
+// connection loop.
+func (w *World) PlanFlight(ctx context.Context, r PlanRequest) (*nav.FlightPlan, error) {
+	dep, arr := strings.ToUpper(strings.TrimSpace(r.Departure)), strings.ToUpper(strings.TrimSpace(r.Arrival))
+	if dep == "" || arr == "" {
+		return nil, fmt.Errorf("world: plan: departure and arrival needed")
+	}
+	return planBetween(ctx, w.st, dep, arr, r.DepartureRunway, r.ArrivalRunway, r.Type, "")
+}
+
 // planOverflight plans an overflight from dep to arr from where the two
 // airports are (the worldwide list), without loading them: it flies none
 // of their runways, procedures or taxiways. One not in the list (not asked
