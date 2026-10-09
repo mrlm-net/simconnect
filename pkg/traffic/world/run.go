@@ -172,6 +172,9 @@ type Aircraft struct {
 type airportResponse struct {
 	*airport.Layout
 	FetchedAt time.Time `json:"fetchedAt"`
+	// Bridges are the taxiway gaps the taxi graph joins, to draw as
+	// taxiway (airport.Layout.TaxiwayBridges).
+	Bridges []airport.TaxiBridge `json:"bridges,omitempty"`
 }
 
 type state struct {
@@ -1030,7 +1033,7 @@ func (w *World) Register(mux *http.ServeMux) {
 		st.mu.Lock()
 		at := st.fetched[icao]
 		st.mu.Unlock()
-		writeJSON(w, airportResponse{Layout: l, FetchedAt: at})
+		writeJSON(w, airportResponse{Layout: l, FetchedAt: at, Bridges: l.TaxiwayBridges()})
 	})
 
 	// GET /api/geojson?icao=LKPR — the layout as a GeoJSON FeatureCollection.

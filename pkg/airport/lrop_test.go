@@ -67,3 +67,25 @@ func TestTaxiwayGapBridged(t *testing.T) {
 		}
 	}
 }
+
+// TestTaxiwayBridgesDrawn: the joined gap is given for maps, by the graph,
+// the layout and the GeoJSON.
+func TestTaxiwayBridgesDrawn(t *testing.T) {
+	g := lropGraph(t)
+	br := g.Bridges()
+	if len(br) != 1 || br[0].Name != "C" || br[0].Length < 15 || br[0].Length > 30 {
+		t.Fatalf("bridges %+v, want C's 21 m", br)
+	}
+	if got := g.Layout.TaxiwayBridges(); len(got) != 1 || got[0] != br[0] {
+		t.Errorf("layout bridges %+v", got)
+	}
+	n := 0
+	for _, f := range g.Layout.FeatureCollection().Features {
+		if f.Properties["bridge"] == true && f.Properties["name"] == "C" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d bridge features", n)
+	}
+}

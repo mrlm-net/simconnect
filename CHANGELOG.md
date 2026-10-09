@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.53.0] - 2026-10-09
+
+### Added
+
+- `airport`: the taxiway gaps the graph joins are given for maps. `Graph.Bridges()` and `Layout.TaxiwayBridges()` return each as `TaxiBridge{Name, From, To, FromPoint, ToPoint, Length}`, and `Layout.FeatureCollection` includes them as taxi paths marked `"bridge": true`. `traffic/world`'s `GET /api/airport` returns them as `bridges`, and the airport map draws them as the taxiway they join (live, LROP's C was drawn open at the U junction).
+
 ## [0.52.0] - 2026-10-09
 
 ### Added

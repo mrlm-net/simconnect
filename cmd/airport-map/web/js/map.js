@@ -211,6 +211,14 @@ function drawNetwork() {
         .setLatLng([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]).setContent(esc(name)).addTo(layers.labels);
     }
   }
+  // Taxiway gaps the scenery left, joined in the taxi graph: drawn as the
+  // taxiway they join.
+  for (const br of data.bridges || []) {
+    const a = [br.from.lat, br.from.lon], b = [br.to.lat, br.to.lon];
+    const [tok, weight, opacity] = PATH_STYLE[1] || PATH_STYLE[0];
+    const pop = () => `<b>Taxiway ${esc(br.name)}: gap joined</b><br>` + kv({ points: `${br.fromPoint} – ${br.toPoint}`, length: br.length.toFixed(0) + ' m' });
+    L.polyline([a, b], { renderer: canvas, color: col(tok), weight, opacity, lineCap: 'round' }).bindPopup(pop).addTo(pathGroups[1] || pathGroups[0]);
+  }
   for (const p of data.taxiPoints) {
     const hold = HOLD_SHORT.has(p.type);
     L.circleMarker([p.lat, p.lon], {
