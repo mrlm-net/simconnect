@@ -49,7 +49,10 @@ func (k *towerLook) turn(dyaw, dtilt, dfov float64, auto *bool) {
 	if dyaw != 0 || dtilt != 0 || dfov != 0 {
 		k.auto = false
 	}
-	k.yaw = math.Mod(k.yaw+dyaw+360, 360)
+	k.yaw = math.Mod(k.yaw+dyaw, 360)
+	if k.yaw < 0 {
+		k.yaw += 360 // any turn, more than a whole one back too (#69)
+	}
 	k.tilt = math.Max(-60, math.Min(20, k.tilt+dtilt))
 	k.fov = math.Max(8, math.Min(90, k.fov+dfov))
 }
