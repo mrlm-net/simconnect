@@ -83,3 +83,5 @@ A frame's sample is interpolated (`At`), so the replay is as smooth as the sim's
 - the landing: the flare height (where the nose started up over the final's pitch) and the sink rate at touchdown.
 
 `pilot.Config.WithLearned` takes them into the pilot flying's profile where the config leaves a value to its default.
+
+**A ghost on its own** (`GhostReplay`): `NewGhostReplay(client, injector, track, title, tail, reqID)` replays a Track as an AI aircraft without wiring the creation yourself. `Start` creates the object where its `Player` stands. `Handle(msg)` takes the object ID the simulator assigns, has the Injector take it over, and then flies it as the Player says, at most every frame. `Stop` removes it. Use the host's own Injector, with IDs clear of any other's.

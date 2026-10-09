@@ -3,7 +3,9 @@
 package flight
 
 import (
+	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -130,5 +132,40 @@ func TestGhost(t *testing.T) {
 	}
 	if len(f.throttle) != 2 || f.throttle[1] != 95 || len(f.lights) != 2 || !f.lights[1].Landing || !f.lights[1].Strobe {
 		t.Errorf("throttle %v lights %+v", f.throttle, f.lights)
+	}
+}
+
+type ghostClient struct {
+	created []types.SIMCONNECT_DATA_INITPOSITION
+	title   string
+	removed int
+}
+
+func (g *ghostClient) AICreateNonATCAircraft(title, _ string, init types.SIMCONNECT_DATA_INITPOSITION, _ uint32) error {
+	g.title, g.created = title, append(g.created, init)
+	return nil
+}
+func (g *ghostClient) AIRemoveObject(uint32, uint32) error { g.removed++; return nil }
+
+// TestGhostReplayStart: the ghost is created where the Player stands, in
+// SimConnect's attitude signs; its Player seeks; stopped before it was
+// given an object, nothing is removed.
+func TestGhostReplayStart(t *testing.T) {
+	tr := &Track{Samples: []Sample{{T: 0, Lat: 50, Lon: 14, AltFt: 1000, Pitch: 5, Bank: 2, Heading: 90, GS: 140},
+		{T: 10, Lat: 50.01, Lon: 14, AltFt: 1500, Pitch: 5, Heading: 90, GS: 150}}}
+	c := &ghostClient{}
+	r := NewGhostReplay(c, nil, tr, "FSLTL A320", "OK-ABC", 42)
+	r.Player().Seek(5, time.Now())
+	if err := r.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.created) != 1 || c.title != "FSLTL A320" {
+		t.Fatalf("created %+v", c.created)
+	}
+	if i := c.created[0]; math.Abs(i.Altitude-1250) > 1 || i.Pitch != -5 || i.Heading != 90 || i.OnGround != 0 {
+		t.Errorf("created at %+v, want the sample 5 s in", i)
+	}
+	if r.ObjectID() != 0 || r.Stop() != nil || c.removed != 0 {
+		t.Error("removed before it had an object")
 	}
 }
