@@ -35,10 +35,12 @@ const (
 	PhaseDescent               // descending
 	PhaseApproach              // slowing down, flaps and gear, the approach
 	PhaseHandback              // at minimums the controls went back to the player
+	PhaseRoll                  // hand flying: the take-off roll and the climb to the engage height
+	PhaseLanding               // hand flying: from minimums to the rollout
 )
 
 func (p Phase) String() string {
-	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback"}[p]
+	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback", "roll", "landing"}[p]
 }
 
 // Plan is what the engine needs of the flight plan.
@@ -54,6 +56,8 @@ type Clearance struct {
 	HeadingDeg float64 // an assigned heading (magnetic); 0 own navigation
 	SpeedKts   float64 // an assigned speed; 0 own schedule
 	Approach   bool    // cleared for the approach
+	Takeoff    bool    // cleared for take-off (hand flying: the roll starts)
+	Land       bool    // cleared to land (hand flying: landed, not gone around)
 }
 
 // Input is one tick's view of the flight.
@@ -63,6 +67,8 @@ type Input struct {
 	Air   flight.Sample // altitude, ground, speeds, on the ground
 	Plan  Plan
 	ATC   Clearance
+	// Runway is the runway end of the take-off or the landing (hand flying).
+	Runway Runway
 }
 
 // AGLFt is the wheels' height above the ground.
@@ -138,6 +144,14 @@ type Config struct {
 	CopilotActs bool
 	// Resend: an action not seen done is sent again after this (3 s).
 	Resend time.Duration
+	// HandFly (iteration B): the copilot flies the take-off and the landing
+	// by hand too (hand.go), not only the autopilot part.
+	HandFly bool
+	// Learned is how the type is flown (flight.Learn): rotation, pitches,
+	// flare height; zero values take hand.go's defaults.
+	Learned flight.Learned
+	// TakeoffThrust: the throttle for the take-off, percent (90).
+	TakeoffThrust float64
 }
 
 func (c Config) withDefaults(s systems.State) Config {
@@ -156,6 +170,7 @@ func (c Config) withDefaults(s systems.State) Config {
 	def(&c.GearDownAGLFt, 2000)
 	def(&c.FinalFlapsAGLFt, 1500)
 	def(&c.MinimumsAGLFt, 200)
+	def(&c.TakeoffThrust, 90)
 	if c.ApproachKts == 0 {
 		if vs0 := s.Values[systems.DesignVS0]; vs0 > 0 {
 			c.ApproachKts = math.Round(1.3*vs0 + 5)
@@ -195,6 +210,8 @@ type Engine struct {
 	dones   map[int]func(Input) bool // when each request is done
 	// taking: TakeControl asked; the next Update takes over in the air.
 	taking bool
+	// hand: the hand flying's state (hand.go).
+	hand hand
 }
 
 type sentAction struct {
@@ -232,7 +249,32 @@ func (e *Engine) Update(in Input) Output {
 	e.settle(in, c, &out)
 	agl := in.AGLFt()
 	ap := in.State.AP
+	// Hand flying: the take-off roll once cleared, then the climb to the
+	// engage height by hand; the landing from minimums.
+	if e.phase == PhaseTakeoff && c.HandFly && in.Air.OnGround && in.ATC.Takeoff && in.Runway.valid() {
+		e.phase, e.hand = PhaseRoll, hand{}
+	}
 	switch e.phase {
+	case PhaseRoll:
+		e.takeoff(in, c, &out)
+		if !in.Air.OnGround && agl >= c.EngageAGLFt {
+			out.Say = append(out.Say, "Autopilot on")
+			e.act(in, &out, set(systems.APMaster, true), true)
+			if !ap.ATHR {
+				e.act(in, &out, set(systems.ATHR, true), true)
+			}
+			e.phase, e.taking = PhaseClimb, false
+		}
+		out.Phase = e.phase
+		return out
+	case PhaseLanding:
+		if e.landing(in, c, &out) {
+			out.Say = append(out.Say, "Your controls")
+			out.Handback = true
+			e.phase = PhaseHandback
+		}
+		out.Phase = e.phase
+		return out
 	case PhaseTakeoff:
 		// Climbing through the engage height after take-off, or taking over
 		// anywhere above it (a handover in cruise): from where the flight is.
@@ -258,6 +300,26 @@ func (e *Engine) Update(in Input) Output {
 	}
 
 	// Minimums: the controls back to the player.
+	if e.phase == PhaseApproach && e.atMinimums(in, c) && c.HandFly && in.Runway.valid() {
+		e.act(in, &out, set(systems.APMaster, false), true)
+		if in.ATC.Land {
+			// On by hand to the runway: the thrust too.
+			if ap.ATHR {
+				e.act(in, &out, set(systems.ATHR, false), true)
+			}
+			out.Say = append(out.Say, "Autopilot off")
+			e.phase, e.hand = PhaseLanding, hand{}
+			out.Phase = e.phase
+			return out
+		}
+		// Not cleared to land: go around, the player flies it.
+		out.Actions = append(out.Actions, setValue(systems.Throttle, 100))
+		out.Say = append(out.Say, "Go around, flaps", "Your controls")
+		out.Handback = true
+		e.phase = PhaseHandback
+		out.Phase = e.phase
+		return out
+	}
 	if e.phase == PhaseApproach && e.atMinimums(in, c) {
 		e.act(in, &out, set(systems.APMaster, false), true)
 		out.Say = append(out.Say, "Autopilot off", "Your controls")
