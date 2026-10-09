@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.43.1] - 2026-10-09
+
+### Fixed
+
+- `manager`: stall detection can take the consumer's own pause state (`WithStallPaused(func() bool)`, `Config.StallPaused`), say from `Pause_EX1`. Without it, it relies on the "Pause" event only, which in the MyCrew app has kept a pause with no resume: a stuck pause hid every stall, and a missed one could report a long pause as a stall.
+
 ## [0.43.0] - 2026-10-09
 
 ### Added

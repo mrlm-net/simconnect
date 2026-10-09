@@ -42,6 +42,10 @@ type Config struct {
 	// StallAfter: no message this long while Available is a stall
 	// (OnStall); 0 DEFAULT_STALL_AFTER, below 0 off.
 	StallAfter time.Duration
+	// StallPaused, when set, also tells a paused simulator (Pause_EX1, the
+	// app's own flags): no stall is reported while it returns true, besides
+	// SimState().Paused, which comes from the "Pause" event only.
+	StallPaused func() bool
 	// MaxRetries is the maximum number of connection attempts (0 = unlimited).
 	// Reaching it ends Start with an error and the manager stops for good, also
 	// with AutoReconnect: after a lost connection the limit applies again, so
@@ -266,5 +270,13 @@ func parseLogLevel(v string) slog.Level {
 func WithStallAfter(d time.Duration) Option {
 	return func(c *Config) {
 		c.StallAfter = d
+	}
+}
+
+// WithStallPaused sets a predicate telling the simulator paused (say from
+// Pause_EX1): no stall is reported while it returns true. It must not block.
+func WithStallPaused(paused func() bool) Option {
+	return func(c *Config) {
+		c.StallPaused = paused
 	}
 }

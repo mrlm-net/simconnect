@@ -108,6 +108,16 @@ func (m *Instance) stallFlightLoaded(file string) {
 	}
 }
 
+// stallPaused: the simulator paused by its "Pause" event or the consumer's
+// predicate (StallPaused); the event alone has kept a pause with no resume
+// in the MyCrew app, so a consumer with Pause_EX1 supplies its own.
+func (m *Instance) stallPaused() bool {
+	if p := m.config.StallPaused; p != nil {
+		return p()
+	}
+	return m.SimState().Paused
+}
+
 // newSessionWithin: a flight loaded this soon after a stall ends is a new
 // session.
 const newSessionWithin = time.Minute
@@ -131,7 +141,7 @@ func (m *Instance) watchStall() {
 		case <-t.C:
 		}
 		last := m.stall.last.Load()
-		if m.stall.stalled.Load() || last == 0 || m.ConnectionState() != StateAvailable || m.SimState().Paused {
+		if m.stall.stalled.Load() || last == 0 || m.ConnectionState() != StateAvailable || m.stallPaused() {
 			continue
 		}
 		silent := time.Since(time.Unix(0, last))
