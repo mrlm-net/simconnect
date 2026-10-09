@@ -290,6 +290,51 @@ func (t *Track) Write(w io.Writer) error {
 	return bw.Flush()
 }
 
+// SampleFields are the names of a sample's numbers in Row order, as the
+// file's header lists them.
+func SampleFields() []string {
+	out := make([]string, len(fields))
+	for i, f := range fields {
+		out[i] = f.name
+	}
+	return out
+}
+
+// Row is s as numbers in SampleFields order: a compact sample to send
+// (a puppet's stream, #964).
+func (s Sample) Row() []float64 {
+	row := make([]float64, len(fields))
+	for i, f := range fields {
+		row[i] = f.get(&s)
+	}
+	return row
+}
+
+// RowDecoder decodes rows in the order of names (another build's
+// SampleFields): a name it does not know is skipped, one missing stays
+// zero.
+func RowDecoder(names []string) func(row []float64) Sample {
+	byName := map[string]field{}
+	for _, f := range fields {
+		byName[f.name] = f
+	}
+	set := make([]func(*Sample, float64), len(names))
+	for i, n := range names {
+		if f, ok := byName[n]; ok {
+			set[i] = f.set
+		}
+	}
+	return func(row []float64) Sample {
+		var s Sample
+		for i, v := range row {
+			if i < len(set) && set[i] != nil {
+				set[i](&s, v)
+			}
+		}
+		return s
+	}
+}
+
 // ErrTrackVersion: a Track written by a newer format than this reader's.
 var ErrTrackVersion = errors.New("flight: track from a newer version")
 

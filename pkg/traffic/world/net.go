@@ -575,13 +575,19 @@ type fanLink struct {
 	primary   *connLink
 	mu        sync.Mutex
 	followers []*connLink
+	// onFollow and onDrop hear followers come and go (the puppets, #964).
+	onFollow, onDrop func(*connLink)
 }
 
 // follow adds a follower: what it sends is read and dropped.
 func (f *fanLink) follow(l *connLink) {
 	f.mu.Lock()
 	f.followers = append(f.followers, l)
+	joined := f.onFollow
 	f.mu.Unlock()
+	if joined != nil {
+		joined(l)
+	}
 	go func() {
 		for {
 			if _, err := l.Recv(); err != nil {
@@ -594,14 +600,20 @@ func (f *fanLink) follow(l *connLink) {
 
 func (f *fanLink) drop(l *connLink) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	found := false
 	for i, x := range f.followers {
 		if x == l {
 			f.followers = append(f.followers[:i], f.followers[i+1:]...)
+			found = true
 			break
 		}
 	}
+	left := f.onDrop
+	f.mu.Unlock()
 	l.Close()
+	if found && left != nil {
+		left(l)
+	}
 }
 
 func (f *fanLink) Send(m wireMsg) error {

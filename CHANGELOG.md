@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.51.0] - 2026-10-09
+
+### Added
+
+- `traffic/world` (#964, review E26): a multiplayer follower joining late gets the flights already going on as puppets. The primary records each (`flight.Recorder`, five samples a second) and the director relays them only to the followers that joined after that flight began. Each of those creates the aircraft and flies it as recorded (`flight.Ghost`), one second behind the newest sample so it is always between two, jumping on when it falls 3 s behind. The puppet goes when its flight ends on the primary. Flights started after a follower joined run there as before. The director asks only the primary to stream (`wireClient.callVia`). IDs: the primary's recorder at 42100, a follower's creations 42200–42499 (`IDBase` +2100, +2200). Not checked with two sims yet.
+- `flight`: `SampleFields`, `Sample.Row` and `RowDecoder` give a sample as a compact row of numbers, decoded by the sender's field names.
+
 ## [0.50.0] - 2026-10-09
 
 ### Added

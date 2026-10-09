@@ -176,6 +176,12 @@ func (c *wireClient) call(target, method string, args []any, outs ...any) error 
 		return nil
 	}
 	defer c.commanding(target, method)()
+	return c.callVia(c.l.Send, target, method, args, outs...)
+}
+
+// callVia is call sent by send: to one actuator of several (the primary
+// of a fanLink, for what only it is asked, #964).
+func (c *wireClient) callVia(send func(wireMsg) error, target, method string, args []any, outs ...any) error {
 	m := wireMsg{Kind: wireCall, Target: target, Method: method}
 	for _, a := range args {
 		b, err := json.Marshal(a)
@@ -194,7 +200,7 @@ func (c *wireClient) call(target, method string, args []any, outs ...any) error 
 	m.ID = c.next
 	c.waiting[m.ID] = ch
 	c.mu.Unlock()
-	if err := c.l.Send(m); err != nil {
+	if err := send(m); err != nil {
 		c.mu.Lock()
 		delete(c.waiting, m.ID)
 		c.mu.Unlock()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/flight"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -167,6 +168,19 @@ type actuatorSim struct {
 	// vehicles: each departure's tug and fuel truck, by target, for the
 	// director's map (sendVehicles).
 	vehicles map[string]actuatorVehicles
+
+	// Late followers (#964, puppets.go). As the primary: the flights going
+	// on (live), those the director wants streamed (puppetWant), their
+	// recorder (rec, its objects' targets recFor, IDs from puppetRec). As a
+	// follower: the puppets flown here, their creations' IDs from
+	// puppetReq.
+	live                 map[string]*liveFlight
+	puppetWant           map[string]bool
+	rec                  *flight.Recorder
+	recFor               map[uint32]string
+	puppetRec, puppetReq uint32
+	puppets              map[string]*puppet
+	puppetSeq            uint32
 }
 
 // StartDeparture starts a departure off the wire and serves its controller
@@ -214,6 +228,7 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	}
 	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
+	a.addLive(w.Target, ctl, req.Model, req.Tail)
 	tug, _ := req.Tug.(*traffic.SimObjectTug)
 	fuel, _ := req.Fuel.(*traffic.SimObjectFuelTruck)
 	if tug != nil || fuel != nil {
@@ -251,6 +266,7 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 	}
 	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
+	a.addLive(w.Target, ctl, req.Model, req.Tail)
 	go a.pump(w.Target, ctl, func(yield func(any, error) bool) {
 		for ev := range evs {
 			if !yield(ev, ev.Err) {
@@ -264,6 +280,7 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 // pump sends target's events until they end, then forgets the target.
 func (a *actuatorSim) pump(target string, ctl interface{ Handle(engine.Message) bool }, events func(yield func(any, error) bool)) {
 	defer a.srv.remove(target)
+	defer a.endLive(target) // its puppets, if any, go (#964)
 	defer a.drop(ctl) // done: no more messages for it (#65)
 	defer func() {
 		a.mu.Lock()

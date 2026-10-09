@@ -52,7 +52,8 @@ type Options struct {
 	// airport loader at IDBase (definitions) and +100 (requests), procedure
 	// loader +200/+300, nav loader +400/+500, airport list +600, injector
 	// +700/+800/+900 (events), airway crawl +1000/+1010, enroute creations
-	// +1100–+2099 (requests). 0: the defaults
+	// +1100–+2099 (requests), late followers' puppets +2100 (a recorder)
+	// and +2200–+2499 (creations). 0: the defaults
 	// (docs/traffic-world.md).
 	IDBase uint32
 	// QueueSize is how many fed messages (Feed) wait for the World; 0:
