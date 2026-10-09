@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.34.1] - 2026-10-09
+
+### Fixed
+
+- An arrival in its flare past the threshold, over the runway, counts as landing now. It is no longer measured along its route as minutes out (live, TVS837 was cleared for take-off 2 s before OKZLK touched down, then the clearance was cancelled).
+- No random "approach not stable" go-arounds. Our approaches are flown stable, and one with the runway free looked wrong (live, FTHAB).
+- Approach says nothing to an IFR arrival going around until the tower hands it back (live, FTHAB told "number 3, reduce speed to 210 knots" 8 s into its go-around, on the tower frequency).
+
 ## [0.34.0] - 2026-10-09
 
 ### Added

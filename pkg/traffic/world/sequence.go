@@ -214,6 +214,15 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		} else if e.ShortBy > delay {
 			delay = e.ShortBy
 		}
+		// Going around with the tower, not handed back yet: approach has
+		// nothing to say to it (live, FTHAB told "number 3, reduce speed to
+		// 210 knots" 8 s into its go-around, on the tower's frequency).
+		it.mu.Lock()
+		withTower := it.atc == traffic.PosTower
+		it.mu.Unlock()
+		if withTower && it.circuit == nil && len(it.arr.ProcedureRoute()) > 0 { // not on its final: flying the go-around
+			continue
+		}
 		// In a hold: released once its delay is down to holdRelease.
 		if h, _, holding := it.arr.Holding(); holding {
 			if e.Delay <= holdRelease && !q.keepHolding(now, e.Callsign) {
