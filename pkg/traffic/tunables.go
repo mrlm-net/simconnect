@@ -22,7 +22,7 @@ const (
 	// HoldShortApproachSpeedKts is used over the last HoldShortApproachMeters.
 	HoldShortApproachSpeedKts = 5.0
 	// LineUpSpeedKts is used entering the runway.
-	LineUpSpeedKts = 6.0
+	LineUpSpeedKts = 10.0 // brisk, as crews line up (was 6: 70–85 s from the holding point, live)
 )
 
 // Taxi geometry.
@@ -52,7 +52,7 @@ const (
 	StoppedKts = 1.5
 	// LineUpAlignMeters is how far down the runway from the entry point the
 	// line-up waypoint lies, so the aircraft is aligned before the take-off roll.
-	LineUpAlignMeters = 80.0
+	LineUpAlignMeters = 50.0
 )
 
 // StuckTimeout is how long a taxiing aircraft may stand still away from the

@@ -57,6 +57,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.36.0] - 2026-10-09
+
+### Added
+
+- `pkg/systems`: copilot callout values (the MyCrew app's request). `State.SpoilersArmed` and `SpoilersPct` (the higher side deployed), and per engine `Reverser`, `ReverserPct` and `N1`. They read the default SimVars `SPOILERS ARMED`, `SPOILERS LEFT/RIGHT POSITION`, `GENERAL ENG REVERSE THRUST ENGAGED:n`, `TURB ENG REVERSE NOZZLE PERCENT:n` and `TURB ENG N1:n` (not measured live yet), and a model can override them in its profile. Value names `spoilersArmed`, `spoilersPct`, `Reverser(n)`, `ReverserPct(n)`, `N1(n)`.
+
+### Changed
+
+- Quicker line-ups: onto the runway and aligned at `LineUpSpeedKts` 10 kt (was 6) over `LineUpAlignMeters` 50 m (was 80). Live, a line-up and wait took 70–85 s from the holding point; real crews take about 30–60 s.
+
 ## [0.35.0] - 2026-10-09
 
 ### Added

@@ -247,3 +247,22 @@ func TestCountedButtons(t *testing.T) {
 		t.Errorf("writes\n%s\nwant\n%s", strings.Join(got, " "), want)
 	}
 }
+
+// Copilot callout values from the default SimVars: spoilers armed and the
+// higher side deployed; per engine the reverser and N1.
+func TestCalloutValues(t *testing.T) {
+	s := resolveState(Default(), map[varUnit]float64{
+		{"SPOILERS ARMED", "bool"}: 1, {"SPOILERS LEFT POSITION", "percent"}: 80, {"SPOILERS RIGHT POSITION", "percent"}: 95,
+		{"GENERAL ENG REVERSE THRUST ENGAGED:2", "bool"}: 1, {"TURB ENG REVERSE NOZZLE PERCENT:2", "percent"}: 100,
+		{"TURB ENG N1:1", "percent"}: 84.5, {"TURB ENG N1:2", "percent"}: 84.7,
+	})
+	if !s.SpoilersArmed || s.SpoilersPct != 95 {
+		t.Errorf("spoilers armed %v, %.0f %%", s.SpoilersArmed, s.SpoilersPct)
+	}
+	if s.Reverser[0] || !s.Reverser[1] || s.ReverserPct[1] != 100 {
+		t.Errorf("reversers %v, %v", s.Reverser, s.ReverserPct)
+	}
+	if s.N1[0] != 84.5 || s.N1[1] != 84.7 || s.N1[2] != 0 {
+		t.Errorf("N1 %v", s.N1)
+	}
+}

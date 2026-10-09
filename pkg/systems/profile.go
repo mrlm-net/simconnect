@@ -59,6 +59,10 @@ const (
 	PushbackAttached  = "pushbackAttached"
 	PushbackAvailable = "pushbackAvailable"
 	PushbackWait      = "pushbackWait"
+	// Copilot callouts: ground spoilers armed and deployed (percent, the
+	// higher side) for "spoilers" on touchdown.
+	SpoilersArmed = "spoilersArmed"
+	SpoilersPct   = "spoilersPct"
 	// Cabin (#759): the seat belt sign on, the no smoking sign (0 off, 1
 	// auto, 2 on; a two-way switch 0 or 1), external power on (feeding,
 	// the switch's state).
@@ -89,6 +93,13 @@ const (
 func EngineRunning(n int) string { return fmt.Sprintf("engineRunning%d", n) }
 func Starter(n int) string       { return fmt.Sprintf("starter%d", n) }
 func Door(n int) string          { return fmt.Sprintf("door%d", n) }
+
+// Per engine n (1–4), for copilot callouts: the reverser engaged and its
+// nozzle deployed (percent) for "reverse green", N1 (percent) for "thrust
+// set".
+func Reverser(n int) string    { return fmt.Sprintf("reverser%d", n) }
+func ReverserPct(n int) string { return fmt.Sprintf("reverserPct%d", n) }
+func N1(n int) string          { return fmt.Sprintf("n1_%d", n) }
 
 // Value is how one value is read: one variable, or several combined.
 type Value struct {
