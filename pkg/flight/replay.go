@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -287,4 +289,124 @@ func (g *Ghost) Apply(s Sample) error {
 		return g.inj.SetThrottle(g.obj, n, thr)
 	}
 	return nil
+}
+
+// GhostClient is what a GhostReplay needs of a connection: an AI object
+// created and removed.
+type GhostClient interface {
+	AICreateNonATCAircraft(szContainerTitle string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error
+	AIRemoveObject(objectID uint32, requestID uint32) error
+}
+
+// GhostReplay replays a Track as an AI aircraft on its own: Start creates
+// the object (title, tail) where the Player stands, Handle takes its object
+// ID, has the Injector take it over and flies it every frame as the Player
+// says (Play, Pause, Seek, SetRate), Stop removes it. reqID is its creation
+// and removal request; inj is the host's own Injector (its IDs clear of
+// any other's, NewInjector's options).
+type GhostReplay struct {
+	client GhostClient
+	inj    *traffic.Injector
+	player *Player
+	title  string
+	tail   string
+	req    uint32
+
+	mu      sync.Mutex
+	obj     uint32
+	ghost   *Ghost
+	placed  time.Time
+	stopped bool
+}
+
+// NewGhostReplay returns a ghost replay of track, its Player paused at the
+// start.
+func NewGhostReplay(client GhostClient, inj *traffic.Injector, track *Track, title, tail string, reqID uint32) *GhostReplay {
+	return &GhostReplay{client: client, inj: inj, player: NewPlayer(track), title: title, tail: tail, req: reqID}
+}
+
+// Player is the replay's clock: Play, Pause, Seek, SetRate.
+func (r *GhostReplay) Player() *Player { return r.player }
+
+// ObjectID is the ghost's object, 0 before the simulator gave it.
+func (r *GhostReplay) ObjectID() uint32 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.obj
+}
+
+// Start creates the ghost where the Player stands.
+func (r *GhostReplay) Start() error {
+	s, _ := r.player.Sample(time.Now())
+	init := types.SIMCONNECT_DATA_INITPOSITION{Latitude: s.Lat, Longitude: s.Lon, Altitude: s.AltFt, Pitch: -s.Pitch, Bank: -s.Bank,
+		Heading: s.Heading, Airspeed: types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(s.GS))}
+	if s.OnGround {
+		init.OnGround = 1
+	}
+	tail := r.tail
+	if tail == "" {
+		tail = "GHOST"
+	}
+	return r.client.AICreateNonATCAircraft(r.title, tail, init, r.req)
+}
+
+// ghostFrame: the ghost is placed at most this often.
+const ghostFrame = time.Second / 60
+
+// Handle takes the ghost's object ID (true), then flies it as the Player
+// says on the messages that come, at most every frame (false: the
+// message is everyone's).
+func (r *GhostReplay) Handle(msg engine.Message) bool {
+	if msg.SIMCONNECT_RECV == nil {
+		return false
+	}
+	r.mu.Lock()
+	obj, stopped := r.obj, r.stopped
+	r.mu.Unlock()
+	if stopped {
+		return false
+	}
+	if obj == 0 {
+		if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+			return false
+		}
+		m := msg.AsAssignedObjectID()
+		if m == nil || uint32(m.DwRequestID) != r.req {
+			return false
+		}
+		obj = uint32(m.DwObjectID)
+		if err := r.inj.Takeover(obj); err != nil {
+			return true
+		}
+		r.mu.Lock()
+		r.obj, r.ghost = obj, NewGhost(r.inj, obj)
+		r.mu.Unlock()
+		return true
+	}
+	now := time.Now()
+	r.mu.Lock()
+	due := now.Sub(r.placed) >= ghostFrame
+	if due {
+		r.placed = now
+	}
+	g := r.ghost
+	r.mu.Unlock()
+	if due && g != nil {
+		s, _ := r.player.Sample(now)
+		_ = g.Apply(s)
+	}
+	return false
+}
+
+// Stop removes the ghost.
+func (r *GhostReplay) Stop() error {
+	r.mu.Lock()
+	r.stopped = true
+	obj := r.obj
+	r.mu.Unlock()
+	if obj == 0 {
+		return nil
+	}
+	r.inj.Forget(obj)
+	return r.client.AIRemoveObject(obj, r.req)
 }
