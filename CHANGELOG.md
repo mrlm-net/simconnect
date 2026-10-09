@@ -57,6 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.31.5] - 2026-10-09
+
+Releases 0.19.0 to 0.31.4 are described in their GitHub release notes.
+
+### Fixed
+
+- Injected aircraft: no rest height learnt from a take-off roll or a rollout. `PlaceAir` placements now count as placements, so the samples of a roll are not taken for the simulator settling the aircraft (live, TVS495 learnt its own roll, 8.48 → 8.08 → 9.00 ft). Found on the #370 run with 31 aircraft.
+- VFR circuit arrivals joining from beyond the base turn are no longer taken for on base. The route is now tracked from its first point, so the delay goes into a longer downwind (live, OKKKQ from N63 told to orbit before it reached its downwind).
+- No orbits for spacing. A VFR arrival in the circuit gets its downwind extended, or another circuit when that is not enough, or a go-around once on base or final. IFR arrivals near the end of the STAR get vectors or the hold. `Orbit()` stays for emergencies.
+- VFR departures are no longer cleared by radar to the IFR departure level (live, OKQQS out VFR via NOVEMBER told "climb to flight level 240").
+
 ## [0.18.11] - 2026-10-03
 
 Add-on detection without SimConnect, and the traffic picture tells which airport an aircraft flies to and how it climbs from its altitude.

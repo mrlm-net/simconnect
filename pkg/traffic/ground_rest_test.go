@@ -100,3 +100,32 @@ func TestInjectorLearnsSettledRest(t *testing.T) {
 		t.Errorf("placed at %.2f, want the settled 1208.13", got)
 	}
 }
+
+// TestInjectorNoRestFromRoll: placed by PlaceAir (a take-off roll, a
+// rollout) a while, the samples are its own: not learnt as its rest.
+func TestInjectorNoRestFromRoll(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	w := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { return w }
+	const obj = 42
+	if err := inj.Takeover(obj); err != nil {
+		t.Fatal(err)
+	}
+	g := injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.7, PlaneFt: 1208.48, PlanePitch: 0.7, OnGround: 1}
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, g))
+	inj.Place(obj, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}) // lined up
+	for i := 0; i < 30; i++ { // a 3 s roll, placed every 100 ms
+		w = w.Add(100 * time.Millisecond)
+		inj.PlaceAir(obj, ApproachPose{OnGround: true, GroundSpeedKts: float64(10 + 3*i)})
+		rolled := g
+		rolled.PlaneFt = 1209.2 // what the sim shows of the roll
+		inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, rolled))
+	}
+	inj.Place(obj, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}})
+	var got types.SIMCONNECT_DATA_INITPOSITION
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+	if math.Abs(got.Altitude-1208.48) > 1e-6 {
+		t.Errorf("rest learnt from the roll: placed at %.2f, want 1208.48", got.Altitude)
+	}
+}
