@@ -57,6 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.36.1] - 2026-10-09
+
+### Changed
+
+- Crews go around from an approach "not stable" and reject a take-off on their own only rarely: 1 in 2000 each (`crewUnstableShare`, `crewRejectShare`; were 1 in 100 and 1 in 333).
+- The controllers' agenda logs a call said 20 s or more after it was decided, with why it waited ("behind X", "the frequency busy until …"), to find slow answers (live, FVKNF's taxi request answered after 46 s on a quiet ground frequency).
+
+### Fixed
+
+- Fuel trucks park beyond the wingtip of a low-wing aircraft (span `FuelOffWingMaxSpanM` 25 m or less: light aircraft, business jets), `FuelWingtipClearMeters` 2.5 m out, not in the wing. Live, a fuel truck went through a small aircraft's wing at 7 m from the fuselage. Airliners are refuelled under the wing as before.
+
 ## [0.36.0] - 2026-10-09
 
 ### Added

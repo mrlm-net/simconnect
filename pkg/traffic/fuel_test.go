@@ -208,3 +208,20 @@ func segmentDist(p, a, b airport.LatLon) float64 {
 	}
 	return math.Abs(localDist(a, p) * math.Sin((localBearing(a, p)-localBearing(a, b))*math.Pi/180))
 }
+
+// TestFuelSpotLowWing: for a light aircraft the truck parks beyond the
+// wingtip, not in the wing; for an airliner under the wing as before.
+func TestFuelSpotLowWing(t *testing.T) {
+	pose := GroundPose{Position: airport.LatLon{Lat: 50.1, Lon: 14.26}, Heading: 0}
+	for _, c := range []struct {
+		model  string
+		beyond bool
+	}{{"DA62", true}, {"PC12", true}, {"A320", false}} {
+		prof := MotionProfileFor(c.model)
+		spot := FuelSpot(pose, prof, 0)
+		side := math.Abs(alongHeading(pose.Position, pose.Heading+90, spot.Position))
+		if got := side > prof.SpanMeters/2; got != c.beyond {
+			t.Errorf("%s: %.1f m out, span %.1f m: beyond the tip %v, want %v", c.model, side, prof.SpanMeters, got, c.beyond)
+		}
+	}
+}
