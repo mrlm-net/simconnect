@@ -155,7 +155,7 @@ func main() {
 				<strong>SimConnect SDK</strong> (included with the MSFS SDK)
 			</li>
 			<li>
-				<strong>Go 1.25+</strong> &mdash; download from
+				<strong>Go 1.27+</strong> &mdash; download from
 				<a href="https://go.dev/dl/" target="_blank" rel="noopener noreferrer">go.dev/dl/</a>
 			</li>
 			<li>
