@@ -12,8 +12,11 @@ import (
 // tug comes (TugLeadTime before the push) or the push is cleared, and the
 // push waits for it to leave. With none free in the fleet, none. The buses
 // come for the boarding only (BusBoardingTime, after the stairs) and leave
-// before the stairs (BusLeaveBeforeStairs).
+// before the stairs (BusLeaveBeforeStairs). The GPU stays longer: until
+// the APU is on, APUStartBeforeTug before the tug comes (#1025, the user:
+// it went long before the push).
 const (
+	APUStartBeforeTug        = time.Minute
 	StandServiceStartDelay   = 10 * time.Second
 	StandServiceClearMargin  = 2 * time.Minute
 	StandServiceClearTimeout = 2 * time.Minute
@@ -49,6 +52,9 @@ type standService struct {
 	stay      time.Duration
 	arrivedAt time.Time
 	home      FuelService
+	// margin: it leaves this long before the tug comes (0:
+	// StandServiceClearMargin).
+	margin time.Duration
 }
 
 type standVehicle struct {
@@ -59,7 +65,7 @@ type standVehicle struct {
 // standServices are the departure's stand services with their vehicles.
 func (c *TaxiController) standServices() []standVehicle {
 	c.stairsSvc.kind, c.stairsSvc.what = VehicleStairs, "stairs"
-	c.gpuSvc.kind, c.gpuSvc.what = VehicleGPU, "GPU"
+	c.gpuSvc.kind, c.gpuSvc.what, c.gpuSvc.margin = VehicleGPU, "GPU", APUStartBeforeTug
 	out := []standVehicle{{c.req.Stairs, &c.stairsSvc}, {c.req.GPU, &c.gpuSvc}}
 	if c.req.Stairs == nil {
 		return out // buses only with stairs
@@ -115,7 +121,11 @@ func (c *TaxiController) updateStandService(v FuelService, st *standService, dt 
 	if c.mover != nil {
 		pose = c.mover.Pose()
 	}
-	leaveBy := c.gateAt.Add(-TugLeadTime - StandServiceClearMargin - st.leaveEarly)
+	margin := StandServiceClearMargin
+	if st.margin > 0 {
+		margin = st.margin
+	}
+	leaveBy := c.gateAt.Add(-TugLeadTime - margin - st.leaveEarly)
 	if !st.attached {
 		if c.state != TaxiAwaitingPushback || c.pushCleared || !c.pushAt.IsZero() || !now.Before(leaveBy) {
 			return

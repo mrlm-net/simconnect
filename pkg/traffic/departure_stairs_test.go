@@ -96,3 +96,35 @@ func TestTaxiControllerGPU(t *testing.T) {
 		t.Error("GPU not right of the axis (south, heading east)")
 	}
 }
+
+// The GPU stays until the APU is on (#1025): APUStartBeforeTug before the
+// tug comes, after the stairs have gone.
+func TestTaxiControllerGPUUntilAPU(t *testing.T) {
+	fleet := NewVehicleFleet(map[VehicleKind]int{VehicleGPU: 1, VehicleStairs: 1})
+	gpu, stairs := &fakeFuel{arriveAfter: 60, leaveAfter: 60 * 10}, &fakeFuel{arriveAfter: 60, leaveAfter: 60 * 10}
+	ctl, _, run, now := injectedDeparture(t, TaxiRequest{GPU: gpu, Stairs: stairs, PushbackAt: time.Now().Add(20 * time.Minute), HoldForClearances: true}, TaxiWithServices(fleet))
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	var stairsLeft, gpuLeft time.Time
+	for i := 0; i < 60*60*25 && gpuLeft.IsZero(); i++ {
+		run(TaxiPushback, 1)
+		if stairsLeft.IsZero() && stairs.leaveAt > 0 {
+			stairsLeft = *now
+		}
+		if gpu.leaveAt > 0 {
+			gpuLeft = *now
+		}
+	}
+	if gpuLeft.IsZero() || stairsLeft.IsZero() {
+		t.Fatalf("GPU left %v, stairs left %v", !gpuLeft.IsZero(), !stairsLeft.IsZero())
+	}
+	apu := ctl.gateAt.Add(-TugLeadTime - APUStartBeforeTug)
+	if d := gpuLeft.Sub(apu); d < 0 || d > 2*time.Second {
+		t.Errorf("GPU left %v from the APU start", d)
+	}
+	if !gpuLeft.After(stairsLeft) {
+		t.Errorf("GPU left %v before the stairs", stairsLeft.Sub(gpuLeft))
+	}
+}
