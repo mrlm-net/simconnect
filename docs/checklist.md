@@ -56,3 +56,15 @@ for _, l := range set.Due("approach") {
 ## On a recorded flight
 
 `StateFromSample` turns a `flight.Sample` into `systems.State`: the gear, flaps, spoilers armed, lights, parking brake, engines and autopilot. A recording has no signs or doors, so those items can't be checked. `CompletedAt(list, samples, from, to)` is when a list was first complete. `ForAssess(set, track)` gives `flight.AssessOptions.Checklists`, when the before-take-off and landing checklists were complete. `Assess` then flags a take-off before the before-take-off checklist was done, and a landing checklist not done by 1000 ft, in place of its gear check.
+
+## Importing an aircraft's MSFS checklist
+
+The simulator's own checklists are encrypted, but some community aircraft ship theirs as readable XML (FlyByWire's A32NX: `SimObjects/<aircraft>/Checklist/*.xml`, a checklist and its checkpoint library). `ImportMSFS(name, checklist, libraries...)` reads one into a `Set`:
+
+- Each `Page` becomes a `List` (named from its subject: "Landing Checklist" → `landing-checklist`).
+- It is due at its `Step`, by the step's own id (`landing_approach`) and our stage or phase for it (`LANDING_APPROACH` → `approach`, `PREFLIGHT_GATE` → `before-start`, `LANDING_GATE` → `parking`…).
+- `Block`s are flattened. Each `Checkpoint` becomes an `Item` with its subject and expectation as said (localisation keys such as `GAME.CHECKLIST_LANDING_GEAR` as their words), and its reference id as the note.
+- A checkpoint's test becomes a `Check` only when it is one simple test (a SimVar on, `NOT` it, or `EQUAL` a value) of a SimVar `pkg/systems` names generically: the gear handle, flaps index, lights, parking brake, spoilers armed, seat belts, autopilot master, transponder. The rest is confirmed by the crew.
+- The checkpoints' copilot actions are raw key events and are not imported: imported items are verify only.
+
+FlyByWire's A320 imports as 27 lists and 405 items. Only a few items get checks, because most of its tests read its own L:vars or chain several tests.
