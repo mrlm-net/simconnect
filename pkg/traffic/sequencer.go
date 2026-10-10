@@ -178,11 +178,12 @@ func (s *ApproachSequencer) SetDepartureSlots(n int) {
 // and follow, and its spacing: DepartureGapNM, and at least what the tower
 // needs (RunwayController): the leader off the runway, then the follower
 // still DepartureGapArrivalNM out as the departure rolls.
-func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c ApproachConditions) (time.Duration, float64) {
+func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c ApproachConditions, departures int) (time.Duration, float64) {
 	nm := s.opts.DepartureGapNM
 	if nm == 0 {
 		nm = DefaultDepartureGapNM
 	}
+	nm += float64(max(departures, 1)-1) * DoubleGapExtraNM // each departure more in the gap
 	kts := c.FinalGroundKts(follow.FinalKts)
 	g := SeparationTime(nm, kts)
 	if need := RunwayOccupancyIn(lead.Wake, true, c.Surface) + SeparationTime(DepartureGapArrivalNM, kts); need > g {
@@ -200,6 +201,13 @@ const (
 	// the departure in the gap starts its roll: the tower's MinArrivalNM
 	// (4 NM by default) and half a mile to spare.
 	DepartureGapArrivalNM = 4.5
+	// DoubleGapQueue: with this many departures waiting for a runway, its
+	// gaps fit two departures each (a double gap): DoubleGapExtraNM more
+	// for the second, about two minutes of final, the departure interval
+	// on one route. Two departures then cost 10.5 NM of arrival spacing,
+	// not 12, and a long queue drains while the arrivals keep coming.
+	DoubleGapQueue   = 3
+	DoubleGapExtraNM = 4.5
 )
 
 // NewApproachSequencer creates the sequencer of a runway end ("24").
@@ -617,11 +625,17 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			// A departure gap in front of it, while departures wait (a wide
 			// enough gap already is one).
 			if slots > 0 && ahead.a.Runway == f.a.Runway {
-				if dg, nm := s.departureGap(ahead.a, f.a, c); dg > g {
+				// A queue at the runway: two departures in one wider gap (a
+				// double gap), less room off the arrivals than two single ones.
+				n := 1
+				if slots >= DoubleGapQueue {
+					n = 2
+				}
+				if dg, nm := s.departureGap(ahead.a, f.a, c, n); dg > g {
 					g = dg
 					gapped[f.a.Callsign] = nm
 				}
-				slots--
+				slots -= n
 			}
 			if at.Before(ahead.at.Add(g)) {
 				at = ahead.at.Add(g)
