@@ -963,7 +963,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	var events func() (TaxiOrArrival, bool)
 	switch r.Kind {
 	case "departure":
-		cc.core.pushes.want(g) // its stands' standard pushes, once
+		cc.core.pushes.want(g, r.Stand) // its stand's standard push, planned on demand
 		tug := cc.tug(r, reqBase, prof, ac.WingspanM)
 		if t, ok := tug.(*traffic.SimObjectTug); ok {
 			it.tug = t // its way shown on the map

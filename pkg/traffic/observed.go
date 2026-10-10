@@ -40,6 +40,9 @@ type Observed struct {
 	// or planned track. An arrival flies it and joins the STAR where it
 	// meets one; nil, it goes direct as before.
 	Route []PathPoint `json:"route,omitempty"`
+	// RouteText is the route as filed ("DCT VLM UL86 KEPAD"), used when
+	// Route is not given: its fixes and airways over the known network.
+	RouteText string `json:"routeText,omitempty"`
 }
 
 // PathPoint is a point of a given route; AltFt 0 keeps the altitude flown.

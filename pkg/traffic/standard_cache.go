@@ -92,3 +92,10 @@ func LoadStandardPushes(r io.Reader, g *airport.Graph) (int, error) {
 	}
 	return n, nil
 }
+
+// HasStandardPush reports whether stand's standard push at g's airport is
+// known: planned (PlanStandardPushes) or loaded (LoadStandardPushes).
+func HasStandardPush(g *airport.Graph, stand int) bool {
+	_, ok := standardPushes.Load(stdKey(g, stand))
+	return ok
+}

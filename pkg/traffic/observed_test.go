@@ -97,3 +97,27 @@ func TestManagerObserved(t *testing.T) {
 		t.Errorf("dropped on the stand, still %s", f.Status)
 	}
 }
+
+// TestManagerRealOverflight: a real overflight (#845) is spawned at once in
+// the observed stage, and gone after its exit.
+func TestManagerRealOverflight(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{})
+	m.SetAirports("LKPR")
+	m.SetEnabled(true)
+	m.AddOverflight(Flight{Callsign: "DLH9", Type: "A320", Enter: now, Exit: now.Add(25 * time.Minute),
+		Observed: &Sighting{ID: "x9", SeenAt: now, Route: []PathPoint{{Lat: 50, Lon: 15}}}})
+	m.Tick(now)
+	if len(sp.spawned) != 1 || !sp.spawned[0].Overflight() || sp.spawned[0].Stage != "observed" {
+		t.Fatalf("spawned %+v, want the overflight in the observed stage", sp.spawned)
+	}
+	if len(sp.spawned[0].Observed.Route) != 1 {
+		t.Error("route not kept on the flight")
+	}
+	m.Update("DLH9", FlightEnroute, now)
+	m.Tick(now.Add(40 * time.Minute))
+	if f, _ := m.Flight("overflight", "DLH9"); f.Status != FlightDone {
+		t.Errorf("after its exit still %s", f.Status)
+	}
+}

@@ -258,18 +258,25 @@ func (s *state) setLive(v bool) {
 // planned for: a narrow-body, the stands' usual user.
 const standardPushModel = "FSLTL_B738_RYR"
 
-// pushPlanQueue (core.pushes) plans every stand's standard push of an airport
+// pushPlanQueue (core.pushes) plans stands' standard pushes
 // (traffic.PlanStandardPushes): a stand then pushes the same way whatever
-// the runway. Only airports we push back at — planned when the first
-// departure appears there, not for every airport loaded (destinations
-// included: a minute or two of a core each, all at once) — and one airport
-// at a time, in the background.
+// the runway. On demand only: the stand of each departure placed, when not
+// planned yet (an airport's saved ones are loaded on its first), one at a
+// time in the background; a first visit costs only the stands traffic
+// uses, not a sweep of every stand.
 type pushPlanQueue struct {
-	log  *trafficLog
-	once sync.Once
-	mu   sync.Mutex
-	seen map[string]bool
-	ch   chan *airport.Graph
+	log    *trafficLog
+	once   sync.Once
+	mu     sync.Mutex
+	loaded map[string]bool   // airports whose saved file was read
+	queued map[standJob]bool // stands waiting or planned
+	ch     chan standJob
+}
+
+// standJob is one stand to plan.
+type standJob struct {
+	g     *airport.Graph
+	stand int
 }
 
 // standardPushDuty: the planner works this share of the time on one core,
@@ -286,42 +293,34 @@ func standardPushFile(icao string) string {
 	return filepath.Join(dir, "mrlm-simconnect", "airport-map", "pushes", icao+".json")
 }
 
-// standardPushSaveEvery: the plans so far are saved this often while
-// planning, so a run stopped early (the app restarted) keeps them.
-const standardPushSaveEvery = 30 * time.Second
-
-// planStandardPushes loads g's saved standard pushes, plans the stands
-// still missing one at a time at standardPushDuty, and saves them as it
-// goes.
-func planStandardPushes(log *trafficLog, g *airport.Graph) {
+// loadStandardPushes reads g's airport's saved standard pushes.
+func loadStandardPushes(g *airport.Graph) {
 	icao, file := g.Layout.ICAO, standardPushFile(g.Layout.ICAO)
-	loaded := 0
-	if f, err := os.Open(file); err == nil {
-		n, err := traffic.LoadStandardPushes(f, g)
-		f.Close()
-		if err != nil {
-			tlog.printf("%s: standard pushbacks not loaded from %s: %v", icao, file, err) // stale: planned again
-		}
-		loaded = n
-	}
-	if loaded == len(g.Layout.Parking) {
-		tlog.printf("%s: standard pushbacks of %d stands loaded", icao, loaded)
+	f, err := os.Open(file)
+	if err != nil {
 		return
 	}
-	start, worked, saved := time.Now(), time.Duration(0), time.Now()
-	for i := range g.Layout.Parking {
-		t := time.Now()
-		traffic.PlanStandardPushes(g, standardPushModel, []int{i}) // a loaded stand is skipped
-		d := time.Since(t)
-		worked += d
-		if time.Since(saved) >= standardPushSaveEvery {
-			saveStandardPushes(g, file)
-			saved = time.Now()
-		}
-		time.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
+	n, err := traffic.LoadStandardPushes(f, g)
+	f.Close()
+	if err != nil {
+		tlog.printf("%s: standard pushbacks not loaded from %s: %v", icao, file, err) // stale: planned again
+		return
 	}
-	tlog.printf("%s: standard pushbacks of %d stands planned (%d loaded) in %s, %s of work", icao, len(g.Layout.Parking)-loaded, loaded, time.Since(start).Round(time.Second), worked.Round(time.Second))
-	saveStandardPushes(g, file)
+	tlog.printf("%s: standard pushbacks of %d of %d stands loaded", icao, n, len(g.Layout.Parking))
+}
+
+// planStandardPush plans job's stand when not known yet, rests for the
+// duty cycle, and saves the airport's file.
+func planStandardPush(job standJob) {
+	g := job.g
+	if traffic.HasStandardPush(g, job.stand) {
+		return
+	}
+	t := time.Now()
+	traffic.PlanStandardPushes(g, standardPushModel, []int{job.stand})
+	d := time.Since(t)
+	saveStandardPushes(g, standardPushFile(g.Layout.ICAO))
+	time.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
 }
 
 // saveStandardPushes writes g's standard pushes planned so far to file,
@@ -347,25 +346,35 @@ func saveStandardPushes(g *airport.Graph, file string) {
 	}
 }
 
-// want queues g's airport, once.
-func (q *pushPlanQueue) want(g *airport.Graph) {
+// want queues stand's standard push at g's airport (its saved ones loaded
+// first, once per airport).
+func (q *pushPlanQueue) want(g *airport.Graph, stand int) {
 	q.once.Do(func() {
-		q.seen, q.ch = map[string]bool{}, make(chan *airport.Graph, 64)
+		q.loaded, q.queued, q.ch = map[string]bool{}, map[standJob]bool{}, make(chan standJob, 256)
 		go func() {
-			for g := range q.ch {
-				planStandardPushes(q.log, g)
+			for job := range q.ch {
+				planStandardPush(job)
 			}
 		}()
 	})
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.seen[g.Layout.ICAO] {
+	if stand < 0 || stand >= len(g.Layout.Parking) {
 		return
 	}
-	q.seen[g.Layout.ICAO] = true
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.loaded[g.Layout.ICAO] {
+		q.loaded[g.Layout.ICAO] = true
+		loadStandardPushes(g)
+	}
+	job := standJob{g, stand}
+	if q.queued[job] || traffic.HasStandardPush(g, stand) {
+		return
+	}
+	q.queued[job] = true
 	select {
-	case q.ch <- g:
+	case q.ch <- job:
 	default:
+		delete(q.queued, job) // full: asked again by the next departure
 	}
 }
 

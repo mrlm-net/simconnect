@@ -50,7 +50,7 @@ var errNoOther = errors.New("no other end known")
 // realID is what one observed aircraft is in the manager: its arrival
 // and departure call signs ("" none).
 type realID struct {
-	arrival, departure string
+	arrival, departure, overflight string
 }
 
 // ObserveResult is what Observe made of one sighting: Status "added",
@@ -218,6 +218,9 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 	res.Kind = kind
 	cs := realCallsign(o)
 	res.Callsign = cs
+	if len(o.Route) == 0 && strings.TrimSpace(o.RouteText) != "" {
+		o.Route = s.routeFromText(cs, o)
+	}
 	now := s.cc.clock.Now()
 	sight := o.Sighting()
 	s.mu.Lock()
@@ -229,12 +232,12 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 		id = &realID{}
 		s.real[o.ID] = id
 	}
-	arr, dep := id.arrival, id.departure
+	arr, dep, over := id.arrival, id.departure, id.overflight
 	s.mu.Unlock()
 	// Nothing flown for it (ignored): no entry kept (#68).
 	defer func() {
 		s.mu.Lock()
-		if r := s.real[o.ID]; r != nil && r.arrival == "" && r.departure == "" {
+		if r := s.real[o.ID]; r != nil && r.arrival == "" && r.departure == "" && r.overflight == "" {
 			delete(s.real, o.ID)
 		}
 		s.mu.Unlock()
@@ -248,6 +251,7 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 	}
 	af, hasArr := live("arrival", arr)
 	df, hasDep := live("departure", dep)
+	of, hasOver := live("overflight", over)
 	add := func(f traffic.Flight, kind string) {
 		f.Observed = &sight
 		s.mgr.Add([]traffic.Flight{f})
@@ -266,7 +270,33 @@ func (s *scheduler) observe(o traffic.Observed) ObserveResult {
 	base := traffic.Flight{Callsign: cs, Airline: realAirline(cs), Type: strings.ToUpper(o.Type)}
 	switch kind {
 	case traffic.ObservedOverflight:
-		return ignore("overflights are not flown yet")
+		switch {
+		case hasOver:
+			s.mgr.Observe("overflight", of.Callsign, sight, "", "")
+			res.Callsign, res.Status = of.Callsign, "updated"
+		case hasArr || hasDep:
+			return ignore("flying as " + arr + dep)
+		default:
+			centre, ok := s.cc.world.Centre()
+			pos, alt := sight.At(time.Now()) // the feed's clock, not the simulator's
+			if !ok || calc.HaversineNM(pos.Lat, pos.Lon, centre.Lat, centre.Lon) > overflightRadiusNM {
+				return ignore("overflight outside the area")
+			}
+			path := realOverflightPath(centre, pos, alt, o.TrackDeg, o.Route)
+			if len(path) == 0 {
+				return ignore("its way does not cross the area")
+			}
+			f := base
+			f.Origin, f.Destination = strings.ToUpper(o.Origin), strings.ToUpper(o.Destination)
+			kts := math.Max(o.GroundKts, realMinKts)
+			f.Enter, f.Exit = now, now.Add(time.Duration(pathNM(pos, path)/kts*float64(time.Hour)))
+			f.Observed = &sight
+			s.mgr.AddOverflight(f)
+			s.mu.Lock()
+			id.overflight = f.Callsign
+			s.mu.Unlock()
+			res.Status = "added"
+		}
 	case traffic.ObservedArrival:
 		switch {
 		case hasArr:
@@ -360,6 +390,9 @@ func (s *scheduler) drop(id string) bool {
 	if r.departure != "" {
 		s.mgr.Drop("departure", r.departure, now)
 	}
+	if r.overflight != "" {
+		s.mgr.Drop("overflight", r.overflight, now)
+	}
 	return true
 }
 
@@ -419,6 +452,9 @@ func realAirline(cs string) string {
 // it is handed to approach (handovers) as an enroute arrival is.
 func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 	cc := s.cc
+	if f.Overflight() {
+		return s.spawnRealOverflight(f)
+	}
 	g, err := s.st.cache.Graph(f.Airport)
 	if err != nil {
 		return err

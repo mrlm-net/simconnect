@@ -381,6 +381,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		p, err = planFor(ctx, st, g, req)
 		cancel()
+		if err == nil && f.Departure() && f.Observed != nil {
+			flyGiven(p, f.Observed.Route) // its route after the SID (#845)
+		}
 	}
 	if errors.Is(err, errNoOther) {
 		// The runway's procedure, said as such.
