@@ -245,6 +245,8 @@ type state struct {
 	pushes *pushStore
 	// stations: the airports' own ATC stations (#722).
 	stations *stationStore
+	// modelRules: the local model rules (model_rules.go, #1024).
+	modelRules *modelRuleStore
 }
 
 func (s *state) setLive(v bool) {
@@ -1114,10 +1116,11 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerPushback(mux, st)
 	registerStations(mux, st)
 	registerPlayer(mux, st)
-	registerClosures(mux, w) // the runways closed (closures.go)
-	registerHold(mux, st)    // the traffic held for a replay (hold.go)
-	registerSeed(mux, st)    // a real-world snapshot placed at the start (seed.go)
-	registerVehicles(mux, w) // the ground vehicles by kind on or off (vehicles.go)
+	registerClosures(mux, w)   // the runways closed (closures.go)
+	registerHold(mux, st)      // the traffic held for a replay (hold.go)
+	registerSeed(mux, st)      // a real-world snapshot placed at the start (seed.go)
+	registerVehicles(mux, w)   // the ground vehicles by kind on or off (vehicles.go)
+	registerModelRules(mux, w) // models never used (model_rules.go)
 	registerCorridor(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {

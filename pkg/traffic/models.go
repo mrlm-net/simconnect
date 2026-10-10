@@ -139,6 +139,9 @@ func liveryOf(t, airline, name string) bool {
 }
 
 func skipModel(t string) bool {
+	if ModelNever(t) {
+		return true // the model rules (#1024)
+	}
 	for _, w := range modelTokens(t) {
 		// Freighter designators: B738F, A332F.
 		if len(w) == 5 && w[4] == 'F' && ProfileFor(w[:4]).Type == w[:4] {

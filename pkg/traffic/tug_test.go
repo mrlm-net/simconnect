@@ -8,6 +8,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/dict"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -384,12 +385,23 @@ func TestTugArriveWithinCoversTheWayIn(t *testing.T) {
 }
 
 // TestTugTitleFor: a small tug for a light aircraft, a towbarless one for a
-// business jet, the airliner tug for an A320 or an unknown size.
+// business jet, the airliner tug for an A320 or an unknown size. The small
+// robot is never used by default (#1024): the towbarless one instead, unless
+// a local rule takes it back.
 func TestTugTitleFor(t *testing.T) {
+	if err := dict.Use("traffic.modelRules", []byte(`[{"title":"`+TugSmallTitle+`","never":false}]`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := TugTitleFor(13.4); got != TugSmallTitle {
+		t.Errorf("small robot taken back: %s", got)
+	}
+	if err := dict.Reset("traffic.modelRules"); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		span float64
 		want string
-	}{{13.4, TugSmallTitle}, {16, TugSmallTitle}, {21.5, TugMediumTitle}, {29, TugMediumTitle}, {35.8, DefaultTugTitle}, {0, DefaultTugTitle}} {
+	}{{13.4, TugMediumTitle}, {16, TugMediumTitle}, {21.5, TugMediumTitle}, {29, TugMediumTitle}, {35.8, DefaultTugTitle}, {0, DefaultTugTitle}} {
 		if got := TugTitleFor(c.span); got != c.want {
 			t.Errorf("span %.1f m: %s, want %s", c.span, got, c.want)
 		}

@@ -36,6 +36,7 @@ A table's JSON is an envelope; `Use` also takes the bare items array:
 | `traffic.airlines` | `icao` | the schedule's airlines with fleets and bases (`traffic.Airline`) |
 | `traffic.gaTypes` | `kind` | the types each kind of GA operator flies, by weight |
 | `traffic.intersectionClasses` | `class` | intersection departures by class: the runway left needed, full length only, the crews' decline share (`IntersectionClassItem`) |
+| `traffic.modelRules` | `title` | simulator models our traffic never uses (`ModelRuleItem`); local rules in the World's `model-rules.json` |
 | `traffic.intersectionAirports` | `icao` | an airport's own intersection entries per runway and class, and whether the clearance says the runway left (`IntersectionAirportItem`); none shipped |
 | `systems.profiles` | `name` | aircraft systems profiles (`systems.Profile`; Windows builds) |
 

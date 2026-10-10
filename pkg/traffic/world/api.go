@@ -44,8 +44,9 @@ type Options struct {
 	// Airspace is the managed airports' control zone class for VFR rules
 	// (#570); zero: class D.
 	Airspace traffic.AirspaceClass
-	// DataDir keeps the de-icing pads picked on the map (deicing.json) and
-	// the review overlays (review/*.geojson); "": the working directory.
+	// DataDir keeps the de-icing pads picked on the map (deicing.json), the
+	// local model rules (model-rules.json) and the review overlays
+	// (review/*.geojson); "": the working directory.
 	DataDir string
 	// DumpDir, when set, gets each fetched airport's raw facility records
 	// (<ICAO>.json).
@@ -144,6 +145,7 @@ func New(o Options) *World {
 	st.pads = loadPadStore(filepath.Join(o.DataDir, "deicing.json"))
 	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
+	st.modelRules = loadModelRules(filepath.Join(o.DataDir, "model-rules.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	w := &World{st: st, opts: o, reqs: reqs}
