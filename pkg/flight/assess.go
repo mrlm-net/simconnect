@@ -151,16 +151,20 @@ func Assess(t *Track, o AssessOptions) Assessment {
 	}
 
 	// Taxi: before the roll, after the rollout.
-	taxiFast := false
+	// The fastest, said once (not the first sample over the limit: 30.4 kt
+	// read "30 kt", live).
+	fastest := -1
 	for i, s := range ss {
 		if !s.OnGround || (roll >= 0 && i >= roll && (stop < 0 || i < stop)) {
 			continue
 		}
-		p.MaxTaxiKts = math.Max(p.MaxTaxiKts, s.GS)
-		if s.GS > assessTaxiKts && !taxiFast {
-			taxiFast = true
-			add("taxi", "taxi-fast", Minor, s, s.GS, "Taxied at %.0f kt: keep to %.0f kt or less, and about 10 kt in turns.", s.GS, assessTaxiKts)
+		if s.GS > p.MaxTaxiKts {
+			p.MaxTaxiKts, fastest = s.GS, i
 		}
+	}
+	p.MaxTaxiKts = math.Round(p.MaxTaxiKts*10) / 10
+	if fastest >= 0 && p.MaxTaxiKts > assessTaxiKts {
+		add("taxi", "taxi-fast", Minor, ss[fastest], p.MaxTaxiKts, "Taxied at up to %.0f kt: keep to %.0f kt or less, and about 10 kt in turns.", p.MaxTaxiKts, assessTaxiKts)
 	}
 	// Engines running without the beacon.
 	for _, s := range ss {
