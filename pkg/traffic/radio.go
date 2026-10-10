@@ -126,11 +126,12 @@ func PhraseologyFor(icao string) Phraseology {
 // Parameter keys of a transmission. Values are the text as said (a runway
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
-	ParamRunway  = "runway"
-	ParamEntry   = "entry"   // where an intersection departure enters its runway ("B")
-	ParamStartUp = "startup" // "1": the start-up asked for or approved with the pushback
-	ParamFacing  = "facing"  // where a push ends facing: "east"
-	ParamBehind  = "behind"  // a conditional line-up: the landing traffic as said ("A320")
+	ParamRunway    = "runway"
+	ParamEntry     = "entry"     // where an intersection departure enters its runway ("B")
+	ParamBacktrack = "backtrack" // "1": enter and taxi back along the runway to its threshold first
+	ParamStartUp   = "startup"   // "1": the start-up asked for or approved with the pushback
+	ParamFacing    = "facing"    // where a push ends facing: "east"
+	ParamBehind    = "behind"    // a conditional line-up: the landing traffic as said ("A320")
 	// ParamBehindHow: what the traffic of a conditional line-up does,
 	// "landing" ("" too) or "departing".
 	ParamBehindHow  = "behindHow"
@@ -147,8 +148,8 @@ const (
 	ParamDelay      = "delay"
 	ParamLose       = "lose" // how the delay is lost: "210 kt, +3.2 NM"
 	ParamFix        = "fix"
-	ParamAirport    = "airport"   // an airport's ICAO (closed: its runways)
-	ParamAlternate  = "alternate" // the airport diverted to
+	ParamAirport    = "airport"     // an airport's ICAO (closed: its runways)
+	ParamAlternate  = "alternate"   // the airport diverted to
 	ParamHoldIn     = "entry_type"  // hold entry: direct, teardrop, parallel
 	ParamAltitude   = "altitude"    // feet
 	ParamExpect     = "expect"      // expect further clearance, HH:MM
@@ -270,6 +271,9 @@ func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
 		return fmt.Sprintf("%s, %s, taxi%s%s", cs, rwy, via, holdShortSaid(p)), true // 3-7-2: runway first, then hold short
 	case IntentLineUp:
 		// No conditional clearances on the runway in the FAA's rules.
+		if p[ParamBacktrack] != "" {
+			return fmt.Sprintf("%s, %s, back-taxi, line up and wait", cs, rwy), true
+		}
 		return fmt.Sprintf("%s, %s, line up and wait", cs, rwy), true // 3-9-4
 	case IntentTakeoff:
 		return fmt.Sprintf("%s, %s, cleared for takeoff", cs, rwy), true // 3-9-10; civil: no wind
@@ -392,6 +396,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamBehind] != "" {
 			// Conditional: the condition first, "behind" again at the end.
 			return fmt.Sprintf("%s, behind the %s %s, line up and wait runway %s, behind", cs, behindHow(p), p[ParamBehind], p[ParamRunway])
+		}
+		if p[ParamBacktrack] != "" {
+			return fmt.Sprintf("%s, enter %s and backtrack, line up and wait", cs, runwayAt(p)) // no entry at the threshold (12.3.4.10, Doc 4444 BACKTRACK)
 		}
 		if p[ParamRush] != "" {
 			return fmt.Sprintf("%s, %s, line up, be ready for immediate departure", cs, runwayAt(p)) // 12.3.4.10 h
@@ -1783,4 +1790,20 @@ func AirportClosed(cs, icao string) Transmission {
 // Divert clears an arrival to alternate, icao still closed.
 func Divert(cs, icao, alternate string) Transmission {
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentDivert, Params: map[string]string{ParamAirport: icao, ParamAlternate: alternate}})
+}
+
+// Backtracked is t (a line-up) with the backtrack along the runway first
+// (no entry at its take-off threshold): "CSA1, enter runway 08 and
+// backtrack, line up and wait".
+func Backtracked(t Transmission, on bool) Transmission {
+	if !on {
+		return t
+	}
+	p := map[string]string{}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	p[ParamBacktrack] = "1"
+	t.Params, t.Text = p, ""
+	return Say(t)
 }

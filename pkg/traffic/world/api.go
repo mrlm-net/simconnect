@@ -32,6 +32,9 @@ type Options struct {
 	// LogDir is where the traffic log is written (traffic-*.log); "": no
 	// file (console and the API's recent lines only).
 	LogDir string
+	// GroundVehicles turns kinds of ground vehicles off from the start
+	// (false; a kind not given is on): see SetGroundVehicles.
+	GroundVehicles map[traffic.VehicleKind]bool
 	// Airways is an airway graph for flight plans; the airways around
 	// every airport loaded are read from the sim and added (#799).
 	Airways *nav.AirwayGraph
@@ -143,7 +146,11 @@ func New(o Options) *World {
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
-	return &World{st: st, opts: o, reqs: reqs}
+	w := &World{st: st, opts: o, reqs: reqs}
+	if len(o.GroundVehicles) > 0 {
+		w.SetGroundVehicles(o.GroundVehicles)
+	}
+	return w
 }
 
 // Run connects to the simulator and runs the traffic until ctx ends,

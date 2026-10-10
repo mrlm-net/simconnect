@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.83.0] - 2026-10-10
+
+### Added
+
+- Traffic: backtracking. Where no taxiway reaches the take-off threshold (LOWI 08 and 26) and no intersection was given, a departure enters by the branch turning toward the threshold, backtracks along the runway, turns round within its width and lines up at the threshold for the full length; the tower says "enter runway 08 and backtrack, line up and wait" and never clears it for take-off before it has lined up. `TaxiController.Backtracks`, `Backtracked`, `ParamBacktrack`. LOWI layout capture in the testdata.
+- World: ground vehicles on and off by kind (tugs, fuel trucks, stairs, GPUs, buses, follow-me cars): `SetGroundVehicles`, `GroundVehicles`, `Options.GroundVehicles`, `GET`/`POST /api/vehicles`; a kind off is never created and nobody waits for one, those at work finish.
+- Nav: the player's choices in a plan (`FlightPlanRequest` and `world.PlanRequest`): SID, STAR and approach with transitions, cruise level, and an ICAO item 15 route flown over the known airways; what does not fit the runways or is not known is chosen as without it or flown direct, said in `FlightPlan.Notes`.
+
 ## [0.82.0] - 2026-10-10
 
 ### Added

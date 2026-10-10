@@ -1645,6 +1645,11 @@ func (c *TaxiController) startLineUp() {
 	// Onto the runway along the entry taxiway's own geometry (entries are
 	// often angled, not 90°), then aligned down the centreline.
 	pts := []airport.LatLon{nose}
+	if c.Backtracks() {
+		if c.startBacktrack(pose, prof) {
+			return
+		}
+	}
 	entry := c.entryPath()
 	pts = append(pts, entry...)
 	onRunway := nose

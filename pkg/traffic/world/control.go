@@ -3014,7 +3014,7 @@ func airlineOf(tail string) string {
 // driven by the injector, created with the last request ID of the
 // aircraft's block.
 func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.MotionProfile, spanM float64) traffic.PushbackTug {
-	if !r.Tug {
+	if !r.Tug || !cc.core.vehicleOn(traffic.VehicleTug) {
 		return nil
 	}
 	title := r.TugTitle
@@ -3181,7 +3181,7 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	case "cross":
 		return traffic.ClearedCross(call, oneDesignator(v.HoldingShortOf)) // one designator (#462)
 	case "lineup":
-		return traffic.AtEntry(traffic.ClearedLineUp(call, rwy), v.Entry)
+		return traffic.Backtracked(traffic.AtEntry(traffic.ClearedLineUp(call, rwy), v.Entry), it.dep != nil && v.Entry == "" && it.graph != nil && !it.graph.ThresholdEntry(rwy))
 	case "takeoff":
 		return traffic.AtEntry(traffic.ClearedTakeoff(call, rwy, it.cc.windSaid(it.ICAO)), v.Entry)
 	case "hold":

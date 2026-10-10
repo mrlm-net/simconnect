@@ -128,3 +128,13 @@ A `.pln` has no alternate airport field, so none is read.
 - The profile is straight lines between TOC and TOD; constraints only clamp the planned altitude at their own waypoint.
 - The airway graph covers the crawl radius around its centre (250 NM around LKPR in the test data); further out the route is direct.
 - The weather from `WeatherReader` is at the user aircraft, so it is right for the departure only; give the arrival its runway or weather yourself.
+
+## The player's choices
+
+A plan the player edits before loading it gives its choices in the request. Each is optional ("" or 0 lets `Plan` choose as before):
+
+- **Procedures:** `SID` and `SIDTransition`, `STAR` and `STARTransition`, `Approach` (by name, "ILS 24", any case) and `ApproachTransition`. Each is checked against its runway. A SID that is not one from the departure runway, a STAR or approach for another runway, or a transition the procedure lacks is chosen as without it, and `FlightPlan.Notes` says so ("SID LANU1F is not one from runway 11: chosen as without it").
+- **CruiseFL:** the cruise level.
+- **Route:** an ICAO item 15 the player typed ("LANUX DCT APRAQ", "VLM UL86 KEPAD"), flown between the SID and the STAR over the airways known (`AirwayGraph.ExpandRoute`). The SID and STAR are chosen for it: the pair with the shortest way onto the route's first fix and off its last. Procedure and airport names in it are passed over quietly. Fixes or airways not known are noted and flown direct; an airway that does not join its fixes leaves the route out, noted.
+
+`world.PlanRequest` takes the same fields and passes them on. `PlanFlight` only plans: it reads both airports from the simulator (waiting for them, as for the World's own traffic) but loads nothing into the flight. The `.pln` is written by `FlightPlan.PLN`, separately, so a plan can be previewed and changed before it is loaded.
