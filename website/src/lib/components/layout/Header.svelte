@@ -27,7 +27,7 @@
 <header class="site-header fixed top-0 right-0 left-0 z-40 flex h-16 items-center justify-between gap-3 px-4">
 	<div class="flex min-w-0 items-center gap-2">
 		{#if showMenuButton}
-			<button class="icon-btn md:hidden" onclick={onToggleSidebar} aria-label="Toggle navigation">
+			<button class="icon-btn menu-btn" onclick={onToggleSidebar} aria-label="Toggle navigation">
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
 					<path d="M4 6h16M4 12h16M4 18h16" />
 				</svg>
@@ -90,5 +90,12 @@
 	.icon-btn:hover {
 		color: var(--text);
 		background: var(--surface-2);
+	}
+	/* The menu is for narrow screens only: here, not with md:hidden, which
+	   .icon-btn (scoped, more specific) would override. */
+	@media (min-width: 768px) {
+		.menu-btn {
+			display: none;
+		}
 	}
 </style>
