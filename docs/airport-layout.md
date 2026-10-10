@@ -278,6 +278,23 @@ arr, _ := p.Arrival("06", "GOLOP")
 // at or above 1219 m (4000 ft) from PR741 to FF06, the threshold RW06 the MAP.
 ```
 
+### The flown route
+
+`FlownRouteFor(FlownRequest)` lays out a whole flight as one line, for a map, a flight page or a copilot's navigation. You give it both layouts, the departure and arrival runway ends, both airports' `Procedures`, the filed enroute fixes (`RouteFix`: ident, position, optional altitude) and, optionally, the SID, STAR and approach (with transitions) ATC cleared. It returns `FlownRoute`:
+
+- `Points`: one line from the runway to the threshold. Each fix carries its ident, `LegConstraint` (feet and knots), fly-over flag and phase (`sid`, `enroute`, `star`, `approach`). Points between fixes are turns and course legs drawn as `ProcedurePath` draws them.
+- `Missed`: the missed approach, as its own line from where the final ends.
+- The procedures taken: `SID`, `STAR`, `Approach` (`"synthetic"` for a made-up final), and their transitions.
+
+How each part is chosen:
+
+1. **Departure.** The SID is the one cleared, else the one ending at a route fix (the latest along the route). It is flown as its runway transition, common legs and enroute transition, and joins the route at its last fix. Without a SID the aircraft flies the runway heading for 5 NM (`FlownClimbOutNM`), then turns toward the first fix, so there is no hairpin back over the runway.
+2. **Arrival.** The STAR is the one cleared, else the one entered at a route fix (the latest along the route). The route is cut where the STAR is entered.
+3. **Approach.** The approach is the one cleared, else `BestApproach` (ILS, then RNAV, then LOC, VOR, NDB). Its transition is the one cleared, else the one starting at the STAR's last fix, else the final from that fix when the final passes it, else the transition whose first fix is nearest. The STAR's closing vectors (heading legs after its last fix) are left out when an approach takes over there.
+4. **No approach.** A synthetic final joins the extended centreline 10 NM out (`FlownFinalNM`) on a 3° path. A base leg comes first when the intercept would be more than 90°.
+
+The points are not smoothed. `FlownRoute.Smoothed(radius)` rounds the fly-by corners (`SmoothPath`) but keeps fly-over fixes and reversals of 150° or more, so a turn never cuts a fly-over fix or loops.
+
 Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AIP chart has them), and the `HOLDING_PATTERN` fields are rejected by MSFS 2024 — do not request them. `pkg/traffic` builds its own holds on STAR fixes instead ([Holding](traffic-separation.md#holding)).
 
 ## Airport limits
