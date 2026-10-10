@@ -306,3 +306,44 @@ func TestHandGoAround(t *testing.T) {
 	}
 	t.Logf("lowest %.0f ft, %.0f kt at 1000 ft; said %v", lowest, a.IAS, p.says)
 }
+
+// TestApproachArmedAgain: the approach armed and the descent asked for are
+// once an approach: after a go-around, and after the controls are taken
+// again, the next approach is armed anew.
+func TestApproachArmedAgain(t *testing.T) {
+	armed := func(e *Engine, p *plane) bool {
+		p.in.State.AP = systems.AutopilotState{Master: true}
+		p.in.ATC = Clearance{Approach: true, AltitudeFt: 3000}
+		out := e.Update(p.in)
+		return slices.Contains(out.Say, "Approach armed")
+	}
+	p := newPlane()
+	a := &p.in.Air
+	a.OnGround, a.AltFt, a.IAS, a.Heading = false, 300+2500, 160, rwy.Heading
+	p.in.Plan.DistanceToGoNM = 10
+	e := New(Config{HandFly: true}, nil)
+	e.phase, e.taking = PhaseApproach, false
+	if !armed(e, p) {
+		t.Fatal("first approach not armed")
+	}
+	if armed(e, p) {
+		t.Error("armed twice on one approach")
+	}
+	p.in.ATC.GoAround = true
+	e.Update(p.in) // the go-around
+	if e.Phase() != PhaseGoAround {
+		t.Fatalf("phase %v, want go-around", e.Phase())
+	}
+	e.phase = PhaseApproach // back round for the next one
+	if !armed(e, p) {
+		t.Error("not armed after the go-around")
+	}
+	e.HandBack()
+	e.TakeControl()
+	if e.said["appr"] || e.said["descent"] {
+		t.Error("said kept over TakeControl")
+	}
+	if !armed(e, p) && !armed(e, p) { // takes over, then arms
+		t.Error("not armed after the controls were taken again")
+	}
+}

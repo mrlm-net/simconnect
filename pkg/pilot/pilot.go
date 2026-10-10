@@ -278,6 +278,7 @@ func (e *Engine) Update(in Input) Output {
 	case PhaseLanding:
 		if in.ATC.GoAround && !in.Air.OnGround {
 			e.phase, e.hand = PhaseGoAround, hand{}
+			e.newApproach()
 			e.goAround(in, c, &out)
 			out.Phase = e.phase
 			return out
@@ -317,6 +318,7 @@ func (e *Engine) Update(in Input) Output {
 	// Told to go around on the approach: flown by hand from here.
 	if e.phase == PhaseApproach && c.HandFly && in.ATC.GoAround && in.Runway.valid() {
 		e.phase, e.hand = PhaseGoAround, hand{}
+		e.newApproach()
 		e.goAround(in, c, &out)
 		out.Phase = e.phase
 		return out
@@ -335,6 +337,7 @@ func (e *Engine) Update(in Input) Output {
 		}
 		// Not cleared to land: the go-around, flown.
 		e.phase, e.hand = PhaseGoAround, hand{}
+		e.newApproach()
 		e.goAround(in, c, &out)
 		out.Phase = e.phase
 		return out
@@ -651,4 +654,13 @@ func (e *Engine) TakeControl() {
 	e.phase, e.taking = PhaseTakeoff, true
 	clear(e.pending)
 	clear(e.dones)
+	e.newApproach()
+}
+
+// newApproach forgets what is said once an approach (the descent asked
+// for, the approach armed): after a go-around, or the controls taken
+// again, the next approach is armed and asked for anew.
+func (e *Engine) newApproach() {
+	delete(e.said, "appr")
+	delete(e.said, "descent")
 }
