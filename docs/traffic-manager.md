@@ -125,7 +125,15 @@ A flight with `Observed` set is a real aircraft a feed sees (#841, `manager_obse
 - `Retime(callsign, std)` moves a departure's STD while it is still on its stand;
 - `Drop(kind, callsign, now)` ends it: not spawned, boarding or parked, it goes now; in progress it plays out (an arrival lands and parks, then goes; a departure leaves).
 
-`Flight(kind, callsign)` returns one managed flight.
+`Flight(kind, callsign)` returns one managed flight. `AddOverflight(flight)` adds a real overflight (with `Enter` and `Exit`), flown from its sighting across the area.
+
+## Replaying a recorded day
+
+A scheduled flight can carry its recorded way, `Flight.Path` (#845): points with `lat`, `lon`, `altFt` and the time `at` it was there. The flights are scheduled as usual (`Add`, with their STD, STA, or `Enter`/`Exit`), and the World flies each along its path:
+
+- an arrival or an overflight appears, when its en-route stage starts, where its path has it at that moment on the simulator's clock (between the timed points either side, at the speed of that leg), and flies the rest. An arrival flies on to where the path meets a STAR of the runway in use; an overflight flies across the area;
+- a departure flies its SID, then its path;
+- an untimed path starts at its first point, flown at 420 kt.
 
 ## Lifecycle events
 

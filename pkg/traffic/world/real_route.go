@@ -147,14 +147,21 @@ func pathNM(pos airport.LatLon, path []traffic.PathPoint) float64 {
 // spawnRealOverflight puts a real overflight in the air where it is now,
 // flown by MSFS AI across the area.
 func (s *scheduler) spawnRealOverflight(f traffic.ManagedFlight) error {
+	o := f.Observed
+	pos, alt := o.At(time.Now()) // the feed's clock, not the simulator's
+	return s.spawnOverflightAlong(f, pos, alt, o.TrackDeg, math.Max(o.GroundKts, realMinKts), o.Route)
+}
+
+// spawnOverflightAlong puts overflight f in the air at pos (altFt), flown
+// by MSFS AI at kts across the area along given, else straight on along
+// trackDeg: a real aircraft, or a recorded flight replayed.
+func (s *scheduler) spawnOverflightAlong(f traffic.ManagedFlight, pos airport.LatLon, alt, trackDeg, kts float64, given []traffic.PathPoint) error {
 	cc := s.cc
 	centre, ok := cc.world.Centre()
 	if !ok {
 		return fmt.Errorf("%w: no centre of the area", traffic.ErrSpawnImpossible)
 	}
-	o := f.Observed
-	pos, alt := o.At(time.Now()) // the feed's clock, not the simulator's
-	path := realOverflightPath(centre, pos, alt, o.TrackDeg, o.Route)
+	path := realOverflightPath(centre, pos, alt, trackDeg, given)
 	if len(path) == 0 {
 		return fmt.Errorf("%w: its way does not cross the area", traffic.ErrSpawnImpossible)
 	}
@@ -164,14 +171,13 @@ func (s *scheduler) spawnRealOverflight(f traffic.ManagedFlight) error {
 		return fmt.Errorf("no model of a %s", f.Type)
 	}
 	model := models[(f.Attempts-1)%len(models)]
-	kts := math.Max(o.GroundKts, realMinKts)
 	e := &enrouteAC{f: f, model: model, cruiseKts: kts}
 	route := []traffic.RoutePoint{{Position: pos, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)}}
 	for _, p := range path {
 		route = append(route, traffic.RoutePoint{Position: airport.LatLon{Lat: p.Lat, Lon: p.Lon}, AltFt: p.AltFt, Kts: traffic.EnrouteSpeedKts(p.AltFt, kts)})
 	}
 	along := "its track"
-	if len(o.Route) > 0 {
+	if len(given) > 0 {
 		along = fmt.Sprintf("its route (%d points)", len(path))
 	}
 	return s.spawnEnrouteOn(f, e, model, route, along)
@@ -236,4 +242,61 @@ func (s *scheduler) routeFromText(cs string, o traffic.Observed) []traffic.PathP
 		out = append(out, traffic.PathPoint{Lat: st.Position.Lat, Lon: st.Position.Lon})
 	}
 	return out
+}
+
+// A recorded day replayed (#845): a scheduled flight with its Path appears
+// where the path has it now (its points' times; untimed, at its first
+// point) and flies the rest, as a real aircraft does.
+
+// recordedKts: the speed flown along an untimed path.
+const recordedKts = 420.0
+
+// pathAt is where path has the aircraft at t: the position and altitude
+// between the timed points either side (at the first point before them,
+// the last after), the points still ahead, and the ground speed there (0
+// not known). An untimed path is at its first point.
+func pathAt(path []traffic.PathPoint, t time.Time) (airport.LatLon, float64, []traffic.PathPoint, float64) {
+	at := func(p traffic.PathPoint) airport.LatLon { return airport.LatLon{Lat: p.Lat, Lon: p.Lon} }
+	if len(path) == 0 {
+		return airport.LatLon{}, 0, nil, 0
+	}
+	for i := 0; i+1 < len(path); i++ {
+		a, b := path[i], path[i+1]
+		if a.At.IsZero() || b.At.IsZero() || !b.At.After(a.At) {
+			continue
+		}
+		if i == 0 && t.Before(a.At) {
+			break
+		}
+		if t.Before(b.At) {
+			f := t.Sub(a.At).Seconds() / b.At.Sub(a.At).Seconds()
+			p := airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}
+			kts := calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon) / b.At.Sub(a.At).Hours()
+			return p, a.AltFt + (b.AltFt-a.AltFt)*f, path[i+1:], kts
+		}
+	}
+	if n := len(path); !path[n-1].At.IsZero() && t.After(path[n-1].At) {
+		return at(path[n-1]), path[n-1].AltFt, nil, 0
+	}
+	return at(path[0]), path[0].AltFt, path[1:], 0
+}
+
+// spawnRecorded puts a scheduled arrival or overflight with a Path in the
+// air where the path has it now (the simulator's clock: the replayed day).
+func (s *scheduler) spawnRecorded(f traffic.ManagedFlight) error {
+	pos, alt, rest, kts := pathAt(f.Path, s.cc.clock.Now())
+	if kts < realMinKts {
+		kts = recordedKts
+	}
+	if alt <= 0 {
+		alt = 10000
+	}
+	if f.Overflight() {
+		track := 0.0
+		if len(rest) > 0 {
+			track = calc.BearingDegrees(pos.Lat, pos.Lon, rest[0].Lat, rest[0].Lon)
+		}
+		return s.spawnOverflightAlong(f, pos, alt, track, kts, rest)
+	}
+	return s.spawnArrivalAlong(f, pos, alt, kts, rest)
 }

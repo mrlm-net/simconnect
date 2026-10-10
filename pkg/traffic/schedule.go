@@ -46,6 +46,11 @@ type Flight struct {
 	// Observed: a real aircraft seen by a feed (#841), flown from where it
 	// was seen: spawned at once, not by STD or STA; nil a scheduled one.
 	Observed *Sighting `json:"observed,omitempty"`
+	// Path is a recorded or given way (#845), its points timed for a
+	// replayed day: an arrival or overflight appears where the path has it
+	// at its start and flies the rest (an arrival to where it meets a
+	// STAR); a departure flies its SID, then the path.
+	Path []PathPoint `json:"path,omitempty"`
 }
 
 // Airline is an airline the generator schedules.

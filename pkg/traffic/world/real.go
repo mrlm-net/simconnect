@@ -451,23 +451,31 @@ func realAirline(cs string) string {
 // AI flies it to the cheapest point of a STAR of the runway in use, where
 // it is handed to approach (handovers) as an enroute arrival is.
 func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
-	cc := s.cc
 	if f.Overflight() {
 		return s.spawnRealOverflight(f)
 	}
+	pos, alt := f.Observed.At(time.Now()) // the feed's clock, not the simulator's
+	return s.spawnArrivalAlong(f, pos, alt, math.Max(f.Observed.GroundKts, realMinKts), f.Observed.Route)
+}
+
+// spawnArrivalAlong puts arrival f in the air at pos (altFt), flown by
+// MSFS AI at kts along given (#845; none: direct) to where it meets a
+// STAR of the runway in use, else the cheapest join: a real aircraft, or
+// a recorded flight replayed.
+func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLon, alt, kts float64, given []traffic.PathPoint) error {
+	cc := s.cc
 	g, err := s.st.cache.Graph(f.Airport)
 	if err != nil {
 		return err
 	}
 	rwy := cc.pickRunway(g, true, -1)
-	pos, alt := f.Observed.At(time.Now()) // the feed's clock, not the simulator's
 	// Airborne: not below realMinAGLFt over the field.
 	alt = math.Max(alt, g.Layout.Altitude/0.3048+realMinAGLFt)
 	// Its route given (#845): along it to where it meets a STAR.
 	var flown []traffic.PathPoint
 	pts, name, expect, err := []airport.NavPoint(nil), "", "", error(nil)
-	if joins, jerr := s.starJoins(g, rwy); jerr == nil && len(f.Observed.Route) > 0 {
-		if rj, ok := joinAlong(pos, f.Observed.Route, joins); ok {
+	if joins, jerr := s.starJoins(g, rwy); jerr == nil && len(given) > 0 {
+		if rj, ok := joinAlong(pos, given, joins); ok {
 			flown, pts, name, expect = rj.flown, rj.join.pts, rj.join.name, rj.join.expect
 		} else {
 			cc.log.printf("%-6s schedule: real arrival: its route meets no STAR of %s: direct", f.Callsign, rwy)
@@ -488,7 +496,6 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 		return fmt.Errorf("no model of a %s", f.Type)
 	}
 	model := models[(f.Attempts-1)%len(models)]
-	kts := math.Max(f.Observed.GroundKts, realMinKts)
 	e := &enrouteAC{f: f, model: model, cruiseKts: kts, arrive: &planned{route: pts, name: name, expect: expect, runway: rwy}}
 	join := pts[0]
 	joinAlt := math.Min(alt, 10000)

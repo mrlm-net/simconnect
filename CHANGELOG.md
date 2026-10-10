@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.73.0] - 2026-10-10
+
+### Added
+
+- Traffic: `ClearanceLimit(icao, city)`, the destination as said in a departure clearance: the city, but the airport's own name where a city has several airline airports ("cleared to Heathrow", "Orly", "Kennedy") and per-airport names (EHAM "Schiphol"); `SetClearanceLimits` merges a local table over the built-in one. The World's departure clearances use it, with the city from `World.SetAirportCity` (the host's lookup; the sim has only airport names).
+- Flight: `Assess`, a recorded flight judged: its profile (taxi, take-off, gates at 1000 and 500 ft, touchdown and where on the runway), findings against common airline practice each with advice (hard or firm landing, unstable at 500 ft, tail-strike pitch, bank, speed limit, lights, taxi speed, bounces, long or off the centreline), and a score 0…100 to rank flights by.
+- Traffic: replaying a recorded day (#845). `Flight.Path`, timed points (`PathPoint.At`): an arrival or overflight appears where its path has it when its en-route stage starts and flies the rest (an arrival to where it meets a STAR), a departure flies its SID then the path. Real and recorded flights share the same spawns.
+
 ## [0.72.0] - 2026-10-10
 
 ### Added

@@ -147,6 +147,8 @@ A clearance built by `Say` is said again in FAA wording at a US airport, and `Tr
 
 On the runway, a conditional line-up ("behind the landing …, line up and wait runway 24, behind") is ICAO only. So is a conditional crossing (`ClearedCrossBehind`: "behind the landing A320, cross runway 12, behind"). The tower gives one to an aircraft holding short of a crossing when only the next arrival is in the way (`RunwayClearances.CrossBehind`). The aircraft crosses once that arrival is off the runway. The FAA does not allow conditions on the runway.
 
+**The clearance limit.** `ClearanceLimit(icao, city)` is the destination as a departure clearance names it: its city ("cleared to Vienna"), but where a city has several airline airports the airport's own name ("cleared to Heathrow", "Gatwick", "Orly", "Kennedy"), and a few airports by their own name everywhere (EHAM "Schiphol"). The built-in table holds only names whose usage is clear; `SetClearanceLimits(map[icao]name)` merges a local table over it (an empty name says the city). The simulator names only the airport ("Schwechat"), so the host gives the World a city lookup with `World.SetAirportCity`; without one the schedule's airport names are used.
+
 ## Expedite, weather and direct
 
 `Rushed(clearance)` gives the expedited form where one exists (#510). The aircraft then hurries: `TaxiController.Expedite` shrinks its waits at the gates, and `ArrivalController.Expedite` leaves the runway faster.

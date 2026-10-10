@@ -107,6 +107,9 @@ func overflightEntry(fp *nav.FlightPlan, cc *controlCenter) (float64, bool) {
 }
 
 func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
+	if len(f.Path) > 0 {
+		return s.spawnRecorded(f) // a recorded day replayed (#845)
+	}
 	cc, st := s.cc, s.st
 	arrRwy := ""
 	if f.Arrival() {
