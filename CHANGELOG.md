@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.82.0] - 2026-10-10
+
+### Added
+
+- World: `Seed`, "real start": one real-world snapshot placed as flights of ours when a flight loads; parked aircraft depart after a turnaround, inbound ones arrive, outbound and overflying ones cross the area; nearest first within the aircraft budget; taxiing ones not placed yet. `ControlView.Seeded`, `Sighting.Seeded` (`POST /api/seed`).
+
 ## [0.81.0] - 2026-10-10
 
 ### Added

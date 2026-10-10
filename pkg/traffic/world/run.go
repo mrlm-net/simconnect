@@ -1116,6 +1116,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerPlayer(mux, st)
 	registerClosures(mux, w) // the runways closed (closures.go)
 	registerHold(mux, st)    // the traffic held for a replay (hold.go)
+	registerSeed(mux, st)    // a real-world snapshot placed at the start (seed.go)
 	registerCorridor(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {
