@@ -21,11 +21,12 @@ func landingRoll(t *testing.T, model, end string) (touchdown, secs, along float6
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
+	var td float64 // the event goroutine's, not the named result (read after the unlock)
 	go func() {
 		for e := range ctl.Events() {
 			if e.Touchdown != 0 {
 				mu.Lock()
-				touchdown = e.Touchdown
+				td = e.Touchdown
 				mu.Unlock()
 			}
 		}
@@ -51,7 +52,8 @@ func landingRoll(t *testing.T, model, end string) (touchdown, secs, along float6
 		t.Fatalf("%s: state %v", model, ctl.State())
 	}
 	mu.Lock()
-	defer mu.Unlock()
+	touchdown = td
+	mu.Unlock()
 	return touchdown, clear.Sub(down).Seconds(), p.Exit.Along, p.Exit.Taxiway
 }
 
