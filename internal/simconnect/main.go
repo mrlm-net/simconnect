@@ -117,6 +117,13 @@ type API interface {
 	RequestNotificationGroup(groupID uint32, dwReserved uint32, flags uint32) error
 	SetNotificationGroupPriority(groupID uint32, priority uint32) error
 
+	// Input groups: keys and joystick buttons mapped to client events.
+	MapInputEventToClientEvent(groupID uint32, definition string, downEventID, downValue, upEventID, upValue uint32, maskable bool) error
+	SetInputGroupPriority(groupID uint32, priority uint32) error
+	SetInputGroupState(groupID uint32, state uint32) error
+	RemoveInputEvent(groupID uint32, definition string) error
+	ClearInputGroup(groupID uint32) error
+
 	// Input Event API (MSFS 2024 only)
 	EnumerateInputEvents(requestID uint32) error
 	GetInputEvent(requestID uint32, hash uint64) error

@@ -34,6 +34,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 - `pkg/flight` — flight recording: Recorder (any object, every frame), Track (versioned JSON lines, At interpolation)
 - `pkg/pilot` — a copilot as pilot flying (logic only): the autopilot through climb, cruise, descent and approach, requests to the player as PM
 - `pkg/checklist` — normal checklists as data (family default, model sets, local override) and a runner checking items against systems.State; findings for flight.Assess
+- `pkg/hotkeys` — keys and joystick buttons in the sim bound to an add-on's actions (SimConnect input groups), rebindable, re-mapped on reconnect
 - `pkg/camera` — add-on camera (MSFS 2024): poses, shots, drone moves, Director
 - `pkg/airport` — ground layout, taxi graph, routing, stands, SIDs/STARs/approaches, limits, Locate/Tracker; `testdata/` LKPR capture
 - `pkg/nav` — fixes, airway crawl and routing, weather, runway in use, ATIS, flight plans and .pln, performance
