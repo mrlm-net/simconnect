@@ -286,6 +286,9 @@ type ControlView struct {
 	// TCAS is its advisory now (#450): TA or RA; nil none.
 	TCAS         *TCASView `json:"tcas,omitempty"`
 	Real         bool      `json:"real,omitempty"`
+	// Seeded: placed from a real-world snapshot at the start (World.Seed,
+	// "real start"), flown on as ours; not Real.
+	Seeded       bool      `json:"seeded,omitempty"`
 	ObservedID   string    `json:"observedId,omitempty"`
 	Registration string    `json:"registration,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
@@ -1541,7 +1544,7 @@ func (cc *controlCenter) views() []ControlView {
 			v.TCAS = cc.tcasView(id)
 		}
 		if o := it.observed; o != nil {
-			v.Real, v.ObservedID, v.Registration = true, o.ID, o.Registration
+			v.Real, v.Seeded, v.ObservedID, v.Registration = !o.Seeded, o.Seeded, o.ID, o.Registration
 		}
 		if it.arr != nil && !v.OnGround {
 			if v.AirRoute = it.arr.ProcedureCorners(); v.AirRoute == nil {

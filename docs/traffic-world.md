@@ -236,3 +236,14 @@ In multiplayer each player's sim is an actuator; the director (on a server) deci
 ## Holding the traffic for a replay
 
 A replay shows the traffic recorded with the flight (`flight.GhostFleet`), so the World's live traffic must not be there at the same time. `World.Hold(true)` (`POST /api/hold {"on": true}`) stops the schedule and removes every aircraft of ours from the simulator, marking each flight done; flights not yet in the simulator stay in the timetable. `World.Hold(false)` gives the schedule back as it was (on or off), and it fills the scene from its timetable as at any start. The aircraft removed are not brought back where they were: a replay can last any time, and their flights have moved on meanwhile. It returns `HoldResult{Held, Removed}`. Holding again, or letting go when not held, does nothing (#1014).
+
+## Real start: one snapshot placed at the start
+
+`World.Seed(observed, at)` (`POST /api/seed`) places the traffic of one real-world snapshot when a flight loads: the same `traffic.Observed` records as the live feed, taken at `at` (zero: now). Each aircraft becomes a flight of ours from then on, with its real callsign and airline, under our ATC, sequencing and give-way. No feed follows it, and the schedule fills in afterwards.
+
+- **Parked at an airport of ours:** placed on the stand it is at (else one for its type). It departs after a turnaround (40 min, two minutes apart down the list) to its real destination, else on a SID out of the area.
+- **Airborne inbound:** joins the arrival sequence from where it is, as a live real arrival does.
+- **Airborne outbound or overflying:** crosses the area along its route (or its filed `routeText`), else straight on along its track.
+- **Moving on the ground (taxiing):** not placed yet, and said why.
+
+The nearest to an airport of ours come first, up to the room the schedule's `MaxAircraft` leaves. It returns `SeedResult{Placed, Skipped, Results}`, one `ObserveResult` per aircraft (`added`, or `ignored` with the reason), and logs each. The flights are marked `seeded` in `ControlView` (not `real`), so the map can tell them apart from live real traffic.

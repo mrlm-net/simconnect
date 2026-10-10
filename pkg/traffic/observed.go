@@ -67,6 +67,10 @@ type Sighting struct {
 	OnGround     bool           `json:"onGround"`
 	SeenAt       time.Time      `json:"seenAt"`
 	Route        []PathPoint    `json:"route,omitempty"` // Observed.Route
+	// Seeded: placed once from a snapshot (World.Seed, "real start") and
+	// flown on as any flight of ours: a parked one departs at its STD, no
+	// feed updates or drops it.
+	Seeded bool `json:"seeded,omitempty"`
 }
 
 // Sighting is o's sighting.

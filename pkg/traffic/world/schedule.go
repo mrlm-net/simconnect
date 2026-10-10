@@ -294,7 +294,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if f.Departure() {
 		req.pushAt = f.STD
 		// A real aircraft parked with no departure seen (#841).
-		req.parked = f.Observed != nil && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
+		req.parked = f.Observed != nil && !f.Observed.Seeded && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.
 		for _, d := range s.mgr.Flights() {
