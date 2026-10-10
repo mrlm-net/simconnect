@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -351,5 +352,32 @@ func TestPressValueAndEncoder(t *testing.T) {
 	shown := State{Values: map[string]float64{"fcuHeading": 168, APHeadingSel + "Encoder": 6}}
 	if err := c.SetValue(APHeadingSel, 240, shown); err != nil || len(f.set) != 1 || f.set[0] != 78 {
 		t.Errorf("heading 168 → 240 from 6: %v, wrote %v", err, f.set)
+	}
+}
+
+// TestSetAlsoScaled: a Set with Also writes each variable; SetValue scales
+// and offsets the value (the Fenix's thrust levers: throttle 0…100 to a
+// lever 2…5), and Set writes On and Off to all of them (reversers).
+func TestSetAlsoScaled(t *testing.T) {
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	scale, offset, on, off := 0.03, 2.0, 1.0, 2.0
+	c.Use(Profile{Name: "test", Actions: map[string]Action{
+		Throttle:  {Set: "L:LEVER_L", Also: []string{"L:LEVER_R"}, Scale: &scale, Offset: &offset},
+		Reversers: {Set: "L:LEVER_L", Also: []string{"L:LEVER_R"}, On: &on, Off: &off},
+	}})
+	if err := c.SetValue(Throttle, 100, State{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set(Reversers, true, State{}); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for i, v := range f.set {
+		got = append(got, f.setVar[i]+"="+strconv.FormatFloat(v, 'f', 2, 64))
+	}
+	want := []string{"L:LEVER_L=5.00", "L:LEVER_R=5.00", "L:LEVER_L=1.00", "L:LEVER_R=1.00"}
+	if !slices.Equal(got, want) {
+		t.Errorf("set %v, want %v", got, want)
 	}
 }

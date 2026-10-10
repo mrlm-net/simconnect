@@ -460,7 +460,7 @@ func sameValue(a, b Value) bool {
 // sameAction reports whether a and b operate a control the same way.
 func sameAction(a, b Action) bool {
 	sameData := a.Data == nil && b.Data == nil || a.Data != nil && b.Data != nil && *a.Data == *b.Data
-	return a.Press == b.Press && a.Set == b.Set && a.Event == b.Event && a.Toggle == b.Toggle &&
+	return a.Press == b.Press && a.Set == b.Set && slices.Equal(a.Also, b.Also) && a.Event == b.Event && a.Toggle == b.Toggle &&
 		sameData && a.EFB == b.EFB && a.Counter == b.Counter
 }
 
@@ -572,12 +572,15 @@ func (v Value) resolve(read map[varUnit]float64) float64 {
 //     (Profile.EFB, GraphQL writeBool): the Fenix's chocks and GPU, which
 //     take no L:var write (measured).
 type Action struct {
-	Press  string  `json:"press,omitempty"` // e.g. "L:S_PED_RMP1_XFER"
-	Set    string  `json:"set,omitempty"`
-	Event  string  `json:"event,omitempty"`
-	Toggle bool    `json:"toggle,omitempty"`
-	Data   *uint32 `json:"data,omitempty"`
-	EFB    string  `json:"efb,omitempty"` // e.g. "fenix.efb.chocks"
+	Press string `json:"press,omitempty"` // e.g. "L:S_PED_RMP1_XFER"
+	Set   string `json:"set,omitempty"`
+	// Also: further variables Set writes the same value to (the Fenix's
+	// thrust levers, one variable each).
+	Also   []string `json:"also,omitempty"`
+	Event  string   `json:"event,omitempty"`
+	Toggle bool     `json:"toggle,omitempty"`
+	Data   *uint32  `json:"data,omitempty"`
+	EFB    string   `json:"efb,omitempty"` // e.g. "fenix.efb.chocks"
 	// Counter: a push button counted up (the Fenix's EXT PWR, CALLS ALL):
 	// pressed from an even count to +1, released to +2 (as FSUIPC's
 	// presets), #759.
@@ -592,7 +595,8 @@ type Action struct {
 	OffEvent string `json:"offEvent,omitempty"`
 	// Value: Event carries the value SetValue is given (a heading, an
 	// axis), times Scale (nil: 1), rounded; a negative one as its two's
-	// complement (#962).
+	// complement (#962). SetValue on a Set writes the value times Scale
+	// plus Offset too (throttle 0…100 to a lever 2…5: scale 0.03, offset 2).
 	Value bool     `json:"value,omitempty"`
 	Scale *float64 `json:"scale,omitempty"`
 	// Offset is added after Scale (an axis from −16383 for 0, the brakes).
