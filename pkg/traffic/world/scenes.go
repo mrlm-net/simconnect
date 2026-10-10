@@ -529,7 +529,7 @@ func (cc *controlCenter) modelFor(hints string) string {
 		}
 		for _, t := range list {
 			lt := strings.ToLower(t)
-			if strings.Contains(lt, want) && !strings.Contains(lt, "stub") && !strings.Contains(lt, "force") && !strings.Contains(lt, "military") {
+			if strings.Contains(lt, want) && !traffic.ModelNever(t) && !strings.Contains(lt, "stub") && !strings.Contains(lt, "force") && !strings.Contains(lt, "military") {
 				return t
 			}
 		}

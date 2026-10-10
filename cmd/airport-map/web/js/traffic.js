@@ -466,6 +466,12 @@ function renderCtx() {
   const mine = (radioCache || []).filter((t) => t.callsign === v.tail).slice(-4).reverse();
   h += `<section class="ctx__sec"><div class="ctx__lbl">Radio <button type="button" class="btn btn--sm btn--ghost" data-goto="radio">Open console</button></div>
     <div class="mini-log">${mine.length ? mine.map(txHTML).join('') : '<p class="muted small">Nothing said yet.</p>'}</div></section>`;
+  // Its models, each with "never use" (#1024): a model that does not work
+  // as traffic is passed over from then on.
+  const models = [{ kind: 'aircraft', title: v.model }, ...(v.vehicles || []).map((x) => ({ kind: x.kind, title: x.title }))].filter((m) => m.title);
+  if (models.length) {
+    h += `<section class="ctx__sec"><div class="ctx__lbl">Models</div><dl class="kv">${models.map((m) => `<dt>${esc(m.kind)}</dt><dd><span class="small" style="overflow-wrap:anywhere">${esc(m.title)}</span> <button type="button" class="btn btn--sm btn--ghost" data-never="${esc(m.title)}" data-never-kind="${esc(m.kind)}" title="Our traffic never uses this model again (the next one is taken); undo in model-rules.json">Never use</button></dd>`).join('')}</dl></section>`;
+  }
   const camOn = camView && camView.mode === 'follow' && camView.subject === v.tail;
   const located = v.position && (v.position.lat || v.position.lon);
   h += `<section class="ctx__sec"><div class="tools-row">
@@ -917,6 +923,16 @@ function initTraffic() {
     if (ws) { const id = Number(ws.dataset.withstart); if (ws.checked) ctlPushOnly.delete(id); else ctlPushOnly.add(id); return; }
     const a = e.target.closest('[data-act]');
     if (a) { if (!a.disabled) ctlAct(Number(a.dataset.id), a.dataset.act, undefined, a.dataset.facing); return; }
+    const never = e.target.closest('[data-never]');
+    if (never) {
+      const title = never.dataset.never;
+      if (!confirm(`Never use ${title} for traffic again?`)) return;
+      never.disabled = true;
+      send('/api/models/rules', { title, kind: never.dataset.neverKind, never: true, reason: 'set on the map' }).then((r) => {
+        toast(r.ok ? `${title}: never used again` : `${title}: ${r.error}`, r.ok ? '' : 'err');
+      });
+      return;
+    }
     const tool = e.target.closest('[data-tool]');
     if (tool) {
       if (tool.disabled) return;

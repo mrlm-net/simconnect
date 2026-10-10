@@ -445,15 +445,21 @@ const (
 )
 
 // TugTitleFor is the tug for an aircraft of span spanM (0 not known: the
-// airliner tug).
+// airliner tug); a tug never used (ModelNever, #1024) gives way to the next
+// bigger one.
 func TugTitleFor(spanM float64) string {
+	var tugs []string
 	switch {
 	case spanM <= 0:
-		return DefaultTugTitle
 	case spanM <= TugSmallMaxSpanM:
-		return TugSmallTitle
+		tugs = []string{TugSmallTitle, TugMediumTitle}
 	case spanM <= TugMediumMaxSpanM:
-		return TugMediumTitle
+		tugs = []string{TugMediumTitle}
+	}
+	for _, t := range tugs {
+		if !ModelNever(t) {
+			return t
+		}
 	}
 	return DefaultTugTitle
 }

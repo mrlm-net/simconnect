@@ -104,12 +104,12 @@ func (cc *controlCenter) fuelTitle(icao string, stand airport.Parking) string {
 	cc.mu.Lock()
 	ft := cc.fuelTitles
 	cc.mu.Unlock()
-	list := ft.trucks
-	if stand.IsGate() && len(ft.hydrants) > 0 {
-		list = ft.hydrants
+	list := traffic.UsableModels(ft.trucks) // the model rules (#1024)
+	if hydrants := traffic.UsableModels(ft.hydrants); stand.IsGate() && len(hydrants) > 0 {
+		list = hydrants
 	}
 	if len(list) == 0 {
-		list = ft.stock
+		list = traffic.UsableModels(ft.stock)
 	}
 	if len(list) == 0 {
 		return ""
@@ -156,9 +156,9 @@ func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32
 		return nil // a jetway
 	}
 	cc.mu.Lock()
-	list := cc.fuelTitles.stairs
+	list := traffic.UsableModels(cc.fuelTitles.stairs)
 	if len(list) == 0 {
-		list = cc.fuelTitles.stairsStock
+		list = traffic.UsableModels(cc.fuelTitles.stairsStock)
 	}
 	cc.mu.Unlock()
 	if len(list) == 0 {
@@ -184,9 +184,9 @@ func (cc *controlCenter) gpu(r SpawnRequest, g *airport.Graph, reqBase uint32, p
 		return nil
 	}
 	cc.mu.Lock()
-	list := cc.fuelTitles.gpus
+	list := traffic.UsableModels(cc.fuelTitles.gpus)
 	if len(list) == 0 {
-		list = cc.fuelTitles.gpusStock
+		list = traffic.UsableModels(cc.fuelTitles.gpusStock)
 	}
 	cc.mu.Unlock()
 	if len(list) == 0 {
@@ -219,7 +219,7 @@ const (
 // either GSX bus, else MSFS's own; "" when the simulator offers none.
 func (cc *controlCenter) busTitle(icao string) string {
 	cc.mu.Lock()
-	gsx, stock := cc.fuelTitles.buses, cc.fuelTitles.busesStock
+	gsx, stock := traffic.UsableModels(cc.fuelTitles.buses), traffic.UsableModels(cc.fuelTitles.busesStock)
 	cc.mu.Unlock()
 	want := gsxBusEurope
 	if icao != "" && strings.ContainsRune("OZVWU", rune(icao[0])) {
@@ -279,7 +279,7 @@ func (cc *controlCenter) followMe(r SpawnRequest, g *airport.Graph, reqBase uint
 		return nil
 	}
 	cc.mu.Lock()
-	list := cc.fuelTitles.followMe
+	list := traffic.UsableModels(cc.fuelTitles.followMe)
 	cc.mu.Unlock()
 	if len(list) == 0 {
 		return nil

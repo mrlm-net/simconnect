@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.85.0] - 2026-10-10
+
+### Added
+
+- Model rules (#1024): simulator models our traffic never uses, a new table `traffic.modelRules` (`ModelRuleItem`: title, kind, never, reason; `ModelNever`, `ModelRules`, `UsableModels`). A model never used is passed over for the next choice: aircraft titles (`ModelsFor`), the next bigger tug (`TugTitleFor`), the next stairs, GPU, bus or follow-me car, and scene models. Shipped: the small Mototok robot tug (the user: it does not show attached; light aircraft get the towbarless Mototok) and MSFS's "Car Ground Power Unit" van. The World keeps local rules in `DataDir/model-rules.json` over them per model (`"never": false` takes a shipped one back): `World.SetModelRule`, `World.ModelRules`, `GET`/`POST /api/models/rules`; the airport map's aircraft card lists its model and its vehicles' with "Never use".
+
 ## [0.84.0] - 2026-10-10
 
 ### Added
