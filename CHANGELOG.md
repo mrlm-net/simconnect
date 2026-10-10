@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.66.2] - 2026-10-10
+
+### Fixed
+
+- Ground: a route re-planned round traffic in the way that turns back on itself is refused (`Graph.TurnsBack`); the aircraft keeps its route and gives way (live LOWW: RYR1127 re-routed a second into its taxi turned round on the spot).
+- Runway in use: kept while within its limits unless another gives `RunwayBetterByKts` (2.5 kt) more headwind; a preferred runway is still gone back to (live KSAN: 010/3-6 kt flipped 09 and 27 every ten minutes).
+
 ## [0.66.1] - 2026-10-10
 
 ### Fixed

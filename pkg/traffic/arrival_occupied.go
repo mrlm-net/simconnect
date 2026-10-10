@@ -41,7 +41,7 @@ func (c *ArrivalController) AvoidOccupied(occ []airport.Occupied) bool {
 		return false
 	}
 	r, err := g.RouteToParkingFrom(old.Nodes[k], old.Nodes[k-1], c.req.Parking, opts)
-	if err != nil || r.Occupied || r.Tight || len(r.RunwayCrossings) > 0 || slices.Equal(r.Nodes, old.Nodes[k:]) {
+	if err != nil || r.Occupied || r.Tight || g.TurnsBack(r) || len(r.RunwayCrossings) > 0 || slices.Equal(r.Nodes, old.Nodes[k:]) {
 		return false
 	}
 	full, err := g.RouteFromNodes(append(append([]airport.NodeID(nil), old.Nodes[:k]...), r.Nodes...))

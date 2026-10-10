@@ -268,6 +268,12 @@ const RunwayChoiceMarginKts = 2.0
 // within its limits; no change is chosen for it.
 const RunwayCalmKts = 3.0
 
+// RunwayBetterByKts: a choice with less than this more headwind than the
+// runway in use is no better; the runway in use stays while within its
+// limits (live KSAN: 010/3–6 kt, a pure crosswind, flipped 09 and 27 every
+// ten minutes on half a knot either way).
+const RunwayBetterByKts = 2.5
+
 // RunwayPendingClearAfter is how long the better choice must be gone
 // before its pending change is dropped.
 const RunwayPendingClearAfter = time.Minute
@@ -304,9 +310,15 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		s.use = fresh
 		return fresh
 	}
-	// Near calm: the runway in use stays while within its limits, no
-	// better choice (live LKPR: 083/2–3 kt made 06 the choice at each puff).
-	if w.WindKts < RunwayCalmKts && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+	// Near calm, or too little more headwind to be worth a change: the
+	// runway in use stays while within its limits (live LKPR: 083/2–3 kt
+	// made 06 the choice at each puff).
+	// A preferred runway (noise, the AIP) is gone back to all the same.
+	curHead, _ := w.Components(s.use.Arrival.Heading)
+	little := fresh.HeadwindKts-curHead < RunwayBetterByKts && !slices.ContainsFunc(lim.Preferred, func(p string) bool {
+		return normalizeEnd(p) == fresh.Departure.Name && normalizeEnd(p) != s.use.Departure.Name
+	})
+	if (w.WindKts < RunwayCalmKts || little) && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
 		s.since = time.Time{}
 		kept := s.use
 		kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)

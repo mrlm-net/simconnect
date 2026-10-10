@@ -63,7 +63,7 @@ func (c *TaxiController) AvoidOccupied(occ []airport.Occupied) bool {
 	c.req.Options.Occupied = occ
 	err = c.routeFromHere()
 	c.req.Options.Occupied = nil
-	if err != nil || c.route.Occupied || c.route.Tight || !slices.Equal(c.route.RunwayCrossings, rest.RunwayCrossings) {
+	if err != nil || c.route.Occupied || c.route.Tight || g.TurnsBack(c.route) || !slices.Equal(c.route.RunwayCrossings, rest.RunwayCrossings) {
 		restore()
 		return false
 	}
