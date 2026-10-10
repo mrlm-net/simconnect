@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.74.2] - 2026-10-10
+
+### Fixed
+
+- Airport: `FlownRouteFor` takes a SID or STAR given for another runway (filed before the runway changed) as not given and flies one of its family serving the runway (LOWW 11: LANU1E for LANU1F), and an approach for another runway as the runway's best; before, the route left the runway and looped back across the field to the SID's fixes.
+
 ## [0.74.1] - 2026-10-10
 
 ### Fixed

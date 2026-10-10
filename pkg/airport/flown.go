@@ -189,22 +189,26 @@ func (l *Layout) runwayEnd(name string) (RunwayEnd, bool) {
 
 // pickSID is the SID flown from req's runway: req.SID, else the one whose
 // last fix (with an enroute transition, its name) is a route fix, the
-// latest along the route. Its legs: the runway transition, the common
-// route, the enroute transition.
+// latest along the route. A req.SID that does not serve the runway (filed
+// before the runway changed) is taken as not given: one of its family
+// (LANU1F for 16, LANU1E for 11) is chosen, else any. Its legs: the
+// runway transition, the common route, the enroute transition.
 func pickSID(req FlownRequest, route []RouteFix) (string, []Leg, string) {
-	p := req.DepartureProcedures
-	name, legsOut, trOut, bestAt := "", []Leg(nil), "", -2
-	for _, d := range p.SIDsFor(req.DepartureRunway) {
-		if req.SID != "" && !strings.EqualFold(d.Name, req.SID) {
+	procs := req.DepartureProcedures.SIDsFor(req.DepartureRunway)
+	want, wantTr, fam := given(procs, req.SID, req.SIDTransition)
+	name, legsOut, trOut, bestAt, bestFam := "", []Leg(nil), "", -2, false
+	for _, d := range procs {
+		if want != "" && !strings.EqualFold(d.Name, want) {
 			continue
 		}
+		inFam := fam != "" && family(d.Name) == fam
 		rt, _ := runwayTransition(d.RunwayTransitions, req.DepartureRunway)
 		cands := d.EnrouteTransitions
-		if len(cands) == 0 || req.SIDTransition == "" && req.SID != "" && !anyOnRoute(cands, route) {
+		if len(cands) == 0 || wantTr == "" && (want != "" || inFam) && !anyOnRoute(cands, route) {
 			cands = append([]Transition{{}}, cands...)
 		}
 		for _, tr := range cands {
-			if req.SIDTransition != "" && tr.Name != "" && !strings.EqualFold(tr.Name, req.SIDTransition) {
+			if wantTr != "" && tr.Name != "" && !strings.EqualFold(tr.Name, wantTr) {
 				continue
 			}
 			legs := append(append(slices.Clone(rt.Legs), d.Legs...), tr.Legs...)
@@ -212,15 +216,39 @@ func pickSID(req FlownRequest, route []RouteFix) (string, []Leg, string) {
 			if tr.Name != "" {
 				at = max(at, routeIndex(route, tr.Name))
 			}
-			if req.SID == "" && at < 0 {
+			if want == "" && at < 0 && !inFam {
 				continue
 			}
-			if at > bestAt {
-				name, legsOut, trOut, bestAt = d.Name, legs, tr.Name, at
+			if inFam && !bestFam || inFam == bestFam && at > bestAt {
+				name, legsOut, trOut, bestAt, bestFam = d.Name, legs, tr.Name, at, inFam
 			}
 		}
 	}
 	return name, legsOut, trOut
+}
+
+// given is a procedure and transition asked for among procs (those
+// serving the runway): as asked when one of procs; else none, with the
+// asked one's family to prefer ("" when nothing was asked).
+func given(procs []Procedure, name, transition string) (string, string, string) {
+	if name == "" {
+		return "", "", ""
+	}
+	for _, p := range procs {
+		if strings.EqualFold(p.Name, name) {
+			return name, transition, ""
+		}
+	}
+	return "", "", family(name)
+}
+
+// family is a procedure's name before its number: "LANU" of LANU1F.
+func family(name string) string {
+	name = strings.ToUpper(strings.TrimSpace(name))
+	if i := strings.IndexAny(name, "0123456789"); i > 0 {
+		return name[:i]
+	}
+	return name
 }
 
 // anyOnRoute reports whether a transition's name is a route fix.
@@ -235,22 +263,26 @@ func anyOnRoute(ts []Transition, route []RouteFix) bool {
 
 // pickSTAR is the STAR flown to req's runway: req.STAR, else the one
 // entered at a route fix (its enroute transition's name, else its first
-// fix), the latest along the route. Its legs: the enroute transition, the
-// common route, the runway transition; entry the route fix it starts at.
+// fix), the latest along the route; a req.STAR not serving the runway is
+// taken as not given, its family preferred (as pickSID). Its legs: the
+// enroute transition, the common route, the runway transition; entry the
+// route fix it starts at.
 func pickSTAR(req FlownRequest, route []RouteFix) (string, []Leg, string, string) {
-	p := req.ArrivalProcedures
-	name, legsOut, trOut, entryOut, bestAt := "", []Leg(nil), "", "", -2
-	for _, a := range p.STARsFor(req.ArrivalRunway) {
-		if req.STAR != "" && !strings.EqualFold(a.Name, req.STAR) {
+	procs := req.ArrivalProcedures.STARsFor(req.ArrivalRunway)
+	want, wantTr, fam := given(procs, req.STAR, req.STARTransition)
+	name, legsOut, trOut, entryOut, bestAt, bestFam := "", []Leg(nil), "", "", -2, false
+	for _, a := range procs {
+		if want != "" && !strings.EqualFold(a.Name, want) {
 			continue
 		}
+		inFam := fam != "" && family(a.Name) == fam
 		rt, _ := runwayTransition(a.RunwayTransitions, req.ArrivalRunway)
 		cands := a.EnrouteTransitions
-		if len(cands) == 0 || req.STARTransition == "" && req.STAR != "" && !anyOnRoute(cands, route) {
+		if len(cands) == 0 || wantTr == "" && (want != "" || inFam) && !anyOnRoute(cands, route) {
 			cands = append([]Transition{{}}, cands...)
 		}
 		for _, tr := range cands {
-			if req.STARTransition != "" && tr.Name != "" && !strings.EqualFold(tr.Name, req.STARTransition) {
+			if wantTr != "" && tr.Name != "" && !strings.EqualFold(tr.Name, wantTr) {
 				continue
 			}
 			legs := append(append(slices.Clone(tr.Legs), a.Legs...), rt.Legs...)
@@ -259,11 +291,11 @@ func pickSTAR(req FlownRequest, route []RouteFix) (string, []Leg, string, string
 			if tr.Name != "" && routeIndex(route, tr.Name) > at {
 				entry, at = tr.Name, routeIndex(route, tr.Name)
 			}
-			if req.STAR == "" && at < 0 {
+			if want == "" && at < 0 && !inFam {
 				continue
 			}
-			if at > bestAt {
-				name, legsOut, trOut, entryOut, bestAt = a.Name, legs, tr.Name, entry, at
+			if inFam && !bestFam || inFam == bestFam && at > bestAt {
+				name, legsOut, trOut, entryOut, bestAt, bestFam = a.Name, legs, tr.Name, entry, at, inFam
 			}
 		}
 	}
@@ -280,10 +312,14 @@ func pickApproach(req FlownRequest, arr RunwayEnd, lastIdent string, last LatLon
 	p := req.ArrivalProcedures
 	var ap Approach
 	var ok bool
+	apTr := req.ApproachTransition
 	if req.Approach != "" {
 		ap, ok = p.findApproach(req.Approach)
-	} else {
+		ok = ok && runwayMatches(ap.Runway, arr.Name) // one for another runway: as not given
+	}
+	if !ok {
 		ap, ok = p.BestApproach(arr.Name)
+		apTr = ""
 	}
 	if !ok || len(ap.Final) == 0 {
 		return nil, nil, ""
@@ -292,7 +328,7 @@ func pickApproach(req FlownRequest, arr RunwayEnd, lastIdent string, last LatLon
 	with := func(t Transition) (*Approach, []Leg, string) {
 		return &ap, append(slices.Clone(t.Legs), final...), t.Name
 	}
-	if t, ok := namedTransition(ap.Transitions, req.ApproachTransition); req.ApproachTransition != "" && ok {
+	if t, ok := namedTransition(ap.Transitions, apTr); apTr != "" && ok {
 		return with(t)
 	}
 	if lastIdent != "" {
