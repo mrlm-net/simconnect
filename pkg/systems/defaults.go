@@ -70,6 +70,9 @@ func Default() Profile {
 		// Landing lights on and off (the copilot's "landing lights", #519):
 		// the standard key events, each its own way.
 		LightLanding: {Event: "LANDING_LIGHTS_ON", OffEvent: "LANDING_LIGHTS_OFF"},
+		// Beacon (toggled only when not as wanted) and strobes (#1002, checklists).
+		LightBeacon: {Event: "TOGGLE_BEACON_LIGHTS", Toggle: true},
+		LightStrobe: {Event: "STROBES_ON", OffEvent: "STROBES_OFF"},
 		// The sim's ground services (#666): requests, sent as asked.
 		Jetway:      {Event: "TOGGLE_JETWAY"},
 		Stairs:      {Event: "TOGGLE_RAMPTRUCK"},

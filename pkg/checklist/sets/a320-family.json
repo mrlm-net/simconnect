@@ -1,0 +1,80 @@
+{
+  "name": "A320 family",
+  "base": true,
+  "match": { "atcType": ["A318", "A319", "A320", "A321", "A20N", "A21N"], "titleContains": ["A318", "A319", "A320", "A321"] },
+  "note": "The A320 family's normal checklist as the Airbus FCOM lays it out (challenge, response, who responds), checked by the generic values of pkg/systems where the state shows them. Actions only for what the PM may set (signs, lights, spoilers armed); gear, flaps, autopilot and thrust are verify only.",
+  "lists": [
+    { "name": "before-start", "title": "Before start", "stages": ["before-start"], "items": [
+      { "challenge": "COCKPIT PREP", "response": "COMPLETED", "role": "both" },
+      { "challenge": "GEAR PINS AND COVERS", "response": "REMOVED", "role": "both" },
+      { "challenge": "SIGNS", "response": "ON/AUTO", "role": "PF", "check": { "value": "seatbelts", "is": true }, "action": "seatbelts" },
+      { "challenge": "FUEL QUANTITY", "response": "___ KG", "role": "PF" },
+      { "challenge": "TO DATA", "response": "SET", "role": "PF", "check": { "value": "v1Kt", "min": 1 } },
+      { "challenge": "BARO REF", "response": "___ SET", "role": "both" },
+      { "challenge": "WINDOWS/DOORS", "response": "CLOSED", "role": "both", "check": { "value": "doorsClosed", "is": true } },
+      { "challenge": "BEACON", "response": "ON", "role": "PF", "check": { "value": "lightBeacon", "is": true }, "action": "lightBeacon" },
+      { "challenge": "THR LEVERS", "response": "IDLE", "role": "PF" },
+      { "challenge": "PARKING BRAKE", "response": "___", "role": "PF" }
+    ]},
+    { "name": "after-start", "title": "After start", "stages": ["after-start"], "items": [
+      { "challenge": "ANTI ICE", "response": "AS RQRD", "role": "PF" },
+      { "challenge": "ECAM STATUS", "response": "CHECKED", "role": "PF" },
+      { "challenge": "PITCH TRIM", "response": "___ SET", "role": "PF" },
+      { "challenge": "RUDDER TRIM", "response": "ZERO", "role": "PF" }
+    ]},
+    { "name": "before-takeoff", "title": "Before take-off", "stages": ["before-takeoff"], "items": [
+      { "challenge": "FLIGHT CONTROLS", "response": "CHECKED", "role": "both" },
+      { "challenge": "FLT INST", "response": "CHECKED", "role": "both" },
+      { "challenge": "BRIEFING", "response": "CONFIRMED", "role": "PF" },
+      { "challenge": "FLAP SETTING", "response": "CONF ___", "role": "both", "check": { "value": "flapsIndex", "min": 1, "max": 3 } },
+      { "challenge": "V1, VR, V2", "response": "___", "role": "both", "check": { "value": "v1Kt", "min": 1 } },
+      { "challenge": "ATC", "response": "SET", "role": "PM", "check": { "value": "xpdrState", "min": 3 } },
+      { "challenge": "ECAM MEMO", "response": "TO NO BLUE", "role": "PF" },
+      { "challenge": "TAKEOFF RWY", "response": "___ CONFIRMED", "role": "both" },
+      { "challenge": "CABIN CREW", "response": "ADVISED", "role": "PM" },
+      { "challenge": "TCAS", "response": "TA OR TA/RA", "role": "PM", "check": { "value": "xpdrState", "min": 3 } },
+      { "challenge": "ENG MODE SEL", "response": "AS RQRD", "role": "PF" },
+      { "challenge": "PACKS", "response": "AS RQRD", "role": "PF" },
+      { "challenge": "LANDING LIGHTS", "response": "ON", "role": "PM", "check": { "value": "lightLanding", "is": true }, "action": "lightLanding" },
+      { "challenge": "STROBE", "response": "ON", "role": "PM", "check": { "value": "lightStrobe", "is": true }, "action": "lightStrobe" }
+    ]},
+    { "name": "after-takeoff", "title": "After take-off / climb", "phases": ["climb"], "items": [
+      { "challenge": "LDG GEAR", "response": "UP", "role": "PM", "check": { "value": "gearDown", "is": false } },
+      { "challenge": "FLAPS", "response": "RETRACTED", "role": "PM", "check": { "value": "flapsIndex", "max": 0 } },
+      { "challenge": "PACKS", "response": "ON", "role": "PM" },
+      { "challenge": "BARO REF", "response": "___ SET", "role": "both" }
+    ]},
+    { "name": "approach", "title": "Approach", "phases": ["approach"], "items": [
+      { "challenge": "BRIEFING", "response": "CONFIRMED", "role": "PF" },
+      { "challenge": "ECAM STATUS", "response": "CHECKED", "role": "PF" },
+      { "challenge": "SEAT BELTS", "response": "ON", "role": "both", "check": { "value": "seatbelts", "is": true }, "action": "seatbelts" },
+      { "challenge": "BARO REF", "response": "___ SET", "role": "both" },
+      { "challenge": "MINIMUM", "response": "___ SET", "role": "both" },
+      { "challenge": "ENG MODE SEL", "response": "AS RQRD", "role": "PF" }
+    ]},
+    { "name": "landing", "title": "Landing", "phases": ["landing"], "stages": ["landing"], "items": [
+      { "challenge": "CABIN CREW", "response": "ADVISED", "role": "PM" },
+      { "challenge": "A/THR", "response": "SPEED/OFF", "role": "PF" },
+      { "challenge": "AUTOBRAKE", "response": "AS RQRD", "role": "PF" },
+      { "challenge": "LDG GEAR", "response": "DOWN", "role": "PF", "check": { "value": "gearDown", "is": true } },
+      { "challenge": "SIGNS", "response": "ON", "role": "PF", "check": { "value": "seatbelts", "is": true }, "action": "seatbelts" },
+      { "challenge": "SPLRS", "response": "ARM", "role": "PF", "check": { "value": "spoilersArmed", "is": true }, "action": "spoilersArmed" },
+      { "challenge": "FLAPS", "response": "SET", "role": "PF", "check": { "value": "flapsIndex", "min": 3 } },
+      { "challenge": "ECAM MEMO", "response": "LDG NO BLUE", "role": "PF" }
+    ]},
+    { "name": "after-landing", "title": "After landing", "stages": ["after-landing"], "items": [
+      { "challenge": "FLAPS", "response": "RETRACTED", "role": "PM", "check": { "value": "flapsIndex", "max": 0 } },
+      { "challenge": "SPOILERS", "response": "DISARMED", "role": "PM", "check": { "value": "spoilersArmed", "is": false }, "action": "spoilersArmed", "on": false },
+      { "challenge": "STROBE", "response": "OFF", "role": "PM", "check": { "value": "lightStrobe", "is": false }, "action": "lightStrobe", "on": false },
+      { "challenge": "LANDING LIGHTS", "response": "OFF", "role": "PM", "check": { "value": "lightLanding", "is": false }, "action": "lightLanding", "on": false }
+    ]},
+    { "name": "parking", "title": "Parking", "stages": ["parking"], "items": [
+      { "challenge": "APU BLEED", "response": "ON", "role": "PF" },
+      { "challenge": "ENGINES", "response": "OFF", "role": "PF", "check": { "value": "enginesRunning", "max": 0 } },
+      { "challenge": "SEAT BELTS", "response": "OFF", "role": "PF", "check": { "value": "seatbelts", "is": false }, "action": "seatbelts", "on": false },
+      { "challenge": "EXT LT", "response": "AS RQRD", "role": "PF" },
+      { "challenge": "FUEL PUMPS", "response": "OFF", "role": "PF" },
+      { "challenge": "PARK BRK AND CHOCKS", "response": "AS RQRD", "role": "PF", "check": { "value": "parkingBrake", "is": true } }
+    ]}
+  ]
+}

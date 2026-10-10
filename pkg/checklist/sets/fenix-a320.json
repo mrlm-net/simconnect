@@ -1,0 +1,7 @@
+{
+  "name": "Fenix A320",
+  "extends": "A320 family",
+  "match": { "packagePrefix": ["fnx-aircraft"], "titleContains": ["Fenix"] },
+  "note": "The Fenix A319/A320/A321 flies the family's checklist: its systems profile maps the checks' values (seat belts, lights, spoilers) to its own variables, so the family's items check as they are. Model differences go here.",
+  "lists": []
+}

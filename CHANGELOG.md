@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.74.0] - 2026-10-10
+
+### Added
+
+- `pkg/checklist` (#1002): normal checklists as data, the A320 family's (Airbus FCOM) and the Fenix's on it, a local override file (local wins per value). Items: challenge, response, role (PF, PM, both, either), a check against `systems.State`, an action the PM may take (never gear, flaps, autopilot or thrust). Lists due by pilot phase or a caller's stage; a runner with the roles resolved by who is PF now. On recorded flights `ForAssess` gives `flight.Assess` real checklist findings (before take-off, landing by 1000 ft).
+- Systems: beacon and strobe actions in the default profile.
+
 ## [0.73.0] - 2026-10-10
 
 ### Added
