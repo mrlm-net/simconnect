@@ -283,3 +283,34 @@ func TestPMCallsGoAround(t *testing.T) {
 		t.Fatalf("phase %v, said %q", e.Phase(), out.Say)
 	}
 }
+
+// TestPhaseGround: at the stand and taxiing the phase is ground; rolling
+// for take-off past 30 kt it is take-off; a rejected take-off slowing
+// below it is ground again; so is the end of a landing roll once handed
+// back.
+func TestPhaseGround(t *testing.T) {
+	e := New(Config{}, nil)
+	in := Input{Now: time.Unix(0, 0), State: systems.State{Values: map[string]float64{}}}
+	in.Air.OnGround = true
+	step := func(ias float64) Phase {
+		in.Air.IAS = ias
+		in.Now = in.Now.Add(time.Second)
+		return e.Update(in).Phase
+	}
+	if p := step(0); p != PhaseGround || e.Phase() != PhaseGround || p.String() != "ground" {
+		t.Fatalf("at the stand %v", p)
+	}
+	if p := step(15); p != PhaseGround {
+		t.Errorf("taxiing %v", p)
+	}
+	if p := step(60); p != PhaseTakeoff {
+		t.Errorf("take-off roll %v", p)
+	}
+	if p := step(20); p != PhaseGround {
+		t.Errorf("rejected take-off %v", p)
+	}
+	e.phase = PhaseHandback // the landing roll over, handed back
+	if p := step(25); p != PhaseGround {
+		t.Errorf("after the landing roll %v", p)
+	}
+}
