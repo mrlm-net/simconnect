@@ -57,6 +57,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.69.0] - 2026-10-10
+
+### Added
+
+- Real-world traffic: overflights are flown (#845). One within 100 NM of the area's centre appears where it is now and crosses the area along its `route` (to the first point out of it), else straight on along its track; gone once out, or after its exit. `TrafficManager.AddOverflight`; a later sighting updates it, `Drop` ends it.
+- Real-world traffic: a departure given a `route` flies its SID and then the route, at the route's levels or the planned cruise level (#845).
+- Real-world traffic: `Observed.routeText`, the filed route ("DCT VLM UL86 KEPAD"), expanded over the known airways when no `route` is given. `nav.(*AirwayGraph).ExpandRoute` walks each airway between its fixes, passes over DCT, speed/level groups and tokens not known (reported), and picks the nearest of fixes sharing an ident.
+
+### Changed
+
+- Standard pushbacks are planned on demand: the stand of each departure placed, when not known yet, one at a time in the background, and saved after each. No sweep of every stand on an airport's first visit. `traffic.HasStandardPush`.
+
 ## [0.68.1] - 2026-10-10
 
 ### Fixed

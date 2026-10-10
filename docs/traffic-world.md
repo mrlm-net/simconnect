@@ -72,7 +72,7 @@ A host can time traffic around its own flight (#737, #738): an arrival a few min
 With real-world traffic on, the World flies the aircraft that a feed such as ADS-B observes, instead of the generated timetable (#841). Each aircraft gets everything the World's own traffic gets: stand services, push, taxi, ATC and radio.
 
 - `SetRealTraffic(true, "LKPR")` (`POST /api/realtraffic {"on":true,"icao":"LKPR"}`) turns the generator off and sets the managed airport. Generated flights not yet in the simulator go at once, and those flying finish their flight. `false` brings the generator back. `GET /api/realtraffic` says whether it is on, with the managed airports.
-- `Observe([]traffic.Observed)` (`POST /api/realflights`) takes a feed's snapshot. A sighting is an `id` (the ICAO 24-bit address), `callsign`, `registration`, `type`, `lat`/`lon`, `altFt`, `groundKts`, `trackDeg`, `vsFpm`, `onGround` and `seenAt`, plus optional `kind`, `origin`, `destination`, `departAt` and `route`.
+- `Observe([]traffic.Observed)` (`POST /api/realflights`) takes a feed's snapshot. A sighting is an `id` (the ICAO 24-bit address), `callsign`, `registration`, `type`, `lat`/`lon`, `altFt`, `groundKts`, `trackDeg`, `vsFpm`, `onGround` and `seenAt`, plus optional `kind`, `origin`, `destination`, `departAt` and `route` (or `routeText`, the filed route such as "DCT VLM UL86 KEPAD", expanded over the airways known: unknown tokens such as a SID name are passed over and logged).
   - It returns one `ObserveResult` per sighting, with the status `added`, `updated`, `retimed`, `turnaround` or `ignored` (with a reason).
   - The aircraft flies under its call sign, else its registration, else its ID.
   - An unknown origin or destination stays `""` and is shown as unknown, never guessed.
@@ -83,9 +83,9 @@ The kind, when not given, comes from `traffic.ClassifyObserved`:
 | Kind | When (no `kind` given) | What the World does |
 |---|---|---|
 | parked | On the ground within 3 NM of the airport, still | It goes on the free stand within 80 m of where it is seen (else a stand by its type) and waits, with no push and no call to delivery, until a departure is seen for its ID. That departure re-times its push (`traffic.TaxiController.SetPushbackAt`), and only then does the aircraft call delivery. |
-| departure | On the ground at the airport, moving | It goes on a stand the same way and pushes at `departAt` or now. With no destination it flies a SID of the runway and leaves the area. |
+| departure | On the ground at the airport, moving | It goes on a stand the same way and pushes at `departAt` or now. With no destination it flies a SID of the runway and leaves the area. Given a `route` (#845), it flies its planned SID and then the route, from its first point past the SID, at the route's levels or the planned cruise level. |
 | arrival | Airborne within 150 NM, heading for the airport (within 60°), not climbing away | Its sighting is projected to now along its track (at most 10 min). It appears there, flown by MSFS AI, and joins a STAR of the runway in use at the point that gives the shortest way in, up to the initial approach fix. Given a `route` (points `lat`, `lon`, optional `altFt`: a recorded or planned track, #845), it flies the route and joins the STAR where the route passes within 5 NM of one of its points, again the shortest way in; a route that meets no STAR is left for the direct join. Approach takes it over at that point, as it takes over an en-route arrival. It is never held back by the landing flow (it is already in the air) and never cancelled by time. |
-| overflight | Anything else airborne | Not flown yet. |
+| overflight | Anything else airborne | Within 100 NM of the centre of the area, it appears where it is now (projected as an arrival is), flown by MSFS AI across the area along its `route` (#845) to the first point out of it, else straight on along its track, and goes once out. |
 
 A sighting is `ignored` when it is on the ground away from the airport, climbing out (over 500 fpm within 30 NM), or a ground station or vehicle (type `TWR`, `GND`, `GRND`, `SVC`, `VEH`). The projection uses its vertical rate for at most a minute.
 

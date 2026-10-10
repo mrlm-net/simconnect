@@ -152,7 +152,7 @@ type actuatorSim struct {
 	// side's scans); pushes plans the airport's standard pushes on this
 	// side's graph (they are kept by graph).
 	alloc  func(g *airport.Graph) *traffic.StandAllocator
-	pushes func(g *airport.Graph)
+	pushes func(g *airport.Graph, stand int)
 	// tug and fuel make an aircraft's tug and fuel truck from their models
 	// on its request IDs (nil: none).
 	tug    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.PushbackTug
@@ -200,7 +200,7 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 		req.StandOccupied = func(stand int) bool { _, taken := alloc.Occupant(stand); return taken }
 	}
 	if a.pushes != nil {
-		a.pushes(g) // the stands' standard pushes, once
+		a.pushes(g, req.Parking) // its stand's standard push, on demand
 	}
 	if w.Tug != "" && a.tug != nil {
 		req.Tug = a.tug(w, g, req.Profile)

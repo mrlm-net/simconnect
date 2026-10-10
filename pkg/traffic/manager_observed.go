@@ -114,3 +114,16 @@ func (m *TrafficManager) Replan() {
 	defer m.mu.Unlock()
 	m.until = time.Time{}
 }
+
+// AddOverflight adds a real aircraft crossing the area (#845): f with its
+// Observed sighting, Enter now and Exit when it is out; flown from where it
+// is along its route, and gone after Exit as any overflight.
+func (m *TrafficManager) AddOverflight(f Flight) {
+	m.mu.Lock()
+	defer m.unlock()
+	mf := &ManagedFlight{Flight: f, Kind: "overflight"}
+	if _, ok := m.flights[mf.key()]; !ok {
+		m.flights[mf.key()] = mf
+		m.emit(EventAdded, mf, time.Time{}, "")
+	}
+}

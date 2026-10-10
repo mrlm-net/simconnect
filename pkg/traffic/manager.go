@@ -629,7 +629,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			overflying++
 			total++
 			f.Attempts++
-			f.Stage = "enroute"
+			_, f.Stage = m.start(f, now) // "enroute"; a real one "observed"
 			m.set(f, FlightSpawning, now)
 			*spawn = append(*spawn, *f)
 			continue
