@@ -136,7 +136,7 @@ func (c *Controls) Set(name string, on bool, now State) error {
 	case a.EFB != "":
 		return c.efbWrite(a.EFB, on)
 	case a.Set != "":
-		return c.setVar(a.Set, want)
+		return c.setVars(a, want)
 	case a.Counter != "":
 		if now.Values[name] != 0 == on {
 			return nil // as wanted already
@@ -313,7 +313,13 @@ func (c *Controls) SetValue(name string, v float64, now State) error {
 		return fmt.Errorf("%w: %s", ErrNoControl, name)
 	}
 	if a.Set != "" {
-		return c.setVar(a.Set, v)
+		if a.Scale != nil {
+			v *= *a.Scale
+		}
+		if a.Offset != nil {
+			v += *a.Offset
+		}
+		return c.setVars(a, v)
 	}
 	if a.Encoder != "" {
 		return c.turn(name, a, v, now)
@@ -360,4 +366,14 @@ func (c *Controls) turn(name string, a Action, v float64, now State) error {
 		return nil
 	}
 	return c.setVar(a.Encoder, count+clicks)
+}
+
+// setVars writes v to a's Set variable and each of Also.
+func (c *Controls) setVars(a Action, v float64) error {
+	for _, name := range append([]string{a.Set}, a.Also...) {
+		if err := c.setVar(name, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
