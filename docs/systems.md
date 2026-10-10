@@ -121,6 +121,8 @@ Lights, parking brake, EXIT OPEN:0 and the transponder follow the standard varia
 
 The profile's **actions** give the COM swap as the RMP transfer key, `L:S_PED_RMP1_XFER` (see [Radios and Transponder](avionics.md)).
 
+**Audio control panel.** The values `acpVhf1Volume` … `acpPaVolume` (0…1) and `acpVhf1Receive` … `acpPaReceive` (on 1) are the captain's ACP knobs and receive keys for VHF 1–3, INT, CAB and PA, so an add-on can play its own voices on a channel at the cockpit's volume. The default profile has none: absent is full volume, received. The Fenix maps them to `L:A_ASP_<channel>_VOLUME` and `L:S_ASP_<channel>_REC_LATCH` (the first officer's are `ASP2_`), from the FSUIPC7 L:var list; the knobs sit at 0.5 there, and the full range is still to check live.
+
 ## Actions
 
 `actions` names how a control is operated on a model where the standard key events do not do it: `{"com1Swap": {"press": "L:S_PED_RMP1_XFER"}}` presses that variable (1, then 0). `pkg/avionics` takes them with `Radios.Use(profile.Actions)`. They merge like values: an override wins per action.
