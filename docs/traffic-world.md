@@ -158,6 +158,10 @@ The World never controls nor calls the user aircraft. A host whose own ATC works
   - **Stand:** `PlayerClearance.Stand` (a label) holds that stand for it: none of ours is given it, and an arrival of ours that has not landed yet and holds it is moved to another (one already taxiing in or parked keeps it, logged).
   - **Air:** a pair with the user aircraft is the tower's only below 1000 ft at the airport (`UserTowerBelowFt`, was 2500 ft for all): above that ours get resolutions against it. `World.PlayerTraffic(callsign, icao)` is the World's traffic its ATC tells it of: ours airborne within 6 NM and 2000 ft, not moving apart, nearest first, each with the clock, distance, direction, type and level and the transmission's text.
 
+## Runway closures
+
+`CloseRunway(icao, runway, closed)` closes a runway (works, a NOTAM; by name "06/24" or an end "24") or opens it again; `ClosedRunways(icao)` lists them (`GET /api/closures?icao=`, `POST /api/closures {icao, runway, closed}`). A closed runway is never chosen for departures or arrivals (`nav.RunwayLimits.Closed`): the runway in use changes at once, also from one held through a wind shift, and the traffic on it changes runway as with a wind change; the ATIS and the player's runway (`DepartureRunway`, the runways in use) follow. With every runway of an airport closed, no new flight starts there until one opens (a schedule attempt fails "all runways closed" and is tried again).
+
 ## Ground services (v0.20)
 
 Each airport has a fleet of service vehicles. The defaults are sized by its stands:

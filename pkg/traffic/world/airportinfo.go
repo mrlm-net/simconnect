@@ -287,9 +287,10 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 // runwayLimits are lim's runway limits for g's airport, with its runway
 // ends' entries at the take-off threshold (parallels: take-offs where no
 // backtrack is needed).
-func runwayLimits(g *airport.Graph, lim airport.Limits) nav.RunwayLimits {
+func (k *core) runwayLimits(g *airport.Graph, lim airport.Limits) nav.RunwayLimits {
 	r := nav.RunwayLimitsFrom(lim)
 	if g != nil {
+		r.Closed = k.closed(g.Layout.ICAO) // the host's closures
 		r.ThresholdEntry = g.ThresholdEntry
 	}
 	return r
@@ -301,5 +302,10 @@ func (st *state) runwayLimits(l *airport.Layout, lim airport.Limits) nav.RunwayL
 	if err != nil {
 		g = nil
 	}
-	return runwayLimits(g, lim)
+	if g == nil {
+		r := st.core.runwayLimits(nil, lim)
+		r.Closed = st.core.closed(l.ICAO)
+		return r
+	}
+	return st.core.runwayLimits(g, lim)
 }

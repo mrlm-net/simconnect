@@ -17,6 +17,10 @@ type core struct {
 	// log is the traffic log (console, file, /api/control/log).
 	log *trafficLog
 
+	// runwaysClosed: runways closed by the host (closures.go), made once.
+	runwaysClosed *closures
+	closedOnce    sync.Once
+
 	// runwayMu guards selectors and inUse: each airport's runway in use,
 	// one selector for the traffic and its ATIS (#454), and the last one
 	// logged (#465).

@@ -254,6 +254,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	if err != nil {
 		return err
 	}
+	if cc.core.allClosed(g.Layout) {
+		return fmt.Errorf("%s: all runways closed", f.Airport) // waits for one to open (closures.go)
+	}
 	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Fuel: true, Deice: "auto"}
 	vfr := f.Rules == "VFR"
 	switch {
