@@ -234,6 +234,23 @@ func (it *controlled) answer(req string) {
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
 	if req == "taxi" {
+		tx = it.withRemaining(tx)
+		it.mu.Lock()
+		declining := it.entryDeclined
+		it.mu.Unlock()
+		if declining {
+			// Cleared to the intersection, the crew declines it (#1030): no
+			// readback, the full length instead.
+			offered := tx
+			offered.Params = map[string]string{traffic.ParamNoReadback: "1"}
+			for k, v := range tx.Params {
+				offered.Params[k] = v
+			}
+			it.say(offered)
+			if it.declineEntry() {
+				tx = it.phrase(req, -1)
+			}
+		}
 		// One of ours taxiing ahead on the same way: follow it.
 		var r *airport.Route
 		if it.dep != nil {

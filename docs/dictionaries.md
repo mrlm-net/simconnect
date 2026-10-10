@@ -35,6 +35,8 @@ A table's JSON is an envelope; `Use` also takes the bare items array:
 | `traffic.aipUnits` | `icao` | ATC unit call signs by frequency (`AIPUnitItem`) |
 | `traffic.airlines` | `icao` | the schedule's airlines with fleets and bases (`traffic.Airline`) |
 | `traffic.gaTypes` | `kind` | the types each kind of GA operator flies, by weight |
+| `traffic.intersectionClasses` | `class` | intersection departures by class: the runway left needed, full length only, the crews' decline share (`IntersectionClassItem`) |
+| `traffic.intersectionAirports` | `icao` | an airport's own intersection entries per runway and class, and whether the clearance says the runway left (`IntersectionAirportItem`); none shipped |
 | `systems.profiles` | `name` | aircraft systems profiles (`systems.Profile`; Windows builds) |
 
 An item of a shipped id is read onto a copy of the shipped item, so it replaces only the fields it gives; the others keep their shipped value. Items with a new id are added after the shipped ones. An item without an id is refused. A name not in `Names()` gives `dict.ErrNoTable`.

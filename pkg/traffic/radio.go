@@ -126,12 +126,18 @@ func PhraseologyFor(icao string) Phraseology {
 // Parameter keys of a transmission. Values are the text as said (a runway
 // "24", taxiways "B2, H, A", a level "FL210" or "9000 ft").
 const (
-	ParamRunway    = "runway"
-	ParamEntry     = "entry"     // where an intersection departure enters its runway ("B")
-	ParamBacktrack = "backtrack" // "1": enter and taxi back along the runway to its threshold first
-	ParamStartUp   = "startup"   // "1": the start-up asked for or approved with the pushback
-	ParamFacing    = "facing"    // where a push ends facing: "east"
-	ParamBehind    = "behind"    // a conditional line-up: the landing traffic as said ("A320")
+	ParamRunway = "runway"
+	ParamEntry  = "entry" // where an intersection departure enters its runway ("B")
+	// ParamRemaining: the runway left from an intersection, meters as said
+	// ("2800"), where the airport says it (SayRemaining, #1030).
+	ParamRemaining = "remaining"
+	// ParamNoReadback: "1": the crew does not read it back (it answers
+	// otherwise, as "unable intersection").
+	ParamNoReadback = "noReadback"
+	ParamBacktrack  = "backtrack" // "1": enter and taxi back along the runway to its threshold first
+	ParamStartUp    = "startup"   // "1": the start-up asked for or approved with the pushback
+	ParamFacing     = "facing"    // where a push ends facing: "east"
+	ParamBehind     = "behind"    // a conditional line-up: the landing traffic as said ("A320")
 	// ParamBehindHow: what the traffic of a conditional line-up does,
 	// "landing" ("" too) or "departing".
 	ParamBehindHow  = "behindHow"
@@ -369,6 +375,9 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		entry := ""
 		if p[ParamEntry] != "" {
 			entry = " at " + p[ParamEntry]
+			if p[ParamRemaining] != "" {
+				entry += ", " + p[ParamRemaining] + " metres available" // the project's wording
+			}
 		}
 		return fmt.Sprintf("%s, taxi to and hold short of runway %s%s%s%s", cs, p[ParamRunway], entry, via, holdShortSaid(p))
 	case IntentGiveWay:

@@ -139,6 +139,11 @@ type controlled struct {
 	// askedEntry: the intersection the crew asked to depart from with its
 	// taxi request, answered with the taxi clearance (#621).
 	askedEntry string
+	// entryRemaining: the runway left from the intersection it was given
+	// (meters, 0 none); entryDeclined: its crew declines the one just
+	// offered (#1030).
+	entryRemaining float64
+	entryDeclined  bool
 	// askedRunway: the runway the crew asked to depart from instead (#621),
 	// answered with the taxi clearance; "" none.
 	askedRunway string
