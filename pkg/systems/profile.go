@@ -595,6 +595,8 @@ type Action struct {
 	// complement (#962).
 	Value bool     `json:"value,omitempty"`
 	Scale *float64 `json:"scale,omitempty"`
+	// Offset is added after Scale (an axis from −16383 for 0, the brakes).
+	Offset *float64 `json:"offset,omitempty"`
 	// Encoder: SetValue turns a relative knob, a counter variable
 	// ("L:E_FCU_SPEED") a click per Step of the value shown (Display, a
 	// value of the profile: "N_FCU_SPEED" read), from its count now (the

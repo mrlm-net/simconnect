@@ -319,16 +319,19 @@ func (c *Controls) SetValue(name string, v float64, now State) error {
 		return c.turn(name, a, v, now)
 	}
 	if a.Event != "" && a.Value {
-		return c.event(a.Event, eventData(v, a.Scale))
+		return c.event(a.Event, eventData(v, a.Scale, a.Offset))
 	}
 	return c.Set(name, v != 0, now)
 }
 
 // eventData is v times scale (nil: 1), rounded, as a key event's data: a
 // negative value as its two's complement.
-func eventData(v float64, scale *float64) uint32 {
+func eventData(v float64, scale, offset *float64) uint32 {
 	if scale != nil {
 		v *= *scale
+	}
+	if offset != nil {
+		v += *offset
 	}
 	return uint32(int32(math.Round(v)))
 }

@@ -45,8 +45,8 @@ With `Config.HandFly` the copilot flies the take-off and the landing too, throug
 - **Landing.** At minimums, cleared to land, it disconnects the autopilot and the autothrust ("Autopilot off") and flies on by hand:
   - On final it holds the 3° glide path through 50 ft over the threshold by pitch (the sink rate for the ground speed, corrected for the height off the path), the approach speed by throttle, and the centreline by bank. The centreline correction is slow next to the turn, so it does not overshoot.
   - It flares at the learned height (else 30 ft), or 3 s before touching down if that is higher. The flare flies a sink rate that eases with the height (100 ft/min plus 8 a foot), and the thrust goes to idle at 20 ft ("Retard").
-  - Below 15 ft it straightens the nose with the rudder.
-  - After touchdown it lowers the nose gently, holds the centreline with the rudder, and below 40 kt says "Your controls".
-- **Not cleared to land at minimums:** it says "Go around, flaps", sets the thrust to 100 % and hands back.
+  - It flies the ground track from the positions, not the heading, so a crosswind gives the crab by itself. Below 10 ft it straightens the nose with the rudder and holds a wing down into the wind to keep the track on the line.
+  - After touchdown it lowers the nose gently and holds the centreline with the rudder. Once the nose is down it puts the reversers out (reverse thrust to 70 kt, idle reverse, stowed by 60 kt) and brakes for 4 kt a second from 2 s after touchdown. Below 40 kt it releases the brakes and says "Your controls".
+- **Go-around** (not cleared to land at minimums, or `Clearance.GoAround` on the approach or the landing): it disconnects the autopilot, sets TOGA, says "Go around, flaps" (one flap step asked of the player), pitches up for the approach speed + 10 on the runway track, asks "Positive climb, gear up", and at the engage height engages the autopilot to the cleared altitude.
 
 The loops were tuned on a simple model, so their gains and signs need a live check. The model landing touches down at about −260 ft/min, 740 m past the threshold, on the centreline. The elevator axis sign is assumed: pushed forward is positive (`systems.Elevator`).
