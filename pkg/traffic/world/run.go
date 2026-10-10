@@ -274,7 +274,7 @@ type pushPlanQueue struct {
 
 // standardPushDuty: the planner works this share of the time on one core,
 // resting after each stand, so it never runs a core flat out.
-const standardPushDuty = 0.3
+const standardPushDuty = 0.15
 
 // standardPushFile is where an airport's standard pushes are kept between
 // runs ("" none): planned once per layout, loaded on later starts.
@@ -286,32 +286,47 @@ func standardPushFile(icao string) string {
 	return filepath.Join(dir, "mrlm-simconnect", "airport-map", "pushes", icao+".json")
 }
 
+// standardPushSaveEvery: the plans so far are saved this often while
+// planning, so a run stopped early (the app restarted) keeps them.
+const standardPushSaveEvery = 30 * time.Second
+
 // planStandardPushes loads g's saved standard pushes, plans the stands
-// still missing one at a time at standardPushDuty, and saves them.
+// still missing one at a time at standardPushDuty, and saves them as it
+// goes.
 func planStandardPushes(log *trafficLog, g *airport.Graph) {
 	icao, file := g.Layout.ICAO, standardPushFile(g.Layout.ICAO)
 	loaded := 0
 	if f, err := os.Open(file); err == nil {
 		n, err := traffic.LoadStandardPushes(f, g)
 		f.Close()
-		if err != nil && !errors.Is(err, traffic.ErrStandardStale) {
-			tlog.printf("%s: standard pushbacks: %v", icao, err)
+		if err != nil {
+			tlog.printf("%s: standard pushbacks not loaded from %s: %v", icao, file, err) // stale: planned again
 		}
 		loaded = n
-	}
-	start, worked := time.Now(), time.Duration(0)
-	for i := range g.Layout.Parking {
-		t := time.Now()
-		traffic.PlanStandardPushes(g, standardPushModel, []int{i}) // a loaded stand is skipped
-		d := time.Since(t)
-		worked += d
-		time.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
 	}
 	if loaded == len(g.Layout.Parking) {
 		tlog.printf("%s: standard pushbacks of %d stands loaded", icao, loaded)
 		return
 	}
+	start, worked, saved := time.Now(), time.Duration(0), time.Now()
+	for i := range g.Layout.Parking {
+		t := time.Now()
+		traffic.PlanStandardPushes(g, standardPushModel, []int{i}) // a loaded stand is skipped
+		d := time.Since(t)
+		worked += d
+		if time.Since(saved) >= standardPushSaveEvery {
+			saveStandardPushes(g, file)
+			saved = time.Now()
+		}
+		time.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
+	}
 	tlog.printf("%s: standard pushbacks of %d stands planned (%d loaded) in %s, %s of work", icao, len(g.Layout.Parking)-loaded, loaded, time.Since(start).Round(time.Second), worked.Round(time.Second))
+	saveStandardPushes(g, file)
+}
+
+// saveStandardPushes writes g's standard pushes planned so far to file,
+// whole: a temporary file renamed over it.
+func saveStandardPushes(g *airport.Graph, file string) {
 	if file == "" {
 		return
 	}
@@ -319,12 +334,16 @@ func planStandardPushes(log *trafficLog, g *airport.Graph) {
 	if _, err := traffic.SaveStandardPushes(&buf, g); err != nil {
 		return
 	}
+	tmp := file + ".tmp"
 	err := os.MkdirAll(filepath.Dir(file), 0o755)
 	if err == nil {
-		err = os.WriteFile(file, buf.Bytes(), 0o644)
+		err = os.WriteFile(tmp, buf.Bytes(), 0o644)
+	}
+	if err == nil {
+		err = os.Rename(tmp, file)
 	}
 	if err != nil {
-		tlog.printf("%s: standard pushbacks not saved: %v", icao, err)
+		tlog.printf("%s: standard pushbacks not saved: %v", g.Layout.ICAO, err)
 	}
 }
 

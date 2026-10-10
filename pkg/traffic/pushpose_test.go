@@ -339,7 +339,7 @@ func TestStandardPushesSaved(t *testing.T) {
 	t.Logf("%d stands planned in %s", len(stands), time.Since(start).Round(time.Millisecond))
 	want := map[int]*pushPose{}
 	for _, i := range stands {
-		v, _ := standardPushes.Load(standardKey{g, i})
+		v, _ := standardPushes.Load(stdKey(g, i))
 		want[i] = v.(*pushPose)
 	}
 	var buf bytes.Buffer
@@ -348,13 +348,13 @@ func TestStandardPushesSaved(t *testing.T) {
 	}
 	saved := buf.String()
 	for _, i := range stands {
-		standardPushes.Delete(standardKey{g, i})
+		standardPushes.Delete(stdKey(g, i))
 	}
 	if n, err := LoadStandardPushes(strings.NewReader(saved), g); err != nil || n < len(stands) {
 		t.Fatalf("loaded %d: %v", n, err)
 	}
 	for _, i := range stands {
-		v, ok := standardPushes.Load(standardKey{g, i})
+		v, ok := standardPushes.Load(stdKey(g, i))
 		if !ok {
 			t.Fatalf("stand %d not loaded", i)
 		}
@@ -366,5 +366,22 @@ func TestStandardPushesSaved(t *testing.T) {
 	other := airportGraph(t, "EDDM")
 	if _, err := LoadStandardPushes(strings.NewReader(saved), other); !errors.Is(err, ErrStandardStale) {
 		t.Errorf("another airport's file: %v", err)
+	}
+}
+
+// TestStandardPushesSharedByLayout: two graphs of one layout (the app's and
+// the World's) share the standard pushes: planning on one keeps what the
+// other planned, and its save holds every stand.
+func TestStandardPushesSharedByLayout(t *testing.T) {
+	g1, g2 := lkprGraph(t), lkprGraph(t)
+	PlanStandardPushes(g1, "", []int{0, 1})
+	PlanStandardPushes(g2, "", []int{2})
+	var buf bytes.Buffer
+	n, err := SaveStandardPushes(&buf, g1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 3 {
+		t.Errorf("saved %d stands from the first graph, want the 3 planned on both", n)
 	}
 }

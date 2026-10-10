@@ -54,7 +54,7 @@ func layoutFingerprint(g *airport.Graph) string {
 func SaveStandardPushes(w io.Writer, g *airport.Graph) (int, error) {
 	f := standardFile{Version: standardPlanVersion, ICAO: g.Layout.ICAO, Fingerprint: layoutFingerprint(g)}
 	for i := range g.Layout.Parking {
-		v, ok := standardPushes.Load(standardKey{g, i})
+		v, ok := standardPushes.Load(stdKey(g, i))
 		if !ok {
 			continue
 		}
@@ -87,7 +87,7 @@ func LoadStandardPushes(r io.Reader, g *airport.Graph) (int, error) {
 		if !s.None {
 			p = &pushPose{from: s.From, to: s.To, heading: s.Heading}
 		}
-		standardPushes.Store(standardKey{g, s.Parking}, p)
+		standardPushes.Store(stdKey(g, s.Parking), p)
 		n++
 	}
 	return n, nil

@@ -34,7 +34,7 @@ func StandardPush(g *airport.Graph, stand int, model string) (PushRoute, bool) {
 		return PushRoute{}, false
 	}
 	PlanStandardPushes(g, model, []int{stand})
-	v, ok := standardPushes.Load(standardKey{g, stand})
+	v, ok := standardPushes.Load(stdKey(g, stand))
 	std, _ := v.(*pushPose)
 	if !ok || std == nil {
 		return PushRoute{}, false

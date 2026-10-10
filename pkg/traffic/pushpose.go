@@ -716,9 +716,17 @@ func samePose(a, b pushPose) bool {
 	return a.from == b.from && a.to == b.to && math.Abs(headingDiff(a.heading, b.heading)) < 30
 }
 
+// standardKey is a stand at a ground layout (ICAO and layoutFingerprint):
+// every graph built from the same layout shares its plans (the app and the
+// World each build their own; keyed by graph, one planning evicted the
+// other's and the saved file held only the last stands planned).
 type standardKey struct {
-	g       *airport.Graph
+	layout  string
 	parking int
+}
+
+func stdKey(g *airport.Graph, parking int) standardKey {
+	return standardKey{g.Layout.ICAO + " " + layoutFingerprint(g), parking}
 }
 
 // standardPushes caches each stand's standard push (a nil *pushPose: none),
@@ -728,7 +736,7 @@ var standardPushes sync.Map
 // standardPush is the stand's standard push once PlanStandardPushes has
 // planned it; nil before, or without one.
 func (c *TaxiController) standardPush() *pushPose {
-	if v, ok := standardPushes.Load(standardKey{c.req.Graph, c.req.Parking}); ok {
+	if v, ok := standardPushes.Load(stdKey(c.req.Graph, c.req.Parking)); ok {
 		return v.(*pushPose)
 	}
 	return nil
@@ -747,16 +755,8 @@ func PlanStandardPushes(g *airport.Graph, model string, stands []int) {
 			stands = append(stands, i)
 		}
 	}
-	// The airport loaded again (a new graph): its old graph's pushes go,
-	// kept for good before (E33).
-	standardPushes.Range(func(k, _ any) bool {
-		if old := k.(standardKey).g; old != g && old.Layout.ICAO == g.Layout.ICAO {
-			standardPushes.Delete(k)
-		}
-		return true
-	})
 	for _, i := range stands {
-		key := standardKey{g, i}
+		key := stdKey(g, i)
 		if _, ok := standardPushes.Load(key); ok {
 			continue
 		}
