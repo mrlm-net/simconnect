@@ -2,6 +2,7 @@ package flight
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -51,7 +52,7 @@ func TestAssessFaults(t *testing.T) {
 		}
 	}
 	thr := AssessRunway{Lat: ss[touch].Lat, Lon: ss[touch].Lon - 0.02, Heading: 90} // 1.4 km before, 0 off
-	thr.Lat += 0.0001                                                                  // 11 m to the side
+	thr.Lat += 0.0001                                                               // 11 m to the side
 	a := Assess(tr, AssessOptions{Runway: &thr})
 	got := codes(a)
 	for _, want := range []string{"landing-lights-off", "hard-landing", "unstable-500", "long-landing", "off-centreline"} {
@@ -62,4 +63,25 @@ func TestAssessFaults(t *testing.T) {
 	if want := 100 - 2*MajorPoints - 3*MinorPoints; a.Score != want {
 		t.Errorf("score %d, want %d (%v)", a.Score, want, got)
 	}
+}
+
+// TestAssessTaxiFast: the fastest taxi speed is said, not the first over
+// the limit (live: 38 kt read "30 kt").
+func TestAssessTaxiFast(t *testing.T) {
+	tr := lightsOn(syntheticFlight())
+	var pre []Sample
+	for _, gs := range []float64{10, 30.4, 38, 20} {
+		pre = append(pre, Sample{OnGround: true, GS: gs, IAS: 0, GearHandle: true, FlapsIndex: 2, Lights: LightLanding | LightBeacon})
+	}
+	tr.Samples = append(pre, tr.Samples...)
+	a := Assess(tr, AssessOptions{})
+	for _, f := range a.Findings {
+		if f.Code == "taxi-fast" {
+			if f.Value != 38 || !strings.Contains(f.Text, "38 kt") {
+				t.Errorf("%v: %s", f.Value, f.Text)
+			}
+			return
+		}
+	}
+	t.Errorf("no taxi-fast in %v", codes(a))
 }
