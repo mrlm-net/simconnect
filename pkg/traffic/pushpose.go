@@ -66,6 +66,11 @@ const (
 	// AA stub beside A2), one without is still taken where nothing else is
 	// (LKPR C31: H1 beside C30).
 	pushTightPenalty = 500.0
+	// pushOffRoutePenalty: a pose on another lane than the first taxiway of
+	// the route from the stand, the one the stand's lead-in joins, costs
+	// this: a push ends on that taxiway (live at EDDM 214: onto W2, not
+	// angled onto the D2sss apron line, taxiing out across the remote apron).
+	pushOffRoutePenalty = 150.0
 	// pushPoseMaxMeters: the longest push.
 	pushPoseMaxMeters = 150.0
 	// pushPoseRoutes: taxi-outs planned at most, for the cheapest pushes,
@@ -152,6 +157,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 	}
 	span := 2 * c.halfSpan()
 	leadIns := forkedLeadIns(g, gear, pushPoseReachMeters+300)
+	near := nearLanes(g, gear, pushPoseReachMeters+laneEndPoseMeters)
 	var poses []pushPose
 	for a := range g.Adj {
 		from := airport.NodeID(a)
@@ -174,7 +180,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 			for x := -laneEndPoseMeters; x <= l; x += pushPoseStepMeters {
 				nose := offsetHeading(pa, h, x)
 				d := localDist(nose, gear)
-				if d > pushPoseReachMeters {
+				if d > pushPoseReachMeters || x < 0 && acrossLane(near, nose, h) {
 					continue
 				}
 				if lane == "" {
@@ -191,6 +197,46 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 	}
 	slices.SortFunc(poses, func(p, q pushPose) int { return cmp.Compare(p.lb, q.lb) })
 	return poses
+}
+
+// Before the start of its line a pose's nose must not lie on another lane
+// at an angle (acrossLaneMeters from its centreline, more than
+// acrossLaneDeg off it): live at EDDM 214, a push ended on W2 facing 40°,
+// down the line of the diagonal D2sss stand-area path ahead, instead of
+// along W2.
+const (
+	acrossLaneMeters = 6.0
+	acrossLaneDeg    = 20.0
+)
+
+// nearLanes are the taxi edges with an end within meters of p.
+func nearLanes(g *airport.Graph, p airport.LatLon, meters float64) []paveSeg {
+	var out []paveSeg
+	for a, es := range g.Adj {
+		pa := g.Nodes[a].Position
+		for _, e := range es {
+			pb := g.Nodes[e.To].Position
+			if !pushEdge(g, e) || localDist(pa, p) > meters && localDist(pb, p) > meters {
+				continue
+			}
+			out = append(out, paveSeg{a: pa, b: pb})
+		}
+	}
+	return out
+}
+
+// acrossLane reports that nose, facing h, lies on one of lanes at an angle.
+func acrossLane(lanes []paveSeg, nose airport.LatLon, h float64) bool {
+	for _, s := range lanes {
+		if pointSegDist(nose, s.a, s.b) > acrossLaneMeters {
+			continue
+		}
+		d := math.Abs(headingDiff(h, localBearing(s.a, s.b)))
+		if math.Min(d, 180-d) > acrossLaneDeg {
+			return true
+		}
+	}
+	return false
 }
 
 // metersToRunway is, for every node, the shortest way along the taxi
@@ -1014,6 +1060,10 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	if len(c.route.Nodes) > 1 {
 		own = c.route.Nodes[1]
 	}
+	first := "" // the first taxiway of the route from the stand
+	if len(c.route.Taxiways) > 0 {
+		first = c.route.Taxiways[0]
+	}
 	around := pavementAround(g, gear, pushPoseReachMeters+50)
 	around.segs = append(around.segs, laneEnds(g, gear, pushPoseReachMeters+50)...)
 	around.segs = append(around.segs, junctionFillets(g, gear, pushPoseReachMeters+50)...)
@@ -1098,6 +1148,9 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 					}
 					if !p.aligned() {
 						p.fixed += pushMisalignPenalty
+					}
+					if first != "" && p.lane != "" && p.lane != first {
+						p.fixed += pushOffRoutePenalty
 					}
 					if p.tight {
 						p.fixed += pushTightPenalty

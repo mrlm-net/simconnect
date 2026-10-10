@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.83.3] - 2026-10-10
+
+### Fixed
+
+- Pushback: the push ends on the first taxiway of the route from the stand, the one its lead-in joins; a pose on another lane costs `pushOffRoutePenalty` (150 m), and a pose short of the start of its line is dropped where its nose lies across another lane at an angle. Live at EDDM 214, LOT1300 for 26R was pushed facing 40°, angled across W2 down the D2sss apron line (its taxi-out across the remote apron looked cheaper); now onto W2 facing north or south for every runway.
+
 ## [0.83.2] - 2026-10-10
 
 ### Fixed

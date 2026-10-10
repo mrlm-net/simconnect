@@ -385,3 +385,29 @@ func TestStandardPushesSharedByLayout(t *testing.T) {
 		t.Errorf("saved %d stands from the first graph, want the 3 planned on both", n)
 	}
 }
+
+// EDDM 214 (live, LOT1300 for 26R): the push ends on W2, the taxiway the
+// stand's lead-in joins, facing along it; not angled onto the D2sss apron
+// line beside it (facing 40°, across W2).
+func TestPushPoseEDDM214(t *testing.T) {
+	g := airportGraph(t, "EDDM")
+	stand, err := g.Layout.ParkingIndex("214")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, end := range []string{"08L", "08R", "26L", "26R"} {
+		req := TaxiRequest{Graph: g, Parking: stand, Runway: end, Model: "FSLTL_B738"}
+		route, err := g.RouteToRunwayEntry(stand, end, "", req.Options)
+		if err != nil {
+			t.Fatalf("%s: %v", end, err)
+		}
+		c := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1, noStandard: true}
+		if !c.planPushPose() || c.pushPose == nil {
+			t.Fatalf("%s: no push", end)
+		}
+		p := c.pushPose
+		if d := math.Abs(headingDiff(p.heading, 352)); p.lane != "W2" || math.Min(d, 180-d) > 10 {
+			t.Errorf("%s: push onto %s facing %.0f°, want W2 facing 352° or 172°", end, p.lane, p.heading)
+		}
+	}
+}
