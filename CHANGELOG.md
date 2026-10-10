@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.83.2] - 2026-10-10
+
+### Fixed
+
+- GPU: it stays at the nose until the APU is on, `APUStartBeforeTug` (1 min) before the tug comes, after the stairs have gone; before, it left with the stairs, 2 min before the tug (the user: it went long before the push). A push cleared earlier still sends it off first (#1025).
+
 ## [0.83.1] - 2026-10-10
 
 ### Fixed
