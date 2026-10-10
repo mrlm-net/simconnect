@@ -8,7 +8,10 @@
 // heading. Each glitch is printed once (then counted for 5 s) with the
 // aircraft's state on the map, and the frames around it (2 s before, 1 s
 // after) are written to glitch-<tail>-<time>.csv in -dir. Usage:
-// glitch-watch [-map http://127.0.0.1:8080] [-dir .].
+// glitch-watch [-map http://127.0.0.1:8080] [-dir .]. With -near meters it
+// needs no map: it watches every aircraft and ground vehicle (tugs, GPUs,
+// stairs) within that distance of the user aircraft, named by title, from
+// the sim alone (a host whose API needs a login, as MyCrew's).
 package main
 
 import (
@@ -73,6 +76,7 @@ type dump struct {
 func main() {
 	mapURL := flag.String("map", "http://127.0.0.1:8080", "airport map")
 	dir := flag.String("dir", ".", "where the glitch CSVs go")
+	near := flag.Uint("near", 0, "watch every aircraft and ground vehicle within this many meters of the user aircraft (no map)")
 	flag.Parse()
 	client := simconnect.NewClient("glitch-watch")
 	if err := client.Connect(); err != nil {
@@ -96,9 +100,36 @@ func main() {
 	nextReq := uint32(7001)
 	totals := map[string]int{}
 
+	// -near: the objects around the user aircraft, every 2 s (named by
+	// title; the user aircraft left out), dropped 5 s after last seen.
+	const defTitle, reqNearAir, reqNearGround = 7100, 6990, 6991
+	client.AddToDataDefinition(defTitle, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
+	seenNear := map[uint32]time.Time{}
+	if *near > 0 {
+		go func() {
+			for {
+				client.RequestDataOnSimObjectType(reqNearAir, defTitle, uint32(*near), types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+				client.RequestDataOnSimObjectType(reqNearGround, defTitle, uint32(*near), types.SIMCONNECT_SIMOBJECT_TYPE_GROUND)
+				time.Sleep(2 * time.Second)
+				mu.Lock()
+				for obj, at := range seenNear {
+					if time.Since(at) > 5*time.Second {
+						if req, ok := byObj[obj]; ok {
+							client.RequestDataOnSimObject(req, def, obj, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+							delete(byObj, obj)
+							delete(byReq, req)
+						}
+						delete(seenNear, obj)
+					}
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
 	// The map's aircraft of ours and their states, every 2 s.
 	go func() {
-		for {
+		for *near == 0 {
 			ours, st := poll(*mapURL)
 			mu.Lock()
 			for tail, s := range st {
@@ -146,7 +177,11 @@ func main() {
 		}
 		fmt.Printf("%s  SUMMARY%s\n", time.Now().Format("15:04:05"), b.String())
 	}
-	fmt.Printf("%s  watching the aircraft of %s\n", time.Now().Format("15:04:05"), *mapURL)
+	if *near > 0 {
+		fmt.Printf("%s  watching every aircraft and ground vehicle within %d m\n", time.Now().Format("15:04:05"), *near)
+	} else {
+		fmt.Printf("%s  watching the aircraft of %s\n", time.Now().Format("15:04:05"), *mapURL)
+	}
 	for {
 		select {
 		case <-stop:
@@ -158,6 +193,28 @@ func main() {
 			if !ok {
 				report()
 				return
+			}
+			if m.SIMCONNECT_RECV != nil && types.SIMCONNECT_RECV_ID(m.DwID) == types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE {
+				d := m.AsSimObjectDataBType()
+				if r := uint32(d.DwRequestID); r != reqNearAir && r != reqNearGround {
+					continue
+				}
+				obj := uint32(d.DwObjectID)
+				if obj == 1 {
+					continue // the user aircraft
+				}
+				title := engine.BytesToString((*engine.CastDataAs[[256]byte](&d.DwData))[:])
+				mu.Lock()
+				seenNear[obj] = time.Now()
+				if _, ok := byObj[obj]; !ok {
+					req := nextReq
+					nextReq++
+					byObj[obj] = req
+					byReq[req] = &tracked{tail: fmt.Sprintf("%s#%d", title, obj), obj: obj, last: map[string]time.Time{}, counts: map[string]int{}}
+					client.RequestDataOnSimObject(req, def, obj, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
+				}
+				mu.Unlock()
+				continue
 			}
 			if m.SIMCONNECT_RECV == nil || types.SIMCONNECT_RECV_ID(m.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {
 				continue
