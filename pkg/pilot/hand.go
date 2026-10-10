@@ -42,16 +42,21 @@ func (r Runway) track(p airport.LatLon) (right, along float64) {
 
 // Hand flying defaults.
 const (
-	defRotatePitch = 12.5 // the pitch the rotation aims at
-	defClimbPitch  = 15.0
-	defFlareAGLFt  = 30.0
-	flarePitchUp   = 4.0    // the flare's pitch over the approach's
-	rotateRateDeg  = 3.0    // the rotation, degrees a second
-	retardAGLFt    = 20.0   // the thrust to idle
-	decrabAGLFt    = 15.0   // the nose straightened with the rudder below this
-	glideTan       = 0.0524 // tan 3°
-	tchFt          = 50.0   // the glide path over the threshold
-	handbackKts    = 40.0   // the rollout handed back below this
+	defRotatePitch  = 12.5 // the pitch the rotation aims at
+	defClimbPitch   = 15.0
+	defFlareAGLFt   = 30.0
+	flarePitchUp    = 4.0             // the flare's pitch over the approach's
+	rotateRateDeg   = 3.0             // the rotation, degrees a second
+	retardAGLFt     = 20.0            // the thrust to idle
+	decrabAGLFt     = 10.0            // the nose straightened with the rudder below this
+	glideTan        = 0.0524          // tan 3°
+	tchFt           = 50.0            // the glide path over the threshold
+	handbackKts     = 40.0            // the rollout handed back below this
+	reverseThrust   = 70.0            // the throttles in reverse, percent
+	reverseIdleKts  = 70.0            // idle reverse below this
+	reverseStowKts  = 60.0            // the reversers stowed by this
+	rolloutDecelKts = 4.0             // the deceleration braked for, knots a second (a medium autobrake)
+	brakeAfter      = 2 * time.Second // the brakes from this after touchdown
 )
 
 // hand is the hand flying's state between ticks.
@@ -66,6 +71,25 @@ type hand struct {
 	retarded  bool
 	started   time.Time
 	gearAsked bool
+	// track: the ground track from the positions (true), flown instead of
+	// the heading so a crosswind gives the crab; decel: the speed lost a
+	// second.
+	track     float64
+	haveTrack bool
+	decel     float64
+	// The rollout: touched down at, reversers out and stowed, brakes.
+	touchAt          time.Time
+	reversed, stowed bool
+	brake            float64
+	flapsAsked       bool // the go-around's flap step
+}
+
+// flownTrack is the ground track, the heading until one is known.
+func (h *hand) flownTrack(in Input) float64 {
+	if h.haveTrack {
+		return h.track
+	}
+	return in.Air.Heading
 }
 
 // rates are the pitch and bank rates (degrees a second) and dt since the
@@ -76,6 +100,10 @@ func (h *hand) rates(in Input) (pitchRate, bankRate, dt float64) {
 		if dt > 0 && dt < 1 {
 			pitchRate = (in.Air.Pitch - h.prev.Pitch) / dt
 			bankRate = (in.Air.Bank - h.prev.Bank) / dt
+			h.decel = (h.prev.IAS - in.Air.IAS) / dt
+			if calc.HaversineMeters(h.prev.Lat, h.prev.Lon, in.Air.Lat, in.Air.Lon) > 0.5 {
+				h.track, h.haveTrack = calc.BearingDegrees(h.prev.Lat, h.prev.Lon, in.Air.Lat, in.Air.Lon), true
+			}
 		}
 	}
 	h.prev, h.prevAt, h.have = in.Air, in.Now, true
@@ -199,13 +227,38 @@ func (e *Engine) landing(in Input, c Config, out *Output) bool {
 	flare := c.learned(c.Learned.FlareAGLFt, defFlareAGLFt)
 	switch {
 	case in.Air.OnGround:
-		// Touchdown and rollout: the nose down gently, idle, the centreline.
+		// Touchdown and rollout: the nose down gently, the centreline; the
+		// reversers out with the nose down, reverse thrust to 70 kt, idle
+		// reverse, stowed by 60 kt; the brakes for a steady deceleration.
+		if h.touchAt.IsZero() {
+			h.touchAt = in.Now
+		}
 		h.pitchCmd = math.Max(0, h.pitchCmd-1.5*dt)
-		act(systems.Throttle, 0)
 		act(systems.Elevator, elevator(h.pitchCmd, in.Air.Pitch, pr))
 		act(systems.Aileron, 0)
 		act(systems.Rudder, centreline(r, in))
-		return in.Air.IAS < handbackKts
+		thr := 0.0
+		switch {
+		case !h.reversed && in.Air.Pitch < 1 && in.Air.IAS > reverseStowKts:
+			h.reversed = true
+			out.Actions = append(out.Actions, set(systems.Reversers, true))
+		case h.reversed && !h.stowed && in.Air.IAS > reverseIdleKts:
+			thr = reverseThrust
+		case h.reversed && !h.stowed && in.Air.IAS <= reverseStowKts:
+			h.stowed = true
+			out.Actions = append(out.Actions, set(systems.Reversers, false))
+		}
+		act(systems.Throttle, thr)
+		if in.Now.Sub(h.touchAt) >= brakeAfter {
+			h.brake = clamp(h.brake+(rolloutDecelKts-h.decel)*20*dt, 0, 80)
+		}
+		done := in.Air.IAS < handbackKts
+		if done {
+			h.brake = 0 // the player taxies on
+		}
+		act(systems.BrakeLeft, h.brake)
+		act(systems.BrakeRight, h.brake)
+		return done
 	case agl <= math.Max(flare, -in.Air.VS/60*3) || h.flaring: // or 3 s from the ground
 		if !h.flaring {
 			h.flaring = true
@@ -229,13 +282,16 @@ func (e *Engine) landing(in Input, c Config, out *Output) bool {
 		if agl > decrabAGLFt {
 			// Still the centreline by bank, as on the final.
 			trackWant := r.Heading + clamp(-right*0.06, -15, 15)
-			act(systems.Aileron, aileron(clamp(3*angleDiff(in.Air.Heading, trackWant), -10, 10), in.Air.Bank, br))
+			act(systems.Aileron, aileron(clamp(3*angleDiff(h.flownTrack(in), trackWant), -10, 10), in.Air.Bank, br))
 			act(systems.Rudder, 0)
 		} else {
 			// De-crab: the nose to the runway with the rudder, the wings
 			// near level, a little into the drift.
-			act(systems.Rudder, clamp(3*angleDiff(in.Air.Heading, r.Heading), -60, 60))
-			act(systems.Aileron, aileron(clamp(-right*0.3, -3, 3), in.Air.Bank, br))
+			act(systems.Rudder, clamp(5*angleDiff(in.Air.Heading, r.Heading), -80, 80))
+			// The wing down into the wind holds the track on the line (a
+			// crosswind landing: the nose straight, the drift banked out).
+			want := r.Heading + clamp(-right*0.06, -5, 5)
+			act(systems.Aileron, aileron(clamp(4*angleDiff(h.flownTrack(in), want), -8, 8), in.Air.Bank, br))
 		}
 	default:
 		// The glide path: 3° through 50 ft over the threshold.
@@ -249,9 +305,55 @@ func (e *Engine) landing(in Input, c Config, out *Output) bool {
 		if agl < 500 {
 			limit = 10
 		}
-		act(systems.Aileron, aileron(clamp(3*angleDiff(in.Air.Heading, trackWant), -limit, limit), in.Air.Bank, br))
+		act(systems.Aileron, aileron(clamp(3*angleDiff(h.flownTrack(in), trackWant), -limit, limit), in.Air.Bank, br))
 		act(systems.Rudder, 0)
 	}
 	act(systems.Elevator, elevator(h.pitchCmd, in.Air.Pitch, pr))
+	return false
+}
+
+// goAround flies the go-around: the autopilot off, TOGA, "Go around,
+// flaps" (one flap step asked of the pilot monitoring), the climb pitch
+// for the approach speed + 10 on the runway's track, "Positive climb, gear
+// up"; at the engage height the autopilot takes it to the cleared
+// altitude. True once the autopilot has it.
+func (e *Engine) goAround(in Input, c Config, out *Output) bool {
+	h := &e.hand
+	pr, br, dt := h.rates(in)
+	act := func(name string, v float64) { out.Actions = append(out.Actions, setValue(name, v)) }
+	if h.started.IsZero() {
+		h.started, h.pitchCmd = in.Now, in.Air.Pitch
+		out.Say = append(out.Say, "Go around, flaps")
+		if in.State.AP.Master {
+			e.act(in, out, set(systems.APMaster, false), true)
+		}
+		if k := flapsIndex(in); k > 0 && !h.flapsAsked {
+			h.flapsAsked = true
+			want := k - 1
+			e.ask(in, c, out, "flaps", e.flapsSaid(want), func(in Input) bool { return flapsIndex(in) <= want }, Action{Name: systems.FlapsUp})
+			out.Say = out.Say[:len(out.Say)-1] // said as "Go around, flaps"
+		}
+	}
+	act(systems.Throttle, 100)
+	climb := c.learned(c.Learned.ClimbPitch, defClimbPitch)
+	want := climb + clamp((in.Air.IAS-(c.ApproachKts+10))*0.4, -5, 5)
+	h.pitchCmd += clamp(want-h.pitchCmd, -2.5*dt, 2.5*dt)
+	act(systems.Elevator, elevator(h.pitchCmd, in.Air.Pitch, pr))
+	act(systems.Rudder, 0)
+	track := in.Runway.Heading
+	if !in.Runway.valid() {
+		track = in.Air.Heading
+	}
+	act(systems.Aileron, aileron(clamp(3*angleDiff(h.flownTrack(in), track), -15, 15), in.Air.Bank, br))
+	if !h.gearAsked && in.Air.VS > 300 && in.Air.GearHandle {
+		h.gearAsked = true
+		e.ask(in, c, out, "gear", "Positive climb, gear up", func(in Input) bool { return !in.Air.GearHandle }, set(systems.GearDown, false))
+	}
+	if in.AGLFt() >= c.EngageAGLFt && in.Air.VS > 0 {
+		out.Say = append(out.Say, "Autopilot on")
+		e.act(in, out, set(systems.APMaster, true), true)
+		e.act(in, out, set(systems.ATHR, true), true)
+		return true
+	}
 	return false
 }

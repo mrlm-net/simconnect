@@ -37,10 +37,11 @@ const (
 	PhaseHandback              // at minimums the controls went back to the player
 	PhaseRoll                  // hand flying: the take-off roll and the climb to the engage height
 	PhaseLanding               // hand flying: from minimums to the rollout
+	PhaseGoAround              // hand flying: the go-around, to the autopilot
 )
 
 func (p Phase) String() string {
-	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback", "roll", "landing"}[p]
+	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback", "roll", "landing", "go-around"}[p]
 }
 
 // Plan is what the engine needs of the flight plan.
@@ -58,6 +59,7 @@ type Clearance struct {
 	Approach   bool    // cleared for the approach
 	Takeoff    bool    // cleared for take-off (hand flying: the roll starts)
 	Land       bool    // cleared to land (hand flying: landed, not gone around)
+	GoAround   bool    // told to go around (hand flying: flown, then the autopilot)
 }
 
 // Input is one tick's view of the flight.
@@ -267,7 +269,19 @@ func (e *Engine) Update(in Input) Output {
 		}
 		out.Phase = e.phase
 		return out
+	case PhaseGoAround:
+		if e.goAround(in, c, &out) {
+			e.phase = PhaseClimb
+		}
+		out.Phase = e.phase
+		return out
 	case PhaseLanding:
+		if in.ATC.GoAround && !in.Air.OnGround {
+			e.phase, e.hand = PhaseGoAround, hand{}
+			e.goAround(in, c, &out)
+			out.Phase = e.phase
+			return out
+		}
 		if e.landing(in, c, &out) {
 			out.Say = append(out.Say, "Your controls")
 			out.Handback = true
@@ -300,6 +314,13 @@ func (e *Engine) Update(in Input) Output {
 	}
 
 	// Minimums: the controls back to the player.
+	// Told to go around on the approach: flown by hand from here.
+	if e.phase == PhaseApproach && c.HandFly && in.ATC.GoAround && in.Runway.valid() {
+		e.phase, e.hand = PhaseGoAround, hand{}
+		e.goAround(in, c, &out)
+		out.Phase = e.phase
+		return out
+	}
 	if e.phase == PhaseApproach && e.atMinimums(in, c) && c.HandFly && in.Runway.valid() {
 		e.act(in, &out, set(systems.APMaster, false), true)
 		if in.ATC.Land {
@@ -312,11 +333,9 @@ func (e *Engine) Update(in Input) Output {
 			out.Phase = e.phase
 			return out
 		}
-		// Not cleared to land: go around, the player flies it.
-		out.Actions = append(out.Actions, setValue(systems.Throttle, 100))
-		out.Say = append(out.Say, "Go around, flaps", "Your controls")
-		out.Handback = true
-		e.phase = PhaseHandback
+		// Not cleared to land: the go-around, flown.
+		e.phase, e.hand = PhaseGoAround, hand{}
+		e.goAround(in, c, &out)
 		out.Phase = e.phase
 		return out
 	}

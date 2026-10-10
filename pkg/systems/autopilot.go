@@ -60,6 +60,12 @@ const (
 	FlapsLever = "flapsLever"
 	FlapsUp    = "flapsUp"
 	FlapsDown  = "flapsDown"
+	// Reversers: thrust reversers out on all engines (Set), read as any
+	// engine's engaged; the throttles then set the reverse thrust.
+	Reversers = "reversers"
+	// BrakeLeft, BrakeRight: the wheel brakes 0…100 (SetValue).
+	BrakeLeft  = "brakeLeft"
+	BrakeRight = "brakeRight"
 )
 
 // ThrottleN is engine n's (1–4) throttle, 0…100 (SetValue).
@@ -176,4 +182,19 @@ func autopilotOf(p Profile, s State) AutopilotState {
 		SpeedHold: on(APSpeedHold), MachHold: on(APMachHold), Nav: on(APNav), Loc: on(APLoc), Approach: on(APApproach), Glideslope: on(APGlideslope),
 		ApproachArmed: on(APApproachArmed), GSArmed: on(APGSArmed), AltitudeArmed: on(APAltitudeArmed),
 	}
+}
+
+// defaultRollout adds the reversers and the wheel brakes: SET_REVERSE_THRUST_ON
+// and _OFF for all engines, AXIS_LEFT/RIGHT_BRAKE_SET from −16383 (none) to
+// +16383 (full) for 0…100 (SDK: Engine and Landing Gear / Brakes events).
+func defaultRollout(v map[string]Value, a map[string]Action) {
+	var revs []string
+	for n := 1; n <= 4; n++ {
+		revs = append(revs, fmtIndexed("GENERAL ENG REVERSE THRUST ENGAGED", n))
+	}
+	v[Reversers] = Value{Vars: revs, Unit: "bool", Combine: "any"}
+	a[Reversers] = Action{Event: "SET_REVERSE_THRUST_ON", OffEvent: "SET_REVERSE_THRUST_OFF"}
+	scale, offset := 327.66, -16383.0
+	a[BrakeLeft] = Action{Event: "AXIS_LEFT_BRAKE_SET", Value: true, Scale: &scale, Offset: &offset}
+	a[BrakeRight] = Action{Event: "AXIS_RIGHT_BRAKE_SET", Value: true, Scale: &scale, Offset: &offset}
 }

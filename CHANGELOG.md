@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.62.0] - 2026-10-10
+
+### Added
+
+- `pilot` (hand flying): the go-around is flown, not handed back. It triggers when not cleared to land at minimums, or on `Clearance.GoAround` on the approach or the landing: the autopilot off, TOGA, "Go around, flaps" with one flap step asked of the player, the climb pitch for the approach speed + 10 on the runway track, "Positive climb, gear up", and the autopilot at the engage height to the cleared altitude. Crosswind landings: the final flies the ground track (a crab by itself), and below 10 ft the nose is straightened with the rudder while a wing held down into the wind keeps the track. The rollout uses the reversers (to 70 kt, idle reverse, stowed by 60 kt) and brakes for 4 kt/s, released at the handback. On the model: a 15 kt crosswind touches down 7 m off the centreline, 2° off the heading; 40 kt is reached about 885 m after touchdown.
+- `systems`: `Reversers` (`SET_REVERSE_THRUST_ON`/`_OFF`, read as any engine's reverser engaged) and `BrakeLeft`/`BrakeRight` (0…100 on `AXIS_LEFT/RIGHT_BRAKE_SET`); actions take an `offset` after their `scale`.
+
 ## [0.61.1] - 2026-10-10
 
 ### Fixed
