@@ -21,7 +21,7 @@ func TestRunwaySelectorHolds(t *testing.T) {
 	}
 	first := s.Choose(now, l, calm, RunwayLimits{}).Arrival.Name
 	// The wind veers so another runway is better, within 06's limits: kept.
-	shift := StaticWeather(200, 4, 9999, 15, 5, 1013)
+	shift := StaticWeather(220, 6, 9999, 15, 5, 1013)
 	fresh := ActiveRunways(l, shift, RunwayLimits{}).Arrival.Name
 	if fresh == first {
 		t.Skip("the shift does not change the choice at this airport")
@@ -116,7 +116,7 @@ func TestRunwaySelectorReadyAndSeed(t *testing.T) {
 	l := lkprInfo(t).Layout
 	now := time.Now()
 	calm := StaticWeather(120, 11, 9999, 15, 5, 1013)
-	shift := StaticWeather(200, 4, 9999, 15, 5, 1013)
+	shift := StaticWeather(220, 6, 9999, 15, 5, 1013)
 	ready := false
 	s := RunwaySelector{Ready: func(from, to RunwayUse) bool { return ready }}
 	first := s.Choose(now, l, calm, RunwayLimits{}).Arrival.Name
@@ -182,5 +182,35 @@ func TestRunwaySelectorCalmAndFlicker(t *testing.T) {
 	s.Choose(now.Add(2*time.Minute), l, west, RunwayLimits{})
 	if _, _, ok := s.Pending(); ok {
 		t.Error("still pending after the better choice was gone a minute")
+	}
+}
+
+// TestRunwaySelectorCrosswindKept: a near pure crosswind with half a knot of
+// headwind either way keeps the runway in use (live KSAN, 010°/3–6 kt
+// flipped 09 and 27 every ten minutes); a real headwind still changes it.
+func TestRunwaySelectorCrosswindKept(t *testing.T) {
+	l := &airport.Layout{ICAO: "TEST", Runways: []airport.Runway{{
+		Heading: 90, Length: 2800,
+		Primary:   airport.RunwayEnd{Name: "09", Heading: 90},
+		Secondary: airport.RunwayEnd{Name: "27", Heading: 270},
+	}}}
+	now := time.Now()
+	var s RunwaySelector
+	if u := s.Choose(now, l, StaticWeather(10, 5, 9999, 21, 15, 1006), RunwayLimits{}); u.Arrival.Name != "09" {
+		t.Fatalf("start on %s, want 09", u.Arrival.Name)
+	}
+	for i := range 10 {
+		at := now.Add(time.Duration(i+1) * 5 * time.Minute)
+		if u := s.Choose(at, l, StaticWeather(355, 6, 9999, 21, 15, 1006), RunwayLimits{}); u.Arrival.Name != "09" {
+			t.Fatalf("crosswind: changed to %s", u.Arrival.Name)
+		}
+	}
+	if _, _, ok := s.Pending(); ok {
+		t.Error("crosswind: a change pending")
+	}
+	west := StaticWeather(270, 8, 9999, 21, 15, 1006)
+	s.Choose(now.Add(time.Hour), l, west, RunwayLimits{})
+	if u := s.Choose(now.Add(2*time.Hour), l, west, RunwayLimits{}); u.Arrival.Name != "27" {
+		t.Errorf("west 8 kt: still on %s", u.Arrival.Name)
 	}
 }

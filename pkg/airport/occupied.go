@@ -113,3 +113,18 @@ func (g *Graph) RouteToParkingFrom(from, prev NodeID, parking int, opts RouteOpt
 	opts.OwnStands = append(append([]int(nil), opts.OwnStands...), parking)
 	return g.fitOrTight(opts, func(o RouteOptions) (*Route, error) { return g.routeVia(from, prev, to, o) })
 }
+
+// TurnsBack reports whether r turns back on itself anywhere (a heading
+// change of UTurnAngle or more at a node): a route re-planned round traffic
+// that does is no way round, the aircraft would turn on the spot.
+func (g *Graph) TurnsBack(r *Route) bool {
+	if r == nil {
+		return false
+	}
+	for i := 2; i < len(r.Nodes); i++ {
+		if g.turnAngle(r.Nodes[i-2], r.Nodes[i-1], r.Nodes[i]) >= UTurnAngle {
+			return true
+		}
+	}
+	return false
+}

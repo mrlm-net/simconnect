@@ -52,3 +52,28 @@ func TestRouteAvoidsOccupied(t *testing.T) {
 		t.Errorf("wide-body route %v (occupied %v), want the plain one marked Occupied", r.Taxiways, r.Occupied)
 	}
 }
+
+// TestTurnsBack: a route that goes out along an edge and back is turning
+// back; the plain taxi-in is not.
+func TestTurnsBack(t *testing.T) {
+	l := loadLKPR(t)
+	g, err := BuildGraph(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c18, err := l.ParkingIndex("C18")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := g.RouteToParkingFrom(786, 787, c18, RouteOptions{HalfSpan: 11.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.TurnsBack(plain) {
+		t.Error("plain taxi-in counted as turning back")
+	}
+	back := &Route{Nodes: []NodeID{787, 786, 787}}
+	if !g.TurnsBack(back) {
+		t.Error("out and back not counted as turning back")
+	}
+}
