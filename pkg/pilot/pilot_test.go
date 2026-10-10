@@ -210,3 +210,52 @@ func TestTakeOverInCruise(t *testing.T) {
 		t.Error("a handback before ever flying said something")
 	}
 }
+
+// TestAutopilotGoAround: told to go around on the autopilot (not HandFly),
+// the copilot calls it, sets TOGA, asks for one flap step, drops the
+// approach, holds the runway heading and climbs to ATC's altitude by level
+// change; above the acceleration height the climb takes over, and the next
+// approach is armed again.
+func TestAutopilotGoAround(t *testing.T) {
+	s := newSim(true)
+	e := New(Config{}, nil)
+	s.in.State.AP = systems.AutopilotState{Master: true, ATHR: true, ApproachArmed: true}
+	s.in.Air = flight.Sample{AltFt: 1300, GroundFt: 300, IAS: 140, VS: -700, GearHandle: true, Heading: 160}
+	s.in.Plan.DistanceToGoNM = 4
+	s.in.ATC = Clearance{Approach: true, AltitudeFt: 5000}
+	e.phase, e.taking = PhaseApproach, false
+	e.said["appr"] = true // armed on this approach
+	s.in.ATC.GoAround = true
+	out := s.step(e)
+	if e.Phase() != PhaseGoAround || !slices.Contains(out.Say, "Go around, flaps") {
+		t.Fatalf("phase %v, said %q", e.Phase(), out.Say)
+	}
+	for _, want := range []string{systems.TOGA, systems.APFLC, systems.APHeadingHold, systems.APApproach} {
+		if !slices.ContainsFunc(out.Actions, func(a Action) bool { return a.Name == want }) {
+			t.Errorf("no %s in %v", want, s.actions)
+		}
+	}
+	if s.in.State.AP.AltitudeSel != 5000 || s.in.State.AP.HeadingSel != 160 {
+		t.Errorf("selected %v ft, heading %v", s.in.State.AP.AltitudeSel, s.in.State.AP.HeadingSel)
+	}
+	if !slices.Contains(s.asked, "Flaps 1") {
+		t.Errorf("asked %q, want a flap step", s.asked)
+	}
+	s.in.ATC.GoAround = false
+	for range 120 {
+		if s.step(e); e.Phase() != PhaseGoAround {
+			break
+		}
+	}
+	if e.Phase() != PhaseClimb {
+		t.Fatalf("phase %v after the go-around, want climb", e.Phase())
+	}
+	if s.in.Air.GearHandle {
+		t.Error("gear still down")
+	}
+	e.phase = PhaseApproach
+	s.in.State.AP.ApproachArmed = false
+	if out := s.step(e); !slices.Contains(out.Say, "Approach armed") {
+		t.Errorf("next approach not armed: %q", out.Say)
+	}
+}

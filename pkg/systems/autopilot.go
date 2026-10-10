@@ -66,6 +66,9 @@ const (
 	// BrakeLeft, BrakeRight: the wheel brakes 0…100 (SetValue).
 	BrakeLeft  = "brakeLeft"
 	BrakeRight = "brakeRight"
+	// TOGA: take-off / go-around thrust (Press), the autothrottle's go-around
+	// mode where it has one.
+	TOGA = "toga"
 )
 
 // ThrottleN is engine n's (1–4) throttle, 0…100 (SetValue).
@@ -119,6 +122,7 @@ func defaultAutopilot(v map[string]Value, a map[string]Action) {
 		APMaster:          onOff("AUTOPILOT_ON", "AUTOPILOT_OFF"),
 		FD:                {Event: "TOGGLE_FLIGHT_DIRECTOR", Toggle: true},
 		ATHR:              {Event: "AUTO_THROTTLE_ARM", Toggle: true},
+		TOGA:              {Event: "AUTO_THROTTLE_TO_GA"},
 		APHeadingSel:      value("HEADING_BUG_SET", 1),
 		APAltitudeSel:     value("AP_ALT_VAR_SET_ENGLISH", 1),
 		APVSSel:           value("AP_VS_VAR_SET_ENGLISH", 1),
