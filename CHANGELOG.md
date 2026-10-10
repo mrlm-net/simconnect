@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.66.0] - 2026-10-10
+
+### Added
+
+- Closed runways at the tower: no line-up, take-off or landing on one; ours on a final within 4 NM go around ("runway closed"); crossing it stays allowed.
+- An airport with every runway closed: our arrivals in the air are told "all runways at LKPR are closed, expect holding" and hold at their STAR's fix. With a runway open again, the sequence releases them as from any hold. Held 20 minutes, each is cleared to the nearest other airport 30 NM or more away ("LKPR remains closed, cleared to LKKV, proceed direct"), sent direct toward it and removed once 25 NM from the airport. New radio intents `airport_closed` and `divert` (`traffic.AirportClosed`, `traffic.Divert`) with their readbacks.
+
 ## [0.65.0] - 2026-10-10
 
 ### Added

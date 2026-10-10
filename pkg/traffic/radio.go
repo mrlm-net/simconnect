@@ -60,6 +60,8 @@ const (
 	IntentHold               Intent = "hold"                // hold at a fix
 	IntentLeaveHold          Intent = "leave_hold"          // leave the hold, continue the arrival
 	IntentHoldLevel          Intent = "hold_level"          // descend in the hold
+	IntentAirportClosed      Intent = "airport_closed"      // every runway closed: expect holding
+	IntentDivert             Intent = "divert"              // the airport stays closed: to an alternate
 	IntentSpeed              Intent = "speed"               // reduce or increase speed
 	IntentLevel              Intent = "level"               // climb or descend
 	IntentCrossLevel         Intent = "cross_level"         // cross a fix at or above (below) a level (#662)
@@ -145,6 +147,8 @@ const (
 	ParamDelay      = "delay"
 	ParamLose       = "lose" // how the delay is lost: "210 kt, +3.2 NM"
 	ParamFix        = "fix"
+	ParamAirport    = "airport"   // an airport's ICAO (closed: its runways)
+	ParamAlternate  = "alternate" // the airport diverted to
 	ParamHoldIn     = "entry_type"  // hold entry: direct, teardrop, parallel
 	ParamAltitude   = "altitude"    // feet
 	ParamExpect     = "expect"      // expect further clearance, HH:MM
@@ -493,6 +497,10 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentHold:
 		// Doc 4444 12.3.3.3 b; CAP 413 6.11.
 		return fmt.Sprintf("%s, hold at %s as published, maintain %s, expect further clearance at %s", cs, p[ParamFix], p[ParamLevel], p[ParamExpect])
+	case IntentAirportClosed:
+		return fmt.Sprintf("%s, all runways at %s are closed, expect holding", cs, p[ParamAirport])
+	case IntentDivert:
+		return fmt.Sprintf("%s, %s remains closed, cleared to %s, proceed direct", cs, p[ParamAirport], p[ParamAlternate])
 	case IntentLeaveHold:
 		if p[ParamNumber] == "" {
 			return fmt.Sprintf("%s, leave %s, continue the arrival", cs, p[ParamFix])
@@ -1765,3 +1773,14 @@ func RadarContactAfterGoAround(cs, level, approach, runway string) Transmission 
 // ParamExtendDownwind: a sequence call extending the STAR's downwind
 // ("extend downwind, expect vectors"; Absorption.Downwind).
 const ParamExtendDownwind = "extendDownwind"
+
+// AirportClosed tells an arrival every runway at icao is closed: holding
+// to follow.
+func AirportClosed(cs, icao string) Transmission {
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentAirportClosed, Params: map[string]string{ParamAirport: icao}})
+}
+
+// Divert clears an arrival to alternate, icao still closed.
+func Divert(cs, icao, alternate string) Transmission {
+	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentDivert, Params: map[string]string{ParamAirport: icao, ParamAlternate: alternate}})
+}

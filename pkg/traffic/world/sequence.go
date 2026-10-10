@@ -39,6 +39,8 @@ type sequences struct {
 	// (not on a procedure: on the approach, or a real one off a STAR); not
 	// asked again for conflictRefusedWait.
 	refused map[string]time.Time
+	// closedHolds: arrivals held or diverting for a closed airport (closures.go).
+	closedHolds map[string]*closedHold
 	// stacks: the holding stacks by airport and fix (#392).
 	stacks map[string]*traffic.HoldStack
 	// slowedFinal: when an arrival closing up on the final was told to fly
@@ -222,6 +224,15 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		it.mu.Unlock()
 		if withTower && it.circuit == nil && len(it.arr.ProcedureRoute()) > 0 { // not on its final: flying the go-around
 			continue
+		}
+		// Every runway closed: held, then diverted (closures.go); open
+		// again, released from the hold as below.
+		if g, err := q.cc.graph(icao); err == nil && q.cc.core.allClosed(g.Layout) {
+			if q.closedAirport(now, icao, it, e) {
+				continue
+			}
+		} else {
+			q.openAgain(icao)
 		}
 		// In a hold: released once its delay is down to holdRelease.
 		if h, _, holding := it.arr.Holding(); holding {
