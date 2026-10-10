@@ -83,6 +83,10 @@ type AssessOptions struct {
 	// TailstrikePitch: the pitch at lift-off or touchdown that risks the
 	// tail (11.5° the A320's on the ground); 0: 11.
 	TailstrikePitch float64
+	// Checklists: when the take-off and landing checklists were complete
+	// (checklist.ForAssess); given, they are judged in place of the gear
+	// at 1000 ft.
+	Checklists []ChecklistDone
 }
 
 // Limits Assess judges by (common airline practice).
@@ -169,6 +173,9 @@ func Assess(t *Track, o AssessOptions) Assessment {
 	if lift > 0 {
 		s := ss[lift]
 		p.LiftoffKts, p.LiftoffPitch = s.IAS, s.Pitch
+		if cl, ok := checklistDone(o.Checklists, "before-takeoff"); ok && (!cl.Done || cl.T > s.T) {
+			add("takeoff", "before-takeoff-checklist", Minor, s, 0, "Took off before the before take-off checklist was complete: run it at the holding point, down to the line-up items.")
+		}
 		if s.Lights&LightLanding == 0 {
 			add("takeoff", "landing-lights-off", Minor, s, 0, "Took off without the landing lights: on for the take-off, off above 10,000 ft.")
 		}
@@ -277,7 +284,11 @@ func Assess(t *Track, o AssessOptions) Assessment {
 				add("approach", "unstable-500", Major, s, -s.VS, "Not stable at 500 ft (%s) and landed: an unstable approach at 500 ft is a go-around.", joinAnd(why))
 			}
 		}
-		if s, ok := gate(1000); ok && !s.GearHandle {
+		if cl, ok := checklistDone(o.Checklists, "landing"); ok {
+			if s, at := gate(1000); at && (!cl.Done || cl.T > s.T) {
+				add("approach", "landing-checklist-late", Minor, s, agl(s), "The landing checklist was not done by 1000 ft: have it done, the gear down and the landing flaps set by then.")
+			}
+		} else if s, ok := gate(1000); ok && !s.GearHandle {
 			add("approach", "gear-late", Minor, s, agl(s), "The gear was still up at 1000 ft: have it down and the landing checklist done by then.")
 		}
 
@@ -379,4 +390,21 @@ func joinAnd(items []string) string {
 		out += ", " + s
 	}
 	return out + " and " + items[len(items)-1]
+}
+
+// ChecklistDone is when a checklist was complete on the flight (Done, at
+// simulation time T), for Assess: by name, "before-takeoff" and "landing".
+type ChecklistDone struct {
+	Name string  `json:"name"`
+	Done bool    `json:"done"`
+	T    float64 `json:"t"`
+}
+
+func checklistDone(cs []ChecklistDone, name string) (ChecklistDone, bool) {
+	for _, c := range cs {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return ChecklistDone{}, false
 }
