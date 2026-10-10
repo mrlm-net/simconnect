@@ -55,6 +55,10 @@ type RunwayLimits struct {
 	// other cannot are segregated: departures on the one with the entry,
 	// arrivals on the other.
 	ThresholdEntry func(end string) bool `json:"-"`
+	// Closed are runways out of use (works, a NOTAM): by name ("06/24") or
+	// either end ("24"). They are never chosen, and a configuration held
+	// through wind shifts that uses one changes at once.
+	Closed []string `json:"closed,omitempty"`
 }
 
 // RunwayLimitsFrom returns runway limits with the airport's preferential
@@ -130,7 +134,7 @@ func ActiveRunways(l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
 	var cands []runwayCandidate
 	if l != nil {
 		for _, r := range l.Runways {
-			if r.Length < lim.MinLengthM {
+			if r.Length < lim.MinLengthM || lim.closedRunway(r) {
 				continue
 			}
 			for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
@@ -278,6 +282,11 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	if after == 0 {
 		after = RunwayChangeAfter
 	}
+	// A runway in use closed: the fresh choice at once, whatever its wind.
+	if s.have && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return lim.ClosedEnd(e.Name) }) {
+		s.use, s.since, s.have = fresh, time.Time{}, fresh.Departure.Name != ""
+		return fresh
+	}
 	if !s.have || fresh.Departure.Name == "" {
 		s.use, s.have = fresh, fresh.Departure.Name != ""
 		return fresh
@@ -366,8 +375,28 @@ func endWithin(e airport.RunwayEnd, w Weather, lim RunwayLimits) bool {
 	if maxCross <= 0 {
 		maxCross = DefaultMaxCrosswindKts
 	}
+	if lim.ClosedEnd(e.Name) {
+		return false // closed: never within its limits
+	}
 	g := w
 	g.WindKts = max(w.WindKts, w.GustKts)
 	h, x := g.Components(e.Heading)
 	return -h <= maxTail+1e-9 && x <= maxCross+1e-9
+}
+
+// ClosedEnd reports whether runway end name is on a runway lim closes.
+func (lim RunwayLimits) ClosedEnd(name string) bool {
+	for _, c := range lim.Closed {
+		for _, part := range strings.Split(c, "/") {
+			if strings.EqualFold(strings.TrimSpace(part), name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// closedRunway reports whether r is closed (either end).
+func (lim RunwayLimits) closedRunway(r airport.Runway) bool {
+	return lim.ClosedEnd(r.Primary.Name) || lim.ClosedEnd(r.Secondary.Name)
 }

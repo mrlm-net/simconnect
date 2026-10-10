@@ -2278,12 +2278,20 @@ func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.
 		}
 	}
 	lim := cc.limitsOf(g)
+	// Without weather: the first preferred runway, else the first runway,
+	// either open (none open: none).
+	shut := nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}
 	name := ""
-	switch {
-	case len(lim.PreferredRunways) > 0:
-		name = lim.PreferredRunways[0]
-	case len(g.Layout.Runways) > 0:
-		name = g.Layout.Runways[0].Primary.Name
+	for _, n := range lim.PreferredRunways {
+		if !shut.ClosedEnd(n) {
+			name = n
+			break
+		}
+	}
+	for _, r := range g.Layout.Runways {
+		if name == "" && !shut.ClosedEnd(r.Primary.Name) && !shut.ClosedEnd(r.Secondary.Name) {
+			name = r.Primary.Name
+		}
 	}
 	if _, end, ok := g.Layout.RunwayEnd(name); ok {
 		return []airport.RunwayEnd{end}
@@ -2314,7 +2322,7 @@ func (cc *controlCenter) runwayUse(g *airport.Graph) (nav.RunwayUse, bool) {
 	}
 	// The runway in use holds through wind shifts near a limit (#391); the
 	// ATIS says the same (#454).
-	use := cc.core.runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, runwayLimits(g, cc.limitsOf(g)))
+	use := cc.core.runwaySelector(g.Layout.ICAO).Choose(cc.clock.Now(), g.Layout, *w, cc.core.runwayLimits(g, cc.limitsOf(g)))
 	cc.core.logRunwayChange(g.Layout.ICAO, use, *w)
 	return use, use.Departure.Name != ""
 }
