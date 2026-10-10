@@ -5,6 +5,7 @@ package pilot
 import (
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,7 +80,7 @@ func (p *plane) step(e *Engine) Output {
 			p.rud = *ac.Value
 		case systems.BrakeLeft:
 			p.brake = *ac.Value
-		case systems.Throttle:
+		case systems.Throttle, systems.ReverseThrust:
 			p.thr = *ac.Value
 		}
 	}
@@ -345,5 +346,32 @@ func TestApproachArmedAgain(t *testing.T) {
 	}
 	if !armed(e, p) && !armed(e, p) { // takes over, then arms
 		t.Error("not armed after the controls were taken again")
+	}
+}
+
+// TestRolloutReverseThrust: while the reversers are out the rollout sets
+// ReverseThrust, never the throttles (one lever is both on the Fenix).
+func TestRolloutReverseThrust(t *testing.T) {
+	p := newPlane()
+	p.in.Air.OnGround, p.in.Air.IAS, p.in.Air.Pitch = true, 130, 0
+	e := New(Config{HandFly: true}, nil)
+	e.phase, e.taking, e.hand = PhaseLanding, false, hand{}
+	sawReverse := false
+	for range 40 {
+		out := e.Update(p.in)
+		p.in.Now = p.in.Now.Add(time.Second)
+		reversed := e.hand.reversed && !e.hand.stowed
+		for _, a := range out.Actions {
+			if a.Name == systems.ReverseThrust {
+				sawReverse = true
+			}
+			if reversed && (a.Name == systems.Throttle || strings.HasPrefix(a.Name, "throttle")) {
+				t.Fatalf("throttle %v written with the reversers out", *a.Value)
+			}
+		}
+		p.in.Air.IAS -= 2
+	}
+	if !sawReverse {
+		t.Error("no reverse thrust on the rollout")
 	}
 }

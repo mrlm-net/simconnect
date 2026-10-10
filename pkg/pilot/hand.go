@@ -248,7 +248,13 @@ func (e *Engine) landing(in Input, c Config, out *Output) bool {
 			h.stowed = true
 			out.Actions = append(out.Actions, set(systems.Reversers, false))
 		}
-		act(systems.Throttle, thr)
+		// While the reversers are out the thrust is reverse thrust: never the
+		// throttles (on the Fenix one lever is both, forward thrust above idle).
+		if h.reversed && !h.stowed {
+			act(systems.ReverseThrust, thr)
+		} else {
+			act(systems.Throttle, thr)
+		}
 		if in.Now.Sub(h.touchAt) >= brakeAfter {
 			h.brake = clamp(h.brake+(rolloutDecelKts-h.decel)*20*dt, 0, 80)
 		}

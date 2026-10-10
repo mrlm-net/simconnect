@@ -66,6 +66,10 @@ const (
 	// BrakeLeft, BrakeRight: the wheel brakes 0…100 (SetValue).
 	BrakeLeft  = "brakeLeft"
 	BrakeRight = "brakeRight"
+	// ReverseThrust: reverse thrust 0…100 (reverse idle to full) while the
+	// reversers are out (SetValue); the default sets the throttles, as
+	// they set reverse thrust then.
+	ReverseThrust = "reverseThrust"
 	// TOGA: take-off / go-around thrust (Press), the autothrottle's go-around
 	// mode where it has one.
 	TOGA = "toga"
@@ -123,6 +127,7 @@ func defaultAutopilot(v map[string]Value, a map[string]Action) {
 		FD:                {Event: "TOGGLE_FLIGHT_DIRECTOR", Toggle: true},
 		ATHR:              {Event: "AUTO_THROTTLE_ARM", Toggle: true},
 		TOGA:              {Event: "AUTO_THROTTLE_TO_GA"},
+		ReverseThrust:     value("AXIS_THROTTLE_SET", 163.83),
 		APHeadingSel:      value("HEADING_BUG_SET", 1),
 		APAltitudeSel:     value("AP_ALT_VAR_SET_ENGLISH", 1),
 		APVSSel:           value("AP_VS_VAR_SET_ENGLISH", 1),

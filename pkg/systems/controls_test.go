@@ -381,3 +381,18 @@ func TestSetAlsoScaled(t *testing.T) {
 		t.Errorf("set %v, want %v", got, want)
 	}
 }
+
+// TestPressOnSet: pressing a set action writes its On value to all its
+// variables (the Fenix's TOGA: both levers to 5).
+func TestPressOnSet(t *testing.T) {
+	f := &fakeControlClient{mapped: map[uint32]string{}, defs: map[uint32]string{}}
+	c := NewControls(f, 0)
+	five := 5.0
+	c.Use(Profile{Name: "test", Actions: map[string]Action{TOGA: {Set: "L:LEVER_L", Also: []string{"L:LEVER_R"}, On: &five}}})
+	if err := c.Press(TOGA, State{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.set) != 2 || f.set[0] != 5 || f.set[1] != 5 {
+		t.Errorf("set %v on %v", f.set, f.setVar)
+	}
+}
