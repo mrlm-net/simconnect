@@ -427,7 +427,19 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 	pos, alt := f.Observed.At(time.Now()) // the feed's clock, not the simulator's
 	// Airborne: not below realMinAGLFt over the field.
 	alt = math.Max(alt, g.Layout.Altitude/0.3048+realMinAGLFt)
-	pts, name, expect, err := s.arrivalJoin(g, rwy, pos)
+	// Its route given (#845): along it to where it meets a STAR.
+	var flown []traffic.PathPoint
+	pts, name, expect, err := []airport.NavPoint(nil), "", "", error(nil)
+	if joins, jerr := s.starJoins(g, rwy); jerr == nil && len(f.Observed.Route) > 0 {
+		if rj, ok := joinAlong(pos, f.Observed.Route, joins); ok {
+			flown, pts, name, expect = rj.flown, rj.join.pts, rj.join.name, rj.join.expect
+		} else {
+			cc.log.printf("%-6s schedule: real arrival: its route meets no STAR of %s: direct", f.Callsign, rwy)
+		}
+	}
+	if pts == nil {
+		pts, name, expect, err = s.arrivalJoin(g, rwy, pos)
+	}
 	if err != nil {
 		// No STAR to join: it appears on the runway's approach instead.
 		cc.log.printf("%-6s schedule: real arrival: %v: on the approach", f.Callsign, err)
@@ -451,9 +463,20 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 		joinAlt = math.Max(joinAlt, join.AltMin/0.3048)
 	}
 	route := []traffic.RoutePoint{{Position: pos, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)}}
-	route = append(route, slowDownBefore(route[0], join.Position, joinAlt, kts)...)
+	for _, p := range flown {
+		a := route[len(route)-1].AltFt
+		if p.AltFt > 0 {
+			a = math.Max(p.AltFt, joinAlt)
+		}
+		route = append(route, traffic.RoutePoint{Position: airport.LatLon{Lat: p.Lat, Lon: p.Lon}, AltFt: a, Kts: traffic.EnrouteSpeedKts(a, kts)})
+	}
+	route = append(route, slowDownBefore(route[len(route)-1], join.Position, joinAlt, kts)...)
 	route = append(route, traffic.RoutePoint{Position: join.Position, AltFt: joinAlt, Kts: entryKts(joinAlt, kts)})
-	return s.spawnEnrouteOn(f, e, model, route, "its track to "+join.Ident)
+	along := "its track to " + join.Ident
+	if len(flown) > 0 {
+		along = fmt.Sprintf("its route (%d points) to %s", len(flown), join.Ident)
+	}
+	return s.spawnEnrouteOn(f, e, model, route, along)
 }
 
 // arrivalJoin is where an aircraft at pos joins the arrival to runway:
@@ -461,16 +484,34 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 // shortest way in (to the point, then along the rest), up to the initial
 // approach fix.
 func (s *scheduler) arrivalJoin(g *airport.Graph, runway string, pos airport.LatLon) ([]airport.NavPoint, string, string, error) {
+	joins, err := s.starJoins(g, runway)
+	if err != nil {
+		return nil, "", "", err
+	}
+	var best starJoin
+	bestNM := math.Inf(1)
+	for _, j := range joins {
+		p := j.pts[0].Position
+		if nm := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon) + j.restNM; nm < bestNM {
+			best, bestNM = j, nm
+		}
+	}
+	return best.pts, best.name, best.expect, nil
+}
+
+// starJoins are the points of every STAR of runway an arrival may join it
+// at: named points up to the initial approach fix (no straight-in from
+// afar).
+func (s *scheduler) starJoins(g *airport.Graph, runway string) ([]starJoin, error) {
 	cc := s.cc
 	if cc.procedures == nil {
-		return nil, "", "", errors.New("procedures not available")
+		return nil, errors.New("procedures not available")
 	}
 	p, ok := cc.procedures(g.Layout.ICAO)
 	if !ok {
-		return nil, "", "", fmt.Errorf("procedures of %s not loaded (yet)", g.Layout.ICAO)
+		return nil, fmt.Errorf("procedures of %s not loaded (yet)", g.Layout.ICAO)
 	}
-	var best []airport.NavPoint
-	bestName, bestExpect, bestNM := "", "", math.Inf(1)
+	var joins []starJoin
 	for _, star := range p.STARsFor(runway) {
 		pts, name, expect, err := cc.procedureFor(g, SpawnRequest{Kind: "arrival", Runway: runway, Procedure: true, ProcName: star.Name})
 		if err != nil || len(pts) < 2 {
@@ -484,20 +525,17 @@ func (s *scheduler) arrivalJoin(g *airport.Graph, runway string, pos airport.Lat
 		}
 		for k := range pts {
 			if k > 0 && (pts[k-1].IAF || pts[k-1].FAF) {
-				break // the STAR, up to the initial approach fix: no straight-in from afar
+				break // the STAR, up to the initial approach fix
 			}
-			if pts[k].Ident == "" {
-				continue
-			}
-			if nm := calc.HaversineNM(pos.Lat, pos.Lon, pts[k].Position.Lat, pts[k].Position.Lon) + rest[k]; nm < bestNM {
-				best, bestName, bestExpect, bestNM = pts[k:], name, expect, nm
+			if pts[k].Ident != "" {
+				joins = append(joins, starJoin{pts: pts[k:], name: name, expect: expect, restNM: rest[k]})
 			}
 		}
 	}
-	if best == nil {
-		return nil, "", "", fmt.Errorf("no STAR for runway %s", runway)
+	if len(joins) == 0 {
+		return nil, fmt.Errorf("no STAR for runway %s", runway)
 	}
-	return best, bestName, bestExpect, nil
+	return joins, nil
 }
 
 // orUnknown is an airport for the log: "unknown" when not known (a real

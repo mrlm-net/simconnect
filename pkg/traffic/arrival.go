@@ -536,7 +536,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	}
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
-	c.vacateAlong = c.track.cum[plan.VacateIndex]
+	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
 	c.setState(ArrivalSpawning, nil)
 	return nil
 }
@@ -1095,6 +1095,6 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	c.standHeading = g.Layout.Parking[parking].Heading
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
-	c.vacateAlong = c.track.cum[plan.VacateIndex]
+	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
 	return nil
 }

@@ -435,6 +435,7 @@ type search struct {
 	current  string   // RouteOptions.CurrentTaxiway
 	maxVia   int      // most via points any state passed
 	maxTw    int      // most taxiways any state past all via points followed
+	opts     RouteOptions // the search's, for straighten
 }
 
 // stateKey identifies a search state: the node, the node it was reached
@@ -454,6 +455,9 @@ const OffTaxiwaysFactor = 10.0
 // search followed) and returns ErrTaxiwaysNotFollowed if not.
 func (s *search) route(g *Graph, to NodeID) (*Route, error) {
 	nodes, edges := s.pathEdges(g, to)
+	if len(s.via) == 0 && len(s.taxiways) == 0 {
+		nodes, edges = g.straighten(nodes, edges, s.opts)
+	}
 	r := g.routeFromPath(nodes, edges)
 	r.Cost = s.dist[to]
 	if n := followedTaxiways(r.Taxiways, s.taxiways); n < len(s.taxiways) {
@@ -559,7 +563,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
 	n := len(g.Nodes)
-	s := &search{dist: make([]float64, n), best: make([]int, n), via: opts.Via, taxiways: opts.Taxiways, current: opts.CurrentTaxiway}
+	s := &search{dist: make([]float64, n), best: make([]int, n), via: opts.Via, taxiways: opts.Taxiways, current: opts.CurrentTaxiway, opts: opts}
 	own := opts.ownApron()
 	srcPos := g.Nodes[src].Position
 	nearSrc := func(id NodeID) bool {

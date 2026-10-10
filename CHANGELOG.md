@@ -57,6 +57,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.68.0] - 2026-10-10
+
+### Added
+
+- Pilot: `Engine.GoAround()`, the pilot monitoring's "Go around" call, flown as ATC's on the approach or the landing (by hand or on the autopilot); ignored in other phases.
+- Real-world traffic: `Observed.route` (#845), the way a real arrival goes on (points `lat`, `lon`, `altFt`): it flies it and joins the STAR where the route passes within 5 NM of a STAR point, the shortest way in; a route meeting none joins directly as before.
+
+### Fixed
+
+- Taxi routes stay on a taxiway instead of crossing to a parallel and back where it goes straight on (live LOWW: "L, EX9, M, EX6, L" from C36 is now "L, W, EX23, B2"). Applies to routes without given taxiways or via points, when the way along the taxiway is shorter, fits, keeps clear and crosses no more runways.
+- After landing, arrivals stop clear of the runway and 25 m short of the next taxiway junction (`VacateJunctionMeters`), not on it. A junction too close to stop before it is passed, and the stop is short of the next one. New `ArrivalPlan.VacateBackMeters` and `VacateStop()`.
+
 ## [0.67.0] - 2026-10-10
 
 ### Added

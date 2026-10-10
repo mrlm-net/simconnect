@@ -29,6 +29,9 @@ func (m *TrafficManager) Observe(kind, callsign string, s Sighting, origin, dest
 		return false
 	}
 	if f.Status == FlightScheduled {
+		if len(s.Route) == 0 {
+			s.Route = f.Observed.Route // a sighting without one keeps the route given
+		}
 		f.Observed = &s
 	} else {
 		o := *f.Observed

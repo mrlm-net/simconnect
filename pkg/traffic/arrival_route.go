@@ -3,6 +3,7 @@ package traffic
 import (
 	"errors"
 	"math"
+	"slices"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -291,6 +292,9 @@ type ArrivalPlan struct {
 	// VacateIndex is the Route point where the aircraft stops clear of the
 	// runway after landing.
 	VacateIndex int
+	// VacateBackMeters: the stop lies this far before route point
+	// VacateIndex (along the route), short of the junction there.
+	VacateBackMeters float64
 	// Stop is where the aircraft stops on the stand (StandStop).
 	Stop airport.LatLon
 }
@@ -372,8 +376,12 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	p.Waypoints = append(p.Waypoints, ground.waypoint(rn.Lat, rn.Lon, exitKts))
 
 	// Roll clear of the runway to the vacate stop, then taxi-in from there.
-	p.VacateIndex = vacateIndex(g, route, x, rwy)
-	p.Waypoints = append(p.Waypoints, groundLegs(thin(simplify(route.Points[:p.VacateIndex+1]), MinWaypointSpacingMeters), ground, legOptions{
+	p.VacateIndex, p.VacateBackMeters = vacateShort(g, route, x, vacateIndex(g, route, x, rwy))
+	toStop := slices.Clone(route.Points[:p.VacateIndex+1])
+	if p.VacateBackMeters > 0 {
+		toStop[len(toStop)-1] = pointBack(toStop, p.VacateBackMeters)
+	}
+	p.Waypoints = append(p.Waypoints, groundLegs(thin(simplify(toStop), MinWaypointSpacingMeters), ground, legOptions{
 		maxKts: ExitSpeed(x), endKts: VacateStopKts, endMeters: 40,
 	})...)
 	in, err := taxiIn(g, route, ground, o.NoseOffset, p.VacateIndex)
@@ -387,3 +395,76 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 
 // knot is one knot in meters per second.
 const knot = 1852.0 / 3600
+
+// Stopping clear of the runway short of a junction, not on it (live: an
+// arrival stopped where its exit met the parallel, blocking both).
+const (
+	// VacateJunctionMeters: the nose stops this far short of a taxiway
+	// junction's centre, clear of the crossing taxiway.
+	VacateJunctionMeters = 25.0
+	// VacateTailMeters: the stop lies at least this far past the hold-short
+	// line behind the exit, so the whole aircraft is clear of the runway.
+	VacateTailMeters = 45.0
+	// VacateMaxMeters: junctions this far past the exit at most are looked
+	// at; beyond, the stop stays where it was.
+	VacateMaxMeters = 400.0
+)
+
+// vacateShort moves the vacate stop at route point v to just short of the
+// first taxiway junction after the runway: the stop is the route point
+// returned less back meters (towards the runway). A junction too close to
+// leave the aircraft clear of the runway is passed, and the stop goes short
+// of the next one; with none, the stop stays at v.
+func vacateShort(g *airport.Graph, r *airport.Route, x airport.RunwayExit, v int) (int, float64) {
+	last := len(r.Points) - 3
+	cum := make([]float64, len(r.Points))
+	for i := 1; i < len(r.Points); i++ {
+		cum[i] = cum[i-1] + localDist(r.Points[i-1], r.Points[i])
+	}
+	from := len(x.Path) - 1
+	minAt := cum[min(v, len(cum)-1)]
+	for i := from; i <= last; i++ {
+		if r.Nodes[i] == x.HoldShort {
+			from, minAt = i, cum[i]+VacateTailMeters
+			break
+		}
+	}
+	// A junction: three or more taxiways meet (stands left out).
+	junction := func(i int) bool {
+		seen := map[airport.NodeID]bool{}
+		for _, e := range g.Adj[r.Nodes[i]] {
+			if g.Nodes[e.To].Kind != airport.NodeParking {
+				seen[e.To] = true
+			}
+		}
+		return len(seen) >= 3
+	}
+	for k := from + 1; k <= last && cum[k]-cum[from] <= VacateMaxMeters; k++ {
+		if !junction(k) {
+			continue
+		}
+		if cum[k]-VacateJunctionMeters >= minAt {
+			return k, VacateJunctionMeters
+		}
+		// Too close to stop short of: clear of it, short of the next.
+		minAt = math.Max(minAt, cum[k]+VacateTailMeters)
+	}
+	return v, 0
+}
+
+// pointBack is the point back meters before the end of pts, along them.
+func pointBack(pts []airport.LatLon, back float64) airport.LatLon {
+	for i := len(pts) - 1; i > 0; i-- {
+		d := localDist(pts[i-1], pts[i])
+		if back <= d {
+			return offsetHeading(pts[i], localBearing(pts[i], pts[i-1]), back)
+		}
+		back -= d
+	}
+	return pts[0]
+}
+
+// VacateStop is where the aircraft stops clear of the runway.
+func (p *ArrivalPlan) VacateStop() airport.LatLon {
+	return pointBack(p.Route.Points[:p.VacateIndex+1], p.VacateBackMeters)
+}

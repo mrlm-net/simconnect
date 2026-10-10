@@ -216,7 +216,15 @@ type Engine struct {
 	hand hand
 	// apGA: the go-around is flown on the autopilot (not HandFly).
 	apGA bool
+	// called: the pilot monitoring called "Go around" (GoAround).
+	called bool
 }
+
+// GoAround is the pilot monitoring's "Go around" (the player calls it): on
+// the approach or the landing the engine flies the go-around at the next
+// Update, as when ATC says it (Clearance.GoAround); in any other phase it
+// is ignored.
+func (e *Engine) GoAround() { e.called = true }
 
 type sentAction struct {
 	at    time.Time
@@ -253,6 +261,10 @@ func (e *Engine) Update(in Input) Output {
 	e.settle(in, c, &out)
 	agl := in.AGLFt()
 	ap := in.State.AP
+	// Go around: told by ATC, or called by the pilot monitoring (GoAround,
+	// acted on at this tick only).
+	goAround := in.ATC.GoAround || e.called
+	e.called = false
 	// Hand flying: the take-off roll once cleared, then the climb to the
 	// engage height by hand; the landing from minimums.
 	if e.phase == PhaseTakeoff && c.HandFly && in.Air.OnGround && in.ATC.Takeoff && in.Runway.valid() {
@@ -282,7 +294,7 @@ func (e *Engine) Update(in Input) Output {
 		out.Phase = e.phase
 		return out
 	case PhaseLanding:
-		if in.ATC.GoAround && !in.Air.OnGround {
+		if goAround && !in.Air.OnGround {
 			e.phase, e.hand = PhaseGoAround, hand{}
 			e.newApproach()
 			e.goAround(in, c, &out)
@@ -322,7 +334,7 @@ func (e *Engine) Update(in Input) Output {
 
 	// Minimums: the controls back to the player.
 	// Told to go around on the approach: flown by hand from here.
-	if e.phase == PhaseApproach && c.HandFly && in.ATC.GoAround && in.Runway.valid() {
+	if e.phase == PhaseApproach && c.HandFly && goAround && in.Runway.valid() {
 		e.phase, e.hand = PhaseGoAround, hand{}
 		e.newApproach()
 		e.goAround(in, c, &out)
@@ -330,7 +342,7 @@ func (e *Engine) Update(in Input) Output {
 		return out
 	}
 	// On the autopilot: the go-around flown on it.
-	if e.phase == PhaseApproach && !c.HandFly && in.ATC.GoAround && !in.Air.OnGround {
+	if e.phase == PhaseApproach && !c.HandFly && goAround && !in.Air.OnGround {
 		e.phase, e.hand, e.apGA = PhaseGoAround, hand{}, true
 		e.newApproach()
 		e.apGoAround(in, c, &out)
