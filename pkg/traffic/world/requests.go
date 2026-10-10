@@ -218,6 +218,7 @@ func (it *controlled) answer(req string) {
 	if req == "taxi" {
 		it.grantRunway()
 		it.grantEntry()
+		it.offerEntry() // a queue for the full length: an intersection
 		// Round the places other aircraft take now, so the clearance names
 		// the route it will taxi.
 		if occ := it.cc.occupiedFor(it); len(occ) > 0 {

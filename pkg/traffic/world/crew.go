@@ -1,12 +1,10 @@
 package world
 
 import (
-	"math"
 	"math/rand/v2"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -234,21 +232,7 @@ func (it *controlled) crewEntry() string {
 	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare(it.view.Model) {
 		return ""
 	}
-	entries, err := it.graph.RunwayEntries(it.view.Runway)
-	if err != nil {
-		return ""
-	}
-	best, bestD := "", math.Inf(1)
-	for _, e := range entries {
-		if e.Taxiway == "" || e.FromThreshold < airport.FullLengthMeters {
-			continue
-		}
-		p := it.graph.Nodes[e.Node].Position
-		if d := calc.HaversineMeters(it.view.Position.Lat, it.view.Position.Lon, p.Lat, p.Lon); d < bestD {
-			best, bestD = e.Taxiway, d
-		}
-	}
-	return best
+	return nearestEntry(it.graph, it.view.Runway, it.view.Position)
 }
 
 // grantEntry answers the crew's intersection request before the taxi
