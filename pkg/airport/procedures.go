@@ -371,7 +371,12 @@ func displace(p LatLon, bearing, d float64) LatLon {
 // arcPoints samples the arc around center from a to b (clockwise when
 // right), every 5°.
 func arcPoints(center, a, b LatLon, right bool) []LatLon {
-	r := calc.HaversineMeters(center.Lat, center.Lon, a.Lat, a.Lon)
+	// The radius goes over from a's to b's along the arc, which ends on b
+	// itself: the charted fixes are a little off one radius, and a sample
+	// at a's radius then b made a short radial jog that the smoothing
+	// turned into a loop (EDDM AKIN1N at DM044: ~330° round, live).
+	ra := calc.HaversineMeters(center.Lat, center.Lon, a.Lat, a.Lon)
+	rb := calc.HaversineMeters(center.Lat, center.Lon, b.Lat, b.Lon)
 	from := calc.BearingDegrees(center.Lat, center.Lon, a.Lat, a.Lon)
 	to := calc.BearingDegrees(center.Lat, center.Lon, b.Lat, b.Lon)
 	sweep := math.Mod(to-from+360, 360) // clockwise
@@ -380,8 +385,9 @@ func arcPoints(center, a, b LatLon, right bool) []LatLon {
 	}
 	var out []LatLon
 	n := int(math.Abs(sweep)/5) + 1
-	for i := 1; i <= n; i++ {
-		out = append(out, displace(center, from+sweep*float64(i)/float64(n), r))
+	for i := 1; i < n; i++ {
+		k := float64(i) / float64(n)
+		out = append(out, displace(center, from+sweep*k, ra+(rb-ra)*k))
 	}
 	return append(out, b)
 }
