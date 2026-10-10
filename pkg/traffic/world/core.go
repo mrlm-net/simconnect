@@ -24,6 +24,9 @@ type core struct {
 	// runwaysClosed: runways closed by the host (closures.go), made once.
 	runwaysClosed *closures
 	closedOnce    sync.Once
+	// vehicleSw: the ground vehicles by kind on or off (vehicles.go).
+	vehicleSw    *vehicleSwitches
+	vehiclesOnce sync.Once
 
 	// runwayMu guards selectors and inUse: each airport's runway in use,
 	// one selector for the traffic and its ATIS (#454), and the last one

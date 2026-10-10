@@ -613,6 +613,15 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		return ""
 	}
+	// No entry at the threshold, no intersection given: it backtracks
+	// first, lined up before its take-off clearance (never a rolling one).
+	backtracks := func(tail string) bool {
+		it := ours[tail]
+		if it == nil || it.dep == nil || it.graph == nil || entry(tail) != "" {
+			return false
+		}
+		return !it.graph.ThresholdEntry(end(tail))
+	}
 	// Traffic close behind on final: "no delay, traffic on 5 mile final".
 	takeoffSaid := func(cs string) traffic.Transmission {
 		if nm, ok := c.NoDelay[cs]; ok {
@@ -621,14 +630,14 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		return traffic.AtEntry(traffic.ClearedTakeoff(cs, end(cs), t.cc.windSaid(icao)), entry(cs))
 	}
 	for _, cs := range c.LineUp {
-		if takeoff[cs] {
+		if takeoff[cs] && !backtracks(cs) {
 			give(cs, "takeoff", takeoffSaid(cs), func(it *controlled) error {
 				it.dep.ClearToLineUp()
 				return it.dep.ClearForTakeoff()
 			})
 			continue
 		}
-		give(cs, "lineup", traffic.AtEntry(traffic.ClearedLineUp(cs, end(cs)), entry(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
+		give(cs, "lineup", traffic.Backtracked(traffic.AtEntry(traffic.ClearedLineUp(cs, end(cs)), entry(cs)), backtracks(cs)), func(it *controlled) error { it.dep.ClearToLineUp(); return nil })
 	}
 	// Waiting only for the next arrival: line up behind it once it has
 	// passed (#509).

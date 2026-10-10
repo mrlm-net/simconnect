@@ -124,7 +124,7 @@ func (cc *controlCenter) fuelTitle(icao string, stand airport.Parking) string {
 // the simulator has one: created with the second last request ID of the
 // aircraft's block (the tug has the last).
 func (cc *controlCenter) fuelTruck(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFuelTruck {
-	if !r.Fuel || r.Kind != "departure" || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+	if !r.Fuel || r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleFuel) || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
 	title := cc.fuelTitle(g.Layout.ICAO, g.Layout.Parking[r.Stand])
@@ -148,7 +148,7 @@ var gsxStairs = map[string]bool{
 // GA or cargo) on a remote stand (not a gate), when the simulator has
 // stairs; created with the third last request ID of the aircraft's block.
 func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectStairs {
-	if r.Kind != "departure" || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+	if r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleStairs) || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
 	stand := g.Layout.Parking[r.Stand]
@@ -177,7 +177,7 @@ func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32
 // remote stand (a gate has its own power), when the simulator has one;
 // created with the fourth last request ID of the aircraft's block.
 func (cc *controlCenter) gpu(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFuelTruck {
-	if r.Kind != "departure" || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+	if r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleGPU) || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
 	if g.Layout.Parking[r.Stand].IsGate() {
@@ -241,7 +241,7 @@ func (cc *controlCenter) busTitle(icao string) string {
 // only: BusesFor the aircraft, created with the sixth and fifth last
 // request IDs of its block.
 func (cc *controlCenter) buses(g *airport.Graph, reqBase uint32, prof traffic.MotionProfile, stairs traffic.FuelService) []traffic.FuelService {
-	if stairs == nil {
+	if stairs == nil || !cc.core.vehicleOn(traffic.VehicleBus) {
 		return nil
 	}
 	title := cc.busTitle(g.Layout.ICAO)
@@ -272,7 +272,7 @@ var gsxFollowMe = map[string]bool{"FSDT_FollowMe_Hilux": true, "FSDT_FollowMe_cl
 // remote stand (not a gate), landing injected, when the simulator has one;
 // created with the last request ID of its block (an arrival has no tug).
 func (cc *controlCenter) followMe(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) traffic.FollowMeService {
-	if r.Kind != "arrival" || r.AILanding || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
+	if r.Kind != "arrival" || !cc.core.vehicleOn(traffic.VehicleFollowMe) || r.AILanding || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
 	if g.Layout.Parking[r.Stand].IsGate() {

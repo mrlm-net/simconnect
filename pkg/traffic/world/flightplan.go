@@ -50,7 +50,7 @@ func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (
 // loaded already, else where it is (the worldwide list): loading it,
 // LFPG's or KJFK's whole airport for a flight to or past LKPR, stood
 // every aircraft still meanwhile (#898). local "": both loaded.
-func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ, local string) (*nav.FlightPlan, error) {
+func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ, local string, choose ...func(*nav.FlightPlanRequest)) (*nav.FlightPlan, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	info := func(icao string) (nav.AirportInfo, error) {
@@ -87,7 +87,11 @@ func planBetween(ctx context.Context, st *state, dep, arr, depRwy, arrRwy, typ, 
 	st.mu.Lock()
 	graph := st.airways
 	st.mu.Unlock()
-	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: d, Arrival: a, DepartureRunway: depRwy, ArrivalRunway: arrRwy}, graph)
+	req := nav.FlightPlanRequest{Type: typ, Departure: d, Arrival: a, DepartureRunway: depRwy, ArrivalRunway: arrRwy}
+	for _, c := range choose {
+		c(&req)
+	}
+	return nav.Plan(req, graph)
 }
 
 // PlanRequest asks PlanFlight for a flight: from Departure to Arrival
@@ -103,6 +107,18 @@ type PlanRequest struct {
 	// NoRouteAirways plans with the airways known now only: no reading of
 	// those along the way first (quicker; direct where none are known).
 	NoRouteAirways bool `json:"noRouteAirways,omitempty"`
+	// The player's choices (a plan edited before loading it), each optional
+	// ("" or 0: chosen as without it): the procedures, checked against the
+	// runways; the cruise level; Route, an ICAO item 15 over the World's
+	// airways. What is not followed is said in the plan's Notes.
+	SID                string `json:"sid,omitempty"`
+	SIDTransition      string `json:"sidTransition,omitempty"`
+	STAR               string `json:"star,omitempty"`
+	STARTransition     string `json:"starTransition,omitempty"`
+	Approach           string `json:"approach,omitempty"`
+	ApproachTransition string `json:"approachTransition,omitempty"`
+	CruiseFL           int    `json:"cruiseFL,omitempty"`
+	Route              string `json:"route,omitempty"`
 }
 
 // PlanFlight plans an IFR flight the way the World plans its own traffic's
@@ -121,7 +137,10 @@ func (w *World) PlanFlight(ctx context.Context, r PlanRequest) (*nav.FlightPlan,
 	if !r.NoRouteAirways {
 		w.st.routeAirways(ctx, dep, arr)
 	}
-	return planBetween(ctx, w.st, dep, arr, r.DepartureRunway, r.ArrivalRunway, r.Type, "")
+	return planBetween(ctx, w.st, dep, arr, r.DepartureRunway, r.ArrivalRunway, r.Type, "", func(q *nav.FlightPlanRequest) {
+		q.SID, q.SIDTransition, q.STAR, q.STARTransition = r.SID, r.SIDTransition, r.STAR, r.STARTransition
+		q.Approach, q.ApproachTransition, q.CruiseFL, q.Route = r.Approach, r.ApproachTransition, r.CruiseFL, r.Route
+	})
 }
 
 // routeAirwaysWait: how long PlanFlight waits for the airways along the

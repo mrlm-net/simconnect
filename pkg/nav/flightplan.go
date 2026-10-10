@@ -110,6 +110,20 @@ type FlightPlanRequest struct {
 	ArrLimits       RunwayLimits `json:"-"`
 	// AlternateFuelKg is the fuel to an alternate; 0 when none is planned.
 	AlternateFuelKg float64 `json:"alternateFuelKg,omitempty"`
+	// The player's choices, each optional ("" lets Plan choose): the SID,
+	// STAR and approach with their transitions, checked against the
+	// runways (one that does not fit is chosen as without it, said in
+	// FlightPlan.Notes), and Route, an ICAO item 15 ("LANUX DCT APRAQ",
+	// "VLM UL86 KEPAD") flown between the SID and the STAR over g's
+	// airways (AirwayGraph.ExpandRoute; what is not known is said in Notes
+	// and flown direct).
+	SID                string `json:"sid,omitempty"`
+	SIDTransition      string `json:"sidTransition,omitempty"`
+	STAR               string `json:"star,omitempty"`
+	STARTransition     string `json:"starTransition,omitempty"`
+	Approach           string `json:"approach,omitempty"`
+	ApproachTransition string `json:"approachTransition,omitempty"`
+	Route              string `json:"route,omitempty"`
 }
 
 // Waypoint is one point of a flight plan, in the order flown. Altitudes
@@ -225,6 +239,9 @@ type FlightPlan struct {
 	ETE           time.Duration `json:"ete"`
 	Fuel          FuelPlan      `json:"fuel"`
 	Performance   Performance   `json:"performance"`
+	// Notes say where the request's choices were not followed and why (a
+	// SID for another runway, a fix not known).
+	Notes []string `json:"notes,omitempty"`
 }
 
 // sidOption is a SID (with an enroute transition) resolved from the runway.
@@ -305,9 +322,18 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 	}
 	arrs := []arrivalOption{{}}
 	if p := req.Arrival.Procedures; p != nil {
-		if o := arrivalOptions(p, arrRwy); len(o) > 0 {
+		if o := arrivalOptions(p, arrRwy, req.Approach, req.ApproachTransition, fp.note); len(o) > 0 {
 			arrs = o
 		}
+	}
+	// The player's SID and STAR (with transitions), when they fit.
+	sids = chosenSIDs(fp, sids, req.SID, req.SIDTransition, depRwy)
+	arrs = chosenSTARs(fp, arrs, req.STAR, req.STARTransition, arrRwy)
+	// The player's route: between the SID and the STAR (the pair chosen
+	// for it, the shortest way on and off).
+	var route []Waypoint
+	if strings.TrimSpace(req.Route) != "" {
+		route = fp.routeOf(req, g, depPos, sids, arrs)
 	}
 	var sid sidOption
 	var arr arrivalOption
@@ -322,7 +348,11 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 			if pts := a.points(); len(pts) > 0 {
 				entry = pts[0].Position
 			}
-			if c := s.lengthNM + dist(exit, entry) + a.lengthNM; c < best {
+			between := dist(exit, entry)
+			if n := len(route); n > 0 {
+				between = dist(exit, route[0].Position) + routeNM(route) + dist(route[n-1].Position, entry)
+			}
+			if c := s.lengthNM + between + a.lengthNM; c < best {
 				best, sid, arr = c, s, a
 			}
 		}
@@ -353,6 +383,9 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 		tail = append(tail, end)
 	}
 	mid, via := enroute(g, wps[len(wps)-1], tail[0])
+	if len(route) > 0 {
+		mid, via = route, Direct // the player's route, then direct onto the STAR
+	}
 	tail[0].Airway = via
 	wps = dedupeWaypoints(append(append(wps, mid...), tail...))
 	fp.Route = routeString(sid.name, wps, arr.star)
@@ -527,8 +560,20 @@ func sidOptions(p *airport.Procedures, rwy string, der airport.LatLon, elev floa
 // transition) joined to the best approach; the approach alone through
 // each of its transitions when there is no STAR; the STARs alone when
 // there is no approach.
-func arrivalOptions(p *airport.Procedures, rwy string) []arrivalOption {
+func arrivalOptions(p *airport.Procedures, rwy, appName, appTr string, note func(string)) []arrivalOption {
 	app, hasApp := p.BestApproach(rwy)
+	if appName != "" {
+		if a, ok := approachNamed(p, appName); ok && a.Runway != "" && normalizeEnd(a.Runway) == normalizeEnd(rwy) {
+			app, hasApp = a, true
+		} else {
+			note(fmt.Sprintf("approach %s is not one for runway %s: %s instead", appName, rwy, app.Name))
+			appTr = ""
+		}
+	}
+	if appTr != "" && hasApp && !hasTransition(app.Transitions, appTr) {
+		note(fmt.Sprintf("%s has no transition %s: chosen as without it", app.Name, appTr))
+		appTr = ""
+	}
 	var out []arrivalOption
 	for _, s := range p.STARsFor(rwy) {
 		for _, t := range transitionNames(s.EnrouteTransitions) {
@@ -548,6 +593,9 @@ func arrivalOptions(p *airport.Procedures, rwy string) []arrivalOption {
 						break
 					}
 				}
+				if appTr != "" {
+					tr, o.starPts = appTr, join // the player's
+				}
 				a, err := p.ResolveApproach(app.Name, tr)
 				if err != nil {
 					continue
@@ -563,6 +611,9 @@ func arrivalOptions(p *airport.Procedures, rwy string) []arrivalOption {
 		return out
 	}
 	for _, t := range transitionNames(app.Transitions) {
+		if appTr != "" && t != appTr {
+			continue
+		}
 		a, err := p.ResolveApproach(app.Name, t)
 		if err != nil || len(a) == 0 {
 			continue

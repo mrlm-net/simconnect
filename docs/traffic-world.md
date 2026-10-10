@@ -247,3 +247,13 @@ A replay shows the traffic recorded with the flight (`flight.GhostFleet`), so th
 - **Moving on the ground (taxiing):** not placed yet, and said why.
 
 The nearest to an airport of ours come first, up to the room the schedule's `MaxAircraft` leaves. It returns `SeedResult{Placed, Skipped, Results}`, one `ObserveResult` per aircraft (`added`, or `ignored` with the reason), and logs each. The flights are marked `seeded` in `ControlView` (not `real`), so the map can tell them apart from live real traffic.
+
+## Ground vehicles on and off
+
+The World's ground vehicles can be switched off by kind: tugs, fuel trucks, stairs, GPUs, buses and follow-me cars (`traffic.VehicleTug` … `VehicleFollowMe`; all on by default). `World.SetGroundVehicles(map[kind]bool)` (`POST /api/vehicles {"tug": false}`) changes them at any time, `World.GroundVehicles()` (`GET /api/vehicles`) says which are on, and `Options.GroundVehicles` sets them from the start. A kind off means none of it is created from then on, and nobody waits for one:
+
+- **Tugs off:** departures push back on their own along the planned push.
+- **Fuel trucks, stairs, GPUs, buses off:** the turnaround runs without them.
+- **Follow-me cars off:** arrivals go to their stand without one.
+
+Vehicles already at work finish their job and are not replaced. In a director and actuator pair the director decides, so its switches count.
