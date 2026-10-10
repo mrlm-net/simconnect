@@ -129,3 +129,19 @@ scene.Update(nearPlayer) // []flight.SceneObject, nearest first
 // at the end:
 scene.Stop().WriteFile(id + ".traffic.jsonl.gz")
 ```
+
+`GhostFleet` replays a scene in sync with a `Player`, the player replay's or the ghost's clock (#1013). It maps the Player's time onto the scene's: the track's first sample plus `Player.Time`. Pause, seek and rate therefore follow the Player with nothing else to do.
+
+- **Spawning.** Each aircraft is created as a NonATC AI aircraft (its title, its callsign as the tail) when its time in the scene comes, taken over by the Injector and flown as its Track was (`Ghost`). If no object comes within 5 s (its title was refused), it is created once more as `FleetOptions.Fallback`'s model.
+- **Removal.** An aircraft is removed when its track ends, when it falls out of `Budget` (default 20, nearest the player first, or nearest `Centre`), or on `Stop`.
+- **Seek.** A seek is just another moment: the aircraft due then are created and the rest removed. An object that arrives after its aircraft stopped being due is removed at once.
+- **IDs.** Request IDs start at `FleetOptions.IDBase` (`DefaultFleetBase` 0x7E00, 256 of them).
+- **Running it.** Feed it every message (`Handle`); it brings the fleet to the present at most every frame. Call `Tick` after a seek for an immediate change.
+
+```go
+fleet := flight.NewGhostFleet(client, injector, scene, replay.Player(), flight.FleetOptions{Budget: 25})
+// in the message loop:
+fleet.Handle(msg)
+// at the end:
+fleet.Stop()
+```
