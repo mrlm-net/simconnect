@@ -121,6 +121,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		}
 		pts = append(pts, route[i])
 	}
+	join := pathLen(pts) // where the way onto the stand leaves the taxilane
 	if faceOut {
 		pts = append(pts, c.turnAround(stopNose)...) // self-manoeuvring stand
 	} else {
@@ -171,6 +172,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	v := m.GroundKts * ktsToMS
 	hold = math.Max(hold, v*v/(2*moverProf.Decel)+2)
 	c.vacateDist = hold
+	c.standJoin = math.Max(0, pathLen(pts)-join)
 	if c.rollThrough {
 		// A rolling clearance: slow to RollThroughKts at the vacate point and
 		// taxi on without stopping.

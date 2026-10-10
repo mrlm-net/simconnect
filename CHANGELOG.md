@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.83.1] - 2026-10-10
+
+### Fixed
+
+- Radio: ground vehicles are called by their own kind: "Follow-me 2", "Stairs 1", "GPU 3", "Bus 1" (each numbered on its own). Before, everything but a fuel truck was a "Tug" (live at LOWI: the follow-me car leading LOT913 was "Tug 2") (#1023).
+- Follow-me car: it leads the aircraft to the stand's lead-in junction, then drives straight on along the taxilane up to `FollowMeAheadMeters` (40 m, on the taxi graph, never onto a stand or runway) before heading home; it no longer peels off 120 m short of the stand or drives down the lead-in line. Where no taxilane goes on it steps aside 10 m, not 30 m across the grass (live at LOWI). `SimObjectFollowMe.Graph` and `SetStandJoin`; the World sets both (#1023).
+
 ## [0.83.0] - 2026-10-10
 
 ### Added

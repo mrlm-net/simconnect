@@ -278,6 +278,7 @@ type ArrivalController struct {
 	clearDist     float64 // injected path distance where the aircraft is clear of the runway
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist    float64 // injected path distance of the vacate stop
+	standJoin     float64 // the stand's lead-in junction, meters before the path's end
 	rng           *rand.Rand
 	timing        timing            // this aircraft's draw of the spreads (#343)
 	lightsChanged bool              // the sim reported a light change since the last event

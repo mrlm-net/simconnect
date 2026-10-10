@@ -30,10 +30,17 @@ func (c *ArrivalController) updateFollowMe(pose GroundPose) {
 		}
 		c.fmSent = true
 		meet := c.vacateDist + FollowMeLeadMeters
-		if meet+FollowMeLeaveMeters+FollowMeGapMeters > path.Length() || !c.takeFollowMe() {
+		leave := FollowMeLeaveMeters
+		if c.standJoin > 0 {
+			leave = c.standJoin
+		}
+		if meet+leave+FollowMeGapMeters > path.Length() || !c.takeFollowMe() {
 			return // a short taxi-in, or none free
 		}
 		c.fm = c.req.FollowMe
+		if f, ok := c.fm.(interface{ SetStandJoin(float64) }); ok {
+			f.SetStandJoin(c.standJoin)
+		}
 		if f, ok := c.fm.(trafficAware); ok && c.picture != nil {
 			f.SetTraffic(c.picture, c.objectID, c.now)
 		}
