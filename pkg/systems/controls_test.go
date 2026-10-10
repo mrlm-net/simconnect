@@ -396,3 +396,17 @@ func TestPressOnSet(t *testing.T) {
 		t.Errorf("set %v on %v", f.set, f.setVar)
 	}
 }
+
+// TestFenixACP: the Fenix maps the captain's ACP volumes and receive keys;
+// the default has none (absent: full volume).
+func TestFenixACP(t *testing.T) {
+	f := For(Aircraft{Package: "fnx-aircraft-320", Title: "FenixA319 CFM WF HD"})
+	for _, name := range []string{ACPVhf1Volume, ACPVhf1Receive, ACPVhf2Volume, ACPVhf3Receive, ACPIntVolume, ACPCabReceive, ACPPaVolume, ACPPaReceive} {
+		if v, ok := f.Values[name]; !ok || len(v.Vars) != 1 || !strings.HasPrefix(v.Vars[0], "L:") {
+			t.Errorf("Fenix %s: %+v", name, v)
+		}
+	}
+	if _, ok := For(Aircraft{Title: "Asobo A320neo", ATCType: "A320"}).Values[ACPVhf1Volume]; ok {
+		t.Error("default has an ACP volume")
+	}
+}

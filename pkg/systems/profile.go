@@ -71,6 +71,26 @@ const (
 	ExtPower  = "extPower"
 )
 
+// The captain's audio control panel: each channel's volume knob 0…1 and
+// its receive key (on 1), for an add-on's own voices on that channel
+// (VHF 1–3 the radios, INT the interphone, CAB the cabin, PA the
+// announcements). The default profile has none: absent is full volume,
+// received.
+const (
+	ACPVhf1Volume  = "acpVhf1Volume"
+	ACPVhf1Receive = "acpVhf1Receive"
+	ACPVhf2Volume  = "acpVhf2Volume"
+	ACPVhf2Receive = "acpVhf2Receive"
+	ACPVhf3Volume  = "acpVhf3Volume"
+	ACPVhf3Receive = "acpVhf3Receive"
+	ACPIntVolume   = "acpIntVolume"
+	ACPIntReceive  = "acpIntReceive"
+	ACPCabVolume   = "acpCabVolume"
+	ACPCabReceive  = "acpCabReceive"
+	ACPPaVolume    = "acpPaVolume"
+	ACPPaReceive   = "acpPaReceive"
+)
+
 // CabinCall is the action calling the cabin crew (a press, no state;
 // Controls.Press): the Fenix's CALLS ALL button (#759).
 const CabinCall = "cabinCall"
