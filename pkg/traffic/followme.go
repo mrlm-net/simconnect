@@ -26,6 +26,12 @@ const (
 	FollowMeAsideMeters = 30.0
 	FollowMeKts         = 20.0
 	FollowMeWaitMax     = 4 * time.Minute
+	// FollowMeAheadMeters: at the stand's lead-in junction the car drives
+	// straight on along the taxilane this far (the aircraft turns in behind
+	// it) before it heads home; where no taxilane goes on it steps aside
+	// followMeStepAsideMeters, on the pavement's edge rather than the grass.
+	FollowMeAheadMeters     = 40.0
+	followMeStepAsideMeters = 10.0
 	// followMeSlackMeters: the car drives on once the aircraft is this
 	// close to its stop behind it, beyond StopApproachMeters: closer, the
 	// aircraft brakes exactly onto the stop and crawls behind the car.
@@ -76,6 +82,9 @@ type SimObjectFollowMe struct {
 	// no depot or road: it appears at the meeting point and drives off
 	// ahead.
 	Layout *airport.Layout
+	// Graph is the airport's taxi graph, for the way on along the taxilane
+	// past the stand's lead-in; nil: it steps aside there.
+	Graph *airport.Graph
 	vehicleYield
 
 	mu       sync.Mutex
@@ -93,6 +102,9 @@ type SimObjectFollowMe struct {
 	meet     float64
 	depot    airport.LatLon
 	hasDepot bool
+	// join: the stand's lead-in junction, meters before the path's end (0:
+	// FollowMeLeaveMeters before it).
+	join float64
 }
 
 var _ FollowMeService = (*SimObjectFollowMe)(nil)
@@ -112,6 +124,15 @@ func (f *SimObjectFollowMe) ObjectID() uint32 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.objectID
+}
+
+// SetStandJoin tells the car where the aircraft's way onto its stand leaves
+// the taxilane, meters before the end of its path: it leads it there and
+// goes on along the taxilane, never down the stand's lead-in line.
+func (f *SimObjectFollowMe) SetStandJoin(meters float64) {
+	f.mu.Lock()
+	f.join = meters
+	f.mu.Unlock()
 }
 
 func (f *SimObjectFollowMe) Attach(path *GroundPath, meet float64) error {
@@ -232,7 +253,11 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 		f.s = math.Min(f.s+f.v*dt, f.path.Length())
 		f.pose = pathPose(f.path, f.s)
 		f.pose.GroundSpeedKts = f.v / 0.514444
-		if f.path.Length()-f.s <= FollowMeLeaveMeters {
+		leaveAt := FollowMeLeaveMeters
+		if f.join > 0 {
+			leaveAt = f.join
+		}
+		if f.path.Length()-f.s <= leaveAt {
 			f.leave(pathPose(f.path, s))
 		}
 	case followMeLeaving:
@@ -245,24 +270,32 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 	return f.place()
 }
 
-// leave turns the car aside off the aircraft's way and home, round the
-// aircraft (at aircraft) where its way would cross it.
+// leave takes the car off the aircraft's way and home, round the aircraft
+// (at aircraft) where its way would cross it: straight on along the
+// taxilane past the stand's lead-in, or a short step aside where none goes
+// on (live at LOWI: 30 m aside drove it across the grass).
 func (f *SimObjectFollowMe) leave(aircraft GroundPose) {
 	f.phase = followMeLeaving
 	p, h := f.pose.Position, f.pose.Heading
-	side := 1.0 // aside to the right, unless the stand lies that way
-	if end := f.path.PointAt(f.path.Length()); math.Sin((localBearing(p, end)-h)*math.Pi/180) > 0 {
-		side = -1
+	pts := []airport.LatLon{p}
+	if f.join > 0 {
+		pts = append(pts, straightOn(f.Graph, p, h, FollowMeAheadMeters)...)
 	}
-	p1 := offsetHeading(offsetHeading(p, h, FollowMeAsideMeters/2), h+side*90, FollowMeAsideMeters/3)
-	p2 := offsetHeading(offsetHeading(p, h, FollowMeAsideMeters), h+side*90, FollowMeAsideMeters)
-	pts := []airport.LatLon{p, p1, p2}
+	if len(pts) == 1 {
+		side := 1.0 // aside to the right, unless the stand lies that way
+		if end := f.path.PointAt(f.path.Length()); math.Sin((localBearing(p, end)-h)*math.Pi/180) > 0 {
+			side = -1
+		}
+		a := followMeStepAsideMeters
+		pts = append(pts, offsetHeading(offsetHeading(p, h, a), h+side*90, a/3), offsetHeading(offsetHeading(p, h, 2*a), h+side*90, a))
+	}
+	last := pts[len(pts)-1]
 	if f.hasDepot {
-		if route, err := f.Layout.VehicleRoute(p2, f.depot); err == nil {
+		if route, err := f.Layout.VehicleRoute(last, f.depot); err == nil {
 			pts = append(pts, route[1:]...)
 		}
 	} else {
-		pts = append(pts, offsetHeading(p2, h+side*90, FuelDriveOffMeters))
+		pts = append(pts, offsetHeading(last, localBearing(pts[len(pts)-2], last), FuelDriveOffMeters))
 	}
 	way, err := NewArcPath(aroundAircraft(pts, aircraft, f.prof), followMeProfile(), 8)
 	if err != nil {
@@ -382,6 +415,51 @@ func followMeProfile() MotionProfile {
 	p.CruiseKts, p.MinTurnKts, p.Accel, p.Decel = FollowMeKts, 4, 1.2, 1.5
 	p.SpanMeters, p.TailMeters = 2, 2
 	return p
+}
+
+// straightOn is the way on along g's taxiways and taxilanes from p facing
+// heading, never onto a runway or a stand, until it is meters long or no
+// way goes on within 45° of the heading: the taxi nodes past p, nil when
+// there are none.
+func straightOn(g *airport.Graph, p airport.LatLon, heading, meters float64) []airport.LatLon {
+	if g == nil {
+		return nil
+	}
+	n, ok := g.NearestNode(p, 20)
+	if !ok {
+		return nil
+	}
+	var out []airport.LatLon
+	seen := map[airport.NodeID]bool{n: true}
+	at, h, d := g.Nodes[n].Position, heading, 0.0
+	for d < meters {
+		next, best := airport.NodeID(-1), 45.0
+		for _, e := range g.Adj[n] {
+			switch e.Type {
+			case types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY, types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING, types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_CLOSED:
+				continue
+			}
+			to := g.Nodes[e.To]
+			if seen[e.To] || to.Kind == airport.NodeParking {
+				continue
+			}
+			if diff := math.Abs(headingDiff(h, localBearing(at, to.Position))); diff < best {
+				next, best = e.To, diff
+			}
+		}
+		if next < 0 {
+			break
+		}
+		q := g.Nodes[next].Position
+		seen[next] = true
+		h = localBearing(at, q)
+		if alongHeading(p, heading, q) > 3 {
+			d += localDist(at, q)
+			out = append(out, q)
+		}
+		n, at = next, q
+	}
+	return out
 }
 
 // pathPose is the pose at s along path, facing along it.

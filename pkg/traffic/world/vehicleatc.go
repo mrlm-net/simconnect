@@ -57,14 +57,19 @@ func (cc *controlCenter) giveATC(v any, l *airport.Layout, kind string) {
 	}
 }
 
-// name is how vehicle id of kind is called: "Tug 3", "Fuel 2".
+// vehicleWords are the radio words of the kinds giveATC is given.
+var vehicleWords = map[string]string{"tug": "Tug", "fuel truck": "Fuel", "stairs": "Stairs", "GPU": "GPU",
+	"bus": "Bus", "follow-me": "Follow-me"}
+
+// name is how vehicle id of kind is called: "Tug 3", "Fuel 2",
+// "Follow-me 1"; a kind not known is "Vehicle".
 func (v *vehicleATC) name(id uint32, kind string) string {
 	if n, ok := v.names[id]; ok {
 		return n
 	}
-	word := "Tug"
-	if strings.Contains(kind, "fuel") {
-		word = "Fuel"
+	word, ok := vehicleWords[kind]
+	if !ok {
+		word = "Vehicle"
 	}
 	v.n[word]++
 	n := fmt.Sprintf("%s %d", word, v.n[word])

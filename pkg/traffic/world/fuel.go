@@ -292,7 +292,7 @@ func (cc *controlCenter) followMe(r SpawnRequest, g *airport.Graph, reqBase uint
 // newFollowMe is the follow-me car of an arrival, of title.
 func newFollowMe(cc *controlCenter, client engine.Client, title string, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFollowMe {
 	f := traffic.NewSimObjectFollowMe(client, cc.inj, title, reqBase+controlIDBlock-1, prof)
-	f.Layout = g.Layout
+	f.Layout, f.Graph = g.Layout, g
 	cc.giveATC(f, g.Layout, "follow-me")
 	return f
 }
