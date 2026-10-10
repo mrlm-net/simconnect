@@ -407,6 +407,8 @@ At LKPR a B738 pushed from C19 onto JB leaves J beside it too narrow: a CRJ on J
 
 **Which holding point** (`runwayRoute`). Runway holding points are preferred over ILS holds; ILS holds are used only when no runway hold is reachable. Among the holds within `DefaultIntersectionTolerance` (300 m, measured along the runway) of the one nearest the threshold, the one with the cheapest route wins.
 
+**Intersections for the queue.** With `IntersectionQueue` (2) or more of our departures already queuing for a runway's full length (holding short, lining up, or taxiing there), ground gives the next one an intersection with its taxi clearance: the named entry nearest it, never for a heavy, and only where the runway left is long enough for the type (`ChangeEntry`). It goes from there and does not join the queue (LKPR 24 at B or F). Crews also ask for intersections themselves, mostly light aircraft.
+
 **Entries** (`entries.go`). The entries onto a runway end are the exits of the opposite end, driven backwards. Those needing a turn of more than `MaxEntryAngle` (135°) onto the runway are left out. Entries within `FullLengthMeters` (150 m) of the threshold count as full length. "24 at B" takes the reachable entry named B with the most runway ahead.
 
 **Runway crossings on the way.** The route reports the runways it crosses (`Route.RunwayCrossings`). An injected aircraft held for clearances stops 7 m before the first hold-short line of each crossing, until it is cleared to cross. Strobes and landing lights come on 10 m past that line (`CrossingOnMeters`) and go off once the main gear is 40 m past the far line (`CrossingTailMeters`, `ground_drive.go`).
