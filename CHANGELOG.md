@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.78.0] - 2026-10-10
+
+### Added
+
+- Flight: `Scene`, the aircraft around a flight with their identity (callsign, title, livery, type, source) and own Tracks on the player's clock; `At`, `Span`, `Find`; versioned JSON lines in one file (#1011).
+- Flight: `SceneRecorder`, on the player's Recorder: `Update` with the aircraft near the player records each at about 1 Hz from when it comes until it leaves, at most `Max`; `Snapshot`, `Stop` (#1012).
+
 ## [0.77.0] - 2026-10-10
 
 ### Added
