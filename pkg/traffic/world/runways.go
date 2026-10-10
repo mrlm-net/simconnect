@@ -334,6 +334,12 @@ func (t *towers) tick(now time.Time) {
 		if t.cc.core.playerBlocks(k.icao, k.rwy, layout(k.icao)) {
 			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind, c.LineUpBehindDeparting = nil, nil, nil, nil, nil, nil, nil
 		}
+		// A runway closed (works, a NOTAM; closures.go): no line-up, take-off
+		// or landing on it; ours on a short final go around (crossing it
+		// stays allowed).
+		if (nav.RunwayLimits{Closed: t.cc.core.closed(k.icao)}).ClosedEnd(k.rwy) {
+			closedClearances(&c, list)
+		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
 		t.crewRejects(ours)

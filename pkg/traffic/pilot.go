@@ -477,6 +477,10 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Direct to final"
 	case IntentHold:
 		s = fmt.Sprintf("Hold at %s as published, maintain %s", p[ParamFix], p[ParamLevel])
+	case IntentAirportClosed:
+		s = "Expect holding"
+	case IntentDivert:
+		s = "Cleared to " + p[ParamAlternate] + ", proceed direct"
 	case IntentLeaveHold:
 		s = "Leaving " + p[ParamFix]
 	case IntentHoldLevel:
