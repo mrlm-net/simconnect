@@ -86,3 +86,32 @@ A frame's sample is interpolated (`At`), so the replay is as smooth as the sim's
 `pilot.Config.WithLearned` takes them into the pilot flying's profile where the config leaves a value to its default.
 
 **A ghost on its own** (`GhostReplay`): `NewGhostReplay(client, injector, track, title, tail, reqID)` replays a Track as an AI aircraft without wiring the creation yourself. `Start` creates the object where its `Player` stands. `Handle(msg)` takes the object ID the simulator assigns, has the Injector take it over, and then flies it as the Player says, at most every frame. `Stop` removes it. Use the host's own Injector, with IDs clear of any other's.
+
+## Judging a flight
+
+`Assess(track, AssessOptions)` judges a recorded flight against common airline practice and returns an `Assessment`. It holds the flight's key figures (`Profile`), the findings in time order, each with what happened and what to do, and a `Score` to rank flights by: 100, less 5 for each minor finding and 15 for each major one.
+
+The profile has the fastest taxi speed, the rotation and lift-off speeds, the lift-off pitch and the fastest pitch rate, the highest altitude and steepest bank, the speed and sink rate at 1000 ft and 500 ft above the ground, the approach speed, and the touchdown (sink rate, speed, pitch, bank, bounces). With `AssessOptions.Runway` (the threshold and true heading) it also has where the aircraft touched down past the threshold and how far off the centreline.
+
+| Phase | Finding | Severity |
+|---|---|---|
+| taxi | faster than 30 kt; engines running without the beacon | minor |
+| take-off | no landing lights; rotation faster than 4°/s | minor |
+| take-off | lift-off pitch past the tail limit (`TailstrikePitch`, 11°) | major |
+| airborne | bank over 30° (major over 35°); over 260 kt below 10,000 ft | minor |
+| airborne | bank over 10° below 100 ft | major |
+| approach | gear still up at 1000 ft | minor |
+| approach | not stable at 500 ft and landed (gear up, not landing flaps, speed outside Vapp −5/+10, sinking over 1000 fpm) | major |
+| landing | over 600 fpm (hard), nose gear first, pitch past the tail limit, touched down short (under 150 m) | major |
+| landing | over 360 fpm (firm), banked over 3°, bounced, long (past 900 m), more than 5 m off the centreline | minor |
+| landing | under 60 fpm (floated: soft, but it eats runway) | info |
+
+Vapp is `AssessOptions.ApproachKts`, else the median speed between 1000 ft and 200 ft on the final. The phases come from the track alone: the take-off roll starts at 40 kt, and the landing is the last touchdown.
+
+```go
+a := flight.Assess(track, flight.AssessOptions{Runway: &flight.AssessRunway{Lat: thr.Lat, Lon: thr.Lon, Heading: 243}})
+fmt.Println(a.Score, a.Profile.TouchdownFpm)
+for _, f := range a.Findings {
+    fmt.Println(f.Phase, f.Severity, f.Text)
+}
+```

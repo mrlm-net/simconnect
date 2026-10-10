@@ -1095,7 +1095,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			station, _ := cc.stationOf(g.Layout.ICAO, traffic.PosDelivery)
 			dest := ""
 			if r.Other != "" {
-				dest = cc.airportName(r.Other)
+				dest = cc.clearanceLimit(r.Other)
 			}
 			it.climbSaid = initialClimbSaid(lim, procName)
 			deliver := func() {

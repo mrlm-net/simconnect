@@ -4,6 +4,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -89,5 +90,36 @@ func TestFlyGiven(t *testing.T) {
 	}
 	if math.Abs(p.route[2].AltMax-7315.2) > 0.1 || math.Abs(p.route[3].AltMax-10668) > 0.1 {
 		t.Errorf("levels %.0f, %.0f m", p.route[2].AltMax, p.route[3].AltMax)
+	}
+}
+
+// TestPathAt: on a timed path the aircraft is between the points either
+// side of now, with the points still ahead and the speed of that leg;
+// before the path at its first point, after it at its last; an untimed
+// path is at its first point.
+func TestPathAt(t *testing.T) {
+	t0 := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	east := func(nm float64) (float64, float64) { return calc.DisplaceByHeading(50, 14, 90, nm*1852) }
+	pt := func(nm, alt float64, at time.Time) traffic.PathPoint {
+		lat, lon := east(nm)
+		return traffic.PathPoint{Lat: lat, Lon: lon, AltFt: alt, At: at}
+	}
+	path := []traffic.PathPoint{pt(0, 30000, t0), pt(60, 20000, t0.Add(10*time.Minute)), pt(120, 10000, t0.Add(20*time.Minute))}
+	pos, alt, rest, kts := pathAt(path, t0.Add(5*time.Minute))
+	if d := calc.HaversineNM(50, 14, pos.Lat, pos.Lon); math.Abs(d-30) > 0.5 || math.Abs(alt-25000) > 1 {
+		t.Errorf("at 5 min %.1f NM, %.0f ft; want 30 NM, 25000 ft", d, alt)
+	}
+	if len(rest) != 2 || math.Abs(kts-360) > 2 {
+		t.Errorf("%d points ahead at %.0f kt; want 2 at 360", len(rest), kts)
+	}
+	if pos, _, rest, _ := pathAt(path, t0.Add(-time.Hour)); pos.Lat != path[0].Lat || len(rest) != 2 {
+		t.Error("before the path: not at its first point")
+	}
+	if _, _, rest, _ := pathAt(path, t0.Add(time.Hour)); len(rest) != 0 {
+		t.Error("after the path: points still ahead")
+	}
+	untimed := []traffic.PathPoint{pt(0, 0, time.Time{}), pt(60, 0, time.Time{})}
+	if pos, _, rest, kts := pathAt(untimed, t0); pos.Lat != untimed[0].Lat || len(rest) != 1 || kts != 0 {
+		t.Error("untimed: not at its first point")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/nav"
@@ -16,6 +17,9 @@ import (
 type core struct {
 	// log is the traffic log (console, file, /api/control/log).
 	log *trafficLog
+
+	// cityOf: an airport's city, set by the host (SetAirportCity).
+	cityOf atomic.Pointer[func(icao string) string]
 
 	// runwaysClosed: runways closed by the host (closures.go), made once.
 	runwaysClosed *closures

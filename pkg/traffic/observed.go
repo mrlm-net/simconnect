@@ -50,6 +50,8 @@ type PathPoint struct {
 	Lat   float64 `json:"lat"`
 	Lon   float64 `json:"lon"`
 	AltFt float64 `json:"altFt,omitempty"`
+	// At: when the aircraft was there (a recorded track); zero not known.
+	At time.Time `json:"at,omitzero"`
 }
 
 // Sighting is what a flight keeps of the aircraft it flies (Flight's
