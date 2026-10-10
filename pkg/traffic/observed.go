@@ -36,6 +36,17 @@ type Observed struct {
 	Destination string `json:"destination,omitempty"`
 	// DepartAt: a departure's push; zero now.
 	DepartAt time.Time `json:"departAt,omitempty"`
+	// Route is the way it goes on from here, in order (#845): a recorded
+	// or planned track. An arrival flies it and joins the STAR where it
+	// meets one; nil, it goes direct as before.
+	Route []PathPoint `json:"route,omitempty"`
+}
+
+// PathPoint is a point of a given route; AltFt 0 keeps the altitude flown.
+type PathPoint struct {
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	AltFt float64 `json:"altFt,omitempty"`
 }
 
 // Sighting is what a flight keeps of the aircraft it flies (Flight's
@@ -50,12 +61,13 @@ type Sighting struct {
 	VSFpm        float64        `json:"vsFpm"`
 	OnGround     bool           `json:"onGround"`
 	SeenAt       time.Time      `json:"seenAt"`
+	Route        []PathPoint    `json:"route,omitempty"` // Observed.Route
 }
 
 // Sighting is o's sighting.
 func (o Observed) Sighting() Sighting {
 	return Sighting{ID: o.ID, Registration: o.Registration, Position: airport.LatLon{Lat: o.Lat, Lon: o.Lon},
-		AltFt: o.AltFt, GroundKts: o.GroundKts, TrackDeg: o.TrackDeg, VSFpm: o.VSFpm, OnGround: o.OnGround, SeenAt: o.SeenAt}
+		AltFt: o.AltFt, GroundKts: o.GroundKts, TrackDeg: o.TrackDeg, VSFpm: o.VSFpm, OnGround: o.OnGround, SeenAt: o.SeenAt, Route: o.Route}
 }
 
 // ObservedProjectMax: a sighting is projected at most this far ahead;

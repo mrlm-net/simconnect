@@ -88,7 +88,7 @@ func TestPlanArrivalC22On24(t *testing.T) {
 	}
 	stand := p.Stop
 	// The landing chain ends at the vacate stop; the taxi-in chain ends at the stand.
-	v := p.Route.Points[p.VacateIndex]
+	v := p.VacateStop()
 	if d := calc.HaversineMeters(v.Lat, v.Lon, wps[len(wps)-1].Latitude, wps[len(wps)-1].Longitude); d > 0.5 {
 		t.Errorf("landing chain ends %.1f m from the vacate stop", d)
 	}
@@ -843,7 +843,7 @@ func TestArrivalChangeStand(t *testing.T) {
 	if n := len(p.TaxiWaypoints); n == 0 || calc.HaversineMeters(p.TaxiWaypoints[n-1].Latitude, p.TaxiWaypoints[n-1].Longitude, standAt.Lat, standAt.Lon) > 80 {
 		t.Error("taxi-in does not end at A4")
 	}
-	if p.VacateIndex >= len(p.Route.Nodes) || ctl.vacateAlong != ctl.track.cum[p.VacateIndex] {
+	if p.VacateIndex >= len(p.Route.Nodes) || ctl.vacateAlong != ctl.track.cum[p.VacateIndex]-p.VacateBackMeters {
 		t.Errorf("vacate stop %d not on the new route", p.VacateIndex)
 	}
 	if err := ctl.ChangeStand(-1); err == nil {
@@ -854,5 +854,40 @@ func TestArrivalChangeStand(t *testing.T) {
 	ctl.mu.Unlock()
 	if err := ctl.ChangeStand(a4); !errors.Is(err, ErrStandFixed) {
 		t.Errorf("after touchdown: %v", err)
+	}
+}
+
+// TestVacateShortOfJunction: after landing the aircraft stops clear of the
+// runway and short of the junction ahead, not on it, at LKPR and LOWW for
+// every runway end and a spread of stands.
+func TestVacateShortOfJunction(t *testing.T) {
+	for _, icao := range []string{"LKPR", "LOWW"} {
+		g := airportGraph(t, icao)
+		moved := 0
+		for _, r := range g.Layout.Runways {
+			for _, end := range []string{r.Primary.Name, r.Secondary.Name} {
+				for s := 0; s < len(g.Layout.Parking); s += max(1, len(g.Layout.Parking)/12) {
+					p, err := PlanArrival(g, end, s, ArrivalOptions{SpawnNm: 5})
+					if err != nil {
+						continue
+					}
+					stop := p.VacateStop()
+					if off := math.Abs(calc.CrossTrackMeters(p.Runway.Primary.Threshold.Lat, p.Runway.Primary.Threshold.Lon, p.Runway.Secondary.Threshold.Lat, p.Runway.Secondary.Threshold.Lon, stop.Lat, stop.Lon)); off < p.Runway.Width/2+RunwayClearMeters {
+						t.Errorf("%s %s stand %d: stop %.0f m from the centreline", icao, end, s, off)
+					}
+					if p.VacateBackMeters == 0 {
+						continue
+					}
+					moved++
+					j := p.Route.Points[p.VacateIndex]
+					if d := calc.HaversineMeters(stop.Lat, stop.Lon, j.Lat, j.Lon); d < VacateJunctionMeters-2 {
+						t.Errorf("%s %s stand %d: stop %.0f m from the junction", icao, end, s, d)
+					}
+				}
+			}
+		}
+		if moved == 0 {
+			t.Errorf("%s: no stop moved short of a junction", icao)
+		}
 	}
 }

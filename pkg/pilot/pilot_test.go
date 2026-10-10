@@ -259,3 +259,27 @@ func TestAutopilotGoAround(t *testing.T) {
 		t.Errorf("next approach not armed: %q", out.Say)
 	}
 }
+
+// TestPMCallsGoAround: the pilot monitoring's "Go around" is flown as ATC's
+// on the approach; called in the climb it is ignored and not kept.
+func TestPMCallsGoAround(t *testing.T) {
+	s := newSim(true)
+	e := New(Config{}, nil)
+	e.phase, e.taking = PhaseClimb, false
+	e.GoAround()
+	s.step(e)
+	if e.Phase() == PhaseGoAround {
+		t.Fatal("went around in the climb")
+	}
+	s.in.State.AP = systems.AutopilotState{Master: true, ATHR: true, ApproachArmed: true}
+	s.in.Air = flight.Sample{AltFt: 1300, GroundFt: 300, IAS: 140, VS: -700, GearHandle: true, Heading: 160}
+	s.in.ATC = Clearance{Approach: true, AltitudeFt: 5000}
+	e.phase = PhaseApproach
+	if s.step(e); e.Phase() != PhaseApproach {
+		t.Fatalf("phase %v: the call in the climb was kept", e.Phase())
+	}
+	e.GoAround()
+	if out := s.step(e); e.Phase() != PhaseGoAround || !slices.Contains(out.Say, "Go around, flaps") {
+		t.Fatalf("phase %v, said %q", e.Phase(), out.Say)
+	}
+}

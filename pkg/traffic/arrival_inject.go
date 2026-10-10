@@ -111,7 +111,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
 		apron.add(c.plan.Route.Nodes[i], d)
 		if i == c.plan.VacateIndex {
-			hold = d
+			hold = math.Max(0, d-c.plan.VacateBackMeters)
 		}
 		if i == len(c.plan.Exit.Path)-1 {
 			clear = d // the exit's first node off the runway surface
