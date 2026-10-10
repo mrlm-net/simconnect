@@ -282,6 +282,12 @@ func (c *Controls) Press(name string, now State) error {
 		return fmt.Errorf("%w: %s", ErrNoControl, name)
 	}
 	switch {
+	case a.Set != "":
+		want := 1.0 // a variable set: pressed, it takes its On value
+		if a.On != nil {
+			want = *a.On
+		}
+		return c.setVars(a, want)
 	case a.Counter != "":
 		return c.count(a.Counter, now.Values[name+"Counter"])
 	case a.Press != "":
