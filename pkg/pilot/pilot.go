@@ -38,10 +38,15 @@ const (
 	PhaseRoll                  // hand flying: the take-off roll and the climb to the engage height
 	PhaseLanding               // hand flying: from minimums to the rollout
 	PhaseGoAround              // the go-around: by hand, or on the autopilot, then the climb
+	// PhaseGround: on the ground and not rolling for take-off (below
+	// groundKts): at the stand, taxiing, after a rejected take-off or the
+	// landing roll. Reported only (Output.Phase, Phase): the engine waits
+	// as in PhaseTakeoff, or has handed back.
+	PhaseGround
 )
 
 func (p Phase) String() string {
-	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback", "roll", "landing", "go-around"}[p]
+	return [...]string{"takeoff", "climb", "cruise", "descent", "approach", "handback", "roll", "landing", "go-around", "ground"}[p]
 }
 
 // Plan is what the engine needs of the flight plan.
@@ -216,6 +221,8 @@ type Engine struct {
 	hand hand
 	// apGA: the go-around is flown on the autopilot (not HandFly).
 	apGA bool
+	// reported: the phase the last Update reported (report).
+	reported Phase
 	// called: the pilot monitoring called "Go around" (GoAround).
 	called bool
 }
@@ -241,7 +248,7 @@ func New(cfg Config, detents []string) *Engine {
 }
 
 // Phase is where the engine is.
-func (e *Engine) Phase() Phase { return e.phase }
+func (e *Engine) Phase() Phase { return e.reported }
 
 // flapsSaid is detent k as the crew says it.
 func (e *Engine) flapsSaid(k int) string {
@@ -256,6 +263,27 @@ func (e *Engine) flapsSaid(k int) string {
 
 // Update takes a tick and says what to do.
 func (e *Engine) Update(in Input) Output {
+	out := e.update(in)
+	out.Phase = e.report(in, out.Phase)
+	e.reported = out.Phase
+	return out
+}
+
+// groundKts: on the ground below this the flight is in PhaseGround (not
+// rolling for take-off, or the landing roll over).
+const groundKts = 30.0
+
+// report is the phase reported for internal phase p: PhaseGround on the
+// ground below groundKts while the engine waits for the take-off or has
+// handed back.
+func (e *Engine) report(in Input, p Phase) Phase {
+	if in.Air.OnGround && in.Air.IAS < groundKts && (p == PhaseTakeoff || p == PhaseHandback) {
+		return PhaseGround
+	}
+	return p
+}
+
+func (e *Engine) update(in Input) Output {
 	c := e.cfg.withDefaults(in.State)
 	out := Output{}
 	e.settle(in, c, &out)
@@ -667,6 +695,7 @@ func (e *Engine) phaseNow(in Input, c Config) Phase {
 func (e *Engine) HandBack() []string {
 	was := e.phase
 	e.phase, e.taking = PhaseHandback, false
+	e.reported = PhaseHandback
 	if was == PhaseHandback || was == PhaseTakeoff {
 		return nil // it was not flying
 	}
@@ -678,6 +707,7 @@ func (e *Engine) HandBack() []string {
 // ground, after the take-off as at the start), saying "I have control".
 func (e *Engine) TakeControl() {
 	e.phase, e.taking, e.apGA = PhaseTakeoff, true, false
+	e.reported = PhaseTakeoff
 	clear(e.pending)
 	clear(e.dones)
 	e.newApproach()

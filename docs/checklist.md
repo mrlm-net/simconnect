@@ -15,7 +15,7 @@ A `Set` holds an aircraft's lists. Each `List` has:
 
 - `Name`: its key, such as `before-start`, `before-takeoff`, `approach`, `landing` or `parking`.
 - `Title`: the name as shown.
-- When it is due: `Phases` (pkg/pilot's phase names: `climb`, `approach`, `landing`…) or `Stages` the caller names (`before-start`, `after-start`, `before-takeoff`, `after-landing`, `parking`). `Set.Due(phaseOrStage)` lists the ones due, so the lists work with or without the copilot flying.
+- When it is due: `Phases` (pkg/pilot's phase names: `ground`, `takeoff`, `climb`, `approach`, `landing`…) or `Stages` the caller names (`before-start`, `after-start`, `before-takeoff`, `after-landing`, `parking`). `Set.Due(phaseOrStage)` lists the ones due, so the lists work with or without the copilot flying.
 - `CalledBy` and `ReadBy`: the PF calls for a list and the PM reads it, unless the list says otherwise.
 
 Each `Item` has:

@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.81.0] - 2026-10-10
+
+### Added
+
+- Pilot: `PhaseGround` ("ground"), reported on the ground below 30 kt while the engine waits for the take-off or has handed back (the stand, taxi, a rejected take-off, the end of the landing roll); "takeoff" from the roll past 30 kt. Checklists due by phase no longer come due at the gate.
+
 ## [0.80.0] - 2026-10-10
 
 ### Added
