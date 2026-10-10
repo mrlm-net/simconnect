@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.68.1] - 2026-10-10
+
+### Fixed
+
+- Standard pushbacks are kept per airport layout, not per graph: two graphs of one layout (the app's and the World's) share them, and planning on one no longer drops what the other planned. Before, the saved file held only the last stands planned, and the airport was planned again on every start (live: LOWW, about 3 CPU minutes per start).
+- The World saves its standard pushes every 30 s while planning, through a temporary file, so a run stopped early keeps them; a file it cannot use is logged with why. The planner works 15 % of the time on one core (was 30 %).
+
 ## [0.68.0] - 2026-10-10
 
 ### Added
