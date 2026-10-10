@@ -437,3 +437,44 @@ func TestRunwayControllerLineUpBehindDeparting(t *testing.T) {
 		t.Fatalf("arrival on a 2 NM final: %+v", c.LineUpBehindDeparting)
 	}
 }
+
+// TestRunwayControllerDoubleGap: two departures go in one double gap (the
+// next arrival 10.5 NM out, DoubleGapExtraNM): the first at once, the
+// second when the interval behind it allows, both before the arrival is
+// too close — on different routes (1 min) and on one route (2 min).
+func TestRunwayControllerDoubleGap(t *testing.T) {
+	for _, same := range []bool{false, true} {
+		r := NewRunwayController(RunwayControllerOptions{})
+		now := time.Now()
+		a1, b2 := dep("A1", "A320", RunwayHoldingShort), dep("B2", "A320", RunwayHoldingShort)
+		if !same {
+			b2.Route = "LOMK1A"
+		}
+		arrNM := DefaultDepartureGapNM + DoubleGapExtraNM
+		var a1Off, b2Off time.Duration
+		a1Gone := false
+		for s := 0; s <= 300 && b2Off == 0; s += 5 {
+			at := now.Add(time.Duration(s) * time.Second)
+			c := r.Decide(at, []RunwayUser{a1, b2, final("DLH9", arrNM)})
+			el := time.Duration(s) * time.Second
+			if slices.Contains(c.Takeoff, "A1") && !a1Gone {
+				a1Off, a1.Phase, a1Gone = el, RunwayRolling, true
+			}
+			if a1Gone && el-a1Off >= 35*time.Second {
+				a1.Phase = RunwayAirborne
+			}
+			if slices.Contains(c.LineUp, "B2") && b2.Phase == RunwayHoldingShort {
+				b2.Phase = RunwayLinedUp
+			}
+			if slices.Contains(c.Takeoff, "B2") {
+				b2Off = el
+			}
+			arrNM -= 140.0 / 3600 * 5
+		}
+		if a1Off != 0 || b2Off == 0 {
+			t.Errorf("same route %v: A1 off at %v, B2 off at %v (want A1 at once, B2 in the gap); arrival at %.1f NM", same, a1Off, b2Off, arrNM)
+			continue
+		}
+		t.Logf("same route %v: B2 off after %v, the arrival %.1f NM out", same, b2Off, arrNM)
+	}
+}

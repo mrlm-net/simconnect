@@ -568,3 +568,23 @@ func TestSequencerNewcomerBehindAtMerge(t *testing.T) {
 		}
 	}
 }
+
+// TestDoubleDepartureGap: with a queue of four departures, the first gap
+// fits two (10.5 NM), the next — two left — one (6 NM).
+func TestDoubleDepartureGap(t *testing.T) {
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	s := NewApproachSequencer("24", SequencerOptions{})
+	list := []ApproachAircraft{arr("CSA1", "A320", 12), arr("DLH2", "A320", 13), arr("AFR3", "A320", 14)}
+	s.SetDepartureSlots(4)
+	seq := s.Update(now, list)
+	if seq[1].SpacingWhy != "departure gap" || math.Abs(seq[1].SpacingNM-(DefaultDepartureGapNM+DoubleGapExtraNM)) > 0.2 {
+		t.Errorf("first gap %+v, want a double %.1f NM", seq[1], DefaultDepartureGapNM+DoubleGapExtraNM)
+	}
+	if seq[2].SpacingWhy != "departure gap" || seq[2].SpacingNM < DefaultDepartureGapNM || seq[2].SpacingNM > 7 { // at least the tower's need
+		t.Errorf("second gap %+v, want a single %.1f NM", seq[2], DefaultDepartureGapNM)
+	}
+	s.SetDepartureSlots(1)
+	if seq := s.Update(now, list); seq[1].SpacingNM < DefaultDepartureGapNM || seq[1].SpacingNM > 7 {
+		t.Errorf("one waiting: %+v, want a single gap", seq[1])
+	}
+}
