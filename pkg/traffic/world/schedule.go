@@ -25,6 +25,10 @@ import (
 //	GET  /api/boards?icao=LKPR     — departures and arrivals of an airport
 
 type scheduler struct {
+	// held: the traffic held for a replay (hold.go); heldEnabled the
+	// schedule as it was, given back.
+	held, heldEnabled bool
+
 	st  *state
 	cc  *controlCenter
 	cfg traffic.ScheduleConfig
