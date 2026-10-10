@@ -19,6 +19,7 @@ The player flies the take-off and the landing. The engine flies everything betwe
 4. **Descent** from the 3-to-1 rule (three miles a thousand feet, plus ten). It says "Top of descent" and asks the player to ask ATC for descent when no lower level is cleared yet. It flies 280 kt, then 250 kt below 11,500 ft.
 5. **Approach** below 5000 ft, within 20 NM, or once cleared for the approach. Each flap setting is flown 10 kt under the next detent's limit, so the next one comes in turn. The gear goes down by 2000 ft or on the glideslope, the landing flaps by 1500 ft with the gear down. The approach is armed once cleared. The landing flaps are flown at the approach speed: 1.3 × VS0 + 5 from the aircraft's design speeds.
 6. **Minimums** (the decision height or altitude set, else 200 ft): it says "Autopilot off" and "Your controls" and gives the aircraft back.
+7. **Go-around** (`Clearance.GoAround` on the approach): on the autopilot it says "Go around, flaps" (one flap step asked), sets TOGA (`systems.TOGA`, and the throttles to 100), drops the approach mode, holds the runway heading (or ATC's), and climbs by level change to ATC's altitude (else 3000 ft above the field) at the approach speed + 10. It asks "Positive climb, gear up", and above the acceleration height, with the autothrust on, goes on in the climb; the next approach is armed and descent asked for anew.
 
 ```go
 e := pilot.New(pilot.Config{CopilotActs: true}, profile.FlapDetents)

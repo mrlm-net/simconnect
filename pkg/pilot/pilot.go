@@ -37,7 +37,7 @@ const (
 	PhaseHandback              // at minimums the controls went back to the player
 	PhaseRoll                  // hand flying: the take-off roll and the climb to the engage height
 	PhaseLanding               // hand flying: from minimums to the rollout
-	PhaseGoAround              // hand flying: the go-around, to the autopilot
+	PhaseGoAround              // the go-around: by hand, or on the autopilot, then the climb
 )
 
 func (p Phase) String() string {
@@ -59,7 +59,7 @@ type Clearance struct {
 	Approach   bool    // cleared for the approach
 	Takeoff    bool    // cleared for take-off (hand flying: the roll starts)
 	Land       bool    // cleared to land (hand flying: landed, not gone around)
-	GoAround   bool    // told to go around (hand flying: flown, then the autopilot)
+	GoAround   bool    // told to go around: flown by hand (HandFly) or on the autopilot
 }
 
 // Input is one tick's view of the flight.
@@ -214,6 +214,8 @@ type Engine struct {
 	taking bool
 	// hand: the hand flying's state (hand.go).
 	hand hand
+	// apGA: the go-around is flown on the autopilot (not HandFly).
+	apGA bool
 }
 
 type sentAction struct {
@@ -270,8 +272,12 @@ func (e *Engine) Update(in Input) Output {
 		out.Phase = e.phase
 		return out
 	case PhaseGoAround:
-		if e.goAround(in, c, &out) {
-			e.phase = PhaseClimb
+		fly := e.goAround
+		if e.apGA {
+			fly = e.apGoAround
+		}
+		if fly(in, c, &out) {
+			e.phase, e.apGA = PhaseClimb, false
 		}
 		out.Phase = e.phase
 		return out
@@ -320,6 +326,14 @@ func (e *Engine) Update(in Input) Output {
 		e.phase, e.hand = PhaseGoAround, hand{}
 		e.newApproach()
 		e.goAround(in, c, &out)
+		out.Phase = e.phase
+		return out
+	}
+	// On the autopilot: the go-around flown on it.
+	if e.phase == PhaseApproach && !c.HandFly && in.ATC.GoAround && !in.Air.OnGround {
+		e.phase, e.hand, e.apGA = PhaseGoAround, hand{}, true
+		e.newApproach()
+		e.apGoAround(in, c, &out)
 		out.Phase = e.phase
 		return out
 	}
@@ -651,7 +665,7 @@ func (e *Engine) HandBack() []string {
 // from where the flight is (in the air above the engage height; on the
 // ground, after the take-off as at the start), saying "I have control".
 func (e *Engine) TakeControl() {
-	e.phase, e.taking = PhaseTakeoff, true
+	e.phase, e.taking, e.apGA = PhaseTakeoff, true, false
 	clear(e.pending)
 	clear(e.dones)
 	e.newApproach()
