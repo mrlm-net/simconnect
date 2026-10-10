@@ -167,3 +167,33 @@ func TestFlownRouteSID(t *testing.T) {
 		t.Errorf("smoothed %d points of %d", len(s), len(r.Points))
 	}
 }
+
+// TestFlownRouteWrongRunway: a SID filed for another runway (the runway
+// changed) is taken as not given and one of its family for the runway
+// flown; an approach for another runway gives way to the runway's best.
+func TestFlownRouteWrongRunway(t *testing.T) {
+	lkpr := loadLKPR(t)
+	p := loadLKPRProcedures(t)
+	var other, want string
+	for _, d := range p.SIDsFor("12") {
+		for _, e := range p.SIDsFor("30") {
+			if family(d.Name) == family(e.Name) && d.Name != e.Name {
+				other, want = d.Name, family(e.Name)
+			}
+		}
+	}
+	if other == "" {
+		t.Skip("no SID family serving both 12 and 30")
+	}
+	r, err := FlownRouteFor(FlownRequest{Departure: lkpr, Arrival: lkpr, DepartureRunway: "30", ArrivalRunway: "24",
+		DepartureProcedures: p, ArrivalProcedures: p, SID: other, Approach: "ILS 06"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.SID == other || family(r.SID) != want {
+		t.Errorf("SID %q for 30, want one of %s* (not %s)", r.SID, want, other)
+	}
+	if r.Approach != "ILS 24" {
+		t.Errorf("approach %q for 24", r.Approach)
+	}
+}
