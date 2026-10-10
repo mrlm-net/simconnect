@@ -226,13 +226,14 @@ func crewIntersectionShare(model string) float64 {
 }
 
 // crewEntry is the intersection a departure's crew asks for with its taxi
-// request: the entry nearest it, "" when it does not ask (most), departs
-// from an intersection already or the runway has none. it.mu is held.
+// request: the first its class may take (firstEntry, #1030), "" when it
+// does not ask (most), departs from an intersection already or the runway
+// has none. it.mu is held.
 func (it *controlled) crewEntry() string {
 	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare(it.view.Model) {
 		return ""
 	}
-	return nearestEntry(it.graph, it.view.Runway, it.view.Position)
+	return firstEntry(it.graph, it.ICAO, it.view.Runway, it.view.Model, it.view.Position)
 }
 
 // grantEntry answers the crew's intersection request before the taxi
@@ -255,7 +256,7 @@ func (it *controlled) grantEntry() {
 	// cleared at B, its route still to A on the map).
 	it.mu.Lock()
 	it.setRoute()
-	it.view.Entry = e
+	it.view.Entry, it.entryRemaining = e, entryLeft(it.graph, it.view.Runway, e)
 	it.mu.Unlock()
 	it.cc.changed("control")
 	it.cc.log.printf("%-6s crew: intersection %s given", it.Tail, e)

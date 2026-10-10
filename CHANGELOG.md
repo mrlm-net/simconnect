@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.84.0] - 2026-10-10
+
+### Added
+
+- Intersection departures by the runway left, class and queue (#1030). Ground offers an intersection once 3 (was 2) of our departures queue for the full length; which one follows the aircraft's class (`traffic.IntersectionClass`: light, turboprop, regional, jet, heavy) and its rule in the new `traffic.intersectionClasses` table (runway left needed: jet 2,500 m, regional and turboprop 1,800 m, light 800 m; widebodies the full length only). The first place along the runway after the full length comes first (at least 300 m in, the taxiways either side of one place together), deeper only while the runway left is enough and only where that place has no queue of its own; crews asking for one get the first their class may take. An airport may list its own entries per runway and class (`traffic.intersectionAirports`, none shipped). Some crews decline: "Unable intersection, request full length" and ground re-clears them (`traffic.DeclineChance`, by class, airline and the day's weight, drawn from the callsign). Where the airport table sets `sayRemaining`, the taxi clearance says "2800 metres available". Live at EDDM, AFR1910 (A320) got 26L at B10 with 2,250 m left and KLM1597 (E190) B10 with 2 queuing; a jet now gets B12 (2,808 m), and only after a queue of 3. `ParamRemaining`, `ParamNoReadback`, `IntentUnableIntersection`, `UnableIntersection`.
+- World: `TitleFor(icaoType, callsign)`, the installed title the World would fly a type as (in the callsign's airline livery where installed), and `FleetFallback()`, a `flight.FleetOptions.Fallback` from it: recorded aircraft whose title is not installed here are created as the local model of their type (#1027).
+
 ## [0.83.3] - 2026-10-10
 
 ### Fixed

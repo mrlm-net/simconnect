@@ -12,24 +12,25 @@ import (
 
 // Pilot intents.
 const (
-	IntentReadback          Intent = "readback"            // a clearance read back
-	IntentRequestWeather    Intent = "request_weather"     // the crew asks for the wind and QNH
-	IntentEstablished       Intent = "established"         // the crew reports established on the localizer
-	IntentRequestDirect     Intent = "request_direct"      // the crew asks to fly direct to a fix
-	IntentRequestStandDelay Intent = "request_stand_delay" // the crew asks to stay on the stand a while (#621)
-	IntentRequestClearance  Intent = "request_clearance"   // the departure clearance, first call to delivery
-	IntentRequestStartUp    Intent = "request_start_up"    // ready for start-up, first call to ground
-	IntentRequestPushback   Intent = "request_pushback"    // ready for push
-	IntentRequestTaxi       Intent = "request_taxi"        // ready to taxi
-	IntentRequestDescent    Intent = "request_descent"     // ready to descend, to the centre or approach (#686)
-	IntentReadyDeparture    Intent = "ready_departure"     // holding short of the runway, ready for departure
-	IntentHoldingShort      Intent = "holding_short"       // stopped short of a runway to cross
-	IntentCheckIn           Intent = "check_in"            // first call on a frequency
-	IntentTCASRA            Intent = "tcas_ra"             // a crew flying a TCAS RA (#450)
-	IntentClearOfConflict   Intent = "clear_of_conflict"   // the RA over, back to the clearance
-	IntentVacated           Intent = "vacated"             // runway vacated
-	IntentCorrection        Intent = "correction"          // controller: negative, the clearance again
-	IntentSayAgain          Intent = "say_again"           // controller: say again
+	IntentReadback           Intent = "readback"            // a clearance read back
+	IntentUnableIntersection Intent = "unable_intersection" // the crew declines an intersection (#1030)
+	IntentRequestWeather     Intent = "request_weather"     // the crew asks for the wind and QNH
+	IntentEstablished        Intent = "established"         // the crew reports established on the localizer
+	IntentRequestDirect      Intent = "request_direct"      // the crew asks to fly direct to a fix
+	IntentRequestStandDelay  Intent = "request_stand_delay" // the crew asks to stay on the stand a while (#621)
+	IntentRequestClearance   Intent = "request_clearance"   // the departure clearance, first call to delivery
+	IntentRequestStartUp     Intent = "request_start_up"    // ready for start-up, first call to ground
+	IntentRequestPushback    Intent = "request_pushback"    // ready for push
+	IntentRequestTaxi        Intent = "request_taxi"        // ready to taxi
+	IntentRequestDescent     Intent = "request_descent"     // ready to descend, to the centre or approach (#686)
+	IntentReadyDeparture     Intent = "ready_departure"     // holding short of the runway, ready for departure
+	IntentHoldingShort       Intent = "holding_short"       // stopped short of a runway to cross
+	IntentCheckIn            Intent = "check_in"            // first call on a frequency
+	IntentTCASRA             Intent = "tcas_ra"             // a crew flying a TCAS RA (#450)
+	IntentClearOfConflict    Intent = "clear_of_conflict"   // the RA over, back to the clearance
+	IntentVacated            Intent = "vacated"             // runway vacated
+	IntentCorrection         Intent = "correction"          // controller: negative, the clearance again
+	IntentSayAgain           Intent = "say_again"           // controller: say again
 )
 
 // Pilot parameters.
@@ -146,6 +147,13 @@ func RequestDirect(pos Position, cs, fix string) Transmission {
 // "CSA123, request descent" (#686).
 func RequestDescent(pos Position, cs string) Transmission {
 	return pilotTx(pos, cs, IntentRequestDescent, nil, cs+", request descent")
+}
+
+// UnableIntersection is a crew declining the intersection it was cleared
+// to, for the full length (#1030): "Unable intersection, request full
+// length, CSA1" (the project's wording).
+func UnableIntersection(cs string) Transmission {
+	return pilotTx(PosGround, cs, IntentUnableIntersection, nil, "Unable intersection, request full length, "+cs)
 }
 
 // RequestTaxiIntersection is a departure ready to taxi asking to take the
@@ -295,6 +303,9 @@ func withInfo(info string) string {
 func Readback(t Transmission) (Transmission, bool) {
 	p := t.Params
 	cs := t.Callsign
+	if p[ParamNoReadback] != "" {
+		return Transmission{}, false
+	}
 	// An instruction joined to the call (Joined): the call's own readback,
 	// if it has one, then the joined one's ("identified" alone has none:
 	// live in MyCrew, identified + cleared ILS approach read back nothing).
