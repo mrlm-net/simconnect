@@ -180,7 +180,7 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 			for x := -laneEndPoseMeters; x <= l; x += pushPoseStepMeters {
 				nose := offsetHeading(pa, h, x)
 				d := localDist(nose, gear)
-				if d > pushPoseReachMeters || x < 0 && acrossLane(near, nose, h) {
+				if d > pushPoseReachMeters || x < 0 && acrossLane(near, nose, h, e.Name) {
 					continue
 				}
 				if lane == "" {
@@ -199,8 +199,8 @@ func (c *TaxiController) pushPoses(gear airport.LatLon) []pushPose {
 	return poses
 }
 
-// Before the start of its line a pose's nose must not lie on another lane
-// at an angle (acrossLaneMeters from its centreline, more than
+// Before the start of its line a pose's nose must not lie on another named
+// taxiway at an angle (acrossLaneMeters from its centreline, more than
 // acrossLaneDeg off it): live at EDDM 214, a push ended on W2 facing 40°,
 // down the line of the diagonal D2sss stand-area path ahead, instead of
 // along W2.
@@ -209,26 +209,33 @@ const (
 	acrossLaneDeg    = 20.0
 )
 
-// nearLanes are the taxi edges with an end within meters of p.
-func nearLanes(g *airport.Graph, p airport.LatLon, meters float64) []paveSeg {
-	var out []paveSeg
+// namedLane is a named taxiway edge.
+type namedLane struct {
+	a, b airport.LatLon
+	name string
+}
+
+// nearLanes are the named taxi edges with an end within meters of p.
+func nearLanes(g *airport.Graph, p airport.LatLon, meters float64) []namedLane {
+	var out []namedLane
 	for a, es := range g.Adj {
 		pa := g.Nodes[a].Position
 		for _, e := range es {
 			pb := g.Nodes[e.To].Position
-			if !pushEdge(g, e) || localDist(pa, p) > meters && localDist(pb, p) > meters {
+			if !pushEdge(g, e) || e.Name == "" || localDist(pa, p) > meters && localDist(pb, p) > meters {
 				continue
 			}
-			out = append(out, paveSeg{a: pa, b: pb})
+			out = append(out, namedLane{a: pa, b: pb, name: e.Name})
 		}
 	}
 	return out
 }
 
-// acrossLane reports that nose, facing h, lies on one of lanes at an angle.
-func acrossLane(lanes []paveSeg, nose airport.LatLon, h float64) bool {
+// acrossLane reports that nose, facing h on lane own, lies at an angle on
+// another taxiway of lanes.
+func acrossLane(lanes []namedLane, nose airport.LatLon, h float64, own string) bool {
 	for _, s := range lanes {
-		if pointSegDist(nose, s.a, s.b) > acrossLaneMeters {
+		if s.name == own || pointSegDist(nose, s.a, s.b) > acrossLaneMeters {
 			continue
 		}
 		d := math.Abs(headingDiff(h, localBearing(s.a, s.b)))
