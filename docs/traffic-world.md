@@ -198,11 +198,32 @@ Each airport has a fleet of service vehicles. The defaults are sized by its stan
 
 Off by default: `World.SetJetways(true)` or `POST /api/jetways {"on": true}`; `GET /api/jetways` shows each gate's state. It needs the helper package in the Community folder (`go run ./examples/jetway-helpers`, then a simulator restart).
 
+- **Why a workaround:** our traffic is NonATC, which we drive frame by frame. MSFS 2024 has no way to dock a jetway to such an aircraft: no SimConnect call, event or variable does it, and `TOGGLE_JETWAY` works only for the user aircraft. Probed live, sent to our aircraft and to the jetway, with and without control released. Only aircraft MSFS ATC parks (`AICreateParkedATCAircraft`, `AICreateEnrouteATCAircraft`) get jetways. Developers have asked for jetway control of any aircraft:
+  - [Jetway control for non-default ATC controlled AI aircraft](https://devsupport.flightsimulator.com/t/jetway-control-for-non-default-atc-controlled-ai-aircraft/17529), 2026-03;
+  - earlier, in [Request for additions to Simconnect Facilities API](https://devsupport.flightsimulator.com/t/request-for-additions-to-simconnect-facilities-api/14870).
+
+  Vote there. With such a call, the helpers and their side effects below go away.
 - **How:** MSFS 2024 docks a jetway only to an aircraft in its ATC parking table. Invisible ParkedATC placeholders take the airport's jetway gates; to dock one, its placeholder goes and, 3 s later, an invisible helper of the aircraft's type takes the freed gate under our aircraft, and the jetway docks to it.
 - **Which gates:** the simulator puts no ParkedATC next to an occupied gate, so only about every other jetway gate can be given to a helper (at LKPR 19 of 27; `jetway.Helpers.Dockable`). With jetways on, the stand allocator gives airliners those gates first, before their airline's own gates without one (`StandRequirements.Prefer`); an aircraft on another gate gets no jetway.
 - **One at a time:** a helper is created only once the gates are filled, no other helper is on its way and no jetway is going home; a helper the simulator puts elsewhere (another gate, a ramp) is removed and the dock tried again a minute later.
 - **Boarding:** a departure asks for its push once its jetway has been on 3 minutes (`JetwayBoarding`); ground answers once the jetway is home (at least 25 s after it left), and it is not docked again.
 - **Not:** types with their own airstairs (`traffic.NoJetway`).
+
+### What other programs see
+
+The placeholders and helpers are real simulator aircraft (ParkedATC), invisible only because their model has no parts. With jetways on, at LKPR about 19 of them stand on the jetway gates. Anything that lists or uses the simulator's aircraft sees them:
+
+- **SimConnect clients:** traffic maps, radar and TCAS displays, and other add-ons that enumerate aircraft (Little Navmap, traffic tools, other SimConnect apps) get them like any other aircraft:
+  - title "MyCrew Jetway Helper <TYPE>";
+  - ATC ID "JP…" (placeholder) or "JW…" (helper);
+  - parked on a gate, the helpers right under one of our aircraft.
+
+  A placeholder carries a flight plan to the nearest other airport (the plan that sent its jetway home), so a tool that reads plans may list it as a departure there. It stays parked; none was seen to leave.
+- **Our own World and map:** they leave them out (`jetway.IsHelper` on the title). A host or SDK consumer listing traffic should do the same.
+- **MSFS ATC and its AI traffic:** the gates they hold count as taken; that is how the jetway is kept for our traffic. So MSFS's own AI traffic, and parking assigned by MSFS ATC to the user, go to other stands.
+- **Other traffic add-ons:** those that park on free gates the same way find these gates taken. That is expected, not measured: FSLTL's injector, BeyondATC's traffic.
+- **Ground services and multiplayer:** not measured. GSX and multiplayer sessions may see a parked aircraft on those gates as well.
+- **Turning jetways off:** `SetJetways(false)` removes every placeholder and helper, and so does disconnecting.
 
 ## SimConnect IDs
 

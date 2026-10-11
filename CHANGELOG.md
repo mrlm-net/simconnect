@@ -57,6 +57,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.89.1] - 2026-10-11
+
+### Documentation
+
+- Jetways:
+  - Why a workaround: MSFS 2024 has no way to dock a jetway to a NonATC aircraft. It links the developers' request, [Jetway control for non-default ATC controlled AI aircraft](https://devsupport.flightsimulator.com/t/jetway-control-for-non-default-atc-controlled-ai-aircraft/17529).
+  - What other programs see:
+    - the invisible placeholders and helpers are real ParkedATC aircraft, which traffic maps, radar and other SimConnect add-ons list (title "MyCrew Jetway Helper", ATC ID JP…/JW…);
+    - a placeholder carries a flight plan to the nearest airport;
+    - the gates they hold count as taken for MSFS ATC and its AI traffic;
+    - hosts should leave them out with `jetway.IsHelper`.
+
+  Guide: [Jetways](docs/traffic-world.md#jetways-572).
+
 ## [0.89.0] - 2026-10-11
 
 ### Added
