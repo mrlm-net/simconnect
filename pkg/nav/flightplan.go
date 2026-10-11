@@ -43,6 +43,9 @@ const (
 	FinalReserve = 30 * time.Minute
 	// climbExtraRatio is the fuel a climb burns over the cruise flow.
 	climbExtraRatio = 0.5
+	// ShortHopNM: airports closer than this may be flown without a SID and
+	// a STAR (Plan), from the runway onto the approach.
+	ShortHopNM = 40.0
 	// minCruiseShare is the least share of the distance flown level: the
 	// cruise level is lowered on short flights until climb and descent fit.
 	minCruiseShare = 0.15
@@ -324,6 +327,21 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 	if p := req.Arrival.Procedures; p != nil {
 		if o := arrivalOptions(p, arrRwy, req.Approach, req.ApproachTransition, fp.note); len(o) > 0 {
 			arrs = o
+		}
+	}
+	// A short hop may leave out the SID and the STAR (vectors from the
+	// runway onto the approach): LKPR to LKKB, 10 NM, was flown 120 NM
+	// out on a SID and back on a STAR (MyCrew). The shortest still wins.
+	if dist(depPos, arrPos) < ShortHopNM {
+		if req.SID == "" && len(sids[0].pts) > 0 {
+			sids = append(sids, sidOption{})
+		}
+		if req.STAR == "" {
+			for _, a := range arrs {
+				if a.star != "" && len(a.appPts) > 0 {
+					arrs = append(arrs, arrivalOption{approach: a.approach, appTransition: a.appTransition, appPts: a.appPts, lengthNM: pathNM(a.appPts[0].Position, a.appPts)})
+				}
+			}
 		}
 	}
 	// The player's SID and STAR (with transitions), when they fit.

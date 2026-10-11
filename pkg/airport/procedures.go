@@ -341,7 +341,12 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 			if have && cur == l.Position {
 				continue
 			}
-			if have {
+			if ip, ok := courseIntercept(cur, hdg, l.Position, to, turnRadius); have && haveHdg && l.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_CF && ok {
+				// The heading crosses the course before its fix: on to there
+				// and onto it, as flown (LKKB ILS 24 via SULOV: from D140J
+				// onto 237° short of CF24; a Dubins to the fix looped).
+				pts = append(pts, ip, l.Position)
+			} else if have {
 				turnTo(l, l.Position, to, force)
 			} else {
 				pts = append(pts, l.Position)
@@ -360,6 +365,34 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 		fixed = false
 	}
 	return pts
+}
+
+// courseIntercept is where a path from p heading hdg crosses the course c
+// into fix, ahead of p and before the fix, the turn onto it 135° at most;
+// ok false otherwise. Without room for a turn of radius r there, the turn
+// is drawn tighter (SmoothPath), never as a loop back round.
+func courseIntercept(p LatLon, hdg float64, fix LatLon, c, r float64) (LatLon, bool) {
+	turn := math.Abs(math.Mod(c-hdg+540, 360) - 180)
+	if turn < 2 || turn > 135 {
+		return LatLon{}, false
+	}
+	// Flat, meters east/north of fix.
+	cosLat := math.Cos(fix.Lat * math.Pi / 180)
+	px, py := (p.Lon-fix.Lon)*cosLat*111320, (p.Lat-fix.Lat)*111320
+	hx, hy := math.Sin(hdg*math.Pi/180), math.Cos(hdg*math.Pi/180)
+	cx, cy := math.Sin(c*math.Pi/180), math.Cos(c*math.Pi/180)
+	// p + t·h = fix + s·c (s < 0: before the fix).
+	den := hx*cy - hy*cx
+	if math.Abs(den) < 1e-6 {
+		return LatLon{}, false
+	}
+	t := (-px*cy + py*cx) / den
+	s := (hx*py - hy*px) / den
+	_ = r
+	if t <= 0 || s >= 0 {
+		return LatLon{}, false
+	}
+	return LatLon{Lat: fix.Lat + s*cy/111320, Lon: fix.Lon + s*cx/(111320*cosLat)}, true
 }
 
 // displace moves p d meters along a true bearing.
@@ -399,11 +432,27 @@ const (
 	TurnRadiusApproach = 1800.0
 )
 
+// sampledArcDeg: a corner of less is a step of an arc already drawn
+// (sampled every 5°), not one to round.
+const sampledArcDeg = 6.0
+
 // SmoothPath rounds the corners of a procedure path into turns of radius
 // meters, as charts draw them (fly-by); a corner's arc is limited by half
 // of each adjoining segment. keep marks corners not to round (fly-over
 // fixes: the turn starts after the fix). Arcs are sampled every 5°.
 func SmoothPath(pts []LatLon, radius float64, keep func(LatLon) bool) []LatLon {
+	// Points closer than a meter are one (a backward step between them
+	// drew a loop), and the corners of arcs already sampled (every 5°: RF
+	// legs, turns, Dubins joins) are left as they are: rounded again they
+	// zig-zagged (LKKB ILS 24 via SULOV, EDDM AKIN1N).
+	dedup := pts[:0:0]
+	for _, p := range pts {
+		if n := len(dedup); n > 0 && calc.HaversineMeters(dedup[n-1].Lat, dedup[n-1].Lon, p.Lat, p.Lon) < 1 {
+			continue
+		}
+		dedup = append(dedup, p)
+	}
+	pts = dedup
 	if len(pts) < 3 {
 		return pts
 	}
@@ -417,7 +466,7 @@ func SmoothPath(pts []LatLon, radius float64, keep func(LatLon) bool) []LatLon {
 		in := calc.BearingDegrees(a.Lat, a.Lon, v.Lat, v.Lon)
 		outB := calc.BearingDegrees(v.Lat, v.Lon, b.Lat, b.Lon)
 		turn := math.Mod(outB-in+540, 360) - 180 // + right
-		if math.Abs(turn) < 2 {
+		if math.Abs(turn) < sampledArcDeg {
 			out = append(out, v)
 			continue
 		}

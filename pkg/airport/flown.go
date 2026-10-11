@@ -110,9 +110,13 @@ func FlownRouteFor(req FlownRequest) (FlownRoute, error) {
 		b.add(FlownPoint{Ident: "RW" + dep.Name, Position: start, Phase: "sid"})
 		lat, lon := calc.DisplaceByHeading(start.Lat, start.Lon, dep.Heading, FlownClimbOutNM*1852)
 		b.add(FlownPoint{Position: LatLon{Lat: lat, Lon: lon}, Phase: "sid"})
+		// Round toward the route, or the arrival on a hop without one (LKPR
+		// to LKKB: a hairpin back over the runway was drawn).
+		toward := LatLon{Lat: req.Arrival.Latitude, Lon: req.Arrival.Longitude}
 		if len(route) > 0 {
-			b.turnToward(dep.Heading, route[0].Position, TurnRadiusEnroute, "sid")
+			toward = route[0].Position
 		}
+		b.turnToward(dep.Heading, toward, TurnRadiusEnroute, "sid")
 	}
 
 	// Arrival: the STAR (entered at a route fix), cutting the route there.
@@ -458,7 +462,11 @@ func (b *flownBuilder) heading() (float64, bool) {
 // (within flownSnapMeters, after the last one named) is put on the fix,
 // else the fix is put in there.
 func (b *flownBuilder) legs(legs []Leg, start LatLon, startAltM, magVar float64, phase string) {
-	path := ProcedurePath(legs, start, startAltM, magVar, TurnRadiusEnroute)
+	radius := TurnRadiusEnroute
+	if phase == "approach" || phase == "missed" {
+		radius = TurnRadiusApproach
+	}
+	path := ProcedurePath(legs, start, startAltM, magVar, radius)
 	pts := make([]FlownPoint, len(path))
 	for i, p := range path {
 		pts[i] = FlownPoint{Position: p, Phase: phase}
