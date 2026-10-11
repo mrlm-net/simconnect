@@ -57,6 +57,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.90.1] - 2026-10-11
+
+### Fixed
+
+- Head-on on one taxiway, live at LKPR. TVS770, told to give way to TVS1309, turned into J and met it nose to nose; then the two passed through each other.
+  - A pushed aircraft waiting for its taxi clearance now counts as oncoming along its planned way.
+  - Every give-way stop is at the last junction before the conflict, clear of it, never turned into the stretch the other comes along. Short of that point the stop always holds.
+- Types with their own airstairs (CRJ, ERJ, ATR, Dash 8 and others) get a stand without a jetway first. Gates were tried first, so they only ever got a gate (live, every CRJ7 at LKPR).
+
 ## [0.90.0] - 2026-10-11
 
 ### Added

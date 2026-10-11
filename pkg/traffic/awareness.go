@@ -456,12 +456,22 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 	}
 	var others []them
 	for oid, e := range p.aircraft {
-		if oid != id && len(e.intent) > 1 && now.Sub(e.at) <= TrafficStaleAfter {
+		if oid == id || now.Sub(e.at) > TrafficStaleAfter {
+			continue
+		}
+		way := e.intent
+		if len(way) < 2 && e.waiting {
+			// Pushed and waiting for its taxi clearance: its planned way
+			// counts too (live, LKPR: TVS770 turned into J nose to nose with
+			// TVS1309 waiting there, though told to give way to it).
+			way = e.ahead
+		}
+		if len(way) > 1 {
 			h := e.half
 			if h <= 0 {
 				h = DefaultHalfSpanMeters
 			}
-			others = append(others, them{oid, e.intent, h})
+			others = append(others, them{oid, way, h})
 		}
 	}
 	p.mu.Unlock()

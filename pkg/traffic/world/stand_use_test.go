@@ -41,6 +41,12 @@ func TestAssignStandByUse(t *testing.T) {
 	if err != nil || !g.Layout.Parking[s].IsGate() {
 		t.Errorf("airliner: %s (%v), %v", g.Layout.Parking[s].Label(), typeOf(s), err)
 	}
+	// Its own airstairs (a CRJ): a stand without a jetway, gates free.
+	crj := req("DLH1625")
+	crj.HalfSpan, crj.NoJetway = 11.7, true
+	if s, err := assignStand(alloc, crj, standAirline); err != nil || g.Layout.Parking[s].IsGate() {
+		t.Errorf("CRJ: %s (%v), %v; want a stand without a jetway", g.Layout.Parking[s].Label(), typeOf(s), err)
+	}
 	biz := req("OKPDE")
 	biz.HalfSpan = 8
 	if s, err := assignStand(alloc, biz, standGA); err != nil || !containsType(gaRamps, typeOf(s)) {
