@@ -191,6 +191,13 @@ type Profile struct {
 	// INDEX: an A320 "zero", "one", "two", "three", "full"; a 737 "up", "1",
 	// "2", "5" … (the copilot's "flaps one", "flaps 5"); none: not known.
 	FlapDetents []string `json:"flapDetents,omitempty"`
+	// Class, TakeoffComputer, ReducedThrust and ChecklistFamily are
+	// State's (class.go): a type's base gives them, a model or a local
+	// override can change them; no class: the sim's data decides.
+	Class           string `json:"class,omitempty"`
+	TakeoffComputer string `json:"takeoffComputer,omitempty"`
+	ReducedThrust   string `json:"reducedThrust,omitempty"`
+	ChecklistFamily string `json:"checklistFamily,omitempty"`
 }
 
 // UnmarshalJSON reads a profile whose "doors" are names or {name, exit}
@@ -320,6 +327,12 @@ func Merge(base, over Profile) Profile {
 	}
 	if len(over.FlapDetents) > 0 {
 		out.FlapDetents = over.FlapDetents
+	}
+	for _, f := range [][2]*string{{&out.Class, &over.Class}, {&out.TakeoffComputer, &over.TakeoffComputer},
+		{&out.ReducedThrust, &over.ReducedThrust}, {&out.ChecklistFamily, &over.ChecklistFamily}} {
+		if *f[1] != "" {
+			*f[0] = *f[1]
+		}
 	}
 	if over.TakeoffSpeeds != nil {
 		out.TakeoffSpeeds = over.TakeoffSpeeds

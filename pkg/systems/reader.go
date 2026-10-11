@@ -63,6 +63,15 @@ type State struct {
 	Values map[string]float64
 	// AP is the autopilot (#962).
 	AP AutopilotState
+	// Class: ClassAirliner (business jets too), ClassGA, ClassHelicopter;
+	// "" not known. The profile's, else from the sim's ENGINE TYPE and
+	// maximum weight.
+	Class string
+	// TakeoffComputer: where take-off data is entered, TakeoffMCDU (Airbus),
+	// TakeoffFMC (Boeing), "" none. ReducedThrust: ThrustFlex (Airbus),
+	// ThrustSelTemp (Boeing assumed temperature), "" none. ChecklistFamily:
+	// the pkg/checklist family set's name ("A320 family"), "" none.
+	TakeoffComputer, ReducedThrust, ChecklistFamily string
 }
 
 // Client is what a Reader needs of a connection.
@@ -208,6 +217,7 @@ func resolveState(p Profile, read map[varUnit]float64) State {
 	s.COM1Active, s.COM1Standby, s.COM2Active, s.COM2Standby = s.Values[COM1Active], s.Values[COM1Standby], s.Values[COM2Active], s.Values[COM2Standby]
 	s.AP = autopilotOf(p, s)
 	takeoffSpeeds(p, &s)
+	aircraftKind(p, &s)
 	return s
 }
 

@@ -75,3 +75,30 @@ func TestValuesAndOverride(t *testing.T) {
 		t.Error("squawk")
 	}
 }
+
+// The class and take-off data: the type bases give them, the sim's data
+// the class otherwise; an override wins.
+func TestAircraftKind(t *testing.T) {
+	fnx := resolveState(For(Aircraft{Package: "fnx-aircraft-319-321"}), nil)
+	if fnx.Class != ClassAirliner || fnx.TakeoffComputer != TakeoffMCDU || fnx.ReducedThrust != ThrustFlex || fnx.ChecklistFamily != "A320 family" {
+		t.Errorf("fenix %q %q %q %q", fnx.Class, fnx.TakeoffComputer, fnx.ReducedThrust, fnx.ChecklistFamily)
+	}
+	b738 := resolveState(For(Aircraft{ATCType: "B738"}), nil)
+	if b738.Class != ClassAirliner || b738.TakeoffComputer != TakeoffFMC || b738.ReducedThrust != ThrustSelTemp {
+		t.Errorf("737 %q %q %q", b738.Class, b738.TakeoffComputer, b738.ReducedThrust)
+	}
+	d := For(Aircraft{Title: "Cessna 172"})
+	for _, c := range []struct {
+		engine, maxKg float64
+		want          string
+	}{{0, 1100, ClassGA}, {1, 16000, ClassAirliner}, {3, 2000, ClassHelicopter}, {5, 3600, ClassGA}, {5, 23000, ClassAirliner}, {2, 0, ""}} {
+		s := resolveState(d, map[varUnit]float64{{"ENGINE TYPE", "enum"}: c.engine, {"MAX GROSS WEIGHT", "kilograms"}: c.maxKg})
+		if s.Class != c.want || s.TakeoffComputer != "" {
+			t.Errorf("engine %v %v kg: %q %q, want %q", c.engine, c.maxKg, s.Class, s.TakeoffComputer, c.want)
+		}
+	}
+	over := For(Aircraft{Title: "Cessna 172"}, Profile{Name: "default", Class: ClassHelicopter})
+	if s := resolveState(over, map[varUnit]float64{{"ENGINE TYPE", "enum"}: 0}); s.Class != ClassHelicopter {
+		t.Errorf("override class %q", s.Class)
+	}
+}
