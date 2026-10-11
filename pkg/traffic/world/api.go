@@ -149,6 +149,8 @@ func New(o Options) *World {
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	w := &World{st: st, opts: o, reqs: reqs}
+	loadInstalledDoors() // the models' doors (#1026) and providers
+	traffic.OnProviderFallback = logProviderFallback
 	if len(o.GroundVehicles) > 0 {
 		w.SetGroundVehicles(o.GroundVehicles)
 	}

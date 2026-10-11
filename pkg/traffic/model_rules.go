@@ -77,7 +77,8 @@ func ModelRules() []ModelRuleItem {
 	return out
 }
 
-// UsableModels are titles without those never used, in order.
+// UsableModels are titles without those never used, of providers switched
+// on where any is (PreferProviders), in order.
 func UsableModels(titles []string) []string {
 	out := make([]string, 0, len(titles))
 	for _, t := range titles {
@@ -85,5 +86,6 @@ func UsableModels(titles []string) []string {
 			out = append(out, t)
 		}
 	}
+	out, _ = PreferProviders(out)
 	return out
 }

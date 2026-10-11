@@ -610,7 +610,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 			continue
 		}
 		it.mu.Lock()
-		old, tail, obj, rwy := it.stand, it.Tail, it.objectID, it.view.Runway
+		old, tail, obj, rwy, model := it.stand, it.Tail, it.objectID, it.view.Runway, it.view.Model
 		it.mu.Unlock()
 		why := it.stands.TakenFrom(old, tail, obj)
 		if why == "" {
@@ -622,7 +622,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model)})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -842,7 +842,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model)}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}

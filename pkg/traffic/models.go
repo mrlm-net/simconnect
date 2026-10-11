@@ -21,7 +21,7 @@ import (
 // business-jet and freighter versions are left out. The type of a title is
 // what ProfileFor makes of it. At most max titles (0: all).
 func ModelsFor(models []string, airline, name, typ string, max int) []string {
-	return pickTitles(rankModels(models, airline, name, typ), "", max)
+	return pickTitles(preferRanked(rankModels(models, airline, name, typ)), "", max)
 }
 
 // ModelsForFlight is ModelsFor with the best titles taken in turn by
@@ -29,7 +29,27 @@ func ModelsFor(models []string, airline, name, typ string, max int) []string {
 // airline's type) each flight gets one of its own — the same one every time
 // it is asked for — so a fleet shows its variety instead of one aircraft.
 func ModelsForFlight(models []string, airline, name, typ, callsign string, max int) []string {
-	return pickTitles(rankModels(models, airline, name, typ), callsign, max)
+	return pickTitles(preferRanked(rankModels(models, airline, name, typ)), callsign, max)
+}
+
+// preferRanked keeps the titles of providers switched on (PreferProviders),
+// all of them when none is.
+func preferRanked(in []rankedModel) []rankedModel {
+	var out []rankedModel
+	for _, m := range in {
+		if ProviderOn(ModelProvider(m.title)) {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 && len(in) > 0 {
+		titles := make([]string, 0, len(in))
+		for _, m := range in {
+			titles = append(titles, m.title)
+		}
+		reportFallback(titles)
+		return in
+	}
+	return out
 }
 
 type rankedModel struct {

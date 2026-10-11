@@ -55,6 +55,10 @@ type StandRequirements struct {
 	// due off at nearly the same time rank lower (StandPushConflictWindow),
 	// so neighbours do not push into each other. Zero: not known.
 	OffBlock time.Time
+	// NoJetway: a type that boards by its own airstairs (traffic.NoJetway): stands
+	// without one first, its airline's and then any, a gate only when no
+	// other is free.
+	NoJetway bool
 }
 
 // StandAllocator assigns stands at one airport and keeps track of who is on
@@ -294,7 +298,14 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 		}
 	}
 	a.mu.Unlock()
-	for _, group := range [][]int{own, open} {
+	groups := [][]int{own, open}
+	if req.NoJetway {
+		remote := func(gate bool, g []int) []int {
+			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return l.Parking[i].IsGate() != gate })
+		}
+		groups = [][]int{remote(false, own), remote(false, open), remote(true, own), remote(true, open)}
+	}
+	for _, group := range groups {
 		if len(group) == 0 {
 			continue
 		}
