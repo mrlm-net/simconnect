@@ -37,6 +37,7 @@ func Default() Profile {
 		DesignVR:    one("DESIGN SPEED MIN ROTATION", "knots"),
 		DesignV2:    one("DESIGN TAKEOFF SPEED", "knots"),
 		MaxWeight:   one("MAX GROSS WEIGHT", "kilograms"),
+		EngineType:  one("ENGINE TYPE", "enum"), // the class by default (class.go)
 		COM1Active:  one("COM ACTIVE FREQUENCY:1", "MHz"),
 		COM1Standby: one("COM STANDBY FREQUENCY:1", "MHz"),
 		COM2Active:  one("COM ACTIVE FREQUENCY:2", "MHz"),
