@@ -233,6 +233,15 @@ func (m *Message) AsWaypointList() *types.SIMCONNECT_RECV_WAYPOINT_LIST {
 	return (*types.SIMCONNECT_RECV_WAYPOINT_LIST)(unsafe.Pointer(m.SIMCONNECT_RECV))
 }
 
+// AsJetwayData is the message as an airport's jetway list (RequestJetwayData),
+// nil for another message; its Entries are valid while the message is.
+func (m *Message) AsJetwayData() *types.SIMCONNECT_RECV_JETWAY_DATA {
+	if !m.is(types.SIMCONNECT_RECV_ID_JETWAY_DATA) {
+		return nil
+	}
+	return (*types.SIMCONNECT_RECV_JETWAY_DATA)(unsafe.Pointer(m.SIMCONNECT_RECV))
+}
+
 func (m *Message) AsAssignedObjectID() *types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID {
 	if !m.is(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID) {
 		return nil

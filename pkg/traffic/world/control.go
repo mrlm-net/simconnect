@@ -289,13 +289,13 @@ type ControlView struct {
 	Instruction   string          `json:"instruction,omitempty"`
 	InstructionAt *airport.LatLon `json:"instructionAt,omitempty"`
 	// TCAS is its advisory now (#450): TA or RA; nil none.
-	TCAS         *TCASView `json:"tcas,omitempty"`
-	Real         bool      `json:"real,omitempty"`
+	TCAS *TCASView `json:"tcas,omitempty"`
+	Real bool      `json:"real,omitempty"`
 	// Seeded: placed from a real-world snapshot at the start (World.Seed,
 	// "real start"), flown on as ours; not Real.
-	Seeded       bool      `json:"seeded,omitempty"`
-	ObservedID   string    `json:"observedId,omitempty"`
-	Registration string    `json:"registration,omitempty"`
+	Seeded       bool   `json:"seeded,omitempty"`
+	ObservedID   string `json:"observedId,omitempty"`
+	Registration string `json:"registration,omitempty"`
 	// AirFixes are the named fixes still ahead on AirRoute: its dots (the
 	// route itself also runs through the points of its rounded turns).
 	AirFixes []airFix  `json:"airFixes,omitempty"`
@@ -432,6 +432,10 @@ type controlCenter struct {
 	layout func(icao string) (*airport.Layout, bool)
 	scan   []Traffic
 	gameAt time.Time
+	// jw: jetways for our traffic (jetways.go, #572); airportRefs the
+	// airports the simulator knows (a retract plan's destination).
+	jw          jetwayState
+	airportRefs func() map[string]traffic.AirportRef
 }
 
 func newControlCenter(client engine.Client, k *core) *controlCenter {
@@ -566,6 +570,7 @@ func (cc *controlCenter) tick() {
 		cc.pruneDone()
 	}
 	cc.keepClear()
+	cc.jetwayTick(cc.clock.Now())
 }
 
 // pruneDone drops the flights whose controller is done and whose aircraft
@@ -656,6 +661,9 @@ func (cc *controlCenter) recheckArrivalStands() {
 
 // handle passes a message to the injector and every controller.
 func (cc *controlCenter) handle(msg engine.Message) bool {
+	if svc := cc.jetwayBuilt(); svc != nil && svc.Handle(msg) {
+		return true
+	}
 	cc.mu.Lock()
 	allocs := make([]*traffic.StandAllocator, 0, len(cc.stands))
 	for _, a := range cc.stands {

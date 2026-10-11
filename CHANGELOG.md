@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.87.0] - 2026-10-11
+
+### Added
+
+- Jetways for our traffic (#572), off by default: `pkg/jetway`. MSFS 2024 docks a jetway only to an aircraft in its ATC parking table, and our traffic is NonATC; an invisible ParkedATC helper of the aircraft's type, created under it on the gate, has the jetway dock (the jetway research session, live at EDDM 2026-10-10). `jetway.Service` (`Available`, `Prepare`, `Release`, `Dock`, `Undock`, `Status`): the engine never depends on it, and a direct simulator API, once there is one, is another backend behind the same calls. `Helpers` is today's: our airports' jetway gates held by placeholders (each made, its claimed jetway retracted by a flight plan, released `RetractWait` after: the sim then gives the next ParkedATC the one free gate), the helper put on a gate once its aircraft is parked, removed before the push (ground waits for the jetway home), the placeholder back. `WritePackage` writes the helper models from the installed traffic models (their own cfgs, the door they dock to; our FLTSIMs, gates only, no LODs), examples/jetway-helpers writes them into Community; `IsHelper`, and the World leaves helpers out of its traffic. World: `SetJetways`, `Jetways` (per gate: reserved, docking, docked, undocking, failed; unavailable with the reason), `GET`/`POST /api/jetways`; types with their own airstairs never get one. `engine.Message.AsJetwayData`. Not yet verified live: the sim accepting the generated package, and the flow at several airports.
+
 ## [0.86.1] - 2026-10-11
 
 ### Fixed

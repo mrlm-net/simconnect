@@ -35,6 +35,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/jetway"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -639,6 +640,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// Traffic control: controllers live in this goroutine; HTTP handlers
 	// queue commands to it.
 	cc := newControlCenter(client, st.core)
+	cc.airportRefs = func() map[string]traffic.AirportRef {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		return st.airportRefs
+	}
 	stopWorld := st.startWorld(cc)
 	defer stopWorld()
 	// COM1 tuned from the map, in this connection's goroutine.
@@ -955,6 +961,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				if uint32(d.DwEntryNumber) <= 1 {
 					scan = scan[:0] // a new scan
 				}
+				if jetway.IsHelper(engine.BytesToString(t.Title[:])) {
+					continue // an invisible jetway helper (#572): not traffic
+				}
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
 					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
@@ -1122,6 +1131,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerVehicles(mux, w)       // the ground vehicles by kind on or off (vehicles.go)
 	registerModelRules(mux, w)     // models never used (model_rules.go)
 	registerModelProviders(mux, w) // models by provider (providers.go)
+	registerJetways(mux, w)        // jetways for our traffic (jetways.go)
 	registerCorridor(mux, st)
 
 	mux.HandleFunc("GET /api/geojson", func(w http.ResponseWriter, r *http.Request) {

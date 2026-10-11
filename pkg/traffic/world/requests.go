@@ -176,6 +176,12 @@ func (it *controlled) answer(req string) {
 	}
 	// The user aircraft pushing back near it (#739): ground has it wait,
 	// told once, and answers when the user is done.
+	// Its jetway home first (#572): ground answers once it is.
+	if req == "pushback" && it.jetwayHolds() {
+		it.mu.Unlock()
+		it.cc.pending.later(it.cc.clock.Now().Add(5*time.Second), func() { it.askGround(req) })
+		return
+	}
 	if req == "pushback" && it.cc.core.playerPushingNear(it.ICAO, it.view.Position, playerPushClearM) {
 		first := !it.spoken["standby push"]
 		it.spoken["standby push"] = true
