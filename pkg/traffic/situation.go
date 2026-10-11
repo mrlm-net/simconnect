@@ -259,7 +259,9 @@ func CheckGroundCongestion(max int) SituationCheck {
 	return func(s Situation) []Advice {
 		moving := 0
 		for _, f := range s.Flights {
-			if f.Status == FlightTaxiing || f.Status == FlightLanded {
+			// Not the runway queue: off the taxiways (live LKPR, a ground
+			// stop with the taxiways empty, four at the holding point).
+			if f.Status == FlightTaxiing && !f.AtRunway || f.Status == FlightLanded {
 				moving++
 			}
 		}

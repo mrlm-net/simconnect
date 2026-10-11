@@ -457,6 +457,9 @@ func (s *scheduler) nearEntry(p airport.NavPoint) string {
 // (traffic.Holder): the manager's ground stop.
 func (s *scheduler) Hold(f traffic.ManagedFlight, on bool) {
 	if it := s.cc.byTail(f.Callsign); it != nil && it.dep != nil {
+		it.mu.Lock()
+		it.groundStop = on
+		it.mu.Unlock()
 		it.dep.HoldPushback(on)
 	}
 }

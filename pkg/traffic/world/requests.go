@@ -95,6 +95,20 @@ func (it *controlled) onRequest(req string) {
 		it.waiting = req // after the clearance and the transfer to ground
 		return
 	}
+	// Boarding through the jetway (#572): no push call until it has been on
+	// a while (live, it docked and went home within 11 s).
+	if req == "pushback" {
+		if wait := it.boardingLeft(); wait > 0 {
+			it.cc.pending.later(it.cc.clock.Now().Add(wait), func() {
+				it.mu.Lock()
+				defer it.mu.Unlock()
+				if it.request == req {
+					it.onRequest(req)
+				}
+			})
+			return
+		}
+	}
 	switch req {
 	case "pushback":
 		// The first call to ground: mostly pushback and start-up in one;
@@ -180,6 +194,19 @@ func (it *controlled) answer(req string) {
 	if req == "pushback" && it.jetwayHolds() {
 		it.mu.Unlock()
 		it.cc.pending.later(it.cc.clock.Now().Add(5*time.Second), func() { it.askGround(req) })
+		return
+	}
+	// A ground stop (too many taxiing): told to expect a delay, cleared
+	// once released (live, four were cleared and then sat for minutes).
+	if req == "pushback" && it.groundStop {
+		first := !it.spoken["ground stop"]
+		it.spoken["ground stop"] = true
+		it.mu.Unlock()
+		if first {
+			it.say(traffic.Transmission{Position: traffic.PosGround, Callsign: it.Tail, Intent: traffic.IntentStandby,
+				Text: it.Tail + ", hold on the stand, expect a few minutes delay, traffic on the taxiways"})
+		}
+		it.cc.pending.later(it.cc.clock.Now().Add(15*time.Second), func() { it.askGround(req) })
 		return
 	}
 	if req == "pushback" && it.cc.core.playerPushingNear(it.ICAO, it.view.Position, playerPushClearM) {
