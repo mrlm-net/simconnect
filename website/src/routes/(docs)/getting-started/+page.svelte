@@ -317,6 +317,6 @@ func main() {
 		border-color: var(--border-strong) !important;
 	}
 	.doc {
-		max-width: 52rem;
+		max-width: none;
 	}
 </style>
