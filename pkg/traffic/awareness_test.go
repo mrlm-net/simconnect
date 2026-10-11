@@ -712,6 +712,33 @@ func TestOncomingHold(t *testing.T) {
 	}
 }
 
+// One pushed and waiting for its taxi clearance on the stretch ahead is
+// oncoming too: the other holds before it, not nose to nose (live, LKPR:
+// TVS770 turned into J where TVS1309 waited to taxi the other way).
+func TestOncomingWaitingAfterPush(t *testing.T) {
+	now := time.Now()
+	line := func(lon0, lon1 float64) []airport.LatLon {
+		var out []airport.LatLon
+		n := int(math.Abs(lon1-lon0)/0.0002 + 0.5)
+		for k := 0; k <= n; k++ {
+			out = append(out, airport.LatLon{Lat: 50, Lon: lon0 + (lon1-lon0)*float64(k)/float64(n)})
+		}
+		return out
+	}
+	p := NewGroundPicture()
+	prof := DefaultMotionProfile()
+	// TVS1309 pushed at 14.006, to taxi west; TVS770 at 14.000 going east,
+	// the shared stretch from 14.002.
+	p.Report(1, airport.LatLon{Lat: 50, Lon: 14.000}, 90, prof, now)
+	p.Report(2, airport.LatLon{Lat: 50, Lon: 14.006}, 270, prof, now)
+	p.ReportPlanned(2, line(14.006, 14.002), 17)
+	path, _ := NewGroundPath(append(line(14.000, 14.002), line(14.002, 14.008)[1:]...), prof)
+	at, o, hold := p.oncoming(1, path, 0, OncomingLookMeters, 17, now)
+	if math.IsInf(at, 1) || o != 2 || !hold {
+		t.Fatalf("waiting TVS1309 not oncoming for TVS770: at %v, other %d, hold %v", at, o, hold)
+	}
+}
+
 // An aircraft that has crossed this path, its way ahead clear of it, still
 // has its tail across it: this one stops short until the tail is clear
 // (LKPR J/H, live: CSA194's wing and QTR1709's B77W tail).

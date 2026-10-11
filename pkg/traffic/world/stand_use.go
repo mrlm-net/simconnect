@@ -45,7 +45,15 @@ func standPreferences(use string) [][]types.SIMCONNECT_FACILITY_TAXI_PARKING_TYP
 // free; the last error when none has.
 func assignStand(alloc *traffic.StandAllocator, req traffic.StandRequirements, use string) (int, error) {
 	err := traffic.ErrNoStand
-	for _, kinds := range standPreferences(use) {
+	prefs := standPreferences(use)
+	if req.NoJetway && use == standAirline {
+		// Its own airstairs: every civil stand at once, so the allocator's
+		// remote-first order (StandRequirements.NoJetway) chooses among
+		// gates and ramps alike. Gates first, it only ever chose a gate
+		// (live, LKPR: every CRJ7 on a jetway gate).
+		prefs = [][]types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{civilStands}
+	}
+	for _, kinds := range prefs {
 		r := req
 		r.Types = kinds
 		var s int

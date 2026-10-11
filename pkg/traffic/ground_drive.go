@@ -417,6 +417,13 @@ func (d *groundDrive) followAhead(now time.Time) {
 	giving := false // the give-way point is the stop, not traffic ahead
 	if !math.IsInf(gw, 1) {
 		at := gw - (pushNoseFactor-1)*d.prof.WheelbaseMeters - TrafficGapMeters
+		// At the last junction before it, clear of it, as told: not turned
+		// into the stretch the other comes along (live, LKPR: TVS770, told
+		// to give way to TVS1309, turned into J and met it nose to nose).
+		if at >= s0-1 {
+			oh := DefaultHalfSpanMeters
+			at = d.junctionStop(path, s0, at, noseTip, math.Max(half, oh)+GiveWayMarginMeters)
+		}
 		// In the junction already (past where it would have stopped): it
 		// clears the junction rather than stopping in it — live, QTR1788 was
 		// pulled up short inside a crossing. Short of the stop it still gives
