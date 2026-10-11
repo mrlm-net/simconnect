@@ -170,7 +170,7 @@ Each airport has a fleet of service vehicles. The defaults are sized by its stan
 |---|---|---|---|---|
 | Pushback tug | 1 per 10 stands, at least 2 | GSX tug | Nose gear | Before the push |
 | Fuel truck | 1 per 15 stands, at least 1 | GSX fuel truck or hydrant dispenser | Right wing | While the departure waits |
-| Boarding stairs | 1 per 10 stands, at least 2 | `FSDT_Staircase_*`, else `ASO_Boarding_Stairs` | Front left door, square to the fuselage; backs straight out | Remote stands only (no jetway) |
+| Boarding stairs | 1 per 10 stands, at least 2 | `FSDT_Staircase_*`, else `ASO_Boarding_Stairs` | Front left door, square to the fuselage: the model's own door where known (its `flight_model.cfg`, read from the installed packages on Windows or given with `World.SetModelDoors`), else an estimate from the wheelbase; backs straight out | Remote stands only (no jetway) |
 | GPU | 1 per 10 stands, at least 2 | `FSDT_GPU_TLD_406` or `FSDT_GPU_Hobart_4400`, else `Car Ground Power Unit` | Forward right of the nose gear | Remote stands only |
 | Passenger buses | 2 per set of stairs | `FSDT_Cobus_3000` (ICAO regions E, L, K, C) or `FSDT_neoplan_bus` (O, Z, V, W, U), else `Bus Apron 02` | 15 m left of the axis, outside the stairs, facing the tail: the first 4 m behind the front door, the second 20 m ahead of it | Remote stands, with the stairs only |
 
@@ -257,5 +257,7 @@ The World's ground vehicles can be switched off by kind: tugs, fuel trucks, stai
 - **Follow-me cars off:** arrivals go to their stand without one.
 
 Vehicles already at work finish their job and are not replaced. In a director and actuator pair the director decides, so its switches count.
+
+**Model providers.** Our traffic's models come from providers, each on or off: a title's package names it (FSLTL, AIG, GSX, MyCrew, else the package's creator; `traffic.modelProviders` holds the patterns), and a title the simulator lists on no package on disk is MSFS's own. The user's flyable add-ons (FlyByWire, Fenix: `isUserSelectable = 1`) start off, as heavy models; the rest on. `World.ModelProviders()` (`GET /api/models/providers`) lists them per kind with their title counts, `World.SetModelProviders(map[provider]bool)` (`POST /api/models/providers`) switches them. A provider off is passed over for the next choice; where nothing else is there, any is taken and the traffic log says so.
 
 **Models never used** (#1024). Some simulator models do not work as traffic: one that does not show attached, one that looks wrong. The table `traffic.modelRules` lists them by title (`traffic.ModelRuleItem`: title, kind, `never`, reason); our traffic passes them over for the next choice: the next aircraft title (`ModelsFor`), the next bigger tug (`TugTitleFor`), the next stairs, GPU, bus or follow-me car. Shipped: the small Mototok robot tug (it does not show attached; light aircraft get the towbarless Mototok) and MSFS's GPU van. Local rules go over them per model in `DataDir/model-rules.json` (`{"title": …, "never": false}` takes a shipped one back): `World.SetModelRule` (`POST /api/models/rules`) sets one, `World.ModelRules()` (`GET /api/models/rules`) lists those in use, and the map's aircraft card has "Never use" beside its model and each of its vehicles. Models already in use keep going.

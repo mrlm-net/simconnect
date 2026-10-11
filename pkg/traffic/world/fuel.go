@@ -31,6 +31,8 @@ type fuelTitles struct {
 	buses, busesStock []string
 	// followMe (#890): GSX's follow-me cars (base models).
 	followMe []string
+	// tugs: GSX's pushback tugs offered (traffic.TugTitleFor picks one).
+	tugs []string
 }
 
 func (cc *controlCenter) requestFuelTitles() error {
@@ -64,6 +66,8 @@ func (cc *controlCenter) addGroundTitles(titles []string) {
 	defer cc.mu.Unlock()
 	for _, t := range titles {
 		switch {
+		case strings.HasPrefix(t, "FSDT_Pushback_"):
+			cc.fuelTitles.tugs = insertSorted(cc.fuelTitles.tugs, t)
 		case strings.HasPrefix(t, "FSDT_FuelTruck_"):
 			cc.fuelTitles.trucks = insertSorted(cc.fuelTitles.trucks, t)
 		case strings.HasPrefix(t, "FSDT_Fuel_Hydrant_"):
@@ -152,8 +156,8 @@ func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32
 		return nil
 	}
 	stand := g.Layout.Parking[r.Stand]
-	if stand.IsGate() {
-		return nil // a jetway
+	if stand.IsGate() || traffic.NoJetway(r.Model) {
+		return nil // a jetway, or its own airstairs (a CRJ)
 	}
 	cc.mu.Lock()
 	list := traffic.UsableModels(cc.fuelTitles.stairs)
@@ -169,6 +173,7 @@ func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32
 	title := list[int(h.Sum32()%uint32(len(list)))] // one handler's stairs per airport
 	s := traffic.NewSimObjectStairs(cc.client, cc.inj, title, reqBase+controlIDBlock-3, prof)
 	s.Layout = g.Layout
+	s.DoorAheadMeters, s.Door = doorAhead(r.Model) // the model's own door (#1026)
 	cc.giveATC(s, g.Layout, "stairs")
 	return s
 }
@@ -180,8 +185,8 @@ func (cc *controlCenter) gpu(r SpawnRequest, g *airport.Graph, reqBase uint32, p
 	if r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleGPU) || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
-	if g.Layout.Parking[r.Stand].IsGate() {
-		return nil
+	if g.Layout.Parking[r.Stand].IsGate() && !traffic.NoJetway(r.Model) {
+		return nil // the jetway's power
 	}
 	cc.mu.Lock()
 	list := traffic.UsableModels(cc.fuelTitles.gpus)

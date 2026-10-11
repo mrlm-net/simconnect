@@ -169,6 +169,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		stairs: func(w departureStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FuelService {
 			s := traffic.NewSimObjectStairs(client, cc.inj, w.Stairs, w.ReqBase+controlIDBlock-3, prof)
 			s.Layout = g.Layout
+			s.DoorAheadMeters, s.Door = doorAhead(w.Req.Model) // the actuator's installed models (#1026)
 			cc.giveATC(s, g.Layout, "stairs")
 			return s
 		},

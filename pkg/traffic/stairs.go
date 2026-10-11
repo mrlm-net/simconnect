@@ -30,6 +30,11 @@ type SimObjectStairs struct {
 	// StairsDoorAftShare of the wheelbase); SideMeters how far left of
 	// the axis the stairs' reference point stands (0: StairsSideMeters).
 	DoorAftMeters, SideMeters float64
+	// Door, when set, is the model's own main door (#1026: the aircraft's
+	// files, addons.DoorsByType): DoorAheadMeters ahead of its reference
+	// point (behind: negative). It wins over DoorAftMeters.
+	Door            bool
+	DoorAheadMeters float64
 	vehicleYield
 
 	mu       sync.Mutex
@@ -84,6 +89,9 @@ func (s *SimObjectStairs) Attach(pose GroundPose) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	spot := StairsSpot(pose, s.prof, s.DoorAftMeters, s.SideMeters)
+	if s.Door {
+		spot = StairsSpotAt(pose, s.DoorAheadMeters, s.SideMeters)
+	}
 	s.pose, s.spot = spot, spot
 	if path, depot, ok := s.inbound(spot); ok {
 		s.arrive, s.depot, s.hasDepot = NewGroundMoverFrom(path, stairsProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
@@ -92,6 +100,17 @@ func (s *SimObjectStairs) Attach(pose GroundPose) error {
 	return s.client.AICreateSimulatedObject(s.title, types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: s.pose.Position.Lat, Longitude: s.pose.Position.Lon, Heading: s.pose.Heading, OnGround: 1,
 	}, s.reqID)
+}
+
+// StairsSpotAt is where stairs stand for an aircraft at pose whose door is
+// ahead meters ahead of its reference point (the model's own, #1026):
+// side meters left of the axis (0: StairsSideMeters), facing the fuselage.
+func StairsSpotAt(pose GroundPose, ahead, side float64) GroundPose {
+	if side <= 0 {
+		side = StairsSideMeters
+	}
+	door := offsetHeading(pose.Position, pose.Heading, ahead)
+	return GroundPose{Position: offsetHeading(door, pose.Heading-90, side), Heading: normDeg(pose.Heading + 90)}
 }
 
 // outPoint is StairsApproachMeters out from spot, the way it backs to.
