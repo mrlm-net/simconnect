@@ -3,10 +3,12 @@ package jetway
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -55,6 +57,21 @@ type Client interface {
 	AIReleaseControl(objectID uint32, requestID uint32) error
 	AIRemoveObject(objectID uint32, requestID uint32) error
 	RequestJetwayData(icao string, arrayCount uint32, indexes *int32) error
+	AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error
+	RequestDataOnSimObject(requestID uint32, definitionID uint32, objectID uint32, period types.SIMCONNECT_PERIOD, flags types.SIMCONNECT_DATA_REQUEST_FLAG, origin uint32, interval uint32, limit uint32) error
+	SetDataOnSimObject(definitionID uint32, objectID uint32, flags types.SIMCONNECT_DATA_SET_FLAG, arrayCount uint32, cbUnitSize uint32, data unsafe.Pointer) error
+}
+
+// placePos is an aircraft's position as read for a helper's place.
+type placePos struct{ Lat, Lon, AltFt, Hdg float64 }
+
+// placing is a helper being put by our aircraft: both positions asked for.
+type placing struct {
+	icao          string
+	stand         int
+	model         string
+	ours, helper  uint32
+	oursAt, helAt *placePos
 }
 
 // Timings of the helper backend, as measured live at EDDM (2026-10-10).
@@ -87,6 +104,17 @@ type HelperOptions struct {
 	RetractPlan func(icao string) (string, error)
 	// RequestBase is the first request ID of the 1000 the backend uses.
 	RequestBase uint32
+	// AircraftAt is our aircraft parked on icao's stand (its object, 0
+	// none): each helper is measured against it (logged), and a type with
+	// a DoorOffset is put there. DefineBase is the first of the two data
+	// definitions that takes (RequestBase when 0).
+	AircraftAt func(icao string, stand int) uint32
+	DefineBase uint32
+	// Offset, when set, is where helper (a helper title) goes from our
+	// aircraft of model so the jetway meets its door, meters ahead and
+	// right: our model's jetway door minus the helper's. A DoorOffset in
+	// the table wins; neither: the sim's place.
+	Offset func(model, helper string) (ahead, right float64, ok bool)
 	// Log, when set, is told what the backend does.
 	Log func(format string, args ...any)
 }
@@ -124,6 +152,8 @@ type Helpers struct {
 	filling    map[string]bool          // icao → placeholders being made
 	emptyTries map[string]int           // icao → fills that found no gate yet
 	lastPoll   time.Time
+	placeDefs  bool                // the place definitions made
+	placings   map[uint32]*placing // request → helper being placed
 }
 
 // NewHelpers makes the helper backend on client.
@@ -134,8 +164,71 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 	if o.FallbackType == "" {
 		o.FallbackType = "A320"
 	}
+	if o.DefineBase == 0 {
+		o.DefineBase = o.RequestBase
+	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}}
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, placings: map[uint32]*placing{}}
+}
+
+// measure asks for our aircraft's and its helper's positions (place).
+// h.mu held.
+func (h *Helpers) measure(pl *placing) {
+	read := h.opt.DefineBase
+	if !h.placeDefs {
+		h.placeDefs = true
+		for i, v := range []struct{ n, u string }{{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALTITUDE", "feet"}, {"PLANE HEADING DEGREES TRUE", "degrees"}} {
+			h.client.AddToDataDefinition(read, v.n, v.u, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i))
+		}
+		h.client.AddToDataDefinition(read+1, "Initial Position", "", types.SIMCONNECT_DATATYPE_INITPOSITION, 0, 0)
+	}
+	for _, obj := range []uint32{pl.ours, pl.helper} {
+		r := h.req()
+		h.placings[r] = pl
+		h.client.RequestDataOnSimObject(r, read, obj, types.SIMCONNECT_PERIOD_ONCE, 0, 0, 0, 0)
+	}
+}
+
+// place logs where the sim put the helper from our aircraft and, for a
+// type with a DoorOffset, puts it there. h.mu held.
+func (h *Helpers) place(pl *placing) {
+	o, a := *pl.oursAt, *pl.helAt
+	ahead, right := offsetM(o, a.Lat, a.Lon)
+	// The table's (set by hand) first, else from both models' doors.
+	off, ok := DoorOffsetFor(pl.model)
+	if !ok && h.opt.Offset != nil {
+		if a, r, k := h.opt.Offset(pl.model, h.helperTitle(pl.model)); k {
+			off, ok = DoorOffset{Type: "from the models' doors", AheadM: a, RightM: r}, true
+		}
+	}
+	if !ok {
+		h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s (the sim's place; no door offset)", pl.icao, pl.stand, ahead, right, pl.model)
+		return
+	}
+	lat, lon := fromOffset(o, off.AheadM, off.RightM)
+	pos := types.SIMCONNECT_DATA_INITPOSITION{Latitude: lat, Longitude: lon, Altitude: o.AltFt, Heading: o.Hdg, OnGround: 1}
+	h.client.SetDataOnSimObject(h.opt.DefineBase+1, pl.helper, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(pos)), unsafe.Pointer(&pos))
+	h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s, put %.2f m ahead, %.2f m right (door offset %s)", pl.icao, pl.stand, ahead, right, pl.model, off.AheadM, off.RightM, off.Type)
+}
+
+// mPerDegLat is metres per degree of latitude.
+const mPerDegLat = 111_320.0
+
+// offsetM is where (lat, lon) is from o: metres ahead along its heading and
+// to its right.
+func offsetM(o placePos, lat, lon float64) (ahead, right float64) {
+	n := (lat - o.Lat) * mPerDegLat
+	e := (lon - o.Lon) * mPerDegLat * math.Cos(o.Lat*math.Pi/180)
+	r := o.Hdg * math.Pi / 180
+	return n*math.Cos(r) + e*math.Sin(r), -n*math.Sin(r) + e*math.Cos(r)
+}
+
+// fromOffset is the point ahead and right metres from o.
+func fromOffset(o placePos, ahead, right float64) (lat, lon float64) {
+	r := o.Hdg * math.Pi / 180
+	n := ahead*math.Cos(r) - right*math.Sin(r)
+	e := ahead*math.Sin(r) + right*math.Cos(r)
+	return o.Lat + n/mPerDegLat, o.Lon + e/(mPerDegLat*math.Cos(o.Lat*math.Pi/180))
 }
 
 var _ Service = (*Helpers)(nil)
@@ -203,6 +296,7 @@ func (h *Helpers) Release(icao string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.filling, icao)
+	delete(h.emptyTries, icao) // a new fill tries again
 	var errs []error
 	for _, g := range h.gates[icao] {
 		for _, obj := range []uint32{g.placeholder, g.helper} {
@@ -383,7 +477,40 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		}
 		p.object = uint32(m.DwObjectID)
 		h.byObj[p.object] = p
+		helper, icao, stand, obj := p.helper, p.icao, p.stand, p.object
+		model := ""
+		if g := h.gates[icao][stand]; g != nil {
+			model = g.model
+		}
 		h.mu.Unlock()
+		// Our aircraft asked for outside h.mu: AircraftAt takes the
+		// caller's locks, which call Status (h.mu) in turn.
+		if helper && h.opt.AircraftAt != nil {
+			if ours := h.opt.AircraftAt(icao, stand); ours != 0 {
+				h.mu.Lock()
+				h.measure(&placing{icao: icao, stand: stand, model: model, ours: ours, helper: obj})
+				h.mu.Unlock()
+			}
+		}
+		return true
+	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
+		d := msg.AsSimObjectData()
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		pl, ok := h.placings[uint32(d.DwRequestID)]
+		if !ok {
+			return false
+		}
+		delete(h.placings, uint32(d.DwRequestID))
+		at := *engine.CastDataAs[placePos](&d.DwData)
+		if uint32(d.DwObjectID) == pl.ours {
+			pl.oursAt = &at
+		} else {
+			pl.helAt = &at
+		}
+		if pl.oursAt != nil && pl.helAt != nil {
+			h.place(pl)
+		}
 		return true
 	case types.SIMCONNECT_RECV_ID_JETWAY_DATA:
 		l := msg.AsJetwayData()
@@ -412,7 +539,18 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 		case !p.helper && g.placeholder != att:
 			// A placeholder took this gate: retract its claim (flight plan),
 			// release it a while after (RetractWait).
+			taken := g.status == StatusDocked || g.status == StatusDocking
+			if taken {
+				// On a docked gate (live, LKPR A3 and B9): the jetway went
+				// with it; ours is dropped and the gate docked again from
+				// this placeholder (Failed: asked again a minute later).
+				h.logf("jetway %s stand %d: its jetway taken by a placeholder: docked again", icao, stand)
+				h.dropHelper(icao, stand, g)
+			}
 			g.placeholder, g.status, g.since = att, StatusReserved, h.now
+			if taken {
+				g.status = StatusFailed
+			}
 			if path, err := h.opt.RetractPlan(icao); err == nil {
 				h.client.AISetAircraftFlightPlan(att, path, h.req())
 				p.retractAt, p.retracting = h.now.Add(RetractWait), true
@@ -424,6 +562,15 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			delete(h.byObj, att)
 			if w := h.gate(icao, p.stand); w.status == StatusDocking {
 				w.status, w.since = StatusFailed, h.now
+			}
+			// A docked gate taken (the sim does not always count a docked
+			// helper's gate as taken; live, LKPR B9 1.5 min after it docked):
+			// its jetway follows the new helper off, so that gate is cleared
+			// too and docked again (Failed: asked again a minute later).
+			if g.status == StatusDocked || g.status == StatusDocking {
+				h.logf("jetway %s stand %d: its jetway taken: docked again", icao, stand)
+				h.dropHelper(icao, stand, g)
+				g.status, g.since = StatusFailed, h.now
 			}
 			// Gates free again (its own, and maybe others): filled before the
 			// next dock.

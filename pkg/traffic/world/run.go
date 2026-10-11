@@ -247,7 +247,8 @@ type state struct {
 	// stations: the airports' own ATC stations (#722).
 	stations *stationStore
 	// modelRules: the local model rules (model_rules.go, #1024).
-	modelRules *modelRuleStore
+	modelRules  *modelRuleStore
+	doorOffsets *doorOffsetStore // jetway door offsets, local (jetways.go)
 }
 
 func (s *state) setLive(v bool) {

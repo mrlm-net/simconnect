@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/dict"
 	"github.com/mrlm-net/simconnect/pkg/jetway"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -143,7 +145,7 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 		return nil
 	}
 	cc.jw.svc = jetway.NewHelpers(cc.client, jetway.HelperOptions{Types: types, RetractPlan: cc.retractPlan,
-		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf})
+		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf, AircraftAt: cc.aircraftAt, Offset: jetwayDoorOffset})
 	cc.jw.prepared, cc.jw.docked = map[string]bool{}, map[string]bool{}
 	return cc.jw.svc
 }
@@ -298,6 +300,83 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 	svc.Update(now)
 }
 
+// aircraftAt is our aircraft on icao's stand (its object), 0 none.
+func (cc *controlCenter) aircraftAt(icao string, stand int) uint32 {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		at, obj := it.ICAO == icao && it.stand == stand, it.objectID
+		it.mu.Unlock()
+		if at && obj != 0 {
+			return obj
+		}
+	}
+	return 0
+}
+
+// doorOffsetStore keeps the local jetway door offsets
+// (DataDir/jetway-door-offsets.json, over the library's: what is there
+// wins, per type), set with POST /api/jetways/offset while calibrating.
+type doorOffsetStore struct {
+	mu    sync.Mutex
+	file  string
+	items []jetway.DoorOffset
+}
+
+func loadDoorOffsets(file string) *doorOffsetStore {
+	s := &doorOffsetStore{file: file}
+	if b, err := os.ReadFile(file); err == nil {
+		if err := json.Unmarshal(b, &s.items); err != nil {
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
+		}
+	}
+	if len(s.items) > 0 {
+		if err := s.apply(); err != nil {
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
+		}
+	}
+	return s
+}
+
+func (s *doorOffsetStore) apply() error {
+	b, err := json.Marshal(s.items)
+	if err != nil {
+		return err
+	}
+	return dict.Use("jetway.doorOffsets", b)
+}
+
+// set adds or replaces type o.Type's offset, puts it in use and saves.
+func (s *doorOffsetStore) set(o jetway.DoorOffset) error {
+	o.Type = strings.ToUpper(strings.TrimSpace(o.Type))
+	if o.Type == "" {
+		return fmt.Errorf("a door offset needs a type")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = slices.DeleteFunc(s.items, func(i jetway.DoorOffset) bool { return strings.EqualFold(i.Type, o.Type) })
+	s.items = append(s.items, o)
+	if err := s.apply(); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(s.items, "", "  ")
+	if err != nil {
+		return err
+	}
+	if s.file == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.file), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(s.file, b, 0o644)
+}
+
 // jetwayGates are icao's gates whose jetway can dock to our traffic now,
 // for the stand allocator to take first; none with jetways off.
 func (cc *controlCenter) jetwayGates(icao string) []int {
@@ -406,5 +485,24 @@ func registerJetways(mux *http.ServeMux, w *World) {
 		}
 		w.SetJetways(req.On)
 		writeJSON(rw, w.Jetways())
+	})
+	// The door offsets by type (jetway.DoorOffset): GET all in use, POST
+	// one ({"type": "B738", "aheadM": 1.5, "rightM": 0}), kept locally;
+	// the next helper of that type is put there.
+	mux.HandleFunc("GET /api/jetways/offsets", func(rw http.ResponseWriter, r *http.Request) {
+		writeJSON(rw, jetway.DoorOffsets())
+	})
+	mux.HandleFunc("POST /api/jetways/offset", func(rw http.ResponseWriter, r *http.Request) {
+		var o jetway.DoorOffset
+		if err := json.NewDecoder(r.Body).Decode(&o); err != nil {
+			http.Error(rw, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := w.st.doorOffsets.set(o); err != nil {
+			http.Error(rw, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.st.core.log.printf("jetway door offset %s: %.2f m ahead, %.2f m right", strings.ToUpper(o.Type), o.AheadM, o.RightM)
+		writeJSON(rw, jetway.DoorOffsets())
 	})
 }
