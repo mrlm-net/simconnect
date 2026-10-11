@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.86.1] - 2026-10-11
+
+### Fixed
+
+- Procedure paths: a course-to-fix leg the current heading crosses before its fix is joined where it crosses, with the turn onto it (`courseIntercept`; a turn of 135° at most, room for it on both sides), not by a Dubins path to the fix: LKKB ILS 24 via SULOV from D140J onto 237° short of CF24, drawn with a loop (MyCrew). `SmoothPath` leaves the corners of arcs already sampled (under 6°) as they are and drops points closer than a meter: rounded again they zig-zagged and stepped back, the loops at LKKB and EDDM AKIN1N.
+- Flight plans: airports closer than `ShortHopNM` (40 NM) may be flown without a SID and a STAR, from the runway onto the approach, when that is shorter and the player chose none: LKPR to LKKB was planned 120 NM out on VENO4M and back on GOLO4W, now 37 NM onto the ILS 24 at D140I.
+- Flown routes (`FlownRouteFor`, what the app and the map draw): approach and missed legs turn at the approach radius (1.8 km, was 2.5 km), and without a SID the climb-out turns round toward the arrival when no route fix follows (a short hop drew a hairpin back over the runway). With the two fixes above, LKPR to LKKB ILS 24 via SULOV is drawn with every turn a curve (no corner over 5°, no loop), with or without VENO4M and GOLO4W (`TestFlownLKKBNoLoops`, on the app's cached layouts and procedures).
+
 ## [0.86.0] - 2026-10-11
 
 ### Added
