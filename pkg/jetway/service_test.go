@@ -1,10 +1,13 @@
 package jetway
 
 import (
+	"math"
 	"slices"
 	"testing"
 	"time"
+	"unsafe"
 
+	"github.com/mrlm-net/simconnect/pkg/dict"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -41,6 +44,34 @@ func (f *fakeSim) AIRemoveObject(obj, req uint32) error {
 func (f *fakeSim) RequestJetwayData(icao string, n uint32, idx *int32) error {
 	f.asked++
 	return nil
+}
+func (f *fakeSim) AddToDataDefinition(uint32, string, string, types.SIMCONNECT_DATATYPE, float32, uint32) error {
+	return nil
+}
+func (f *fakeSim) RequestDataOnSimObject(uint32, uint32, uint32, types.SIMCONNECT_PERIOD, types.SIMCONNECT_DATA_REQUEST_FLAG, uint32, uint32, uint32) error {
+	return nil
+}
+func (f *fakeSim) SetDataOnSimObject(uint32, uint32, types.SIMCONNECT_DATA_SET_FLAG, uint32, uint32, unsafe.Pointer) error {
+	return nil
+}
+
+// The offset round trip, and a type's door offset by title.
+func TestDoorOffset(t *testing.T) {
+	o := placePos{Lat: 50.1, Lon: 14.26, Hdg: 214}
+	lat, lon := fromOffset(o, 2.5, -0.4)
+	if a, r := offsetM(o, lat, lon); math.Abs(a-2.5) > 0.01 || math.Abs(r+0.4) > 0.01 {
+		t.Errorf("round trip: %.3f ahead, %.3f right", a, r)
+	}
+	if err := dict.Use("jetway.doorOffsets", []byte(`[{"type":"B738","aheadM":1.5},{"type":"A321","aheadM":0}]`)); err != nil {
+		t.Fatal(err)
+	}
+	defer dict.Reset("jetway.doorOffsets")
+	if d, ok := DoorOffsetFor("FSLTL_FAIB_B738_TVS-Smartwings"); !ok || d.AheadM != 1.5 {
+		t.Errorf("B738: %+v %v", d, ok)
+	}
+	if _, ok := DoorOffsetFor("FSLTL A20N WZZ"); ok {
+		t.Error("A20N has none")
+	}
 }
 
 func jw(stand int, status, attached uint32) types.SIMCONNECT_JETWAY_DATA {
@@ -214,5 +245,25 @@ func TestHelpersOneAtATime(t *testing.T) {
 	}
 	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling {
 		t.Fatalf("second dock: %v, want ErrFilling", err)
+	}
+}
+
+// A docked gate a new helper or placeholder takes is docked again.
+func TestHelpersDockedGateTaken(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	h.gate("EDDM", 7).helper, h.gate("EDDM", 7).status = 500, StatusDocked
+	r := h.req()
+	p := &pending{icao: "EDDM", stand: -1, object: 600}
+	h.byReq[r], h.byObj[600] = p, p
+	h.mu.Unlock()
+	h.see(jw(7, 1, 600)) // a placeholder on the docked gate
+	if h.Status("EDDM", 7) != StatusFailed || !slices.Contains(f.removed, 500) {
+		t.Fatalf("stand 7 %s, removed %v", h.Status("EDDM", 7), f.removed)
+	}
+	if h.Dockable("EDDM")[0] != 7 {
+		t.Error("the placeholder should hold stand 7 for the next dock")
 	}
 }

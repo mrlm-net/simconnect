@@ -29,3 +29,21 @@ func TestModelDoors(t *testing.T) {
 		t.Errorf("stairs face %.0f°, want the fuselage (180°)", spot.Heading)
 	}
 }
+
+// A helper goes where the jetway meets our model's door: our model's
+// jetway door minus the helper's (the FSLTL A320neo's 37.654 ft, its
+// helper's 27.93 ft: 2.96 m ahead).
+func TestJetwayDoorOffset(t *testing.T) {
+	setDoors(map[string]addons.ModelDoor{
+		"FSLTL A20N WZZ Wizzair":    {Type: "A20N", First: addons.InteractivePoint{Raw: "x", Long: 37.654, Lat: -6.137}},
+		"MyCrew Jetway Helper A20N": {Type: "A20N", First: addons.InteractivePoint{Raw: "x", Long: 27.93, Lat: -6.05}},
+	}, nil)
+	defer setDoors(nil, nil)
+	a, r, ok := jetwayDoorOffset("FSLTL A20N WZZ Wizzair", "MyCrew Jetway Helper A20N")
+	if !ok || a < 2.95 || a > 2.97 || r > -0.02 || r < -0.03 {
+		t.Errorf("offset %.3f ahead, %.3f right, %v", a, r, ok)
+	}
+	if _, _, ok := jetwayDoorOffset("unknown", "MyCrew Jetway Helper A20N"); ok {
+		t.Error("an unknown model has no offset")
+	}
+}

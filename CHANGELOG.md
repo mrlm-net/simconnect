@@ -57,6 +57,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.90.0] - 2026-10-11
+
+### Added
+
+- Jetway door fit. The jetway docks to the invisible helper's door, not ours, so each helper is now put by our aircraft at our model's jetway door minus the helper's, read from both models' `interactive_point.0`. Live at LKPR, the sim's own place was 1–4 m off: the A321 and 737 hoods stopped forward of the door, and an A320neo helper on our aircraft docked 3 m aft. The jetway data's `ExitDoorRelativePos` confirmed the helper's config door.
+  - `HelperOptions.AircraftAt`, `HelperOptions.Offset`; every placement is logged.
+  - Overrides by type: `jetway.DoorOffset`, the dict table `jetway.doorOffsets`, `GET /api/jetways/offsets`, `POST /api/jetways/offset` (kept in `DataDir/jetway-door-offsets.json`).
+
+### Fixed
+
+- Jetways:
+  - A gate whose jetway another helper or a placeholder takes is cleared and docked again a minute later. Before, it stayed without a jetway.
+  - Switching jetways off and on fills the gates again. Before, it gave up at once after a fill that found none.
+
 ## [0.89.2] - 2026-10-11
 
 ### Fixed

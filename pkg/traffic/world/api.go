@@ -146,6 +146,7 @@ func New(o Options) *World {
 	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
 	st.modelRules = loadModelRules(filepath.Join(o.DataDir, "model-rules.json"))
+	st.doorOffsets = loadDoorOffsets(filepath.Join(o.DataDir, "jetway-door-offsets.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	w := &World{st: st, opts: o, reqs: reqs}
