@@ -1671,6 +1671,11 @@ func (c *TaxiController) startLineUp() {
 	// Taxi speed through the entry, LineUpSpeedKts over the alignment; a
 	// rolling take-off (cleared already) aligns briskly and rolls on.
 	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
+	// Aligned where the path is: its rounded turn onto the centreline can
+	// run past the waypoint, and the take-off starts on the runway heading
+	// (live at EDDM: lined up 3.5° off, the heading snapped as the roll
+	// began).
+	c.alignDist = alignedFrom(path, prof, pose.Heading, hdg, c.alignDist)
 	alignKts := LineUpSpeedKts
 	if c.takeoffCleared {
 		alignKts = LineUpRollingKts
@@ -1685,6 +1690,30 @@ func (c *TaxiController) startLineUp() {
 	c.last.HoldingShortOf = ""
 	c.setInjectedLights(lightsLineUp, "lights line-up (strobes)")
 	c.setState(TaxiLiningUp, nil)
+}
+
+// lineUpAlignedDeg: a lined-up aircraft faces within this of the runway.
+const lineUpAlignedDeg = 0.5
+
+// alignedFrom is the first distance along path, from s on, where an
+// aircraft of prof driven along it (facing startHdg at its start) faces
+// within lineUpAlignedDeg of hdg: its body swings in behind the nose wheel
+// over a few wheelbases after the path itself is straight (live at EDDM:
+// held 3.5° off at the waypoint, the heading snapped as the roll began). A
+// dry run of the mover; the path's end less 10 m at most.
+func alignedFrom(path *GroundPath, prof MotionProfile, startHdg, hdg, s float64) float64 {
+	end := math.Max(0, path.Length()-10)
+	m := NewGroundMoverFrom(path, prof, startHdg, 0)
+	for i := 0; i < 60*600; i++ {
+		p := m.Step(1.0 / 10)
+		if p.Distance >= end {
+			return end
+		}
+		if p.Distance >= s && math.Abs(headingDiff(p.Heading, hdg)) <= lineUpAlignedDeg {
+			return p.Distance
+		}
+	}
+	return math.Max(s, 0)
 }
 
 // PushTurnRadiusCost is what a meter of turn radius below

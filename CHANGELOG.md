@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.85.2] - 2026-10-11
+
+### Fixed
+
+- Line-up: a departure holds lined up, or rolls on, only once its body faces down the runway (within 0.5°), found by a dry run of its mover along the line-up path: the body swings in behind the nose wheel over a few wheelbases after the path is straight. Live at EDDM (glitch-watch), KLM1310 and ENT768 lined up 3.5° off 26L and the heading snapped as the roll began; every EDDM end was 3–4.5° off.
+- Procedure paths: an RF arc ends exactly on its fix, its radius going over from the start fix's to the end fix's. Sampled at the start's radius, then the end fix appended, it made a short radial jog that the corner smoothing drew as a loop: EDDM AKIN1N from 26R turned ~330° round at DM044 (MyCrew, on the map and the charts).
+
 ## [0.85.1] - 2026-10-10
 
 ### Fixed
