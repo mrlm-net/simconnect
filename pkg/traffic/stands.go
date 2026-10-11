@@ -59,6 +59,10 @@ type StandRequirements struct {
 	// without one first, its airline's and then any, a gate only when no
 	// other is free.
 	NoJetway bool
+	// Prefer are stands taken first, the airline's and then open ones,
+	// before any other: the gates whose jetway can dock to our traffic
+	// (#572; live, airlines' own gates without one won).
+	Prefer []int
 }
 
 // StandAllocator assigns stands at one airport and keeps track of who is on
@@ -304,6 +308,11 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return l.Parking[i].IsGate() != gate })
 		}
 		groups = [][]int{remote(false, own), remote(false, open), remote(true, own), remote(true, open)}
+	} else if len(req.Prefer) > 0 {
+		split := func(pref bool, g []int) []int {
+			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return slices.Contains(req.Prefer, i) != pref })
+		}
+		groups = [][]int{split(true, own), split(true, open), split(false, own), split(false, open)}
 	}
 	for _, group := range groups {
 		if len(group) == 0 {

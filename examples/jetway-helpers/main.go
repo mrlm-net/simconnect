@@ -24,6 +24,7 @@ func main() {
 	only := flag.String("types", "", "comma-separated ICAO types (default: every type with a base model)")
 	out := flag.String("out", "", "where the package goes (default: the Community folder)")
 	codes := flag.String("codes", "", "airline codes for each type's \"ALL\" helper (none: only the one without codes)")
+	span := flag.Float64("span", 0, "every helper's wing span, feet (0: the model's)")
 	flag.Parse()
 	ins, err := addons.Find()
 	if err != nil {
@@ -76,7 +77,7 @@ func main() {
 			cs = append(cs, c)
 		}
 	}
-	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs})
+	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span})
 	if err != nil {
 		fail(err)
 	}

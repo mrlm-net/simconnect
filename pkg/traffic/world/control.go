@@ -66,6 +66,11 @@ type controlled struct {
 	stands *traffic.StandAllocator
 	stand  int  // parking index held for this aircraft
 	left   bool // a departure has left its stand (released)
+	// jetwayGone: its jetway went home for the push (#572), not docked again.
+	jetwayGone bool
+	// groundStop: held on the stand by the schedule's ground stop; ground
+	// does not clear its push meanwhile.
+	groundStop bool
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
 	cc         *controlCenter
@@ -627,7 +632,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model)})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Prefer: cc.jetwayGates(it.graph.Layout.ICAO)})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -850,7 +855,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model)}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Prefer: cc.jetwayGates(g.Layout.ICAO)}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
@@ -1359,6 +1364,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			}()
 		} else if ok {
 			m.Update(it.Tail, st, it.cc.clock.Now())
+		}
+		if e := ev.dep; e != nil {
+			m.SetAtRunway(it.Tail, e.State >= traffic.TaxiHoldingShort && e.State <= traffic.TaxiLinedUp)
 		}
 	}
 	if e := ev.dep; e != nil {

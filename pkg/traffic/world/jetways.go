@@ -57,9 +57,9 @@ func jetwaysEnabled() bool {
 // JetwayView is the jetways' state: switched on, whether the backend can
 // work and why not, and each gate's jetway by airport and stand.
 type JetwayView struct {
-	On        bool                              `json:"on"`
-	Available bool                              `json:"available"`
-	Reason    string                            `json:"reason,omitempty"`
+	On        bool                             `json:"on"`
+	Available bool                             `json:"available"`
+	Reason    string                           `json:"reason,omitempty"`
 	Gates     map[string]map[int]jetway.Status `json:"gates,omitempty"`
 }
 
@@ -98,6 +98,7 @@ type jetwayState struct {
 	svc      *jetway.Helpers
 	prepared map[string]bool
 	docked   map[string]bool // "ICAO stand" asked to dock
+	askedAt  map[string]time.Time
 }
 
 func gateKey(icao string, stand int) string { return fmt.Sprintf("%s %d", icao, stand) }
@@ -240,16 +241,29 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		}
 	}
 	cc.jw.mu.Unlock()
+	parked := map[string]bool{}
 	for _, it := range items {
 		it.mu.Lock()
-		icao, stand, model := it.ICAO, it.stand, it.view.Model
+		icao, stand, model, gone := it.ICAO, it.stand, it.view.Model, it.jetwayGone
 		it.mu.Unlock()
-		if stand < 0 || !cc.jetwayParked(it) || traffic.NoJetway(model) {
+		if stand < 0 || gone || !cc.jetwayParked(it) || traffic.NoJetway(model) {
 			continue
 		}
 		k := gateKey(icao, stand)
+		parked[k] = true
 		cc.jw.mu.Lock()
 		asked := cc.jw.docked[k]
+		// A dock that failed (the helper given another gate) is asked again
+		// a minute after.
+		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && svc.Status(icao, stand) == jetway.StatusFailed {
+			asked = false
+		}
+		if !asked {
+			if cc.jw.askedAt == nil {
+				cc.jw.askedAt = map[string]time.Time{}
+			}
+			cc.jw.askedAt[k] = now
+		}
 		cc.jw.docked[k] = true
 		cc.jw.mu.Unlock()
 		if !asked {
@@ -260,7 +274,41 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 			}
 		}
 	}
+	// A gate whose aircraft has gone (pushed, removed): its jetway home.
+	cc.jw.mu.Lock()
+	var away []string
+	for k := range cc.jw.docked {
+		if !parked[k] {
+			away = append(away, k)
+		}
+	}
+	cc.jw.mu.Unlock()
+	for _, k := range away {
+		icao, stand := splitGateKey(k)
+		switch svc.Status(icao, stand) {
+		case jetway.StatusDocking, jetway.StatusDocked:
+			svc.Undock(icao, stand)
+		case jetway.StatusUndocking:
+		default:
+			cc.jw.mu.Lock()
+			delete(cc.jw.docked, k)
+			cc.jw.mu.Unlock()
+		}
+	}
 	svc.Update(now)
+}
+
+// jetwayGates are icao's gates whose jetway can dock to our traffic now,
+// for the stand allocator to take first; none with jetways off.
+func (cc *controlCenter) jetwayGates(icao string) []int {
+	if !jetwaysEnabled() {
+		return nil
+	}
+	svc := cc.jetwayBuilt()
+	if svc == nil {
+		return nil
+	}
+	return svc.Dockable(icao)
 }
 
 // jetwayParked reports that it stands still on its gate for a jetway: an
@@ -275,14 +323,39 @@ func (cc *controlCenter) jetwayParked(it *controlled) bool {
 	return false
 }
 
-// jetwayHolds undocks it's jetway before its push: true while ground must
-// wait (the jetway still on its way home).
+// JetwayBoarding is how long a departure's jetway stays on before its crew
+// asks for the push.
+const JetwayBoarding = 3 * time.Minute
+
+// boardingLeft is how long it still boards through its jetway before
+// asking for the push: 0 none (no jetway, or long enough). While the
+// jetway is still on its way, 15 s at a time. it.mu held.
+func (it *controlled) boardingLeft() time.Duration {
+	svc := it.cc.jetwayBuilt()
+	if svc == nil || it.jetwayGone || it.stand < 0 {
+		return 0
+	}
+	switch svc.Status(it.ICAO, it.stand) {
+	case jetway.StatusDocking:
+		return 15 * time.Second
+	case jetway.StatusDocked:
+		if left := JetwayBoarding - it.cc.clock.Now().Sub(svc.Since(it.ICAO, it.stand)); left > 0 {
+			return left
+		}
+	}
+	return 0
+}
+
+// jetwayHolds undocks its jetway before its push: true while ground must
+// wait (the jetway still on its way home). Called with it.mu held; from
+// then on the jetway stays home (jetwayGone).
 func (it *controlled) jetwayHolds() bool {
 	cc := it.cc
 	svc := cc.jetwayBuilt()
 	if svc == nil {
 		return false
 	}
+	it.jetwayGone = true
 	k := gateKey(it.ICAO, it.stand)
 	cc.jw.mu.Lock()
 	asked := cc.jw.docked[k]

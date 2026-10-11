@@ -56,6 +56,10 @@ type PackageOptions struct {
 	// Codes are airline codes for each type's second helper ("… ALL"); none:
 	// only the helper without codes.
 	Codes []string
+	// WingSpanFt, when not 0, replaces every helper's wing_span (feet): the
+	// sim puts no ParkedATC next to an occupied gate; a small span may let
+	// the placeholders take every gate (#572, to be measured).
+	WingSpanFt float64
 }
 
 // copied are the base model's files a helper takes over.
@@ -78,7 +82,7 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 		return "", err
 	}
 	for _, m := range models {
-		if err := writeHelper(root, m, o.Codes); err != nil {
+		if err := writeHelper(root, m, o.Codes, o.WingSpanFt); err != nil {
 			return "", fmt.Errorf("jetway helper %s: %w", m.Type, err)
 		}
 	}
@@ -88,7 +92,7 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 	return root, nil
 }
 
-func writeHelper(root string, m HelperModel, codes []string) error {
+func writeHelper(root string, m HelperModel, codes []string, spanFt float64) error {
 	t := strings.ToUpper(m.Type)
 	dir := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_"+t)
 	if err := os.MkdirAll(filepath.Join(dir, "model"), 0o755); err != nil {
@@ -99,8 +103,14 @@ func writeHelper(root string, m HelperModel, codes []string) error {
 			return err
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "flight_model.cfg")); err != nil {
+	fm := filepath.Join(dir, "flight_model.cfg")
+	if _, err := os.Stat(fm); err != nil {
 		return fmt.Errorf("no flight_model.cfg in %s", m.Dir)
+	}
+	if spanFt > 0 {
+		if err := setWingSpan(fm, spanFt); err != nil {
+			return err
+		}
 	}
 	cfg, err := helperAircraftCfg(filepath.Join(m.Dir, "aircraft.cfg"), t, codes)
 	if err != nil {
@@ -150,6 +160,24 @@ func helperAircraftCfg(base, icaoType string, codes []string) (string, error) {
 		fltsim(1, HelperTitle(icaoType, true), strings.Join(codes, ","))
 	}
 	return b.String(), nil
+}
+
+// setWingSpan sets the wing_span line of a flight_model.cfg to ft.
+func setWingSpan(path string, ft float64) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	for i, l := range lines {
+		if k, _, ok := strings.Cut(l, "="); ok && strings.EqualFold(strings.TrimSpace(k), "wing_span") {
+			lines[i] = fmt.Sprintf("wing_span = %g ; MyCrew jetway helper (#572)", ft)
+			if strings.HasSuffix(l, "\r") {
+				lines[i] += "\r"
+			}
+		}
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
 // guidFor is a stable GUID for a type's helper model.

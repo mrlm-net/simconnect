@@ -1,6 +1,7 @@
 package jetway
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -8,7 +9,10 @@ import (
 )
 
 type fakeSim struct {
-	created  []struct{ title string; req uint32 }
+	created []struct {
+		title string
+		req   uint32
+	}
 	removed  []uint32
 	released []uint32
 	plans    []uint32
@@ -16,15 +20,24 @@ type fakeSim struct {
 }
 
 func (f *fakeSim) AICreateParkedATCAircraft(title, tail, icao string, req uint32) error {
-	f.created = append(f.created, struct{ title string; req uint32 }{title, req})
+	f.created = append(f.created, struct {
+		title string
+		req   uint32
+	}{title, req})
 	return nil
 }
 func (f *fakeSim) AISetAircraftFlightPlan(obj uint32, path string, req uint32) error {
 	f.plans = append(f.plans, obj)
 	return nil
 }
-func (f *fakeSim) AIReleaseControl(obj, req uint32) error { f.released = append(f.released, obj); return nil }
-func (f *fakeSim) AIRemoveObject(obj, req uint32) error    { f.removed = append(f.removed, obj); return nil }
+func (f *fakeSim) AIReleaseControl(obj, req uint32) error {
+	f.released = append(f.released, obj)
+	return nil
+}
+func (f *fakeSim) AIRemoveObject(obj, req uint32) error {
+	f.removed = append(f.removed, obj)
+	return nil
+}
 func (f *fakeSim) RequestJetwayData(icao string, n uint32, idx *int32) error {
 	f.asked++
 	return nil
@@ -73,6 +86,9 @@ func TestHelpersFlow(t *testing.T) {
 	}
 	h.assign(f, 101)
 	h.see(jw(7, 1, 101)) // the jetway claims it
+	if err := h.Dock("EDDM", 7, "A320"); err != ErrFilling {
+		t.Fatalf("dock while filling: %v, want ErrFilling", err)
+	}
 	h.Update(now)
 	if h.Status("EDDM", 7) != StatusReserved || len(f.plans) != 1 || len(f.created) != 2 {
 		t.Fatalf("stand 7 %s, plans %d, created %d", h.Status("EDDM", 7), len(f.plans), len(f.created))
@@ -96,6 +112,13 @@ func TestHelpersFlow(t *testing.T) {
 	if err := h.Dock("EDDM", 9, "FSLTL_FAIB_B738_RYR-Ryanair"); err != nil {
 		t.Fatal(err)
 	}
+	nc := len(f.created)
+	h.Update(now) // not yet: the gate freed first
+	if len(f.created) != nc {
+		t.Fatal("helper created with its placeholder just gone")
+	}
+	now = now.Add(HelperDelay)
+	h.Update(now)
 	if got := f.created[len(f.created)-1].title; got != "MyCrew Jetway Helper B738" || f.removed[len(f.removed)-1] != 102 {
 		t.Fatalf("helper %q, removed %v", got, f.removed)
 	}
@@ -114,17 +137,56 @@ func TestHelpersFlow(t *testing.T) {
 		t.Fatalf("stand 9 %s, removed %v", h.Status("EDDM", 9), f.removed)
 	}
 	n := len(f.created)
+	// The list says home early: still undocking until RetractWait.
+	now = now.Add(16 * time.Second)
+	h.Update(now)
+	h.see(jw(9, 0, 0))
+	if h.Status("EDDM", 9) != StatusUndocking || len(f.created) != n {
+		t.Fatalf("stand 9 %s after 16 s, want undocking", h.Status("EDDM", 9))
+	}
+	now = now.Add(RetractWait)
+	h.Update(now)
 	h.see(jw(9, 0, 0))
 	if len(f.created) != n+1 {
 		t.Fatal("no placeholder back once the jetway was home")
 	}
+	h.assign(f, 202)
+	h.see(jw(9, 1, 202))
+	now = now.Add(RetractWait + time.Second)
+	h.Update(now)
 
 	// A helper the sim puts on another gate: removed, the dock failed.
 	h.Dock("EDDM", 7, "A320")
+	now = now.Add(HelperDelay)
+	h.Update(now)
 	h.assign(f, 301)
 	h.see(jw(5, 1, 301))
 	if h.Status("EDDM", 7) != StatusFailed || f.removed[len(f.removed)-1] != 301 {
 		t.Fatalf("stand 7 %s, removed %v", h.Status("EDDM", 7), f.removed)
+	}
+
+	// A helper no jetway takes (put on a ramp): removed after ClaimTimeout.
+	h.mu.Lock()
+	delete(h.filling, "EDDM")
+	h.mu.Unlock()
+	h.Dock("EDDM", 9, "B738")
+	now = now.Add(HelperDelay)
+	h.Update(now)
+	h.assign(f, 401)
+	now = now.Add(ClaimTimeout + time.Second)
+	h.Update(now)
+	if h.Status("EDDM", 9) != StatusFailed || !slices.Contains(f.removed, 401) {
+		t.Fatalf("stand 9 %s, removed %v", h.Status("EDDM", 9), f.removed)
+	}
+}
+
+// A jetway gate no placeholder holds (next to an occupied one): no helper.
+func TestHelpersNoPlaceholder(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	h.see(jw(11, 0, 0))
+	if err := h.Dock("EDDM", 11, "B738"); err != ErrNoGate || len(f.created) != 0 {
+		t.Fatalf("dock: %v, created %d; want ErrNoGate, none", err, len(f.created))
 	}
 }
 
@@ -135,5 +197,22 @@ func TestHelpersUnavailable(t *testing.T) {
 	}
 	if err := h.Prepare("EDDM"); err == nil {
 		t.Error("prepared without a package")
+	}
+}
+
+// One helper on its way at a time: the second dock waits for the first's
+// gate (two at once took each other's).
+func TestHelpersOneAtATime(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	h.gate("EDDM", 7).placeholder, h.gate("EDDM", 9).placeholder = 101, 102
+	h.mu.Unlock()
+	if err := h.Dock("EDDM", 7, "B738"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling {
+		t.Fatalf("second dock: %v, want ErrFilling", err)
 	}
 }

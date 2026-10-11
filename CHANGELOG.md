@@ -57,6 +57,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.89.0] - 2026-10-11
+
+### Added
+
+- Jetways: with jetways on, the stand allocator gives airliners the gates whose jetway can dock first, before their airline's own gates without one (`StandRequirements.Prefer`, `jetway.Helpers.Dockable`). A departure at a docked jetway boards 3 minutes before it asks for its push (`world.JetwayBoarding`). Guide: [Jetways](docs/traffic-world.md#jetways-572).
+- `jetway.PackageOptions.WingSpanFt` (`-span` in `examples/jetway-helpers`): every helper's wing span set (measured: a small span does not change which gates the simulator gives, and no jetway docks to it).
+- `TrafficManager.SetAtRunway`, `ManagedFlight.AtRunway`: a departure in the runway queue.
+
+### Fixed
+
+- Jetways, live at LKPR:
+  - A jetway that went home for the push is not docked again; a gate whose aircraft has gone sends its jetway home. Live, the jetway docked again onto the empty gate as the aircraft pushed.
+  - The push waits until the jetway is home, at least 25 s after it left. The jetway data said home after 16 s, while it was still moving.
+  - Only gates a placeholder holds are docked (`jetway.ErrNoGate`). The simulator puts no ParkedATC next to an occupied gate, so the helper went to another gate or a ramp.
+  - Docks wait until the gates are filled (`jetway.ErrFilling`), and one helper at a time. Two at once took each other's gates.
+  - The helper is created 3 s after its gate's placeholder went (`HelperDelay`).
+  - A helper no jetway takes is removed after 12 s, and a dock that timed out removes its helper. Either way the gate is filled again and the dock tried a minute later.
+  - A fill that found no gate is retried. After a simulator start, the first placeholder went unclaimed and the gates were taken for full.
+- Ground stop:
+  - Departures in the runway queue (holding short, lining up) no longer count as taxiing. Live, there was a ground stop with the taxiways empty.
+  - A held departure is told to expect a delay instead of being cleared to push and then sitting there.
+
 ## [0.88.0] - 2026-10-11
 
 ### Added

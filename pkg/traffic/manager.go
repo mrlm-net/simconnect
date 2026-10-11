@@ -76,6 +76,9 @@ type ManagedFlight struct {
 	Estimated time.Time `json:"estimated,omitempty"`
 	Note      string    `json:"note,omitempty"`
 	Held      bool      `json:"held,omitempty"`
+	// AtRunway: a departure holding short, lining up or lined up — in the
+	// runway queue, off the taxiways (CheckGroundCongestion leaves it out).
+	AtRunway bool `json:"atRunway,omitempty"`
 	// Stage "enroute": the spawn is the enroute part of an arrival (MSFS AI
 	// on its flight plan, handed to the arrival controller at the STAR
 	// entry) or an overflight (#369).
@@ -712,6 +715,16 @@ func (m *TrafficManager) Update(callsign string, s FlightStatus, now time.Time) 
 		if a := m.turnFrom(f); a != nil && a.Status == FlightParked {
 			m.set(a, FlightDone, now) // the same aircraft flies on
 		}
+	}
+}
+
+// SetAtRunway records that a departure is in the runway queue (holding
+// short, lining up) or not (ManagedFlight.AtRunway).
+func (m *TrafficManager) SetAtRunway(callsign string, at bool) {
+	m.mu.Lock()
+	defer m.unlock()
+	if f := m.find(callsign); f != nil {
+		f.AtRunway = at
 	}
 }
 

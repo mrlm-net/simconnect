@@ -194,6 +194,16 @@ Each airport has a fleet of service vehicles. The defaults are sized by its stan
 - **Library:** `traffic.VehicleFleet` and `traffic.ServiceFleet`; `TaxiRequest.Stairs`, `TaxiRequest.GPU`, `TaxiRequest.Buses` and `TaxiRequest.Deboard` (`traffic.SimObjectBus`, `BusSpot`, `BusesFor`); `ArrivalRequest.FollowMe` with `ArrivalWithServices` (`traffic.SimObjectFollowMe`).
 - **Control API:** `pushInMin` gives a manual departure a push time, so its stand services have a window.
 
+## Jetways (#572)
+
+Off by default: `World.SetJetways(true)` or `POST /api/jetways {"on": true}`; `GET /api/jetways` shows each gate's state. It needs the helper package in the Community folder (`go run ./examples/jetway-helpers`, then a simulator restart).
+
+- **How:** MSFS 2024 docks a jetway only to an aircraft in its ATC parking table. Invisible ParkedATC placeholders take the airport's jetway gates; to dock one, its placeholder goes and, 3 s later, an invisible helper of the aircraft's type takes the freed gate under our aircraft, and the jetway docks to it.
+- **Which gates:** the simulator puts no ParkedATC next to an occupied gate, so only about every other jetway gate can be given to a helper (at LKPR 19 of 27; `jetway.Helpers.Dockable`). With jetways on, the stand allocator gives airliners those gates first, before their airline's own gates without one (`StandRequirements.Prefer`); an aircraft on another gate gets no jetway.
+- **One at a time:** a helper is created only once the gates are filled, no other helper is on its way and no jetway is going home; a helper the simulator puts elsewhere (another gate, a ramp) is removed and the dock tried again a minute later.
+- **Boarding:** a departure asks for its push once its jetway has been on 3 minutes (`JetwayBoarding`); ground answers once the jetway is home (at least 25 s after it left), and it is not docked again.
+- **Not:** types with their own airstairs (`traffic.NoJetway`).
+
 ## SimConnect IDs
 
 The World uses these definition, request and event IDs on the connection; a host keeps its own clear of them. A host that uses the same library helpers on its connection moves the World's off their defaults with `Options.IDBase`: airport loader at IDBase/+100, procedure loader +200/+300, nav loader +400/+500, airport list +600, injector +700/+800/+900, airway crawl +1000/+1010, enroute creations +1100–+2099. In each controller block of 10 request IDs the last six are its two buses, GPU, stairs, fuel truck and tug (an arrival's follow-me car takes the tug's); a deboarding bus and the boarding bus after it share one.

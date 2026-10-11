@@ -292,3 +292,18 @@ func TestSpawnImpossibleCancels(t *testing.T) {
 		t.Fatalf("%v after %d spawns, want cancelled after 1", f.Status, spawns)
 	}
 }
+
+// The runway queue is not on the taxiways: no ground stop for it.
+func TestGroundCongestionRunwayQueue(t *testing.T) {
+	fl := func(cs string, s FlightStatus, at bool) ManagedFlight {
+		return ManagedFlight{Flight: Flight{Callsign: cs}, Kind: "departure", Status: s, AtRunway: at}
+	}
+	s := Situation{Flights: []ManagedFlight{fl("A", FlightTaxiing, true), fl("B", FlightTaxiing, true), fl("C", FlightTaxiing, false), fl("D", FlightBoarding, false)}}
+	if got := CheckGroundCongestion(2)(s); len(got) != 0 {
+		t.Errorf("held with two at the holding point and one taxiing: %+v", got)
+	}
+	s.Flights[1].AtRunway = false
+	if got := CheckGroundCongestion(2)(s); len(got) != 1 {
+		t.Errorf("two taxiing: %d held, want 1", len(got))
+	}
+}
