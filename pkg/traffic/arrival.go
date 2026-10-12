@@ -82,6 +82,10 @@ type ArrivalRequest struct {
 	// NoseOffset is the distance from the aircraft reference point to the
 	// nose for stopping on the stand; 0 means DefaultNoseOffsetMeters.
 	NoseOffset float64
+	// StandSide moves the stand stop sideways, meters to the right of the
+	// parking line (a gate whose simulator parking sits off it, so the
+	// jetway meets the door); 0 on the line.
+	StandSide float64
 	// NoStopWaypoint disables the active stop at the stand (for comparison).
 	NoStopWaypoint bool
 	// HoldForClearance keeps the aircraft stopped clear of the runway until
@@ -442,7 +446,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	req.resolveAircraft()
 	req.Options = withSpan(req.Options, req.Profile)
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
-		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
 	if err != nil {
@@ -1077,7 +1081,7 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	exit := c.plan.Exit
 	req := c.req
 	plan, err := PlanArrival(g, req.Runway, parking, ArrivalOptions{
-		SpawnNm: c.plan.SpawnNm, Exit: &exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+		SpawnNm: c.plan.SpawnNm, Exit: &exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
 	if err != nil {

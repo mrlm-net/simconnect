@@ -38,6 +38,10 @@ type ModelDoor struct {
 	Door       InteractivePoint
 	First      InteractivePoint
 	WingSpanFt float64
+	// NoseGearFt is the nose gear, feet ahead of the reference datum (the
+	// foremost wheel of [CONTACT_POINTS]); HasNoseGear when found.
+	NoseGearFt  float64
+	HasNoseGear bool
 }
 
 // ParseInteractivePoint reads the values of an interactive_point line
@@ -93,6 +97,24 @@ func ReadModelDoor(dir string) (ModelDoor, bool) {
 	}
 	if s, err := strconv.ParseFloat(firstField(cfgSection(fm, "AIRPLANE_GEOMETRY")["wing_span"]), 64); err == nil {
 		d.WingSpanFt = s
+	}
+	// The nose gear: the foremost wheel of [CONTACT_POINTS] (class 1),
+	// feet ahead of the reference datum.
+	nose := math.Inf(-1)
+	for k, v := range cfgSection(fm, "CONTACT_POINTS") {
+		if !strings.HasPrefix(k, "point.") {
+			continue
+		}
+		f := strings.Split(strings.SplitN(v, ";", 2)[0], ",")
+		if len(f) < 2 || strings.TrimSpace(f[0]) != "1" {
+			continue
+		}
+		if x, err := strconv.ParseFloat(strings.TrimSpace(f[1]), 64); err == nil && x > nose {
+			nose = x
+		}
+	}
+	if !math.IsInf(nose, -1) {
+		d.NoseGearFt, d.HasNoseGear = nose, true
 	}
 	return d, true
 }

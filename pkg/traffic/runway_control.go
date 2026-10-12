@@ -46,6 +46,10 @@ type RunwayUser struct {
 	// ClimbKts: a departure's climb speed (TAS), for the interval and the
 	// order behind a slower one on the same route; 0 unknown.
 	ClimbKts float64
+	// AlongM: lined up, how far down the runway it stands from its
+	// take-off threshold (an intersection's way in); 0 at the threshold. A
+	// take-off waits for no one lined up behind it.
+	AlongM float64
 	// Other traffic: counted, never cleared.
 	Other bool
 	// Host: the host's aircraft (the user's, cleared by the host's own
@@ -206,6 +210,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// occupied: who is on the runway (the first seen); onRunway: all of
 	// them — a take-off waits for every one but itself.
 	occupied, linedUp := "", ""
+	var ourLinedUp []RunwayUser // ours lined up (one, unless an intersection's)
+	along := map[string]float64{}
 	rollingDep := "" // ours on its take-off roll
 	var onRunway []string
 	nextArr, nextArrName := math.Inf(1), ""
@@ -230,8 +236,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		case RunwayLinedUp:
 			occupied = u.Callsign
 			onRunway = append(onRunway, u.Callsign)
+			along[u.Callsign] = u.AlongM
 			if !u.Other && !u.Host {
 				linedUp = u.Callsign
+				ourLinedUp = append(ourLinedUp, u)
 			}
 		case RunwayFinal:
 			t := u.DistanceNM / math.Max(u.GroundKts, 100) * 3600
@@ -282,12 +290,25 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	takeoffWhy := func(u RunwayUser, lineUp time.Duration) string {
 		// Anyone else on it: one lining up as another rolls out after
 		// landing was cleared, the arrival listed first (live: BAW1272).
+		// Not one of ours lined up behind it (further up the runway): two
+		// lined up, the one ahead goes first (live, LKPR: TVS1663 at the
+		// threshold, PHVTA at B, each waiting for the other).
+		// As far down: the first lined up goes.
+		behindU := func(cs string) bool {
+			i := slices.IndexFunc(ourLinedUp, func(o RunwayUser) bool { return o.Callsign == cs })
+			j := slices.IndexFunc(ourLinedUp, func(o RunwayUser) bool { return o.Callsign == u.Callsign })
+			if i < 0 || j < 0 {
+				return false
+			}
+			a, b := along[cs], along[u.Callsign]
+			return a < b || a == b && i > j
+		}
 		for _, cs := range onRunway {
-			if cs != u.Callsign {
+			if cs != u.Callsign && !behindU(cs) {
 				return cs + " on the runway"
 			}
 		}
-		if occupied != "" && occupied != u.Callsign {
+		if occupied != "" && occupied != u.Callsign && !behindU(occupied) {
 			return occupied + " on the runway"
 		}
 		if why := interval(u); why != "" {
@@ -325,10 +346,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	}
 
 	// Ours lined up: take-off when it may.
-	for _, u := range users {
-		if u.Callsign != linedUp {
-			continue
-		}
+	for _, u := range ourLinedUp {
 		if why := takeoffWhy(u, 0); why == "" {
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 		} else {

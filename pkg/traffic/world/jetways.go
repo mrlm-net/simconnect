@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/dict"
 	"github.com/mrlm-net/simconnect/pkg/jetway"
@@ -102,6 +103,10 @@ type jetwayState struct {
 	prepared map[string]bool
 	docked   map[string]bool // "ICAO stand" asked to dock
 	askedAt  map[string]time.Time
+	tries    map[string]int // gate and model: docks asked
+	// placed: where the simulator parked each gate's placeholders and
+	// helpers, the latest last.
+	placed map[string][]parkedAt
 }
 
 func gateKey(icao string, stand int) string { return fmt.Sprintf("%s %d", icao, stand) }
@@ -146,7 +151,8 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 		return nil
 	}
 	cc.jw.svc = jetway.NewHelpers(cc.client, jetway.HelperOptions{Types: types, RetractPlan: cc.retractPlan,
-		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf, AircraftAt: cc.aircraftAt, Offset: jetwayDoorOffset})
+		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf, AircraftAt: cc.aircraftAt, Offset: jetwayDoorOffset,
+		OnPlaceholder: cc.placeholderParked})
 	cc.jw.prepared, cc.jw.docked = map[string]bool{}, map[string]bool{}
 	return cc.jw.svc
 }
@@ -257,15 +263,19 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		cc.jw.mu.Lock()
 		asked := cc.jw.docked[k]
 		// A dock that failed (the helper given another gate) is asked again
-		// a minute after.
-		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && svc.Status(icao, stand) == jetway.StatusFailed {
+		// a minute after, up to JetwayDockTries times for the aircraft
+		// there: some gates the simulator gives no helper of its type
+		// (live, LKPR B14: a 787's helper put 308 m away, again and again).
+		key := k + " " + model
+		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && svc.Status(icao, stand) == jetway.StatusFailed && cc.jw.tries[key] < JetwayDockTries {
 			asked = false
 		}
 		if !asked {
 			if cc.jw.askedAt == nil {
-				cc.jw.askedAt = map[string]time.Time{}
+				cc.jw.askedAt, cc.jw.tries = map[string]time.Time{}, map[string]int{}
 			}
 			cc.jw.askedAt[k] = now
+			cc.jw.tries[key]++
 		}
 		cc.jw.docked[k] = true
 		cc.jw.mu.Unlock()
@@ -301,6 +311,56 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 	svc.Update(now)
 }
 
+// parkedAt is where the simulator parked an aircraft (title) on a gate.
+type parkedAt struct {
+	title         string
+	lat, lon, hdg float64
+}
+
+// placeholderParked keeps where the simulator parked a placeholder or
+// helper on icao's stand (jetway.HelperOptions.OnPlaceholder), the last
+// few: one put on another gate is no measure of this one (gatePlace).
+func (cc *controlCenter) placeholderParked(icao string, stand int, title string, lat, lon, hdg float64) {
+	cc.jw.mu.Lock()
+	if cc.jw.placed == nil {
+		cc.jw.placed = map[string][]parkedAt{}
+	}
+	k := gateKey(icao, stand)
+	l := append(cc.jw.placed[k], parkedAt{title, lat, lon, hdg})
+	if len(l) > 4 {
+		l = l[len(l)-4:]
+	}
+	cc.jw.placed[k] = l
+	cc.jw.mu.Unlock()
+}
+
+// gatePlace is how the simulator parks on g's stand: its nose gear inset
+// meters inside the parking circle, side meters right of the parking line.
+// Measured on the gate's placeholder (live, LKPR: inset 5.2 to 6.1 m, side
+// up to ±0.55 m, each the gate's own), else SimNoseGearInsetM on the line.
+func (cc *controlCenter) gatePlace(g *airport.Graph, stand int) (inset, side float64) {
+	p := g.Layout.Parking[stand]
+	cc.jw.mu.Lock()
+	l := slices.Clone(cc.jw.placed[gateKey(g.Layout.ICAO, stand)])
+	cc.jw.mu.Unlock()
+	h := p.Heading * math.Pi / 180
+	for i := len(l) - 1; i >= 0; i-- { // the latest that is this gate's
+		at := l[i]
+		n, ok := noseGearM(at.title)
+		if !ok {
+			continue
+		}
+		north := (at.lat - p.Position.Lat) * 111_320
+		east := (at.lon - p.Position.Lon) * 111_320 * math.Cos(p.Position.Lat*math.Pi/180)
+		ahead := north*math.Cos(h) + east*math.Sin(h)
+		right := east*math.Cos(h) - north*math.Sin(h)
+		if in := p.Radius - ahead - n; in >= 0 && in <= 15 && math.Abs(right) <= 3 {
+			return in, right
+		}
+	}
+	return SimNoseGearInsetM, 0
+}
+
 // aircraftAt is our aircraft on icao's stand (its object), 0 none.
 func (cc *controlCenter) aircraftAt(icao string, stand int) uint32 {
 	cc.mu.Lock()
@@ -311,7 +371,7 @@ func (cc *controlCenter) aircraftAt(icao string, stand int) uint32 {
 	cc.mu.Unlock()
 	for _, it := range items {
 		it.mu.Lock()
-		at, obj := it.ICAO == icao && it.stand == stand, it.objectID
+		at, obj := it.ICAO == icao && it.stand == stand && !it.left, it.objectID // not one gone from it
 		it.mu.Unlock()
 		if at && obj != 0 {
 			return obj
@@ -402,6 +462,10 @@ func (cc *controlCenter) jetwayParked(it *controlled) bool {
 	}
 	return false
 }
+
+// JetwayDockTries: how many times a gate's dock is asked for the same
+// aircraft model before it is left without a jetway.
+const JetwayDockTries = 2
 
 // JetwayBoarding is how long a departure's jetway stays on before its crew
 // asks for the push.

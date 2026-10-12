@@ -1058,7 +1058,7 @@ const pushWideFacingDeg = 20.0
 func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	g, prof := c.req.Graph, c.profile()
 	stand := g.Layout.Parking[c.req.Parking]
-	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
+	gear := offsetHeading(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), stand.Heading, -prof.RefAheadMeters)
 	poses := c.configuredPoses(c.pushPoses(gear))
 	if len(poses) == 0 {
 		return false

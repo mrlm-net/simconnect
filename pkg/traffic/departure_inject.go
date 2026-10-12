@@ -527,7 +527,7 @@ func (c *TaxiController) standFacesOut() bool {
 		return false
 	}
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
-	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), stand.Heading, c.profile())
+	nose := NoseGear(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), stand.Heading, c.profile())
 	j := c.route.Points[1]
 	return alongHeading(nose, stand.Heading, j) > 0 && math.Abs(headingDiff(stand.Heading, localBearing(nose, j))) <= faceOutMaxDeg
 }
@@ -551,7 +551,7 @@ func (c *TaxiController) updateTug(dt float64) {
 		return
 	}
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
-	pose := GroundPose{Position: StandPoint(stand, c.req.NoseOffset), Heading: stand.Heading}
+	pose := GroundPose{Position: StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), Heading: stand.Heading}
 	if c.mover != nil {
 		pose = c.mover.Pose()
 	}
@@ -671,7 +671,7 @@ func (c *TaxiController) tugErr(err error) {
 func (c *TaxiController) standInPlace() error {
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), stand.Heading, prof)
+	nose := NoseGear(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), stand.Heading, prof)
 	path, err := NewGroundPath([]airport.LatLon{nose, offsetHeading(nose, stand.Heading, 10), route.Points[len(route.Points)-1]}, prof)
 	if err != nil {
 		return err
@@ -732,7 +732,7 @@ func (c *TaxiController) pushPath() (*GroundPath, error) {
 	}
 	g, prof, route := c.req.Graph, c.profile(), c.route
 	stand := g.Layout.Parking[c.req.Parking]
-	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -prof.RefAheadMeters)
+	gear := offsetHeading(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), stand.Heading, -prof.RefAheadMeters)
 	pts := []airport.LatLon{gear}
 	if c.pushPose != nil {
 		path, err := NewSmoothPath(c.pushPts, c.pushProfile())
@@ -975,7 +975,7 @@ func (c *TaxiController) choosePushback(excl map[pushChoice]bool) {
 	j := r.Nodes[1]
 	jp := g.Nodes[j].Position
 	stand := g.Layout.Parking[c.req.Parking]
-	gear := offsetHeading(StandPoint(stand, c.req.NoseOffset), stand.Heading, -c.profile().RefAheadMeters)
+	gear := offsetHeading(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), stand.Heading, -c.profile().RefAheadMeters)
 	pushDir := localBearing(gear, jp)
 	// Junctions the tail may swing at: the first, and on along the route
 	// while it runs straight back behind the stand (LKPR B14: a connector
@@ -2289,7 +2289,7 @@ func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
 	g, prof := c.req.Graph, c.profile()
 	stand := g.Layout.Parking[c.req.Parking]
 	h := stand.Heading
-	nose := NoseGear(StandPoint(stand, c.req.NoseOffset), h, prof)
+	nose := NoseGear(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), h, prof)
 	r := math.Max(PowerOutMinRadiusMeters, TurnAroundMeters*prof.WheelbaseMeters/DefaultMotionProfile().WheelbaseMeters)
 	all := pavementAround(g, nose, 4*r)
 	own := pavement{segs: all.segs, stands: []airport.Parking{stand}}

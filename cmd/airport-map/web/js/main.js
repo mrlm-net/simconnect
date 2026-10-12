@@ -367,7 +367,20 @@ const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (pus
   es.addEventListener('hello', (e) => {
     try {
       const b = JSON.parse(e.data).boot;
-      if (boot !== null && b !== boot) location.reload();
+      // Not at once: a page reloaded before the new server has its
+      // airport and traffic up drew no aircraft. Once the status says the
+      // simulator is connected, and the airport answers, a few seconds on.
+      if (boot !== null && b !== boot) {
+        const ready = async () => {
+          try {
+            const st = await fetch('/api/status', { cache: 'no-store' }).then((r) => r.json());
+            const ap = await fetch('/api/airport?icao=' + encodeURIComponent((data && data.icao) || 'LKPR'), { cache: 'no-store' });
+            if (st.connected && ap.ok) { setTimeout(() => location.reload(), 3000); return; }
+          } catch (_) { /* not up yet */ }
+          setTimeout(ready, 2000);
+        };
+        ready();
+      }
       boot = b;
     } catch (_) { /* an older server: no boot id */ }
   });

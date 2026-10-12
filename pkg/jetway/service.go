@@ -72,6 +72,8 @@ type placing struct {
 	model         string
 	ours, helper  uint32
 	oursAt, helAt *placePos
+	// placeholder: only its position is read, for OnPlaceholder.
+	placeholder bool
 }
 
 // Timings of the helper backend, as measured live at EDDM (2026-10-10).
@@ -120,6 +122,10 @@ type HelperOptions struct {
 	// after the sim placed it had its jetway report docked without the
 	// jetway moving at all (A4, C22, C30); unmoved, they docked.
 	MoveHelpers bool
+	// OnPlaceholder, when set, hears where the simulator parked each
+	// placeholder or helper (title) on its gate: how it parks on that gate,
+	// for the host to park its own aircraft the same way.
+	OnPlaceholder func(icao string, stand int, title string, lat, lon, hdg float64)
 	// Log, when set, is told what the backend does.
 	Log func(format string, args ...any)
 }
@@ -188,10 +194,19 @@ func (h *Helpers) measure(pl *placing) {
 		h.client.AddToDataDefinition(read+1, "Initial Position", "", types.SIMCONNECT_DATATYPE_INITPOSITION, 0, 0)
 	}
 	for _, obj := range []uint32{pl.ours, pl.helper} {
+		if obj == 0 {
+			continue
+		}
 		r := h.req()
 		h.placings[r] = pl
 		h.client.RequestDataOnSimObject(r, read, obj, types.SIMCONNECT_PERIOD_ONCE, 0, 0, 0, 0)
 	}
+}
+
+// measurePlaceholder asks for the position of placeholder obj on stand
+// (OnPlaceholder). h.mu held.
+func (h *Helpers) measurePlaceholder(icao string, stand int, obj uint32) {
+	h.measure(&placing{icao: icao, stand: stand, model: HelperTitle(h.opt.FallbackType, false), helper: obj, placeholder: true})
 }
 
 // place logs where the sim put the helper from our aircraft and, for a
@@ -403,6 +418,9 @@ func (h *Helpers) dropHelper(icao string, stand int, g *gate) {
 	}
 }
 
+// HelperFor is the title of the helper model docks with.
+func (h *Helpers) HelperFor(model string) string { return h.helperTitle(model) }
+
 func (h *Helpers) helperTitle(model string) string {
 	m := strings.ToUpper(model)
 	for _, t := range h.opt.Types {
@@ -513,13 +531,20 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
 		d := msg.AsSimObjectData()
 		h.mu.Lock()
-		defer h.mu.Unlock()
 		pl, ok := h.placings[uint32(d.DwRequestID)]
 		if !ok {
+			h.mu.Unlock()
 			return false
 		}
 		delete(h.placings, uint32(d.DwRequestID))
 		at := *engine.CastDataAs[placePos](&d.DwData)
+		if pl.placeholder {
+			h.mu.Unlock()
+			if h.opt.OnPlaceholder != nil {
+				h.opt.OnPlaceholder(pl.icao, pl.stand, pl.model, at.Lat, at.Lon, at.Hdg)
+			}
+			return true
+		}
 		if uint32(d.DwObjectID) == pl.ours {
 			pl.oursAt = &at
 		} else {
@@ -527,6 +552,13 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		}
 		if pl.oursAt != nil && pl.helAt != nil {
 			h.place(pl)
+		}
+		title := h.helperTitle(pl.model)
+		h.mu.Unlock()
+		if uint32(d.DwObjectID) != pl.ours && h.opt.OnPlaceholder != nil {
+			// The helper parked the sim's way too: that gate's measure
+			// where no placeholder held it.
+			h.opt.OnPlaceholder(pl.icao, pl.stand, title, at.Lat, at.Lon, at.Hdg)
 		}
 		return true
 	case types.SIMCONNECT_RECV_ID_JETWAY_DATA:
@@ -565,6 +597,9 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				h.dropHelper(icao, stand, g)
 			}
 			g.placeholder, g.status, g.since = att, StatusReserved, h.now
+			if h.opt.OnPlaceholder != nil {
+				h.measurePlaceholder(icao, stand, att)
+			}
 			if taken {
 				g.status = StatusFailed
 			}

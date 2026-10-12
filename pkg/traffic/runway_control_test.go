@@ -478,3 +478,24 @@ func TestRunwayControllerDoubleGap(t *testing.T) {
 		t.Logf("same route %v: B2 off after %v, the arrival %.1f NM out", same, b2Off, arrNM)
 	}
 }
+
+// Two of ours lined up, one at the threshold and one at an intersection
+// further down: the one ahead is cleared, the other waits for it — never
+// each for the other (live, LKPR: TVS1663 and PHVTA).
+func TestRunwayControllerTwoLinedUp(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	full, at := dep("TVS1663", "B738", RunwayLinedUp), dep("PHVTA", "C172", RunwayLinedUp)
+	at.Route, at.AlongM = "", 600
+	for _, users := range [][]RunwayUser{{full, at}, {at, full}} {
+		c := r.Decide(time.Now(), users)
+		if !slices.Contains(c.Takeoff, "PHVTA") || slices.Contains(c.Takeoff, "TVS1663") || !strings.Contains(c.Waiting["TVS1663"], "PHVTA") {
+			t.Fatalf("the one ahead first: %+v", c)
+		}
+	}
+	// Both as far down: the first lined up goes.
+	a, b := dep("A1", "A320", RunwayLinedUp), dep("B2", "A320", RunwayLinedUp)
+	b.Route = ""
+	if c := r.Decide(time.Now(), []RunwayUser{a, b}); len(c.Takeoff) != 1 {
+		t.Fatalf("one of two at the threshold: %+v", c)
+	}
+}

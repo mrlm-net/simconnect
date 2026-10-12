@@ -177,6 +177,11 @@ func (t *towers) tick(now time.Time) {
 			u.Phase = traffic.RunwayHoldingShort
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
 			u.Phase = traffic.RunwayLinedUp
+			if _, end, ok := l.RunwayEnd(v.Runway); ok {
+				d := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
+				b := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
+				u.AlongM = math.Max(0, d*math.Cos((b-end.Heading)*math.Pi/180))
+			}
 		case it.dep != nil && v.State == "departing" && v.OnGround:
 			u.Phase, u.GroundKts = traffic.RunwayRolling, v.GroundSpeed
 		case it.dep != nil && v.State == "departing":
