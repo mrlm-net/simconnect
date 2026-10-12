@@ -1013,7 +1013,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.adopt != 0 { // a turnaround: the passengers off first
 			deboard = cc.buses(g, reqBase, prof, stairs)
 		}
-		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
+		nose, side := cc.standPlace(g, r.Stand, model)
+		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
@@ -1069,7 +1070,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.approach = append(it.approach, p.Position) // its way on the map
 			}
 		}
-		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
+		nose, side := cc.standPlace(g, r.Stand, model)
+		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof, FollowMe: cc.followMe(r, g, reqBase, prof),
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -2769,6 +2771,37 @@ func (it *controlled) tellGiveWay(other uint32) {
 		desc += " coming the other way"
 	}
 	it.say(traffic.GiveWay(it.Tail, desc))
+}
+
+// standNoseOffset is the stand offset for model on stand: at a gate the
+// simulator's own (gateNoseOffset), so a jetway's helper parks with its
+// door where ours is; elsewhere, or not known, 0 (the profile's).
+func (cc *controlCenter) standNoseOffset(g *airport.Graph, stand int, model string) float64 {
+	nose, _ := cc.standPlace(g, stand, model)
+	return nose
+}
+
+// standPlace is model's stand offset and side on stand (TaxiRequest
+// NoseOffset, StandSide): at a gate as the simulator parks there.
+func (cc *controlCenter) standPlace(g *airport.Graph, stand int, model string) (nose, side float64) {
+	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) || !g.Layout.Parking[stand].IsGate() {
+		return 0, 0
+	}
+	m := strings.SplitN(model, liverySep, 2)[0]
+	helper := ""
+	if jetwaysEnabled() && cc != nil {
+		if svc := cc.jetwayBuilt(); svc != nil {
+			helper = svc.HelperFor(m)
+		}
+	}
+	inset, side := SimNoseGearInsetM, 0.0
+	if cc != nil {
+		inset, side = cc.gatePlace(g, stand)
+	}
+	if helper == "" {
+		side = 0 // no helper: no jetway to meet
+	}
+	return gateNoseOffset(m, helper, inset), gateSide(m, helper, side)
 }
 
 // typeSaid is an ICAO type designator as a controller says it: "Airbus

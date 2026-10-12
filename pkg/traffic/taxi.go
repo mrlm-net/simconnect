@@ -103,6 +103,10 @@ type TaxiRequest struct {
 	// NoseOffset is the distance from the aircraft reference point to its nose,
 	// placing it on the stand (StandPoint); 0 means DefaultNoseOffsetMeters.
 	NoseOffset float64
+	// StandSide moves the stand stop sideways, meters to the right of the
+	// parking line (a gate whose simulator parking sits off it, so the
+	// jetway meets the door); 0 on the line.
+	StandSide float64
 	// Takeoff is the take-off; zero means DefaultTakeoffProfile.
 	Takeoff TakeoffProfile
 	// Departure is flown by MSFS AI after the injected take-off hands over
@@ -529,7 +533,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		return nil
 	}
 	stand := req.Graph.Layout.Parking[req.Parking]
-	standAt := StandPoint(stand, req.NoseOffset) // at the stop mark, as arrivals park
+	standAt := StandPointSide(stand, req.NoseOffset, req.StandSide) // at the stop mark, as arrivals park
 	err = c.fleet.RequestNonATC(NonATCOpts{
 		Model:  req.Model,
 		Livery: req.Livery,

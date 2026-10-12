@@ -117,7 +117,7 @@ func (c *TaxiController) updateStandService(v FuelService, st *standService, dt 
 	}
 	now := c.now()
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
-	pose := GroundPose{Position: StandPoint(stand, c.req.NoseOffset), Heading: stand.Heading}
+	pose := GroundPose{Position: StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), Heading: stand.Heading}
 	if c.mover != nil {
 		pose = c.mover.Pose()
 	}

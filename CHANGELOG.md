@@ -57,6 +57,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.93.0] - 2026-10-12
+
+### Added
+
+- Jetways (#572): our aircraft park at a gate the way the simulator parks there, so the jetway's hood meets the door. The nose gear sits a measured inset inside the parking circle, and the doors are matched door to door with the helper (`addons.ModelDoor.NoseGearFt`, read from `[CONTACT_POINTS]`). Each gate's inset and its sideways offset from the parking line (live, LKPR: 5.2 to 6.1 m and up to ±0.6 m, per gate) are measured on the placeholder or helper the simulator parks there (`jetway.HelperOptions.OnPlaceholder`). Live, LKPR: helpers within 1 cm of our aircraft on every gate measured.
+- `TaxiRequest.StandSide`, `ArrivalRequest.StandSide`, `ArrivalOptions.StandSide` and `StandPointSide`: the stand stop moved sideways off the parking line.
+- `jetway.Helpers.HelperFor`: the helper title used for a model.
+- `RunwayUser.AlongM`: how far down the runway a lined-up aircraft stands.
+
+### Fixed
+
+- Runway: two of ours lined up at once (one at the threshold, one at an intersection further down) each waited for the other. Now each is considered, and the one further down goes first (live, LKPR: TVS1663 and PHVTA).
+- Airport map: aircraft vanished from the map while jetways were docked. A traffic scan that ended on a jetway helper was never handed on.
+- Jetways: a gate is retried at most 2 times per model, so retries no longer steal other gates. The door fit is logged against the aircraft on the stand, not one that has left it.
+- Airport map: after a restart the page reloads only once the server is connected and has the airport, so it no longer comes up without aircraft.
+
 ## [0.92.2] - 2026-10-12
 
 ### Fixed

@@ -14,6 +14,9 @@ func TestDoorsByType(t *testing.T) {
 	if d.Folder != "FSLTL_A320" || d.WingSpanFt != 104 || d.Door.Long != 37.654 || d.Door.Lat != -6.137 || d.Door.Vert != 0.203 {
 		t.Errorf("door %+v", d)
 	}
+	if !d.HasNoseGear || d.NoseGearFt != 37.319 {
+		t.Errorf("nose gear %v %v", d.NoseGearFt, d.HasNoseGear)
+	}
 	if d.Door.Raw != "0.4, 37.654, -6.137,  0.203 ,0, 0, 0, -86, 72, 16, 85, 3, -2, 33" {
 		t.Errorf("raw %q", d.Door.Raw)
 	}

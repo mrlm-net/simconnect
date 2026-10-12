@@ -180,7 +180,7 @@ func (c *TaxiController) planFromStand(req TaxiRequest, rwy airport.Runway, end 
 // not pushed back. c.mu is held.
 func (c *TaxiController) onStand() bool {
 	stand := c.req.Graph.Layout.Parking[c.req.Parking]
-	return localDist(c.mover.Pose().Position, StandPoint(stand, c.req.NoseOffset)) <= onStandMeters
+	return localDist(c.mover.Pose().Position, StandPointSide(stand, c.req.NoseOffset, c.req.StandSide)) <= onStandMeters
 }
 
 const onStandMeters = 5.0

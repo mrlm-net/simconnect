@@ -92,7 +92,7 @@ func ExitSpeed(e airport.RunwayExit) float64 {
 // StandApproachSpeedKts to the stand, and a last waypoint StandOvershootMeters
 // past it, because MSFS AI stops short of its last ground waypoint.
 func TaxiInWaypoints(g *airport.Graph, r *airport.Route) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
-	return taxiIn(g, r, groundAlt{feet: convert.MetersToFeet(g.Layout.Altitude)}, DefaultNoseOffsetMeters, 0)
+	return taxiIn(g, r, groundAlt{feet: convert.MetersToFeet(g.Layout.Altitude)}, DefaultNoseOffsetMeters, 0, 0)
 }
 
 // StandStop returns where an aircraft's reference point should stop on the
@@ -102,11 +102,15 @@ func TaxiInWaypoints(g *airport.Graph, r *airport.Route) ([]types.SIMCONNECT_DAT
 // the aircraft's reference point to its nose) ahead of the centre along the
 // stand heading.
 func StandStop(g *airport.Graph, r *airport.Route, noseOffset float64) (airport.LatLon, error) {
+	return standStop(g, r, noseOffset, 0)
+}
+
+func standStop(g *airport.Graph, r *airport.Route, noseOffset, side float64) (airport.LatLon, error) {
 	n := len(r.Nodes)
 	if n < 2 || g.Nodes[r.Nodes[n-1]].Kind != airport.NodeParking {
 		return airport.LatLon{}, ErrNotStandRoute
 	}
-	return StandPoint(g.Layout.Parking[g.Nodes[r.Nodes[n-1]].Index], noseOffset), nil
+	return StandPointSide(g.Layout.Parking[g.Nodes[r.Nodes[n-1]].Index], noseOffset, side), nil
 }
 
 // StandPoint is where an aircraft stands on a parking spot: its reference
@@ -121,14 +125,25 @@ func StandPoint(p airport.Parking, noseOffset float64) airport.LatLon {
 	return airport.LatLon{Lat: lat, Lon: lon}
 }
 
-func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset float64, from int) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
+// StandPointSide is StandPoint side meters to the right of the parking
+// line (left when negative).
+func StandPointSide(p airport.Parking, noseOffset, side float64) airport.LatLon {
+	at := StandPoint(p, noseOffset)
+	if side == 0 {
+		return at
+	}
+	lat, lon := calc.DisplaceByHeading(at.Lat, at.Lon, math.Mod(p.Heading+90, 360), side)
+	return airport.LatLon{Lat: lat, Lon: lon}
+}
+
+func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset, side float64, from int) ([]types.SIMCONNECT_DATA_WAYPOINT, error) {
 	n := len(r.Nodes)
 	if n < 3 || g.Nodes[r.Nodes[n-1]].Kind != airport.NodeParking {
 		return nil, ErrNotStandRoute
 	}
 	pts := r.Points
 	junction := pts[n-2]
-	stand, err := StandStop(g, r, noseOffset)
+	stand, err := standStop(g, r, noseOffset, side)
 	if err != nil {
 		return nil, err
 	}
@@ -269,6 +284,10 @@ type ArrivalOptions struct {
 	// NoseOffset is the distance from the aircraft reference point to its
 	// nose, used to stop on the stand (StandStop); 0 means DefaultNoseOffsetMeters.
 	NoseOffset float64
+	// StandSide moves the stand stop sideways, meters to the right of the
+	// parking line (a gate whose simulator parking sits off it, so the
+	// jetway meets the door); 0 on the line.
+	StandSide float64
 	// TouchdownKts and BrakeDecel (m/s²) are the aircraft's, for the exits
 	// it can make and what its runway time costs (bestExit); 0: an
 	// airliner's (TouchdownSpeedKts, RolloutDecel).
@@ -384,12 +403,12 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	p.Waypoints = append(p.Waypoints, groundLegs(thin(simplify(toStop), MinWaypointSpacingMeters), ground, legOptions{
 		maxKts: ExitSpeed(x), endKts: VacateStopKts, endMeters: 40,
 	})...)
-	in, err := taxiIn(g, route, ground, o.NoseOffset, p.VacateIndex)
+	in, err := taxiIn(g, route, ground, o.NoseOffset, o.StandSide, p.VacateIndex)
 	if err != nil {
 		return nil, err
 	}
 	p.TaxiWaypoints = in
-	p.Stop, _ = StandStop(g, route, o.NoseOffset)
+	p.Stop, _ = standStop(g, route, o.NoseOffset, o.StandSide)
 	return p, nil
 }
 

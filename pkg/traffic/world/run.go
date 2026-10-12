@@ -962,14 +962,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				if uint32(d.DwEntryNumber) <= 1 {
 					scan = scan[:0] // a new scan
 				}
-				if jetway.IsHelper(engine.BytesToString(t.Title[:])) {
-					continue // an invisible jetway helper (#572): not traffic
+				// An invisible jetway helper (#572) is not traffic, but the scan
+				// still ends on it: skipped with continue, a scan whose last
+				// object was a helper was never handed on (live, LKPR: no
+				// aircraft on the map while jetways were docked).
+				if !jetway.IsHelper(engine.BytesToString(t.Title[:])) {
+					scan = append(scan, Traffic{
+						ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
+						State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
+						Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+					})
 				}
-				scan = append(scan, Traffic{
-					ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
-					State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
-					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
-				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					feed.Traffic(scan)
 					scan = nil
@@ -1319,7 +1322,7 @@ func (w *World) Register(mux *http.ServeMux) {
 		}
 		if cc != nil {
 			ours, tails := cc.ownIDs(), cc.ownTails()
-			t = append([]Traffic(nil), t...)
+			t = append(make([]Traffic, 0, len(t)), t...)
 			for i := range t {
 				t[i].Ours = ours[t[i].ObjectID]
 				t[i].Route = routes[t[i].ObjectID] // ours flown by MSFS AI: the way it goes

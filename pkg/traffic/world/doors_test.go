@@ -1,9 +1,11 @@
 package world
 
 import (
+	"math"
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/addons"
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -45,5 +47,41 @@ func TestJetwayDoorOffset(t *testing.T) {
 	}
 	if _, _, ok := jetwayDoorOffset("unknown", "MyCrew Jetway Helper A20N"); ok {
 		t.Error("an unknown model has no offset")
+	}
+}
+
+// At a gate our aircraft stops as the simulator parks its own: nose gear
+// SimNoseGearInsetM inside the circle (the FSLTL 737's nose gear 42.7 ft
+// ahead: 13.02 + 5.35 m).
+func TestGateNoseOffset(t *testing.T) {
+	setDoors(map[string]addons.ModelDoor{"FSLTL_B738_RYR": {Type: "B738", NoseGearFt: 42.7056, HasNoseGear: true}}, nil)
+	defer setDoors(nil, nil)
+	if n := gateNoseOffset("FSLTL_B738_RYR", "", SimNoseGearInsetM); n < 18.36 || n > 18.38 {
+		t.Errorf("gate offset %.2f m, want 18.37", n)
+	}
+	if gateNoseOffset("unknown model", "", SimNoseGearInsetM) != 0 {
+		t.Error("an unknown model has a gate offset")
+	}
+}
+
+// A gate's placeholder parked as the simulator parks there (#572): its
+// nose gear inset and its side off the parking line become our stop's.
+func TestGatePlaceFromPlaceholder(t *testing.T) {
+	setDoors(map[string]addons.ModelDoor{"FSLTL_A320_HELPER": {HasNoseGear: true, NoseGearFt: 37.319}}, nil)
+	g := &airport.Graph{Layout: &airport.Layout{ICAO: "TEST", Parking: []airport.Parking{{Position: airport.LatLon{Lat: 50, Lon: 14}, Heading: 90, Radius: 20}}}}
+	cc := &controlCenter{}
+	if in, side := cc.gatePlace(g, 0); in != SimNoseGearInsetM || side != 0 {
+		t.Fatalf("unmeasured: %v %v", in, side)
+	}
+	// Placed 3 m east (ahead) and 0.4 m south (right) of the parking point.
+	east, south := 3/(111_320*math.Cos(50*math.Pi/180)), 0.4/111_320
+	cc.placeholderParked("TEST", 0, "FSLTL_A320_HELPER", 50-south, 14+east, 90)
+	in, side := cc.gatePlace(g, 0)
+	if want := 20 - 3 - 37.319*0.3048; math.Abs(in-want) > 0.01 || math.Abs(side-0.4) > 0.01 {
+		t.Errorf("gatePlace = %.2f, %.2f; want %.2f, 0.40", in, side, want)
+	}
+	at := traffic.StandPointSide(g.Layout.Parking[0], 20, side)
+	if d := (50 - at.Lat) * 111_320; math.Abs(d-0.4) > 0.01 {
+		t.Errorf("StandPointSide: %.2f m right, want 0.40", d)
 	}
 }
