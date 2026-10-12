@@ -145,6 +145,7 @@ type gate struct {
 	status              Status
 	since               time.Time
 	model               string
+	title               string    // the helper's (a variant's), "" the model's type's
 	createAt            time.Time // docking: the helper created then (zero: done)
 }
 
@@ -165,6 +166,11 @@ type Helpers struct {
 	lastPoll   time.Time
 	placeDefs  bool                // the place definitions made
 	placings   map[uint32]*placing // request → helper being placed
+	// retiring: helpers sent off with the retract plan, removed then: one
+	// removed while its jetway still moved to it left that jetway stuck
+	// half way for good (live, LKPR 13, 15, 17 to 21: "retract home"
+	// with nothing attached, every later dock there timed out).
+	retiring map[uint32]time.Time
 }
 
 // NewHelpers makes the helper backend on client.
@@ -179,7 +185,7 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 		o.DefineBase = o.RequestBase
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, placings: map[uint32]*placing{}}
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
 }
 
 // measure asks for our aircraft's and its helper's positions (place).
@@ -340,12 +346,22 @@ func (h *Helpers) Release(icao string) error {
 		}
 	}
 	delete(h.gates, icao)
+	for obj := range h.retiring {
+		errs = append(errs, h.client.AIRemoveObject(obj, h.req()))
+		delete(h.retiring, obj)
+	}
 	return errors.Join(errs...)
 }
 
 // Dock takes stand's placeholder away and puts the helper of model's type
 // there: the sim gives it the one free gate, and its jetway docks.
 func (h *Helpers) Dock(icao string, stand int, model string) error {
+	return h.DockAs(icao, stand, model, "")
+}
+
+// DockAs is Dock with helper title (a variant, HelperVariantTitle) instead
+// of model's type's; "" that one.
+func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 	icao = strings.ToUpper(icao)
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -386,8 +402,11 @@ func (h *Helpers) Dock(icao string, stand int, model string) error {
 	g.placeholder = 0
 	// The helper once the gate is free (Update).
 	g.createAt = h.now.Add(HelperDelay)
-	g.status, g.since, g.model = StatusDocking, h.now, model
-	h.logf("jetway %s stand %d: docking (%s)", icao, stand, h.helperTitle(model))
+	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
+	if title == "" {
+		title = h.helperTitle(model)
+	}
+	h.logf("jetway %s stand %d: docking (%s)", icao, stand, title)
 	return nil
 }
 
@@ -396,7 +415,11 @@ func (h *Helpers) createHelper(icao string, stand int, g *gate) error {
 	g.createAt = time.Time{}
 	r := h.req()
 	h.byReq[r] = &pending{icao: icao, stand: stand, helper: true, createdAt: h.now}
-	return h.client.AICreateParkedATCAircraft(h.helperTitle(g.model), "JW"+fmt.Sprint(r%10000), icao, r)
+	title := g.title
+	if title == "" {
+		title = h.helperTitle(g.model)
+	}
+	return h.client.AICreateParkedATCAircraft(title, "JW"+fmt.Sprint(r%10000), icao, r)
 }
 
 // dropHelper removes stand's helper, created or on its way. h.mu held.
@@ -412,6 +435,42 @@ func (h *Helpers) dropHelper(icao string, stand int, g *gate) {
 			if p.object != 0 {
 				h.client.AIRemoveObject(p.object, h.req())
 				delete(h.byObj, p.object)
+			}
+			delete(h.byReq, r)
+		}
+	}
+}
+
+// retire sends helper obj at icao off with the retract plan, so the jetway
+// moving to it goes home, and removes it RetractWait later (Update);
+// removed at once without a plan. h.mu held.
+func (h *Helpers) retire(icao string, obj uint32) {
+	delete(h.byObj, obj)
+	if _, ok := h.retiring[obj]; ok {
+		return // on its way already
+	}
+	if h.opt.RetractPlan != nil {
+		if path, err := h.opt.RetractPlan(icao); err == nil {
+			h.client.AISetAircraftFlightPlan(obj, path, h.req())
+			h.retiring[obj] = h.now.Add(RetractWait)
+			return
+		}
+	}
+	h.client.AIRemoveObject(obj, h.req())
+}
+
+// retireHelper is dropHelper with its helper retired (retire), for a
+// jetway that may still be moving to it. h.mu held.
+func (h *Helpers) retireHelper(icao string, stand int, g *gate) {
+	g.createAt = time.Time{}
+	if g.helper != 0 {
+		h.retire(icao, g.helper)
+		g.helper = 0
+	}
+	for r, p := range h.byReq {
+		if p.helper && p.icao == icao && p.stand == stand {
+			if p.object != 0 {
+				h.retire(icao, p.object)
 			}
 			delete(h.byReq, r)
 		}
@@ -610,8 +669,12 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 		case p.helper && p.stand != stand:
 			// The sim put the helper on another gate: not ours.
 			h.logf("jetway %s: helper for stand %d took stand %d: removed", icao, p.stand, stand)
-			h.client.AIRemoveObject(att, h.req())
-			delete(h.byObj, att)
+			h.retire(icao, att)
+			for r, q := range h.byReq {
+				if q == p {
+					delete(h.byReq, r) // done with
+				}
+			}
 			if w := h.gate(icao, p.stand); w.status == StatusDocking {
 				w.status, w.since = StatusFailed, h.now
 			}
@@ -671,7 +734,7 @@ func (h *Helpers) Update(now time.Time) {
 			case p.object != 0 && now.Sub(p.createdAt) > ClaimTimeout:
 				// No jetway took it: put on a gate without one, or a ramp.
 				h.logf("jetway %s stand %d: helper not on a jetway gate: removed", p.icao, p.stand)
-				h.dropHelper(p.icao, p.stand, g)
+				h.retireHelper(p.icao, p.stand, g)
 				g.status, g.since = StatusFailed, now
 				h.filling[p.icao] = true
 			default:
@@ -703,6 +766,12 @@ func (h *Helpers) Update(now time.Time) {
 			busy = true
 		}
 	}
+	for obj, at := range h.retiring {
+		if !now.Before(at) {
+			h.client.AIRemoveObject(obj, h.req())
+			delete(h.retiring, obj)
+		}
+	}
 	for icao, m := range h.gates {
 		for stand, g := range m {
 			if g.status == StatusDocking && !g.createAt.IsZero() && !now.Before(g.createAt) {
@@ -710,7 +779,7 @@ func (h *Helpers) Update(now time.Time) {
 			}
 			if (g.status == StatusDocking || g.status == StatusUndocking) && now.Sub(g.since) > DockTimeout {
 				h.logf("jetway %s stand %d: %s timed out", icao, stand, g.status)
-				h.dropHelper(icao, stand, g)
+				h.retireHelper(icao, stand, g)
 				g.status = StatusFailed
 				h.filling[icao] = true // its gate free: a placeholder again
 			}

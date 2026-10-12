@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"math"
+	"slices"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -103,6 +104,13 @@ type pushTurnGoal struct {
 // along headA, true degrees) to b (travelling along headB) every step
 // meters; nil if none exists.
 func dubins(a airport.LatLon, headA float64, b airport.LatLon, headB, r, step float64) []airport.LatLon {
+	return dubinsAppend(nil, a, headA, b, headB, r, step)
+}
+
+// dubinsAppend is dubins appended to dst (dst unchanged, nil, if none):
+// grown once to its size, no per-point garbage (a pushback plan builds
+// thousands of these: 450 MB a plan, live the whole map's GC).
+func dubinsAppend(dst []airport.LatLon, a airport.LatLon, headA float64, b airport.LatLon, headB, r, step float64) []airport.LatLon {
 	// Local metres around a, math angles (counter-clockwise from east).
 	bx, by := alongHeading(a, 90, b), alongHeading(a, 0, b)
 	th0, th1 := (90-headA)*math.Pi/180, (90-headB)*math.Pi/180
@@ -116,7 +124,8 @@ func dubins(a airport.LatLon, headA float64, b airport.LatLon, headB, r, step fl
 		t, p, q float64
 		ok      bool
 	}
-	var words []word
+	var buf [6]word
+	words := buf[:0]
 	add := func(k [3]float64, t, p, q float64, ok bool) {
 		words = append(words, word{k, t, p, q, ok})
 	}
@@ -161,25 +170,33 @@ func dubins(a airport.LatLon, headA float64, b airport.LatLon, headB, r, step fl
 		}
 	}
 	if bi < 0 {
-		return nil
+		return dst
 	}
 	w := words[bi]
 	// Integrate the path (midpoint rule), in metres; back to degrees with
 	// a's scale (offsetHeading east then north, without its trigonometry
 	// per point: the standard push planning spends a quarter of its time
-	// here).
+	// here). Each full step turns the direction by the same angle: a
+	// rotation, not a cosine and sine per point.
 	x, y, th := 0.0, 0.0, th0
 	kx := metersPerDegree * math.Cos(a.Lat*math.Pi/180)
-	out := []airport.LatLon{a}
-	for i, seg := range []float64{w.t, w.p, w.q} {
+	out := slices.Grow(dst, int((w.t+w.p+w.q)*r/step)+5)
+	out = append(out, a)
+	for i, seg := range [3]float64{w.t, w.p, w.q} {
 		k := w.kinds[i] / r
 		length := seg * r
+		sd, cd := math.Sincos(k * step)
+		sm, cm := math.Sincos(th + k*step/2)
 		for s := 0.0; s < length-1e-9; {
-			ds := math.Min(step, length-s)
-			mid := th + k*ds/2
-			x, y = x+math.Cos(mid)*ds, y+math.Sin(mid)*ds
+			ds := step
+			if length-s < step {
+				ds = length - s
+				sm, cm = math.Sincos(th + k*ds/2) // the last, shorter step
+			}
+			x, y = x+cm*ds, y+sm*ds
 			th += k * ds
 			s += ds
+			cm, sm = cm*cd-sm*sd, sm*cd+cm*sd
 			out = append(out, airport.LatLon{Lat: a.Lat + y/metersPerDegree, Lon: a.Lon + x/kx})
 		}
 	}

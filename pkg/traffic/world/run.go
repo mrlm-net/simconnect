@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -558,6 +560,17 @@ const heardQueue = 256
 // runOn runs the traffic on a connected client whose messages arrive on
 // stream (the client's own, or a host's fed through World.Feed), until ctx
 // ends (ctx.Err()) or stream closes (nil: the simulator went away).
+// slowStep: a step of the connection loop longer than this is logged.
+const slowStep = 40 * time.Millisecond
+
+// msgLabel names a message for the slow-step log.
+func msgLabel(m engine.Message) string {
+	if m.SIMCONNECT_RECV == nil {
+		return "message"
+	}
+	return fmt.Sprintf("message %d", m.DwID)
+}
+
 func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan engine.Message, requests <-chan string, dumpDir string) error {
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
 		fmt.Fprintln(stdout, "❌ SubscribeToSystemEvent(Frame):", err)
@@ -759,7 +772,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
+	// Slow work in this loop holds back every injected aircraft (its
+	// frames queue, then it jumps): each step over slowStep is logged.
+	var slowAt time.Time
+	slowWhat := ""
 	for {
+		if slowWhat != "" {
+			if d := time.Since(slowAt); d > slowStep {
+				tlog.printf("slow: %s took %s (traffic frames held back)", slowWhat, d.Round(time.Millisecond))
+			}
+			slowWhat = ""
+		}
 		select {
 		case <-ctx.Done():
 			// Stopped, the connection perhaps still open: ours leave the
@@ -773,9 +796,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			return ctx.Err()
 
 		case cmd := <-cc.cmds:
+			slowAt, slowWhat = time.Now(), "command "+runtime.FuncForPC(reflect.ValueOf(cmd).Pointer()).Name()
 			cmd()
 
 		case now := <-camTick.C:
+			slowAt, slowWhat = time.Now(), "camera tick"
 			// Only when the simulator sends no frames (its menu): on frames
 			// the camera moves with the picture, no double or missed steps.
 			if now.Sub(lastFrame) > 3*cameraRate {
@@ -783,14 +808,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case icao := <-st.procRequests:
+			slowAt, slowWhat = time.Now(), "procedures "+icao
 			if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
 			}
 
 		case r := <-st.airwayRoutes:
+			slowAt, slowWhat = time.Now(), "airway route"
 			airways.route(r, time.Now())
 
 		case icao := <-requests:
+			slowAt, slowWhat = time.Now(), "airport request "+icao
 			fmt.Fprintf(stdout, "🛫 Fetching facility data for %s...\n", icao)
 			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
 			tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
@@ -802,6 +830,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case now := <-tick.C:
+			slowAt, slowWhat = time.Now(), "second tick"
 			cc.tick()
 			// The airports around once a minute (#70: ticks never counted, asked
 			// every second, a multi-part list reset half-way).
@@ -825,6 +854,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case msg, ok := <-stream:
+			slowAt, slowWhat = time.Now(), msgLabel(msg)
 			if !ok {
 				fmt.Fprintln(stdout, "📴 Simulator disconnected")
 				for _, icao := range loader.Pending() {

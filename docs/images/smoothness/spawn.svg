@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="128" viewBox="0 0 720 128" font-family="system-ui, sans-serif" font-size="13">
+<text x="0" y="20" font-size="15" font-weight="600" fill="#6b7280">Arrival controller start (on the connection&#39;s goroutine)</text>
+<text x="220" y="59.0" text-anchor="end" fill="#6b7280">v0.94.0 (arrival start)</text>
+<rect x="230" y="44.0" width="400.0" height="22" rx="3" fill="#9ca3af"/>
+<text x="638.0" y="59.0" fill="#6b7280">36.0 ms</text>
+<text x="220" y="93.0" text-anchor="end" fill="#6b7280">now</text>
+<rect x="230" y="78.0" width="142.6" height="22" rx="3" fill="#2563eb"/>
+<text x="380.6" y="93.0" fill="#6b7280">12.8 ms</text>
+</svg>

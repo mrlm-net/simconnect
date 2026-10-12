@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -430,11 +431,11 @@ type search struct {
 	// nodes the route keeps the one searched, not the shortest (#48).
 	edge []int
 
-	via      []NodeID // RouteOptions.Via
-	taxiways []string // RouteOptions.Taxiways
-	current  string   // RouteOptions.CurrentTaxiway
-	maxVia   int      // most via points any state passed
-	maxTw    int      // most taxiways any state past all via points followed
+	via      []NodeID     // RouteOptions.Via
+	taxiways []string     // RouteOptions.Taxiways
+	current  string       // RouteOptions.CurrentTaxiway
+	maxVia   int          // most via points any state passed
+	maxTw    int          // most taxiways any state past all via points followed
 	opts     RouteOptions // the search's, for straighten
 }
 
@@ -574,9 +575,13 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 		s.dist[i] = math.Inf(1)
 		s.best[i] = -1
 	}
-	index := map[stateKey]int{}
-	crossed := map[[2]NodeID]int{} // runway crossings per edge
-	var vias, tws []int            // per state: via points passed, taxiways followed
+	// Scratch reused across searches (searchScratch): a pushback plan runs
+	// dozens of searches, each a few MB of maps and slices otherwise.
+	sc := scratchPool.Get().(*searchScratch)
+	defer sc.put()
+	index, crossed := sc.index, sc.crossed // runway crossings per edge
+	vias, tws := sc.vias[:0], sc.tws[:0]   // per state: via points passed, taxiways followed
+	defer func() { sc.vias, sc.tws = vias, tws }()
 	state := func(node, prev NodeID, via, tw int) int {
 		k := stateKey{node, prev, via, tw}
 		if id, ok := index[k]; ok {
@@ -605,7 +610,8 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 	if g.valid(srcPrev) {
 		s.name[start] = g.edge(srcPrev, src).Name
 	}
-	pq := &nodeQueue{{id: NodeID(start)}}
+	pq := &sc.pq
+	*pq = append((*pq)[:0], queued{id: NodeID(start)})
 	for pq.Len() > 0 {
 		cur := heap.Pop(pq).(queued)
 		st := int(cur.id)
@@ -771,6 +777,26 @@ func (g *Graph) valid(id NodeID) bool { return id >= 0 && int(id) < len(g.Nodes)
 type queued struct {
 	id   NodeID
 	dist float64
+}
+
+// searchScratch is a route search's working state that does not outlive it.
+type searchScratch struct {
+	index   map[stateKey]int
+	crossed map[[2]NodeID]int
+	vias    []int
+	tws     []int
+	pq      nodeQueue
+}
+
+var scratchPool = sync.Pool{New: func() any {
+	return &searchScratch{index: map[stateKey]int{}, crossed: map[[2]NodeID]int{}}
+}}
+
+func (sc *searchScratch) put() {
+	clear(sc.index)
+	clear(sc.crossed)
+	sc.pq = sc.pq[:0]
+	scratchPool.Put(sc)
 }
 
 type nodeQueue []queued

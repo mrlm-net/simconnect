@@ -122,7 +122,7 @@ func splitGateKey(k string) (string, int) {
 func (cc *controlCenter) helperTypes() []string {
 	var out []string
 	for _, t := range cc.modelList() {
-		if !jetway.IsHelper(t) || strings.HasSuffix(t, " ALL") {
+		if !jetway.IsHelper(t) || strings.HasSuffix(t, " ALL") || jetway.IsHelperVariant(t) {
 			continue
 		}
 		out = append(out, strings.TrimPrefix(t, jetway.HelperTitlePrefix))
@@ -157,9 +157,26 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 	return cc.jw.svc
 }
 
+// retractPlans: each airport's retract plan file once written. The jetway
+// backend asks for it under its own lock, so after the first time (made in
+// jetwayTick, outside any lock) it is read from here, never from the
+// state (st.mu), which other locks are taken under.
+var retractPlans sync.Map // ICAO → path
+
 // retractPlan is a flight plan file out of icao to the nearest other
 // airport known, for the placeholders (written once per airport).
 func (cc *controlCenter) retractPlan(icao string) (string, error) {
+	if p, ok := retractPlans.Load(icao); ok {
+		return p.(string), nil
+	}
+	p, err := cc.writeRetractPlan(icao)
+	if err == nil {
+		retractPlans.Store(icao, p)
+	}
+	return p, err
+}
+
+func (cc *controlCenter) writeRetractPlan(icao string) (string, error) {
 	if cc.airportRefs == nil {
 		return "", fmt.Errorf("no airports known")
 	}
@@ -240,6 +257,9 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		items = append(items, it)
 	}
 	cc.mu.Unlock()
+	for _, icao := range airports {
+		cc.retractPlan(icao) // made here, outside the backend's lock
+	}
 	cc.jw.mu.Lock()
 	for _, icao := range airports {
 		if !cc.jw.prepared[icao] {
@@ -254,6 +274,7 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 	for _, it := range items {
 		it.mu.Lock()
 		icao, stand, model, gone := it.ICAO, it.stand, it.view.Model, it.jetwayGone
+		pos, tail, g := it.view.Position, it.Tail, it.graph
 		it.mu.Unlock()
 		if stand < 0 || gone || !cc.jetwayParked(it) || traffic.NoJetway(model) {
 			continue
@@ -280,7 +301,9 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		cc.jw.docked[k] = true
 		cc.jw.mu.Unlock()
 		if !asked {
-			if err := svc.Dock(icao, stand, model); err != nil {
+			cc.logStandFit(g, stand, tail, pos)
+			variant, _ := cc.gateVariant(g, stand, model)
+			if err := svc.DockAs(icao, stand, model, variant); err != nil {
 				cc.jw.mu.Lock()
 				delete(cc.jw.docked, k)
 				cc.jw.mu.Unlock()
@@ -610,4 +633,72 @@ func registerJetways(mux *http.ServeMux, w *World) {
 		w.st.core.log.printf("jetway door offset %s: %.2f m ahead, %.2f m right", strings.ToUpper(o.Type), o.AheadM, o.RightM)
 		writeJSON(rw, jetway.DoorOffsets())
 	})
+}
+
+// logStandFit logs where tail stands on its gate: ahead of the parking
+// point and right of its line, and what the gate's measure asked for
+// (gatePlace); off the line by more than a metre, flagged.
+func (cc *controlCenter) logStandFit(g *airport.Graph, stand int, tail string, at airport.LatLon) {
+	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
+		return
+	}
+	p := g.Layout.Parking[stand]
+	h := p.Heading * math.Pi / 180
+	north := (at.Lat - p.Position.Lat) * 111_320
+	east := (at.Lon - p.Position.Lon) * 111_320 * math.Cos(p.Position.Lat*math.Pi/180)
+	ahead, right := north*math.Cos(h)+east*math.Sin(h), east*math.Cos(h)-north*math.Sin(h)
+	inset, side := cc.gatePlace(g, stand)
+	flag := ""
+	if math.Abs(right) > 1 {
+		flag = " — OFF THE LINE"
+	}
+	cc.core.log.printf("%-6s stand %s: %.2f m ahead of the parking point, %.2f m right of its line (gate measure: nose gear %.2f m in, %.2f m right)%s", tail, p.Label(), ahead, right, inset, side, flag)
+}
+
+// Helper variants (jetway.HelperVariantTitle): each type's helper with its
+// door JetwayVariantStepM × k to the side, k up to ±JetwayVariantSteps.
+const (
+	JetwayVariantStepM = 0.1
+	JetwayVariantSteps = 6
+)
+
+// gateVariant is the helper variant whose door makes up for the side the
+// simulator parks off g's stand's line (gatePlace): the helper parked
+// there, its jetway meets the door of model standing on the line. ok
+// false: none installed (or nothing measured), our aircraft parks where
+// the simulator does instead (standPlace).
+func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) (string, bool) {
+	if cc == nil || g == nil || !jetwaysEnabled() {
+		return "", false
+	}
+	svc := cc.jetwayBuilt()
+	if svc == nil {
+		return "", false
+	}
+	_, side := cc.gatePlace(g, stand)
+	if side == 0 {
+		return "", false
+	}
+	base := svc.HelperFor(model)
+	right := 0.0
+	if _, r, ok := jetwayDoorOffset(model, base); ok {
+		right = r
+	}
+	k := int(math.Round((right - side) / JetwayVariantStepM))
+	if k < -JetwayVariantSteps || k > JetwayVariantSteps {
+		return "", false
+	}
+	title := jetway.HelperVariantTitle(strings.TrimPrefix(base, jetway.HelperTitlePrefix), k)
+	if k != 0 && !cc.hasModel(title) {
+		return "", false
+	}
+	return title, true
+}
+
+// hasModel reports whether the simulator lists title.
+func (cc *controlCenter) hasModel(title string) bool {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	_, ok := cc.models[title]
+	return ok
 }

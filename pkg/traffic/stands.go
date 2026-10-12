@@ -92,6 +92,12 @@ type StandAllocator struct {
 	// fill the same gates every time; 0 picks the best.
 	spread float64
 	rng    *rand.Rand
+	// taxiIn: each stand's taxi-in from a runway end (bestExit), kept:
+	// the layout does not change, and ranking an arrival's stands asked
+	// for it afresh each time, 200 ms on the connection's goroutine (live,
+	// LKPR: every arrival's spawn held all traffic back).
+	taxiInMu sync.Mutex
+	taxiIn   map[string]float64 // "runway stand" → meters, -1 none
 }
 
 // StandWithSpread sets how far from the best taxi-in a stand may be and
@@ -389,8 +395,8 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	for _, i := range out[:min(len(out), standRankCandidates)] {
-		if _, r, err := bestExit(a.g, runwayEnd, i, airport.RouteOptions{}, exitReach{}); err == nil && r != nil {
-			cost[i] = r.Length
+		if l := a.TaxiIn(runwayEnd, i); l >= 0 {
+			cost[i] = l
 		}
 	}
 	for _, i := range out {
@@ -630,3 +636,37 @@ func (a *StandAllocator) Transfer(fromOwner, toOwner string) {
 // PlayerStandOwner owns the stand held for the user aircraft (its ATC
 // gave it one): an arrival of ours holding it before it lands is moved.
 const PlayerStandOwner = "Player"
+
+// TaxiIn is the taxi-in from runwayEnd's best exit to stand, in meters
+// (-1 none), worked out once (bestExit) and kept.
+func (a *StandAllocator) TaxiIn(runwayEnd string, stand int) float64 {
+	k := fmt.Sprintf("%s %d", runwayEnd, stand)
+	a.taxiInMu.Lock()
+	l, ok := a.taxiIn[k]
+	a.taxiInMu.Unlock()
+	if ok {
+		return l
+	}
+	l = -1
+	if _, r, err := bestExit(a.g, runwayEnd, stand, airport.RouteOptions{}, exitReach{}); err == nil && r != nil {
+		l = r.Length
+	}
+	a.taxiInMu.Lock()
+	if a.taxiIn == nil {
+		a.taxiIn = map[string]float64{}
+	}
+	a.taxiIn[k] = l
+	a.taxiInMu.Unlock()
+	return l
+}
+
+// WarmTaxiIn works out every stand's taxi-in from each of runwayEnds
+// (TaxiIn) now, for a host to run in the background as an airport loads,
+// so no arrival's spawn has to.
+func (a *StandAllocator) WarmTaxiIn(runwayEnds []string) {
+	for _, end := range runwayEnds {
+		for i := range a.g.Layout.Parking {
+			a.TaxiIn(end, i)
+		}
+	}
+}

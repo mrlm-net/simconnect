@@ -34,6 +34,28 @@ func HelperTitle(icaoType string, withCodes bool) string {
 	return t
 }
 
+// HelperVariantTitle is the title of type's helper with its door moved k
+// steps (PackageOptions.SideStepM) to the right, left when negative: at a
+// gate where the simulator parks off the parking line, the variant whose
+// door makes up for it lets our aircraft stand on the line with the
+// jetway at its door. k 0 is the helper itself.
+func HelperVariantTitle(icaoType string, k int) string {
+	if k == 0 {
+		return HelperTitle(icaoType, false)
+	}
+	return fmt.Sprintf("%s R%+d", HelperTitle(icaoType, false), k)
+}
+
+// IsHelperVariant reports whether title is a helper variant (not a type's
+// own helper).
+func IsHelperVariant(title string) bool {
+	if !IsHelper(title) {
+		return false
+	}
+	i := strings.LastIndex(title, " R")
+	return i > 0 && len(title) > i+2 && (title[i+2] == '+' || title[i+2] == '-')
+}
+
 // IsHelper reports whether a simulator title is one of the helpers.
 func IsHelper(title string) bool { return strings.HasPrefix(title, HelperTitlePrefix) }
 
@@ -60,6 +82,11 @@ type PackageOptions struct {
 	// sim puts no ParkedATC next to an occupied gate; a small span may let
 	// the placeholders take every gate (#572, to be measured).
 	WingSpanFt float64
+	// SideSteps, with SideStepM, adds each type's variants (HelperVariantTitle)
+	// with the door SideStepM × k to the right, k from -SideSteps to
+	// SideSteps: none when 0.
+	SideSteps int
+	SideStepM float64
 }
 
 // copied are the base model's files a helper takes over.
@@ -82,8 +109,16 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 		return "", err
 	}
 	for _, m := range models {
-		if err := writeHelper(root, m, o.Codes, o.WingSpanFt); err != nil {
+		if err := writeHelper(root, m, o.Codes, o.WingSpanFt, 0, 0); err != nil {
 			return "", fmt.Errorf("jetway helper %s: %w", m.Type, err)
+		}
+		for k := -o.SideSteps; k <= o.SideSteps && o.SideStepM > 0; k++ {
+			if k == 0 {
+				continue
+			}
+			if err := writeHelper(root, m, nil, o.WingSpanFt, k, float64(k)*o.SideStepM); err != nil {
+				return "", fmt.Errorf("jetway helper %s %+d: %w", m.Type, k, err)
+			}
 		}
 	}
 	if err := writeLayout(root, o); err != nil {
@@ -92,9 +127,17 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 	return root, nil
 }
 
-func writeHelper(root string, m HelperModel, codes []string, spanFt float64) error {
+// writeHelper writes type m's helper; variant k (not 0) with its door
+// rightM to the right, without codes.
+func writeHelper(root string, m HelperModel, codes []string, spanFt float64, k int, rightM float64) error {
 	t := strings.ToUpper(m.Type)
-	dir := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_"+t)
+	folder := "MyCrew_JetwayHelper_" + t
+	guidKey := t // the helper's own GUID as before; a variant's its folder's
+	if k != 0 {
+		folder += fmt.Sprintf("_R%+d", k)
+		guidKey = folder
+	}
+	dir := filepath.Join(root, "SimObjects", "Airplanes", folder)
 	if err := os.MkdirAll(filepath.Join(dir, "model"), 0o755); err != nil {
 		return err
 	}
@@ -112,7 +155,12 @@ func writeHelper(root string, m HelperModel, codes []string, spanFt float64) err
 			return err
 		}
 	}
-	cfg, err := helperAircraftCfg(filepath.Join(m.Dir, "aircraft.cfg"), t, codes)
+	if k != 0 {
+		if err := shiftDoor(fm, rightM/0.3048); err != nil {
+			return err
+		}
+	}
+	cfg, err := helperAircraftCfg(filepath.Join(m.Dir, "aircraft.cfg"), t, codes, HelperVariantTitle(t, k))
 	if err != nil {
 		return err
 	}
@@ -122,14 +170,14 @@ func writeHelper(root string, m HelperModel, codes []string, spanFt float64) err
 	if err := os.WriteFile(filepath.Join(dir, "model", "model.cfg"), []byte("[models]\nnormal=helper.xml\n"), 0o644); err != nil {
 		return err
 	}
-	xml := "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n<ModelInfo version=\"1.1\" guid=\"" + guidFor(t) + "\">\n\t<LODS>\n\t</LODS>\n</ModelInfo>\n"
+	xml := "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n<ModelInfo version=\"1.1\" guid=\"" + guidFor(guidKey) + "\">\n\t<LODS>\n\t</LODS>\n</ModelInfo>\n"
 	return os.WriteFile(filepath.Join(dir, "model", "helper.xml"), []byte(xml), 0o644)
 }
 
 // helperAircraftCfg is the base model's aircraft.cfg without its [FLTSIM.N]
 // sections, then the helper's: without codes, and with codes when given.
 // atc_parking_types GATE is required (without it the sim chose ramps).
-func helperAircraftCfg(base, icaoType string, codes []string) (string, error) {
+func helperAircraftCfg(base, icaoType string, codes []string, title string) (string, error) {
 	f, err := os.Open(base)
 	if err != nil {
 		return "", err
@@ -155,11 +203,52 @@ func helperAircraftCfg(base, icaoType string, codes []string) (string, error) {
 	fltsim := func(n int, title, codes string) {
 		fmt.Fprintf(&b, "\n[FLTSIM.%d]\ntitle = %q\nmodel = \"\"\ntexture = \"\"\natc_airline = \"\"\nui_manufacturer = \"MyCrew\"\nui_type = \"Jetway Helper %s\"\nui_variation = \"Invisible\"\nui_typerole = \"Commercial Airliner\"\natc_parking_codes = %q\natc_parking_types = \"GATE\"\natc_heavy = 0\nisairtraffic = 0\nisuserselectable = 0\natc_id_enable = 0\nicao_airline = \"\"\npanel = \"\"\nsoundai = \"\"\n", n, title, icaoType, codes)
 	}
-	fltsim(0, HelperTitle(icaoType, false), "")
+	fltsim(0, title, "")
 	if len(codes) > 0 {
 		fltsim(1, HelperTitle(icaoType, true), strings.Join(codes, ","))
 	}
 	return b.String(), nil
+}
+
+// shiftDoor moves interactive_point.0 (the door the jetway docks to) of a
+// flight_model.cfg rightFt to the right (its third value, lateral, feet).
+func shiftDoor(path string, rightFt float64) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	done := false
+	for i, l := range lines {
+		k, v, ok := strings.Cut(l, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(k), "interactive_point.0") {
+			continue
+		}
+		cr := strings.HasSuffix(v, "\r")
+		v, comment, _ := strings.Cut(strings.TrimSuffix(v, "\r"), ";")
+		f := strings.Split(v, ",")
+		if len(f) < 3 {
+			return fmt.Errorf("interactive_point.0: %q", l)
+		}
+		var lat float64
+		if _, err := fmt.Sscan(strings.TrimSpace(f[2]), &lat); err != nil {
+			return fmt.Errorf("interactive_point.0 lateral: %w", err)
+		}
+		f[2] = fmt.Sprintf(" %.3f", lat+rightFt)
+		lines[i] = strings.TrimRight(k, " ") + " = " + strings.TrimSpace(strings.Join(f, ","))
+		if c := strings.TrimSpace(comment); c != "" {
+			lines[i] += " ; " + c
+		}
+		lines[i] += fmt.Sprintf(" ; MyCrew: door %+.2f ft", rightFt)
+		if cr {
+			lines[i] += "\r"
+		}
+		done = true
+	}
+	if !done {
+		return fmt.Errorf("no interactive_point.0 in %s", path)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
 // setWingSpan sets the wing_span line of a flight_model.cfg to ft.

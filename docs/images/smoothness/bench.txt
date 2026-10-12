@@ -1,0 +1,20 @@
+goos: windows
+goarch: amd64
+pkg: github.com/mrlm-net/simconnect/pkg/traffic
+cpu: AMD Ryzen 7 9800X3D 8-Core Processor           
+BenchmarkDepartureTaxiFrame-16     	       5	      1580 ns/op	         2.000 sets/frame	     240 B/op	       5 allocs/op
+BenchmarkGroundChecksFrame-16      	       5	    157840 ns/op	   17036 B/op	      13 allocs/op
+BenchmarkSpawnArrivalPlan-16       	       5	  25997720 ns/op	 7644024 B/op	   63707 allocs/op
+BenchmarkSpawnDepartureRoute-16    	       5	   4795860 ns/op	 1296641 B/op	   10604 allocs/op
+BenchmarkSpawnDepartureStart-16    	       5	   8327920 ns/op	 6045190 B/op	   21058 allocs/op
+BenchmarkSpawnArrivalStart-16      	       5	  12835400 ns/op	 7143512 B/op	   60621 allocs/op
+BenchmarkPushPlan-16               	       5	 473413300 ns/op	224524248 B/op	  869778 allocs/op
+PASS
+ok  	github.com/mrlm-net/simconnect/pkg/traffic	6.305s
+goos: windows
+goarch: amd64
+pkg: github.com/mrlm-net/simconnect/pkg/traffic/world
+cpu: AMD Ryzen 7 9800X3D 8-Core Processor           
+BenchmarkAssignStandArrival-16    	       5	    202940 ns/op	    3564 B/op	      53 allocs/op
+PASS
+ok  	github.com/mrlm-net/simconnect/pkg/traffic/world	3.945s

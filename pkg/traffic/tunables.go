@@ -246,6 +246,16 @@ const (
 	SpoilerDeploySeconds = 1.0
 )
 
+// Injected landing: reverse thrust from main gear touchdown, the throttle
+// at ReverseThrottlePct (negative: the reverse range), back to idle below
+// ReverseIdleKts as airline crews do (reverse idle by 60 to 70 kt). The
+// reverser doors cannot be animated on an AI aircraft (#318); the engines
+// spool up in reverse, which is the sound heard.
+var (
+	ReverseThrottlePct = -20.0
+	ReverseIdleKts     = 70.0
+)
+
 // Injected approach flaps: ApproachFlapsPct (flaps 3 on an A320) from the
 // start, running to full over FlapsFullSeconds when passing FlapsFullFt,
 // the stabilised-approach gate.

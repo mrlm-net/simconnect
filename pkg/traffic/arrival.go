@@ -348,6 +348,7 @@ type ArrivalController struct {
 	flapsUpFrom       time.Time // flaps retracting since
 	approachLightsSet bool
 	spoilers          surfaceRamp    // injected ground spoilers
+	reversing         bool           // reverse thrust set (ReverseThrottlePct)
 	pendingLimit      airport.NodeID // ClearUpTo before the taxi-in starts
 	hasPendingLimit   bool
 	takeoverTried     bool

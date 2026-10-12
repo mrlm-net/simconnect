@@ -345,6 +345,8 @@ type TaxiController struct {
 	pushPending      bool
 	pushGen          int
 	pushInBackground bool
+	// eventsClosed: events closed at the end; nothing is sent after.
+	eventsClosed bool
 	// noStandard: planning a stand's standard push itself (standardPush).
 	noStandard bool
 	// rush: expedited (Expedite, #510).
@@ -787,13 +789,19 @@ func (c *TaxiController) setState(s TaxiState, err error) {
 		c.give(VehicleGPU)
 		c.giveBuses()
 		c.detail.forget(c.objectID)
-		close(c.events)
+		if !c.eventsClosed {
+			c.eventsClosed = true
+			close(c.events)
+		}
 	}
 }
 
 // emit publishes the current state. Progress updates (important=false) are
 // dropped when the channel is full so Handle never blocks the message loop.
 func (c *TaxiController) emit(err error, important bool) {
+	if c.eventsClosed {
+		return // done: a background push plan coming in after the end (it panicked)
+	}
 	if !important && err == nil && c.fast && c.now().Sub(c.emittedAt) < time.Second {
 		return // progress at most once a second while reading every frame
 	}

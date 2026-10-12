@@ -1,0 +1,11 @@
+chart,label,value,unit
+ground-checks,v0.94.0 (whole routes),3.71,ms
+ground-checks,400 m ways + samples once,0.39,ms
+ground-checks,flat metres,0.16,ms
+push-plan-time,v0.94.0,587,ms
+push-plan-alloc,v0.94.0,450,MB
+push-plan-alloc,curves grown once,210,MB
+spawn,v0.94.0 (arrival start),36,ms
+live-jumps,v0.94.0 (21:40–22:10),60,jumps
+live-jumps,checks cheaper (22:53–23:08),0.7,jumps
+stand-pick,v0.94.0,197,ms

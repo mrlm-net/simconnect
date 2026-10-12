@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="162" viewBox="0 0 720 162" font-family="system-ui, sans-serif" font-size="13">
+<text x="0" y="20" font-size="15" font-weight="600" fill="#6b7280">Pushback plan garbage</text>
+<text x="220" y="59.0" text-anchor="end" fill="#6b7280">v0.94.0</text>
+<rect x="230" y="44.0" width="400.0" height="22" rx="3" fill="#9ca3af"/>
+<text x="638.0" y="59.0" fill="#6b7280">450 MB</text>
+<text x="220" y="93.0" text-anchor="end" fill="#6b7280">curves grown once</text>
+<rect x="230" y="78.0" width="186.7" height="22" rx="3" fill="#9ca3af"/>
+<text x="424.7" y="93.0" fill="#6b7280">210 MB</text>
+<text x="220" y="127.0" text-anchor="end" fill="#6b7280">now</text>
+<rect x="230" y="112.0" width="199.6" height="22" rx="3" fill="#2563eb"/>
+<text x="437.6" y="127.0" fill="#6b7280">225 MB</text>
+</svg>
