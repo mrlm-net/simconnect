@@ -115,6 +115,11 @@ type HelperOptions struct {
 	// right: our model's jetway door minus the helper's. A DoorOffset in
 	// the table wins; neither: the sim's place.
 	Offset func(model, helper string) (ahead, right float64, ok bool)
+	// MoveHelpers puts each helper at its door offset; off (the default),
+	// the offset is only logged. Live, LKPR 2026-10-12: a helper moved
+	// after the sim placed it had its jetway report docked without the
+	// jetway moving at all (A4, C22, C30); unmoved, they docked.
+	MoveHelpers bool
 	// Log, when set, is told what the backend does.
 	Log func(format string, args ...any)
 }
@@ -203,6 +208,10 @@ func (h *Helpers) place(pl *placing) {
 	}
 	if !ok {
 		h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s (the sim's place; no door offset)", pl.icao, pl.stand, ahead, right, pl.model)
+		return
+	}
+	if !h.opt.MoveHelpers {
+		h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s (the sim's place; the door wants %.2f m ahead, %.2f m right; not moved)", pl.icao, pl.stand, ahead, right, pl.model, off.AheadM, off.RightM)
 		return
 	}
 	lat, lon := fromOffset(o, off.AheadM, off.RightM)

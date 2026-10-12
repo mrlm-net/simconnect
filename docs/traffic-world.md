@@ -213,10 +213,10 @@ Off by default: `World.SetJetways(true)` or `POST /api/jetways {"on": true}`; `G
 - **Which gates:** the simulator puts no ParkedATC next to an occupied gate, so only about every other jetway gate can be given to a helper (at LKPR 19 of 27; `jetway.Helpers.Dockable`). With jetways on, the stand allocator gives airliners those gates first, before their airline's own gates without one (`StandRequirements.Prefer`); an aircraft on another gate gets no jetway.
 - **One at a time:** a helper is created only once the gates are filled, no other helper is on its way and no jetway is going home; a helper the simulator puts elsewhere (another gate, a ramp) is removed and the dock tried again a minute later.
 - **Boarding:** a departure asks for its push once its jetway has been on 3 minutes (`JetwayBoarding`); ground answers once the jetway is home (at least 25 s after it left), and it is not docked again.
-- **Door fit:** the jetway docks to the helper's own door: its `flight_model.cfg` `interactive_point.0`, which the jetway data reports as `ExitDoorRelativePos`. So each helper is put by our aircraft at our model's jetway door minus the helper's, read from both models' files. Live, the FSLTL A320neo's door is 37.65 ft ahead and its helper's 27.93 ft, so the helper goes 2.96 m ahead.
-  - **Overrides:** `jetway.DoorOffset` items in the dict table `jetway.doorOffsets`, or `POST /api/jetways/offset {"type": "B738", "aheadM": 0.5, "rightM": 0}`, kept in `DataDir/jetway-door-offsets.json`. These win.
-  - **Neither known:** the sim's own place, which was up to 2.6 m off (the hood forward of the door).
-  - **Log:** every placement is logged ("helper 2.66 m ahead … put 0.00 m ahead").
+- **Door fit:** the jetway docks to the helper's own door, its `flight_model.cfg` `interactive_point.0`, which the jetway data reports as `ExitDoorRelativePos`. The helper stays where the sim parks it, as the sim's own AI would. On the A320neo the hood meets the door; on the 737 it can sit about 2 m forward of it.
+  - **Why not moved:** a helper moved after the sim placed it has its jetway report docked without the jetway moving at all (live, LKPR A4, C22, C30, 2026-10-12).
+  - **Logged instead:** the door offset that would fit, from both models' doors or the table `jetway.doorOffsets` (`POST /api/jetways/offset`), is logged for every dock ("the door wants 2.96 m ahead; not moved").
+  - **Moving anyway:** `HelperOptions.MoveHelpers` moves the helper there; it is off by default.
 - **Taken gates:** a dock or a placeholder now and then lands on a gate already docked; the simulator does not always count a docked helper's gate as taken, and a flight plan given after docking sends the jetway home too. Such a gate is cleared and docked again a minute later.
 - **Not:** types with their own airstairs (`traffic.NoJetway`).
 

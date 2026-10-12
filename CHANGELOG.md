@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.92.2] - 2026-10-12
+
+### Fixed
+
+- Jetways that reported docked but never moved. Live at LKPR, the 737s at A4, C22 and C30 showed docked in the jetway data while their jetways stood at home: their helpers had been moved after the sim placed them. Helpers now stay where the sim parks them, and the door offset is only logged. `HelperOptions.MoveHelpers`, off by default, moves them anyway.
+
 ## [0.92.1] - 2026-10-12
 
 ### Fixed
