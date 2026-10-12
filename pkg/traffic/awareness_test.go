@@ -845,3 +845,35 @@ func TestPictureInPushAndWaiting(t *testing.T) {
 		t.Error("waiting to taxi: not seen")
 	}
 }
+
+// A way reported for an aircraft that has since gone on (took off: its
+// position far from it) is not given way to.
+func TestOldWayIgnored(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	prof := DefaultMotionProfile()
+	line := func(lon0, lon1 float64) []airport.LatLon {
+		var out []airport.LatLon
+		for k := 0; k <= 10; k++ {
+			out = append(out, airport.LatLon{Lat: 50, Lon: lon0 + (lon1-lon0)*float64(k)/10})
+		}
+		return out
+	}
+	// OKHAQ's line-up way across HBGOS's, reported at the holding point;
+	// then it took off, 5 km on.
+	p.Report(2, airport.LatLon{Lat: 50.0005, Lon: 14.002}, 180, prof, now)
+	var across []airport.LatLon
+	for k := 0; k <= 50; k++ {
+		across = append(across, airport.LatLon{Lat: 50.0005 - 0.001*float64(k)/50, Lon: 14.002})
+	}
+	p.ReportPath(2, across, 8)
+	p.Report(1, airport.LatLon{Lat: 50, Lon: 14.000}, 90, prof, now)
+	path, _ := NewGroundPath(line(14.000, 14.004), prof)
+	if at, _ := p.giveWayTo(1, path, 0, GiveWayLookMeters, 9, now); math.IsInf(at, 1) {
+		t.Fatal("no give-way while OKHAQ is there")
+	}
+	p.Report(2, airport.LatLon{Lat: 50.045, Lon: 14.002}, 245, prof, now)
+	if at, who := p.giveWayTo(1, path, 0, GiveWayLookMeters, 9, now); !math.IsInf(at, 1) {
+		t.Errorf("gives way to #%d's old way at %.0f m", who, at)
+	}
+}

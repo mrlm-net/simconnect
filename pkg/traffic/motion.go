@@ -390,6 +390,12 @@ func (m *GroundMover) step(dt float64) {
 		m.a = math.Max(want, m.a-jerk*dt)
 	}
 	m.v = math.Max(0, m.v+m.a*dt)
+	// Braking towards a stop it is on: standing, not creeping at a
+	// thousandth of a knot for ever (live, HBGOS read 0.00004 kt, never
+	// "stopped", so it neither arrived nor said why).
+	if want <= 0 && m.v < minRollMS && stop-m.s < 0.3 {
+		m.v, m.a = 0, 0
+	}
 	// Around a SlowAt point the aircraft keeps rolling at its slow speed
 	// (braking momentum would otherwise stop it) unless it must hold.
 	if v0 := m.slowKts * ktsToMS; v0 > 0 && m.v < v0 && math.Abs(m.slowAt-m.s) < 10 && stop-m.s > 1 {
@@ -467,6 +473,8 @@ const (
 	ktsToMS         = 0.514444
 	// finalCreep (m/s) covers the last centimetres onto a stop point.
 	finalCreep = 0.05
+	// minRollMS (m/s): slower than this, braking onto its stop, it stands.
+	minRollMS = 0.003
 )
 
 // localDist is the flat-earth distance in metres; exact enough on an airport.

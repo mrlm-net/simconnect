@@ -119,6 +119,18 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	return at
 }
 
+// wayFromHereMeters: a way reported for an aircraft that starts further
+// from it than this is an old one (wayFromHere).
+const wayFromHereMeters = 80.0
+
+// wayFromHere reports that way, reported for an aircraft at pos, is still
+// its way: it starts by it. One that took off keeps the way it last
+// reported on the ground while its position runs on (live, LKPR: HBGOS
+// gave way for good to OKHAQ's line-up path at B after OKHAQ had gone).
+func wayFromHere(pos airport.LatLon, way []airport.LatLon) bool {
+	return len(way) == 0 || localDist(pos, way[0]) <= wayFromHereMeters
+}
+
 // Pushing reports whether aircraft id is pushing back now; Waiting that it
 // has pushed and waits for its taxi clearance (its planned way reported).
 func (p *GroundPicture) Pushing(id uint32) bool { return p.pushingNow(id) }
@@ -149,7 +161,7 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 	p.mu.Lock()
 	var others []other
 	for oid, e := range p.aircraft {
-		if oid != id && len(e.ahead) > 0 && !e.waiting && now.Sub(e.at) <= TrafficStaleAfter {
+		if oid != id && len(e.ahead) > 0 && !e.waiting && now.Sub(e.at) <= TrafficStaleAfter && wayFromHere(e.pos, e.ahead) {
 			others = append(others, other{oid, e})
 		}
 	}
@@ -472,6 +484,9 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 			continue
 		}
 		way := e.intent
+		if !wayFromHere(e.pos, way) {
+			way = nil
+		}
 		if len(way) < 2 && e.waiting {
 			// Pushed and waiting for its taxi clearance: its planned way
 			// counts too (live, LKPR: TVS770 turned into J nose to nose with

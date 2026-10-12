@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.92.1] - 2026-10-12
+
+### Fixed
+
+- A departure stuck short of its holding point, live at LKPR. HBGOS gave way for good at B to OKHAQ's line-up path after OKHAQ had taken off: an aircraft's last reported ground path stayed in the picture while its position ran on. Now a path that no longer starts near its aircraft (80 m) is ignored, for giving way and for oncoming traffic.
+- The ground mover stands still once it has braked onto its stop, instead of creeping at a thousandth of a knot. Creeping, it was never "stopped": it neither reached its hold nor logged why it stood there.
+- The airport map serves its page with `Cache-Control: no-cache`. A browser kept the last build's script after a map restart (the aircraft icons gone until a hard refresh).
+
 ## [0.92.0] - 2026-10-12
 
 ### Added
