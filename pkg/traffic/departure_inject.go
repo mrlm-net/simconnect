@@ -565,6 +565,9 @@ func (c *TaxiController) updateTug(dt float64) {
 		if !c.pushCleared && c.now().Before(c.gateAt.Add(-TugLeadTime)) {
 			return
 		}
+		if c.req.TugWait != nil && c.req.TugWait() {
+			return // comes once the jetway is home
+		}
 		if !c.take(VehicleTug) {
 			return // all the airport's tugs out: the push waits for one
 		}

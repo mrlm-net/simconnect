@@ -71,6 +71,10 @@ type controlled struct {
 	// groundStop: held on the stand by the schedule's ground stop; ground
 	// does not clear its push meanwhile.
 	groundStop bool
+	// boardWaitSince: when it began waiting for its jetway to dock.
+	boardWaitSince time.Time
+	// tugAfter: its tug comes once the jetway is home (drawn once, tugDrawn).
+	tugDrawn, tugAfter bool
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
 	cc         *controlCenter
@@ -186,6 +190,7 @@ type controlled struct {
 	// (tellGiveWay, tellStandingInWay), not told again.
 	givingWay uint32
 	toldWay   uint32
+	toldWayAt time.Time // when it was last told to give way
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
 	// missedJoin is the arrival's last MissedJoin, acted on once.
@@ -1010,7 +1015,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
-			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
+			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },
@@ -2697,8 +2702,12 @@ func (it *controlled) tellStandingInWay(by string) {
 		return
 	}
 	it.mu.Lock()
-	told := it.toldWay == uint32(id)
+	now := it.cc.clock.Now()
+	told := it.toldWay == uint32(id) || now.Sub(it.toldWayAt) < giveWayCallGap
 	it.toldWay = uint32(id) // not said again when the routes cross
+	if !told {
+		it.toldWayAt = now
+	}
 	it.mu.Unlock()
 	if told {
 		return
@@ -2706,6 +2715,11 @@ func (it *controlled) tellStandingInWay(by string) {
 	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
 	it.say(traffic.GiveWay(it.Tail, desc+" ahead"))
 }
+
+// giveWayCallGap: an aircraft is told to give way at most once in this
+// long, whoever to (live, LKPR: CSA1146 told six times in 30 s as the
+// one to give way to changed between a Dash 8, an A321 and a Citation).
+const giveWayCallGap = 30 * time.Second
 
 // objectIDs are the object IDs in a StoppedBy reason.
 var objectIDs = regexp.MustCompile(`#[0-9]+`)
@@ -2719,9 +2733,13 @@ func (it *controlled) tellGiveWay(other uint32) {
 	model, oh := o.view.Model, o.view.Heading
 	o.mu.Unlock()
 	it.mu.Lock()
-	still, h, told := it.givingWay == other, it.view.Heading, it.toldWay == other
+	now := it.cc.clock.Now()
+	still, h, told := it.givingWay == other, it.view.Heading, it.toldWay == other || now.Sub(it.toldWayAt) < giveWayCallGap
 	if still {
 		it.toldWay = other
+		if !told {
+			it.toldWayAt = now
+		}
 	}
 	it.mu.Unlock()
 	if !still || told {

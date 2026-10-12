@@ -341,7 +341,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	assigned := false
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
-		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m)}
+		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m), Prefer: cc.jetwayGates(g.Layout.ICAO)}
 		// A real aircraft on the stand where it is seen (#841).
 		s, err := -1, traffic.ErrNoStand
 		if o := f.Observed; o != nil && o.OnGround {

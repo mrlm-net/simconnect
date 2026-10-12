@@ -57,6 +57,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.92.0] - 2026-10-12
+
+### Added
+
+- Boarding at a jetway, live at LKPR:
+  - A departure at a gate whose jetway can dock asks for its push only once the jetway has docked and boarded `JetwayBoarding` (3 min). It waits for a jetway still to come, up to `JetwayWaitMax` (3 min), including while the gates are still being filled. Live, departures due at once pushed before their jetway came.
+  - About half the departures (`TugAfterJetwayShare`) have their tug set off only once the jetway is home; the others' tug hooks up during boarding. New: `TaxiRequest.TugWait`.
+  - `jetway.Helpers.Filling`.
+- The airport map's page reloads itself when the map server restarts. The server announces a boot id on `/api/events`. Live, the aircraft icons were gone after a restart until a hard refresh.
+
+### Changed
+
+- The ground stop holds pushes from 8 aircraft taxiing (`DefaultMaxTaxiing`, was 4). With 4, departures waited on their stands at LKPR while the taxiways were far from full.
+
+### Fixed
+
+- Scheduled departures take the gates whose jetway can dock first too. Their stand was chosen without that preference, and departures at C27 and C31 got no jetway.
+- An aircraft is told to give way at most once in 30 s, whoever to. Live, CSA1146 was told six times in 30 s as the traffic to give way to changed.
+
 ## [0.91.1] - 2026-10-12
 
 ### Fixed

@@ -361,6 +361,16 @@ const radioPoll = poller('radio', pollRadio, () => (data && radioWanted() ? (pus
   const es = new EventSource('/api/events');
   es.onopen = () => { pushUp = true; };
   es.onerror = () => { pushUp = false; }; // the browser reconnects by itself (retry: 3 s)
+  // A restarted map server: the page starts afresh (its aircraft, IDs and
+  // layers are the old run's).
+  let boot = null;
+  es.addEventListener('hello', (e) => {
+    try {
+      const b = JSON.parse(e.data).boot;
+      if (boot !== null && b !== boot) location.reload();
+      boot = b;
+    } catch (_) { /* an older server: no boot id */ }
+  });
   es.addEventListener('control', () => { controlPoll.now(); if (seqWanted()) approachPoll.now(); });
   es.addEventListener('radio', () => { if (radioWanted()) radioPoll.now(); if ($('rdHere').checked) herePoll.now(); });
 })();

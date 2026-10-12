@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -414,16 +415,56 @@ func (it *controlled) boardingLeft() time.Duration {
 	if svc == nil || it.jetwayGone || it.stand < 0 {
 		return 0
 	}
-	switch svc.Status(it.ICAO, it.stand) {
-	case jetway.StatusDocking:
-		return 15 * time.Second
-	case jetway.StatusDocked:
-		if left := JetwayBoarding - it.cc.clock.Now().Sub(svc.Since(it.ICAO, it.stand)); left > 0 {
+	now := it.cc.clock.Now()
+	switch st := svc.Status(it.ICAO, it.stand); {
+	case st == jetway.StatusDocked:
+		if left := JetwayBoarding - now.Sub(svc.Since(it.ICAO, it.stand)); left > 0 {
 			return left
+		}
+		return 0
+	case st == jetway.StatusDocking || st == jetway.StatusNone && (svc.Filling(it.ICAO) || slices.Contains(svc.Dockable(it.ICAO), it.stand)):
+		// Its jetway still to come (docks go one at a time): boarding has
+		// not begun, so no push call yet (live, LKPR: departures due at
+		// once pushed before theirs docked). Not for ever: a jetway that
+		// never comes lets it go after JetwayWaitMax.
+		if it.boardWaitSince.IsZero() {
+			it.boardWaitSince = now
+		}
+		if now.Sub(it.boardWaitSince) < JetwayWaitMax {
+			return 15 * time.Second
 		}
 	}
 	return 0
 }
+
+// tugWaitsForJetway is TaxiRequest.TugWait: for about half the
+// departures (TugAfterJetwayShare) the tug sets off only once the jetway
+// is home; the others' tug hooks up during boarding.
+func (it *controlled) tugWaitsForJetway() bool {
+	it.mu.Lock()
+	if !it.tugDrawn {
+		it.tugDrawn, it.tugAfter = true, rand.Float64() < TugAfterJetwayShare
+	}
+	after, icao, stand := it.tugAfter, it.ICAO, it.stand
+	it.mu.Unlock()
+	svc := it.cc.jetwayBuilt()
+	if !after || svc == nil || stand < 0 {
+		return false
+	}
+	switch svc.Status(icao, stand) {
+	case jetway.StatusDocking, jetway.StatusDocked, jetway.StatusUndocking:
+		return true
+	}
+	return false
+}
+
+// TugAfterJetwayShare is the share of departures at a jetway whose tug
+// comes only once the jetway is home.
+const TugAfterJetwayShare = 0.5
+
+// JetwayWaitMax: the longest a departure waits for its jetway to dock
+// before it boards without it.
+const JetwayWaitMax = 3 * time.Minute
 
 // jetwayHolds undocks its jetway before its push: true while ground must
 // wait (the jetway still on its way home). Called with it.mu held; from
