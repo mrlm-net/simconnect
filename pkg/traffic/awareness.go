@@ -408,25 +408,66 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	}
 	best, who := math.Inf(1), groundEntry{}
 	start := path.PointAt(from)
+	// In flat metres around start (one cosine per frame, not several per
+	// point pair: frames of 130 ms, live at LKPR), the path's segments ahead
+	// as start points and unit directions.
+	f := newFlat(start)
+	hi := lo
+	for hi+1 < len(pts) && cum[hi] <= from+look {
+		hi++
+	}
+	sc := groundPool.Get().(*groundScratch)
+	defer groundPool.Put(sc)
+	segs := grow(sc.segs, hi-lo)
+	sc.segs = segs
+	for i := lo; i < hi; i++ {
+		ax, ay := f.xy(pts[i])
+		bx, by := f.xy(pts[i+1])
+		l := math.Hypot(bx-ax, by-ay)
+		s := groundSeg{ax: ax, ay: ay, l: cum[i+1] - cum[i]}
+		if l > 0 {
+			s.ux, s.uy = (bx-ax)/l, (by-ay)/l
+		}
+		segs[i-lo] = s
+	}
+	half2 := half * half
+	near := sc.near[:0]
+	defer func() { sc.near = near }()
 	for _, o := range others {
 		// Out of reach of the path ahead (no point of it is further than
 		// look from start along it): not tested point by point, the most
 		// of the frame's time with many taxiing (#370).
-		if localDist(start, o.pos) > look+half+math.Max(o.nose, o.tail)+1 {
+		ox, oy := f.xy(o.pos)
+		if r := look + half + math.Max(o.nose, o.tail) + 1; ox*ox+oy*oy > r*r {
+			continue
+		}
+		hs, hc := math.Sincos(o.hdg * math.Pi / 180)
+		// Only the segments that can come within half of its body: their
+		// start within body + segment + half of its position.
+		body := math.Max(o.nose, o.tail)
+		near = near[:0]
+		for i := lo; i < hi; i++ {
+			sg := segs[i-lo]
+			dx, dy := ox-sg.ax, oy-sg.ay
+			if r := body + sg.l + half + 1; dx*dx+dy*dy <= r*r {
+				near = append(near, i)
+			}
+		}
+		if len(near) == 0 {
 			continue
 		}
 		// Points along the other aircraft's axis, nose to tail.
 		for d := -o.tail; d <= o.nose+0.01; d += trafficBodyStep {
-			q := offsetHeading(o.pos, o.hdg, d)
-			for i := lo; i+1 < len(pts) && cum[i] <= from+look; i++ {
-				h := localBearing(pts[i], pts[i+1])
-				seg := cum[i+1] - cum[i]
-				along := math.Max(0, math.Min(seg, alongHeading(pts[i], h, q)))
+			qx, qy := ox+hs*d, oy+hc*d
+			for _, i := range near {
+				sg := segs[i-lo]
+				along := math.Max(0, math.Min(sg.l, (qx-sg.ax)*sg.ux+(qy-sg.ay)*sg.uy))
 				s := cum[i] + along
 				if s < from || s >= best {
 					continue
 				}
-				if localDist(q, offsetHeading(pts[i], h, along)) <= half {
+				dx, dy := qx-(sg.ax+sg.ux*along), qy-(sg.ay+sg.uy*along)
+				if dx*dx+dy*dy <= half2 {
 					best, who = s, o
 				}
 			}
@@ -493,6 +534,11 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 			// TVS1309 waiting there, though told to give way to it).
 			way = e.ahead
 		}
+		// Its next OncomingLookMeters only, as its intent reports: a
+		// waiting aircraft's planned way is its whole route, and checking
+		// every point of it each frame held every aircraft back (live,
+		// LKPR: frames of 130 ms).
+		way = wayAhead(way, OncomingLookMeters)
 		if len(way) > 1 {
 			h := e.half
 			if h <= 0 {
@@ -508,14 +554,35 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 		return localBearing(path.PointAt(math.Max(0, s-1)), path.PointAt(math.Min(path.Length(), s+1)))
 	}
 	start := path.PointAt(from)
+	// This one's way ahead sampled once for all the others (each PointAt
+	// walks the path).
+	// In flat metres around start: one cosine per frame, not several per
+	// point pair (frames of 130 ms, live at LKPR).
+	f := newFlat(start)
+	sc := groundPool.Get().(*groundScratch)
+	defer groundPool.Put(sc)
+	mineAt := sc.mine[:0]
+	defer func() { sc.mine = mineAt }()
+	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for s := from; s <= end; s += vehicleGateStep {
+		x, y := f.xy(path.PointAt(s))
+		mineAt = append(mineAt, groundSample{s, x, y, heading(s)})
+		minX, maxX, minY, maxY = math.Min(minX, x), math.Max(maxX, x), math.Min(minY, y), math.Max(maxY, y)
+	}
 	for _, o := range others {
 		reach := half + o.half + HeadOnMarginMeters
+		reach2 := reach * reach
+		ox, oy := grow(sc.ox, len(o.intent)), grow(sc.oy, len(o.intent))
+		sc.ox, sc.oy = ox, oy
+		for i, q := range o.intent {
+			ox[i], oy[i] = f.xy(q)
+		}
 		// None of its way within reach of this one's ahead (no point of
 		// which is further than end-from from start): not looked at
 		// closer, the most of the frame's time with many taxiing (#370).
 		near := false
-		for _, q := range o.intent {
-			if localDist(start, q) <= end-from+reach {
+		for i := range o.intent {
+			if r := end - from + reach; ox[i]*ox[i]+oy[i]*oy[i] <= r*r {
 				near = true
 				break
 			}
@@ -523,31 +590,57 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 		if !near {
 			continue
 		}
-		cum := make([]float64, len(o.intent))
+		cum := grow(sc.cum, len(o.intent))
+		sc.cum = cum
+		cum[0] = 0
 		for i := 1; i < len(o.intent); i++ {
-			cum[i] = cum[i-1] + localDist(o.intent[i-1], o.intent[i])
+			cum[i] = cum[i-1] + math.Hypot(ox[i]-ox[i-1], oy[i]-oy[i-1])
 		}
-		meets := func(s float64, i int) bool {
-			return localDist(path.PointAt(s), o.intent[i]) <= reach &&
-				math.Abs(headingDiff(heading(s), localBearing(o.intent[i], o.intent[i+1]))) >= oncomingDeg
+		segHdg := grow(sc.hdg, len(o.intent))
+		sc.hdg = segHdg
+		for i := 0; i+1 < len(o.intent); i++ {
+			segHdg[i] = math.Mod(math.Atan2(ox[i+1]-ox[i], oy[i+1]-oy[i])*180/math.Pi+360, 360)
+		}
+		meets := func(m groundSample, i int) bool {
+			dx, dy := m.x-ox[i], m.y-oy[i]
+			return dx*dx+dy*dy <= reach2 &&
+				math.Abs(headingDiff(m.hdg, segHdg[i])) >= oncomingDeg
+		}
+		// Only its points inside this one's way ahead's box (grown by
+		// reach) can meet it: the rest skipped.
+		cand := sc.cand[:0]
+		for i := 0; i+1 < len(o.intent); i++ {
+			if ox[i] >= minX-reach && ox[i] <= maxX+reach && oy[i] >= minY-reach && oy[i] <= maxY+reach {
+				cand = append(cand, i)
+			}
+		}
+		sc.cand = cand
+		if len(cand) == 0 {
+			continue
 		}
 		// Where each first comes onto the shared stretch, along its own way:
 		// the same pair of numbers whichever of the two looks.
 		mine, theirs := math.Inf(1), math.Inf(1)
-		for s := from; s <= end && math.IsInf(mine, 1); s += vehicleGateStep {
-			for i := 0; i+1 < len(o.intent); i++ {
-				if meets(s, i) {
-					mine = s - from
+		for _, m := range mineAt {
+			for _, i := range cand {
+				if meets(m, i) {
+					mine = m.s - from
 					break
 				}
+			}
+			if !math.IsInf(mine, 1) {
+				break
 			}
 		}
 		if math.IsInf(mine, 1) {
 			continue
 		}
-		for i := 0; i+1 < len(o.intent) && math.IsInf(theirs, 1); i++ {
-			for s := from; s <= end; s += vehicleGateStep {
-				if meets(s, i) {
+		for _, i := range cand {
+			if !math.IsInf(theirs, 1) {
+				break
+			}
+			for _, m := range mineAt {
+				if meets(m, i) {
 					theirs = cum[i]
 					break
 				}
@@ -610,3 +703,56 @@ const (
 	UserLookMeters  = 60.0
 	UserPushMeters  = 60.0
 )
+
+// wayAhead is way up to meters along it from its first point.
+func wayAhead(way []airport.LatLon, meters float64) []airport.LatLon {
+	d := 0.0
+	for i := 1; i < len(way); i++ {
+		d += localDist(way[i-1], way[i])
+		if d > meters {
+			return way[:i+1]
+		}
+	}
+	return way
+}
+
+// flat is a local plane around an origin, in metres east (x) and north (y)
+// at its latitude's scale: an airport's points without a cosine each
+// (localDist, localBearing take one per call).
+type flat struct {
+	o  airport.LatLon
+	kx float64
+}
+
+func newFlat(o airport.LatLon) flat {
+	return flat{o, metersPerDegree * math.Cos(o.Lat*math.Pi/180)}
+}
+
+func (f flat) xy(p airport.LatLon) (x, y float64) {
+	return (p.Lon - f.o.Lon) * f.kx, (p.Lat - f.o.Lat) * metersPerDegree
+}
+
+// groundScratch is the per-frame working space of the traffic checks
+// (blocking, oncoming), pooled: every taxiing aircraft runs them every
+// frame, and fresh slices each time fed the garbage collector, whose work
+// held every aircraft's frames back.
+type groundScratch struct {
+	segs             []groundSeg
+	mine             []groundSample
+	near, cand       []int
+	ox, oy, cum, hdg []float64
+}
+
+type groundSeg struct{ ax, ay, ux, uy, l float64 }
+
+type groundSample struct{ s, x, y, hdg float64 }
+
+var groundPool = sync.Pool{New: func() any { return new(groundScratch) }}
+
+// grow is b resized to n, reusing its array when it is large enough.
+func grow[T any](b []T, n int) []T {
+	if cap(b) < n {
+		return make([]T, n)
+	}
+	return b[:n]
+}

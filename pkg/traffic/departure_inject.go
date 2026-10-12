@@ -928,7 +928,12 @@ func (c *TaxiController) planPushbackLater() {
 		faceOut: c.faceOut, powerOut: c.powerOut, pushFacing: c.pushFacing, havePushFacing: c.havePushFacing}
 	c.pushPending = true
 	go func() {
+		// One plan at a time across all departures: several at once (a
+		// schedule's spawns) took most of the CPU in bursts, the whole map's
+		// frames with it.
+		pushPlanning <- struct{}{}
 		p.planPushback()
+		<-pushPlanning
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if gen != c.pushGen {
@@ -2343,3 +2348,7 @@ func (c *TaxiController) DelayPushback(d time.Duration) bool {
 	c.gateAt = c.gateAt.Add(d)
 	return true
 }
+
+// pushPlanning lets one background pushback plan run at a time
+// (planPushbackLater).
+var pushPlanning = make(chan struct{}, 1)

@@ -565,6 +565,14 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 	a := traffic.NewStandAllocator(cc.client, g, traffic.StandWithIDs(standDefBase+k*standIDBlock, standReqBase+k*standIDBlock))
 	cc.stands[g.Layout.ICAO] = a
 	cc.world.Allocate(g.Layout.ICAO, a) // fed from the picture's scans
+	// Every stand's taxi-in from each runway end worked out now, in the
+	// background: an arrival's stand pick then never runs the searches on
+	// the connection's goroutine (docs/traffic-smoothness.md).
+	var ends []string
+	for _, r := range g.Layout.Runways {
+		ends = append(ends, r.Primary.Name, r.Secondary.Name)
+	}
+	go a.WarmTaxiIn(ends)
 	return a
 }
 
@@ -714,7 +722,11 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 	}
 	cc.mu.Unlock()
 	for _, it := range items {
+		t0 := time.Now()
 		if it.dep != nil && it.dep.Handle(msg) || it.arr != nil && it.arr.Handle(msg) {
+			if d := time.Since(t0); d > slowStep {
+				cc.core.log.printf("%-6s slow: its frame took %s (%s)", it.Tail, d.Round(time.Millisecond), it.view.State)
+			}
 			return true
 		}
 	}
@@ -811,6 +823,12 @@ const (
 )
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
+	spawnAt, startTook := time.Now(), time.Duration(0)
+	defer func() {
+		if d := time.Since(spawnAt); d > slowStep {
+			cc.log.printf("%-6s slow spawn: %s (%s), its controller started in %s", r.Tail, d.Round(time.Millisecond), r.Kind, startTook.Round(time.Millisecond))
+		}
+	}()
 	// The runway in use: with parallels used together, an arrival takes
 	// the less busy one (its stand is then found near it), a departure the
 	// one nearest its stand once that is known.
@@ -1014,6 +1032,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			deboard = cc.buses(g, reqBase, prof, stairs)
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
+		startAt := time.Now()
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
@@ -1021,6 +1040,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },
 			PowerOut:      powerOut(g.Layout.Parking[r.Stand], ac.WingspanM)})
+		startTook = time.Since(startAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1071,11 +1091,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
+		startAt := time.Now()
 		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof, FollowMe: cc.followMe(r, g, reqBase, prof),
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
 			CrosswindKts: cc.crosswind(g, r.Runway)})
+		startTook = time.Since(startAt)
 		if err != nil {
 			return nil, err
 		}
@@ -2800,6 +2822,10 @@ func (cc *controlCenter) standPlace(g *airport.Graph, stand int, model string) (
 	}
 	if helper == "" {
 		side = 0 // no helper: no jetway to meet
+	}
+	if _, ok := cc.gateVariant(g, stand, m); ok {
+		side = 0 // on the line: the helper's door makes up for the gate
+		return gateNoseOffset(m, helper, inset), 0
 	}
 	return gateNoseOffset(m, helper, inset), gateSide(m, helper, side)
 }

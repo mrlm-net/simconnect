@@ -57,6 +57,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.0] - 2026-10-13
+
+### Added
+
+- Traffic smoothness (docs/traffic-smoothness.md): benchmarks of the work behind each simulator frame (`pkg/traffic/smoothness_bench_test.go`, world `BenchmarkAssignStandArrival`), `scripts/bench-smoothness.sh` to run them, and `examples/smoothness-report` to draw the charts from them and the recorded history. The World logs any step of its connection loop over 40 ms, naming the step. The airport map's `-pprof` also turns on mutex and block profiling.
+- Landing: reverse thrust from main-gear touchdown, the throttle in the reverse range (`ReverseThrottlePct`), back to idle below `ReverseIdleKts`. Live: N1 44 %, reversers 43 % open.
+- Jetways: helper variants with the door moved sideways (`jetway.HelperVariantTitle`, `PackageOptions.SideSteps`/`SideStepM`, `Helpers.DockAs`). At a gate where the simulator parks off the line, our aircraft stands on the line and the variant's door makes up for the offset. They need the helper package rewritten (examples/jetway-helpers) and MSFS restarted.
+- `StandAllocator.TaxiIn` and `WarmTaxiIn`: each stand's taxi-in from a runway end, worked out once and kept. The World warms them in the background as an airport loads.
+- The World logs each docked aircraft's distance from its stand line, flagging anything over 1 m.
+
+### Fixed
+
+- Traffic stutter: every moving aircraft jumped about once every 5 s (live, LKPR):
+  - The per-frame traffic checks (blocking, head-on) cost 3.7 ms per aircraft, with frames of over 100 ms; now 0.13 ms. Another aircraft's way counts for 400 m, the checks work in flat metres, and the path is sampled once, with pooled buffers.
+  - An arrival's stand pick searched about 200 routes on the connection's goroutine, taking 197 ms; now 0.2 ms.
+  - A pushback plan created 450 MB of garbage; now about 150–220 MB. Curves are built into slices grown once, the route search's scratch is pooled, and one plan runs at a time.
+- A departure cancelled while its pushback was being planned in the background crashed the map (send on a closed channel).
+- Jetways: a helper whose jetway was still moving to it is sent home with the retract plan before it is removed. Removing it outright left that jetway stuck halfway for good (live, LKPR: every later dock there timed out).
+- Jetways: the retract plan is written once per airport and never taken under the backend's lock: a lock-order risk.
+
 ## [0.94.0] - 2026-10-12
 
 ### Added

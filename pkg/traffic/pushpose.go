@@ -86,16 +86,17 @@ const (
 func pushTo(gear airport.LatLon, standHdg float64, pose pushPose, r float64, prof MotionProfile) []airport.LatLon {
 	pushDir := standHdg + 180
 	end := offsetHeading(pose.nose, pose.heading+180, prof.WheelbaseMeters)
-	turn := dubins(offsetHeading(gear, pushDir, PushStraightMeters), pushDir, end, pose.heading+180, r, 0.5)
-	if turn == nil {
+	// The gear first, the turn appended (one slice, no copy).
+	pts := dubinsAppend([]airport.LatLon{gear}, offsetHeading(gear, pushDir, PushStraightMeters), pushDir, end, pose.heading+180, r, 0.5)
+	if len(pts) == 1 {
 		return nil
 	}
 	// The last sample can fall a few centimeters short of the end: a sliver
 	// that reads as a kink.
-	if n := len(turn); n > 2 && localDist(turn[n-2], turn[n-1]) < 0.25 {
-		turn = append(turn[:n-2], turn[n-1])
+	if n := len(pts); n > 3 && localDist(pts[n-2], pts[n-1]) < 0.25 {
+		pts = append(pts[:n-2], pts[n-1])
 	}
-	return append([]airport.LatLon{gear}, turn...)
+	return pts
 }
 
 // totalTurn is the heading change along pts, summed, in degrees.

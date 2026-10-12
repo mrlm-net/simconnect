@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="196" viewBox="0 0 720 196" font-family="system-ui, sans-serif" font-size="13">
+<text x="0" y="20" font-size="15" font-weight="600" fill="#6b7280">Traffic checks per aircraft per frame</text>
+<text x="220" y="59.0" text-anchor="end" fill="#6b7280">v0.94.0 (whole routes)</text>
+<rect x="230" y="44.0" width="400.0" height="22" rx="3" fill="#9ca3af"/>
+<text x="638.0" y="59.0" fill="#6b7280">3.71 ms</text>
+<text x="220" y="93.0" text-anchor="end" fill="#6b7280">400 m ways + samples once</text>
+<rect x="230" y="78.0" width="42.0" height="22" rx="3" fill="#9ca3af"/>
+<text x="280.0" y="93.0" fill="#6b7280">0.39 ms</text>
+<text x="220" y="127.0" text-anchor="end" fill="#6b7280">flat metres</text>
+<rect x="230" y="112.0" width="17.3" height="22" rx="3" fill="#9ca3af"/>
+<text x="255.3" y="127.0" fill="#6b7280">0.16 ms</text>
+<text x="220" y="161.0" text-anchor="end" fill="#6b7280">now</text>
+<rect x="230" y="146.0" width="17.0" height="22" rx="3" fill="#2563eb"/>
+<text x="255.0" y="161.0" fill="#6b7280">0.16 ms</text>
+</svg>

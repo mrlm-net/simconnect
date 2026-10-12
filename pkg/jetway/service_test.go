@@ -186,14 +186,16 @@ func TestHelpersFlow(t *testing.T) {
 	now = now.Add(RetractWait + time.Second)
 	h.Update(now)
 
-	// A helper the sim puts on another gate: removed, the dock failed.
+	// A helper the sim puts on another gate: the dock failed, the helper
+	// sent off with the retract plan (its jetway home first) and removed
+	// RetractWait later.
 	h.Dock("EDDM", 7, "A320")
 	now = now.Add(HelperDelay)
 	h.Update(now)
 	h.assign(f, 301)
 	h.see(jw(5, 1, 301))
-	if h.Status("EDDM", 7) != StatusFailed || f.removed[len(f.removed)-1] != 301 {
-		t.Fatalf("stand 7 %s, removed %v", h.Status("EDDM", 7), f.removed)
+	if h.Status("EDDM", 7) != StatusFailed || slices.Contains(f.removed, 301) {
+		t.Fatalf("stand 7 %s, removed %v: want failed, the helper retracting", h.Status("EDDM", 7), f.removed)
 	}
 
 	// A helper no jetway takes (put on a ramp): removed after ClaimTimeout.
@@ -206,8 +208,14 @@ func TestHelpersFlow(t *testing.T) {
 	h.assign(f, 401)
 	now = now.Add(ClaimTimeout + time.Second)
 	h.Update(now)
-	if h.Status("EDDM", 9) != StatusFailed || !slices.Contains(f.removed, 401) {
-		t.Fatalf("stand 9 %s, removed %v", h.Status("EDDM", 9), f.removed)
+	if h.Status("EDDM", 9) != StatusFailed {
+		t.Fatalf("stand 9 %s, want failed", h.Status("EDDM", 9))
+	}
+	// Both helpers removed once their jetways had time to go home.
+	now = now.Add(RetractWait)
+	h.Update(now)
+	if !slices.Contains(f.removed, 301) || !slices.Contains(f.removed, 401) {
+		t.Fatalf("helpers not removed after their retract: %v", f.removed)
 	}
 }
 

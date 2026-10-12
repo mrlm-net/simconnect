@@ -25,6 +25,8 @@ func main() {
 	out := flag.String("out", "", "where the package goes (default: the Community folder)")
 	codes := flag.String("codes", "", "airline codes for each type's \"ALL\" helper (none: only the one without codes)")
 	span := flag.Float64("span", 0, "every helper's wing span, feet (0: the model's)")
+	sideSteps := flag.Int("side-steps", 6, "each type's door variants each side (0: none)")
+	sideStep := flag.Float64("side-step", 0.1, "door variant step, meters")
 	flag.Parse()
 	ins, err := addons.Find()
 	if err != nil {
@@ -77,7 +79,7 @@ func main() {
 			cs = append(cs, c)
 		}
 	}
-	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span})
+	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep})
 	if err != nil {
 		fail(err)
 	}

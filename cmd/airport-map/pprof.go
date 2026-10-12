@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof" // on http.DefaultServeMux, served only with -pprof
+	"runtime"
+	"time"
 )
 
 // pprofAddr serves Go's profiler (/debug/pprof/) for finding where the map
@@ -18,5 +20,9 @@ func startPprof() {
 	if *pprofAddr == "" {
 		return
 	}
+	// Who waits on what (/debug/pprof/mutex, /block): a lock held long
+	// stalls the traffic's frames.
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(int(time.Millisecond))
 	go func() { log.Println(http.ListenAndServe(*pprofAddr, nil)) }()
 }

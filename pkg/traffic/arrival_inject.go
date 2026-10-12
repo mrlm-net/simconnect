@@ -281,6 +281,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	}
 	c.stepSurfaces(c.frameDt)
+	c.reverseIdle(pose.GroundSpeedKts)
 	c.taxiLightDue() // TaxiLightDelay after the landing lights went off
 	switch c.state {
 	case ArrivalRollout:
@@ -453,6 +454,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	}
 	c.last.Position, c.last.Heading, c.last.GroundSpeed = pose.Position, pose.Heading, pose.GroundSpeedKts
 	c.last.AGL, c.last.OnGround = pose.HeightFt, pose.OnGround
+	c.reverseIdle(pose.GroundSpeedKts)
 	c.stepSurfaces(math.Max(dt, 0))
 	// Landing flaps: from the approach setting to full over
 	// FlapsFullSeconds when passing FlapsFullFt, the stabilised gate.
@@ -491,6 +493,11 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		// animated on an AI aircraft: the nozzle SimVar is not settable and
 		// the reverse thrust events are ignored, #318.)
 		c.spoilers = surfaceRamp{target: 100, rate: 100 / SpoilerDeploySeconds}
+		if ReverseThrottlePct < 0 {
+			c.reversing = true
+			c.note("reverse thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), ReverseThrottlePct))
+			c.seq.add(now, "reverse thrust", 0, pose.GroundSpeedKts)
+		}
 		c.setState(ArrivalRollout, nil)
 		return
 	case pose.Phase == ApproachDone && c.tngLeft > 0 && c.req.Circuit != nil:
@@ -610,4 +617,14 @@ func (c *ArrivalController) ClearUpTo(node airport.NodeID) error {
 		c.startTaxi()
 	}
 	return nil
+}
+
+// reverseIdle takes the reverse thrust back to idle below ReverseIdleKts.
+func (c *ArrivalController) reverseIdle(kts float64) {
+	if !c.reversing || kts >= ReverseIdleKts {
+		return
+	}
+	c.reversing = false
+	c.note("reverse idle", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), 0))
+	c.seq.add(c.now(), "reverse idle", 0, kts)
 }

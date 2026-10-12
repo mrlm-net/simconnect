@@ -44,3 +44,31 @@ func TestWritePackage(t *testing.T) {
 		t.Error("IsHelper")
 	}
 }
+
+// Side variants: each type's helper again with its door moved sideways,
+// k steps to the right, its own title and folder.
+func TestWritePackageSideVariants(t *testing.T) {
+	base := filepath.Join("..", "addons", "testdata", "doors", "FSLTL_A320")
+	root, err := WritePackage(t.TempDir(), []HelperModel{{Type: "A320", Dir: base}}, PackageOptions{SideSteps: 2, SideStepM: 0.1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_A320_R+1")
+	cfg, _ := os.ReadFile(filepath.Join(dir, "aircraft.cfg"))
+	if !strings.Contains(string(cfg), `title = "MyCrew Jetway Helper A320 R+1"`) || strings.Contains(string(cfg), " ALL") {
+		t.Errorf("variant aircraft.cfg:\n%s", cfg)
+	}
+	fm, _ := os.ReadFile(filepath.Join(dir, "flight_model.cfg"))
+	if !strings.Contains(string(fm), "interactive_point.0 = 0.4, 37.654, -5.809,") {
+		t.Errorf("door not moved 0.1 m right: %s", fm[strings.Index(string(fm), "interactive_point.0"):][:80])
+	}
+	if _, err := os.Stat(filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_A320_R-2", "aircraft.cfg")); err != nil {
+		t.Error("no R-2 variant")
+	}
+	if HelperVariantTitle("A320", -2) != "MyCrew Jetway Helper A320 R-2" || HelperVariantTitle("A320", 0) != "MyCrew Jetway Helper A320" {
+		t.Error("HelperVariantTitle")
+	}
+	if !IsHelperVariant("MyCrew Jetway Helper A320 R-2") || IsHelperVariant("MyCrew Jetway Helper A320") || IsHelperVariant("MyCrew Jetway Helper A320 ALL") {
+		t.Error("IsHelperVariant")
+	}
+}
