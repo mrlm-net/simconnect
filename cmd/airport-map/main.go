@@ -49,7 +49,14 @@ func serve(ctx context.Context, addr string, w *world.World) error {
 	web, _ := fs.Sub(webFiles, "web")
 	// The app manifest's type, which Go does not know by itself.
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
-	mux.Handle("GET /", http.FileServerFS(web))
+	// Never a cached page: the embedded files carry no date, so a browser
+	// kept the last build's script after a restart (live: the aircraft
+	// icons gone until a hard refresh).
+	files := http.FileServerFS(web)
+	mux.Handle("GET /", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Cache-Control", "no-cache")
+		files.ServeHTTP(rw, r)
+	}))
 	mux.HandleFunc("GET /classic", func(rw http.ResponseWriter, r *http.Request) {
 		http.ServeFileFS(rw, r, web, "classic.html")
 	})
