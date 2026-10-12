@@ -90,6 +90,13 @@ For a shot designer over a recorded flight:
   - **Between shots:** the camera holds its last pose.
   - **At the end:** past the film's end, `Tick` returns `ErrFilmEnded`, and the host calls `Release`, which also stops following.
   - **Clock function:** it is called under the Director's lock, so it must not call the Director.
+- **Designed shots:** a `WorldPath` is a shot keyed in the world on the replay's clock.
+  - **Keys:** each `WorldKey` has a replay time `T` (from the recording's first sample), the eye (`Lat`, `Lon`, `AltM` above sea level), a heading and pitch, and a field of view. The eye moves on a Catmull-Rom curve through the keys, eased over the whole shot (`Ease`, nil: `Smooth`).
+  - **Look at:** `LookAircraft` follows the replayed aircraft, either its live object (`Object`, placed by the simulator in step with what it shows) or, without one, its recorded track (`Track(t)`). `LookPoint` keeps a fixed point in view, and `LookFree` aims by each key's heading and pitch.
+  - **Checks:** `Validate` checks the structure (two keys or more, increasing times, a complete look mode). `Long` returns `ErrShotTooLong` past `MaxShot` (10 s) as a warning only: the shot still plays at its full length.
+  - **Playing:** `p.Cue()` places it at its first key's time; `NewTimeline(cues...)` and `Director.Follow(timeline, replayTime)` play it, released at `ErrFilmEnded`.
+  - **Presets:** `KeysOf(shot, at, step, poseAt)` turns any shot, such as `SideDolly`, into world keys at replay time `at`, each aimed where the shot looks, so a designer starts from a preset and edits it (played back with `LookFree`).
+  - **Lens:** `FovFromFocalMM` and `FocalMMFromFov` convert a full-frame focal length to the horizontal field of view and back (50 mm is 39.6°).
 
 ## On the airport map
 

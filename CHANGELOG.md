@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.94.0] - 2026-10-12
+
+### Added
+
+- Camera: `WorldPath`, a designed shot keyed in the world on a replay's clock (`WorldKey{T, Lat, Lon, AltM, HeadingDeg, PitchDeg, FovDeg}`). It looks at the replayed aircraft (its live object, or its recorded track), a fixed point, or where each key aims (`LookAt`, `LookAircraft`/`LookPoint`/`LookFree`). `Validate` checks the structure, and `Long` warns past `MaxShot` without cutting the shot. `Cue` puts it on a `Timeline` for `Director.Follow`.
+- Camera: `KeysOf` turns a preset move into editable world keys at a replay time. `FovFromFocalMM` and `FocalMMFromFov` convert focal length to field of view.
+
 ## [0.93.0] - 2026-10-12
 
 ### Added
