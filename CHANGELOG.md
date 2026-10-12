@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.91.1] - 2026-10-12
+
+### Fixed
+
+- Ground's give-way call describes an aircraft pushing back as "pushing back", and one pushed and waiting to taxi as "about to taxi". It used to read their heading, which in a push points away from where they go. Live at LKPR, TVS770 was told "give way to the Boeing 737 passing right to left" for TVS1309 pushing onto J, which then came at it head-on. `GroundPicture.Pushing` and `Waiting` are new.
+
 ## [0.91.0] - 2026-10-11
 
 ### Added

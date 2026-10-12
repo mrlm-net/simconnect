@@ -119,6 +119,18 @@ func (p *GroundPicture) giveWay(id uint32, path *GroundPath, from, look, half fl
 	return at
 }
 
+// Pushing reports whether aircraft id is pushing back now; Waiting that it
+// has pushed and waits for its taxi clearance (its planned way reported).
+func (p *GroundPicture) Pushing(id uint32) bool { return p.pushingNow(id) }
+
+// Waiting: see Pushing.
+func (p *GroundPicture) Waiting(id uint32) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e, ok := p.aircraft[id]
+	return ok && e.waiting
+}
+
 // pushingNow reports whether aircraft id is pushing back (taxiing traffic
 // gives way to it whatever happens).
 func (p *GroundPicture) pushingNow(id uint32) bool {
