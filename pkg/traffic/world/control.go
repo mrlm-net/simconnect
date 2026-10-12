@@ -2728,7 +2728,19 @@ func (it *controlled) tellGiveWay(other uint32) {
 		return
 	}
 	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)
+	// Pushing back, or pushed and about to taxi: said so, not by its
+	// heading, which in a push points away from where it goes (live,
+	// LKPR: TVS770 told "passing right to left" for TVS1309 pushing onto J,
+	// which then came at it head-on).
+	var gp *traffic.GroundPicture
+	if it.cc.world != nil {
+		gp = it.cc.world.Ground(it.ICAO)
+	}
 	switch d := headingDiff(h, oh); {
+	case gp != nil && gp.Pushing(other):
+		desc += " pushing back"
+	case gp != nil && gp.Waiting(other):
+		desc += " about to taxi"
 	case d >= 30 && d <= 150:
 		desc += " passing left to right"
 	case d <= -30 && d >= -150:

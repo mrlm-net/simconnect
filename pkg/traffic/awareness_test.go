@@ -829,3 +829,19 @@ func TestFollowOnGround(t *testing.T) {
 		t.Errorf("read back %q", rb.Text)
 	}
 }
+
+// Pushing and Waiting tell a push under way and a pushed aircraft waiting
+// to taxi, for what ground says of it.
+func TestPictureInPushAndWaiting(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	p.Report(1, airport.LatLon{Lat: 50, Lon: 14}, 90, DefaultMotionProfile(), now)
+	p.ReportPush(1, []airport.LatLon{{Lat: 50, Lon: 14}, {Lat: 50, Lon: 14.0003}}, 17)
+	if !p.Pushing(1) || p.Waiting(1) {
+		t.Error("pushing: not seen")
+	}
+	p.ReportPlanned(1, []airport.LatLon{{Lat: 50, Lon: 14}, {Lat: 50, Lon: 14.001}}, 17)
+	if p.Pushing(1) || !p.Waiting(1) {
+		t.Error("waiting to taxi: not seen")
+	}
+}
