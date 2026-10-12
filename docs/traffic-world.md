@@ -56,6 +56,12 @@ A transmission (`traffic.Transmission`) has everything a voice needs: the text, 
 - `Snapshot()`: our aircraft (`ControlView`: state, ATC position and frequency, routes still to fly, the clearances available now) with their ground vehicles (`VehicleView`: tug or fuel truck, its sim object id, model, state, position and the way still ahead), whether the traffic runs, and how many fed messages were dropped. A vehicle's state is what it says of itself (`traffic.VehicleState`: waiting, inbound, attached, fuelling, outbound, removed).
 - `Do(method, path, body)` and `Get(path, &v)`: the HTTP API in process, the same calls a remote client makes. For example, `Get("/api/airportinfo?icao=LKPR", &v)` gives the runways in use, the ATIS (letter and text: the World owns it), the ILS and the weather. `/api/sequence?icao=` gives the landing sequences, `/api/stands?icao=` the stands, and `POST /api/schedule {"enabled":true,"icao":"LKPR","density":1}` starts the schedule. `POST /api/control/{id}/{action}` gives a clearance. `GET /api/traffic` lists every aircraft the sim reports around the user aircraft (`Traffic`; ours flown by MSFS AI carry `route`, the way they still fly).
 - Typed actions over the same API: `SetSchedule(ScheduleSettings{Enabled, ICAO, Airports, Density, IFR, VFR, Generator, Others})`, `AddFlights(flights)`, `Clear(id, action)` and `Approach(icao, callsign, action)`.
+- `Phrase(id, action)` (`GET /api/control/{id}/{action}/phrase`) is what `Clear` would say, without giving it, for a "you say" button. It returns `ClearancePhrase`:
+  - `Controller`: the transmission, with the same intent, params and phraseology (runway, taxi route, wind, the traffic to line up behind, FAA wording at US airports);
+  - `Readback`: the crew's readback, or nil when there is none.
+
+  A clearance given with `Clear` is said on the radio as the automatic controllers' are, readback included (`GET /api/radio`).
+- An arrival's `ControlView.Sequence` is its place in its airport's landing sequence: number, leader, spacing, minimum. It is the same entry `/api/sequence` gives.
 - `Register(mux)`: serve that API on the host's own server (the airport map does).
 
 ## Flights at a chosen time

@@ -410,6 +410,23 @@ func (w *World) Clear(id int, action string) error {
 	return err
 }
 
+// ClearancePhrase is what a clearance would say (Phrase): the
+// controller's transmission, its Text worded as the engine says it, and
+// the crew's readback (nil when it has none).
+type ClearancePhrase struct {
+	Controller traffic.Transmission  `json:"controller"`
+	Readback   *traffic.Transmission `json:"readback,omitempty"`
+}
+
+// Phrase is what giving one of ours (ControlView.ID) the clearance action
+// would say, without giving it: the same intent, params and phraseology
+// as Clear (runway, taxi route, wind, the traffic to line up behind …).
+func (w *World) Phrase(id int, action string) (ClearancePhrase, error) {
+	var p ClearancePhrase
+	err := w.Get(fmt.Sprintf("/api/control/%d/%s/phrase", id, action), &p)
+	return p, err
+}
+
 // Approach acts on an arrival in icao's sequence: slow, direct, goaround.
 func (w *World) Approach(icao, callsign, action string) error {
 	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/approach/%s/%s/%s", icao, callsign, action), nil)

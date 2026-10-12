@@ -1443,14 +1443,23 @@ func (r *Radio) Transmit(airport string, t Transmission) Transmission {
 	return r.transmit(airport, t, r.opts.ReadBack)
 }
 
-// transmit sends t, read back by its crew when readBack.
-func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmission {
-	if t.At.IsZero() {
-		t.At = r.opts.Now()
-	}
+// Worded is t as Transmit would word it at airport, not sent: its text in
+// the airport's phraseology (FAA at a US airport), and the crew's readback
+// of it (ok false when it has none).
+func (r *Radio) Worded(airport string, t Transmission) (said, readback Transmission, ok bool) {
 	if t.Airport == "" {
 		t.Airport = airport
 	}
+	said = r.word(t)
+	readback, ok = Readback(said)
+	if ok && readback.Text == "" {
+		readback = Say(readback)
+	}
+	return said, readback, ok
+}
+
+// word is t's text, in its airport's phraseology.
+func (r *Radio) word(t Transmission) Transmission {
 	if t.Text == "" {
 		t = Say(t)
 	}
@@ -1466,6 +1475,18 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 			t = Say(t)
 		}
 	}
+	return t
+}
+
+// transmit sends t, read back by its crew when readBack.
+func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmission {
+	if t.At.IsZero() {
+		t.At = r.opts.Now()
+	}
+	if t.Airport == "" {
+		t.Airport = airport
+	}
+	t = r.word(t)
 	if t.Frequency == "" && r.opts.FrequencyOf != nil {
 		t.Frequency = r.opts.FrequencyOf(t.Airport, t.Position)
 	}

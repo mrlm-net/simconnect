@@ -74,6 +74,23 @@ d.Handle(msg)
 
 The director acquires the camera on the first `Tick` with a shot to play, and asks again every `AcquireRetry` (5 s) while it is not given (`ErrNotAcquired` meanwhile); a camera held by someone else or disabled by the user is not asked for again until `Release`. It sets the current shot's pose on every tick and moves to the next shot when one ends; with nothing queued it holds the last pose. After each cut the new shot holds its first pose for `CutSettle` (600 ms) while the picture settles. `OnShot` hears each shot as it starts; `Current` and `Remaining` tell what plays. After a reconnect call `Reset(api)` (nil keeps the client). `Release` gives the camera back and deletes the world locker. Always release it: a camera left acquired stays stuck for the user.
 
+## Shots on a replay
+
+For a shot designer over a recorded flight:
+
+- **Moves listed:** `Moves()` gives the drone moves as `MoveInfo{Name, Doc, Kind, Func}`: name, what it shows, `Wide` or `Detail`, and the function making the shot (`Func(object, size, side, duration)`). `TrackZoom` is not among them, since it takes an eye point.
+- **Shots in the world:** `Placed(point, poseOf)` places a shot's point in the world.
+  - A world point stays as it is.
+  - An object point is placed from that object's `ObjectPose` (lat, lon, altitude, heading, pitch, bank), rotated by its attitude.
+  - An eyepoint point cannot be placed.
+
+  `WorldPoses(shot, step, poseAt)` samples a whole shot that way, the object's pose taken at each time from the recording. Each sample has the eye, the target and the field of view, which is the camera path and view cone to draw on a map, matching what the simulator will show.
+- **On the replay's clock:** a `Timeline` of `Cue{At, Shot}` places shots on a film. `Director.Follow(timeline, clock)` plays it on a clock the host supplies, such as the replay's time.
+  - **Seeking and pausing:** a shot cued at 545 s plays then, after a seek or a pause, at any rate.
+  - **Between shots:** the camera holds its last pose.
+  - **At the end:** past the film's end, `Tick` returns `ErrFilmEnded`, and the host calls `Release`, which also stops following.
+  - **Clock function:** it is called under the Director's lock, so it must not call the Director.
+
 ## On the airport map
 
 The camera button in the status strip opens the director:

@@ -87,6 +87,25 @@ A frame's sample is interpolated (`At`), so the replay is as smooth as the sim's
 
 **A ghost on its own** (`GhostReplay`): `NewGhostReplay(client, injector, track, title, tail, reqID)` replays a Track as an AI aircraft without wiring the creation yourself. `Start` creates the object where its `Player` stands. `Handle(msg)` takes the object ID the simulator assigns, has the Injector take it over, and then flies it as the Player says, at most every frame. `Stop` removes it. Use the host's own Injector, with IDs clear of any other's.
 
+## Milestones
+
+`Events(track)` lists a recorded flight's milestones, for a replay's timeline. Each `Event` has `T` (seconds after the first sample), `Kind` and `Text`, and they come in time order:
+
+| Kind | Found at |
+|------|----------|
+| `engines-start` | an engine's N1 first over 15 % |
+| `pushback` | moving backwards on the ground (more than 120° off the heading) |
+| `taxi` | over 3 kt forward on the ground, engines running |
+| `takeoff-roll` | 40 kt on the ground |
+| `rotate` | nose up past 3° on the roll |
+| `liftoff` | leaving the ground over 40 kt |
+| `gear-up` | the gear lever up after lift-off |
+| `touchdown` | the last return to the ground |
+| `vacate` | under 30 kt after the touchdown |
+| `park` | parking brake set, engines off, after the flight |
+
+They come from the samples alone; a milestone the recording does not show is left out, such as the pushback of a flight recorded from the air.
+
 ## Judging a flight
 
 `Assess(track, AssessOptions)` judges a recorded flight against common airline practice and returns an `Assessment`. It holds the flight's key figures (`Profile`), the findings in time order, each with what happened and what to do, and a `Score` to rank flights by: 100, less 5 for each minor finding and 15 for each major one.

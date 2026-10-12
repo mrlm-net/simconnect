@@ -305,7 +305,10 @@ type ControlView struct {
 	// route itself also runs through the points of its rounded turns).
 	AirFixes []airFix  `json:"airFixes,omitempty"`
 	Hold     *holdView `json:"hold,omitempty"`
-	Done     bool      `json:"done"`
+	// Sequence is an arrival's place in its airport's landing sequence
+	// (number, leader, spacing); nil when not sequenced.
+	Sequence *traffic.SequenceEntry `json:"sequence,omitempty"`
+	Done     bool                   `json:"done"`
 }
 
 type controlCenter struct {
@@ -1635,6 +1638,30 @@ func (cc *controlCenter) views() []ControlView {
 		out = append(out, v)
 	}
 	cc.mu.Unlock()
+	// Each arrival's place in its airport's landing sequence (asked
+	// outside cc.mu: the sequencer has its own locks).
+	if cc.sequencesAt != nil {
+		seq := map[string]map[string]traffic.SequenceEntry{}
+		for i := range out {
+			v := &out[i]
+			if v.Kind != "arrival" {
+				continue
+			}
+			bys, ok := seq[v.ICAO]
+			if !ok {
+				bys = map[string]traffic.SequenceEntry{}
+				for _, list := range cc.sequencesAt(v.ICAO) {
+					for _, e := range list {
+						bys[e.Callsign] = e
+					}
+				}
+				seq[v.ICAO] = bys
+			}
+			if e, ok := bys[v.Tail]; ok {
+				v.Sequence = &e
+			}
+		}
+	}
 	return out
 }
 
@@ -1881,6 +1908,38 @@ func registerControl(mux *http.ServeMux, st *state) {
 		writeJSON(w, it.view)
 	})
 
+	// GET /api/control/{id}/{action}/phrase[?node=N] — what that clearance
+	// would say, not given: the controller's transmission (its text in
+	// the airport's phraseology) and the crew's readback.
+	mux.HandleFunc("GET /api/control/{id}/{action}/phrase", func(w http.ResponseWriter, r *http.Request) {
+		cc := center(w)
+		if cc == nil {
+			return
+		}
+		id, _ := strconv.Atoi(r.PathValue("id"))
+		cc.mu.Lock()
+		it := cc.items[id]
+		cc.mu.Unlock()
+		if it == nil {
+			http.Error(w, "no such aircraft", http.StatusNotFound)
+			return
+		}
+		node := airport.NodeID(-1)
+		if s := r.URL.Query().Get("node"); s != "" {
+			n, err := strconv.Atoi(s)
+			if err != nil {
+				http.Error(w, "node: a node ID", http.StatusBadRequest)
+				return
+			}
+			node = airport.NodeID(n)
+		}
+		said, rb, ok := cc.radio.Worded(it.ICAO, it.phrase(r.PathValue("action"), node))
+		out := ClearancePhrase{Controller: said}
+		if ok {
+			out.Readback = &rb
+		}
+		writeJSON(w, out)
+	})
 	// POST /api/control/{id}/{action}[?node=N] — a clearance.
 	mux.HandleFunc("POST /api/control/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
 		cc := center(w)
