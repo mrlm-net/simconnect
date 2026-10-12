@@ -73,8 +73,11 @@ type controlled struct {
 	groundStop bool
 	// boardWaitSince: when it began waiting for its jetway to dock.
 	boardWaitSince time.Time
-	// tugAfter: its tug comes once the jetway is home (drawn once, tugDrawn).
-	tugDrawn, tugAfter bool
+	// tugAfter: its tug comes once the jetway is home (drawn at the spawn);
+	// tugStand: its stand for that. Atomic: read inside the controller's
+	// frame, which must not take it.mu (tugWaitsForJetway).
+	tugAfter atomic.Bool
+	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
 	cc         *controlCenter
@@ -671,6 +674,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.mu.Lock()
 		it.stand, it.view.Stand = newStand, l.Parking[newStand].Label()
+		it.tugStand.Store(int32(newStand))
 		mgr, model, label := it.managed, it.view.Model, it.view.Stand
 		it.mu.Unlock()
 		if mgr != nil {
@@ -1005,6 +1009,8 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
+	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
 	it.wake = traffic.WakeFor(model).ICAO
 	var events func() (TaxiOrArrival, bool)
@@ -2039,6 +2045,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			l := it.graph.Layout
 			it.mu.Lock()
 			it.stand, it.view.Stand = to, l.Parking[to].Label()
+			it.tugStand.Store(int32(to))
 			it.view.Instruction, it.view.InstructionAt = "stand "+l.Parking[to].Label(), &l.Parking[to].Position
 			mgr, model, label := it.managed, it.view.Model, it.view.Stand
 			it.mu.Unlock()

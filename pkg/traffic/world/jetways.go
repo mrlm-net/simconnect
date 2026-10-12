@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -525,16 +524,19 @@ func (it *controlled) boardingLeft() time.Duration {
 }
 
 // tugWaitsForJetway is TaxiRequest.TugWait: for about half the
-// departures (TugAfterJetwayShare) the tug sets off only once the jetway
-// is home; the others' tug hooks up during boarding.
+// departures (TugAfterJetwayShare, drawn at the spawn) the tug sets off
+// only once the jetway is home; the others' tug hooks up during boarding.
+// It runs inside the controller's frame, under its lock, so it takes no
+// lock of the aircraft (it.mu): the aircraft's update holds it.mu and
+// calls the controller, and the two waited for each other for good (live,
+// LKPR 01:05: the whole map stood still).
 func (it *controlled) tugWaitsForJetway() bool {
-	it.mu.Lock()
-	if !it.tugDrawn {
-		it.tugDrawn, it.tugAfter = true, rand.Float64() < TugAfterJetwayShare
+	if !it.tugAfter.Load() {
+		return false
 	}
-	after, icao, stand := it.tugAfter, it.ICAO, it.stand
-	it.mu.Unlock()
+	icao, stand := it.ICAO, int(it.tugStand.Load())
 	svc := it.cc.jetwayBuilt()
+	after := true
 	if !after || svc == nil || stand < 0 {
 		return false
 	}
