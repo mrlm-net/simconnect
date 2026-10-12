@@ -439,3 +439,16 @@ func TestTransmissionTempo(t *testing.T) {
 		t.Errorf("at 1.25: %v of %v", got, slow)
 	}
 }
+
+// Worded is a clearance as Transmit would say it, not sent: its text and
+// the crew's readback (#ATC mode's "You say").
+func TestRadioWorded(t *testing.T) {
+	r := NewRadio(RadioOptions{})
+	said, rb, ok := r.Worded("LKPR", ClearedTakeoff("CSA123", "24", "wind 240 degrees 8 knots"))
+	if said.Text == "" || !strings.Contains(said.Text, "cleared for take-off") || !ok || !strings.Contains(rb.Text, "CSA123") {
+		t.Fatalf("said %q, readback %q (%v)", said.Text, rb.Text, ok)
+	}
+	if len(r.Recent("LKPR", 10)) != 0 {
+		t.Error("Worded sent the transmission")
+	}
+}

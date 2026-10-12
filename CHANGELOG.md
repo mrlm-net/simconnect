@@ -57,6 +57,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.91.0] - 2026-10-11
+
+### Added
+
+- `World.Phrase(id, action)` (`GET /api/control/{id}/{action}/phrase`): what a clearance would say, without giving it. It returns the controller's transmission, worded as the engine words it (runway, taxi route, wind, line-up-behind traffic, FAA wording at US airports), and the crew's readback. For an ATC screen's "you say". `Radio.Worded` is the same for any transmission.
+- `ControlView.Sequence`: an arrival's place in its landing sequence (number, leader, spacing, minimum).
+- `pkg/camera`, for a replay shot designer (guide: [Shots on a replay](docs/camera.md#shots-on-a-replay)):
+  - `Moves()`, the drone moves listed with name, doc and kind;
+  - `Placed` and `WorldPoses`, a shot's eye and target in the world from the aircraft's recorded pose, for a map preview;
+  - `Timeline`, `Cue` and `Director.Follow(timeline, clock)`, shots played on a replay's own clock, through pauses, seeks and rate changes (`ErrFilmEnded` at the end).
+- `flight.Events(track)`: a recorded flight's milestones for a replay timeline. They run from engines start, pushback and taxi, through the take-off roll, rotate, lift-off and gear up, to touchdown, vacate and park, each found from the samples alone. Guide: [Milestones](docs/flight.md#milestones).
+
 ## [0.90.1] - 2026-10-11
 
 ### Fixed

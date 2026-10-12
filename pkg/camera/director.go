@@ -56,7 +56,14 @@ type Director struct {
 	// pose until then.
 	settle      bool
 	settleUntil time.Time
+	// film: a Timeline played on clock instead of the queue (Follow).
+	film  *Timeline
+	clock func() time.Duration
 }
+
+// ErrFilmEnded: the Timeline followed is over (its clock past its end);
+// the host gives the camera back (Release).
+var ErrFilmEnded = errors.New("camera: film ended")
 
 // LockWorld keeps the terrain, scenery and objects around p loaded while
 // the camera is ours, so cuts across the airport do not show it loading
@@ -143,7 +150,7 @@ var ErrNotAcquired = errors.New("camera: not acquired")
 // wanted (30–60 Hz).
 func (d *Director) Tick(now time.Time) error {
 	d.mu.Lock()
-	if !d.acquired && d.cur == nil && len(d.queue) == 0 {
+	if !d.acquired && d.cur == nil && len(d.queue) == 0 && d.film == nil {
 		d.mu.Unlock()
 		return nil // nothing to show: the camera stays the user's
 	}
@@ -169,6 +176,26 @@ func (d *Director) Tick(now time.Time) error {
 			return err
 		}
 		d.locked = true
+	}
+	// A film on its own clock (Follow): the pose for that clock, the last
+	// held between shots; over past its end.
+	if d.film != nil {
+		c := d.clock()
+		p, _, ok := d.film.PoseAt(c)
+		if !ok && c > d.film.End() {
+			d.mu.Unlock()
+			return ErrFilmEnded
+		}
+		if ok {
+			d.last, d.havePose = p, true
+		}
+		pose, have := d.last, d.havePose
+		d.mu.Unlock()
+		if !have {
+			return nil
+		}
+		data, mask := pose.Data()
+		return api.CameraSet(data, mask)
 	}
 	var started Shot
 	for d.cur == nil || now.Sub(d.started) >= d.cur.Length() {
@@ -247,6 +274,7 @@ func (d *Director) Release() error {
 	d.mu.Lock()
 	was, locked, api := d.acquired || d.asked, d.locked, d.api
 	d.acquired, d.asked, d.queue, d.cur, d.havePose, d.locked = false, false, nil, nil, false, false
+	d.film, d.clock = nil, nil
 	d.askedAt, d.refused, d.lockRetry = time.Time{}, false, time.Time{}
 	d.mu.Unlock()
 	if l, ok := api.(Locker); ok && locked {
