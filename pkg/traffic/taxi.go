@@ -131,6 +131,10 @@ type TaxiRequest struct {
 	// NewSimObjectTug with a GSX tug title, or a third-party integration.
 	// Nil pushes back without one. The controller passes it its messages.
 	Tug PushbackTug `json:"-"`
+	// TugWait, when set and true, keeps the tug from setting off for the
+	// aircraft: one that comes only once the jetway has gone home (some
+	// tugs hook up during boarding, others after).
+	TugWait func() bool `json:"-"`
 	// PowerOut: a small aircraft leaves its stand under its own power, no
 	// tug: forward, a loop round to the side and back past the stand onto
 	// the taxilane (planPowerOut), where the loop stays on the pavement and
@@ -318,16 +322,16 @@ type TaxiController struct {
 	// #832, #887).
 	stairsSvc, gpuSvc  standService
 	busSvc, deboardSvc []standService
-	pushBranch        airport.NodeID // taxiway the tail is pushed onto (planPushback)
-	havePushBranch    bool
-	pushJunction      int              // route index of the junction the tail swings at (planPushback; 1: the first)
-	pushPts           []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
-	pushTurn          bool             // push and turn on the apron (only taxiway at the junction is the way out)
-	pushPlanned       *GroundPath      // the push path, planned before it starts (pushPath)
-	pushTurnDir       float64          // the way out from the junction
-	pushPose          *pushPose        // where the push ends (planPushPose), nil for the older plans
-	faceOut           bool             // a self-manoeuvring stand (standFacesOut, at the start)
-	powerOut          []airport.LatLon // the loop out of the stand under its own power (PowerOut)
+	pushBranch         airport.NodeID // taxiway the tail is pushed onto (planPushback)
+	havePushBranch     bool
+	pushJunction       int              // route index of the junction the tail swings at (planPushback; 1: the first)
+	pushPts            []airport.LatLon // the push up an alley (planPushback), nil for the fitted push
+	pushTurn           bool             // push and turn on the apron (only taxiway at the junction is the way out)
+	pushPlanned        *GroundPath      // the push path, planned before it starts (pushPath)
+	pushTurnDir        float64          // the way out from the junction
+	pushPose           *pushPose        // where the push ends (planPushPose), nil for the older plans
+	faceOut            bool             // a self-manoeuvring stand (standFacesOut, at the start)
+	powerOut           []airport.LatLon // the loop out of the stand under its own power (PowerOut)
 	// pushFacing: the heading a push ends facing, asked for with the
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64

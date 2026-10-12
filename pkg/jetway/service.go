@@ -420,6 +420,14 @@ func (h *Helpers) Undock(icao string, stand int) error {
 	return nil
 }
 
+// Filling reports whether icao's gates are still being filled with
+// placeholders (Dockable not known yet).
+func (h *Helpers) Filling(icao string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.filling[strings.ToUpper(icao)]
+}
+
 // Dockable are icao's gates a helper can be given now: those a placeholder
 // holds (the sim puts none next to an occupied gate, so about every other
 // jetway gate).

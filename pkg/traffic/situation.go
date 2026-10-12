@@ -246,7 +246,7 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 
 // DefaultMaxTaxiing is how many aircraft may taxi at an airport before
 // CheckGroundCongestion holds departures on their stands.
-const DefaultMaxTaxiing = 4
+const DefaultMaxTaxiing = 8
 
 // CheckGroundCongestion holds the boarding departures of an airport on
 // their stands while max (0: DefaultMaxTaxiing) or more aircraft are

@@ -66,6 +66,10 @@ func (h *pushHub) unsubscribe(c chan string) {
 	h.mu.Unlock()
 }
 
+// bootID tells this run of the server from the one before (GET
+// /api/events "hello").
+var bootID = time.Now().UnixNano()
+
 func registerPush(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		fl, ok := w.(http.Flusher)
@@ -79,6 +83,10 @@ func registerPush(mux *http.ServeMux) {
 		c := hub.subscribe()
 		defer hub.unsubscribe(c)
 		fmt.Fprint(w, "retry: 3000\n\n")
+		// Which run of the server this is: a page that sees another after
+		// reconnecting reloads (live, after a map restart the aircraft
+		// icons were gone until a hard refresh).
+		fmt.Fprintf(w, "event: hello\ndata: {\"boot\":%d}\n\n", bootID)
 		fl.Flush()
 		beat := time.NewTicker(15 * time.Second) // keeps idle connections open
 		defer beat.Stop()
