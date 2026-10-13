@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.2] - 2026-10-13
+
+### Fixed
+
+- Traffic: no more vertical pops of 0.4 to 0.5 ft in a single frame at lift-off, as a landing rolls out, or holding on a taxiway. A change in the height an aircraft rests at blends in at `CGBlendFtPerSecond` (1 ft/s). Such a change comes from the rest it learns once settled, or from switching between the runway's and the apron's rest heights.
+- glitch-watch: AI on the ground reports a ground velocity of 0 while it rolls, so every frame of a landing roll read as a position jump. The speed is now taken from the last frames when that is more.
+
 ## [0.95.1] - 2026-10-13
 
 ### Fixed

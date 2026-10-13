@@ -257,9 +257,19 @@ func (a *tracked) check(s sample) []glitch {
 	dHdg := math.Abs(math.Mod(f.Hdg-p.Hdg+540, 360) - 180)
 	dist := calc.HaversineMeters(p.Lat, p.Lon, f.Lat, f.Lon)
 	dt := math.Max(f.SimTime-p.SimTime, 1.0/60) // the sim's clock (frames arrive in bursts); a frame with the same sim time is still a frame
-	expect := math.Max(f.GS, p.GS)*0.5144*dt*2 + 1.5
+	// The speed: the sim's ground velocity, or what the last frames moved
+	// when that is more (AI on the ground reports 0 while it rolls: every
+	// frame of a landing roll read as a jump).
+	kts := math.Max(f.GS, p.GS)
+	if n := len(a.buf); n >= 8 {
+		o := a.buf[n-8].f
+		if st := p.SimTime - o.SimTime; st > 0 {
+			kts = math.Max(kts, calc.HaversineMeters(o.Lat, o.Lon, p.Lat, p.Lon)/st/0.5144)
+		}
+	}
+	expect := kts*0.5144*dt*2 + 1.5
 	if dist > expect {
-		out = append(out, glitch{"position-jump", fmt.Sprintf("%.1f m in %.0f ms at %.0f kt", dist, dt*1000, f.GS)})
+		out = append(out, glitch{"position-jump", fmt.Sprintf("%.1f m in %.0f ms at %.0f kt", dist, dt*1000, kts)})
 	}
 	if f.OnGround != 0 && p.OnGround != 0 {
 		h, ph := f.Alt-f.Ground, p.Alt-p.Ground

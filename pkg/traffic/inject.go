@@ -76,6 +76,10 @@ type injected struct {
 	title       string
 	placedAt    time.Time // when it was last placed on the ground (place)
 	onGroundRun int
+	// cgShown: the height above the ground last sent (its rest or static
+	// CG term), at cgShownAt: a new value blends in (smoothCG).
+	cgShown   float64
+	cgShownAt time.Time
 }
 
 // Injector definition, request and event offsets.
@@ -375,6 +379,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	}
 	o.placed = true
 	o.onGroundRun++
+	cg = i.smoothCG(o, cg)
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
@@ -575,7 +580,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  airAltitude(pose, o.groundFt) + o.cgFt + w*(cg-o.cgFt),
+		Altitude:  airAltitude(pose, o.groundFt) + i.smoothCG(o, o.cgFt+w*(cg-o.cgFt)),
 		Pitch:     w*base + rolling - pose.PitchDeg, // SimConnect: negative is nose up
 		Bank:      -pose.BankDeg,          // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
@@ -650,6 +655,27 @@ const AirBlendFt = 100.0
 // restFadeFt: in the air the rest height and pitch of the ground fade out
 // over this height (PlaceAir), so lift-off and touchdown do not jump.
 const restFadeFt = 50.0
+
+// CGBlendFtPerSecond: a change of the height an aircraft rests at (its
+// rest learnt as it settled, the static CG height on the runway against
+// its rest on the apron) blends in at most this fast, rather than in one
+// frame (live, LKPR: 0.4 to 0.5 ft pops holding short, at lift-off and
+// as a landing rolled out).
+const CGBlendFtPerSecond = 1.0
+
+// smoothCG is target as sent now: blended from the last value sent (within
+// a second) at CGBlendFtPerSecond. i.mu held.
+func (i *Injector) smoothCG(o *injected, target float64) float64 {
+	now := i.now()
+	if o.cgShownAt.IsZero() || now.Sub(o.cgShownAt) > time.Second {
+		o.cgShown = target
+	} else {
+		step := CGBlendFtPerSecond * now.Sub(o.cgShownAt).Seconds()
+		o.cgShown += math.Max(-step, math.Min(step, target-o.cgShown))
+	}
+	o.cgShownAt = now
+	return o.cgShown
+}
 
 // RestAboveStaticShare: a model not seen resting yet (rests: an arrival
 // of a kind no departure stood as) is placed this share of its static CG

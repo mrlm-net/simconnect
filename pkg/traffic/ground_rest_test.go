@@ -30,6 +30,8 @@ func sampleMsg(req, obj uint32, g injectGround) engine.Message {
 func TestInjectorRestByModel(t *testing.T) {
 	c := &eventClient{}
 	inj := NewInjector(c)
+	w := time.Date(2026, 10, 8, 22, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { return w } // moments apart: each height as it is, not blending (smoothCG)
 	const a, b, title = 42, 43, "FSLTL A320 Air France SL"
 	for _, id := range []uint32{a, b} {
 		if err := inj.Takeover(id); err != nil {
@@ -51,12 +53,14 @@ func TestInjectorRestByModel(t *testing.T) {
 	}
 	// a stands on its stand: 11.9 ft, 0.71°.
 	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 12.25, StaticPitch: 0.9, PlaneFt: 1211.9, PlanePitch: 0.71, OnGround: 1}))
+	w = w.Add(2 * time.Second)
 	if err := inj.PlaceAir(b, ApproachPose{HeightFt: 0, OnGround: true}); err != nil {
 		t.Fatal(err)
 	}
 	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
 		t.Errorf("touchdown at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
 	}
+	w = w.Add(2 * time.Second)
 	if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +100,14 @@ func TestInjectorLearnsSettledRest(t *testing.T) {
 	w = w.Add(300 * time.Millisecond)
 	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, settled)) // the sim settled it
 	inj.Place(obj, pose)
+	// Blended in at CGBlendFtPerSecond, not snapped: 0.3 s, 0.3 ft of 0.35.
+	if got := placedAlt(); math.Abs(got-1208.18) > 1e-6 {
+		t.Errorf("0.3 s after settling, placed at %.2f, want 1208.18 on its way", got)
+	}
+	for k := 0; k < 10; k++ {
+		w = w.Add(100 * time.Millisecond)
+		inj.Place(obj, pose)
+	}
 	if got := placedAlt(); math.Abs(got-1208.13) > 1e-6 {
 		t.Errorf("placed at %.2f, want the settled 1208.13", got)
 	}
