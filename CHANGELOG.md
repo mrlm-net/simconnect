@@ -57,6 +57,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.3] - 2026-10-13
+
+### Fixed
+
+- Traffic stutter when a departure's ground vehicles set off. Each new vehicle path was checked against every taxiway segment every 2 m, and the vehicle's first radio call was made inside the aircraft's frame: 110–140 ms frames, live at LKPR, whenever a tug or fuel truck got a way or asked ATC.
+  - `Layout.TaxiwayAt` now uses a grid index per layout: 19 ms → 0.05 ms for a 435 m path.
+  - A vehicle's request is queued, and its radio call goes out from the World's pending queue.
+- The first arrival after an airport loads no longer computes stand taxi-ins on the connection's goroutine (206 ms). While `WarmTaxiIn` runs, the ranking uses the taxi-ins already known.
+
+### Added
+
+- SimConnect calls over 30 ms (`SlowCall`) are reported on stderr, naming the call.
+- Benchmarks `BenchmarkVehicleRoute` and `BenchmarkVehicleGates` (docs/traffic-smoothness.md).
+
 ## [0.95.2] - 2026-10-13
 
 ### Fixed

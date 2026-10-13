@@ -92,9 +92,23 @@ func (v *vehicleATC) cleared(icao string, r traffic.VehicleRequest) bool {
 		return ok
 	}
 	q = &vehicleReq{icao: icao, r: r, name: v.name(r.Vehicle, r.Kind)}
+	if r.Gate == traffic.GateRunway {
+		q.waiting = true // the tower decides in its turn (crossingUsers, crossCleared)
+	}
 	v.reqs[k] = q
 	v.mu.Unlock()
-	cc := v.cc
+	// The call itself on the World's pending queue, not here: this runs in
+	// the aircraft's frame on the connection's goroutine, and the station
+	// lookup and the transmission held every aircraft back 110 ms (live,
+	// LKPR: OEZBA's frame each time its tug or fuel truck asked).
+	v.cc.pending.later(v.cc.clock.Now(), func() { v.ask(q) })
+	return false
+}
+
+// ask makes vehicle request q's radio call: a taxiway's answered after
+// atcAnswerDelay, a runway crossing left to the tower.
+func (v *vehicleATC) ask(q *vehicleReq) {
+	cc, icao, r := v.cc, q.icao, q.r
 	switch r.Gate {
 	case traffic.GateTaxiway:
 		station, freq := cc.stationOf(icao, traffic.PosGround)
@@ -121,12 +135,8 @@ func (v *vehicleATC) cleared(icao string, r traffic.VehicleRequest) bool {
 		cc.radio.Transmit(icao, traffic.Transmission{Position: traffic.PosTower, Frequency: freq, Pilot: true, Callsign: q.name,
 			Intent: traffic.IntentVehicleRequest, Params: map[string]string{traffic.ParamRunway: v.said(icao, r.Runway)},
 			Text: station + ", " + q.name + ", request cross runway " + v.said(icao, r.Runway)})
-		v.mu.Lock()
-		q.waiting = true // the tower decides in its turn (crossingUsers, crossCleared)
-		v.mu.Unlock()
 	}
 	cc.log.printf("%-6s %s: asks %s %s%s", q.name, r.Kind, r.Gate, r.Runway, strings.Join(r.Taxiways, ","))
-	return false
 }
 
 // said is a runway as the tower says it: the end in use, else the first.

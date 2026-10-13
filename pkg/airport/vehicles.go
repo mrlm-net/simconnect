@@ -276,19 +276,82 @@ func (l *Layout) NearVehicleRoad(p LatLon) bool {
 // taxiways as PATH, some as TAXI) — not a vehicle road, an unnamed apron
 // path or a stand's lead-in — and its name.
 func (l *Layout) TaxiwayAt(p LatLon) (string, bool) {
+	ix := l.taxiwayIndex()
+	x, y := ix.xy(p)
 	best, name, found := math.Inf(1), "", false
+	for _, k := range ix.cells[ix.cell(x, y)] {
+		s := ix.segs[k]
+		bx, by, px, py := s.bx-s.ax, s.by-s.ay, x-s.ax, y-s.ay
+		t := 0.0
+		if l2 := bx*bx + by*by; l2 > 0 {
+			t = math.Max(0, math.Min(1, (px*bx+py*by)/l2))
+		}
+		dx, dy := px-t*bx, py-t*by
+		if d := math.Sqrt(dx*dx + dy*dy); d <= s.reach && d < best {
+			best, name, found = d, s.name, true
+		}
+	}
+	return name, found
+}
+
+// taxiwayIndex is the layout's named taxiway segments in a grid of
+// taxiwayCellM cells, each listing the segments within reach of it: a
+// lookup tests a handful, not every segment of the airport (a vehicle's
+// path checked every 2 m took 19 ms at LKPR, in an aircraft's frame).
+type taxiwayIndex struct {
+	o     LatLon
+	kx    float64
+	segs  []taxiwaySeg
+	cells map[[2]int32][]int
+}
+
+type taxiwaySeg struct {
+	ax, ay, bx, by, reach float64
+	name                  string
+}
+
+const taxiwayCellM = 50.0
+
+var taxiwayIndexes sync.Map // weak.Pointer[Layout] -> *taxiwayIndex
+
+func (ix *taxiwayIndex) xy(p LatLon) (float64, float64) {
+	return (p.Lon - ix.o.Lon) * ix.kx, (p.Lat - ix.o.Lat) * 111320
+}
+
+func (ix *taxiwayIndex) cell(x, y float64) [2]int32 {
+	return [2]int32{int32(math.Floor(x / taxiwayCellM)), int32(math.Floor(y / taxiwayCellM))}
+}
+
+func (l *Layout) taxiwayIndex() *taxiwayIndex {
+	key := weak.Make(l)
+	if ix, ok := taxiwayIndexes.Load(key); ok {
+		return ix.(*taxiwayIndex)
+	}
+	var o LatLon // the plane's origin: the first taxi point
+	if len(l.TaxiPoints) > 0 {
+		o = l.TaxiPoints[0].Position
+	}
+	ix := &taxiwayIndex{o: o, kx: 111320 * math.Cos(o.Lat*math.Pi/180), cells: map[[2]int32][]int{}}
 	for _, t := range l.TaxiPaths {
 		if t.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI && t.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PATH ||
 			t.Start < 0 || t.End < 0 || int(t.Start) >= len(l.TaxiPoints) || int(t.End) >= len(l.TaxiPoints) || l.PathName(t) == "" {
 			continue
 		}
-		a, b := l.TaxiPoints[t.Start].Position, l.TaxiPoints[t.End].Position
-		d := distM(p, closestOnSegment(p, a, b))
-		if d <= t.Width/2+VehicleTaxiwayMarginM && d < best {
-			best, name, found = d, l.PathName(t), true
+		ax, ay := ix.xy(l.TaxiPoints[t.Start].Position)
+		bx, by := ix.xy(l.TaxiPoints[t.End].Position)
+		s := taxiwaySeg{ax, ay, bx, by, t.Width/2 + VehicleTaxiwayMarginM, l.PathName(t)}
+		k := len(ix.segs)
+		ix.segs = append(ix.segs, s)
+		lo := ix.cell(math.Min(ax, bx)-s.reach, math.Min(ay, by)-s.reach)
+		hi := ix.cell(math.Max(ax, bx)+s.reach, math.Max(ay, by)+s.reach)
+		for cx := lo[0]; cx <= hi[0]; cx++ {
+			for cy := lo[1]; cy <= hi[1]; cy++ {
+				ix.cells[[2]int32{cx, cy}] = append(ix.cells[[2]int32{cx, cy}], k)
+			}
 		}
 	}
-	return name, found
+	got, _ := taxiwayIndexes.LoadOrStore(key, ix)
+	return got.(*taxiwayIndex)
 }
 
 // VehicleTaxiwayMarginM: a vehicle this close to a taxiway's edge is on it.

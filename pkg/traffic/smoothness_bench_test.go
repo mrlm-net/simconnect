@@ -162,3 +162,51 @@ func BenchmarkPushPlan(b *testing.B) {
 		ctl.planPushback()
 	}
 }
+
+// BenchmarkVehicleRoute is one ground vehicle's way (a tug from its depot
+// to a gate), planned when a departure's services start and when its tug
+// drives home: on the connection's goroutine.
+func BenchmarkVehicleRoute(b *testing.B) {
+	g := lkprGraph(&testing.T{})
+	depots := g.Layout.VehicleDepots()
+	if len(depots) == 0 {
+		b.Skip("no depots")
+	}
+	depot := g.Layout.Parking[depots[0]].Position
+	c22, _ := g.Layout.ParkingIndex("C22")
+	stand := g.Layout.Parking[c22].Position
+	g.Layout.VehicleRoute(depot, stand) // the vehicle network built once
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := g.Layout.VehicleRoute(depot, stand); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkVehicleGates is the gates along a ground vehicle's way (a tug
+// from its depot to a gate), worked out when it gets a new path: in the
+// aircraft's frame.
+func BenchmarkVehicleGates(b *testing.B) {
+	g := lkprGraph(&testing.T{})
+	depots := g.Layout.VehicleDepots()
+	if len(depots) == 0 {
+		b.Skip("no depots")
+	}
+	c22, _ := g.Layout.ParkingIndex("C22")
+	pts, err := g.Layout.VehicleRoute(g.Layout.Parking[depots[0]].Position, g.Layout.Parking[c22].Position)
+	if err != nil {
+		b.Fatal(err)
+	}
+	path, err := NewGroundPath(pts, DefaultMotionProfile())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		vehicleGates(g.Layout, path)
+	}
+	b.ReportMetric(path.Length(), "m")
+}
