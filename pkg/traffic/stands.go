@@ -98,6 +98,7 @@ type StandAllocator struct {
 	// LKPR: every arrival's spawn held all traffic back).
 	taxiInMu sync.Mutex
 	taxiIn   map[string]float64 // "runway stand" → meters, -1 none
+	warming  map[string]bool    // runway ends WarmTaxiIn is working out
 }
 
 // StandWithSpread sets how far from the best taxi-in a stand may be and
@@ -395,7 +396,7 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	for _, i := range out[:min(len(out), standRankCandidates)] {
-		if l := a.TaxiIn(runwayEnd, i); l >= 0 {
+		if l, ok := a.taxiInNow(runwayEnd, i); ok && l >= 0 {
 			cost[i] = l
 		}
 	}
@@ -662,11 +663,40 @@ func (a *StandAllocator) TaxiIn(runwayEnd string, stand int) float64 {
 
 // WarmTaxiIn works out every stand's taxi-in from each of runwayEnds
 // (TaxiIn) now, for a host to run in the background as an airport loads,
-// so no arrival's spawn has to.
+// so no arrival's spawn has to. Meanwhile the ranking uses those already
+// known and leaves the rest by distance, rather than work them out on the
+// caller's goroutine (live, LKPR: the first arrival's spawn, 206 ms).
 func (a *StandAllocator) WarmTaxiIn(runwayEnds []string) {
+	a.taxiInMu.Lock()
+	if a.warming == nil {
+		a.warming = map[string]bool{}
+	}
+	for _, end := range runwayEnds {
+		a.warming[end] = true
+	}
+	a.taxiInMu.Unlock()
 	for _, end := range runwayEnds {
 		for i := range a.g.Layout.Parking {
 			a.TaxiIn(end, i)
 		}
+		a.taxiInMu.Lock()
+		delete(a.warming, end)
+		a.taxiInMu.Unlock()
 	}
+}
+
+// taxiInNow is TaxiIn, but while WarmTaxiIn works runwayEnd out only a
+// value already known (ok false otherwise).
+func (a *StandAllocator) taxiInNow(runwayEnd string, stand int) (float64, bool) {
+	a.taxiInMu.Lock()
+	l, known := a.taxiIn[fmt.Sprintf("%s %d", runwayEnd, stand)]
+	warming := a.warming[runwayEnd]
+	a.taxiInMu.Unlock()
+	if known {
+		return l, true
+	}
+	if warming {
+		return 0, false
+	}
+	return a.TaxiIn(runwayEnd, stand), true
 }

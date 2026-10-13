@@ -4,8 +4,11 @@
 package simconnect
 
 import (
+	"fmt"
+	"os"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/internal/dll"
@@ -158,6 +161,17 @@ func (sc *SimConnect) proc(name string) boundProc {
 func (p boundProc) Call(args ...uintptr) (uintptr, uintptr, error) {
 	p.sc.sync.RLock()
 	defer p.sc.sync.RUnlock()
+	// A call that blocks (the simulator not reading its pipe, a model
+	// loading) holds up its caller, often the frame loop: reported on
+	// stderr past SlowCall (docs/traffic-smoothness.md).
+	if p.proc.Name != "SimConnect_GetNextDispatch" {
+		start := time.Now()
+		defer func() {
+			if d := time.Since(start); d > SlowCall {
+				fmt.Fprintf(os.Stderr, "simconnect: %s took %s\n", p.proc.Name, d.Round(time.Millisecond))
+			}
+		}()
+	}
 	if len(args) > 0 {
 		args[0] = p.sc.connection
 	}
@@ -175,3 +189,7 @@ func (p boundProc) Call(args ...uintptr) (uintptr, uintptr, error) {
 	}
 	return p.proc.Call(args...)
 }
+
+// SlowCall: a SimConnect call taking longer than this is reported on
+// stderr.
+var SlowCall = 30 * time.Millisecond
