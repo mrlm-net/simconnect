@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -486,6 +487,8 @@ func TestGroundMoverStopsWithoutClamp(t *testing.T) {
 func TestPlaceAirRestsOnTheRunway(t *testing.T) {
 	c := &eventClient{}
 	inj := NewInjector(c)
+	w := time.Date(2026, 10, 8, 22, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { w = w.Add(2 * time.Second); return w } // moments apart: not blending (smoothCG)
 	inj.Takeover(42)
 	m := groundMsg(DefaultInjectRequestBase+1, 42, 0, 0)
 	var hdr types.SIMCONNECT_RECV_SIMOBJECT_DATA
