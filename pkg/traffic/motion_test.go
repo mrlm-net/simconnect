@@ -518,3 +518,34 @@ func TestPlaceAirRestsOnTheRunway(t *testing.T) {
 		t.Errorf("60 ft up at %.2f ft pitch %.2f, want the static height and 15° nose up only", up.Altitude, up.Pitch)
 	}
 }
+
+// A traffic stop set behind the aircraft (a give-way junction already
+// passed) stops it where it is: never back along its path, never swung
+// round (live, DLH1707 jumped 3.5 m and turned 62° at each update of the
+// push it gave way to).
+func TestGroundMoverTrafficStopBehindStaysPut(t *testing.T) {
+	prof := DefaultMotionProfile()
+	path, err := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 100), offset(lkpr, 100, 100)}, prof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewGroundMover(path, prof)
+	for m.Pose().Distance < 110 {
+		m.Step(1.0 / 60)
+	}
+	m.SetGiveWayStop(80) // the junction it already passed
+	last := m.Pose()
+	for i := 0; i < 600; i++ {
+		p := m.Step(1.0 / 60)
+		if p.Distance < last.Distance-1e-9 {
+			t.Fatalf("frame %d: back along the path %.2f → %.2f m", i, last.Distance, p.Distance)
+		}
+		if d, turn := localDist(last.Position, p.Position), math.Abs(math.Remainder(p.Heading-last.Heading, 360)); d > 0.5 || turn > 3 {
+			t.Fatalf("frame %d: jumped %.2f m, %.1f°", i, d, turn)
+		}
+		last = p
+	}
+	if !last.Stopped {
+		t.Errorf("still rolling at %.1f kt", last.GroundSpeedKts)
+	}
+}

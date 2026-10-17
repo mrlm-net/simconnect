@@ -86,6 +86,12 @@ type injected struct {
 	// set the simulator puts the wheels on the ground at its own height,
 	// whatever we send: a change of the flag blends (smoothCG).
 	sentGround int8
+	sent       lastSent // the last placement sent (traceJump)
+	// groundShownFt: the ground height it was last placed on, at
+	// groundShownPos and groundShownAt (groundShown).
+	groundShownFt  float64
+	groundShownPos airport.LatLon
+	groundShownAt  time.Time
 }
 
 // Injector definition, request and event offsets.
@@ -425,7 +431,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  i.groundUnder(o, pose.Position) + cg,
+		Altitude:  i.groundShown(o, pose) + cg,
 		Pitch:     pitch,
 		Heading:   pose.Heading,
 		OnGround:  flag,
@@ -433,6 +439,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	if moving {
 		p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
 	}
+	i.traceJump(objectID, o, "ground", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.mu.Unlock()
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
@@ -664,6 +671,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
 	// take-off roll learnt its own placements, 8.48 → 8.08 → 9.00 ft).
 	o.placedAt = i.now()
+	i.traceJump(objectID, o, "air", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -717,6 +725,7 @@ func (i *Injector) PlaceFlown(objectID uint32, pose FlownPose) error {
 	}
 	o.placed = true
 	o.placedAt = i.now()
+	i.traceJump(objectID, o, "flown", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }

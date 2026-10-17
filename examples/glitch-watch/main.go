@@ -320,10 +320,10 @@ func (a *tracked) push(s sample) {
 
 func write(d *dump) {
 	var b strings.Builder
-	b.WriteString("t,lat,lon,above_ground_ft,static_cg,pitch,bank,hdg,on_ground,gs\n")
+	b.WriteString("t,lat,lon,above_ground_ft,static_cg,pitch,bank,hdg,on_ground,gs,sim_time,alt_ft,ground_ft\n")
 	for _, r := range d.rows {
 		f := r.f
-		fmt.Fprintf(&b, "%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.2f,%.2f,%.0f,%.1f\n", r.t.Format("15:04:05.000"), f.Lat, f.Lon, f.Alt-f.Ground, f.StaticCG, f.Pitch, f.Bank, f.Hdg, f.OnGround, f.GS)
+		fmt.Fprintf(&b, "%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.2f,%.2f,%.0f,%.1f,%.3f,%.2f,%.2f\n", r.t.Format("15:04:05.000"), f.Lat, f.Lon, f.Alt-f.Ground, f.StaticCG, f.Pitch, f.Bank, f.Hdg, f.OnGround, f.GS, f.SimTime, f.Alt, f.Ground)
 	}
 	_ = os.WriteFile(d.file, []byte(b.String()), 0o644)
 }

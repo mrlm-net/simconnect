@@ -281,7 +281,7 @@ func TestTaxiControllerFullDeparture(t *testing.T) {
 		math.Abs(fc.spawned[0].Latitude-StandPoint(stand, 0).Lat) > 1e-9 { // at the stop mark, not the circle centre
 		t.Fatalf("spawn = %+v, want stand C22", fc.spawned)
 	}
-	if len(fc.defs[DefaultTaxiDefinitionBase]) != 1 || len(fc.defs[DefaultTaxiDefinitionBase+1]) != 12 {
+	if len(fc.defs[DefaultTaxiDefinitionBase]) != 1 || len(fc.defs[DefaultTaxiDefinitionBase+1]) != 13 { // with SIMULATION TIME
 		t.Fatalf("definitions = %v", fc.defs)
 	}
 	req, mon := DefaultTaxiRequestBase, DefaultTaxiRequestBase+reqOffMonitor

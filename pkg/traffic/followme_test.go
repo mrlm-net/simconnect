@@ -55,6 +55,8 @@ func TestArrivalFollowMe(t *testing.T) {
 	// FollowMeAheadMeters.
 	var leftAt *GroundPose
 	offGraph, onLeadIn := 0.0, math.Inf(1)
+	var carLast *GroundPose
+	carJumped := false
 	frame := func() {
 		now = now.Add(time.Second / 60)
 		if !inj.Driven(77) {
@@ -66,6 +68,18 @@ func TestArrivalFollowMe(t *testing.T) {
 			created = true
 			ctl.Handle(assignedMsg(9100, 88))
 			inj.Handle(groundMsg(DefaultInjectRequestBase+3, 88, 1200, 3))
+		}
+		// No jump: no step farther than a frame's drive, no turn of more
+		// than 3° (it jumped 3 m back as it left).
+		if pose, _, ok := fm.Track(); ok {
+			if carLast != nil && !carJumped {
+				d, turn := localDist(carLast.Position, pose.Position), math.Abs(math.Remainder(pose.Heading-carLast.Heading, 360))
+				if d > 0.5 || turn > 3 {
+					carJumped = true
+					t.Errorf("car jumped %.1f m, %.1f° in a frame (phase %d)", d, turn, fm.phase)
+				}
+			}
+			carLast = &pose
 		}
 		if pose, _, ok := fm.Track(); ok && fm.phase == followMeLeaving {
 			if leftAt == nil {

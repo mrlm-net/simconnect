@@ -181,12 +181,17 @@ func (b *SimObjectBus) inbound(spot GroundPose) (*GroundPath, airport.LatLon, bo
 // its left, back the way it came, then along the roads to its depot (or
 // off ahead without one), round the aircraft where needed.
 func (b *SimObjectBus) outbound() (*GroundPath, error) {
+	// From the front axle, steered hard out at once: the mover puts the bus
+	// a wheelbase behind its path's start (from where the bus stood, it
+	// jumped 6 m back), and a turn begun a wheelbase further on took it
+	// under the wing.
 	p, h := b.pose.Position, b.pose.Heading
+	nose := offsetHeading(p, h, busProfile().WheelbaseMeters)
 	out := h + 90 // the bus faces the tail on the aircraft's left: away is its right
-	p1 := offsetHeading(offsetHeading(p, h, BusTurnMeters/2), out, BusTurnMeters/2)
+	p1 := offsetHeading(nose, out, BusTurnMeters/2)
 	p2 := offsetHeading(p, out, BusTurnMeters)
 	p3 := offsetHeading(p2, h+180, BusApproachMeters)
-	pts := []airport.LatLon{p, p1, p2, p3}
+	pts := []airport.LatLon{nose, p1, p2, p3}
 	if b.hasDepot {
 		if route, err := b.Layout.VehicleRoute(p3, b.depot); err == nil {
 			pts = append(pts, route[1:]...)
@@ -244,11 +249,11 @@ func (b *SimObjectBus) Update(pose GroundPose, leave bool, dt float64) error {
 	}
 	if b.arrive != nil {
 		b.check(b.arrive)
-		b.pose = b.arrive.Step(dt)
+		// Squared to the fuselage on the way in: the last turn leaves it a
+		// few degrees off (as the stairs).
+		b.pose = squaredIn(b.arrive.Step(dt), b.arrive, BusSpot(b.n)(b.aircraft, b.prof).Heading)
 		if b.pose.Arrived {
-			// Square to the fuselage: the last turn leaves it a few degrees
-			// off (as the stairs).
-			b.arrive, b.pose.Heading = nil, BusSpot(b.n)(b.aircraft, b.prof).Heading
+			b.arrive = nil
 		}
 		return b.place()
 	}

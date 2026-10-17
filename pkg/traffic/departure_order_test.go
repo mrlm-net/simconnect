@@ -10,7 +10,8 @@ func TestDepartureOrder(t *testing.T) {
 		said, rb string
 	}{
 		{0, "CSA1, report ready for departure", "Wilco, CSA1"},
-		{2, "CSA1, hold short of runway 24, 2 aircraft to depart before you", "Holding short of runway 24, CSA1"},
+		{2, "CSA1, report ready for departure", "Wilco, CSA1"}, // one or two ahead: not said
+		{3, "CSA1, hold short of runway 24, 3 aircraft to depart before you", "Holding short of runway 24, CSA1"},
 	} {
 		tx := DepartureOrder("CSA1", "24", c.ahead)
 		if tx.Text != c.said {

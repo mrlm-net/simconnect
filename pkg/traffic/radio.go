@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -429,7 +430,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentHoldPosition:
 		return cs + ", hold position" // 12.3.4.8
 	case IntentDepartureOrder:
-		if p[ParamNumber] == "" || p[ParamNumber] == "0" {
+		if !queueSaid(p[ParamNumber]) {
 			return cs + ", report ready for departure" // CAP 413 4.20
 		}
 		// CAP 413 4.19 ("hold at Bravo 1, 2 aircraft to depart before you
@@ -1089,8 +1090,20 @@ func HoldPosition(cs string) Transmission {
 
 // DepartureOrder is the tower's answer to a departure checking in while
 // taxiing to runway, ahead the departures to go before it: "CSA1, report
-// ready for departure", or "CSA1, hold short of runway 24, 2 aircraft to
-// depart before you".
+// ready for departure", or with a queue (QueueSaidFrom or more ahead) "CSA1,
+// hold short of runway 24, 3 aircraft to depart before you".
+// QueueSaidFrom: the departures ahead are said from this many on; one or
+// two ahead, a tower just asks for the ready call, the order follows with
+// the line-up (the user, live: "N aircraft to depart before you" every time
+// was too much).
+const QueueSaidFrom = 3
+
+// queueSaid reports whether a departure order with number ahead says them.
+func queueSaid(number string) bool {
+	n, err := strconv.Atoi(number)
+	return err == nil && n >= QueueSaidFrom
+}
+
 func DepartureOrder(cs, runway string, ahead int) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentDepartureOrder,
 		Params: map[string]string{ParamRunway: runway, ParamNumber: fmt.Sprint(ahead)}})
@@ -1511,6 +1524,17 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 			t.At = until
 		}
 	}
+	// One exchange at a time with an aircraft, in order, whichever the
+	// frequency: its check-in with tower after its readback of "contact
+	// tower" on ground (live, EZY693 called tower 6 s before ground, busy,
+	// told it to).
+	crew := ""
+	if t.Callsign != "" {
+		crew = "aircraft " + t.Airport + " " + t.Callsign
+		if until := r.busy[crew]; t.At.Before(until) {
+			t.At = until
+		}
+	}
 	t = r.varied(t, busy)
 	if r.opts.SaidCallsign != nil && t.Callsign != "" {
 		if said := r.opts.SaidCallsign(t.Callsign); said != t.Callsign {
@@ -1522,6 +1546,9 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	}
 	if mouth != "" {
 		r.busy[mouth] = t.At.Add(t.SpeakingTime())
+	}
+	if crew != "" {
+		r.busy[crew] = t.At.Add(t.SpeakingTime())
 	}
 	r.kept = append(r.kept, t)
 	if len(r.kept) > r.opts.Keep {

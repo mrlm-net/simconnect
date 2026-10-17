@@ -391,6 +391,7 @@ type taxiMonitor struct {
 	OnGround  float64
 	// LIGHT LANDING, TAXI, STROBE, BEACON, NAV, LOGO, WING
 	Lights [7]float64
+	SimTime float64 // SIMULATION TIME, seconds
 }
 
 // currentLights is the light state the sim reports.
@@ -512,7 +513,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		{"GROUND VELOCITY", "knots"},
 		{"SIM ON GROUND", "bool"},
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"},
-		{"LIGHT NAV", "bool"}, {"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"},
+		{"LIGHT NAV", "bool"}, {"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"}, {"SIMULATION TIME", "seconds"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+defOffMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -661,6 +662,7 @@ func (c *TaxiController) onSpawned(objectID uint32) {
 
 // onPosition advances the state machine from a position report.
 func (c *TaxiController) onPosition(m taxiMonitor) {
+	c.simNow = m.SimTime
 	if c.inj != nil {
 		c.onDepartureFrame(m)
 		return

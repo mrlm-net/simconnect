@@ -208,9 +208,10 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	if c.detail == nil {
 		return
 	}
-	speed := 0.0
+	speed, turned := 0.0, false
 	if c.mover != nil {
-		speed = c.mover.Pose().GroundSpeedKts
+		p := c.mover.Pose()
+		speed, turned = p.GroundSpeedKts, c.detailS.moved(p.Position, p.Heading)
 	}
 	// Driving in from its depot counts too: the aircraft waits still on the
 	// stand meanwhile, and at a still aircraft's rate the tug jumped along
@@ -222,7 +223,7 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	tugDriving := c.req.Tug != nil && !c.req.Tug.Done() &&
 		(c.state == TaxiAwaitingPushback && (!c.tugAttached || !c.pushAt.IsZero() || arriving) || c.state >= TaxiPushback && c.tugAttached)
 	tugDriving = tugDriving || c.fuelDriving() || c.stairsDriving()
-	moving := c.state == TaxiPushback || speed > 0.5 || tugDriving
+	moving := c.state == TaxiPushback || speed > 0.5 || turned || tugDriving
 	full := c.state >= TaxiLiningUp || tugDriving
 	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
@@ -1782,8 +1783,7 @@ func (c *TaxiController) startTakeoff() {
 // climb, then hands the aircraft to MSFS AI for the climb-out.
 func (c *TaxiController) onTakeoffFrame() {
 	now := c.now()
-	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds))
-	c.lastStep = now
+	dt := c.frameStep(now)
 	pose := c.takeoff.Step(dt)
 	ap := pose.ApproachPose()
 	ap.RunwayFt = c.runway.Altitude / 0.3048 // the climb over any terrain
@@ -1870,7 +1870,6 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 		c.note("gear up", c.inj.SetGear(c.objectID, false))
 	}
 	c.note("flaps up", c.inj.SetFlaps(c.objectID, 0)) // clean for MSFS AI
-	c.note("release", c.inj.Release(c.objectID))
 	wps := TakeoffClimb(pose.Position.Lat, pose.Position.Lon, pose.Heading)
 	if c.req.VFR && len(c.req.Departure) > 0 {
 		wps = VFRDepartureWaypoints(pose.Position, pose.Heading, c.req.Departure, MaxBankDeg(*c.aircraft()))
@@ -1891,9 +1890,13 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 			wps[i].Altitude = math.Max(wps[i].Altitude, ft)
 		}
 	}
+	// Its waypoints first, released after: unfrozen with no plan yet, the
+	// aircraft stood a frame and then jumped three frames on (live, 5.5 m at
+	// 208 kt on every hand-over, CSA339 2026-10-17).
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+defOffWaypoints, wps); err != nil {
 		c.emit(err, true)
 	}
+	c.note("release", c.inj.Release(c.objectID))
 	c.climb = wps
 	c.stopMonitor()
 	c.setState(TaxiComplete, nil)

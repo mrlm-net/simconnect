@@ -42,10 +42,17 @@ func getPooledSlice(size uint32) ([]byte, func()) {
 	return (*p)[:size], func() { pool.Put(p) }
 }
 
-// Adaptive polling constants for exponential backoff
+// Adaptive polling constants for exponential backoff. While messages flow
+// (one within activeWindow) the queue is polled every minSleep: backed off
+// between two sim frames (about 17 ms apart) the sleep grew to 8-16 ms, a
+// frame's data waited for the next one's and both came at once, and the
+// aircraft placed from them moved two frames on in one and none in the
+// other (live, LKPR 2026-10-17: QTR1999 on final 0, 0, 5.9, 0, 2.8 m on
+// frames of 0.018 s).
 const (
-	minSleep = 1 * time.Millisecond
-	maxSleep = 50 * time.Millisecond
+	minSleep     = 1 * time.Millisecond
+	maxSleep     = 50 * time.Millisecond
+	activeWindow = 250 * time.Millisecond
 )
 
 // ErrConnectionLost ends a stream: the simulator quit or restarted (its
@@ -86,6 +93,7 @@ func (e *Engine) dispatch() error {
 		// Adaptive sleep for backoff when no messages available
 		sleepDuration := minSleep
 		errorsInRow := 0
+		var lastMessage time.Time
 
 		for {
 			select {
@@ -124,7 +132,12 @@ func (e *Engine) dispatch() error {
 				errorsInRow = 0
 
 				if recv == nil {
-					// No message available, apply adaptive backoff to reduce CPU usage
+					// No message available: while they flow, poll again soon;
+					// idle, apply adaptive backoff to reduce CPU usage
+					if time.Since(lastMessage) < activeWindow {
+						time.Sleep(minSleep)
+						continue
+					}
 					time.Sleep(sleepDuration)
 					// Exponential backoff: 1ms -> 2ms -> 4ms -> 8ms -> 16ms -> 32ms -> 50ms (cap)
 					if sleepDuration < maxSleep {
@@ -138,6 +151,7 @@ func (e *Engine) dispatch() error {
 
 				// Reset sleep duration on activity
 				sleepDuration = minSleep
+				lastMessage = time.Now()
 
 				// Shorter than a SIMCONNECT_RECV header: nothing to read
 				// (and &dataCopy[0] would panic on an empty buffer).

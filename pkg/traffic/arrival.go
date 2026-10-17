@@ -334,6 +334,10 @@ type ArrivalController struct {
 	// moves its apex further out while it is still ahead, never a second
 	// dog-leg (live, RYR1785: out, back out and round again).
 	dogLeg *dogLegState
+	// dogLegs: dog-legs given on this approach, for the sequence or for
+	// spacing. One only: off and back once, then speed or the hold (live,
+	// OKBZM heading 224, back on its STAR 12 s later, then heading 267).
+	dogLegs int
 	// vectors are the radar vectors still to say for a dog-leg or an
 	// extended downwind, each at its corner; vectored: off the STAR on
 	// vectors, cleared for the approach with the intercept heading (#661).
@@ -381,6 +385,7 @@ type arrivalMonitor struct {
 	Logo      float64
 	Wing      float64
 	AltFt     float64 // MSL: the height to join the final from (0: unknown)
+	SimTime   float64 // SIMULATION TIME, seconds
 }
 
 // NewArrivalController creates a controller that spawns its aircraft through
@@ -500,7 +505,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		{"PLANE HEADING DEGREES TRUE", "degrees"}, {"GROUND VELOCITY", "knots"}, {"SIM ON GROUND", "bool"},
 		{"VERTICAL SPEED", "feet per minute"},
 		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
-		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"}, {"PLANE ALTITUDE", "feet"},
+		{"LIGHT LOGO", "bool"}, {"LIGHT WING", "bool"}, {"PLANE ALTITUDE", "feet"}, {"SIMULATION TIME", "seconds"},
 	} {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
@@ -648,6 +653,7 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 }
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
+	c.simNow = m.SimTime
 	if m.AGL < 15 { // on the ground: in the ground picture (#334)
 		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
 		if c.mover != nil && c.state >= ArrivalVacating { // injected: where it is placed

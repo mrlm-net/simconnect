@@ -51,8 +51,7 @@ func (c *ArrivalController) startTouchAndGo(pose ApproachPose) {
 // VFRHandoverFt the circuit goes to MSFS AI (circuitAgain).
 func (c *ArrivalController) onTouchAndGoFrame() {
 	now := c.now()
-	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds))
-	c.lastStep = now
+	dt := c.frameStep(now)
 	if s := c.sng; s != nil {
 		// A stop-and-go: braking on the runway, then a moment standing.
 		if s.v > 0 {

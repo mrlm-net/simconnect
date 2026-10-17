@@ -177,6 +177,10 @@ type controlled struct {
 	// extendSaid: told to extend its downwind on this circuit (said once,
 	// however often it is extended further).
 	extendSaid atomic.Bool
+	// vectorsSaid counts the vectors said on their own (each turn as it
+	// comes): a sequence call waiting for the frequency leaves out the
+	// vector it was decided with once a later one went out first.
+	vectorsSaid atomic.Int32
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -3300,6 +3304,10 @@ func withParams(t traffic.Transmission, params map[string]string) traffic.Transm
 // tower (departures) or approach (arrivals).
 const weatherShare = 0.15
 
+// queueSaidShare: how often tower tells a departure checking in how many go
+// before it, with traffic.QueueSaidFrom or more ahead; else "report ready".
+const queueSaidShare = 0.5
+
 // askWeather has the crew of it ask pos for the weather now and then, and
 // the controller answer with the wind and QNH.
 func (it *controlled) askWeather(pos traffic.Position) {
@@ -3528,6 +3536,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
 		!it.approachSaid && !it.gates.Load() {
 		if v, ok := it.arr.VectorDue(); ok {
+			it.vectorsSaid.Add(1)
 			it.say(traffic.Vectored(it.Tail, v, it.cc.magVar(it.ICAO)))
 		}
 	}
@@ -3665,6 +3674,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			ahead := 0
 			if n := it.cc.departuresAhead; n != nil {
 				ahead = n(it.ICAO, rwy, it.Tail)
+			}
+			// The queue said now and then, not every time (the user: "still
+			// not always").
+			if rand.Float64() >= queueSaidShare {
+				ahead = 0
 			}
 			it.say(traffic.DepartureOrder(it.Tail, rwy, ahead))
 		})

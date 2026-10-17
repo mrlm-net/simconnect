@@ -146,8 +146,21 @@ func TestSimObjectFuelTruck(t *testing.T) {
 		nose := offsetHeading(pose.Position, pose.Heading, prof.WheelbaseMeters+4)
 		tail := offsetHeading(pose.Position, pose.Heading+180, prof.TailMeters)
 		closest := math.Inf(1)
+		// No jump: no step farther than a frame's drive, no turn of more
+		// than 3° in a frame.
+		var last *GroundPose
+		jumped := false
 		track := func() {
 			p := f.pose.Position
+			if last != nil && !jumped {
+				d, turn := localDist(last.Position, p), math.Abs(math.Remainder(f.pose.Heading-last.Heading, 360))
+				if d > 0.5 || turn > 3 {
+					jumped = true
+					t.Errorf("%s: truck jumped %.1f m, %.1f° in a frame", label, d, turn)
+				}
+			}
+			lp := f.pose
+			last = &lp
 			if localDist(p, pose.Position) < 60 {
 				closest = math.Min(closest, segmentDist(p, tail, nose))
 			}
