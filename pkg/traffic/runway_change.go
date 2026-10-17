@@ -189,8 +189,20 @@ const onStandMeters = 5.0
 // aircraft is: from the taxiway edge under its nose gear that runs its way
 // (within routeHereDeg), not turning back.
 func (c *TaxiController) routeFromHere() error {
-	g, prof := c.req.Graph, c.profile()
-	pose := c.mover.Pose()
+	opts := c.req.Options
+	opts.Via, opts.Taxiways = c.hereVia, nil
+	full, err := routeHere(c.req.Graph, c.profile(), c.mover.Pose(), c.req.Runway, c.req.Entry, opts)
+	if err != nil {
+		return err
+	}
+	c.route, c.pushJunction, c.fromHere = full, 0, true
+	c.track = newRouteTracker(c.route)
+	return nil
+}
+
+// routeHere is routeFromHere's route for an aircraft at pose, without the
+// controller: pure, so it can be planned off the connection's goroutine.
+func routeHere(g *airport.Graph, prof MotionProfile, pose GroundPose, runway, entry string, opts airport.RouteOptions) (*airport.Route, error) {
 	nose := NoseGear(pose.Position, pose.Heading, prof)
 	from, to, best := airport.NodeID(-1), airport.NodeID(-1), math.Inf(1)
 	for a := range g.Adj {
@@ -218,22 +230,19 @@ func (c *TaxiController) routeFromHere() error {
 		}
 	}
 	if from < 0 || best > routeHereMeters {
-		return fmt.Errorf("%w: not on a taxiway to re-plan from", airport.ErrNoRoute)
+		return nil, fmt.Errorf("%w: not on a taxiway to re-plan from", airport.ErrNoRoute)
 	}
-	opts := c.req.Options
-	opts.Via, opts.Taxiways = c.hereVia, nil
-	r, err := g.RouteToRunwayFrom(to, from, c.req.Runway, c.req.Entry, opts)
+	r, err := g.RouteToRunwayFrom(to, from, runway, entry, opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	full, err := g.RouteFromNodes(append([]airport.NodeID{from}, r.Nodes...))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	full.Runway, full.RunwayEnd, full.Entry, full.HoldShort, full.Tight = r.Runway, r.RunwayEnd, r.Entry, r.HoldShort, r.Tight
-	c.route, c.pushJunction, c.fromHere = full, 0, true
-	c.track = newRouteTracker(c.route)
-	return nil
+	full.Occupied = r.Occupied
+	return full, nil
 }
 
 // A route re-planned from where the aircraft is starts on a taxiway edge

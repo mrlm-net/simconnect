@@ -253,6 +253,20 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.last.Position, c.last.Heading = pos, hdg // known from the first frame, before it moves
 		}
 		c.frameDetail(now, pos)
+		// Placed once as it appears on the stand: on extended struts from
+		// there (MovingPitchDeg), not switched at the first push frame (live,
+		// SWR1765 +1.3 ft and +1° standing as the push began).
+		// Where the push or taxi-out starts from (pushPath, standInPlace).
+		if !c.extended && c.state == TaxiAwaitingPushback && c.mover == nil {
+			stand := c.req.Graph.Layout.Parking[c.req.Parking]
+			at := GroundPose{Position: StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), Heading: stand.Heading}
+			if err := c.inj.Place(c.objectID, at); err == nil {
+				c.extended = true
+			} else if !errors.Is(err, ErrGroundUnknown) {
+				c.note("placed on the stand", err)
+				c.extended = true
+			}
+		}
 	} else if c.picture != nil {
 		c.picture.Forget(c.objectID) // on the take-off roll or airborne
 	}
@@ -1773,6 +1787,7 @@ func (c *TaxiController) onTakeoffFrame() {
 	pose := c.takeoff.Step(dt)
 	ap := pose.ApproachPose()
 	ap.RunwayFt = c.runway.Altitude / 0.3048 // the climb over any terrain
+	ap.MainGearBehindM = c.profile().RefAheadMeters
 	if err := c.inj.PlaceAir(c.objectID, ap); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
@@ -1819,8 +1834,9 @@ func (c *TaxiController) onTakeoffFrame() {
 	// 2026-10-03). Until the crew raises it, the gear is put down again:
 	// every frame just after lift-off, then every GearHoldEvery, the gear
 	// itself as well as the handle (HoldGearDown), so it is not seen to move.
-	if pose.Phase == TakeoffAirborne && !c.gearUp &&
-		(pose.AirborneSeconds < GearHoldFirstSeconds || now.Sub(c.gearDownSent) >= GearHoldEvery) {
+	// On the roll too: placed without the on-ground flag (Unpinned), the
+	// simulator takes it for airborne just the same.
+	if !c.gearUp && (pose.Phase != TakeoffAirborne || pose.AirborneSeconds < GearHoldFirstSeconds || now.Sub(c.gearDownSent) >= GearHoldEvery) {
 		c.gearDownSent = now
 		_ = c.inj.HoldGearDown(c.objectID) // not noted: every frame for a while
 	}

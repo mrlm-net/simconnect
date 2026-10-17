@@ -124,6 +124,20 @@ var (
 // call adds to what was absorbed (the sequencer sees the slower, longer
 // flight and asks for the rest).
 func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error) {
+	return c.absorb(delay, 0)
+}
+
+// AbsorbWithin is AbsorbDelay for spacing behind another arrival: the time
+// is lost within the next withinNM of its route, before it would meet the
+// other — slower and on a vector off its STAR from there, never a longer
+// downwind after it (live, OKCMB told to extend its downwind four times
+// behind CSA1305 on a merging STAR, then 800 ft from it before PR518).
+func (c *ArrivalController) AbsorbWithin(delay time.Duration, withinNM float64) (Absorption, error) {
+	return c.absorb(delay, math.Max(withinNM, 0.1))
+}
+
+// absorb is AbsorbDelay; withinNM > 0 is AbsorbWithin.
+func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absorption, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 3 {
@@ -160,8 +174,14 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		pts = append(pts, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude})
 	}
 	starNM := 0.0
+	cum := make([]float64, len(pts)) // along the STAR to each point
 	for i := 1; i < len(pts); i++ {
 		starNM += calc.HaversineNM(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon)
+		cum[i] = starNM
+	}
+	planNM := starNM // the time is lost over this much of it
+	if withinNM > 0 {
+		planNM = math.Min(starNM, withinNM)
 	}
 	speed := c.procSpeed
 	if speed == 0 {
@@ -177,7 +197,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		speed = CircuitKts(*c.aircraft())
 		minKts = speed
 	}
-	a := PlanAbsorption(delay, starNM, speed, minKts)
+	a := PlanAbsorption(delay, planNM, speed, minKts)
 	if a.SpeedKts >= speed {
 		a.SpeedKts = 0 // flying it already: nothing to say about the speed
 	}
@@ -200,7 +220,7 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	// downwind past its last point, the base turn and the final that much
 	// further out (each mile on adds two), again as more is asked, up to
 	// MaxStretchNM an approach; beyond that the hold.
-	if a.ExtraNM > 0 && len(out) > 0 {
+	if a.ExtraNM > 0 && len(out) > 0 && withinNM == 0 {
 		x := math.Min(a.ExtraNM/2, MaxStretchNM/2-c.tromboneNM)
 		if x > 0.2 {
 			if ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x); ok {
@@ -246,6 +266,11 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 		case at >= next && at < final:
 			reuse = at - next
 		}
+		if withinNM > 0 && (reuse < 0 || cum[reuse+1] > withinNM) {
+			// For spacing: a vector of its own before they meet, not the
+			// one given for the sequence further on.
+			reuse, c.dogLeg = -1, nil
+		}
 		switch {
 		case c.dogLeg == nil: // re-planned since: a new dog-leg below
 		case reuse < 0: // flown past its apex: no second one
@@ -263,6 +288,9 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 	if a.ExtraNM > 0 && !stretched && reuse < 0 {
 		longest, at := 0.0, -1
 		for i := 1; i < len(pts)-1; i++ { // not the leg into the align point
+			if withinNM > 0 && cum[i] > withinNM {
+				break // beyond where they meet
+			}
 			if l := calc.HaversineNM(pts[i-1].Lat, pts[i-1].Lon, pts[i].Lat, pts[i].Lon); l > longest {
 				longest, at = l, i
 			}

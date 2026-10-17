@@ -531,20 +531,24 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	// height parts them for a moment only; there the trailer is slowed and
 	// vectored instead (live, TVS251 told to stop descent behind a PC-24 at
 	// 108 kt on the same ILS, then sent around on the final).
+	var me, them *traffic.TrackedAircraft
+	for _, a := range w.s.cc.world.Aircraft() {
+		a := a
+		switch a.Tail {
+		case cs:
+			me = &a
+		case oth:
+			them = &a
+		}
+	}
+	// The level holds them apart only until the spacing behind is there:
+	// in one sequence the separation is in trail, by speed and a vector
+	// (level separation is for crossing traffic), so both are given.
+	stopped := false
 	if !leveled && trailer.e.DistanceToGoNM > arrivalLevelFromNM {
 		w.mu.Lock()
 		w.leveled[cs+"/"+oth] = true
 		w.mu.Unlock()
-		var me, them *traffic.TrackedAircraft
-		for _, a := range w.s.cc.world.Aircraft() {
-			a := a
-			switch a.Tail {
-			case cs:
-				me = &a
-			case oth:
-				them = &a
-			}
-		}
 		if me != nil && them != nil {
 			level := math.Ceil((them.AltFt+arrivalLevelAboveFt)/500) * 500
 			if me.AltFt >= level-200 {
@@ -553,23 +557,26 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
 					tx := traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO))
 					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
-					recheck()
-					return
+					stopped = true
+				} else {
+					w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 				}
-				w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
-			} else if below := math.Floor((them.AltFt-arrivalLevelAboveFt)/500) * 500; below >= arrivalDescendMinFt {
-				// Level with it or below: down to 1000 ft under it, never a
-				// climb for an arrival (live, EZY131 200 ft under OKGOZ,
-				// only slowed, met at 0.4 NM).
-				err := w.s.cc.do(func() error { return trailer.it.arr.DescendTo(below) })
+			} else if hold := math.Floor(me.AltFt/500) * 500; me.AltFt >= them.AltFt-arrivalLevelAboveFt && hold >= arrivalDescendMinFt {
+				// Level with it (within the vertical minimum): the trailer stops
+				// its descent where it is and the one ahead, landing first,
+				// descends away from it on its own STAR. Sent down under it
+				// instead, the two only met lower down (live, OKCMB told 9000 ft
+				// under CSA1305 at 10000 on merging STARs: 800 ft apart a few
+				// minutes later). Never a climb for an arrival.
+				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(hold, arrivalLevelForNM) })
 				if err == nil {
-					w.s.cc.log.printf("%-6s conflict with %s: descend to %.0f ft (arrival on its STAR)", cs, oth, below)
-					tx := traffic.Descend(traffic.PosApproach, cs, below, w.s.cc.taOf(trailer.it.ICAO))
+					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft, the one ahead descends away (arrival on its STAR)", cs, oth, hold)
+					tx := traffic.StopDescent(traffic.PosApproach, cs, hold, oth, w.s.cc.taOf(trailer.it.ICAO))
 					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
-					recheck()
-					return
+					stopped = true
+				} else {
+					w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 				}
-				w.s.cc.log.printf("%-6s conflict with %s: descent refused: %v", cs, oth, err)
 			}
 		}
 	}
@@ -579,7 +586,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	q.mu.Lock()
 	absorbed := q.absorbed[cs]
 	q.mu.Unlock()
-	if now.Sub(absorbed) < arrivalConflictRecheck && c.In > arrivalConflictSoon {
+	if !stopped && now.Sub(absorbed) < arrivalConflictRecheck && c.In > arrivalConflictSoon {
 		recheck()
 		return
 	}
@@ -590,7 +597,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 		return // nothing approach can do for it yet (live: "slow refused" every 5 s)
 	}
 	action := "slow"
-	err := q.approachAction(trailer.it.ICAO, cs, action)
+	err := q.approachSpace(trailer.it.ICAO, cs, spacingDelay(c, me), spacingWithinNM(c, me))
 	if errors.Is(err, errNothingToSlow) {
 		// Slowed and stretched as far as it goes already: it holds now
 		// (live, CSA1257 and AFR1552 merging on GOLO4S and LOMK8S: "number
@@ -741,3 +748,30 @@ const (
 	resumeApartNM = 2.0
 	resumeTimedNM = 1.0
 )
+
+// spacingDelay is what the trailer of conflict c loses to be in trail
+// behind the other: the lateral minimum and a mile more, at its speed
+// (half a minute to three).
+func spacingDelay(c traffic.Conflict, me *traffic.TrackedAircraft) time.Duration {
+	kts := spacingKts(me)
+	d := time.Duration((c.MinNM + 1 - c.ClosestNM) / kts * float64(time.Hour))
+	return min(max(d, 30*time.Second), 3*time.Minute)
+}
+
+// spacingWithinNM is how far along its route the trailer of conflict c
+// still flies before the minima are lost: the time is lost before that.
+func spacingWithinNM(c traffic.Conflict, me *traffic.TrackedAircraft) float64 {
+	in := c.In
+	if in <= 0 {
+		in = c.ClosestIn
+	}
+	return spacingKts(me) * in.Hours()
+}
+
+// spacingKts is the trailer's ground speed, else the STAR speed.
+func spacingKts(me *traffic.TrackedAircraft) float64 {
+	if me != nil && me.GroundKts > 60 {
+		return me.GroundKts
+	}
+	return traffic.ProcedureSpeedKts
+}

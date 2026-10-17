@@ -57,15 +57,18 @@ func TestInjectorRestByModel(t *testing.T) {
 	if err := inj.PlaceAir(b, ApproachPose{HeightFt: 0, OnGround: true}); err != nil {
 		t.Fatal(err)
 	}
-	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
-		t.Errorf("touchdown at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
+	// Touching down (from the air): its wheels where the simulator puts
+	// them rolling with the on-ground flag, its static CG height (no roll
+	// height learnt for the title yet), pitched as a's rest.
+	if alt, pitch := placedAlt(); math.Abs(alt-1212.25) > 1e-6 || math.Abs(pitch-0.71-MovingPitchDeg) > 1e-6 {
+		t.Errorf("touchdown at %.3f ft, pitch %.2f, want the static 1212.25, a's rest pitch 0.71 + MovingPitchDeg", alt, pitch)
 	}
 	w = w.Add(2 * time.Second)
 	if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
 		t.Fatal(err)
 	}
-	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71) > 1e-6 {
-		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71", alt, pitch)
+	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71-MovingPitchDeg) > 1e-6 {
+		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71 + MovingPitchDeg", alt, pitch)
 	}
 }
 
@@ -134,10 +137,66 @@ func TestInjectorNoRestFromRoll(t *testing.T) {
 		rolled.PlaneFt = 1209.2 // what the sim shows of the roll
 		inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, rolled))
 	}
+	w = w.Add(2 * time.Second) // past the blend from what the roll showed
 	inj.Place(obj, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}})
 	var got types.SIMCONNECT_DATA_INITPOSITION
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
 	if math.Abs(got.Altitude-1208.48) > 1e-6 {
 		t.Errorf("rest learnt from the roll: placed at %.2f, want 1208.48", got.Altitude)
+	}
+}
+
+// Rolling with the on-ground flag: the static CG height, where the
+// simulator puts a rolling aircraft itself; at lift-off the height blends
+// up from there. At touchdown the flag waits until the wheels are blended
+// down to it.
+func TestGroundFlagBlends(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	w := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { return w }
+	const obj, title = 42, "FSLTL A220 CSA"
+	if err := inj.Takeover(obj); err != nil {
+		t.Fatal(err)
+	}
+	inj.SetModel(obj, title)
+	sent := func() types.SIMCONNECT_DATA_INITPOSITION {
+		var got types.SIMCONNECT_DATA_INITPOSITION
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+		return got
+	}
+	// Rolling with the flag: the simulator shows the wheels at 7.00 ft.
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, injectGround{GroundFt: 1200, CGFt: 7.05, StaticPitch: 0, PlaneFt: 1207.05, OnGround: 1}))
+	for k := 0; k < 3; k++ {
+		w = w.Add(time.Second / 60)
+		inj.PlaceAir(obj, ApproachPose{OnGround: true, GroundSpeedKts: 120})
+		inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, injectGround{GroundFt: 1200, CGFt: 7.05, PlaneFt: 1207.00, OnGround: 1, GS: 120}))
+	}
+	if got := sent().Altitude - 1200; math.Abs(got-7.05) > 1e-6 {
+		t.Errorf("rolling at %.2f ft, want the static 7.05", got)
+	}
+	// Lift-off: on from 7.05, a frame's blend at most (on extended struts
+	// all along: no step to put in).
+	w = w.Add(time.Second / 60)
+	inj.PlaceAir(obj, ApproachPose{HeightFt: 0.1, GroundSpeedKts: 132})
+	if got, want := sent().Altitude-1200-0.1, 7.05; math.Abs(got-want) > 2*CGBlendFtPerSecond/60+1e-6 {
+		t.Errorf("first frame off the ground at %.2f ft, want %.2f and a frame's blend", got, want)
+	}
+	// Touchdown with the cg 0.5 ft above the roll height: the flag held off
+	// until it is there.
+	inj.mu.Lock()
+	inj.objects[obj].cgShown = 7.50
+	inj.mu.Unlock()
+	w = w.Add(time.Second / 60)
+	inj.PlaceAir(obj, ApproachPose{OnGround: true, GroundSpeedKts: 130})
+	if p := sent(); p.OnGround != 0 {
+		t.Fatalf("touchdown 0.5 ft above the roll height: flag set at once")
+	}
+	for k := 0; k < 60 && sent().OnGround == 0; k++ {
+		w = w.Add(time.Second / 60)
+		inj.PlaceAir(obj, ApproachPose{OnGround: true, GroundSpeedKts: 128})
+	}
+	if p := sent(); p.OnGround == 0 || math.Abs(p.Altitude-1207.05) > groundFlagWithinFt+0.02 {
+		t.Errorf("after the blend: flag %d at %.2f ft, want set at about 1207.05", p.OnGround, p.Altitude)
 	}
 }

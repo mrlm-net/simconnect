@@ -288,16 +288,19 @@ type TaxiController struct {
 	rng    *rand.Rand
 	timing timing // this aircraft's draw of the spreads (#343)
 	// De-icing (#323): the pad's node, the end of the treatment, done.
-	padNode                                                 airport.NodeID
-	deiceUntil                                              time.Time
-	deiced                                                  bool
-	sent                                                    map[uint32]string
-	fast                                                    bool // monitor every frame: throttle progress events
-	emittedAt                                               time.Time
-	runway                                                  airport.Runway
-	end                                                     airport.RunwayEnd
-	runwayLength                                            float64
-	lightsSet                                               bool
+	padNode      airport.NodeID
+	deiceUntil   time.Time
+	deiced       bool
+	sent         map[uint32]string
+	fast         bool // monitor every frame: throttle progress events
+	emittedAt    time.Time
+	runway       airport.Runway
+	end          airport.RunwayEnd
+	runwayLength float64
+	lightsSet    bool
+	// extended: placed on the stand once on its extended struts
+	// (MovingPitchDeg) as it appears, not at the first push frame.
+	extended                                                bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
 	// climb: the waypoints MSFS AI flies after the injected climb (the

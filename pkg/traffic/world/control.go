@@ -584,17 +584,28 @@ func (cc *controlCenter) allocator(g *airport.Graph) *traffic.StandAllocator {
 func (cc *controlCenter) tick() {
 	if now := cc.clock.Now(); now.Sub(cc.gameAt) >= time.Second {
 		cc.gameAt = now
-		cc.gameTick(now)
+		cc.timed("game", func() { cc.gameTick(now) })
 	}
 	// The stand allocators are fed by the traffic picture (Allocate): no
 	// scans of their own.
 	if now := cc.clock.Now(); now.Sub(cc.standCheckAt) >= 10*time.Second {
 		cc.standCheckAt = now
-		cc.recheckArrivalStands()
-		cc.pruneDone()
+		cc.timed("arrival stands", cc.recheckArrivalStands)
+		cc.timed("prune", cc.pruneDone)
 	}
-	cc.keepClear()
-	cc.jetwayTick(cc.clock.Now())
+	cc.timed("keep clear", cc.keepClear)
+	cc.timed("jetways", func() { cc.jetwayTick(cc.clock.Now()) })
+}
+
+// timed runs f, logging it when it takes longer than slowStep: the tick
+// runs on the connection's goroutine, and its slow parts hold every
+// aircraft back (docs/traffic-smoothness.md).
+func (cc *controlCenter) timed(name string, f func()) {
+	t0 := time.Now()
+	f()
+	if d := time.Since(t0); d > slowStep {
+		cc.log.printf("slow: tick's %s took %s (traffic frames held back)", name, d.Round(time.Millisecond))
+	}
 }
 
 // pruneDone drops the flights whose controller is done and whose aircraft
@@ -2811,8 +2822,27 @@ func (cc *controlCenter) standNoseOffset(g *airport.Graph, stand int, model stri
 }
 
 // standPlace is model's stand offset and side on stand (TaxiRequest
-// NoseOffset, StandSide): at a gate as the simulator parks there.
+// NoseOffset, StandSide): at a gate as the simulator parks there, moved by
+// the stand's rule (traffic.StandRuleFor) where it has one.
 func (cc *controlCenter) standPlace(g *airport.Graph, stand int, model string) (nose, side float64) {
+	nose, side = cc.standPlaceSim(g, stand, model)
+	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
+		return nose, side
+	}
+	m := strings.SplitN(model, liverySep, 2)[0]
+	prof := traffic.ProfileFor(m)
+	r, ok := traffic.StandRuleFor(g.Layout.ICAO, g.Layout.Parking[stand].Label(), prof.WingspanM)
+	if !ok {
+		return nose, side
+	}
+	if nose <= 0 { // as the controllers take a 0 (StandPoint)
+		nose = traffic.DefaultNoseOffsetMeters
+	}
+	return nose - r.ForwardM, side + r.RightM
+}
+
+// standPlaceSim is standPlace without the stand's rule.
+func (cc *controlCenter) standPlaceSim(g *airport.Graph, stand int, model string) (nose, side float64) {
 	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) || !g.Layout.Parking[stand].IsGate() {
 		return 0, 0
 	}

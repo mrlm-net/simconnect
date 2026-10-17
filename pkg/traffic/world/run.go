@@ -203,20 +203,24 @@ type state struct {
 	// camera is the camera operator of the live connection (nil without).
 	camera *cameraMan
 
-	mu         sync.Mutex
-	fetched    map[string]time.Time
-	waiters    map[string][]chan error
-	aircraft   *Aircraft
-	traffic    []Traffic
-	trafficAt  time.Time
-	live       bool
-	control    *controlCenter // traffic control while connected (#322)
-	schedule   *scheduler     // scheduled traffic while connected (#368)
-	sequences  *sequences     // landing sequences while connected (#390)
-	separation *sepMonitor    // airborne separation (#395)
-	towers     *towers        // runway controllers (#393)
-	conflicts  *conflictWatch // airborne conflicts and resolutions (#395)
-	tcas       *tcasWatch     // TCAS of ours (#450)
+	mu        sync.Mutex
+	fetched   map[string]time.Time
+	waiters   map[string][]chan error
+	aircraft  *Aircraft
+	traffic   []Traffic
+	trafficAt time.Time
+	live      bool
+	control   *controlCenter // traffic control while connected (#322)
+	schedule  *scheduler     // scheduled traffic while connected (#368)
+	// scheduleSet: the schedule settings posted (POST /api/schedule bodies, in
+	// order), set again on the next connection; scheduleReplay applies one.
+	scheduleSet    [][]byte
+	scheduleReplay func(body []byte) int
+	sequences      *sequences     // landing sequences while connected (#390)
+	separation     *sepMonitor    // airborne separation (#395)
+	towers         *towers        // runway controllers (#393)
+	conflicts      *conflictWatch // airborne conflicts and resolutions (#395)
+	tcas           *tcasWatch     // TCAS of ours (#450)
 	// procedures are the SIDs, STARs and approaches by ICAO (#312).
 	procedures map[string]airport.Procedures
 	// airportRefs: every airport the simulator knows, worldwide, where it
@@ -250,6 +254,7 @@ type state struct {
 	stations *stationStore
 	// modelRules: the local model rules (model_rules.go, #1024).
 	modelRules  *modelRuleStore
+	standRules  *standRuleStore
 	doorOffsets *doorOffsetStore // jetway door offsets, local (jetways.go)
 }
 
@@ -541,6 +546,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	st.mu.Lock()
 	st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts, st.tcas = cc, sched, seqs, sep, tw, cw, tcw
 	st.mu.Unlock()
+	go st.replaySchedule() // as set before a connection lost (it loads its airports)
 
 	st.setLive(true)
 	return func() {
@@ -831,7 +837,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 		case now := <-tick.C:
 			slowAt, slowWhat = time.Now(), "second tick"
-			cc.tick()
+			cc.timed("control", cc.tick)
 			// The airports around once a minute (#70: ticks never counted, asked
 			// every second, a multi-part list reset half-way).
 			if cc.ticks%60 == 0 {
@@ -842,11 +848,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			// restarts with its first entry, not here (#81: a reply still coming
 			// in was cut, aircraft vanished for a cycle).
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
-			airways.tick(now)
+			cc.timed("airways", func() { airways.tick(now) })
 			for _, r := range navLoader.Expire(now) {
 				feed.ILS(r)
 			}
-			st.core.retryILS(navLoader)
+			cc.timed("ILS retry", func() { st.core.retryILS(navLoader) })
 			for _, res := range loader.Expire(now) {
 				tlog.printf("%s: airport not loaded: %v", res.ICAO, res.Err)
 				fmt.Fprintf(stdout, "❌ %v\n", res.Err)
@@ -1164,6 +1170,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerSeed(mux, st)          // a real-world snapshot placed at the start (seed.go)
 	registerVehicles(mux, w)       // the ground vehicles by kind on or off (vehicles.go)
 	registerModelRules(mux, w)     // models never used (model_rules.go)
+	registerStandRules(mux, w)     // stops moved per stand (stand_rules.go)
 	registerModelProviders(mux, w) // models by provider (providers.go)
 	registerJetways(mux, w)        // jetways for our traffic (jetways.go)
 	registerCorridor(mux, st)

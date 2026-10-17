@@ -60,6 +60,25 @@ func (q *sequences) approachAction(icao, callsign, action string) error {
 // (#443): "direct" to it (a fix near it, else a vector), "holdat" a hold
 // there.
 func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts float64) error {
+	return q.approachDo(icao, callsign, action, at, kts, spacing{})
+}
+
+// spacing is a "slow" for spacing behind another arrival: delay lost
+// within the next withinNM of its route (AbsorbWithin); zero: a minute
+// anywhere on its STAR.
+type spacing struct {
+	delay    time.Duration
+	withinNM float64
+}
+
+// approachSpace has callsign lose delay within withinNM, before it meets
+// the arrival ahead.
+func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64) error {
+	return q.approachDo(icao, callsign, "slow", nil, 0, spacing{delay, withinNM})
+}
+
+// approachDo is approachActionAt, a "slow" for spacing with sp.
+func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts float64, sp spacing) error {
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
 		return traffic.ErrNotSequenced
@@ -185,7 +204,14 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 		q.cc.log.printf("%-6s approach: hold at %s, %.0f ft (on the map)", callsign, name, altFt)
 	case "slow":
 		var a traffic.Absorption
-		if err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(approachSlowBy); return err }); err != nil {
+		if err := q.cc.do(func() (err error) {
+			if sp.withinNM > 0 {
+				a, err = it.arr.AbsorbWithin(sp.delay, sp.withinNM)
+				return err
+			}
+			a, err = it.arr.AbsorbDelay(approachSlowBy)
+			return err
+		}); err != nil {
 			return err
 		}
 		if a == (traffic.Absorption{}) {

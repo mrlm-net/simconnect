@@ -103,30 +103,30 @@ func (p TakeoffPose) ApproachPose() ApproachPose {
 	return ApproachPose{
 		Position: p.Position, Heading: p.Heading, HeightFt: p.HeightFt, PitchDeg: p.PitchDeg,
 		GroundSpeedKts: p.GroundSpeedKts, VerticalFpm: p.VerticalFpm, Distance: p.Distance,
-		OnGround: p.Phase != TakeoffAirborne,
+		OnGround: p.Phase != TakeoffAirborne, Unpinned: p.Phase != TakeoffAirborne,
 	}
 }
 
 // TakeoffMover flies an injected take-off along a runway heading: roll,
 // rotation and initial climb. It is pure computation.
 type TakeoffMover struct {
-	p           TakeoffProfile
-	start       airport.LatLon
-	heading     float64
-	x, v        float64 // m, m/s
-	h, vs       float64 // ft, fpm
-	pitch       float64
+	p       TakeoffProfile
+	start   airport.LatLon
+	heading float64
+	x, v    float64 // m, m/s
+	h, vs   float64 // ft, fpm
+	pitch   float64
 	// shown, shownRate: the pitch as drawn, following pitch smoothly
 	// (PitchFollowRate): no corners where a rotation or settle starts or ends.
 	shown, shownRate float64
-	phase       TakeoffPhase
-	airborneFor float64
-	rollFor     float64 // s since the thrust was set
-	liftoffX    float64
-	rejected    bool    // braking to a stop (Reject)
-	accel       bool    // past the acceleration altitude
-	accelFor    float64 // s since
-	settle      bool    // gear up: the pitch settles to SettlePitch
+	phase            TakeoffPhase
+	airborneFor      float64
+	rollFor          float64 // s since the thrust was set
+	liftoffX         float64
+	rejected         bool    // braking to a stop (Reject)
+	accel            bool    // past the acceleration altitude
+	accelFor         float64 // s since
+	settle           bool    // gear up: the pitch settles to SettlePitch
 }
 
 // GearUp tells the mover the gear is up: the pitch eases from the climb

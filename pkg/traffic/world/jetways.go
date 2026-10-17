@@ -300,9 +300,10 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		cc.jw.docked[k] = true
 		cc.jw.mu.Unlock()
 		if !asked {
-			cc.logStandFit(g, stand, tail, pos)
 			variant, _ := cc.gateVariant(g, stand, model)
-			if err := svc.DockAs(icao, stand, model, variant); err != nil {
+			if err := svc.DockAs(icao, stand, model, variant); err == nil {
+				cc.logStandFit(g, stand, tail, pos) // once a dock is asked, not each tick a gate has none
+			} else {
 				cc.jw.mu.Lock()
 				delete(cc.jw.docked, k)
 				cc.jw.mu.Unlock()

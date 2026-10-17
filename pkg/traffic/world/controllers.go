@@ -49,6 +49,7 @@ type departureCtl interface {
 type arrivalCtl interface {
 	AvoidOccupied(occ []airport.Occupied) bool
 	AbsorbDelay(delay time.Duration) (traffic.Absorption, error)
+	AbsorbWithin(delay time.Duration, withinNM float64) (traffic.Absorption, error)
 	AnotherCircuit() (time.Duration, error)
 	Cancel() error
 	ChangeRunway(runway string, procedure, missed []airport.NavPoint) error

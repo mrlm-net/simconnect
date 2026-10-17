@@ -57,6 +57,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.4] - 2026-10-17
+
+### Fixed
+
+- Smoothness: no more height pops at rotation, touchdown and lift-off. MSFS draws compressed struts only at exactly an aircraft's rest pitch and extended ones (0.5–0.8 ft higher, in one frame) at any other; probed live (examples/spike-strut). Our aircraft now always sit 1° (`MovingPitchDeg`) off their rest pitch, struts always extended, so the look never switches.
+- Smoothness: the ground under an aircraft is taken from a map of the samples the sim gave (about 1 m cells), at the position being placed, not the last frame's: the bump at 76 kt on LKPR 24 is gone.
+- Smoothness: a departure taken over on its stand is placed once at its stop, on the stand's heading, before it moves: no 3–11 m jump at the first push frame.
+- Smoothness: every moving aircraft is moved every frame, wherever it is (level of detail by distance stepped a climb-out watched from the tower); a taxiing aircraft's route search around occupied places runs off the connection's goroutine (80–90 ms frames before).
+- Arrival spacing: two arrivals in trail on converging STARs are spaced as a radar controller would: the later one slowed and, if needed, given one simple vector before the merge (`ArrivalController.AbsorbWithin`), no level change, no orbit, no downwind extension; and no shortcut for one whose route joins that of an aircraft ahead of it in the sequence (live, OKCMB sent direct PR517 behind CSA1305: 3 NM at the same level).
+- Stands: a per-stand stop correction, the way a GSX airport profile does it (`traffic.standRules`, `StandRuleFor`; the map's `/api/stands/rules` and a local `stand-rules.json` over the shipped ones). Shipped: LKPR B14 and C22 (35 m circles), narrowbodies stop 9 m further back (live, an A320 stood 9 m past its stop marks).
+- Airport map: the map no longer freezes after hours of traffic. Go's mutex/block profiling deadlocked the runtime (found in a full minidump); it is now only on with `-pprof-locks`.
+- Airport map: after the sim drops the connection the schedule is posted again to the new one; traffic stayed off for an hour before.
+
 ## [0.95.3] - 2026-10-13
 
 ### Fixed

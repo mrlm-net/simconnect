@@ -183,6 +183,12 @@ func (r *remoteArr) AbsorbDelay(delay time.Duration) (traffic.Absorption, error)
 	return o0, err
 }
 
+func (r *remoteArr) AbsorbWithin(delay time.Duration, withinNM float64) (traffic.Absorption, error) {
+	var o0 traffic.Absorption
+	err := r.c.call(r.t, "AbsorbWithin", []any{delay, withinNM}, &o0)
+	return o0, err
+}
+
 func (r *remoteArr) AnotherCircuit() (time.Duration, error) {
 	var o0 time.Duration
 	err := r.c.call(r.t, "AnotherCircuit", []any{}, &o0)
