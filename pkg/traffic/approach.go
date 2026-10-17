@@ -87,6 +87,20 @@ type ApproachPose struct {
 	Phase    ApproachPhase
 	// OnGround is set from touchdown on.
 	OnGround bool
+	// Unpinned: on the runway (OnGround) but placed without the
+	// simulator's on-ground flag: a take-off roll. With the flag the
+	// simulator holds the wheels itself and its struts step up as the wings
+	// unload (live, +0.3 ft at 75 kt and +0.5 ft at rotation, in one frame);
+	// without it the height is ours alone (the gear held down,
+	// HoldGearDown).
+	Unpinned bool
+	// MainGearBehindM: how far the main gear is behind the reference point
+	// (MotionProfile.RefAheadMeters). Pitched nose up, an aircraft turns on
+	// its main gear, not its reference point: placed by the reference point
+	// alone its main wheels went into the runway and the simulator lifted it
+	// out in a step (live, +0.5 ft at every rotation). PlaceAir raises it by
+	// MainGearBehindM × sin(pitch).
+	MainGearBehindM float64
 	// RunwayFt is the runway's elevation (feet MSL) HeightFt is above;
 	// 0 when unknown: the height is then taken above the ground under the
 	// aircraft, which follows the terrain (Injector.PlaceAir).

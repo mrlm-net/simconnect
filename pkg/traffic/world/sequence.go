@@ -1003,6 +1003,13 @@ func (q *sequences) shortcut(now time.Time, it *controlled, e traffic.SequenceEn
 	if q.trafficNear(e.Callsign) {
 		return // cutting across with traffic close by (live, OKGOZ direct PR517 2.6 NM from EZY131 at its level)
 	}
+	if who := q.mergingAhead(e, seq); who != "" {
+		// One ahead of it in the sequence joins its route further on, close
+		// enough that a shorter way meets it there: kept on its STAR, the
+		// spacing at the merge left to the sequence (live, OKCMB direct PR517
+		// behind CSA1305 on LOMK8S: 3 NM at the same level 5 min later).
+		return
+	}
 	q.mu.Lock()
 	first, seen := q.shortcutAt[e.Callsign]
 	if !seen {
@@ -1092,6 +1099,50 @@ func (q *sequences) forget(tail string) {
 	delete(q.fixesAhead, tail)
 	delete(q.conflictHeld, tail)
 }
+
+// mergingAhead is the first aircraft ahead of e in seq (same runway) whose
+// route ahead shares a fix with e's and that is within shortcutMergeNM of
+// it; "" none.
+func (q *sequences) mergingAhead(e traffic.SequenceEntry, seq []traffic.SequenceEntry) string {
+	q.mu.Lock()
+	mine := q.fixesAhead[e.Callsign]
+	var ahead []string
+	for _, o := range seq {
+		if o.Number >= e.Number || o.Runway != e.Runway {
+			continue
+		}
+		theirs := q.fixesAhead[o.Callsign]
+		if slices.ContainsFunc(mine, func(f traffic.FixAhead) bool {
+			return slices.ContainsFunc(theirs, func(g traffic.FixAhead) bool { return g.Name == f.Name })
+		}) {
+			ahead = append(ahead, o.Callsign)
+		}
+	}
+	q.mu.Unlock()
+	if len(ahead) == 0 {
+		return ""
+	}
+	air := q.cc.world.Aircraft()
+	pos := map[string]airport.LatLon{}
+	for _, a := range air {
+		pos[a.Tail] = a.Position
+	}
+	me, ok := pos[e.Callsign]
+	if !ok {
+		return ""
+	}
+	for _, cs := range ahead {
+		if p, ok := pos[cs]; ok && calc.HaversineNM(me.Lat, me.Lon, p.Lat, p.Lon) < shortcutMergeNM {
+			return cs
+		}
+	}
+	return ""
+}
+
+// shortcutMergeNM: no shortcut with an aircraft ahead in the sequence whose
+// route joins this one's within this (whatever its level: both descend to
+// the same ones by the merge).
+const shortcutMergeNM = 25.0
 
 // shortcutClearNM, shortcutClearFt: no shortcut with another aircraft
 // within this of it.

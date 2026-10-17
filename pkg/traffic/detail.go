@@ -32,15 +32,17 @@ type Detail struct {
 	intervals map[uint32]uint32 // by object: what each aircraft runs at
 }
 
-// Level of detail defaults: every frame within 8 km (the whole airport and
-// its short finals: at 3 km the far end of LKPR's 24 ran at half rate and
-// stuttered from the tower), every 2nd within 20 km, every 4th beyond
-// (15 Hz at 60 fps), every 30th standing still.
+// Level of detail defaults: every moving aircraft every frame, wherever it
+// is; every 30th standing still. Far ones once ran every 2nd and 4th
+// frame, measured from the user aircraft rather than the camera: watched
+// from the tower or a drone, a climb-out stepped every other frame (live,
+// LKPR 2026-10-13). A frame's work is a tenth of what made that worth it
+// (docs/traffic-smoothness.md).
 const (
 	DefaultDetailNearMeters     = 8000
 	DefaultDetailMidMeters      = 20000
-	DefaultDetailMidInterval    = 1
-	DefaultDetailFarInterval    = 3
+	DefaultDetailMidInterval    = 0
+	DefaultDetailFarInterval    = 0
 	DefaultDetailStillInterval  = 29
 	DefaultDetailSlowerAfter    = 2 * time.Second
 	detailAssumedFramesPerSecon = 60

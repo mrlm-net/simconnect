@@ -1,11 +1,14 @@
 package world
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -614,7 +617,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			MaxAircraft: s.mgr.Options().MaxAircraft, Others: s.mgr.Options().Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
-	mux.HandleFunc("POST /api/schedule", func(w http.ResponseWriter, r *http.Request) {
+	postSchedule := func(w http.ResponseWriter, r *http.Request) {
 		s := sched(w)
 		if s == nil {
 			return
@@ -715,6 +718,32 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, IFR %s, VFR %s, other traffic: %s", onOff[s.mgr.Enabled()],
 			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, onOff[ifr], onOff[vfr], o.Others)
 		w.WriteHeader(http.StatusNoContent)
+	}
+	// Each setting taken is kept and set again on the next connection: a
+	// connection lost and made again (the simulator dropped it) brought the
+	// schedule back off, and no traffic for an hour (live, 2026-10-17).
+	st.scheduleReplay = func(body []byte) int {
+		rec := httptest.NewRecorder()
+		postSchedule(rec, httptest.NewRequest("POST", "/api/schedule", bytes.NewReader(body)))
+		return rec.Code
+	}
+	mux.HandleFunc("POST /api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		postSchedule(sw, r)
+		if sw.code < 300 {
+			st.mu.Lock()
+			st.scheduleSet = append(st.scheduleSet, body)
+			if n := len(st.scheduleSet); n > scheduleSetKeep {
+				st.scheduleSet = st.scheduleSet[n-scheduleSetKeep:]
+			}
+			st.mu.Unlock()
+		}
 	})
 	// POST /api/flights [traffic.Flight] — flights at a chosen time (#737):
 	// a callsign, origin and destination (one of them a scheduled airport),
@@ -798,3 +827,34 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 
 // usedCallsignFor: a scheduled call sign is not given again for this long.
 const usedCallsignFor = 12 * time.Hour
+
+// scheduleSetKeep: the schedule settings kept to set again at most.
+const scheduleSetKeep = 32
+
+// statusWriter notes the status a handler answers.
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.code = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// replaySchedule sets the schedule settings taken before on this
+// connection's scheduler, in order (a connection made again).
+func (st *state) replaySchedule() {
+	st.mu.Lock()
+	set, replay := slices.Clone(st.scheduleSet), st.scheduleReplay
+	st.mu.Unlock()
+	if replay == nil || len(set) == 0 {
+		return
+	}
+	for _, body := range set {
+		if code := replay(body); code >= 300 {
+			tlog.printf("schedule: setting again after the connection failed (%d): %s", code, body)
+		}
+	}
+	tlog.printf("schedule: set again after the connection (%d settings)", len(set))
+}

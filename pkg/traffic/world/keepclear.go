@@ -42,7 +42,10 @@ func (cc *controlCenter) keepClear() {
 		}
 		if o, ok := it.dep.Occupies(); ok {
 			occ = append(occ, taken{it, o})
-			fmt.Fprintf(&key, "%s/%d/%d;", it.Tail, it.dep.State(), len(o.Points))
+			// Its state only: a push's place shrinks every frame as it goes,
+			// and re-planned for each, every taxiing aircraft searched its
+			// route every second (live, LKPR: 80–90 ms each time).
+			fmt.Fprintf(&key, "%s/%d;", it.Tail, it.dep.State())
 		}
 	}
 	if key.String() == cc.keepClearKey {
@@ -71,23 +74,34 @@ func (cc *controlCenter) keepClear() {
 		if len(mine) == 0 {
 			continue
 		}
-		it.mu.Lock()
-		before := it.rerouteSaid().Text
-		it.mu.Unlock()
-		if !it.avoidOccupied(mine) {
-			continue
-		}
-		it.mu.Lock()
-		it.setRoute()
-		tx := it.rerouteSaid()
-		it.view.Instruction, it.view.InstructionAt = "taxi round traffic", nil
-		it.mu.Unlock()
-		tlog.printf("%-6s ground: new route round traffic in the way: %s", it.Tail, tx.Text)
-		// Said only when the taxiways changed: the same "via J, H, A" again
-		// is no new clearance (live, SWR1216 heard it twice in 19 s).
-		if tx.Text != "" && tx.Text != before {
-			it.say(tx)
-		}
+		// The route search off the connection's goroutine; the new route
+		// put in place on it (cc.do).
+		go func(it *controlled, mine []airport.Occupied) {
+			apply := it.planAvoidOccupied(mine)
+			if apply == nil {
+				return
+			}
+			cc.do(func() error {
+				it.mu.Lock()
+				before := it.rerouteSaid().Text
+				it.mu.Unlock()
+				if !apply() {
+					return nil
+				}
+				it.mu.Lock()
+				it.setRoute()
+				tx := it.rerouteSaid()
+				it.view.Instruction, it.view.InstructionAt = "taxi round traffic", nil
+				it.mu.Unlock()
+				tlog.printf("%-6s ground: new route round traffic in the way: %s", it.Tail, tx.Text)
+				// Said only when the taxiways changed: the same "via J, H, A"
+				// again is no new clearance (live, SWR1216 heard it twice in 19 s).
+				if tx.Text != "" && tx.Text != before {
+					it.say(tx)
+				}
+				return nil
+			})
+		}(it, mine)
 	}
 }
 
@@ -111,6 +125,24 @@ func (it *controlled) avoidOccupied(occ []airport.Occupied) bool {
 		return it.dep.AvoidOccupied(occ)
 	}
 	return it.arr.AvoidOccupied(occ)
+}
+
+// planAvoidOccupied is avoidOccupied's search (the controller's
+// PlanAvoidOccupied): nil none, else the step putting it in place.
+// A controller over the wire (an actuator's) has no such step: its
+// search runs as before, put in place at once.
+func (it *controlled) planAvoidOccupied(occ []airport.Occupied) func() bool {
+	type planner interface {
+		PlanAvoidOccupied([]airport.Occupied) func() bool
+	}
+	var c any = it.arr
+	if it.dep != nil {
+		c = it.dep
+	}
+	if p, ok := c.(planner); ok {
+		return p.PlanAvoidOccupied(occ)
+	}
+	return func() bool { return it.avoidOccupied(occ) }
 }
 
 // rerouteSaid is ground's new taxi instruction for the route from where the

@@ -260,6 +260,44 @@ func TestAbsorbDelayExtendsDownwind(t *testing.T) {
 	}
 }
 
+// Spacing behind another arrival it meets 10 NM on: the time is lost
+// before that, on a vector off the STAR, not in a longer downwind after it
+// (live, OKCMB behind CSA1305 before PR518).
+func TestAbsorbWithinVectorsBeforeTheMeeting(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA8",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	pos := route[0].Position
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 9000, 90, 250, false))
+	a, err := ctl.AbsorbWithin(time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Downwind || ctl.tromboneNM != 0 || a.ExtraNM < 1 || a.Orbit != "" {
+		t.Fatalf("%+v (downwind extended %.1f NM), want a vector off the STAR", a, ctl.tromboneNM)
+	}
+	if ctl.dogLeg == nil {
+		t.Fatal("no dog-leg")
+	}
+	if d := calc.HaversineNM(pos.Lat, pos.Lon, ctl.dogLeg.to.Lat, ctl.dogLeg.to.Lon); d > 12 {
+		t.Errorf("the dog-leg's leg ends %.1f NM on, want it before the meeting (10 NM)", d)
+	}
+}
+
 // Near the end of its STAR, no leg long enough to stretch: a minute's
 // delay is lost by vectors from where it is, not in a hold (live, LOT775
 // held at PR532 for a minute).
