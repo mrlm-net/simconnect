@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -124,7 +125,26 @@ type detailState struct {
 	interval  uint32
 	set       bool
 	slowerFor time.Time
+	// last: the pose at the last frame (moved).
+	lastPos  airport.LatLon
+	lastHdg  float64
+	haveLast bool
 }
+
+// moved reports whether the aircraft moved or turned since the last frame:
+// moving whatever its speed says (live, CSA1682 swung 94° round its nose
+// gear at 0 kt, placed every 30th frame in three 10 m steps).
+func (s *detailState) moved(p airport.LatLon, hdg float64) bool {
+	m := s.haveLast && (localDist(s.lastPos, p) > detailStillMeters || math.Abs(math.Remainder(hdg-s.lastHdg, 360)) > detailStillDeg)
+	s.lastPos, s.lastHdg, s.haveLast = p, hdg, true
+	return m
+}
+
+// Standing still: moved less than this in a frame.
+const (
+	detailStillMeters = 0.005
+	detailStillDeg    = 0.02
+)
 
 // want decides the monitor interval for now; it returns the interval to
 // request and true when it changed.

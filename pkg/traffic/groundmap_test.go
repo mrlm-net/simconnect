@@ -3,6 +3,7 @@ package traffic
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -36,5 +37,32 @@ func TestOffRest(t *testing.T) {
 		if got := offRest(tc.in, 0.71); math.Abs(got-tc.want) > 1e-9 {
 			t.Errorf("offRest(%.2f): %.3f, want %.3f", tc.in, got, tc.want)
 		}
+	}
+}
+
+// Under a standing aircraft a new ground height (the scenery swapping
+// detail) is eased in, not taken in a frame; rolling, taken at once.
+func TestGroundShownEasedStanding(t *testing.T) {
+	at := time.Unix(1000, 0)
+	i := &Injector{now: func() time.Time { return at }}
+	p := airport.LatLon{Lat: 50.1, Lon: 14.25}
+	o := &injected{groundFt: 1176.92}
+	i.ground.put(p, 1177.40)
+	if got := i.groundShown(o, GroundPose{Position: p}); math.Abs(got-1177.40) > 0.01 {
+		t.Fatalf("first: %.2f", got)
+	}
+	i.ground.put(p, 1176.92) // 0.48 ft lower, the next frame
+	at = at.Add(20 * time.Millisecond)
+	if got := i.groundShown(o, GroundPose{Position: p}); 1177.40-got > 0.03 {
+		t.Errorf("standing: %.2f, want eased from 1177.40", got)
+	}
+	at = at.Add(time.Second)
+	if got := i.groundShown(o, GroundPose{Position: p}); math.Abs(got-1176.92) > 0.01 {
+		t.Errorf("a second on: %.2f, want 1176.92", got)
+	}
+	i.ground.put(p, 1177.40)
+	at = at.Add(20 * time.Millisecond)
+	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-1177.40) > 0.01 {
+		t.Errorf("rolling: %.2f, want the ground at once", got)
 	}
 }

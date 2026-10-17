@@ -57,3 +57,31 @@ func (i *Injector) groundUnder(o *injected, p airport.LatLon) float64 {
 // groundMapTrustFt: a cell further than this from the aircraft's own
 // sample is not taken (a bridge, a stale cell).
 const groundMapTrustFt = 3.0
+
+// groundShown is the ground height to place o at for pose: the ground under
+// it (groundUnder), eased in at groundEaseFtPerSec while it stands still.
+// Under a standing aircraft the ground does not change: a new value there
+// is the scenery's ground swapping detail, and followed at once the
+// aircraft dropped with it in a frame (live, OKSLS 0.48 ft at 0 kt).
+func (i *Injector) groundShown(o *injected, pose GroundPose) float64 {
+	g := i.groundUnder(o, pose.Position)
+	now := i.now()
+	if o.groundShownAt.IsZero() || pose.GroundSpeedKts >= groundEaseMaxKts || localDist(o.groundShownPos, pose.Position) > groundEaseStillM ||
+		math.Abs(g-o.groundShownFt) > groundMapTrustFt {
+		o.groundShownFt, o.groundShownPos, o.groundShownAt = g, pose.Position, now
+		return g
+	}
+	step := groundEaseFtPerSec * math.Max(0, now.Sub(o.groundShownAt).Seconds())
+	o.groundShownFt += math.Max(-step, math.Min(step, g-o.groundShownFt))
+	o.groundShownPos, o.groundShownAt = pose.Position, now
+	return o.groundShownFt
+}
+
+// A standing aircraft (under groundEaseMaxKts, moved less than
+// groundEaseStillM since it was last placed) takes a new ground height at
+// groundEaseFtPerSec.
+const (
+	groundEaseMaxKts   = 1.0
+	groundEaseStillM   = 0.3
+	groundEaseFtPerSec = 1.0
+)

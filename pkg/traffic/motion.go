@@ -322,7 +322,12 @@ func (m *GroundMover) step(dt float64) {
 	traffic := m.hasTraffic && m.trafficAt < m.hold
 	limit := stop
 	if traffic {
-		limit = math.Min(m.hold, m.trafficAt+TrafficOverrunMeters)
+		// Never behind it: a stop set behind where it is (a give-way
+		// junction already passed) stops it where it is. Taken back to it,
+		// the aircraft jumped back along its path and swung round its main
+		// gear (live, DLH1707 62° and 3.5 m, again at each update of the
+		// push it gave way to; CSA1682 94° and 23 m).
+		limit = math.Max(m.s, math.Min(m.hold, m.trafficAt+TrafficOverrunMeters))
 	}
 	// Look ahead by what the response lag covers (at least
 	// TurnLookaheadMeters): chasing the plan at the aircraft's own position

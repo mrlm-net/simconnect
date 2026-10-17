@@ -722,3 +722,45 @@ func TestCornersBeforeTheFirstPosition(t *testing.T) {
 		t.Errorf("route re-sent from %q, want PR711", got)
 	}
 }
+
+// One vector off the STAR and back an approach: asked again once it was
+// given (and the aircraft sent back on its STAR), the rest is speed or
+// the hold, never a second dog-leg (live, OKBZM heading 224, resumed, then
+// heading 267).
+func TestAbsorbOneDogLegAnApproach(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA8",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	pos := route[0].Position
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 9000, 90, 250, false))
+	if _, err := ctl.AbsorbWithin(time.Minute, 10); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.dogLeg == nil {
+		t.Fatal("no first dog-leg")
+	}
+	ctl.mu.Lock()
+	ctl.dogLeg = nil // back on its STAR: re-planned direct to its next point
+	ctl.mu.Unlock()
+	a, err := ctl.AbsorbWithin(time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.ExtraNM != 0 || ctl.dogLeg != nil || ctl.dogLegs != 1 {
+		t.Fatalf("%+v, %d dog-legs: want no second one", a, ctl.dogLegs)
+	}
+}

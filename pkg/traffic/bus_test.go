@@ -139,8 +139,18 @@ func TestSimObjectBus(t *testing.T) {
 			// main gear to the trailing edge.
 			main := offsetHeading(pose.Position, pose.Heading+180, prof.RefAheadMeters)
 			underWing := false
+			// No step farther than a frame's drive at its speed, nor a turn of
+			// more than 3° (it jumped 6 m back as it set off home).
+			var last *GroundPose
+			jumped := false
 			track := func() {
 				p := f.pose.Position
+				if last != nil && !jumped && (localDist(last.Position, p) > 0.5 || math.Abs(math.Remainder(f.pose.Heading-last.Heading, 360)) > 3) {
+					jumped = true
+					t.Errorf("%s bus %d: jumped %.1f m, %.1f° in a frame", label, n+1, localDist(last.Position, p), math.Abs(math.Remainder(f.pose.Heading-last.Heading, 360)))
+				}
+				lp := f.pose
+				last = &lp
 				if localDist(p, pose.Position) < 60 {
 					closest = math.Min(closest, segmentDist(p, tail, nose))
 				}

@@ -24,6 +24,10 @@ type groundDrive struct {
 	mover    *GroundMover
 	lastStep time.Time
 	frameDt  float64 // seconds since the previous frame
+	// simNow: the simulator's clock (SIMULATION TIME) of the frame being
+	// handled; simLast, simAt: of the last frame stepped, at lastStep then.
+	simNow, simLast float64
+	simAt           time.Time
 	// lead, when set, is how far along the path a follow-me car ahead lets
 	// the aircraft go (#890); ok false: no limit.
 	lead func() (at float64, ok bool)
@@ -72,8 +76,8 @@ type groundDrive struct {
 // advance steps the mover to now and places the aircraft.
 func (d *groundDrive) advance() (GroundPose, error) {
 	now := d.clock()
-	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), MaxFrameStepSeconds))
-	d.lastStep, d.frameDt = now, dt
+	dt := d.frameStep(now)
+	d.frameDt = dt
 	d.followAhead(now)
 	if d.lead != nil && !d.mover.reverse {
 		// Behind the follow-me car, whatever the traffic ahead allows.
@@ -83,6 +87,26 @@ func (d *groundDrive) advance() (GroundPose, error) {
 	}
 	pose := d.mover.Step(dt)
 	return pose, d.injector.Place(d.object, pose)
+}
+
+// frameStep is how far to move on this frame, from now: the simulator's own
+// clock since the last frame stepped, so each frame moves on exactly as
+// much as the simulator's did (stepped by our clock as the frames came
+// in, a take-off roll at 148 kt moved 2.0, 2.7, 0.3, 2.6 m on frames of
+// 0.02 s: judder, live SWR109 2026-10-17). Our clock where the simulator's
+// is unknown, or when the step was restarted since (lastStep set anew).
+func (d *groundDrive) frameStep(now time.Time) float64 {
+	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), MaxFrameStepSeconds))
+	if d.simNow > 0 && d.simLast > 0 && d.simAt.Equal(d.lastStep) {
+		if s := d.simNow - d.simLast; s >= 0 && s <= MaxFrameStepSeconds {
+			dt = s
+			if s > 0 {
+				countFrame(d, s)
+			}
+		}
+	}
+	d.lastStep, d.simLast, d.simAt = now, d.simNow, now
+	return dt
 }
 
 // setInjectedLights changes the phase lights; logo and wing lights stay as

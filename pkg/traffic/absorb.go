@@ -30,6 +30,9 @@ const (
 	MaxStretchNM = 30.0
 	// MinStretchLegNM: a leg shorter than this is not stretched.
 	MinStretchLegNM = 3.0
+	// MinDogLegOut: a vector off the STAR flown for less than this before
+	// the turn back is not given (live, OKBZM told to resume 12 s after it).
+	MinDogLegOut = 30 * time.Second
 )
 
 // Absorption is how an arrival loses a delay.
@@ -285,6 +288,12 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	// The dog-leg on the longest leg ahead (from here, or between STAR
 	// points), off to the side away from the runway's centreline: only where
 	// the STAR has no downwind to extend.
+	// One dog-leg an approach: given one already (flown, or re-planned
+	// away), the rest is left for speed or the hold.
+	if a.ExtraNM > 0 && !stretched && reuse < 0 && c.dogLegs > 0 {
+		a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+		a.ExtraNM = 0
+	}
 	if a.ExtraNM > 0 && !stretched && reuse < 0 {
 		longest, at := 0.0, -1
 		for i := 1; i < len(pts)-1; i++ { // not the leg into the align point
@@ -309,6 +318,15 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 			// approach path, where arrivals join base and final (live, FINZX
 			// vectored toward them, #706).
 			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			// Out for MinDogLegOut at least, or no vector at all: speed, or the hold.
+			if out := calc.HaversineNM(from.Lat, from.Lon, apex.Lat, apex.Lon); out/math.Max(a.SpeedKts, speed) < MinDogLegOut.Hours() {
+				a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+				a.ExtraNM, at = 0, 0
+			}
+		}
+		if at > 0 {
+			from, to := pts[at-1], pts[at]
+			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
 			legFrom, legTo = from, to
 			ref := wps[final] // no STAR point left: the align point's
 			if at-1 < len(out) {
@@ -326,6 +344,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 			out = append(out[:at-1], append([]types.SIMCONNECT_DATA_WAYPOINT{wp}, out[at-1:]...)...)
 			outNames = append(outNames[:at-1], append([]string{""}, outNames[at-1:]...)...)
 			apexAt = at - 1
+			c.dogLegs++
 		}
 	}
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)

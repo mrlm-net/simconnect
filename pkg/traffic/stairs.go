@@ -67,6 +67,8 @@ const (
 	StairsSideMeters     = 6.0
 	StairsApproachMeters = 15.0
 	StairsKts            = 8.0
+	// stairsTurnMeters: the radius of the quarter turn backing away.
+	stairsTurnMeters = 6.0
 )
 
 // StairsSpot is where stairs stand for an aircraft at pose (its reference
@@ -179,19 +181,27 @@ func (s *SimObjectStairs) Update(pose GroundPose, leave bool, dt float64) error 
 	switch {
 	case s.arrive != nil:
 		s.check(s.arrive)
-		s.pose = s.arrive.Step(dt)
+		// Squared to the door on the way in: the short wheelbase leaves it a
+		// few degrees off the last turn (live: 108° to the fuselage, not 90).
+		s.pose = squaredIn(s.arrive.Step(dt), s.arrive, s.spot.Heading)
 		if s.pose.Arrived {
-			// Square to the door: the short wheelbase leaves it a few
-			// degrees off the last turn (live: 108° to the fuselage, not 90).
-			s.arrive, s.pose.Heading = nil, s.spot.Heading
+			s.arrive = nil
 		}
 		return s.place()
 	case s.back == nil && s.away == nil:
 		if !leave {
 			return s.place()
 		}
-		// Straight back out the way it came, facing the fuselage still.
-		path, err := NewGroundPath([]airport.LatLon{s.pose.Position, outPoint(s.pose)}, stairsProfile())
+		// Straight back out the way it came, facing the fuselage still, then
+		// on back round a quarter turn, to leave forward along the fuselage
+		// (turned about on the spot, it swung 180° in a frame).
+		out, back := outPoint(s.pose), normDeg(s.pose.Heading+180)
+		side := 1.0 // to the side its depot lies, else right
+		if s.hasDepot && math.Sin((localBearing(s.pose.Position, s.depot)-s.pose.Heading)*math.Pi/180) < 0 {
+			side = -1
+		}
+		corner := offsetHeading(out, back, stairsTurnMeters)
+		path, err := NewArcPath([]airport.LatLon{s.pose.Position, out, corner, offsetHeading(corner, back+side*90, stairsTurnMeters)}, stairsProfile(), stairsTurnMeters)
 		if err != nil {
 			return s.finish()
 		}
@@ -203,9 +213,10 @@ func (s *SimObjectStairs) Update(pose GroundPose, leave bool, dt float64) error 
 			return s.place()
 		}
 		s.back = nil
-		// Then home, or off to the side without a depot.
-		h := normDeg(s.pose.Heading + 180)
-		p := s.pose.Position
+		// Then home, or off to the side without a depot, from the front axle
+		// (the mover puts it a wheelbase behind its path's start).
+		h := s.pose.Heading
+		p := offsetHeading(s.pose.Position, h, stairsProfile().WheelbaseMeters)
 		pts := []airport.LatLon{p, offsetHeading(p, h, 5)}
 		if s.hasDepot {
 			if route, err := s.Layout.VehicleRoute(pts[1], s.depot); err == nil {

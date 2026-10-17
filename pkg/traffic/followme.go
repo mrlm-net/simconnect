@@ -105,6 +105,25 @@ type SimObjectFollowMe struct {
 	// join: the stand's lead-in junction, meters before the path's end (0:
 	// FollowMeLeaveMeters before it).
 	join float64
+	ease followMeEase
+}
+
+// followMeEase is how far the car stood off the aircraft's path when it
+// got there, eased out over its first followMeEaseMeters along it.
+type followMeEase struct {
+	from, dist, bearing, turn float64
+}
+
+const followMeEaseMeters = 10.0
+
+// onPath is the car's pose at f.s along the aircraft's path, eased.
+func (f *SimObjectFollowMe) onPath() GroundPose {
+	pose := pathPose(f.path, f.s)
+	if k := 1 - (f.s-f.ease.from)/followMeEaseMeters; k > 0 && k <= 1 {
+		pose.Position = offsetHeading(pose.Position, f.ease.bearing, f.ease.dist*k)
+		pose.Heading = normDeg(pose.Heading + f.ease.turn*k)
+	}
+	return pose
 }
 
 var _ FollowMeService = (*SimObjectFollowMe)(nil)
@@ -237,8 +256,13 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 		f.check(f.arrive)
 		f.pose = f.arrive.Step(dt)
 		if f.pose.Arrived {
+			// Eased onto the aircraft's path from where it stopped (snapped
+			// onto it, it jumped 0.8 m and 14°).
+			on := pathPose(f.path, f.s)
+			f.ease = followMeEase{from: f.s, dist: localDist(on.Position, f.pose.Position), bearing: localBearing(on.Position, f.pose.Position),
+				turn: math.Remainder(f.pose.Heading-on.Heading, 360)}
 			f.arrive, f.phase = nil, followMeWaiting
-			f.pose = pathPose(f.path, f.s)
+			f.pose = f.onPath()
 		}
 	case followMeWaiting, followMeLeading:
 		// Ahead of the aircraft by the gap: on once it comes within
@@ -251,7 +275,7 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 			f.phase = followMeLeading
 		}
 		f.s = math.Min(f.s+f.v*dt, f.path.Length())
-		f.pose = pathPose(f.path, f.s)
+		f.pose = f.onPath()
 		f.pose.GroundSpeedKts = f.v / 0.514444
 		leaveAt := FollowMeLeaveMeters
 		if f.join > 0 {
@@ -276,7 +300,10 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 // on (live at LOWI: 30 m aside drove it across the grass).
 func (f *SimObjectFollowMe) leave(aircraft GroundPose) {
 	f.phase = followMeLeaving
-	p, h := f.pose.Position, f.pose.Heading
+	// From the front axle: the mover puts the car a wheelbase behind its
+	// path's start (from where the car was, it jumped 3 m back, live
+	// 2026-10-17).
+	p, h := offsetHeading(f.pose.Position, f.pose.Heading, followMeProfile().WheelbaseMeters), f.pose.Heading
 	pts := []airport.LatLon{p}
 	if f.join > 0 {
 		pts = append(pts, straightOn(f.Graph, p, h, FollowMeAheadMeters)...)

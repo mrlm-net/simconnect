@@ -314,13 +314,20 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != "" || a.Downwind); say {
 			tx := traffic.Sequenced(e.Callsign, n, delay, a)
 			// A vector due now (a dog-leg from where it is) in the same call,
-			// not a second one right after (live, KLM868, #707).
-			if v, ok := it.arr.VectorDue(); ok {
-				tx = traffic.WithVector(tx, v, q.cc.magVar(it.ICAO))
-			}
+			// not a second one right after (live, KLM868, #707). Left out
+			// when another vector went out while this call waited: that one
+			// is newer (live, AFR539 heard "fly heading 118" 26 s after
+			// "resume own navigation direct PR742", the call 39 s late).
+			v, vectored := it.arr.VectorDue()
+			said, magVar := it.vectorsSaid.Load(), q.cc.magVar(it.ICAO)
 			// In radio order on approach's frequency: after its arrival
 			// clearance (KLM868 heard the speed and the vector before it).
-			it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })
+			it.call(traffic.PosApproach, prioApproach, func() {
+				if vectored && it.vectorsSaid.Load() == said {
+					tx = traffic.WithVector(tx, v, magVar)
+				}
+				it.say(tx)
+			})
 		}
 		// Too much for speed and a dog-leg: the rest in the hold.
 		if a.Left >= holdFrom {

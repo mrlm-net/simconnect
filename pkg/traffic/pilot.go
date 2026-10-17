@@ -454,7 +454,7 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Continue taxi"
 	case IntentDepartureOrder:
 		s = "Wilco" // CAP 413 4.20
-		if p[ParamNumber] != "" && p[ParamNumber] != "0" {
+		if queueSaid(p[ParamNumber]) {
 			s = "Holding short of runway " + p[ParamRunway] // 12.3.4.8 note
 		}
 	case IntentCancelTakeoff:

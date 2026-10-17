@@ -279,3 +279,17 @@ func (y *vehicleYield) forget(id uint32) {
 		y.traffic.ForgetVehicle(id)
 	}
 }
+
+// squaredIn is pose (a vehicle arriving along m) turned onto heading over
+// its last squareInMeters: the last turn leaves it a few degrees off, and
+// squared once there it swung up to 12° in a frame.
+func squaredIn(pose GroundPose, m *GroundMover, heading float64) GroundPose {
+	left := m.Path().Length() - m.Pose().Distance
+	k := math.Max(0, math.Min(1, 1-left/squareInMeters))
+	pose.Heading = normDeg(pose.Heading + k*math.Remainder(heading-pose.Heading, 360))
+	return pose
+}
+
+// squareInMeters: how far before its spot an arriving vehicle starts
+// squaring to it.
+const squareInMeters = 8.0

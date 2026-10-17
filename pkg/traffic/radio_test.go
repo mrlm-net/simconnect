@@ -452,3 +452,33 @@ func TestRadioWorded(t *testing.T) {
 		t.Error("Worded sent the transmission")
 	}
 }
+
+// One exchange at a time with an aircraft, whichever the frequency: its
+// check-in with tower is said after it read back "contact tower" on a busy
+// ground frequency, not before (live, EZY693).
+func TestRadioAircraftInOrder(t *testing.T) {
+	at := time.Date(2026, 10, 17, 21, 23, 0, 0, time.UTC)
+	freqs := map[Position]string{PosTower: "134.56", PosGround: "121.91"}
+	var heard []Transmission
+	r := NewRadio(RadioOptions{Now: func() time.Time { return at }, ReadBack: true,
+		FrequencyOf:    func(_ string, p Position) string { return freqs[p] },
+		OnTransmission: func(t Transmission) { heard = append(heard, t) }})
+	r.Transmit("LKPR", ClearedPushback("CSA3")) // ground busy
+	r.Transmit("LKPR", Handoff("EZY693", PosGround, PosTower, "Ruzyne Tower", "134.56"))
+	r.Transmit("LKPR", CheckIn(PosTower, "Ruzyne Tower", "EZY693", "taxiing to runway 24", ""))
+	var readbackEnd, checkIn time.Time
+	for _, h := range heard {
+		switch {
+		case h.Callsign == "EZY693" && h.Pilot && h.Frequency == "121.91":
+			readbackEnd = h.At.Add(h.SpeakingTime())
+		case h.Callsign == "EZY693" && h.Frequency == "134.56":
+			checkIn = h.At
+		}
+	}
+	if readbackEnd.IsZero() || checkIn.IsZero() {
+		t.Fatalf("heard %+v", heard)
+	}
+	if checkIn.Before(readbackEnd) {
+		t.Errorf("check-in with tower at %v, before the readback on ground ended at %v", checkIn.Format("15:04:05.0"), readbackEnd.Format("15:04:05.0"))
+	}
+}

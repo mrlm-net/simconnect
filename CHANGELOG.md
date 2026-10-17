@@ -57,6 +57,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.5] - 2026-10-18
+
+### Fixed
+
+- Smoothness: a departure handed to MSFS AI gets its climb waypoints before it is released, so it no longer jumps at the handover.
+- Smoothness: our aircraft step by the sim's own clock (`SIMULATION TIME` from each monitor frame), not the wall clock: no judder on the take-off roll or the final approach.
+- Engine: the dispatcher polls every 1 ms while messages flow (250 ms window) instead of backing off up to 50 ms, so per-frame data no longer arrives two frames at once.
+- Smoothness: a taxiing aircraft giving way is never pulled back along its path (3–23 m snap-backs with 60–94° swings).
+- Smoothness: an aircraft turning at 0 kt is placed every frame, not every 30th.
+- Smoothness: vehicles no longer jump. The follow-me car, bus and stairs leave from their front axle (3–6 m steps back before), stairs back out with a quarter turn instead of flipping 180°, and a vehicle eases into its spot (8 m) and onto a path (10 m) instead of snapping in one frame.
+- Smoothness: under a standing aircraft a new ground height from the scenery is eased in at 1 ft/s, not taken in one frame.
+- Radio: a vector queued behind a busy frequency is dropped when a newer instruction was said meanwhile (live, AFR539 heard a stale vector after its return to the path).
+- Radio: one exchange at a time per aircraft: the tower check-in comes after the ground readback (live, EZY693).
+- Arrival spacing: one dog-leg per approach, and none with an out-leg shorter than 30 s (`MinDogLegOut`; live, OKBZM turned through 100° several times).
+- Radio: the number of departures ahead is said only with 3 or more ahead (`QueueSaidFrom`), and then about half the time.
+- Diagnostics: a jump trace and per-minute frame stats on the console; glitch-watch records sim time, altitude and ground height.
+
 ## [0.95.4] - 2026-10-17
 
 ### Fixed

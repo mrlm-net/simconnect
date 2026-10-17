@@ -245,7 +245,7 @@ func (c *ArrivalController) frameDetail(pose GroundPose) {
 		return
 	}
 	full := c.state <= ArrivalVacating || c.followMeDriving()
-	if n, changed := c.detailS.want(c.detail, c.now(), pose.Position, pose.GroundSpeedKts > 0.5, full); changed {
+	if n, changed := c.detailS.want(c.detail, c.now(), pose.Position, pose.GroundSpeedKts > 0.5 || c.detailS.moved(pose.Position, pose.Heading), full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
 			c.note("monitor detail", requestFrames(client, c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID, n))
 		}
@@ -437,8 +437,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 // the injected rollout once the nose wheel is down.
 func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	now := c.now()
-	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds)) // no step back with the clock (#105)
-	c.lastStep = now
+	dt := c.frameStep(now) // no step back with the clock (#105)
 	if !c.approachLightsSet {
 		c.approachLightsSet = true
 		c.lights = m.currentLights()

@@ -2,7 +2,6 @@ package traffic
 
 import (
 	"errors"
-	"math"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
@@ -96,9 +95,9 @@ func (c *ArrivalController) handleParked(msg engine.Message) bool {
 	if uint32(m.DwRequestID) != c.reqBase+arrReqMonitor || uint32(m.DwObjectID) != c.objectID {
 		return false
 	}
+	c.simNow = engine.CastDataAs[arrivalMonitor](&m.DwData).SimTime
 	now := c.now()
-	dt := math.Max(0, math.Min(now.Sub(c.lastStep).Seconds(), MaxFrameStepSeconds))
-	c.lastStep = now
+	dt := c.frameStep(now)
 	var path *GroundPath
 	s := 0.0
 	if c.mover != nil {
