@@ -411,3 +411,36 @@ func TestPushPoseEDDM214(t *testing.T) {
 		}
 	}
 }
+
+// LKPR C17 (live): JB ends where the stand's line meets it, so a push
+// facing north-west swung the tail past its end onto the service road
+// round the apron. The aircraft at the end of the push keeps clear of
+// every vehicle road.
+func TestPushPoseClearOfRoadsLKPRC17(t *testing.T) {
+	g := airportGraph(t, "LKPR")
+	stand, err := g.Layout.ParkingIndex("C17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"FSLTL_E190_LOT_PODKARPACKIE", "FSLTL_A320_AFR", "FSLTL_B738_RYR"} {
+		for _, end := range []string{"24", "06"} {
+			req := TaxiRequest{Graph: g, Parking: stand, Runway: end, Model: model}
+			route, err := g.RouteToRunwayEntry(stand, end, "", req.Options)
+			if err != nil {
+				t.Fatalf("%s: %v", end, err)
+			}
+			c := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1, noStandard: true}
+			if !c.planPushPose() || c.pushPose == nil {
+				t.Fatalf("%s %s: no push", model, end)
+			}
+			p, prof := c.pushPose, c.profile()
+			roads := vehicleRoads(g, p.nose, 200)
+			for d := -3.0; d <= prof.WheelbaseMeters*pushNoseFactor+prof.TailMeters; d += 2 {
+				if nearRoad(roads, offsetHeading(p.nose, p.heading+180, d)) {
+					t.Errorf("%s %s: push onto %s facing %.0f° ends over a vehicle road (%.0f m behind the nose gear)", model, end, p.lane, p.heading, d)
+					break
+				}
+			}
+		}
+	}
+}
