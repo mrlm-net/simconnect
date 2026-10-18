@@ -23,6 +23,13 @@ import (
 const (
 	conflictEvery     = 5 * time.Second
 	conflictLookAhead = 5 * time.Minute
+	// A change that is not working is looked at again: once flown
+	// conflictRecheckAfter, a conflict of it still predicted within
+	// conflictRecheckIn (or separation lost) gets another (live, EZY1384
+	// turned for OKIXH, 3.4 NM and 790 ft from it 4 min later, nothing
+	// more done for the 1m47s it lasted).
+	conflictRecheckAfter = time.Minute
+	conflictRecheckIn    = 2 * time.Minute
 )
 
 var conflictOpts = traffic.ConflictOptions{LookAhead: conflictLookAhead, MinNM: sepMinNM, TerminalNM: sepTerminalNM}
@@ -33,6 +40,8 @@ type conflictWatch struct {
 	mu   sync.Mutex
 	at   time.Time
 	busy map[string]time.Time // resolved: the aircraft flies its change until then
+	// changed: when each was last given a change for a conflict.
+	changed map[string]time.Time
 	// slowed: arrivals told to lose time for a conflict; still in one when
 	// that has had time to work, they hold (#455).
 	slowed map[string]bool
@@ -96,7 +105,7 @@ type resolutionView struct {
 }
 
 func newConflictWatch(s *scheduler) *conflictWatch {
-	return &conflictWatch{s: s, busy: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}, asked: map[string]bool{}, leveled: map[string]bool{}, stopped: map[string]stoppedLevel{}}
+	return &conflictWatch{s: s, busy: map[string]time.Time{}, changed: map[string]time.Time{}, seen: map[string]bool{}, slowed: map[string]bool{}, informed: map[string]time.Time{}, asked: map[string]bool{}, leveled: map[string]bool{}, stopped: map[string]stoppedLevel{}}
 }
 
 func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) {
@@ -228,6 +237,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		first := !w.seen[pair]
 		w.seen[pair] = true
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
+		if busy && c.In <= conflictRecheckIn && w.changedBefore(now, c.A, c.B) {
+			busy = false // its change is not working: another
+		}
 		w.mu.Unlock()
 		if first {
 			w.s.cc.log.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
@@ -302,6 +314,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
+		w.changed[r.Callsign] = now
 		if r.Kind == traffic.ResolveLevel {
 			delete(w.stopped, r.Callsign) // a new level replaces the stop; another change keeps it to be cleared on
 		}
@@ -774,4 +787,22 @@ func spacingKts(me *traffic.TrackedAircraft) float64 {
 		return me.GroundKts
 	}
 	return traffic.ProcedureSpeedKts
+}
+
+// changedBefore reports whether every one of cs given a change for a
+// conflict (and still flying it) was given it conflictRecheckAfter or more
+// before now, and one was: time enough to see it is not working. w.mu held.
+func (w *conflictWatch) changedBefore(now time.Time, cs ...string) bool {
+	some := false
+	for _, c := range cs {
+		if !now.Before(w.busy[c]) {
+			continue // not flying a change
+		}
+		at, ok := w.changed[c]
+		if !ok || now.Sub(at) < conflictRecheckAfter {
+			return false
+		}
+		some = true
+	}
+	return some
 }

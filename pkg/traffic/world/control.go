@@ -177,6 +177,11 @@ type controlled struct {
 	// extendSaid: told to extend its downwind on this circuit (said once,
 	// however often it is extended further).
 	extendSaid atomic.Bool
+	// goAroundCalling: gone around and handed to approach, not taken in
+	// with "radar contact" yet: approach has nothing else to say to it
+	// (live, TVS354 told "number 5, extend downwind" before tower's
+	// "contact Ruzyne Radar").
+	goAroundCalling atomic.Bool
 	// vectorsSaid counts the vectors said on their own (each turn as it
 	// comes): a sequence call waiting for the frequency leaves out the
 	// vector it was decided with once a later one went out first.
@@ -3597,6 +3602,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// then hands it to approach once climbing away, and the crew calls in
 	// once (live, AUA529 heard "contact Ruzyne Radar" before "go around").
 	if ev.arr != nil && from == traffic.PosTower && pos == traffic.PosApproach {
+		it.goAroundCalling.Store(true)
 		p := it.cc.pending
 		p.later(it.cc.clock.Now().Add(goAroundHandoffAfter+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.Handoff(it.Tail, from, pos, station, freq))
@@ -3608,6 +3614,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 				rwy, kind := it.view.Runway, it.approachKind()
 				it.mu.Unlock()
 				it.say(traffic.RadarContactAfterGoAround(it.Tail, it.goAroundLevel(), kind, rwy))
+				it.goAroundCalling.Store(false)
 			})
 		})
 		return

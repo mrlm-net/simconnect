@@ -86,7 +86,7 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 // the state changed and the command reported success all the same).
 // c.mu held.
 func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) error {
-	noClimb(plain, c.altitudeNow())
+	noClimb(plain, c.climbCap())
 	out := roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		c.note("direct", err)

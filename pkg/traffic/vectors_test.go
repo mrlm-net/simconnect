@@ -67,11 +67,11 @@ func flyTo(t *testing.T, ctl *ArrivalController, p airport.LatLon) []Vector {
 	return said
 }
 
-// TestVectorsExtendedDownwind: an extended downwind is told with the
-// sequence call ("extend downwind, expect vectors": Absorption.Downwind),
-// then vectored, "turn heading, for base" at the new base turn, and cleared
-// for the approach with the intercept heading, along the final (#661; no
-// silent extension, no late "fly heading, for spacing" before the base).
+// TestVectorsExtendedDownwind: an extended downwind is flown on vectors
+// (#661): "fly heading, for spacing" leaving the STAR at its downwind's
+// end, "turn heading, for base" at the new base turn, and cleared for the
+// approach with the intercept heading, along the final. No "extend
+// downwind": that is the aerodrome circuit's (Doc 4444 12.3.4).
 func TestVectorsExtendedDownwind(t *testing.T) {
 	ctl, _ := vectorArrival(t, "VLM")
 	if _, ok := ctl.InterceptHeading(); ok {
@@ -84,13 +84,16 @@ func TestVectorsExtendedDownwind(t *testing.T) {
 	if err != nil || a.ExtraNM < 5 || !a.Downwind {
 		t.Fatalf("%+v %v, want the downwind extended", a, err)
 	}
-	if len(ctl.vectors) != 1 || ctl.vectors[0].For != "base" {
-		t.Fatalf("vectors %+v, want the base turn", ctl.vectors)
+	if len(ctl.vectors) != 2 || ctl.vectors[0].For != "spacing" || ctl.vectors[1].For != "base" {
+		t.Fatalf("vectors %+v, want leaving the STAR for spacing, then the base turn", ctl.vectors)
 	}
 	if v, ok := ctl.VectorDue(); ok {
 		t.Fatalf("due at the start of the STAR: %+v", v)
 	}
-	base := ctl.vectors[0]
+	leave, base := ctl.vectors[0], ctl.vectors[1]
+	if said := flyTo(t, ctl, leave.At); len(said) != 1 || said[0].For != "spacing" {
+		t.Fatalf("to the downwind's end: %+v, want the heading for spacing", said)
+	}
 	// On to the new base turn: the turn for base.
 	if said := flyTo(t, ctl, base.At); len(said) != 1 || said[0].For != "base" || said[0].Turn == "" {
 		t.Fatalf("to the base turn: %+v, want the turn for base", said)

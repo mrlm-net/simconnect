@@ -291,6 +291,10 @@ type ArrivalController struct {
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
 	goArounds     int           // go-arounds flown (GoAround)
+	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
+	// route re-planned on the way up keeps it (noClimb would hold it where
+	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
+	goAroundFt float64
 	tngLeft       int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
 	tng           *TakeoffMover // a touch-and-go's take-off, while it flies it
 	sng           *stopAndGo    // a stop-and-go's stop, before its take-off

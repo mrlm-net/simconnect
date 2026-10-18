@@ -70,6 +70,9 @@ type Limits struct {
 	// passenger buses and follow-me cars (#830–#832, #887, #890); 0: sized
 	// by its stands (traffic.DefaultFleetSize).
 	Tugs, FuelTrucks, Stairs, GPUs, Buses, FollowMe int
+	// GoAroundFt is the level a go-around climbs to (feet MSL) where the
+	// facility data's missed approach climbs lower; 0: from the data.
+	GoAroundFt float64
 }
 
 // TowerSite is a control tower: its position and the height of its cab
@@ -101,7 +104,9 @@ const DefaultInitialClimbFt = 10000.0
 var KnownLimits = map[string]Limits{
 	// LKPR tower: the position the user gave (2026-10-01); the facility's
 	// TOWER_LATITUDE/LONGITUDE (50.10183, 14.25732) is not the tower.
-	"LKPR": {TransitionAltitudeFt: 5000, PreferredRunways: []string{"24", "06"},
+	// Go-arounds climb to 5000 ft, as the user gave (2026-10-18); the
+	// facility data's missed approaches climb to 4000 ft.
+	"LKPR": {TransitionAltitudeFt: 5000, PreferredRunways: []string{"24", "06"}, GoAroundFt: 5000,
 		Tower: &TowerSite{Position: LatLon{Lat: 50.1065908, Lon: 14.2694592}}},
 	"EDDF": {TransitionAltitudeFt: 5000},
 	// EDDM (#376), from AIP Germany (DFS AIP IFR, effective 01 OCT 2026,

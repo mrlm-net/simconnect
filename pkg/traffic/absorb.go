@@ -45,7 +45,9 @@ type Absorption struct {
 	// the way it turns.
 	Orbit string `json:"orbit,omitempty"` // "left" or "right"
 	// Downwind: the stretch is the STAR's downwind extended (a trombone):
-	// said "extend downwind, expect vectors", the base turn vectored.
+	// flown on vectors, "fly heading, for spacing" leaving the STAR, then
+	// the turn for base (not the circuit's "extend downwind": Doc 4444
+	// 12.4.1.3, the user).
 	Downwind bool `json:"downwind,omitempty"`
 	// Left is what neither absorbs: for the hold.
 	Left time.Duration `json:"left,omitempty"`
@@ -348,7 +350,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		}
 	}
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
-	noClimb(plain, c.altitudeNow())
+	noClimb(plain, c.climbCap())
 	plainNames := append(outNames, names[final:]...)
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 	extra := a.ExtraNM
@@ -468,6 +470,22 @@ func noClimb(chain []types.SIMCONNECT_DATA_WAYPOINT, fromFt float64) {
 		top = chain[i].Altitude
 	}
 }
+
+// climbCap is the highest a re-planned route goes (noClimb): where the
+// aircraft is, or on a go-around's climb the level it climbs to. c.mu held.
+func (c *ArrivalController) climbCap() float64 {
+	alt := c.altitudeNow()
+	if c.goAroundFt > 0 && alt > 0 {
+		if alt < c.goAroundFt-goAroundLevelMarginFt {
+			return c.goAroundFt
+		}
+		c.goAroundFt = 0 // reached: as any other
+	}
+	return alt
+}
+
+// goAroundLevelMarginFt: a go-around this close below its level has reached it.
+const goAroundLevelMarginFt = 200.0
 
 // altitudeNow is the aircraft's altitude in feet MSL (0: not reported).
 // c.mu held.

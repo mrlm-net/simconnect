@@ -474,9 +474,6 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamOrbit] != "" {
 			parts = append(parts, "orbit "+p[ParamOrbit])
 		}
-		if p[ParamExtendDownwind] != "" {
-			parts = append(parts, "extend downwind")
-		}
 		if p[ParamFinalSpeed] != "" {
 			parts = append(parts, "reduce to final approach speed")
 		}

@@ -379,6 +379,11 @@ func (s *scheduler) removeEnroute(callsign string) bool {
 // nearPoint names an airborne aircraft near a point, "" when clear (other
 // traffic only when respected).
 func (s *scheduler) nearPoint(p airport.LatLon, altFt float64) string {
+	// Ours just asked for, not reported by the simulator yet (live, THY436
+	// and BAW1868 created in the same instant at FL400, 1 NM apart).
+	if who := s.nearJustCreated(p, altFt); who != "" {
+		return who
+	}
 	if s.mgr.Options().Others == traffic.OtherIgnore {
 		// Ignoring other traffic: only ours keeps its distance.
 		for _, a := range s.cc.world.Aircraft() {
@@ -390,6 +395,38 @@ func (s *scheduler) nearPoint(p airport.LatLon, altFt float64) string {
 		return ""
 	}
 	return s.cc.nearAirborne(p, altFt, "", s.cc.clock.Now())
+}
+
+// justCreatedFor: an enroute aircraft asked for this recently is kept
+// clear of by where it appears, the simulator perhaps not reporting it yet.
+const justCreatedFor = 30 * time.Second
+
+// nearJustCreated names an enroute aircraft of ours asked for within
+// justCreatedFor whose first point is near p (entryClearNM, entryClearFt);
+// "" none.
+func (s *scheduler) nearJustCreated(p airport.LatLon, altFt float64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	near := func(e *enrouteAC) bool {
+		if e == nil || len(e.route) == 0 || now.Sub(e.pendingAt) > justCreatedFor {
+			return false
+		}
+		q := e.route[0]
+		return calc.HaversineNM(q.Position.Lat, q.Position.Lon, p.Lat, p.Lon) < entryClearNM &&
+			(altFt == 0 || math.Abs(q.AltFt-altFt) < entryClearFt)
+	}
+	for _, e := range s.pending {
+		if near(e) {
+			return e.f.Callsign
+		}
+	}
+	for _, e := range s.enroute {
+		if near(e) {
+			return e.f.Callsign
+		}
+	}
+	return ""
 }
 
 // handEnroute takes an enroute aircraft off the scheduler's list without

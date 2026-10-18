@@ -166,6 +166,11 @@ func (it *controlled) goAroundAck() traffic.Transmission {
 // field, to the hundred feet.
 func (it *controlled) goAroundLevel() string {
 	ft := it.graph.Layout.Altitude/0.3048 + traffic.GoAroundHeightFt
+	// The airport's own go-around level where higher (LKPR 5000 ft; live,
+	// WZZ181 told 4200 ft before its go-around circuit was planned).
+	if lim := it.cc.limitsOf(it.graph); lim.GoAroundFt > ft {
+		ft = lim.GoAroundFt
+	}
 	if it.arr != nil {
 		if fx := it.arr.CircuitFixes(); len(fx) > 0 && fx[0].AltMin > 0 {
 			ft = fx[0].AltMin / 0.3048

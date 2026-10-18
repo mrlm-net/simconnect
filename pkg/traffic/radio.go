@@ -496,9 +496,6 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamOrbit] != "" {
 			s += fmt.Sprintf(", orbit %s for spacing", p[ParamOrbit])
 		}
-		if p[ParamExtendDownwind] != "" {
-			s += ", extend downwind, expect vectors"
-		}
 		if p[ParamFinalSpeed] != "" {
 			s += ", for spacing reduce to final approach speed"
 		}
@@ -1146,9 +1143,6 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 	}
 	if a.Orbit != "" {
 		p[ParamOrbit] = a.Orbit
-	}
-	if a.Downwind {
-		p[ParamExtendDownwind] = "1"
 	}
 	if a.SpeedKts > 0 {
 		p[ParamSpeed] = fmt.Sprintf("%.0f", a.SpeedKts)
@@ -1833,10 +1827,6 @@ func RadarContactAfterGoAround(cs, level, approach, runway string) Transmission 
 	}
 	return Transmission{Position: PosApproach, Callsign: cs, Intent: IntentAcknowledge, Text: text}
 }
-
-// ParamExtendDownwind: a sequence call extending the STAR's downwind
-// ("extend downwind, expect vectors"; Absorption.Downwind).
-const ParamExtendDownwind = "extendDownwind"
 
 // AirportClosed tells an arrival every runway at icao is closed: holding
 // to follow.

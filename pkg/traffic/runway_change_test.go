@@ -278,3 +278,47 @@ func TestChangeEntryWaitingOnStand(t *testing.T) {
 		t.Fatalf("never taxied after the change: %v", ctl.State())
 	}
 }
+
+// Past its STAR's entry fix when the runway changes (live, TVS356 on
+// VLM 6 for 24, then 06): the new STAR is joined ahead of it, not flown
+// back to VLM against the arrivals coming in on it.
+func TestArrivalChangeRunwayJoinsAhead(t *testing.T) {
+	g := lkprGraph(t)
+	procs := lkprProcedures(t)
+	to24, err := procs.Arrival("24", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	to06, err := procs.Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []int{2, 3} {
+		ec := &eventClient{}
+		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+		c22, _ := g.Layout.ParkingIndex("C22")
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "B738", Tail: "TVS356",
+			InjectApproach: true, Procedure: to24, RollThroughChance: -1}); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for range ctl.Events() {
+			}
+		}()
+		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+		mon := DefaultArrivalRequestBase + arrReqMonitor
+		pos := to24[at].Position
+		hdg := localBearing(to24[at-1].Position, pos)
+		ctl.Handle(arrivalPositionMsg(mon, 77, pos, 8000, hdg, 250, false))
+		if err := ctl.ChangeRunway("06", to06, nil); err != nil {
+			t.Fatal(err)
+		}
+		ctl.mu.Lock()
+		first := airport.LatLon{Lat: ctl.corners[0].Latitude, Lon: ctl.corners[0].Longitude}
+		name := ctl.cornerNames[0]
+		ctl.mu.Unlock()
+		if d := math.Abs(headingDiff(hdg, localBearing(pos, first))); d > 90 {
+			t.Errorf("at %s, heading %.0f: the new STAR starts at %s, %.0f° off its heading (behind it)", to24[at].Ident, hdg, name, d)
+		}
+	}
+}
