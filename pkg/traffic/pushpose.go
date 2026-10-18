@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // Pushback to a pose: a push ends with the aircraft on a taxiway, aligned
@@ -551,6 +552,68 @@ func junctionFillets(g *airport.Graph, center airport.LatLon, radius float64) []
 // laneEndDeg: a lane going on within this of straight does not end.
 const laneEndDeg = 30.0
 
+// pushRoadMarginMeters: where the fuselage of an aircraft at the end of
+// its push lies on the apron taken past a lane's end (laneEnds), it keeps
+// this clear of a vehicle road's edge: the road marks where that apron
+// stops (LKPR C17 for 24: the tail swung past the end of JB onto the
+// service road round the apron, 30 m on).
+const pushRoadMarginMeters = 1.0
+
+// pastEndOnRoad reports whether the fuselage, from the nose gear at nose
+// facing hdg back length meters, lies near a road where it is past a
+// lane's end (on pastEnds, off the rest of the pavement, charted).
+func pastEndOnRoad(charted, pastEnds *flatPave, roads []paveSeg, nose airport.LatLon, hdg, length float64) bool {
+	if len(roads) == 0 {
+		return false
+	}
+	for d := 0.0; d <= length; d += 2 {
+		q := offsetHeading(nose, hdg+180, d)
+		if charted.off(q) > 0 && pastEnds.off(q) == 0 && nearRoad(roads, q) {
+			return true
+		}
+	}
+	return false
+}
+
+// nearRoad reports whether q lies within pushRoadMarginMeters of one of
+// roads.
+func nearRoad(roads []paveSeg, q airport.LatLon) bool {
+	for _, r := range roads {
+		if pointSegDist(q, r.a, r.b) < r.half+pushRoadMarginMeters {
+			return true
+		}
+	}
+	return false
+}
+
+// pushRoadMaxWidthMeters: a vehicle path wider than this is a vehicle
+// apron, not a road (LOWW C42: 30 m).
+const pushRoadMaxWidthMeters = 12.0
+
+// vehicleRoads are the vehicle roads (VEHICLE, ROAD paths up to
+// pushRoadMaxWidthMeters wide) within radius of center, each as wide as
+// the path.
+func vehicleRoads(g *airport.Graph, center airport.LatLon, radius float64) []paveSeg {
+	l := g.Layout
+	var segs []paveSeg
+	for _, p := range l.TaxiPaths {
+		if p.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_VEHICLE && p.Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_ROAD ||
+			p.Width > pushRoadMaxWidthMeters || p.Start < 0 || p.End < 0 || int(p.Start) >= len(l.TaxiPoints) || int(p.End) >= len(l.TaxiPoints) || p.EndsAtParking() {
+			continue
+		}
+		a, b := l.TaxiPoints[p.Start].Position, l.TaxiPoints[p.End].Position
+		if localDist(a, center) > radius && localDist(b, center) > radius {
+			continue
+		}
+		half := 4.5
+		if p.Width > 0 {
+			half = p.Width / 2
+		}
+		segs = append(segs, paveSeg{a, b, half})
+	}
+	return segs
+}
+
 // flatPave is a pavement in flat meters east and north of a centre, for
 // the many checks of a push plan, with what it found per square meter
 // kept: the pushes planned from a stand cross the same ground.
@@ -1073,8 +1136,13 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 		first = c.route.Taxiways[0]
 	}
 	around := pavementAround(g, gear, pushPoseReachMeters+50)
-	around.segs = append(around.segs, laneEnds(g, gear, pushPoseReachMeters+50)...)
+	ends := laneEnds(g, gear, pushPoseReachMeters+50)
 	around.segs = append(around.segs, junctionFillets(g, gear, pushPoseReachMeters+50)...)
+	// The apron taken past the lanes' ends, the rest of the pavement and the
+	// vehicle roads: there the fuselage keeps clear of a road.
+	charted := newFlatPave(around, gear)
+	pastEnds, roads := newFlatPave(pavement{segs: ends}, gear), vehicleRoads(g, gear, pushPoseReachMeters+50)
+	around.segs = append(around.segs, ends...)
 	pv := newFlatPave(around, gear)
 	c.emptyNear = c.emptyStands()
 	pv.withStands(g, c.req.Parking, c.emptyNear)
@@ -1093,6 +1161,9 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 		p := &poses[i]
 		// The nose and the tail where the push ends, on the pavement too.
 		tailOff := math.Max(pv.off(p.nose), pv.off(offsetHeading(p.nose, p.heading+180, prof.WheelbaseMeters*pushNoseFactor+tail)))
+		if pastEndOnRoad(charted, pastEnds, roads, p.nose, p.heading, prof.WheelbaseMeters*pushNoseFactor+tail) {
+			tailOff = math.Inf(1) // neither a push nor a tow ends there
+		}
 		tailOffs[i] = tailOff
 		if tailOff > pushOffPavementWideMeters {
 			continue

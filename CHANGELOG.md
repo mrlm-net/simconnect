@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.6] - 2026-10-18
+
+### Fixed
+
+- Pushback: a push no longer ends with the fuselage on a service road past the end of a taxilane, where the planner takes the apron to run on (`laneEnds`). LKPR C17 for 24 swung the tail past the end of JB onto the road round the stands; it now pushes onto J facing north-west. Only roads up to 12 m wide count (`pushRoadMaxWidthMeters`; wider vehicle paths are aprons, LOWW C42), and a road crossing a taxiway does not. Of 245 stands at the 10 test airports only LROP 115 changes besides (its tail stood 5 m onto a road; now onto J); LKPR B16 keeps its pose, 5 m shorter.
+- Pushback: saved standard pushes are planned again (`standardPlanVersion` 2).
+
 ## [0.95.5] - 2026-10-18
 
 ### Fixed

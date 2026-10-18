@@ -13,7 +13,7 @@ import (
 
 // standardPlanVersion changes when the standard push planning does: plans
 // saved by another version are planned again.
-const standardPlanVersion = 1
+const standardPlanVersion = 2
 
 // standardFile is the saved standard pushes of one airport.
 type standardFile struct {
