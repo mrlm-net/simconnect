@@ -80,12 +80,13 @@ func TestGoAroundPhrases(t *testing.T) {
 	}
 }
 
+// An IFR downwind extended is flown on radar vectors ("fly heading, for
+// spacing", then the turn for base): the sequence call says no "extend
+// downwind", the aerodrome circuit's instruction (Doc 4444 12.3.4; the
+// user, live TVS354).
 func TestSequencedExtendDownwind(t *testing.T) {
 	tx := Sequenced("CSA1", 3, 2*time.Minute, Absorption{ExtraNM: 6, Downwind: true})
-	if want := "CSA1, number 3, extend downwind, expect vectors"; tx.Text != want {
+	if want := "CSA1, number 3"; tx.Text != want {
 		t.Errorf("said %q", tx.Text)
-	}
-	if rb, _ := Readback(tx); rb.Text != "Number 3, extend downwind, CSA1" {
-		t.Errorf("readback %q", rb.Text)
 	}
 }

@@ -57,6 +57,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.7] - 2026-10-18
+
+### Fixed
+
+- Go-around: a route re-planned on the way up (a delay absorbed) keeps the go-around's level instead of capping it where the aircraft is (live, TVS354 levelled at 1400 ft at LKPR and stayed under the stream; `climbCap`).
+- Go-around: a new approach after it gets its own dog-leg again; the one-dog-leg-an-approach count of v0.95.5 was kept over the go-around (live, TVS354, vectored for a conflict before, only ever got longer downwinds and turned base ahead of the arrival it followed).
+- Go-around: approach says nothing to a go-around handed over until it has answered "radar contact" (live, "number 5, extend downwind" before tower's "contact Ruzyne Radar"); a tower go-around still waiting for the frequency is dropped once the aircraft has landed (live, WZZ181 told to go around 52 s after touchdown).
+- Go-around level: `airport.Limits.GoAroundFt`, the airport's own where the facility data's missed approach climbs lower; LKPR 5000 ft (the data: 4000 ft). Said by the tower and flown.
+- Phraseology: an IFR downwind extended is flown on radar vectors, "fly heading 064, for spacing" leaving the STAR, then "turn right heading 151, for base" and the intercept with the approach clearance (Doc 4444 12.4.1.3); the sequence call says no "extend downwind, expect vectors", the aerodrome circuit's instruction (12.3.4). `ParamExtendDownwind` is gone.
+- Runway change: an arrival past its STAR's entry fix joins the new runway's STAR at its first point ahead, not flown back to the entry (live, TVS356 turned back to VLM after the change to 06, against THY940 coming in on the same STAR).
+- Overflights: none appears near another of ours asked for in the last 30 s, before the simulator reports it (live, THY436 and BAW1868 created in the same instant at FL400, 1 NM apart, TCAS RA).
+- Conflicts: a change that is not working is looked at again: once flown a minute, a conflict of it still predicted within 2 min (or separation lost) gets another, instead of waiting out the 5 min look-ahead (live, EZY1384 turned for OKIXH, 3.4 NM and 790 ft from it, nothing more done for 1m47s).
+
 ## [0.95.6] - 2026-10-18
 
 ### Fixed

@@ -565,7 +565,14 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		key := tail + " " + action
 		still := func() bool {
 			if action == "goaround" {
-				return true
+				// While still in the air on its final: not once landed (live,
+				// WZZ181 told to go around 52 s after its touchdown, the call
+				// late behind a runway change's).
+				if it.arr == nil {
+					return true
+				}
+				s := it.arr.State()
+				return s == traffic.ArrivalApproaching || s == traffic.ArrivalLanding
 			}
 			t.mu.Lock()
 			at := t.grantAt[key]

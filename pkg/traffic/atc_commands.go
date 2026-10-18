@@ -248,6 +248,12 @@ func (c *ArrivalController) GoAround() error {
 	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
 	// the circuit keeps too; then round the circuit onto the final.
 	missed, circuitFt := missedWaypoints(c.req.MissedApproach, circuitFt)
+	if lim := c.req.Airport; lim != nil && lim.GoAroundFt > circuitFt {
+		circuitFt = lim.GoAroundFt // the airport's own (LKPR 5000 ft)
+		for i := range missed {
+			missed[i].Altitude = circuitFt
+		}
+	}
 	// Without a published missed approach: out and back onto its own
 	// STAR's downwind, sequenced again with the others there (live,
 	// CSA1958 sent round a 3.5 NM circuit inside the 5 NM downwind of
@@ -300,6 +306,7 @@ func (c *ArrivalController) GoAround() error {
 	}
 	c.approach = nil
 	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, 0
+	c.newApproach(circuitFt)
 	c.flyingProc, c.blend, c.gaGearUp = true, joinBlend{}, false
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++
@@ -347,6 +354,14 @@ func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNE
 		wps = append(wps, procedureWaypoint(n.Position, top, ProcedureApproachSpeedKts))
 	}
 	return wps, top
+}
+
+// newApproach starts another approach after a go-around climbing to
+// levelFt (c.mu held): its own dog-leg again (one an approach; live,
+// TVS354, vectored for a conflict before, got only ever longer downwinds
+// after its go-around and turned base ahead of the one it followed).
+func (c *ArrivalController) newApproach(levelFt float64) {
+	c.dogLegs, c.dogLeg, c.goAroundFt = 0, nil, levelFt
 }
 
 // GoAroundRejoinMinNM: a STAR point this far or more off the extended
@@ -419,6 +434,7 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	}
 	c.approach = nil
 	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: rounded, Join: proc.Join, JoinMeters: proc.JoinMeters, MinJoinMeters: proc.MinJoinMeters}, 0, true, 0
+	c.newApproach(circuitFt)
 	c.flyingProc, c.blend, c.gaGearUp = true, joinBlend{}, false
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
 	c.goArounds++

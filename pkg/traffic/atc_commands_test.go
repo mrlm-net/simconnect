@@ -416,3 +416,68 @@ func TestGoAroundToDownwind(t *testing.T) {
 		}
 	}
 }
+
+// A go-around at LKPR (live, TVS354): it climbs to 5000 ft (the airport's
+// go-around level, above the data's 4000 ft), and a delay absorbed on the
+// way up keeps that level, not the 1400 ft it passed then; vectored for
+// a conflict before, it may be given a dog-leg again on the new approach.
+func TestGoAroundKeepsItsLevel(t *testing.T) {
+	g := lkprGraph(t)
+	procs := lkprProcedures(t)
+	route, err := procs.Arrival("24", "LOMKI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lim := airport.LimitsFor(g.Layout, nil)
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	c17, _ := g.Layout.ParkingIndex("C17")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c17, Model: "B738", Tail: "TVS354",
+		InjectApproach: true, RollThroughChance: -1, Procedure: route, Airport: &lim}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	p := ctl.Plan()
+	ctl.mu.Lock()
+	joinAt := ctl.proc.Join
+	ctl.dogLegs = 1 // vectored for a conflict on the STAR
+	ctl.mu.Unlock()
+	ctl.Handle(arrivalPositionMsg(mon, 77, joinAt, 3000, p.End.Heading, 160, false))
+	for i := 0; i < 60*600 && (ctl.approach == nil || ctl.approach.Pose().HeightFt > 300); i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 77, p.End.Threshold, 0, 0, 0, false))
+	}
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	// Climbing out, 200 ft above the field (about 1400 ft), 1 NM past it.
+	ctl.Handle(arrivalPositionMsg(mon, 77, offsetHeading(p.End.Threshold, p.End.Heading, 1852), 200, p.End.Heading, 160, false))
+	ctl.mu.Lock()
+	dogLegs := ctl.dogLegs
+	ctl.mu.Unlock()
+	if dogLegs != 0 {
+		t.Errorf("dog-legs after the go-around: %d, want 0 (a new approach)", dogLegs)
+	}
+	if _, err := ctl.AbsorbDelay(3 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
+	if len(ctl.corners) < 2 {
+		t.Fatalf("%d corners", len(ctl.corners))
+	}
+	for i, w := range ctl.corners[:2] {
+		if w.Altitude < 4900 {
+			t.Errorf("corner %d (%s) at %.0f ft, want 5000 ft", i, ctl.cornerNames[i], w.Altitude)
+		}
+	}
+}

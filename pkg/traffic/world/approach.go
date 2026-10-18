@@ -219,7 +219,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		}
 		// The number once, as the sequence says it (live, AFR850 heard
 		// "number 4" from a conflict that only stretched its route).
-		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != "" || a.Downwind); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "" || a.Downwind) {
+		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts, a.Orbit != ""); say && (n > 0 || a.SpeedKts > 0 || a.Orbit != "") {
 			tx := traffic.Sequenced(callsign, n, 0, a)
 			// In radio order: after its arrival clearance (live, TVS554 told to
 			// slow 21 s before it was cleared its STAR).

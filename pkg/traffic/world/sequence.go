@@ -225,6 +225,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if withTower && it.circuit == nil && len(it.arr.ProcedureRoute()) > 0 { // not on its final: flying the go-around
 			continue
 		}
+		if it.goAroundCalling.Load() { // handed to approach, not taken in yet
+			continue
+		}
 		// Every runway closed: held, then diverted (closures.go); open
 		// again, released from the hold as below.
 		if g, err := q.cc.graph(icao); err == nil && q.cc.core.allClosed(g.Layout) {
@@ -311,7 +314,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != "" || a.Downwind); say {
+		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != ""); say {
 			tx := traffic.Sequenced(e.Callsign, n, delay, a)
 			// A vector due now (a dog-leg from where it is) in the same call,
 			// not a second one right after (live, KLM868, #707). Left out

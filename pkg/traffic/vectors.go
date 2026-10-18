@@ -56,12 +56,11 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 	if at < 0 || at+1 >= len(plain) {
 		return nil
 	}
-	// A downwind extended: told "extend downwind, expect vectors" with the
-	// sequence call, the base turn its vector; a dog-leg: out, then back.
-	var out []Vector
-	if baseAt < 0 {
-		out = []Vector{{At: ll(at - 1), HeadingDeg: into(at), For: "spacing"}}
-	}
+	// Leaving the STAR "fly heading, for spacing" (Doc 4444 12.4.1.3 d), on
+	// along its downwind extended or out on a dog-leg; then the turn for
+	// base, or back onto the STAR. Radar says no "extend downwind": that is
+	// the aerodrome circuit's (12.3.4; the user, live TVS354).
+	out := []Vector{{At: ll(at - 1), HeadingDeg: into(at), For: "spacing"}}
 	turn := Vector{At: ll(at), HeadingDeg: into(at + 1)}
 	switch {
 	case baseAt >= 0:
