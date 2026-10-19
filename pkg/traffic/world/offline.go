@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/nav"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // Offline data: what the simulator gives the World about an airport —
@@ -144,4 +146,65 @@ func (w *World) LoadAirportDir(dir string) (string, error) {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// dumpAirportList is the worldwide airport list's file, at the top of
+// Options.AirportDumpDir: every airport the simulator knows (where
+// diversions go and en-route traffic comes from), for LoadAirportsFile.
+const dumpAirportList = "airports.json"
+
+// dumpAirports writes the worldwide airport list (Options.AirportDumpDir),
+// in ICAO order, without the distances from the user aircraft.
+func (st *state) dumpAirports(list []traffic.AirportRef) {
+	if st.airportDump == "" || len(list) == 0 {
+		return
+	}
+	out := make([]traffic.AirportRef, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].ICAO, out[i].DistanceNM = strings.ToUpper(out[i].ICAO), 0
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ICAO < out[j].ICAO })
+	if err := os.MkdirAll(st.airportDump, 0o755); err != nil {
+		fmt.Fprintf(stdout, "❌ Dump %s: %v\n", st.airportDump, err)
+		return
+	}
+	path := filepath.Join(st.airportDump, dumpAirportList)
+	b, err := json.Marshal(out) // compact: some 85,000 airports
+	if err == nil {
+		err = os.WriteFile(path, b, 0o644)
+	}
+	if err != nil {
+		fmt.Fprintf(stdout, "❌ Dump %s: %v\n", path, err)
+		return
+	}
+	fmt.Fprintf(stdout, "💾 Wrote %s (%d airports)\n", path, len(out))
+}
+
+// LoadAirportsFile serves the worldwide airport list from a dump (as
+// Options.AirportDumpDir writes airports.json) instead of the simulator:
+// where diversions go and en-route traffic comes from. It returns how many
+// airports it holds.
+func (w *World) LoadAirportsFile(path string) (int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var list []traffic.AirportRef
+	if err := json.Unmarshal(b, &list); err != nil {
+		return 0, fmt.Errorf("%s: %w", path, err)
+	}
+	refs := make(map[string]traffic.AirportRef, len(list))
+	for _, a := range list {
+		if a.ICAO != "" {
+			refs[strings.ToUpper(a.ICAO)] = a
+		}
+	}
+	if len(refs) == 0 {
+		return 0, errors.New(path + ": no airports")
+	}
+	w.st.mu.Lock()
+	w.st.airportRefs = refs
+	w.st.mu.Unlock()
+	return len(refs), nil
 }

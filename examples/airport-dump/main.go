@@ -1,9 +1,11 @@
 // Command airport-dump writes airports' offline data from the simulator —
 // layout, SIDs, STARs and approaches, airways and ILS — one directory per
 // airport (<out>/<ICAO>/layout.json, procedures.json, airways.json,
-// ils.json), for World.LoadAirportDir: the World without a simulator.
+// ils.json), for World.LoadAirportDir, and with -airports the worldwide
+// airport list (<out>/airports.json, World.LoadAirportsFile): the World
+// without a simulator.
 //
-//	airport-dump -out C:\data LKPR LKKB EGLL EDDF KJFK
+//	airport-dump -out C:\data -airports LKPR LKKB EGLL EDDF KJFK
 package main
 
 import (
@@ -22,10 +24,11 @@ import (
 func main() {
 	out := flag.String("out", "airport-data", "the directory to write <ICAO>/ into")
 	wait := flag.Duration("wait", 3*time.Minute, "how long to wait for each airport's data")
+	all := flag.Bool("airports", false, "also write the worldwide airport list (airports.json)")
 	flag.Parse()
 	icaos := flag.Args()
-	if len(icaos) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: airport-dump [-out dir] ICAO...")
+	if len(icaos) == 0 && !*all {
+		fmt.Fprintln(os.Stderr, "usage: airport-dump [-out dir] [-airports] ICAO...")
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -47,6 +50,15 @@ func main() {
 		}
 	}
 	failed := 0
+	if *all {
+		// The worldwide list comes once, soon after the connection.
+		if missing := waitFor(ctx, *out, *wait, "airports.json"); len(missing) > 0 {
+			fmt.Fprintf(os.Stderr, "airports.json: none after %s\n", *wait)
+			failed++
+		} else {
+			fmt.Println("airports.json: done")
+		}
+	}
 	for _, icao := range icaos {
 		icao = strings.ToUpper(icao)
 		var v any

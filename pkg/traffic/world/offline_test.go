@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/nav"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // What the simulator gives about an airport is dumped per airport and
@@ -69,5 +70,26 @@ func TestAirportDumpRoundTrip(t *testing.T) {
 	}
 	if _, err := off.LoadAirportDir(t.TempDir()); err == nil {
 		t.Error("an empty directory loaded")
+	}
+}
+
+// The worldwide airport list is dumped once, sorted, and served back.
+func TestAirportListRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	w := New(Options{DataDir: t.TempDir(), AirportDumpDir: dir})
+	w.st.dumpAirports([]traffic.AirportRef{
+		{ICAO: "lkpr", Region: "LK", Position: airport.LatLon{Lat: 50.1, Lon: 14.26}, DistanceNM: 3},
+		{ICAO: "EGLL", Region: "EG", Position: airport.LatLon{Lat: 51.47, Lon: -0.45}},
+	})
+	off := New(Options{DataDir: t.TempDir()})
+	n, err := off.LoadAirportsFile(filepath.Join(dir, dumpAirportList))
+	if err != nil || n != 2 {
+		t.Fatalf("%d %v, want 2 airports", n, err)
+	}
+	off.st.mu.Lock()
+	a, ok := off.st.airportRefs["LKPR"]
+	off.st.mu.Unlock()
+	if !ok || a.Region != "LK" || a.DistanceNM != 0 {
+		t.Errorf("LKPR %+v %v", a, ok)
 	}
 }

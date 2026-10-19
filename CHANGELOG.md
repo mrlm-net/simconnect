@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.98.0] - 2026-10-19
+
+### Added
+
+- `traffic.SimlessAI` and `world.Options.SimlessAI`: with no simulator behind the client (Vector, the ATC game, on a loopback client), what MSFS AI would fly is flown in the core. An aircraft released to the AI with a waypoint chain follows it: at each point's speed (1.5 kt/s changes), reaching each point's altitude by the point (at most 3000 fpm), turning at a standard rate with the turn begun early, its position written each step for the client to report back. Arrivals fly their published STAR and approach transition to the join point, where the injected approach takes them to touchdown as after MSFS AI; an aircraft frozen or placed by its controller is no longer flown. Off unless asked for: with MSFS nothing changes.
+- The worldwide airport list offline: `Options.AirportDumpDir` writes it once as `airports.json` (every airport the simulator knows, in ICAO order) and `World.LoadAirportsFile(path)` serves it without a simulator, for diversions and en-route origins. `airport-dump -airports` writes it.
+
 ## [0.97.0] - 2026-10-19
 
 ### Added

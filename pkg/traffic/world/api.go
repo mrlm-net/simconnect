@@ -56,6 +56,11 @@ type Options struct {
 	// everything the simulator gives about it (<ICAO>/layout.json,
 	// procedures.json, airways.json, ils.json), for LoadAirportDir.
 	AirportDumpDir string
+	// SimlessAI: no simulator behind the client given RunOn (Vector, a
+	// loopback): what MSFS AI would fly — arrivals down their STAR and
+	// approach to the final, departures on their SID, en-route traffic — is
+	// flown in the core instead (traffic.SimlessAI). Never with MSFS.
+	SimlessAI bool
 	// IDBase moves the library helpers the World creates off their default
 	// SimConnect IDs, for a host using the same helpers on its connection:
 	// airport loader at IDBase (definitions) and +100 (requests), procedure

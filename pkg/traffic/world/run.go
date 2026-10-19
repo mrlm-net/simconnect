@@ -814,6 +814,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			if now.Sub(lastFrame) > 3*cameraRate {
 				cam.tick(now)
 			}
+			if ai, ok := client.(*traffic.SimlessAI); ok {
+				ai.Step(cc.clock.Now()) // no simulator: the AI flown here
+			}
 
 		case icao := <-st.procRequests:
 			slowAt, slowWhat = time.Now(), "procedures "+icao
@@ -884,6 +887,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				st.airportRefs = refs
 				st.mu.Unlock()
 				tlog.printf("airports worldwide: %d", len(refs))
+				st.dumpAirports(list)
 				continue
 			}
 			if list, ok := airports.Handle(msg); ok {
