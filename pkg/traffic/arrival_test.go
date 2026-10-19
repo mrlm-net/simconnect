@@ -891,3 +891,24 @@ func TestVacateShortOfJunction(t *testing.T) {
 		}
 	}
 }
+
+// A business jet or turboprop lands slower than an airliner and makes the
+// earlier exits (the user, live: OKKST, a PC-24 at 103 kt, could have left
+// 06 at L); airliners keep theirs.
+func TestSlowerAircraftEarlierExit(t *testing.T) {
+	g := lkprGraph(t)
+	c22, _ := g.Layout.ParkingIndex("C22")
+	for _, c := range []struct {
+		end  string
+		td   float64
+		exit string
+	}{{"06", 103, "L"}, {"06", 130, "B"}, {"24", 103, "C"}, {"24", 130, "D"}} {
+		p, err := PlanArrival(g, c.end, c22, ArrivalOptions{TouchdownKts: c.td, BrakeDecel: 2.5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Exit.Taxiway != c.exit {
+			t.Errorf("%s at %.0f kt: exit %s, want %s", c.end, c.td, p.Exit.Taxiway, c.exit)
+		}
+	}
+}

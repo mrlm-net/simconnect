@@ -43,8 +43,15 @@ func (x exitReach) light() bool {
 	return x.touchdownKts > 0 && x.touchdownKts < exitLightTouchdownKts
 }
 
+// exitSlowTouchdownKts: below this touchdown speed (not light) an aircraft
+// is planned at its own speed too, touching down where an airliner does: a
+// business jet or turboprop makes the earlier exits (the user, live: OKKST,
+// a PC-24 at 103 kt, could have left 06 at L). Airliners, at this or more,
+// keep the airliner's plan.
+const exitSlowTouchdownKts = 115.0
+
 func (x exitReach) speeds() (td, decel float64) {
-	if x.light() {
+	if x.light() || x.touchdownKts > 0 && x.touchdownKts < exitSlowTouchdownKts {
 		decel = RolloutDecel
 		if x.decel > 0 {
 			decel = x.decel

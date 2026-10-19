@@ -179,6 +179,7 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	}
 	dist = math.Max(10, math.Min(dist, fp.DistanceNM-20))
 	pos, altFt, _ := fp.PositionAt(dist)
+	altFt = flightLevelFt(altFt)
 	// Nobody appears on top of other traffic.
 	if who := s.nearPoint(pos, altFt); who != "" {
 		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
@@ -201,7 +202,8 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			}
 			break
 		}
-		route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: w.AltFt, Kts: traffic.EnrouteSpeedKts(w.AltFt, kts)})
+		level := flightLevelFt(w.AltFt)
+		route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: level, Kts: traffic.EnrouteSpeedKts(level, kts)})
 		if w.Ident != "" && w.Kind != "" {
 			e.fixes = append(e.fixes, airFix{Ident: w.Ident, LatLon: w.Position})
 		}
@@ -219,6 +221,17 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		}
 	}
 	return s.spawnEnrouteOn(f, e, model, route, along)
+}
+
+// flightLevelFt is ft as a flight level, a whole thousand feet, from
+// FL100 up: a plan's point mid-climb or mid-descent is flown level to the
+// next, and an interpolated 39300 ft sat 700 ft under FL400 traffic (live,
+// TVS1260 under RYR1497, slowed twice).
+func flightLevelFt(ft float64) float64 {
+	if ft < 10000 {
+		return ft
+	}
+	return math.Round(ft/1000) * 1000
 }
 
 // spawnEnrouteOn creates e flying route (its first point where it appears).
@@ -464,6 +477,7 @@ func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []t
 		in := calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= overflightRadiusNM
 		if in || inside {
 			if !inside || n%4 == 0 { // its entry, then every 20 NM
+				alt = flightLevelFt(alt)
 				out = append(out, traffic.RoutePoint{Position: p, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)})
 			}
 			inside = true

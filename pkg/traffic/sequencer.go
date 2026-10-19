@@ -163,6 +163,19 @@ type ApproachSequencer struct {
 	cond      ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
+	// notBefore: no arrival not yet established lands before it (a runway
+	// change: the old direction's departures go first); zero none.
+	notBefore time.Time
+}
+
+// SetNotBefore has no arrival not yet established land before t (zero:
+// none): on a runway change, the runway is the new direction's only once
+// the old direction's departures have gone (the user: departures leave,
+// arrivals are given the spacing).
+func (s *ApproachSequencer) SetNotBefore(t time.Time) {
+	s.mu.Lock()
+	s.notBefore = t
+	s.mu.Unlock()
 }
 
 // SetDepartureSlots asks for n departure gaps (DepartureGapNM) in front of
@@ -609,12 +622,15 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	planned := fixed // sorted by landing time
 	var lastFree *slot
 	s.mu.Lock()
-	slots := s.depSlots
+	slots, notBefore := s.depSlots, s.notBefore
 	s.mu.Unlock()
 	gapped := map[string]float64{} // arrivals behind a departure gap: its NM
 	for k := range free {
 		f := free[k]
 		at := f.eta
+		if at.Before(notBefore) {
+			at = notBefore // the runway not yet its: after the old direction's departures
+		}
 		// Never before the one ahead of it in the order.
 		ahead := lastFree
 		if ahead == nil && len(fixed) > 0 {

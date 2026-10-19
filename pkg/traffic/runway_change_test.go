@@ -279,46 +279,89 @@ func TestChangeEntryWaitingOnStand(t *testing.T) {
 	}
 }
 
-// Past its STAR's entry fix when the runway changes (live, TVS356 on
-// VLM 6 for 24, then 06): the new STAR is joined ahead of it, not flown
-// back to VLM against the arrivals coming in on it.
-func TestArrivalChangeRunwayJoinsAhead(t *testing.T) {
+// A runway change never sends an arrival up (live, BAW572 at 7200 ft
+// climbed toward the new STAR's first altitudes).
+func TestArrivalChangeRunwayNoClimb(t *testing.T) {
 	g := lkprGraph(t)
 	procs := lkprProcedures(t)
-	to24, err := procs.Arrival("24", "VLM")
+	to06, err := procs.Arrival("06", "LOMKI")
 	if err != nil {
 		t.Fatal(err)
 	}
-	to06, err := procs.Arrival("06", "VLM")
+	to30, err := procs.Arrival("30", "LOMKI")
+	if err != nil {
+		t.Skip("no LOMKI arrival for 30")
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "A320", Tail: "BAW572",
+		InjectApproach: true, Procedure: to06, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	at := to06[len(to06)/2].Position
+	agl := 6000.0 // about 7200 ft MSL
+	ctl.Handle(arrivalPositionMsg(mon, 77, at, agl, 65, 180, false))
+	if err := ctl.ChangeRunway("30", to30, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
+	now := ctl.altitudeNow()
+	for i, w := range ctl.proc.Waypoints {
+		if alt := mslAltitude(w); alt > now+1 {
+			t.Fatalf("waypoint %d at %.0f ft, above the %.0f ft it flies at", i, alt, now)
+		}
+	}
+}
+
+// A runway change near the field: the new STAR is flown from its first
+// point, not joined at the nearest one, its final's (live, AUA133 cleared
+// for the ILS at once and taken for landing in a minute, its whole STAR
+// still to fly).
+func TestArrivalChangeRunwayFromItsFirstPoint(t *testing.T) {
+	g := lkprGraph(t)
+	procs := lkprProcedures(t)
+	to06, err := procs.Arrival("06", "LOMKI")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, at := range []int{2, 3} {
-		ec := &eventClient{}
-		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
-		c22, _ := g.Layout.ParkingIndex("C22")
-		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "B738", Tail: "TVS356",
-			InjectApproach: true, Procedure: to24, RollThroughChance: -1}); err != nil {
-			t.Fatal(err)
+	to30, err := procs.Arrival("30", "LOMKI")
+	if err != nil {
+		t.Skip("no LOMKI arrival for 30")
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "A320", Tail: "AUA133",
+		InjectApproach: true, Procedure: to06, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
 		}
-		go func() {
-			for range ctl.Events() {
-			}
-		}()
-		ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
-		mon := DefaultArrivalRequestBase + arrReqMonitor
-		pos := to24[at].Position
-		hdg := localBearing(to24[at-1].Position, pos)
-		ctl.Handle(arrivalPositionMsg(mon, 77, pos, 8000, hdg, 250, false))
-		if err := ctl.ChangeRunway("06", to06, nil); err != nil {
-			t.Fatal(err)
-		}
-		ctl.mu.Lock()
-		first := airport.LatLon{Lat: ctl.corners[0].Latitude, Lon: ctl.corners[0].Longitude}
-		name := ctl.cornerNames[0]
-		ctl.mu.Unlock()
-		if d := math.Abs(headingDiff(hdg, localBearing(pos, first))); d > 90 {
-			t.Errorf("at %s, heading %.0f: the new STAR starts at %s, %.0f° off its heading (behind it)", to24[at].Ident, hdg, name, d)
-		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	at := to30[len(to30)-1].Position // by the new final already
+	ctl.Handle(arrivalPositionMsg(mon, 77, at, 3000, 65, 180, false))
+	if err := ctl.ChangeRunway("30", to30, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctl.Handle(arrivalPositionMsg(mon, 77, at, 3000, 65, 180, false))
+	if ctl.TurningFinal() {
+		t.Fatal("turning final at once on the new STAR's first point")
+	}
+	ctl.mu.Lock()
+	k := ctl.cornerAhead()
+	ctl.mu.Unlock()
+	if k != 0 {
+		t.Fatalf("flies to corner %d of the new STAR, want its first", k)
 	}
 }

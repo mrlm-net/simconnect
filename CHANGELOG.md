@@ -57,6 +57,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.95.8] - 2026-10-19
+
+### Fixed
+
+- Holding: never for sequencing or a conflict, only on a trigger (an emergency, the weather, a closure); a delay is absorbed by speed and vectors, a second dog-leg only after the first was flown and 2 min or more are still to lose (`SecondDogLegFrom`).
+- Release planning: an arrival enters its STAR only when, flown along it at its levels and speed, it keeps separated from our arrivals already on their way (20 min ahead); else it waits for a later release (live, GSEXC and OKFLS merging at FL100, vectored apart).
+- Departures: a climb above the arrivals is cleared only clear of them, flown at the rate the aircraft climbs (at least 1500 fpm), not at the cleared level by its next point, with a mile to spare; else "cross (fix) at or below (level)" (Doc 4444 12.3.2.4 a), else the climb is held and cleared once clear. An arrival level now counts as staying level. A climb resumed after a conflict is checked against every arrival. The conflict watch predicts departures the same way (live, KLM216 cleared to FL240 into SWR811 at FL100; AUA939 into TVS706 stopped at FL095; TVS608 cleared on into TVS706). Departures on the same route within 8 min get levels in trail, 2000 ft apart.
+- Runway in use: the wind of the last 30 min, its direction too, must keep a runway within its limits before it is changed back to; a preferred runway (LKPR 24, then 06) is kept while within its limits; a change is forced only 2 kt or more beyond them, else made at a gap within 5 min. Near calm the preferred runway is gone back to after a closure (live, LKPR stayed on 12 after 06 reopened: each puff under 3 kt started the wait again, and 06 and 24 took turns as the choice).
+- Runway change: departures taxiing, holding short, lined up or rolling finish on the old runway (not one closed); arrivals established within 15 NM land there; the others join the new runway's STAR at its entry ahead, else at its IAF, flown from that first point (live, AUA133 cleared for the ILS at once and taken for landing in a minute, its whole STAR to fly). The new runway's first arrival is planned after the old runway's departures with a 3 min margin. No approach clearance for a runway closed or no longer in use (live, AUA133 "cleared ILS approach runway 06" 5 s after 06 closed).
+- Tower: opposite ends of one runway are never used against each other (an arrival within 12 NM or rolling, a departure lined up, rolling or airborne); no take-off under a go-around climbing out. Crossing runways: no take-off or landing while one of ours uses a crossing runway and has not passed the crossing, an arrival within 3 NM holding take-offs (live, TVS833 rolled on 30 and CSA522 was cleared for 24 at LKPR).
+- Vectors: on vectors the approach clearance with the heading to intercept comes 3 NM before the turn onto the final course, however far out (live, OKKSC turned onto a 26 NM final unsaid); a spacing heading already said and flown is not said again.
+- Ground: an aircraft does not hold for an oncoming one stopped behind it, in its way (live, CSA839 and TVS1120 on J, 19 min until TVS1120 was removed); pushbacks wait while 4 departures are already taxiing out ("hold on the stand, expect a few minutes delay"); a stale taxi re-plan of an aircraft moved since is dropped.
+- Arrivals below 115 kt on touchdown are planned to an earlier exit at their own speed (a PC-24 at LKPR: 06 L, 24 C).
+- TCAS, separation and conflicts: an aircraft on the ground or under 50 ft is not traffic (live, UAE530 TA with an aircraft at the gate); two aircraft both level 800 ft or more apart count as separated.
+- En route: levels from FL100 up are whole flight levels (live, TVS1260 at 39300 ft, 700 ft under FL400 traffic); the conflict watch does not say the same instruction twice.
+
 ## [0.95.7] - 2026-10-18
 
 ### Fixed

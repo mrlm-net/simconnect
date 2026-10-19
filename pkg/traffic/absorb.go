@@ -33,7 +33,15 @@ const (
 	// MinDogLegOut: a vector off the STAR flown for less than this before
 	// the turn back is not given (live, OKBZM told to resume 12 s after it).
 	MinDogLegOut = 30 * time.Second
+	// SecondDogLegFrom: a second dog-leg on one approach only for this much
+	// time or more still to lose; less is left to speed.
+	SecondDogLegFrom = 2 * time.Minute
 )
+
+// extraFor is the time a.ExtraNM takes at its speed (speed when none).
+func extraFor(a Absorption, speed float64) time.Duration {
+	return time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+}
 
 // Absorption is how an arrival loses a delay.
 type Absorption struct {
@@ -219,7 +227,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		out = append(out, w)
 	}
 	stretched := false
-	baseAt, apexAt := -1, -1 // the new base turn, the dog-leg's apex (in out)
+	baseAt, apexAt := -1, -1          // the new base turn, the dog-leg's apex (in out)
 	var legFrom, legTo airport.LatLon // the leg the dog-leg stretches
 	// A longer downwind, the way a controller extends it: on along the
 	// downwind past its last point, the base turn and the final that much
@@ -255,8 +263,10 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		a.ExtraNM = 0
 	}
 	// A dog-leg given already: its apex further out while still ahead (one
-	// dog-leg, lengthened as a controller does); flown past it, no second
-	// one — the rest by speed, or the hold.
+	// dog-leg, lengthened as a controller does); flown past it, a second one
+	// only for SecondDogLegFrom or more (holds are for emergencies, weather
+	// and closures, the user: live, FVLJX and EZY1907 held at PR707 for
+	// the sequence), the rest by speed.
 	reuse, base := -1, 0.0
 	if a.ExtraNM > 0 && !stretched && c.dogLeg != nil {
 		at := -1 // its apex in the route: gone from it (re-planned since), none
@@ -273,13 +283,16 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		}
 		if withinNM > 0 && (reuse < 0 || cum[reuse+1] > withinNM) {
 			// For spacing: a vector of its own before they meet, not the
-			// one given for the sequence further on.
-			reuse, c.dogLeg = -1, nil
+			// one given for the sequence further on — which stays known (it is
+			// still in the route) until a new one is given below.
+			reuse = -1
 		}
 		switch {
 		case c.dogLeg == nil: // re-planned since: a new dog-leg below
-		case reuse < 0: // flown past its apex: no second one
-			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+		case reuse < 0 && extraFor(a, speed) >= SecondDogLegFrom: // flown past its apex: a second one below
+			c.dogLeg = nil
+		case reuse < 0: // flown past its apex, little more to lose: by speed
+			a.Left += extraFor(a, speed)
 			a.ExtraNM = 0
 		default:
 			base, legFrom, legTo, apexAt = c.dogLeg.extraNM, c.dogLeg.from, c.dogLeg.to, reuse
@@ -290,10 +303,11 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	// The dog-leg on the longest leg ahead (from here, or between STAR
 	// points), off to the side away from the runway's centreline: only where
 	// the STAR has no downwind to extend.
-	// One dog-leg an approach: given one already (flown, or re-planned
-	// away), the rest is left for speed or the hold.
-	if a.ExtraNM > 0 && !stretched && reuse < 0 && c.dogLegs > 0 {
-		a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+	// One dog-leg an approach as a rule: given one already (flown, or
+	// re-planned away), another only for SecondDogLegFrom or more (live,
+	// OKBZM: out and back for 12 s, then out again); less is left to speed.
+	if a.ExtraNM > 0 && !stretched && reuse < 0 && c.dogLegs > 0 && extraFor(a, speed) < SecondDogLegFrom {
+		a.Left += extraFor(a, speed)
 		a.ExtraNM = 0
 	}
 	if a.ExtraNM > 0 && !stretched && reuse < 0 {
@@ -379,14 +393,26 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	}
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, plainNames, 0
+	prevOut := 0.0
+	if c.dogLeg != nil {
+		prevOut = c.dogLeg.outHdg
+	}
 	if apexAt >= 0 {
 		c.dogLeg = &dogLegState{apex: airport.LatLon{Lat: plain[apexAt].Latitude, Lon: plain[apexAt].Longitude}, from: legFrom, to: legTo, extraNM: base + extra}
 	}
 	if v := vectorsFor(pos, plain, plainNames, baseAt, apexAt); len(v) > 0 {
-		// Lengthened on its way out: the heading it flies, unless it changes
-		// by more than a correction; the turn back, at the new apex.
-		if reuse >= 0 && v[0].Fix == "" && math.Abs(headingDiff(v[0].HeadingDeg, c.last.Heading)) < dogLegResayDeg {
+		// Lengthened on its way out: the heading it flies or was given, unless
+		// it changes by more than a correction; the turn back, at the new
+		// apex (live, THY902 "fly heading 241", then "239" 14 s later while
+		// still turning).
+		if reuse >= 0 && v[0].Fix == "" && (math.Abs(headingDiff(v[0].HeadingDeg, c.last.Heading)) < dogLegResayDeg ||
+			prevOut != 0 && math.Abs(headingDiff(v[0].HeadingDeg, prevOut)) < dogLegResayDeg) {
 			v = v[1:]
+			if c.dogLeg != nil {
+				c.dogLeg.outHdg = prevOut
+			}
+		} else if apexAt >= 0 && c.dogLeg != nil && v[0].Fix == "" {
+			c.dogLeg.outHdg = v[0].HeadingDeg
 		}
 		c.vectors, c.vectored = v, true
 	}
@@ -415,7 +441,9 @@ func extendDownwind(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, al
 // and final (f): the result is out[:k+1], the base turn, the point on the
 // final, out[f:].
 func extendDownwindAt(pos airport.LatLon, out []types.SIMCONNECT_DATA_WAYPOINT, align, join types.SIMCONNECT_DATA_WAYPOINT, x float64) ([]types.SIMCONNECT_DATA_WAYPOINT, int, int, bool) {
-	ll := func(w types.SIMCONNECT_DATA_WAYPOINT) airport.LatLon { return airport.LatLon{Lat: w.Latitude, Lon: w.Longitude} }
+	ll := func(w types.SIMCONNECT_DATA_WAYPOINT) airport.LatLon {
+		return airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+	}
 	a, j := ll(align), ll(join)
 	hOut := calc.BearingDegrees(j.Lat, j.Lon, a.Lat, a.Lon) // away from the runway
 	x = math.Min(x, MaxStretchNM/2)
@@ -589,8 +617,49 @@ const (
 func (c *ArrivalController) TurningFinal() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.flyingProc && len(c.corners) >= 3 && c.last.Position != (airport.LatLon{}) && c.cornerAhead() >= len(c.corners)-2
+	if !c.flyingProc || len(c.corners) < 3 || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	n, k := len(c.corners), c.cornerAhead()
+	if k >= n-2 {
+		return true
+	}
+	if !c.vectored {
+		return false
+	}
+	// On vectors: the turn onto the final course is where its straight
+	// legs begin, however far out (live, OKKSC turned onto a 26 NM final
+	// from its base heading with no call, the clearance due only at the
+	// final's last two points).
+	at := c.finalTurn()
+	if k > at {
+		return true
+	}
+	w := c.corners[at]
+	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= interceptLeadNM
 }
+
+// interceptLeadNM: on vectors, the approach clearance with the heading to
+// intercept comes this far before the turn onto the final course.
+const interceptLeadNM = 3.0
+
+// finalTurn is the index of the corner where the straight legs along the
+// final course begin (within finalAlignedDeg of it). c.mu held, corners 3+.
+func (c *ArrivalController) finalTurn() int {
+	n := len(c.corners)
+	leg := func(i int) float64 { // the leg from corner i to i+1
+		a, b := c.corners[i], c.corners[i+1]
+		return calc.BearingDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude)
+	}
+	course, at := leg(n-3), n-3
+	for at > 0 && math.Abs(headingDiff(leg(at-1), course)) < finalAlignedDeg {
+		at--
+	}
+	return at
+}
+
+// finalAlignedDeg: a leg within this of the final course is along it.
+const finalAlignedDeg = 15.0
 
 // CircuitFixes are the named points still ahead of a go-around's circuit
 // back to the final ("CROSSWIND", "DOWNWIND", "BASE", "FINAL", or the
@@ -1147,6 +1216,8 @@ const (
 type dogLegState struct {
 	apex, from, to airport.LatLon
 	extraNM        float64
+	// outHdg: the heading out it was given (0: none yet).
+	outHdg float64
 }
 
 // dogLegResayDeg: a dog-leg lengthened on the way out is said again only

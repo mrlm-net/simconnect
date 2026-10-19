@@ -226,7 +226,32 @@ type RunwaySelector struct {
 	pending    string    // the better choice (RunwayUse.key)
 	pendingUse RunwayUse
 	gone       time.Time // when the better choice was last gone
+	outSince   time.Time // since when the runway in use is just out of its limits
+	// winds: the wind speeds (gusts included) of the last RunwayWindMemory,
+	// for a change to be within its limits at the strongest of them.
+	winds []windSeen
 }
+
+type windSeen struct {
+	at       time.Time
+	dir, kts float64
+	variable bool
+}
+
+// RunwayWindMemory: a change chosen is within its limits (with the choice
+// margin) at the strongest wind of this long before, not only the wind now
+// (live LKPR, 010° at 5 to 9 kt: 24, the preferred runway, chosen at 5 kt
+// with 3 kt of tailwind, dropped at 9 kt; 06 and 24 swapped six times in
+// four hours, twice a minute apart, arrivals and departures on both ends).
+const RunwayWindMemory = 30 * time.Minute
+
+// RunwayForceOverKts: a runway this far or more beyond its wind limits is
+// changed at once; less, at a gap in the traffic within
+// RunwayOutOfLimitsWait.
+const (
+	RunwayForceOverKts    = 2.0
+	RunwayOutOfLimitsWait = 5 * time.Minute
+)
 
 // RunwayChangeMaxWait is how long a change that is due waits for its
 // RunwaySelector.Ready moment.
@@ -284,6 +309,7 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	fresh := ActiveRunways(l, w, withMargin(lim, RunwayChoiceMarginKts))
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	peak := s.peakWind(now, w)
 	after := s.ChangeAfter
 	if after == 0 {
 		after = RunwayChangeAfter
@@ -318,7 +344,24 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	little := fresh.HeadwindKts-curHead < RunwayBetterByKts && !slices.ContainsFunc(lim.Preferred, func(p string) bool {
 		return normalizeEnd(p) == fresh.Departure.Name && normalizeEnd(p) != s.use.Departure.Name
 	})
-	if (w.WindKts < RunwayCalmKts || little) && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+	// A runway in use preferred over the better choice (earlier in
+	// Preferred) is kept while within its limits, however
+	// much more headwind another has (live LKPR: 24 with 3 kt of tailwind
+	// left for 06 ten minutes after the start).
+	rank := func(name string) int { // its place among the preferred, else after them
+		if i := slices.IndexFunc(lim.Preferred, func(p string) bool { return normalizeEnd(p) == name }); i >= 0 {
+			return i
+		}
+		return len(lim.Preferred)
+	}
+	if rank(s.use.Departure.Name) < rank(fresh.Departure.Name) {
+		little = true
+	}
+	// Calm keeps the runway in use, unless that one is less preferred than
+	// the choice (live LKPR: 12 after 06 reopened, kept at 070°/2–4 kt, each
+	// puff under RunwayCalmKts starting its wait again).
+	calm := w.WindKts < RunwayCalmKts && rank(fresh.Departure.Name) >= rank(s.use.Departure.Name)
+	if (calm || little) && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
 		s.since = time.Time{}
 		kept := s.use
 		kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
@@ -326,21 +369,61 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		return kept
 	}
 	s.gone = time.Time{}
-	// Out of limits: change now, to one within them (none within them, the
-	// best of the out-of-limits ones would flip with every gust).
-	if fresh.WithinLimits && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+	// Well out of limits (RunwayForceOverKts beyond them): change now, to
+	// one within them (none within them, the best of the out-of-limits ones
+	// would flip with every gust). Just out of them: a change that is due,
+	// at a gap in the traffic, waited for RunwayOutOfLimitsWait at most (live
+	// LKPR: 24 at 5.7 kt of tailwind changed at once, arrivals moved to the 06
+	// final with a departure lined up on 24).
+	forced := withMargin(lim, -RunwayForceOverKts)
+	outNow := slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) })
+	if outNow && s.outSince.IsZero() {
+		s.outSince = now
+	}
+	if !outNow {
+		s.outSince = time.Time{}
+	}
+	if fresh.WithinLimits && outNow && (slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, forced) }) ||
+		now.Sub(s.outSince) >= RunwayOutOfLimitsWait || s.Ready == nil || s.Ready(s.use, fresh)) {
+		s.outSince = time.Time{}
 		s.use, s.since = fresh, time.Time{}
 		return fresh
 	}
 	// A better choice: only once it has held.
-	if s.since.IsZero() || fresh.key() != s.pending {
-		s.since, s.pending = now, fresh.key()
+	// Back to a more preferred runway: its wait goes on while the choice
+	// swaps between such ones (live LKPR, near calm: 06 and 24 by turns
+	// started the wait on 12 again each minute).
+	back := func(name string) bool { return rank(name) < rank(s.use.Departure.Name) }
+	if s.since.IsZero() || fresh.key() != s.pending && !(back(fresh.Departure.Name) && back(s.pendingUse.Departure.Name)) {
+		s.since = now
 	}
+	s.pending = fresh.key()
 	s.pendingUse = fresh
 	// Due: at the Ready moment, or once that has been waited for too long.
 	wait := s.MaxChangeWait
 	if wait == 0 {
 		wait = RunwayChangeMaxWait
+	}
+	// Not to one the wind of the last RunwayWindMemory takes out of its
+	// limits again: the runway in use stays.
+	// Every wind of that memory, its direction too (live LKPR: back to 24
+	// at 350°/6 kt, out again at 024°/7 kt twenty minutes later).
+	margined := withMargin(lim, RunwayChoiceMarginKts)
+	_ = peak
+	outAtSome := false
+	for _, x := range s.winds {
+		seen := w
+		seen.WindDirTrue, seen.WindKts, seen.GustKts, seen.Variable = x.dir, x.kts, 0, x.variable
+		if slices.ContainsFunc(append(slices.Clone(fresh.Departures), fresh.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, seen, margined) }) {
+			outAtSome = true
+			break
+		}
+	}
+	if outAtSome { // still pending: it goes once the memory is clear
+		kept := s.use
+		kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
+		kept.Approach = ApproachFor(w)
+		return kept
 	}
 	if held := now.Sub(s.since); held >= after && (s.Ready == nil || held >= after+wait || s.Ready(s.use, fresh)) {
 		s.use, s.since = fresh, time.Time{}
@@ -350,6 +433,22 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
 	kept.Approach = ApproachFor(w)
 	return kept
+}
+
+// peakWind notes w and is the strongest wind (gusts included) of the last
+// RunwayWindMemory. s.mu held.
+func (s *RunwaySelector) peakWind(now time.Time, w Weather) float64 {
+	s.winds = append(s.winds, windSeen{at: now, dir: w.WindDirTrue, kts: max(w.WindKts, w.GustKts), variable: w.Variable})
+	i := 0
+	for i < len(s.winds) && now.Sub(s.winds[i].at) > RunwayWindMemory {
+		i++
+	}
+	s.winds = s.winds[i:]
+	peak := 0.0
+	for _, x := range s.winds {
+		peak = max(peak, x.kts)
+	}
+	return peak
 }
 
 // withMargin is lim with its wind limits margin knots tighter.

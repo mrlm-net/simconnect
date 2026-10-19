@@ -98,6 +98,16 @@ func (c *ArrivalController) VectorDue() (Vector, bool) {
 			}
 		}
 		c.vectors = c.vectors[1:]
+		// The same heading for spacing as it was given and flies: not said
+		// again (live, DUNJQ "fly heading 241, for spacing" twice, its
+		// downwind extended further).
+		if v.For == "spacing" && c.spacingSaid != 0 && math.Abs(headingDiff(v.HeadingDeg, c.spacingSaid)) < dogLegResayDeg &&
+			math.Abs(headingDiff(v.HeadingDeg, c.last.Heading)) < 2*dogLegResayDeg {
+			continue
+		}
+		if v.For == "spacing" {
+			c.spacingSaid = v.HeadingDeg
+		}
 		if v.For != "spacing" && v.Fix == "" {
 			v.Turn = TurnTo(c.last.Heading, v.HeadingDeg)
 		}

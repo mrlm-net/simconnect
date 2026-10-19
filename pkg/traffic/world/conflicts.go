@@ -54,8 +54,10 @@ type conflictWatch struct {
 	// stopped: ours told to stop a climb or descent for traffic, cleared
 	// on once clear of it.
 	stopped map[string]stoppedLevel
-	now     []traffic.Conflict
-	done    []resolutionView // the latest last (at most 50)
+	// lastSaid: by callsign, the last instruction the watch said to it.
+	lastSaid map[string]string
+	now      []traffic.Conflict
+	done     []resolutionView // the latest last (at most 50)
 }
 
 // stoppedLevel is a climb or descent stopped for traffic: who says the
@@ -138,9 +140,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// A departure is never slowed: it climbs at its climb speed and is
 	// turned or levelled instead (live, AUA818 told "reduce speed to 200
 	// knots" passing 2400 ft).
+	// rechecking: flying a change that is not working (changedBefore): it
+	// may be given another.
+	rechecking := map[string]bool{}
 	canSteer := func(a traffic.TrackedAircraft, kind traffic.ResolutionKind) bool {
 		w.mu.Lock()
-		busy := now.Before(w.busy[a.Tail])
+		busy := now.Before(w.busy[a.Tail]) && !rechecking[a.Tail]
 		w.mu.Unlock()
 		if !a.Ours || busy {
 			return false
@@ -220,7 +225,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return nil
 		}
 		if it.dep != nil {
-			return it.dep.ClimbPlan(a.Position)
+			return reachable(a, it.dep.ClimbPlan(a.Position)) // as it climbs, not at the cleared level at once
 		}
 		if it.arr != nil && it.arr.State() == traffic.ArrivalApproaching {
 			return it.arr.ProcedurePlan()
@@ -239,6 +244,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
 		if busy && c.In <= conflictRecheckIn && w.changedBefore(now, c.A, c.B) {
 			busy = false // its change is not working: another
+			rechecking[c.A], rechecking[c.B] = true, true
 		}
 		w.mu.Unlock()
 		if first {
@@ -309,8 +315,19 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)})
 		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
-		// Before routine calls on the frequency: a separation instruction.
-		w.s.cc.callAt(icao, pos, r.Callsign, prioSeparation, func() { w.s.cc.radio.Transmit(icao, tx) })
+		// Before routine calls on the frequency: a separation instruction —
+		// not the one it was given last and flies (live, TVS1260 "reduce speed
+		// to Mach 0.71, due traffic" twice, five minutes apart).
+		w.mu.Lock()
+		again := w.lastSaid[r.Callsign] == tx.Text
+		if w.lastSaid == nil {
+			w.lastSaid = map[string]string{}
+		}
+		w.lastSaid[r.Callsign] = tx.Text
+		w.mu.Unlock()
+		if !again {
+			w.s.cc.callAt(icao, pos, r.Callsign, prioSeparation, func() { w.s.cc.radio.Transmit(icao, tx) })
+		}
 		said := tx.Text
 		w.mu.Lock()
 		w.busy[r.Callsign] = now.Add(conflictLookAhead)
@@ -421,6 +438,21 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// Stopped for traffic and clear of it now: on to the level planned
 	// (the route resumes it as the change ends).
 	for cs, st := range resume {
+		// A departure's climb on: only clear of every arrival, not just
+		// past the one it was stopped for (live, TVS608 stopped for CSA1876,
+		// cleared on to FL240 into TVS706 at 10000 ft, 5.0 NM and 595 ft).
+		if it := w.s.cc.byTail(cs); it != nil && it.dep != nil && st.climb {
+			if who := it.climbMeets(st.altFt); who != "" {
+				if who != st.other {
+					w.s.cc.log.printf("%-6s conflict over, but the climb would meet %s: level kept", cs, who)
+				}
+				st.other, st.lastNM = who, 0
+				w.mu.Lock()
+				w.stopped[cs] = st
+				w.mu.Unlock()
+				continue
+			}
+		}
 		w.s.cc.log.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
 		// A departure not identified yet (still with the tower, or its
 		// check-in not answered): its identification clears the climb, the
@@ -574,8 +606,10 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				} else {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 				}
-			} else if hold := math.Floor(me.AltFt/500) * 500; me.AltFt >= them.AltFt-arrivalLevelAboveFt && hold >= arrivalDescendMinFt {
-				// Level with it (within the vertical minimum): the trailer stops
+			} else if hold := math.Floor(me.AltFt/500) * 500; me.AltFt >= them.AltFt-arrivalLevelWithFt && hold >= arrivalDescendMinFt {
+				// Level with it, or above it within the vertical minimum (not
+				// below: the one ahead would descend through its level): the
+				// trailer stops
 				// its descent where it is and the one ahead, landing first,
 				// descends away from it on its own STAR. Sent down under it
 				// instead, the two only met lower down (live, OKCMB told 9000 ft
@@ -609,30 +643,18 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	if now.Sub(refused) < conflictRefusedWait {
 		return // nothing approach can do for it yet (live: "slow refused" every 5 s)
 	}
-	action := "slow"
+	// Slowed and vectored as far as it goes already, it is not held: holds
+	// are for emergencies, weather and closures (the user). The level split
+	// above and the next look keep them apart.
 	err := q.approachSpace(trailer.it.ICAO, cs, spacingDelay(c, me), spacingWithinNM(c, me))
-	if errors.Is(err, errNothingToSlow) {
-		// Slowed and stretched as far as it goes already: it holds now
-		// (live, CSA1257 and AFR1552 merging on GOLO4S and LOMK8S: "number
-		// 3" changed nothing, and they met at 0.5 NM).
-		action = "hold"
-		err = q.approachAction(trailer.it.ICAO, cs, action)
-	}
 	if err != nil {
-		w.s.cc.log.printf("%-6s conflict with %s: %s refused: %v", cs, oth, action, err)
+		w.s.cc.log.printf("%-6s conflict with %s: slow refused: %v", cs, oth, err)
 		q.mu.Lock()
 		q.refused[cs] = now
 		q.mu.Unlock()
 		return
 	}
-	if action == "hold" {
-		// Held until the conflict is over, not released by the sequence's
-		// small delay a second later (live, CSA1257 at ERASU).
-		q.mu.Lock()
-		q.conflictHeld[cs] = conflictHold{other: oth, at: now}
-		q.mu.Unlock()
-	}
-	w.s.cc.log.printf("%-6s conflict with %s: %s (arrival on its STAR)", cs, oth, map[string]string{"slow": "loses time", "hold": "holds"}[action])
+	w.s.cc.log.printf("%-6s conflict with %s: loses time (arrival on its STAR)", cs, oth)
 	recheck()
 	w.mu.Lock()
 	w.slowed[cs] = true
@@ -643,7 +665,10 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 // above it, for this far along its STAR.
 const (
 	arrivalLevelAboveFt = 1000.0
-	arrivalLevelForNM   = 20.0
+	// arrivalLevelWithFt: a trailer this little below the one ahead counts
+	// as level with it; lower, its descent is not stopped under it.
+	arrivalLevelWithFt = 200.0
+	arrivalLevelForNM  = 20.0
 	// arrivalLevelFromNM: the level is given only this far or more to go.
 	arrivalLevelFromNM = 20.0
 	// arrivalDescendMinFt: an arrival is sent down under another no lower

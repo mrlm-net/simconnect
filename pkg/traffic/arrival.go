@@ -346,6 +346,9 @@ type ArrivalController struct {
 	// extended downwind, each at its corner; vectored: off the STAR on
 	// vectors, cleared for the approach with the intercept heading (#661).
 	vectors           []Vector
+	// spacingSaid: the heading of the last "fly heading, for spacing" said
+	// (0: none), not said again for a re-plan that keeps it.
+	spacingSaid float64
 	vectored          bool
 	blend             joinBlend
 	flapsPct          float64       // injected flap setting
@@ -658,6 +661,11 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 
 func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	c.simNow = m.SimTime
+	// A go-around's level reached: re-plans cap it where it is again (not
+	// at the level later, from below, climbing it back up).
+	if c.goAroundFt > 0 && m.AGL > 0 && m.AGL+convert.MetersToFeet(c.req.Graph.Layout.Altitude) >= c.goAroundFt-goAroundLevelMarginFt {
+		c.goAroundFt = 0
+	}
 	if m.AGL < 15 { // on the ground: in the ground picture (#334)
 		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
 		if c.mover != nil && c.state >= ArrivalVacating { // injected: where it is placed

@@ -307,3 +307,22 @@ func TestGroundCongestionRunwayQueue(t *testing.T) {
 		t.Errorf("two taxiing: %d held, want 1", len(got))
 	}
 }
+
+// Departure management (live LKPR: nine departures at the holding point,
+// every arrival behind a double gap): with DefaultMaxDepartureQueue
+// departures taxiing out or at the runway, the next stays on its stand.
+func TestCheckDepartureQueue(t *testing.T) {
+	fl := func(cs string, s FlightStatus, at bool) ManagedFlight {
+		return ManagedFlight{Flight: Flight{Callsign: cs}, Kind: "departure", Status: s, AtRunway: at}
+	}
+	three := Situation{Flights: []ManagedFlight{fl("A", FlightTaxiing, true), fl("B", FlightTaxiing, true), fl("C", FlightTaxiing, false), fl("D", FlightBoarding, false)}}
+	if got := CheckDepartureQueue(0)(three); len(got) != 0 {
+		t.Errorf("held with three in the queue: %+v", got)
+	}
+	four := three
+	four.Flights = append(append([]ManagedFlight(nil), three.Flights...), fl("E", FlightTaxiing, false))
+	got := CheckDepartureQueue(0)(four)
+	if len(got) != 1 || got[0].Action != AdviceHold || got[0].Key != fl("D", FlightBoarding, false).Key() {
+		t.Errorf("four in the queue: %+v, want D held on its stand", got)
+	}
+}
