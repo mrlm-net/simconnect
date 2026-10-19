@@ -292,6 +292,12 @@ func (k *core) runwayLimits(g *airport.Graph, lim airport.Limits) nav.RunwayLimi
 	if g != nil {
 		r.Closed = k.closed(g.Layout.ICAO) // the host's closures
 		r.ThresholdEntry = g.ThresholdEntry
+		// A runway made the one in use (UseRunway): the only preference,
+		// whatever the wind.
+		if end := k.usedRunway(g.Layout.ICAO); end != "" {
+			r.Preferred, r.PreferredArrival = []string{end}, []string{end}
+			r.MaxTailwindKts, r.MaxCrosswindKts = usedRunwayWindKts, usedRunwayWindKts
+		}
 	}
 	return r
 }

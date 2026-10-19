@@ -150,15 +150,19 @@ func TurnTo(from, to float64) string {
 }
 
 // HeadingSaid is a true heading as ATC says it: magnetic (magVar:
-// airport.Procedures.MagVar, magnetic = true + magVar), three digits, 360
-// for north.
+// airport.Procedures.MagVar, magnetic = true + magVar), to the nearest
+// HeadingStepDeg (the user: "fly heading 060", never "061"), three digits,
+// 360 for north.
 func HeadingSaid(trueDeg, magVar float64) string {
-	h := math.Mod(math.Round(trueDeg+magVar)+720, 360)
+	h := math.Mod(math.Round((trueDeg+magVar)/HeadingStepDeg)*HeadingStepDeg+720, 360)
 	if h == 0 {
 		h = 360
 	}
 	return fmt.Sprintf("%03.0f", h)
 }
+
+// HeadingStepDeg: headings are given in steps of this many degrees.
+const HeadingStepDeg = 5.0
 
 // Vectored says a radar vector to cs (#661): "CSA1, fly heading 060, for
 // spacing", "CSA1, turn left heading 150, for base", "CSA1, resume own

@@ -136,16 +136,34 @@ func (it *controlled) climbMeets(ft float64) string {
 	}
 	plans := map[string][]traffic.RoutePoint{me.Tail: reachable(*me, climb)}
 	list := []traffic.TrackedAircraft{*me}
-	for _, a := range all {
-		if !a.Ours || a.Grounded() || a.ObjectID == id {
-			continue
+	// Everyone on their way: the arrivals, and the other departures and
+	// en route traffic too (live, a week of logs: 67 departure pairs
+	// cleared up into each other, CSA208 and CSA657 at FL234).
+	if cc.plannedTraffic != nil {
+		others, ways := cc.plannedTraffic(me.Tail)
+		for _, a := range others {
+			if a.ObjectID == id {
+				continue
+			}
+			p := ways[a.Tail]
+			if o := cc.byTail(a.Tail); o != nil && o.arr != nil {
+				p = heldPlan(p, a)
+			}
+			plans[a.Tail] = p
+			list = append(list, a)
 		}
-		o := cc.byTail(a.Tail)
-		if o == nil || o.arr == nil || o.object() != a.ObjectID || o.arr.State() != traffic.ArrivalApproaching {
-			continue
+	} else {
+		for _, a := range all {
+			if !a.Ours || a.Grounded() || a.ObjectID == id {
+				continue
+			}
+			o := cc.byTail(a.Tail)
+			if o == nil || o.arr == nil || o.object() != a.ObjectID || o.arr.State() != traffic.ArrivalApproaching {
+				continue
+			}
+			plans[a.Tail] = heldPlan(o.arr.ProcedurePlan(), a)
+			list = append(list, a)
 		}
-		plans[a.Tail] = heldPlan(o.arr.ProcedurePlan(), a)
-		list = append(list, a)
 	}
 	if len(list) < 2 {
 		return ""

@@ -482,3 +482,15 @@ func TestRadioAircraftInOrder(t *testing.T) {
 		t.Errorf("check-in with tower at %v, before the readback on ground ended at %v", checkIn.Format("15:04:05.0"), readbackEnd.Format("15:04:05.0"))
 	}
 }
+
+// TestWhenVacatedVia: on a runway with exits on both sides the tower says
+// which way and where to vacate, read back with the frequency.
+func TestWhenVacatedVia(t *testing.T) {
+	tx := WhenVacatedVia("OKZYC", PosTower, PosGround, "Ruzyne Ground", "121.91", "left", "L")
+	if tx.Text != "OKZYC, vacate left via L, when vacated contact Ruzyne Ground 121.91" {
+		t.Errorf("said %q", tx.Text)
+	}
+	if rb, ok := Readback(tx); !ok || rb.Text != "Vacate left via L, when vacated Ruzyne Ground 121.91, OKZYC" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+}

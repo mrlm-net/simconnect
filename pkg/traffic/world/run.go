@@ -423,6 +423,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	heardClosed := false
 	go func() {
 		for t := range heard {
+			scenarioHeard(t) // a scenario's "ROLE:heard"
 			if h := st.core.hooks.OnTransmission; h != nil {
 				h(t) // the host: its voice (#419), which cuts the camera as heard
 			} else {
@@ -494,6 +495,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.lineUpBehind = tw.behindNext
 	cc.behindSaid = func(it *controlled) string { return tw.arrivalSaid(tw.nextArrival(it)) }
 	cc.sequencesAt = seqs.at
+	cc.changeDeadline = seqs.changeDeadline
+	cc.plannedTraffic = sched.plannedTraffic
 	cc.toFinal = func(icao, tail string) {
 		if err := seqs.approachAction(icao, tail, "direct"); err != nil {
 			cc.log.printf("%-6s arrival: direct to the final failed: %v", tail, err)

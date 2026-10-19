@@ -141,8 +141,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	}
 	moverProf := prof
 	if onRunway {
-		// Rollout (live feedback): hard braking to SlowKts, then slowing
-		// gently and evenly all the way to the exit speed at the exit.
+		// Rollout: one even deceleration from the touchdown to the exit
+		// speed at the exit (the user: a smooth slowdown into the first
+		// exit), at least rolloutMinDecel, at most braking hard; before, hard
+		// braking to SlowKts and a long roll at it to an exit far down.
 		exitKts := ro.ExitKts
 		if c.plan.Exit.HighSpeed {
 			exitKts = ro.HighSpeedExitKts
@@ -150,11 +152,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if c.rush {
 			exitKts += RushExitKts // expedite vacating
 		}
-		v0, vs, ve := m.GroundKts*ktsToMS, ro.SlowKts*ktsToMS, exitKts*ktsToMS
-		slowAt := math.Max(0, (v0*v0-vs*vs)/(2*ro.BrakeDecel))
-		gentle := math.Max(0.2, (vs*vs-ve*ve)/(2*math.Max(onRwy-slowAt, 1)))
-		path.LimitRange(onRwy, clear, exitKts, gentle)
-		path.LimitRange(slowAt, onRwy, ro.SlowKts, ro.BrakeDecel)
+		v0, ve := m.GroundKts*ktsToMS, exitKts*ktsToMS
+		even := (v0*v0 - ve*ve) / (2 * math.Max(onRwy-rolloutExitLeadM, 1))
+		path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), clear, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
 		// Off the exit to taxi speed, planned firmly so it does not reach
 		// back over the rollout.
 		path.LimitRange(clear, path.Length(), prof.CruiseKts, ro.BrakeDecel)
@@ -448,7 +448,7 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	}
 	pose := c.blend.apply(c.approach.Step(math.Max(dt, 0)), math.Max(dt, 0))
 	pose.MainGearBehindM = c.profile().RefAheadMeters // the flare turns on the main gear too
-	pose.RunwayFt = c.plan.Runway.Altitude / 0.3048 // a steady glide path over any terrain
+	pose.RunwayFt = c.plan.Runway.Altitude / 0.3048   // a steady glide path over any terrain
 	if err := c.inj.PlaceAir(c.objectID, pose); err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
@@ -628,3 +628,11 @@ func (c *ArrivalController) reverseIdle(kts float64) {
 	c.note("reverse idle", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), 0))
 	c.seq.add(c.now(), "reverse idle", 0, kts)
 }
+
+// The rollout's even deceleration (injected landing): to the exit speed
+// rolloutExitLeadM before the exit's turn, at least rolloutMinDecel (m/s²)
+// so a far exit is not crawled to.
+const (
+	rolloutExitLeadM = 60.0
+	rolloutMinDecel  = 1.0
+)

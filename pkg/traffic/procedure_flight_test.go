@@ -190,3 +190,41 @@ func TestFitSTARAndMissed(t *testing.T) {
 		t.Errorf("missed %+v %v", m, err)
 	}
 }
+
+// TestPlanArrivalProcedureNeverClimbs: a long transition after an
+// at-or-below fix is planned no higher than it, each point no higher than
+// the one before (EDDF 07C via EMPAX: ADNIS at or below 10000 ft, then
+// SPESA at 28031 ft on the 3° profile back from the join).
+func TestPlanArrivalProcedureNeverClimbs(t *testing.T) {
+	g := lkprGraph(t)
+	_, end, _ := g.Layout.RunwayEnd("06")
+	out := math.Mod(end.Heading+180, 360)
+	at := func(nm, side float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, out, nm*1852)
+		lat, lon = calc.DisplaceByHeading(lat, lon, math.Mod(out+90, 360), side*1852)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	route := []airport.NavPoint{
+		{Ident: "EMPAX", Position: at(120, 0), AltMin: 29000 / ftPerMeter},
+		{Ident: "ADNIS", Position: at(80, 0), AltMax: 10000 / ftPerMeter},
+		{Ident: "SPESA", Position: at(70, 30)}, // a long way round after it
+		{Ident: "CHA", Position: at(20, 40)},
+		{Ident: "DF635", Position: at(-10, 20)},
+		{Ident: "DF640", Position: at(-10, 8)},
+		{Ident: "DF644", Position: at(20, 8)},
+	}
+	ap, err := PlanArrivalProcedure(route, end, ProcedureJoinNm*1852, g.Layout.Altitude/0.3048+2500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := ap.Spawn.Altitude
+	for i, w := range ap.Waypoints {
+		if w.Altitude > prev+1 {
+			t.Errorf("point %d (%s) at %.0f ft, above %.0f before it", i+1, ap.Names[i], w.Altitude, prev)
+		}
+		if ap.Names[i] != "" && ap.Names[i] != "EMPAX" && w.Altitude > 10001 {
+			t.Errorf("%s at %.0f ft, after ADNIS at or below 10000", ap.Names[i], w.Altitude)
+		}
+		prev = w.Altitude
+	}
+}

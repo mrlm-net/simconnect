@@ -527,6 +527,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamWhen] != "" {
 			s = capital(p[ParamWhen]) + " " + s // CAP 413 4.68
 		}
+		if p[ParamVacate] != "" {
+			s = "Vacate " + p[ParamVacate] + ", " + strings.ToLower(s[:1]) + s[1:]
+		}
 	default:
 		return Transmission{}, false
 	}

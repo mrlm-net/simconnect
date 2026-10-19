@@ -32,16 +32,24 @@ type exitReach struct{ touchdownKts, decel float64 }
 // exitLightTouchdownKts: below this touchdown speed an aircraft is light
 // (exitReach). A light aircraft is planned to touch down
 // exitLightTouchdownMeters past the threshold (its injected landing,
-// crossing the threshold at LightThresholdHeightFt, does at about 220 m)
+// crossing the threshold at LightThresholdHeightFt, does at about 220 m,
+// then its spread)
 // and brakes at its own BrakeDecel.
 const (
 	exitLightTouchdownKts    = 90.0
-	exitLightTouchdownMeters = 250.0
+	exitLightTouchdownMeters = 220.0 + TouchdownSpreadMeters
 )
 
 func (x exitReach) light() bool {
 	return x.touchdownKts > 0 && x.touchdownKts < exitLightTouchdownKts
 }
+
+// exitTouchdownMeters is where an airliner's injected landing is planned
+// to touch down for its exit: its usual point (about 490 m past the
+// threshold, measured live) at the far end of its spread. Planned at the
+// MSFS AI touchdown waypoint (TouchdownMeters) the exit was one it could
+// make only braking hard.
+const exitTouchdownMeters = 490.0 + TouchdownSpreadMeters
 
 // exitSlowTouchdownKts: below this touchdown speed (not light) an aircraft
 // is planned at its own speed too, touching down where an airliner does: a
@@ -66,7 +74,7 @@ func (x exitReach) speeds() (td, decel float64) {
 func (x exitReach) rollout(exitKts float64) float64 {
 	td, decel := x.speeds()
 	v0, v1 := td*knot, math.Min(exitKts, td)*knot
-	at := TouchdownMeters
+	at := exitTouchdownMeters
 	if x.light() {
 		at = exitLightTouchdownMeters
 	}
@@ -169,12 +177,13 @@ func taxiIn(g *airport.Graph, r *airport.Route, alt groundAlt, noseOffset, side 
 	return append(wps, alt.waypoint(oLat, oLon, StandApproachSpeedKts)), nil
 }
 
-// bestExit chooses the runway exit for an arrival to parking: among exits the
-// aircraft can reach at its exit speed (Along ≥ its rollout, exitReach), the
-// one with the lowest taxi-in cost — route length, plus a penalty for every
-// turn sharper than TurnAngleDeg, plus runway occupancy for exits further
-// down (more for a slow aircraft). If none is reachable, the last exit is
-// used.
+// bestExit chooses the runway exit for an arrival to parking: the first
+// exit the aircraft reaches at its exit speed slowing down as planned
+// (Along ≥ its rollout, exitReach), as a crew takes it — not one further
+// down nearer its stand (the user: they slow down and should join the
+// first exit smoothly, not roll on to another). One whose taxi-in crosses
+// back over the runway vacated is passed while another avoids it. If none
+// is reachable, the last exit is used.
 func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, error) {
 	exits, err := g.RunwayExits(runwayEnd)
 	if err != nil {
@@ -207,6 +216,9 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 		}
 		if c < bestCost {
 			best, bestRoute, bestCost = e, r, c
+		}
+		if bestCost < exitCrossBackPenalty {
+			break // the first it makes
 		}
 	}
 	if bestRoute == nil {

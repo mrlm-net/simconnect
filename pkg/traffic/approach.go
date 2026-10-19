@@ -140,8 +140,9 @@ type ApproachMover struct {
 func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
 
 // TouchdownSpreadMeters: an injected landing touches down up to this much
-// before or past its type's usual point.
-const TouchdownSpreadMeters = 10.0
+// before or past its type's usual point (the user: every one landed on the
+// same spot, 480–494 m past the threshold).
+const TouchdownSpreadMeters = 60.0
 
 // SetSideShift moves the touchdown meters right of the centreline
 // (negative: left), faded in over the last sideFadeMeters of the final:

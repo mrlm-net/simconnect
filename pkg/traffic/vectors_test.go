@@ -180,11 +180,11 @@ func TestVectorPhrases(t *testing.T) {
 func TestWithVector(t *testing.T) {
 	tx := Sequenced("KLM868", 3, time.Minute, Absorption{SpeedKts: 210})
 	tx = WithVector(tx, Vector{HeadingDeg: 138, For: "spacing"}, 4)
-	if want := ", fly heading 142, for spacing"; !strings.HasSuffix(tx.Text, want) || !strings.HasPrefix(tx.Text, "KLM868, number 3") {
+	if want := ", fly heading 140, for spacing"; !strings.HasSuffix(tx.Text, want) || !strings.HasPrefix(tx.Text, "KLM868, number 3") {
 		t.Errorf("%q, want the sequence call ending %q", tx.Text, want)
 	}
 	rb, ok := Readback(tx)
-	if !ok || !strings.Contains(rb.Text, "210 knots") || !strings.HasSuffix(rb.Text, "fly heading 142, KLM868") {
+	if !ok || !strings.Contains(rb.Text, "210 knots") || !strings.HasSuffix(rb.Text, "fly heading 140, KLM868") {
 		t.Errorf("readback %q %v, want the speed and the heading", rb.Text, ok)
 	}
 }

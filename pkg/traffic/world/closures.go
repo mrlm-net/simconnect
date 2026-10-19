@@ -24,6 +24,40 @@ import (
 type closures struct {
 	mu sync.Mutex
 	by map[string][]string // ICAO → runway names closed
+	// use: ICAO → the runway end made the runway in use (UseRunway).
+	use map[string]string
+}
+
+// UseRunway makes runway end ("24") the runway in use at icao, for
+// departures and arrivals, whatever the wind ("" gives it back to the
+// wind): a supervisor's choice, as a scenario sets it. It changes as any
+// runway change, planned (the departures under way finish on the old one).
+func (w *World) UseRunway(icao, end string) {
+	icao, end = strings.ToUpper(strings.TrimSpace(icao)), strings.ToUpper(strings.TrimSpace(end))
+	c := w.st.core.closures()
+	c.mu.Lock()
+	if c.use == nil {
+		c.use = map[string]string{}
+	}
+	if end == "" {
+		delete(c.use, icao)
+	} else {
+		c.use[icao] = end
+	}
+	c.mu.Unlock()
+	if end == "" {
+		w.st.core.log.printf("%s: runway in use by the wind again", icao)
+	} else {
+		w.st.core.log.printf("%s: runway %s made the runway in use", icao, end)
+	}
+}
+
+// usedRunway is the runway end made the runway in use at icao ("" none).
+func (k *core) usedRunway(icao string) string {
+	c := k.closures()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.use[strings.ToUpper(icao)]
 }
 
 func (k *core) closures() *closures {
@@ -97,6 +131,20 @@ func registerClosures(mux *http.ServeMux, w *World) {
 		}
 		w.CloseRunway(req.ICAO, req.Runway, req.Closed)
 		writeJSON(rw, map[string]any{"closed": w.ClosedRunways(req.ICAO)})
+	})
+	// POST /api/runway-use {icao, runway}: the runway in use set ("" back
+	// to the wind).
+	mux.HandleFunc("POST /api/runway-use", func(rw http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ICAO   string `json:"icao"`
+			Runway string `json:"runway"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ICAO == "" {
+			http.Error(rw, "icao needed", http.StatusBadRequest)
+			return
+		}
+		w.UseRunway(req.ICAO, req.Runway)
+		writeJSON(rw, map[string]any{"use": w.st.core.usedRunway(req.ICAO)})
 	})
 }
 
@@ -244,3 +292,7 @@ func closedClearances(c *traffic.RunwayClearances, list []traffic.RunwayUser) {
 		c.Waiting[u.Callsign] = "runway closed"
 	}
 }
+
+// usedRunwayWindKts: the wind limits of a runway made the one in use
+// (UseRunway), well past any wind it meets.
+const usedRunwayWindKts = 99.0

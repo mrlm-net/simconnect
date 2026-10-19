@@ -340,3 +340,23 @@ func (g *Graph) exitName(path []NodeID) string {
 	}
 	return ""
 }
+
+// ExitsBothSides reports whether runwayEnd has an exit on the other side
+// of x within exitOtherSideM of it along the runway: where a landing
+// aircraft is told which way to vacate ("vacate left via L").
+func (g *Graph) ExitsBothSides(runwayEnd string, x RunwayExit) bool {
+	exits, err := g.RunwayExits(runwayEnd)
+	if err != nil {
+		return false
+	}
+	for _, e := range exits {
+		if e.Side != x.Side && math.Abs(e.Along-x.Along) <= exitOtherSideM {
+			return true
+		}
+	}
+	return false
+}
+
+// exitOtherSideM: an exit on the other side this close along the runway
+// makes the side worth saying.
+const exitOtherSideM = 500.0

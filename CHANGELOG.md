@@ -57,6 +57,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.99.0] - 2026-10-19
+
+### Added
+
+- Scenarios: `World.StartScenario(sc, hooks)` plays a scripted situation around the traffic (the app's Situation Creator). A cast of our aircraft, each pinned to a role, flies on top of the schedule. Steps each wait side by side for their cue, then a delay in the World's clock (a pause stops it), then run their actions once. Cues: `start`, `t:SEC`, `after:ID`, `ROLE:STATE`, `ROLE:airborne`, `ROLE:heard`, `ROLE:lights:X`, `ROLE:height:FT`, `ROLE:distance:NM` / `distance:>NM`. Actions: spawn, push, goAround, hold on/off, runway close/open/use, say (cancelTakeoff, holdPosition, goAround), camera (the scene moves). Anything else goes to the host's `ScenarioHooks` (Cue, Action, Event), called outside the World's locks. `ScenarioRun.Stop/Status`. For a host that runs the steps itself: `CastSpawn`, `CastCue`, `Act`.
+- `World.UseRunway(icao, end)` and `POST /api/runway-use`: make a runway end the runway in use whatever the wind ("" gives it back to the wind). The change goes as any runway change.
+- Arrivals planned apart where their ways in meet. Each arrival's way (STAR, approach, any dog-leg or longer downwind) is flown 12 min ahead against those landing before it. Where they would meet, the later one loses the time before the meeting point by speed and one vector. A shared named fix is not needed (live, LKPR: TVS1113 on a downwind extended for a runway change into TVS122 on LOMK 8S, caught by the conflict watch at 4m40s).
+- En route traffic planned clear before it appears: its way across at its cruise level is flown 20 min ahead against everyone's planned ways. Where it would meet one, it gets another level of its direction (2000 ft lower, then higher), or waits (live, DLH1050 and THY1880 created in the same second at FL400 on converging tracks).
+
+### Changed
+
+- Runway change as a planned changeover: the old direction's departures get a deadline set once at the change (2½ min each), no longer slid on every look. One still at its holding point after it is re-cleared to the new runway. The first landing on the new direction comes 5 min after the last has gone, far enough out to be no traffic for its climb.
+- Touchdowns spread ±60 m (before ±10 m: live, every one 480–494 m past the threshold). The exit is the first one reachable slowing down as planned, from where an injected landing really touches down, not one further down nearer the stand. The rollout is one even deceleration from the touchdown to the exit speed at the exit, at least 1 m/s², at most braking hard. Before, it braked hard to 80 kt and rolled on to the exit.
+- Headings are said in 5° steps: "fly heading 060", never "061".
+- A landing aircraft on a runway with an exit on the other side near its own is told which way and where: "vacate left via F, when vacated contact Ruzyne Ground 121.91", read back (`WhenVacatedVia`, `Graph.ExitsBothSides`).
+- Departure gaps in the arrivals: the departures waiting at a runway count at their most for 2 min. A gap no longer comes and goes as departures near the runway come and go (live, TVS555 behind ENT891 at 6.4 and 10.5 NM by turns every few seconds, its delay 1 s and 1m46s).
+- A runway change's new STAR is joined no farther out than the arrival is: never sent back up it against the arrivals coming in (live, TVS555, number 2 east of the field, sent back to LOMKI head-on with OKJAF on LOMK 8S). One that joins part-way (out of position) is sequenced behind the arrivals already on the new runway's flow within 40 NM, each behind the one before: vectored in behind, not turned across the stream.
+- Departure radar clears a climb only clear of everyone on their way: the other departures and the en route traffic too, not only the arrivals (a week of logs: 67 departure pairs cleared up into each other, CSA208 and CSA657 at FL234).
+- The merge planning flies an arrival's way against the departures climbing out as well: it passes behind them (a week of logs: 94 arrival–departure conflicts after a vector or an arrival's delay).
+
+### Fixed
+
+- `SimlessAI`: a departure handed back to the AI after its injected climb (unfrozen) is flown. Before, every departure stood where its injected climb left it.
+- `DepartureWaypoints`: a SID that turns back keeps its fixes. A fix behind is left out only when it lies on the track just flown, and a direct-to-fix leg never is. Before, LKPR 24 ARTU 6M, EGLL 09L CPT 4K and others lost every fix and flew the runway heading for 60 km. Also hits live MSFS and the take-off check.
+- `PlanArrivalProcedure`: a descent never climbs. Each point is no higher than the one before, so an at-or-below holds on from its fix (EDDF 07C via EMPAX: SPESA planned at 28031 ft after ADNIS at or below 10000).
+- The tower's "when vacated contact ground" is said once (live, OKECF and TVS122 told twice in the same millisecond).
+
 ## [0.98.1] - 2026-10-19
 
 ### Fixed

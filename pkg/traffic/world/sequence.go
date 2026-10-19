@@ -66,9 +66,14 @@ type sequences struct {
 	// no longer predicts the pair to lose separation.
 	conflictHeld map[string]conflictHold
 	// changeGone: by runway end, when the other end's last departure was
-	// last seen going after a runway change (runwayChangeGap).
+	// last seen going after a runway change (runwayChangeGap); changeBy
+	// when they all should have gone, set once at the change.
 	changeGone map[string]time.Time
-	inConflict   func(a, b string) bool
+	changeBy   map[string]time.Time
+	// depHeld: by runway end, the departures waiting there, held at their
+	// most for depSlotsHold (heldSlots).
+	depHeld    map[string]heldCount
+	inConflict func(a, b string) bool
 	// engaged: an aircraft in or just out of a conflict resolution gets no
 	// shortcut (#785).
 	engaged func(cs string, now time.Time) bool
@@ -247,7 +252,13 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		if delay < absorbFrom && e.ShortBy < spacingActFrom {
+		// Its way meeting the way of one landing before it: planned apart
+		// before they get there (merge_plan.go).
+		mergeNeed, mergeWithin, mergeLead := q.mergeAhead(e, seq, items)
+		if mergeNeed > delay {
+			delay = mergeNeed
+		}
+		if delay < absorbFrom && e.ShortBy < spacingActFrom && mergeNeed == 0 {
 			q.shortcut(now, it, e, seq)
 			continue
 		}
@@ -266,7 +277,14 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			continue
 		}
 		var a traffic.Absorption
-		err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(delay); return err })
+		err := q.cc.do(func() (err error) {
+			if mergeNeed > 0 {
+				a, err = it.arr.AbsorbWithin(delay, mergeWithin) // lost before they meet
+				return err
+			}
+			a, err = it.arr.AbsorbDelay(delay)
+			return err
+		})
 		if errors.Is(err, traffic.ErrNotOnProcedure) && e.ShortBy >= spacingActFrom {
 			lead, ok := dtg[e.Leader]
 			if !ok {
@@ -298,6 +316,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		if e.ShortBy >= spacingActFrom {
 			q.cc.log.printf("%-6s sequence: closing on %s, %s short of its spacing: %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), a)
+		}
+		if mergeNeed > 0 {
+			q.cc.log.printf("%-6s sequence: its way meets %s's in %.0f NM: %s to lose before, %s", e.Callsign, mergeLead, mergeWithin, mergeNeed.Round(time.Second), a)
 		}
 		if it.circuit != nil {
 			// VFR in the circuit (#569): its downwind extended, said so with
@@ -826,7 +847,7 @@ func (q *sequences) tick(now time.Time) {
 			continue
 		}
 		s := q.sequencer(k.icao, k.rwy)
-		s.SetDepartureSlots(waiting[k])
+		s.SetDepartureSlots(q.heldSlots(now, k.icao+" "+k.rwy, waiting[k]))
 		s.SetNotBefore(q.runwayChangeGap(now, k.icao+" "+k.rwy, against[k]))
 		if wx != nil {
 			if g, err := q.cc.graph(k.icao); err == nil {
@@ -1244,11 +1265,17 @@ func (q *sequences) anotherCircuit(it *controlled, e traffic.SequenceEntry, now 
 }
 
 // After a runway change the old direction's departures go before the
-// new direction's first landing: changeDepEvery each, and changeGapMargin
-// after the last has gone.
+// new direction's first landing, as a planned changeover: they have
+// changeDepEvery each from the change, a deadline set once (one still at
+// its holding point after it is re-cleared to the new runway,
+// runwaychange.go), and the first landing comes changeGapMargin after the
+// last has gone — far enough out as it rolls to be no traffic for its
+// climb (live, ENT1744 off 06 into TVS1113 on the 24 approach, 18:31).
+// Sliding with every look, the arrivals were never planned for: they came
+// on as the departures took ten minutes.
 const (
 	changeDepEvery  = 150 * time.Second
-	changeGapMargin = 3 * time.Minute
+	changeGapMargin = 5 * time.Minute
 )
 
 // runwayChangeGap is the time before which no arrival lands on the
@@ -1258,12 +1285,18 @@ func (q *sequences) runwayChangeGap(now time.Time, k string, n int) time.Time {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.changeGone == nil {
-		q.changeGone = map[string]time.Time{}
+		q.changeGone, q.changeBy = map[string]time.Time{}, map[string]time.Time{}
 	}
 	if n > 0 {
 		q.changeGone[k] = now // still going: the margin from the last seen
-		return now.Add(time.Duration(n)*changeDepEvery + changeGapMargin)
+		by, ok := q.changeBy[k]
+		if !ok {
+			by = now.Add(time.Duration(n) * changeDepEvery)
+			q.changeBy[k] = by
+		}
+		return maxTime(by, now).Add(changeGapMargin)
 	}
+	delete(q.changeBy, k)
 	if gone, ok := q.changeGone[k]; ok {
 		if until := gone.Add(changeGapMargin); now.Before(until) {
 			return until
@@ -1271,4 +1304,51 @@ func (q *sequences) runwayChangeGap(now time.Time, k string, n int) time.Time {
 		delete(q.changeGone, k)
 	}
 	return time.Time{}
+}
+
+// changeDeadline is when the departures still going from the other end
+// of the arrival runway end k should have gone (runwayChangeGap); false
+// none.
+func (q *sequences) changeDeadline(k string) (time.Time, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	t, ok := q.changeBy[k]
+	return t, ok
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// heldCount is a count held at its most since at.
+type heldCount struct {
+	n  int
+	at time.Time
+}
+
+// depSlotsHold: the departures waiting at a runway are counted at their
+// most for this long before fewer count: the departure gaps in the
+// arrivals stay as planned while departures come and go near the runway
+// (live, LKPR: TVS555 behind ENT891 at 6.4 NM and 10.5 NM by turns every
+// few seconds, a single and a double gap as two and three waited; its
+// delay 1s and 1m46s, a dog-leg it did not need).
+const depSlotsHold = 2 * time.Minute
+
+// heldSlots is n, the departures waiting at runway end k now, held at
+// the most seen within depSlotsHold.
+func (q *sequences) heldSlots(now time.Time, k string, n int) int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.depHeld == nil {
+		q.depHeld = map[string]heldCount{}
+	}
+	h, ok := q.depHeld[k]
+	if !ok || n >= h.n || now.Sub(h.at) >= depSlotsHold {
+		q.depHeld[k] = heldCount{n, now}
+		return n
+	}
+	return h.n
 }

@@ -417,11 +417,20 @@ func (r *sceneRun) cued(cue string) bool {
 
 // shots builds a beat's shots on the cast.
 func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
+	r.m.mu.Lock()
+	cast := make(map[string]*controlled, len(r.cast))
+	for k, v := range r.cast {
+		cast[k] = v
+	}
+	r.m.mu.Unlock()
+	return castShots(g, cast, list, r.sc.Name)
+}
+
+// castShots builds shots on cast (by role), for scene or scenario name.
+func castShots(g *airport.Graph, cast map[string]*controlled, list []SceneShot, name string) []camera.Shot {
 	var out []camera.Shot
 	for _, s := range list {
-		r.m.mu.Lock()
-		it := r.cast[s.Who]
-		r.m.mu.Unlock()
+		it := cast[s.Who]
 		if it == nil {
 			continue
 		}
@@ -446,7 +455,7 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 		if size.Span <= 0 {
 			size = camera.Size{Span: 36, Length: 38}
 		}
-		name := it.Tail + " " + s.Move
+		label := it.Tail + " " + s.Move
 		var shot camera.Shot
 		switch s.Move {
 		case "crane":
@@ -478,10 +487,10 @@ func (r *sceneRun) shots(g *airport.Graph, list []SceneShot) []camera.Shot {
 			}
 		}
 		if shot == nil {
-			tlog.printf("scene  %s: no move %q", r.sc.Name, s.Move)
+			tlog.printf("scene  %s: no move %q", name, s.Move)
 			continue
 		}
-		out = append(out, named{shot, name})
+		out = append(out, named{shot, label})
 	}
 	return out
 }

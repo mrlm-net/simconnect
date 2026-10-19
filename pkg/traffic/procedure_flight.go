@@ -87,9 +87,15 @@ func DepartureWaypoints(pos airport.LatLon, hdg, altFt float64, route []airport.
 	}
 	for _, n := range route {
 		d := calc.HaversineMeters(cur.Lat, cur.Lon, n.Position.Lat, n.Position.Lon)
-		brg := calc.BearingDegrees(pos.Lat, pos.Lon, n.Position.Lat, n.Position.Lon)
-		if len(out) == 0 && (d < 1852 || math.Abs(headingDiff(brg, hdg)) > 90) {
-			continue // behind, or passed during the injected climb
+		// Passed during the injected climb: left out — at hand, or behind
+		// on the track just flown. A fix behind off that track is where a
+		// SID turns back to, and is flown (LKPR 24 ARTU 6M: climb to 1700
+		// ft, then direct PR407 some 95° off the take-off; EGLL 09L CPT 4K
+		// back west to D253K): left out, all of a SID's fixes went and it
+		// flew the runway heading for 60 km. A direct-to-fix leg is flown
+		// from wherever the aircraft is, never passed.
+		if len(out) == 0 && (d < 1852 || n.LegType != types.SIMCONNECT_FACILITY_LEG_TYPE_DF && passedOnClimb(pos, hdg, n.Position)) {
+			continue
 		}
 		alt = constrain(n, math.Min(top, alt+d/1852*ProcedureClimbFtPerNm))
 		out = append(out, procedureWaypoint(n.Position, alt, ProcedureSpeedKts))
@@ -104,13 +110,23 @@ func DepartureWaypoints(pos airport.LatLon, hdg, altFt float64, route []airport.
 	return append(out, procedureWaypoint(airport.LatLon{Lat: lat, Lon: lon}, math.Max(alt, top), ProcedureSpeedKts))
 }
 
+// passedOnClimb reports whether p lies behind pos on the track hdg it
+// climbed out on (within a mile of it): passed.
+func passedOnClimb(pos airport.LatLon, hdg float64, p airport.LatLon) bool {
+	if math.Abs(headingDiff(calc.BearingDegrees(pos.Lat, pos.Lon, p.Lat, p.Lon), hdg)) <= 90 {
+		return false // ahead
+	}
+	bLat, bLon := calc.DisplaceByHeading(pos.Lat, pos.Lon, math.Mod(hdg+180, 360), 1852)
+	return math.Abs(calc.CrossTrackMeters(pos.Lat, pos.Lon, bLat, bLon, p.Lat, p.Lon)) < 1852
+}
+
 // ArrivalProcedure is the airborne part of an arrival flown by MSFS AI:
 // where the aircraft appears, the waypoints to the join point and the join
 // point itself, JoinMeters out on the extended centreline, where the
 // injected approach takes over.
 type ArrivalProcedure struct {
-	Spawn      types.SIMCONNECT_DATA_INITPOSITION
-	Waypoints  []types.SIMCONNECT_DATA_WAYPOINT
+	Spawn     types.SIMCONNECT_DATA_INITPOSITION
+	Waypoints []types.SIMCONNECT_DATA_WAYPOINT
 	// Names are the fixes of Waypoints ("" none), alike: the radar
 	// vectors back onto the STAR name them (#661).
 	Names      []string
@@ -172,6 +188,13 @@ func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinM
 		d := calc.HaversineMeters(pts[i].Position.Lat, pts[i].Position.Lon, next.Lat, next.Lon)
 		alt = constrain(pts[i], math.Min(top, alt+d/1852*ProcedureDescentFtPerNm))
 		alts[i], next = alt, pts[i].Position
+	}
+	// A descent never climbs: no point above the one before, so an
+	// at-or-below holds on from its fix (live sweep, EDDF 07C via EMPAX:
+	// ADNIS at or below 10000 ft, then SPESA planned at 28031 ft, the
+	// 3° profile back over a long transition).
+	for i := 1; i < len(alts); i++ {
+		alts[i] = math.Min(alts[i], alts[i-1])
 	}
 	ap := &ArrivalProcedure{Join: join, JoinMeters: joinMeters}
 	for i, n := range pts {
