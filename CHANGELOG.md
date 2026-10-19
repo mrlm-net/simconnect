@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.98.1] - 2026-10-19
+
+### Fixed
+
+- Take-off clearance: a departure is cleared only with its way out clear of the arrivals' ways in. It is predicted from lift-off along its SID, climbing at the rate it can make, against every arrival flying its STAR and approach as planned. Before, only the arrival's time to the threshold was counted, so a SID across the arrival flow, or a long procedure, met them in the air (live, LKPR: ENT1744 off 06 on ARTU 5E into TVS1113 on the 24 approach, then held at 3700 ft under the arrivals). It waits with "<arrival> on its way in". `TaxiController.DepartureRoute()`.
+- Vacating: an arrival stops just past the holding point behind its exit, not 280 m on down the taxiway at the next junction. It is cleared to taxi from there, without the exit off the runway: "via L, D" (live, OKZYC off 06 at L for N73 heard "via D, L, D"). A short first taxiway, where the aircraft stands, is not said (`Route.SpokenTaxiways`). `ArrivalPlan.TaxiRoute()`.
+
 ## [0.98.0] - 2026-10-19
 
 ### Added

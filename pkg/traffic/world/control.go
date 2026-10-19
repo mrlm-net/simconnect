@@ -3175,7 +3175,7 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			if it.dep != nil {
 				r = it.dep.Route()
 			} else if p := it.arr.Plan(); p != nil {
-				r = p.Route
+				r = p.TaxiRoute()
 			}
 			said := v
 			if said.HoldingShortOf == "" {
@@ -3262,7 +3262,7 @@ func (it *controlled) phrase(action string, node airport.NodeID) traffic.Transmi
 	if it.dep != nil {
 		r = it.dep.Route()
 	} else if p := it.arr.Plan(); p != nil {
-		r = p.Route
+		r = p.TaxiRoute()
 	}
 	it.mu.Lock()
 	v := it.view

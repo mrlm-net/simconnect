@@ -1073,7 +1073,10 @@ func (r *Route) SpokenTaxiways(upto int) []string {
 	short := func(i int) bool { return i >= 0 && i < len(runs)-1 && runs[i].meters < SpokenMinMeters }
 	var out []string
 	for i, rn := range runs {
-		if short(i) && (short(i-1) || short(i+1)) {
+		// A short first one is where the aircraft stands, not a taxiway
+		// to take (live, OKZYC vacated at L: "D, L, D" for a few metres of
+		// D at the junction).
+		if short(i) && (i == 0 || short(i-1) || short(i+1)) {
 			continue
 		}
 		if len(out) == 0 || out[len(out)-1] != rn.name {

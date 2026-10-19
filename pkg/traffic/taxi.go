@@ -431,6 +431,14 @@ func (c *TaxiController) State() TaxiState {
 	return c.state
 }
 
+// DepartureRoute is the departure's SID as it will fly it (nil none): for
+// a take-off judged against the traffic on its way in.
+func (c *TaxiController) DepartureRoute() []airport.NavPoint {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]airport.NavPoint(nil), c.req.Departure...)
+}
+
 // Route returns the planned route, nil before Start.
 func (c *TaxiController) Route() *airport.Route {
 	c.mu.Lock()

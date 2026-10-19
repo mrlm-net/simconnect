@@ -363,6 +363,10 @@ func (t *towers) tick(now time.Time) {
 			c.Takeoff = t.crossFilter(l, k.rwy, c.Takeoff, &c, &cross, pos, ours, true)
 			c.Land = t.crossFilter(l, k.rwy, c.Land, &c, &cross, pos, ours, false)
 		}
+		// Its way out clear of the arrivals' ways in (takeoff_plan.go).
+		if g, err := t.cc.graph(k.icao); err == nil {
+			c.Takeoff = t.takeoffFilter(g, c.Takeoff, &c, ours)
+		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
 		t.crewRejects(ours)
