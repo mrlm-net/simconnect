@@ -183,6 +183,8 @@ type airportResponse struct {
 type state struct {
 	// keepOnStop: Options.KeepOnStop.
 	keepOnStop bool
+	// airportDump: Options.AirportDumpDir (offline.go).
+	airportDump string
 	// dropped counts the host's messages Feed dropped (queue full): a
 	// layout loaded meanwhile may miss records (live, MyCrew: LKPR with no
 	// runways), so it is loaded again.
@@ -929,6 +931,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					if dumpDir != "" {
 						writeDump(dumpDir, res.Raw)
 					}
+					st.dump(l.ICAO, dumpLayout, res.Raw)
 					st.core.requestILS(navLoader, l)
 				}
 				feed.Layout(res.ICAO, res.Layout, res.Err)
