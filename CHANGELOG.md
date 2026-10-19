@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.97.0] - 2026-10-19
+
+### Added
+
+- Offline airport data: `Options.AirportDumpDir` writes everything the simulator gives the World about each airport it fetches, one directory per airport: `<ICAO>/layout.json` (the raw facility records, as `LoadFile` reads), `procedures.json` (`airport.Procedures`, as `LoadProceduresFile` reads), `airways.json` (`nav.AirwayGraph`) and `ils.json` (the ILS by runway end). `World.LoadAirportDir(dir)` serves an airport from such a directory without a simulator (each file optional): Vector, the ATC game, runs the World in WebAssembly on a loopback client.
+- `examples/airport-dump`: writes that data for the airports named (`airport-dump -out dir LKPR EGLL …`), connected to the simulator; airways and ILS where the airport has them. The dumps live in their own repository (mrlm-net/simconnect-data).
+
 ## [0.96.0] - 2026-10-19
 
 ### Added

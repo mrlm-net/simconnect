@@ -52,6 +52,10 @@ type Options struct {
 	// DumpDir, when set, gets each fetched airport's raw facility records
 	// (<ICAO>.json).
 	DumpDir string
+	// AirportDumpDir, when set, gets each fetched airport's offline data,
+	// everything the simulator gives about it (<ICAO>/layout.json,
+	// procedures.json, airways.json, ils.json), for LoadAirportDir.
+	AirportDumpDir string
 	// IDBase moves the library helpers the World creates off their default
 	// SimConnect IDs, for a host using the same helpers on its connection:
 	// airport loader at IDBase (definitions) and +100 (requests), procedure
@@ -134,7 +138,7 @@ func New(o Options) *World {
 	if cache == nil {
 		cache = airport.NewCache()
 	}
-	st := &state{core: newCore(tlog), cache: cache, fetched: map[string]time.Time{}, waiters: map[string][]chan error{}, keepOnStop: o.KeepOnStop}
+	st := &state{core: newCore(tlog), cache: cache, fetched: map[string]time.Time{}, waiters: map[string][]chan error{}, keepOnStop: o.KeepOnStop, airportDump: o.AirportDumpDir}
 	if o.Airspace != "" {
 		st.core.zone = o.Airspace
 	}

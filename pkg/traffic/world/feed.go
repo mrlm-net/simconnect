@@ -50,9 +50,15 @@ func (f localFeed) Weather(w nav.Weather) {
 	f.st.mu.Unlock()
 }
 
-func (f localFeed) ILS(r nav.NavResult) { f.st.core.gotILS(r) }
+func (f localFeed) ILS(r nav.NavResult) {
+	f.st.core.gotILS(r)
+	f.st.dumpILS()
+}
 
-func (f localFeed) Airways(icao string, g *nav.AirwayGraph) { f.st.addAirways(icao, g) }
+func (f localFeed) Airways(icao string, g *nav.AirwayGraph) {
+	f.st.addAirways(icao, g)
+	f.st.dumpAirways(icao, g)
+}
 
 func (f localFeed) Procedures(p airport.Procedures) {
 	fmt.Fprintf(stdout, "🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
@@ -62,6 +68,7 @@ func (f localFeed) Procedures(p airport.Procedures) {
 	}
 	f.st.procedures[p.ICAO] = p
 	f.st.mu.Unlock()
+	f.st.dump(p.ICAO, dumpProcedures, p)
 }
 
 func (f localFeed) Layout(icao string, _ *airport.Layout, err error) { f.st.finish(icao, err) }
