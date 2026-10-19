@@ -132,6 +132,15 @@ type controlled struct {
 	// and TVS122 told twice in the same millisecond).
 	vacateSaid   atomic.Bool
 	approachSaid bool // its approach clearance, given on the base
+	// emergencyLevel: its emergency (mayday, panpan; "" none) and the code
+	// it squawked before 7700, given back when cancelled (emergency.go).
+	emergencyLevel, preEmergencySquawk string
+	// manualSet: its manual control set by its own toggle, which a staffed
+	// station's does not override (staffed.go).
+	manualSet bool
+	// afterDepFt: the climb restriction tower gave it after departure (feet
+	// MSL, 0 none: takeoff_plan.go).
+	afterDepFt float64
 	// progState: its controller's state last reported as progress;
 	// closestNM an arrival's least distance from the field so far.
 	progState string
@@ -383,6 +392,7 @@ type controlCenter struct {
 	keepClearKey string
 	models       map[string]bool                    // aircraft titles the simulator offers
 	fuelTitles   fuelTitles                         // fuel vehicles the simulator offers (#582)
+	groundTitles []string                           // every ground vehicle title the simulator offers, sorted
 	stands       map[string]*traffic.StandAllocator // by ICAO
 	// picture is what the controlled aircraft know of each other and of the
 	// sim's other aircraft on the ground (#334).
@@ -443,6 +453,10 @@ type controlCenter struct {
 	// call sign, spawned again as a new flight (#75).
 	forgetFlight func(tail string)
 	sequencesAt  func(icao string) map[string][]traffic.SequenceEntry
+	// staffedAt, staffedAny: the last look at staffed stations, and whether
+	// anyone was on one then (staffed.go).
+	staffedAt  time.Time
+	staffedAny bool
 	// changeDeadline: when a runway change's departures from the other end
 	// of arrival runway end key ("LKPR 24") should have gone; false none.
 	changeDeadline func(key string) (time.Time, bool)
@@ -2063,7 +2077,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			on := r.URL.Query().Get("on") != "0"
 			it.gates.Store(on)
 			it.mu.Lock()
-			it.view.Manual = on
+			it.view.Manual, it.manualSet = on, on
 			req := it.request
 			it.mu.Unlock()
 			tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])

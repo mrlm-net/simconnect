@@ -150,6 +150,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if !a.Ours || busy {
 			return false
 		}
+		// The player's (manual, or on a staffed station: #1096): not steered
+		// by the AI.
+		if it := w.s.cc.byTail(a.Tail); it != nil && it.gates.Load() {
+			return false
+		}
 		// Flying a TCAS RA: nothing contrary to it (FAA JO 7110.65 2-1-28).
 		if it := w.s.cc.byTail(a.Tail); it != nil && it.tcasRA.Load() {
 			return false
@@ -236,6 +241,13 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
 	for _, c := range cs {
+		// At the look-ahead's edge (lost only in its last sample, the closest
+		// point there too): still converging, seen again next look when it
+		// is real (live, FTMKL/DLH620 and OKUTI/BAW1182 "in 5m0s" twice,
+		// stopped early).
+		if c.In >= conflictLookAhead-conflictEdge && c.ClosestIn >= conflictLookAhead-conflictEdge {
+			continue
+		}
 		pair := c.A + "/" + c.B
 		pairs[pair] = true
 		w.mu.Lock()
@@ -265,6 +277,14 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				continue
 			}
 			w.tellTraffic(now, c, aircraft)
+			continue
+		}
+		// A departure of ours climbing into it: a level until a fix on its
+		// SID first — "cross (fix) at or below (level)" (Doc 4444 12.3.2.4
+		// a), climbing on past it with no second call — the level-off only
+		// when no fix fits (the user: restrictions, not a stop and a later
+		// re-clear; live, OKETU levelled at 4000 ft for OOILE).
+		if w.crossInstead(now, c, aircraft, departed) {
 			continue
 		}
 		r, ok := traffic.ResolveConflict(c, aircraft, canSteer, opts)
@@ -831,3 +851,50 @@ func (w *conflictWatch) changedBefore(now time.Time, cs ...string) bool {
 	}
 	return some
 }
+
+// crossInstead resolves conflict c with a crossing restriction on the SID
+// of a departure of ours climbing in it (climbRestriction), said by the
+// departure radar; false when neither is one or no fix will do.
+func (w *conflictWatch) crossInstead(now time.Time, c traffic.Conflict, aircraft []traffic.TrackedAircraft, departed func(traffic.TrackedAircraft) *controlled) bool {
+	for _, a := range aircraft {
+		if a.Tail != c.A && a.Tail != c.B || a.VSFpm < 300 {
+			continue
+		}
+		it := departed(a)
+		if it == nil {
+			continue
+		}
+		w.mu.Lock()
+		busy := now.Before(w.busy[a.Tail])
+		w.mu.Unlock()
+		if busy {
+			continue
+		}
+		it.mu.Lock()
+		ft := it.radarFt
+		it.mu.Unlock()
+		if ft <= 0 {
+			ft = departureClimbFt
+		}
+		fix, below, route, ok := it.climbRestriction(ft)
+		if !ok {
+			continue
+		}
+		if err := w.s.cc.do(func() error { return it.dep.Reroute(route) }); err != nil {
+			continue
+		}
+		tx := traffic.CrossAt(traffic.PosDeparture, it.Tail, fix, below, w.s.cc.taOf(it.ICAO), false)
+		w.s.cc.log.printf("%-6s conflict: cross %s at or below %.0f ft, clear of %s", it.Tail, fix, below, otherOf(c, it.Tail))
+		w.mu.Lock()
+		w.busy[it.Tail] = now.Add(conflictLookAhead)
+		w.changed[it.Tail] = now
+		w.mu.Unlock()
+		w.s.cc.callAt(it.ICAO, traffic.PosDeparture, it.Tail, prioSeparation, func() { w.s.cc.radio.Transmit(it.ICAO, tx) })
+		return true
+	}
+	return false
+}
+
+// conflictEdge: a conflict lost and closest within this of the
+// look-ahead's end is left for the next look.
+const conflictEdge = 20 * time.Second

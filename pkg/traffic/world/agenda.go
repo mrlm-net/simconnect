@@ -25,6 +25,7 @@ const (
 	prioSeparation                 // a conflict's resolution: stop descent, descend, turn
 	prioTraffic                    // traffic information
 	prioLanding                    // cleared to land; circuit instructions (extend downwind, another circuit)
+	prioSpacing                    // a speed or vector for spacing: before routine calls (live: a speed a minute late on a busy frequency)
 	prioRunway                     // take-off, line-up, crossing
 	prioApproach                   // approach clearances
 	prioClearing                   // taxi for an aircraft in the way: a vacated arrival

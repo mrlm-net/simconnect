@@ -72,7 +72,10 @@ type sequences struct {
 	changeBy   map[string]time.Time
 	// depHeld: by runway end, the departures waiting there, held at their
 	// most for depSlotsHold (heldSlots).
-	depHeld    map[string]heldCount
+	depHeld map[string]heldCount
+	// slowed: the arrivals told a speed for spacing (absorb), given their
+	// normal speed back once the sequence no longer needs it (resumeSpeed).
+	slowed     map[string]bool
 	inConflict func(a, b string) bool
 	// engaged: an aircraft in or just out of a conflict resolution gets no
 	// shortcut (#785).
@@ -206,7 +209,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				break
 			}
 		}
-		if it == nil || it.joinPending.Load() {
+		// Under the player's control (manual, or on a staffed station: #1096):
+		// no speeds or vectors from the AI; it stays in the sequence.
+		if it == nil || it.joinPending.Load() || it.gates.Load() {
 			continue // VFR: told to join first (#711)
 		}
 		if q.settling(now, icao, e.Callsign, seq) {
@@ -259,6 +264,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			delay = mergeNeed
 		}
 		if delay < absorbFrom && e.ShortBy < spacingActFrom && mergeNeed == 0 {
+			if q.resumeSpeed(now, it, e, seq) {
+				continue
+			}
 			q.shortcut(now, it, e, seq)
 			continue
 		}
@@ -298,6 +306,12 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		q.mu.Lock()
 		q.absorbed[e.Callsign] = now
+		if err == nil && a.SpeedKts > 0 {
+			if q.slowed == nil {
+				q.slowed = map[string]bool{}
+			}
+			q.slowed[e.Callsign] = true
+		}
 		q.mu.Unlock()
 		if err != nil {
 			q.cc.log.printf("%-6s sequence: absorbing %s failed: %v", e.Callsign, delay.Round(time.Second), err)
@@ -349,7 +363,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			said, magVar := it.vectorsSaid.Load(), q.cc.magVar(it.ICAO)
 			// In radio order on approach's frequency: after its arrival
 			// clearance (KLM868 heard the speed and the vector before it).
-			it.call(traffic.PosApproach, prioApproach, func() {
+			it.call(traffic.PosApproach, prioSpacing, func() {
 				if vectored && it.vectorsSaid.Load() == said {
 					tx = traffic.WithVector(tx, v, magVar)
 				}
@@ -675,6 +689,9 @@ func (q *sequences) tick(now time.Time) {
 		p, kts := v.Position, v.GroundSpeed
 		if a, ok := pos[id]; ok {
 			p, kts = a.Position, a.GroundKts
+		}
+		if p == (airport.LatLon{}) && v.State == "spawning" && len(route) > 0 {
+			p = route[0] // appearing, no position yet: where it appears, not out of the sequence for a look (live, BAW451)
 		}
 		if p == (airport.LatLon{}) {
 			continue
@@ -1379,4 +1396,48 @@ func (q *sequences) heldSlots(now time.Time, k string, n int) int {
 		return n
 	}
 	return h.n
+}
+
+// resumeAfter: an arrival slowed for spacing is given its normal speed
+// back once it would land this much later than its spacing behind its
+// leader asks (or, number one, with no delay to lose).
+const resumeAfter = 45 * time.Second
+
+// resumeSpeed gives an arrival told a speed for spacing its normal speed
+// back once the sequence no longer needs it: "resume normal speed" (the
+// user: the least speed only with a reason; live, ENT379 at 180 kt behind
+// a departure gap that no longer needed it). True when it did.
+func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry) bool {
+	q.mu.Lock()
+	slowed := q.slowed[e.Callsign]
+	recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
+	q.mu.Unlock()
+	if !slowed || recent || e.Delay > 0 {
+		return false
+	}
+	if e.Leader != "" {
+		var lead *traffic.SequenceEntry
+		for i := range seq {
+			if seq[i].Callsign == e.Leader {
+				lead = &seq[i]
+			}
+		}
+		if lead == nil {
+			return false
+		}
+		gap := time.Duration(e.SpacingNM / traffic.ProcedureApproachSpeedKts * float64(time.Hour))
+		if e.Landing.Sub(lead.Landing) < gap+resumeAfter {
+			return false // the spacing still needs it
+		}
+	}
+	if err := q.cc.do(func() error { _, err := it.arr.AssignSpeed(0); return err }); err != nil {
+		return false
+	}
+	q.mu.Lock()
+	delete(q.slowed, e.Callsign)
+	q.absorbed[e.Callsign] = now
+	q.mu.Unlock()
+	q.cc.log.printf("%-6s sequence: speed no longer needed, normal speed", e.Callsign)
+	it.call(traffic.PosApproach, prioApproach, func() { it.say(traffic.SpeedAssigned(e.Callsign, 0, 0)) })
+	return true
 }

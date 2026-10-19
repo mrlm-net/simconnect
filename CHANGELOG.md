@@ -57,6 +57,51 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.101.0] - 2026-10-20
+
+### Added
+
+- Staffed stations, step 1 (#1096): `World.SetStaffed` / `Staffed`, `GET` and `PUT /api/stations/staffed` (`[]StaffedStation{ICAO, Position | Station, Mode, AutoHandoff}`). A whole position or single stations, several making a band-box.
+  - An aircraft on a staffed station is the player's (manual, as its own toggle makes it): the AI gives it no clearances, sequence speeds or vectors, or conflict resolutions. Its crew still calls on its own, and it goes back to the AI from its current state when it leaves the station or the station is unstaffed.
+  - An aircraft's own manual toggle wins. Modes, flying without a further clearance, and handovers come in the next steps.
+
+- Rotations: `Flight.Rotation` names the airframe flying a flight (a registration, an app's aircraft id). The legs of one rotation are one aircraft: it lands, turns around at its stand and departs as the rotation's next leg from that airport, whatever the airline, type or turn window. The app gives them through `World.AddFlights` / `POST /api/flights`; the map's schedule pairs as before.
+- A take-off whose climb would meet an arrival on its way in gets a restriction first: "after departure climb to altitude 4000 feet" (ICAO Phraseology Reference Guide, ALL CLEAR), the lowest of the field plus 3000/4000/5000 ft that keeps it clear. It is held on the ground only when none does. `TaxiController.LimitClimb` caps its climb until departure clears it higher; `traffic.AfterDepartureClimb`.
+- `pkg/failures` (the emergency add-on, part 3): fails and restores the user aircraft's systems by generic names (`engine-failure` per engine, `electrical`, `hydraulic`, `vacuum`, `pitot`, `static`, `brakes`, `brake-left`, `brake-right`) through the simulator's failure key events (MSFS 2024 Aircraft Miscellaneous Events). `Default()` is the simulator's own; a model's override (`Profile.With`, `LoadProfile`) maps or takes away kinds. `Supported()` says what an aircraft can fail. An engine fire, pressurisation and a fuel leak have no failure event, so they stay unsupported unless an override maps them. `Apply`, `Clear`, `ClearAll`, `Active`, `Reset` + `Reapply` after a reconnect.
+- Emergency details:
+  - The crew's answer follows the ICAO Phraseology Reference Guide's example: `traffic.EmergencyDetails` "CSA123, 156 persons on board, endurance 2 hours 10 minutes, request immediate landing runway 24", unknown parts left out. Intentions: `IntentionsLand`, `IntentionsReturn`, `IntentionsDivert`.
+  - ATC's question: `traffic.EmergencyQuestions` "report persons on board, fuel endurance and intentions". The guide lists the items, not the question, so this wording is the project's.
+  - A cast aircraft's emergency asks and answers with its own plausible values.
+- Emergency cancel:
+  - `traffic.CancelEmergency` ("Praha Approach, CSA123, cancel MAYDAY") and `AcknowledgeCancelEmergency` ("CSA123, roger, MAYDAY cancelled, squawk 4521"); the project's wording, since the ICAO guide quotes none.
+  - Scenario `emergency` with On false cancels a cast aircraft's emergency (its code back, priority off).
+
+### Changed
+
+- The conflict watch resolves a climbing departure of ours with "cross (fix) at or below (level)" on its SID first (Doc 4444 12.3.2.4 a). It climbs on past the fix with no second call; a level-off only when no fix fits (the user; live, OKETU levelled at 4000 ft for OOILE).
+- Runway crossings keep the flow:
+  - An aircraft taxiing up to a runway it crosses is in that runway's queue from 250 m before its holding point, cleared across before it stops when nothing is in the way.
+  - Two crossings with nobody landing or taking off go together.
+  - The runway's own traffic comes first: a departure that can go now goes before a crossing (the user).
+- Intersection departures:
+  - One holding at an intersection lines up and waits behind a departure from further down once that one is cleared for take-off, or behind one rolling once it is 400 to 800 m past its way in (by call sign, a controller's judgement; the user).
+  - A conditional "behind the landing X, line up and wait" at an intersection goes once X has rolled past it, not once X is off the runway (live, TVS480 lined up 79 s after touchdown).
+- Tower:
+  - A departure told to hold position for want of time before an arrival is not cleared again until that arrival is down and rolled out (live, DCDHS "hold position", then "cleared for take-off" 3 s later).
+  - A take-off cleared before an arrival to the other end came close in is cancelled before its roll (live, RYR1626).
+- A stand hold released stands 2 min, time to push (live, TVS622 held again 3–20 s after each release).
+- Speeds and vectors for spacing go before routine calls on the frequency (`prioSpacing`; live, a speed a minute late).
+- Conflicts predicted only at the look-ahead's very edge are left for the next look (live, FTMKL/DLH620, OKUTI/BAW1182, QTR413/OKFLN "in 5m0s").
+- Goodbyes follow the time of day: "good evening" in the evening, not "good day" next to a "good evening".
+- "Arrival delayed" is logged once a minute for the same reason, not every second.
+- `GET /api/ground-titles`: every ground vehicle title the simulator offers.
+- An arrival slowed for spacing gets "resume normal speed" once the sequence no longer needs it (the user: the least speed only with a reason).
+- The emergency acknowledgement says "roger the MAYDAY" (ICAO Phraseology Reference Guide). A fuel emergency says "fuel shortage": "fuel emergency" and "fuel priority" are not recognised terms.
+
+### Fixed
+
+- An arrival being created (no position yet) stays in the sequence at its route's first point, not out of it for a look (live, BAW451).
+
 ## [0.100.0] - 2026-10-19
 
 ### Added

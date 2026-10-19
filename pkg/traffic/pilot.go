@@ -461,6 +461,13 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Holding" // 12.3.4.8 note, 12.3.4.11 c
 	case IntentStop:
 		s = "Stopping"
+	case IntentAfterDeparture:
+		s = "After departure climb to " + p[ParamAltitude] + " feet"
+	case IntentEmergencyCancelAck:
+		if p[ParamSquawk] == "" {
+			return Transmission{}, false // nothing to read back
+		}
+		s = "Squawk " + p[ParamSquawk]
 	case IntentEmergencyAck:
 		s = "Squawk " + p[ParamSquawk] + ", number one"
 		if p[ParamRunway] != "" {

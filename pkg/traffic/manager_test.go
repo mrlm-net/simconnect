@@ -312,3 +312,30 @@ func TestManagerTurnaroundKeepsRegistration(t *testing.T) {
 		t.Fatalf("arrival %v once its aircraft boards, want done", s)
 	}
 }
+
+// TestManagerRotation: the legs of a rotation the app gives are one
+// aircraft whatever the airline and turn window: OKABC lands as CSA101
+// and leaves as SWR8 25 min later (shorter than MinTurn, another
+// airline), not paired by airline and type with CSA102.
+func TestManagerRotation(t *testing.T) {
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{}, "LKPR")
+	arr := flight("CSA101", "EDDF", "LKPR", t0, time.Hour)                   // STA 09:00
+	leg := flight("SWR8", "LKPR", "LSZH", t0.Add(85*time.Minute), time.Hour) // STD 09:25
+	leg.Airline = "SWR"
+	arr.Rotation, leg.Rotation = "OKABC", "OKABC"
+	other := flight("CSA102", "LKPR", "EDDF", t0.Add(2*time.Hour), time.Hour) // STD 10:00, the airline's pairing
+	m.Add([]Flight{arr, leg, other})
+	for _, f := range m.Flights() {
+		switch f.Callsign {
+		case "SWR8":
+			if f.TurnFrom != "CSA101" {
+				t.Errorf("SWR8 turns from %q, want CSA101 (its rotation)", f.TurnFrom)
+			}
+		case "CSA102":
+			if f.TurnFrom != "" {
+				t.Errorf("CSA102 turns from %q, want none (CSA101 flies on as SWR8)", f.TurnFrom)
+			}
+		}
+	}
+}

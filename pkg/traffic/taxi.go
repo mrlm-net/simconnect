@@ -316,6 +316,7 @@ type TaxiController struct {
 	gearDownSent    time.Time      // last "gear down" re-sent after lift-off (GearHoldEvery)
 	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
 	climbToFt       float64        // ClimbTo before the hand-over: the climb waypoints no lower
+	climbCapFt      float64        // LimitClimb: the climb waypoints no higher (after departure climb to)
 	hasPendingLimit bool
 	flaps           surfaceRamp
 	frameAt         time.Time
@@ -390,7 +391,7 @@ type taxiMonitor struct {
 	GroundKts float64
 	OnGround  float64
 	// LIGHT LANDING, TAXI, STROBE, BEACON, NAV, LOGO, WING
-	Lights [7]float64
+	Lights  [7]float64
 	SimTime float64 // SIMULATION TIME, seconds
 }
 

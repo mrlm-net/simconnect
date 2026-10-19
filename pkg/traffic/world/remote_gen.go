@@ -138,6 +138,12 @@ func (r *remoteDep) DepartureRoute() []airport.NavPoint {
 	return o0
 }
 
+func (r *remoteDep) LimitClimb(ft float64) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "LimitClimb", []any{ft}, &o0))
+	return o0
+}
+
 func (r *remoteDep) DirectTo(pos airport.LatLon, altFt float64, kts float64, fix airport.LatLon) error {
 	err := r.c.call(r.t, "DirectTo", []any{pos, altFt, kts, fix})
 	return err

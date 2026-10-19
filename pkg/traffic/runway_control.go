@@ -231,6 +231,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// thenArr: when the arrival after the next lands (seconds).
 	thenArr := math.Inf(1)
 	var holding []RunwayUser
+	ourDep := map[string]bool{} // ours departing: lined up, or holding short to go
 	seen := map[string]bool{}
 	for _, u := range users {
 		seen[u.Callsign] = true
@@ -240,6 +241,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			onRunway = append(onRunway, u.Callsign)
 			if !u.Arrival && !u.Crossing && !u.Other && !u.Host {
 				rollingDep = u.Callsign
+				along[u.Callsign] = u.AlongM // how far down the runway it rolls now
 			}
 			if !u.Arrival && !u.Crossing && (r.lastDep == nil || r.lastDep.Callsign != u.Callsign) {
 				uu := u // a departure started its roll: the interval runs from here
@@ -249,6 +251,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			occupied = u.Callsign
 			onRunway = append(onRunway, u.Callsign)
 			along[u.Callsign] = u.AlongM
+			if !u.Arrival && !u.Crossing && !u.Other && !u.Host {
+				ourDep[u.Callsign] = true
+			}
 			if !u.Other && !u.Host {
 				linedUp = u.Callsign
 				ourLinedUp = append(ourLinedUp, u)
@@ -263,6 +268,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			}
 		case RunwayHoldingShort:
 			if !u.Other {
+				if !u.Crossing && !u.Host {
+					along[u.Callsign], ourDep[u.Callsign] = u.AlongM, true // its way in
+				}
 				holding = append(holding, u)
 				if _, ok := r.queue[u.Callsign]; !ok {
 					r.queue[u.Callsign] = now
@@ -441,8 +449,17 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		}
 		if u.Crossing {
 			switch {
+			case occupied != "" && crossingOnly(users, onRunway, out.Cross, occupied) && arrivalClear(r.opts.CrossTime, 0) == "":
+				// Only crossings on it: across together, side by side or in
+				// turn (the user: crossings keep the flow).
+				out.Cross = append(out.Cross, u.Callsign)
 			case occupied != "":
 				out.Waiting[u.Callsign] = occupied + " on the runway"
+			case departureReady(holding, u.Callsign, takeoffWhy, r.opts.LineUpTime) != "":
+				// The runway's own traffic first: a departure that can go now
+				// goes before a crossing (the user: handling the active runway
+				// has priority).
+				out.Waiting[u.Callsign] = departureReady(holding, u.Callsign, takeoffWhy, r.opts.LineUpTime) + " departing first"
 			default:
 				if why := arrivalClear(r.opts.CrossTime, 0); why != "" {
 					out.Waiting[u.Callsign] = why
@@ -463,7 +480,21 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// Busy: the first behind ours on its take-off roll lines up as
 			// it rolls, if the arrivals leave it time on the runway until its
 			// own take-off (the user: lined up earlier in a rush).
-			if occupied == rollingDep && number == 1 && rush && len(out.LineUpBehindDeparting) == 0 && departureBlocked(u) == "" &&
+			// Without a rush too where the one rolling is past its way in
+			// already (an intersection departure behind it: live, LKPR 06 at
+			// E rolling, one at F lines up as it passes; the user).
+			passed := u.AlongM > 0 && along[rollingDep] > u.AlongM+IntersectionPassed(u.Callsign)
+			// Behind the one about to go: its way in behind that one's (the
+			// one at E cleared for take-off, this one at F lines up and waits
+			// as it goes: the user). Ours only, a departure, not yet gone.
+			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
+				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
+				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				out.LineUpBehindDeparting[u.Callsign] = occupied
+				out.Waiting[u.Callsign] = occupied + " departing ahead"
+				continue
+			}
+			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
@@ -548,4 +579,51 @@ func (r *RunwayController) Clone() *RunwayController {
 		c.queue[k] = v
 	}
 	return c
+}
+
+// departureReady names a departure among holding (not a crossing, not
+// other traffic) that could take off now; "" none.
+func departureReady(holding []RunwayUser, except string, takeoffWhy func(RunwayUser, time.Duration) string, lineUp time.Duration) string {
+	for _, d := range holding {
+		if d.Crossing || d.Other || d.Host || d.Callsign == except {
+			continue
+		}
+		if takeoffWhy(d, lineUp) == "" {
+			return d.Callsign
+		}
+	}
+	return ""
+}
+
+// crossingOnly reports whether everyone on the runway now (onRunway) and
+// the one holding it (occupied, cleared across already: crossed) are
+// crossing it, nobody landing or taking off.
+func crossingOnly(users []RunwayUser, onRunway, crossed []string, occupied string) bool {
+	crossing := map[string]bool{}
+	for _, u := range users {
+		if u.Crossing {
+			crossing[u.Callsign] = true
+		}
+	}
+	for _, cs := range onRunway {
+		if !crossing[cs] {
+			return false
+		}
+	}
+	return crossing[occupied] || slices.Contains(crossed, occupied)
+}
+
+// IntersectionPassed is how far a departure must be past another's way in
+// (its intersection) for that one to line up behind it: 400 to 800 m, the
+// same for one call sign each time (the user: 200 m too little; a
+// controller's judgement varies).
+func IntersectionPassed(cs string) float64 {
+	h := 0
+	for _, c := range cs {
+		h = h*31 + int(c)
+	}
+	if h < 0 {
+		h = -h
+	}
+	return 400 + float64(h%401)
 }
