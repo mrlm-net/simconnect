@@ -51,6 +51,12 @@ type Flight struct {
 	// at its start and flies the rest (an arrival to where it meets a
 	// STAR); a departure flies its SID, then the path.
 	Path []PathPoint `json:"path,omitempty"`
+	// Rotation names the airframe flying the flight (a registration, an
+	// app's aircraft id): the legs of one rotation are one aircraft, an
+	// arrival turning around at its stand into the rotation's next
+	// departure from that airport, whatever the airline, type or turn
+	// window (TrafficManager pairing). "" the schedule pairs it as before.
+	Rotation string `json:"rotation,omitempty"`
 }
 
 // Airline is an airline the generator schedules.

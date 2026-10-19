@@ -6,6 +6,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -81,7 +82,10 @@ func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.Emergency
 		return fmt.Errorf("emergency: level %q, want mayday or panpan", level)
 	}
 	it.mu.Lock()
-	it.view.Squawk = traffic.EmergencySquawk
+	if it.view.Squawk != traffic.EmergencySquawk {
+		it.preEmergencySquawk = it.view.Squawk
+	}
+	it.view.Squawk, it.emergencyLevel = traffic.EmergencySquawk, level
 	pos, rwy, tail := it.atc, it.view.Runway, it.Tail
 	it.mu.Unlock()
 	if pos == "" {
@@ -92,7 +96,37 @@ func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.Emergency
 	cc.log.printf("%-6s emergency: %s (%s), squawk %s, priority", tail, kind, level, traffic.EmergencySquawk)
 	it.say(traffic.DeclareEmergency(pos, station, tail, kind, level, rwy))
 	it.say(traffic.AcknowledgeEmergency(pos, tail, level, rwy))
+	// What the message should carry, asked and answered: its own
+	// plausible persons on board and endurance (the app's player answers
+	// with the real ones).
+	it.mu.Lock()
+	model := it.view.Model
+	it.mu.Unlock()
+	persons, endurance := plausibleOnBoard(model, tail)
+	it.say(traffic.EmergencyQuestions(pos, tail))
+	it.say(traffic.EmergencyDetails(pos, tail, persons, endurance, traffic.IntentionsLand(rwy)))
 	return nil
+}
+
+// plausibleOnBoard is a cast aircraft's persons on board by its size
+// (wake category) and an endurance of 1 to 3 hours, the same for one call
+// sign every time.
+func plausibleOnBoard(model, tail string) (int, time.Duration) {
+	h := 0
+	for _, c := range tail {
+		h = h*31 + int(c)
+	}
+	if h < 0 {
+		h = -h
+	}
+	persons := 120 + h%60 // a single aisle
+	switch traffic.WakeFor(model).ICAO {
+	case 'L':
+		persons = 2 + h%6
+	case 'H', 'J':
+		persons = 240 + h%100
+	}
+	return persons, time.Hour + time.Duration(h%120)*time.Minute
 }
 
 // priorityClose names one with priority within priorityHoldNM of icao on
@@ -128,3 +162,29 @@ func (cc *controlCenter) priorityClose(icao string) string {
 // playerPriorityNM: the user aircraft with priority is sequenced at the
 // nearest airport of ours within this.
 const playerPriorityNM = 60.0
+
+// cancelEmergency has one of ours cancel its emergency: its call, ATC's
+// answer with its code back, priority taken away.
+func (cc *controlCenter) cancelEmergency(it *controlled) error {
+	it.mu.Lock()
+	level, squawk := it.emergencyLevel, it.preEmergencySquawk
+	if level == "" {
+		it.mu.Unlock()
+		return errors.New("emergency: none to cancel")
+	}
+	it.emergencyLevel = ""
+	if squawk != "" {
+		it.view.Squawk = squawk
+	}
+	pos, tail := it.atc, it.Tail
+	it.mu.Unlock()
+	if pos == "" {
+		pos = traffic.PosApproach
+	}
+	station, _ := it.station(pos)
+	cc.core.prio.set(tail, false)
+	cc.log.printf("%-6s emergency: cancelled, priority taken away", tail)
+	it.say(traffic.CancelEmergency(pos, station, tail, level))
+	it.say(traffic.AcknowledgeCancelEmergency(pos, tail, level, squawk))
+	return nil
+}

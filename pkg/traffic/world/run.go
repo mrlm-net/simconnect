@@ -529,6 +529,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 				safe("pending", func() { cc.pending.run(now) })  // clearances and actions in radio order (#462)
 				safe("agenda", func() { cc.agenda.run(now) })    // the controllers' calls, most urgent first
 				safe("runways", func() { cc.checkRunways(now) }) // a new runway in use re-plans the traffic (#456)
+				safe("staffed", func() { cc.checkStaffed(now) }) // the player's aircraft on staffed stations (#1096)
 				safe("schedule", func() { sched.tick(now) })
 				safe("sequences", func() { seqs.tick(now) })
 				air := cc.world.Aircraft()
@@ -1173,6 +1174,21 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerSequence(mux, st)
 	registerSeparation(mux, st)
 	registerRunways(mux, st)
+	registerStaffed(mux, w)
+	// GET /api/ground-titles: every ground vehicle title the simulator
+	// offers (what vehicles a feature can use: real data only).
+	mux.HandleFunc("GET /api/ground-titles", func(w http.ResponseWriter, r *http.Request) {
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		var list []string
+		if cc != nil {
+			cc.mu.Lock()
+			list = append(list, cc.groundTitles...)
+			cc.mu.Unlock()
+		}
+		writeJSON(w, map[string]any{"titles": list})
+	})
 	registerApproach(mux, st)
 	registerStatus(mux, st)
 	registerPushback(mux, st)

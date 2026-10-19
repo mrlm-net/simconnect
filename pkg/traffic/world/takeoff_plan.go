@@ -39,6 +39,12 @@ func takeoffPlan(end airport.RunwayEnd, fieldFt float64, sid []airport.NavPoint)
 // conflictLookAhead); "" none. The arrivals established on the final to
 // its own runway end are the runway rules' (it climbs away from them).
 func (cc *controlCenter) takeoffMeets(g *airport.Graph, it *controlled) string {
+	return cc.takeoffMeetsCapped(g, it, 0)
+}
+
+// takeoffMeetsCapped is takeoffMeets with the climb restricted to capFt
+// after departure (0 none).
+func (cc *controlCenter) takeoffMeetsCapped(g *airport.Graph, it *controlled, capFt float64) string {
 	if it.dep == nil {
 		return ""
 	}
@@ -51,6 +57,11 @@ func (cc *controlCenter) takeoffMeets(g *airport.Graph, it *controlled) string {
 	}
 	me, plan := takeoffPlan(end, g.Layout.Altitude/0.3048, it.dep.DepartureRoute())
 	me.Tail = it.Tail
+	if capFt > 0 {
+		for i := range plan {
+			plan[i].AltFt = math.Min(plan[i].AltFt, capFt)
+		}
+	}
 	plans := map[string][]traffic.RoutePoint{me.Tail: plan}
 	list := []traffic.TrackedAircraft{me}
 	for _, a := range cc.world.Aircraft() {
@@ -112,6 +123,14 @@ func (t *towers) takeoffFilter(g *airport.Graph, tails []string, c *traffic.Runw
 			continue
 		}
 		if who := t.cc.takeoffMeets(g, it); who != "" {
+			// A restriction first, as tower amends the clearance: "after
+			// departure climb to altitude 4000 feet", the lowest that keeps
+			// it clear; held only when none does (the user: restrictions up
+			// front, not a level-off later).
+			if ft := t.cc.afterDepartureCap(g, it); ft > 0 {
+				keep = append(keep, tail)
+				continue
+			}
 			if c.Waiting == nil {
 				c.Waiting = map[string]string{}
 			}
@@ -121,4 +140,40 @@ func (t *towers) takeoffFilter(g *airport.Graph, tails []string, c *traffic.Runw
 		keep = append(keep, tail)
 	}
 	return keep
+}
+
+// afterDepartureSteps are the restrictions tried after departure, in
+// thousands of feet above the field rounded up (lowest first).
+var afterDepartureSteps = []float64{3000, 4000, 5000}
+
+// afterDepartureCap is the lowest climb restriction after departure that
+// keeps departure it clear of the arrivals' ways in (feet MSL), given now
+// (said once, and set on its controller); 0 none clears it.
+func (cc *controlCenter) afterDepartureCap(g *airport.Graph, it *controlled) float64 {
+	it.mu.Lock()
+	had := it.afterDepFt
+	it.mu.Unlock()
+	if had > 0 {
+		if cc.takeoffMeetsCapped(g, it, had) == "" {
+			return had // given already, still clear
+		}
+		return 0
+	}
+	field := g.Layout.Altitude / 0.3048
+	for _, step := range afterDepartureSteps {
+		ft := math.Ceil((field+step)/1000) * 1000
+		if cc.takeoffMeetsCapped(g, it, ft) != "" {
+			continue
+		}
+		if !it.dep.LimitClimb(ft) {
+			return 0
+		}
+		it.mu.Lock()
+		it.afterDepFt = ft
+		it.mu.Unlock()
+		cc.log.printf("%-6s take-off: after departure climb to %.0f ft, clear of the arrivals", it.Tail, ft)
+		it.say(traffic.AfterDepartureClimb(it.Tail, ft))
+		return ft
+	}
+	return 0
 }

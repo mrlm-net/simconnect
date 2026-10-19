@@ -92,7 +92,8 @@ func (r *Radio) varied(t Transmission, busy bool) Transmission {
 		return t
 	}
 	if r.rng.Float64() < 0.4 {
-		t.Text += []string{", good day", ", good day", ", bye"}[r.rng.IntN(3)]
+		bye := farewell(t.At)
+		t.Text += []string{", " + bye, ", " + bye, ", bye"}[r.rng.IntN(3)]
 	}
 	return t
 }
@@ -193,7 +194,8 @@ func (r *Radio) variedReadback(t, rb Transmission, busy bool) Transmission {
 	style := r.opts.Variety.StyleOf(t.Callsign)
 	switch {
 	case t.Intent == IntentContact && style.Chatty && !busy:
-		rb.Text += []string{", good day", ", good day", ", bye", ", bye bye", ", cheers", ", see you"}[r.rng.IntN(6)]
+		bye := farewell(t.At)
+		rb.Text += []string{", " + bye, ", " + bye, ", bye", ", bye bye", ", cheers", ", see you"}[r.rng.IntN(6)]
 	case t.Intent == IntentTrafficInfo && r.rng.IntN(2) == 0:
 		rb.Text = strings.Replace(rb.Text, "Looking out", "Looking", 1)
 	}
@@ -338,4 +340,14 @@ func (r *Radio) Variety() *Variety {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.opts.Variety
+}
+
+// farewell is a goodbye at the time at: "good day" by day, "good evening"
+// in the evening and at night, not "good day" after a "good evening" (live:
+// a crew read back "good day" and checked in with "good evening").
+func farewell(at time.Time) string {
+	if h := at.Hour(); h >= 18 || h < 4 {
+		return "good evening"
+	}
+	return "good day"
 }

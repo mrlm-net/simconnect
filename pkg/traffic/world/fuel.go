@@ -65,6 +65,7 @@ func (cc *controlCenter) addGroundTitles(titles []string) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	for _, t := range titles {
+		cc.groundTitles = insertSorted(cc.groundTitles, t) // all of them: GET /api/ground-titles
 		switch {
 		case strings.HasPrefix(t, "FSDT_Pushback_"):
 			cc.fuelTitles.tugs = insertSorted(cc.fuelTitles.tugs, t)

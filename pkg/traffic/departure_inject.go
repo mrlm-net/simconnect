@@ -1889,6 +1889,15 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 			}
 			wps[i].Altitude = math.Max(wps[i].Altitude, ft)
 		}
+	} else if c.climbCapFt > 0 { // "after departure climb to …" (LimitClimb)
+		field := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
+		for i := range wps {
+			ft := c.climbCapFt
+			if wps[i].Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 {
+				ft -= field
+			}
+			wps[i].Altitude = math.Min(wps[i].Altitude, ft)
+		}
 	}
 	// Its waypoints first, released after: unfrozen with no plan yet, the
 	// aircraft stood a frame and then jumped three frames on (live, 5.5 m at
@@ -2252,6 +2261,7 @@ func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix ai
 // 240": live, EZY516 levelled at the SID's 10000 ft for good).
 func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
 	c.mu.Lock()
+	c.climbCapFt = 0 // cleared higher: the restriction after departure ends
 	if c.state != TaxiComplete {
 		// Cleared before the hand-over (identified on the take-off): its
 		// climb waypoints are raised as they are made (handOverClimb).
@@ -2371,3 +2381,18 @@ func (c *TaxiController) DelayPushback(d time.Duration) bool {
 // pushPlanning lets one background pushback plan run at a time
 // (planPushbackLater).
 var pushPlanning = make(chan struct{}, 1)
+
+// LimitClimb restricts a departure not yet handed to MSFS AI to climb no
+// higher than ft (feet MSL) after departure, as tower amends it before
+// the take-off ("after departure climb to altitude 4000 feet"): its climb
+// waypoints are capped at the hand-over, until departure clears it higher
+// (ClimbTo). 0 lifts it. False once handed over.
+func (c *TaxiController) LimitClimb(ft float64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state == TaxiComplete {
+		return false
+	}
+	c.climbCapFt = ft
+	return true
+}

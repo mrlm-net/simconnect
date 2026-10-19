@@ -533,3 +533,72 @@ func TestRunwayControllerOppositeEnds(t *testing.T) {
 		t.Fatalf("lined up on 24 behind TVS1 rolling from 06: %+v", c)
 	}
 }
+
+// TestCrossingAfterReadyDeparture: the runway's own traffic first: with a
+// departure that can go now, a crossing waits for it; with none, two
+// crossings go one after the other with the runway free (the user:
+// crossings keep the flow, the active runway has priority).
+func TestCrossingAfterReadyDeparture(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	x := RunwayUser{Callsign: "TVS3", Phase: RunwayHoldingShort, Crossing: true}
+	c := r.Decide(now, []RunwayUser{x, dep("CSA1", "A320", RunwayHoldingShort)})
+	if len(c.Cross) != 0 || len(c.Takeoff) != 1 || c.Takeoff[0] != "CSA1" {
+		t.Fatalf("cross %v, take-off %v: want CSA1 first", c.Cross, c.Takeoff)
+	}
+	r2 := NewRunwayController(RunwayControllerOptions{})
+	c = r2.Decide(now, []RunwayUser{x})
+	if len(c.Cross) != 1 {
+		t.Errorf("runway free: cross %v, want TVS3 across", c.Cross)
+	}
+}
+
+// TestTwoCrossingsTogether: two aircraft crossing with nobody landing or
+// taking off go across together, not one after the other.
+func TestTwoCrossingsTogether(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	a := RunwayUser{Callsign: "TVS3", Phase: RunwayHoldingShort, Crossing: true}
+	b := RunwayUser{Callsign: "CSA4", Phase: RunwayHoldingShort, Crossing: true}
+	if c := r.Decide(time.Now(), []RunwayUser{a, b}); len(c.Cross) != 2 {
+		t.Errorf("cross %v, want both", c.Cross)
+	}
+	if c := r.Decide(time.Now(), []RunwayUser{a, b, final("DLH2", 2)}); len(c.Cross) != 0 {
+		t.Errorf("an arrival on a 2 NM final: cross %v, want none", c.Cross)
+	}
+}
+
+// TestLineUpBehindPassedIntersection: one rolling from 06 at E past the
+// intersection F where another holds: that one lines up behind it as it
+// rolls, no rush needed (the user).
+func TestLineUpBehindPassedIntersection(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	rolling := dep("CSA1", "A320", RunwayRolling)
+	rolling.AlongM = 1300
+	f := dep("TVS2", "B738", RunwayHoldingShort)
+	f.AlongM = 400
+	if c := r.Decide(time.Now(), []RunwayUser{rolling, f}); c.LineUpBehindDeparting["TVS2"] != "CSA1" {
+		t.Errorf("past its intersection: line up behind %v, want behind CSA1", c.LineUpBehindDeparting)
+	}
+	rolling.AlongM = 600 // not past it yet
+	r2 := NewRunwayController(RunwayControllerOptions{})
+	if c := r2.Decide(time.Now(), []RunwayUser{rolling, f}); c.LineUpBehindDeparting["TVS2"] != "" {
+		t.Errorf("not past its intersection: lined up behind %v", c.LineUpBehindDeparting)
+	}
+}
+
+// TestLineUpBehindAtIntersection: cleared for take-off at E, the one at F
+// behind it lines up and waits as it goes (the user).
+func TestLineUpBehindAtIntersection(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	e := dep("CSA1", "A320", RunwayLinedUp)
+	e.AlongM = 1300
+	f := dep("TVS2", "B738", RunwayHoldingShort)
+	f.AlongM = 400
+	c := r.Decide(time.Now(), []RunwayUser{e, f})
+	if len(c.Takeoff) != 1 || c.Takeoff[0] != "CSA1" {
+		t.Fatalf("take-off %v, want CSA1", c.Takeoff)
+	}
+	if c.LineUpBehindDeparting["TVS2"] != "CSA1" {
+		t.Errorf("TVS2 at F: line up behind %v, want behind CSA1", c.LineUpBehindDeparting)
+	}
+}

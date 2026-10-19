@@ -86,10 +86,15 @@ type ManagedFlight struct {
 	// ObjectID is the aircraft, once the Spawner attached it (Attach).
 	ObjectID uint32 `json:"objectId,omitempty"`
 
-	retryAt   time.Time
-	seenAt    time.Time // last seen in the picture
-	noEnroute bool      // the enroute spawn failed: straight to the STAR entry
-	dropped   bool      // a real flight the feed dropped: removed once parked (#841)
+	retryAt time.Time
+	// releasedAt: when its stand hold was last released (holdReleaseKeep).
+	releasedAt time.Time
+	// delayedAt, delayedNote: the last delay announced (EventDelayed).
+	delayedAt   time.Time
+	delayedNote string
+	seenAt      time.Time // last seen in the picture
+	noEnroute   bool      // the enroute spawn failed: straight to the STAR entry
+	dropped     bool      // a real flight the feed dropped: removed once parked (#841)
 }
 
 // Departure reports whether the flight departs from its managed airport.
@@ -420,18 +425,20 @@ func (m *TrafficManager) add(flights []Flight) {
 }
 
 // pair links arrivals and departures that are one aircraft turning around:
-// each arrival still scheduled takes the first free departure of its
-// airline and type from its airport in the turn window.
+// the legs of a rotation given (Flight.Rotation) in their order, then
+// each other arrival still scheduled takes the first free departure of
+// its airline and type from its airport in the turn window.
 func (m *TrafficManager) pair() {
+	m.pairRotations()
 	if m.opts.MinTurn < 0 {
 		return
 	}
 	var arrs, deps []*ManagedFlight
 	for _, f := range m.flights {
 		switch {
-		case f.Observed != nil:
-			// A real aircraft turns around as the feed says (Turn), not by
-			// its airline and type.
+		case f.Observed != nil, f.Rotation != "":
+			// A real aircraft turns around as the feed says (Turn), one of a
+			// rotation as the rotation has it, not by airline and type.
 		case f.Kind == "arrival" && f.TurnTo == "" && f.Status <= FlightParked:
 			arrs = append(arrs, f)
 		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled:
@@ -925,7 +932,10 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 					if f.Status == FlightScheduled && a.Until.After(f.retryAt) && !(f.Observed != nil && f.Arrival()) {
 						// Announced when it moves a minute or more (the prediction
 						// drifts by seconds each tick).
-						if a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason {
+						// Not again within a minute for the same reason (live: "arrival
+						// delayed — landing flow" every second for the same flights).
+						if (a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason) && (now.Sub(f.delayedAt) >= time.Minute || f.delayedNote != a.Reason) {
+							f.delayedAt, f.delayedNote = now, a.Reason
 							f, reason := f, a.Reason
 							emits = append(emits, func() { m.emit(EventDelayed, f, now, reason) })
 						}
@@ -961,7 +971,15 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 	var changed []ManagedFlight
 	for k, f := range m.flights {
 		reason, held := hold[k]
+		// A release stands holdReleaseKeep: held again within seconds it never
+		// pushed (live, TVS622 released and held again 3 to 20 s later).
+		if held && !f.Held && !f.releasedAt.IsZero() && now.Sub(f.releasedAt) < holdReleaseKeep {
+			held = false
+		}
 		if held != f.Held {
+			if !held {
+				f.releasedAt = now
+			}
 			f.Held = held
 			f.Since = now // held or let go by ATC: not stuck (CheckStuck) from here
 			if held {
@@ -987,3 +1005,35 @@ func later(a, b time.Time) time.Time {
 	}
 	return a
 }
+
+// pairRotations links the legs of each rotation (Flight.Rotation): at each
+// airport, an arrival of the rotation to the rotation's first departure
+// from it after its STA. m.mu held.
+func (m *TrafficManager) pairRotations() {
+	var arrs, deps []*ManagedFlight
+	for _, f := range m.flights {
+		switch {
+		case f.Rotation == "":
+		case f.Kind == "arrival" && f.TurnTo == "" && f.Status <= FlightParked:
+			arrs = append(arrs, f)
+		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled:
+			deps = append(deps, f)
+		}
+	}
+	sort.Slice(arrs, func(i, j int) bool { return lessFlight(arrs[i].STA, arrs[i].Callsign, arrs[j].STA, arrs[j].Callsign) })
+	sort.Slice(deps, func(i, j int) bool { return lessFlight(deps[i].STD, deps[i].Callsign, deps[j].STD, deps[j].Callsign) })
+	for _, a := range arrs {
+		for _, d := range deps {
+			if d.TurnFrom != "" || d.Rotation != a.Rotation || d.Airport != a.Airport || !d.STD.After(a.STA) {
+				continue
+			}
+			a.TurnTo, d.TurnFrom = d.Callsign, a.Callsign
+			m.emit(EventTurnaround, d, time.Time{}, a.Callsign+" → "+d.Callsign+" ("+a.Rotation+")")
+			break
+		}
+	}
+}
+
+// holdReleaseKeep: a flight released from its stand hold is not held
+// again for this long, time to push.
+const holdReleaseKeep = 2 * time.Minute

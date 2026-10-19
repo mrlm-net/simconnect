@@ -33,6 +33,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 - `pkg/systems` — user aircraft systems by profile: default SimVars, per-model JSON (Fenix L:vars), local overrides, take-off speeds
 - `pkg/flight` — flight recording: Recorder (any object, every frame), Track (versioned JSON lines, At interpolation)
 - `pkg/pilot` — a copilot as pilot flying (logic only): the autopilot through climb, cruise, descent and approach, requests to the player as PM
+- `pkg/failures` — user aircraft failures by generic names (engine, electrical, hydraulic, pitot/static, vacuum, brakes) through the simulator's failure key events; default profile + model override
 - `pkg/checklist` — normal checklists as data (family default, model sets, local override) and a runner checking items against systems.State; findings for flight.Assess
 - `pkg/hotkeys` — keys and joystick buttons in the sim bound to an add-on's actions (SimConnect input groups), rebindable, re-mapped on reconnect
 - `pkg/jetway` — jetways for our NonATC traffic (#572): Service interface, Helpers backend (invisible ParkedATC helpers + placeholders), helper package writer

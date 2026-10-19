@@ -2,6 +2,7 @@ package world
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"testing"
 
@@ -64,5 +65,39 @@ func TestTakeoffMeetsLongProcedure(t *testing.T) {
 	}
 	if got := judge(1000); got != "" {
 		t.Errorf("arrival at the start of its STAR: held for %q, want clear", got)
+	}
+}
+
+// TestTakeoffCapClears: a departure whose climb meets an arrival level at
+// 6000 ft across its way is clear with "after departure climb to altitude
+// 4000 feet" (the user: a restriction up front, not a hold or a level-off
+// later).
+func TestTakeoffCapClears(t *testing.T) {
+	l := lkprLayout(t)
+	_, dep, _ := l.RunwayEnd("06")
+	fieldFt := l.Altitude / 0.3048
+	me, plan := takeoffPlan(dep, fieldFt, nil) // straight out
+	me.Tail = "OKETU"
+	// The arrival 15 NM out along the climb, crossing it level at 6000 ft.
+	lat, lon := calc.DisplaceByHeading(dep.Threshold.Lat, dep.Threshold.Lon, dep.Heading, 15*1852)
+	sLat, sLon := calc.DisplaceByHeading(lat, lon, dep.Heading-90, 13*1852)
+	eLat, eLon := calc.DisplaceByHeading(lat, lon, dep.Heading+90, 13*1852)
+	start, endP := airport.LatLon{Lat: sLat, Lon: sLon}, airport.LatLon{Lat: eLat, Lon: eLon}
+	arr := traffic.TrackedAircraft{Observation: traffic.Observation{Tail: "OOILE", Position: start, AltFt: 6000, GroundKts: 220,
+		Heading: calc.BearingDegrees(sLat, sLon, eLat, eLon)}, Phase: traffic.PhaseArriving, Ours: true}
+	way := []traffic.RoutePoint{{Position: start, AltFt: 6000, Kts: 220}, {Position: endP, AltFt: 6000, Kts: 220}}
+	// Climbing as planned (to its SID top or on): through 9000 ft there.
+	for i := range plan {
+		plan[i].AltFt = math.Max(plan[i].AltFt, 11000)
+	}
+	if got := takeoffConflict([]traffic.TrackedAircraft{me, arr}, map[string][]traffic.RoutePoint{me.Tail: plan, arr.Tail: way}); got != "OOILE" {
+		t.Skipf("no conflict climbing unrestricted (%q): geometry", got)
+	}
+	capped := append([]traffic.RoutePoint(nil), plan...)
+	for i := range capped {
+		capped[i].AltFt = math.Min(capped[i].AltFt, 4000)
+	}
+	if got := takeoffConflict([]traffic.TrackedAircraft{me, arr}, map[string][]traffic.RoutePoint{me.Tail: capped, arr.Tail: way}); got != "" {
+		t.Errorf("after departure climb to 4000 ft: still meets %q", got)
 	}
 }

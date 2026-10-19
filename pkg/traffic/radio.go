@@ -37,48 +37,53 @@ const (
 type Intent string
 
 const (
-	IntentDepartureClearance Intent = "departure_clearance" // cleared the SID, runway
-	IntentArrivalClearance   Intent = "arrival_clearance"   // cleared the STAR, expect the approach
-	IntentApproachClearance  Intent = "approach_clearance"  // cleared the approach to the runway
-	IntentStartUp            Intent = "start_up"            // start up approved
-	IntentPushback           Intent = "pushback"            // pushback approved
-	IntentTaxi               Intent = "taxi"                // taxi to and hold short of the runway, or to the stand
-	IntentTaxiLimit          Intent = "taxi_limit"          // taxi and hold short (a limit on the route)
-	IntentGiveWay            Intent = "give_way"            // give way to other traffic on the ground
-	IntentFollowTaxi         Intent = "follow_taxi"         // follow another aircraft on the ground ("follow the company Airbus")
-	IntentRunwayChange       Intent = "runway_change"       // a new runway in use: new SID or STAR (#456)
-	IntentCross              Intent = "cross"               // cross a runway
-	IntentLineUp             Intent = "line_up"             // line up and wait
-	IntentTakeoff            Intent = "takeoff"             // cleared for take-off
-	IntentLanding            Intent = "landing"             // cleared to land
-	IntentHoldPosition       Intent = "hold_position"       // hold position (on the ground)
-	IntentContinueTaxi       Intent = "continue_taxi"       // continue taxi after holding position
-	IntentStop               Intent = "stop"                // stop immediately (a take-off roll)
-	IntentExpectDelay        Intent = "expect_delay"        // expect N minutes delay, on its own
-	IntentEmergency          Intent = "emergency"           // a crew's MAYDAY or PAN PAN
-	IntentEmergencyAck       Intent = "emergency_ack"       // roger MAYDAY, squawk 7700, number one
-	IntentCustom             Intent = "custom"              // a scenario's own words, said as written
-	IntentCancelTakeoff      Intent = "cancel_takeoff"      // hold position, cancel take-off clearance
-	IntentGoAround           Intent = "go_around"           // go around (ParamReason: why)
-	IntentSequence           Intent = "sequence"            // number, delay and how it is lost
-	IntentDirect             Intent = "direct"              // direct to the final
-	IntentHold               Intent = "hold"                // hold at a fix
-	IntentLeaveHold          Intent = "leave_hold"          // leave the hold, continue the arrival
-	IntentHoldLevel          Intent = "hold_level"          // descend in the hold
-	IntentAirportClosed      Intent = "airport_closed"      // every runway closed: expect holding
-	IntentDivert             Intent = "divert"              // the airport stays closed: to an alternate
-	IntentSpeed              Intent = "speed"               // reduce or increase speed
-	IntentLevel              Intent = "level"               // climb or descend
-	IntentCrossLevel         Intent = "cross_level"         // cross a fix at or above (below) a level (#662)
-	IntentDescendVia         Intent = "descend_via"         // descend via the STAR to a level (#754)
-	IntentHeading            Intent = "heading"             // turn left or right heading
-	IntentContact            Intent = "contact"             // a handoff: contact the next position (#416)
-	IntentIdentified         Intent = "identified"          // radar identification after the departure's check-in, with its climb
-	IntentWeather            Intent = "weather"             // the wind and QNH, asked for by the crew
-	IntentDirectTo           Intent = "direct_to"           // cleared direct to a fix, asked for by the crew
-	IntentVector             Intent = "vector"              // a radar vector off the STAR, or back onto it (#661)
-	IntentUnableDirect       Intent = "unable_direct"       // a crew's direct refused for traffic (#621)
-	IntentVFRDeparture       Intent = "vfr_departure"       // VFR departure instructions (CAP 413 Figure 24)
+	IntentDepartureClearance Intent = "departure_clearance"  // cleared the SID, runway
+	IntentArrivalClearance   Intent = "arrival_clearance"    // cleared the STAR, expect the approach
+	IntentApproachClearance  Intent = "approach_clearance"   // cleared the approach to the runway
+	IntentStartUp            Intent = "start_up"             // start up approved
+	IntentPushback           Intent = "pushback"             // pushback approved
+	IntentTaxi               Intent = "taxi"                 // taxi to and hold short of the runway, or to the stand
+	IntentTaxiLimit          Intent = "taxi_limit"           // taxi and hold short (a limit on the route)
+	IntentGiveWay            Intent = "give_way"             // give way to other traffic on the ground
+	IntentFollowTaxi         Intent = "follow_taxi"          // follow another aircraft on the ground ("follow the company Airbus")
+	IntentRunwayChange       Intent = "runway_change"        // a new runway in use: new SID or STAR (#456)
+	IntentCross              Intent = "cross"                // cross a runway
+	IntentLineUp             Intent = "line_up"              // line up and wait
+	IntentTakeoff            Intent = "takeoff"              // cleared for take-off
+	IntentLanding            Intent = "landing"              // cleared to land
+	IntentHoldPosition       Intent = "hold_position"        // hold position (on the ground)
+	IntentContinueTaxi       Intent = "continue_taxi"        // continue taxi after holding position
+	IntentStop               Intent = "stop"                 // stop immediately (a take-off roll)
+	IntentExpectDelay        Intent = "expect_delay"         // expect N minutes delay, on its own
+	IntentEmergency          Intent = "emergency"            // a crew's MAYDAY or PAN PAN
+	IntentEmergencyAck       Intent = "emergency_ack"        // roger MAYDAY, squawk 7700, number one
+	IntentCustom             Intent = "custom"               // a scenario's own words, said as written
+	IntentAfterDeparture     Intent = "after_departure"      // after departure climb to altitude N feet
+	IntentEmergencyCancel    Intent = "emergency_cancel"     // a crew's cancel MAYDAY
+	IntentEmergencyQuestions Intent = "emergency_questions"  // report persons on board, fuel endurance and intentions
+	IntentEmergencyDetails   Intent = "emergency_details"    // the crew's persons on board, endurance, intentions
+	IntentEmergencyCancelAck Intent = "emergency_cancel_ack" // roger, MAYDAY cancelled
+	IntentCancelTakeoff      Intent = "cancel_takeoff"       // hold position, cancel take-off clearance
+	IntentGoAround           Intent = "go_around"            // go around (ParamReason: why)
+	IntentSequence           Intent = "sequence"             // number, delay and how it is lost
+	IntentDirect             Intent = "direct"               // direct to the final
+	IntentHold               Intent = "hold"                 // hold at a fix
+	IntentLeaveHold          Intent = "leave_hold"           // leave the hold, continue the arrival
+	IntentHoldLevel          Intent = "hold_level"           // descend in the hold
+	IntentAirportClosed      Intent = "airport_closed"       // every runway closed: expect holding
+	IntentDivert             Intent = "divert"               // the airport stays closed: to an alternate
+	IntentSpeed              Intent = "speed"                // reduce or increase speed
+	IntentLevel              Intent = "level"                // climb or descend
+	IntentCrossLevel         Intent = "cross_level"          // cross a fix at or above (below) a level (#662)
+	IntentDescendVia         Intent = "descend_via"          // descend via the STAR to a level (#754)
+	IntentHeading            Intent = "heading"              // turn left or right heading
+	IntentContact            Intent = "contact"              // a handoff: contact the next position (#416)
+	IntentIdentified         Intent = "identified"           // radar identification after the departure's check-in, with its climb
+	IntentWeather            Intent = "weather"              // the wind and QNH, asked for by the crew
+	IntentDirectTo           Intent = "direct_to"            // cleared direct to a fix, asked for by the crew
+	IntentVector             Intent = "vector"               // a radar vector off the STAR, or back onto it (#661)
+	IntentUnableDirect       Intent = "unable_direct"        // a crew's direct refused for traffic (#621)
+	IntentVFRDeparture       Intent = "vfr_departure"        // VFR departure instructions (CAP 413 Figure 24)
 	// VFR in the aerodrome traffic circuit (#569; Doc 4444 12.3.4.13–17).
 	IntentJoinCircuit   Intent = "join_circuit"    // join (left/right) (position in circuit) runway, QNH
 	IntentStraightIn    Intent = "straight_in"     // make straight-in approach, runway
@@ -445,6 +450,10 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, stop immediately, %s, stop immediately", cs, cs) // 12.3.4.11 e
 	case IntentEmergencyAck:
 		return cs + ", " + emergencyAck(p)
+	case IntentAfterDeparture:
+		return fmt.Sprintf("%s, after departure climb to altitude %s feet", cs, p[ParamAltitude])
+	case IntentEmergencyCancelAck:
+		return cs + ", " + cancelAck(p)
 	case IntentExpectDelay:
 		if p[ParamDelay] == "" {
 			return cs + ", expect delay"

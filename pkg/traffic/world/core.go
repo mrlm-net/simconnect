@@ -21,6 +21,8 @@ type core struct {
 
 	// prio: the call signs with priority, an emergency (emergency.go).
 	prio priorities
+	// staff: the stations players work (staffed.go, #1096).
+	staff staffing
 
 	// cityOf: an airport's city, set by the host (SetAirportCity).
 	cityOf atomic.Pointer[func(icao string) string]

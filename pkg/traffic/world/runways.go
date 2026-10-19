@@ -37,7 +37,12 @@ type towers struct {
 	// behind: departures cleared to line up behind a landing aircraft
 	// (#509), by call sign: that aircraft, and the departure's runway.
 	behind map[string]behindClearance
-	next   map[string]string // the next arrival to land, by "ICAO runway"
+	// heldFor: departures told to hold position for want of time before an
+	// arrival, by call sign, that arrival: not cleared again until it has
+	// landed and rolled out (no "hold position" then "cleared for take-off"
+	// three seconds later: live, DCDHS).
+	heldFor map[string]string
+	next    map[string]string // the next arrival to land, by "ICAO runway"
 	// users: each runway's users as last decided on, by "ICAO runway", for
 	// the player's ATC asking (PlayerRunway).
 	users map[string][]traffic.RunwayUser
@@ -143,7 +148,18 @@ func (t *towers) tick(now time.Time) {
 		if v.Done {
 			continue
 		}
-		if v.State != "holding short" {
+		// Taxiing up to a crossing (not stopped at it yet): in its queue, so
+		// it is cleared across before its holding point when nothing is in
+		// the way and rolls on (the user: crossings keep the flow).
+		crossName, approaching := "", false
+		if v.State == "taxiing" && v.OnGround {
+			if g, err := t.cc.graph(it.ICAO); err == nil {
+				if own, ok := runwayOf(l, v.Runway); ok {
+					crossName, approaching = crossingAhead(g, own.Index, v.Position, v.Route, v.Nodes)
+				}
+			}
+		}
+		if v.State != "holding short" && !approaching {
 			t.forget(v.Tail) // the next crossing is cleared afresh
 		}
 		model := v.Model
@@ -157,11 +173,17 @@ func (t *towers) tick(now time.Time) {
 		}
 		// Taxiing across a runway (cleared, or not waiting to be): on it.
 		if v.State == "taxiing" && v.OnGround {
+			on := false
 			for _, r := range l.Runways {
 				if onRunway(r, v.Position) {
+					on = true
 					u.Phase, u.Crossing = traffic.RunwayRolling, true
 					users[key{it.ICAO, r.Name()}] = append(users[key{it.ICAO, r.Name()}], u)
 				}
+			}
+			if !on && approaching {
+				u.Phase, u.Crossing = traffic.RunwayHoldingShort, true
+				users[key{it.ICAO, crossName}] = append(users[key{it.ICAO, crossName}], u)
 			}
 			continue
 		}
@@ -177,6 +199,7 @@ func (t *towers) tick(now time.Time) {
 			rk = key{it.ICAO, x.Name()}
 		case it.dep != nil && v.State == "holding short":
 			u.Phase = traffic.RunwayHoldingShort
+			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
 			u.Phase = traffic.RunwayLinedUp
 			if _, end, ok := l.RunwayEnd(v.Runway); ok {
@@ -186,6 +209,7 @@ func (t *towers) tick(now time.Time) {
 			}
 		case it.dep != nil && v.State == "departing" && v.OnGround:
 			u.Phase, u.GroundKts = traffic.RunwayRolling, v.GroundSpeed
+			u.AlongM = alongRunway(l, v.Runway, v.Position)
 		case it.dep != nil && v.State == "departing":
 			u.Phase = traffic.RunwayAirborne
 		case it.arr != nil && v.State == "approaching" && !v.OnGround && climbingOut(l, v):
@@ -226,6 +250,7 @@ func (t *towers) tick(now time.Time) {
 			u.Established = id != 0 && len(it.arr.ProcedureRoute()) == 0
 		case it.arr != nil && (v.State == "landing" || v.State == "rollout"):
 			u.Phase, u.Arrival = traffic.RunwayRolling, true
+			u.AlongM = alongRunway(l, v.Runway, v.Position) // past an intersection: lined up behind (lineUpBehind)
 		case it.arr != nil && v.State == "vacating":
 			// Off the runway once it is clear of it (its tail too), not when
 			// it stops past the holding point: live, RYR1485 held a lined-up
@@ -363,6 +388,9 @@ func (t *towers) tick(now time.Time) {
 			c.Takeoff = t.crossFilter(l, k.rwy, c.Takeoff, &c, &cross, pos, ours, true)
 			c.Land = t.crossFilter(l, k.rwy, c.Land, &c, &cross, pos, ours, false)
 		}
+		// Held for an arrival (no time before it): not cleared until it is
+		// down and off the final.
+		c.Takeoff, c.LineUp = t.stillHeld(c.Takeoff, list, &c), t.stillHeld(c.LineUp, list, &c)
 		// Its way out clear of the arrivals' ways in (takeoff_plan.go).
 		if g, err := t.cc.graph(k.icao); err == nil {
 			c.Takeoff = t.takeoffFilter(g, c.Takeoff, &c, ours)
@@ -479,7 +507,24 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 			passed = false // across once it is off the runway: where it rolls to is not known
 		} else if !b.cross {
 			if r := it.dep.Route(); r != nil && r.Entry != "" && there {
-				passed = false // an intersection: once it is off the runway
+				// An intersection: once the landing one has rolled past it, by
+				// intersectionPassed, not only once it is off the runway (live,
+				// TVS480 lined up 79 s after the A320neo touched down, when it
+				// vacated).
+				var lead traffic.RunwayUser
+				for _, u := range list {
+					if u.Callsign == b.arrival {
+						lead = u
+					}
+				}
+				it.mu.Lock()
+				rwy, at := it.view.Runway, it.view.Position
+				it.mu.Unlock()
+				var l *airport.Layout
+				if g, err := t.cc.graph(it.ICAO); err == nil {
+					l = g.Layout
+				}
+				passed = phase == traffic.RunwayRolling && l != nil && lead.AlongM > alongRunway(l, rwy, at)+traffic.IntersectionPassed(dep)
 			}
 		}
 		if passed && !b.cross {
@@ -506,6 +551,10 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 				delete(t.behind, dep)
 				delete(t.given, dep+" lineup")
 				noRoom = append(noRoom, dep)
+				if t.heldFor == nil {
+					t.heldFor = map[string]string{}
+				}
+				t.heldFor[dep] = b.arrival
 				continue
 			}
 		}
@@ -874,7 +923,10 @@ func (t *towers) forgetLanding(tail string) {
 // cancelTakeoffFor reports whether why (Decide's wait) cancels a take-off
 // clearance given: someone on the runway only, never an arrival closing in.
 func cancelTakeoffFor(why string) bool {
-	return strings.Contains(why, "on the runway")
+	// Or an arrival to the other end close in, cleared before it came: not
+	// rolled toward it (live, RYR1626 cleared off 24, then "waits — CSA253
+	// landing on 06" a second later, and rolled).
+	return strings.Contains(why, "on the runway") || strings.Contains(why, "landing on")
 }
 
 // dropBehind lets the departures told to line up behind arrival (gone
@@ -1018,4 +1070,77 @@ func overRunway(p airport.LatLon, hdg float64, end airport.RunwayEnd, length flo
 	}
 	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
 	return along < 50 || math.Abs(headingDiff(end.Heading, from)) <= 10 && math.Abs(headingDiff(end.Heading, hdg)) <= onFinalSectorDeg
+}
+
+// crossAheadM: an aircraft taxiing this close to the holding point of a
+// runway it crosses is in that runway's queue, cleared across before it
+// stops when nothing is in the way.
+const crossAheadM = 250.0
+
+// crossingAhead names the runway (its name, "06/24") whose holding point
+// for a crossing lies on route ahead of pos within crossAheadM — not own,
+// the runway it taxis to; false none.
+func crossingAhead(g *airport.Graph, own int, pos airport.LatLon, route []airport.LatLon, nodes []airport.NodeID) (string, bool) {
+	if len(route) == 0 || len(nodes) != len(route) {
+		return "", false
+	}
+	near, best := 0, math.Inf(1)
+	for i, p := range route {
+		if d := calc.HaversineMeters(pos.Lat, pos.Lon, p.Lat, p.Lon); d < best {
+			near, best = i, d
+		}
+	}
+	dist, at := 0.0, pos
+	for i := near; i < len(route) && dist <= crossAheadM; i++ {
+		dist += calc.HaversineMeters(at.Lat, at.Lon, route[i].Lat, route[i].Lon)
+		at = route[i]
+		if dist > crossAheadM {
+			break
+		}
+		if hs := g.Nodes[nodes[i]].HoldShort; hs != nil && !hs.ILS && hs.Runway != own {
+			if hs.Runway >= 0 && hs.Runway < len(g.Layout.Runways) {
+				return g.Layout.Runways[hs.Runway].Name(), true
+			}
+		}
+	}
+	return "", false
+}
+
+// alongRunway is how far down runway end rwy from its threshold p lies (m,
+// 0 at or before it).
+func alongRunway(l *airport.Layout, rwy string, p airport.LatLon) float64 {
+	_, end, ok := l.RunwayEnd(rwy)
+	if !ok {
+		return 0
+	}
+	d := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	b := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	return math.Max(0, d*math.Cos((b-end.Heading)*math.Pi/180))
+}
+
+// stillHeld is tails less the departures held for an arrival that is
+// still on the final or rolling out (heldFor), said waiting in c.
+func (t *towers) stillHeld(tails []string, list []traffic.RunwayUser, c *traffic.RunwayClearances) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var keep []string
+	for _, tail := range tails {
+		arr, held := t.heldFor[tail]
+		busy := false
+		for _, u := range list {
+			if held && u.Callsign == arr && (u.Phase == traffic.RunwayFinal || u.Phase == traffic.RunwayRolling) {
+				busy = true
+			}
+		}
+		if busy {
+			if c.Waiting == nil {
+				c.Waiting = map[string]string{}
+			}
+			c.Waiting[tail] = arr + " landing"
+			continue
+		}
+		delete(t.heldFor, tail)
+		keep = append(keep, tail)
+	}
+	return keep
 }

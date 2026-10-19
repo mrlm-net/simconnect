@@ -807,6 +807,9 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 		if err != nil {
 			return true, err
 		}
+		if a.On != nil && !*a.On {
+			return true, cc.cancelEmergency(it) // On false: cancelled
+		}
 		return true, cc.declareEmergency(it, traffic.EmergencyKind(a.Kind), a.Level)
 	}
 	return false, nil
