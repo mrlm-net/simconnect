@@ -62,6 +62,9 @@ func (w *World) queue() chan engine.Message {
 // its messages come through Feed. All the World's SimConnect calls are made
 // in RunOn's goroutine. Run it again on the next connection.
 func (w *World) RunOn(ctx context.Context, client engine.Client) error {
+	if w.opts.SimlessAI {
+		client = traffic.NewSimlessAI(client) // no simulator AI: flown in the core
+	}
 	err := runOn(ctx, w.st, client, w.queue(), w.reqs, w.opts.DumpDir)
 	if err == context.Canceled {
 		return nil
