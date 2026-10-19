@@ -174,6 +174,7 @@ const (
 	ParamStation    = "station"     // … as said: "Praha Tower"
 	ParamFreq       = "frequency"   // … its frequency: "118.105"
 	ParamWhen       = "when"        // … a condition: "when vacated"
+	ParamVacate     = "vacate"      // where to leave the runway: "left via L"
 	ParamDest       = "destination" // a clearance limit as said: "Frankfurt"
 	ParamSquawk     = "squawk"      // SSR code: "4521"
 	ParamWind       = "wind"        // as said: "wind 100 degrees 6 knots"
@@ -585,7 +586,10 @@ func phrase(cs string, in Intent, p map[string]string) string {
 	case IntentContact:
 		station := strings.TrimSpace(p[ParamStation] + " " + p[ParamFreq])
 		if p[ParamRush] != "" && p[ParamWhen] != "" {
-			return fmt.Sprintf("%s, expedite vacating, %s contact %s", cs, p[ParamWhen], station) // 12.3.4.7 y
+			return fmt.Sprintf("%s, expedite vacating%s, %s contact %s", cs, vacateVia(p), p[ParamWhen], station) // 12.3.4.7 y
+		}
+		if p[ParamVacate] != "" && p[ParamWhen] != "" {
+			return fmt.Sprintf("%s, vacate %s, %s contact %s", cs, p[ParamVacate], p[ParamWhen], station) // 12.3.4.20
 		}
 		if p[ParamWhen] != "" {
 			return fmt.Sprintf("%s, %s contact %s", cs, p[ParamWhen], station) // 12.3.4.20; CAP 413 4.68
@@ -1297,6 +1301,28 @@ func WhenVacatedContact(cs string, from, to Position, station, freq string) Tran
 	t := Handoff(cs, from, to, station, freq)
 	t.Params[ParamWhen] = "when vacated"
 	return Say(t)
+}
+
+// WhenVacatedVia is WhenVacatedContact with where to leave the runway, for
+// a runway with exits on both sides: "CSA123, vacate left via L, when
+// vacated contact Ruzyne Ground 121.91" (Doc 4444 12.3.4.20). side is
+// "left" or "right", taxiway "" when the exit has no name.
+func WhenVacatedVia(cs string, from, to Position, station, freq, side, taxiway string) Transmission {
+	t := Handoff(cs, from, to, station, freq)
+	t.Params[ParamWhen] = "when vacated"
+	t.Params[ParamVacate] = strings.TrimSpace(side + " via " + taxiway)
+	if taxiway == "" {
+		t.Params[ParamVacate] = side
+	}
+	return Say(t)
+}
+
+// vacateVia is " left via L" for an expedite with where to vacate, "" none.
+func vacateVia(p map[string]string) string {
+	if p[ParamVacate] == "" {
+		return ""
+	}
+	return " " + p[ParamVacate]
 }
 
 // PositionName is a position as said: "Tower", "Ground", "Delivery".

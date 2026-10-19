@@ -250,7 +250,7 @@ func injectedTouchdown(t *testing.T, model string) ArrivalEvent {
 	g := lkprGraph(t)
 	ec := &eventClient{}
 	inj := NewInjector(ec)
-	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj), ArrivalWithSeed(1)) // the same touchdown spread for each type
 	c22, _ := g.Layout.ParkingIndex("C22")
 	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: model, InjectApproach: true, RollThroughChance: -1}); err != nil {
 		t.Fatal(err)

@@ -125,10 +125,12 @@ type controlled struct {
 	procSaid, climbSaid string
 	// radarSaid, radarFt: the level departure clears it to once
 	// identified (departureLevel), its filed cruise level when lower.
-	radarSaid    string
-	radarFt      float64
-	heightFt     float64
-	vacateSaid   bool
+	radarSaid string
+	radarFt   float64
+	heightFt  float64
+	// vacateSaid: set once, by whichever event comes first (live, OKECF
+	// and TVS122 told twice in the same millisecond).
+	vacateSaid   atomic.Bool
 	approachSaid bool // its approach clearance, given on the base
 	visual       bool // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
@@ -433,6 +435,12 @@ type controlCenter struct {
 	// call sign, spawned again as a new flight (#75).
 	forgetFlight func(tail string)
 	sequencesAt  func(icao string) map[string][]traffic.SequenceEntry
+	// changeDeadline: when a runway change's departures from the other end
+	// of arrival runway end key ("LKPR 24") should have gone; false none.
+	changeDeadline func(key string) (time.Time, bool)
+	// plannedTraffic: everyone airborne but a call sign, with the planned
+	// way ahead of ours (scheduler.plannedTraffic); nil without a schedule.
+	plannedTraffic func(callsign string) ([]traffic.TrackedAircraft, map[string][]traffic.RoutePoint)
 	// toFinal clears an arrival that missed its join direct to the final.
 	toFinal func(icao, tail string)
 	// world is the traffic picture around the centre of the world (#366):
@@ -2423,7 +2431,13 @@ func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.
 	// either open (none open: none).
 	shut := nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}
 	name := ""
+	if end := cc.core.usedRunway(g.Layout.ICAO); end != "" && !shut.ClosedEnd(end) {
+		name = end // made the runway in use (UseRunway)
+	}
 	for _, n := range lim.PreferredRunways {
+		if name != "" {
+			break
+		}
 		if !shut.ClosedEnd(n) {
 			name = n
 			break
@@ -3539,7 +3553,8 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.tngRolling = true
 	}
 	if ev.arr != nil && it.tngRolling && !ev.arr.TouchAndGo && ev.arr.State == traffic.ArrivalApproaching {
-		it.tngRolling, it.downwindSaid, it.vacateSaid = false, false, false
+		it.tngRolling, it.downwindSaid = false, false
+		it.vacateSaid.Store(false)
 		if it.cc.rejoin != nil {
 			go it.cc.rejoin(it.ICAO, it.Tail)
 		}
@@ -3573,10 +3588,15 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	// On the landing roll the tower tells the crew to call ground when
 	// vacated (Doc 4444 12.3.4.20; #462).
-	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && it.arr.TouchAndGosLeft() == 0 && !it.vacateSaid && !it.gates.Load() && it.atc == traffic.PosTower {
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !ev.arr.TouchAndGo && !it.tngRolling && it.arr.TouchAndGosLeft() == 0 && !it.vacateSaid.Load() && !it.gates.Load() && it.atc == traffic.PosTower && it.vacateSaid.CompareAndSwap(false, true) {
 		gs, gf := it.station(traffic.PosGround)
-		it.say(it.rushed(traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)))
-		it.vacateSaid = true
+		tx := traffic.WhenVacatedContact(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf)
+		// Exits on both sides near its own: told which way and where
+		// (the user).
+		if p := it.arr.Plan(); p != nil && it.graph != nil && it.graph.ExitsBothSides(p.End.Name, p.Exit) {
+			tx = traffic.WhenVacatedVia(it.Tail, traffic.PosTower, traffic.PosGround, gs, gf, p.Exit.Side.String(), p.Exit.Taxiway)
+		}
+		it.say(it.rushed(tx))
 	}
 	// On the base, before the turn onto the final, approach clears the
 	// approach; the crew reports established on the final, and approach
@@ -3676,7 +3696,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		return
 	}
 	switch {
-	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid:
+	case ev.arr != nil && from == traffic.PosTower && pos == traffic.PosGround && it.vacateSaid.Load():
 		// Told on the landing roll: the crew calls ground when vacated.
 	default:
 		it.say(traffic.Handoff(it.Tail, from, pos, station, freq))

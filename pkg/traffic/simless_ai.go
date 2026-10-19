@@ -42,13 +42,16 @@ type simlessObject struct {
 	wps      []types.SIMCONNECT_DATA_WAYPOINT
 	next     int
 	released bool
-	posed    bool // a pose known (placed, or flown)
-	pos      airport.LatLon
-	altFt    float64
-	hdg      float64
-	kts      float64
-	bank     float64
-	vs       float64 // ft/min
+	// ai: released to the AI once (AIReleaseControl): unfrozen again
+	// (Injector.Release) it is the AI's once more, as in MSFS.
+	ai    bool
+	posed bool // a pose known (placed, or flown)
+	pos   airport.LatLon
+	altFt float64
+	hdg   float64
+	kts   float64
+	bank  float64
+	vs    float64 // ft/min
 }
 
 // Simless flying tunables.
@@ -114,7 +117,8 @@ func (s *SimlessAI) SetDataOnSimObject(definitionID uint32, objectID uint32, fla
 // waypoints from now on.
 func (s *SimlessAI) AIReleaseControl(objectID uint32, requestID uint32) error {
 	s.mu.Lock()
-	s.object(objectID).released = true
+	o := s.object(objectID)
+	o.released, o.ai = true, true
 	s.mu.Unlock()
 	return s.Client.AIReleaseControl(objectID, requestID)
 }
@@ -134,12 +138,18 @@ func (s *SimlessAI) MapClientEventToSimEvent(eventID uint32, eventName string) e
 }
 
 // TransmitClientEvent stops flying an aircraft frozen in place (taken over
-// by its controller), then passes the call on.
+// by its controller) and flies one unfrozen again that the AI had (a
+// departure handed back after its injected climb: live in Vector it stood
+// there for good), then passes the call on.
 func (s *SimlessAI) TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error {
 	s.mu.Lock()
-	if s.freezeEvents[eventID] && data != 0 {
+	if s.freezeEvents[eventID] {
 		if o := s.objects[objectID]; o != nil {
-			o.released = false
+			if data != 0 {
+				o.released = false
+			} else if o.ai {
+				o.released = true
+			}
 		}
 	}
 	s.mu.Unlock()

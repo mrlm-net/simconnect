@@ -98,3 +98,29 @@ func TestExitForLongRolloutReturnsLastExit(t *testing.T) {
 		t.Errorf("RunwayExits(18) error = %v", err)
 	}
 }
+
+// TestExitsBothSides: a landing aircraft is told which way to vacate only
+// where the runway has an exit on the other side near its own: LKPR 30 at
+// F and D (both sides), never 06, whose exits are all on its right.
+func TestExitsBothSides(t *testing.T) {
+	g := lkprGraph(t)
+	check := func(end, taxiway string, want bool) {
+		t.Helper()
+		exits, err := g.RunwayExits(end)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range exits {
+			if x.Taxiway == taxiway {
+				if got := g.ExitsBothSides(end, x); got != want {
+					t.Errorf("%s exit %s %s at %.0f m: both sides %v, want %v", end, x.Taxiway, x.Side, x.Along, got, want)
+				}
+				return
+			}
+		}
+		t.Fatalf("%s: no exit %s", end, taxiway)
+	}
+	check("30", "F", true)
+	check("06", "L", false)
+	check("24", "C", false)
+}

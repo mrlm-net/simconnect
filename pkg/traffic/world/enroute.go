@@ -240,6 +240,21 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	if who := s.nearPoint(route[0].Position, route[0].AltFt); who != "" {
 		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
 	}
+	// Its way clear of the others at its level, else at another of its
+	// direction (enroute_level.go).
+	r, met, ok := s.clearLevel(f.Callsign, route)
+	if !ok {
+		return fmt.Errorf("%w: its way meets %s at every level", traffic.ErrSpawnBlocked, met)
+	}
+	if r[0].AltFt != route[0].AltFt {
+		for i := range r {
+			if r[i].AltFt >= 10000 {
+				r[i].Kts = traffic.EnrouteSpeedKts(r[i].AltFt, e.cruiseKts)
+			}
+		}
+		s.cc.log.printf("%-6s schedule: at %s its way meets %s: %s", f.Callsign, flLog(route[0].AltFt), met, flLog(r[0].AltFt))
+	}
+	route = r
 	spawn, wps, err := traffic.EnrouteStart(route)
 	if err != nil {
 		return err
