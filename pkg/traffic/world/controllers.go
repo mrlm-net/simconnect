@@ -34,6 +34,7 @@ type departureCtl interface {
 	ClearToLineUp()
 	ClimbPlan(pos airport.LatLon) []traffic.RoutePoint
 	ClimbRoute(pos airport.LatLon) []airport.LatLon
+	DepartureRoute() []airport.NavPoint
 	DirectTo(pos airport.LatLon, altFt, kts float64, fix airport.LatLon) error
 	Expedite(on bool)
 	Handle(msg engine.Message) bool

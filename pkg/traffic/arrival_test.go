@@ -879,9 +879,17 @@ func TestVacateShortOfJunction(t *testing.T) {
 						continue
 					}
 					moved++
-					j := p.Route.Points[p.VacateIndex]
-					if d := calc.HaversineMeters(stop.Lat, stop.Lon, j.Lat, j.Lon); d < VacateJunctionMeters-2 {
-						t.Errorf("%s %s stand %d: stop %.0f m from the junction", icao, end, s, d)
+					for _, n := range p.Route.Nodes[len(p.Exit.Path)-1 : len(p.Route.Nodes)-2] {
+						seen := map[airport.NodeID]bool{}
+						for _, e := range g.Adj[n] {
+							if g.Nodes[e.To].Kind != airport.NodeParking {
+								seen[e.To] = true
+							}
+						}
+						j := g.Nodes[n].Position
+						if d := calc.HaversineMeters(stop.Lat, stop.Lon, j.Lat, j.Lon); len(seen) >= 3 && d < VacateJunctionMeters-2 {
+							t.Errorf("%s %s stand %d: stop %.0f m from a junction", icao, end, s, d)
+						}
 					}
 				}
 			}
@@ -889,6 +897,33 @@ func TestVacateShortOfJunction(t *testing.T) {
 		if moved == 0 {
 			t.Errorf("%s: no stop moved short of a junction", icao)
 		}
+	}
+}
+
+// TestVacateJustPastHoldShort: the arrival stops just past the hold-short
+// line behind its exit, not on down the taxiway to the next junction, and
+// ground clears it from there (live, OKZYC off 06 at L for N73: stopped
+// 280 m down L, "via D, L, D").
+func TestVacateJustPastHoldShort(t *testing.T) {
+	g := lkprGraph(t)
+	n73, _ := g.Layout.ParkingIndex("N73")
+	p, err := PlanArrival(g, "06", n73, ArrivalOptions{TouchdownKts: 103, BrakeDecel: 2.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Exit.Taxiway != "L" {
+		t.Fatalf("exit %s, want L", p.Exit.Taxiway)
+	}
+	hs := slices.Index(p.Route.Nodes, p.Exit.HoldShort)
+	if hs < 0 {
+		t.Fatal("hold-short not on the route")
+	}
+	h, stop := p.Route.Points[hs], p.VacateStop()
+	if d := calc.HaversineMeters(h.Lat, h.Lon, stop.Lat, stop.Lon); d < VacateTailMeters-5 || d > VacateTailMeters+VacateJunctionMeters {
+		t.Errorf("stop %.0f m past the hold-short, want about %.0f", d, VacateTailMeters)
+	}
+	if said := p.TaxiRoute().SpokenTaxiways(-1); len(said) != 2 || said[0] != "L" || said[1] != "D" {
+		t.Errorf("taxi-in said %v, want [L D]", said)
 	}
 }
 

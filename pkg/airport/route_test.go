@@ -429,3 +429,16 @@ func TestSpokenTaxiways(t *testing.T) {
 	}
 	t.Logf("C22 → 24: route %v, said %v", r.Taxiways, said)
 }
+
+// TestSpokenTaxiwaysShortFirst: a few metres of the taxiway the aircraft
+// stands on are not said ("D, L, D" from a junction of D and L: "L, D").
+func TestSpokenTaxiwaysShortFirst(t *testing.T) {
+	r := &Route{Edges: []Edge{{Name: "D", Length: 20}, {Name: "L", Length: 400}, {Name: "D", Length: 600}}}
+	if got := r.SpokenTaxiways(-1); len(got) != 2 || got[0] != "L" || got[1] != "D" {
+		t.Errorf("said %v, want [L D]", got)
+	}
+	r = &Route{Edges: []Edge{{Name: "D", Length: 20}}}
+	if got := r.SpokenTaxiways(-1); len(got) != 1 || got[0] != "D" {
+		t.Errorf("only taxiway: said %v, want [D]", got)
+	}
+}
