@@ -461,6 +461,16 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Holding" // 12.3.4.8 note, 12.3.4.11 c
 	case IntentStop:
 		s = "Stopping"
+	case IntentEmergencyAck:
+		s = "Squawk " + p[ParamSquawk] + ", number one"
+		if p[ParamRunway] != "" {
+			s += ", runway " + p[ParamRunway]
+		}
+	case IntentExpectDelay:
+		s = "Expect delay"
+		if p[ParamDelay] != "" {
+			s = "Expect " + p[ParamDelay] + " minutes delay"
+		}
 	case IntentGoAround:
 		s = "Going around" + goAroundInstr(p)
 	case IntentSequence:

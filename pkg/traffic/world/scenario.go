@@ -87,7 +87,8 @@ type ScenarioStep struct {
 //	goAround   Who is sent around
 //	hold       Who holds (On true) or leaves the hold (On false)
 //	runway     Runway ("12/30" or an end) closed (On true) or open again (On false)
-//	say        to Who, Kind: cancelTakeoff | holdPosition | goAround
+//	say        to Who, Kind: cancelTakeoff | holdPosition | goAround |
+//	           expectDelay (Args["minutes"])
 //	camera     Shots on the cast (the camera's moves)
 //
 // and anything else is the host's (ScenarioHooks.Action).
@@ -744,10 +745,25 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 			return true, clear("hold")
 		case "goAround":
 			return true, clear("goaround")
+		case "expectDelay": // Args["minutes"], none: "expect delay"
+			it, err := who()
+			if err != nil {
+				return true, err
+			}
+			min, _ := strconv.Atoi(a.Args["minutes"])
+			it.mu.Lock()
+			pos := it.atc
+			it.mu.Unlock()
+			it.say(traffic.ExpectDelay(pos, it.Tail, min))
+			return true, nil
 		}
 		return true, fmt.Errorf("say %q not yet", a.Kind)
 	case "emergency":
-		return true, errors.New("emergency not yet")
+		it, err := who()
+		if err != nil {
+			return true, err
+		}
+		return true, cc.declareEmergency(it, traffic.EmergencyKind(a.Kind), a.Level)
 	}
 	return false, nil
 }

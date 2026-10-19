@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"github.com/mrlm-net/simconnect/pkg/types"
 	"math"
 	"time"
 
@@ -363,5 +364,28 @@ func TestArrivalChangeRunwayFromItsFirstPoint(t *testing.T) {
 	ctl.mu.Unlock()
 	if k != 0 {
 		t.Fatalf("flies to corner %d of the new STAR, want its first", k)
+	}
+}
+
+// TestReachFirstOnlyForItsPoint: after a runway change its first point is
+// flown to (reachFirst); a dog-leg put before it lets geometry decide
+// again, so the arrival is not held to a point it never reaches (live,
+// THY869: its route drawn back to the new STAR's first point long after,
+// re-planned from it).
+func TestReachFirstOnlyForItsPoint(t *testing.T) {
+	c := &ArrivalController{reachFirst: true}
+	first := types.SIMCONNECT_DATA_WAYPOINT{Latitude: 49.86, Longitude: 14.89}
+	next := types.SIMCONNECT_DATA_WAYPOINT{Latitude: 50.07, Longitude: 14.76}
+	c.corners = []types.SIMCONNECT_DATA_WAYPOINT{first, next}
+	slower := first
+	slower.KtsSpeed = 210
+	c.keepReach([]types.SIMCONNECT_DATA_WAYPOINT{slower, next}) // slower only
+	if !c.reachFirst {
+		t.Fatal("slowed down: no longer flown to its first point")
+	}
+	apex := types.SIMCONNECT_DATA_WAYPOINT{Latitude: 49.95, Longitude: 15.0}
+	c.keepReach([]types.SIMCONNECT_DATA_WAYPOINT{apex, first, next}) // a dog-leg before it
+	if c.reachFirst {
+		t.Error("a dog-leg's apex first: still held to reach it")
 	}
 }

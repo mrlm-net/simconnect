@@ -26,6 +26,12 @@ const mergeLookAhead = 12 * time.Minute
 // the prediction; the conflict watch is there).
 const mergeMinNeed = 20 * time.Second
 
+// mergeMinWithinNM: a meeting closer than this along its way is the
+// conflict watch's: too late for speed, and a dog-leg there is out and
+// back at once (live, CSA253 "fly heading 355", "resume own navigation"
+// a second later, 9 NM before it met DLH620).
+const mergeMinWithinNM = 12.0
+
 // mergeAhead is what e, an arrival of seq, must lose to pass where its way
 // meets that of one landing before it MergeSpacingNM behind: the time,
 // within how many NM of its way (before it gets there) and that one; zero
@@ -56,6 +62,12 @@ func (q *sequences) mergeAhead(e traffic.SequenceEntry, seq []traffic.SequenceEn
 	if !ok {
 		return 0, 0, ""
 	}
+	// In a conflict resolution, or just out of one: the conflict watch's,
+	// not planned over it the same second.
+	engaged := func(cs string) bool { return q.engaged != nil && q.engaged(cs, q.cc.clock.Now()) }
+	if engaged(e.Callsign) {
+		return 0, 0, ""
+	}
 	var (
 		need   time.Duration
 		within float64
@@ -70,10 +82,13 @@ func (q *sequences) mergeAhead(e traffic.SequenceEntry, seq []traffic.SequenceEn
 			continue
 		}
 		other, plan, ok := seen(o)
-		if !ok {
-			continue // on the final or vectored: the sequence's spacing there
+		if !ok || engaged(l.Callsign) {
+			continue // on the final or vectored, or the conflict watch's
 		}
 		n, w := mergeNeed(mine, myPlan, other, heldPlan(plan, other))
+		if w < mergeMinWithinNM {
+			continue
+		}
 		if n > need {
 			need, within, lead = n, w, l.Callsign
 		}
@@ -85,10 +100,10 @@ func (q *sequences) mergeAhead(e traffic.SequenceEntry, seq []traffic.SequenceEn
 		others, ways := q.cc.plannedTraffic(mine.Tail)
 		for _, a := range others {
 			o := q.cc.byTail(a.Tail)
-			if o == nil || o.dep == nil || len(ways[a.Tail]) == 0 {
+			if o == nil || o.dep == nil || len(ways[a.Tail]) == 0 || engaged(a.Tail) {
 				continue
 			}
-			if n, w := mergeNeed(mine, myPlan, a, ways[a.Tail]); n > need {
+			if n, w := mergeNeed(mine, myPlan, a, ways[a.Tail]); n > need && w >= mergeMinWithinNM {
 				need, within, lead = n, w, a.Tail
 			}
 		}

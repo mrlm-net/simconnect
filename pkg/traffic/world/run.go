@@ -247,7 +247,9 @@ type state struct {
 	// weather is the latest at the user aircraft; atis the information
 	// services by ICAO (#357).
 	weather *nav.Weather
-	atis    map[string]*nav.ATISService
+	// weatherSet: set by the host (SetWeather), kept over the simulator's.
+	weatherSet bool
+	atis       map[string]*nav.ATISService
 	// pads are the de-icing pads picked on the map (#323); pushes the
 	// pushbacks drawn by hand.
 	pads   *padStore

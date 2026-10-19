@@ -288,3 +288,64 @@ func TestRunwaySelectorCalmBackToPreferred(t *testing.T) {
 	}
 	t.Fatal("kept 12 near calm instead of going back to the preferred 06")
 }
+
+// TestATISLimitsNow: the ATIS sharing the traffic's selector chooses by
+// the limits now (ATISWithLimits), not those it was made with: a runway
+// made the one in use against the wind is not turned back by every ATIS
+// update (live, LKPR: 24 made the runway in use, 06 and 24 by turns every
+// few minutes).
+func TestATISLimitsNow(t *testing.T) {
+	info := lkprInfo(t)
+	l := info.Layout
+	base := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Date(2026, 10, 19, 20, 46, 0, 0, time.UTC)
+	wx := StaticWeather(20, 9, 9999, 8, 5, 1026) // 06 by the wind, past 24's tailwind limit
+	forced := base
+	forced.Preferred, forced.PreferredArrival = []string{"24"}, []string{"24"}
+	forced.MaxTailwindKts, forced.MaxCrosswindKts = 99, 99
+	cur := base
+	sel := &RunwaySelector{ChangeAfter: time.Minute}
+	svc := NewATISService("Ruzyne", l, base, 5000, ATISWithSelector(sel), ATISWithLimits(func() RunwayLimits { return cur }))
+	if a, _ := svc.Update(wx, now); a.Use.Arrival.Name != "06" {
+		t.Fatalf("by the wind: %s, want 06", a.Use.Arrival.Name)
+	}
+	cur = forced
+	changes, last := 0, "06"
+	for i := 1; i <= 40; i++ {
+		at := now.Add(time.Duration(i) * 30 * time.Second)
+		u := sel.Choose(at, l, wx, cur) // the traffic
+		a, _ := svc.Update(wx, at)      // the ATIS
+		if a.Use.Arrival.Name != u.Arrival.Name {
+			t.Fatalf("at %s: the ATIS says %s, the traffic %s", at.Format("15:04:05"), a.Use.Arrival.Name, u.Arrival.Name)
+		}
+		if u.Arrival.Name != last {
+			changes++
+			last = u.Arrival.Name
+		}
+	}
+	if last != "24" || changes != 1 {
+		t.Errorf("made 24: now %s after %d changes, want 24 after one", last, changes)
+	}
+}
+
+// TestRunwayChangeNow: a runway made the one in use (ChangeNow) is changed
+// to at the next look, not ten minutes later as a wind change is (live,
+// LKPR: 24 made the runway in use at 21:47, in use at 21:57).
+func TestRunwayChangeNow(t *testing.T) {
+	l := lkprInfo(t).Layout
+	base := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Date(2026, 10, 19, 21, 47, 0, 0, time.UTC)
+	wx := StaticWeather(90, 9, 9999, 6, 2, 1026)
+	var sel RunwaySelector
+	if u := sel.Choose(now, l, wx, base); u.Arrival.Name != "06" {
+		t.Fatalf("by the wind: %s, want 06", u.Arrival.Name)
+	}
+	forced := base
+	forced.Preferred, forced.PreferredArrival = []string{"24"}, []string{"24"}
+	forced.MaxTailwindKts, forced.MaxCrosswindKts = 99, 99
+	forced.ChangeNow = true
+	sel.Choose(now.Add(time.Second), l, wx, forced)
+	if u := sel.Choose(now.Add(2*time.Second), l, wx, forced); u.Arrival.Name != "24" {
+		t.Errorf("made 24 the runway in use: %s two seconds on, want 24", u.Arrival.Name)
+	}
+}

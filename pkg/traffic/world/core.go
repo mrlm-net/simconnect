@@ -19,6 +19,9 @@ type core struct {
 	// log is the traffic log (console, file, /api/control/log).
 	log *trafficLog
 
+	// prio: the call signs with priority, an emergency (emergency.go).
+	prio priorities
+
 	// cityOf: an airport's city, set by the host (SetAirportCity).
 	cityOf atomic.Pointer[func(icao string) string]
 

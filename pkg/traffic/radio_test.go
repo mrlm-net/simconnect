@@ -494,3 +494,18 @@ func TestWhenVacatedVia(t *testing.T) {
 		t.Errorf("readback %q %v", rb.Text, ok)
 	}
 }
+
+// TestExpectDelay: a delay told on its own, with or without its minutes,
+// read back.
+func TestExpectDelay(t *testing.T) {
+	tx := ExpectDelay(PosGround, "CSA123", 10)
+	if tx.Text != "CSA123, expect 10 minutes delay" {
+		t.Errorf("said %q", tx.Text)
+	}
+	if rb, ok := Readback(tx); !ok || rb.Text != "Expect 10 minutes delay, CSA123" {
+		t.Errorf("readback %q %v", rb.Text, ok)
+	}
+	if tx := ExpectDelay(PosTower, "CSA123", 0); tx.Text != "CSA123, expect delay" {
+		t.Errorf("no minutes: said %q", tx.Text)
+	}
+}

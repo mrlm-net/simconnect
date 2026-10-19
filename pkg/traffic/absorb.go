@@ -391,6 +391,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return Absorption{}, err
 	}
+	c.keepReach(plain)
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, plainNames, 0
 	prevOut := 0.0
@@ -1034,6 +1035,7 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 		return "", 0, err
 	}
 	fix := c.cornerName(best)
+	c.keepReach(plain)
 	c.proc.Waypoints, c.procNext = out, 0
 	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
 	c.vectors, c.vectored = nil, false // direct to a fix of its STAR: its own navigation
@@ -1223,3 +1225,19 @@ type dogLegState struct {
 // dogLegResayDeg: a dog-leg lengthened on the way out is said again only
 // when its heading changes by this much or more.
 const dogLegResayDeg = 10.0
+
+// keepReach keeps reachFirst (the first corner flown to, not passed by
+// geometry) only while plain, the new corners, still start at that corner:
+// a dog-leg put before it, or a direct past it, is passed as any other
+// (live, THY869: a runway change's first point "to reach", a dog-leg's
+// apex put first, rounded more than 1.5 NM inside, never reached; the
+// route drawn back to it and re-planned from it for good). c.mu held.
+func (c *ArrivalController) keepReach(plain []types.SIMCONNECT_DATA_WAYPOINT) {
+	if !c.reachFirst || len(c.corners) == 0 || len(plain) == 0 {
+		return
+	}
+	a, b := c.corners[0], plain[0]
+	if a.Latitude != b.Latitude || a.Longitude != b.Longitude {
+		c.reachFirst = false
+	}
+}

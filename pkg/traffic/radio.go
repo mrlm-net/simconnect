@@ -54,6 +54,9 @@ const (
 	IntentHoldPosition       Intent = "hold_position"       // hold position (on the ground)
 	IntentContinueTaxi       Intent = "continue_taxi"       // continue taxi after holding position
 	IntentStop               Intent = "stop"                // stop immediately (a take-off roll)
+	IntentExpectDelay        Intent = "expect_delay"        // expect N minutes delay, on its own
+	IntentEmergency          Intent = "emergency"           // a crew's MAYDAY or PAN PAN
+	IntentEmergencyAck       Intent = "emergency_ack"       // roger MAYDAY, squawk 7700, number one
 	IntentCancelTakeoff      Intent = "cancel_takeoff"      // hold position, cancel take-off clearance
 	IntentGoAround           Intent = "go_around"           // go around (ParamReason: why)
 	IntentSequence           Intent = "sequence"            // number, delay and how it is lost
@@ -439,6 +442,13 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, hold short of runway %s, %s aircraft to depart before you", cs, p[ParamRunway], p[ParamNumber])
 	case IntentStop:
 		return fmt.Sprintf("%s, stop immediately, %s, stop immediately", cs, cs) // 12.3.4.11 e
+	case IntentEmergencyAck:
+		return cs + ", " + emergencyAck(p)
+	case IntentExpectDelay:
+		if p[ParamDelay] == "" {
+			return cs + ", expect delay"
+		}
+		return fmt.Sprintf("%s, expect %s minutes delay", cs, p[ParamDelay])
 	case IntentCancelTakeoff:
 		return cs + ", hold position, cancel take-off, I say again, cancel take-off" // 12.3.4.11 c
 	case IntentJoinCircuit:
@@ -1118,6 +1128,16 @@ func ContinueTaxi(cs string) Transmission {
 
 func Stop(cs string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentStop})
+}
+
+// ExpectDelay is a delay told on its own by the position pos: "CSA123,
+// expect 10 minutes delay"; minutes 0: "CSA123, expect delay".
+func ExpectDelay(pos Position, cs string, minutes int) Transmission {
+	t := Transmission{Position: pos, Callsign: cs, Intent: IntentExpectDelay, Params: map[string]string{}}
+	if minutes > 0 {
+		t.Params[ParamDelay] = fmt.Sprint(minutes)
+	}
+	return Say(t)
 }
 
 func CancelTakeoff(cs string) Transmission {

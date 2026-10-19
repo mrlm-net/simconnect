@@ -93,3 +93,39 @@ func TestAirportListRoundTrip(t *testing.T) {
 		t.Errorf("LKPR %+v %v", a, ok)
 	}
 }
+
+// TestOfflineWeather: an airport's weather.json is the World's weather
+// with no simulator (Vector), kept over the simulator's; SetWeather(nil)
+// gives it back.
+func TestOfflineWeather(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "LKPR")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, dumpWeather), []byte(`{"windDirTrue":240,"windKts":12,"gustKts":20,"visibilityM":8000,"tempC":14,"qnhHPa":1009}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := New(Options{DataDir: t.TempDir()})
+	if _, err := w.LoadAirportDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	got := func() *nav.Weather {
+		w.st.mu.Lock()
+		defer w.st.mu.Unlock()
+		return w.st.weather
+	}
+	wx := got()
+	if wx == nil || wx.WindDirTrue != 240 || wx.WindKts != 12 || wx.GustKts != 20 || wx.QNHhPa != 1009 {
+		t.Fatalf("weather %+v, want 240/12G20, QNH 1009", wx)
+	}
+	f := localFeed{st: w.st}
+	f.Weather(nav.StaticWeather(60, 5, 9999, 10, 5, 1020)) // the simulator's
+	if got().WindDirTrue != 240 {
+		t.Error("the simulator's weather over the one set")
+	}
+	w.SetWeather(nil)
+	f.Weather(nav.StaticWeather(60, 5, 9999, 10, 5, 1020))
+	if got().WindDirTrue != 60 {
+		t.Error("given back: the simulator's weather not taken")
+	}
+}

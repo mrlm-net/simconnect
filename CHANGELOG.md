@@ -57,6 +57,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.100.0] - 2026-10-19
+
+### Added
+
+- Emergencies (the emergency add-on, part 2):
+  - `World.Priority(tail, on)` gives an aircraft priority. It lands number one at its own time, the other arrivals are fitted around it (`ApproachSequencer.SetPriority` / `SetPriorities`), and departures wait while it is within 15 NM. `tail` "" is the user aircraft, sequenced at the nearest airport when the host has not cleared it to land.
+  - A cast aircraft's scenario action `emergency` (Kind engine-failure, medical, fuel, pressurisation, fire, hydraulic; Level chosen by kind unless given) squawks 7700, declares MAYDAY or PAN PAN and is acknowledged.
+  - Phrases: `traffic.DeclareEmergency`, `AcknowledgeEmergency`, `EmergencyLevel`.
+- `traffic.ExpectDelay(pos, cs, minutes)`: "CSA123, expect 10 minutes delay" ("expect delay" with 0), read back. The scenario say action takes `expectDelay` (Args["minutes"]).
+- Offline weather: `World.SetWeather(*nav.Weather)` sets the weather the World uses (wind, QNH, the ATIS, the runway in use) over the simulator's; nil gives it back. `LoadAirportDir` reads an airport's `weather.json` (`WeatherFile`) as it.
+- `nav.ATISWithLimits`: the ATIS reads its runway limits at every update. `nav.RunwayLimits.ChangeNow`: a supervisor's runway choice is changed to at the next Ready moment, not after the wind's ten minutes.
+
+### Fixed
+
+- The runway in use no longer flip-flops after a runway is made the one in use or closed. The ATIS chose by the limits it was made with and turned the traffic's runway back every few minutes (live, LKPR: 06 and 24 by turns six times in 26 minutes).
+- A runway change's changeover deadline is kept until the changeover is over. A look that counted no departure for a moment set a new, later one, and the first arrival's delay crept up (live, OKBWJ number 1, 16 s to 4m15).
+- The climb check flies a departure on its SID before its hand-over to MSFS AI too, not on no route (live, DLH620 cleared to FL220 through CSA253 at 10000 ft, 6 s before its hand-over).
+- Merge planning leaves pairs the conflict watch is resolving, and meetings closer than 12 NM along the way. It no longer gives a vector the same second as the conflict watch (live, CSA253 "fly heading 355", then "resume own navigation" a second later).
+- Sequencing:
+  - Predictions are smoothed over 30 s; a jump of 2 min or more is taken at once (live, BAW1182's delay 45s, 80s, 47s, 16s within a minute).
+  - A departure gap stays with the arrival it was given to (live, OKBWJ's gap 10.5 and 6 NM by turns).
+  - An arrival handed from en route to its controller stays in the sequence.
+- After a runway change, the new STAR's first point is flown to only while it is still the first point: a dog-leg put before it, or a direct past it, lets the aircraft pass it (live, THY869's route drawn back to it for good).
+
 ## [0.99.0] - 2026-10-19
 
 ### Added
