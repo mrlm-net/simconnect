@@ -588,3 +588,24 @@ func TestDoubleDepartureGap(t *testing.T) {
 		t.Errorf("one waiting: %+v, want a single gap", seq[1])
 	}
 }
+
+// A runway change (the user: the old direction's departures leave, the
+// arrivals are given the spacing): no arrival lands on the new runway
+// before NotBefore, the next ones in trail behind it; cleared, back to
+// their own times.
+func TestSequencerNotBefore(t *testing.T) {
+	now := time.Date(2026, 10, 18, 21, 45, 0, 0, time.UTC)
+	s := NewApproachSequencer("06", SequencerOptions{})
+	list := []ApproachAircraft{arr("KLM1073", "A320", 12), arr("CSA766", "A320", 18)}
+	base := s.Update(now, list)
+	from := now.Add(10 * time.Minute)
+	s.SetNotBefore(from)
+	seq := s.Update(now, list)
+	if seq[0].Landing.Before(from) || seq[1].Landing.Before(seq[0].Landing) {
+		t.Fatalf("landings %v, %v: want none before %v", seq[0].Landing, seq[1].Landing, from)
+	}
+	s.SetNotBefore(time.Time{})
+	if again := s.Update(now, list); !again[0].Landing.Equal(base[0].Landing) {
+		t.Errorf("cleared: %v, want %v", again[0].Landing, base[0].Landing)
+	}
+}

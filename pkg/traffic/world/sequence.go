@@ -65,6 +65,9 @@ type sequences struct {
 	// small their delay, before conflictHoldMin has passed and inConflict
 	// no longer predicts the pair to lose separation.
 	conflictHeld map[string]conflictHold
+	// changeGone: by runway end, when the other end's last departure was
+	// last seen going after a runway change (runwayChangeGap).
+	changeGone map[string]time.Time
 	inConflict   func(a, b string) bool
 	// engaged: an aircraft in or just out of a conflict resolution gets no
 	// shortcut (#785).
@@ -332,9 +335,11 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				it.say(tx)
 			})
 		}
-		// Too much for speed and a dog-leg: the rest in the hold.
+		// Too much for speed and vectors now: asked again as it flies on, no
+		// hold for the sequence — holds are for emergencies, weather and
+		// closures (the user; live, FVLJX and EZY1907 held at PR707).
 		if a.Left >= holdFrom {
-			_ = q.enterHold(now, icao, it, e, a.Left) // logged
+			q.cc.log.printf("%-6s sequence: %s more to lose than speed and vectors take now", e.Callsign, a.Left.Round(time.Second))
 		}
 	}
 }
@@ -784,12 +789,27 @@ func (q *sequences) tick(now time.Time) {
 	// of it, lining up, lined up) each get a gap in its arrivals. A runway
 	// for departures only has no arrivals to open one in.
 	waiting := map[key]int{}
+	// A runway change: departures still going from the other end of a
+	// runway the arrivals now land on finish there (the user: the
+	// departures leave, the arrivals are given the spacing); by the arrival
+	// end they go against.
+	against := map[key]int{}
 	for _, it := range items {
 		it.mu.Lock()
 		v := it.view
 		it.mu.Unlock()
 		if it.dep == nil || v.Done {
 			continue
+		}
+		if v.State == "taxiing" || v.State == "holding short" || v.State == "lining up" || v.State == "lined up" || v.State == "departing" {
+			if g, err := q.cc.graph(it.ICAO); err == nil {
+				own, ok := runwayOf(g.Layout, v.Runway)
+				for _, a := range nav.Names(q.cc.runwaysInUse(g, true)) {
+					if r, ok2 := runwayOf(g.Layout, a); ok && ok2 && a != v.Runway && r.Name() == own.Name() {
+						against[key{it.ICAO, a}]++
+					}
+				}
+			}
 		}
 		atRunway := v.State == "lining up" || v.State == "lined up" ||
 			v.State == "holding short" && (v.HoldingShortOf == "" || strings.Contains(v.HoldingShortOf, v.Runway))
@@ -807,6 +827,7 @@ func (q *sequences) tick(now time.Time) {
 		}
 		s := q.sequencer(k.icao, k.rwy)
 		s.SetDepartureSlots(waiting[k])
+		s.SetNotBefore(q.runwayChangeGap(now, k.icao+" "+k.rwy, against[k]))
 		if wx != nil {
 			if g, err := q.cc.graph(k.icao); err == nil {
 				if _, end, ok := g.Layout.RunwayEnd(k.rwy); ok {
@@ -1220,4 +1241,34 @@ func (q *sequences) anotherCircuit(it *controlled, e traffic.SequenceEntry, now 
 		}
 		it.say(tx)
 	})
+}
+
+// After a runway change the old direction's departures go before the
+// new direction's first landing: changeDepEvery each, and changeGapMargin
+// after the last has gone.
+const (
+	changeDepEvery  = 150 * time.Second
+	changeGapMargin = 3 * time.Minute
+)
+
+// runwayChangeGap is the time before which no arrival lands on the
+// runway end k ("LKPR 06") while n departures still go from its other
+// end, and changeGapMargin after the last; zero none.
+func (q *sequences) runwayChangeGap(now time.Time, k string, n int) time.Time {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.changeGone == nil {
+		q.changeGone = map[string]time.Time{}
+	}
+	if n > 0 {
+		q.changeGone[k] = now // still going: the margin from the last seen
+		return now.Add(time.Duration(n)*changeDepEvery + changeGapMargin)
+	}
+	if gone, ok := q.changeGone[k]; ok {
+		if until := gone.Add(changeGapMargin); now.Before(until) {
+			return until
+		}
+		delete(q.changeGone, k)
+	}
+	return time.Time{}
 }

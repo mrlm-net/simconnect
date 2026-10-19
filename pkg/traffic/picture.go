@@ -133,6 +133,18 @@ type Observation struct {
 }
 
 // TrackedAircraft is an aircraft in the picture.
+// GroundedAGLFt: an aircraft this low above the ground counts as on it
+// (Grounded), whatever the simulator's SIM ON GROUND says: aircraft placed on
+// a stand or a taxiway read a few feet up (live, CSA1682 at its gate at
+// 8 ft "in the air", a TCAS TA with UAE530 departing).
+const GroundedAGLFt = 50.0
+
+// Grounded reports whether a is on the ground: so reported, or within
+// GroundedAGLFt of it.
+func (a TrackedAircraft) Grounded() bool {
+	return a.OnGround || a.AGLFt > 0 && a.AGLFt < GroundedAGLFt
+}
+
 type TrackedAircraft struct {
 	Observation
 	Phase Phase `json:"phase"`

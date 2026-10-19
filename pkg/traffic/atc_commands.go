@@ -361,7 +361,7 @@ func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNE
 // TVS354, vectored for a conflict before, got only ever longer downwinds
 // after its go-around and turned base ahead of the one it followed).
 func (c *ArrivalController) newApproach(levelFt float64) {
-	c.dogLegs, c.dogLeg, c.goAroundFt = 0, nil, levelFt
+	c.dogLegs, c.dogLeg, c.goAroundFt, c.spacingSaid = 0, nil, levelFt, 0
 }
 
 // GoAroundRejoinMinNM: a STAR point this far or more off the extended

@@ -415,6 +415,11 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		if who := s.nearEntry(entry[0]); who != "" {
 			return fmt.Errorf("%w: %s near %s", traffic.ErrSpawnBlocked, who, entry[0].Ident)
 		}
+		// Flown ahead along its STAR: released only clear of the arrivals
+		// already on their way (release planning, release_plan.go).
+		if who := s.releaseConflict(f.Callsign, entry); who != "" {
+			return fmt.Errorf("%w: would meet %s on its way in", traffic.ErrSpawnBlocked, who)
+		}
 	}
 	var it *controlled
 	if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil && req.Procedure && !f.Departure() {

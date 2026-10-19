@@ -49,6 +49,10 @@ func (c *TaxiController) AvoidOccupied(occ []airport.Occupied) bool {
 	return false
 }
 
+// replanMovedMeters: a route planned off the goroutine is put in place only
+// while the aircraft is still within this of where it was planned from.
+const replanMovedMeters = 2.0
+
 // PlanAvoidOccupied is AvoidOccupied's route search, without the
 // controller's lock held during it (a frame waits for that lock): nil
 // when the route stays, else the step that puts the new route in place,
@@ -83,6 +87,11 @@ func (c *TaxiController) PlanAvoidOccupied(occ []airport.Occupied) func() bool {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.state != TaxiTaxiing || c.route != route || c.hasLimit || c.hasPendingLimit || c.hereVia != nil {
+			return false
+		}
+		// Planned from where it was: moved on since, the route would start
+		// behind it (a step back).
+		if c.mover == nil || localDist(c.mover.Pose().Position, pose.Position) > replanMovedMeters {
 			return false
 		}
 		junction, fromHere, track := c.pushJunction, c.fromHere, c.track

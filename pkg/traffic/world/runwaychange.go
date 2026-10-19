@@ -3,6 +3,7 @@ package world
 import (
 	"cmp"
 	"errors"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -50,6 +51,18 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		before, known := cc.runwaysNow[icao]
 		cc.runwaysNow[icao] = use
 		cc.mu.Unlock()
+		// Still on a closed runway (on its short final at the change, it went
+		// around): moved now.
+		if shut := (nav.RunwayLimits{Closed: cc.core.closed(icao)}); known && len(shut.Closed) > 0 {
+			for _, it := range items {
+				it.mu.Lock()
+				v, stand := it.view, it.stand
+				it.mu.Unlock()
+				if it.arr != nil && !v.Done && shut.ClosedEnd(v.Runway) && !slices.Contains(arrs, v.Runway) {
+					cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, stand))
+				}
+			}
+		}
 		if !known || before == use {
 			continue
 		}
@@ -171,6 +184,10 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 		cc.log.printf("%-6s runway change to %s: %v", it.Tail, runway, err)
 		return
 	}
+	it.mu.Lock()
+	at, hdg := it.view.Position, it.view.Heading
+	it.mu.Unlock()
+	pts = joinNewSTAR(at, hdg, pts)
 	err = cc.do(func() error { return it.arr.ChangeRunway(runway, pts, cc.missedFor(g, runway)) })
 	if errors.Is(err, traffic.ErrTooLate) {
 		return // established: it lands on the runway it flies to
@@ -186,6 +203,10 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 		it.view.Procedure += " → " + expect
 	}
 	it.procSaid = procedureSaid(star, nil)
+	// Its approach cleared again for the new runway — once told of it, not
+	// before (live, CSA1583 "cleared ILS approach runway 30" 26 s before
+	// "runway change, runway 30 in use").
+	it.approachSaid = true
 	it.approach, it.fixes = nil, nil
 	for _, n := range pts {
 		it.approach = append(it.approach, n.Position)
@@ -206,6 +227,9 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	pq := cc.pending
 	pq.later(it.clearAt(pos).Add(atcAnswerDelay+pq.jitter(atcAnswerJitter)), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, "", said, expect))
+		it.mu.Lock()
+		it.approachSaid = false
+		it.mu.Unlock()
 	})
 }
 
@@ -240,16 +264,33 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 		switch {
 		case it.dep != nil:
 			switch it.dep.State() {
-			case traffic.TaxiLiningUp, traffic.TaxiLinedUp, traffic.TaxiDeparting:
-				keep[it.Tail] = true
-			case traffic.TaxiHoldingShort:
-				if rwy, ok := runwayOf(g.Layout, v.Runway); ok && v.HoldingShortOf == rwy.Name() {
-					keep[it.Tail] = true // at its own runway: the take-off goes on
+			// Under way to its runway or on it: it finishes there (the user:
+			// departures leave; the arrivals are given the gap,
+			// runwayChangeGap). Re-planned mid-taxi it met the traffic coming
+			// the other way (live, OKJQW down F against BAW450). On its stand
+			// or about to taxi: the new runway.
+			case traffic.TaxiDeparting:
+				keep[it.Tail] = true // rolling or climbing out: it goes
+			case traffic.TaxiTaxiing, traffic.TaxiHoldingShort, traffic.TaxiLiningUp, traffic.TaxiLinedUp:
+				// Not for a runway that is closed: moved with the others.
+				if !(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
+					keep[it.Tail] = true
 				}
 			}
 		case it.arr != nil && !slices.Contains(arrs, v.Runway) && it.arr.State() == traffic.ArrivalApproaching:
 			_, end, ok := g.Layout.RunwayEnd(v.Runway)
 			if !ok {
+				continue
+			}
+			// Only established on its final (its STAR and approach flown): one
+			// still vectored is moved to the new runway (live, PHDYS left on
+			// the 06 approach, vectored 10 NM out, as 24 departed toward it).
+			if len(it.arr.ProcedureRoute()) > 0 {
+				continue
+			}
+			// Never kept for a runway that is closed: moved with the others
+			// (on a short final it goes around, closures.go).
+			if (nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
 				continue
 			}
 			if nm := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon); nm <= runwayChangeKeepNM {
@@ -265,4 +306,39 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 		keep[l.tail] = true
 	}
 	return keep
+}
+
+// joinNewSTAR is where an arrival already on its way joins the new
+// runway's STAR on a runway change: from its entry fix while that is ahead
+// of it (within 90° of hdg); past it, from the approach's initial fix (IAF;
+// else two points before the final approach fix), straight there — never
+// turned back to the entry against the arrivals coming in on the same STAR
+// (live, TVS356 back to VLM after the change to 06, against THY940), nor
+// joined so near the final that it cannot be spaced (live, WZZ1209 and
+// QTR879, 0.1 NM).
+func joinNewSTAR(pos airport.LatLon, hdg float64, pts []airport.NavPoint) []airport.NavPoint {
+	if pos == (airport.LatLon{}) || len(pts) < 3 {
+		return pts
+	}
+	ahead := func(p airport.LatLon) bool {
+		return math.Abs(math.Mod(calc.BearingDegrees(pos.Lat, pos.Lon, p.Lat, p.Lon)-hdg+540, 360)-180) <= 90
+	}
+	if ahead(pts[0].Position) {
+		return pts
+	}
+	from := -1
+	for i, n := range pts {
+		if n.IAF {
+			from = i
+			break
+		}
+		if n.FAF {
+			from = max(i-2, 0)
+			break
+		}
+	}
+	if from <= 0 || len(pts)-from < 2 {
+		return pts
+	}
+	return pts[from:]
 }

@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -134,4 +135,20 @@ func (k *core) libIDs() libraryIDs {
 		nav.DefaultNavDefinitionBase, nav.DefaultNavRequestBase, traffic.DefaultAirportListRequestID,
 		traffic.DefaultInjectDefinitionBase, traffic.DefaultInjectRequestBase, traffic.DefaultInjectEventBase, airwayCrawlDefBase, airwayCrawlReqBase, enrouteReqBase,
 		puppetRecBase, puppetReqBase}
+}
+
+// arrivalRunwayInUse reports whether rwy is a runway in use for arrivals at
+// icao as last chosen (none chosen yet: true), open.
+func (k *core) arrivalRunwayInUse(icao, rwy string) bool {
+	if (nav.RunwayLimits{Closed: k.closed(icao)}).ClosedEnd(rwy) {
+		return false
+	}
+	k.runwayMu.Lock()
+	now := k.inUse[icao]
+	k.runwayMu.Unlock()
+	_, arrs, ok := strings.Cut(now, "/")
+	if !ok || arrs == "" {
+		return true
+	}
+	return slices.Contains(strings.Split(arrs, "+"), rwy)
 }

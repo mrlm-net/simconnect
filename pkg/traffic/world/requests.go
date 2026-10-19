@@ -196,7 +196,8 @@ func (it *controlled) answer(req string) {
 		it.cc.pending.later(it.cc.clock.Now().Add(5*time.Second), func() { it.askGround(req) })
 		return
 	}
-	// A ground stop (too many taxiing): told to expect a delay, cleared
+	// A ground stop (too many taxiing, or the departure queue at the
+	// runway): told to expect a delay, cleared
 	// once released (live, four were cleared and then sat for minutes).
 	if req == "pushback" && it.groundStop {
 		first := !it.spoken["ground stop"]
@@ -204,7 +205,7 @@ func (it *controlled) answer(req string) {
 		it.mu.Unlock()
 		if first {
 			it.say(traffic.Transmission{Position: traffic.PosGround, Callsign: it.Tail, Intent: traffic.IntentStandby,
-				Text: it.Tail + ", hold on the stand, expect a few minutes delay, traffic on the taxiways"})
+				Text: it.Tail + ", hold on the stand, expect a few minutes delay"}) // a ground stop or the departure queue
 		}
 		it.cc.pending.later(it.cc.clock.Now().Add(15*time.Second), func() { it.askGround(req) })
 		return

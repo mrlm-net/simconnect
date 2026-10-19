@@ -31,8 +31,13 @@ func TestRunwaySelectorHolds(t *testing.T) {
 			t.Fatalf("changed to %s after %d min", u.Arrival.Name, i)
 		}
 	}
-	if u := s.Choose(now.Add(11*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
-		t.Fatalf("still %s after 11 min, want %s", u.Arrival.Name, fresh)
+	// Not while the first wind (RunwayWindMemory) would take it out of its
+	// limits again; then at once, held long enough.
+	if u := s.Choose(now.Add(11*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != first {
+		t.Fatalf("%s after 11 min with the first wind in memory, want %s", u.Arrival.Name, first)
+	}
+	if u := s.Choose(now.Add(RunwayWindMemory+time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
+		t.Fatalf("still %s after the memory, want %s", u.Arrival.Name, fresh)
 	}
 	// Out of limits: at once.
 	var s2 RunwaySelector
@@ -132,7 +137,7 @@ func TestRunwaySelectorReadyAndSeed(t *testing.T) {
 		t.Fatalf("changed to %s with no gap", u.Arrival.Name)
 	}
 	ready = true
-	if u := s.Choose(now.Add(13*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
+	if u := s.Choose(now.Add(RunwayWindMemory+time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
 		t.Fatalf("still %s at the gap, want %s", u.Arrival.Name, fresh)
 	}
 	if _, _, ok := s.Pending(); ok {
@@ -143,7 +148,7 @@ func TestRunwaySelectorReadyAndSeed(t *testing.T) {
 	s2 := RunwaySelector{Ready: func(from, to RunwayUse) bool { return ready }}
 	s2.Choose(now, l, calm, RunwayLimits{})
 	s2.Choose(now.Add(time.Minute), l, shift, RunwayLimits{})
-	if u := s2.Choose(now.Add(time.Minute+RunwayChangeAfter+RunwayChangeMaxWait), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
+	if u := s2.Choose(now.Add(time.Minute+max(RunwayChangeAfter+RunwayChangeMaxWait, RunwayWindMemory+time.Minute)), l, shift, RunwayLimits{}); u.Arrival.Name != fresh {
 		t.Errorf("still %s after the longest wait", u.Arrival.Name)
 	}
 	// Seeded with the other runway: kept, as one in use is.
@@ -213,4 +218,73 @@ func TestRunwaySelectorCrosswindKept(t *testing.T) {
 	if u := s.Choose(now.Add(2*time.Hour), l, west, RunwayLimits{}); u.Arrival.Name != "27" {
 		t.Errorf("west 8 kt: still on %s", u.Arrival.Name)
 	}
+}
+
+// LKPR live (2026-10-18): wind 010° between 5 and 9 kt, 24 (preferred) at
+// its tailwind limit. The runway in use is not swapped back and forth: once
+// on 06, 24 is not gone back to while the wind of the last half hour would
+// take it out of its limits again.
+func TestRunwaySelectorVariableWindAtTheLimit(t *testing.T) {
+	l := lkprInfo(t).Layout
+	lim := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	var s RunwaySelector
+	now := time.Date(2026, 10, 18, 10, 0, 0, 0, time.UTC)
+	strong, light := StaticWeather(10, 9, 9999, 10, 6, 1024), StaticWeather(10, 5, 9999, 10, 6, 1024)
+	if u := s.Choose(now, l, strong, lim); u.Arrival.Name != "06" {
+		t.Fatalf("at 010/9 kt: %s, want 06", u.Arrival.Name)
+	}
+	changes, last := 0, "06"
+	for i := 1; i <= 4*60*12; i++ { // four hours, every 5 s
+		at := now.Add(time.Duration(i) * 5 * time.Second)
+		w := light
+		if (i/120)%3 == 2 { // 9 kt one ten minutes in three
+			w = strong
+		}
+		if u := s.Choose(at, l, w, lim); u.Arrival.Name != last {
+			changes++
+			last = u.Arrival.Name
+		}
+	}
+	if changes > 0 {
+		t.Errorf("%d runway changes in four hours of 010° at 5–9 kt, want none (ended on %s)", changes, last)
+	}
+}
+
+// LKPR prefers 24, then 06 (live: 24 with 3 kt of tailwind left for 06 ten
+// minutes after the start): 24 in use stays while within its limits; 06 in
+// use with 24 within limits goes back to 24.
+func TestRunwaySelectorKeepsPreferred(t *testing.T) {
+	l := lkprInfo(t).Layout
+	lim := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Date(2026, 10, 18, 20, 0, 0, 0, time.UTC)
+	var s RunwaySelector
+	s.Seed(ActiveRunways(l, StaticWeather(240, 5, 9999, 10, 6, 1026), lim)) // 24 in use
+	w := StaticWeather(0, 8, 9999, 10, 6, 1026)                             // 3–4 kt of tailwind on 24
+	for i := 0; i <= 60; i++ {
+		if u := s.Choose(now.Add(time.Duration(i)*time.Minute), l, w, lim); u.Arrival.Name != "24" {
+			t.Fatalf("left 24 for %s after %d min within its limits", u.Arrival.Name, i)
+		}
+	}
+}
+
+// Near calm the runway in use stays, but not one less preferred than the
+// choice (live LKPR: 12 kept after 06 reopened, at 070°/2–4 kt).
+func TestRunwaySelectorCalmBackToPreferred(t *testing.T) {
+	l := lkprInfo(t).Layout
+	lim := RunwayLimitsFrom(airport.LimitsFor(l, loadLKPRProcedures(t)))
+	now := time.Date(2026, 10, 18, 20, 0, 0, 0, time.UTC)
+	var s RunwaySelector
+	closed := lim
+	closed.Closed = []string{"06"}
+	s.Seed(ActiveRunways(l, StaticWeather(70, 4, 9999, 10, 6, 1026), closed)) // 12 in use
+	for i := 0; i <= 40; i++ {
+		kts := 2.0
+		if i%2 == 0 {
+			kts = 4
+		}
+		if u := s.Choose(now.Add(time.Duration(i)*time.Minute), l, StaticWeather(70, kts, 9999, 10, 6, 1026), lim); u.Arrival.Name == "06" {
+			return
+		}
+	}
+	t.Fatal("kept 12 near calm instead of going back to the preferred 06")
 }

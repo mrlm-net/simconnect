@@ -102,6 +102,15 @@ func TestVectorsExtendedDownwind(t *testing.T) {
 	if !ok || math.Abs(headingDiff(h, ctl.plan.End.Heading)) > 45 {
 		t.Errorf("intercept %.0f %v, want within 45° of the runway's %.0f", h, ok, ctl.plan.End.Heading)
 	}
+	// Near the turn onto the final course: the approach clearance is due,
+	// however far out that turn is (live, OKKSC onto a 26 NM final unsaid).
+	ctl.mu.Lock()
+	turn := ctl.corners[ctl.finalTurn()]
+	ctl.mu.Unlock()
+	flyTo(t, ctl, airport.LatLon{Lat: turn.Latitude, Lon: turn.Longitude})
+	if !ctl.TurningFinal() {
+		t.Error("at the turn onto the final course: no approach clearance due")
+	}
 }
 
 // TestVectorsDogLeg: a dog-leg off a STAR leg is "fly heading, for

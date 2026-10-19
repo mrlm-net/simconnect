@@ -253,37 +253,6 @@ const (
 	routeHereDeg    = 60.0
 )
 
-// joinAhead is procedure from its point nearest pos on, or the one after it
-// when that is behind (more than 90° off hdg): where an aircraft already on
-// its way joins it. Unchanged when fewer than two points would be left.
-func joinAhead(pos airport.LatLon, hdg float64, procedure []airport.NavPoint) []airport.NavPoint {
-	k, best := -1, math.Inf(1)
-	for i, n := range procedure {
-		if n.Kind == "R" || n.Position == (airport.LatLon{}) {
-			continue
-		}
-		if d := localDist(pos, n.Position); d < best {
-			k, best = i, d
-		}
-	}
-	if k < 0 {
-		return procedure
-	}
-	if math.Abs(headingDiff(hdg, localBearing(pos, procedure[k].Position))) > 90 {
-		k++
-	}
-	left := 0
-	for _, n := range procedure[min(k, len(procedure)):] {
-		if n.Kind != "R" && n.Position != (airport.LatLon{}) {
-			left++
-		}
-	}
-	if k <= 0 || left < 2 {
-		return procedure
-	}
-	return procedure[k:]
-}
-
 // ChangeRunway re-plans an arrival for runway (#456): one still on its way
 // in — spawned, or flying its STAR and approach (procedure, for the new
 // runway) by MSFS AI — gets the new arrival plan (exit, taxi-in) and flies
@@ -308,12 +277,6 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	if err != nil {
 		return err
 	}
-	// Joined at its first point ahead, not back at its entry fix passed
-	// already (live, TVS356 turned back to VLM after the change to 06,
-	// against THY940 coming in on the same STAR).
-	if c.last.Position != (airport.LatLon{}) {
-		procedure = joinAhead(c.last.Position, c.last.Heading, procedure)
-	}
 	join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
 	jp := NewApproachMover(plan.End.Threshold, plan.End.Heading, join, approachProfileOf(req)).Pose()
 	proc, err := PlanArrivalProcedure(procedure, plan.End, join, g.Layout.Altitude/0.3048+jp.HeightFt)
@@ -326,10 +289,25 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 		from = c.last.Position
 	}
 	c.setCorners(proc.Waypoints, proc.Names)
+	// Never sent up for it (live, BAW572 climbed from 7200 ft toward the new
+	// STAR's first altitudes), and where it is counts as where it appeared:
+	// flying to its first new point it is not off its route (live, BAW572
+	// "off its route" at once, sent direct to the final).
+	noClimb(proc.Waypoints, c.climbCap())
 	proc.Waypoints = roundedChain(from, proc.Waypoints, MaxBankDeg(*req.Aircraft))
+	proc.Spawn.Latitude, proc.Spawn.Longitude = from.Lat, from.Lon
+	c.lastRunwayM, c.joinMinM = 0, 0
 	plan.Spawn = c.plan.Spawn
 	req.Runway, req.Procedure, req.MissedApproach, req.Exit = runway, procedure, missed, nil
 	c.req, c.plan, c.proc, c.procNext, c.circuit = req, plan, proc, -1, false
+	// Flown from its first point on, not placed on it by the nearest one:
+	// near the field that is the new final's (live, AUA133 cleared for the
+	// ILS and "lands in 58 s" ten minutes before it did, the whole STAR to
+	// fly; CSA701 sequenced behind it met it at 7000 ft).
+	c.procNext, c.cornerNext, c.reachFirst = 0, 0, true
+	// Another approach: its vectors and downwind afresh (a dog-leg counted
+	// on the old STAR left none for the new one).
+	c.dogLegs, c.dogLeg, c.tromboneNM, c.goAroundFt, c.spacingSaid = 0, nil, 0, 0, 0
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters

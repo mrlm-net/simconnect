@@ -70,10 +70,18 @@ func AirborneSeparationFor(aircraft []TrackedAircraft, o ConflictOptions) []Sepa
 	return airborneSeparation(aircraft, o.minFor, o.MinFt)
 }
 
+// Two aircraft both level (under levelVSFpm) count as vertically separated
+// down to levelToleranceFt less than the minimum: the altimetry tolerance
+// at a level.
+const (
+	levelVSFpm       = 300.0
+	levelToleranceFt = 200.0
+)
+
 func airborneSeparation(aircraft []TrackedAircraft, minFor func(a, b TrackedAircraft) float64, minFt float64) []SeparationPair {
 	var air []TrackedAircraft
 	for _, a := range aircraft {
-		if !a.OnGround {
+		if !a.Grounded() {
 			air = append(air, a)
 		}
 	}
@@ -90,7 +98,11 @@ func airborneSeparation(aircraft []TrackedAircraft, minFor func(a, b TrackedAirc
 			l := calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
 			v := math.Abs(a.AltFt - b.AltFt)
 			minNM := minFor(a, b)
-			loss := l < minNM && v < minFt && !TowerPair(a, b)
+			// Both level at their levels: separated within the altimetry
+			// tolerance (live, AFR613 at FL390 and THY1987 at FL380 read 974 ft
+			// apart); climbing or descending through, the full minimum.
+			level := math.Abs(a.VSFpm) < levelVSFpm && math.Abs(b.VSFpm) < levelVSFpm
+			loss := l < minNM && v < minFt && !(level && v >= minFt-levelToleranceFt) && !TowerPair(a, b)
 			out = append(out, SeparationPair{A: name(a), B: name(b), LateralNM: l, VerticalFt: v, Loss: loss, Tower: TowerPair(a, b), MinNM: minNM})
 		}
 	}

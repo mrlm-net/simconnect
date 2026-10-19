@@ -118,6 +118,8 @@ func (t *towers) tick(now time.Time) {
 	users := map[key][]traffic.RunwayUser{}
 	ours := map[string]*controlled{}
 	graphs := map[string]*airport.Layout{}
+	var cross []crossUse // ours using a runway that a crossing one waits for
+	pos := map[string]airport.LatLon{}
 	layout := func(icao string) *airport.Layout {
 		if l, ok := graphs[icao]; ok {
 			return l
@@ -145,7 +147,7 @@ func (t *towers) tick(now time.Time) {
 			t.forget(v.Tail) // the next crossing is cleared afresh
 		}
 		model := v.Model
-		u := traffic.RunwayUser{Callsign: v.Tail, Wake: traffic.WakeFor(model), Route: v.Procedure, Other: it.gates.Load()}
+		u := traffic.RunwayUser{Callsign: v.Tail, Wake: traffic.WakeFor(model), Route: v.Procedure, Other: it.gates.Load(), End: v.Runway}
 		if it.dep != nil {
 			u.ClimbKts = climbKts(model) // the interval and order behind a slower one
 		}
@@ -186,6 +188,10 @@ func (t *towers) tick(now time.Time) {
 			u.Phase, u.GroundKts = traffic.RunwayRolling, v.GroundSpeed
 		case it.dep != nil && v.State == "departing":
 			u.Phase = traffic.RunwayAirborne
+		case it.arr != nil && v.State == "approaching" && !v.OnGround && climbingOut(l, v):
+			// Gone around, climbing out ahead of its runway: no take-off
+			// under it until it is clear.
+			u.Phase, u.GoingAround = traffic.RunwayAirborne, true
 		case it.arr != nil && (v.State == "approaching" || v.State == "landing") && !v.OnGround:
 			rw, end, _ := l.RunwayEnd(v.Runway)
 			// Along the way it still flies, as the sequence counts it: in a
@@ -231,6 +237,10 @@ func (t *towers) tick(now time.Time) {
 		default:
 			continue
 		}
+		if c, ok := crossUseOf(it.ICAO, u, v.Position, it.dep != nil, t.givenTakeoff(v.Tail)); ok {
+			cross = append(cross, c)
+		}
+		pos[v.Tail] = v.Position
 		ours[v.Tail] = it
 		users[rk] = append(users[rk], u)
 	}
@@ -309,7 +319,9 @@ func (t *towers) tick(now time.Time) {
 		for _, u := range list {
 			if u.Arrival && u.Phase == traffic.RunwayFinal && u.DistanceNM <= runwayChangeGapNM {
 				nearby[k.icao]++
-				busy[k.icao] = nearby[k.icao] > runwayChangeKeepArrivals
+				// One still vectored this close is not moved to another runway
+				// in mid-turn: no change until it is established or landed.
+				busy[k.icao] = busy[k.icao] || nearby[k.icao] > runwayChangeKeepArrivals || !u.Established
 			}
 		}
 	}
@@ -344,6 +356,12 @@ func (t *towers) tick(now time.Time) {
 		// stays allowed).
 		if (nav.RunwayLimits{Closed: t.cc.core.closed(k.icao)}).ClosedEnd(k.rwy) {
 			closedClearances(&c, list)
+		}
+		// A crossing runway in use: take-offs and landings wait for it; one
+		// cleared here, the crossing ones wait for it in turn.
+		if l := layout(k.icao); l != nil {
+			c.Takeoff = t.crossFilter(l, k.rwy, c.Takeoff, &c, &cross, pos, ours, true)
+			c.Land = t.crossFilter(l, k.rwy, c.Land, &c, &cross, pos, ours, false)
 		}
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
@@ -969,6 +987,23 @@ func onFinalNear(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool
 // roll from the full length lines up once that one rolls this fast (well
 // away down the runway).
 const behindDepartingKts = 40.0
+
+// goAroundClearNM: an aircraft gone around keeps take-offs from its runway
+// until this far past the threshold, or turned off the runway heading.
+const goAroundClearNM = 6.0
+
+// climbingOut reports whether an arrival at v is past its runway's
+// threshold, ahead along it within goAroundClearNM and heading along it:
+// climbing out after a go-around.
+func climbingOut(l *airport.Layout, v ControlView) bool {
+	_, end, ok := l.RunwayEnd(v.Runway)
+	if !ok {
+		return false
+	}
+	d := calc.HaversineNM(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
+	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
+	return d < goAroundClearNM && math.Abs(headingDiff(end.Heading, from)) <= 20 && math.Abs(headingDiff(end.Heading, v.Heading)) <= 45
+}
 
 // overRunway: at p, heading hdg, an arrival is over end's runway (length
 // m) past its threshold, heading along it: in its flare.

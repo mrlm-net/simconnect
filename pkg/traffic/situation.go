@@ -78,7 +78,7 @@ var ErrSpawnImpossible = errors.New("cannot be spawned")
 // DefaultChecks are the checks a manager runs when ManagerOptions.Checks
 // is nil.
 func DefaultChecks() []SituationCheck {
-	return []SituationCheck{CheckStuck(nil), CheckLandingFlow(0, 0), CheckGroundCongestion(0), CheckTurnaround(0)}
+	return []SituationCheck{CheckStuck(nil), CheckLandingFlow(0, 0), CheckGroundCongestion(0), CheckDepartureQueue(0), CheckTurnaround(0)}
 }
 
 // DefaultStuckAfter is how long a flight may stay in a status before
@@ -277,6 +277,41 @@ func CheckGroundCongestion(max int) SituationCheck {
 		for _, f := range s.Flights {
 			if f.Status == FlightBoarding {
 				out = append(out, Advice{Key: f.Key(), Action: AdviceHold, Reason: fmt.Sprintf("ground stop, %d taxiing", moving)})
+			}
+		}
+		return out
+	}
+}
+
+// DefaultMaxDepartureQueue is how many departures may be taxiing out or
+// waiting at the runway before CheckDepartureQueue holds the next on their
+// stands.
+const DefaultMaxDepartureQueue = 4
+
+// CheckDepartureQueue holds the boarding departures of an airport on their
+// stands while max (0: DefaultMaxDepartureQueue) or more departures are
+// taxiing out or waiting at the runway, as departure management does: the
+// queue at the runway stays short, and the arrivals are not spaced for a
+// long one (live LKPR: nine departures at the holding point, every arrival
+// behind a double gap, two of them held).
+func CheckDepartureQueue(max int) SituationCheck {
+	if max == 0 {
+		max = DefaultMaxDepartureQueue
+	}
+	return func(s Situation) []Advice {
+		queue := 0
+		for _, f := range s.Flights {
+			if f.Departure() && f.Status == FlightTaxiing {
+				queue++
+			}
+		}
+		if queue < max {
+			return nil
+		}
+		var out []Advice
+		for _, f := range s.Flights {
+			if f.Departure() && f.Status == FlightBoarding {
+				out = append(out, Advice{Key: f.Key(), Action: AdviceHold, Reason: fmt.Sprintf("departure queue, %d taxiing out", queue)})
 			}
 		}
 		return out

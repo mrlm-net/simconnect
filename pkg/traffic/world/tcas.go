@@ -79,14 +79,14 @@ func newTCASWatch(s *scheduler) *tcasWatch {
 
 func tcasTrack(a traffic.TrackedAircraft) traffic.TCASTrack {
 	return traffic.TCASTrack{ID: a.ObjectID, Callsign: a.Tail, Lat: a.Position.Lat, Lon: a.Position.Lon, AltFt: a.AltFt, AGLFt: a.AGLFt,
-		GroundKts: a.GroundKts, TrackDeg: a.Heading, VSFpm: a.VSFpm, OnGround: a.OnGround}
+		GroundKts: a.GroundKts, TrackDeg: a.Heading, VSFpm: a.VSFpm, OnGround: a.Grounded()}
 }
 
 // tick looks at every one of ours in the air against the traffic around.
 func (w *tcasWatch) tick(now time.Time, air []traffic.TrackedAircraft) {
 	seen := map[uint32]bool{}
 	for _, a := range air {
-		if !a.Ours || a.OnGround {
+		if !a.Ours || a.Grounded() {
 			continue
 		}
 		seen[a.ObjectID] = true
@@ -95,7 +95,7 @@ func (w *tcasWatch) tick(now time.Time, air []traffic.TrackedAircraft) {
 		adv, best, bestG := traffic.AdvisoryNone, traffic.TrackedAircraft{}, traffic.TCASGeometry{}
 		var bestLv traffic.TCASLevel
 		for _, b := range air {
-			if b.ObjectID == a.ObjectID || b.OnGround || calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon) > tcasRangeNM {
+			if b.ObjectID == a.ObjectID || b.Grounded() || calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon) > tcasRangeNM {
 				continue
 			}
 			ad, lv, g := traffic.Evaluate(own, tcasTrack(b))

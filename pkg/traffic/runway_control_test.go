@@ -499,3 +499,37 @@ func TestRunwayControllerTwoLinedUp(t *testing.T) {
 		t.Fatalf("one of two at the threshold: %+v", c)
 	}
 }
+
+// Both ends of one runway in use at once (a runway change, its last
+// arrivals landing on the old end; live LKPR: DLH1582 cleared for take-off
+// on 24 toward PHDYS on the 06 approach): a take-off waits for traffic
+// using the other end; a landing waits only for a departure from the other
+// end or a closer arrival to it — the two ends never hold each other.
+func TestRunwayControllerOppositeEnds(t *testing.T) {
+	now := time.Now()
+	end := func(u RunwayUser, e string) RunwayUser { u.End = e; return u }
+	d := end(dep("DLH1582", "A320", RunwayHoldingShort), "24")
+	c := NewRunwayController(RunwayControllerOptions{}).Decide(now, []RunwayUser{d, end(final("PHDYS", 10), "06")})
+	if len(c.LineUp)+len(c.Takeoff) != 0 || !strings.Contains(c.Waiting["DLH1582"], "PHDYS") || len(c.LineUpBehind) != 0 {
+		t.Fatalf("take-off on 24 with PHDYS on a 10 NM final for 06: %+v", c)
+	}
+	if c := NewRunwayController(RunwayControllerOptions{}).Decide(now, []RunwayUser{d, end(final("PHDYS", 10), "24")}); !slices.Contains(c.Takeoff, "DLH1582") {
+		t.Fatalf("an arrival 10 NM out to the same end: want the take-off, %+v", c)
+	}
+	up := end(dep("DLH1582", "A320", RunwayAirborne), "24")
+	if c := NewRunwayController(RunwayControllerOptions{}).Decide(now, []RunwayUser{up, end(final("PHDYS", 3), "06")}); slices.Contains(c.Land, "PHDYS") {
+		t.Fatalf("landing on 06 with a departure climbing out from 24: %+v", c)
+	}
+	// Two arrivals, one to each end: the nearer lands, the other is not
+	// cleared until it is down.
+	c = NewRunwayController(RunwayControllerOptions{}).Decide(now, []RunwayUser{end(final("PHDYS", 3), "06"), end(final("QTR879", 8), "24")})
+	if !slices.Contains(c.Land, "PHDYS") || slices.Contains(c.Land, "QTR879") {
+		t.Fatalf("PHDYS at 3 NM for 06, QTR879 at 8 NM for 24: %+v, want PHDYS cleared to land", c)
+	}
+	// A rush: never lined up behind a departure rolling from the other end.
+	rolling := end(dep("TVS1", "A320", RunwayRolling), "06")
+	queue := []RunwayUser{rolling, end(dep("TVS2", "A320", RunwayHoldingShort), "24"), end(dep("TVS3", "A320", RunwayHoldingShort), "24")}
+	if c := NewRunwayController(RunwayControllerOptions{}).Decide(now, queue); c.LineUpBehindDeparting["TVS2"] != "" || slices.Contains(c.LineUp, "TVS2") {
+		t.Fatalf("lined up on 24 behind TVS1 rolling from 06: %+v", c)
+	}
+}

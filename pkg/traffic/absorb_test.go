@@ -764,3 +764,34 @@ func TestAbsorbOneDogLegAnApproach(t *testing.T) {
 		t.Fatalf("%+v, %d dog-legs: want no second one", a, ctl.dogLegs)
 	}
 }
+
+// A dog-leg flown and 2 min or more still to lose (live, FVLJX after its
+// dog-leg, 7 min more): a second dog-leg, not the hold — holds are for
+// emergencies, weather and closures; less than that is left to speed.
+func TestAbsorbSecondDogLegNotAHold(t *testing.T) {
+	ctl, _ := vectorArrival(t, "LOMKI") // no downwind to extend: dog-legs
+	if _, err := ctl.AbsorbDelay(4 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	ctl.mu.Lock()
+	first := ctl.dogLegs
+	ctl.dogLeg = nil // flown, back on its STAR
+	ctl.mu.Unlock()
+	a, err := ctl.AbsorbDelay(7 * time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != 1 || ctl.dogLegs != 2 || a.ExtraNM <= 0 {
+		t.Fatalf("%+v, dog-legs %d then %d: want a second dog-leg for 7 min", a, first, ctl.dogLegs)
+	}
+	// Under SecondDogLegFrom more: speed, no third dog-leg.
+	ctl.mu.Lock()
+	ctl.dogLeg = nil
+	ctl.mu.Unlock()
+	if _, err := ctl.AbsorbDelay(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.dogLegs != 2 {
+		t.Fatalf("a dog-leg for 1 min: %d dog-legs, want 2", ctl.dogLegs)
+	}
+}

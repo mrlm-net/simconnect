@@ -50,6 +50,14 @@ type RunwayUser struct {
 	// take-off threshold (an intersection's way in); 0 at the threshold. A
 	// take-off waits for no one lined up behind it.
 	AlongM float64
+	// End: the runway end it lands on or takes off from ("24"); "" unknown
+	// (a crossing, other traffic). Traffic using the other end of the
+	// runway holds a take-off or a landing toward it (see Decide).
+	End string
+	// GoingAround: an arrival climbing out ahead of the runway after its
+	// go-around (RunwayAirborne): no take-off below it (live, TVS648
+	// released behind EZY1672 going around on 06, 4.1 NM and 996 ft).
+	GoingAround bool
 	// Other traffic: counted, never cleared.
 	Other bool
 	// Host: the host's aircraft (the user's, cleared by the host's own
@@ -57,6 +65,10 @@ type RunwayUser struct {
 	// come, and those behind it wait for it; it is never cleared here.
 	Host bool
 }
+
+// OppositeArrivalNM: an arrival to the other end of the runway this close
+// holds a take-off toward it.
+const OppositeArrivalNM = 12.0
 
 // RunwayClearances are the controller's decisions this time.
 type RunwayClearances struct {
@@ -287,7 +299,53 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		}
 		return ""
 	}
+	// The other end of the runway in use at once (a runway change, its last
+	// arrivals landing on the old end; live LKPR: DLH1582 cleared for
+	// take-off on 24 toward PHDYS on the 06 approach, 0.6 NM). A take-off
+	// waits for any arrival or departure using the other end; a landing for
+	// a departure from it, or an arrival to it that is closer (the nearer
+	// lands first: the two ends never hold each other).
+	otherEnd := func(u, v RunwayUser) bool {
+		return u.End != "" && v.End != "" && v.End != u.End && v.Callsign != u.Callsign && !v.Crossing
+	}
+	departureBlocked := func(u RunwayUser) string {
+		for _, v := range users {
+			if !otherEnd(u, v) {
+				continue
+			}
+			switch {
+			// Close in only: farther out it is given the gap for the departures
+			// (a runway change, ApproachSequencer.SetNotBefore), and both waiting
+			// on each other nobody would go.
+			case v.Arrival && (v.Phase == RunwayRolling || v.Phase == RunwayFinal && v.DistanceNM < OppositeArrivalNM):
+				return v.Callsign + " landing on " + v.End
+			case !v.Arrival && (v.Phase == RunwayLinedUp || v.Phase == RunwayRolling || v.Phase == RunwayAirborne):
+				return v.Callsign + " departing from " + v.End
+			}
+		}
+		return ""
+	}
+	landingBlocked := func(u RunwayUser) bool {
+		for _, v := range users {
+			if !otherEnd(u, v) {
+				continue
+			}
+			if !v.Arrival && (v.Phase == RunwayLinedUp || v.Phase == RunwayRolling || v.Phase == RunwayAirborne) ||
+				v.Arrival && (v.Phase == RunwayRolling || v.Phase == RunwayFinal && v.DistanceNM < u.DistanceNM) {
+				return true
+			}
+		}
+		return false
+	}
 	takeoffWhy := func(u RunwayUser, lineUp time.Duration) string {
+		if why := departureBlocked(u); why != "" {
+			return why
+		}
+		for _, v := range users {
+			if v.GoingAround && v.Callsign != u.Callsign {
+				return v.Callsign + " going around"
+			}
+		}
 		// Anyone else on it: one lining up as another rolls out after
 		// landing was cleared, the arrival listed first (live: BAW1272).
 		// Not one of ours lined up behind it (further up the runway): two
@@ -341,7 +399,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// The next arrival, near enough, with the runway free: cleared to land.
 	// Free means nobody on it, a departure on its roll included (no
 	// reduced runway separation): it is cleared once that one is airborne.
-	if nextArrName != "" && !nextArrUser.Other && nextArrUser.Established && occupied == "" && nextArrUser.DistanceNM <= r.opts.ClearToLandNM {
+	if nextArrName != "" && !nextArrUser.Other && nextArrUser.Established && occupied == "" && nextArrUser.DistanceNM <= r.opts.ClearToLandNM && !landingBlocked(nextArrUser) {
 		out.Land = append(out.Land, nextArrName)
 	}
 
@@ -405,7 +463,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// Busy: the first behind ours on its take-off roll lines up as
 			// it rolls, if the arrivals leave it time on the runway until its
 			// own take-off (the user: lined up earlier in a rush).
-			if occupied == rollingDep && number == 1 && rush && len(out.LineUpBehindDeparting) == 0 &&
+			if occupied == rollingDep && number == 1 && rush && len(out.LineUpBehindDeparting) == 0 && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
@@ -428,7 +486,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 			occupied = u.Callsign
-		case arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+		case departureBlocked(u) == "" && arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why
@@ -441,7 +499,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// before the arrival after it: lined up as the first lands, it
 			// goes once that one is off the runway — live, TVS1124 lined up
 			// behind CSA1232 and LOT775 behind it had to go around.
-			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" &&
+			// Never behind one landing toward it from the other end.
+			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" && nextArrUser.End == u.End &&
 				r.behindRoom(nextArr, nextArrUser, thenArr, u) {
 				out.LineUpBehind[u.Callsign] = nextArrName
 			}

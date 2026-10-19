@@ -162,6 +162,8 @@ type controlled struct {
 	// identified: departure has identified it (its check-in answered,
 	// "identified[, climb to ...]"), it.mu (#698).
 	identified bool
+	// identifiedAt: when it was identified (levelInTrail).
+	identifiedAt time.Time
 	// directAnswer: the crew's request for direct asked before it was
 	// identified, answered in the same call, it.mu.
 	directAnswer func() (traffic.Transmission, bool)
@@ -3347,6 +3349,54 @@ func departureLevel(p *planned, lim airport.Limits) (string, float64) {
 	return traffic.LevelSaidAbove(ft, lim.TransitionAltitudeFt), ft
 }
 
+// departureTrailWithin: a departure identified this soon after another on
+// the same route, cleared to the same level, is given another level.
+const departureTrailWithin = 8 * time.Minute
+
+// levelInTrail gives a departure the level departure clears it to, below
+// the one a departure ahead of it on the same route got when that was
+// identified within departureTrailWithin: in trail on one route they are
+// not at one level (live, RYR1427 and TVS1620 both at FL240 on BALTU,
+// closing, turned apart by the conflict watch). 2000 ft lower each, at
+// most twice.
+func (it *controlled) levelInTrail() {
+	it.mu.Lock()
+	ft, route := it.radarFt, it.view.Procedure
+	it.mu.Unlock()
+	if ft <= 0 || route == "" {
+		return
+	}
+	now := it.cc.clock.Now()
+	taken := map[float64]bool{}
+	it.cc.mu.Lock()
+	others := make([]*controlled, 0, len(it.cc.items))
+	for _, o := range it.cc.items {
+		others = append(others, o)
+	}
+	it.cc.mu.Unlock()
+	for _, o := range others {
+		if o == it || o.dep == nil || o.ICAO != it.ICAO {
+			continue
+		}
+		o.mu.Lock()
+		if o.identified && o.view.Procedure == route && now.Sub(o.identifiedAt) < departureTrailWithin {
+			taken[o.radarFt] = true
+		}
+		o.mu.Unlock()
+	}
+	for i := 0; i <= 2 && taken[ft]; i++ {
+		ft -= 2000
+	}
+	if taken[ft] {
+		return // all taken: its own, the conflict watch keeps them apart
+	}
+	it.mu.Lock()
+	if ft != it.radarFt {
+		it.radarFt, it.radarSaid = ft, traffic.LevelSaidAbove(ft, it.cc.taOf(it.ICAO))
+	}
+	it.mu.Unlock()
+}
+
 // phraseView is phrase for a view the caller holds.
 func (it *controlled) phraseView(v ControlView, r *airport.Route, action string, node airport.NodeID) traffic.Transmission {
 	call, rwy := it.Tail, v.Runway
@@ -3539,14 +3589,20 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.call(traffic.PosTower, prioLanding, func() { it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrTurnBase)) })
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
-		!it.approachSaid && !it.gates.Load() {
+		!it.approachSaid && !it.gates.Load() && !it.arr.TurningFinal() {
+		// Not with the approach clearance due: its intercept heading is the
+		// vector then (live, EZY1672 heard "fly heading 140, for spacing"
+		// and "turn left heading 060 to intercept" in the same second).
 		if v, ok := it.arr.VectorDue(); ok {
 			it.vectorsSaid.Add(1)
 			it.say(traffic.Vectored(it.Tail, v, it.cc.magVar(it.ICAO)))
 		}
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
-		!it.approachSaid && !it.gates.Load() && !it.firstPending.Load() && it.arr.TurningFinal() {
+		!it.approachSaid && !it.gates.Load() && !it.firstPending.Load() && it.arr.TurningFinal() &&
+		// Not for a runway closed or no longer in use, the change to come
+		// (live, AUA133 "cleared ILS approach runway 06" 5 s after 06 closed).
+		it.cc.core.arrivalRunwayInUse(it.ICAO, it.view.Runway) {
 		qnh, _ := it.cc.qnh()
 		// In good visibility some crews ask for a visual approach (#766).
 		if it.wantsVisual() {
@@ -3645,25 +3701,55 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			// Stopped for traffic since the check-in: identified only, the
 			// climb is cleared on once clear of it (live, TVS524 "stop climb
 			// at 4000 feet" then "identified, climb to flight level 240").
+			it.levelInTrail()
+			it.mu.Lock()
 			level := it.radarSaid
+			it.mu.Unlock()
 			if stopped := it.cc.climbStopped; stopped != nil && stopped(it.Tail) {
 				level = ""
 			}
+			// Above the arrivals only clear of them (release_plan.go).
+			holdClimb := false
+			var restrict traffic.Transmission // a level restriction with the climb
+			if level != "" {
+				it.mu.Lock()
+				ft := it.radarFt
+				it.mu.Unlock()
+				if who := it.climbMeets(ft); who != "" {
+					// A level until a fix past the arrival, else the climb held.
+					if fix, below, route, ok := it.climbRestriction(ft); ok {
+						if err := it.cc.do(func() error { return it.dep.Reroute(route) }); err == nil {
+							restrict = traffic.CrossAt(traffic.PosDeparture, it.Tail, fix, below, it.cc.taOf(it.ICAO), false)
+							it.cc.log.printf("%-6s departure: cross %s at or below %.0f ft, clear of %s", it.Tail, fix, below, who)
+						}
+					}
+					if restrict.Text == "" {
+						level, holdClimb = "", true
+						it.cc.log.printf("%-6s departure: climb held, it would meet %s", it.Tail, who)
+					}
+				}
+			}
 			it.mu.Lock()
-			it.identified = true
+			it.identified, it.identifiedAt = true, it.cc.clock.Now()
 			answer := it.directAnswer
 			it.directAnswer = nil
 			it.mu.Unlock()
-			if level != "" {
+			if level != "" && restrict.Text == "" {
 				it.climbOn()
 			}
 			tx := traffic.Identified(traffic.PosDeparture, it.Tail, level)
+			if restrict.Text != "" {
+				tx = traffic.Joined(tx, restrict)
+			}
 			if answer != nil {
 				if u, ok := answer(); ok {
 					tx = traffic.Joined(tx, u)
 				}
 			}
 			it.say(tx)
+			if holdClimb {
+				p.later(it.cc.clock.Now().Add(climbRecheckEvery), it.climbWhenClear)
+			}
 		})
 	case ev.dep != nil && pos == traffic.PosTower:
 		it.askWeather(traffic.PosTower)

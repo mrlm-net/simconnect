@@ -42,6 +42,9 @@ type groundEntry struct {
 	// intent: the way it means to taxi from where it is, past any stop
 	// (holding short to cross too), OncomingLookMeters of it (#775).
 	intent []airport.LatLon
+	// behind: the aircraft it stands stopped behind, in its way (not one
+	// coming the other way it holds for); 0 none (ReportBehind).
+	behind uint32
 }
 
 // NewGroundPicture creates an empty picture.
@@ -504,6 +507,17 @@ func (p *GroundPicture) ReportIntent(id uint32, intent []airport.LatLon) {
 	}
 }
 
+// ReportBehind records that aircraft id is stopped behind aircraft by, in
+// its way (0: not).
+func (p *GroundPicture) ReportBehind(id, by uint32) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.behind = by
+		p.aircraft[id] = e
+	}
+}
+
 // oncoming finds, along path from from within look, the first point where
 // another aircraft means to taxi the other way along the same pavement
 // (its intent within both half-spans and HeadOnMarginMeters, facing at
@@ -522,6 +536,12 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 	var others []them
 	for oid, e := range p.aircraft {
 		if oid == id || now.Sub(e.at) > TrafficStaleAfter {
+			continue
+		}
+		// Stopped behind this one, in its way: not held for, or neither goes
+		// (live, LKPR: CSA839 held on J for TVS1120, which stood behind
+		// it, 19 minutes until TVS1120 was removed).
+		if e.behind == id {
 			continue
 		}
 		way := e.intent

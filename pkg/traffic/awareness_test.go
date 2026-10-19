@@ -705,6 +705,13 @@ func TestOncomingHold(t *testing.T) {
 	if !holdW || holdT {
 		t.Errorf("WZZ holds %v, TVS holds %v: want WZZ only", holdW, holdT)
 	}
+	// TVS stopped behind WZZ, in its way: WZZ does not hold for it, or
+	// neither would go (live, LKPR: CSA839 and TVS1120 on J).
+	p.ReportBehind(2, 1)
+	if _, _, hold := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now); hold {
+		t.Error("WZZ holds for TVS stopped behind it")
+	}
+	p.ReportBehind(2, 0)
 	// Same way: nobody holds.
 	p.ReportIntent(2, line(14.004, 14.008))
 	if at, _, _ := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now); !math.IsInf(at, 1) {

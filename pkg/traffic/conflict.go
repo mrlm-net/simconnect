@@ -268,7 +268,7 @@ func PredictConflicts(aircraft []TrackedAircraft, o ConflictOptions) []Conflict 
 	o = o.withDefaults()
 	var air []TrackedAircraft
 	for _, a := range aircraft {
-		if !a.OnGround {
+		if !a.Grounded() {
 			air = append(air, a)
 		}
 	}

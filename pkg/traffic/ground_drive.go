@@ -59,7 +59,7 @@ type groundDrive struct {
 	// blockedBy is the aircraft ahead it stops behind (followAhead), 0 none.
 	blockedBy uint32
 	// facing: blockedBy is oncoming, held clear of at a junction (#775).
-	facing bool
+	facing    bool
 	trafficAt time.Time // last look ahead (every TrafficCheckEvery)
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
@@ -388,6 +388,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 		}
 		if d.picture != nil && d.object != 0 {
 			d.picture.ReportIntent(d.object, nil) // not taxiing: no intent (#775)
+			d.picture.ReportBehind(d.object, 0)
 			if len(d.planned) > 0 {
 				d.picture.ReportPlanned(d.object, d.planned, d.prof.SpanMeters/2)
 			} else {
@@ -459,6 +460,11 @@ func (d *groundDrive) followAhead(now time.Time) {
 		}
 	}
 	d.givingWay = whom
+	behind := uint32(0) // stopped behind one in its way (not one held for)
+	if !d.facing {
+		behind = d.blockedBy
+	}
+	d.picture.ReportBehind(d.object, behind)
 	switch {
 	case math.IsInf(stop, 1):
 		d.mover.ClearTrafficStop()
