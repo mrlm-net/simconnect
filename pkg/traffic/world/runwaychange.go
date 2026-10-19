@@ -317,6 +317,10 @@ const (
 	runwayChangeKeepNM       = 15.0
 )
 
+// finishTaxiM: a departure taxiing this close to its runway at a runway
+// change finishes on it.
+const finishTaxiM = 500.0
+
 // lastOnOldRunway is who finishes on a runway no longer in use (arrs: the
 // arrival runways now): departures holding short of their runway, lining
 // up, lined up or rolling; and the runwayChangeKeepArrivals arrivals
@@ -345,7 +349,16 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 			// or about to taxi: the new runway.
 			case traffic.TaxiDeparting:
 				keep[it.Tail] = true // rolling or climbing out: it goes
-			case traffic.TaxiTaxiing, traffic.TaxiHoldingShort, traffic.TaxiLiningUp, traffic.TaxiLinedUp:
+			case traffic.TaxiTaxiing:
+				// Still taxiing: only one nearly there finishes on the old runway;
+				// the rest go to the new one at once, not sent round ten minutes
+				// later past the deadline (live, LKPR: FZEEP held at 24 with no
+				// slot, then sent round to 06; RYR1626 off 24 into the 06
+				// arrivals nine minutes after the change).
+				if v.TaxiRemainingM > 0 && v.TaxiRemainingM <= finishTaxiM && !(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
+					keep[it.Tail] = true
+				}
+			case traffic.TaxiHoldingShort, traffic.TaxiLiningUp, traffic.TaxiLinedUp:
 				// Not for a runway that is closed: moved with the others.
 				if !(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
 					keep[it.Tail] = true

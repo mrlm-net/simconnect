@@ -637,6 +637,7 @@ func (q *sequences) tick(now time.Time) {
 	// flying: route starts at the point it flies to (DistanceVia); else it
 	// is the planned route, found from where the aircraft is (DistanceToGo).
 	fixesOf := map[string][]traffic.FixAhead{} // named fixes ahead: merge points (#788)
+	fed := map[string]bool{}
 	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed bool) {
 		t, ok := threshold(icao, rwy)
 		if !ok {
@@ -646,6 +647,10 @@ func (q *sequences) tick(now time.Time) {
 		if flying {
 			dtg = traffic.DistanceVia(p, route, t)
 		}
+		if fed[cs] {
+			return // once: handed from en route to its arrival controller
+		}
+		fed[cs] = true
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
 			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Fixes: fixesOf[cs]})
@@ -693,7 +698,7 @@ func (q *sequences) tick(now time.Time) {
 	q.s.mu.Lock()
 	var enroute []*enrouteAC
 	for _, e := range q.s.enroute {
-		if e.arrive != nil && !e.handing {
+		if e.arrive != nil { // handing over too: never out of the sequence for a look (live, CSA253)
 			enroute = append(enroute, e)
 		}
 	}
@@ -703,11 +708,30 @@ func (q *sequences) tick(now time.Time) {
 	if p, ok := q.cc.core.playerLanding(); ok {
 		cs := p.Callsign
 		if cs == "" {
-			cs = "Player"
+			cs = playerTail
 		}
 		for _, a := range pos {
 			if a.User && !a.OnGround {
 				add(p.ICAO, p.Runway, cs, p.Model, a.Position, a.GroundKts, nil, true, false)
+			}
+		}
+	} else if q.cc.core.prio.all()[playerTail] {
+		// With priority (the host's emergency), not cleared to land yet: in
+		// the sequence of the nearest airport, number one there.
+		for _, a := range pos {
+			if !a.User || a.OnGround {
+				continue
+			}
+			best, bestNM := "", playerPriorityNM
+			for _, icao := range q.s.mgr.Airports() {
+				if g, err := q.cc.graph(icao); err == nil {
+					if nm := calc.HaversineNM(a.Position.Lat, a.Position.Lon, g.Layout.Latitude, g.Layout.Longitude); nm < bestNM {
+						best, bestNM = icao, nm
+					}
+				}
+			}
+			if g, err := q.cc.graph(best); err == nil && best != "" {
+				add(best, q.cc.activeRunway(g, true), playerTail, a.Title, a.Position, a.GroundKts, nil, true, false)
 			}
 		}
 	}
@@ -848,6 +872,7 @@ func (q *sequences) tick(now time.Time) {
 		}
 		s := q.sequencer(k.icao, k.rwy)
 		s.SetDepartureSlots(q.heldSlots(now, k.icao+" "+k.rwy, waiting[k]))
+		s.SetPriorities(q.cc.core.prio.all()) // emergencies: number one (emergency.go)
 		s.SetNotBefore(q.runwayChangeGap(now, k.icao+" "+k.rwy, against[k]))
 		if wx != nil {
 			if g, err := q.cc.graph(k.icao); err == nil {
@@ -1296,13 +1321,16 @@ func (q *sequences) runwayChangeGap(now time.Time, k string, n int) time.Time {
 		}
 		return maxTime(by, now).Add(changeGapMargin)
 	}
-	delete(q.changeBy, k)
 	if gone, ok := q.changeGone[k]; ok {
 		if until := gone.Add(changeGapMargin); now.Before(until) {
+			// The deadline kept until the changeover is over: a look that
+			// counted none for a moment set a new one later (live, LKPR:
+			// OKBWJ number 1 with its delay up 40 s a look, 16 s to 4m15).
 			return until
 		}
 		delete(q.changeGone, k)
 	}
+	delete(q.changeBy, k)
 	return time.Time{}
 }
 

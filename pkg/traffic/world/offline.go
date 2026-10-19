@@ -93,8 +93,9 @@ func (st *state) dumpILS() {
 
 // LoadAirportDir serves an airport from its offline data directory (as
 // Options.AirportDumpDir writes it: layout.json, procedures.json,
-// airways.json, ils.json; each optional) instead of the simulator. It
-// returns the airport's ICAO.
+// airways.json, ils.json; each optional) instead of the simulator, and
+// its weather.json (a WeatherFile, written by hand: a representative day)
+// as the World's weather. It returns the airport's ICAO.
 func (w *World) LoadAirportDir(dir string) (string, error) {
 	icao := strings.ToUpper(filepath.Base(filepath.Clean(dir)))
 	loaded := false
@@ -135,6 +136,12 @@ func (w *World) LoadAirportDir(dir string) (string, error) {
 		}
 		w.st.core.ils.byICAO[icao] = m
 		w.st.core.ils.Unlock()
+		loaded = true
+	}
+	if p := filepath.Join(dir, dumpWeather); exists(p) {
+		if err := w.loadWeatherFile(p); err != nil {
+			return "", err
+		}
 		loaded = true
 	}
 	if !loaded {

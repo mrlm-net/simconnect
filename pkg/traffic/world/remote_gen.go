@@ -320,6 +320,12 @@ func (r *remoteArr) InterceptHeading() (float64, bool) {
 	return o0, o1
 }
 
+func (r *remoteArr) InterceptOnHeading(hdg float64) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "InterceptOnHeading", []any{hdg}, &o0))
+	return o0
+}
+
 func (r *remoteArr) LeaveHold() error {
 	err := r.c.call(r.t, "LeaveHold", []any{})
 	return err
@@ -428,4 +434,3 @@ func (r *remoteSim) ListGroundVehicles() error {
 	err := r.c.call(r.t, "ListGroundVehicles", []any{})
 	return err
 }
-

@@ -290,14 +290,14 @@ type ArrivalController struct {
 	rush          bool              // expedite vacating (Expedite, #510)
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
-	goArounds     int           // go-arounds flown (GoAround)
+	goArounds     int // go-arounds flown (GoAround)
 	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
 	// route re-planned on the way up keeps it (noClimb would hold it where
 	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
 	goAroundFt float64
-	tngLeft       int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
-	tng           *TakeoffMover // a touch-and-go's take-off, while it flies it
-	sng           *stopAndGo    // a stop-and-go's stop, before its take-off
+	tngLeft    int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
+	tng        *TakeoffMover // a touch-and-go's take-off, while it flies it
+	sng        *stopAndGo    // a stop-and-go's stop, before its take-off
 	// corners: proc's points as planned, before its turns are rounded
 	// (proc.Waypoints is the rounded chain flown), with their names ("" for
 	// none) and the next one ahead (-1: the nearest). A delay absorbed
@@ -311,6 +311,9 @@ type ArrivalController struct {
 	// passed it at once: OKRVJ told to resume own navigation 0.5 s after
 	// its heading).
 	reachFirst bool
+	// cornerFrom: where the corners were given from (a re-plan from where
+	// the aircraft was): the first corner's turn is judged from there.
+	cornerFrom airport.LatLon
 	// procNext is the waypoint of proc flown to, tracked forward from a
 	// known start: after a go-around (whose circuit loops back past the
 	// final, where the nearest waypoint is the wrong one), a delay absorbed
@@ -345,10 +348,10 @@ type ArrivalController struct {
 	// vectors are the radar vectors still to say for a dog-leg or an
 	// extended downwind, each at its corner; vectored: off the STAR on
 	// vectors, cleared for the approach with the intercept heading (#661).
-	vectors           []Vector
+	vectors []Vector
 	// spacingSaid: the heading of the last "fly heading, for spacing" said
 	// (0: none), not said again for a re-plan that keeps it.
-	spacingSaid float64
+	spacingSaid       float64
 	vectored          bool
 	blend             joinBlend
 	flapsPct          float64       // injected flap setting

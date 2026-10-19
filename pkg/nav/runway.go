@@ -59,6 +59,11 @@ type RunwayLimits struct {
 	// either end ("24"). They are never chosen, and a configuration held
 	// through wind shifts that uses one changes at once.
 	Closed []string `json:"closed,omitempty"`
+	// ChangeNow: the choice is a supervisor's, not the wind's (a runway made
+	// the one in use): a RunwaySelector changes to it at its next Ready
+	// moment, without waiting ChangeAfter for the wind to settle (live,
+	// LKPR: 24 made the runway in use, changed to ten minutes later).
+	ChangeNow bool `json:"changeNow,omitempty"`
 }
 
 // RunwayLimitsFrom returns runway limits with the airport's preferential
@@ -313,6 +318,9 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	after := s.ChangeAfter
 	if after == 0 {
 		after = RunwayChangeAfter
+	}
+	if lim.ChangeNow {
+		after = 0 // a supervisor's choice: at the next Ready moment
 	}
 	// A runway in use closed: the fresh choice at once, whatever its wind.
 	if s.have && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return lim.ClosedEnd(e.Name) }) {

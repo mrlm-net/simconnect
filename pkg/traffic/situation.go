@@ -102,7 +102,14 @@ func CheckStuck(after map[FlightStatus]time.Duration) SituationCheck {
 	return func(s Situation) []Advice {
 		var out []Advice
 		for _, f := range s.Flights {
-			if max, ok := after[f.Status]; ok && s.Now.Sub(f.Since) > max {
+			max, ok := after[f.Status]
+			if f.Held {
+				continue // held by ATC (flow control): waiting, not stuck
+			}
+			if f.AtRunway {
+				max *= 2 // in the runway queue: the tower's, it goes
+			}
+			if ok && s.Now.Sub(f.Since) > max {
 				out = append(out, Advice{Key: f.Key(), Action: AdviceRemove, Reason: fmt.Sprintf("stuck %s for %s", f.Status, s.Now.Sub(f.Since).Round(time.Minute))})
 			}
 		}

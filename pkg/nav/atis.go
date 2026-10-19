@@ -327,6 +327,19 @@ type ATISService struct {
 	// sel keeps the runway in use through wind shifts near a limit: the
 	// ATIS says what the traffic uses (#454).
 	sel *RunwaySelector
+	// limits, when set, are the limits now (closures, a runway made the
+	// one in use), read at every update instead of lim.
+	limits func() RunwayLimits
+}
+
+// ATISWithLimits has the ATIS read its runway limits at every update: a
+// host whose closures or chosen runway change. With the traffic's selector
+// (ATISWithSelector) both must choose by the same limits, or each turns
+// the runway in use back (live, LKPR: 24 made the runway in use, the ATIS
+// on its limits from before choosing 06, the two by turns every few
+// minutes).
+func ATISWithLimits(f func() RunwayLimits) ATISOption {
+	return func(s *ATISService) { s.limits = f }
 }
 
 // ATISWithSelector has the ATIS take the runway in use from sel, the one
@@ -355,7 +368,11 @@ func NewATISService(name string, l *airport.Layout, lim RunwayLimits, transition
 func (s *ATISService) Update(w Weather, now time.Time) (ATIS, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	a := NewATIS(s.name, s.next, now, w, s.sel.Choose(now, s.layout, w, s.lim), s.taFt, s.magVar)
+	lim := s.lim
+	if s.limits != nil {
+		lim = s.limits()
+	}
+	a := NewATIS(s.name, s.next, now, w, s.sel.Choose(now, s.layout, w, lim), s.taFt, s.magVar)
 	if s.have && !s.significant(s.cur, a) {
 		return s.cur, false
 	}

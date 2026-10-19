@@ -609,3 +609,49 @@ func TestSequencerNotBefore(t *testing.T) {
 		t.Errorf("cleared: %v, want %v", again[0].Landing, base[0].Landing)
 	}
 }
+
+// TestSequencerPriority: an arrival with priority (an emergency) lands at
+// its own time, number 1 ahead of one that was before it, which is fitted
+// in behind.
+func TestSequencerPriority(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{TacticalSwapGain: -1})
+	now := time.Date(2026, 10, 19, 22, 0, 0, 0, time.UTC)
+	arr := []ApproachAircraft{
+		{Callsign: "CSA1", Wake: WakeFor("A320"), DistanceToGoNM: 20, GroundKts: 220},
+		{Callsign: "MAYDAY", Wake: WakeFor("A320"), DistanceToGoNM: 21, GroundKts: 220},
+	}
+	seq := s.Update(now, arr)
+	if seq[0].Callsign != "CSA1" {
+		t.Fatalf("by time: %s first, want CSA1", seq[0].Callsign)
+	}
+	s.SetPriority("MAYDAY", true)
+	seq = s.Update(now.Add(time.Second), arr)
+	if seq[0].Callsign != "MAYDAY" || seq[0].Delay > time.Second {
+		t.Fatalf("priority: %s first with %s delay, want MAYDAY at its own time", seq[0].Callsign, seq[0].Delay)
+	}
+	if seq[1].Callsign != "CSA1" || seq[1].Delay <= 0 {
+		t.Errorf("CSA1: number %d, delay %s, want behind it, delayed", seq[1].Number, seq[1].Delay)
+	}
+}
+
+// TestSmoothedPrediction: a prediction moving by tens of seconds and back
+// look to look is smoothed (live, BAW1182 at 45s, 80s, 47s, 16s of delay
+// within a minute); a jump of minutes, a new route, is taken at once.
+func TestSmoothedPrediction(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{})
+	t0 := time.Date(2026, 10, 19, 21, 55, 0, 0, time.UTC)
+	base := t0.Add(10 * time.Minute)
+	s.smoothed(t0, "BAW1182", base)
+	worst := time.Duration(0)
+	for i, off := range []time.Duration{35, -33, 31, -30, 34} {
+		got := s.smoothed(t0.Add(time.Duration(i+1)*time.Second), "BAW1182", base.Add(off*time.Second))
+		worst = max(worst, absDuration(got.Sub(base)))
+	}
+	if worst > 5*time.Second {
+		t.Errorf("noise of ±35 s moved the prediction %s", worst)
+	}
+	jump := base.Add(4 * time.Minute)
+	if got := s.smoothed(t0.Add(10*time.Second), "BAW1182", jump); !got.Equal(jump) {
+		t.Errorf("a route changed: %s, want %s at once", got.Format("15:04:05"), jump.Format("15:04:05"))
+	}
+}

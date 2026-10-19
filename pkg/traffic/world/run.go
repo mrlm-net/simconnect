@@ -247,7 +247,9 @@ type state struct {
 	// weather is the latest at the user aircraft; atis the information
 	// services by ICAO (#357).
 	weather *nav.Weather
-	atis    map[string]*nav.ATISService
+	// weatherSet: set by the host (SetWeather), kept over the simulator's.
+	weatherSet bool
+	atis       map[string]*nav.ATISService
 	// pads are the de-icing pads picked on the map (#323); pushes the
 	// pushbacks drawn by hand.
 	pads   *padStore
@@ -477,6 +479,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.tcasView = tcw.view
 	seqs.inConflict = cw.inConflict // conflict holds last until the conflict is over
 	seqs.engaged = cw.engaged       // no shortcut undoes a resolution (#785)
+	sched.engaged = cw.engaged      // one on a resolution's heading: predicted on it, not its route
 	cc.climbStopped = cw.isStopped
 	tw := newTowers(cc, sched)
 	cc.landCleared = tw.landCleared

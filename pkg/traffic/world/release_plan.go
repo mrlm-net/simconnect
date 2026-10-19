@@ -128,6 +128,15 @@ func (it *controlled) climbMeets(ft float64) string {
 		return ""
 	}
 	climb := it.dep.ClimbPlan(me.Position)
+	if len(climb) == 0 {
+		// Before its hand-over to MSFS AI (identified on the take-off): its
+		// SID from where it is, not no route at all (live, LKPR: DLH620
+		// "climb to flight level 220" 6 s before its hand-over, into CSA253
+		// at 10000 ft on its way in).
+		for _, w := range traffic.DepartureWaypoints(me.Position, me.Heading, me.AltFt, it.dep.DepartureRoute()) {
+			climb = append(climb, traffic.RoutePoint{Position: airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, AltFt: w.Altitude, Kts: w.KtsSpeed})
+		}
+	}
 	for i := range climb {
 		climb[i].AltFt = math.Max(climb[i].AltFt, ft)
 	}

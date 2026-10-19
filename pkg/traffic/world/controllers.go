@@ -74,6 +74,7 @@ type arrivalCtl interface {
 	Holding() (traffic.Hold, float64, bool)
 	HoldPosition() error
 	InterceptHeading() (float64, bool)
+	InterceptOnHeading(hdg float64) bool
 	LeaveHold() error
 	Orbit() (time.Duration, error)
 	Plan() *traffic.ArrivalPlan

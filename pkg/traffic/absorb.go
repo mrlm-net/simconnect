@@ -36,6 +36,9 @@ const (
 	// SecondDogLegFrom: a second dog-leg on one approach only for this much
 	// time or more still to lose; less is left to speed.
 	SecondDogLegFrom = 2 * time.Minute
+	// SpacingSlowNM: within this of the end of its STAR an arrival may be
+	// slowed to ProcedureApproachSpeedKts, as those ahead fly from the IAF.
+	SpacingSlowNM = 30.0
 )
 
 // extraFor is the time a.ExtraNM takes at its speed (speed when none).
@@ -203,6 +206,13 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	minKts := MinProcedureSpeedKts
 	if c.aircraft().Category == CategoryTurboprop {
 		minKts = MinProcedureSpeedTurbopropKts
+	}
+	// Spacing behind the one ahead, or near the end of the STAR: down to
+	// the approach speed the arrivals ahead fly from the IAF, speed before
+	// a vector (the user, in trail: live, LKPR, CSA495 at 210 kt behind
+	// TVS252 at 180 given a dog-leg instead of the speed).
+	if (withinNM > 0 || planNM <= SpacingSlowNM) && minKts > ProcedureApproachSpeedKts {
+		minKts = ProcedureApproachSpeedKts
 	}
 	if c.req.Circuit != nil {
 		// In the circuit (#569): at circuit speed throughout; the delay all
@@ -391,8 +401,9 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return Absorption{}, err
 	}
+	c.keepReach(plain)
 	c.proc.Waypoints, c.procNext = out, 0
-	c.corners, c.cornerNames, c.cornerNext = plain, plainNames, 0
+	c.corners, c.cornerNames, c.cornerNext, c.cornerFrom = plain, plainNames, 0, pos
 	prevOut := 0.0
 	if c.dogLeg != nil {
 		prevOut = c.dogLeg.outHdg
@@ -540,7 +551,7 @@ func (c *ArrivalController) setCorners(wps []types.SIMCONNECT_DATA_WAYPOINT, nam
 	c.corners = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), wps...)
 	c.cornerNames = make([]string, len(wps))
 	copy(c.cornerNames, names)
-	c.cornerNext = -1
+	c.cornerNext, c.cornerFrom = -1, airport.LatLon{}
 	c.vectors, c.vectored = nil, false // a new procedure: on its own navigation
 }
 
@@ -570,9 +581,20 @@ func (c *ArrivalController) cornerAhead() int {
 		} else if d >= 1.5 {
 			// A turn: passed once more than halfway round it. Nearly straight
 			// on: once nearer the next corner than this one is (at a turn
-			// back that holds on the way out already, live RYR1785).
-			if i > 0 && turnAt(all[i-1], n, m) >= turnedPastMinDeg {
-				if d >= turnedPastNM || !c.turnedPast(all[i-1], n, m) {
+			// back that holds on the way out already, live RYR1785). The
+			// first corner turns from where the route was given from
+			// (cornerFrom): a dog-leg's apex put first was "passed" at once,
+			// the aircraft nearer the fix after it than the apex is, and
+			// told to resume a second after its vector (live, LKPR: OKUTI,
+			// CSA253 "fly heading", then "resume own navigation direct
+			// PR742", the spacing never flown).
+			prev, ok := c.cornerFrom, i == 0 && c.cornerFrom != (airport.LatLon{})
+			if i > 0 {
+				prev, ok = airport.LatLon{Lat: all[i-1].Latitude, Lon: all[i-1].Longitude}, true
+			}
+			pw := types.SIMCONNECT_DATA_WAYPOINT{Latitude: prev.Lat, Longitude: prev.Lon}
+			if ok && turnAt(pw, n, m) >= turnedPastMinDeg {
+				if d >= turnedPastNM || !c.turnedPast(pw, n, m) {
 					break // not passed yet
 				}
 			} else if calc.HaversineNM(pos.Lat, pos.Lon, m.Latitude, m.Longitude) >= calc.HaversineNM(n.Latitude, n.Longitude, m.Latitude, m.Longitude) {
@@ -622,7 +644,11 @@ func (c *ArrivalController) TurningFinal() bool {
 	}
 	n, k := len(c.corners), c.cornerAhead()
 	if k >= n-2 {
-		return true
+		// Only flying toward it: a corner counted passed that the aircraft
+		// still flies back to is not its final turn (live, LKPR: CSA253
+		// "turn left heading 060 to intercept" while flying 146 back to
+		// PR742, the cascade behind it).
+		return c.headingFor(k)
 	}
 	if !c.vectored {
 		return false
@@ -636,8 +662,25 @@ func (c *ArrivalController) TurningFinal() bool {
 		return true
 	}
 	w := c.corners[at]
-	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= interceptLeadNM
+	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= interceptLeadNM && c.headingFor(k)
 }
+
+// headingFor reports whether the aircraft flies toward corner k (within
+// headingForDeg of the bearing to it), or is at it. c.mu held.
+func (c *ArrivalController) headingFor(k int) bool {
+	if k >= len(c.corners) {
+		return true
+	}
+	p, w := c.last.Position, c.corners[k]
+	if calc.HaversineNM(p.Lat, p.Lon, w.Latitude, w.Longitude) < 1.5 {
+		return true
+	}
+	return math.Abs(headingDiff(calc.BearingDegrees(p.Lat, p.Lon, w.Latitude, w.Longitude), c.last.Heading)) <= headingForDeg
+}
+
+// headingForDeg: an arrival flies toward a corner within this of the
+// bearing to it.
+const headingForDeg = 70.0
 
 // interceptLeadNM: on vectors, the approach clearance with the heading to
 // intercept comes this far before the turn onto the final course.
@@ -1034,8 +1077,9 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 		return "", 0, err
 	}
 	fix := c.cornerName(best)
+	c.keepReach(plain)
 	c.proc.Waypoints, c.procNext = out, 0
-	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
+	c.corners, c.cornerNames, c.cornerNext, c.cornerFrom = plain, names, 0, pos
 	c.vectors, c.vectored = nil, false // direct to a fix of its STAR: its own navigation
 	c.note(fmt.Sprintf("direct %s: %.1f NM shorter", fix, bestSave), nil)
 	return fix, bestSave, nil
@@ -1223,3 +1267,19 @@ type dogLegState struct {
 // dogLegResayDeg: a dog-leg lengthened on the way out is said again only
 // when its heading changes by this much or more.
 const dogLegResayDeg = 10.0
+
+// keepReach keeps reachFirst (the first corner flown to, not passed by
+// geometry) only while plain, the new corners, still start at that corner:
+// a dog-leg put before it, or a direct past it, is passed as any other
+// (live, THY869: a runway change's first point "to reach", a dog-leg's
+// apex put first, rounded more than 1.5 NM inside, never reached; the
+// route drawn back to it and re-planned from it for good). c.mu held.
+func (c *ArrivalController) keepReach(plain []types.SIMCONNECT_DATA_WAYPOINT) {
+	if !c.reachFirst || len(c.corners) == 0 || len(plain) == 0 {
+		return
+	}
+	a, b := c.corners[0], plain[0]
+	if a.Latitude != b.Latitude || a.Longitude != b.Longitude {
+		c.reachFirst = false
+	}
+}

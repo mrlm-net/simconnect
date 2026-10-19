@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"math"
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -111,5 +112,53 @@ func TestArrivalJoinFinal(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no point on the centreline at 14 NM: %v", r)
+	}
+}
+
+// TestInterceptOnHeading: an arrival told "heading … to intercept" flies
+// that heading from where it is to the final's centreline, then the final
+// (the user: told 060, it follows 060).
+func TestInterceptOnHeading(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA253",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	_, end, _ := g.Layout.RunwayEnd("06")
+	out := math.Mod(end.Heading+180, 360)
+	// 20 NM out on the final's line, 3 NM to its side, on a base.
+	lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, out, 20*1852)
+	lat, lon = calc.DisplaceByHeading(lat, lon, math.Mod(out+90, 360), 3*1852)
+	pos := airport.LatLon{Lat: lat, Lon: lon}
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 4000, math.Mod(end.Heading+300, 360), 180, false))
+	hdg := math.Mod(end.Heading+30, 360) // a 30° intercept from its side
+	if !ctl.InterceptOnHeading(hdg) {
+		t.Fatal("not flown on the heading")
+	}
+	ctl.mu.Lock()
+	first := ctl.corners[0]
+	ctl.mu.Unlock()
+	if d := math.Abs(headingDiff(calc.BearingDegrees(pos.Lat, pos.Lon, first.Latitude, first.Longitude), hdg)); d > 1 {
+		t.Errorf("first leg %.0f° off the heading told", d)
+	}
+	fLat, fLon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, out, 30*1852)
+	if x := math.Abs(calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, fLat, fLon, first.Latitude, first.Longitude)); x > 200 {
+		t.Errorf("the intercept point %.0f m off the centreline", x)
+	}
+	// A heading away from the final: not flown, nothing changed.
+	if ctl.InterceptOnHeading(math.Mod(end.Heading+180, 360)) {
+		t.Error("a heading away from the final taken")
 	}
 }

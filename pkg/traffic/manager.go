@@ -718,6 +718,20 @@ func (m *TrafficManager) Update(callsign string, s FlightStatus, now time.Time) 
 	}
 }
 
+// Progress records that a flight made progress in its status (its
+// controller moved on: taxiing to holding short, re-cleared to another
+// runway): the time it is stuck counts from now (CheckStuck), not from
+// when the status began (live, LKPR: FZEEP removed "stuck taxiing for
+// 30m" holding short with a line-up clearance, sent round to another
+// runway on the way).
+func (m *TrafficManager) Progress(callsign string, now time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f := m.find(callsign); f != nil && f.Status != FlightDone && f.Status != FlightCancelled {
+		f.Since = now
+	}
+}
+
 // SetAtRunway records that a departure is in the runway queue (holding
 // short, lining up) or not (ManagedFlight.AtRunway).
 func (m *TrafficManager) SetAtRunway(callsign string, at bool) {
@@ -949,6 +963,7 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 		reason, held := hold[k]
 		if held != f.Held {
 			f.Held = held
+			f.Since = now // held or let go by ATC: not stuck (CheckStuck) from here
 			if held {
 				f.Note = reason
 				emits = append(emits, func() { m.emit(EventHeld, f, now, reason) })

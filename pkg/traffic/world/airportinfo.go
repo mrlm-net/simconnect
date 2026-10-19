@@ -112,6 +112,8 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
 	}
 	lim := airport.LimitsFor(l, procs)
+	// The limits now at every update, as the traffic chooses by them.
+	opts = append(opts, nav.ATISWithLimits(func() nav.RunwayLimits { return st.runwayLimits(l, lim) }))
 	svc := nav.NewATISService(l.Name, l, st.runwayLimits(l, lim), int(lim.TransitionAltitudeFt), opts...)
 	st.atis[icao] = svc
 	return svc, true
@@ -292,14 +294,19 @@ func (k *core) runwayLimits(g *airport.Graph, lim airport.Limits) nav.RunwayLimi
 	if g != nil {
 		r.Closed = k.closed(g.Layout.ICAO) // the host's closures
 		r.ThresholdEntry = g.ThresholdEntry
-		// A runway made the one in use (UseRunway): the only preference,
-		// whatever the wind.
-		if end := k.usedRunway(g.Layout.ICAO); end != "" {
-			r.Preferred, r.PreferredArrival = []string{end}, []string{end}
-			r.MaxTailwindKts, r.MaxCrosswindKts = usedRunwayWindKts, usedRunwayWindKts
-		}
+		k.useRunway(g.Layout.ICAO, &r)
 	}
 	return r
+}
+
+// useRunway has r choose the runway made the one in use at icao
+// (UseRunway), whatever the wind: its only preference.
+func (k *core) useRunway(icao string, r *nav.RunwayLimits) {
+	if end := k.usedRunway(icao); end != "" {
+		r.Preferred, r.PreferredArrival = []string{end}, []string{end}
+		r.MaxTailwindKts, r.MaxCrosswindKts = usedRunwayWindKts, usedRunwayWindKts
+		r.ChangeNow = true
+	}
 }
 
 // runwayLimits is runwayLimits on l's graph, when it can be built.
@@ -311,6 +318,7 @@ func (st *state) runwayLimits(l *airport.Layout, lim airport.Limits) nav.RunwayL
 	if g == nil {
 		r := st.core.runwayLimits(nil, lim)
 		r.Closed = st.core.closed(l.ICAO)
+		st.core.useRunway(l.ICAO, &r)
 		return r
 	}
 	return st.core.runwayLimits(g, lim)

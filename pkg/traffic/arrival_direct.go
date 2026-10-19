@@ -93,7 +93,7 @@ func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT
 		return err
 	}
 	c.proc.Waypoints, c.procNext = out, 0
-	c.corners, c.cornerNames, c.cornerNext = plain, names, 0
+	c.corners, c.cornerNames, c.cornerNext, c.cornerFrom = plain, names, 0, pos
 	c.vectors, c.reachFirst = nil, false
 	c.joinMinM, c.lastRunwayM = 0, 0
 	return nil
@@ -202,4 +202,68 @@ func (c *ArrivalController) AssignSpeed(kts float64) (float64, error) {
 	}
 	c.note(fmt.Sprintf("speed %.0f kt", set), nil)
 	return set, nil
+}
+
+// InterceptOnHeading has an arrival cleared for the approach with "turn
+// heading … to intercept" fly that heading: from where it is, on hdg
+// (true) to where it meets the final's extended centreline, then the final
+// as before. What it is told is what it flies (the user: told 060, it
+// follows 060). False, and nothing changed, when hdg does not meet the
+// centreline ahead between the align point and 30 NM out, or the arrival
+// is not on its procedure.
+func (c *ArrivalController) InterceptOnHeading(hdg float64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || c.req.Circuit != nil || len(c.corners) < 2 || c.holding != nil {
+		return false
+	}
+	pos := c.last.Position
+	if pos == (airport.LatLon{}) {
+		return false
+	}
+	n := len(c.corners)
+	align, join := c.corners[n-2], c.corners[n-1]
+	t := c.plan.End.Threshold
+	out := math.Mod(c.plan.End.Heading+180, 360)
+	at, ok := courseMeets(pos, hdg, t, out)
+	if !ok {
+		return false
+	}
+	nm := calc.HaversineNM(t.Lat, t.Lon, at.Lat, at.Lon)
+	alignNM := calc.HaversineNM(t.Lat, t.Lon, align.Latitude, align.Longitude)
+	if nm < alignNM-0.5 || nm > 30 {
+		return false
+	}
+	plain := []types.SIMCONNECT_DATA_WAYPOINT{align, join}
+	if nm > alignNM+0.5 {
+		alt := math.Min(align.Altitude+(nm-alignNM)*ProcedureDescentFtPerNm, math.Max(c.altitudeNow(), align.Altitude))
+		plain = append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(at, alt, align.KtsSpeed)}, plain...)
+	}
+	if err := c.reroute(pos, plain, make([]string, len(plain))); err != nil {
+		return false
+	}
+	c.vectored = true
+	c.note(fmt.Sprintf("intercepting on %03.0f°, the final at %.0f NM", hdg, nm), nil)
+	return true
+}
+
+// courseMeets is where the line from p on hdg meets the line from t on
+// course (both ahead), false when they do not meet ahead of both.
+func courseMeets(p airport.LatLon, hdg float64, t airport.LatLon, course float64) (airport.LatLon, bool) {
+	// Local flat frame at t, metres east and north.
+	k := math.Cos(t.Lat * math.Pi / 180)
+	px, py := (p.Lon-t.Lon)*111320*k, (p.Lat-t.Lat)*111320
+	dx, dy := math.Sin(hdg*math.Pi/180), math.Cos(hdg*math.Pi/180)
+	ex, ey := math.Sin(course*math.Pi/180), math.Cos(course*math.Pi/180)
+	den := dx*ey - dy*ex
+	if math.Abs(den) < 1e-6 {
+		return airport.LatLon{}, false // parallel
+	}
+	// p + s·d = u·e
+	s := (px*ey - py*ex) / -den
+	u := (px*dy - py*dx) / -den
+	if s <= 0 || u <= 0 {
+		return airport.LatLon{}, false
+	}
+	return airport.LatLon{Lat: t.Lat + u*ey/111320, Lon: t.Lon + u*ex/(111320*k)}, true
 }

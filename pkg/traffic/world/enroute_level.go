@@ -134,6 +134,12 @@ func (s *scheduler) plannedTraffic(callsign string) ([]traffic.TrackedAircraft, 
 		if it == nil || it.object() != a.ObjectID {
 			continue
 		}
+		// On a resolution's heading or level: flown on as it is, not along
+		// its route (live, LKPR: DLH620 on "heading 080, due traffic"
+		// predicted on its SID, FTMKL cleared to FL240 into it).
+		if s.engaged != nil && s.engaged(a.Tail, s.cc.clock.Now()) {
+			continue
+		}
 		switch {
 		case it.dep != nil:
 			plans[a.Tail] = reachable(a, it.dep.ClimbPlan(a.Position))

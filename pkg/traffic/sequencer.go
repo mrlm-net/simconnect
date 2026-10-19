@@ -160,12 +160,44 @@ type ApproachSequencer struct {
 	behind map[string]string
 	// swappedAt: when each arrival last changed places in a tactical swap.
 	swappedAt map[string]time.Time
-	cond      ApproachConditions
+	// smooth: each arrival's prediction, smoothed (etaSmoothing), and when;
+	// gapOf: the departures in the gap in front of each arrival, kept
+	// once given (a gap does not move to another arrival and back).
+	smooth map[string]smoothETA
+	gapOf  map[string]int
+	cond   ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
 	// notBefore: no arrival not yet established lands before it (a runway
 	// change: the old direction's departures go first); zero none.
 	notBefore time.Time
+	// priority: arrivals with priority (an emergency): number 1, at their
+	// own time, the others fitted around them.
+	priority map[string]bool
+}
+
+// SetPriorities sets the call signs with priority (SetPriority), all at
+// once: those not in m have none.
+func (s *ApproachSequencer) SetPriorities(m map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.priority = maps.Clone(m)
+}
+
+// SetPriority gives callsign priority (an emergency) or takes it away:
+// it lands at its own predicted time, ahead of every arrival not yet
+// established, and the others are fitted around it.
+func (s *ApproachSequencer) SetPriority(callsign string, on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.priority == nil {
+		s.priority = map[string]bool{}
+	}
+	if on {
+		s.priority[callsign] = true
+	} else {
+		delete(s.priority, callsign)
+	}
 }
 
 // SetNotBefore has no arrival not yet established land before t (zero:
@@ -253,7 +285,7 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 		opts.TacticalSwapMaxCost = 3 * time.Minute
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
-		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}, swappedAt: map[string]time.Time{}}
+		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}, swappedAt: map[string]time.Time{}, smooth: map[string]smoothETA{}, gapOf: map[string]int{}}
 }
 
 // Rejoin puts an arrival back into the sequence afresh, by its prediction
@@ -454,9 +486,12 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		key time.Time // the order: first come, first served
 	}
 	var fixed, free []slot
+	s.mu.Lock()
+	prio := maps.Clone(s.priority)
+	s.mu.Unlock()
 	for _, a := range arrivals {
-		sl := slot{a: a, eta: s.eta(now, a, c)}
-		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM {
+		sl := slot{a: a, eta: s.smoothed(now, a.Callsign, s.eta(now, a, c))}
+		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM || prio[a.Callsign] {
 			sl.a.Fixed, sl.at = true, sl.eta
 			fixed = append(fixed, sl)
 		} else {
@@ -488,6 +523,9 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		changed := false
 		for i := range fixed {
 			for j := range fixed {
+				if prio[fixed[j].a.Callsign] {
+					continue // with priority: at its own time, never pushed behind
+				}
 				pi, oki := had[fixed[i].a.Callsign]
 				pj, okj := had[fixed[j].a.Callsign]
 				// i was ahead of j: j lands after it, however close in.
@@ -647,6 +685,14 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 				if slots >= DoubleGapQueue {
 					n = 2
 				}
+				// The gap it was given: kept (live, LKPR: OKBWJ's gap 10.5 and 6
+				// NM by turns, its delay 62s, 4s, 2m54s, 4s within three minutes).
+				s.mu.Lock()
+				if had, ok := s.gapOf[f.a.Callsign]; ok {
+					n = min(had, n) // fewer waiting (held, heldSlots): a smaller gap
+				}
+				s.gapOf[f.a.Callsign] = n
+				s.mu.Unlock()
 				if dg, nm := s.departureGap(ahead.a, f.a, c, n); dg > g {
 					g = dg
 					gapped[f.a.Callsign] = nm
@@ -770,6 +816,8 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 			delete(s.manual, cs)
 			delete(s.keys, cs)
 			delete(s.behind, cs)
+			delete(s.smooth, cs)
+			delete(s.gapOf, cs)
 			changes = append(changes, SequenceChange{Runway: s.runway, Entry: e, Previous: e.Number, Gone: true})
 		}
 	}
@@ -940,4 +988,42 @@ func finalKtsOf(a ApproachAircraft) float64 {
 		return a.FinalKts
 	}
 	return 140
+}
+
+// smoothETA is an arrival's smoothed prediction.
+type smoothETA struct {
+	eta, at time.Time
+}
+
+// Predictions are smoothed over etaSmoothing: a turn, a gust or a speed
+// change moves a prediction made from the speed now by tens of seconds and
+// back, and the delays with it (live, LKPR: BAW1182 behind the same leader
+// at 45s, 80s, 47s, 16s within a minute). A jump of etaSnap or more (a
+// route changed) is taken at once.
+const (
+	etaSmoothing = 30 * time.Second
+	etaSnap      = 2 * time.Minute
+)
+
+// smoothed is raw, callsign's prediction now, smoothed. s.mu not held.
+func (s *ApproachSequencer) smoothed(now time.Time, callsign string, raw time.Time) time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.smooth == nil {
+		s.smooth = map[string]smoothETA{}
+	}
+	p, ok := s.smooth[callsign]
+	if !ok || absDuration(raw.Sub(p.eta)) >= etaSnap || !now.After(p.at) {
+		if !ok || !now.Before(p.at) {
+			s.smooth[callsign] = smoothETA{raw, now}
+		}
+		if ok && !now.After(p.at) && absDuration(raw.Sub(p.eta)) < etaSnap {
+			return p.eta
+		}
+		return raw
+	}
+	k := math.Min(1, float64(now.Sub(p.at))/float64(etaSmoothing))
+	eta := p.eta.Add(time.Duration(float64(raw.Sub(p.eta)) * k))
+	s.smooth[callsign] = smoothETA{eta, now}
+	return eta
 }

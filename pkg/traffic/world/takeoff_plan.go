@@ -104,6 +104,13 @@ func (t *towers) takeoffFilter(g *airport.Graph, tails []string, c *traffic.Runw
 			keep = append(keep, tail) // not ours, or cleared already: it goes
 			continue
 		}
+		if who := t.cc.priorityClose(g.Layout.ICAO); who != "" {
+			if c.Waiting == nil {
+				c.Waiting = map[string]string{}
+			}
+			c.Waiting[tail] = "priority traffic " + who // an emergency on its way in (emergency.go)
+			continue
+		}
 		if who := t.cc.takeoffMeets(g, it); who != "" {
 			if c.Waiting == nil {
 				c.Waiting = map[string]string{}

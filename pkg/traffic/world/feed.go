@@ -46,7 +46,9 @@ func (f localFeed) Airports(list []traffic.AirportRef) { f.cc.world.SetAirports(
 
 func (f localFeed) Weather(w nav.Weather) {
 	f.st.mu.Lock()
-	f.st.weather = &w
+	if !f.st.weatherSet { // the host's (SetWeather) kept
+		f.st.weather = &w
+	}
 	f.st.mu.Unlock()
 }
 
