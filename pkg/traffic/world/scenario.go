@@ -88,7 +88,9 @@ type ScenarioStep struct {
 //	hold       Who holds (On true) or leaves the hold (On false)
 //	runway     Runway ("12/30" or an end) closed (On true) or open again (On false)
 //	say        to Who, Kind: cancelTakeoff | holdPosition | goAround |
-//	           expectDelay (Args["minutes"])
+//	           expectDelay (Args["minutes"]) | custom (Args["text"],
+//	           Args["station"]: delivery, ground, tower, departure,
+//	           approach, center; "" the unit it is with)
 //	camera     Shots on the cast (the camera's moves)
 //
 // and anything else is the host's (ScenarioHooks.Action).
@@ -118,6 +120,10 @@ type ScenarioHooks struct {
 	Action func(a ScenarioAction) (known bool, err error)
 	// Event reports what happened.
 	Event func(ScenarioEvent)
+	// Fill fills a custom ATC call's text as it is said (say "custom"):
+	// the cast's {role} names are call signs already; the host fills the
+	// rest ({callsign}, {wind}, its [optional parts]). nil: as written.
+	Fill func(text string) string
 }
 
 // ScenarioEvent is a step of a scenario run: Kind "cast" (Role appeared as
@@ -655,6 +661,23 @@ func (r *ScenarioRun) act(a ScenarioAction) error {
 		return nil
 	case "camera":
 		return r.playShots(a.Shots)
+	case "say":
+		if a.Kind == "custom" {
+			// The cast's {role} by its call sign, then the host's values.
+			text := a.Args["text"]
+			for role, tail := range cast {
+				text = strings.ReplaceAll(text, "{"+role+"}", tail)
+			}
+			if r.h.Fill != nil {
+				text = r.h.Fill(text)
+			}
+			args := map[string]string{}
+			for k, v := range a.Args {
+				args[k] = v
+			}
+			args["text"] = text
+			a.Args = args
+		}
 	}
 	if known, err := r.w.act(r.sc.ICAO, a, cast); known {
 		return err
@@ -745,6 +768,27 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 			return true, clear("hold")
 		case "goAround":
 			return true, clear("goaround")
+		case "custom": // Args["text"], said as written; Args["station"] the unit
+			it, err := who()
+			if err != nil {
+				return true, err
+			}
+			text := strings.TrimSpace(a.Args["text"])
+			if text == "" {
+				return true, errors.New("say custom: no text")
+			}
+			it.mu.Lock()
+			pos := it.atc
+			it.mu.Unlock()
+			if st := strings.ToLower(strings.TrimSpace(a.Args["station"])); st != "" {
+				pos = traffic.Position(st)
+			}
+			if pos == "" {
+				pos = traffic.PosApproach
+			}
+			it.say(traffic.CustomCall(pos, it.Tail, text))
+			it.say(traffic.Roger(pos, it.Tail))
+			return true, nil
 		case "expectDelay": // Args["minutes"], none: "expect delay"
 			it, err := who()
 			if err != nil {

@@ -28,6 +28,9 @@ import (
 //	GET  /api/boards?icao=LKPR     — departures and arrivals of an airport
 
 type scheduler struct {
+	// engaged: in a conflict resolution, or just out of one (the conflict
+	// watch's): predicted as it flies, not along its route.
+	engaged func(cs string, now time.Time) bool
 	// held: the traffic held for a replay (hold.go); heldEnabled the
 	// schedule as it was, given back.
 	held, heldEnabled bool

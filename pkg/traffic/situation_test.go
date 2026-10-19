@@ -326,3 +326,19 @@ func TestCheckDepartureQueue(t *testing.T) {
 		t.Errorf("four in the queue: %+v, want D held on its stand", got)
 	}
 }
+
+// TestCheckStuckWaitingOnATC: a flight held by ATC is waiting, not stuck,
+// and one making progress (Progress) is counted from then (live, LKPR:
+// TVS622 removed "stuck boarding" held on its stand, FZEEP "stuck taxiing"
+// holding short with a line-up clearance).
+func TestCheckStuckWaitingOnATC(t *testing.T) {
+	t0 := time.Date(2026, 10, 19, 22, 0, 0, 0, time.UTC)
+	check := CheckStuck(nil)
+	held := ManagedFlight{Callsign: "TVS622", Kind: "departure", Status: FlightBoarding, Since: t0, Held: true}
+	queued := ManagedFlight{Callsign: "FZEEP", Kind: "departure", Status: FlightTaxiing, Since: t0, AtRunway: true}
+	stuck := ManagedFlight{Callsign: "STUCK1", Kind: "departure", Status: FlightTaxiing, Since: t0}
+	out := check(Situation{Now: t0.Add(45 * time.Minute), Flights: []ManagedFlight{held, queued, stuck}})
+	if len(out) != 1 || out[0].Key != stuck.Key() {
+		t.Errorf("removed %v, want only STUCK1", out)
+	}
+}

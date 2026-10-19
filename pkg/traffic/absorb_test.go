@@ -283,7 +283,7 @@ func TestAbsorbWithinVectorsBeforeTheMeeting(t *testing.T) {
 	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
 	pos := route[0].Position
 	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 9000, 90, 250, false))
-	a, err := ctl.AbsorbWithin(time.Minute, 10)
+	a, err := ctl.AbsorbWithin(3*time.Minute, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestAbsorbDelayVectorsNearTheEnd(t *testing.T) {
 	a0, b0 := wps[len(wps)-6], wps[len(wps)-5]
 	at := airport.LatLon{Lat: (a0.Latitude + b0.Latitude) / 2, Lon: (a0.Longitude + b0.Longitude) / 2}
 	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, at, 5000, calc.BearingDegrees(a0.Latitude, a0.Longitude, b0.Latitude, b0.Longitude), 210, false)) // flying the leg
-	routeBefore := pathNM(append([]airport.LatLon{at}, ctl.ProcedureRoute()...)) // from where it is, as ExtraNM
+	routeBefore := pathNM(append([]airport.LatLon{at}, ctl.ProcedureRoute()...))                                                                                                 // from where it is, as ExtraNM
 	a, err := ctl.AbsorbDelay(90 * time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -747,7 +747,7 @@ func TestAbsorbOneDogLegAnApproach(t *testing.T) {
 	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
 	pos := route[0].Position
 	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 9000, 90, 250, false))
-	if _, err := ctl.AbsorbWithin(time.Minute, 10); err != nil {
+	if _, err := ctl.AbsorbWithin(3*time.Minute, 10); err != nil {
 		t.Fatal(err)
 	}
 	if ctl.dogLeg == nil {
@@ -793,5 +793,82 @@ func TestAbsorbSecondDogLegNotAHold(t *testing.T) {
 	}
 	if ctl.dogLegs != 2 {
 		t.Fatalf("a dog-leg for 1 min: %d dog-legs, want 2", ctl.dogLegs)
+	}
+}
+
+// TestDogLegApexFirstNotPassedAtOnce: a dog-leg whose apex is the first
+// corner of the new route is flown out to, not counted passed at once
+// (the aircraft nearer the fix after it than the apex is) and its vector
+// cancelled by "resume own navigation" a second later (live, LKPR: OKUTI,
+// CSA253 "fly heading", then "direct PR742", the spacing never flown).
+func TestDogLegApexFirstNotPassedAtOnce(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA8",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	pos := route[0].Position
+	hdg := calc.BearingDegrees(pos.Lat, pos.Lon, route[1].Position.Lat, route[1].Position.Lon)
+	ctl.Handle(arrivalPositionMsg(mon, 77, pos, 9000, hdg, 250, false))
+	if _, err := ctl.AbsorbWithin(2*time.Minute, 30); err != nil {
+		t.Fatal(err)
+	}
+	// A second on, still heading down its route before the turn out.
+	lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, hdg, 0.07*1852)
+	ctl.Handle(arrivalPositionMsg(mon, 77, airport.LatLon{Lat: lat, Lon: lon}, 9000, hdg, 250, false))
+	v, due := ctl.VectorDue()
+	if due && v.Fix != "" {
+		t.Fatalf("a second after its dog-leg: told to resume direct %s", v.Fix)
+	}
+	ctl.mu.Lock()
+	k := ctl.cornerAhead()
+	ctl.mu.Unlock()
+	if k != 0 && ctl.dogLeg != nil {
+		t.Errorf("the dog-leg's apex counted passed at once (corner %d ahead)", k)
+	}
+}
+
+// TestSpacingBySpeedFirst: spacing behind the one ahead that slowing to
+// the approach speed can take is lost by speed, not a vector (the user,
+// in trail: live, CSA495 at 210 kt behind TVS252 at 180 got a dog-leg).
+func TestSpacingBySpeedFirst(t *testing.T) {
+	g := lkprGraph(t)
+	route, err := lkprProcedures(t).Arrival("06", "VLM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "06", Parking: c22, Model: "FSLTL A320 Air France SL", Tail: "CSA495",
+		InjectApproach: true, Procedure: route}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
+	pos := route[0].Position
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, pos, 9000, 90, 250, false))
+	a, err := ctl.AbsorbWithin(time.Minute, 23)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.ExtraNM > 0 || ctl.dogLeg != nil || a.SpeedKts < ProcedureApproachSpeedKts || a.SpeedKts == 0 {
+		t.Errorf("%+v, want speed only, %.0f kt at the least", a, ProcedureApproachSpeedKts)
 	}
 }

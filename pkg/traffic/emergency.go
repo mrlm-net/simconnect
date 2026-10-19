@@ -99,3 +99,15 @@ func emergencyAck(p map[string]string) string {
 	}
 	return s
 }
+
+// CustomCall is a controller's call as a scenario writes it, said on
+// pos's frequency as written: no phrasebook wording, no call sign added.
+func CustomCall(pos Position, cs, text string) Transmission {
+	return Transmission{Position: pos, Callsign: cs, Intent: IntentCustom, Text: text}
+}
+
+// Roger is a crew's acknowledgement of a call with nothing to read back:
+// "Roger, CSA4KM".
+func Roger(pos Position, cs string) Transmission {
+	return pilotTx(pos, cs, IntentReadback, map[string]string{ParamIntent: string(IntentCustom)}, "Roger, "+cs)
+}

@@ -93,21 +93,10 @@ func (q *sequences) mergeAhead(e traffic.SequenceEntry, seq []traffic.SequenceEn
 			need, within, lead = n, w, l.Callsign
 		}
 	}
-	// The departures climbing out across its way too: it passes behind
-	// them (a week of logs: 94 arrival–departure conflicts after a vector
-	// or an arrival's delay).
-	if q.cc.plannedTraffic != nil {
-		others, ways := q.cc.plannedTraffic(mine.Tail)
-		for _, a := range others {
-			o := q.cc.byTail(a.Tail)
-			if o == nil || o.dep == nil || len(ways[a.Tail]) == 0 || engaged(a.Tail) {
-				continue
-			}
-			if n, w := mergeNeed(mine, myPlan, a, ways[a.Tail]); n > need && w >= mergeMinWithinNM {
-				need, within, lead = n, w, a.Tail
-			}
-		}
-	}
+	// Not the departures climbing out: a dog-leg to pass behind one turned
+	// the arrival into its climb (live, LKPR: OOILE "fly heading 285"
+	// into OKETU climbing to FL240). The take-off and climb checks time
+	// the departure instead.
 	if need < mergeMinNeed {
 		return 0, 0, ""
 	}

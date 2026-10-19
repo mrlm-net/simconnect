@@ -25,3 +25,15 @@ func TestEmergencyPhrases(t *testing.T) {
 		}
 	}
 }
+
+// TestCustomCall: a scenario's own words said as written, acknowledged
+// "Roger".
+func TestCustomCall(t *testing.T) {
+	tx := CustomCall(PosTower, "CSA4KM", "CSA4KM, bird activity reported on short final runway 24")
+	if tx.Text != "CSA4KM, bird activity reported on short final runway 24" || tx.Pilot {
+		t.Errorf("said %q (pilot %v)", tx.Text, tx.Pilot)
+	}
+	if rb := Roger(PosTower, "CSA4KM"); rb.Text != "Roger, CSA4KM" || !rb.Pilot {
+		t.Errorf("acknowledged %q", rb.Text)
+	}
+}

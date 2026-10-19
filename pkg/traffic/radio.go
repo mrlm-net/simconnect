@@ -57,6 +57,7 @@ const (
 	IntentExpectDelay        Intent = "expect_delay"        // expect N minutes delay, on its own
 	IntentEmergency          Intent = "emergency"           // a crew's MAYDAY or PAN PAN
 	IntentEmergencyAck       Intent = "emergency_ack"       // roger MAYDAY, squawk 7700, number one
+	IntentCustom             Intent = "custom"              // a scenario's own words, said as written
 	IntentCancelTakeoff      Intent = "cancel_takeoff"      // hold position, cancel take-off clearance
 	IntentGoAround           Intent = "go_around"           // go around (ParamReason: why)
 	IntentSequence           Intent = "sequence"            // number, delay and how it is lost

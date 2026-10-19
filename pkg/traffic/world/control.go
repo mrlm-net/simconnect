@@ -132,7 +132,15 @@ type controlled struct {
 	// and TVS122 told twice in the same millisecond).
 	vacateSaid   atomic.Bool
 	approachSaid bool // its approach clearance, given on the base
-	visual       bool // cleared for a visual approach, as the crew asked (#766)
+	// progState: its controller's state last reported as progress;
+	// closestNM an arrival's least distance from the field so far.
+	progState string
+	closestNM float64
+	// lastATC, lastATCAt: the last ATC call said to it, and when (say).
+	sayMu     sync.Mutex
+	lastATC   string
+	lastATCAt time.Time
+	visual    bool // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
@@ -1432,6 +1440,30 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			}()
 		} else if ok {
 			m.Update(it.Tail, st, it.cc.clock.Now())
+		}
+		// Its controller moved on: progress, the stuck time from now.
+		cur := ""
+		if ev.dep != nil {
+			cur = ev.dep.State.String()
+		} else if ev.arr != nil {
+			cur = ev.arr.State.String()
+		}
+		if cur != "" && cur != it.progState {
+			it.progState = cur
+			m.Progress(it.Tail, it.cc.clock.Now())
+		}
+		// An arrival closer to the field than ever: progress, however long
+		// its approach (live, LKPR: CSA253 removed "stuck approaching for
+		// 50m" on short final, cleared to land, after two runway changes).
+		if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching {
+			if g, err := it.cc.graph(it.ICAO); err == nil {
+				p := it.view.Position
+				nm := calc.HaversineNM(p.Lat, p.Lon, g.Layout.Latitude, g.Layout.Longitude)
+				if it.closestNM == 0 || nm < it.closestNM-1 {
+					it.closestNM = nm
+					m.Progress(it.Tail, it.cc.clock.Now())
+				}
+			}
 		}
 		if e := ev.dep; e != nil {
 			m.SetAtRunway(it.Tail, e.State >= traffic.TaxiHoldingShort && e.State <= traffic.TaxiLinedUp)
@@ -3632,8 +3664,15 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		} else {
 			ac := traffic.ApproachClearance{Kind: it.approachKind(), Runway: it.view.Runway, QNH: qnh, ReportEstablished: true}
 			// On vectors: the heading to intercept with the clearance (#661).
+			// The heading flown as told: from where it is to the final on it
+			// (the user: told 060, it follows 060); one it cannot fly there
+			// is not said, it flies its route on.
 			if h, ok := it.arr.InterceptHeading(); ok {
-				ac.Intercept, ac.Turn = traffic.HeadingSaid(h, it.cc.magVar(it.ICAO)), traffic.TurnTo(ev.arr.Heading, h)
+				mv := it.cc.magVar(it.ICAO)
+				h = math.Round((h+mv)/traffic.HeadingStepDeg)*traffic.HeadingStepDeg - mv // as said, in 5° steps
+				if it.arr.InterceptOnHeading(h) {
+					ac.Intercept, ac.Turn = traffic.HeadingSaid(h, mv), traffic.TurnTo(ev.arr.Heading, h)
+				}
 			}
 			it.say(traffic.ClearedApproachTo(it.Tail, ac))
 		}
@@ -3890,8 +3929,25 @@ func (it *controlled) say(t traffic.Transmission) {
 	if t.Frequency == "" && t.Position != "" && t.Position != traffic.PosATIS {
 		_, t.Frequency = it.station(t.Position)
 	}
+	// The same ATC call to it twice in a moment is said once: two rules
+	// deciding the same thing in one look (live, LKPR: EZY1029 "contact
+	// Ruzyne Tower" twice in a millisecond, TVS252's sequence call too).
+	if !t.Pilot && t.Text != "" {
+		now := time.Now()
+		it.sayMu.Lock()
+		dup := t.Text == it.lastATC && now.Sub(it.lastATCAt) < sayTwiceWithin
+		it.lastATC, it.lastATCAt = t.Text, now
+		it.sayMu.Unlock()
+		if dup {
+			return
+		}
+	}
 	it.cc.radio.Transmit(it.ICAO, t)
 }
+
+// sayTwiceWithin: the same ATC call to one aircraft this soon again is a
+// duplicate, not a repeat.
+const sayTwiceWithin = 2 * time.Second
 
 // airFix is a named fix of a procedure on an air route.
 type airFix struct {
