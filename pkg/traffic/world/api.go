@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -196,6 +197,32 @@ func (w *World) LoadFile(path string) (string, error) {
 		w.st.mu.Unlock()
 	}
 	return l.ICAO, nil
+}
+
+// LoadProceduresFile serves an airport's SIDs, STARs and approaches from a
+// procedures dump (airport.Procedures as JSON: spike-procedures -loader
+// -dump) instead of the simulator, LoadFile's counterpart: offline. It
+// returns the airport's ICAO; the simulator is not asked for them then.
+func (w *World) LoadProceduresFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	var p airport.Procedures
+	if err := json.Unmarshal(b, &p); err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	p.ICAO = strings.ToUpper(strings.TrimSpace(p.ICAO))
+	if p.ICAO == "" {
+		return "", fmt.Errorf("%s: no ICAO", path)
+	}
+	w.st.mu.Lock()
+	if w.st.procedures == nil {
+		w.st.procedures = map[string]airport.Procedures{}
+	}
+	w.st.procedures[p.ICAO] = p
+	w.st.mu.Unlock()
+	return p.ICAO, nil
 }
 
 // Connected reports a live simulator connection with the traffic running.
