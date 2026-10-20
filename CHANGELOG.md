@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.103.0] - 2026-10-20
+
+### Added
+
+- `POST /api/emergency` (`{tail, kind, level, on}`): one of our arrivals declares an emergency of a kind, as a scenario's "emergency" step does; `on: false` cancels it.
+- Airport map: Emergency (engine failure, MAYDAY) and Medical (PAN PAN) buttons in an arrival's panel, to try the rescue vehicles and the sequence around them. Pressing Emergency again cancels it.
+
 ## [0.102.0] - 2026-10-20
 
 ### Added

@@ -480,6 +480,8 @@ function renderCtx() {
     <button type="button" class="btn btn--sm btn--toggle" data-tool="camera" data-id="${v.id}" aria-pressed="${camOn}" title="The simulator camera follows it">${icon('i-camera', 'ic ic--sm')}Camera</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="manual" data-id="${v.id}" aria-pressed="${!!v.manual}" title="Manual: you give every clearance. Off: ATC answers the crew and the tower clears it by itself. Your first clearance turns it on."${v.done ? ' disabled' : off}>${icon('i-hand', 'ic ic--sm')}Manual</button>
     <button type="button" class="btn btn--sm btn--toggle" data-tool="rush" data-id="${v.id}" aria-pressed="${!!v.rush}" title="Expedite: immediate take-off, expedite crossing and vacating; the crew hurries"${busy || v.done ? ' disabled' : ''}>${icon('i-bolt', 'ic ic--sm')}Rush</button>
+    ${v.kind === 'arrival' ? `<button type="button" class="btn btn--sm btn--toggle" data-tool="emergency" data-kind="engine-failure" data-id="${v.id}" aria-pressed="${v.squawk === '7700'}" title="Debug: the crew declares an engine failure (MAYDAY): priority and the fire trucks; again cancels it"${v.done ? ' disabled' : ''}>${icon('i-bolt', 'ic ic--sm')}Emergency</button>
+    <button type="button" class="btn btn--sm" data-tool="emergency" data-kind="medical" data-id="${v.id}" title="Debug: the crew declares a medical (PAN PAN): priority and the ambulance"${v.done || v.squawk === '7700' ? ' disabled' : ''}>Medical</button>` : ''}
     <button type="button" class="btn btn--sm btn--danger" data-tool="remove" data-id="${v.id}"${busy ? ' disabled' : ''}>${icon('i-trash', 'ic ic--sm')}Remove</button>
   </div></section>`;
   setHTML(el, h);
@@ -953,6 +955,13 @@ function initTraffic() {
       if (tool.dataset.tool === 'manual') {
         send(`/api/control/${v.id}/manual?on=${v.manual ? 0 : 1}`).then((r) => {
           toast(r.ok ? `${v.tail}: ${v.manual ? 'automatic again' : 'under your control'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');
+          controlPoll.now();
+        });
+      }
+      if (tool.dataset.tool === 'emergency') {
+        const on = v.squawk !== '7700';
+        send('/api/emergency', { tail: v.tail, kind: tool.dataset.kind, on }).then((r) => {
+          toast(r.ok ? `${v.tail}: ${on ? 'emergency declared' : 'emergency cancelled'}` : `${v.tail}: ${r.error}`, r.ok ? '' : 'err');
           controlPoll.now();
         });
       }
