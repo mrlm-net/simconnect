@@ -1176,6 +1176,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerSeparation(mux, st)
 	registerRunways(mux, st)
 	registerStaffed(mux, w)
+	registerEmergency(mux, st)
 	// GET /api/ground-titles: every ground vehicle title the simulator
 	// offers (what vehicles a feature can use: real data only).
 	mux.HandleFunc("GET /api/ground-titles", func(w http.ResponseWriter, r *http.Request) {

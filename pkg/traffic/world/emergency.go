@@ -1,9 +1,11 @@
 package world
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -216,4 +218,49 @@ func (cc *controlCenter) cancelEmergency(it *controlled) error {
 	it.say(traffic.CancelEmergency(pos, station, tail, level))
 	it.say(traffic.AcknowledgeCancelEmergency(pos, tail, level, squawk))
 	return nil
+}
+
+// registerEmergency serves POST /api/emergency ({"tail", "kind", "level",
+// "on"}): one of ours declares an emergency of kind (on false: cancels
+// it), as a scenario's "emergency" action does; a debug trigger for the
+// rescue vehicles and the sequence around it.
+func registerEmergency(mux *http.ServeMux, st *state) {
+	mux.HandleFunc("POST /api/emergency", func(rw http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Tail  string `json:"tail"`
+			Kind  string `json:"kind"`
+			Level string `json:"level"`
+			On    *bool  `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(rw, err.Error(), http.StatusBadRequest)
+			return
+		}
+		st.mu.Lock()
+		cc := st.control
+		st.mu.Unlock()
+		if cc == nil {
+			http.Error(rw, "simulator not connected", http.StatusServiceUnavailable)
+			return
+		}
+		it := cc.byTail(strings.ToUpper(strings.TrimSpace(req.Tail)))
+		if it == nil {
+			http.Error(rw, "no flight of ours "+req.Tail, http.StatusNotFound)
+			return
+		}
+		var err error
+		if req.On != nil && !*req.On {
+			err = cc.cancelEmergency(it)
+		} else {
+			if req.Kind == "" {
+				req.Kind = string(traffic.EmergencyEngineFailure)
+			}
+			err = cc.declareEmergency(it, traffic.EmergencyKind(req.Kind), req.Level)
+		}
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusConflict)
+			return
+		}
+		writeJSON(rw, map[string]any{"tail": it.Tail, "kind": req.Kind, "on": req.On == nil || *req.On})
+	})
 }
