@@ -66,6 +66,38 @@ type rescueCrew struct {
 	target             traffic.TrackedAircraft // the aircraft as last seen
 	stoppedAt          time.Time               // since when it has stood, zero moving
 	frameAt            time.Time
+	// kts is its speed: the simulator's, or from its positions when more
+	// (AI on the ground report 0 kt while moving).
+	kts float64
+}
+
+// observe takes the aircraft as seen now: its speed from how far it moved
+// since it was last seen.
+func (c *rescueCrew) observe(a traffic.TrackedAircraft) {
+	prev := c.target
+	c.target = a
+	if dt := a.Updated.Sub(prev.Updated).Seconds(); prev.Tail == a.Tail && dt >= 0.5 {
+		moved := calc.HaversineMeters(prev.Position.Lat, prev.Position.Lon, a.Position.Lat, a.Position.Lon) / dt * 3600 / 1852
+		c.kts = math.Max(a.GroundKts, moved)
+	} else if dt < 0 || prev.Tail != a.Tail {
+		c.kts = a.GroundKts
+	}
+}
+
+// touchedDown: a is on the runway, its wheels on (not in the flare, low).
+func touchedDown(a traffic.TrackedAircraft) bool {
+	return a.OnGround || a.AGLFt > 0 && a.AGLFt < 3
+}
+
+// track is where the crew's vehicles are, for the map.
+func (c *rescueCrew) track() []tugView {
+	var out []tugView
+	for _, t := range c.trucks {
+		if p, route, ok := t.Track(); ok {
+			out = append(out, tugView{Position: p.Position, Heading: p.Heading, Route: route})
+		}
+	}
+	return out
 }
 
 // rescueCrews are the crews out.
@@ -202,7 +234,7 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 	for name, c := range cc.rescue.by {
 		a, ok := seen[name]
 		if ok {
-			c.target = a
+			c.observe(a)
 		}
 		done := true
 		for _, t := range c.trucks {
@@ -218,13 +250,15 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 			continue
 		case !ok && now.Sub(c.target.Updated) > rescueLostAfter:
 			cc.rescueHome(c, "it is gone")
+		case !ok:
+			continue
 		case c.state == rescueStandby && !prio[name]:
 			cc.rescueHome(c, "priority taken away")
-		case c.state == rescueStandby && a.Grounded() && a.Airport == c.icao:
+		case c.state == rescueStandby && touchedDown(a) && a.Airport == c.icao:
 			c.state = rescueFollowing
 			cc.log.printf("%-6s rescue: down, the vehicles follow it", name)
 		case c.state == rescueFollowing:
-			if a.GroundKts > rescueStoppedKts {
+			if c.kts > rescueStoppedKts {
 				c.stoppedAt = time.Time{}
 				break
 			}
@@ -321,10 +355,10 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 			var err error
 			if c.state == rescueFollowing {
 				a := c.target
-				ahead := a.GroundKts * 1852 / 3600 * math.Min(2, now.Sub(a.Updated).Seconds())
+				ahead := c.kts * 1852 / 3600 * math.Min(2, now.Sub(a.Updated).Seconds())
 				lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, a.Heading, ahead-rescueTrail*float64(i))
 				pos := airport.LatLon{Lat: lat, Lon: lon}
-				err = t.Follow(traffic.GroundPose{Position: pos, Heading: a.Heading}, a.GroundKts, dt)
+				err = t.Follow(traffic.GroundPose{Position: pos, Heading: a.Heading}, c.kts, dt)
 			} else {
 				err = t.Update(dt)
 			}
@@ -333,6 +367,16 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 			}
 		}
 	}
+}
+
+// rescueTrack is where the vehicles out for tail are, for the map.
+func (cc *controlCenter) rescueTrack(tail string) []tugView {
+	cc.rescue.mu.Lock()
+	defer cc.rescue.mu.Unlock()
+	if c := cc.rescue.by[tail]; c != nil {
+		return c.track()
+	}
+	return nil
 }
 
 // rescueHandle takes the crews' creation answers.

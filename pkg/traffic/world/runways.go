@@ -547,7 +547,12 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 			it.mu.Lock()
 			model := it.view.Model
 			it.mu.Unlock()
-			if !math.IsInf(then, 1) && !rc.BehindRoom(first, time.Duration(then*float64(time.Second)), traffic.RunwayUser{Wake: traffic.WakeFor(model)}) {
+			us, in := traffic.RunwayUser{Wake: traffic.WakeFor(model)}, time.Duration(then*float64(time.Second))
+			room := rc.BehindRoom(first, in, us)
+			if b.departing {
+				room = rc.LineUpRoom(in, us)
+			}
+			if !math.IsInf(then, 1) && !room {
 				delete(t.behind, dep)
 				delete(t.given, dep+" lineup")
 				noRoom = append(noRoom, dep)

@@ -57,6 +57,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.104.0] - 2026-10-20
+
+### Fixed
+
+- Rescue vehicles (live, CSA1461):
+  - They followed 6 s before touchdown, the flare under 50 ft counting as down. Now they start from the wheels on the ground (under 3 ft).
+  - Taxiing was taken for stopped, because MSFS reports 0 kt for AI on the ground. The aircraft's speed now comes from its positions.
+  - The trucks show on the airport map (R markers with their way, `ControlView.Rescue`).
+- Tower: a departure with a conditional line-up behind one departing is no longer told "hold position" right after it. When the line-up was released, the room before the next arrival was counted as if the one ahead were landing, waiting out its landing roll. It now uses the room the line-up was given with: its own line-up, take-off and the margin (`RunwayController.LineUpRoom`; live, KLM1616).
+- Tower: a departure waiting out its departure interval is told to line up and wait only within 45 s of its take-off (`LineUpWaitMax`). Before that it holds short instead of blocking the runway lined up (live, EZY562 lined up 3 minutes behind a TBM 900 on the same SID). Conditional line-ups behind one departing are unchanged.
+- Tower: with one of ours already lined up behind the one rolling, another waiting at an intersection further down is no longer lined up too (live, OKDIS lined up ahead of CSA443 at the threshold and jumped it).
+- Ground: "follow the …" only for traffic within 300 m ahead on the route, in sight, not 800 m (live, TVS1373 told to follow a far-away Ryanair).
+- Pushback: once approved, the schedule's queue hold no longer holds a departure on its stand again (live, WZZ1251 approved, held 3 s later and waiting 10 minutes with its tug at the nose). Waiting for a neighbour's push is unchanged.
+
+### Added
+
+- A crew still on its stand asks "stand B1, request taxi", as in the ICAO Phraseology Reference Guide (`RequestTaxiFrom`).
+
 ## [0.103.0] - 2026-10-20
 
 ### Added

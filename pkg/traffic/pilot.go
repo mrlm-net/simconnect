@@ -181,6 +181,17 @@ func RequestTaxi(cs string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, nil, cs+", request taxi")
 }
 
+// RequestTaxiFrom is a departure still on its stand (no pushback) asking
+// for taxi, saying where it is, as the ICAO Phraseology Reference Guide
+// has it ("Metro Ground, Big Jet 345 Stand B1, request taxi"): "CSA1,
+// stand B1, request taxi".
+func RequestTaxiFrom(cs, stand string) Transmission {
+	if stand == "" {
+		return RequestTaxi(cs)
+	}
+	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamStand: stand}, cs+", stand "+stand+", request taxi")
+}
+
 // HoldingShortReport is a crew stopped short of a runway it is to cross,
 // at taxiway at ("" none): "CSA1, holding short of runway 12 at F".
 func HoldingShortReport(cs, runway, at string) Transmission {

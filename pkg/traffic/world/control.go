@@ -295,6 +295,8 @@ type ControlView struct {
 	// the way still ahead.
 	Tug  *tugView `json:"tug,omitempty"`
 	Fuel *tugView `json:"fuel,omitempty"` // its fuel truck while it drives (#582)
+	// Rescue: the fire trucks or the ambulance out for it (rescue.go).
+	Rescue []tugView `json:"rescue,omitempty"`
 	// Vehicles: its ground vehicles with their object and state (#710).
 	Vehicles       []VehicleView `json:"vehicles,omitempty"`
 	Model          string        `json:"model"`
@@ -1752,6 +1754,7 @@ func (cc *controlCenter) views() []ControlView {
 		if it.fuel != nil && !remote {
 			v.Vehicles = append(v.Vehicles, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
 		}
+		v.Rescue = cc.rescueTrack(it.Tail)
 		out = append(out, v)
 	}
 	cc.mu.Unlock()

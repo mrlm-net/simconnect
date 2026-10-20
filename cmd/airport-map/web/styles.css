@@ -1095,6 +1095,7 @@ select option { background: var(--surface); color: var(--text); }
 .m-tug { display: grid; place-items: center; border-radius: 4px; background: var(--warn); color: #fff; font: 700 10px/1 var(--font-sans); box-shadow: var(--shadow-1); }
 .m-tug-route { fill: none; stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 5; stroke-opacity: .8; }
 .m-tug--fuel { background: var(--ok); }
+.m-tug--rescue { background: var(--danger, #d73a49); }
 .m-circuit { fill: none; stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 6 6; stroke-opacity: .55; }
 .m-circuit.is-sel { stroke-width: 2.5; stroke-opacity: .9; }
 .m-vfrpt { display: grid; place-items: center; color: var(--ok); font-size: 12px; line-height: 1; text-shadow: 0 0 2px var(--surface); }

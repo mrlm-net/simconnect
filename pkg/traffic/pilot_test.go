@@ -124,3 +124,14 @@ func TestATISInformation(t *testing.T) {
 		t.Error("an ATIS is not read back")
 	}
 }
+
+// TestRequestTaxiFrom: on its stand a crew says where it is (ICAO
+// Phraseology Reference Guide: "Big Jet 345 Stand B1, request taxi").
+func TestRequestTaxiFrom(t *testing.T) {
+	if got := RequestTaxiFrom("CSA1", "B1").Text; got != "CSA1, stand B1, request taxi" {
+		t.Errorf("got %q", got)
+	}
+	if got := RequestTaxiFrom("CSA1", "").Text; got != "CSA1, request taxi" {
+		t.Errorf("no stand: got %q", got)
+	}
+}
