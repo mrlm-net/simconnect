@@ -2962,7 +2962,7 @@ func (cc *controlCenter) standPlaceSim(g *airport.Graph, stand int, model string
 	helper := ""
 	if jetwaysEnabled() && cc != nil {
 		if svc := cc.jetwayBuilt(); svc != nil {
-			helper = svc.HelperFor(m)
+			helper = gateHelper(svc, g, stand, m)
 		}
 	}
 	inset, side := SimNoseGearInsetM, 0.0
