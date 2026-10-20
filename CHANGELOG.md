@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.106.0] - 2026-10-20
+
+### Added
+
+- Jetways meet our aircraft at stands where a stand rule puts it off the simulator's place along the line (LKPR B14/C22: narrowbodies 9 m back): the helper, parked by the simulator at its own place, is a variant with its door that far along the fuselage (`jetway.HelperAheadTitle`, `PackageOptions.AheadM`; live, RYR341 on C22 had the jetway at its nose, 9 m ahead of the door). The world asks for it when installed; `jetway-helpers` writes the stand rules' offsets by default (`-ahead rules`). Reinstall the helper package and restart MSFS to load the variants.
+
 ## [0.105.0] - 2026-10-20
 
 ### Added
