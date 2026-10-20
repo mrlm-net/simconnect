@@ -301,9 +301,6 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		cc.jw.mu.Unlock()
 		if !asked {
 			variant, _ := cc.gateVariant(g, stand, model)
-			if v, ok := cc.aheadVariant(g, stand, model); ok {
-				variant = v
-			}
 			if err := svc.DockAs(icao, stand, model, variant); err == nil {
 				cc.logStandFit(g, stand, tail, pos) // once a dock is asked, not each tick a gate has none
 			} else {
@@ -696,36 +693,6 @@ func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) 
 	}
 	title := jetway.HelperVariantTitle(strings.TrimPrefix(base, jetway.HelperTitlePrefix), k)
 	if k != 0 && !cc.hasModel(title) {
-		return "", false
-	}
-	return title, true
-}
-
-// aheadVariant is the helper variant (jetway.HelperAheadTitle) whose door
-// is where model's is at g's stand when a stand rule puts our aircraft off
-// the simulator's place along the line: the helper parks at the
-// simulator's place, so its jetway would meet a door that far off (live,
-// LKPR C22: RYR341 9 m back, the jetway at its nose). ok false: no rule
-// along the line, or the variant not installed (jetway-helpers -ahead).
-func (cc *controlCenter) aheadVariant(g *airport.Graph, stand int, model string) (string, bool) {
-	if cc == nil || g == nil || stand < 0 || stand >= len(g.Layout.Parking) || !jetwaysEnabled() {
-		return "", false
-	}
-	svc := cc.jetwayBuilt()
-	if svc == nil {
-		return "", false
-	}
-	m := strings.SplitN(model, liverySep, 2)[0]
-	r, ok := traffic.StandRuleFor(g.Layout.ICAO, g.Layout.Parking[stand].Label(), traffic.ProfileFor(m).WingspanM)
-	if !ok || r.ForwardM == 0 {
-		return "", false
-	}
-	base := svc.HelperFor(m)
-	if base == "" {
-		return "", false
-	}
-	title := jetway.HelperAheadTitle(strings.TrimPrefix(base, jetway.HelperTitlePrefix), r.ForwardM)
-	if !cc.hasModel(title) {
 		return "", false
 	}
 	return title, true

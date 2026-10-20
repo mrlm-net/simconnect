@@ -219,13 +219,25 @@ func TestHelpersFlow(t *testing.T) {
 	}
 }
 
-// A jetway gate no placeholder holds (next to an occupied one): no helper.
+// A jetway gate no placeholder holds (next to an occupied one): no helper,
+// unless it is the only free jetway gate, where the simulator puts the
+// next ParkedATC (live, LKPR B15: the helpers of other gates went there).
 func TestHelpersNoPlaceholder(t *testing.T) {
 	f := &fakeSim{}
 	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
-	h.see(jw(11, 0, 0))
+	h.see(jw(11, 0, 0), jw(12, 0, 0))
 	if err := h.Dock("EDDM", 11, "B738"); err != ErrNoGate || len(f.created) != 0 {
-		t.Fatalf("dock: %v, created %d; want ErrNoGate, none", err, len(f.created))
+		t.Fatalf("dock with two free gates: %v, created %d; want ErrNoGate, none", err, len(f.created))
+	}
+	h.mu.Lock()
+	h.gate("EDDM", 12).placeholder = 101
+	h.mu.Unlock()
+	if err := h.Dock("EDDM", 11, "B738"); err != nil {
+		t.Fatalf("dock at the only free gate: %v", err)
+	}
+	h.Update(time.Now().Add(HelperDelay))
+	if len(f.created) == 0 || f.created[0].title != "MyCrew Jetway Helper B738" {
+		t.Fatalf("created %v, want the B738 helper", f.created)
 	}
 }
 
