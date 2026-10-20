@@ -300,7 +300,10 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		cc.jw.docked[k] = true
 		cc.jw.mu.Unlock()
 		if !asked {
-			variant, _ := cc.gateVariant(g, stand, model)
+			variant, ok := cc.gateVariant(g, stand, model)
+			if !ok {
+				variant = gateHelper(svc, g, stand, model) // the stand's own helper type, if it has one
+			}
 			if err := svc.DockAs(icao, stand, model, variant); err == nil {
 				cc.logStandFit(g, stand, tail, pos) // once a dock is asked, not each tick a gate has none
 			} else {
@@ -682,7 +685,7 @@ func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) 
 	if side == 0 {
 		return "", false
 	}
-	base := svc.HelperFor(model)
+	base := gateHelper(svc, g, stand, model)
 	right := 0.0
 	if _, r, ok := jetwayDoorOffset(model, base); ok {
 		right = r
@@ -696,6 +699,26 @@ func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) 
 		return "", false
 	}
 	return title, true
+}
+
+// gateHelperTypes are stands where the simulator parks no helper of a big
+// type (put on another gate or 300 m away, again and again: live, LKPR
+// B14, a 787's and a 777's): the helper of the type given docks for any
+// aircraft there, ours standing with its door where that helper's is
+// (gateNoseOffset, gateSide).
+var gateHelperTypes = map[string]string{
+	"LKPR B14": "A320",
+}
+
+// gateHelper is the helper that docks for model at g's stand: the stand's
+// own type (gateHelperTypes), else model's.
+func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string) string {
+	if g != nil && stand >= 0 && stand < len(g.Layout.Parking) {
+		if t, ok := gateHelperTypes[strings.ToUpper(g.Layout.ICAO+" "+g.Layout.Parking[stand].Label())]; ok {
+			return svc.HelperFor(t)
+		}
+	}
+	return svc.HelperFor(model)
 }
 
 // hasModel reports whether the simulator lists title.
