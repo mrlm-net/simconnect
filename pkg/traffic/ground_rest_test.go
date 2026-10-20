@@ -200,3 +200,36 @@ func TestGroundFlagBlends(t *testing.T) {
 		t.Errorf("after the blend: flag %d at %.2f ft, want set at about 1207.05", p.OnGround, p.Altitude)
 	}
 }
+
+// TestInjectorPlaceRest: parked, an aircraft is put at its static pitch and
+// CG height, where the simulator settles it on all its wheels, not on
+// extended struts (a degree off) with the main gear in the air (live,
+// B738s at 9.72 ft on the nose wheel alone); and that pose is not learnt
+// as its kind's rest.
+func TestInjectorPlaceRest(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	w := time.Date(2026, 10, 20, 16, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { return w }
+	const a, title = 42, "FSLTL_FAIB_B738_TVS-Smartwings_NC"
+	if err := inj.Takeover(a); err != nil {
+		t.Fatal(err)
+	}
+	inj.SetModel(a, title)
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.71, PlaneFt: 1209.72, PlanePitch: 1.71, OnGround: 1}))
+	if err := inj.PlaceRest(a, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}, Heading: 240}); err != nil {
+		t.Fatal(err)
+	}
+	var got types.SIMCONNECT_DATA_INITPOSITION
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+	if math.Abs(got.Altitude-1208.48) > 1e-6 || math.Abs(got.Pitch-0.71) > 1e-6 || got.OnGround != 1 || got.Heading != 240 {
+		t.Errorf("parked at %.2f ft, pitch %.2f, on ground %d, heading %.0f; want 1208.48, 0.71, 1, 240", got.Altitude, got.Pitch, got.OnGround, got.Heading)
+	}
+	// The simulator shows it settled there a while later: not its kind's rest.
+	before := inj.rests[title]
+	w = w.Add(time.Minute)
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.71, PlaneFt: 1208.40, PlanePitch: 0.71, OnGround: 1}))
+	if r := inj.rests[title]; r != before {
+		t.Errorf("parked pose learnt as the rest of its kind: %v, was %v", r, before)
+	}
+}

@@ -388,6 +388,39 @@ func (i *Injector) PlaceMoving(objectID uint32, pose GroundPose) error {
 	return i.place(objectID, pose, true)
 }
 
+// PlaceRest puts objectID at pose standing on its gear for good (an
+// arrival parked on its stand, not moved again): its static pitch and CG
+// height, where the simulator settles it on all its wheels. Left on
+// extended struts (Place, a degree off its rest pitch) the main gear hung
+// in the air (live, B738s at 9.72 ft on the nose wheel alone; at the
+// static pitch 8.40 ft on all three, whatever height was sent).
+func (i *Injector) PlaceRest(objectID uint32, pose GroundPose) error {
+	i.mu.Lock()
+	o, ok := i.objects[objectID]
+	if !ok || !o.taken {
+		i.mu.Unlock()
+		return ErrNotInjected
+	}
+	if !o.haveGround {
+		i.mu.Unlock()
+		return ErrGroundUnknown
+	}
+	// Not learnt as its kind's rest (settled): taken there, a pitch off
+	// MovingPitchDeg would be recorded for the next of its kind.
+	o.placed, o.placedAt = true, time.Time{}
+	o.cgShown, o.cgShownAt, o.sentGround = o.cgFt, i.now(), 1
+	p := types.SIMCONNECT_DATA_INITPOSITION{
+		Latitude:  pose.Position.Lat,
+		Longitude: pose.Position.Lon,
+		Altitude:  i.groundShown(o, pose) + o.cgFt,
+		Pitch:     o.staticPitch,
+		Heading:   pose.Heading,
+		OnGround:  1,
+	}
+	i.mu.Unlock()
+	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+}
+
 func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	i.mu.Lock()
 	o, ok := i.objects[objectID]
