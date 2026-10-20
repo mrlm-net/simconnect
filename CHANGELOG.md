@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.104.3] - 2026-10-20
+
+### Fixed
+
+- Parked arrivals stand on all their wheels: frozen in their last taxi pose (a degree off the rest pitch, on extended struts) only the nose wheel touched and the main gear hung in the air (live, B738s at 9.72 ft). Arrived on the stand they are placed once at their static pitch and CG height (`Injector.PlaceRest`), where the simulator settles them on all three (8.40 ft, measured live).
+
 ## [0.104.2] - 2026-10-20
 
 ### Fixed
