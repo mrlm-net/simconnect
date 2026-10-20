@@ -57,6 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.102.0] - 2026-10-20
+
+### Added
+
+- Rescue vehicles (the emergency add-on, part 1): an aircraft with priority coming in to an airport of ours gets its fire and rescue.
+  - As it comes within 20 NM, two fire trucks drive from the nearest vehicle depot along the service roads to standby points beside its landing runway, 60 m off the edge on the side of its exits, and wait there. GSX's fire trucks are used first, else MSFS's own.
+  - Once the aircraft is down they follow it, 80 m behind (40 m more for the second), up to 50 kt and turning no faster than 30°/s. A minute after it has stopped they drive back and are removed. If priority is taken away before the landing, they go back at once.
+  - A medical gets MSFS's ambulance instead, following the aircraft in to its stand and staying 5 minutes.
+  - Library: `traffic.SimObjectRescue` (`Standby`, `Follow`, `Home`, `Update`, `Handle`, `Remove`, `Done`) and `traffic.RescueStandby(layout, runwayEnd, n)`.
+  - World: `World.PriorityFor(tail, kind)` gives priority for an emergency of a kind (`""` is the player). A cast aircraft's declared emergency sets its kind itself.
+
 ## [0.101.0] - 2026-10-20
 
 ### Added

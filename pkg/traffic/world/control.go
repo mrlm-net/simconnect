@@ -457,6 +457,8 @@ type controlCenter struct {
 	// anyone was on one then (staffed.go).
 	staffedAt  time.Time
 	staffedAny bool
+	// rescue: the fire and rescue crews out (rescue.go).
+	rescue rescueCrews
 	// changeDeadline: when a runway change's departures from the other end
 	// of arrival runway end key ("LKPR 24") should have gone; false none.
 	changeDeadline func(key string) (time.Time, bool)
@@ -626,6 +628,7 @@ func (cc *controlCenter) tick() {
 	if now := cc.clock.Now(); now.Sub(cc.gameAt) >= time.Second {
 		cc.gameAt = now
 		cc.timed("game", func() { cc.gameTick(now) })
+		cc.timed("rescue", func() { cc.rescueTick(now) })
 	}
 	// The stand allocators are fed by the traffic picture (Allocate): no
 	// scans of their own.
@@ -751,6 +754,9 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 		if a.Handle(msg) {
 			return true
 		}
+	}
+	if cc.rescueHandle(msg) {
+		return true
 	}
 	if cc.extra != nil && cc.extra(msg) {
 		return true
