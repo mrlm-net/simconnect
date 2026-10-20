@@ -47,6 +47,10 @@ func (w *World) Feed(msg engine.Message) {
 	}
 }
 
+// Queued is how many fed messages wait for the World now (Feed): 0 once
+// it has taken every one (a test stepping time waits for it).
+func (w *World) Queued() int { return len(w.queue()) }
+
 func (w *World) queue() chan engine.Message {
 	w.qOnce.Do(func() {
 		n := w.opts.QueueSize
@@ -110,7 +114,7 @@ type PlayerPlace struct {
 // is in the API: Get("/api/airportinfo?icao=LKPR", &v), as a remote client
 // reads it (docs/traffic-world.md).
 func (w *World) Snapshot() Snapshot {
-	out := Snapshot{At: time.Now(), Aircraft: []ControlView{}, Dropped: w.st.dropped.Load()}
+	out := Snapshot{At: traffic.Now(), Aircraft: []ControlView{}, Dropped: w.st.dropped.Load()}
 	w.st.mu.Lock()
 	cc := w.st.control
 	w.st.mu.Unlock()
@@ -311,7 +315,7 @@ func (k *core) setPlayer(c PlayerClearance) {
 	}
 	c.ICAO = strings.ToUpper(c.ICAO)
 	k.player.c = &c
-	k.player.since, k.player.onRunway = time.Now(), false
+	k.player.since, k.player.onRunway = traffic.Now(), false
 }
 
 // playerOn is the user aircraft's clearance onto icao's runway rwy (a

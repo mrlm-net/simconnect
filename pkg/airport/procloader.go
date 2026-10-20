@@ -192,7 +192,7 @@ func (l *ProcedureLoader) Request(icao string) error {
 	}
 	if slot < 0 {
 		// Loads the simulator never finished must not block new ones (#46).
-		l.expire(time.Now())
+		l.expire(nowTime())
 		for i, s := range l.slots {
 			if s == nil {
 				slot = i
@@ -203,7 +203,7 @@ func (l *ProcedureLoader) Request(icao string) error {
 	if slot < 0 {
 		return fmt.Errorf("airport: %d procedure loads already pending", procedureSlots)
 	}
-	st := &procState{icao: icao, pending: procedureParts, deadline: time.Now().Add(l.timeout), procs: map[uint32]*Procedure{},
+	st := &procState{icao: icao, pending: procedureParts, deadline: nowTime().Add(l.timeout), procs: map[uint32]*Procedure{},
 		isDep: map[uint32]bool{}, approx: map[uint32]*Approach{}, trans: map[uint32]*Transition{}}
 	l.slots[slot] = st
 	for part := 0; part < procedureParts; part++ {

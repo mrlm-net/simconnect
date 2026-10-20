@@ -413,8 +413,8 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 		defBase: DefaultTaxiDefinitionBase,
 		reqBase: DefaultTaxiRequestBase,
 		events:  make(chan TaxiEvent, 256),
-		now:     time.Now,
-		rng:     rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xdea)),
+		now:     Now,
+		rng:     rand.New(rand.NewPCG(uint64(Now().UnixNano()), 0xdea)),
 	}
 	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	c.last.LimitNode = -1

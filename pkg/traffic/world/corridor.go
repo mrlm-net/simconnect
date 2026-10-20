@@ -124,7 +124,7 @@ func (s *scheduler) corridorTick(now time.Time) {
 // spawnCorridor creates one aircraft of kind around the user's flight: an
 // airline of the schedule's, one of its types, a model of it.
 func (s *scheduler) spawnCorridor(kind traffic.CorridorKind, c CorridorSettings, user airport.LatLon) error {
-	rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x740))
+	rng := rand.New(rand.NewPCG(uint64(traffic.Now().UnixNano()), 0x740))
 	// An airline with a jet that cruises up there (2000 ft above the user
 	// at most): no turboprop at FL340.
 	type pick struct {
@@ -166,7 +166,7 @@ func (s *scheduler) spawnCorridor(kind traffic.CorridorKind, c CorridorSettings,
 		model: model, waypoints: wps, route: route, corridor: kind}
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
-	e.reqID, e.pendingAt = s.freeEnrouteReq(), time.Now()
+	e.reqID, e.pendingAt = s.freeEnrouteReq(), traffic.Now()
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = s.cc.do(func() error {

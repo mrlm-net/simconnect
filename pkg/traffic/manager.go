@@ -359,7 +359,7 @@ func (m *TrafficManager) SetEnabled(on bool) {
 		if on {
 			k = EventEnabled
 		}
-		m.pending = append(m.pending, ManagerEvent{Kind: k, Time: time.Now()})
+		m.pending = append(m.pending, ManagerEvent{Kind: k, Time: Now()})
 	}
 	m.enabled = on
 	m.unlock()

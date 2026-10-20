@@ -592,13 +592,13 @@ func (cc *controlCenter) do(f func() error) error {
 	}
 	select {
 	case cc.cmds <- run:
-	case <-time.After(5 * time.Second):
+	case <-traffic.After(5 * time.Second):
 		return errors.New("simulator connection busy")
 	}
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(10 * time.Second):
+	case <-traffic.After(10 * time.Second):
 		if state.CompareAndSwap(0, 2) {
 			return errors.New("simulator did not answer")
 		}
@@ -651,9 +651,9 @@ func (cc *controlCenter) tick() {
 // runs on the connection's goroutine, and its slow parts hold every
 // aircraft back (docs/traffic-smoothness.md).
 func (cc *controlCenter) timed(name string, f func()) {
-	t0 := time.Now()
+	t0 := traffic.Now()
 	f()
-	if d := time.Since(t0); d > slowStep {
+	if d := traffic.Since(t0); d > slowStep {
 		cc.log.printf("slow: tick's %s took %s (traffic frames held back)", name, d.Round(time.Millisecond))
 	}
 }
@@ -674,7 +674,7 @@ func (cc *controlCenter) pruneDone() {
 	cc.mu.Unlock()
 	for _, it := range items {
 		it.mu.Lock()
-		id, since := it.objectID, time.Since(it.doneAt)
+		id, since := it.objectID, traffic.Since(it.doneAt)
 		it.mu.Unlock()
 		// One that never got its aircraft waits a minute: a late creation
 		// still reaches it, to be removed (#89).
@@ -790,9 +790,9 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 	}
 	cc.mu.Unlock()
 	for _, it := range items {
-		t0 := time.Now()
+		t0 := traffic.Now()
 		if it.dep != nil && it.dep.Handle(msg) || it.arr != nil && it.arr.Handle(msg) {
-			if d := time.Since(t0); d > slowStep {
+			if d := traffic.Since(t0); d > slowStep {
 				cc.core.log.printf("%-6s slow: its frame took %s (%s)", it.Tail, d.Round(time.Millisecond), it.view.State)
 			}
 			return true
@@ -891,9 +891,9 @@ const (
 )
 
 func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, error) {
-	spawnAt, startTook := time.Now(), time.Duration(0)
+	spawnAt, startTook := traffic.Now(), time.Duration(0)
 	defer func() {
-		if d := time.Since(spawnAt); d > slowStep {
+		if d := traffic.Since(spawnAt); d > slowStep {
 			cc.log.printf("%-6s slow spawn: %s (%s), its controller started in %s", r.Tail, d.Round(time.Millisecond), r.Kind, startTook.Round(time.Millisecond))
 		}
 	}()
@@ -1102,7 +1102,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			deboard = cc.buses(g, reqBase, prof, stairs)
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
-		startAt := time.Now()
+		startAt := traffic.Now()
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
@@ -1110,7 +1110,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			// The push may swing through a neighbouring stand nobody holds.
 			StandOccupied: func(stand int) bool { _, taken := alloc.Occupant(stand); return taken },
 			PowerOut:      powerOut(g.Layout.Parking[r.Stand], ac.WingspanM)})
-		startTook = time.Since(startAt)
+		startTook = traffic.Since(startAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1161,13 +1161,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
-		startAt := time.Now()
+		startAt := traffic.Now()
 		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof, FollowMe: cc.followMe(r, g, reqBase, prof),
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
 			CrosswindKts: cc.crosswind(g, r.Runway)})
-		startTook = time.Since(startAt)
+		startTook = traffic.Since(startAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1301,7 +1301,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			ev, ok := events()
 			if !ok {
 				it.mu.Lock()
-				it.view.Done, it.doneAt = true, time.Now()
+				it.view.Done, it.doneAt = true, traffic.Now()
 				it.mu.Unlock()
 				it.finished.Store(true)
 				return
@@ -2725,7 +2725,7 @@ func (cc *controlCenter) missedFor(g *airport.Graph, runway string) []airport.Na
 func (cc *controlCenter) turnaround(it *controlled, objectID uint32) {
 	cc.log.printf("%-6s turnaround: parked, departing in %s", it.Tail, it.dwell.Round(time.Second))
 	select {
-	case <-time.After(it.dwell):
+	case <-traffic.After(it.dwell):
 	case <-it.departNow:
 	case <-it.removed:
 		return // removed while parked: nothing to depart
@@ -3980,7 +3980,7 @@ func (it *controlled) say(t traffic.Transmission) {
 	// deciding the same thing in one look (live, LKPR: EZY1029 "contact
 	// Ruzyne Tower" twice in a millisecond, TVS252's sequence call too).
 	if !t.Pilot && t.Text != "" {
-		now := time.Now()
+		now := traffic.Now()
 		it.sayMu.Lock()
 		dup := t.Text == it.lastATC && now.Sub(it.lastATCAt) < sayTwiceWithin
 		it.lastATC, it.lastATCAt = t.Text, now

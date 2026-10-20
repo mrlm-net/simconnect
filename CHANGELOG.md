@@ -57,6 +57,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.108.0] - 2026-10-20
+
+### Added
+
+- One clock for the traffic and the World (`traffic.TimeSource`, `SetTimeSource`; `traffic.Now`, `Since`, `Until`, `After`, `NewTicker`, `AfterFunc`, `Sleep`): every read of the time and every timer of the controllers, the injector and the World's loop goes through it, the airport and nav loaders' timeouts too (`airport.SetClock`, `nav.SetClock`, set with it). The wall clock by default: nothing changes live. Logging, the camera, real-world feeds and the network stay on the wall clock.
+- `traffic.ManualClock`: time that moves only when `Advance` is called, its timers and tickers fired in time order.
+- `worldtest`: `Options.Manual` runs the World on a manual clock; `Advance(d)` and `Until(max, cond)` step it frame by frame, each frame taken by the World (`World.Queued`) before the next: about 100 times faster than the simulator (LKPR, 10 frames a second: 2½ simulated minutes in 1.6 s).
+
 ## [0.107.0] - 2026-10-20
 
 ### Added

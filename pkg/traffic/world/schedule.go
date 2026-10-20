@@ -91,7 +91,7 @@ type ScheduleTiming struct {
 }
 
 func newScheduler(st *state, cc *controlCenter) *scheduler {
-	s := &scheduler{st: st, cc: cc, created: time.Now(), cfg: traffic.DefaultScheduleConfig(), density: 1, seed: uint64(time.Now().Unix()), airlines: map[string]traffic.Airline{},
+	s := &scheduler{st: st, cc: cc, created: traffic.Now(), cfg: traffic.DefaultScheduleConfig(), density: 1, seed: uint64(traffic.Now().Unix()), airlines: map[string]traffic.Airline{},
 		enroute: map[string]*enrouteAC{}, pending: map[uint32]*enrouteAC{}}
 	for _, a := range s.cfg.Airlines {
 		s.airlines[a.ICAO] = a
@@ -569,7 +569,7 @@ func (s *scheduler) tick(now time.Time) {
 	// No spawn before the weather is known: the runway in use comes from it,
 	// and a flight spawned on the fallback (the preferred runway) keeps that
 	// runway (#458; LKPR, live: the first flights took 24, then 06).
-	if s.cc.weather != nil && s.cc.weather() == nil && time.Since(s.created) < weatherWait {
+	if s.cc.weather != nil && s.cc.weather() == nil && traffic.Since(s.created) < weatherWait {
 		s.handovers(now)
 		s.corridorTick(now)
 		return

@@ -332,7 +332,7 @@ func (r *ScenarioRun) run() {
 	}
 	spawned := map[string]bool{}
 	fireAt := map[int]time.Time{} // cued steps, waiting out their delay
-	tick := time.NewTicker(scenarioTick)
+	tick := traffic.NewTicker(scenarioTick)
 	defer tick.Stop()
 	for {
 		select {
@@ -435,7 +435,7 @@ func (r *ScenarioRun) spawnCast(c ScenarioCast) {
 		select {
 		case <-r.stop:
 			return
-		case <-time.After(10 * time.Second):
+		case <-traffic.After(10 * time.Second):
 		}
 	}
 }

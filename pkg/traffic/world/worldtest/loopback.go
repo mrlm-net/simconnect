@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/engine"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -85,7 +86,7 @@ func NewLoopback(lat, lon, groundFt float64, queue int) *Loopback {
 		objects:  map[uint32]*Object{},
 		nextID:   1000,
 		groundFt: groundFt, spawnLat: lat, spawnLon: lon,
-		clock: time.Now,
+		clock: traffic.Now,
 	}
 	l.objects[UserObjectID] = &Object{ID: UserObjectID, Title: "User Aircraft", ATCID: "PLAYER", Lat: lat, Lon: lon, AltFt: groundFt, OnGround: true, COM1: 118.1}
 	return l

@@ -43,7 +43,7 @@ func (k *core) expirePlayer(ua *traffic.TrackedAircraft, l *airport.Layout) {
 	if c == nil {
 		return
 	}
-	age := time.Since(k.player.since)
+	age := traffic.Since(k.player.since)
 	var r airport.Runway
 	haveRwy := false
 	if l != nil {

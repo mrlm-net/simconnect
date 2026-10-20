@@ -53,7 +53,7 @@ func (m *TrafficManager) emit(k ManagerEventKind, f *ManagedFlight, now time.Tim
 
 func (m *TrafficManager) emitPrev(k ManagerEventKind, f *ManagedFlight, prev FlightStatus, now time.Time, reason string) {
 	if now.IsZero() {
-		now = time.Now()
+		now = Now()
 	}
 	m.pending = append(m.pending, ManagerEvent{Kind: k, Time: now, Flight: *f, Previous: prev, Reason: reason})
 }
@@ -81,5 +81,5 @@ func (m *TrafficManager) deliver(e ManagerEvent) {
 // removeNow has the Spawner take f's aircraft out; outside mu.
 func (m *TrafficManager) removeNow(f ManagedFlight) {
 	m.spawner.Remove(f)
-	m.deliver(ManagerEvent{Kind: EventRemoved, Time: time.Now(), Flight: f, Previous: f.Status, Reason: f.Err})
+	m.deliver(ManagerEvent{Kind: EventRemoved, Time: Now(), Flight: f, Previous: f.Status, Reason: f.Err})
 }

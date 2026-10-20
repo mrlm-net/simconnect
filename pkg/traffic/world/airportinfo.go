@@ -271,7 +271,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			// letter at every look).
 			a, ok := svc.Current()
 			if !ok {
-				now := time.Now()
+				now := traffic.Now()
 				st.mu.Lock()
 				if st.control != nil {
 					now = st.control.clock.Now()

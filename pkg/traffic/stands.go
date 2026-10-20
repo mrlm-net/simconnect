@@ -145,7 +145,7 @@ func NewStandAllocator(client engine.Client, g *airport.Graph, opts ...StandOpti
 		partial: map[uint32][]scanned{}, lastScan: map[uint32][]scanned{},
 		routes: map[string][]airport.NodeID{},
 		spread: StandSpread,
-		rng:    rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x5354414e44)),
+		rng:    rand.New(rand.NewPCG(uint64(Now().UnixNano()), 0x5354414e44)),
 	}
 	for _, o := range opts {
 		o(a)

@@ -28,13 +28,13 @@ mgr.OnMessage(func(m engine.Message) { w.Feed(m) })
 go w.RunOn(ctx, client) // all its SimConnect calls happen here; again on the next connection
 ```
 
-In a test, with no simulator: `worldtest.Start` runs a World on a loopback client (`worldtest.Loopback`: objects created get IDs, positions written are kept, data requests are answered from them, models listed) with `SimlessAI`, an airport loaded from offline data (a `simconnect-data` checkout, `<dir>/<ICAO>/layout.json`, ...), every transmission recorded and a scriptable user aircraft. It runs on the wall clock: a scenario takes as long as in the simulator. Airports with no offline data wait for the loader's timeout (26 s) before giving up.
+In a test, with no simulator: `worldtest.Start` runs a World on a loopback client (`worldtest.Loopback`: objects created get IDs, positions written are kept, data requests are answered from them, models listed) with `SimlessAI`, an airport loaded from offline data (a `simconnect-data` checkout, `<dir>/<ICAO>/layout.json`, ...), every transmission recorded and a scriptable user aircraft. With `Manual: true` it runs on a `traffic.ManualClock` (`traffic.SetTimeSource`, process-wide until `Close`): time moves only in `h.Advance(d)` and `h.Until(max, cond)`, frame by frame (`FrameRate`, 10 is plenty), each frame taken by the World before the next, about 100 times faster than the simulator; without it the wall clock runs and `Advance` waits. Airports with no offline data wait for the loader's timeout (26 s of the clock in use) before giving up.
 
 ```go
-h, err := worldtest.Start(worldtest.Options{DataDir: "../simconnect-data", ICAO: "LKPR"})
+h, err := worldtest.Start(worldtest.Options{DataDir: "../simconnect-data", ICAO: "LKPR", Manual: true, FrameRate: 10})
 defer h.Close()
 h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}})
-h.WaitFor(time.Minute, func() bool { return h.Said("", "request clearance") })
+h.Until(10*time.Minute, func() bool { return h.Said("", "request clearance") }) // simulated minutes, a second or two
 h.SetUser(func(o *worldtest.Object) { o.Lat, o.Lon, o.OnGround = 50.1, 14.26, true })
 v, ok := h.Aircraft("CSA1922") // its ControlView
 ```
