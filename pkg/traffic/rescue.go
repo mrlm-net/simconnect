@@ -164,8 +164,12 @@ func (r *SimObjectRescue) Home() error {
 		return nil
 	}
 	if r.Layout != nil && r.hasDepot {
-		if route, err := r.Layout.VehicleRoute(r.pose.Position, r.depot); err == nil && len(route) >= 2 {
-			if path, err := NewArcPath(append([]airport.LatLon{r.pose.Position}, route...), fuelRoadProfile(), 8); err == nil {
+		// From its nose, where the mover takes a path to start: from its
+		// reference point it went back a wheelbase in a frame (worldtest,
+		// the MyCrew app: 5 m as it left the stopped aircraft).
+		nose := NoseGear(r.pose.Position, r.pose.Heading, rescueRoadProfile())
+		if route, err := r.Layout.VehicleRoute(nose, r.depot); err == nil && len(route) >= 2 {
+			if path, err := NewArcPath(append([]airport.LatLon{nose}, route...), fuelRoadProfile(), 8); err == nil {
 				r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), r.pose.Heading, 0)
 				return nil
 			}
