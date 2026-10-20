@@ -821,6 +821,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			if now.Sub(lastFrame) > 3*cameraRate {
 				cam.tick(now)
 			}
+			cc.rescueFrame(cc.clock.Now())
 			if ai, ok := client.(*traffic.SimlessAI); ok {
 				ai.Step(cc.clock.Now()) // no simulator: the AI flown here
 			}
@@ -1617,6 +1618,7 @@ func removeOurs(cc *controlCenter, sched *scheduler) {
 		_ = it.act("remove", -1)
 		it.removeOnce.Do(func() { close(it.removed) })
 	}
+	cc.removeRescue()
 	if sched == nil {
 		return
 	}

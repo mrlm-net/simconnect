@@ -28,8 +28,25 @@ const playerTail = "Player"
 
 // priorities are the call signs with priority, by airport.
 type priorities struct {
-	mu sync.Mutex
-	by map[string]bool // call sign → priority
+	mu    sync.Mutex
+	by    map[string]bool                  // call sign → priority
+	kinds map[string]traffic.EmergencyKind // call sign → its emergency, when told
+}
+
+// setKind notes tail's emergency (its rescue: an ambulance for a medical).
+func (p *priorities) setKind(tail string, kind traffic.EmergencyKind) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.kinds == nil {
+		p.kinds = map[string]traffic.EmergencyKind{}
+	}
+	p.kinds[tail] = kind
+}
+
+func (p *priorities) kind(tail string) traffic.EmergencyKind {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.kinds[tail]
 }
 
 func (p *priorities) set(tail string, on bool) {
@@ -67,6 +84,17 @@ func (w *World) Priority(tail string, on bool) {
 	w.st.core.log.printf("%-6s priority %s", tail, state)
 }
 
+// PriorityFor is Priority given for an emergency of kind: the airport's
+// rescue sent for it is the kind's (an ambulance for a medical, else fire
+// trucks).
+func (w *World) PriorityFor(tail string, kind traffic.EmergencyKind) {
+	if tail == "" {
+		tail = playerTail
+	}
+	w.st.core.prio.setKind(tail, kind)
+	w.Priority(tail, true)
+}
+
 // declareEmergency has one of ours declare an emergency of kind (level ""
 // by the kind): squawk 7700, its MAYDAY or PAN PAN, approach's answer,
 // and priority. Arrivals on their way in only, for now.
@@ -92,6 +120,7 @@ func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.Emergency
 		pos = traffic.PosApproach
 	}
 	station, _ := it.station(pos)
+	cc.core.prio.setKind(tail, kind)
 	cc.core.prio.set(tail, true)
 	cc.log.printf("%-6s emergency: %s (%s), squawk %s, priority", tail, kind, level, traffic.EmergencySquawk)
 	it.say(traffic.DeclareEmergency(pos, station, tail, kind, level, rwy))
