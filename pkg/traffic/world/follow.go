@@ -122,10 +122,8 @@ func (cc *controlCenter) follow(it, leader *controlled) bool {
 const onStandM = 30.0
 
 // onStand is the stand it is still on, as said ("B1"); "" when it has
-// left it (pushed back) or has none.
+// left it (pushed back) or has none. Called with it.mu held (onRequest).
 func (it *controlled) onStand() string {
-	it.mu.Lock()
-	defer it.mu.Unlock()
 	if it.graph == nil || it.stand < 0 || it.stand >= len(it.graph.Layout.Parking) || it.view.Stand == "" {
 		return ""
 	}

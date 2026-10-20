@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.104.1] - 2026-10-20
+
+### Fixed
+
+- Airport map deadlock: a departure asking for taxi from its stand ("stand B1, request taxi") locked its own mutex twice and froze the whole world (live, 75 min with no traffic moving). `onStand` now runs under the lock its caller holds.
+
 ## [0.104.0] - 2026-10-20
 
 ### Fixed
