@@ -397,14 +397,21 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 	// occupied gate, so the others (every other one) cannot be given to a
 	// helper; asked, it went to another gate or a ramp (live, LKPR 5, 7,
 	// 14, 16).
+	// The one jetway gate no placeholder took (our aircraft on it as they
+	// filled) is the simulator's only free gate: a helper made now goes
+	// there (live, LKPR B15 never docked while the helpers of other gates
+	// were given it).
 	if g.placeholder == 0 {
-		return ErrNoGate
+		if free := h.freeGates(icao); len(free) != 1 || free[0] != stand {
+			return ErrNoGate
+		}
+	} else {
+		if err := h.client.AIRemoveObject(g.placeholder, h.req()); err != nil {
+			return err
+		}
+		delete(h.byObj, g.placeholder)
+		g.placeholder = 0
 	}
-	if err := h.client.AIRemoveObject(g.placeholder, h.req()); err != nil {
-		return err
-	}
-	delete(h.byObj, g.placeholder)
-	g.placeholder = 0
 	// The helper once the gate is free (Update).
 	g.createAt = h.now.Add(HelperDelay)
 	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
@@ -485,6 +492,14 @@ func (h *Helpers) retireHelper(icao string, stand int, g *gate) {
 // HelperFor is the title of the helper model docks with.
 func (h *Helpers) HelperFor(model string) string { return h.helperTitle(model) }
 
+// HasJetway reports whether icao's stand has a jetway (from the jetway
+// list, once Prepare has had it).
+func (h *Helpers) HasJetway(icao string, stand int) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.jetways[strings.ToUpper(icao)][stand]
+}
+
 func (h *Helpers) helperTitle(model string) string {
 	m := strings.ToUpper(model)
 	for _, t := range h.opt.Types {
@@ -529,6 +544,24 @@ func (h *Helpers) Dockable(icao string) []int {
 }
 
 // dockable is Dockable. h.mu held.
+// freeGates are icao's jetway gates nothing of ours holds (no placeholder,
+// no helper, not docking or docked), in order. h.mu held.
+func (h *Helpers) freeGates(icao string) []int {
+	icao = strings.ToUpper(icao)
+	var out []int
+	for stand, ok := range h.jetways[icao] {
+		if !ok {
+			continue
+		}
+		if g := h.gates[icao][stand]; g != nil && (g.placeholder != 0 || g.helper != 0 || g.status == StatusDocking || g.status == StatusDocked || g.status == StatusUndocking) {
+			continue
+		}
+		out = append(out, stand)
+	}
+	sort.Ints(out)
+	return out
+}
+
 func (h *Helpers) dockable(icao string) []int {
 	var out []int
 	for stand, g := range h.gates[strings.ToUpper(icao)] {

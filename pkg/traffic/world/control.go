@@ -2939,6 +2939,14 @@ func (cc *controlCenter) standPlace(g *airport.Graph, stand int, model string) (
 	if !ok {
 		return nose, side
 	}
+	// At a jetway gate with the jetways on, where the simulator parks: the
+	// jetway reaches no further (live, LKPR C22: a B738 9 m back, the
+	// jetway docked short of it; the user: the jetway wins).
+	if jetwaysEnabled() && cc != nil {
+		if svc := cc.jetwayBuilt(); svc != nil && svc.HasJetway(g.Layout.ICAO, stand) {
+			r.ForwardM = 0
+		}
+	}
 	if nose <= 0 { // as the controllers take a 0 (StandPoint)
 		nose = traffic.DefaultNoseOffsetMeters
 	}
