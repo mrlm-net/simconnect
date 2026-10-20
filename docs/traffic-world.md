@@ -28,6 +28,17 @@ mgr.OnMessage(func(m engine.Message) { w.Feed(m) })
 go w.RunOn(ctx, client) // all its SimConnect calls happen here; again on the next connection
 ```
 
+In a test, with no simulator: `worldtest.Start` runs a World on a loopback client (`worldtest.Loopback`: objects created get IDs, positions written are kept, data requests are answered from them, models listed) with `SimlessAI`, an airport loaded from offline data (a `simconnect-data` checkout, `<dir>/<ICAO>/layout.json`, ...), every transmission recorded and a scriptable user aircraft. It runs on the wall clock: a scenario takes as long as in the simulator. Airports with no offline data wait for the loader's timeout (26 s) before giving up.
+
+```go
+h, err := worldtest.Start(worldtest.Options{DataDir: "../simconnect-data", ICAO: "LKPR"})
+defer h.Close()
+h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}})
+h.WaitFor(time.Minute, func() bool { return h.Said("", "request clearance") })
+h.SetUser(func(o *worldtest.Object) { o.Lat, o.Lon, o.OnGround = 50.1, 14.26, true })
+v, ok := h.Aircraft("CSA1922") // its ControlView
+```
+
 ## Options and hooks
 
 | Option | What |
