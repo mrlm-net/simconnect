@@ -72,3 +72,31 @@ func TestWritePackageSideVariants(t *testing.T) {
 		t.Error("IsHelperVariant")
 	}
 }
+
+// Ahead variants: the door moved along the fuselage, for a gate where our
+// aircraft stands off the simulator's place along its line (LKPR C22:
+// narrowbodies 9 m back); the helper parked at the simulator's place has
+// its door where ours is.
+func TestWritePackageAheadVariants(t *testing.T) {
+	base := filepath.Join("..", "addons", "testdata", "doors", "FSLTL_A320")
+	root, err := WritePackage(t.TempDir(), []HelperModel{{Type: "A320", Dir: base}}, PackageOptions{AheadM: []float64{-9}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_A320_A-9.0")
+	cfg, _ := os.ReadFile(filepath.Join(dir, "aircraft.cfg"))
+	if !strings.Contains(string(cfg), `title = "MyCrew Jetway Helper A320 A-9.0"`) {
+		t.Errorf("variant aircraft.cfg:\n%s", cfg)
+	}
+	fm, _ := os.ReadFile(filepath.Join(dir, "flight_model.cfg"))
+	// 37.654 ft ahead less 9 m (29.528 ft): 8.126; the side as it was.
+	if !strings.Contains(string(fm), "interactive_point.0 = 0.4, 8.126, -6.137,") {
+		t.Errorf("door not moved 9 m back: %s", fm[strings.Index(string(fm), "interactive_point.0"):][:80])
+	}
+	if HelperAheadTitle("A320", -9) != "MyCrew Jetway Helper A320 A-9.0" || HelperAheadTitle("A320", 0) != "MyCrew Jetway Helper A320" {
+		t.Error("HelperAheadTitle")
+	}
+	if !IsHelperVariant("MyCrew Jetway Helper A320 A-9.0") {
+		t.Error("IsHelperVariant")
+	}
+}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/addons"
 	"github.com/mrlm-net/simconnect/pkg/jetway"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 func main() {
@@ -27,7 +28,25 @@ func main() {
 	span := flag.Float64("span", 0, "every helper's wing span, feet (0: the model's)")
 	sideSteps := flag.Int("side-steps", 6, "each type's door variants each side (0: none)")
 	sideStep := flag.Float64("side-step", 0.1, "door variant step, meters")
+	ahead := flag.String("ahead", "rules", "door variants along the fuselage, meters ahead (negative back), comma-separated; \"rules\": the stand rules' offsets (traffic.StandRules)")
 	flag.Parse()
+	var aheadM []float64
+	if *ahead == "rules" {
+		seen := map[float64]bool{}
+		for _, r := range traffic.StandRules() {
+			if r.ForwardM != 0 && !seen[r.ForwardM] {
+				seen[r.ForwardM] = true
+				aheadM = append(aheadM, r.ForwardM)
+			}
+		}
+	} else {
+		for _, s := range strings.Split(*ahead, ",") {
+			var m float64
+			if _, err := fmt.Sscan(strings.TrimSpace(s), &m); err == nil && m != 0 {
+				aheadM = append(aheadM, m)
+			}
+		}
+	}
 	ins, err := addons.Find()
 	if err != nil {
 		fail(err)
@@ -79,7 +98,7 @@ func main() {
 			cs = append(cs, c)
 		}
 	}
-	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep})
+	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep, AheadM: aheadM})
 	if err != nil {
 		fail(err)
 	}
