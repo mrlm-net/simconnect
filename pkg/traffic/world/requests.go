@@ -39,7 +39,7 @@ type pendingAct struct {
 }
 
 func newPending() *pending {
-	return &pending{rng: rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0x7e9))}
+	return &pending{rng: rand.New(rand.NewPCG(uint64(traffic.Now().UnixNano()), 0x7e9))}
 }
 
 // later runs f at (or just after) at.

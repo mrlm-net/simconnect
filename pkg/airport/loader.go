@@ -206,7 +206,7 @@ func (l *Loader) Request(icao string) error {
 		return fmt.Errorf("airport: %d requests already in flight", loaderSlots)
 	}
 	l.next = (slot + 1) % loaderSlots
-	st := &loadState{icao: icao, deadline: time.Now().Add(l.timeout), pending: len(loaderDefinitions), raw: RawAirport{ICAO: icao}}
+	st := &loadState{icao: icao, deadline: nowTime().Add(l.timeout), pending: len(loaderDefinitions), raw: RawAirport{ICAO: icao}}
 	l.slots[slot] = st
 	for i := range loaderDefinitions {
 		if err := l.client.RequestFacilityData(l.defBase+uint32(i), l.requestID(slot, i), icao, ""); err != nil {

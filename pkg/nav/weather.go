@@ -188,7 +188,7 @@ func (r *WeatherReader) Handle(msg engine.Message) (Weather, bool) {
 	if uint32(d.DwRequestID) != r.reqID {
 		return Weather{}, false
 	}
-	w := decodeWeather(engine.CastDataAs[weatherWire](&d.DwData), time.Now().UTC())
+	w := decodeWeather(engine.CastDataAs[weatherWire](&d.DwData), nowTime().UTC())
 	r.mu.Lock()
 	r.last, r.have = w, true
 	r.mu.Unlock()

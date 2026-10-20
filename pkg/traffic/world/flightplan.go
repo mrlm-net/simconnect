@@ -173,13 +173,13 @@ func (st *state) routeAirways(ctx context.Context, dep, arr string) {
 		}
 	}
 	// The procedures come with the airport, a moment after its layout.
-	for wait := time.Now().Add(5 * time.Second); ; {
+	for wait := traffic.Now().Add(5 * time.Second); ; {
 		st.mu.Lock()
 		pd, okD := st.procedures[ld.ICAO]
 		pa, okA := st.procedures[la.ICAO]
 		g := st.airways
 		st.mu.Unlock()
-		if (okD && okA) || time.Now().After(wait) {
+		if (okD && okA) || traffic.Now().After(wait) {
 			for _, p := range []struct {
 				procs airport.Procedures
 				ok    bool
@@ -200,7 +200,7 @@ func (st *state) routeAirways(ctx context.Context, dep, arr string) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(200 * time.Millisecond):
+		case <-traffic.After(200 * time.Millisecond):
 		}
 	}
 	if len(r.seeds) == 0 {
@@ -210,13 +210,13 @@ func (st *state) routeAirways(ctx context.Context, dep, arr string) {
 	case st.airwayRoutes <- r:
 	case <-ctx.Done():
 		return
-	case <-time.After(5 * time.Second):
+	case <-traffic.After(5 * time.Second):
 		return // no connection loop to read it (a director)
 	}
 	select {
 	case <-r.done:
 	case <-ctx.Done():
-	case <-time.After(routeAirwaysWait):
+	case <-traffic.After(routeAirwaysWait):
 	}
 }
 

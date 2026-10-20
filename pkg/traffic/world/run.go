@@ -331,11 +331,11 @@ func planStandardPush(job standJob) {
 	if traffic.HasStandardPush(g, job.stand) {
 		return
 	}
-	t := time.Now()
+	t := traffic.Now()
 	traffic.PlanStandardPushes(g, standardPushModel, []int{job.stand})
-	d := time.Since(t)
+	d := traffic.Since(t)
 	saveStandardPushes(g, standardPushFile(g.Layout.ICAO))
-	time.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
+	traffic.Sleep(time.Duration(float64(d) * (1 - standardPushDuty) / standardPushDuty))
 }
 
 // saveStandardPushes writes g's standard pushes planned so far to file,
@@ -397,7 +397,7 @@ func (s *state) finish(icao string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err == nil {
-		s.fetched[icao] = time.Now().UTC()
+		s.fetched[icao] = traffic.Now().UTC()
 	}
 	for _, w := range s.waiters[icao] {
 		w <- err
@@ -510,7 +510,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{}) // this connection only
 	go func() {
-		t := time.NewTicker(time.Second)
+		t := traffic.NewTicker(time.Second)
 		defer t.Stop()
 		var atisAt time.Time // the last ATIS refresh (#418)
 		for {
@@ -778,13 +778,13 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		st.camera = nil
 		st.mu.Unlock()
 	}()
-	camTick := time.NewTicker(cameraRate)
+	camTick := traffic.NewTicker(cameraRate)
 	defer camTick.Stop()
 	var lastFrame time.Time          // the simulator's last frame event
 	droppedAt := map[string]uint64{} // by ICAO: Feed's drop count when its layout was asked
 	var excWindow time.Time          // SimConnect exceptions logged since
 	excLogged := 0
-	tick := time.NewTicker(time.Second)
+	tick := traffic.NewTicker(time.Second)
 	defer tick.Stop()
 
 	// Slow work in this loop holds back every injected aircraft (its
@@ -793,7 +793,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	slowWhat := ""
 	for {
 		if slowWhat != "" {
-			if d := time.Since(slowAt); d > slowStep {
+			if d := traffic.Since(slowAt); d > slowStep {
 				tlog.printf("slow: %s took %s (traffic frames held back)", slowWhat, d.Round(time.Millisecond))
 			}
 			slowWhat = ""
@@ -811,11 +811,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			return ctx.Err()
 
 		case cmd := <-cc.cmds:
-			slowAt, slowWhat = time.Now(), "command "+runtime.FuncForPC(reflect.ValueOf(cmd).Pointer()).Name()
+			slowAt, slowWhat = traffic.Now(), "command "+runtime.FuncForPC(reflect.ValueOf(cmd).Pointer()).Name()
 			cmd()
 
 		case now := <-camTick.C:
-			slowAt, slowWhat = time.Now(), "camera tick"
+			slowAt, slowWhat = traffic.Now(), "camera tick"
 			// Only when the simulator sends no frames (its menu): on frames
 			// the camera moves with the picture, no double or missed steps.
 			if now.Sub(lastFrame) > 3*cameraRate {
@@ -827,17 +827,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case icao := <-st.procRequests:
-			slowAt, slowWhat = time.Now(), "procedures "+icao
+			slowAt, slowWhat = traffic.Now(), "procedures "+icao
 			if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
 			}
 
 		case r := <-st.airwayRoutes:
-			slowAt, slowWhat = time.Now(), "airway route"
-			airways.route(r, time.Now())
+			slowAt, slowWhat = traffic.Now(), "airway route"
+			airways.route(r, traffic.Now())
 
 		case icao := <-requests:
-			slowAt, slowWhat = time.Now(), "airport request "+icao
+			slowAt, slowWhat = traffic.Now(), "airport request "+icao
 			fmt.Fprintf(stdout, "🛫 Fetching facility data for %s...\n", icao)
 			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
 			tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
@@ -849,7 +849,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case now := <-tick.C:
-			slowAt, slowWhat = time.Now(), "second tick"
+			slowAt, slowWhat = traffic.Now(), "second tick"
 			cc.timed("control", cc.tick)
 			// The airports around once a minute (#70: ticks never counted, asked
 			// every second, a multi-part list reset half-way).
@@ -873,7 +873,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case msg, ok := <-stream:
-			slowAt, slowWhat = time.Now(), msgLabel(msg)
+			slowAt, slowWhat = traffic.Now(), msgLabel(msg)
 			if !ok {
 				fmt.Fprintln(stdout, "📴 Simulator disconnected")
 				for _, icao := range loader.Pending() {
@@ -915,7 +915,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 			if p, done := procLoader.Handle(msg); done {
 				feed.Procedures(p)
-				airways.want(p, time.Now())
+				airways.want(p, traffic.Now())
 				continue
 			}
 			if res, done := loader.Handle(msg); done {
@@ -950,7 +950,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				continue
 			}
 			if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_EVENT_FRAME {
-				lastFrame = time.Now()
+				lastFrame = traffic.Now()
 				cc.clock.Frame() // the simulator standing still (a model loading): the traffic too
 				cam.tick(lastFrame)
 				continue
@@ -971,8 +971,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				fmt.Fprintf(stdout, "⚠️  SimConnect exception %d (sendID=%d, index=%d)\n", e.DwException, e.DwSendID, e.DwIndex)
 				// In the log too, at most excLogPerMinute a minute: what the
 				// simulator refused (a host may not show stderr).
-				if time.Since(excWindow) > time.Minute {
-					excWindow, excLogged = time.Now(), 0
+				if traffic.Since(excWindow) > time.Minute {
+					excWindow, excLogged = traffic.Now(), 0
 				}
 				if excLogged++; excLogged <= excLogPerMinute {
 					tlog.printf("simconnect exception %d (send %d, index %d)", e.DwException, e.DwSendID, e.DwIndex)
@@ -1004,7 +1004,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 					continue
 				}
 				t := engine.CastDataAs[trafficRaw](&d.DwData)
-				id, now := uint32(d.DwObjectID), time.Now()
+				id, now := uint32(d.DwObjectID), traffic.Now()
 				if t.GS < 0.5 {
 					t.GS = derivedKts(lastPos[id], t.Lat, t.Lon, now)
 				}
@@ -1372,7 +1372,7 @@ func (w *World) Register(mux *http.ServeMux) {
 		st.mu.Lock()
 		t, at := st.traffic, st.trafficAt
 		st.mu.Unlock()
-		if time.Since(at) > 5*time.Second {
+		if traffic.Since(at) > 5*time.Second {
 			t = nil
 		}
 		if t == nil {
@@ -1424,7 +1424,7 @@ func (w *World) Register(mux *http.ServeMux) {
 		st.mu.Lock()
 		a := st.aircraft
 		st.mu.Unlock()
-		if a == nil || time.Since(a.Updated) > 5*time.Second {
+		if a == nil || traffic.Since(a.Updated) > 5*time.Second {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -1582,10 +1582,10 @@ func recoverTick(part string, f func()) {
 		if r := recover(); r != nil {
 			tickPanics.Lock()
 			defer tickPanics.Unlock()
-			if time.Since(tickPanics.at[part]) < time.Minute {
+			if traffic.Since(tickPanics.at[part]) < time.Minute {
 				return
 			}
-			tickPanics.at[part] = time.Now()
+			tickPanics.at[part] = traffic.Now()
 			tlog.printf("world: %s panicked: %v", part, r)
 			fmt.Fprintf(stdout, "❌ world: %s panicked: %v\n%s\n", part, r, debug.Stack())
 		}

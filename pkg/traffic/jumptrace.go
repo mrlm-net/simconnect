@@ -84,14 +84,14 @@ func countFrame(d *groundDrive, dt float64) {
 	frameStats.Lock()
 	defer frameStats.Unlock()
 	if frameStats.lastDt == nil {
-		frameStats.lastDt, frameStats.lastAt, frameStats.since = map[*groundDrive]float64{}, map[*groundDrive]time.Time{}, time.Now()
+		frameStats.lastDt, frameStats.lastAt, frameStats.since = map[*groundDrive]float64{}, map[*groundDrive]time.Time{}, Now()
 	}
 	// Handled within 5 ms of the one before: frames that came, or were
 	// handled, together.
-	if at, ok := frameStats.lastAt[d]; ok && time.Since(at) < 5*time.Millisecond {
+	if at, ok := frameStats.lastAt[d]; ok && Since(at) < 5*time.Millisecond {
 		frameStats.bunched++
 	}
-	frameStats.lastAt[d] = time.Now()
+	frameStats.lastAt[d] = Now()
 	if prev, ok := frameStats.lastDt[d]; ok && prev > 0 {
 		frameStats.n++
 		if dt > 1.6*prev {
@@ -99,10 +99,10 @@ func countFrame(d *groundDrive, dt float64) {
 		}
 	}
 	frameStats.lastDt[d] = dt
-	if time.Since(frameStats.since) >= time.Minute {
+	if Since(frameStats.since) >= time.Minute {
 		pct := func(k int) float64 { return 100 * float64(k) / math.Max(1, float64(frameStats.n)) }
 		fmt.Fprintf(os.Stderr, "%s  frame stats: %d frames stepped, %d late (%.1f%%), %d bunched (%.1f%%), %d aircraft\n",
-			time.Now().Format("15:04:05"), frameStats.n, frameStats.late, pct(frameStats.late), frameStats.bunched, pct(frameStats.bunched), len(frameStats.lastDt))
-		frameStats.n, frameStats.late, frameStats.bunched, frameStats.lastDt, frameStats.lastAt, frameStats.since = 0, 0, 0, map[*groundDrive]float64{}, map[*groundDrive]time.Time{}, time.Now()
+			Now().Format("15:04:05"), frameStats.n, frameStats.late, pct(frameStats.late), frameStats.bunched, pct(frameStats.bunched), len(frameStats.lastDt))
+		frameStats.n, frameStats.late, frameStats.bunched, frameStats.lastDt, frameStats.lastAt, frameStats.since = 0, 0, 0, map[*groundDrive]float64{}, map[*groundDrive]time.Time{}, Now()
 	}
 }

@@ -82,7 +82,7 @@ type recording struct {
 // NewRecorder creates a recorder writing JSON lines to w (nil keeps the
 // movements for Summary only).
 func NewRecorder(w io.Writer) *Recorder {
-	return &Recorder{w: w, open: map[recKey]*recording{}, now: time.Now}
+	return &Recorder{w: w, open: map[recKey]*recording{}, now: Now}
 }
 
 func (r *Recorder) start(kind string, obj uint32, info MovementInfo) *recording {

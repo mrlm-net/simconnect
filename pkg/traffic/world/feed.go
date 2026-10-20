@@ -2,7 +2,6 @@ package world
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/nav"
@@ -82,7 +81,7 @@ func (f localFeed) UserAircraft(a Aircraft, rate float64, com1 string) {
 		cc.clock.SetRate(rate)
 		cc.log.printf("simulation rate %g×: traffic follows it", rate)
 	}
-	a.SimRate, a.Paused, a.Updated = cc.clock.Rate(), cc.clock.Paused(), time.Now()
+	a.SimRate, a.Paused, a.Updated = cc.clock.Rate(), cc.clock.Paused(), traffic.Now()
 	f.st.aircraft = &a
 	f.st.mu.Unlock()
 	f.st.core.setUserAt(airport.LatLon{Lat: a.Latitude, Lon: a.Longitude})
@@ -102,7 +101,7 @@ func (f localFeed) Paused(paused bool) {
 
 func (f localFeed) Traffic(scan []Traffic) {
 	f.st.mu.Lock()
-	f.st.traffic, f.st.trafficAt = scan, time.Now()
+	f.st.traffic, f.st.trafficAt = scan, traffic.Now()
 	f.st.mu.Unlock()
 	// Not under st.mu: reportTraffic takes cc.mu, and an aircraft handing
 	// off holds its own lock while it reads st (the weather), with

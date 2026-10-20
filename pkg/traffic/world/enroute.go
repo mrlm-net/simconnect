@@ -262,7 +262,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	e.waypoints, e.route = wps, route
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
-	e.reqID, e.pendingAt = s.freeEnrouteReq(), time.Now()
+	e.reqID, e.pendingAt = s.freeEnrouteReq(), traffic.Now()
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
 	err = cc.do(func() error {
@@ -435,7 +435,7 @@ const justCreatedFor = 30 * time.Second
 func (s *scheduler) nearJustCreated(p airport.LatLon, altFt float64) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now()
+	now := traffic.Now()
 	near := func(e *enrouteAC) bool {
 		if e == nil || len(e.route) == 0 || now.Sub(e.pendingAt) > justCreatedFor {
 			return false
@@ -530,7 +530,7 @@ func (s *scheduler) expirePending() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, e := range s.pending {
-		if !e.pendingAt.IsZero() && time.Since(e.pendingAt) > enroutePendingFor {
+		if !e.pendingAt.IsZero() && traffic.Since(e.pendingAt) > enroutePendingFor {
 			delete(s.pending, id)
 			s.cc.log.printf("%-6s en route: not created by the simulator: dropped", e.f.Callsign)
 		}

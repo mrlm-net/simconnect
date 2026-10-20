@@ -176,7 +176,7 @@ func (l *NavLoader) request(key FixKey, asWaypoint bool) error {
 	if slot < 0 {
 		return fmt.Errorf("nav: %d fix loads already pending", len(l.slots))
 	}
-	st := &navState{key: key, started: time.Now(), fix: Fix{Ident: key.Ident, Region: key.Region, Kind: key.Kind}}
+	st := &navState{key: key, started: nowTime(), fix: Fix{Ident: key.Ident, Region: key.Region, Kind: key.Kind}}
 	l.slots[slot] = st
 	send := func(def uint32, part int) error {
 		req := l.reqBase + uint32(slot*navParts+part)

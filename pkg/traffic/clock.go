@@ -36,7 +36,7 @@ type SimClock struct {
 
 // NewSimClock creates a clock at the wall clock's time, rate 1, running.
 func NewSimClock() *SimClock {
-	return newSimClock(time.Now)
+	return newSimClock(Now)
 }
 
 func newSimClock(wall func() time.Time) *SimClock {

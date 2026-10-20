@@ -1499,7 +1499,7 @@ func NewRadio(opts RadioOptions) *Radio {
 		opts.Keep = 200
 	}
 	if opts.Now == nil {
-		opts.Now = time.Now
+		opts.Now = Now
 	}
 	r := &Radio{opts: opts, busy: map[string]time.Time{}, firstCalls: map[string]bool{}}
 	r.SetVariety(opts.Variety)

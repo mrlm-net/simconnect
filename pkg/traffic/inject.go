@@ -214,7 +214,7 @@ func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOpti
 func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 	i := &Injector{
 		client:    client,
-		now:       time.Now,
+		now:       Now,
 		defBase:   DefaultInjectDefinitionBase,
 		reqBase:   DefaultInjectRequestBase,
 		evtBase:   DefaultInjectEventBase,
