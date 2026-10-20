@@ -18,7 +18,7 @@ import (
 // it, along it within followAheadM, heading its way within followHdgDeg.
 const (
 	followOnRouteM = 40.0
-	followAheadM   = 800.0
+	followAheadM   = 300.0
 	followHdgDeg   = 45.0
 )
 
@@ -115,4 +115,23 @@ func (cc *controlCenter) follow(it, leader *controlled) bool {
 	cc.world.Ground(it.ICAO).Follow(id, lid)
 	tlog.printf("%-6s ground: follows %s", it.Tail, leader.Tail)
 	return true
+}
+
+// onStandM: within this of its stand a departure is still on it (no
+// pushback yet, or none: it taxis out under its own power).
+const onStandM = 30.0
+
+// onStand is the stand it is still on, as said ("B1"); "" when it has
+// left it (pushed back) or has none.
+func (it *controlled) onStand() string {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+	if it.graph == nil || it.stand < 0 || it.stand >= len(it.graph.Layout.Parking) || it.view.Stand == "" {
+		return ""
+	}
+	p := it.graph.Layout.Parking[it.stand].Position
+	if calc.HaversineMeters(p.Lat, p.Lon, it.view.Position.Lat, it.view.Position.Lon) > onStandM {
+		return ""
+	}
+	return it.view.Stand
 }

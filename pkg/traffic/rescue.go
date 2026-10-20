@@ -174,6 +174,27 @@ func (r *SimObjectRescue) Home() error {
 	return r.finish()
 }
 
+// Track is where it is and, driving to its standby or home, the way still
+// ahead; false before it is in the simulator or once gone.
+func (r *SimObjectRescue) Track() (pose GroundPose, route []airport.LatLon, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.objectID == 0 || r.done {
+		return GroundPose{}, nil, false
+	}
+	if r.mover != nil {
+		pts := r.mover.Path().Points()
+		near, best := 0, math.Inf(1)
+		for i, p := range pts {
+			if d := localDist(p, r.pose.Position); d < best {
+				near, best = i, d
+			}
+		}
+		route = append([]airport.LatLon{r.pose.Position}, pts[min(near+1, len(pts)):]...)
+	}
+	return r.pose, route, true
+}
+
 // Done reports that it has gone.
 func (r *SimObjectRescue) Done() bool {
 	r.mu.Lock()

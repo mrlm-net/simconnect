@@ -2039,6 +2039,12 @@ func CompassName(heading float64) string {
 func (c *TaxiController) HoldPushback(on bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if on && c.pushCleared {
+		// Its push approved already: a clearance given stands, it is not
+		// held on the stand again without a word (live, WZZ1251 approved,
+		// held again 3 s later by the queue and waiting 10 minutes).
+		return
+	}
 	c.pushStopped = on
 }
 

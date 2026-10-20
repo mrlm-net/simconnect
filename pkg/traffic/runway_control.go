@@ -172,6 +172,16 @@ func (r *RunwayController) BehindRoom(first RunwayUser, then time.Duration, u Ru
 	return r.behindRoom(0, first, then.Seconds(), u)
 }
 
+// LineUpRoom is for a departure u lined up behind one departing: whether
+// it still has time to line up and go before the next arrival (landing in
+// then). The same room it was given its conditional line-up with: its
+// line-up, its time on the runway and the margin; the one departing ahead
+// is not landing, so no landing roll of it to wait out (live, KLM1616
+// cleared behind the departing 737, then told to hold position).
+func (r *RunwayController) LineUpRoom(then time.Duration, u RunwayUser) bool {
+	return then >= r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin
+}
+
 // NewRunwayController creates the controller of one runway.
 func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	if opts.MinArrivalNM == 0 {
@@ -494,7 +504,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				out.Waiting[u.Callsign] = occupied + " departing ahead"
 				continue
 			}
-			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && departureBlocked(u) == "" &&
+			// Never with one of ours lined up or lining up already: that one
+			// goes next, and one lined up further down would be in its way
+			// (live, OKDIS lined up at an intersection ahead of CSA443 lined up
+			// at the threshold, both behind the one rolling).
+			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && len(ourLinedUp) == 0 && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
@@ -517,7 +531,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 			occupied = u.Callsign
-		case departureBlocked(u) == "" && arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+		case departureBlocked(u) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
+			arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why
@@ -553,6 +568,12 @@ var (
 	RushQueue         = 2
 	RushArrivalWithin = 4 * time.Minute
 )
+
+// LineUpWaitMax: a departure waiting out its interval is told to line up
+// and wait only when, lined up, it waits no longer than this for its
+// take-off; earlier it holds short (live, EZY562 lined up 3 minutes behind
+// a TBM on the same SID, the runway blocked for nothing).
+const LineUpWaitMax = 45 * time.Second
 
 // intervalLeft is how long u still waits for the departure interval behind
 // the last departure (0 none).

@@ -152,7 +152,7 @@ func (it *controlled) onRequest(req string) {
 			it.say(traffic.RequestTaxiIntersection(it.Tail, e))
 			break
 		}
-		it.say(traffic.RequestTaxi(it.Tail))
+		it.say(traffic.RequestTaxiFrom(it.Tail, it.onStand()))
 	default:
 		return
 	}

@@ -614,10 +614,11 @@ function drawTugs() {
   const keep = new Set();
   for (const v of ctlViews) {
     if (v.done) continue;
-    for (const [key, letter, name] of VEHICLES) {
-      const t = v[key];
+    const list = VEHICLES.map(([key, letter, name]) => [key, letter, name, v[key], key]);
+    (v.rescue || []).forEach((t, i) => list.push(['rescue', 'R', 'rescue vehicle', t, `rescue${i}`]));
+    for (const [key, letter, name, t, slot] of list) {
       if (!t) continue;
-      const k = `${v.id}:${key}`;
+      const k = `${v.id}:${slot}`;
       keep.add(k);
       let m = tugMarks.get(k);
       if (!m) {

@@ -30,7 +30,7 @@ func (c *rescueClient) AddToDataDefinition(uint32, string, string, types.SIMCONN
 func (c *rescueClient) RequestDataOnSimObject(uint32, uint32, uint32, types.SIMCONNECT_PERIOD, types.SIMCONNECT_DATA_REQUEST_FLAG, uint32, uint32, uint32) error {
 	return nil
 }
-func (c *rescueClient) GetLastSentPacketID() (uint32, error) { return 0, nil }
+func (c *rescueClient) GetLastSentPacketID() (uint32, error)          { return 0, nil }
 func (c *rescueClient) MapClientEventToSimEvent(uint32, string) error { return nil }
 func (c *rescueClient) TransmitClientEvent(uint32, uint32, uint32, uint32, types.SIMCONNECT_EVENT_FLAG) error {
 	return nil
@@ -89,13 +89,31 @@ func TestRescueCrew(t *testing.T) {
 		tr.Handle(assignedObject(2000+uint32(i), 600+uint32(i)))
 	}
 	now = now.Add(5 * time.Minute)
-	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-0.5, true, 100, now)})
+	flare := at(0.05, false, 130, now)
+	flare.AGLFt = 30
+	cc.rescueStep(now, prio, []traffic.TrackedAircraft{flare})
+	if crew.state != rescueStandby {
+		t.Fatalf("in the flare, state %d: following before the touchdown", crew.state)
+	}
+	now = now.Add(5 * time.Second)
+	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-0.3, true, 100, now)})
 	if crew.state != rescueFollowing {
 		t.Fatalf("down, state %d", crew.state)
 	}
-	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-1.2, true, 0, now)})
+	// Taxiing at 15 kt while the simulator says 0 kt (AI on the ground):
+	// still moving.
+	s := -0.3
+	for i := 0; i < 90; i++ {
+		now, s = now.Add(time.Second), s-15.0/3600
+		cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(s, true, 0, now)})
+	}
+	if crew.state != rescueFollowing || !crew.stoppedAt.IsZero() {
+		t.Fatalf("taxiing at 0 kt said, state %d, stopped since %v", crew.state, crew.stoppedAt)
+	}
+	now = now.Add(time.Second)
+	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(s, true, 0, now)})
 	now = now.Add(rescueStay)
-	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-1.2, true, 0, now)})
+	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(s, true, 0, now)})
 	if crew.state != rescueHome {
 		t.Fatalf("stopped %v, state %d", rescueStay, crew.state)
 	}

@@ -602,3 +602,58 @@ func TestLineUpBehindAtIntersection(t *testing.T) {
 		t.Errorf("TVS2 at F: line up behind %v, want behind CSA1", c.LineUpBehindDeparting)
 	}
 }
+
+// TestLineUpRoom: lined up behind one departing, the room before the next
+// arrival is its own line-up, take-off and the margin, not a landing roll
+// of the one ahead (live, KLM1616 behind the departing 737 with TVS1797
+// 2m40s out was told to hold position after its line-up).
+func TestLineUpRoom(t *testing.T) {
+	rc := NewRunwayController(RunwayControllerOptions{})
+	us := RunwayUser{Wake: WakeFor("B738")}
+	if !rc.LineUpRoom(160*time.Second, us) {
+		t.Error("2m40s to the next arrival: no room to line up and go")
+	}
+	if rc.LineUpRoom(90*time.Second, us) {
+		t.Error("1m30s to the next arrival: room to line up and go")
+	}
+}
+
+// TestLineUpWaitNotEarly: a departure with minutes of its interval still to
+// run holds short; it lines up and waits only within LineUpWaitMax of its
+// take-off (live, EZY562 lined up 3 minutes behind a TBM on BALT7D).
+func TestLineUpWaitNotEarly(t *testing.T) {
+	now := time.Now()
+	rc := NewRunwayController(RunwayControllerOptions{})
+	tbm := RunwayUser{Callsign: "OKDKT", Phase: RunwayRolling, Wake: WakeFor("TBM9"), Route: "BALT7D", ClimbKts: 170}
+	rc.Decide(now, []RunwayUser{tbm})
+	rc.Decide(now.Add(time.Second), nil)
+	ezy := RunwayUser{Callsign: "EZY562", Phase: RunwayHoldingShort, Wake: WakeFor("A20N"), Route: "BALT7D", ClimbKts: 290}
+	if c := rc.Decide(now.Add(20*time.Second), []RunwayUser{ezy}); slices.Contains(c.LineUp, "EZY562") {
+		t.Fatalf("lined up with %v of its interval left (%s)", rc.intervalLeft(now.Add(20*time.Second), ezy), c.Waiting["EZY562"])
+	}
+	iv := DepartureIntervalSpeeds(tbm.Wake, ezy.Wake, true, tbm.ClimbKts, ezy.ClimbKts)
+	at := now.Add(iv - rc.opts.LineUpTime - LineUpWaitMax/2)
+	if c := rc.Decide(at, []RunwayUser{ezy}); !slices.Contains(c.LineUp, "EZY562") {
+		t.Errorf("not lined up %v before its take-off: %s", rc.opts.LineUpTime+LineUpWaitMax/2, c.Waiting["EZY562"])
+	}
+}
+
+// TestNoSecondLineUpBehindRolling: with one of ours already lined up behind
+// the one rolling, one waiting at an intersection further down is not
+// lined up too, even once the roller has passed it (live, OKDIS lined up
+// at an intersection ahead of CSA443 lined up at the threshold).
+func TestNoSecondLineUpBehindRolling(t *testing.T) {
+	now := time.Now()
+	roll := dep("TVS1373", "B738", RunwayRolling)
+	roll.AlongM = 1600
+	lined := dep("CSA443", "A320", RunwayLinedUp)
+	inter := dep("OKDIS", "C25C", RunwayHoldingShort)
+	inter.AlongM, inter.Route = 900, "DOBE4A"
+	for _, order := range [][]RunwayUser{{lined, roll, inter}, {roll, lined, inter}} {
+		r := NewRunwayController(RunwayControllerOptions{})
+		c := r.Decide(now, append(order, dep("WZZ3", "A321", RunwayHoldingShort)))
+		if c.LineUpBehindDeparting["OKDIS"] != "" || slices.Contains(c.LineUp, "OKDIS") {
+			t.Errorf("order %s first: OKDIS lined up with CSA443 lined up: %+v", order[0].Callsign, c)
+		}
+	}
+}

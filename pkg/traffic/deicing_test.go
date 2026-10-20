@@ -97,3 +97,18 @@ func TestPushbackAtAndHold(t *testing.T) {
 		t.Fatalf("state %v a minute after the release", ctl.State())
 	}
 }
+
+// TestHoldAfterPushApproved: a stand hold after the push was approved does
+// not stop it (live, WZZ1251 approved, held 3 s later by the queue and
+// waiting 10 minutes with its tug at the nose).
+func TestHoldAfterPushApproved(t *testing.T) {
+	ctl, _, _, _ := injectedDeparture(t, TaxiRequest{PushbackAt: time.Now().Add(5 * time.Minute)})
+	ctl.ClearPushback()
+	ctl.HoldPushback(true)
+	ctl.mu.Lock()
+	stopped := ctl.pushStopped
+	ctl.mu.Unlock()
+	if stopped {
+		t.Error("held on the stand after its push was approved")
+	}
+}
