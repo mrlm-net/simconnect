@@ -222,7 +222,11 @@ type controlled struct {
 	// told by ground once; toldWay the last one it was told to give way to
 	// (tellGiveWay, tellStandingInWay), not told again.
 	givingWay uint32
-	toldWay   uint32
+	// giveWayHoldShort is the taxiway it stops short of to give way
+	// (TaxiEvent.GiveWayHoldShort); heldShortOf the one it was told to hold
+	// short of, so it is told to continue once clear.
+	giveWayHoldShort, heldShortOf string
+	toldWay                       uint32
 	toldWayAt time.Time // when it was last told to give way
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
@@ -1389,17 +1393,23 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		}
 		// Giving way where routes cross: ground says so, once (outside the
 		// locks: it looks at the other aircraft).
-		gw := uint32(0)
+		gw, hs := uint32(0), ""
 		switch {
 		case ev.dep != nil:
-			gw = ev.dep.GivingWayTo
+			gw, hs = ev.dep.GivingWayTo, ev.dep.GiveWayHoldShort
 		case ev.arr != nil:
-			gw = ev.arr.GivingWayTo
+			gw, hs = ev.arr.GivingWayTo, ev.arr.GiveWayHoldShort
 		}
+		it.giveWayHoldShort = hs
 		if gw != it.givingWay {
 			it.givingWay = gw
 			if gw != 0 && it.cc != nil {
 				it.cc.pending.later(it.cc.clock.Now(), func() { it.tellGiveWay(gw) })
+			}
+			// Told to hold short for it: released once it has passed.
+			if gw == 0 && it.heldShortOf != "" && it.cc != nil {
+				it.heldShortOf = ""
+				it.cc.pending.later(it.cc.clock.Now(), func() { it.say(traffic.ContinueTaxi(it.Tail)) })
 			}
 		}
 		// Standing still while taxiing: why, logged once it lasts
@@ -2843,6 +2853,10 @@ func (it *controlled) tellStandingInWay(by string) {
 // one to give way to changed between a Dash 8, an A321 and a Citation).
 const giveWayCallGap = 30 * time.Second
 
+// holdShortShare: of the give-way calls where it stops short of another
+// taxiway, the share said as "hold short of (taxiway)".
+const holdShortShare = 0.5
+
 // objectIDs are the object IDs in a StoppedBy reason.
 var objectIDs = regexp.MustCompile(`#[0-9]+`)
 
@@ -2863,8 +2877,18 @@ func (it *controlled) tellGiveWay(other uint32) {
 			it.toldWayAt = now
 		}
 	}
+	// Short of another taxiway: sometimes "hold short of C" instead, then
+	// "continue taxi" once the traffic has passed (the user).
+	hs := ""
+	if still && !told && it.giveWayHoldShort != "" && rand.Float64() < holdShortShare {
+		hs, it.heldShortOf = it.giveWayHoldShort, it.giveWayHoldShort
+	}
 	it.mu.Unlock()
 	if !still || told {
+		return
+	}
+	if hs != "" {
+		it.say(traffic.HoldShort(it.Tail, hs))
 		return
 	}
 	desc := typeSaid(traffic.ProfileFor(strings.SplitN(model, liverySep, 2)[0]).Type)

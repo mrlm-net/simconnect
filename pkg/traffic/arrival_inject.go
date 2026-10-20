@@ -219,8 +219,8 @@ func (c *ArrivalController) step() GroundPose {
 	if err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
-	if c.givingWay != c.last.GivingWayTo {
-		c.last.GivingWayTo = c.givingWay
+	if hs := c.giveWayHoldShort(c.track); c.givingWay != c.last.GivingWayTo || hs != c.last.GiveWayHoldShort {
+		c.last.GivingWayTo, c.last.GiveWayHoldShort = c.givingWay, hs
 		c.emit(nil, true)
 	}
 	if by := map[bool]string{true: c.stoppedBy(pose)}[c.state == ArrivalTaxiing]; by != c.last.StoppedBy {

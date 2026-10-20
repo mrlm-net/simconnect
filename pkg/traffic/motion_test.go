@@ -389,7 +389,7 @@ func TestInjectorRestsAsMeasured(t *testing.T) {
 		sample     injectGround
 		alt, pitch float64
 	}{
-		{"at rest", resting, 1209.35, 0},
+		{"at rest", resting, 1209.35, 0.1}, // its static pitch, on all its wheels
 		{"moving", func() injectGround { g := resting; g.GS = 12; return g }(), 1210.44, 0.1},
 		{"in the air", func() injectGround { g := resting; g.OnGround = 0; return g }(), 1210.44, 0.1},
 	} {
@@ -405,7 +405,7 @@ func TestInjectorRestsAsMeasured(t *testing.T) {
 		g.PlaneFt, g.PlanePitch = 1250, 2
 		inj.Handle(msg(g))
 		inj.Place(42, pose)
-		if got := placed(c); math.Abs(got.Altitude-tc.alt) > 1e-9 || math.Abs(got.Pitch-tc.pitch-MovingPitchDeg) > 1e-9 { // on extended struts
+		if got := placed(c); math.Abs(got.Altitude-tc.alt) > 1e-9 || math.Abs(got.Pitch-tc.pitch) > 1e-9 {
 			t.Errorf("%s: placed at %.2f ft pitch %.2f, want %.2f ft pitch %.2f", tc.name, got.Altitude, got.Pitch, tc.alt, tc.pitch)
 		}
 	}
@@ -505,9 +505,9 @@ func TestPlaceAirRestsOnTheRunway(t *testing.T) {
 	}
 	roll := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, GroundSpeedKts: 80})
 	// Rolling: the static CG height (as the simulator shows it rolling with
-	// the on-ground flag), its rest pitch, struts drawn extended (#676).
-	if math.Abs(roll.Altitude-1210.44) > 1e-6 || math.Abs(roll.Pitch-(0.8+MovingPitchDeg)) > 1e-6 {
-		t.Errorf("on the roll at %.2f ft pitch %.2f, want the static 1210.44 ft, 0.80 + 1 nose down rolling", roll.Altitude, roll.Pitch)
+	// the on-ground flag), its static pitch: on all its wheels.
+	if math.Abs(roll.Altitude-1210.44) > 1e-6 || math.Abs(roll.Pitch-0.1) > 1e-6 {
+		t.Errorf("on the roll at %.2f ft pitch %.2f, want the static 1210.44 ft, 0.10", roll.Altitude, roll.Pitch)
 	}
 	rot := placed(ApproachPose{Position: lkpr, Heading: 244, OnGround: true, PitchDeg: 5})
 	if math.Abs(rot.Pitch-(0.8-5)) > 1e-6 {
