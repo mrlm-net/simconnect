@@ -85,6 +85,11 @@ const (
 	// ClaimTimeout: a new ParkedATC that no jetway takes in this long sits
 	// on a gate without one, or none: removed.
 	ClaimTimeout = 12 * time.Second
+	// EmptyFillTries: placeholders tried again while none has taken a gate
+	// (ClaimTimeout each): about 5 min for a simulator still loading its
+	// airport (live, a map started with the simulator: five tries in a
+	// minute all unclaimed, no jetway all evening).
+	EmptyFillTries = 25
 	// DockTimeout: a helper's jetway not docked in this long has failed.
 	DockTimeout = 90 * time.Second
 	// HelperDelay: the helper is created this long after its gate's
@@ -756,7 +761,7 @@ func (h *Helpers) Update(now time.Time) {
 			delete(h.byReq, r)
 			// None taken yet: the sim not ready (live, the first one after
 			// a sim start went unclaimed): tried again, a few times.
-			if len(h.dockable(p.icao)) == 0 && h.emptyTries[p.icao] < 5 {
+			if len(h.dockable(p.icao)) == 0 && h.emptyTries[p.icao] < EmptyFillTries {
 				h.emptyTries[p.icao]++
 				break
 			}

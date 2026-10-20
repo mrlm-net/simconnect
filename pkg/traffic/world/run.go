@@ -785,6 +785,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	var excWindow time.Time          // SimConnect exceptions logged since
 	excLogged := 0
 	tick := traffic.NewTicker(time.Second)
+	offlineFed := false // the offline airports given the picture (SimlessAI)
 	defer tick.Stop()
 
 	// Slow work in this loop holds back every injected aircraft (its
@@ -853,8 +854,19 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			cc.timed("control", cc.tick)
 			// The airports around once a minute (#70: ticks never counted, asked
 			// every second, a multi-part list reset half-way).
-			if cc.ticks%60 == 0 {
+			if cc.ticks%60 == 0 || !offlineFed {
 				airports.Request()
+				// No simulator: the offline list around the user stands in
+				// for the facility list (the picture gives aircraft their
+				// airport from it: an emergency's rescue, sequences).
+				if _, simless := client.(*traffic.SimlessAI); simless {
+					if list := st.offlineAirportsNear(cc.world.Aircraft()); len(list) > 0 {
+						feed.Airports(list)
+						offlineFed = true
+					}
+				} else {
+					offlineFed = true
+				}
 			}
 			cc.ticks++
 			// Every aircraft within TrafficRadius of the user aircraft; the scan
