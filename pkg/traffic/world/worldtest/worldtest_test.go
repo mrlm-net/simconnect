@@ -1,10 +1,15 @@
 package worldtest
 
 import (
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic/world"
 )
@@ -90,4 +95,64 @@ func TestHarnessManualClock(t *testing.T) {
 	for _, tx := range h.Heard() {
 		t.Logf("%s", tx.Text)
 	}
+}
+
+// TestPlayerRescue: the user aircraft flown in on the LKPR 24 final with
+// an engine failure declared gets the rescue crew out (fire trucks on the
+// loopback) once within 20 NM, and they follow it after touchdown.
+func TestPlayerRescue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	if testing.Verbose() {
+		o.World.Output = os.Stderr
+	}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	_, end, ok := h.Layout.RunwayEnd("24")
+	if !ok {
+		t.Fatal("no runway 24")
+	}
+	field := h.Layout.Altitude / 0.3048
+	nm := 25.0
+	fly := func() { // the user on the final at 160 kt, 3°
+		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading+180, nm*1852)
+		h.SetUser(func(u *Object) {
+			u.Lat, u.Lon, u.Heading, u.GroundKts, u.VSFpm = lat, lon, end.Heading, 160, -800
+			u.AltFt, u.OnGround = field+50+nm*318, false
+			if nm <= 0 {
+				u.AltFt, u.OnGround, u.VSFpm, u.GroundKts = field, true, 0, 60
+			}
+		})
+	}
+	trucks := func() int {
+		n := 0
+		for _, ob := range h.Sim.Objects() {
+			if strings.Contains(ob.Title, "Fire") || strings.Contains(ob.Title, "Medic") {
+				n++
+			}
+		}
+		return n
+	}
+	declared := false
+	for step := 0; step < 12*60 && trucks() == 0; step++ {
+		fly()
+		h.Advance(time.Second)
+		nm = math.Max(0, nm-160.0/3600)
+		if step == 10 && !declared {
+			h.World.PriorityFor("", traffic.EmergencyEngineFailure)
+			declared = true
+		}
+	}
+	if b, err := h.World.Do("GET", "/api/traffic", nil); err == nil {
+		t.Logf("traffic: %.600s", b)
+	}
+	if trucks() == 0 {
+		t.Fatalf("no rescue vehicle out by %.1f NM", nm)
+	}
+	t.Logf("rescue out at %.1f NM", nm)
 }

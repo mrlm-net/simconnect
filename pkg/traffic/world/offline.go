@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -214,4 +215,37 @@ func (w *World) LoadAirportsFile(path string) (int, error) {
 	w.st.airportRefs = refs
 	w.st.mu.Unlock()
 	return len(refs), nil
+}
+
+// offlineBubbleNM: with no simulator (SimlessAI), the airports this close
+// to the user aircraft, from the offline list (LoadAirportsFile), stand in
+// for the simulator's facility list (its reality bubble).
+const offlineBubbleNM = 100.0
+
+// offlineAirportsNear are the offline airports within offlineBubbleNM of
+// the user aircraft among aircraft, nearest first; nil with no list or no
+// user aircraft.
+func (st *state) offlineAirportsNear(aircraft []traffic.TrackedAircraft) []traffic.AirportRef {
+	var user *traffic.TrackedAircraft
+	for i := range aircraft {
+		if aircraft[i].User {
+			user = &aircraft[i]
+		}
+	}
+	if user == nil {
+		return nil
+	}
+	st.mu.Lock()
+	refs := st.airportRefs
+	st.mu.Unlock()
+	var out []traffic.AirportRef
+	for _, a := range refs {
+		d := calc.HaversineNM(user.Position.Lat, user.Position.Lon, a.Position.Lat, a.Position.Lon)
+		if d <= offlineBubbleNM {
+			a.DistanceNM = d
+			out = append(out, a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].DistanceNM < out[j].DistanceNM })
+	return out
 }

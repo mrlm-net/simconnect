@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -88,6 +89,14 @@ func Start(o Options) (*Harness, error) {
 	icao, err := h.World.LoadAirportDir(filepath.Join(o.DataDir, strings.ToUpper(o.ICAO)))
 	if err != nil {
 		return nil, err
+	}
+	// The airports around (the simulator's facility list): the picture
+	// gives each aircraft its airport from it (an emergency's rescue, the
+	// player's sequence).
+	if p := filepath.Join(o.DataDir, "airports.json"); fileExists(p) {
+		if _, err := h.World.LoadAirportsFile(p); err != nil {
+			return nil, err
+		}
 	}
 	l, ok := cache.Layout(icao)
 	if !ok {
@@ -269,3 +278,5 @@ func (h *Harness) Aircraft(callsign string) (world.ControlView, bool) {
 // altitude, speed, on the ground, COM1), read by the World from the next
 // second on.
 func (h *Harness) SetUser(f func(o *Object)) { h.Sim.User(f) }
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }

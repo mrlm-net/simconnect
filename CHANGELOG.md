@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.108.1] - 2026-10-20
+
+### Fixed
+
+- Jetways after a simulator start: the placeholders taking the gates were tried 5 times (about a minute) while none was taken, and then never again; a map started while the simulator was still loading had no jetway all evening (live, "gates filled (0)"). Now tried for about 5 minutes (`jetway.EmptyFillTries`, 25).
+- With no simulator (SimlessAI), the airports around the user aircraft from the offline list (`LoadAirportsFile`, within 100 NM) stand in for the simulator's facility list: the picture had no airport for any aircraft, so an emergency's rescue was never sent (MyCrew app, the player's emergency offline). `worldtest.Start` loads `<DataDir>/airports.json`; `TestPlayerRescue`.
+
 ## [0.108.0] - 2026-10-20
 
 ### Added
