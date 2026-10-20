@@ -238,13 +238,28 @@ func heldPlan(plan []traffic.RoutePoint, a traffic.TrackedAircraft) []traffic.Ro
 // heldLevelVSFpm: under this vertical speed an arrival counts as level.
 const heldLevelVSFpm = 300.0
 
+// inPicture is whether object id is still flying (in the world's picture).
+func (cc *controlCenter) inPicture(id uint32) bool {
+	if id == 0 {
+		return false
+	}
+	for _, a := range cc.world.Aircraft() {
+		if a.ObjectID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // climbWhenClear clears the departure's climb to the level departure gave
-// it once clear of the arrivals, looking again every climbRecheckEvery.
+// it once clear of the arrivals, looking again every climbRecheckEvery,
+// for as long as it flies: its controller done after the hand-over is no
+// reason to stop (live, DSXHZ held at FL100, never cleared on).
 func (it *controlled) climbWhenClear() {
 	it.mu.Lock()
-	ft, done := it.radarFt, it.view.Done
+	ft, id := it.radarFt, it.objectID
 	it.mu.Unlock()
-	if done || ft <= 0 {
+	if ft <= 0 || !it.cc.inPicture(id) {
 		return
 	}
 	if who := it.climbMeets(ft); who != "" {

@@ -103,6 +103,12 @@ func TestDepartureWaypoints(t *testing.T) {
 	if !found || wps[len(wps)-1].Altitude < ProcedureTopFt {
 		t.Errorf("VOZ in the chain %v, final altitude %.0f", found, wps[len(wps)-1].Altitude)
 	}
+	// On past VOZ for the 30 min it is ours (350 kt over the ground): MSFS
+	// AI takes a level of its own past its last waypoint.
+	last := wps[len(wps)-1]
+	if d := calc.HaversineMeters(voz.Lat, voz.Lon, last.Latitude, last.Longitude); d < 175*1852 {
+		t.Errorf("the climb ends %.0f km past VOZ, want 30 min of flying (324 km)", d/1000)
+	}
 }
 
 // TestArrivalControllerFliesProcedure: the arrival appears at GOLOP, MSFS

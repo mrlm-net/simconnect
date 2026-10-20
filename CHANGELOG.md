@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.104.2] - 2026-10-20
+
+### Fixed
+
+- Departures keep the level they were cleared to: their climb route went on only 60 km past the SID, after which MSFS AI climbed to a level of its own (live, TVS1828 cleared to FL220 and DSXHZ held at FL100 met at FL234, the conflict watch turning them apart 18 min out; others at FL356). The route now goes on 450 km along the last track (`ProcedureContinueMeters`), the 30 min a departure is ours.
+- A departure's climb held clear of traffic is cleared on for as long as it flies: the re-check stopped once its controller finished after the hand-over, so it was never cleared higher (live, DSXHZ).
+
 ## [0.104.1] - 2026-10-20
 
 ### Fixed

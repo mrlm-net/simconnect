@@ -32,8 +32,13 @@ var (
 	// is asked for (a SID ends below the first cruise level ATC gives).
 	ProcedureTopFt = 10000.0
 	// ProcedureContinueMeters extends a SID beyond its last point on the
-	// same track, so MSFS AI does not turn back after the last waypoint.
-	ProcedureContinueMeters = 60000.0
+	// same track, so MSFS AI does not turn back after the last waypoint
+	// and keeps the level it was cleared to for as long as it is ours:
+	// past its last waypoint MSFS AI climbs on to a level of its own (live,
+	// departures cleared to FL220, FL240 and held at FL100 all met at
+	// FL234, the conflict watch turning them apart). About 30 min
+	// (ManagerOptions.RemoveDepartedAfter) at 250 kt with 100 kt of wind.
+	ProcedureContinueMeters = 450000.0
 	// ProcedureJoinNm is how far out on the extended centreline the
 	// injected approach takes over from MSFS AI (at least the spawn
 	// distance); the procedure's own points closer than JoinNm plus
