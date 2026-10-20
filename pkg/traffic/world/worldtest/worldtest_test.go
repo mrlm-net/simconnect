@@ -156,3 +156,69 @@ func TestPlayerRescue(t *testing.T) {
 	}
 	t.Logf("rescue out at %.1f NM", nm)
 }
+
+// TestPlayerRescueSmooth: the rescue trucks out for the user aircraft drive
+// out, follow it on its rollout, stand by it stopped and go home without
+// a jump: no frame moves one more than its speed allows.
+func TestPlayerRescueSmooth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	h, err := Start(Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	_, end, _ := h.Layout.RunwayEnd("24")
+	field := h.Layout.Altitude / 0.3048
+	along := -18.0 * 1852 // metres past the threshold (negative: on final)
+	kts := 160.0
+	last := map[uint32]Object{}
+	worst := 0.0
+	for step := 0; step < 20*60*10; step++ { // 20 min of 100 ms frames
+		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading, along)
+		h.SetUser(func(u *Object) {
+			u.Lat, u.Lon, u.Heading, u.GroundKts = lat, lon, end.Heading, kts
+			u.OnGround = along >= 0
+			u.AltFt, u.VSFpm = field+math.Max(0, -along/1852*318), -800
+			if u.OnGround {
+				u.AltFt, u.VSFpm = field, 0
+			}
+		})
+		h.Advance(100 * time.Millisecond)
+		switch {
+		case along < 0:
+			along += kts * 0.514444 * 0.1
+		case along < 1852: // rollout to a stop 1 NM past the threshold
+			kts = math.Max(0, kts-3)
+			along += kts * 0.514444 * 0.1
+		default:
+			kts = 0
+		}
+		if step == 100 {
+			h.World.PriorityFor("", traffic.EmergencyEngineFailure)
+		}
+		for _, o := range h.Sim.Objects() {
+			if !strings.Contains(o.Title, "Fire") {
+				continue
+			}
+			if p, ok := last[o.ID]; ok {
+				d := calc.HaversineMeters(p.Lat, p.Lon, o.Lat, o.Lon)
+				if d > worst {
+					worst = d
+				}
+				if d > 3 { // 50 kt is 2.6 m a frame
+					t.Errorf("truck %d jumped %.1f m in a frame (step %d, %.0f m past the threshold)", o.ID, d, step, along)
+				}
+			}
+			last[o.ID] = o
+		}
+		if len(last) > 0 && len(h.Sim.Objects()) == 1 { // the trucks home and gone
+			break
+		}
+	}
+	if len(last) == 0 {
+		t.Fatal("no rescue truck")
+	}
+	t.Logf("largest frame step %.2f m", worst)
+}

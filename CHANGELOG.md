@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.108.3] - 2026-10-20
+
+### Fixed
+
+- Rescue trucks going home jumped 5 m in a frame: their way home started at their reference point, which the mover takes as the nose, so they went back a wheelbase at once (MyCrew app offline, worldtest). It now starts at the nose. `worldtest` `TestPlayerRescueSmooth`: drive out, follow, stand by and home with no frame over 3 m.
+
 ## [0.108.2] - 2026-10-20
 
 ### Fixed
