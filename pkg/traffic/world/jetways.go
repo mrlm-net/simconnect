@@ -701,6 +701,33 @@ func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) 
 	return title, true
 }
 
+// jetwaysWaitMax: departures on jetway gates wait at most this long after
+// the start for the jetways to be ready, then come whatever.
+const jetwaysWaitMax = 6 * time.Minute
+
+// jetwaysReady reports whether a departure may appear on a jetway gate at
+// icao: the jetways off, no helpers installed, icao's gates filled with
+// placeholders, or jetwaysWaitMax gone since the traffic started.
+func (cc *controlCenter) jetwaysReady(icao string) bool {
+	if !jetwaysEnabled() || traffic.Since(cc.startedAt) > jetwaysWaitMax {
+		return true
+	}
+	cc.mu.Lock()
+	listed := len(cc.models) > 0
+	cc.mu.Unlock()
+	if !listed {
+		return false // the models not listed yet: helpers or not unknown
+	}
+	svc := cc.jetwayService()
+	if svc == nil {
+		return true // no helpers installed: no jetways for our traffic
+	}
+	cc.jw.mu.Lock()
+	prepared := cc.jw.prepared[icao]
+	cc.jw.mu.Unlock()
+	return prepared && !svc.Filling(icao)
+}
+
 // gateHelperTypes are stands where the simulator parks no helper of a big
 // type (put on another gate or 300 m away, again and again: live, LKPR
 // B14, a 787's and a 777's): the helper of the type given docks for any

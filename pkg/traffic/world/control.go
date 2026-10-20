@@ -360,6 +360,8 @@ type controlCenter struct {
 	// traffic log (console, file, /api/control/log).
 	core *core
 	log  *trafficLog
+	// startedAt: when this connection's traffic started (jetwaysReady).
+	startedAt time.Time
 	// onTransmission hears every transmission once logged; onChange is told
 	// a part of the picture changed ("control", "radio"): the front end's
 	// voice, camera and open maps. Set before the connection runs; nil none.
@@ -506,7 +508,7 @@ type controlCenter struct {
 func newControlCenter(client engine.Client, k *core) *controlCenter {
 	log := k.log
 	cc := &controlCenter{
-		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(),
+		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(), startedAt: traffic.Now(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:   map[string]bool{},
 		own:      map[uint32]bool{},
@@ -977,6 +979,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			alloc.ReleaseOwner(r.Tail)
 		}
 	}()
+	// On a jetway gate, not before the jetways are ready: placed earlier,
+	// it stands where no helper's door meets it (live, QTR605 at B14
+	// spawned a minute before the gates were filled, 18 m off its jetway).
+	if r.Kind == "departure" && r.adopt == 0 && g.Layout.Parking[r.Stand].IsGate() && !cc.jetwaysReady(g.Layout.ICAO) {
+		return nil, fmt.Errorf("%w: the jetways at %s are not ready yet", traffic.ErrSpawnBlocked, g.Layout.ICAO)
+	}
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
 	if r.Circuit {
