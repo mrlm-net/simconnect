@@ -166,6 +166,9 @@ type ArrivalEvent struct {
 	// GivingWayTo is the aircraft (object ID) it stops to give way to while
 	// taxiing in, 0 for none (TaxiEvent.GivingWayTo).
 	GivingWayTo uint32
+	// GiveWayHoldShort is the taxiway it stops short of to give way
+	// (TaxiEvent.GiveWayHoldShort).
+	GiveWayHoldShort string
 	// StoppedBy is why it stands still while taxiing in (TaxiEvent.StoppedBy).
 	StoppedBy string
 	// MissedJoin: MSFS AI flew past the end of its procedure without

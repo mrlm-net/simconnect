@@ -209,6 +209,10 @@ type TaxiEvent struct {
 	// their taxi routes cross or merge, 0 for none; a controller may say so
 	// ("give way to the A320 passing left to right").
 	GivingWayTo uint32
+	// GiveWayHoldShort is the taxiway it stops short of to give way, where
+	// it would turn onto or cross another one ("" none): a controller may
+	// say "hold short of C" for it instead.
+	GiveWayHoldShort string
 	// StoppedBy is why it stands still while taxiing, short of its
 	// holding point ("" moving): "traffic ahead #123", "giving way to #123",
 	// "clearance limit", "hold short of runway 12 (crossing)", ... For the

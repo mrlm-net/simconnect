@@ -57,6 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.105.0] - 2026-10-20
+
+### Added
+
+- Ground radio: an aircraft giving way short of another taxiway is sometimes told "hold short of C" instead of "give way to …" (half the time, `holdShortShare`), read back "Holding short of C" (Doc 4444 12.3.4.8), and "continue taxi" once the traffic has passed. `TaxiEvent.GiveWayHoldShort`, `ArrivalEvent.GiveWayHoldShort`, `HoldShort`, `IntentHoldShort`.
+- Our aircraft on the ground are placed with their ground speed (the INITPOSITION airspeed), as vehicles are, so their wheels can turn.
+
+### Fixed
+
+- Aircraft on the ground no longer float: placed a degree nose-down of their rest pitch (on extended struts, `MovingPitchDeg` 1°, #676) a frozen aircraft rests on its nose wheel alone, the main gear in the air (live, GEAR IS ON GROUND: B738 at +1° 9.72 ft nose only; A320 at +0.05° to +0.2° and -0.1° nose only; at the static pitch on all three). Standing, taxiing and rolling they are now placed at exactly their static pitch (`MovingPitchDeg` 0); the struts extend as the nose lifts at rotation.
+
 ## [0.104.3] - 2026-10-20
 
 ### Fixed

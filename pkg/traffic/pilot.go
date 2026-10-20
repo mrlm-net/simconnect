@@ -463,6 +463,8 @@ func Readback(t Transmission) (Transmission, bool) {
 		s = "Hold position" // read back as given (the project's choice over Doc 4444 12.3.4.8 note's "Holding")
 	case IntentContinueTaxi:
 		s = "Continue taxi"
+	case IntentHoldShort:
+		s = "Holding short of " + p[ParamLimit] // 12.3.4.8 note
 	case IntentDepartureOrder:
 		s = "Wilco" // CAP 413 4.20
 		if queueSaid(p[ParamNumber]) {

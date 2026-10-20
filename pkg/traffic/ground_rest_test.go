@@ -60,15 +60,15 @@ func TestInjectorRestByModel(t *testing.T) {
 	// Touching down (from the air): its wheels where the simulator puts
 	// them rolling with the on-ground flag, its static CG height (no roll
 	// height learnt for the title yet), pitched as a's rest.
-	if alt, pitch := placedAlt(); math.Abs(alt-1212.25) > 1e-6 || math.Abs(pitch-0.71-MovingPitchDeg) > 1e-6 {
-		t.Errorf("touchdown at %.3f ft, pitch %.2f, want the static 1212.25, a's rest pitch 0.71 + MovingPitchDeg", alt, pitch)
+	if alt, pitch := placedAlt(); math.Abs(alt-1212.25) > 1e-6 || math.Abs(pitch-0.9) > 1e-6 {
+		t.Errorf("touchdown at %.3f ft, pitch %.2f, want the static 1212.25 and pitch 0.90, on all its wheels", alt, pitch)
 	}
 	w = w.Add(2 * time.Second)
 	if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
 		t.Fatal(err)
 	}
-	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.71-MovingPitchDeg) > 1e-6 {
-		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, 0.71 + MovingPitchDeg", alt, pitch)
+	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.9) > 1e-6 {
+		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, its static pitch 0.90", alt, pitch)
 	}
 }
 

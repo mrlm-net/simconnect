@@ -165,12 +165,16 @@ const (
 // came down after landing (+0.5 to 0.65 ft, -0.5 to 0.8 ft), whatever
 // height it was sent at.
 //
-// So our aircraft are never placed at their rest pitch: on extended struts
-// from start to end, MovingPitchDeg nose down against the nose-up of the
-// extended nose strut (the user picked 1° from five Phenoms moving side by
-// side, #676); the simulator keeps the wheels on the ground, and rotation
-// and touchdown blend through it.
-const MovingPitchDeg = 1.0
+// On extended struts, though, a frozen aircraft rests on its nose wheel
+// alone, the main gear in the air (live 2026-10-20, GEAR IS ON GROUND:
+// B738 at +1° 9.72 ft nose only; A320 at +0.05°, +0.1°, +0.2° and -0.1°
+// 12.9 to 13.0 ft nose only; at the static pitch 12.25 ft on all three,
+// whatever height was sent). So on the ground our aircraft are placed at
+// exactly their static pitch, on compressed struts, never switching while
+// they stand or taxi; the struts extend as the nose lifts at rotation and
+// compress as it comes down after landing. MovingPitchDeg (once 1°, #676)
+// is no longer added.
+const MovingPitchDeg = 0.0
 
 // movingPitch is the nose-down pitch (SimConnect: positive) an aircraft on
 // the ground is given on top of its rest pitch: the same standing and
@@ -439,8 +443,8 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	if o.haveRest {
 		cg, pitch = o.restFt, o.restPitch
 	}
-	if !moving { // an aircraft (vehicles are placed moving): on extended struts, never at its rest pitch
-		pitch = offRest(pitch+movingPitch(pose.GroundSpeedKts), pitch, o.staticPitch)
+	if !moving { // an aircraft (vehicles are placed moving): exactly its static pitch, on all its wheels
+		pitch = o.staticPitch
 		o.placedAt = i.now()
 	}
 	o.placed = true
@@ -469,9 +473,8 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		Heading:   pose.Heading,
 		OnGround:  flag,
 	}
-	if moving {
-		p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
-	}
+	// The speed passed on, so the wheels turn (vehicles and aircraft alike).
+	p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
 	i.traceJump(objectID, o, "ground", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.mu.Unlock()
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
@@ -699,6 +702,9 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		Heading:   pose.Heading,
 		OnGround:  onGround,
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
+	}
+	if pose.OnGround && pose.PitchDeg <= 0 { // wheels down, nose down: on all its wheels (MovingPitchDeg)
+		p.Pitch = o.staticPitch
 	}
 	o.placed = true
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its

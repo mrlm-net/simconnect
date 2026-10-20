@@ -54,8 +54,11 @@ type groundDrive struct {
 	// planned is the way it will taxi, reported while it waits for its taxi
 	// clearance (#452).
 	planned []airport.LatLon
-	// givingWay is the aircraft it gives way to now (followAhead), 0 none.
-	givingWay uint32
+	// givingWay is the aircraft it gives way to now (followAhead), 0 none;
+	// giveWayAt where it stops for it (hasGiveWayAt).
+	givingWay    uint32
+	giveWayAt    airport.LatLon
+	hasGiveWayAt bool
 	// blockedBy is the aircraft ahead it stops behind (followAhead), 0 none.
 	blockedBy uint32
 	// facing: blockedBy is oncoming, held clear of at a junction (#775).
@@ -465,11 +468,13 @@ func (d *groundDrive) followAhead(now time.Time) {
 		behind = d.blockedBy
 	}
 	d.picture.ReportBehind(d.object, behind)
+	d.hasGiveWayAt = false
 	switch {
 	case math.IsInf(stop, 1):
 		d.mover.ClearTrafficStop()
 	case giving:
 		d.mover.SetGiveWayStop(stop)
+		d.giveWayAt, d.hasGiveWayAt = path.PointAt(stop), true
 	default:
 		d.mover.SetTrafficStop(stop)
 	}

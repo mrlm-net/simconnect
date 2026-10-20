@@ -44,6 +44,7 @@ const (
 	IntentPushback           Intent = "pushback"             // pushback approved
 	IntentTaxi               Intent = "taxi"                 // taxi to and hold short of the runway, or to the stand
 	IntentTaxiLimit          Intent = "taxi_limit"           // taxi and hold short (a limit on the route)
+	IntentHoldShort          Intent = "hold_short"           // hold short of a taxiway (giving way there)
 	IntentGiveWay            Intent = "give_way"             // give way to other traffic on the ground
 	IntentFollowTaxi         Intent = "follow_taxi"          // follow another aircraft on the ground ("follow the company Airbus")
 	IntentRunwayChange       Intent = "runway_change"        // a new runway in use: new SID or STAR (#456)
@@ -437,6 +438,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
 	case IntentContinueTaxi:
 		return cs + ", continue taxi"
+	case IntentHoldShort:
+		return fmt.Sprintf("%s, hold short of %s", cs, p[ParamLimit]) // 12.3.4.8
 	case IntentHoldPosition:
 		return cs + ", hold position" // 12.3.4.8
 	case IntentDepartureOrder:
@@ -1128,6 +1131,12 @@ func queueSaid(number string) bool {
 func DepartureOrder(cs, runway string, ahead int) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentDepartureOrder,
 		Params: map[string]string{ParamRunway: runway, ParamNumber: fmt.Sprint(ahead)}})
+}
+
+// HoldShort stops a taxiing aircraft short of taxiway, where it gives way
+// to traffic there: "CSA1, hold short of C"; released with ContinueTaxi.
+func HoldShort(cs, taxiway string) Transmission {
+	return Say(Transmission{Position: PosGround, Callsign: cs, Intent: IntentHoldShort, Params: map[string]string{ParamLimit: taxiway}})
 }
 
 // ContinueTaxi resumes the taxi of an aircraft told to hold position, on
