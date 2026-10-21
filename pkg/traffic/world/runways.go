@@ -376,10 +376,14 @@ func (t *towers) tick(now time.Time) {
 		if t.cc.core.playerBlocks(k.icao, k.rwy, layout(k.icao)) {
 			c.LineUp, c.Takeoff, c.Land, c.Cross, c.LineUpBehind, c.CrossBehind, c.LineUpBehindDeparting = nil, nil, nil, nil, nil, nil, nil
 		}
-		// A runway closed (works, a NOTAM; closures.go): no line-up, take-off
-		// or landing on it; ours on a short final go around (crossing it
-		// stays allowed).
-		if (nav.RunwayLimits{Closed: t.cc.core.closed(k.icao)}).ClosedEnd(k.rwy) {
+		// A runway closed (works, a NOTAM; closures.go) or held: no line-up,
+		// take-off or landing on it; ours on a short final go around
+		// (crossing it stays allowed).
+		// k.rwy is the runway ("06/24"): shut when either end is (ClosedEnd
+		// takes an end; given the name it matched nothing, live a take-off
+		// cleared on a runway held for the rescue vehicles).
+		shut := nav.RunwayLimits{Closed: t.cc.core.shut(k.icao)}
+		if slices.ContainsFunc(strings.Split(k.rwy, "/"), shut.ClosedEnd) {
 			closedClearances(&c, list)
 		}
 		// A crossing runway in use: take-offs and landings wait for it; one

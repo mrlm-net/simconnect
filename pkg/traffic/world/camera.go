@@ -54,6 +54,7 @@ const minShotBeforeCut = 5 * time.Second
 
 type cameraMan struct {
 	cc  *controlCenter
+	w   *World // a scene's actions run on it (nil: none)
 	dir *camera.Director
 	// frames turns the simulator's per-frame event on while the camera is
 	// ours, off otherwise (60 messages a second for nothing).
@@ -93,7 +94,11 @@ type cameraMan struct {
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
 	m := &cameraMan{cc: cc, mode: "off", sim: &simCamera{client: client}}
-	if e, ok := client.(camera.API); ok {
+	api, ok := client.(camera.API)
+	if ai, simless := client.(*traffic.SimlessAI); simless && !ok {
+		api, ok = ai.Client.(camera.API) // offline: the client under it (a test's Loopback)
+	}
+	if e := api; ok {
 		m.dir = camera.NewDirector(e, "airport-map")
 		m.dir.OnShot(func(s camera.Shot) {
 			m.mu.Lock()

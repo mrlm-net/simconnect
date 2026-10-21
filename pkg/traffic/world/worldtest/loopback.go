@@ -36,6 +36,11 @@ type Object struct {
 	COM1 float64
 	// EnginesRunning: its engines run (GENERAL ENG COMBUSTION).
 	EnginesRunning bool
+	// Vehicle: a simulated object (AICreateSimulatedObject: a tug, a truck),
+	// not an aircraft: by-type scans tell them apart as the simulator does.
+	Vehicle bool
+	// Lights: the lights on, by SimVar ("LIGHT BEACON"), as events set them.
+	Lights map[string]bool
 }
 
 type datum struct {
@@ -59,15 +64,19 @@ const UserObjectID = 1
 // answered from them on Step, each SimVar by its name and unit (one it
 // does not know is 0). Facility, flight-plan and other calls do nothing.
 type Loopback struct {
-	mu       sync.Mutex
-	out      chan engine.Message
-	defs     map[uint32][]datum
-	reqs     map[uint32]*request
-	objects  map[uint32]*Object
-	nextID   uint32
-	sent     uint32
-	frameEvt uint32
-	hasFrame bool
+	mu sync.Mutex
+	// cameraOwned, cameraSets: the add-on camera (camera.go).
+	cameraOwned bool
+	events      map[uint32]string // client event ID → its simulator event (lights.go)
+	cameraSets  int
+	out         chan engine.Message
+	defs        map[uint32][]datum
+	reqs        map[uint32]*request
+	objects     map[uint32]*Object
+	nextID      uint32
+	sent        uint32
+	frameEvt    uint32
+	hasFrame    bool
 	// GroundFt is the ground elevation everywhere (the airport's), feet.
 	groundFt float64
 	// Spawn is where an aircraft created with no position goes (ParkedATC,
@@ -160,11 +169,26 @@ func (l *Loopback) RequestDataOnSimObject(requestID uint32, definitionID uint32,
 func (l *Loopback) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	n := uint32(len(l.objects))
-	i := uint32(0)
-	for id := range l.objects {
-		i++
-		l.sendData(&request{req: requestID, def: definitionID, obj: id}, true, i, n)
+	var ids []uint32
+	for id, o := range l.objects {
+		switch objectType {
+		case types.SIMCONNECT_SIMOBJECT_TYPE_USER:
+			if id != UserObjectID {
+				continue
+			}
+		case types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT:
+			if o.Vehicle {
+				continue // a tug or truck is no aircraft
+			}
+		case types.SIMCONNECT_SIMOBJECT_TYPE_GROUND:
+			if !o.Vehicle {
+				continue
+			}
+		}
+		ids = append(ids, id)
+	}
+	for i, id := range ids {
+		l.sendData(&request{req: requestID, def: definitionID, obj: id}, true, uint32(i+1), uint32(len(ids)))
 	}
 	return nil
 }
@@ -215,6 +239,10 @@ func (l *Loopback) SetDataOnSimObject(definitionID uint32, objectID uint32, flag
 }
 
 func (l *Loopback) create(title, tail string, lat, lon, altFt, hdg float64, onGround bool, requestID uint32) error {
+	return l.createObject(title, tail, lat, lon, altFt, hdg, onGround, false, requestID)
+}
+
+func (l *Loopback) createObject(title, tail string, lat, lon, altFt, hdg float64, onGround, vehicle bool, requestID uint32) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.nextID++
@@ -222,7 +250,7 @@ func (l *Loopback) create(title, tail string, lat, lon, altFt, hdg float64, onGr
 	if lat == 0 && lon == 0 {
 		lat, lon, altFt, onGround = l.spawnLat, l.spawnLon, l.groundFt, true
 	}
-	l.objects[id] = &Object{ID: id, Title: title, ATCID: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg, OnGround: onGround}
+	l.objects[id] = &Object{ID: id, Title: title, ATCID: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg, OnGround: onGround, Vehicle: vehicle}
 	m := types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID{DwRequestID: types.DWORD(requestID), DwObjectID: types.DWORD(id)}
 	m.DwID = types.DWORD(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID)
 	l.emit(unsafe.Slice((*byte)(unsafe.Pointer(&m)), unsafe.Sizeof(m)))
@@ -254,11 +282,11 @@ func (l *Loopback) AICreateNonATCAircraftEX1(szContainerTitle string, szLivery s
 }
 
 func (l *Loopback) AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.create(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, RequestID)
+	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, true, RequestID)
 }
 
 func (l *Loopback) AICreateSimulatedObjectEX1(szContainerTitle string, szLivery string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.create(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, RequestID)
+	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, true, RequestID)
 }
 
 func (l *Loopback) AIRemoveObject(objectID uint32, requestID uint32) error {
@@ -441,6 +469,8 @@ func (l *Loopback) value(o *Object, d datum) float64 {
 		return o.GroundKts
 	case "VERTICAL SPEED":
 		return o.VSFpm
+	case "LIGHT NAV", "LIGHT BEACON", "LIGHT STROBE", "LIGHT TAXI", "LIGHT LANDING", "LIGHT LOGO", "LIGHT WING":
+		return b2f(o.Lights[d.name])
 	case "SIM ON GROUND":
 		return b2f(o.OnGround)
 	case "GENERAL ENG COMBUSTION":

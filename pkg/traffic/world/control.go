@@ -230,6 +230,8 @@ type controlled struct {
 	toldWayAt time.Time // when it was last told to give way
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
+	// pushHeldBy: the object its push holds for, as last logged.
+	pushHeldBy uint32
 	// missedJoin is the arrival's last MissedJoin, acted on once.
 	missedJoin string
 	// fixes: the named points of its procedure (STAR and approach, or SID),
@@ -1522,10 +1524,11 @@ func (it *controlled) update(ev TaxiOrArrival) {
 				it.cc.log.printf("%-6s %s: de-icing done", v.Tail, v.Kind)
 			}
 		}
-		if e.PushbackHeld != v.PushbackHeld {
-			v.PushbackHeld = e.PushbackHeld
+		if e.PushbackHeld != v.PushbackHeld || e.PushbackHeld && e.PushbackHeldBy != it.pushHeldBy {
+			v.PushbackHeld, it.pushHeldBy = e.PushbackHeld, e.PushbackHeldBy
 			if e.PushbackHeld {
-				it.cc.log.printf("%-6s %s: pushback holding for traffic behind the stand", v.Tail, v.Kind)
+				// Named outside it.mu (held here): byObject takes each one's lock.
+				go it.cc.logPushHeld(v.Tail, v.Kind, e.PushbackHeldBy)
 			} else {
 				it.cc.log.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
 			}
@@ -2791,6 +2794,18 @@ func (cc *controlCenter) byObject(id uint32) *controlled {
 // type, and how it passes relative to this aircraft's heading.
 // stoppedLogAfter: standing still taxiing this long is logged with why.
 const stoppedLogAfter = 20 * time.Second
+
+// logPushHeld logs a push held for traffic behind the stand, the aircraft
+// named by its call sign.
+func (cc *controlCenter) logPushHeld(tail, kind string, by uint32) {
+	who := "traffic"
+	if o := cc.byObject(by); o != nil && by != 0 {
+		who = o.Tail
+	} else if by != 0 {
+		who = fmt.Sprintf("object %d", by)
+	}
+	cc.log.printf("%-6s %s: pushback holding for %s behind the stand", tail, kind, who)
+}
 
 // logStopped logs why it stands still taxiing, if it still does for the
 // same reason, with the object IDs named by their call signs.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,15 +72,19 @@ func (st *state) dumpAirways(icao string, g *nav.AirwayGraph) {
 	fmt.Fprintf(stdout, "💾 Wrote %s\n", path)
 }
 
-// dumpILS writes the ILS of every airport known so far (Options.
+// dumpILS writes the ILS of icaos (none: every airport known so far:
+// each answer rewrote them all, O(n²) over a long dump) (Options.
 // AirportDumpDir): a lookup answers for one runway end at a time.
-func (st *state) dumpILS() {
+func (st *state) dumpILS(icaos ...string) {
 	if st.airportDump == "" {
 		return
 	}
 	st.core.ils.Lock()
 	all := map[string]map[string]ilsInfo{}
 	for icao, m := range st.core.ils.byICAO {
+		if len(icaos) > 0 && !slices.Contains(icaos, icao) {
+			continue
+		}
 		c := map[string]ilsInfo{}
 		for k, v := range m {
 			c[k] = v

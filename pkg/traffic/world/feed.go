@@ -52,8 +52,7 @@ func (f localFeed) Weather(w nav.Weather) {
 }
 
 func (f localFeed) ILS(r nav.NavResult) {
-	f.st.core.gotILS(r)
-	f.st.dumpILS()
+	f.st.dumpILS(f.st.core.gotILS(r)...)
 }
 
 func (f localFeed) Airways(icao string, g *nav.AirwayGraph) {

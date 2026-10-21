@@ -139,6 +139,24 @@ A cue holds once reached, so a beat is not missed when two things happen close t
 | `ROLE:lights:X` | That light has come on: N nav, B beacon, S strobe, T taxi, L landing, O logo, W wing. |
 | `ROLE:height:FEET` | The departure has climbed that high above the runway. |
 | `ROLE:heard` | A call to or from the aircraft has been heard since the last beat. |
+| `ROLE:rescue` | Rescue vehicles have been sent for it (it has priority: an emergency). |
+| `ROLE:rescue:with` | It is down and one of its rescue vehicles is within 80 m. |
+
+### The airport, emergencies and actions
+
+A scene can do more than film. These fields make one a whole demonstration, as the built-in `4-showcase` does:
+
+- **`jetways`**: true switches the jetways on as the scene starts.
+- **`schedule`**: `{"density": 2, "maxAircraft": 30}` switches the airport's scheduled traffic on around the cast if it is off.
+- **Cast:**
+  - `stand` puts a departure on that stand; if it is taken, the departure goes to any free one.
+  - `fuel` has it refuelled before the push.
+  - `emergency` gives an arrival an emergency of that kind (`engine-failure`, `medical`, `fuel`, `pressurisation`, `fire`, `hydraulic`). It is declared once the aircraft flies, with its MAYDAY or PAN PAN, priority in the sequence, and the airport's rescue vehicles.
+- **Beat `actions`**: run as the beat starts, with `who` a role. They are the scenario actions (`World.Act`):
+  - `{"do": "say", "kind": "expectDelay", "who": "dep", "args": {"minutes": "5"}}`;
+  - `{"do": "runway", "runway": "06/24", "kind": "hold", "on": true}` holds the runway: no clearances on it, but it stays the runway in use. Without `kind`, the runway is closed, and the runway in use changes.
+- **`delaySec`**: starts a beat that long after its cue.
+- **`endActions`**: run however the scene ends, for example to release a held runway.
 
 A beat's `listen` switches the radio to that aircraft's frequency from then on. `move` is one of the drone moves above (`revealRise`, `topOrbit`, `mainGear`, …), `crane` (the opening), or `runwaySide` / `underApproach` (fixed beside the runway, zooming from `fov` to `fovTo`).
 

@@ -86,7 +86,8 @@ type ScenarioStep struct {
 //	push       Who is cleared to push back
 //	goAround   Who is sent around
 //	hold       Who holds (On true) or leaves the hold (On false)
-//	runway     Runway ("12/30" or an end) closed (On true) or open again (On false)
+//	runway     Runway ("12/30" or an end) closed (On true) or open again (On false);
+//	           Kind "hold": held a while instead, the runway in use kept
 //	say        to Who, Kind: cancelTakeoff | holdPosition | goAround |
 //	           expectDelay (Args["minutes"]) | custom (Args["text"],
 //	           Args["station"]: delivery, ground, tower, departure,
@@ -758,6 +759,10 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 			return true, errors.New("runway: none named")
 		}
 		closed := a.On == nil || *a.On
+		if a.Kind == "hold" { // held a while: no clearances, the runway in use kept
+			w.HoldRunway(icao, a.Runway, closed)
+			return true, nil
+		}
 		w.CloseRunway(icao, a.Runway, closed)
 		return true, nil
 	case "say":
