@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.109.5] - 2026-10-21
+
+### Fixed
+
+- Take-off (#1148): a model that refuses the main gears' positions is held gear down (`Injector.HoldGearDown`) by the handle and nose gear only. The first writes of each aircraft are watched for an exception; one switches that aircraft and its model. Live, the FSLTL Phenom (E55P) raised SimConnect exception 20 on every frame of its take-off roll until its gear came up (about 30 a second).
+
 ## [0.109.4] - 2026-10-21
 
 ### Fixed
