@@ -657,3 +657,25 @@ func TestNoSecondLineUpBehindRolling(t *testing.T) {
 		}
 	}
 }
+
+// TestNoSecondLineUpBehindIntersection: one of ours lined up at an
+// intersection further down and another lining up from the threshold's
+// holding point: the next at that holding point holds short, not lined up
+// too (live, LKPR: OKFZG behind OKFXC at B with CSA958 lining up, then
+// cleared for take-off with CSA958 on the runway).
+func TestNoSecondLineUpBehindIntersection(t *testing.T) {
+	now := time.Now()
+	atB := dep("OKFXC", "E55P", RunwayLinedUp)
+	atB.AlongM = 1300
+	lining := dep("CSA958", "A320", RunwayLinedUp)
+	lining.AlongM = 20
+	next := dep("OKFZG", "E55P", RunwayHoldingShort)
+	next.AlongM = 0
+	for _, order := range [][]RunwayUser{{atB, lining, next}, {lining, atB, next}} {
+		r := NewRunwayController(RunwayControllerOptions{})
+		c := r.Decide(now, order)
+		if c.LineUpBehindDeparting["OKFZG"] != "" || slices.Contains(c.LineUp, "OKFZG") {
+			t.Errorf("order %s first: OKFZG lined up with CSA958 lining up: %+v", order[0].Callsign, c)
+		}
+	}
+}
