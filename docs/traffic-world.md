@@ -73,6 +73,7 @@ A transmission (`traffic.Transmission`) has everything a voice needs: the text, 
 
   A clearance given with `Clear` is said on the radio as the automatic controllers' are, readback included (`GET /api/radio`).
 - An arrival's `ControlView.Sequence` is its place in its airport's landing sequence: number, leader, spacing, minimum. It is the same entry `/api/sequence` gives.
+- `PlaceUser(icao, stand)` (`POST /api/user/place`) puts the user aircraft on a stand, where and as an aircraft parks there: a scenario's start. It refuses while the aircraft flies, moves (over 1 kt) or runs an engine, and when one of ours holds the stand or an aircraft is in the way; each refusal is its own error (`ErrUserAirborne`, `ErrUserMoving`, `ErrUserEngines`, `ErrStandOccupied`).
 - `Register(mux)`: serve that API on the host's own server (the airport map does).
 
 ## Flights at a chosen time
@@ -253,7 +254,7 @@ The World uses these definition, request and event IDs on the connection; a host
 
 | IDs | What |
 |---|---|
-| 2000–2021 | user aircraft, traffic scan, model and vehicle lists, sim events, camera state |
+| 2000–2021 | user aircraft (2017: placing it on a stand), traffic scan, model and vehicle lists, sim events, camera state |
 | 7100–7999 | library defaults: airport loader 7100/7200, taxi 7300/7400, arrivals 7500/7600, injector 7700–7999 |
 | 8200–8999 | stand allocators 8200/8300 (+4 per airport), procedures 8400/8500, airway crawl 8600/8610–8625, nav loader 8700/8800, airport list 8900 |
 | 10010–10011 | weather at the user aircraft |

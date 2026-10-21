@@ -34,6 +34,8 @@ type Object struct {
 	OnGround         bool
 	// COM1 is the active COM1 frequency, MHz (the user aircraft).
 	COM1 float64
+	// EnginesRunning: its engines run (GENERAL ENG COMBUSTION).
+	EnginesRunning bool
 }
 
 type datum struct {
@@ -441,6 +443,8 @@ func (l *Loopback) value(o *Object, d datum) float64 {
 		return o.VSFpm
 	case "SIM ON GROUND":
 		return b2f(o.OnGround)
+	case "GENERAL ENG COMBUSTION":
+		return b2f(o.EnginesRunning)
 	case "GEAR TOTAL PCT EXTENDED", "GEAR HANDLE POSITION":
 		return 1
 	case "SIMULATION RATE":

@@ -140,6 +140,9 @@ type aircraftRaw struct {
 	Month     float64 // ZULU MONTH OF YEAR
 	Year      float64 // ZULU YEAR
 	DayPart   float64 // TIME OF DAY: 0 dawn, 1 day, 2 dusk, 3 night
+
+	// GENERAL ENG COMBUSTION:1–4: an engine running.
+	Eng1, Eng2, Eng3, Eng4 float64
 }
 
 // Aircraft is the user aircraft position served at /api/aircraft.
@@ -168,6 +171,11 @@ type Aircraft struct {
 	ZuluYear  int       `json:"zuluYear"`
 	DayPart   int       `json:"dayPart"`
 	Updated   time.Time `json:"updated"`
+
+	// EnginesRunning: any engine of the user aircraft running.
+	EnginesRunning bool `json:"enginesRunning"`
+	// ObjectID is the user aircraft's object ID, as by-type scans report it.
+	ObjectID uint32 `json:"objectId,omitempty"`
 }
 
 // airportResponse is the /api/airport payload: the Layout plus when it was
@@ -621,6 +629,10 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		{"ZULU MONTH OF YEAR", "number"},
 		{"ZULU YEAR", "number"},
 		{"TIME OF DAY", "enum"},
+		{"GENERAL ENG COMBUSTION:1", "bool"},
+		{"GENERAL ENG COMBUSTION:2", "bool"},
+		{"GENERAL ENG COMBUSTION:3", "bool"},
+		{"GENERAL ENG COMBUSTION:4", "bool"},
 	} {
 		if err := client.AddToDataDefinition(defAircraft, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			fmt.Fprintf(stdout, "❌ AddToDataDefinition(%q): %v\n", v.name, err)
@@ -1003,7 +1015,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				}
 				feed.UserAircraft(Aircraft{Latitude: a.Latitude, Longitude: a.Longitude, Heading: a.Heading,
 					GroundKts: a.GroundKts, OnGround: a.OnGround != 0, Camera: int(a.Camera), CamView: int(a.CamView), ZuluSec: a.Zulu, LocalSec: a.Local,
-					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart)}, a.SimRate, com1)
+					ZuluDay: int(a.Day), ZuluMonth: int(a.Month), ZuluYear: int(a.Year), DayPart: int(a.DayPart),
+					EnginesRunning: a.Eng1+a.Eng2+a.Eng3+a.Eng4 > 0, ObjectID: userID}, a.SimRate, com1)
 
 			case types.SIMCONNECT_RECV_ID_EVENT:
 				if e := msg.AsEvent(); uint32(e.UEventID) == evPause {
@@ -1189,6 +1202,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerRunways(mux, st)
 	registerStaffed(mux, w)
 	registerEmergency(mux, st)
+	registerPlaceUser(mux, w)
 	// GET /api/ground-titles: every ground vehicle title the simulator
 	// offers (what vehicles a feature can use: real data only).
 	mux.HandleFunc("GET /api/ground-titles", func(w http.ResponseWriter, r *http.Request) {

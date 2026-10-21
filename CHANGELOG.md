@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.109.0] - 2026-10-21
+
+### Added
+
+- `World.PlaceUser(icao, stand)` and `POST /api/user/place` (`{icao, stand}`): put the user aircraft on a stand, a scenario's start when the player chose to be moved (MyCrew app, #1137). It stands where an aircraft parks there (`traffic.StandPoint`), facing the stand's heading, on the ground at the field elevation, stopped (INITPOSITION on the user object). It is refused, each with its own error (`ErrUserAirborne`, `ErrUserMoving` over 1 kt, `ErrUserEngines`, `ErrStandOccupied`, `ErrUserUnknown`), while the aircraft flies, moves or runs an engine, and when one of ours holds the stand or an aircraft is on it or on an overlapping stand in the way. The stand scan then finds the user there, so none of ours is sent to it. The API answers a refusal with 409.
+- `Aircraft.EnginesRunning` (any `GENERAL ENG COMBUSTION:1–4`) and `Aircraft.ObjectID` on the user aircraft; `worldtest.Object.EnginesRunning`.
+
 ## [0.108.9] - 2026-10-21
 
 ### Fixed
