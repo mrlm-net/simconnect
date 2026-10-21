@@ -28,8 +28,9 @@ import (
 // spawned on one get the jetway, and ground holds a push until it is home.
 
 var jetwaysOn struct {
-	mu sync.Mutex
-	on bool
+	mu    sync.Mutex
+	on    bool
+	since time.Time // when switched on (jetwaysReady)
 }
 
 // SetJetways switches jetways for our traffic on or off. Off, every helper
@@ -38,6 +39,9 @@ func (w *World) SetJetways(on bool) {
 	jetwaysOn.mu.Lock()
 	was := jetwaysOn.on
 	jetwaysOn.on = on
+	if on && !was {
+		jetwaysOn.since = traffic.Now()
+	}
 	jetwaysOn.mu.Unlock()
 	if was == on {
 		return
@@ -707,9 +711,17 @@ const jetwaysWaitMax = 6 * time.Minute
 
 // jetwaysReady reports whether a departure may appear on a jetway gate at
 // icao: the jetways off, no helpers installed, icao's gates filled with
-// placeholders, or jetwaysWaitMax gone since the traffic started.
+// placeholders, or jetwaysWaitMax gone since the jetways were switched on
+// for this connection (live: counted from the traffic's start, the cap
+// had run out before the jetways were on; TVS1779 spawned unwaited).
 func (cc *controlCenter) jetwaysReady(icao string) bool {
-	if !jetwaysEnabled() || traffic.Since(cc.startedAt) > jetwaysWaitMax {
+	jetwaysOn.mu.Lock()
+	on, since := jetwaysOn.on, jetwaysOn.since
+	jetwaysOn.mu.Unlock()
+	if cc.startedAt.After(since) {
+		since = cc.startedAt // the jetways on before this connection
+	}
+	if !on || traffic.Since(since) > jetwaysWaitMax {
 		return true
 	}
 	cc.mu.Lock()

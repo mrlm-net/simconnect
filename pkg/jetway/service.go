@@ -92,6 +92,9 @@ const (
 	EmptyFillTries = 25
 	// RefillEvery: a fill that took no gate is tried again this long after.
 	RefillEvery = 2 * time.Minute
+	// DockSettle: no helper made while another gate docked this recently
+	// (the sim counts it free for a while: its jetway went to the next).
+	DockSettle = 2 * time.Minute
 	// DockTimeout: a helper's jetway not docked in this long has failed.
 	DockTimeout = 90 * time.Second
 	// HelperDelay: the helper is created this long after its gate's
@@ -171,6 +174,10 @@ type Helpers struct {
 	filling    map[string]bool          // icao → placeholders being made
 	emptyTries map[string]int           // icao → fills that found no gate yet
 	refillAt   map[string]time.Time     // icao → when a fill that found no gate is tried again
+	// lastList is the last jetway list read (logList).
+	lastList []types.SIMCONNECT_JETWAY_DATA
+	// accepted: icao → the gates the sim has given a placeholder (refill first).
+	accepted map[string]map[int]bool
 	lastPoll   time.Time
 	placeDefs  bool                // the place definitions made
 	placings   map[uint32]*placing // request → helper being placed
@@ -193,7 +200,7 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 		o.DefineBase = o.RequestBase
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
 }
 
 // measure asks for our aircraft's and its helper's positions (place).
@@ -390,6 +397,21 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 		// One helper on its way at a time: two at once, each took the
 		// other's gate (live, LKPR 11 and 25).
 		if s != stand && g.status == StatusDocking && g.helper == 0 {
+			return ErrFilling
+		}
+		// A gate docked moments ago counts as free to the sim: the next
+		// helper is given it, its jetway leaves our aircraft there (live,
+		// LKPR C30 docked 30 s before C24's helper was put on it).
+		if s != stand && g.status == StatusDocked && h.now.Sub(g.since) < DockSettle {
+			return ErrFilling
+		}
+		// A gate the sim gives placeholders, left with nothing on it (its
+		// jetway taken): the sim gives it the next helper too (live, LKPR
+		// A1 took the helpers of B14, C26 and B16 one after another).
+		// Filled again first.
+		if s != stand && h.accepted[icao][s] && g.placeholder == 0 && g.helper == 0 &&
+			g.status != StatusDocking && g.status != StatusDocked && g.status != StatusUndocking {
+			h.filling[icao] = true
 			return ErrFilling
 		}
 	}
@@ -614,6 +636,9 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		p.object = uint32(m.DwObjectID)
 		h.byObj[p.object] = p
 		helper, icao, stand, obj := p.helper, p.icao, p.stand, p.object
+		if helper {
+			h.logf("jetway %s stand %d: helper is object %d", icao, stand, obj)
+		}
 		model := ""
 		if g := h.gates[icao][stand]; g != nil {
 			model = g.model
@@ -666,7 +691,9 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		l := msg.AsJetwayData()
 		h.mu.Lock()
 		defer h.mu.Unlock()
-		for _, j := range l.Entries() {
+		entries := l.Entries()
+		h.lastList = entries
+		for _, j := range entries {
 			h.jetway(j)
 		}
 		return false // others may read the list too
@@ -698,6 +725,10 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				h.dropHelper(icao, stand, g)
 			}
 			g.placeholder, g.status, g.since = att, StatusReserved, h.now
+			if h.accepted[icao] == nil {
+				h.accepted[icao] = map[int]bool{}
+			}
+			h.accepted[icao][stand] = true // the sim gives this gate to a ParkedATC
 			if h.opt.OnPlaceholder != nil {
 				h.measurePlaceholder(icao, stand, att)
 			}
@@ -711,6 +742,7 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 		case p.helper && p.stand != stand:
 			// The sim put the helper on another gate: not ours.
 			h.logf("jetway %s: helper for stand %d took stand %d: removed", icao, p.stand, stand)
+			h.logList(icao)
 			h.retire(icao, att)
 			for r, q := range h.byReq {
 				if q == p {
@@ -889,4 +921,22 @@ func (h *Helpers) placeholderGate(p *pending) int {
 		}
 	}
 	return -1
+}
+
+// logList logs icao's jetways as the last list gave them (stand, status,
+// attached object) beside what we hold there: when the simulator gives a
+// gate to the wrong helper, which objects it saw where. h.mu held.
+func (h *Helpers) logList(icao string) {
+	var b strings.Builder
+	for _, j := range h.lastList {
+		if strings.ToUpper(strings.TrimRight(string(j.AirportIcao[:]), "\x00 ")) != icao {
+			continue
+		}
+		stand := int(j.ParkingIndex)
+		fmt.Fprintf(&b, " %d:s%d/a%d", stand, j.Status, j.AttachedObjectId)
+		if g := h.gates[icao][stand]; g != nil {
+			fmt.Fprintf(&b, "(ours p%d h%d %s)", g.placeholder, g.helper, g.status)
+		}
+	}
+	h.logf("jetway %s list:%s", icao, b.String())
 }

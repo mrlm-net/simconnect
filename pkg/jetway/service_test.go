@@ -198,9 +198,15 @@ func TestHelpersFlow(t *testing.T) {
 		t.Fatalf("stand 7 %s, removed %v: want failed, the helper retracting", h.Status("EDDM", 7), f.removed)
 	}
 
+	// Stand 7, a gate the sim gives placeholders, empty now: filled again
+	// before any other dock (refill first).
+	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling || !h.Filling("EDDM") {
+		t.Fatalf("dock with stand 7 empty: %v, filling %v; want ErrFilling, a refill", err, h.Filling("EDDM"))
+	}
 	// A helper no jetway takes (put on a ramp): removed after ClaimTimeout.
 	h.mu.Lock()
 	delete(h.filling, "EDDM")
+	h.gate("EDDM", 7).placeholder = 777 // the refill's placeholder on it
 	h.mu.Unlock()
 	h.Dock("EDDM", 9, "B738")
 	now = now.Add(HelperDelay)
@@ -319,5 +325,27 @@ func TestHelpersRefillAfterEmpty(t *testing.T) {
 	h.Update(now.Add(RefillEvery + time.Second))
 	if !h.Filling("EDDM") || len(f.created) != n+1 {
 		t.Fatalf("filling %v, created %d (was %d): want a new fill", h.Filling("EDDM"), len(f.created), n)
+	}
+}
+
+// A gate docked moments ago counts as free to the sim: no other helper is
+// made until it has settled (DockSettle).
+func TestHelpersDockSettle(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	now := time.Now()
+	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	h.now = now
+	g7 := h.gate("EDDM", 7)
+	g7.helper, g7.status, g7.since = 201, StatusDocked, now
+	h.gate("EDDM", 9).placeholder = 102
+	h.mu.Unlock()
+	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling {
+		t.Fatalf("dock right after 7 docked: %v, want ErrFilling", err)
+	}
+	h.Update(now.Add(DockSettle + time.Second))
+	if err := h.Dock("EDDM", 9, "B738"); err != nil {
+		t.Fatalf("dock once 7 settled: %v", err)
 	}
 }
