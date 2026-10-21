@@ -189,6 +189,8 @@ type airportResponse struct {
 }
 
 type state struct {
+	// world is the World this state is (New): what a scene's actions run on.
+	world *World
 	// keepOnStop: Options.KeepOnStop.
 	keepOnStop bool
 	// airportDump: Options.AirportDumpDir (offline.go).
@@ -747,6 +749,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		st.mu.Unlock()
 	}()
 	cam := newCameraMan(cc, client)
+	cam.w = st.world // a scene's actions
 	// The view the simulator's camera is on: stepping starts from it.
 	cam.sim.stateNow = func() (int, bool) {
 		st.mu.Lock()

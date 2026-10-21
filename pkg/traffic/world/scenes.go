@@ -28,7 +28,14 @@ import (
 // controller state, e.g. "dep:pushback", "dep:taxiing"; "dep:airborne" once
 // off the ground), "ROLE:lights:X" (a light comes on: N nav, B beacon, S
 // strobe, T taxi, L landing, O logo, W wing), "ROLE:height:FEET" (above the
-// runway) or "ROLE:heard" (a call to or from it is heard).
+// runway), "ROLE:heard" (a call to or from it is heard), "ROLE:rescue"
+// (rescue vehicles sent for it) or "ROLE:rescue:with" (down, a vehicle
+// within 80 m of it).
+//
+// A scene can set the airport up first (Jetways, Schedule), have a cast
+// member declare an emergency (SceneCast.Emergency), run World actions at
+// a beat (SceneBeat.Actions: the scenario actions, e.g. a runway closed or
+// opened, "say" expectDelay or holdPosition) and once it ends (EndActions).
 //
 //	GET  /api/camera/scenes             — the scenes
 //	POST /api/camera/scene?name=&icao=  — play one
@@ -53,6 +60,18 @@ type Scene struct {
 	Beats  []SceneBeat `json:"beats"`
 	// LimitSec ends the scene however far it got (default 900).
 	LimitSec float64 `json:"limitSec"`
+	// Jetways: switched on as the scene starts. Schedule: the airport's
+	// scheduled traffic around the cast, switched on if it is off.
+	Jetways  bool           `json:"jetways,omitempty"`
+	Schedule *SceneSchedule `json:"schedule,omitempty"`
+	// EndActions run however the scene ends (a closed runway opened again).
+	EndActions []ScenarioAction `json:"endActions,omitempty"`
+}
+
+// SceneSchedule is the scheduled traffic a scene plays among.
+type SceneSchedule struct {
+	Density     float64 `json:"density"` // 1: the timetable as it is
+	MaxAircraft int     `json:"maxAircraft,omitempty"`
 }
 
 // SceneCast is an aircraft of the scene.
@@ -68,12 +87,25 @@ type SceneCast struct {
 	PushAfterSec float64 `json:"pushAfterSec"`
 	Procedure    bool    `json:"procedure"` // a SID (departure)
 	Tug          bool    `json:"tug"`
+	// Stand: a departure's stand ("B9"); "" any free one. Fuel: refuelled
+	// on it before the push.
+	Stand string `json:"stand,omitempty"`
+	Fuel  bool   `json:"fuel,omitempty"`
+	// Emergency: an arrival declares one of this kind as it comes in
+	// (engine-failure, medical, fuel, pressurisation, fire, hydraulic):
+	// MAYDAY or PAN PAN, priority, the airport's rescue vehicles.
+	Emergency string `json:"emergency,omitempty"`
 }
 
 // SceneBeat cuts to its shots when its cue comes.
 type SceneBeat struct {
 	Cue   string      `json:"cue"`
 	Shots []SceneShot `json:"shots"`
+	// Actions run as the beat starts: World actions on the cast (Who a
+	// role), as a scenario's steps run them.
+	Actions []ScenarioAction `json:"actions,omitempty"`
+	// DelaySec: the beat starts this long after its cue came.
+	DelaySec float64 `json:"delaySec,omitempty"`
 	// End: the scene ends once its shots have played.
 	End bool `json:"end"`
 	// Listen switches the radio to this one's frequency from this beat on
@@ -249,6 +281,14 @@ func (r *sceneRun) watch() {
 				}
 			}
 			r.m.mu.Unlock()
+			if sent, with := r.m.cc.rescueStatus(v.Tail); sent {
+				r.m.mu.Lock()
+				s["rescue"] = true
+				if with {
+					s["rescue:with"] = true
+				}
+				r.m.mu.Unlock()
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -281,8 +321,22 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 		if still {
 			m.setMode("off", 0) // not over a mode picked meanwhile (#62)
 		}
+		r.act(g, sc.EndActions, logf)
 		logf("ended after %s", time.Since(r.start).Round(time.Second))
 	}()
+	// The airport set up: jetways, the scheduled traffic around the cast.
+	if m.w != nil && sc.Jetways {
+		m.w.SetJetways(true)
+	}
+	if m.w != nil && sc.Schedule != nil {
+		var now ScheduleSettings
+		if err := m.w.Get("/api/schedule", &now); err == nil && !now.Enabled {
+			icao := g.Layout.ICAO
+			if err := m.w.SetSchedule(ScheduleSettings{Enabled: true, ICAO: icao, Airports: []string{icao}, Density: sc.Schedule.Density, MaxAircraft: sc.Schedule.MaxAircraft}); err != nil {
+				logf("schedule: %v", err)
+			}
+		}
+	}
 	// A scene played again: its cast from last time goes first.
 	for _, c := range sc.Cast {
 		if old := cc.byTail(c.Tail); old != nil {
@@ -296,7 +350,15 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 		go func(c SceneCast) {
 			time.Sleep(time.Until(r.start.Add(time.Duration(c.AtSec * float64(time.Second)))))
 			req := SpawnRequest{Kind: c.Kind, ICAO: g.Layout.ICAO, Stand: -1, Model: cc.modelFor(c.Models), Tail: c.Tail, Tug: c.Tug, Procedure: c.Procedure,
-				InjectApproach: c.Kind == "arrival"}
+				InjectApproach: c.Kind == "arrival", Fuel: c.Fuel}
+			if c.Stand != "" {
+				i, err := g.Layout.ParkingIndex(c.Stand)
+				if err != nil {
+					logf("%s %s: stand %s: %v", c.Role, c.Tail, c.Stand, err)
+					return
+				}
+				req.Stand = i
+			}
 			if c.Kind == "departure" && c.PushAfterSec > 0 {
 				req.pushAt = cc.clock.Now().Add(time.Duration(c.PushAfterSec * float64(time.Second)))
 			}
@@ -311,9 +373,16 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 					m.mu.Lock()
 					r.cast[c.Role] = it
 					m.mu.Unlock()
+					if c.Emergency != "" {
+						go r.emergency(it, c)
+					}
 					return
 				}
 				logf("%s %s: %v", c.Role, c.Tail, err)
+				if req.Stand >= 0 && !errors.Is(err, traffic.ErrSpawnBlocked) {
+					req.Stand = -1 // its stand taken: any free one
+					continue
+				}
 				if !errors.Is(err, traffic.ErrSpawnBlocked) {
 					return
 				}
@@ -326,7 +395,14 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	var subject *controlled // on screen: the first aircraft of the last beat
 	fill := 0
 	for i, b := range sc.Beats {
-		for !r.cued(b.Cue) || !r.ready(b) {
+		var cuedAt time.Time // the cue come, the beat waits its delay
+		for {
+			if cuedAt.IsZero() && r.cued(b.Cue) && r.ready(b) {
+				cuedAt = time.Now()
+			}
+			if !cuedAt.IsZero() && time.Since(cuedAt) >= time.Duration(b.DelaySec*float64(time.Second)) {
+				break
+			}
 			// Waiting longer than the beat's shots: more of the same aircraft,
 			// never a still held past camera.MaxShot.
 			if cur, _ := m.dir.Current(time.Now()); cur == nil && m.dir.Remaining() == 0 && subject != nil {
@@ -345,6 +421,7 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
+		r.act(g, b.Actions, logf)
 		shots := r.shots(g, b.Shots)
 		logf("beat %d (%s): %d shots", i+1, b.Cue, len(shots))
 		m.mu.Lock()
@@ -371,6 +448,46 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 			time.Sleep(total)
 			return
 		}
+	}
+}
+
+// act runs a beat's World actions on the cast (Who a role), as a
+// scenario's steps run them; each failure logged, the scene going on.
+func (r *sceneRun) act(g *airport.Graph, list []ScenarioAction, logf func(string, ...any)) {
+	if len(list) == 0 {
+		return
+	}
+	if r.m.w == nil {
+		logf("actions: no World on this connection")
+		return
+	}
+	r.m.mu.Lock()
+	cast := make(map[string]string, len(r.cast))
+	for role, it := range r.cast {
+		cast[role] = it.Tail
+	}
+	r.m.mu.Unlock()
+	for _, a := range list {
+		if err := r.m.w.Act(g.Layout.ICAO, a, cast); err != nil {
+			logf("action %s %s: %v", a.Do, a.Who, err)
+		}
+	}
+}
+
+// emergency has cast member it declare c's emergency once it is flying:
+// its MAYDAY or PAN PAN on the radio, priority, the rescue vehicles.
+func (r *sceneRun) emergency(it *controlled, c SceneCast) {
+	for it.object() == 0 {
+		r.m.mu.Lock()
+		on := r.m.mode == "scene"
+		r.m.mu.Unlock()
+		if !on {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err := r.m.cc.declareEmergency(it, traffic.EmergencyKind(c.Emergency), ""); err != nil {
+		tlog.printf("scene  %s: %s emergency: %v", r.sc.Name, c.Tail, err)
 	}
 }
 

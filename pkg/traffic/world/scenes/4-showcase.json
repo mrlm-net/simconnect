@@ -1,0 +1,358 @@
+{
+  "name": "SDK showcase",
+  "description": "Eleven minutes at LKPR among the scheduled traffic: DEMO007 in the WANTED Midnight livery boards at a jetway, is refuelled and pushed back while a Lufthansa lands. As it taxis, a Ryanair declares MAYDAY with an engine failure: DEMO007 is told to expect a delay and holds short while the Ryanair lands, the runway closed behind it as the fire trucks follow it in. The runway opens again and DEMO007 departs. The radio follows whoever matters.",
+  "limitSec": 720,
+  "jetways": true,
+  "schedule": {
+    "density": 2,
+    "maxAircraft": 30
+  },
+  "cast": [
+    {
+      "role": "dep",
+      "kind": "departure",
+      "tail": "DEMO007",
+      "models": "fsltl_wanted_a320_midnight, wanted_a320, a320",
+      "stand": "B13",
+      "tug": true,
+      "fuel": true,
+      "procedure": true,
+      "pushAfterSec": 30
+    },
+    {
+      "role": "arr",
+      "kind": "arrival",
+      "tail": "DLH1402",
+      "models": "lufthansa, a320",
+      "atSec": 90
+    },
+    {
+      "role": "emg",
+      "kind": "arrival",
+      "tail": "RYR4TK",
+      "models": "ryanair, b738",
+      "atSec": 300,
+      "emergency": "engine-failure"
+    }
+  ],
+  "listen": "dep",
+  "beats": [
+    {
+      "cue": "start",
+      "shots": [
+        {
+          "move": "crane",
+          "who": "dep",
+          "sec": 9
+        },
+        {
+          "move": "cockpit",
+          "who": "dep",
+          "sec": 5
+        },
+        {
+          "move": "topOrbit",
+          "who": "dep",
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "dep:lights:B",
+      "shots": [
+        {
+          "move": "engine",
+          "who": "dep",
+          "sec": 6
+        },
+        {
+          "move": "revealRise",
+          "who": "dep",
+          "side": -1,
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "dep:pushback",
+      "shots": [
+        {
+          "move": "noseGear",
+          "who": "dep",
+          "sec": 5
+        },
+        {
+          "move": "pullBackReveal",
+          "who": "dep",
+          "side": -1,
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "arr:approaching",
+      "listen": "arr",
+      "shots": [
+        {
+          "move": "leadChase",
+          "who": "arr",
+          "sec": 8
+        },
+        {
+          "move": "underApproach",
+          "who": "arr",
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "arr:rollout",
+      "shots": [
+        {
+          "move": "runwaySide",
+          "who": "arr",
+          "along": 1200,
+          "right": 90,
+          "fov": 38,
+          "fovTo": 24,
+          "sec": 7
+        },
+        {
+          "move": "sideDolly",
+          "who": "arr",
+          "side": -1,
+          "sec": 6
+        }
+      ]
+    },
+    {
+      "cue": "dep:awaiting taxi",
+      "listen": "dep",
+      "shots": [
+        {
+          "move": "engine",
+          "who": "dep",
+          "sec": 6
+        },
+        {
+          "move": "heroPushIn",
+          "who": "dep",
+          "sec": 8
+        },
+        {
+          "move": "topOrbit",
+          "who": "dep",
+          "side": -1,
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "emg:rescue",
+      "listen": "emg",
+      "actions": [
+        {
+          "do": "say",
+          "kind": "expectDelay",
+          "who": "dep",
+          "args": {
+            "minutes": "5"
+          }
+        }
+      ],
+      "shots": [
+        {
+          "move": "cockpit",
+          "who": "emg",
+          "sec": 6
+        },
+        {
+          "move": "engine",
+          "who": "emg",
+          "side": -1,
+          "sec": 6
+        },
+        {
+          "move": "leadChase",
+          "who": "emg",
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "dep:taxiing",
+      "shots": [
+        {
+          "move": "headOnPass",
+          "who": "dep",
+          "sec": 8
+        },
+        {
+          "move": "parallaxTrack",
+          "who": "dep",
+          "side": -1,
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "emg:landing",
+      "shots": [
+        {
+          "move": "underApproach",
+          "who": "emg",
+          "sec": 9
+        }
+      ]
+    },
+    {
+      "cue": "emg:rollout",
+      "shots": [
+        {
+          "move": "runwaySide",
+          "who": "emg",
+          "along": 1400,
+          "right": 110,
+          "fov": 40,
+          "fovTo": 26,
+          "sec": 8
+        },
+        {
+          "move": "sideDolly",
+          "who": "emg",
+          "side": -1,
+          "sec": 7
+        }
+      ],
+      "actions": [
+        {
+          "do": "runway",
+          "runway": "06/24",
+          "on": true,
+          "kind": "hold"
+        }
+      ]
+    },
+    {
+      "cue": "dep:holding short",
+      "listen": "dep",
+      "shots": [
+        {
+          "move": "spiralDescend",
+          "who": "dep",
+          "sec": 9
+        },
+        {
+          "move": "wingtip",
+          "who": "dep",
+          "sec": 5
+        }
+      ]
+    },
+    {
+      "cue": "emg:rescue:with",
+      "shots": [
+        {
+          "move": "topOrbit",
+          "who": "emg",
+          "sec": 10
+        },
+        {
+          "move": "headOnPass",
+          "who": "emg",
+          "sec": 8
+        },
+        {
+          "move": "crane",
+          "who": "emg",
+          "side": -1,
+          "sec": 10
+        }
+      ]
+    },
+    {
+      "cue": "emg:rescue:with",
+      "delaySec": 20,
+      "actions": [
+        {
+          "do": "runway",
+          "runway": "06/24",
+          "on": false,
+          "kind": "hold"
+        }
+      ],
+      "shots": [
+        {
+          "move": "heroPushIn",
+          "who": "dep",
+          "sec": 8
+        },
+        {
+          "move": "lights",
+          "who": "dep",
+          "sec": 5
+        }
+      ]
+    },
+    {
+      "cue": "dep:lining up",
+      "shots": [
+        {
+          "move": "mainGear",
+          "who": "dep",
+          "sec": 5
+        },
+        {
+          "move": "heroPushIn",
+          "who": "dep",
+          "side": -1,
+          "sec": 7
+        }
+      ]
+    },
+    {
+      "cue": "dep:departing",
+      "shots": [
+        {
+          "move": "runwaySide",
+          "who": "dep",
+          "along": 900,
+          "right": 90,
+          "fov": 40,
+          "fovTo": 22,
+          "sec": 7
+        },
+        {
+          "move": "sideDolly",
+          "who": "dep",
+          "sec": 6
+        }
+      ]
+    },
+    {
+      "cue": "dep:airborne",
+      "end": true,
+      "shots": [
+        {
+          "move": "chaseRise",
+          "who": "dep",
+          "side": -1,
+          "sec": 8
+        },
+        {
+          "move": "revealRise",
+          "who": "dep",
+          "sec": 10
+        }
+      ]
+    }
+  ],
+  "endActions": [
+    {
+      "do": "runway",
+      "runway": "06/24",
+      "on": false,
+      "kind": "hold"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 
@@ -68,8 +69,9 @@ func (k *core) requestILS(loader *nav.NavLoader, l *airport.Layout) {
 	}
 }
 
-// gotILS stores a loaded ILS for the runway ends that asked for it.
-func (k *core) gotILS(r nav.NavResult) {
+// gotILS stores a loaded ILS for the runway ends that asked for it, and
+// returns the airports it changed.
+func (k *core) gotILS(r nav.NavResult) (changed []string) {
 	k.ils.Lock()
 	refs := k.ils.pending[r.Key]
 	delete(k.ils.pending, r.Key)
@@ -78,7 +80,7 @@ func (k *core) gotILS(r nav.NavResult) {
 		for _, ref := range refs {
 			fmt.Fprintf(stdout, "⚠️  ILS %s of %s %s: no navaid record\n", r.Key.Ident, ref.icao, ref.runway)
 		}
-		return
+		return nil
 	}
 	k.ils.Lock()
 	defer k.ils.Unlock()
@@ -87,8 +89,12 @@ func (k *core) gotILS(r nav.NavResult) {
 			k.ils.byICAO[ref.icao] = map[string]ilsInfo{}
 		}
 		k.ils.byICAO[ref.icao][ref.runway] = ilsInfo{Runway: ref.runway, Ident: r.Key.Ident, MHz: r.Fix.Freq, Name: r.Fix.Name}
+		if !slices.Contains(changed, ref.icao) {
+			changed = append(changed, ref.icao)
+		}
 		fmt.Fprintf(stdout, "📡 %s ILS %s: %s %.2f %s\n", ref.icao, ref.runway, r.Key.Ident, r.Fix.Freq, r.Fix.Name)
 	}
+	return changed
 }
 
 // ilsOf is icao's ILS by runway end, in runway order.

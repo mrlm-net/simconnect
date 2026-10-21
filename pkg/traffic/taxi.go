@@ -197,6 +197,8 @@ type TaxiEvent struct {
 	// PushbackHeld is set while the pushback waits, or stops, for traffic
 	// behind the stand (#334).
 	PushbackHeld bool
+	// PushbackHeldBy is the object it holds for (0 none, or not known).
+	PushbackHeldBy uint32
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
 	// Request is what the crew asks for while HoldForClearances holds the

@@ -80,11 +80,7 @@ func (l *Loopback) UnsubscribeToFacilitiesEX1(listType types.SIMCONNECT_FACILITY
 func (l *Loopback) RequestAllFacilities(listType types.SIMCONNECT_FACILITY_LIST_TYPE, requestID uint32) error {
 	return nil
 }
-func (l *Loopback) MapClientEventToSimEvent(eventID uint32, eventName string) error { return nil }
-func (l *Loopback) RemoveClientEvent(groupID uint32, eventID uint32) error          { return nil }
-func (l *Loopback) TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error {
-	return nil
-}
+func (l *Loopback) RemoveClientEvent(groupID uint32, eventID uint32) error { return nil }
 func (l *Loopback) TransmitClientEventEx1(objectID uint32, eventID uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG, data [5]uint32) error {
 	return nil
 }

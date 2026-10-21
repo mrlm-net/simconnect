@@ -369,6 +369,33 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 	}
 }
 
+// rescueWithM: a rescue vehicle this close to the aircraft it follows is
+// with it (an emergency arrival rolls out and vacates as any other; they
+// catch it up on the runway or the taxiway).
+const rescueWithM = 80.0
+
+// rescueStatus reports whether vehicles were sent for tail, and whether
+// one is with it (down, a vehicle within rescueWithM): a scene's
+// "ROLE:rescue" and "ROLE:rescue:with".
+func (cc *controlCenter) rescueStatus(tail string) (sent, with bool) {
+	cc.rescue.mu.Lock()
+	defer cc.rescue.mu.Unlock()
+	c := cc.rescue.by[tail]
+	if c == nil {
+		return cc.rescue.sent[tail], false
+	}
+	if c.state != rescueFollowing {
+		return true, false
+	}
+	at := c.target.Position
+	for _, t := range c.trucks {
+		if p, _, ok := t.Track(); ok && calc.HaversineMeters(p.Position.Lat, p.Position.Lon, at.Lat, at.Lon) <= rescueWithM {
+			return true, true
+		}
+	}
+	return true, false
+}
+
 // rescueTrack is where the vehicles out for tail are, for the map.
 func (cc *controlCenter) rescueTrack(tail string) []tugView {
 	cc.rescue.mu.Lock()

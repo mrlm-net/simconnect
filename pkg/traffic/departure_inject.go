@@ -448,7 +448,7 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			}
 		}
 		if pose.Arrived {
-			c.setPushHeld(false) // the push is done: nothing to hold for any more
+			c.setPushHeld(false, 0) // the push is done: nothing to hold for any more
 			if c.picture != nil {
 				// Its way on at once, not a frame later: a neighbour checking
 				// now must not see an empty picture and push into it (#466).
@@ -820,8 +820,8 @@ func (c *TaxiController) pushBlocked(now time.Time) bool {
 	if err != nil {
 		return false
 	}
-	_, blocked := c.picture.corridorBlocked(c.objectID, append(pushCorridor(path, 0, c.profile()), c.towPts...), c.halfSpan(), true, now)
-	c.setPushHeld(blocked)
+	by, blocked := c.picture.corridorBlocked(c.objectID, append(pushCorridor(path, 0, c.profile()), c.towPts...), c.halfSpan(), true, now)
+	c.setPushHeld(blocked, by)
 	return blocked
 }
 
@@ -844,20 +844,24 @@ func (c *TaxiController) holdPushForTraffic(now time.Time) {
 	// Under way the push has priority: taxiing traffic sees where it goes
 	// and gives way; it stops only for an aircraft actually in the way.
 	c.picture.ReportPush(c.objectID, rest, c.halfSpan())
-	_, blocked := c.picture.corridorBlocked(c.objectID, rest, c.halfSpan(), false, now)
+	by, blocked := c.picture.corridorBlocked(c.objectID, rest, c.halfSpan(), false, now)
 	if blocked {
 		v := pose.GroundSpeedKts * ktsToMS
 		c.mover.SetTrafficStop(pose.Distance + v*v/(2*0.25) + 0.2)
 	} else {
 		c.mover.ClearTrafficStop()
 	}
-	c.setPushHeld(blocked)
+	c.setPushHeld(blocked, by)
 }
 
-func (c *TaxiController) setPushHeld(held bool) {
-	if held == c.last.PushbackHeld {
+func (c *TaxiController) setPushHeld(held bool, by uint32) {
+	if !held {
+		by = 0
+	}
+	if held == c.last.PushbackHeld && by == c.last.PushbackHeldBy {
 		return
 	}
+	c.last.PushbackHeldBy = by
 	c.last.PushbackHeld = held
 	if held {
 		c.note("pushback holding for traffic behind", nil)

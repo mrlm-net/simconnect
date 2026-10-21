@@ -57,6 +57,35 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.110.0] - 2026-10-22
+
+### Added
+
+- Scene `4-showcase` ("SDK showcase"), about 11 minutes at LKPR among the scheduled traffic:
+  - DEMO007 in the WANTED Midnight livery boards at jetway gate B13, is refuelled and pushed back while a Lufthansa lands;
+  - as it taxis, a Ryanair declares MAYDAY with an engine failure and DEMO007 is told to expect a delay;
+  - DEMO007 holds short while the Ryanair lands with the fire trucks following it in, the runway held;
+  - the runway is released and DEMO007 departs.
+
+  Played offline end to end (worldtest), all 16 beats.
+- Scenes do more than film:
+  - `Scene.Jetways` and `Scene.Schedule` (`{density, maxAircraft}`, switched on if off) set the airport up;
+  - `SceneCast.Stand` (any free one if taken), `SceneCast.Fuel`, and `SceneCast.Emergency` (a kind: declared once it flies, with its MAYDAY or PAN PAN, priority and rescue vehicles);
+  - `SceneBeat.Actions` run World actions on the cast as a scenario's steps do (`World.Act`), and `SceneBeat.DelaySec` starts a beat after its cue;
+  - `Scene.EndActions` run however the scene ends.
+- Scene cues `ROLE:rescue` (rescue vehicles sent for it) and `ROLE:rescue:with` (one of them within 80 m of it).
+- `World.HoldRunway(icao, runway, held)` and the scenario action `runway` with `kind: "hold"`: a runway held a while gets no clearances, its arrivals on short final go around, but it stays the runway in use (no runway change), as for the rescue vehicles after an emergency landing.
+- `TaxiEvent.PushbackHeldBy`: the aircraft a push waits for. The log names it ("pushback holding for RYR1405 behind the stand").
+- `worldtest`: the Loopback now behaves more like the simulator:
+  - it has an add-on camera (`CameraSets`), so the World's camera and scenes run offline;
+  - it keeps the lights client events set (`Object.Lights`, read back by `LIGHT …`);
+  - it tells simulated objects (`Object.Vehicle`: tugs, trucks) from aircraft in by-type scans.
+
+### Fixed
+
+- Tower: a closed or held runway blocks line-up, take-off and landing clearances. The check gave the runway's name ("06/24") where an end is matched, so it matched nothing (a take-off cleared on a runway held for the rescue vehicles); a closure was only kept by the runway change.
+- Offline airport dumps write the ILS of the airports an answer changed, not every airport known so far on each answer (O(n²) over a long dump; another session's airport dump).
+
 ## [0.109.5] - 2026-10-21
 
 ### Fixed

@@ -26,6 +26,47 @@ type closures struct {
 	by map[string][]string // ICAO → runway names closed
 	// use: ICAO → the runway end made the runway in use (UseRunway).
 	use map[string]string
+	// held: ICAO → runways held for a while (HoldRunway): no clearances on
+	// them, the runway in use kept.
+	held map[string][]string
+}
+
+// HoldRunway holds runway (its name "06/24", or an end "24") at icao for a
+// while, or releases it (held false): no line-up, take-off or landing on it
+// (ours on a short final go around), as when closed, but it stays the
+// runway in use: no runway change for a few minutes' stop, as the rescue
+// vehicles on it after an emergency landing.
+func (w *World) HoldRunway(icao, runway string, held bool) {
+	icao, runway = strings.ToUpper(strings.TrimSpace(icao)), strings.ToUpper(strings.TrimSpace(runway))
+	c := w.st.core.closures()
+	c.mu.Lock()
+	if c.held == nil {
+		c.held = map[string][]string{}
+	}
+	list := slices.DeleteFunc(c.held[icao], func(s string) bool { return s == runway })
+	if held {
+		list = append(list, runway)
+	}
+	if len(list) == 0 {
+		delete(c.held, icao)
+	} else {
+		c.held[icao] = list
+	}
+	c.mu.Unlock()
+	state := "released"
+	if held {
+		state = "held: no clearances on it"
+	}
+	w.st.core.log.printf("%s: runway %s %s", icao, runway, state)
+}
+
+// shut is icao's runways closed or held: no clearances on them.
+func (k *core) shut(icao string) []string {
+	c := k.closures()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	icao = strings.ToUpper(icao)
+	return append(slices.Clone(c.by[icao]), c.held[icao]...)
 }
 
 // UseRunway makes runway end ("24") the runway in use at icao, for
