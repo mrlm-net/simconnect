@@ -909,6 +909,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				fmt.Fprintf(stdout, "❌ Stream error: %v\n", msg.Err)
 				continue
 			}
+			if ai, ok := client.(*traffic.SimlessAI); ok {
+				ai.Handle(msg) // where the aircraft it will fly were created
+			}
 
 			if list, ok := everywhere.Handle(msg); ok {
 				refs := make(map[string]traffic.AirportRef, len(list))

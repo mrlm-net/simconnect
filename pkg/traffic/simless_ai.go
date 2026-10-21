@@ -36,6 +36,10 @@ type SimlessAI struct {
 	// freezeEvents: the client events that freeze an aircraft in place.
 	freezeEvents map[uint32]bool
 	last         time.Time
+	// created: request → the pose an aircraft was created at
+	// (AICreateNonATCAircraft), its object's once the simulator names it
+	// (Handle).
+	created map[uint32]types.SIMCONNECT_DATA_INITPOSITION
 }
 
 type simlessObject struct {
@@ -72,7 +76,55 @@ var SimlessAIDefID uint32 = 0x7FFF_F000
 
 // NewSimlessAI wraps client.
 func NewSimlessAI(client engine.Client) *SimlessAI {
-	return &SimlessAI{Client: client, wpDefs: map[uint32]bool{}, posDefs: map[uint32]bool{}, objects: map[uint32]*simlessObject{}}
+	return &SimlessAI{Client: client, wpDefs: map[uint32]bool{}, posDefs: map[uint32]bool{}, objects: map[uint32]*simlessObject{},
+		created: map[uint32]types.SIMCONNECT_DATA_INITPOSITION{}}
+}
+
+// AICreateNonATCAircraft notes where the aircraft is created, then
+// passes the call on.
+func (s *SimlessAI) AICreateNonATCAircraft(szContainerTitle string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
+	s.noteCreated(initPos, RequestID)
+	return s.Client.AICreateNonATCAircraft(szContainerTitle, szTailNumber, initPos, RequestID)
+}
+
+// AICreateNonATCAircraftEX1 notes where the aircraft is created, then
+// passes the call on.
+func (s *SimlessAI) AICreateNonATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
+	s.noteCreated(initPos, RequestID)
+	return s.Client.AICreateNonATCAircraftEX1(szContainerTitle, szLivery, szTailNumber, initPos, RequestID)
+}
+
+func (s *SimlessAI) noteCreated(p types.SIMCONNECT_DATA_INITPOSITION, req uint32) {
+	s.mu.Lock()
+	s.created[req] = p
+	s.mu.Unlock()
+}
+
+// Handle takes the object ID the simulator gives a created aircraft: its
+// pose is where it was created, so released to the AI it is flown from
+// there (a STAR from its first fix), not from its first waypoint, the
+// next fix (MyCrew app, offline: an arrival on APRA2S appeared 6 NM out at
+// 10,000 ft).
+func (s *SimlessAI) Handle(msg engine.Message) {
+	if msg.SIMCONNECT_RECV == nil || types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+		return
+	}
+	a := msg.AsAssignedObjectID()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.created[uint32(a.DwRequestID)]
+	if !ok {
+		return
+	}
+	delete(s.created, uint32(a.DwRequestID))
+	o := s.object(uint32(a.DwObjectID))
+	if o.posed {
+		return
+	}
+	o.posed, o.pos, o.altFt, o.hdg = true, airport.LatLon{Lat: p.Latitude, Lon: p.Longitude}, p.Altitude, p.Heading
+	if o.kts = float64(p.Airspeed); o.kts <= 0 {
+		o.kts = simlessStartKts
+	}
 }
 
 // AddToDataDefinition notes which definitions are positions and waypoint
