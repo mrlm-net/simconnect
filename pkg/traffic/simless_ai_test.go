@@ -72,3 +72,40 @@ func TestSimlessArrivalFliesItsProcedure(t *testing.T) {
 		t.Errorf("at the join at %.0f ft, the STAR began at %.0f: no descent", alt, start.Altitude)
 	}
 }
+
+// With no simulator an arrival on a STAR starts where it was created, at
+// the STAR's first fix, not at its first waypoint (the next fix: offline,
+// APRA2S appeared 6 NM out at 10,000 ft).
+func TestSimlessArrivalStartsAtItsSpawn(t *testing.T) {
+	g := lkprGraph(t)
+	star, err := lkprProcedures(t).Arrival("24", "APRAQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ai := NewSimlessAI(&eventClient{})
+	ctl := NewArrivalController(NewFleet(ai), ArrivalWithInjector(NewInjector(ai)))
+	c22, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "A320", Tail: "CSA1",
+		InjectApproach: true, Procedure: star, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	msg := assignedMsg(DefaultArrivalRequestBase, 77)
+	ai.Handle(msg) // the run loop hands it every message
+	ctl.Handle(msg)
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	ai.Step(at)
+	ai.Step(at.Add(500 * time.Millisecond))
+	ai.mu.Lock()
+	pos := ai.objects[77].pos
+	ai.mu.Unlock()
+	spawn := ctl.proc.Spawn
+	if d := calc.HaversineNM(pos.Lat, pos.Lon, spawn.Latitude, spawn.Longitude); d > 0.5 {
+		next := ctl.proc.Waypoints[0]
+		t.Fatalf("%.1f NM from the spawn (%.1f NM from the next fix): want flown from where it was created",
+			d, calc.HaversineNM(pos.Lat, pos.Lon, next.Latitude, next.Longitude))
+	}
+}

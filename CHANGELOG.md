@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.109.3] - 2026-10-21
+
+### Fixed
+
+- With no simulator (`SimlessAI`), an arrival on a STAR starts where it was created, at the STAR's first fix (#1143). SimlessAI never saw that pose: released, it started the aircraft at its first waypoint, the STAR's next fix (MyCrew app, offline: APRA2S appeared 6 NM from LKPR at 10,000 ft, at PR521 instead of APRAQ 27 NM out). `SimlessAI` notes each `AICreateNonATCAircraft`/`EX1` pose and takes it when the object ID comes (`SimlessAI.Handle`, which the World's run loop calls with every message). MSFS was never affected.
+
 ## [0.109.2] - 2026-10-21
 
 ### Fixed
