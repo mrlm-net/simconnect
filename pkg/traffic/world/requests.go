@@ -149,7 +149,7 @@ func (it *controlled) onRequest(req string) {
 		// Some crews ask to take the runway from an intersection (#621).
 		if e := it.crewEntry(); e != "" {
 			it.askedEntry = e
-			it.say(traffic.RequestTaxiIntersection(it.Tail, e))
+			it.say(traffic.RequestTaxiIntersectionFor(it.Tail, it.view.Runway, e))
 			break
 		}
 		it.say(traffic.RequestTaxiFrom(it.Tail, it.onStand()))

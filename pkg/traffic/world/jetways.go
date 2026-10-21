@@ -740,24 +740,60 @@ func (cc *controlCenter) jetwaysReady(icao string) bool {
 	return prepared && !svc.Filling(icao)
 }
 
-// gateHelperTypes are stands where the simulator parks no helper of a big
-// type (put on another gate or 300 m away, again and again: live, LKPR
-// B14, a 787's and a 777's): the helper of the type given docks for any
-// aircraft there, ours standing with its door where that helper's is
-// (gateNoseOffset, gateSide).
-var gateHelperTypes = map[string]string{
-	"LKPR B14": "A320",
-}
+// gateHelperTypes are stands whose helper is always of the type given
+// (none now: the size rule in gateHelper chooses).
+var gateHelperTypes = map[string]string{}
+
+// gateFitMarginM: a helper for a bigger gate is wider than a smaller gate
+// by this much, so the simulator cannot fit it there.
+const gateFitMarginM = 2.0
 
 // gateHelper is the helper that docks for model at g's stand: the stand's
-// own type (gateHelperTypes), else model's.
+// own type (gateHelperTypes); at a gate bigger than others of the airport,
+// one too wide for the smaller ones and fitting this one, when model's
+// would fit a smaller one; else model's. The simulator gives a ParkedATC
+// the best-fitting gate it counts free, a docked one among them: an A320
+// helper for C24 (28 m) or B14 (35 m) went to a docked 22 m gate and took
+// its jetway (live, LKPR A1, C30, C23), a 22 m gate's never. Ours stands
+// with its door where the helper's is (gateNoseOffset, gateSide).
 func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string) string {
-	if g != nil && stand >= 0 && stand < len(g.Layout.Parking) {
-		if t, ok := gateHelperTypes[strings.ToUpper(g.Layout.ICAO+" "+g.Layout.Parking[stand].Label())]; ok {
-			return svc.HelperFor(t)
+	own := svc.HelperFor(model)
+	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
+		return own
+	}
+	p := g.Layout.Parking[stand]
+	if t, ok := gateHelperTypes[strings.ToUpper(g.Layout.ICAO+" "+p.Label())]; ok {
+		return svc.HelperFor(t)
+	}
+	smaller := 0.0 // the biggest gate radius below this one's
+	for _, q := range g.Layout.Parking {
+		if q.IsGate() && q.Radius < p.Radius-0.5 && q.Radius > smaller {
+			smaller = q.Radius
 		}
 	}
-	return svc.HelperFor(model)
+	if smaller == 0 {
+		return own
+	}
+	span := func(title string) float64 {
+		t := strings.TrimPrefix(title, jetway.HelperTitlePrefix)
+		if s := typeSpanM(t); s > 0 {
+			return s
+		}
+		return traffic.ProfileFor(t).WingspanM // an A320's when not known
+	}
+	if span(own) > 2*smaller+gateFitMarginM {
+		return own // too wide for the smaller gates already
+	}
+	best, bestSpan := "", math.Inf(1)
+	for _, t := range svc.Types() {
+		if s := typeSpanM(t); s > 2*smaller+gateFitMarginM && s <= 2*p.Radius && s < bestSpan {
+			best, bestSpan = t, s
+		}
+	}
+	if best == "" {
+		return own
+	}
+	return svc.HelperFor(best)
 }
 
 // hasModel reports whether the simulator lists title.
