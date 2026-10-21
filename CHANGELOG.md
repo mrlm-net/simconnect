@@ -57,6 +57,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.108.7] - 2026-10-21
+
+### Fixed
+
+- Jetways leaving docked aircraft: the simulator counts a gate docked moments ago as free and gives it the next helper, whose jetway then leaves our aircraft there; dropping that gate's helper left it free, and every later helper went to it (live, LKPR: C30 docked 30 s before C24's helper was put on it; A1 took the helpers of B14, C26 and B16 one after another). No helper is made while another gate docked within `jetway.DockSettle` (2 min), and a gate the simulator gives placeholders, left with nothing on it, is filled again before any other dock. Live: B16, C19, B11, C26 and A3 docked one after another, none taken. A gate given to the wrong helper logs the jetway list (stand, status, attached object) with ours.
+- Gate departures' wait for the jetways is capped 6 min from when the jetways were switched on, not from the traffic's start (live, the cap had run out before they were on: TVS1779 on C22 spawned unwaited).
+
 ## [0.108.6] - 2026-10-21
 
 ### Fixed
