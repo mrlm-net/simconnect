@@ -395,9 +395,10 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 		if s != stand && g.status == StatusUndocking {
 			return ErrFilling // its gate free until a placeholder is back
 		}
-		// One helper on its way at a time: two at once, each took the
-		// other's gate (live, LKPR 11 and 25).
-		if s != stand && g.status == StatusDocking && g.helper == 0 {
+		// One helper on its way at a time, until docked: two at once, each
+		// took the other's gate (live, LKPR 11 and 25; 11 created as 4 docked
+		// took 4).
+		if s != stand && g.status == StatusDocking {
 			return ErrFilling
 		}
 		// A gate docked moments ago counts as free to the sim: the next
