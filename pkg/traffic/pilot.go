@@ -163,6 +163,16 @@ func RequestTaxiIntersection(cs, entry string) Transmission {
 	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamEntry: entry}, cs+", request taxi, intersection "+entry)
 }
 
+// RequestTaxiIntersectionFor is RequestTaxiIntersection with the runway
+// said ("" none): "CSA1, request taxi, runway 06, intersection B" (the
+// user: the intersection alone does not say which runway).
+func RequestTaxiIntersectionFor(cs, runway, entry string) Transmission {
+	if runway == "" {
+		return RequestTaxiIntersection(cs, entry)
+	}
+	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamEntry: entry, ParamRunway: runway}, cs+", request taxi, runway "+runway+", intersection "+entry)
+}
+
 // RequestTaxiRunway is a crew asking to depart from another runway than
 // the one it was cleared for (#621): "CSA1, request taxi, request runway 30
 // for departure".

@@ -2,6 +2,7 @@ package jetway
 
 import (
 	"errors"
+	"slices"
 	"fmt"
 	"math"
 	"sort"
@@ -517,6 +518,9 @@ func (h *Helpers) retireHelper(icao string, stand int, g *gate) {
 
 // HelperFor is the title of the helper model docks with.
 func (h *Helpers) HelperFor(model string) string { return h.helperTitle(model) }
+
+// Types are the ICAO types it has helpers of.
+func (h *Helpers) Types() []string { return slices.Clone(h.opt.Types) }
 
 // HasJetway reports whether icao's stand has a jetway (from the jetway
 // list, once Prepare has had it).

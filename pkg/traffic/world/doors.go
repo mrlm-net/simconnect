@@ -27,10 +27,12 @@ type doorTable struct {
 	// noseGear: the nose gear, meters ahead of the reference point, by
 	// lower-case title and by type.
 	noseByTitle, noseByType map[string]float64
+	// spanByType: the installed models' wingspan by type, meters.
+	spanByType map[string]float64
 }
 
 var modelDoors = &doorTable{byTitle: map[string]float64{}, byType: map[string]float64{}, jetway: map[string]addons.InteractivePoint{},
-	noseByTitle: map[string]float64{}, noseByType: map[string]float64{}}
+	noseByTitle: map[string]float64{}, noseByType: map[string]float64{}, spanByType: map[string]float64{}}
 
 // SimNoseGearInsetM: the simulator parks an aircraft at a gate with its
 // nose gear this far inside the parking circle (parking point + radius,
@@ -135,6 +137,7 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 	}
 	t, y := ahead(byTitle, strings.ToLower), ahead(byType, strings.ToUpper)
 	nt, ny := map[string]float64{}, map[string]float64{}
+	sp := map[string]float64{}
 	for k, d := range byTitle {
 		if d.HasNoseGear {
 			nt[strings.ToLower(k)] = d.NoseGearFt * 0.3048
@@ -143,6 +146,9 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 	for k, d := range byType {
 		if d.HasNoseGear {
 			ny[strings.ToUpper(k)] = d.NoseGearFt * 0.3048
+		}
+		if d.WingSpanFt > 0 {
+			sp[strings.ToUpper(k)] = d.WingSpanFt * 0.3048
 		}
 	}
 	j := make(map[string]addons.InteractivePoint, len(byTitle))
@@ -154,6 +160,7 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 	modelDoors.mu.Lock()
 	modelDoors.byTitle, modelDoors.byType, modelDoors.jetway = t, y, j
 	modelDoors.noseByTitle, modelDoors.noseByType = nt, ny
+	modelDoors.spanByType = sp
 	modelDoors.mu.Unlock()
 }
 
@@ -171,4 +178,19 @@ func doorAhead(model string) (float64, bool) {
 	}
 	a, ok := modelDoors.byType[strings.ToUpper(t)]
 	return a, ok
+}
+
+// typeSpanM is ICAO type t's wingspan, meters: the installed model's, else
+// the profile's (0 unknown).
+func typeSpanM(t string) float64 {
+	modelDoors.mu.Lock()
+	s, ok := modelDoors.spanByType[strings.ToUpper(t)]
+	modelDoors.mu.Unlock()
+	if ok {
+		return s
+	}
+	if p := traffic.ProfileFor(t); p.Type != "" {
+		return p.WingspanM
+	}
+	return 0
 }

@@ -135,3 +135,13 @@ func TestRequestTaxiFrom(t *testing.T) {
 		t.Errorf("no stand: got %q", got)
 	}
 }
+
+// TestRequestTaxiIntersectionFor: the runway said with the intersection.
+func TestRequestTaxiIntersectionFor(t *testing.T) {
+	if got := RequestTaxiIntersectionFor("OKCVT", "06", "E").Text; got != "OKCVT, request taxi, runway 06, intersection E" {
+		t.Errorf("said %q", got)
+	}
+	if got := RequestTaxiIntersectionFor("OKCVT", "", "E").Text; got != "OKCVT, request taxi, intersection E" {
+		t.Errorf("no runway: said %q", got)
+	}
+}
