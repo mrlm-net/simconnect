@@ -835,6 +835,25 @@ func (h *Helpers) keepAsPlaceholder(icao string, g *gate) bool {
 	return true
 }
 
+// keepOnGate keeps stand's helper, created and put on stand by the sim
+// (its jetway did not dock), as the gate's placeholder (keepAsPlaceholder).
+// False when it has no object yet or was put on another gate. h.mu held.
+func (h *Helpers) keepOnGate(icao string, stand int, g *gate) bool {
+	if g.helper == 0 {
+		for _, p := range h.byReq {
+			if p.helper && p.icao == icao && p.stand == stand && p.object != 0 {
+				g.helper = p.object
+				break
+			}
+		}
+	}
+	if g.helper == 0 {
+		return false
+	}
+	g.createAt = time.Time{}
+	return h.keepAsPlaceholder(icao, g)
+}
+
 // spawnPlaceholder creates one placeholder at icao. h.mu held.
 func (h *Helpers) spawnPlaceholder(icao string) {
 	r := h.req()
@@ -910,9 +929,20 @@ func (h *Helpers) Update(now time.Time) {
 			}
 			if (g.status == StatusDocking || g.status == StatusUndocking) && now.Sub(g.since) > DockTimeout {
 				h.logf("jetway %s stand %d: %s timed out", icao, stand, g.status)
-				h.retireHelper(icao, stand, g)
-				g.status = StatusFailed
-				h.filling[icao] = true // its gate free: a placeholder again
+				switch {
+				case g.status == StatusUndocking && g.placeholder != 0:
+					// Its helper kept (Undock) holds the gate.
+					g.status = StatusReserved
+				case g.status == StatusDocking && h.keepOnGate(icao, stand, g):
+					// Its helper on the gate holds it: no refill, whose
+					// placeholders the sim put on docked gates (live, LKPR 18
+					// timed out, then 2, 15 and 17 lost their jetways).
+					g.status, g.since = StatusFailed, now
+				default:
+					h.retireHelper(icao, stand, g)
+					g.status = StatusFailed
+					h.filling[icao] = true // its gate free: a placeholder again
+				}
 			}
 			if g.status == StatusDocking || g.status == StatusUndocking {
 				busy = true

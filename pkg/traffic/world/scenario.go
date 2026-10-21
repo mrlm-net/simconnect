@@ -64,7 +64,7 @@ type ScenarioCast struct {
 	// PushAfterSec: a departure's push after it appears (0: its schedule).
 	AtSec        float64 `json:"atSec"`
 	PushAfterSec float64 `json:"pushAfterSec,omitempty"`
-	Procedure    bool    `json:"procedure,omitempty"` // a SID (departure)
+	Procedure    bool    `json:"procedure,omitempty"` // a SID (departure); an arrival starts at a STAR's first fix (false: on final, cleared at once)
 	Tug          bool    `json:"tug,omitempty"`
 }
 

@@ -349,3 +349,40 @@ func TestHelpersDockSettle(t *testing.T) {
 		t.Fatalf("dock once 7 settled: %v", err)
 	}
 }
+
+// A dock whose jetway never docks keeps its helper on the gate as the
+// placeholder: no refill, whose placeholders the sim put on docked gates.
+func TestHelpersDockTimeoutKeepsHelper(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	now := time.Now()
+	h.Update(now)
+	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	h.gate("EDDM", 7).helper, h.gate("EDDM", 7).status = 500, StatusDocked
+	h.gate("EDDM", 9).placeholder, h.gate("EDDM", 9).status = 600, StatusReserved
+	h.gate("EDDM", 7).since = now.Add(-time.Hour)
+	h.mu.Unlock()
+	if err := h.Dock("EDDM", 9, "B738"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(HelperDelay)
+	h.Update(now)
+	h.assign(f, 700)
+	h.see(jw(9, 1, 700)) // on its gate, never docks
+	h.Update(now)
+	n := len(f.created)
+	now = now.Add(DockTimeout + time.Second)
+	h.Update(now)
+	if h.Status("EDDM", 9) != StatusFailed || slices.Contains(f.removed, 700) || !slices.Contains(f.plans, 700) {
+		t.Fatalf("stand 9 %s, removed %v, plans %v: want failed, the helper kept and retracting", h.Status("EDDM", 9), f.removed, f.plans)
+	}
+	if h.Filling("EDDM") || len(f.created) != n {
+		t.Fatal("refilled after the timeout")
+	}
+	now = now.Add(RetractWait + time.Second)
+	h.Update(now)
+	if !slices.Contains(f.released, 700) {
+		t.Fatalf("released %v, want the kept helper", f.released)
+	}
+}
