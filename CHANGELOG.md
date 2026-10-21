@@ -57,6 +57,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Conflict watch: our departures handed to MSFS AI are steered as well (speed, level or heading on their climb), said by the departure radar. Before, RYR1527 flew through OKCVY ahead of it on the same SID, at the same level (#639). `TaxiController.ClimbPlan` and `Reroute` give and change a handed-over departure's climb.
 - Arrival exit choice: runways crossed on the taxi-in count (1000 m each), and crossing back over the runway just vacated is avoided whenever another exit allows.
 
+## [0.109.1] - 2026-10-21
+
+### Fixed
+
+- Jetways after an undock (#1139): the docked helper stays on its gate as the gate's placeholder (the retract plan sends its jetway home, its claim on the gate kept; released `RetractWait` later) instead of being removed and a new placeholder made. The new placeholder could be put on a docked gate, which the simulator counts free, taking its jetway from our aircraft there (live, LKPR stands 6, 8 and 18).
+
 ## [0.109.0] - 2026-10-21
 
 ### Added
