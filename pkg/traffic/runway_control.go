@@ -496,8 +496,13 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			passed := u.AlongM > 0 && along[rollingDep] > u.AlongM+IntersectionPassed(u.Callsign)
 			// Behind the one about to go: its way in behind that one's (the
 			// one at E cleared for take-off, this one at F lines up and waits
-			// as it goes: the user). Ours only, a departure, not yet gone.
+			// as it goes: the user). Ours only, a departure, not yet gone,
+			// and the only one of ours lined up or lining up: never a second
+			// behind it (live, LKPR: OKFZG told to line up behind OKFXC at B
+			// while CSA958 was lining up from the same holding point; then
+			// cleared for take-off with CSA958 on the runway).
 			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
+				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied &&
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied

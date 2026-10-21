@@ -110,6 +110,46 @@ type jetwayState struct {
 	// placed: where the simulator parked each gate's placeholders and
 	// helpers, the latest last.
 	placed map[string][]parkedAt
+	// fails: a gate's docks failed in a row, whatever the aircraft (reset
+	// by a dock); failSeen the ask each was counted for, failAt the last.
+	fails    map[string]int
+	failSeen map[string]time.Time
+	failAt   map[string]time.Time
+}
+
+// A gate whose dock failed JetwayGateFails times in a row, for any
+// aircraft, rests JetwayGateRest: its helper went to another gate each
+// time, taking a docked gate's jetway (live, LKPR B15's helpers given A1,
+// B9, C19, C23 … again and again; the sim counts docked gates free).
+const (
+	JetwayGateFails = 3
+	JetwayGateRest  = time.Hour
+)
+
+// gateResting reports whether gate k rests after failed docks, counting a
+// failure of the dock asked at askedAt once. cc.jw.mu held.
+func (s *jetwayState) gateResting(k string, status jetway.Status, askedAt, now time.Time) bool {
+	if s.fails == nil {
+		s.fails, s.failSeen, s.failAt = map[string]int{}, map[string]time.Time{}, map[string]time.Time{}
+	}
+	switch status {
+	case jetway.StatusDocked:
+		delete(s.fails, k)
+	case jetway.StatusFailed:
+		if !askedAt.IsZero() && !s.failSeen[k].Equal(askedAt) {
+			s.failSeen[k] = askedAt
+			s.fails[k]++
+			s.failAt[k] = now
+		}
+	}
+	if s.fails[k] < JetwayGateFails {
+		return false
+	}
+	if now.Sub(s.failAt[k]) >= JetwayGateRest {
+		delete(s.fails, k) // rested: tried again
+		return false
+	}
+	return true
 }
 
 func gateKey(icao string, stand int) string { return fmt.Sprintf("%s %d", icao, stand) }
@@ -291,8 +331,18 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		// there: some gates the simulator gives no helper of its type
 		// (live, LKPR B14: a 787's helper put 308 m away, again and again).
 		key := k + " " + model
-		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && svc.Status(icao, stand) == jetway.StatusFailed && cc.jw.tries[key] < JetwayDockTries {
+		status := svc.Status(icao, stand)
+		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && status == jetway.StatusFailed && cc.jw.tries[key] < JetwayDockTries {
 			asked = false
+		}
+		if cc.jw.gateResting(k, status, cc.jw.askedAt[k], now) && !asked {
+			if cc.jw.tries[key] == 0 {
+				cc.core.log.printf("jetway %s %s: resting after %d failed docks, no jetway for %s", icao, g.Layout.Parking[stand].Label(), JetwayGateFails, tail)
+				cc.jw.tries[key] = JetwayDockTries // said once
+			}
+			cc.jw.docked[k] = true
+			cc.jw.mu.Unlock()
+			continue
 		}
 		if !asked {
 			if cc.jw.askedAt == nil {
