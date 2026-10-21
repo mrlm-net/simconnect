@@ -287,3 +287,37 @@ func TestHelpersDockedGateTaken(t *testing.T) {
 		t.Error("the placeholder should hold stand 7 for the next dock")
 	}
 }
+
+// A fill whose placeholders no jetway takes, try after try, ends with no
+// gate, and is tried again RefillEvery later instead of never.
+func TestHelpersRefillAfterEmpty(t *testing.T) {
+	f := &fakeSim{}
+	h := NewHelpers(f, HelperOptions{Types: []string{"A320"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
+	now := time.Now()
+	if err := h.Prepare("EDDM"); err != nil {
+		t.Fatal(err)
+	}
+	h.see(jw(7, 0, 0))
+	obj := uint32(500)
+	for i := 0; h.Filling("EDDM") && i < 2*EmptyFillTries+10; i++ { // each placeholder unclaimed
+		n := len(f.created)
+		h.Update(now)
+		if len(f.created) > n {
+			obj++
+			h.assign(f, obj)
+		}
+		now = now.Add(ClaimTimeout + time.Second)
+	}
+	if h.Filling("EDDM") {
+		t.Fatal("still filling after every try")
+	}
+	n := len(f.created)
+	h.Update(now.Add(RefillEvery / 2))
+	if len(f.created) != n {
+		t.Fatal("tried again before RefillEvery")
+	}
+	h.Update(now.Add(RefillEvery + time.Second))
+	if !h.Filling("EDDM") || len(f.created) != n+1 {
+		t.Fatalf("filling %v, created %d (was %d): want a new fill", h.Filling("EDDM"), len(f.created), n)
+	}
+}

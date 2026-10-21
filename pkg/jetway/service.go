@@ -90,6 +90,8 @@ const (
 	// airport (live, a map started with the simulator: five tries in a
 	// minute all unclaimed, no jetway all evening).
 	EmptyFillTries = 25
+	// RefillEvery: a fill that took no gate is tried again this long after.
+	RefillEvery = 2 * time.Minute
 	// DockTimeout: a helper's jetway not docked in this long has failed.
 	DockTimeout = 90 * time.Second
 	// HelperDelay: the helper is created this long after its gate's
@@ -168,6 +170,7 @@ type Helpers struct {
 	jetways    map[string]map[int]bool  // icao → stands with a jetway
 	filling    map[string]bool          // icao → placeholders being made
 	emptyTries map[string]int           // icao → fills that found no gate yet
+	refillAt   map[string]time.Time     // icao → when a fill that found no gate is tried again
 	lastPoll   time.Time
 	placeDefs  bool                // the place definitions made
 	placings   map[uint32]*placing // request → helper being placed
@@ -190,7 +193,7 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 		o.DefineBase = o.RequestBase
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
 }
 
 // measure asks for our aircraft's and its helper's positions (place).
@@ -332,6 +335,7 @@ func (h *Helpers) Release(icao string) error {
 	defer h.mu.Unlock()
 	delete(h.filling, icao)
 	delete(h.emptyTries, icao) // a new fill tries again
+	delete(h.refillAt, icao)
 	var errs []error
 	for _, g := range h.gates[icao] {
 		for _, obj := range []uint32{g.placeholder, g.helper} {
@@ -800,6 +804,12 @@ func (h *Helpers) Update(now time.Time) {
 			}
 			delete(h.filling, p.icao)
 			h.logf("jetway %s: gates filled (%d)", p.icao, len(h.dockable(p.icao)))
+			// None at all: tried again a while later, not left without jetways
+			// until a restart (live, LKPR one evening: no gate taken for hours,
+			// the next morning all 19 at once).
+			if len(h.dockable(p.icao)) == 0 {
+				h.refillAt[p.icao], h.emptyTries[p.icao] = now.Add(RefillEvery), 0
+			}
 		default:
 			busy = true
 		}
@@ -824,6 +834,12 @@ func (h *Helpers) Update(now time.Time) {
 			if g.status == StatusDocking || g.status == StatusUndocking {
 				busy = true
 			}
+		}
+	}
+	for icao, at := range h.refillAt {
+		if !now.Before(at) {
+			delete(h.refillAt, icao)
+			h.filling[icao] = true
 		}
 	}
 	// Filling: one placeholder at a time (its gate known before the next).
