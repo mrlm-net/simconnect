@@ -162,10 +162,12 @@ func TestHelpersFlow(t *testing.T) {
 	if h.Status("EDDM", 9) != StatusDocked {
 		t.Fatalf("stand 9 %s, want docked", h.Status("EDDM", 9))
 	}
-	// Undock: the helper goes; home, a placeholder again.
+	// Undock: the helper stays as the gate's placeholder, its jetway sent
+	// home by the retract plan; no new placeholder, which the sim could put
+	// on a docked gate.
 	h.Undock("EDDM", 9)
-	if h.Status("EDDM", 9) != StatusUndocking || f.removed[len(f.removed)-1] != 201 {
-		t.Fatalf("stand 9 %s, removed %v", h.Status("EDDM", 9), f.removed)
+	if h.Status("EDDM", 9) != StatusUndocking || slices.Contains(f.removed, 201) || f.plans[len(f.plans)-1] != 201 {
+		t.Fatalf("stand 9 %s, removed %v, plans %v", h.Status("EDDM", 9), f.removed, f.plans)
 	}
 	n := len(f.created)
 	// The list says home early: still undocking until RetractWait.
@@ -178,18 +180,16 @@ func TestHelpersFlow(t *testing.T) {
 	now = now.Add(RetractWait)
 	h.Update(now)
 	h.see(jw(9, 0, 0))
-	if len(f.created) != n+1 {
-		t.Fatal("no placeholder back once the jetway was home")
+	if len(f.created) != n || h.Status("EDDM", 9) != StatusReserved || !slices.Contains(f.released, 201) {
+		t.Fatalf("home: created %d (want %d), stand 9 %s, released %v", len(f.created), n, h.Status("EDDM", 9), f.released)
 	}
-	h.assign(f, 202)
-	h.see(jw(9, 1, 202))
-	now = now.Add(RetractWait + time.Second)
-	h.Update(now)
 
 	// A helper the sim puts on another gate: the dock failed, the helper
 	// sent off with the retract plan (its jetway home first) and removed
 	// RetractWait later.
-	h.Dock("EDDM", 7, "A320")
+	if err := h.Dock("EDDM", 7, "A320"); err != nil {
+		t.Fatalf("dock 7: %v", err)
+	}
 	now = now.Add(HelperDelay)
 	h.Update(now)
 	h.assign(f, 301)

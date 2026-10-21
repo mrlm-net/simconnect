@@ -541,14 +541,24 @@ func (h *Helpers) helperTitle(model string) string {
 	return HelperTitle(h.opt.FallbackType, false)
 }
 
-// Undock removes stand's helper: the jetway goes home, and a placeholder
-// holds the gate again once it is there.
+// Undock sends stand's jetway home. A docked helper stays as the gate's
+// placeholder: given the retract plan (its jetway goes home, its claim on
+// the gate kept) and released RetractWait later, as a placeholder is. A
+// helper removed instead left the gate to a new placeholder, which the sim
+// could put on a docked gate it counts free (live, LKPR 6, 8 and 18 taken
+// after undocks). A helper not docked yet is removed, and a placeholder
+// holds the gate again once the jetway is home.
 func (h *Helpers) Undock(icao string, stand int) error {
 	icao = strings.ToUpper(icao)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	g := h.gate(icao, stand)
 	if g.status != StatusDocking && g.status != StatusDocked {
+		return nil
+	}
+	if g.status == StatusDocked && g.helper != 0 && h.keepAsPlaceholder(icao, g) {
+		g.status, g.since = StatusUndocking, h.now
+		h.logf("jetway %s stand %d: undocking, its helper kept as the placeholder", icao, stand)
 		return nil
 	}
 	h.dropHelper(icao, stand, g)
@@ -780,13 +790,49 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			}
 		}
 	}
-	if g := h.gates[icao][stand]; g != nil && g.status == StatusUndocking && j.Status == 0 && att == 0 && h.now.Sub(g.since) >= RetractWait {
+	if g := h.gates[icao][stand]; g != nil && g.status == StatusUndocking && j.Status == 0 && (att == 0 || att == g.placeholder) && h.now.Sub(g.since) >= RetractWait {
 		// Home (the list says so before it is: live, 16 s after the helper
 		// went, still moving; it takes about 24 s): a placeholder holds the
-		// gate again.
-		g.status = StatusNone
-		h.spawnPlaceholder(icao)
+		// gate again: the helper kept (Undock), else a new one.
+		if g.placeholder != 0 {
+			g.status = StatusReserved
+		} else {
+			g.status = StatusNone
+			h.spawnPlaceholder(icao)
+		}
 	}
+}
+
+// keepAsPlaceholder turns g's docked helper into its placeholder: the
+// retract plan now, released RetractWait later (Update). False without a
+// retract plan. h.mu held.
+func (h *Helpers) keepAsPlaceholder(icao string, g *gate) bool {
+	if h.opt.RetractPlan == nil {
+		return false
+	}
+	path, err := h.opt.RetractPlan(icao)
+	if err != nil {
+		return false
+	}
+	obj := g.helper
+	if err := h.client.AISetAircraftFlightPlan(obj, path, h.req()); err != nil {
+		return false
+	}
+	p := h.byObj[obj]
+	if p == nil {
+		p = &pending{icao: icao, createdAt: h.now, object: obj}
+		h.byObj[obj] = p
+	}
+	for r, q := range h.byReq {
+		if q == p {
+			delete(h.byReq, r) // its creation's entry: one entry, the placeholder's
+		}
+	}
+	p.helper, p.stand = false, -1
+	p.retractAt, p.retracting = h.now.Add(RetractWait), true
+	h.byReq[h.req()] = p
+	g.placeholder, g.helper, g.createAt = obj, 0, time.Time{}
+	return true
 }
 
 // spawnPlaceholder creates one placeholder at icao. h.mu held.
