@@ -2,9 +2,9 @@ package jetway
 
 import (
 	"errors"
-	"slices"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -139,6 +139,22 @@ type HelperOptions struct {
 	OnPlaceholder func(icao string, stand int, title string, lat, lon, hdg float64)
 	// Log, when set, is told what the backend does.
 	Log func(format string, args ...any)
+	// OnLearn, when set, hears what a gate taught: helper (a title) docked
+	// there (docked true), or the sim put it on another gate instead, a
+	// type that gate does not take. Kept by the host and given back with
+	// Learn at the next start.
+	OnLearn func(icao string, stand int, helper string, docked bool)
+}
+
+// gateLearning is what a gate has shown of the helpers it takes: the sim
+// never puts some types on some gates, and a helper of such a type goes to
+// another gate, taking its jetway from our aircraft there (live, LKPR
+// 2026-10-20 to 22: stand 11 refused BCS3 five times of five, A20N twice;
+// 19 BCS3 and A20N three times each; 20 B738 four times, but took A332
+// twelve times).
+type gateLearning struct {
+	refused map[string]bool
+	docked  string // the last helper that docked there
 }
 
 type pending struct {
@@ -179,9 +195,11 @@ type Helpers struct {
 	lastList []types.SIMCONNECT_JETWAY_DATA
 	// accepted: icao → the gates the sim has given a placeholder (refill first).
 	accepted map[string]map[int]bool
-	lastPoll   time.Time
-	placeDefs  bool                // the place definitions made
-	placings   map[uint32]*placing // request → helper being placed
+	// learned: "ICAO stand" → the helpers that gate takes and refuses.
+	learned   map[string]*gateLearning
+	lastPoll  time.Time
+	placeDefs bool                // the place definitions made
+	placings  map[uint32]*placing // request → helper being placed
 	// retiring: helpers sent off with the retract plan, removed then: one
 	// removed while its jetway still moved to it left that jetway stuck
 	// half way for good (live, LKPR 13, 15, 17 to 21: "retract home"
@@ -201,7 +219,49 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 		o.DefineBase = o.RequestBase
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{}}
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{},
+		learned: map[string]*gateLearning{}}
+}
+
+// Learn gives back what a gate taught (OnLearn): helper docked there, or
+// was put on another gate instead.
+func (h *Helpers) Learn(icao string, stand int, helper string, docked bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.learn(strings.ToUpper(icao), stand, helper, docked, false)
+}
+
+// learn notes what icao's stand taught; tell: the host hears it. h.mu held.
+func (h *Helpers) learn(icao string, stand int, helper string, docked, tell bool) {
+	k := fmt.Sprint(icao, " ", stand)
+	l := h.learned[k]
+	if l == nil {
+		l = &gateLearning{refused: map[string]bool{}}
+		h.learned[k] = l
+	}
+	if docked {
+		l.docked = helper
+		delete(l.refused, helper)
+	} else {
+		l.refused[helper] = true
+	}
+	if tell && h.opt.OnLearn != nil {
+		h.opt.OnLearn(icao, stand, helper, docked)
+	}
+}
+
+// gateTakes is the helper icao's stand takes for title: title itself
+// unless the gate has refused it, then the last helper docked there, else
+// the placeholders' type (one sits there). h.mu held.
+func (h *Helpers) gateTakes(icao string, stand int, title string) string {
+	l := h.learned[fmt.Sprint(icao, " ", stand)]
+	if l == nil || !l.refused[title] {
+		return title
+	}
+	if l.docked != "" && !l.refused[l.docked] {
+		return l.docked
+	}
+	return HelperTitle(h.opt.FallbackType, false)
 }
 
 // measure asks for our aircraft's and its helper's positions (place).
@@ -442,10 +502,14 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 	}
 	// The helper once the gate is free (Update).
 	g.createAt = h.now.Add(HelperDelay)
-	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
 	if title == "" {
 		title = h.helperTitle(model)
 	}
+	if takes := h.gateTakes(icao, stand, title); takes != title {
+		h.logf("jetway %s stand %d: %s never taken here, its helper %s", icao, stand, title, takes)
+		title = takes
+	}
+	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
 	h.logf("jetway %s stand %d: docking (%s)", icao, stand, title)
 	return nil
 }
@@ -766,6 +830,11 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			}
 			if w := h.gate(icao, p.stand); w.status == StatusDocking {
 				w.status, w.since = StatusFailed, h.now
+				// A type never docked there: the gate does not take it (a
+				// type docked there before went elsewhere by chance, kept).
+				if l := h.learned[fmt.Sprint(icao, " ", p.stand)]; w.title != "" && (l == nil || l.docked != w.title) {
+					h.learn(icao, p.stand, w.title, false, true)
+				}
 			}
 			// A docked gate taken (the sim does not always count a docked
 			// helper's gate as taken; live, LKPR B9 1.5 min after it docked):
@@ -785,6 +854,9 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				if g.status != StatusDocked {
 					h.logf("jetway %s stand %d: docked", icao, stand)
 					g.since = h.now
+					if l := h.learned[fmt.Sprint(icao, " ", stand)]; g.title != "" && (l == nil || l.docked != g.title) {
+						h.learn(icao, stand, g.title, true, true)
+					}
 				}
 				g.status = StatusDocked
 			}

@@ -46,6 +46,7 @@ MSFS 2024 docks a jetway only to an aircraft in its ATC parking table. So:
 ## When a dock goes wrong
 
 - **A helper on another gate.** The simulator now and then parks a helper on another gate or a ramp. That helper is sent the retract plan and removed, and the dock is asked again a minute later, up to `JetwayDockTries` (2) times for the same aircraft model.
+- **A helper type the gate refuses.** Some gates never take some helper types: the simulator puts that helper on another gate, taking that gate's jetway (LKPR: stand 11 never took BCS3 in five tries, 20 never took B738 in four but took A332 twelve times). After the first such miss, the gate is docked with a type it does take: the last helper docked there, or else the placeholders' type, since one sits there. What each gate taught is saved in `jetway-gates.json` in the World's data folder and given back at the next start (`HelperOptions.OnLearn`, `Helpers.Learn`).
 - **A taken gate.** A placeholder or helper sometimes lands on a gate already docked: the simulator does not always count a docked helper's gate as taken, and its jetway follows the newcomer. That gate is cleared and docked again a minute later.
 - **A gate that keeps failing.** A gate whose dock failed `JetwayGateFails` (3) times in a row, for any aircraft, rests for `JetwayGateRest` (1 hour): its helper went to another gate each time, taking a docked gate's jetway.
 - **Boarding without it.** A departure waits at most `JetwayWaitMax` (3 min) for its jetway to dock, then boards without it.

@@ -195,7 +195,10 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 	}
 	cc.jw.svc = jetway.NewHelpers(cc.client, jetway.HelperOptions{Types: types, RetractPlan: cc.retractPlan,
 		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf, AircraftAt: cc.aircraftAt, Offset: jetwayDoorOffset,
-		OnPlaceholder: cc.placeholderParked})
+		OnPlaceholder: cc.placeholderParked, OnLearn: func(icao string, stand int, helper string, docked bool) {
+			go gateLessons.add(gateLesson{ICAO: icao, Stand: stand, Helper: helper, Docked: docked})
+		}})
+	gateLessons.teach(cc.jw.svc)
 	cc.jw.prepared, cc.jw.docked = map[string]bool{}, map[string]bool{}
 	return cc.jw.svc
 }
@@ -855,4 +858,66 @@ func (cc *controlCenter) hasModel(title string) bool {
 	defer cc.mu.Unlock()
 	_, ok := cc.models[title]
 	return ok
+}
+
+// gateLesson is what a jetway gate taught (jetway.HelperOptions.OnLearn):
+// a helper docked there, or the sim put it on another gate instead.
+type gateLesson struct {
+	ICAO   string `json:"icao"`
+	Stand  int    `json:"stand"`
+	Helper string `json:"helper"`
+	Docked bool   `json:"docked"`
+}
+
+// gateLessonStore keeps the gates' lessons in a local file
+// (jetway-gates.json beside the other local files), given back to the
+// helpers at the next start: a gate that refuses a helper type is not
+// tried with it again after a restart.
+type gateLessonStore struct {
+	mu    sync.Mutex
+	file  string
+	items []gateLesson
+}
+
+var gateLessons = &gateLessonStore{}
+
+func (s *gateLessonStore) load(file string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.file, s.items = file, nil
+	if b, err := os.ReadFile(file); err == nil {
+		if err := json.Unmarshal(b, &s.items); err != nil {
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
+		}
+	}
+}
+
+// add notes l (replacing the same gate and helper's) and saves.
+func (s *gateLessonStore) add(l gateLesson) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = slices.DeleteFunc(s.items, func(i gateLesson) bool {
+		return i.ICAO == l.ICAO && i.Stand == l.Stand && i.Helper == l.Helper
+	})
+	s.items = append(s.items, l)
+	if s.file == "" {
+		return
+	}
+	b, err := json.MarshalIndent(s.items, "", "  ")
+	if err == nil {
+		err = os.WriteFile(s.file, b, 0o644)
+	}
+	if err != nil {
+		fmt.Fprintf(stdout, "⚠️  %s: %v\n", s.file, err)
+	}
+}
+
+// teach gives svc the gates' lessons.
+func (s *gateLessonStore) teach(svc *jetway.Helpers) {
+	s.mu.Lock()
+	items := slices.Clone(s.items)
+	s.mu.Unlock()
+	for _, l := range items {
+		svc.Learn(l.ICAO, l.Stand, l.Helper, l.Docked)
+	}
 }

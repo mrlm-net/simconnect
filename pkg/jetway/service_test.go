@@ -1,6 +1,7 @@
 package jetway
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"testing"
@@ -384,5 +385,92 @@ func TestHelpersDockTimeoutKeepsHelper(t *testing.T) {
 	h.Update(now)
 	if !slices.Contains(f.released, 700) {
 		t.Fatalf("released %v, want the kept helper", f.released)
+	}
+}
+
+// A gate that never takes a helper type (the sim puts it on another gate,
+// taking that one's jetway) is docked next time with one it does take: the
+// last docked there, else the placeholders' type; the host hears both and
+// gives them back at the next start (live, LKPR 2026-10-20 to 22: stand 11
+// refused BCS3 five times of five).
+func TestHelpersGateRefusesType(t *testing.T) {
+	f := &fakeSim{}
+	var heard []string
+	h := NewHelpers(f, HelperOptions{Types: []string{"A320", "BCS3", "B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil },
+		OnLearn: func(icao string, stand int, helper string, docked bool) {
+			heard = append(heard, fmt.Sprint(icao, stand, helper, docked))
+		}})
+	now := time.Now()
+	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	h.gate("EDDM", 7).placeholder, h.gate("EDDM", 9).placeholder = 101, 102
+	h.mu.Unlock()
+	dock := func(model string, obj uint32, at int) string {
+		t.Helper()
+		h.mu.Lock()
+		delete(h.filling, "EDDM")
+		g := h.gate("EDDM", 7)
+		g.status, g.helper = StatusReserved, 0
+		if g.placeholder == 0 {
+			g.placeholder = 101
+		}
+		h.mu.Unlock()
+		h.Update(now) // the clock
+		if err := h.Dock("EDDM", 7, model); err != nil {
+			t.Fatalf("dock %s: %v", model, err)
+		}
+		n := len(f.created)
+		now = now.Add(HelperDelay)
+		h.Update(now)
+		h.mu.Lock()
+		var p *pending
+		var title string
+		for _, c := range f.created[n:] { // the helper (a refill may come too)
+			if q := h.byReq[c.req]; q != nil && q.helper {
+				p, title = q, c.title
+			}
+		}
+		if p == nil {
+			h.mu.Unlock()
+			t.Fatalf("dock %s: no helper created (%v)", model, f.created[n:])
+		}
+		p.object = obj
+		h.byObj[obj] = p
+		h.mu.Unlock()
+		h.see(jw(at, 1, obj))
+		if at == 7 {
+			h.see(jw(7, 7, obj))
+		}
+		return title
+	}
+	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 301, 9); got != HelperTitle("BCS3", false) {
+		t.Fatalf("first helper %q", got)
+	}
+	// Refused: the placeholders' type instead.
+	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 302, 7); got != HelperTitle("A320", false) {
+		t.Fatalf("after a refusal %q, want the placeholders' type", got)
+	}
+	// A B738 docked there: the gate's helper from then on for a refused type.
+	h.mu.Lock()
+	h.gate("EDDM", 7).status = StatusReserved
+	h.mu.Unlock()
+	if got := dock("FSLTL_FAIB_B738_RYR-Ryanair", 303, 7); got != HelperTitle("B738", false) {
+		t.Fatalf("B738 at 7: %q", got)
+	}
+	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 304, 7); got != HelperTitle("B738", false) {
+		t.Fatalf("a refused type at 7: %q, want the B738 that docked", got)
+	}
+	want := []string{"EDDM7" + HelperTitle("BCS3", false) + "false", "EDDM7" + HelperTitle("A320", false) + "true", "EDDM7" + HelperTitle("B738", false) + "true"}
+	if !slices.Equal(heard, want) {
+		t.Errorf("heard %v, want %v", heard, want)
+	}
+	// Given back at the next start.
+	h2 := NewHelpers(f, HelperOptions{Types: []string{"A320", "BCS3"}})
+	h2.Learn("eddm", 7, HelperTitle("BCS3", false), false)
+	h2.mu.Lock()
+	got := h2.gateTakes("EDDM", 7, HelperTitle("BCS3", false))
+	h2.mu.Unlock()
+	if got != HelperTitle("A320", false) {
+		t.Errorf("learned refusal not kept: %q", got)
 	}
 }
