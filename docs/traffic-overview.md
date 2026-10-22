@@ -26,7 +26,7 @@ Most hosts only need the World: create it, run it on its own connection or yours
 
 **2. Where the flights come from.** [Traffic Manager](traffic-manager.md) turns a timetable into traffic: spawns, turnarounds and situation checks. [Traffic Schedules](traffic-schedules.md) builds the timetable: airlines, fleets, routes and waves.
 
-**3. On the ground.** [Departure Taxi](traffic-taxi.md) takes a departure from its stand to the take-off; [Arrivals & Parking](traffic-arrival.md) takes an arrival from the approach to its stand. [Ground Decisions](traffic-decisions-ground.md) explains, with the numbers, how a pushback is chosen, who gives way and how a taxi route is found.
+**3. On the ground.** [Departure Taxi](traffic-taxi.md) takes a departure from its stand to the take-off, and the [departure queue](traffic-world.md#departure-queue) keeps it on its stand while the queue at the runway is full; [Arrivals & Parking](traffic-arrival.md) takes an arrival from the approach to its stand. [Ground Decisions](traffic-decisions-ground.md) explains, with the numbers, how a pushback is chosen, who gives way and how a taxi route is found.
 
 **4. In the air.** [Airborne Separation](traffic-separation.md) is the API: wake categories, spacing on final, the landing sequence, delays, the runway controller, go-arounds and conflicts. [Runway & Air Decisions](traffic-decisions-air.md) explains how the map applies it: take-off clearances and restrictions, release and merge planning, absorbing delays, holds and conflict resolution.
 

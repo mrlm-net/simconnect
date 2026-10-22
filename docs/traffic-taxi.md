@@ -192,6 +192,8 @@ Facing an aircraft coming the other way, an aircraft does not queue up to the ga
 
 **Taxiing round a pushback.** `Occupies()` reports the place an injected departure takes for others to keep clear of, as an `airport.Occupied` (points and half span): cleared to push, the push path ahead of it; pushed back and waiting for its taxi clearance, where it stands; not while taxiing. `AvoidOccupied(occ)` re-plans a taxiing departure's taxi-out round those places (`airport.RouteOptions.Occupied`) when its route comes too near one (`Graph.PassesOccupied`): only without a clearance limit or a `TaxiVia` route, and only to a route that keeps clear, is not `Tight`, and crosses the same runways. It reports whether the route changed. `ArrivalController.AvoidOccupied` does the same for a taxi-in ([Arrivals](traffic-arrival.md)).
 
+How many departures may taxi out at once, and which runway-end entrance a full-length departure takes, are on [Traffic World: Departure queue](traffic-world.md#departure-queue).
+
 ## Progressive taxi
 
 `ClearUpTo(node airport.NodeID) error` clears an injected departure to taxi up to a node of its route and hold there ("taxi via A, hold short of B"). [Arrivals](traffic-arrival.md#progressive-taxi) have the same call.
