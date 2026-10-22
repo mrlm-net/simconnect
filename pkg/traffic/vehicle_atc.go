@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"math"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 )
@@ -56,9 +57,15 @@ const (
 	VehicleTaxiwayJoinM = 60.0
 	VehicleHoldRunwayM  = 40.0
 	// VehicleAskAheadM: a vehicle asks for a gate this far before it, not
-	// as it sets off (the call heard long before it got there).
-	VehicleAskAheadM = 80.0
-	vehicleGateStep  = 2.0
+	// as it sets off (the call heard long before it got there): about 30 s
+	// at road speed, as long as an answer takes, so it drives on without
+	// stopping (live, LKPR: asked 80 m before, Tug 5 waited up to 27 s at
+	// each of four gates and came too late for OKJTE's push).
+	VehicleAskAheadM = 250.0
+	// VehicleGateAllowance: a vehicle's time to arrive allows this much
+	// more for each gate on its way (its call and answer).
+	VehicleGateAllowance = 45 * time.Second
+	vehicleGateStep      = 2.0
 )
 
 // vehicleGate is a gate on a path: from at to end (meters along it).

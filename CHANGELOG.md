@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.111.2] - 2026-10-22
+
+### Fixed
+
+- Jetways: a gate that refuses a helper type (the simulator puts that helper on another gate, taking its jetway from our aircraft there) is docked from then on with a type it takes: the last helper docked there, or else the placeholders' type, since one sits there. Live at LKPR over three days, stand 11 never took BCS3 in five tries or A20N in two, 19 never took BCS3 or A20N in three each, and 20 never took B738 in four but took A332 twelve times; each miss stole another gate's jetway. What each gate taught is saved in `jetway-gates.json` in the World's data folder and given back at the next start (`jetway.HelperOptions.OnLearn`, `Helpers.Learn`).
+- Pushback tugs: vehicles call ground 250 m before a taxiway (was 80 m), about 30 s at road speed, so the answer comes before they arrive and they drive on without stopping. A tug's time to reach the nose allows 45 s more for each call on its way (`VehicleGateAllowance`). Live, OKJTE's tug waited up to 27 s at each of four taxiways and missed its push.
+
 ## [0.111.1] - 2026-10-22
 
 ### Changed

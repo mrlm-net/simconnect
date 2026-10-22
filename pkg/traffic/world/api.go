@@ -158,6 +158,7 @@ func New(o Options) *World {
 	st.modelRules = loadModelRules(filepath.Join(o.DataDir, "model-rules.json"))
 	st.standRules = loadStandRules(filepath.Join(o.DataDir, "stand-rules.json"))
 	st.doorOffsets = loadDoorOffsets(filepath.Join(o.DataDir, "jetway-door-offsets.json"))
+	gateLessons.load(filepath.Join(o.DataDir, "jetway-gates.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	w := &World{st: st, opts: o, reqs: reqs}

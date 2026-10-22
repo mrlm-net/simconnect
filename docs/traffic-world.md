@@ -314,7 +314,7 @@ The World's ground vehicles can be switched off by kind: tugs, fuel trucks, stai
 
 Vehicles already at work finish their job and are not replaced. In a director and actuator pair the director decides, so its switches count.
 
-The vehicles talk on the radio: "Ruzyne Ground, Tug 1, request proceed via G". A vehicle calls when it is within 80 m of the taxiway or runway, not as it sets off (`traffic.VehicleAskAheadM`). `World.SetVehicleRadio(false)` (`POST /api/vehicles/radio {"on": false}`) keeps them quiet: a taxiway is theirs without a call, and a runway crossing still waits for the tower in its turn, only nothing is said. `World.VehicleRadio()` (`GET /api/vehicles/radio`) says which.
+The vehicles talk on the radio: "Ruzyne Ground, Tug 1, request proceed via G". A vehicle calls when it is within 250 m of the taxiway or runway (`traffic.VehicleAskAheadM`), about 30 s at road speed: the answer comes before it gets there, so it drives on without stopping, and it does not call as it sets off. A tug's time to reach the nose allows 45 s more for each such call on its way (`VehicleGateAllowance`). `World.SetVehicleRadio(false)` (`POST /api/vehicles/radio {"on": false}`) keeps them quiet: a taxiway is theirs without a call, and a runway crossing still waits for the tower in its turn, only nothing is said. `World.VehicleRadio()` (`GET /api/vehicles/radio`) says which.
 
 ## Departure queue
 
