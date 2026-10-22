@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.111.1] - 2026-10-22
+
+### Changed
+
+- Docs: the traffic pages match the engine. Holds are only for emergencies, weather and closures, with no 360 for spacing; a crossing restriction comes before a level-off; aircraft on the ground sit at their exact static pitch.
+- Docs: new pages Traffic Overview (a reading path through the traffic docs), Emergencies & Scenarios, Jetways, Failures, Jetway and Tools (airport map via `go run -C cmd/airport-map .`, scene-cli, traffic-actuator and traffic-director). Traffic Decisions is split into Ground Decisions and Runway & Air Decisions. ATC Game is rewritten around staffed stations. Traffic World gains the runway in use, stand rules, ATIS and offline loading.
+- Docs: registry counts (150 entries in six categories), complete request and event ID ranges (failures at 0x7F00 from v0.111.0), the missing dictionary tables, `WithStallAfter`/`WithStallPaused`.
+- Website: /getting-started renders the markdown guide; the /docs index uses the sidebar's section labels and order; new Tools section.
+
 ## [0.111.0] - 2026-10-22
 
 ### Added
