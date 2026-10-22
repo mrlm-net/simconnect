@@ -25,7 +25,8 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 **What it does.** Once a second, every aircraft of ours is checked against the staffed stations by the position and station working it now:
 
 - **On a staffed station** it is the player's: the AI gives it nothing (no clearances, speeds or vectors), as the per-aircraft manual toggle does. Its crew still calls on its own and flies its last clearance, and it keeps its place in the landing sequence.
-- **Leaving the staffed stations** (handed to a position the AI works) it goes back to the AI from its current state, and a request still waiting is answered.
+- **Delivery staffed:** a departure calls for its en-route clearance, and the AI does not answer. The view offers the action `clearance`, which gives it (`World.Phrase(id, "clearance")` is its wording); delivery then hands it to ground. The view names delivery as its position until the clearance is given, the position allowed to clear it in network play.
+- **Leaving the staffed stations** (handed to a position the AI works) it goes back to the AI from its current state, and a request still waiting is answered, a departure clearance too.
 - **Its own toggle wins:** an aircraft set manual or automatic by hand (below) is left as set.
 
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
@@ -61,6 +62,6 @@ go run -C cmd/airport-map .
 
 The same conflict counts again only after a minute. The panel shows the score, flights handled and the next flight; the events log what happened, and the traffic log file keeps every clearance.
 
-`GET /api/game` returns the state (`on`, `icao`, `runway`, `intervalSec`, `score`, `handled`, `spawned`, `started`, `nextInSec`, and the last 40 `events`); `POST /api/game` with `{"on": true, "icao": "LKPR", "runway": "24", "intervalSec": 180}` starts it, `{"on": false}` ends it. An empty `runway` means the runway in use.
+`GET /api/game` returns the state (`on`, `icao`, `runway`, `intervalSec`, `score`, `handled`, `spawned`, `started`, `nextInSec`, and the last 40 `events`); `POST /api/game` with `{"on": true, "icao": "LKPR", "runway": "24", "intervalSec": 180}` starts it, `{"on": false}` ends it. An empty `runway` means the runway in use. Without `intervalSec` a flight comes about every 3 minutes; `"intervalSec": 0` spawns none and scores the traffic the host makes, from the schedule for example.
 
 The game spawns its own flights and gives you every clearance. For traffic that runs by itself from a timetable, with you on some stations only, use staffed stations with the [Traffic Manager](traffic-manager.md)'s schedule.

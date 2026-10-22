@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"math/rand/v2"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -88,13 +89,25 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 		// flying in from or out to another field, no schools or clubs, no
 		// training circuits (its GA is mostly business: BusinessFlights).
 		large := LargeAirport(l)
-		types, tw := VFRTypes, weights
+		types, tw := VFRTypes, slices.Clone(weights)
 		if large {
 			mean *= VFRLargeShare
 			types, tw = VFRLargeTypes, make([]float64, len(VFRLargeTypes))
 			for i, t := range VFRLargeTypes {
 				tw[i] = t.Weight
 			}
+		}
+		// Only the types the field has a stand for (#1152: LKKB parks a
+		// PA-28 and nothing else of them); none: no light traffic there.
+		any := false
+		for i, t := range types {
+			if !FitsStands(l, t.Type) {
+				tw[i] = 0
+			}
+			any = any || tw[i] > 0
+		}
+		if !any {
+			continue
 		}
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
 			n := int(mean)
@@ -125,7 +138,7 @@ func VFRFlights(opts VFROptions, from, to time.Time) []Flight {
 				if large {
 					f.Operator, f.Callsign = "private", VFRRegistration(icao, rng)
 				} else {
-					gaFlight(&f, ops, h, rng, busy, icao)
+					gaFlight(&f, ops, h, rng, busy, icao, l)
 				}
 				if f.TouchAndGos > 0 && !Daylight(pos, f.STA.Add(time.Duration(f.TouchAndGos)*7*time.Minute+15*time.Minute)) {
 					f.TouchAndGos, f.StopAndGo = 0, false // no circuits into the dusk: a full stop
@@ -172,4 +185,42 @@ func VFRRegistration(icao string, rng *rand.Rand) string {
 		b = append(b, byte('A'+rng.IntN(26)))
 	}
 	return string(b)
+}
+
+// FitsStands reports whether an aircraft of icao type has a stand on l it
+// can park on (Layout.SuitableStands for its half span); true without a
+// layout or a span known.
+func FitsStands(l *airport.Layout, icaoType string) bool {
+	if l == nil {
+		return true
+	}
+	half := ProfileFor(icaoType).Motion.SpanMeters / 2
+	return half <= 0 || len(l.SuitableStands(half)) > 0
+}
+
+// FlightsThatFit leaves out the flights to or from an airport of layouts
+// whose type has no stand there it can park on, and says which types it
+// left out at which airport (#1152: at LKKB, stands of 5 m radius, only a
+// PA-28 parks; every other flight was refused at its spawn, retried and
+// cancelled).
+func FlightsThatFit(flights []Flight, layouts map[string]*airport.Layout) (fit []Flight, out map[string][]string) {
+	for _, f := range flights {
+		bad := ""
+		for _, icao := range []string{f.Origin, f.Destination} {
+			if l := layouts[icao]; icao != "" && l != nil && !FitsStands(l, f.Type) {
+				bad = icao
+			}
+		}
+		if bad == "" {
+			fit = append(fit, f)
+			continue
+		}
+		if out == nil {
+			out = map[string][]string{}
+		}
+		if !slices.Contains(out[bad], f.Type) {
+			out[bad] = append(out[bad], f.Type)
+		}
+	}
+	return fit, out
 }
