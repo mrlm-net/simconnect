@@ -37,9 +37,10 @@
 
 ### Airborne ATC
 - Wake turbulence separation (ICAO and RECAT-EU) and spacing on final that follows the weather (low visibility, runway state, wind)
-- A landing sequence per runway, first come first served, re-sequencing go-arounds; arrivals lose delays by speed, then a longer downwind, then a hold with its stack
+- A landing sequence per runway, first come first served, re-sequencing go-arounds; arrivals lose delays by speed and one simple vector before the merge; holds only for emergencies, weather and closures
 - A tower per runway: line-up, take-off and crossing clearances in mixed mode; automatic go-arounds on the published missed approach
-- Airborne conflicts predicted five minutes ahead and resolved by the least disturbing speed, level or heading change
+- Airborne conflicts predicted five minutes ahead and resolved by the least disturbing change: a crossing restriction first ("cross fix at or above/below level"), then speed, level or heading
+- The runway in use: the preferred runway kept until the wind limits, a planned changeover, runways held or closed; emergencies with priority and rescue vehicles; scripted scenarios; staffed stations for a player working a position
 - Standard-rate turns by airframe instead of MSFS AI's hard turns at waypoints; injected take-off with engine spool-up and a stable glide path to touchdown, crabbed into a crosswind and de-crabbed in the flare, the touchdown point varying a little from landing to landing
 - A runway change re-plans the traffic not yet committed: new SID or STAR, a new taxi route from where each aircraft is
 - On the airport map: the landing sequence with its final ladder, the tower and the final's spacing, and controls to work it by hand
@@ -108,6 +109,8 @@ cd cmd/airport-map && go run .
 
 ## CLI Tools
 
+[Tools](docs/tools.md) covers every command: the airport map, `simvar-cli`, and `traffic-actuator` / `traffic-director` for a traffic World split across the network.
+
 ### simvar-cli
 
 `simvar-cli` is a Windows command-line tool for reading, writing, and streaming MSFS SimVars directly from a terminal. It connects to a running simulator via SimConnect and supports JSON, CSV, and table output formats.
@@ -134,13 +137,13 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for a quick start and [`docs/simvar-cli.m
 **[simconnect.mrlm.net](https://simconnect.mrlm.net/)** — the documentation website, built from [`docs/`](docs).
 
 - **Start** — [Getting Started](docs/getting-started.md), [Examples](docs/examples.md)
-- **Engine** — [Configuration](docs/config-client.md), [Usage](docs/usage-client.md), [AI Objects](docs/engine-ai-objects.md), [Facility Data](docs/guide-facilities.md), [Input Events](docs/guide-input-events.md), [Client Data Areas](docs/client-data-area.md), [Event Lifecycle](docs/events-lifecycle.md)
-- **Manager** — [Configuration](docs/config-manager.md), [Usage](docs/usage-manager.md), [Request and ID Management](docs/manager-requests-ids.md), [Input Events](docs/manager-input-events.md), [Client Data Areas](docs/manager-client-data-area.md)
+- **Engine** — [Configuration](docs/config-client.md), [Usage](docs/usage-client.md), [AI Objects](docs/engine-ai-objects.md), [Facility Data](docs/guide-facilities.md), [Input Events](docs/guide-input-events.md), [Client Data Areas](docs/client-data-area.md)
+- **Manager** — [Configuration](docs/config-manager.md), [Usage](docs/usage-manager.md), [Event Lifecycle](docs/events-lifecycle.md), [Request and ID Management](docs/manager-requests-ids.md), [Input Events](docs/manager-input-events.md), [Client Data Areas](docs/manager-client-data-area.md)
 - **Data** — [Using Datasets](docs/usage-datasets.md), [Dataset Composition](docs/dataset-composition.md), [SimVar Registry](docs/pkg-registry.md), [Dictionaries](docs/dictionaries.md), [Geodesy and Unit Conversion](docs/utilities.md)
 - **Airport & nav** — [Airport Layout & Taxi Routing](docs/airport-layout.md), [Airways](docs/nav-airways.md), [Weather & ATIS](docs/nav-weather.md), [Flight Plans](docs/nav-flight-plans.md)
-- **Traffic** — [Traffic Guide](docs/traffic-guide.md), [Departure Taxi](docs/traffic-taxi.md), [Arrivals & Parking](docs/traffic-arrival.md), [Injected Ground Movement](docs/traffic-motion.md), [ATC Commands](docs/traffic-commands.md), [Aircraft Profiles](docs/traffic-profiles.md), [Traffic Picture](docs/traffic-picture.md), [Schedules](docs/traffic-schedules.md), [Traffic Manager](docs/traffic-manager.md), [Airborne Separation](docs/traffic-separation.md), [Radio](docs/traffic-radio.md), [Phraseology](docs/traffic-phraseology.md), [VFR Traffic](docs/traffic-vfr.md), [Traffic Decisions](docs/traffic-decisions.md), [Traffic World](docs/traffic-world.md), [ATC Game](docs/atc-game.md), [Camera](docs/camera.md)
-- **Aircraft & add-ons** — [Aircraft Systems Profiles](docs/systems.md), [Radios and Transponder](docs/avionics.md), [GSX](docs/gsx.md), [L:vars](docs/lvars.md), [Installed Add-ons](docs/addons.md)
-- **Tools** — [SimVar CLI](docs/simvar-cli.md)
+- **Traffic** — [Traffic Overview](docs/traffic-overview.md), [Traffic World](docs/traffic-world.md), [Fleet & AI Objects](docs/traffic-guide.md), [Departure Taxi](docs/traffic-taxi.md), [Arrivals & Parking](docs/traffic-arrival.md), [Injected Ground Movement](docs/traffic-motion.md), [ATC Commands](docs/traffic-commands.md), [Aircraft Profiles](docs/traffic-profiles.md), [Traffic Picture](docs/traffic-picture.md), [Schedules](docs/traffic-schedules.md), [Traffic Manager](docs/traffic-manager.md), [Airborne Separation](docs/traffic-separation.md), [Ground Decisions](docs/traffic-decisions-ground.md), [Runway & Air Decisions](docs/traffic-decisions-air.md), [Emergencies & Scenarios](docs/traffic-emergencies.md), [Jetways](docs/traffic-jetways.md), [Radio](docs/traffic-radio.md), [Phraseology](docs/traffic-phraseology.md), [VFR Traffic](docs/traffic-vfr.md), [Smoothness](docs/traffic-smoothness.md), [ATC Game & Staffed Stations](docs/atc-game.md), [Camera](docs/camera.md)
+- **Aircraft & add-ons** — [Aircraft Systems Profiles](docs/systems.md), [Radios and Transponder](docs/avionics.md), [Failures](docs/failures.md), [Checklists](docs/checklist.md), [Copilot (Pilot Flying)](docs/pilot.md), [Flight Recording & Replay](docs/flight.md), [Hotkeys](docs/hotkeys.md), [GSX](docs/gsx.md), [L:vars](docs/lvars.md), [Jetway Helpers](docs/jetway.md), [Installed Add-ons](docs/addons.md)
+- **Tools** — [Tools overview](docs/tools.md), [SimVar CLI](docs/simvar-cli.md)
 
 ## Packages
 

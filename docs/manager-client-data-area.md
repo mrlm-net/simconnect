@@ -1,5 +1,6 @@
 ---
 title: "Client Data Areas (Manager)"
+description: "Client Data Areas through the manager: define, request and write CDAs on its lifecycle-managed connection, as reader or writer."
 section: "manager"
 order: 6
 ---

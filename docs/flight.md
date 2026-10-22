@@ -137,9 +137,9 @@ for _, f := range a.Findings {
 
 ## Scenes: the traffic around a flight
 
-A `Scene` is the aircraft around a flight, recorded alongside it so a replay can show the scene as it was (#1011). Each `SceneAircraft` has a `Key` (stable within the scene), its identity (`Callsign`, `Title`, `Livery`, `Type`, and `Source`: `ours`, `sim-ai` or `player`), and its own `Track`. Aircraft come and go, so each has its own `First()` and `Last()` time. `Scene.At(t)` gives the aircraft there at simulation time `t`, interpolated. `Span()` gives the scene's first and last time, and `Find(key)` finds one aircraft. `Write` and `ReadScene` (or `WriteFile` and `ReadSceneFile`, gzipped for `.gz`) use versioned JSON lines in one file. The file has a header, then each aircraft's identity line followed by its sample rows in the Track's field order.
+A `Scene` is the aircraft around a flight, recorded alongside it so a replay can show the scene as it was. Each `SceneAircraft` has a `Key` (stable within the scene), its identity (`Callsign`, `Title`, `Livery`, `Type`, and `Source`: `ours`, `sim-ai` or `player`), and its own `Track`. Aircraft come and go, so each has its own `First()` and `Last()` time. `Scene.At(t)` gives the aircraft there at simulation time `t`, interpolated. `Span()` gives the scene's first and last time, and `Find(key)` finds one aircraft. `Write` and `ReadScene` (or `WriteFile` and `ReadSceneFile`, gzipped for `.gz`) use versioned JSON lines in one file. The file has a header, then each aircraft's identity line followed by its sample rows in the Track's field order.
 
-`SceneRecorder` records a scene on the player's `Recorder` (#1012), so the scene runs on the player's Track clock (SIMULATION TIME). About once a second, give `Update` the aircraft near the player, nearest first, each a `SceneObject` (object ID and identity). Each new aircraft is recorded every `EveryFrames` frames (default 60, about 1 Hz), up to `Max` at once (default 40, never past the Recorder's 63). An aircraft that has gone is stopped and its stretch kept. One that comes back later gets a fresh key (`CSA1#2`). `Snapshot()` gives the scene so far, and `Stop()` gives the finished scene.
+`SceneRecorder` records a scene on the player's `Recorder`, so the scene runs on the player's Track clock (SIMULATION TIME). About once a second, give `Update` the aircraft near the player, nearest first, each a `SceneObject` (object ID and identity). Each new aircraft is recorded every `EveryFrames` frames (default 60, about 1 Hz), up to `Max` at once (default 40, never past the Recorder's 63). An aircraft that has gone is stopped and its stretch kept. One that comes back later gets a fresh key (`CSA1#2`). `Snapshot()` gives the scene so far, and `Stop()` gives the finished scene.
 
 ```go
 scene := flight.NewSceneRecorder(rec, flight.SceneOptions{Note: "LKPR"})
@@ -149,7 +149,7 @@ scene.Update(nearPlayer) // []flight.SceneObject, nearest first
 scene.Stop().WriteFile(id + ".traffic.jsonl.gz")
 ```
 
-`GhostFleet` replays a scene in sync with a `Player`, the player replay's or the ghost's clock (#1013). It maps the Player's time onto the scene's: the track's first sample plus `Player.Time`. Pause, seek and rate therefore follow the Player with nothing else to do.
+`GhostFleet` replays a scene in sync with a `Player`, the player replay's or the ghost's clock. It maps the Player's time onto the scene's: the track's first sample plus `Player.Time`. Pause, seek and rate therefore follow the Player with nothing else to do.
 
 - **Spawning.** Each aircraft is created as a NonATC AI aircraft (its title, its callsign as the tail) when its time in the scene comes, taken over by the Injector and flown as its Track was (`Ghost`). If no object comes within 5 s (its title was refused), it is created once more as `FleetOptions.Fallback`'s model.
 - **Removal.** An aircraft is removed when its track ends, when it falls out of `Budget` (default 20, nearest the player first, or nearest `Centre`), or on `Stop`.

@@ -1,8 +1,8 @@
 ---
 title: "SimVar CLI"
 description: "Interactive CLI tool for reading, writing, and streaming MSFS SimVars from the command line"
-section: "packages"
-order: 1
+section: "tools"
+order: 2
 ---
 
 # SimVar CLI

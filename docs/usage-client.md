@@ -819,7 +819,7 @@ func main() {
 
 ## CommBus (MSFS 2024)
 
-CommBus passes events with string data (usually JSON) between SimConnect clients, WebAssembly modules and JavaScript gauges or panels: an in-sim add-on can answer an app this way (#678).
+CommBus passes events with string data (usually JSON) between SimConnect clients, WebAssembly modules and JavaScript gauges or panels: an in-sim add-on can answer an app this way.
 
 ```go
 client.SubscribeToCommBusEvent(4242, "myaddon.reply")

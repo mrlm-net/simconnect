@@ -105,7 +105,7 @@ func main() {
 	];
 
 	const quickLinks = [
-		{ title: 'Getting Started', description: 'Install, connect, and read your first SimVar in minutes.', href: `${base}/getting-started` },
+		{ title: 'Getting Started', description: 'Install, connect, and read your first SimVar in minutes.', href: `${base}/docs/getting-started` },
 		{ title: 'Airport Map', description: 'The main example and debugging tool: layout, traffic, approach and tower.', href: `${base}/docs/examples` },
 		{ title: 'Client API', description: 'Direct SimConnect communication for maximum control.', href: `${base}/docs/usage-client` },
 		{ title: 'Manager API', description: 'Auto-reconnect, state tracking, and lifecycle events.', href: `${base}/docs/usage-manager` }
@@ -179,7 +179,7 @@ func main() {
 				wrapper over SimConnect.dll for&nbsp;MSFS&nbsp;2020&nbsp;&amp;&nbsp;2024.
 			</p>
 			<div class="mb-8 flex flex-wrap gap-3">
-				<a href="{base}/getting-started" class="btn btn-primary">Get started {@render arrow()}</a>
+				<a href="{base}/docs/getting-started" class="btn btn-primary">Get started {@render arrow()}</a>
 				<a href="{base}/docs" class="btn">Documentation</a>
 			</div>
 			<div class="max-w-xl">{@render command(installCommand, 'Copy install command')}</div>

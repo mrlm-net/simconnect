@@ -137,7 +137,7 @@ The broadcast includes, when known: split landing/departure runways, "wind calm"
 - visibility crosses 800, 1500, 3000 or 5000 m, or precipitation starts or stops;
 - the broadcast is older than `DefaultATISMaxAge` (1 hour; `ATISWithMaxAge`).
 
-The runway in use holds through wind shifts near a limit: the service keeps a `RunwaySelector`, or shares the traffic's with `ATISWithSelector(sel)`, so the ATIS says the runway the traffic uses (#454).
+The runway in use holds through wind shifts near a limit: the service keeps a `RunwaySelector`, or shares the traffic's with `ATISWithSelector(sel)`, so the ATIS says the runway the traffic uses.
 
 Smaller changes keep the current broadcast, as a real ATIS does between reports. `Current()` returns it; `NewATIS` builds a single broadcast without the service.
 

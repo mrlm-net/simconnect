@@ -1,7 +1,7 @@
 ---
 title: "Camera"
 description: "The MSFS 2024 add-on camera: bindings, poses, drone moves, a director that plays shots, and scripted scenes on the airport map."
-order: 14
+order: 23
 section: "traffic"
 ---
 

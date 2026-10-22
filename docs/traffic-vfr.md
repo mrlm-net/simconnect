@@ -1,16 +1,15 @@
 ---
 title: "VFR Traffic"
-description: "v0.19 VFR traffic: light aircraft, circuits round a runway (configurable per airport), reporting points, and how VFR traffic joins and leaves."
+description: "VFR traffic: light aircraft, circuits round a runway (configurable per airport), reporting points, and how VFR traffic joins and leaves."
 order: 16
 section: "traffic"
 ---
 
 # VFR Traffic
 
-v0.19 brings general aviation alongside the airline traffic (epic #431): light aircraft flying circuits and VFR arrivals and departures through reporting points, with the tower's VFR calls. This page grows with the version; what is here is in place.
+General aviation flies alongside the airline traffic: light aircraft flying circuits and VFR arrivals and departures through reporting points, with the tower's VFR calls.
 
-## Light aircraft (#565)
-
+## Light aircraft
 `ProfileFor` knows five light singles, matched in the model title as the simulator's AI models name them (`Asobo PassiveAircraft C152`, `C172`, `DA40 NG`, `SR22`), and the PA-28:
 
 | Type | Span | Length | Approach | Climb | Flaps (take-off, approach, landing) |
@@ -23,8 +22,7 @@ v0.19 brings general aviation alongside the airline traffic (epic #431): light a
 
 Span, length and rate of climb are the published figures (Wikipedia's specifications: C152, C172R, PA-28-140, DA40 XL, SR22-G5). The approach speed is 1.3 times the published flaps-down stall speed. Wheelbase, CG height, take-off distance and the rotation and climb speeds are estimates; the simulator's SimVars refine the airframe in flight (`Refine`). They are light for wake (ICAO L, RECAT-EU F) and single-engined (`EngineCount` 1). An unknown aircraft below 15 m span is taken for a light single (`GenericProfile`).
 
-## Circuits (#567)
-
+## Circuits
 `NewCircuit(layout, "24", CircuitConfig{}, profile)` is a runway end's circuit for one aircraft: upwind, crosswind, downwind (its point abeam the threshold), base, final and the runway, each with its altitude and speed. `Waypoints(leg)` gives them from a leg on as MSFS AI waypoints, the corners rounded to the aircraft's turns.
 
 Every airport, and every runway end, can have its own circuit (`CircuitConfig`). Anything left at zero takes a default:
@@ -41,8 +39,7 @@ The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an est
 
 `JoinDownwind()` is the 45° entry: a point a mile out from midfield on the downwind, outside the circuit and towards its upwind end. Flown to midfield, it meets the downwind at 45°; a left-hand circuit is joined with a right turn. `From(LegDownwind)` goes on from there.
 
-## Reporting points (#566)
-
+## Reporting points
 `ReportingPoint` is a VFR reporting point: a name and a position. The simulator's navigation data has none near LKPR (only unnamed VP* idents), so the airport map keeps them per airport as the user sets them. Use Airport tab → *VFR reporting points* → *Add on the map* and click; they are kept in `vfrpoints.json` (`GET/POST /api/vfrpoints?icao=`).
 
 - **Arrivals:** a VFR arrival enters over one (`ArrivalRequest.CircuitEntry`). It appears there 1,000 ft above circuit height. Its first call says so: "OKARR, Cessna 172, over NOVEMBER, 3200 feet, for landing". At a controlled aerodrome the tower assigns the join (Doc 4444 12.3.4.13: the direction of the circuit and where to join, or a straight-in approach), so it never crosses the runway (`CircuitJoinFor`, `ArrivalRequest.CircuitJoin`, `PlanCircuitArrivalVia`):
@@ -52,8 +49,7 @@ The circuit speed is 1.25 times the approach speed (`CircuitSpeedFactor`, an est
   Live, OKARR from NOVEMBER (north) flew across the runway at circuit height to the left-hand circuit's entry before.
 - **Departures:** a VFR departure leaves via one (`Circuit.DepartureVia`): out of the circuit by the side the point is on, ending over it. Its route shows as "VFR via SIERRA".
 - **Which point:** each flight takes one of the airport's points by its call sign, or the one named (`SpawnRequest.VFRPoint`). Without points VFR traffic comes and goes in any direction.
-## Circuit arrivals (#568)
-
+## Circuit arrivals
 `ArrivalRequest.Circuit` (with `InjectApproach`, instead of a STAR in `Procedure`) is a VFR arrival through the circuit. `PlanCircuitArrival` plans it:
 
 1. It appears at the 45° entry at circuit height and speed.
@@ -70,32 +66,26 @@ The radio follows Doc 4444 12.3.4.13–17 ([Phraseology](traffic-phraseology.md#
 - The tower answers "join left downwind runway 24" with the wind and QNH.
 - The pilot reports "downwind" abeam the threshold.
 
-### In the landing sequence (#569)
-
+### In the landing sequence
 A VFR arrival in the circuit is sequenced with the IFR arrivals to the same runway. When it reports downwind, the tower gives its place (Doc 4444 12.3.4.14 b, `FollowTraffic`): "OKABC, number 2, follow the Airbus A320 on 4 mile final", or "on short final", or "in the circuit" when it follows another circuit aircraft; "number 1" alone when it lands first. When the sequence asks it to lose time, the tower extends its downwind (`CircuitInstruction`, "extend downwind", 12.3.4.15 c). `AbsorbDelay` puts all of the delay into a longer downwind for a circuit arrival, with the base turn and final further out, and gives it no speed instruction and no hold. For a circuit arrival `AbsorbDelay` flies on along the downwind and turns base further out, at circuit speed: up to `CircuitMaxExtendNM` (2 NM; each mile on adds two). At LKPR a C172 asked to lose a minute on the 24 circuit turns base 1.3 NM further out. More than that is lost in an orbit (`Orbit`, Doc 4444 12.3.4.17): a full turn where it is, to the side its circuit turns, standard rate (about 1½ minutes for a C172), said "orbit left" or "orbit right" once 45 s or more remain.
 
-### Touch-and-goes (#569)
-
+### Touch-and-goes
 `ArrivalRequest.TouchAndGos` (with `Circuit`) is how many touch-and-goes a VFR arrival makes before its full stop. When its nose wheel is down it does not roll out: it takes off again from where it is, at the speed it has (an injected `TakeoffMover`), with take-off flaps. At `VFRHandoverFt` MSFS AI flies the circuit again from its crosswind leg round to the final, and the injected approach takes over there as on the first circuit. `ArrivalEvent.TouchAndGo` is set while it is on the runway for one; `TouchAndGosLeft` tells how many remain.
 
 On the airport map the crew reports "downwind, touch and go" and the tower clears "cleared touch and go" (12.3.4.16 c); the last landing is cleared to land. After each touch-and-go it is sequenced again. New flight → Arrival → *VFR through the circuit* takes a number of touch-and-goes. Scheduled VFR arrivals fly training circuits by their operator (see [Operators](#operators)).
 
-### Airspace classes and traffic information (#570)
-
+### Airspace classes and traffic information
 `SeparationRequired(class, a, b)` says whom ATC separates. In class C (and stricter) IFR is separated from IFR and from VFR. In D and E only IFR is separated from IFR, and in G nobody is. Where two aircraft are not separated, they are told of each other: `TrafficInformation` ("OKABC, traffic, 2 o'clock, 3 miles, opposite direction, Airbus A320, 2500 feet", with `TrafficRelative` for the o'clock, distance and direction), acknowledged "Looking out".
 
 On the airport map the managed airports' zones are class D (`-airspace` sets C, D, E or G), out to 10 NM and up to 5,000 ft above the field; around them class E. Our aircraft fly under their rules (`ControlView.Rules`), other traffic is IFR except light singles. A predicted conflict that needs no separation gets traffic information on each of ours' frequency, at most every 3 minutes, instead of a resolution. Such a pair coming close is not logged as a loss of separation.
 
-### Standard overhead join (#567)
-
+### Standard overhead join
 With `CircuitConfig.OverheadJoin` (Airport tab → VFR circuits → *Standard overhead join*), VFR arrivals join overhead from any side (`LegOverhead`). They cross the field `OverheadAboveFt` (1,000 ft) above circuit height, descend on the dead side (the side away from the circuit) to circuit height, cross the upwind end of the runway at circuit height onto the crosswind leg, then fly the downwind, base and final. The tower says "join overhead runway 24". The procedure follows UK practice at airfields without a tower: UK Airprox Board report 2025183 quotes the Sherburn-in-Elmet AIP entry, "join overhead at 2000 FT QFE and descend in accordance with the 'Standard Overhead Join' procedure", with circuits at 1000 FT QFE and the descent "on the deadside". Without it the tower assigns the join, as at LKPR. Without reporting points an overhead join comes from 6 NM out in a direction by its call sign.
 
-### Another circuit (#569)
-
+### Another circuit
 `AnotherCircuit` has a circuit arrival fly round once more: on round its circuit to the final, over the runway at circuit height, then upwind, crosswind, downwind, base and final again. That is about 4 minutes more for a C172. The sequence uses it when 3 minutes or more must be lost beyond the extended downwind, saying "make another circuit" (Doc 4444 12.3.4.17 c), and an orbit for less.
 
-### Stop-and-goes (#567)
-
+### Stop-and-goes
 With `ArrivalRequest.StopAndGo` each touch-and-go is a stop-and-go: it brakes to a stop on the runway at its `BrakeDecel`, stands `StopAndGoWait` (10 s, an estimate), and takes off from there. On the map the crew reports "downwind, stop and go" and the tower says "cleared stop and go" (`ClearedStopAndGo`, worded like the touch-and-go; Doc 4444 12.3.4.16 does not list it). The New flight form has a *Stop-and-go* box; a third of a flying school's training circuits are stop-and-goes.
 
 ### VFR departures
@@ -130,8 +120,7 @@ Each flight is flown by one of the airport's GA operators (`GAOperatorsAt`, the 
 
 A fleet aircraft keeps its registration and type and flies only every third hour (by its place in the fleet), so its flights never overlap, whichever hours the schedule is asked for; when none of the fleet is free, a private owner flies. The circuits are in `Flight.TouchAndGos` and `Flight.StopAndGo`, dropped when they would run into the dusk. The map's traffic detail shows the operator and the circuits.
 
-#### Large airports: business aviation (#619)
-
+#### Large airports: business aviation
 At a large airport (`LargeAirport`: a runway of 3000 m or more and 10 gates or more; LKPR is, LKTB is not) general aviation flies between airports, and patterns are left to the smaller fields:
 
 - **Business flights** (`BusinessFlights`, most of it): business jets and turboprops, IFR, to and from other airports of the schedule within the type's range and runway, with a flight plan, SID and STAR, parked on a GA ramp where one is free. `BusinessPerHour` (1.5) arrivals an hour at the peak and as many departures, scaled by the density and following the day's waves. The types and their weights are `BusinessTypes`: Phenom 300, Citation CJ4, XLS, Latitude, PC-12, CJ3, Sovereign, Longitude, Praetor 600, PC-24, King Air 350, Praetor 500, Phenom 100, TBM 930, King Air 200, Citation X. The call sign is a registration of the country the aircraft is based in (the airport's, or the other end's for two flights in five), `Operator` "business". They come with the IFR switch on the map's Schedule tab.
@@ -160,11 +149,6 @@ An arrival's `ReportAt` comes after its first call (`VFRForLanding`) and before 
 
 The points and the information station come from `airport.VFRFor(icao)`: the zone's entry and exit points and route points (`Point(name)`, `EntryNearest(pos)`), and `FIS`/`FISFreq`. Shipped for LKPR (Czech VFR Manual, WEF 01 OCT 26) and LKPD (06 AUG 26), with Praha Information 126.100 (AIP ČR ENR 2.1); a host replaces or adds airports through the dict table `airport.vfr` (merged by ICAO).
 
-## Jetbridges (#572)
+## Jetbridges
 
-Jetbridges for our traffic are blocked by the simulator.
-
-- `RequestJetwayData` lists an airport's jetways: 27 at LKPR. Each is a SimObject with a status and the aircraft attached, and its parking index is the layout's stand index.
-- `TOGGLE_JETWAY` sent to one of our aircraft parked at a jetway stand did nothing.
-- Our traffic is created as NonATC aircraft, the only kind whose stand we can choose. A devsupport thread (March 2026) reports that only ParkedATC and EnrouteATC aircraft use jetways.
-- `types.DecodeJetwayData` reads one packed 160-byte `SIMCONNECT_JETWAY_DATA` entry (`JetwayDataSize`); the Go struct is laid out differently and must not be cast onto the wire data (#606).
+Jetways for our traffic are worked around with invisible ParkedATC helpers: see [Jetways](traffic-jetways.md). `types.DecodeJetwayData` reads one packed 160-byte `SIMCONNECT_JETWAY_DATA` entry (`JetwayDataSize`); the Go struct is laid out differently and must not be cast onto the wire data.

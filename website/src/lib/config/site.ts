@@ -16,7 +16,7 @@ export const siteConfig: SiteConfig = {
 	glyph: 'sc',
 	nav: [
 		{ title: 'Docs', href: '/docs' },
-		{ title: 'Getting started', href: '/getting-started' },
+		{ title: 'Getting started', href: '/docs/getting-started' },
 		{ title: 'Examples', href: '/docs/examples' },
 		{ title: 'Changelog', href: '/changelog' }
 	]

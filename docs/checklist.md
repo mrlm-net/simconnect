@@ -1,13 +1,13 @@
 ---
 title: "Checklists"
 description: "The aircraft's normal checklists as data with pkg/checklist: a default per family and per-model sets, a local override file, a runner that steps through a list with the roles of the moment and checks each item against systems.State, and checklist findings for flight.Assess."
-order: 15
+order: 18
 section: "packages"
 ---
 
 # Checklists
 
-`pkg/checklist` holds the aircraft's normal checklists as data and runs them (#1002). The simulator's own checklists are encrypted and SimConnect has no checklist API, so the lists are ours. The copilot uses them for challenge and response; `flight.Assess` uses them to judge a flight.
+`pkg/checklist` holds the aircraft's normal checklists as data and runs them. The simulator's own checklists are encrypted and SimConnect has no checklist API, so the lists are ours. The copilot uses them for challenge and response; `flight.Assess` uses them to judge a flight.
 
 ## The model
 

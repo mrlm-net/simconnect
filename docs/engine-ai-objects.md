@@ -137,7 +137,7 @@ func main() {
 
 `AICreateEnrouteATCAircraft` injects an aircraft into the ATC system, following an MSFS `.pln` flight plan from the given position along the route (waypoint index plus the fraction along the next leg).
 
-> **MSFS 2024:** the position does not take effect. Tested live (#369), every enroute ATC aircraft appeared on the ground at its plan's departure airport, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `AICreateNonATCAircraft` and give it the rest of the route as waypoints (`traffic.EnrouteStart`, see [Traffic Manager](traffic-manager.md#appearing-airborne)).
+> **MSFS 2024:** the position does not take effect. Tested live, every enroute ATC aircraft appeared on the ground at its plan's departure airport, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `AICreateNonATCAircraft` and give it the rest of the route as waypoints (`traffic.EnrouteStart`, see [Traffic Manager](traffic-manager.md#appearing-airborne)).
 
 **Signature:**
 

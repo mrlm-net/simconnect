@@ -3,25 +3,18 @@
 	import SeoHead from '$lib/components/seo/SeoHead.svelte';
 	import { siteConfig } from '$lib/config/site.js';
 	import type { DocMeta } from '$lib/types/index.js';
+	import { sectionMeta, orderedSections } from '$lib/config/navigation.js';
 
 	let { data }: { data: { docs: DocMeta[] } } = $props();
 
-	const sectionLabels: Record<string, string> = {
-		examples: 'Examples',
-		client: 'Client / Engine',
-		manager: 'Manager',
-		events: 'Events',
-		internals: 'Internals'
-	};
-
-	function groupBySection(docs: DocMeta[]) {
+	function groupBySection(docs: DocMeta[]): [string, DocMeta[]][] {
 		const groups = new Map<string, DocMeta[]>();
 		for (const doc of docs) {
 			const list = groups.get(doc.section) ?? [];
 			list.push(doc);
 			groups.set(doc.section, list);
 		}
-		return groups;
+		return orderedSections(groups.keys()).map((id) => [id, groups.get(id)!.sort((a, b) => a.order - b.order)]);
 	}
 
 	const groups = $derived(groupBySection(data.docs));
@@ -92,12 +85,12 @@
 			Complete reference for the SimConnect Go SDK.
 		</p>
 
-		{#each [...groups.entries()] as [section, docs]}
+		{#each groups as [section, docs]}
 			<div class="mb-8">
 				<h2
 					class="eyebrow mb-3"
 				>
-					{sectionLabels[section] ?? section}
+					{sectionMeta[section]?.title ?? section}
 				</h2>
 				<div class="space-y-3">
 					{#each docs as doc}

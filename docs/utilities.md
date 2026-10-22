@@ -1,7 +1,7 @@
 ---
 title: "Geodesy and Unit Conversion"
 description: "pkg/calc for distances, bearings, tracks, wind and Dubins paths; pkg/convert for units, local offsets, angles and ICAO codes."
-order: 16
+order: 20
 section: "packages"
 ---
 

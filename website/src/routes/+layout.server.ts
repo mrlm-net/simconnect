@@ -10,7 +10,7 @@ export const load: LayoutServerLoad = () => {
 	const docs = loadDocIndex();
 	const navigation = buildNavigation(docs, base);
 	const topLinks = [
-		{ title: 'Getting Started', href: `${base}/getting-started`, order: 0 },
+		{ title: 'Getting Started', href: `${base}/docs/getting-started`, order: 0 },
 		{ title: 'Examples', href: `${base}/docs/examples`, order: 1 },
 		{ title: 'Changelog', href: `${base}/changelog`, order: 2 }
 	];

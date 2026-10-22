@@ -1,13 +1,13 @@
 ---
 title: "Traffic Manager"
 description: "Turn a schedule into traffic: departures board and push on time, arrivals fly their STAR, aircraft turn around, and a situation checker adjusts to what is happening — including traffic that is not ours."
-order: 10
+order: 3
 section: "traffic"
 ---
 
 # Traffic Manager
 
-`traffic.TrafficManager` runs the schedule of the managed airports (#368). It decides **what happens when**. A **Spawner** does it in the simulator: it knows the stands, models, runways and controllers, and it reports back.
+`traffic.TrafficManager` runs the schedule of the managed airports. It decides **what happens when**. A **Spawner** does it in the simulator: it knows the stands, models, runways and controllers, and it reports back.
 
 ```go
 cfg := traffic.DefaultScheduleConfig()
@@ -94,7 +94,7 @@ Switch between them with `SetOthers`.
 
 ## Enroute traffic and overflights
 
-Traffic flies between airports, not only at one (#369).
+Traffic flies between airports, not only at one.
 
 - **Enroute arrivals:** an arrival appears `EnrouteLead` (20 min) before it would appear at its STAR entry. It shows up **en route** on its flight plan, at the point the plan puts it now, at the planned level. MSFS AI flies it to the entry, where the Spawner **hands it over** to the arrival controller (status `enroute`, then `approaching`). If the enroute spawn fails, the arrival appears at its STAR entry instead, with no attempt lost. A negative `EnrouteLead` turns enroute arrivals off.
 - **Overflights:** `ManagerOptions.Overflights` gives flights between airports outside the area whose route crosses it. `traffic.Overflights(cfg, OverflightOptions{Centre, RadiusNM, PerHour, Density, Seed, Exclude}, from, to)` generates them: airports outside the area, an airline serving both ends, a type that fits, and `Enter`/`Exit` when the flight crosses into and out of the area. Each appears at `Enter`, where its flight is by then, up to `MaxOverflights` (4) at once.
@@ -117,7 +117,7 @@ A flight plan cannot start an aircraft mid-route in MSFS 2024. `AICreateEnrouteA
 
 ## Real-world flights
 
-A flight with `Observed` set is a real aircraft a feed sees (#841, `manager_observed.go`; the World drives it, see [Traffic World](traffic-world.md#real-world-traffic-v022)). It is added with `Add` like any flight and handled differently:
+A flight with `Observed` set is a real aircraft a feed sees (`manager_observed.go`; the World drives it, see [Traffic World](traffic-world.md#real-world-traffic)). It is added with `Add` like any flight and handled differently:
 
 - it is not spaced from other spawns, never cancelled as too late, and a real arrival is never delayed by a check (it is in the air already);
 - it turns around only as the feed says: `Turn(arrival, departure)` makes the departure adopt the arrival's aircraft once it has parked;
@@ -129,7 +129,7 @@ A flight with `Observed` set is a real aircraft a feed sees (#841, `manager_obse
 
 ## Replaying a recorded day
 
-A scheduled flight can carry its recorded way, `Flight.Path` (#845): points with `lat`, `lon`, `altFt` and the time `at` it was there. The flights are scheduled as usual (`Add`, with their STD, STA, or `Enter`/`Exit`), and the World flies each along its path:
+A scheduled flight can carry its recorded way, `Flight.Path`: points with `lat`, `lon`, `altFt` and the time `at` it was there. The flights are scheduled as usual (`Add`, with their STD, STA, or `Enter`/`Exit`), and the World flies each along its path:
 
 - an arrival or an overflight appears, when its en-route stage starts, where its path has it at that moment on the simulator's clock (between the timed points either side, at the speed of that leg), and flies the rest. An arrival flies on to where the path meets a STAR of the runway in use; an overflight flies across the area;
 - a departure flies its SID, then its path;
@@ -157,12 +157,12 @@ Every step is an event, for the app's own state machine: logs, boards, sounds, o
 
 ## On the airport map
 
-The Schedule section has **Scheduled traffic**: ▶ Start / ■ Stop, density and max aircraft, the **airports** whose timetables run (the loaded one by default; others are loaded on start), and the **Departures**, **Arrivals** and **Overflights** boards, with a board per managed airport (#371).
+The Schedule section has **Scheduled traffic**: ▶ Start / ■ Stop, density and max aircraft, the **airports** whose timetables run (the loaded one by default; others are loaded on start), and the **Departures**, **Arrivals** and **Overflights** boards, with a board per managed airport.
 
 The spawner for scheduled flights (enroute arrivals and overflights appear airborne, see above; their labels show call sign, flight level and destination, and **Overflights** is a third board):
 - picks a model in the airline's livery (`ModelsFor`);
 - plans the flight to or from the other end (SID, airways, level), or falls back to the runway's SID or STAR;
-- uses the runway in use, a free stand, the airport's service vehicles (tug, fuel truck, stairs, GPU: [Ground services](traffic-world.md#ground-services-v020)) and automatic de-icing.
+- uses the runway in use, a free stand, the airport's service vehicles (tug, fuel truck, stairs, GPU: [Ground services](traffic-world.md#ground-services)) and automatic de-icing.
 
 Other traffic is a layer in the Map section (**Other traffic**), drawn in blue. It is off by default and listed apart from ours. There you can set whether the schedule respects or ignores it, and ✕ removes one of those aircraft from the simulator.
 

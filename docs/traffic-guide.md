@@ -1,11 +1,11 @@
 ---
-title: "Traffic Guide"
-description: "Create and manage AI aircraft using the pkg/traffic package."
-order: 1
+title: "Fleet & AI Objects"
+description: "The lowest layer of pkg/traffic: create and manage AI aircraft as a Fleet, waypoints and the AICreate kinds the rest builds on."
+order: 19
 section: "traffic"
 ---
 
-# Traffic Guide
+# Fleet & AI Objects
 
 > **Ground routing:** taxi routes between stands and runways come from
 > [pkg/airport](airport-layout.md), and [Departure Taxi](traffic-taxi.md) drives an AI
@@ -13,7 +13,7 @@ section: "traffic"
 > underlying `Fleet` and waypoint helpers. For the raw Engine `AICreate*` calls the
 > Fleet wraps, see [Engine AI Objects](engine-ai-objects.md).
 
-The rest of `pkg/traffic` builds on the `Fleet`:
+Most programs do not start here: the [Traffic World](traffic-world.md) runs the whole engine, and the [Traffic Overview](traffic-overview.md) maps every traffic page. This page is the lowest layer. The rest of `pkg/traffic` builds on the `Fleet`:
 
 | API | Does | Chapter |
 |---|---|---|
@@ -146,7 +146,7 @@ err := mgr.TrafficSetFlightPlan(objectID, "C:/Plans/EIDW-EGLL.pln", 5003)
 
 Enroute aircraft follow a `.PLN` flight plan file from a given phase offset.
 
-`Phase` (the SDK's `dFlightPlanPosition`) is the waypoint index plus the fraction along the next leg: `2.5` starts halfway between waypoints 2 and 3. It is not a 0–1 fraction of the route. In MSFS 2024 the phase does not take effect: tested live (#369), every enroute ATC aircraft appeared on the ground at its plan's departure airport, whatever the phase, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `RequestNonATC` at the position and give it the rest of the route as waypoints: `traffic.EnrouteStart` (see [Traffic Manager](traffic-manager.md)).
+`Phase` (the SDK's `dFlightPlanPosition`) is the waypoint index plus the fraction along the next leg: `2.5` starts halfway between waypoints 2 and 3. It is not a 0–1 fraction of the route. In MSFS 2024 the phase does not take effect: tested live, every enroute ATC aircraft appeared on the ground at its plan's departure airport, whatever the phase, and the simulator refused one (`CREATE_OBJECT_FAILED`) whose departure airport it had not loaded. To have an aircraft appear airborne mid-route, create it with `RequestNonATC` at the position and give it the rest of the route as waypoints: `traffic.EnrouteStart` (see [Traffic Manager](traffic-manager.md)).
 
 ```go
 err := mgr.TrafficEnroute(traffic.EnrouteOpts{

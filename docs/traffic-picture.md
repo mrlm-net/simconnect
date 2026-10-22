@@ -1,13 +1,13 @@
 ---
 title: "Traffic Picture"
 description: "All traffic around a centre of the world — fixed or following the user's aircraft — with phases, airports in range, and the ground and stand feeds for the controllers."
-order: 8
+order: 17
 section: "traffic"
 ---
 
 # Traffic Picture
 
-`traffic.TrafficPicture` is one picture of all traffic around a **centre of the world** (#366): our controlled aircraft, MSFS AI and the user, with where each one is and what it is doing, and the airports inside the radius. The centre is fixed — an airport or a position — or follows the user's aircraft; the library never assumes which.
+`traffic.TrafficPicture` is one picture of all traffic around a **centre of the world**: our controlled aircraft, MSFS AI and the user, with where each one is and what it is doing, and the airports inside the radius. The centre is fixed — an airport or a position — or follows the user's aircraft; the library never assumes which.
 
 ```go
 picture := traffic.NewTrafficPicture(traffic.PictureOptions{
@@ -55,7 +55,7 @@ A fixed centre stays put; `SetCentre` moves it, `SetRadius` changes the radius. 
 | `climbing` / `descending` | climbing / descending elsewhere |
 | `enroute` | level in the air |
 
-The simulator reports 0 kt for AI aircraft on the ground however they move (measured at LKPR: taxiing at 6–32 kt by their positions, 0.0 reported). Below `MovingKts` on the ground the picture works out the speed from the movement since the last scan (`SpeedDerived`, #622); such a speed counts as movement only above `DerivedMovingKts` (2 kt), as a metre of jitter between scans is about 1 kt. Climbing and descending follow the altitude over the last `ProfileWindow` (30 s): a climb or descent starts past `ProfileEnterFpm` (400 ft/min) and ends inside `ProfileLeaveFpm` (150) (#623).
+The simulator reports 0 kt for AI aircraft on the ground however they move (measured at LKPR: taxiing at 6–32 kt by their positions, 0.0 reported). Below `MovingKts` on the ground the picture works out the speed from the movement since the last scan (`SpeedDerived`); such a speed counts as movement only above `DerivedMovingKts` (2 kt), as a metre of jitter between scans is about 1 kt. Climbing and descending follow the altitude over the last `ProfileWindow` (30 s): a climb or descent starts past `ProfileEnterFpm` (400 ft/min) and ends inside `ProfileLeaveFpm` (150).
 
 The reported vertical speed is used only on the first scan of an aircraft. MSFS gives FSLTL AI on short final the wrong sign: BAW1989 at LKPR read +500 to +940 fpm while descending about 1,100 fpm.
 
@@ -85,4 +85,4 @@ Before this, BAW1989 descending through 8,000 ft toward LKPR was given LKKQ, the
 
 ## On the airport map
 
-The Map section has the **Traffic picture**: the centre (follow my aircraft, this airport, or the map centre), the radius, the airports and aircraft in range by phase, and the load of the aircraft we drive. The 🌐 button (bottom left) is the **world view** (#371): the map zooms out to the picture's circle and shows the airports in range and every aircraft, coloured by phase and labelled with call sign, level, phase and destination. Other traffic appears there only when its layer is on. Press 🌐 again to go back to the airport. The airports in range fill the ICAO fields (Load, flight plan) as a dropdown. `GET /api/world` returns the picture; `POST /api/world` sets the centre (`{"follow":true}`, `{"icao":"LKPR"}`, `{"lat":…,"lon":…}`) and the radius (`{"radiusNM":250}`).
+The Map section has the **Traffic picture**: the centre (follow my aircraft, this airport, or the map centre), the radius, the airports and aircraft in range by phase, and the load of the aircraft we drive. The 🌐 button (bottom left) is the **world view**: the map zooms out to the picture's circle and shows the airports in range and every aircraft, coloured by phase and labelled with call sign, level, phase and destination. Other traffic appears there only when its layer is on. Press 🌐 again to go back to the airport. The airports in range fill the ICAO fields (Load, flight plan) as a dropdown. `GET /api/world` returns the picture; `POST /api/world` sets the centre (`{"follow":true}`, `{"icao":"LKPR"}`, `{"lat":…,"lon":…}`) and the radius (`{"radiusNM":250}`).
