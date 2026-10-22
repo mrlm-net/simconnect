@@ -109,6 +109,17 @@ func (v *vehicleATC) cleared(icao string, r traffic.VehicleRequest) bool {
 // atcAnswerDelay, a runway crossing left to the tower.
 func (v *vehicleATC) ask(q *vehicleReq) {
 	cc, icao, r := v.cc, q.icao, q.r
+	if cc.core.vehicleRadioOff.Load() {
+		// Quiet: a taxiway is the vehicle's; a crossing waits for the tower
+		// in its turn (crossCleared), nothing said.
+		if r.Gate == traffic.GateTaxiway {
+			v.mu.Lock()
+			q.cleared = true
+			v.mu.Unlock()
+		}
+		cc.log.printf("%-6s %s: quiet %s %s%s", q.name, r.Kind, r.Gate, r.Runway, strings.Join(r.Taxiways, ","))
+		return
+	}
 	switch r.Gate {
 	case traffic.GateTaxiway:
 		station, freq := cc.stationOf(icao, traffic.PosGround)
@@ -184,6 +195,12 @@ func (v *vehicleATC) crossCleared(icao string, cross []string) {
 		if q == nil {
 			continue
 		}
+		if cc.core.vehicleRadioOff.Load() {
+			v.mu.Lock()
+			q.cleared = true
+			v.mu.Unlock()
+			continue
+		}
 		_, freq := cc.stationOf(icao, traffic.PosTower)
 		t := traffic.ClearedCross(name, v.said(icao, q.r.Runway))
 		t.Position, t.Frequency = traffic.PosTower, freq
@@ -203,6 +220,9 @@ func (v *vehicleATC) vacated(icao string, r traffic.VehicleRequest) {
 	name := v.name(r.Vehicle, r.Kind)
 	delete(v.reqs, reqKey(icao, r))
 	v.mu.Unlock()
+	if v.cc.core.vehicleRadioOff.Load() {
+		return
+	}
 	_, freq := v.cc.stationOf(icao, traffic.PosTower)
 	t := traffic.Vacated(name, v.said(icao, r.Runway))
 	t.Position, t.Frequency = traffic.PosTower, freq

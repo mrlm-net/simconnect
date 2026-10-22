@@ -79,3 +79,31 @@ func registerVehicles(mux *http.ServeMux, w *World) {
 		writeJSON(rw, w.GroundVehicles())
 	})
 }
+
+// VehicleRadio reports whether the ground vehicles talk on the radio (on
+// by default).
+func (w *World) VehicleRadio() bool { return !w.st.core.vehicleRadioOff.Load() }
+
+// SetVehicleRadio turns the vehicles' radio on or off. Off, they keep
+// quiet: a taxiway is theirs without a call, a runway crossing still waits
+// for the tower in its turn, only nothing is said.
+func (w *World) SetVehicleRadio(on bool) {
+	w.st.core.vehicleRadioOff.Store(!on)
+	w.st.core.log.printf("ground vehicles: radio %s", map[bool]string{true: "on", false: "off"}[on])
+}
+
+// registerVehicleRadio serves GET and POST /api/vehicles/radio {"on": false}.
+func registerVehicleRadio(mux *http.ServeMux, w *World) {
+	mux.HandleFunc("GET /api/vehicles/radio", func(rw http.ResponseWriter, r *http.Request) {
+		writeJSON(rw, map[string]bool{"on": w.VehicleRadio()})
+	})
+	mux.HandleFunc("POST /api/vehicles/radio", func(rw http.ResponseWriter, r *http.Request) {
+		var req struct{ On bool }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(rw, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.SetVehicleRadio(req.On)
+		writeJSON(rw, map[string]bool{"on": w.VehicleRadio()})
+	})
+}

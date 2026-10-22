@@ -17,6 +17,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/camera"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // The camera operator: the simulator's add-on camera on our traffic.
@@ -31,6 +32,10 @@ import (
 //	POST /api/camera {mode, id} — off | follow (id: the card) | auto
 //	GET  /api/camera/scenes            — the scripted scenes (scenes.go)
 //	POST /api/camera/scene?name=&icao= — play one
+//	GET  /api/camera/moves             — the moves a shot takes
+//	GET  /api/camera/glides            — the glides between picked frames
+//	POST /api/camera/capture {icao, name, tail} — the simulator's camera placed (capture.go)
+//	POST /api/camera/shot {icao, tail, move, side, sec, back, fov} — one move, to tune it
 
 // cameraHeard is the live connection's camera operator, for the radio and
 // the voice to tell what is heard.
@@ -78,6 +83,8 @@ type cameraMan struct {
 	lookAt time.Time
 	// sim switches the simulator's own cameras.
 	sim *simCamera
+	// camData: the simulator's camera as CameraGet gives it (capture.go).
+	camData chan types.SIMCONNECT_DATA_CAMERA
 	// prevSim: the simulator's CAMERA STATE when our camera took over (0:
 	// none); set back when it is released, so the user's camera is not left
 	// locked where ours was.
@@ -93,7 +100,7 @@ type cameraMan struct {
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
-	m := &cameraMan{cc: cc, mode: "off", sim: &simCamera{client: client}}
+	m := &cameraMan{cc: cc, mode: "off", sim: &simCamera{client: client}, camData: make(chan types.SIMCONNECT_DATA_CAMERA, 1)}
 	api, ok := client.(camera.API)
 	if ai, simless := client.(*traffic.SimlessAI); simless && !ok {
 		api, ok = ai.Client.(camera.API) // offline: the client under it (a test's Loopback)
@@ -111,6 +118,13 @@ func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
 
 // handle takes the camera's status messages.
 func (m *cameraMan) handle(msg engine.Message) bool {
+	if d, ok := msg.AsCameraData(); ok {
+		select {
+		case m.camData <- d:
+		default: // nobody asked
+		}
+		return true
+	}
 	return m.dir != nil && m.dir.Handle(msg)
 }
 
@@ -132,7 +146,7 @@ func (m *cameraMan) tick(now time.Time) {
 	// The next shot is picked off the connection's goroutine: it looks at
 	// the aircraft (their locks), and a goroutine holding one may be
 	// waiting on this one.
-	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "view" && look && m.picking.CompareAndSwap(false, true) {
+	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "shot" && mode != "view" && look && m.picking.CompareAndSwap(false, true) {
 		go func() {
 			defer m.picking.Store(false)
 			m.next(now)
@@ -151,7 +165,7 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 		return errors.New("no camera on this connection")
 	}
 	switch mode {
-	case "off", "follow", "auto", "scene":
+	case "off", "follow", "auto", "scene", "shot":
 	default:
 		return errors.New("mode: off, follow, auto or view")
 	}
@@ -413,7 +427,13 @@ func (m *cameraMan) cut(it *controlled, now time.Time) {
 		}
 		return
 	}
-	m.dir.Play(sequenceFor(it, n)...)
+	// Slow glides between the picked frames (compositions.go), the old
+	// moves only when none is clear of the buildings here.
+	shots := fillerGlides(it.graph, it, n)
+	if len(shots) == 0 {
+		shots = sequenceFor(it, n)
+	}
+	m.dir.Play(shots...)
 }
 
 // lockAirport keeps the airport of it loaded while the camera is on it: no
@@ -722,6 +742,46 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			return
 		}
 		writeJSON(w, list)
+	})
+	mux.HandleFunc("GET /api/camera/moves", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, sceneMoveNames())
+	})
+	mux.HandleFunc("POST /api/camera/capture", func(w http.ResponseWriter, r *http.Request) {
+		m := cam(w)
+		if m == nil {
+			return
+		}
+		var req struct{ ICAO, Name, Tail string }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		got, err := m.capture(req.ICAO, req.Name, req.Tail)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		writeJSON(w, got)
+	})
+	mux.HandleFunc("GET /api/camera/glides", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, compositionGlides)
+	})
+	mux.HandleFunc("POST /api/camera/shot", func(w http.ResponseWriter, r *http.Request) {
+		m := cam(w)
+		if m == nil {
+			return
+		}
+		var req ShotRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		got, err := m.playShot(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		writeJSON(w, map[string]string{"playing": got})
 	})
 	mux.HandleFunc("POST /api/camera/scene", func(w http.ResponseWriter, r *http.Request) {
 		m := cam(w)

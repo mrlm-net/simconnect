@@ -24,14 +24,16 @@
       "kind": "arrival",
       "tail": "DLH1402",
       "models": "lufthansa, a320",
-      "atSec": 90
+      "after": "dep:pushback",
+      "atSec": 0
     },
     {
       "role": "emg",
       "kind": "arrival",
       "tail": "RYR4TK",
       "models": "ryanair, b738",
-      "atSec": 300,
+      "after": "arr:rollout",
+      "atSec": 0,
       "emergency": "engine-failure"
     }
   ],

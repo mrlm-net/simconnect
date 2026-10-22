@@ -3,6 +3,7 @@ package airport
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -46,4 +47,41 @@ func TestEDDMEntryA4(t *testing.T) {
 		return
 	}
 	t.Fatal("no stand routes to 08L at A4")
+}
+
+// TestEndEntrances: the entrances side by side at a runway's end, each
+// with its holding point (LKPR 12: L and D have none), one per
+// taxiway, intersections further in left out (LKPR 24: A and Z, not B or
+// E; EDDM 08L: A1, A2, A3).
+func TestEndEntrances(t *testing.T) {
+	b, err := os.ReadFile("testdata/EDDM-layout.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l Layout
+	if err := json.Unmarshal(b, &l); err != nil {
+		t.Fatal(err)
+	}
+	eddm, err := BuildGraph(&l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		g    *Graph
+		end  string
+		want []string
+	}{{lkprGraph(t), "24", []string{"A", "Z"}}, {lkprGraph(t), "12", nil}, {lkprGraph(t), "06", []string{"F"}},
+		{eddm, "08L", []string{"A1", "A2", "A3"}}, {eddm, "26L", []string{"B14", "B15", "B13"}}} {
+		es, err := c.g.EndEntrances(c.end)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, e := range es {
+			got = append(got, e.Taxiway)
+		}
+		if strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%s %s: %v, want %v", c.g.Layout.ICAO, c.end, got, c.want)
+		}
+	}
 }

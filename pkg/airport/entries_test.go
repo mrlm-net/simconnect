@@ -94,3 +94,49 @@ func TestRunwayEntriesAtThresholds(t *testing.T) {
 		}
 	}
 }
+
+// TestHoldShortQueueTakesTheOtherEntrance: with entrances side by side at
+// the runway's end (LKPR 24: A and Z), a queue at the one a departure
+// would take sends it to the other, still full length; an intersection
+// (B, E) is never taken for it.
+func TestHoldShortQueueTakesTheOtherEntrance(t *testing.T) {
+	g := lkprGraph(t)
+	ends, err := g.EndEntrances("24")
+	if err != nil || len(ends) < 2 {
+		t.Fatalf("24 end entrances %v %v", ends, err)
+	}
+	moved := 0
+	for i := range g.Layout.Parking {
+		if i%5 != 0 {
+			continue
+		}
+		r, err := g.RouteToRunway(i, "24", RouteOptions{})
+		if err != nil {
+			continue
+		}
+		first := r.Nodes[len(r.Nodes)-1]
+		q, err := g.RouteToRunway(i, "24", RouteOptions{HoldShortQueue: map[NodeID]float64{first: 3000}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		other := q.Nodes[len(q.Nodes)-1]
+		if other == first {
+			continue // no other entrance in reach
+		}
+		moved++
+		h := g.Nodes[other].HoldShort
+		if h == nil {
+			t.Fatalf("%s: queued to node %d, no hold-short", g.Layout.Parking[i].Label(), other)
+		}
+		at := g.Layout.Runways[h.Runway].Length - h.FromPrimary
+		if g.Layout.Runways[h.Runway].Primary.Name == "24" {
+			at = h.FromPrimary
+		}
+		if at > ends[0].FromThreshold+DefaultIntersectionTolerance {
+			t.Errorf("%s: sent %0.f m in, an intersection", g.Layout.Parking[i].Label(), at)
+		}
+	}
+	if moved == 0 {
+		t.Error("no departure took the other entrance with its own queued")
+	}
+}

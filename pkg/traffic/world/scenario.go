@@ -773,7 +773,12 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 			return true, clear("hold")
 		case "goAround":
 			return true, clear("goaround")
-		case "custom": // Args["text"], said as written; Args["station"] the unit
+		// Args["text"], said as written; Args["station"] the unit; Args["from"]
+		// "pilot": the crew says it; Args["reply"] the answer as written
+		// ("none": none; else a controller's call is answered "Roger, …", a
+		// crew's not at all); Args["frequency"] one that is no station of
+		// ours ("132.89": Praha Control, en route).
+		case "custom":
 			it, err := who()
 			if err != nil {
 				return true, err
@@ -791,8 +796,22 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 			if pos == "" {
 				pos = traffic.PosApproach
 			}
-			it.say(traffic.CustomCall(pos, it.Tail, text))
-			it.say(traffic.Roger(pos, it.Tail))
+			pilot, freq := a.Args["from"] == "pilot", strings.TrimSpace(a.Args["frequency"])
+			call := func(t traffic.Transmission, byPilot bool) {
+				t.Pilot = byPilot
+				if freq != "" {
+					t.Frequency = freq
+				}
+				it.say(t)
+			}
+			call(traffic.CustomCall(pos, it.Tail, text), pilot)
+			switch reply := strings.TrimSpace(a.Args["reply"]); {
+			case reply == "none":
+			case reply != "":
+				call(traffic.CustomCall(pos, it.Tail, reply), !pilot)
+			case !pilot:
+				call(traffic.Roger(pos, it.Tail), true)
+			}
 			return true, nil
 		case "expectDelay": // Args["minutes"], none: "expect delay"
 			it, err := who()
@@ -815,7 +834,8 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 		if a.On != nil && !*a.On {
 			return true, cc.cancelEmergency(it) // On false: cancelled
 		}
-		return true, cc.declareEmergency(it, traffic.EmergencyKind(a.Kind), a.Level)
+		// Args["say"] "none": declared without a word, the scene saying its own.
+		return true, cc.declareEmergency(it, traffic.EmergencyKind(a.Kind), a.Level, a.Args["say"] == "none")
 	}
 	return false, nil
 }

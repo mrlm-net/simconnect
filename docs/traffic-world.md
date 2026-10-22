@@ -312,6 +312,19 @@ The World's ground vehicles can be switched off by kind: tugs, fuel trucks, stai
 
 Vehicles already at work finish their job and are not replaced. In a director and actuator pair the director decides, so its switches count.
 
+The vehicles talk on the radio: "Ruzyne Ground, Tug 1, request proceed via G". A vehicle calls when it is within 80 m of the taxiway or runway, not as it sets off (`traffic.VehicleAskAheadM`). `World.SetVehicleRadio(false)` (`POST /api/vehicles/radio {"on": false}`) keeps them quiet: a taxiway is theirs without a call, and a runway crossing still waits for the tower in its turn, only nothing is said. `World.VehicleRadio()` (`GET /api/vehicles/radio`) says which.
+
+## Departure queue
+
+Departures stay on their stands while the queue ahead of them is full, as departure management does: the queue at the runway stays short, and the arrivals are not spaced for a long one (`traffic.CheckDepartureQueue`). Two queues are counted apart:
+
+- **Taxiing out:** up to 6 departures between their stands and the runway, from the push to the line at the runway (`DefaultMaxDepartureQueue`).
+- **At the runway:** departures in its line (within 400 m of it), holding short, lining up or rolling. Each runway has its own queue: 3 for each entrance at its end, at least 4 (`DefaultMaxRunwayQueue`, `ManagerOptions.RunwayQueue`). LKPR 24 has two entrances, A and Z, so 6; EDDM's runways have three each, so 9.
+
+An entrance at the runway's end has a holding point of its own and lies within 120 m of the nearest one (`airport.EndEntrances`, `EndEntranceSpanMeters`), which is itself within 300 m of the threshold (`FullLengthMeters`, measured on 262 runway ends at 40 large airports). LKPR 24's A and Z both join the runway 201 m in. Intersections further in (LKPR 24: B, E) are not entrances; departures for them are planned as before.
+
+A full-length departure takes the entrance with the shorter line. Each departure already heading for a holding point counts as 250 m more taxi there (`airport.RouteOptions.HoldShortQueue`), and the radio still says only "runway 24".
+
 **Model providers.** Our traffic's models come from providers, each on or off: a title's package names it (FSLTL, AIG, GSX, MyCrew, else the package's creator; `traffic.modelProviders` holds the patterns), and a title the simulator lists on no package on disk is MSFS's own. The user's flyable add-ons (FlyByWire, Fenix: `isUserSelectable = 1`) start off, as heavy models; the rest on. `World.ModelProviders()` (`GET /api/models/providers`) lists them per kind with their title counts, `World.SetModelProviders(map[provider]bool)` (`POST /api/models/providers`) switches them. A provider off is passed over for the next choice; where nothing else is there, any is taken and the traffic log says so.
 
 **Models never used** (#1024). Some simulator models do not work as traffic: one that does not show attached, one that looks wrong. The table `traffic.modelRules` lists them by title (`traffic.ModelRuleItem`: title, kind, `never`, reason); our traffic passes them over for the next choice: the next aircraft title (`ModelsFor`), the next bigger tug (`TugTitleFor`), the next stairs, GPU, bus or follow-me car. Shipped: the small Mototok robot tug (it does not show attached; light aircraft get the towbarless Mototok) and MSFS's GPU van. Local rules go over them per model in `DataDir/model-rules.json` (`{"title": …, "never": false}` takes a shipped one back): `World.SetModelRule` (`POST /api/models/rules`) sets one, `World.ModelRules()` (`GET /api/models/rules`) lists those in use, and the map's aircraft card has "Never use" beside its model and each of its vehicles. Models already in use keep going.

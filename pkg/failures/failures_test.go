@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/mrlm-net/simconnect/pkg/avionics"
+	"github.com/mrlm-net/simconnect/pkg/systems"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -59,5 +61,15 @@ func TestFailures(t *testing.T) {
 	study := New(c, Default().With(Profile{Events: map[Kind]string{Hydraulic: ""}}), 0)
 	if slices.Contains(study.Supported(), Hydraulic) {
 		t.Error("taken away by the override, still supported")
+	}
+}
+
+// TestEventBaseOwnBlock: the default client event IDs are a block no other
+// package of the library maps by default (systems.Controls had 0x7B00 too).
+func TestEventBaseOwnBlock(t *testing.T) {
+	for name, b := range map[string]uint32{"systems.Controls": systems.DefaultControlBase, "avionics": avionics.DefaultEventBase} {
+		if DefaultEventBase>>8 == b>>8 {
+			t.Errorf("DefaultEventBase %#x in the block of %s (%#x)", DefaultEventBase, name, b)
+		}
 	}
 }

@@ -33,6 +33,8 @@ type core struct {
 	// vehicleSw: the ground vehicles by kind on or off (vehicles.go).
 	vehicleSw    *vehicleSwitches
 	vehiclesOnce sync.Once
+	// vehicleRadioOff: the vehicles keep quiet on the radio (vehicles.go).
+	vehicleRadioOff atomic.Bool
 
 	// runwayMu guards selectors and inUse: each airport's runway in use,
 	// one selector for the traffic and its ATIS (#454), and the last one

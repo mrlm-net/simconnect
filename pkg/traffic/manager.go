@@ -76,7 +76,8 @@ type ManagedFlight struct {
 	Estimated time.Time `json:"estimated,omitempty"`
 	Note      string    `json:"note,omitempty"`
 	Held      bool      `json:"held,omitempty"`
-	// AtRunway: a departure holding short, lining up or lined up — in the
+	// AtRunway: a departure holding short, lining up, lined up, rolling or
+	// in the line just short of the holding point — in the
 	// runway queue, off the taxiways (CheckGroundCongestion leaves it out).
 	AtRunway bool `json:"atRunway,omitempty"`
 	// Stage "enroute": the spawn is the enroute part of an arrival (MSFS AI
@@ -178,6 +179,10 @@ type ManagerOptions struct {
 	// and leave with it. MaxOverflights at once (default 4).
 	Overflights    func(from, to time.Time) []Flight
 	MaxOverflights int
+	// RunwayQueue is how many departures may wait at an airport's runway
+	// (CheckDepartureQueue; 0 or nil: DefaultMaxRunwayQueue): more for one
+	// with entrances side by side at its end.
+	RunwayQueue func(icao, runway string) int
 	// LeftAfter: an airborne aircraft of ours the picture has not seen for
 	// this long has left the area and is removed (default 1 min).
 	LeftAfter time.Duration
