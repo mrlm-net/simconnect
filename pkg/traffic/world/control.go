@@ -1604,6 +1604,91 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	it.keepSpot()
 }
 
+// amendClearance changes a held departure clearance before it is given
+// (#1156): a different runway, a different SID off it, a lower initial
+// climb. Empty values leave that part of the clearance as filed.
+//
+// THE AIRCRAFT AND NOT ONLY THE WORDS. `ChangeRunway` re-plans the taxi
+// and the departure route and `LimitClimb` caps the climb, so what is said
+// is what is flown; saying a runway the aeroplane is not going to is worse
+// than not offering the choice at all.
+//
+// Refusals are the engine's: no such SID for that runway, too late to
+// change runway (it is lined up), and so on.
+func (it *controlled) amendClearance(runway, sid, level string) error {
+	if runway == "" && sid == "" && level == "" {
+		return nil
+	}
+	if it.dep == nil {
+		return errors.New("only a departure has a departure clearance")
+	}
+	it.clrMu.Lock()
+	pending := it.pendingClearance
+	it.clrMu.Unlock()
+	if pending.Intent == "" {
+		return errors.New("no clearance is waiting")
+	}
+	g := it.graph
+	if g == nil {
+		return errors.New("no airport")
+	}
+	if runway == "" {
+		it.mu.Lock()
+		runway = it.view.Runway
+		it.mu.Unlock()
+	}
+	// The runway, and the SID off it: named, or the one nearest what it had.
+	if runway != "" || sid != "" {
+		it.mu.Lock()
+		had := it.view.Procedure
+		it.mu.Unlock()
+		name := sid
+		if name == "" && had != "" && it.cc.procedures != nil {
+			if p, ok := it.cc.procedures(g.Layout.ICAO); ok {
+				if x := sameFix(p.SIDsFor(runway), had); x != nil {
+					name = x.Name
+				}
+			}
+		}
+		pts, said, _, err := it.cc.procedureFor(g, SpawnRequest{Kind: "departure", Runway: runway, ProcName: name})
+		if err != nil {
+			return err
+		}
+		if err := it.cc.do(func() error { return it.dep.ChangeRunway(runway, "", pts) }); err != nil {
+			return err
+		}
+		it.mu.Lock()
+		it.view.Runway, it.view.Procedure = runway, said
+		it.mu.Unlock()
+		pending.Params[traffic.ParamRunway] = runway
+		it.mu.Lock()
+		it.procSaid = procedureSaid(said, nil)
+		sidSaid := it.procSaid
+		it.mu.Unlock()
+		pending.Params[traffic.ParamSID] = sidSaid
+	}
+	// A lower initial climb than the SID's: a restriction, not a re-route.
+	if level != "" {
+		ft, err := strconv.ParseFloat(level, 64)
+		if err != nil || ft <= 0 {
+			return errors.New("level must be an altitude in feet")
+		}
+		if !it.dep.LimitClimb(ft) {
+			return errors.New("the climb cannot be limited now")
+		}
+		said := traffic.LevelSaid(ft)
+		it.mu.Lock()
+		it.climbSaid = said
+		it.mu.Unlock()
+		pending.Params[traffic.ParamLevel] = said
+	}
+	// Said again from the amended parameters, so the words match the plan.
+	it.clrMu.Lock()
+	it.pendingClearance = traffic.Say(pending)
+	it.clrMu.Unlock()
+	return nil
+}
+
 func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureCtl) []string {
 	switch s {
 	case traffic.TaxiAwaitingPushback:
@@ -2332,6 +2417,18 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if action == "pushback" && r.URL.Query().Get("startup") == "1" {
 			action = "pushstart"
 		}
+		// AN AMENDED CLEARANCE (#1156): a controller is not a tape recorder
+		// reading back the flight plan. `?runway=`, `?sid=` and `?level=`
+		// change what is cleared before it is said — and change the aircraft,
+		// not only the words, or the radio would promise something it does not
+		// then fly.
+		if action == "clearance" {
+			q := r.URL.Query()
+			if err := it.amendClearance(q.Get("runway"), q.Get("sid"), q.Get("level")); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+		}
 		// Marked as said before it is given: the state change it causes can
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
@@ -2707,7 +2804,13 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 				return x, nil
 			}
 		}
-		if r.ProcName != "" || len(list) == 0 {
+		if len(list) == 0 {
+			// Said plainly: `no procedure "" for runway 02` reads as a bug in the
+			// caller, and it is a fact about the airport — Orly publishes no SID
+			// off 02 at all.
+			return airport.Procedure{}, fmt.Errorf("runway %s has no published procedure", r.Runway)
+		}
+		if r.ProcName != "" {
 			return airport.Procedure{}, fmt.Errorf("no procedure %q for runway %s", r.ProcName, r.Runway)
 		}
 		return list[rand.IntN(len(list))], nil
