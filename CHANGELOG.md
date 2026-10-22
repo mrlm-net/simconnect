@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.112.0] - 2026-10-23
+
+### Added
+
+- Staffed delivery: a departure calls for its en-route clearance and the AI does not answer; the action `clearance` gives it, with `World.Phrase(id, "clearance")` for its wording. Delivery unstaffed, the World gives those still waiting (#1156).
+- `ControlView.AltFt`: our aircraft's altitude as the simulator reports it, for a scope's label without `/api/traffic` (#1152).
+- `POST /api/game` with `"intervalSec": 0` scores the traffic the host makes and spawns none; without it a flight comes about every 3 minutes, as before (#1152).
+- `traffic.FitsStands`, `traffic.FlightsThatFit`.
+
+### Fixed
+
+- `/api/control` named ground as an aircraft's position while delivery still had it (from its clearance request to its clearance), and `?as=ground` was refused by the very position the view showed. The view keeps delivery until it hands over (#1155).
+- Schedule: light aircraft are drawn only from the types the field has a stand for. At LKKB, stands of 5 m radius, only a PA-28 parks, and every other VFR flight was refused at its spawn, retried and cancelled. A club's aircraft the field cannot park stay at home, and a field with no stand for any flies no light traffic. Every flight, IFR included, whose type has no stand at its airport is left out of the schedule and logged once, instead of being refused at its spawn: the airliners into LKKB (#1152).
+
 ## [0.111.2] - 2026-10-22
 
 ### Fixed

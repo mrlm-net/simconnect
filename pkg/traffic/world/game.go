@@ -114,7 +114,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		}
 		it.mu.Unlock()
 	}
-	if !now.Before(g.next) && active < gameMaxActive {
+	if g.Interval > 0 && !now.Before(g.next) && active < gameMaxActive {
 		g.next = now.Add(time.Duration(g.Interval * float64(time.Second) * (0.7 + 0.6*rand.Float64())))
 		kind := "departure"
 		if g.arrival {
@@ -138,7 +138,10 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			g.event(0, "%s %s", tail, what)
 		}
 	}
-	g.NextIn = g.next.Sub(now).Seconds()
+	g.NextIn = 0
+	if g.Interval > 0 {
+		g.NextIn = g.next.Sub(now).Seconds()
+	}
 
 	// Flights handled, and waiting for clearances.
 	type onRunway struct {
@@ -274,7 +277,8 @@ func runwayOccupied(g *airport.Graph, v ControlView) (int, bool) {
 }
 
 // registerGame adds the game API: GET /api/game, POST /api/game
-// {"on":true,"icao":"LKPR","runway":"24","intervalSec":180}.
+// {"on":true,"icao":"LKPR","runway":"24","intervalSec":180}; "intervalSec": 0
+// scores the traffic the host makes and spawns none.
 func registerGame(mux *http.ServeMux, st *state) {
 	get := func(w http.ResponseWriter) *controlCenter {
 		st.mu.Lock()
@@ -305,10 +309,12 @@ func registerGame(mux *http.ServeMux, st *state) {
 			return
 		}
 		var req struct {
-			On       bool    `json:"on"`
-			ICAO     string  `json:"icao"`
-			Runway   string  `json:"runway"`
-			Interval float64 `json:"intervalSec"`
+			On     bool   `json:"on"`
+			ICAO   string `json:"icao"`
+			Runway string `json:"runway"`
+			// IntervalSec omitted: gameDefaultInterval; 0: scored, never spawns
+			// (the host drives the traffic, #1152).
+			Interval *float64 `json:"intervalSec"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -322,9 +328,9 @@ func registerGame(mux *http.ServeMux, st *state) {
 			if g.Runway == "" {
 				g.Runway = "active"
 			}
-			g.Interval = req.Interval
-			if g.Interval <= 0 {
-				g.Interval = gameDefaultInterval.Seconds()
+			g.Interval = gameDefaultInterval.Seconds()
+			if req.Interval != nil {
+				g.Interval = max(0, *req.Interval)
 			}
 			g.Score, g.Handled, g.Spawned, g.Events = 0, 0, 0, nil
 			g.done, g.waitFrom, g.waitPaid, g.conflicts = map[int]bool{}, map[int]time.Time{}, map[int]time.Time{}, map[string]time.Time{}

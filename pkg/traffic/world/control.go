@@ -109,7 +109,11 @@ type controlled struct {
 	// deliver: a parked real aircraft's call to delivery, made when its
 	// departure is seen (nil: made already).
 	deliver func()
-	defBase uint32 // its ID block (cc.ids)
+	// clearanceDue: its departure clearance, asked for on a staffed
+	// delivery and not given yet (action "clearance"; given by the World
+	// once delivery is no longer staffed). it.mu.
+	clearanceDue *traffic.Transmission
+	defBase      uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
@@ -318,17 +322,19 @@ type ControlView struct {
 	State          string        `json:"state"`
 	HoldingShortOf string        `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
-	TaxiRemainingM float64          `json:"taxiRemainingM,omitempty"`
-	AtLimit        bool             `json:"atLimit"`
-	LimitNode      int              `json:"limitNode"`
-	Position       airport.LatLon   `json:"position"`
-	Heading        float64          `json:"heading"`
-	GroundSpeed    float64          `json:"groundSpeed"`
-	Lights         string           `json:"lights"`
-	Error          string           `json:"error,omitempty"`
-	Route          []airport.LatLon `json:"route"`
-	Nodes          []airport.NodeID `json:"nodes"`
-	Actions        []string         `json:"actions"` // clearances available now
+	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
+	AtLimit        bool           `json:"atLimit"`
+	LimitNode      int            `json:"limitNode"`
+	Position       airport.LatLon `json:"position"`
+	Heading        float64        `json:"heading"`
+	// AltFt: its altitude (feet MSL) as the simulator reports it; 0 not seen.
+	AltFt       float64          `json:"altFt,omitempty"`
+	GroundSpeed float64          `json:"groundSpeed"`
+	Lights      string           `json:"lights"`
+	Error       string           `json:"error,omitempty"`
+	Route       []airport.LatLon `json:"route"`
+	Nodes       []airport.NodeID `json:"nodes"`
+	Actions     []string         `json:"actions"` // clearances available now
 	// AirRoute is what it still flies in the air: an arrival's STAR and
 	// approach (with any dog-leg), a departure's SID once handed to MSFS AI;
 	// Hold its hold when holding (#391, #392).
@@ -1236,8 +1242,19 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.climbSaid = initialClimbSaid(lim, procName)
 			deliver := func() {
 				it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
-				it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
-					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
+				clr := traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk})
+				// Delivery staffed: the clearance waits for the player
+				// (action "clearance"), as every other one does (#1156).
+				if _, staffed := cc.core.staffedAt(g.Layout.ICAO, traffic.PosDelivery, station); staffed {
+					it.mu.Lock()
+					it.clearanceDue, it.view.Manual = &clr, true
+					it.mu.Unlock()
+					it.gates.Store(true)
+					cc.log.printf("%-6s on a staffed station (%s): its clearance the player's", r.Tail, station)
+					return
+				}
+				it.clearance(clr)
 			}
 			if r.parked {
 				it.deliver = deliver // a real aircraft parked: it calls once its departure is seen (#841)
@@ -1524,6 +1541,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		if it.clearanceDue != nil {
+			v.Actions = append([]string{"clearance"}, v.Actions...)
+		}
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
 			if e.Deicing {
@@ -1629,6 +1649,8 @@ func flightRules(r SpawnRequest) string {
 // act gives a clearance to a controlled aircraft.
 func (it *controlled) act(action string, node airport.NodeID) error {
 	switch d := it.dep; {
+	case d != nil && action == "clearance":
+		return it.giveClearance()
 	case d != nil && action == "pushback":
 		d.ClearPushback()
 	case d != nil && action == "pushstart":
@@ -1765,6 +1787,11 @@ func (cc *controlCenter) views() []ControlView {
 			if p, route, ok := it.fuel.Track(); ok {
 				v.Fuel = &tugView{Position: p.Position, Heading: p.Heading, Route: route}
 			}
+		}
+		// Its altitude as the simulator reports it, for a scope's label
+		// without /api/traffic (#1152).
+		if a, ok := air[id]; ok {
+			v.AltFt = math.Round(a.AltFt)
 		}
 		// A departure in the air: its SID still to fly, like a STAR.
 		if a, ok := air[id]; it.dep != nil && ok && !a.OnGround {
@@ -3498,6 +3525,13 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return r.SpokenTaxiways(min(n, len(r.Edges)))
 	}
 	switch action {
+	case "clearance":
+		it.mu.Lock()
+		due := it.clearanceDue
+		it.mu.Unlock()
+		if due != nil {
+			return *due
+		}
 	case "pushback":
 		if it.dep != nil {
 			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacingSaid())
@@ -3740,7 +3774,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		return
 	}
 	if ev.dep != nil && it.atc == traffic.PosDelivery && !it.delivered {
-		return // delivery transfers it after the clearance (clearance)
+		// Delivery transfers it after the clearance (clearance); until then
+		// it is delivery's, on the view too: a client clearing as the
+		// position the view names was refused by mayClear (#1155).
+		it.view.ATC, it.view.Frequency = string(it.atc), was
+		return
 	}
 	from := it.atc
 	it.atc = pos

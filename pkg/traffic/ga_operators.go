@@ -3,6 +3,8 @@ package traffic
 import (
 	"math/rand/v2"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
 // GAKind is the kind of general aviation operator a light aircraft flies
@@ -99,8 +101,9 @@ const DepartureLead = 10 * time.Minute
 // gaFlight makes f a flight of an operator at icao in hour h: its kind
 // picked by weight, then a free aircraft of its fleet (a private owner's
 // when none is), its circuits by kind. busy are the fleet's flights so far
-// in this hour.
-func gaFlight(f *Flight, ops []GAOperator, h time.Time, rng *rand.Rand, busy map[string][]Flight, icao string) {
+// in this hour; l the field: a fleet aircraft it has no stand for stays
+// home (#1152).
+func gaFlight(f *Flight, ops []GAOperator, h time.Time, rng *rand.Rand, busy map[string][]Flight, icao string, l *airport.Layout) {
 	w := make([]float64, len(ops))
 	for i, o := range ops {
 		w[i] = o.Weight
@@ -110,7 +113,7 @@ func gaFlight(f *Flight, ops []GAOperator, h time.Time, rng *rand.Rand, busy map
 	if len(op.Fleet) > 0 {
 		hour := int(h.Unix() / 3600)
 		for i, a := range op.Fleet {
-			if (hour+i)%gaFleetHours != 0 {
+			if (hour+i)%gaFleetHours != 0 || !FitsStands(l, a.Type) {
 				continue
 			}
 			cand := *f

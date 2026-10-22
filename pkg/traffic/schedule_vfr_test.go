@@ -1,6 +1,8 @@
 package traffic
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +135,37 @@ func TestBusinessFlights(t *testing.T) {
 	}
 	if n := len(BusinessFlights(cfg, BusinessOptions{Focus: []string{"LKPR"}, Layouts: map[string]*airport.Layout{"LKPR": smallField(l)}, Seed: 3}, day, day.Add(24*time.Hour))); n != 0 {
 		t.Errorf("%d business flights at a small field", n)
+	}
+}
+
+// TestFlightsFitTheStands: at LKKB, stands of 5 m radius, only a PA-28
+// parks: the light traffic flies PA-28s, and an airliner's flights there
+// are left out, not written to be refused at their spawn (#1152).
+func TestFlightsFitTheStands(t *testing.T) {
+	b, err := os.ReadFile("../airport/testdata/LKKB-layout.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l airport.Layout
+	if err := json.Unmarshal(b, &l); err != nil {
+		t.Fatal(err)
+	}
+	if !FitsStands(&l, "P28A") || FitsStands(&l, "C172") || FitsStands(&l, "E190") {
+		t.Fatalf("P28A %v, C172 %v, E190 %v: want only the PA-28", FitsStands(&l, "P28A"), FitsStands(&l, "C172"), FitsStands(&l, "E190"))
+	}
+	from := time.Date(2026, 6, 20, 8, 0, 0, 0, time.UTC)
+	vfr := VFRFlights(VFROptions{Focus: []string{"LKKB"}, Layouts: map[string]*airport.Layout{"LKKB": &l}, Density: 3, Seed: 7}, from, from.Add(6*time.Hour))
+	if len(vfr) == 0 {
+		t.Fatal("no light traffic at LKKB")
+	}
+	for _, f := range vfr {
+		if f.Type != "P28A" {
+			t.Fatalf("a %s at LKKB, which has no stand for it", f.Type)
+		}
+	}
+	fit, out := FlightsThatFit([]Flight{{Origin: "LKKB", Destination: "EHAM", Type: "E190"}, vfr[0], {Origin: "LKPR", Destination: "EHAM", Type: "E190"}},
+		map[string]*airport.Layout{"LKKB": &l})
+	if len(fit) != 2 || len(out["LKKB"]) != 1 || out["LKKB"][0] != "E190" {
+		t.Errorf("fit %d, out %v: want the E190 at LKKB left out", len(fit), out)
 	}
 }

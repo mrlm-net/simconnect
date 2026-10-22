@@ -71,7 +71,9 @@ type scheduler struct {
 	pacedAt time.Time // paceEnroute's last look
 	// usedCS: the schedule's call signs by the hour they were made (#98).
 	usedCS map[string]time.Time
-	real   map[string]*realID
+	// noStand: the airports and types said to have no stand ("ICAO type").
+	noStand map[string]bool
+	real    map[string]*realID
 }
 
 // ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
@@ -193,6 +195,23 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 			vfr[i].STD, vfr[i].STA = vfr[i].STD.Add(-off), vfr[i].STA.Add(-off)
 		}
 		flights = append(flights, vfr...)
+	}
+	// None the field cannot park (#1152): said once per airport and type.
+	flights, out := traffic.FlightsThatFit(flights, opts.Layouts)
+	for icao, types := range out {
+		for _, t := range types {
+			k := icao + " " + t
+			s.mu.Lock()
+			said := s.noStand[k]
+			if s.noStand == nil {
+				s.noStand = map[string]bool{}
+			}
+			s.noStand[k] = true
+			s.mu.Unlock()
+			if !said {
+				s.cc.log.printf("schedule: no stand at %s for a %s: its flights left out", icao, t)
+			}
+		}
 	}
 	return flights
 }

@@ -2,6 +2,7 @@ package world
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -122,6 +123,7 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 		if req != "" {
 			it.askGround(req) // a request still waiting is answered
 		}
+		it.giveClearance() // a clearance still waiting too (#1156)
 	}
 	cc.staffedAny = any
 }
@@ -141,4 +143,20 @@ func registerStaffed(mux *http.ServeMux, w *World) {
 		w.SetStaffed(list)
 		writeJSON(rw, w.Staffed())
 	})
+}
+
+// giveClearance gives the departure clearance it asked for on a staffed
+// delivery (#1156): the player's action "clearance", or the World once
+// delivery is no longer staffed.
+func (it *controlled) giveClearance() error {
+	it.mu.Lock()
+	due := it.clearanceDue
+	it.clearanceDue = nil
+	it.mu.Unlock()
+	if due == nil {
+		return errors.New("no clearance asked for")
+	}
+	it.clearance(*due)
+	it.cc.changed("control")
+	return nil
 }
