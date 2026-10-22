@@ -227,7 +227,7 @@ type controlled struct {
 	// short of, so it is told to continue once clear.
 	giveWayHoldShort, heldShortOf string
 	toldWay                       uint32
-	toldWayAt time.Time // when it was last told to give way
+	toldWayAt                     time.Time // when it was last told to give way
 	// stoppedBy is why it stands still taxiing (TaxiEvent.StoppedBy).
 	stoppedBy string
 	// pushHeldBy: the object its push holds for, as last logged.
@@ -358,6 +358,9 @@ type ControlView struct {
 }
 
 type controlCenter struct {
+	// runwayQueues: departures that may wait at a runway end, by "ICAO
+	// end" (runwayQueue, intersections.go).
+	runwayQueues sync.Map
 	// core is the engine state that outlives this connection; log its
 	// traffic log (console, file, /api/control/log).
 	core *core
@@ -1114,7 +1117,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
-			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
+			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways, HoldShortQueue: cc.holdShortQueue(g, r.Runway)},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.
@@ -1505,7 +1508,12 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			}
 		}
 		if e := ev.dep; e != nil {
-			m.SetAtRunway(it.Tail, e.State >= traffic.TaxiHoldingShort && e.State <= traffic.TaxiLinedUp)
+			// In the runway's queue: holding short, lining up, rolling, or in the
+			// line for it (live, LKPR: departures stopped nose to tail short
+			// of the holding point counted as taxiing, the next ones held on
+			// their stands).
+			queued := e.State == traffic.TaxiTaxiing && e.Remaining > 0 && e.Remaining <= runwayQueueM
+			m.SetAtRunway(it.Tail, queued || e.State >= traffic.TaxiHoldingShort && e.State <= traffic.TaxiDeparting)
 		}
 	}
 	if e := ev.dep; e != nil {
@@ -2397,6 +2405,10 @@ func (cc *controlCenter) runwayFor(g *airport.Graph, arrival bool, stand int) st
 // as this much more taxi to it (about a departure interval's), so with
 // parallels in use together a busy one hands departures to the other.
 const departureQueueM = 900.0
+
+// runwayQueueM: a departure taxiing this near its runway is in the line
+// for it, at the runway (TrafficManager.SetAtRunway), not on the taxiways.
+const runwayQueueM = 400.0
 
 // balancedDeparture is the departure runway of parallels in use together
 // for a flight from stand: the shortest taxi there, with each departure

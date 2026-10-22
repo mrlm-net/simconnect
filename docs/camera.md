@@ -149,20 +149,59 @@ A scene can do more than film. These fields make one a whole demonstration, as t
 - **`jetways`**: true switches the jetways on as the scene starts.
 - **`schedule`**: `{"density": 2, "maxAircraft": 30}` switches the airport's scheduled traffic on around the cast if it is off.
 - **Cast:**
+  - `atSec` is when it appears, in seconds from the start of the scene. With `after` set to a cue, `atSec` counts from that cue instead. For example, `"after": "dep:pushback"` keeps an arrival in step with the departure however long its fuelling takes.
+  - `pushAfterSec` is the earliest push. A fuel truck or tug still at work comes first.
   - `stand` puts a departure on that stand; if it is taken, the departure goes to any free one.
   - `fuel` has it refuelled before the push.
   - `emergency` gives an arrival an emergency of that kind (`engine-failure`, `medical`, `fuel`, `pressurisation`, `fire`, `hydraulic`). It is declared once the aircraft flies, with its MAYDAY or PAN PAN, priority in the sequence, and the airport's rescue vehicles.
 - **Beat `actions`**: run as the beat starts, with `who` a role. They are the scenario actions (`World.Act`):
   - `{"do": "say", "kind": "expectDelay", "who": "dep", "args": {"minutes": "5"}}`;
+  - `{"do": "say", "kind": "custom", "who": "kal", "args": {"text": "…"}}` is a line said as written. It comes from the controller unless `"from": "pilot"`. `"reply"` is the other side's answer as written (`"none"` for no answer); by default a controller's line gets "Roger, …" and a crew's line gets nothing. `"frequency": "132.89"` puts it on a frequency no station of ours has, such as Praha Control en route;
+  - `{"do": "emergency", "kind": "medical", "who": "kal", "args": {"say": "none"}}` gives priority, squawk 7700 and the rescue without the stock radio calls, so the scene's own lines tell it;
   - `{"do": "runway", "runway": "06/24", "kind": "hold", "on": true}` holds the runway: no clearances on it, but it stays the runway in use. Without `kind`, the runway is closed, and the runway in use changes.
 - **`delaySec`**: starts a beat that long after its cue.
 - **`endActions`**: run however the scene ends, for example to release a held runway.
 
-A beat's `listen` switches the radio to that aircraft's frequency from then on. `move` is one of the drone moves above (`revealRise`, `topOrbit`, `mainGear`, …), `crane` (the opening), or `runwaySide` / `underApproach` (fixed beside the runway, zooming from `fov` to `fovTo`).
+A beat's `listen` switches the radio to that aircraft's frequency from then on, or to a frequency given (`"listen": "132.89"`). `move` is one of the drone moves above (`revealRise`, `topOrbit`, `mainGear`, …), `crane` (the opening), or `runwaySide` / `underApproach` (fixed beside the runway, zooming from `fov` to `fovTo`).
+
+### Compositions and glides
+
+Shots are composed first: a shot is a slow glide between two frames picked from stills, not a move judged only in motion. A frame is a move held still at one moment and distance. Its name is `<move>_dist<back>_t<moment>`; for example `sideDolly_dist1.6_t50` is the middle of `sideDolly`, 1.6 times farther from what it looks at.
+
+The picked frames come from a sweep at LKPR: every move at three distances and three moments, reviewed as stills. The close details (cockpit, lights, main gear, hero push-in, head-on) were all too tight and are not picked (`sceneCompositions`). Two rules apply to every glide:
+
+- **Never from behind.** A frame with the camera behind the tail is left out.
+- **Clear of buildings.** At a stand the camera never goes ahead of the nose (the terminal) or to the left (the jetway). Elsewhere it stays low only over the taxiways and aprons (within 35 m of the taxi graph); 30 m up, it is above the roofs.
+
+A shot is one of:
+
+- **`{"from": "revealRise_dist2.4_t50", "to": "revealRise_dist1.6_t50"}`**: a glide from one frame to the next, at most 1.2 m/s. A glide longer than a shot allows is not played.
+- **`{"from": "sideDolly_dist1_t50", "to": "dolly"}`**: a dolly, the camera and its aim sliding together along the aircraft, about 0.5 m/s. It is used only from a side frame. When one end is hidden, the slide starts there and comes out, showing the aircraft, never covering it.
+- **`{"from": "…"}`** alone holds the frame.
+
+The scene filler and the auto camera both play the glides in turn, never the same one twice until all have played.
+
+### Composing your own shots
+
+`cmd/scene-cli` drives the map while you write a scene:
+
+```text
+scene-cli spawn -tail DEMO009 [-model …] [-stand N]   a departure parked, its push 2 h away
+scene-cli car -near DEMO009 -right 30 -forward 5        a car to frame against (-at-camera, -lat/-lon); Ctrl+C removes it
+scene-cli capture NAME [-tail DEMO009] [-dir DIR]       the simulator's camera as NAME.json and NAME.jpg
+scene-cli shot -tail DEMO009 -from sideDolly_dist1_t50 -to dolly   one shot (-glide N, -move M -at 0.5 -back 1.6)
+scene-cli scene NAME | off | glides | moves | vehicle-radio on|off
+```
+
+A capture reads the simulator's own camera (`CameraGet` answers without taking it). It saves the camera's position, heading, pitch and field of view, and its offset from the aircraft filmed: right, up and ahead, with the point aimed at. It also saves where the camera is on the airport: the nearest stand and taxiway, and its distance along and beside the runway. The picture is the simulator's window, which must be on screen; a covered window gives a stale picture.
 
 ```text
 GET  /api/camera                     mode, subject, shot
 POST /api/camera {mode, id}          off | follow (id: the card) | auto
 GET  /api/camera/scenes              the scenes
 POST /api/camera/scene?name=&icao=   play one
+GET  /api/camera/moves               the moves a shot takes
+GET  /api/camera/glides              the glides between picked frames
+POST /api/camera/shot {icao, tail, move | from, to | glide, side, sec, back, fov, at}   one shot; the camera goes back after it
+POST /api/camera/capture {icao, name, tail}   the simulator's camera, placed
 ```

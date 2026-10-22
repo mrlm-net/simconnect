@@ -99,8 +99,9 @@ func (w *World) PriorityFor(tail string, kind traffic.EmergencyKind) {
 
 // declareEmergency has one of ours declare an emergency of kind (level ""
 // by the kind): squawk 7700, its MAYDAY or PAN PAN, approach's answer,
-// and priority. Arrivals on their way in only, for now.
-func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.EmergencyKind, level string) error {
+// and priority. Arrivals on their way in only, for now. quiet: nothing
+// said (a scene saying its own words), the rest as ever.
+func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.EmergencyKind, level string, quiet bool) error {
 	if it.arr == nil || it.arr.State() != traffic.ArrivalApproaching {
 		return errors.New("emergency: an arrival on its way in only, for now")
 	}
@@ -125,6 +126,9 @@ func (cc *controlCenter) declareEmergency(it *controlled, kind traffic.Emergency
 	cc.core.prio.setKind(tail, kind)
 	cc.core.prio.set(tail, true)
 	cc.log.printf("%-6s emergency: %s (%s), squawk %s, priority", tail, kind, level, traffic.EmergencySquawk)
+	if quiet {
+		return nil
+	}
 	it.say(traffic.DeclareEmergency(pos, station, tail, kind, level, rwy))
 	it.say(traffic.AcknowledgeEmergency(pos, tail, level, rwy))
 	// What the message should carry, asked and answered: its own
@@ -255,7 +259,7 @@ func registerEmergency(mux *http.ServeMux, st *state) {
 			if req.Kind == "" {
 				req.Kind = string(traffic.EmergencyEngineFailure)
 			}
-			err = cc.declareEmergency(it, traffic.EmergencyKind(req.Kind), req.Level)
+			err = cc.declareEmergency(it, traffic.EmergencyKind(req.Kind), req.Level, false)
 		}
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusConflict)

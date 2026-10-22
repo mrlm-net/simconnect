@@ -310,20 +310,57 @@ func TestGroundCongestionRunwayQueue(t *testing.T) {
 
 // Departure management (live LKPR: nine departures at the holding point,
 // every arrival behind a double gap): with DefaultMaxDepartureQueue
-// departures taxiing out or at the runway, the next stays on its stand.
+// departures taxiing out, or DefaultMaxRunwayQueue at the runway, the next
+// stays on its stand; the two counted apart (live LKPR: held on their
+// stands behind four at the holding point).
 func TestCheckDepartureQueue(t *testing.T) {
 	fl := func(cs string, s FlightStatus, at bool) ManagedFlight {
 		return ManagedFlight{Flight: Flight{Callsign: cs}, Kind: "departure", Status: s, AtRunway: at}
 	}
-	three := Situation{Flights: []ManagedFlight{fl("A", FlightTaxiing, true), fl("B", FlightTaxiing, true), fl("C", FlightTaxiing, false), fl("D", FlightBoarding, false)}}
-	if got := CheckDepartureQueue(0)(three); len(got) != 0 {
-		t.Errorf("held with three in the queue: %+v", got)
+	d := fl("D", FlightBoarding, false)
+	queue := func(taxiing, atRunway int) Situation {
+		s := Situation{Flights: []ManagedFlight{d}}
+		for i := range taxiing + atRunway {
+			s.Flights = append(s.Flights, fl(fmt.Sprintf("Q%d", i), FlightTaxiing, i >= taxiing))
+		}
+		return s
 	}
-	four := three
-	four.Flights = append(append([]ManagedFlight(nil), three.Flights...), fl("E", FlightTaxiing, false))
-	got := CheckDepartureQueue(0)(four)
-	if len(got) != 1 || got[0].Action != AdviceHold || got[0].Key != fl("D", FlightBoarding, false).Key() {
-		t.Errorf("four in the queue: %+v, want D held on its stand", got)
+	if got := CheckDepartureQueue(0)(queue(DefaultMaxDepartureQueue-1, DefaultMaxRunwayQueue-1)); len(got) != 0 {
+		t.Errorf("held with both queues one short: %+v", got)
+	}
+	for _, s := range []Situation{queue(DefaultMaxDepartureQueue, 0), queue(0, DefaultMaxRunwayQueue)} {
+		got := CheckDepartureQueue(0)(s)
+		if len(got) != 1 || got[0].Action != AdviceHold || got[0].Key != d.Key() {
+			t.Errorf("a queue full (%d flights): %+v, want D held on its stand", len(s.Flights)-1, got)
+		}
+	}
+	// Each runway its own queue, as long as its entrances allow (LKPR 24:
+	// A and Z side by side, six): five at 24 hold nobody, six hold its
+	// next departure but not one for 30.
+	at24 := func(n int) Situation {
+		s := Situation{Airport: "LKPR", Options: ManagerOptions{RunwayQueue: func(icao, rwy string) int {
+			if rwy == "24" {
+				return 6
+			}
+			return 0
+		}}}
+		for i := range n {
+			f := fl(fmt.Sprintf("Q%d", i), FlightTaxiing, true)
+			f.Runway = "24"
+			s.Flights = append(s.Flights, f)
+		}
+		for _, r := range []string{"24", "30"} {
+			f := fl("D"+r, FlightBoarding, false)
+			f.Runway = r
+			s.Flights = append(s.Flights, f)
+		}
+		return s
+	}
+	if got := CheckDepartureQueue(0)(at24(5)); len(got) != 0 {
+		t.Errorf("five at 24 of six: %+v", got)
+	}
+	if got := CheckDepartureQueue(0)(at24(6)); len(got) != 1 || got[0].Key != fl("D24", FlightBoarding, false).Key() {
+		t.Errorf("six at 24: %+v, want D24 held, D30 not", got)
 	}
 }
 

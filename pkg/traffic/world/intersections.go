@@ -240,3 +240,66 @@ func (it *controlled) withRemaining(tx traffic.Transmission) traffic.Transmissio
 	tx.Params = p
 	return traffic.Say(tx)
 }
+
+// runwayQueuePerEntrance: departures that may wait at a runway for each of
+// its entrances side by side at its end (airport.EndEntrances), at least
+// traffic.DefaultMaxRunwayQueue (LKPR 24, A and Z: 6; EDDM 08L, A1–A3: 9).
+const runwayQueuePerEntrance = 3
+
+// runwayQueue is how many departures may wait at icao's runway end
+// (ManagerOptions.RunwayQueue); 0 when the airport is not loaded.
+func (cc *controlCenter) runwayQueue(icao, runway string) int {
+	k := icao + " " + runway
+	if n, ok := cc.runwayQueues.Load(k); ok {
+		return n.(int)
+	}
+	g, err := cc.graph(icao)
+	if err != nil {
+		return 0
+	}
+	es, err := g.EndEntrances(runway)
+	if err != nil {
+		return 0
+	}
+	n := max(traffic.DefaultMaxRunwayQueue, runwayQueuePerEntrance*len(es))
+	cc.runwayQueues.Store(k, n)
+	return n
+}
+
+// holdShortQueueM: each departure already heading for a hold-short counts
+// as this much more taxi to it, so one of two entrances side by side at the
+// runway's end with the shorter line gets the next (airport.RouteOptions.
+// HoldShortQueue).
+const holdShortQueueM = 250.0
+
+// holdShortQueue is the queue at each hold-short of icao's runway: the
+// departures of ours not yet off it whose route ends there.
+func (cc *controlCenter) holdShortQueue(g *airport.Graph, runway string) map[airport.NodeID]float64 {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	var out map[airport.NodeID]float64
+	for _, it := range items {
+		if it.finished.Load() {
+			continue
+		}
+		it.mu.Lock()
+		v := it.view
+		it.mu.Unlock()
+		if v.Kind != "departure" || v.Entry != "" || !strings.EqualFold(v.ICAO, g.Layout.ICAO) || !strings.EqualFold(v.Runway, runway) || len(v.Nodes) == 0 {
+			continue
+		}
+		switch v.State {
+		case "departing", "complete", "cancelled", "failed", "removed":
+			continue
+		}
+		if out == nil {
+			out = map[airport.NodeID]float64{}
+		}
+		out[v.Nodes[len(v.Nodes)-1]] += holdShortQueueM
+	}
+	return out
+}

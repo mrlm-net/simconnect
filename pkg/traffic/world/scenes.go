@@ -81,9 +81,12 @@ type SceneCast struct {
 	Tail string `json:"tail"`
 	// Models: title fragments to look for, in order ("csa-lines, a320").
 	Models string `json:"models"`
-	// AtSec: when it appears; PushAfterSec: a departure's push, after it
-	// appears.
+	// AtSec: when it appears, seconds into the scene, or after After's cue
+	// ("dep:pushback": the arrival tied to the departure's push, however
+	// long its turnaround takes); PushAfterSec: a departure's push, after it
+	// appears (at the earliest: its fuel truck, its tug first).
 	AtSec        float64 `json:"atSec"`
+	After        string  `json:"after,omitempty"`
 	PushAfterSec float64 `json:"pushAfterSec"`
 	Procedure    bool    `json:"procedure"` // a SID (departure)
 	Tug          bool    `json:"tug"`
@@ -108,7 +111,8 @@ type SceneBeat struct {
 	DelaySec float64 `json:"delaySec,omitempty"`
 	// End: the scene ends once its shots have played.
 	End bool `json:"end"`
-	// Listen switches the radio to this one's frequency from this beat on
+	// Listen switches the radio to this one's frequency from this beat on,
+	// or to a frequency given ("132.89")
 	// ("" keeps it).
 	Listen string `json:"listen"`
 }
@@ -121,7 +125,11 @@ type SceneShot struct {
 	// sideDolly, headOnPass, chaseRise, engine, noseGear, mainGear,
 	// cockpit, tail, wingtip, lights; runwaySide and underApproach (fixed,
 	// zooming: Along, Right, Up, Fov, FovTo).
-	Move string  `json:"move"`
+	Move string `json:"move"`
+	// From, To: in place of Move, a slow glide from one picked frame to
+	// another (compositions.go), To empty holding From.
+	From string  `json:"from"`
+	To   string  `json:"to"`
 	Who  string  `json:"who"`
 	Side float64 `json:"side"` // +1 its right (default), -1 its left
 	Sec  float64 `json:"sec"`
@@ -348,7 +356,21 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	// The cast, each at its time.
 	for _, c := range sc.Cast {
 		go func(c SceneCast) {
-			time.Sleep(time.Until(r.start.Add(time.Duration(c.AtSec * float64(time.Second)))))
+			from := r.start
+			if c.After != "" {
+				for !r.cued(c.After) {
+					m.mu.Lock()
+					on := m.mode == "scene"
+					m.mu.Unlock()
+					if !on {
+						return
+					}
+					time.Sleep(500 * time.Millisecond)
+				}
+				from = time.Now()
+				logf("%s %s: %s came, appears in %.0f s", c.Role, c.Tail, c.After, c.AtSec)
+			}
+			time.Sleep(time.Until(from.Add(time.Duration(c.AtSec * float64(time.Second)))))
 			req := SpawnRequest{Kind: c.Kind, ICAO: g.Layout.ICAO, Stand: -1, Model: cc.modelFor(c.Models), Tail: c.Tail, Tug: c.Tug, Procedure: c.Procedure,
 				InjectApproach: c.Kind == "arrival", Fuel: c.Fuel}
 			if c.Stand != "" {
@@ -406,7 +428,7 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 			// Waiting longer than the beat's shots: more of the same aircraft,
 			// never a still held past camera.MaxShot.
 			if cur, _ := m.dir.Current(time.Now()); cur == nil && m.dir.Remaining() == 0 && subject != nil {
-				m.dir.Play(sequenceFor(subject, fill)...)
+				m.dir.Play(fillerGlides(g, subject, fill)...)
 				fill++
 			}
 			if time.Since(r.start) > limit {
@@ -486,7 +508,7 @@ func (r *sceneRun) emergency(it *controlled, c SceneCast) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	if err := r.m.cc.declareEmergency(it, traffic.EmergencyKind(c.Emergency), ""); err != nil {
+	if err := r.m.cc.declareEmergency(it, traffic.EmergencyKind(c.Emergency), "", false); err != nil {
 		tlog.printf("scene  %s: %s emergency: %v", r.sc.Name, c.Tail, err)
 	}
 }
@@ -574,10 +596,14 @@ func castShots(g *airport.Graph, cast map[string]*controlled, list []SceneShot, 
 		}
 		label := it.Tail + " " + s.Move
 		var shot camera.Shot
-		switch s.Move {
-		case "crane":
+		switch {
+		case s.From != "":
+			if gl, ok := glideShot(g, it, s.From, s.To, side, d); ok {
+				shot, label = gl, it.Tail+" "+gl.Name()
+			}
+		case s.Move == "crane":
 			shot = craneShot(obj, size, side, d)
-		case "runwaySide", "underApproach":
+		case s.Move == "runwaySide" || s.Move == "underApproach":
 			along, right, up := s.Along, s.Right, s.Up
 			if s.Move == "underApproach" && along == 0 {
 				along, right = -350, 110
@@ -618,21 +644,31 @@ func (r *sceneRun) listen() {
 	for {
 		r.m.mu.Lock()
 		on := r.m.mode == "scene"
-		it := r.cast[r.listening]
+		lis := r.listening
+		it := r.cast[lis]
 		r.m.mu.Unlock()
 		if !on {
 			return
 		}
+		f := ""
 		if it != nil {
 			it.mu.Lock()
-			f := it.view.Frequency
+			f = it.view.Frequency
 			it.mu.Unlock()
-			if h := r.m.cc.core.hooks.SceneFrequency; h != nil && f != "" {
-				h(f) // a voice follows the scene's radio
-			}
+		} else if isFrequency(lis) {
+			f = lis // a frequency of its own ("132.89": a station not ours)
+		}
+		if h := r.m.cc.core.hooks.SceneFrequency; h != nil && f != "" {
+			h(f) // a voice follows the scene's radio
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// isFrequency reports whether s is a VHF airband frequency ("132.89").
+func isFrequency(s string) bool {
+	f, err := strconv.ParseFloat(s, 64)
+	return err == nil && f >= 108 && f <= 137
 }
 
 // heardCall marks a call to or from an aircraft of the scene. m.mu held.

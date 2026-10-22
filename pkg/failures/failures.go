@@ -132,8 +132,9 @@ type Client interface {
 	TransmitClientEvent(objectID uint32, eventID uint32, data uint32, groupID uint32, flags types.SIMCONNECT_EVENT_FLAG) error
 }
 
-// DefaultEventBase is the first client event ID Failures maps.
-const DefaultEventBase uint32 = 0x7B00
+// DefaultEventBase is the first client event ID Failures maps: 0x7F00, its
+// own block of 256 (0x7B00 was systems.Controls', the IDs collided).
+const DefaultEventBase uint32 = 0x7F00
 
 // ErrUnsupported: the aircraft's profile has no way to fail it.
 var ErrUnsupported = errors.New("failures: not supported on this aircraft")

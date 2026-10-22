@@ -33,8 +33,10 @@ type RunwayEntry struct {
 }
 
 // FullLengthMeters: entries within this distance of the threshold count as
-// full-length departures.
-const FullLengthMeters = 150.0
+// full-length departures (measured, 262 runway ends at 40 large airports:
+// the nearest entry within 59 m at half of them, 186 m at nine in ten,
+// 265 m at 95 in 100; LKPR 24 at 201 m, EDDL 23L at 269 m).
+const FullLengthMeters = 300.0
 
 // RunwayEntries returns the entries onto runwayEnd for departures, nearest
 // the threshold (full length) first. An entry onto runway 24 is an exit for
@@ -148,4 +150,43 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 	}
 	r.Runway, r.RunwayEnd, r.Entry = rwy.Name(), end.Name, best.Taxiway
 	return r, nil
+}
+
+// EndEntranceSpanMeters: entries this much further in than the nearest one
+// (that one within FullLengthMeters)
+// still enter at the runway's end, side by side (EDDM 08L: A1, A2 at 56 m,
+// A3 at 146 m); beyond, an intersection.
+const EndEntranceSpanMeters = 120.0
+
+// EndEntrances are the entries onto runwayEnd at its end, side by side
+// (LKPR 24: A and Z), each with a holding point of its own, one per
+// taxiway (the nearest of a name), nearest the
+// threshold first: the departures' holding points for full length, each a
+// queue of its own. Intersections further in (LKPR 24: B, E) are not.
+func (g *Graph) EndEntrances(runwayEnd string) ([]RunwayEntry, error) {
+	entries, err := g.RunwayEntries(runwayEnd)
+	if err != nil || len(entries) == 0 || entries[0].FromThreshold > FullLengthMeters {
+		return nil, err // none at its end: every entry an intersection
+	}
+	first := entries[0].FromThreshold
+	seen := map[string]bool{}
+	var out []RunwayEntry
+	for _, e := range entries {
+		if e.FromThreshold > first+EndEntranceSpanMeters {
+			break
+		}
+		if e.HoldShort < 0 {
+			continue // no holding point of its own: no queue (LKPR 12: L, D)
+		}
+		k := strings.ToUpper(e.Taxiway)
+		if k == "" {
+			k = fmt.Sprint("#", e.Node)
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, e)
+	}
+	return out, nil
 }

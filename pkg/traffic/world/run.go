@@ -1232,6 +1232,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerHold(mux, st)          // the traffic held for a replay (hold.go)
 	registerSeed(mux, st)          // a real-world snapshot placed at the start (seed.go)
 	registerVehicles(mux, w)       // the ground vehicles by kind on or off (vehicles.go)
+	registerVehicleRadio(mux, w)   // the vehicles on the radio or quiet (vehicles.go)
 	registerModelRules(mux, w)     // models never used (model_rules.go)
 	registerStandRules(mux, w)     // stops moved per stand (stand_rules.go)
 	registerModelProviders(mux, w) // models by provider (providers.go)

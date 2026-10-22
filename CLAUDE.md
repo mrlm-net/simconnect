@@ -46,6 +46,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 - `cmd/airport-map` — the airport map: front end of pkg/traffic/world, page, voice (own go.mod: voice-goio)
 - `cmd/traffic-actuator` — the World's simulator side beside MSFS: listens, or dials a director
 - `cmd/traffic-director` — the World's decisions without a simulator; serves the API and the map's page
+- `cmd/scene-cli` — writing camera scenes against a running airport map: spawn aircraft and a car, capture the simulator camera as a composition, play shots, glides, scenes
 - `cmd/simvar-cli` — interactive SimVar get/set CLI (own go.mod)
 - `docs/` — `docs/*.md`, one page per area, site front matter; start at `docs/getting-started.md`; grep `docs/` before writing new pages
 - `website/` — SvelteKit static docs site; reads `docs/*.md` (not subfolders); sidebar sections in `src/lib/config/navigation.ts`

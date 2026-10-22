@@ -55,7 +55,10 @@ const (
 	// together.
 	VehicleTaxiwayJoinM = 60.0
 	VehicleHoldRunwayM  = 40.0
-	vehicleGateStep     = 2.0
+	// VehicleAskAheadM: a vehicle asks for a gate this far before it, not
+	// as it sets off (the call heard long before it got there).
+	VehicleAskAheadM = 80.0
+	vehicleGateStep  = 2.0
 )
 
 // vehicleGate is a gate on a path: from at to end (meters along it).
@@ -149,6 +152,9 @@ func (y *vehicleYield) gateStop(m *GroundMover) (float64, bool) {
 		if s > g.at+1 {
 			g.cleared = true // already on it (it started there): on its way
 			continue
+		}
+		if g.at-s > VehicleAskAheadM {
+			return g.at, true // asks when it comes up to it, not from afar
 		}
 		if y.atc.Cleared(g.VehicleRequest) {
 			g.cleared = true

@@ -121,3 +121,51 @@ func TestVehicleHoldsUntilCleared(t *testing.T) {
 		t.Error("crossed a runway, reported nothing")
 	}
 }
+
+// A vehicle asks for a gate as it comes up to it, never from afar: the
+// call is heard when it is about to drive on (not as it sets off).
+func TestVehicleAsksWhenNear(t *testing.T) {
+	l := airportGraph(t, "EGLL").Layout
+	asked := 0
+	for _, p := range l.Parking {
+		d, ok := nearestDepot(l, p.Position)
+		if !ok {
+			continue
+		}
+		r, err := l.VehicleRoute(d, p.Position)
+		if err != nil {
+			continue
+		}
+		path, err := NewGroundPath(r, tugRoadProfile())
+		if err != nil {
+			continue
+		}
+		gates := vehicleGates(l, path)
+		if len(gates) == 0 || gates[0].at < VehicleAskAheadM*2 {
+			continue // its first gate near the start: asked at once anyway
+		}
+		atc := &fakeVehicleATC{asks: 3, got: map[string]int{}}
+		y := &vehicleYield{self: 7}
+		y.SetATC(atc, l, "tug")
+		a, b := path.PointAt(0), path.PointAt(5)
+		m := NewGroundMoverFrom(path, tugRoadProfile(), localBearing(a, b), 0)
+		first := gates[0]
+		k := fmt.Sprintf("%s %s%s", first.Gate, first.Runway, strings.Join(first.Taxiways, ","))
+		for i := 0; i < 20000 && !m.Pose().Arrived && atc.got[k] == 0; i++ {
+			y.check(m)
+			if atc.got[k] > 0 {
+				if far := first.at - m.Pose().Distance; far > VehicleAskAheadM+1 {
+					t.Fatalf("asked for its first gate %.0f m before it", far)
+				}
+				asked++
+			}
+			m.Step(0.1)
+		}
+		if asked >= 3 {
+			break
+		}
+	}
+	if asked == 0 {
+		t.Skip("no EGLL vehicle route with a gate far from its start")
+	}
+}

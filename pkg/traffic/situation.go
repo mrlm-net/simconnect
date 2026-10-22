@@ -290,35 +290,72 @@ func CheckGroundCongestion(max int) SituationCheck {
 	}
 }
 
-// DefaultMaxDepartureQueue is how many departures may be taxiing out or
-// waiting at the runway before CheckDepartureQueue holds the next on their
-// stands.
-const DefaultMaxDepartureQueue = 4
+// DefaultMaxDepartureQueue is how many departures may be taxiing out
+// before CheckDepartureQueue holds the next on their stands, and
+// DefaultMaxRunwayQueue how many may wait at the runway (in its line,
+// holding short, lining up, rolling).
+const (
+	DefaultMaxDepartureQueue = 6
+	DefaultMaxRunwayQueue    = 4
+)
 
 // CheckDepartureQueue holds the boarding departures of an airport on their
 // stands while max (0: DefaultMaxDepartureQueue) or more departures are
-// taxiing out or waiting at the runway, as departure management does: the
-// queue at the runway stays short, and the arrivals are not spaced for a
-// long one (live LKPR: nine departures at the holding point, every arrival
-// behind a double gap, two of them held).
+// taxiing out, or its runway's queue is full (ManagerOptions.RunwayQueue,
+// else DefaultMaxRunwayQueue), as departure management
+// does: the queue at the runway stays short, and the arrivals are not
+// spaced for a long one (live LKPR: nine departures at the holding point,
+// every arrival behind a double gap, two of them held). The two are
+// counted apart: one already at the runway, about to go, holds nobody on
+// the taxiways back (live LKPR: departures held on their stands behind
+// four at the holding point).
 func CheckDepartureQueue(max int) SituationCheck {
 	if max == 0 {
 		max = DefaultMaxDepartureQueue
 	}
 	return func(s Situation) []Advice {
-		queue := 0
+		taxiing := 0
+		atRunway := map[string]int{} // by runway
 		for _, f := range s.Flights {
 			if f.Departure() && f.Status == FlightTaxiing {
-				queue++
+				if f.AtRunway {
+					atRunway[f.Runway]++
+				} else {
+					taxiing++
+				}
 			}
 		}
-		if queue < max {
-			return nil
+		full := func(rwy string) bool {
+			n := DefaultMaxRunwayQueue
+			if q := s.Options.RunwayQueue; q != nil {
+				if m := q(s.Airport, rwy); m > 0 {
+					n = m
+				}
+			}
+			return atRunway[rwy] >= n
 		}
 		var out []Advice
 		for _, f := range s.Flights {
-			if f.Departure() && f.Status == FlightBoarding {
-				out = append(out, Advice{Key: f.Key(), Action: AdviceHold, Reason: fmt.Sprintf("departure queue, %d taxiing out", queue)})
+			if !f.Departure() || f.Status != FlightBoarding {
+				continue
+			}
+			var reason string
+			switch {
+			case taxiing >= max:
+				reason = fmt.Sprintf("departure queue, %d taxiing out", taxiing)
+			case f.Runway != "" && full(f.Runway):
+				reason = fmt.Sprintf("departure queue, %d at runway %s", atRunway[f.Runway], f.Runway)
+			case f.Runway == "":
+				// Its runway not known yet: held when any is full.
+				for rwy := range atRunway {
+					if full(rwy) {
+						reason = fmt.Sprintf("departure queue, %d at runway %s", atRunway[rwy], rwy)
+						break
+					}
+				}
+			}
+			if reason != "" {
+				out = append(out, Advice{Key: f.Key(), Action: AdviceHold, Reason: reason})
 			}
 		}
 		return out

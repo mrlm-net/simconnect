@@ -25,6 +25,11 @@ type RouteOptions struct {
 	// the threshold is a candidate, and the shortest route among them wins.
 	// Zero means DefaultIntersectionTolerance.
 	IntersectionTolerance float64
+	// HoldShortQueue adds meters to the route to a hold-short among those
+	// candidates (the departures already heading there, each a length of
+	// queue): with entrances side by side at the runway's end (LKPR 24: A
+	// and Z) the next departure takes the shorter line, still full length.
+	HoldShortQueue map[NodeID]float64
 	// TurnPenalty is the extra cost, in meters of route length, of a 90°
 	// turn at a taxiway junction (proportional above TurnFreeAngle), and
 	// TaxiwayChangePenalty that of turning onto another taxiway: routes with
@@ -273,11 +278,12 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].fromThresh < cands[j].fromThresh })
 	best := cands[0]
+	cost := func(c cand) float64 { return c.route + opts.HoldShortQueue[c.id] }
 	for _, c := range cands[1:] {
 		if c.fromThresh-cands[0].fromThresh > tol {
 			break
 		}
-		if c.route < best.route {
+		if cost(c) < cost(best) {
 			best = c
 		}
 	}

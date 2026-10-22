@@ -702,6 +702,9 @@ func (cc *controlCenter) logStandFit(g *airport.Graph, stand int, tail string, a
 	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
 		return
 	}
+	if at.Lat == 0 && at.Lon == 0 {
+		return // no position yet: a departure docked as it spawns (live, LKPR: "5228941.69 m ahead")
+	}
 	p := g.Layout.Parking[stand]
 	h := p.Heading * math.Pi / 180
 	north := (at.Lat - p.Position.Lat) * 111_320
