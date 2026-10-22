@@ -121,7 +121,7 @@ Besides the manager's reserved range, several packages use fixed default IDs whe
 | `traffic.AirportLister` | airports in the reality bubble | — | 8900 (`DefaultAirportListRequestID`) | — |
 | `avionics.Radios` | COM and transponder | — | — | 0x7A00–0x7A09 = 31232–31241 (`DefaultEventBase`, `eventCount` 10) |
 | `systems.Controls` | doors, chocks, GPU, brake | 0x7B00–0x7B3F = 31488–31551 (`DefaultControlBase`, block of 64) | — | 0x7B00–0x7B3F (same block) |
-| `failures.Failures` | user aircraft failures | — | — | 0x7F00–0x7FFF = 32512–32767 (`DefaultEventBase`, one per failure event mapped; from v0.110.1, 0x7B00 before, where it overlapped `systems.Controls`) |
+| `failures.Failures` | user aircraft failures | — | — | 0x7F00–0x7FFF = 32512–32767 (`DefaultEventBase`, one per failure event mapped; from v0.111.0, 0x7B00 before, where it overlapped `systems.Controls`) |
 | `flight.Recorder` | recorded tracks | 0x7C00 = 31744 (`DefaultRecorderBase`) | 0x7C01–0x7C3F (`RecorderIDs` 63, one per recorded object) | — |
 | `flight.UserReplay` | user aircraft replay | 0x7D00–0x7D3F = 32000–32063 (`DefaultReplayBase`, block of 64) | — | 0x7D00–0x7D3F (same block) |
 | `flight.GhostFleet` | replayed scene aircraft | — | 0x7E00–0x7EFF = 32256–32511 (`DefaultFleetBase`, `FleetIDs` 256, cycled) | — |
