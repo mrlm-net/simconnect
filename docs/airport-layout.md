@@ -1,8 +1,8 @@
 ---
 title: "Airport Layout & Taxi Routing"
 description: "Load an airport's ground layout with pkg/airport and compute taxi routes between stands and runways."
-order: 1
-section: "airport"
+order: 0
+section: "nav"
 ---
 
 # Airport Layout & Taxi Routing
@@ -67,7 +67,7 @@ mgr.OnMessage(func(msg engine.Message) {
 
 | | |
 |---|---|
-| Frequencies | `Layout.Frequencies`: the airport's radio frequencies (kind, MHz, name) and `FrequencyFor(kind)` with ATC's fallbacks (#416). |
+| Frequencies | `Layout.Frequencies`: the airport's radio frequencies (kind, MHz, name) and `FrequencyFor(kind)` with ATC's fallbacks. |
 | IDs | 7 facility definition IDs from `DefaultLoaderDefinitionBase` (7100) and 112 request IDs from `DefaultLoaderRequestBase` (7200). Move them with `LoaderWithIDs(defBase, reqBase)` if they clash with your own. |
 | Concurrency | Up to 16 airports in flight at once. `Pending()` lists them. |
 | Timeout | `LoaderWithTimeout` (default 30 s). SimConnect sends **nothing** for an unknown ICAO code, so an unknown airport ends in `ErrTimeout` via `Expire`. |
@@ -110,7 +110,7 @@ ok := l.Parking[heavy[0]].ServesAirline("DLH")
 
 - **`Parking.Size()`** classes a spot as `StandSmall`, `StandMedium` or `StandHeavy`: by `TYPE` where the scenery names a size (`GATE_SMALL`/`MEDIUM`/`HEAVY`/`EXTRA`, `RAMP_GA_SMALL`/`MEDIUM`/`LARGE`/`EXTRA`; `EXTRA` is heavy), otherwise by `RADIUS` (below 15 m small, below 25 m medium). Fuel and vehicle spots are `StandNone`.
 - **`Layout.SuitableStands(minRadius, types...)`** lists the spots with at least that `RADIUS` and, if given, one of the `TYPE`s; never fuel or vehicle spots. `RADIUS` is half the space the spot offers, so pass half the aircraft span plus a margin.
-- **`Layout.ParkingConflicts(i)`** lists the spots whose `RADIUS` circles overlap spot `i` by more than half a meter: split and alternate stands (LKPR `S22`/`S22A`) and tightly packed gates. At LKPR 20 pairs overlap (two more only touch), at EDDM 4, at LROP 38. Whether two aircraft actually clash depends on their spans; the stand allocator (#292) decides that.
+- **`Layout.ParkingConflicts(i)`** lists the spots whose `RADIUS` circles overlap spot `i` by more than half a meter: split and alternate stands (LKPR `S22`/`S22A`) and tightly packed gates. At LKPR 20 pairs overlap (two more only touch), at EDDM 4, at LROP 38. Whether two aircraft actually clash depends on their spans; the stand allocator decides that.
 - **`Parking.Airlines`** are the airline codes the scenery assigns to the stand (`TAXI_PARKING_AIRLINE` child records; EDDM assigns 10–23 airlines to 119 of its 175 stands, LKPR none). `ServesAirline(code)` is true for a listed code (case-insensitive) and for stands without airlines.
 
 ### Facility data semantics
@@ -163,7 +163,7 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 **Aircraft size.** With `RouteOptions.HalfSpan` (half the wing span, meters) a route keeps to taxiway edges the aircraft fits:
 
 - `Edge.Clearance` is the free half-width beside each taxiway edge: the distance from its centreline to the nearest stand circle (`Parking.Radius`, the space of the largest aircraft the stand takes). An edge fits with `WingtipMargin` (default 3 m) to spare. `OwnStands`, the stands the aircraft leaves or enters, are not obstacles; the stand-based routing functions add theirs.
-- `TaxiwayMaxSpan` limits taxiways by name to a largest span, for published restrictions the scenery does not carry. It defaults to the airport's entry in `KnownTaxiwayMaxSpan` (a first seed of the airport limits, #335): LKPR's apron taxilanes JO and JB are code C (36 m), so a 777 leaves B14 by J while an A320 from C17 takes JB.
+- `TaxiwayMaxSpan` limits taxiways by name to a largest span, for published restrictions the scenery does not carry. It defaults to the airport's entry in `KnownTaxiwayMaxSpan` (a first seed of the airport limits): LKPR's apron taxilanes JO and JB are code C (36 m), so a 777 leaves B14 by J while an A320 from C17 takes JB.
 - When no route fits, the route is found without the size check and marked `Route.Tight`. A [custom route](#custom-routes-via-points-and-taxiways) returns `ErrTooNarrow` instead.
 
 `pkg/traffic` controllers set `HalfSpan` from the aircraft's `MotionProfile`.
@@ -196,7 +196,7 @@ Zero selects the default and a negative value disables a cost. `Route.Length` is
 
 ### Custom routes: via points and taxiways
 
-Two `RouteOptions` fields shape the route itself (#340). Every routing function honours them (`Route`, `RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`, `RouteToParking`, `RouteToParkingFrom`, `RouteFromRunway`):
+Two `RouteOptions` fields shape the route itself. Every routing function honours them (`Route`, `RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`, `RouteToParking`, `RouteToParkingFrom`, `RouteFromRunway`):
 
 - `Via []NodeID`: the route passes these nodes in order. Every leg uses the same search and costs, and at a via point the route goes on the way it arrived. It never turns back there, so a via point at a dead end cannot be passed.
 - `Taxiways []string` ("via F, L"): the names must appear in `Route.Taxiways` in this order, matched case-insensitively. Until the last one is joined, other named taxiways cost `OffTaxiwaysFactor` (×10) their length, so they serve only as connectors. After the last one the route goes on freely to its destination.
@@ -299,7 +299,7 @@ Not in the simulator's data: STAR altitude constraints at LKPR are empty (the AI
 
 ## Airport limits
 
-`LimitsFor(layout, procedures)` returns the values that belong to the airport rather than to the aircraft (#335), taken from the facility data where it has them and from `KnownLimits` (published values, keyed by ICAO code) otherwise:
+`LimitsFor(layout, procedures)` returns the values that belong to the airport rather than to the aircraft, taken from the facility data where it has them and from `KnownLimits` (published values, keyed by ICAO code) otherwise:
 
 | Field | Source | Default |
 |-------|--------|---------|

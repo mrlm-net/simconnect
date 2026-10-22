@@ -1,13 +1,13 @@
 ---
 title: "Airborne Separation"
 description: "Airborne ATC: wake separation, spacing on final by the weather, the landing sequence, losing a delay, holding, the runway controller, go-arounds, conflicts ahead and working the approach."
-order: 11
+order: 8
 section: "traffic"
 ---
 
 # Airborne Separation
 
-v0.16 separates traffic in the air as well as on the ground: the approach and the tower. This page goes from the standards (wake categories and minima, #389) to the landing sequence and how an arrival loses a delay (#390–#392), the runway (#393, #394), conflicts in the air (#395) and working the approach by hand (#396).
+The traffic is separated in the air as well as on the ground: by the approach and the tower. This page is the API: from the standards (wake categories and minima) to the landing sequence and how an arrival loses a delay, the runway, conflicts in the air and working the approach by hand. The exact rules and numbers the airport map applies are on [Runway & Air Decisions](traffic-decisions-air.md).
 
 All of it runs on the airport map, which is the place to watch it: see [Examples](examples.md).
 
@@ -62,7 +62,7 @@ The figures come from ICAO Doc 4444 (PANS-ATM) and EUROCONTROL RECAT-EU (2018). 
 
 ## The landing sequence
 
-`traffic.ApproachSequencer` is the approach controller of one runway (#390).
+`traffic.ApproachSequencer` is the approach controller of one runway.
 
 - **Predicted landing:** for each arrival it predicts when it would land flying on as it is: the distance to go at its ground speed now, with the last `FinalNM` (10 NM) at its final speed.
 - **Order:** first come, first served by predicted landing.
@@ -119,12 +119,14 @@ The airport map takes the weather at the user aircraft (SimConnect reports no ot
 
 ## Losing a delay
 
-An arrival the sequencer delays loses the time in the air before it would hold (#391), the way approach control does it:
+An arrival the sequencer delays loses the time in the air, the way approach control does it: by speed and vectors, not by holding.
 
-1. **Speed control.** It flies slower on the rest of its STAR, down to `MinProcedureSpeedKts` (210 kt, clean) or `MinProcedureSpeedTurbopropKts` (170 kt).
+1. **Speed control.** It flies slower on the rest of its STAR, down to `MinProcedureSpeedKts` (210 kt, clean) or `MinProcedureSpeedTurbopropKts` (170 kt); within 30 NM of the end of the STAR, or when the time must be lost before its way meets another arrival's, down to 180 kt.
 2. **A longer downwind.** What slowing down cannot absorb, a longer path does, the way a controller extends it. The aircraft goes on along its downwind past the STAR's last point there, turns base that much further out, and joins the centreline that far beyond where the STAR joined it (a "trombone"). Each mile on adds about two. The STAR's own base turn may already be far out: LKPR VLM6T to 06 turns base some 16 NM out, and the extension starts beyond it. It extends again as more is asked, up to `MaxStretchNM` (30 NM) of track an approach.
-3. **A dog-leg** is only for a STAR without a downwind to extend (straight in): off the longest leg ahead, on the side farther from the final approach path. Less than a mile is not worth a turn and goes to the hold. An arrival gets one dog-leg: asked for more while its apex is still ahead, the apex moves further out; once past it, the rest goes to the hold. With no leg long enough near the end of the STAR, it flies a 360 where it is, or out and back. The apex is pushed out until the track as flown, turns rounded, adds what was asked ([Delay absorption](traffic-decisions.md#delay-absorption)).
-4. **Holding.** Whatever is still left goes to the hold (#392).
+3. **A dog-leg** is only for a STAR without a downwind to extend (straight in): off the longest leg ahead, on the side farther from the final approach path. Less than a mile is not worth a turn. Asked for more while its apex is still ahead, the apex moves further out; once past it, a second dog-leg comes only for 2 minutes or more still to lose. With no leg long enough near the end of the STAR, it is vectored out and back from where it is. There is no 360 for spacing.
+4. **What is still left** is reported (`Absorption.Left`) and asked for again as the arrival flies on. A delay never sends an arrival to the hold.
+
+The details, with every number, are in [Delay absorption](traffic-decisions-air.md#delay-absorption).
 
 The final part of the approach, the align and join points on the centreline, is never changed.
 
@@ -132,7 +134,7 @@ The turns are the aircraft's own. Every corner of a chain MSFS AI flies (STAR an
 
 ```go
 a, err := arrival.AbsorbDelay(entry.Delay) // an ArrivalController flying its STAR
-// a.SpeedKts, a.ExtraNM, a.Left (for the hold)
+// a.SpeedKts, a.ExtraNM, a.Left (still to lose)
 route := arrival.ProcedureRoute()          // the rest of the STAR as flown now, extension included
 ```
 
@@ -144,7 +146,7 @@ On the airport map, an arrival on its STAR is asked to absorb its delay once the
 
 ## Holding
 
-Beyond what speed and a dog-leg can take, an arrival holds (#392). The holding patterns are ours: the simulator's `HOLDING_PATTERN` facility data is unusable, and probing it crashed MSFS 2024.
+Holding is for an emergency, the weather or a closure, never for sequencing: on the airport map an arrival holds when every runway of its airport is closed, or when a controller (the map's ⟳ button, a scenario) tells it to. A delay or a conflict between arrivals is worked with speed and vectors instead ([Holds](traffic-decisions-air.md#holds)). The holding patterns are ours: the simulator's `HOLDING_PATTERN` facility data is unusable, and probing it crashed MSFS 2024.
 
 **The hold.** A `Hold` is a racetrack on a fix: its inbound course, its turn direction (right unless `LeftTurns`), and legs by time.
 
@@ -183,11 +185,11 @@ err = arrival.HoldAltitude(6000)      // step down in the stack
 err = arrival.LeaveHold()             // on along the STAR from the fix
 ```
 
-On the airport map, an arrival that still has 4 minutes or more left after speed control and path stretching holds (one racetrack's worth; less is left to speed and vectors and asked again). It uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when its sequencer delay is down to a minute, and those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".
+On the airport map, an arrival sent to hold uses the first STAR fix at least 15 NM out, in that fix's stack from 6000 ft, and gets an expected further clearance time. It leaves when told to, or, once the reason has gone (a runway open again), when its sequencer delay is down to a minute; those above step down. The log reads as ATC would, for example "hold at LOMKI, teardrop entry, maintain 7000 ft, expect further clearance 20:52" and "leave the hold at LOMKI, number 3".
 
 ## The runway
 
-`traffic.RunwayController` is the tower of one runway (#393). Each time, give it the users of the runway (`RunwayUser`) and it hands out clearances:
+`traffic.RunwayController` is the tower of one runway. Each time, give it the users of the runway (`RunwayUser`) and it hands out clearances:
 
 - arrivals on final, with the distance to the threshold and the ground speed;
 - aircraft on the runway: rolling for take-off, on the landing roll, or crossing;
@@ -210,7 +212,7 @@ On the airport map, every airport runway has a controller, fed every second with
 
 ## Going around
 
-The controller also watches the next arrival on short final (#394). When it is `GoAroundAt` (30 s, about 1.2 NM at 140 kt) from the threshold and the runway is not free, it goes on the `GoAround` list with the reason in `Waiting`. The runway is not free when:
+The controller also watches the next arrival on short final. When it is `GoAroundAt` (30 s, about 1.2 NM at 140 kt) from the threshold and the runway is not free, it goes on the `GoAround` list with the reason in `Waiting`. The runway is not free when:
 
 - someone is lined up;
 - someone is crossing;
@@ -261,7 +263,7 @@ In the ATC game the player can work approach too, and spacing on final costs: an
 
 `ResolveConflict(c, aircraft, canSteer, opts)` picks the least disturbing change to one of ours. What comes first depends on how the two meet:
 
-- **Crossing** (tracks more than `SameRouteDeg`, 45°, apart): **altitude** first. A climb or descent toward the other aircraft's level is stopped as close to it as the vertical minimum allows ("stop climb at 9000 feet" under traffic at 10000 ft), the highest level from there down to the next 1000 ft on its way that keeps clear all the look-ahead (the traffic may be descending too), never under 1500 ft above the ground, never turned back. Where its route would level it off short of the traffic (a SID's level) and it can make the level the vertical minimum beyond it at no more than its rate now, it is told to cross the nearest fix it can at or above (below) that level instead, the climb going on ("cross VOZ at or above 7000 feet", Doc 4444 12.3.2.4 a; `ResolveCross`, #662): flown as that altitude at the fix, the points before it raised on the way; a level aircraft goes 1000 ft, then 2000 ft, up or down (above 10000 ft by the semicircular rule first, odd thousands eastbound), predicted at 1500 fpm. Then a heading, speed last.
+- **Crossing** (tracks more than `SameRouteDeg`, 45°, apart): **altitude** first, and a **crossing restriction** before a level-off. A climb or descent toward the other aircraft's level is first given a fix to cross: where its route goes on to the traffic's level plus the vertical minimum and it can make that level by a fix of its route ahead at no more than its rate now, it is told to cross the nearest such fix at or above (below) that level, the climb or descent going on ("cross VOZ at or above 7000 feet", Doc 4444 12.3.2.4 a; `ResolveCross`). It is flown as that altitude at the fix, the points before it raised on the way. Only when no fix will do is the climb or descent stopped as close to the traffic's level as the vertical minimum allows ("stop climb at 9000 feet" under traffic at 10000 ft): the highest level from there down to the next 1000 ft on its way that keeps clear all the look-ahead (the traffic may be descending too), never under 1500 ft above the ground, never turned back. A level aircraft goes 1000 ft, then 2000 ft, up or down (above 10000 ft by the semicircular rule first, odd thousands eastbound), predicted at 1500 fpm. Then a heading, speed last. Our departures get their restriction earlier still, with the take-off clearance ([Take-off clear of the arrivals' ways in](traffic-decisions-air.md#take-off-clear-of-the-arrivals-ways-in)).
 - **Same route** (in trail): **speed** first, a tenth, then a fifth, slower or faster (at most 250 kt below 10000 ft). Then a **shortcut** direct to a named fix past the next one (`opts.DirectFixes`, at least `DirectMinNM` 5 NM away and at most `DirectMaxTurnDeg` 60° off the heading) or a **leg extended**: a heading 20°, 30° or 45° off, right before left, and back. Altitude last.
 
 A change is taken only if it keeps the aircraft clear of everyone through the look-ahead, not just of the other of the pair. `canSteer(aircraft, kind)` says which aircraft are ours to move and which changes they can fly. Other traffic is an intruder we avoid, never steer.
@@ -274,6 +276,6 @@ A change is taken only if it keeps the aircraft clear of everyone through the lo
 
 After that the plan resumes.
 
-A departure handed to MSFS AI can be steered the same way (#639). `TaxiController.ClimbPlan(pos)` is the rest of its climb as a route, with altitudes and speeds. `Reroute(route)` sends it a changed one, such as `ResolvedRoute` of that plan.
+A departure handed to MSFS AI can be steered the same way. `TaxiController.ClimbPlan(pos)` is the rest of its climb as a route, with altitudes and speeds. `Reroute(route)` sends it a changed one, such as `ResolvedRoute` of that plan.
 
-On the map a watch runs every 5 s at 5 NM, 3 NM in the terminal area. It logs each conflict once ("conflict: THY1463 (3028 ft) and BAW1413 (10000 ft) lose separation in 3m50s at 4.2 NM, 819 ft; closest 4.0 NM, 552 ft in 4m0s") and each resolution with what it keeps ("conflict: level at 3028 ft, keeps 1000 ft from the traffic within the lateral minimum"). It resolves conflicts for our en-route aircraft and our departures handed to MSFS AI. It re-sends their waypoints and says it as ATC would, the centre to en-route aircraft and the departure radar to departures: "CSA1, climb flight level 210, traffic DLH2, 0.8 NM in 2m40s". Before #639, departures were not steered: RYR1527 (B738, 432 kt) flew through OKCVY (C25C, 126 kt) ahead of it on the same SID, at the same level. An aircraft flying a change is not given another until the look-ahead has run. `GET /api/separation` adds `conflicts` and `resolutions`. Our arrivals and departures near the airport are kept apart by the sequencer and the tower.
+On the map a watch runs every 5 s at 5 NM, 3 NM in the terminal area. It logs each conflict once ("conflict: THY1463 (3028 ft) and BAW1413 (10000 ft) lose separation in 3m50s at 4.2 NM, 819 ft; closest 4.0 NM, 552 ft in 4m0s") and each resolution with what it keeps ("conflict: level at 3028 ft, keeps 1000 ft from the traffic within the lateral minimum"). It resolves conflicts for our en-route aircraft and our departures handed to MSFS AI. It re-sends their waypoints and says it as ATC would, the centre to en-route aircraft and the departure radar to departures: "CSA1, climb flight level 210, traffic DLH2, 0.8 NM in 2m40s". An aircraft flying a change is not given another until the look-ahead has run. `GET /api/separation` adds `conflicts` and `resolutions`. Our arrivals and departures near the airport are kept apart by the sequencer and the tower.

@@ -1,5 +1,6 @@
 ---
 title: "Input Events (Manager)"
+description: "MSFS 2024 input events through the manager: enumerate, read, write and subscribe to cockpit input events on its lifecycle-managed connection."
 section: "manager"
 order: 7
 ---

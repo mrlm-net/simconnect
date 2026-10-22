@@ -59,6 +59,8 @@ The manager options are available both via the root `simconnect` package (unpref
 | `manager.WithReconnectMaxRetries(n)` | `int` | `-1` (use `MaxRetries`) | Attempt limit after a lost connection (`0` = unlimited) |
 | `WithAutoReconnect(enabled)` <br> `manager.WithAutoReconnect(enabled)` | `bool` | `true` | Enable automatic reconnection on disconnect |
 | `manager.WithResubscribeOnReconnect(enabled)` | `bool` | `false` | Subscribe the application's pass-through subscriptions again on each new connection |
+| `manager.WithStallAfter(d)` | `time.Duration` | `5s` (`DEFAULT_STALL_AFTER`) | Silence while connected that counts as a stall (`OnStall`); below `0` turns stall detection off |
+| `manager.WithStallPaused(fn)` | `func() bool` | `nil` | Reports the simulator paused, so a paused sim is not taken for a stalled one |
 | `WithSimStatePeriod(period)` <br> `manager.WithSimStatePeriod(period)` | `types.SIMCONNECT_PERIOD` | `SIMCONNECT_PERIOD_SIM_FRAME` | SimState data request frequency |
 
 ### Engine Pass-Through Options
@@ -177,6 +179,28 @@ Custom system events (`SubscribeToCustomSystemEvent`) are subscribed again after
 
 ```go
 mgr := manager.New("MyApp", manager.WithResubscribeOnReconnect(true))
+```
+
+### WithStallAfter / WithStallPaused
+
+A connection can stay open while the simulator stops sending anything (MSFS frozen or killed without a disconnect). After `StallAfter` without a message while the connection is available, the manager reports a stall to the handlers registered with `OnStall` (a method of `*manager.Instance`, the type `manager.New` returns), and a resume when messages come again. The resume's `StallEvent` carries how long it was silent and the flight file loaded meanwhile, if any, so the application can tell a new session from the same flight going on. The manager's own sim state request is the heartbeat; `Stalled()` reports the state now.
+
+`WithStallPaused` gives the manager a way to tell a paused simulator (for example from `Pause_EX1`): no stall is reported while it returns `true`. It must not block.
+
+```go
+paused := atomic.Bool{}
+mgr := manager.New("MyApp",
+    manager.WithStallAfter(10*time.Second),
+    manager.WithStallPaused(paused.Load),
+)
+// OnStall is on the concrete *manager.Instance, not the Manager interface.
+mgr.(*manager.Instance).OnStall(func(e manager.StallEvent) {
+    if e.Stalled {
+        log.Println("simulator silent")
+        return
+    }
+    log.Printf("simulator back after %s (flight loaded: %q)", e.Silent, e.FlightLoaded)
+})
 ```
 
 ### WithSimStatePeriod

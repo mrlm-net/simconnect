@@ -21,7 +21,7 @@ Start with the airport map. It uses most of the SDK at once, shows what the simu
 - **Taxi routing:** click a stand and pick a runway to see the departure route, its taxiways and runway crossings, or the taxi-in from a runway exit.
 - **AI traffic under your control:** spawn departures and arrivals and give their clearances: pushback, taxi, progressive taxi, runway crossings, line-up, take-off ([Traffic Commands](traffic-commands.md)).
 - **Scheduled traffic:** airlines fly a timetable at the airport by themselves, with departure and arrival boards, en route arrivals and overflights ([Traffic Schedules](traffic-schedules.md), [Traffic Manager](traffic-manager.md)).
-- **The landing sequence and the tower:** landing order and spacing per runway, delays absorbed by speed, path stretching and holds, go-arounds, and a tower that clears line-up, take-off and crossings ([Airborne Separation](traffic-separation.md)).
+- **The landing sequence and the tower:** landing order and spacing per runway, delays absorbed by speed and path stretching (holds only for emergencies, weather and closures), go-arounds, and a tower that clears line-up, take-off and crossings ([Airborne Separation](traffic-separation.md)).
 - **Conflicts:** airborne pairs predicted, along their routes and the levels of their SIDs and STARs, to come within 5 NM (3 NM in the terminal area) and 1000 ft, and the change given to resolve each.
 - **The ATC game:** work ground and tower yourself, scored ([ATC Game](atc-game.md)).
 
@@ -49,12 +49,7 @@ The map builds against the library in the checkout through a Go workspace (`go.w
 go work init . ./cmd/airport-map ./cmd/simvar-cli
 ```
 
-Or install it, no checkout needed (the web UI is built in; the voice looks for `bin/piper/piper.exe` next to the executable, and without `-airways` flight plans fly direct):
-
-```bash
-go install github.com/mrlm-net/simconnect/cmd/airport-map@latest
-airport-map -icao LKPR
-```
+The map is its own module, and it is not tagged with every library release: always run it from a simconnect checkout with `go run -C cmd/airport-map .` as above, not with `go install`.
 
 Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and type another ICAO code to load it; **↻** fetches it again from the simulator.
 
@@ -76,6 +71,7 @@ Open <http://127.0.0.1:8080/?icao=LKPR>. Click the airport at the top left and t
 | `-scenes` | | Directory of camera scenes (`*.json`), read on every play; the built-in ones otherwise |
 | `-split` | `false` | Run the traffic split in this process: an actuator on the simulator and a director taking the decisions, linked as across a network |
 | `-pprof` | | Serve the Go profiler on this address (e.g. `127.0.0.1:6060`) |
+| `-pprof-locks` | `false` | With `-pprof`, also profile locks and blocking (short runs only: it has frozen the Go runtime) |
 
 The page loads Leaflet from cdnjs, the IBM Plex fonts from Google Fonts and map tiles from Esri and OpenStreetMap, so the browser needs internet access.
 
@@ -217,6 +213,16 @@ Smaller examples, each showing one part of the API.
 | [atis](https://github.com/mrlm-net/simconnect/tree/main/examples/atis) | Weather at the user aircraft, the runway in use and the airport's ATIS | [Weather & ATIS](nav-weather.md) |
 | [flight-plan](https://github.com/mrlm-net/simconnect/tree/main/examples/flight-plan) | An IFR plan between two airports over the airways, printed, and written as a `.pln` with `-out` | [Flight Plans](nav-flight-plans.md) |
 | [spike-airways](https://github.com/mrlm-net/simconnect/tree/main/examples/spike-airways) | Crawl the airway network around a centre and save it as JSON (the map's `-airways`) | [Airways](nav-airways.md) |
+
+### Offline data, jetways and diagnostics
+
+| Example | What it shows | Docs |
+|---------|---------------|------|
+| [airport-dump](https://github.com/mrlm-net/simconnect/tree/main/examples/airport-dump) | Write airports' offline data from the simulator (layout, procedures, airways, ILS; `-airports` adds the worldwide list) for `World.LoadAirportDir` / `LoadAirportsFile`: the World without a simulator | [Traffic World](traffic-world.md) |
+| [jetway-helpers](https://github.com/mrlm-net/simconnect/tree/main/examples/jetway-helpers) | Write the invisible jetway helper package into the Community folder from the installed traffic models (`-types`, `-codes`, `-side-steps`, `-ahead`) | [Jetways](jetway.md) |
+| [glitch-watch](https://github.com/mrlm-net/simconnect/tree/main/examples/glitch-watch) | Trace every aircraft the map drives each sim frame and report jumps in height, attitude, heading or position, writing the frames around each to CSV; `-near` watches everything around the user aircraft without a map | [Smoothness](traffic-smoothness.md) |
+| [glitch-log](https://github.com/mrlm-net/simconnect/tree/main/examples/glitch-log) | Follow the map's traffic log and flag unanswered calls, repeated lines, wrong readbacks, stopped aircraft, go-arounds, with a summary every 10 minutes | [Radio](traffic-radio.md) |
+| [smoothness-report](https://github.com/mrlm-net/simconnect/tree/main/examples/smoothness-report) | Turn the smoothness benchmarks and their history into the SVG charts of the smoothness page | [Smoothness](traffic-smoothness.md) |
 
 ### Spikes (throwaway experiments)
 

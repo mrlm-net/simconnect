@@ -18,7 +18,7 @@ export const GET: RequestHandler = () => {
 ## Key URLs
 
 - Website: ${baseUrl}/
-- Getting Started: ${baseUrl}/getting-started
+- Getting Started: ${baseUrl}/docs/getting-started
 - Documentation: ${baseUrl}/docs
 - Examples: ${baseUrl}/docs/examples
 - Changelog: ${baseUrl}/changelog

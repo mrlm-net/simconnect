@@ -133,7 +133,7 @@ An action is one of: `press` (a button variable clicked), `set` (a variable set 
 
 ## Ground controls
 
-`Controls` operates the user aircraft's ground controls by name, the same way for every aircraft (#667): `Door(n)`, `Chocks`, `GPU`, `ParkingBrake`. The profile says how:
+`Controls` operates the user aircraft's ground controls by name, the same way for every aircraft: `Door(n)`, `Chocks`, `GPU`, `ParkingBrake`. The profile says how:
 
 - **Default:** the exits by `TOGGLE_AIRCRAFT_EXIT` with their index from 1, toggled only when not as wanted; the parking brake by `PARKING_BRAKES`, likewise. No chocks or GPU.
 - **Fenix A320 family** (measured live on the Fenix A319, 2026-10-04): the main door and the parking brake by the default key events; chocks and its GPU through its EFB API (`efb` actions: `fenix.efb.chocks`, `groundservice.groundpower`, GraphQL `writeBool` on port 8083, as its EFB does; a write to `L:B_CONFIG_CHOCKS` or `L:B_CONFIG_GPU` does not stick); read back from those L:vars. With the chocks off the Fenix reads its parking brake released.
@@ -155,7 +155,7 @@ A profile's `doors` names its exits. As names (`["Door 1", "Door 2"]`) they go i
 
 ## Ground services
 
-The sim's own ground services for the user aircraft are requested by name with `Controls.Request` (#666): `Jetway` (`TOGGLE_JETWAY`, at a parking spot; asked again, sent away), `Stairs` (`TOGGLE_RAMPTRUCK`), `Baggage` (`REQUEST_LUGGAGE`), `Catering` (`REQUEST_CATERING`), `PowerSupply` (`REQUEST_POWER_SUPPLY`), `FuelTruck` (`REQUEST_FUEL_KEY`, at a parking spot) and `Pushback` (`TOGGLE_PUSHBACK`): the standard key events (MSFS 2024 SDK Key Events) by default, a model's own way where its profile gives one. `State` reads the pushback: `PushbackAttached`, `PushbackAvailable`, `PushbackWait` (Services Variables). An app that drives GSX uses it instead where GSX runs.
+The sim's own ground services for the user aircraft are requested by name with `Controls.Request`: `Jetway` (`TOGGLE_JETWAY`, at a parking spot; asked again, sent away), `Stairs` (`TOGGLE_RAMPTRUCK`), `Baggage` (`REQUEST_LUGGAGE`), `Catering` (`REQUEST_CATERING`), `PowerSupply` (`REQUEST_POWER_SUPPLY`), `FuelTruck` (`REQUEST_FUEL_KEY`, at a parking spot) and `Pushback` (`TOGGLE_PUSHBACK`): the standard key events (MSFS 2024 SDK Key Events) by default, a model's own way where its profile gives one. `State` reads the pushback: `PushbackAttached`, `PushbackAvailable`, `PushbackWait` (Services Variables). An app that drives GSX uses it instead where GSX runs.
 
 ## Copilot callouts
 
@@ -194,7 +194,7 @@ A profile's `efb` is where the aircraft serves its tablet over HTTP: the Fenix's
 
 ## Type bases, cabin signs and counted buttons
 
-Profiles come in layers (#759): the default for any aircraft, then a base for the aircraft's type, then the model's profile where it differs. A base has `"base": true` and matches by type (`a320-family.json`: ATC TYPE A318 to A321, A20N, A21N, or the title). It is used alone when no model's profile matches. A model's profile names its base with `"extends"`: the Fenix extends "A320 family".
+Profiles come in layers: the default for any aircraft, then a base for the aircraft's type, then the model's profile where it differs. A base has `"base": true` and matches by type (`a320-family.json`: ATC TYPE A318 to A321, A20N, A21N, or the title). It is used alone when no model's profile matches. A model's profile names its base with `"extends"`: the Fenix extends "A320 family".
 
 | Name | Base (A320 family) | Fenix A319 (measured 2026-10-05) |
 |---|---|---|

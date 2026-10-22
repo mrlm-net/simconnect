@@ -1,7 +1,7 @@
 ---
 title: "Hotkeys"
 description: "Keys and joystick buttons the player presses in the simulator, bound to an add-on's actions with pkg/hotkeys over SimConnect input groups: bind by name, rebind from a settings file, mapped again after a reconnect."
-order: 16
+order: 19
 section: "packages"
 ---
 

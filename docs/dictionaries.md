@@ -1,13 +1,13 @@
 ---
 title: "Dictionaries"
-description: "Replace the library's embedded tables at runtime with pkg/dict: airlines, aircraft types, wake, performance, airport names and limits, ATC units, GA types, systems profiles."
-order: 17
+description: "Replace the library's embedded tables at runtime with pkg/dict: airlines, aircraft types, wake, performance, airport names and limits, ATC units, GA types, stand rules, VFR points, jetway door offsets, systems profiles and take-off speeds."
+order: 21
 section: "packages"
 ---
 
 # Dictionaries
 
-The library's embedded tables can be replaced at runtime (#768). The shipped copy stays the default; a host's data (the MyCrew app, fed from its API and a local cache) is merged over it by id. Replacing is safe while other goroutines look things up.
+The library's embedded tables can be replaced at runtime. The shipped copy stays the default; a host's data (the MyCrew app, fed from its API and a local cache) is merged over it by id. Replacing is safe while other goroutines look things up.
 
 ```go
 names := dict.Names()                    // the tables
@@ -40,7 +40,11 @@ A table's JSON is an envelope; `Use` also takes the bare items array:
 | `traffic.modelProviders` | `provider` | model providers by package folder and title patterns (`ModelProviderItem`) |
 | `traffic.modelRules` | `title` | simulator models our traffic never uses (`ModelRuleItem`); local rules in the World's `model-rules.json` |
 | `traffic.intersectionAirports` | `icao` | an airport's own intersection entries per runway and class, and whether the clearance says the runway left (`IntersectionAirportItem`); none shipped |
+| `traffic.standRules` | `stand` | where our aircraft stop on a stand, "ICAO LABEL" ("LKPR B14"): forward and right offsets up to a wingspan (`StandRuleItem`); local rules over them, like GSX airport profiles |
+| `airport.vfr` | `icao` | VFR reporting points, FIS unit and frequency per airport (`airport.VFRAirport`); Czech VFR Manual |
+| `jetway.doorOffsets` | `type` | where a jetway helper meets the visible door, per type: ahead and right in metres (`jetway.DoorOffset`); none shipped |
 | `systems.profiles` | `name` | aircraft systems profiles (`systems.Profile`; Windows builds) |
+| `systems.speeds` | `type` | take-off speed tables by type, with aliases and the speed check (`systems.SpeedsItem`); fed from the `aircraft-speeds` set |
 
 An item of a shipped id is read onto a copy of the shipped item, so it replaces only the fields it gives; the others keep their shipped value. Items with a new id are added after the shipped ones. An item without an id is refused. A name not in `Names()` gives `dict.ErrNoTable`.
 

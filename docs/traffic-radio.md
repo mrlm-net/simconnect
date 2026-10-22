@@ -1,13 +1,13 @@
 ---
 title: "Radio"
 description: "What ATC says, as structured transmissions: positions, intents and parameters with the text as said, for a log, a UI or a voice library."
-order: 12
+order: 13
 section: "traffic"
 ---
 
 # Radio
 
-v0.17 puts our traffic on the radio. Every clearance our controllers give is a **transmission**: who says it, to whom, what it does and with what, plus the text as ATC says it. A log, a UI or a voice library renders it. This page grows with v0.17: transmissions first (#415), then frequencies and handoffs, the pilot side, the ATIS on its frequency, and voice through `voice-goio`.
+Our traffic is on the radio. Every clearance our controllers give is a **transmission**: who says it, to whom, what it does and with what, plus the text as ATC says it. A log, a UI or a voice library renders it. This page grows with v0.17: transmissions first, then frequencies and handoffs, the pilot side, the ATIS on its frequency, and voice through `voice-goio`.
 
 ## Transmissions
 
@@ -41,7 +41,7 @@ The text is made from the intent and parameters by one phrasebook (`Say`), so ev
 - `Sequenced`, `DirectToFinal`, `HoldAt`, `LeaveHoldAt`, `HoldDescend`;
 - `Resolved` for a conflict resolution: speed, level (`LevelSaid`: "flight level 210", "altitude 9000 feet") or heading.
 
-The wording follows [Phraseology](traffic-phraseology.md): ICAO Doc 4444 chapter 12, with the UK CAP 413 for wording and order where Doc 4444 leaves them open, each phrase pinned by a test to its source (#462). The departure clearance gives the destination, the SID by its fix (`SaidProcedure`: "BALTU 7D"), the runway, the initial climb (`LevelSaidAbove`, against the transition altitude) and a squawk; start-up and pushback are two approvals, mostly given in one ("push back and start-up approved"; the map's crews ask so 85% of the time); the take-off and landing clearances carry the wind after the clearance (`WindSaid`); the tower clears the next arrival to land within 6 NM with the runway free (`RunwayClearances.Land`) and tells it on the landing roll to call ground when vacated (`WhenVacatedContact`). The crew's clearance request to delivery follows the order of CAP 413 4.9; its exact wording is not in Doc 4444.
+The wording follows [Phraseology](traffic-phraseology.md): ICAO Doc 4444 chapter 12, with the UK CAP 413 for wording and order where Doc 4444 leaves them open, each phrase pinned by a test to its source. The departure clearance gives the destination, the SID by its fix (`SaidProcedure`: "BALTU 7D"), the runway, the initial climb (`LevelSaidAbove`, against the transition altitude) and a squawk; start-up and pushback are two approvals, mostly given in one ("push back and start-up approved"; the map's crews ask so 85% of the time); the take-off and landing clearances carry the wind after the clearance (`WindSaid`); the tower clears the next arrival to land within 6 NM with the runway free (`RunwayClearances.Land`) and tells it on the landing roll to call ground when vacated (`WhenVacatedContact`). The crew's clearance request to delivery follows the order of CAP 413 4.9; its exact wording is not in Doc 4444.
 
 The text is what a voice library such as `voice-goio` takes as it is: it normalises "CSA123, runway 24, cleared for take-off" into speech itself.
 
@@ -99,12 +99,12 @@ On the airport map each aircraft's card shows who works it and on what frequency
 
 ## The pilot side
 
-Clearances follow requests in radio order (#462). Held for clearances (`TaxiRequest.HoldForClearances`), a departure's crew asks when it is ready: `TaxiEvent.Request` is "pushback" once its own wait is over (boarding, the scheduled time) and "taxi" once pushed with the tug clear. On the airport map the push request is the crew's first call to ground, with the station, stand and ATIS letter. The ground controller answers after the request has been said and a moment (1.5–3 s); the crew reads the clearance back, and the aircraft acts 2–4 s after the readback (`Radio.ClearAt`: when a frequency is clear). The tower's line-up and take-off clearances work the same way. In the ATC game you answer the requests yourself.
+Clearances follow requests in radio order. Held for clearances (`TaxiRequest.HoldForClearances`), a departure's crew asks when it is ready: `TaxiEvent.Request` is "pushback" once its own wait is over (boarding, the scheduled time) and "taxi" once pushed with the tug clear. On the airport map the push request is the crew's first call to ground, with the station, stand and ATIS letter. The ground controller answers after the request has been said and a moment (1.5–3 s); the crew reads the clearance back, and the aircraft acts 2–4 s after the readback (`Radio.ClearAt`: when a frequency is clear). The tower's line-up and take-off clearances work the same way. In the ATC game you answer the requests yourself.
 
 
-Our pilots talk too (#417). A pilot's transmission has `Pilot` set, on the same frequency as the controller's.
+Our pilots talk too. A pilot's transmission has `Pilot` set, on the same frequency as the controller's.
 
-- **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`. As a first call on the frequency, with the station: `ReadyForDepartureTo` ("Ruzyne Tower, CSA123, holding short runway 24, ready for departure") and `VacatedAt` ("Ruzyne Ground, CSA123, runway 24 vacated via D"). `EstablishedReportFor` follows the approach: "Localizer established runway 24" for an ILS, "Established RNP runway 25R" otherwise. `WithHoldShort` adds the runways a taxi route crosses to its clearance and readback: "…, hold short of runway 12" (Doc 4444 12.3.4.7 e). A crew flying a TCAS RA reports `TCASRAReport` ("CSA123, TCAS RA") and, the RA over, `ClearOfConflictTo` ("CSA123, clear of conflict, returning to flight level 100", the clearance from `AssignedClearance`; Doc 4444 12.3.1.2 t) or `ClearOfConflict` ("… returning to assigned altitude", FAA JO 7110.65 2-1-28) ([TCAS](traffic-world.md#tcas-v024)).
+- **Requests and reports:** `RequestPushback` ("CSA123, stand A4, request push and start-up, information B"), `RequestTaxi`, `ReadyForDeparture`, `Vacated`. As a first call on the frequency, with the station: `ReadyForDepartureTo` ("Ruzyne Tower, CSA123, holding short runway 24, ready for departure") and `VacatedAt` ("Ruzyne Ground, CSA123, runway 24 vacated via D"). `EstablishedReportFor` follows the approach: "Localizer established runway 24" for an ILS, "Established RNP runway 25R" otherwise. `WithHoldShort` adds the runways a taxi route crosses to its clearance and readback: "…, hold short of runway 12" (Doc 4444 12.3.4.7 e). A crew flying a TCAS RA reports `TCASRAReport` ("CSA123, TCAS RA") and, the RA over, `ClearOfConflictTo` ("CSA123, clear of conflict, returning to flight level 100", the clearance from `AssignedClearance`; Doc 4444 12.3.1.2 t) or `ClearOfConflict` ("… returning to assigned altitude", FAA JO 7110.65 2-1-28) ([TCAS](traffic-world.md#tcas)).
 - **The first call on a frequency:** `CheckIn`: "Ruzyne Tower, CSA123, holding point runway 24, ready for departure", with the ATIS letter on the first call of all.
 - **Readbacks:** `Readback` reads a clearance back the ICAO way, what must be read back and then the call sign: "Taxi to and hold short of runway 24 at B via H, A, CSA123"; "Ruzyne Tower 134.56, CSA123"; "Climb flight level 210, CSA123"; "Hold position, CSA123" (the project reads hold position back as given, where Doc 4444 has "holding"), and "Continue taxi, CSA123" after it. With `RadioOptions.ReadBack` the radio has our pilots read back every clearance, after it, on its frequency.
 - **Checking a readback:** `CheckReadback(clearance, heard)` compares what was read back (parameters as recognised, e.g. a voice recogniser's tags) with the clearance. It ignores case, spacing and leading zeros ("6" for "06", "FL210" for "flight level 210"). A wrong or missing item gets the controller's correction: "CSA123, negative, taxi via H, hold short of A". `SayAgain` asks a call sign, or "station calling", to say again.
@@ -126,13 +126,13 @@ You can be the pilot too. `POST /api/radio/pilot` takes a recognised call `{icao
 
 ## ATIS on its frequency
 
-Each airport's ATIS (`nav.ATISService`, see [Weather and ATIS](nav-weather.md)) is on the radio too (#418). `ATISInformation(letter, text)` is the broadcast, on the ATIS position and so on the ATIS frequency, and it is not read back. Our pilots give the current letter on their first call of all: "Ruzyne Ground, CSA123, stand A4, information Bravo".
+Each airport's ATIS (`nav.ATISService`, see [Weather and ATIS](nav-weather.md)) is on the radio too. `ATISInformation(letter, text)` is the broadcast, on the ATIS position and so on the ATIS frequency, and it is not read back. Our pilots give the current letter on their first call of all: "Ruzyne Ground, CSA123, stand A4, information Bravo".
 
 The airport map refreshes the ATIS of its managed airports every minute of traffic time, from the weather at the user's aircraft. A new information goes out on the radio and into the traffic log. `GET /api/radio/atis?icao=LKPR` serves the current one (letter, text, spoken form and frequency) for a voice to loop. The airport panel's 🔊 button reads it in an English voice, whatever the browser's language.
 
 ## ICAO and FAA
 
-Where a controller is, decides how they speak (#463). `PhraseologyFor(icao)` gives the FAA in the United States and its territories (ICAO prefixes K, PA, PH, PG, TJ and TI) and ICAO everywhere else. `RadioOptions.Phraseology` overrides it.
+Where a controller is, decides how they speak. `PhraseologyFor(icao)` gives the FAA in the United States and its territories (ICAO prefixes K, PA, PH, PG, TJ and TI) and ICAO everywhere else. `RadioOptions.Phraseology` overrides it.
 
 A clearance built by `Say` is said again in FAA wording at a US airport, and `Transmission.Phraseology` records which wording was used. Readbacks follow the same wording, and the voice reads numbers and frequencies the FAA way there. The wordings are those quoted in [Phraseology](traffic-phraseology.md), so the differences there are the differences here:
 
@@ -142,7 +142,7 @@ A clearance built by `Say` is said again in FAA wording at a US airport, and `Tr
 | Taxi | "taxi to and hold short of runway 24 via B, A" | "runway 04L, taxi via B, A" |
 | Take-off | "runway 24, cleared for take-off, wind 240 degrees 8 knots" | "runway 04L, cleared for takeoff" (no wind in the civil phrase) |
 | Approach | "cleared ILS approach runway 24, QNH 1013, report established" | "cleared ILS runway 04L approach" |
-| Vectors (#661) | "fly heading 060, for spacing", "turn left heading 150, for base", "resume own navigation direct GOLOP"; then "turn left heading 245 to intercept, cleared ILS approach runway 24, QNH 1013, report established" | the same vectors; the approach clearance "turn left heading 245, cleared ILS runway 24 approach" (5-9-4) |
+| Vectors | "fly heading 060, for spacing", "turn left heading 150, for base", "resume own navigation direct GOLOP"; then "turn left heading 245 to intercept, cleared ILS approach runway 24, QNH 1013, report established" | the same vectors; the approach clearance "turn left heading 245, cleared ILS runway 24 approach" (5-9-4) |
 | Departure's check-in answered | "identified, climb to flight level 240" | "radar contact, climb and maintain 5000" |
 
 On the runway, a conditional line-up ("behind the landing …, line up and wait runway 24, behind") is ICAO only. So is a conditional crossing (`ClearedCrossBehind`: "behind the landing A320, cross runway 12, behind"). The tower gives one to an aircraft holding short of a crossing when only the next arrival is in the way (`RunwayClearances.CrossBehind`). The aircraft crosses once that arrival is off the runway. The FAA does not allow conditions on the runway.
@@ -151,7 +151,7 @@ On the runway, a conditional line-up ("behind the landing …, line up and wait 
 
 ## Expedite, weather and direct
 
-`Rushed(clearance)` gives the expedited form where one exists (#510). The aircraft then hurries: `TaxiController.Expedite` shrinks its waits at the gates, and `ArrivalController.Expedite` leaves the runway faster.
+`Rushed(clearance)` gives the expedited form where one exists. The aircraft then hurries: `TaxiController.Expedite` shrinks its waits at the gates, and `ArrivalController.Expedite` leaves the runway faster.
 
 | Clearance | Expedited |
 |---|---|
@@ -185,15 +185,15 @@ Combining the route and squawk with the figure's wording is the project's own; e
 
 ## The radio panel
 
-The airport map's **Radio** tab (#425) shows what is said on the airport's frequencies. Each frequency the scenery lists (Delivery, Ground, Tower, Approach, ATIS…) has a button with the number of transmissions heard on it. Pick the one to follow, as on a receiver: one frequency at a time (#462). Pilot lines and the ATIS are coloured apart from the controllers'. The choice is remembered.
+The airport map's **Radio** tab shows what is said on the airport's frequencies. Each frequency the scenery lists (Delivery, Ground, Tower, Approach, ATIS…) has a button with the number of transmissions heard on it. Pick the one to follow, as on a receiver: one frequency at a time. Pilot lines and the ATIS are coloured apart from the controllers'. The choice is remembered.
 
 ## Voice
 
-The airport map speaks the radio through [voice-goio](https://github.com/mrlm-net/voice-goio) (#419). The Radio tab's **🔇 Sound off** switch turns the voice on for the frequency you follow. Tuned to the ATIS, you join its continuous broadcast where it is. Each controller position has a voice and radio sound of its own, each crew its own voice, and the ATIS plays on a loop in its broadcast voice while its frequency is followed. To stay live on a busy frequency, anything not said within 20 s is dropped. The map is its own module, so the SDK keeps zero dependencies. The [airport-map README](../cmd/airport-map/README.md#voice) covers installing piper and the voice models.
+The airport map speaks the radio through [voice-goio](https://github.com/mrlm-net/voice-goio). The Radio tab's **🔇 Sound off** switch turns the voice on for the frequency you follow. Tuned to the ATIS, you join its continuous broadcast where it is. Each controller position has a voice and radio sound of its own, each crew its own voice, and the ATIS plays on a loop in its broadcast voice while its frequency is followed. To stay live on a busy frequency, anything not said within 20 s is dropped. The map is its own module, so the SDK keeps zero dependencies. The [airport-map README](../cmd/airport-map/README.md#voice) covers installing piper and the voice models.
 
 ## Variety
 
-A real frequency is not a script (#721). `RadioOptions.Variety` (or `Radio.SetVariety`; nil is off) varies what is said and when, never what is cleared: every transmission keeps its intent and parameters.
+A real frequency is not a script. `RadioOptions.Variety` (or `Radio.SetVariety`; nil is off) varies what is said and when, never what is cleared: every transmission keeps its intent and parameters.
 
 - **Crew style:** each call sign gets a style from the seed: quick, normal or slow to answer (about 0.5–3 s with the breath), chatty or terse.
 - **Greetings:** most crews greet on their first call to a station (chatty ones nearly always, fewer on a busy frequency), in words and places picked at random: "Ruzyne Radar, good morning, CSA1, …", "Good afternoon, Ruzyne Radar, CSA1, …", "Ruzyne Radar, CSA1, hello, …" (by the time of day, its short form, "good day", "hello").
@@ -207,7 +207,7 @@ The same seed and the same traffic give the same radio. The world turns it on by
 
 ## Stations and controllers
 
-An airport may have several stations per position, and one controller may work several frequencies (#722). `traffic.Station` is a position, a name, a frequency, a controller and a sector:
+An airport may have several stations per position, and one controller may work several frequencies. `traffic.Station` is a position, a name, a frequency, a controller and a sector:
 
 - **Sector:** `taxiways` (ground: by taxiway name), `area` (a polygon, an apron) or `runways` (tower). A station without a sector takes the rest of its position's traffic.
 - **Controller:** stations with the same `controller` are one person. The same voice speaks on each frequency (voice-goio `Utterance.Controller`), and the radio lets one controller say one thing at a time across all of them (`RadioOptions.ControllerOf`). The default is the airport and frequency, so positions on one frequency share a controller (approach and departure on 118.31 at LKPR).
@@ -223,6 +223,6 @@ In the world, each aircraft talks to the station of its sector. Taxiing into ano
 
 ## Descend via the STAR
 
-`DescendVia(pos, cs, star, levelFt, transitionFt)` clears an arrival down its STAR, keeping the published level and speed restrictions (#754). ICAO: "CSA1, descend via STAR to flight level 100" (Doc 4444 6.5.2.4.1 a); `WithCancelled(t, "level")` or `"speed"` adds "cancel level restrictions" or "cancel speed restrictions" (6.5.2.4.1 b, d). FAA: "CSA1, descend via the VOZ 5A arrival", the published altitudes and no level (JO 7110.65 4-5-7 h). The readback repeats it and `CheckReadback` checks the level. `CrossAt(pos, cs, fix, altFt, transitionFt, above)` is "CSA1, cross VOZ at or above flight level 120" (Doc 4444 12.3.2.4 a; 7110.65 4-5-7).
+`DescendVia(pos, cs, star, levelFt, transitionFt)` clears an arrival down its STAR, keeping the published level and speed restrictions. ICAO: "CSA1, descend via STAR to flight level 100" (Doc 4444 6.5.2.4.1 a); `WithCancelled(t, "level")` or `"speed"` adds "cancel level restrictions" or "cancel speed restrictions" (6.5.2.4.1 b, d). FAA: "CSA1, descend via the VOZ 5A arrival", the published altitudes and no level (JO 7110.65 4-5-7 h). The readback repeats it and `CheckReadback` checks the level. `CrossAt(pos, cs, fix, altFt, transitionFt, above)` is "CSA1, cross VOZ at or above flight level 120" (Doc 4444 12.3.2.4 a; 7110.65 4-5-7).
 
-The constraints come from the procedures: `airport.LegConstraints(legs)` lists each constrained fix with `AtOrAboveFt`, `AtOrBelowFt` and `SpeedKts`. `Procedures.FitSTAR(filed, runway, entryFix)` keeps a filed STAR that serves the runway in use, else picks one from the entry fix of the same family (LKPR: VLM5S filed for 24, VLM6T for 06) (#755). `Procedures.MissedOf(approach)` sums up the published missed approach: its points, first fix and climb altitude (#756).
+The constraints come from the procedures: `airport.LegConstraints(legs)` lists each constrained fix with `AtOrAboveFt`, `AtOrBelowFt` and `SpeedKts`. `Procedures.FitSTAR(filed, runway, entryFix)` keeps a filed STAR that serves the runway in use, else picks one from the entry fix of the same family (LKPR: VLM5S filed for 24, VLM6T for 06). `Procedures.MissedOf(approach)` sums up the published missed approach: its points, first fix and climb altitude.

@@ -1,8 +1,8 @@
 ---
 title: "Event Lifecycle"
 description: "System events dispatch pipeline and consumption patterns."
-order: 5
-section: "events"
+order: 3
+section: "manager"
 ---
 
 # Event Lifecycle
@@ -121,6 +121,8 @@ go func() {
 - Automatically cancelled when the manager stops
 - `Done()` channel signals subscription termination
 - Safe for concurrent use
+- The filename and object events (`SubscribeOnFlightLoaded`, `SubscribeOnAircraftLoaded`, `SubscribeOnFlightPlanActivated`, `SubscribeOnObjectAdded`, `SubscribeOnObjectRemoved`) return typed subscriptions (`FilenameSubscription`, `ObjectSubscription`) with `ID()`, `Events()`, `Done()` and `Unsubscribe()`; `Events()` is closed when the subscription ends. The others deliver the raw `engine.Message` on `Messages()` (`msg.AsEvent().DwData` holds the value).
+- Each helper registers its underlying message subscription under the given ID plus a suffix of its own (`-pause`, `-crashed`, `-flightloaded`, `-objadded`, …), so one ID can be used for several kinds without them replacing each other. `GetSubscription` with the bare ID does not find them.
 
 ### When to Use Which
 
@@ -424,6 +426,8 @@ The following names are reserved for built-in events and will return `ErrReserve
 - Custom event subscriptions are **cleared by `Stop()`**. When the simulator goes away (it quits, or the connection drops) they are kept and subscribed again with the same IDs on the next connection; the request registry and the camera request of the lost connection are cleared.
 - `UnsubscribeFromCustomSystemEvent` frees the event's ID for reuse and closes the subscriptions returned for it.
 - The ID pool resets on `Stop()`, so the same 70 slots are available after it.
+- Errors: `SubscribeToCustomSystemEvent` returns `ErrNotConnected` for a new event while disconnected (subscribing again to an event already subscribed works without a connection) and `ErrCustomEventIDExhausted` when all IDs are taken; `OnCustomSystemEvent` returns `ErrCustomEventNotSubscribed` before the event is subscribed; `UnsubscribeFromCustomSystemEvent` and `RemoveCustomSystemEvent` return `ErrCustomEventNotFound` for an unknown event, and `RemoveCustomSystemEvent` returns `ErrCustomEventHandlerNotFound` for an unknown handler ID.
+- Each `SubscribeToCustomSystemEvent` call returns a subscription of its own; `UnsubscribeFromCustomSystemEvent` closes all of them and drops the event's handlers.
 
 ## Internal vs User-Facing Events
 

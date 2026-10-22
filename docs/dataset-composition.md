@@ -2,7 +2,7 @@
 title: "Dataset Composition"
 description: "Clone, Merge, Builder, and Registry APIs for constructing and combining datasets."
 order: 5
-section: "datasets"
+section: "client"
 ---
 
 # Dataset Composition

@@ -1,13 +1,13 @@
 ---
 title: "Traffic Schedules"
 description: "Scheduled flights for the airports around the centre of the world: airlines, fleets, routes and time-of-day waves, and overflights crossing the area; deterministic for a seed."
-order: 9
+order: 4
 section: "traffic"
 ---
 
 # Traffic Schedules
 
-`traffic.Schedule` generates the flights that should exist at the **focus airports**, for example the airports in the [traffic picture](traffic-picture.md) (#367). It returns a timetable: who departs and arrives where and when. The [Traffic Manager](traffic-manager.md) turns the timetable into aircraft (#368).
+`traffic.Schedule` generates the flights that should exist at the **focus airports**, for example the airports in the [traffic picture](traffic-picture.md). It returns a timetable: who departs and arrives where and when. The [Traffic Manager](traffic-manager.md) turns the timetable into aircraft.
 
 ```go
 cfg := traffic.DefaultScheduleConfig() // or traffic.LoadScheduleConfig("schedule.json")
@@ -42,12 +42,12 @@ A focus airport that is missing from the config still gets traffic when its layo
 
 Two more generators add general aviation:
 
-- `traffic.BusinessFlights(cfg, BusinessOptions{Focus, Layouts, PerHour, Density, Seed}, from, to)` gives business jets and turboprops flying IFR in to and out of the large focus airports (#619). An airport is large with a runway of `LargeRunwayMeters` (3000 m) or more and `LargeGates` (10) gates or more (`LargeAirport`). It gives on average `BusinessPerHour` (1.5) arrivals and as many departures an hour at the peak, following the waves. The types come from `BusinessTypes` by weight, within their range and runway. The call sign is a registration, and `Operator` is "business".
+- `traffic.BusinessFlights(cfg, BusinessOptions{Focus, Layouts, PerHour, Density, Seed}, from, to)` gives business jets and turboprops flying IFR in to and out of the large focus airports. An airport is large with a runway of `LargeRunwayMeters` (3000 m) or more and `LargeGates` (10) gates or more (`LargeAirport`). It gives on average `BusinessPerHour` (1.5) arrivals and as many departures an hour at the peak, following the waves. The types come from `BusinessTypes` by weight, within their range and runway. The call sign is a registration, and `Operator` is "business".
 - `traffic.VFRFlights` gives light aircraft through the circuit at the smaller fields ([VFR traffic](traffic-vfr.md)).
 
 ## Overflights
 
-`traffic.Overflights(cfg, OverflightOptions{…}, from, to)` generates the flights that only cross the area: between the config's airports outside it, whose route passes through it (#369).
+`traffic.Overflights(cfg, OverflightOptions{…}, from, to)` generates the flights that only cross the area: between the config's airports outside it, whose route passes through it.
 
 ```go
 over := traffic.Overflights(cfg, traffic.OverflightOptions{

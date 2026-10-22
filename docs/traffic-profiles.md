@@ -1,7 +1,7 @@
 ---
 title: "Aircraft Profiles and Telemetry"
 description: "One profile per aircraft type for injected traffic: airframe, taxi, take-off, approach, rollout, flaps and stand stop; refined from SimVars and tuned from recorded movements."
-order: 7
+order: 21
 section: "traffic"
 ---
 
@@ -87,7 +87,7 @@ AI models report every variable, but the airframe and weights are those of a sim
 
 ## Telemetry
 
-A `Recorder` logs every controlled movement to JSON lines, one per arrival or departure when it ends (#308). Pass it the events the application already reads from a controller:
+A `Recorder` logs every controlled movement to JSON lines, one per arrival or departure when it ends. Pass it the events the application already reads from a controller:
 
 ```go
 rec := traffic.NewRecorder(logFile)

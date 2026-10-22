@@ -1,7 +1,7 @@
 ---
 title: "Arrivals & Parking"
 description: "Land an AI aircraft, roll out to a runway exit and taxi it to a stand with the pkg/traffic ArrivalController: MSFS AI, hybrid or fully injected."
-order: 3
+order: 6
 section: "traffic"
 ---
 
@@ -161,7 +161,7 @@ Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fp
 
 ## STAR and approach
 
-With `InjectApproach` and `Procedure` (e.g. `airport.Procedures.Arrival(runway, entryFix)`: the STAR from its entry fix and the best approach via the transition where the STAR ends) the arrival starts in the terminal area (#315):
+With `InjectApproach` and `Procedure` (e.g. `airport.Procedures.Arrival(runway, entryFix)`: the STAR from its entry fix and the best approach via the transition where the STAR ends) the arrival starts in the terminal area:
 
 ```go
 route, _ := procs.Arrival("06", "GOLOP") // GOLO4T → ILS 06 via KUVIX
@@ -174,7 +174,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "06", Parking: stand, Model: 
 - At the join point (within `JoinCaptureMeters`, or established on the centreline abeam it) the injected approach takes over from where the aircraft is; the offset between MSFS AI's position and the injected glide path fades out over `JoinBlendSeconds`, so nothing jumps.
 - From there on it is the injected approach below.
 
-**Sequencing and delays.** On its STAR the arrival can be spaced behind the others: an `ApproachSequencer` gives it a landing time and a delay, `AbsorbDelay(delay)` loses the delay by flying slower and a longer downwind or one dog-leg (lengthened in place by a later call while it is still ahead), and `HoldFix` / `EnterHold` / `LeaveHold` send it round a hold for what is left. `DirectTo`, `JoinFinal`, `AssignSpeed`, `Shortcut` and `StopDescent` reshape the rest of the procedure, and `GoAround()` sends an injected arrival on final round the published missed approach or a circuit ([ATC Commands](traffic-commands.md)). All of this is in [Airborne Separation](traffic-separation.md).
+**Sequencing and delays.** On its STAR the arrival can be spaced behind the others: an `ApproachSequencer` gives it a landing time and a delay, `AbsorbDelay(delay)` loses the delay by flying slower and a longer downwind or one dog-leg (lengthened in place by a later call while it is still ahead), and `HoldFix` / `EnterHold` / `LeaveHold` send it round a hold when a controller asks for one (an emergency, the weather, a closure; never for the sequence). `DirectTo`, `JoinFinal`, `AssignSpeed`, `Shortcut` and `StopDescent` reshape the rest of the procedure, and `GoAround()` sends an injected arrival on final round the published missed approach or a circuit ([ATC Commands](traffic-commands.md)). All of this is in [Airborne Separation](traffic-separation.md).
 
 ## Rollout and exit
 
@@ -219,7 +219,7 @@ The sweep tests fly 44 injected arrivals across LKPR stands and runways; all par
 
 ### Stand allocation
 
-`StandAllocator` assigns stands at one airport and tracks who is on them (#292):
+`StandAllocator` assigns stands at one airport and tracks who is on them:
 
 ```go
 stands := traffic.NewStandAllocator(client, g)          // feed stands.Handle(msg); call stands.Scan() every ~10 s

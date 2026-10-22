@@ -1,8 +1,8 @@
 ---
 title: "Request and ID Management"
 description: "ID allocation strategy and conflict prevention."
-order: 6
-section: "internals"
+order: 8
+section: "manager"
 ---
 
 # Manager Request and ID Management
@@ -121,12 +121,19 @@ Besides the manager's reserved range, several packages use fixed default IDs whe
 | `traffic.AirportLister` | airports in the reality bubble | — | 8900 (`DefaultAirportListRequestID`) | — |
 | `avionics.Radios` | COM and transponder | — | — | 0x7A00–0x7A09 = 31232–31241 (`DefaultEventBase`, `eventCount` 10) |
 | `systems.Controls` | doors, chocks, GPU, brake | 0x7B00–0x7B3F = 31488–31551 (`DefaultControlBase`, block of 64) | — | 0x7B00–0x7B3F (same block) |
+| `failures.Failures` | user aircraft failures | — | — | 0x7F00–0x7FFF = 32512–32767 (`DefaultEventBase`, one per failure event mapped; from v0.110.1, 0x7B00 before, where it overlapped `systems.Controls`) |
+| `flight.Recorder` | recorded tracks | 0x7C00 = 31744 (`DefaultRecorderBase`) | 0x7C01–0x7C3F (`RecorderIDs` 63, one per recorded object) | — |
+| `flight.UserReplay` | user aircraft replay | 0x7D00–0x7D3F = 32000–32063 (`DefaultReplayBase`, block of 64) | — | 0x7D00–0x7D3F (same block) |
+| `flight.GhostFleet` | replayed scene aircraft | — | 0x7E00–0x7EFF = 32256–32511 (`DefaultFleetBase`, `FleetIDs` 256, cycled) | — |
+| `traffic.UserPushDriver` | the user aircraft's pushback | 9600 (`DefaultUserPushBase`) | 9601 | 9602–9603 |
+| `hotkeys.Hotkeys` | key bindings | — | — | input group 0xB100 = 45312 (`DefaultIDBase`), actions 0xB101–0xB140 (`MaxActions` 64) |
+| `traffic/world.World` | the traffic engine | the helpers above at their defaults (loader, procedures, nav, injector, stands 8200 + 4 per airport), airway crawl 8600–8602 (internal), controllers 20000–21279 (10 × 128 aircraft), enroute waypoints 2009, puppet recorder 42100 | airway crawl 8610–8625, controllers 30000–31279, stands 8300 + 4 per airport, enroute creations 41000–41999, removals 2007–2008, puppets 42200–42499, jetway helpers 43200–44199 | the injector's 7900–7909 |
 | `manager` | custom system events | — | — | 999999910–999999979 (`CustomEventIDMin`–`CustomEventIDMax`) |
 | `manager` | system events | — | — | 999999987–999999998 (`FlightPlanDeactivatedEventID`–`PauseEventID`) |
 | `manager` | simulator state | 999999900 (`CameraDefinitionID`) | 999999901 (`CameraRequestID`) | — |
 | `engine` | heartbeat | — | — | 999999999 (`HEARTBEAT_EVENT_ID`) |
 
-`nav.WeatherReader`, `systems.Reader`, `traffic.ProfileReader`, the tugs and fuel trucks take their IDs from the application and have no defaults. Pick application IDs outside all of the ranges above (the examples use 10000/10001 for the weather reader), or move a library type off its defaults (`LoaderWithIDs`, `TaxiWithIDs`, `ArrivalWithIDs`, `InjectorWithIDs`, `StandWithIDs`, `NewNavLoaderWithIDs`, the `reqID` of `NewAirportLister`, `NewProcedureLoaderWithIDs`, the `base` of `avionics.New` and `systems.NewControls`). A loader keeps an expired request's slot until its late replies are in (or one more timeout), so a late reply is never read into a new request; the `ProcedureLoader` has `Expire` and `Reset` like the others.
+`nav.WeatherReader`, `systems.Reader`, `traffic.ProfileReader`, the tugs and fuel trucks take their IDs from the application and have no defaults. Pick application IDs outside all of the ranges above (the examples use 10000/10001 for the weather reader), or move a library type off its defaults (`LoaderWithIDs`, `TaxiWithIDs`, `ArrivalWithIDs`, `InjectorWithIDs`, `StandWithIDs`, `NewNavLoaderWithIDs`, the `reqID` of `NewAirportLister`, `NewProcedureLoaderWithIDs`, the `base` of `avionics.New`, `systems.NewControls`, `failures.New`, `traffic.NewUserPushDriver`, `flight.NewRecorder`, `flight.NewUserReplay` and `hotkeys.New`, `FleetOptions.IDBase`, and the World's `Options.IDBase`, which moves all of its helpers to one block; see [Traffic World](traffic-world.md)). A loader keeps an expired request's slot until its late replies are in (or one more timeout), so a late reply is never read into a new request; the `ProcedureLoader` has `Expire` and `Reset` like the others.
 
 ## Request Registry
 

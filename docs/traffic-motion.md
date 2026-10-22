@@ -1,7 +1,7 @@
 ---
 title: "Injected Ground Movement"
 description: "Drive AI aircraft on the ground by position injection: smooth turns, realistic speed changes and lights that stay as set."
-order: 4
+order: 20
 section: "traffic"
 ---
 
@@ -57,7 +57,7 @@ if ok, err := inj.Handle(msg); ok && err != nil { log.Print(err) }
 inj.Release(objectID)                   // unfreeze
 ```
 
-`Place` puts the aircraft on the ground, resting on its gear: ground altitude + `STATIC CG TO GROUND` at `STATIC PITCH` (requested every sim frame), or the height and pitch the sim showed it resting at before the first placement, and `MovingPitchDeg` (1°) nose down while moving, faded in up to `MovingPitchFullKts` (5 kt). `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`.
+`Place` puts the aircraft on the ground, resting on its gear: ground altitude + `STATIC CG TO GROUND` at `STATIC PITCH` (requested every sim frame), or the height and pitch the sim showed it resting at before the first placement. Standing or moving, it is placed at exactly that pitch (`MovingPitchDeg` is 0). At any other pitch, however small, the simulator draws the aircraft on extended struts, resting on its nose wheel with the main gear in the air, and switches between the two in one frame. So the struts only extend as the nose lifts at rotation and compress again as the nose wheel comes down after landing. `SetLights` sends only the lights that change. Presets: `LightsParked`, `LightsPushback`, `LightsTaxi`, `LightsRunway`.
 
 Other calls on a taken-over aircraft: `SetGear`, `HoldGearDown`, `SetFlaps`, `SetSpoilers`, `SetEngines(id, n, on)` and `SetThrottle(id, n, percent)` for engines 1 to n (at most 4). An injected aircraft's engines follow the throttle and are heard as they spool: the controllers set `TakeoffThrottlePct` (90 %) for the take-off roll, `ApproachThrottlePct` (45 %) on an injected final and idle from the flare. `SetModel(id, title)` tells the injector the aircraft's title: rolling at 30 kt or more after a few placements, it learns the height the sim rests that model at and uses it for every aircraft of that title in the air (`PlaceAir`), so lift-off and touchdown do not jump. Until then a model is taken to rest `RestAboveStaticShare` (8.5 %) of its static CG height higher.
 
@@ -139,7 +139,7 @@ Measured live at LKPR runway 24: touchdown 486 m past the threshold at −120 fp
 
 ## Natural timing
 
-Every wait and duration with a real-world counterpart varies a little from aircraft to aircraft (#343), so traffic never looks scripted. Each aircraft draws one factor per spread when its controller starts and keeps it for the whole flight — one crew is a little quicker than the next, not erratic. A spread of 0 gives exactly the tunable; `TaxiWithSeed` / `ArrivalWithSeed` make the draws reproducible.
+Every wait and duration with a real-world counterpart varies a little from aircraft to aircraft, so traffic never looks scripted. Each aircraft draws one factor per spread when its controller starts and keeps it for the whole flight — one crew is a little quicker than the next, not erratic. A spread of 0 gives exactly the tunable; `TaxiWithSeed` / `ArrivalWithSeed` make the draws reproducible.
 
 | Spread | Default | Varies |
 |---|---|---|
@@ -156,7 +156,7 @@ Rolling take-offs (`DefaultRollingTakeoffChance`) and roll-through vacates (`Def
 
 ## Many aircraft
 
-Dozens of injected aircraft at once (#370) cost little CPU. The load is the message traffic to the simulator: each aircraft answers its monitor and is placed once per frame it is driven.
+Dozens of injected aircraft at once cost little CPU. The load is the message traffic to the simulator: each aircraft answers its monitor and is placed once per frame it is driven.
 
 `BenchmarkDepartureTaxiFrame` measures one sim frame of one taxiing departure: the monitor answer, the mover step, the look at the traffic ahead and the placement. It takes about **0.6 µs and 1.2 SimConnect writes**. At 60 frames a second, 40 aircraft cost 1.4 ms of CPU a second (0.14 % of a core), but make about 5 000 SimConnect messages a second. **Level of detail** cuts the messages.
 
@@ -192,7 +192,7 @@ A controller on a reused block clears its definitions before adding to them: the
 
 ## Traffic time
 
-MSFS AI flies its parts of a flight (STAR, SID, en route, holds) in simulator time. That follows the simulation rate (time acceleration, or slower) and stops while the simulator is paused. Injected motion and every timer must run on the same time, or at 2× an injected final lags the STAR before it and the landing sequence's times are wrong (#413).
+MSFS AI flies its parts of a flight (STAR, SID, en route, holds) in simulator time. That follows the simulation rate (time acceleration, or slower) and stops while the simulator is paused. Injected motion and every timer must run on the same time, or at 2× an injected final lags the STAR before it and the landing sequence's times are wrong.
 
 `SimClock` is that time. It follows the wall clock at the simulation rate and stands still while paused, and a change of either takes effect without a jump:
 
@@ -223,8 +223,8 @@ Live runs at LKPR (FSLTL A320, 1.3 km with three turns and a stop):
 | Height over ground | bounces of about 1 m reported | constant (0.00 ft spread) |
 | Speed | capped at about 6–9 kt, abrupt | planned: eased acceleration, slowing into turns, exact stop |
 
-Events such as `FREEZE_*_SET` and `*_LIGHTS_SET` reach AI objects only with `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` = `0x10`. Earlier SDK versions had the wrong value (#310).
+Events such as `FREEZE_*_SET` and `*_LIGHTS_SET` reach AI objects only with `SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY` = `0x10`. Earlier SDK versions had the wrong value.
 
 ## Service vehicles under ATC
 
-Tugs and fuel trucks drive the manoeuvring area as any other traffic on a controlled airport (#752). The vehicle roads and the aprons need no clearance. Driving along taxiways (a stretch of 30 m or more; nearby ones together), a vehicle holds 5 m short and calls ground: "Ruzyne Ground, Tug 3, request proceed via H1, H". It goes once told "Tug 3, proceed via H1, H" and has read it back. A road only crossing a taxiway needs no call; the vehicle gives way there. Before a runway it holds 40 m outside the edge and calls the tower ("request cross runway 24"). It waits in the tower's crossing queue as an aircraft does and crosses after "Tug 3, cross runway 24". Off the runway it reports "Tug 3, runway vacated". The library side is `traffic.VehicleATC` (`SetATC` on a tug or fuel truck); the World answers as ground and tower. Vehicles are called "Tug n" and "Fuel n".
+Tugs and fuel trucks drive the manoeuvring area as any other traffic on a controlled airport. The vehicle roads and the aprons need no clearance. Driving along taxiways (a stretch of 30 m or more; nearby ones together), a vehicle holds 5 m short and calls ground: "Ruzyne Ground, Tug 3, request proceed via H1, H". It goes once told "Tug 3, proceed via H1, H" and has read it back. A road only crossing a taxiway needs no call; the vehicle gives way there. Before a runway it holds 40 m outside the edge and calls the tower ("request cross runway 24"). It waits in the tower's crossing queue as an aircraft does and crosses after "Tug 3, cross runway 24". Off the runway it reports "Tug 3, runway vacated". The library side is `traffic.VehicleATC` (`SetATC` on a tug or fuel truck); the World answers as ground and tower. Vehicles are called "Tug n" and "Fuel n".

@@ -163,6 +163,55 @@ Use `engine.BytesToString(field[:])` to convert a fixed-size byte array to a Go 
 
 > **Note:** `SIMCONNECT_PERIOD_ONCE` delivers a single response and stops. For continuous updates, use `SIMCONNECT_PERIOD_SECOND` or `SIMCONNECT_PERIOD_SIM_FRAME` with `SIMCONNECT_DATA_REQUEST_FLAG_CHANGED` to receive data only when a value changes.
 
+## Use the Manager
+
+For an add-on that runs for a whole session, use the manager instead of the bare client. It connects when the simulator comes up, reconnects when it goes away and back, tracks the simulator's state and gives you callbacks instead of a loop of your own:
+
+```go
+//go:build windows
+
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "os/signal"
+
+    "github.com/mrlm-net/simconnect/pkg/manager"
+)
+
+func main() {
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+    defer stop()
+
+    mgr := manager.New("My Managed App",
+        manager.WithContext(ctx),
+        manager.WithAutoReconnect(true),
+    )
+
+    mgr.OnConnectionStateChange(func(old, current manager.ConnectionState) {
+        fmt.Printf("state: %s -> %s\n", old, current)
+    })
+
+    go func() {
+        <-ctx.Done()
+        mgr.Stop()
+    }()
+
+    // Start blocks until the manager stops.
+    if err := mgr.Start(); err != nil {
+        fmt.Println("manager stopped:", err)
+    }
+}
+```
+
+- **Auto-reconnect:** the manager retries while the simulator is not running and after it quits.
+- **State callbacks:** subscribe to connection state, simulator state and system events instead of polling.
+- **Clean shutdown:** cancelling the context or calling `Stop()` disconnects and ends `Start`.
+
+See [Manager Configuration](config-manager.md) for the options and [Manager Usage](usage-manager.md) for subscriptions and state.
+
 ## Next Steps
 
 To see what the SDK can do, run the airport map. It is the main example and the tool the SDK is debugged with: the ground layout of an airport, taxi routing, AI traffic, the landing sequence and the tower on a live map.

@@ -1,7 +1,7 @@
 ---
 title: "L:vars"
 description: "Write local variables (L:vars) on the user aircraft with pkg/lvars, to signal other add-ons or set the ones they document as settable."
-order: 15
+order: 16
 section: "packages"
 ---
 

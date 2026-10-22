@@ -9,7 +9,7 @@ order: 10
 
 The `pkg/registry` package is a static, typed metadata store for MSFS SimVar names, accepted unit strings, Go data types, writability, and category information. It gives you a way to validate variable names and units at startup, enumerate all known variables by category or unit, and discover index-aware variables — all without requiring a live SimConnect connection.
 
-The registry contains 121 entries across five categories: `"aircraft"` (46 vars), `"environment"` (16 vars), `"simulator"` (42 vars), `"autopilot"` (8 vars) and `"navigation"` (9 vars). It has no build-tag requirements and no imports from Windows-gated packages, so it compiles and runs on any platform.
+The registry contains 150 entries across six categories: `"aircraft"` (58 vars), `"simulator"` (42 vars), `"autopilot"` (23 vars), `"environment"` (16 vars), `"navigation"` (9 vars) and `"engine"` (2 vars). It has no build-tag requirements and no imports from Windows-gated packages, so it compiles and runs on any platform.
 
 ## Import
 
@@ -30,7 +30,7 @@ type SimVarMeta struct {
     DefaultUnit string   // Recommended unit for new data definitions
     Type        string   // Go numeric type: "float64", "float32", "int32",
                          //   "int64", "bool", "string", "enum"
-    Category    string   // Domain group: "aircraft", "environment", "simulator", "autopilot", "navigation"
+    Category    string   // Domain group: "aircraft", "environment", "simulator", "autopilot", "navigation", "engine"
     Writable    bool     // Whether SimConnect accepts SetDataOnSimObject writes
     Indexed     bool     // Whether the variable accepts a :N suffix
     Description string   // Human-readable summary
@@ -43,7 +43,7 @@ type SimVarMeta struct {
 | `Units` | All unit strings SimConnect accepts for this variable, stored in lowercase. For example: `["feet", "meters"]`. |
 | `DefaultUnit` | The primary unit recommended for new data definitions. Always one of the values in `Units`. |
 | `Type` | The Go numeric type appropriate for reading this variable. Valid values: `"float64"`, `"float32"`, `"int32"`, `"int64"`, `"bool"`, `"string"`, `"enum"`. |
-| `Category` | Domain group. Valid values in this release: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`. |
+| `Category` | Domain group. Valid values in this release: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`, `"engine"`. |
 | `Writable` | `true` if SimConnect accepts writes via `SetDataOnSimObject` for this variable. |
 | `Indexed` | `true` if this variable accepts a `:N` suffix to address engine, radio, or other per-instance slots (e.g., `"ENG RPM:1"`). |
 | `Description` | Human-readable summary of what the variable represents. |
@@ -234,7 +234,7 @@ func main() {
 func ByCategory(category string) []SimVarMeta
 ```
 
-Valid categories: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`.
+Valid categories: `"aircraft"`, `"environment"`, `"simulator"`, `"autopilot"`, `"navigation"`, `"engine"`.
 
 ```go
 package main
@@ -269,11 +269,12 @@ func main() {
 
 | Category | Count | Contents |
 |----------|-------|----------|
-| `"aircraft"` | 46 | Position, attitude, speed, altitude, engine, controls, gear, fuel, avionics |
+| `"aircraft"` | 58 | Position, attitude, speed, altitude, engine, controls, gear, flaps, spoilers, brakes, lights, tow connection, fuel, avionics |
 | `"environment"` | 16 | Weather, wind, temperature, pressure, visibility, precipitation |
 | `"simulator"` | 42 | Simulation state, camera, time, realism, units, VR, avatar |
-| `"autopilot"` | 8 | Heading, altitude, vertical speed and airspeed holds and targets, NAV1 lock, approach hold |
+| `"autopilot"` | 23 | Heading, altitude, vertical speed, airspeed and Mach holds and targets, NAV1 lock, approach and glideslope hold and arm, flight director, autothrottle, level change, selected/managed slot indexes |
 | `"navigation"` | 9 | COM standby, NAV active/standby and ADF frequencies, ADF radial, GPS ground speed, track and position |
+| `"engine"` | 2 | Turbine N1 and reverser nozzle position (`TURB ENG N1`, `TURB ENG REVERSE NOZZLE PERCENT`) |
 
 ## Indexed Variables
 
