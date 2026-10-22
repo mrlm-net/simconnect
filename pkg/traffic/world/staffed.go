@@ -119,6 +119,19 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 			continue
 		}
 		cc.log.printf("%-6s off the staffed stations: automatic", it.Tail)
+		// A DEPARTURE CLEARANCE HELD FOR THE PLAYER IS GIVEN (#1156), the same
+		// way a waiting ground request is. Leaving it held would strand the
+		// aircraft at its stand for ever the moment delivery is unstaffed.
+		it.clrMu.Lock()
+		clr := it.pendingClearance
+		it.pendingClearance = traffic.Transmission{}
+		it.clrMu.Unlock()
+		if clr.Intent != "" {
+			it.mu.Lock()
+			it.view.AwaitingClearance = false
+			it.mu.Unlock()
+			it.clearance(clr)
+		}
 		if req != "" {
 			it.askGround(req) // a request still waiting is answered
 		}

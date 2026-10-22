@@ -109,6 +109,16 @@ type controlled struct {
 	// deliver: a parked real aircraft's call to delivery, made when its
 	// departure is seen (nil: made already).
 	deliver func()
+	// pendingClearance is the departure clearance a STAFFED delivery has not
+	// given yet (#1156): the crew has called and the controller is the
+	// player, so the words wait here until `clearance` is acted on. Zero
+	// Intent means none is pending.
+	//
+	// ITS OWN MUTEX, not it.mu. `phraseView` reads it, and `update` holds
+	// it.mu across a deferred `logChanges` that calls `phraseView` — so a
+	// second it.mu.Lock() in there is a deadlock, not a race.
+	clrMu            sync.Mutex
+	pendingClearance traffic.Transmission
 	defBase uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
@@ -311,6 +321,9 @@ type ControlView struct {
 	PushbackHeld   bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
 	Rush           bool          `json:"rush,omitempty"`         // told to hurry (#510)
 	Manual         bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	// AwaitingClearance: the crew has called delivery and a STAFFED delivery
+	// has not answered yet (#1156). The `clearance` action gives it.
+	AwaitingClearance bool `json:"awaitingClearance,omitempty"`
 	Entry          string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
 	Deicing        bool          `json:"deicing,omitempty"`      // being de-iced
 	State          string        `json:"state"`
@@ -1223,8 +1236,24 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.climbSaid = initialClimbSaid(lim, procName)
 			deliver := func() {
 				it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
-				it.clearance(traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
-					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}))
+				clr := traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk})
+				// A STAFFED DELIVERY GIVES ITS OWN CLEARANCE (#1156). The crew calls
+				// either way — that is the aircraft, not the controller — but the
+				// answer is the player's, so it waits for the `clearance` action
+				// rather than being said here. Without this, staffing delivery was
+				// accepted and then the engine cleared every departure in front of
+				// the player, and nothing in `act` could have done it instead.
+				if _, staffed := cc.core.staffedAt(g.Layout.ICAO, traffic.PosDelivery, station); staffed {
+					it.clrMu.Lock()
+					it.pendingClearance = clr
+					it.clrMu.Unlock()
+					it.mu.Lock()
+					it.view.AwaitingClearance = true
+					it.mu.Unlock()
+					return
+				}
+				it.clearance(clr)
 			}
 			if r.parked {
 				it.deliver = deliver // a real aircraft parked: it calls once its departure is seen (#841)
@@ -1509,6 +1538,18 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		// THE CLEARANCE FIRST WHILE IT IS WAITING (#1156): a staffed delivery has
+		// not answered the crew yet, and until it does, the clearance is the only
+		// thing this aircraft is waiting for. `departureActions` keys on the taxi
+		// state, which does not know about it. clrMu and never it.mu — this runs
+		// inside update, which holds it.mu.
+		it.clrMu.Lock()
+		pending := it.pendingClearance.Intent != ""
+		it.clrMu.Unlock()
+		if pending {
+			v.Actions = append([]string{"clearance"}, v.Actions...)
+		}
+		v.AwaitingClearance = pending
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
 			if e.Deicing {
@@ -1618,6 +1659,18 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case d != nil && action == "pushstart":
 		d.ClearStartUp()
 		d.ClearPushback()
+	case d != nil && action == "clearance":
+		it.clrMu.Lock()
+		clr := it.pendingClearance
+		it.pendingClearance = traffic.Transmission{}
+		it.clrMu.Unlock()
+		if clr.Intent == "" {
+			return errors.New("no clearance is waiting")
+		}
+		it.mu.Lock()
+		it.view.AwaitingClearance = false
+		it.mu.Unlock()
+		it.clearance(clr)
 	case d != nil && action == "startup":
 		d.ClearStartUp()
 	case d != nil && action == "taxi":
@@ -3510,6 +3563,11 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			return traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacingSaid())
 		}
 		return traffic.ClearedPushbackAndStartUp(call)
+	case "clearance":
+		// clrMu and never it.mu: this runs with it.mu HELD from logChanges.
+		it.clrMu.Lock()
+		defer it.clrMu.Unlock()
+		return it.pendingClearance
 	case "startup":
 		return traffic.ClearedStartUp(call)
 	case "taxi":
