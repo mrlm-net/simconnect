@@ -29,6 +29,7 @@ func main() {
 	sideSteps := flag.Int("side-steps", 6, "each type's door variants each side (0: none)")
 	sideStep := flag.Float64("side-step", 0.1, "door variant step, meters")
 	ahead := flag.String("ahead", "rules", "door variants along the fuselage, meters ahead (negative back), comma-separated; \"rules\": the stand rules' offsets (traffic.StandRules)")
+	doorOf := flag.String("door-of", "A320,B738", "doors of these types on each widebody's helper (wing span over 150 ft), comma-separated: at a gate only a widebody's helper keeps to, the jetway meets a narrowbody's door (none: \"\")")
 	flag.Parse()
 	var aheadM []float64
 	if *ahead == "rules" {
@@ -98,7 +99,19 @@ func main() {
 			cs = append(cs, c)
 		}
 	}
-	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep, AheadM: aheadM})
+	var narrow []string
+	for _, d := range strings.Split(*doorOf, ",") {
+		if d = strings.ToUpper(strings.TrimSpace(d)); d != "" {
+			narrow = append(narrow, d)
+		}
+	}
+	wide := map[string][]string{}
+	for _, m := range models {
+		if doors[m.Type].WingSpanFt > 150 && len(narrow) > 0 {
+			wide[m.Type] = narrow
+		}
+	}
+	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep, AheadM: aheadM, DoorOf: wide})
 	if err != nil {
 		fail(err)
 	}

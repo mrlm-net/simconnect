@@ -100,3 +100,41 @@ func TestWritePackageAheadVariants(t *testing.T) {
 		t.Error("IsHelperVariant")
 	}
 }
+
+// A wide type's variant with a narrow type's door (DoorOf): the wide
+// type's model, the narrow one's interactive_point.0 (LKPR B14: a B748
+// helper for a B738 docked its jetway above and beside the door).
+func TestWritePackageDoorOf(t *testing.T) {
+	narrow := filepath.Join("..", "addons", "testdata", "doors", "FSLTL_A320")
+	wide := t.TempDir()
+	for _, f := range []string{"aircraft.cfg", "flight_model.cfg"} {
+		b, err := os.ReadFile(filepath.Join(narrow, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := strings.Replace(string(b), "interactive_point.0 = 0.4, 37.654, -6.137,", "interactive_point.0 = 0.4, 80.000, -9.500,", 1)
+		if err := os.WriteFile(filepath.Join(wide, f), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root, err := WritePackage(t.TempDir(), []HelperModel{{Type: "B748", Dir: wide}, {Type: "A320", Dir: narrow}},
+		PackageOptions{DoorOf: map[string][]string{"B748": {"A320", "B738"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_B748_D-A320")
+	cfg, _ := os.ReadFile(filepath.Join(dir, "aircraft.cfg"))
+	if !strings.Contains(string(cfg), `title = "`+HelperDoorTitle("B748", "A320")+`"`) {
+		t.Errorf("variant aircraft.cfg:\n%s", cfg)
+	}
+	fm, _ := os.ReadFile(filepath.Join(dir, "flight_model.cfg"))
+	if !strings.Contains(string(fm), "interactive_point.0 = 0.4, 37.654, -6.137,") || strings.Contains(string(fm), "80.000") {
+		t.Errorf("the variant's door not the A320's:\n%s", fm)
+	}
+	if _, err := os.Stat(filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_B748_D-B738")); err == nil {
+		t.Error("a variant for a door type not among the models")
+	}
+	if !IsHelperVariant(HelperDoorTitle("B748", "A320")) || IsHelperVariant(HelperTitle("B748", false)) {
+		t.Error("IsHelperVariant")
+	}
+}

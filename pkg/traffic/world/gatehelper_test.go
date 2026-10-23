@@ -34,8 +34,22 @@ func TestGateHelperBySize(t *testing.T) {
 		{"C22", "FSLTL_B738_RYR", "B788"},
 		{"B14", "FSLTL_B77W_UAE", "B77W"},
 	} {
-		if got := gateHelper(svc, g, at(tc.stand), tc.model); got != jetway.HelperTitle(tc.want, false) {
+		if got := gateHelper(svc, g, at(tc.stand), tc.model, nil); got != jetway.HelperTitle(tc.want, false) {
 			t.Errorf("%s at %s: %q, want the %s helper", tc.model, tc.stand, got, tc.want)
+		}
+	}
+	// With the wider helper's door variants installed: the aircraft's own
+	// door, else an A320's; a widebody keeps its own helper.
+	installed := map[string]bool{jetway.HelperDoorTitle("B788", "B738"): true, jetway.HelperDoorTitle("B763", "A320"): true}
+	has := func(t string) bool { return installed[t] }
+	for _, tc := range []struct{ stand, model, want string }{
+		{"B14", "FSLTL_B738_RYR", jetway.HelperDoorTitle("B788", "B738")},
+		{"C24", "FSLTL_FAIB_A320_SmartWings_CzechAirlinesLivery", jetway.HelperDoorTitle("B763", "A320")},
+		{"B14", "FSLTL_FAIB_A320_SmartWings_CzechAirlinesLivery", jetway.HelperTitle("B788", false)},
+		{"B14", "FSLTL_B77W_UAE", jetway.HelperTitle("B77W", false)},
+	} {
+		if got := gateHelper(svc, g, at(tc.stand), tc.model, has); got != tc.want {
+			t.Errorf("%s at %s: %q, want %q", tc.model, tc.stand, got, tc.want)
 		}
 	}
 }
