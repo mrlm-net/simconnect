@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -148,6 +149,88 @@ func registerStaffed(mux *http.ServeMux, w *World) {
 // giveClearance gives the departure clearance it asked for on a staffed
 // delivery (#1156): the player's action "clearance", or the World once
 // delivery is no longer staffed.
+// amendClearance changes a held departure clearance before it is given
+// (#1164): a different runway, a different SID off it, a lower initial
+// climb. Empty values leave that part of the clearance as filed.
+//
+// A DELIVERY CONTROLLER IS NOT A TAPE RECORDER. The clearance may go off
+// another runway, with the SID that serves it, or with a lower initial
+// climb than the SID's own top to keep a departure under arriving traffic.
+//
+// THE AIRCRAFT AND NOT ONLY THE WORDS. ChangeRunway re-plans the taxi and
+// the departure route and LimitClimb caps the climb, so what is said is
+// what is flown; saying a runway the aeroplane is not going to would be
+// worse than not offering the choice at all.
+//
+// Refusals are the engine's: no such SID for that runway, a runway that
+// publishes nothing, too late to change runway (it is lined up).
+func (it *controlled) amendClearance(runway, sid, level string) error {
+	if runway == "" && sid == "" && level == "" {
+		return nil
+	}
+	if it.dep == nil {
+		return errors.New("only a departure has a departure clearance")
+	}
+	it.mu.Lock()
+	due, had, g := it.clearanceDue, it.view.Procedure, it.graph
+	if runway == "" {
+		runway = it.view.Runway
+	}
+	it.mu.Unlock()
+	if due == nil {
+		return errors.New("no clearance asked for")
+	}
+	if g == nil {
+		return errors.New("no airport")
+	}
+	amended := *due
+	// The runway, and the SID off it: named, or the one off the new runway
+	// nearest the fix it had (what changeDepartureRunway picks).
+	if runway != "" || sid != "" {
+		name := sid
+		if name == "" && had != "" && it.cc.procedures != nil {
+			if p, ok := it.cc.procedures(g.Layout.ICAO); ok {
+				if x := sameFix(p.SIDsFor(runway), had); x != nil {
+					name = x.Name
+				}
+			}
+		}
+		pts, said, _, err := it.cc.procedureFor(g, SpawnRequest{Kind: "departure", Runway: runway, ProcName: name})
+		if err != nil {
+			return err
+		}
+		if err := it.cc.do(func() error { return it.dep.ChangeRunway(runway, "", pts) }); err != nil {
+			return err
+		}
+		it.mu.Lock()
+		it.view.Runway, it.view.Procedure = runway, said
+		it.procSaid = procedureSaid(said, nil)
+		amended.Params[traffic.ParamRunway], amended.Params[traffic.ParamSID] = runway, it.procSaid
+		it.mu.Unlock()
+	}
+	// A lower initial climb than the SID's: a restriction, not a re-route.
+	if level != "" {
+		ft, err := strconv.ParseFloat(level, 64)
+		if err != nil || ft <= 0 {
+			return errors.New("level must be an altitude in feet")
+		}
+		if !it.dep.LimitClimb(ft) {
+			return errors.New("the climb cannot be limited now")
+		}
+		said := traffic.LevelSaidAbove(ft, it.cc.limitsOf(g).TransitionAltitudeFt)
+		it.mu.Lock()
+		it.climbSaid = said
+		amended.Params[traffic.ParamLevel] = said
+		it.mu.Unlock()
+	}
+	// Said again from the amended parameters, so the words match the plan.
+	said := traffic.Say(amended)
+	it.mu.Lock()
+	it.clearanceDue = &said
+	it.mu.Unlock()
+	return nil
+}
+
 func (it *controlled) giveClearance() error {
 	it.mu.Lock()
 	due := it.clearanceDue

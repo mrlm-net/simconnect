@@ -22,7 +22,8 @@ import (
 // up, down: a place earlier or later in the landing order (kept);
 // hold: hold now at the STAR's hold fix, on the stack; release: leave the
 // hold; slow: lose another minute by speed and stretching; direct: direct
-// to the join point on the final; goaround: go around.
+// to the join point on the final; goaround: go around; descend: a level
+// ({"ft": 5000}), said against the airport's transition altitude.
 
 // approachSlowBy is what one "slow" asks the arrival to lose.
 const approachSlowBy = time.Minute
@@ -53,14 +54,14 @@ func (q *sequences) entryOf(icao, callsign string) (*traffic.ApproachSequencer, 
 
 // approachAction does action for callsign at icao, and says it as ATC.
 func (q *sequences) approachAction(icao, callsign, action string) error {
-	return q.approachActionAt(icao, callsign, action, nil, 0)
+	return q.approachActionAt(icao, callsign, action, nil, 0, 0)
 }
 
 // approachActionAt is approachAction with a position picked on the map
 // (#443): "direct" to it (a fix near it, else a vector), "holdat" a hold
 // there.
-func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts float64) error {
-	return q.approachDo(icao, callsign, action, at, kts, spacing{})
+func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts, ft float64) error {
+	return q.approachDo(icao, callsign, action, at, kts, ft, spacing{})
 }
 
 // spacing is a "slow" for spacing behind another arrival: delay lost
@@ -74,11 +75,11 @@ type spacing struct {
 // approachSpace has callsign lose delay within withinNM, before it meets
 // the arrival ahead.
 func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64) error {
-	return q.approachDo(icao, callsign, "slow", nil, 0, spacing{delay, withinNM})
+	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay, withinNM})
 }
 
 // approachDo is approachActionAt, a "slow" for spacing with sp.
-func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts float64, sp spacing) error {
+func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts, ft float64, sp spacing) error {
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
 		return traffic.ErrNotSequenced
@@ -143,6 +144,38 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			told = "normal speed"
 		}
 		q.cc.log.printf("%-6s approach: %s (on the map)", callsign, told)
+	case "descend":
+		// AN ALTITUDE, WHICH IS HALF OF APPROACH CONTROL (#1164). An arrival could
+		// be sequenced, slowed, held and vectored to the final but never stepped
+		// down. `DescendTo` is what the engine's own STAR descent uses; it was
+		// simply not on the API.
+		if ft <= 0 {
+			return errors.New("descend: an altitude in feet is needed")
+		}
+		if err := q.cc.do(func() error { return it.arr.DescendTo(ft) }); err != nil {
+			return err
+		}
+		ta := 0.0
+		if it.graph != nil {
+			ta = q.cc.limitsOf(it.graph).TransitionAltitudeFt
+		}
+		// CLIMB OR DESCEND BY WHERE IT IS, not by the name of the method: telling
+		// an aircraft at 5000 to "descend to 7000" is wrong however right the
+		// target is. Its altitude is already to hand, as the speed and hold cases
+		// read it.
+		now := 0.0
+		for _, a := range q.cc.world.Aircraft() {
+			if a.ObjectID == it.object() {
+				now = a.AltFt
+			}
+		}
+		say, word := traffic.Descend, "descend"
+		if now > 0 && ft > now {
+			say, word = traffic.Climb, "climb"
+		}
+		it.say(say(traffic.PosApproach, callsign, ft, ta))
+		told = word + " " + traffic.LevelSaidAbove(ft, ta)
+		q.cc.log.printf("%-6s approach: %s", callsign, told)
 	case "hold":
 		if _, _, holding := it.arr.Holding(); holding {
 			return traffic.ErrHolding
@@ -292,11 +325,12 @@ func registerApproach(mux *http.ServeMux, st *state) {
 		var body struct {
 			Lat, Lon *float64
 			Kts      float64 // speed: the speed, 0 normal speed
+			Ft       float64 // descend: the altitude in feet
 		}
 		if json.NewDecoder(r.Body).Decode(&body) == nil && body.Lat != nil && body.Lon != nil {
 			at = &airport.LatLon{Lat: *body.Lat, Lon: *body.Lon}
 		}
-		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts)
+		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts, body.Ft)
 		switch {
 		case errors.Is(err, traffic.ErrNotSequenced):
 			http.Error(w, err.Error(), http.StatusNotFound)

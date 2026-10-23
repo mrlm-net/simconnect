@@ -2322,6 +2322,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if action == "pushback" && r.URL.Query().Get("startup") == "1" {
 			action = "pushstart"
 		}
+		// AN AMENDED CLEARANCE (#1164): ?runway=, ?sid= and ?level= change what
+		// is cleared before it is said — and change the aircraft, not only the
+		// words, or the radio would promise something it does not then fly.
+		if action == "clearance" {
+			q := r.URL.Query()
+			if err := it.amendClearance(q.Get("runway"), q.Get("sid"), q.Get("level")); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+		}
 		// Marked as said before it is given: the state change it causes can
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
@@ -2701,7 +2711,12 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 				return x, nil
 			}
 		}
-		if r.ProcName != "" || len(list) == 0 {
+		if len(list) == 0 {
+			// `no procedure "" for runway 02` reads as a bug in the caller, and it
+			// is a fact about the airport — Orly publishes no SID off 02 at all.
+			return airport.Procedure{}, fmt.Errorf("runway %s has no published procedure", r.Runway)
+		}
+		if r.ProcName != "" {
 			return airport.Procedure{}, fmt.Errorf("no procedure %q for runway %s", r.ProcName, r.Runway)
 		}
 		return list[rand.IntN(len(list))], nil
