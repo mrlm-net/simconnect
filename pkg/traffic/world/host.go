@@ -157,7 +157,7 @@ func (w *World) PlayerPlace() *PlayerPlace {
 	return cc.playerPlace()
 }
 
-// Vehicles are our aircraft's ground vehicles by call sign, as
+// Vehicles are our aircraft's ground vehicles by call sign (ControlView.Tail), as
 // Snapshot().Aircraft[i].Vehicles, without the rest of their views.
 func (w *World) Vehicles() map[string][]VehicleView {
 	out := map[string][]VehicleView{}

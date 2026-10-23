@@ -128,7 +128,7 @@ type World struct {
 // New makes a World; it connects with Run.
 func New(o Options) *World {
 	if o.Output != nil {
-		stdout = o.Output
+		stdout.set(o.Output)
 	}
 	if o.LogDir != "" {
 		openTrafficLog(o.LogDir)

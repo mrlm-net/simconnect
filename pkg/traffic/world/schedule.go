@@ -749,11 +749,14 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 	// Each setting taken is kept and set again on the next connection: a
 	// connection lost and made again (the simulator dropped it) brought the
 	// schedule back off, and no traffic for an hour (live, 2026-10-17).
-	st.scheduleReplay = func(body []byte) int {
+	replay := func(body []byte) int {
 		rec := httptest.NewRecorder()
 		postSchedule(rec, httptest.NewRequest("POST", "/api/schedule", bytes.NewReader(body)))
 		return rec.Code
 	}
+	st.mu.Lock() // the API is built lazily, the connection reading it (replaySchedule)
+	st.scheduleReplay = replay
+	st.mu.Unlock()
 	mux.HandleFunc("POST /api/schedule", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {

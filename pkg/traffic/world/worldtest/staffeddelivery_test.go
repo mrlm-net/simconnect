@@ -2,6 +2,7 @@ package worldtest
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -114,5 +115,30 @@ func TestCheapReadAccessors(t *testing.T) {
 		if len(got[tail]) != n {
 			t.Errorf("%s: %d vehicles, the snapshot has %d", tail, len(got[tail]), n)
 		}
+	}
+}
+
+// TestHarnessesOneAfterAnother: a World per subtest, each with its own
+// output, closed as the next starts (an app's offline scenario tests):
+// nothing shared between them races (-race).
+func TestHarnessesOneAfterAnother(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	for i := range 3 {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+			o.World.Output = io.Discard
+			h, err := Start(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(h.Close)
+			if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 8}); err != nil {
+				t.Fatal(err)
+			}
+			h.Until(5*time.Minute, func() bool { return len(h.World.Snapshot().Aircraft) > 2 })
+			h.Advance(time.Minute)
+		})
 	}
 }
