@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.117.2] - 2026-10-23
+
+### Fixed
+
+- No arrival at all in the morning peak at a high density. Live at LKPR, at density 3: 41 of ours, all departures, with 12 waiting to push, 10 taxiing and 16 still counted while climbing away. Two causes:
+  - **Unreal traffic:** the timetable made 72 movements in the peak hour, about double what one runway in use takes. A focus airport's movements are now capped at `ScheduleOptions.CapacityPerHour` (`traffic.DefaultCapacityPerHour`, 40) whatever the density.
+  - **The aircraft cap was first come, first served:** departures, on their stands early and counted while climbing away, took all of `MaxAircraft`. Now neither arrivals nor departures take more than 60% of it while the other kind has flights due.
+- "arrival delayed — landing flow" was logged 40,000 times in an hour and a half, every scheduled arrival once a minute. A delay is now announced again only for another reason, or when it grows by 5 minutes.
+
 ## [0.117.1] - 2026-10-23
 
 ### Fixed
