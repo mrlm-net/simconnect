@@ -338,6 +338,22 @@ func (r *Recorder) Snapshot(objectID uint32) *Track {
 	return &t
 }
 
+// SamplesSince is a copy of objectID's samples from index from on, and
+// how many it has in all (the next from): a save appends only what is new
+// instead of copying the whole flight under the lock Handle needs
+// (Snapshot). ok false when it is not recorded.
+func (r *Recorder) SamplesSince(objectID uint32, from int) (samples []Sample, total int, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	req, found := r.byObj[objectID]
+	if !found || r.byReq[req].track == nil {
+		return nil, 0, false
+	}
+	all := r.byReq[req].track.Samples
+	from = max(0, min(from, len(all)))
+	return append([]Sample(nil), all[from:]...), len(all), true
+}
+
 // Handle takes a message: true when it was a frame of a recording.
 func (r *Recorder) Handle(msg engine.Message) bool {
 	if types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA {

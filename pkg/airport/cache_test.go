@@ -39,12 +39,21 @@ func TestCacheGraphBuiltOnce(t *testing.T) {
 
 func TestCachePutReplacesAndInvalidate(t *testing.T) {
 	c := NewCache()
-	c.Put(loadLKPR(t))
+	l := loadLKPR(t)
+	c.Put(l)
 	g1, _ := c.Graph("LKPR")
+	// The same layout again, or an equal one: the graph kept.
+	c.Put(l)
 	c.Put(loadLKPR(t))
-	g2, _ := c.Graph("LKPR")
-	if g1 == g2 {
-		t.Error("Put did not replace the graph")
+	if g, _ := c.Graph("LKPR"); g != g1 {
+		t.Error("an unchanged layout put again rebuilt the graph")
+	}
+	// A changed one: replaced.
+	l2 := loadLKPR(t)
+	l2.Parking = l2.Parking[:len(l2.Parking)-1]
+	c.Put(l2)
+	if g2, _ := c.Graph("LKPR"); g1 == g2 {
+		t.Error("Put of a changed layout did not replace the graph")
 	}
 	c.Invalidate("lkpr")
 	if _, ok := c.Layout("LKPR"); ok {

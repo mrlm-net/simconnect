@@ -474,3 +474,65 @@ func TestHelpersGateRefusesType(t *testing.T) {
 		t.Errorf("learned refusal not kept: %q", got)
 	}
 }
+
+// A helper the sim puts on another, docked gate: that gate docked again,
+// its own failed and counted a miss. Placeholders of a fill landing on
+// docked gates FillStrays times stop the fill a while. A gate whose
+// helpers go elsewhere more than they dock (GateUnfitMin) gets no jetway,
+// tried again once each GateRetest.
+func TestHelpersStraysOnDockedGates(t *testing.T) {
+	f := &fakeSim{}
+	var results []bool
+	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil },
+		OnGateResult: func(icao string, stand int, docked bool) { results = append(results, docked) }})
+	now := time.Now()
+	h.Update(now)
+	h.see(jw(4, 0, 0), jw(5, 0, 0), jw(7, 0, 0), jw(9, 0, 0))
+	h.mu.Lock()
+	for _, s := range []int{4, 5, 7} {
+		h.gate("EDDM", s).helper, h.gate("EDDM", s).status = uint32(500+s), StatusDocked
+		h.byObj[uint32(500+s)] = &pending{icao: "EDDM", stand: s, helper: true, object: uint32(500 + s)}
+	}
+	h.gate("EDDM", 9).status = StatusDocking
+	stray := &pending{icao: "EDDM", stand: 9, helper: true, object: 700}
+	h.byReq[h.req()], h.byObj[700] = stray, stray
+	h.mu.Unlock()
+	h.see(jw(7, 1, 700)) // stand 9's helper on docked 7
+	if !slices.Contains(f.removed, 507) || h.Status("EDDM", 7) != StatusFailed || h.Status("EDDM", 9) != StatusFailed || !slices.Equal(results, []bool{false}) {
+		t.Fatalf("removed %v, stand 7 %s, stand 9 %s, results %v", f.removed, h.Status("EDDM", 7), h.Status("EDDM", 9), results)
+	}
+	// The fill: its placeholders land on docked 4, then 5.
+	for i, s := range []int{4, 5} {
+		obj := uint32(800 + i)
+		p := &pending{icao: "EDDM", stand: -1, object: obj}
+		h.mu.Lock()
+		h.byReq[h.req()], h.byObj[obj] = p, p
+		h.mu.Unlock()
+		h.see(jw(s, 1, obj))
+	}
+	if h.Filling("EDDM") {
+		t.Errorf("still filling after %d placeholders on docked gates", FillStrays)
+	}
+	// Stand 9: missed more than docked: no jetway until GateRetest.
+	h2 := NewHelpers(&fakeSim{}, HelperOptions{Types: []string{"B738"}})
+	h2.Update(now)
+	h2.see(jw(9, 0, 0))
+	h2.mu.Lock()
+	h2.gate("EDDM", 9).placeholder = 909
+	h2.mu.Unlock()
+	h2.GateRecord("eddm", 9, 1, GateUnfitMin)
+	if err := h2.Dock("EDDM", 9, "B738"); err != nil {
+		t.Fatalf("first try of an unfit gate: %v, want tried once", err)
+	}
+	h2.mu.Lock()
+	g := h2.gate("EDDM", 9)
+	g.status, g.helper, g.placeholder = StatusReserved, 0, 910
+	h2.mu.Unlock()
+	if err := h2.Dock("EDDM", 9, "B738"); err != ErrNoGate {
+		t.Errorf("unfit gate again within GateRetest: %v, want ErrNoGate", err)
+	}
+	h2.Update(now.Add(GateRetest + time.Minute))
+	if err := h2.Dock("EDDM", 9, "B738"); err != nil {
+		t.Errorf("unfit gate after GateRetest: %v, want tried again", err)
+	}
+}

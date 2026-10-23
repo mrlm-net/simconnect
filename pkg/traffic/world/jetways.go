@@ -197,6 +197,8 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 		RequestBase: cc.core.libIDs().puppetReq + 1000, Log: cc.core.log.printf, AircraftAt: cc.aircraftAt, Offset: jetwayDoorOffset,
 		OnPlaceholder: cc.placeholderParked, OnLearn: func(icao string, stand int, helper string, docked bool) {
 			go gateLessons.add(gateLesson{ICAO: icao, Stand: stand, Helper: helper, Docked: docked})
+		}, OnGateResult: func(icao string, stand int, docked bool) {
+			go gateLessons.count(icao, stand, docked)
 		}})
 	gateLessons.teach(cc.jw.svc)
 	cc.jw.prepared, cc.jw.docked = map[string]bool{}, map[string]bool{}
@@ -865,8 +867,12 @@ func (cc *controlCenter) hasModel(title string) bool {
 type gateLesson struct {
 	ICAO   string `json:"icao"`
 	Stand  int    `json:"stand"`
-	Helper string `json:"helper"`
-	Docked bool   `json:"docked"`
+	Helper string `json:"helper,omitempty"`
+	Docked bool   `json:"docked,omitempty"`
+	// Docks and Aways: the gate's docks done and its helpers put
+	// elsewhere, of any type (Helper "": jetway.GateRecord).
+	Docks int `json:"docks,omitempty"`
+	Aways int `json:"aways,omitempty"`
 }
 
 // gateLessonStore keeps the gates' lessons in a local file
@@ -896,6 +902,11 @@ func (s *gateLessonStore) load(file string) {
 func (s *gateLessonStore) add(l gateLesson) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.put(l)
+}
+
+// put is add with s.mu held.
+func (s *gateLessonStore) put(l gateLesson) {
 	s.items = slices.DeleteFunc(s.items, func(i gateLesson) bool {
 		return i.ICAO == l.ICAO && i.Stand == l.Stand && i.Helper == l.Helper
 	})
@@ -912,12 +923,35 @@ func (s *gateLessonStore) add(l gateLesson) {
 	}
 }
 
+// count adds a dock (or a miss) to icao's stand's record and saves.
+func (s *gateLessonStore) count(icao string, stand int, docked bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var l gateLesson
+	for _, i := range s.items {
+		if i.ICAO == icao && i.Stand == stand && i.Helper == "" {
+			l = i
+		}
+	}
+	l.ICAO, l.Stand = icao, stand
+	if docked {
+		l.Docks++
+	} else {
+		l.Aways++
+	}
+	s.put(l)
+}
+
 // teach gives svc the gates' lessons.
 func (s *gateLessonStore) teach(svc *jetway.Helpers) {
 	s.mu.Lock()
 	items := slices.Clone(s.items)
 	s.mu.Unlock()
 	for _, l := range items {
+		if l.Helper == "" {
+			svc.GateRecord(l.ICAO, l.Stand, l.Docks, l.Aways)
+			continue
+		}
 		svc.Learn(l.ICAO, l.Stand, l.Helper, l.Docked)
 	}
 }

@@ -7,6 +7,35 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.113.0] - 2026-10-23
+
+### Added
+
+- Cruising levels: `nav.LevelRule`, `LevelRuleFor`, and `CruiseLevelRule`, with the rule taken from the departure country. They follow Wikipedia's "Flight level":
+  - below FL290: odd thousands eastbound, even westbound;
+  - in RVSM, FL290–FL410: FL290, 310 eastbound and FL300, 320 westbound;
+  - above FL410, 4,000 ft apart: FL410, 450, 490 eastbound and FL430, 470, 510 westbound;
+  - without RVSM, from FL290: FL290, 330, 370 eastbound and FL310, 350, 390 westbound;
+  - north/south in Italy, France, Portugal and Spain, with southbound odd; New Zealand southbound even;
+  - VFR the IFR levels plus 500 ft below FL200.
+
+  Before, levels above FL410 followed the RVSM parity (FL430 eastbound).
+- Performance for 27 more types: airliners (A319, A21N, B739, BCS3, E195, A332, A333, A359, B763, B744, B788), turboprops (AT72) and the business types of the schedule (Phenom, Citation, Praetor, PC-24, PC-12, TBM, King Air). A King Air was planned as a generic jet at FL360.
+- `World.Now()`, `World.PlayerPlace()` and `World.Vehicles()` read the clock, the player's landing place and the ground vehicles without building every aircraft's view, as `Snapshot` does under the lock the traffic's tick needs.
+- `flight.Recorder.SamplesSince(objectID, from)`: only the samples recorded since `from`, for a save that appends, instead of copying the whole flight under the lock `Handle` needs.
+
+### Changed
+
+- `nav.Performance.MaxFL` is the highest level a type is normally planned at, not its certified ceiling. An A320 now goes to FL370, a 737-800 to FL380, and the long-haul twins to FL370–FL390. A 737 had been planned at FL400.
+- Jetways:
+  - **Unfit gates.** A gate whose helpers the sim puts on other gates more often than it docks them (3 times or more) gets no jetway, and is tried again once every 2 hours (`GateUnfitMin`, `GateRetest`). Every such miss takes a docked gate's jetway. Over three days at LKPR, stand 11 docked 8 times and missed 15, stand 19 docked 5 and missed 9, and every other gate missed 2 at most. The counts are kept in `jetway-gates.json` (`HelperOptions.OnGateResult`, `Helpers.GateRecord`).
+  - **Refills back off.** A fill whose placeholders land on docked gates twice stops, and waits twice as long each time, from 2 minutes up to 30 (`FillStrays`, `StrayWaitMax`). Live, the sim gave each refill a docked gate again, one gate lost every 2 minutes. Removing the newcomer at once was also tried live, and the jetway did not come back to the gate's own helper.
+- `airport.Cache.Put` of the same layout, or an equal one, keeps the built graph instead of throwing it away (a host refreshing its layouts every 5 minutes rebuilt them each time).
+
+### Fixed
+
+- `pkg/traffic/world` crashed under `-race` ("checkptr: pointer arithmetic result points to invalid allocation"): two enumeration readers kept a pointer as a `uintptr`. Both now use `unsafe.Add`, and a test reads a multi-entry enumeration.
+
 ## [0.112.0] - 2026-10-23
 
 ### Added

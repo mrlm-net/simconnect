@@ -89,6 +89,15 @@ func TestRecorder(t *testing.T) {
 	_ = buf
 	short, _ := frameMessage(r.base, r.byObj[types.SIMCONNECT_OBJECT_ID_USER], vals[:5])
 	r.Handle(short) // cut short: not read
+	if s, n, ok := r.SamplesSince(types.SIMCONNECT_OBJECT_ID_USER, 0); !ok || n != 1 || len(s) != 1 {
+		t.Fatalf("since 0: %d samples of %d, %v", len(s), n, ok)
+	}
+	if s, n, ok := r.SamplesSince(types.SIMCONNECT_OBJECT_ID_USER, 1); !ok || n != 1 || len(s) != 0 {
+		t.Fatalf("since 1: %d samples of %d, %v", len(s), n, ok)
+	}
+	if _, _, ok := r.SamplesSince(77, 0); ok {
+		t.Error("an object not recorded")
+	}
 	tr := r.Stop(types.SIMCONNECT_OBJECT_ID_USER)
 	if tr == nil || len(tr.Samples) != 1 || !tr.User || tr.Model != "A320" {
 		t.Fatalf("track %+v", tr)

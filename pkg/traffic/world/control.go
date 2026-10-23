@@ -3240,12 +3240,11 @@ func (cc *controlCenter) addModels(msg engine.Message) {
 	if n*size > uint32(msg.DwSize)-header {
 		return
 	}
-	base := uintptr(unsafe.Pointer(e)) + uintptr(header)
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	var added []string
 	for i := uint32(0); i < n; i++ {
-		entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Pointer(base + uintptr(i*size)))
+		entry := (*types.SIMCONNECT_ENUMERATE_SIMOBJECT_LIVERY)(unsafe.Add(unsafe.Pointer(e), header+i*size)) // no uintptr kept: checkptr (-race) killed it
 		if t := engine.BytesToString(entry.AircraftTitle[:]); t != "" {
 			if l := engine.BytesToString(entry.LiveryName[:]); l != "" {
 				t += liverySep + l

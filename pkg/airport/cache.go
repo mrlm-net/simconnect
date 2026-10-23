@@ -2,6 +2,7 @@ package airport
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -32,10 +33,17 @@ func NewCache() *Cache {
 func key(icao string) string { return strings.ToUpper(strings.TrimSpace(icao)) }
 
 // Put stores l, replacing any earlier layout (and graph) for its ICAO code.
+// The same layout again (the same one, or one equal to it: an unchanged
+// refresh) keeps the entry and its graph built: a rebuild on every refresh
+// cost the host each time (a layout put every 5 minutes).
 func (c *Cache) Put(l *Layout) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key(l.ICAO)] = &cacheEntry{layout: l}
+	k := key(l.ICAO)
+	if e := c.entries[k]; e != nil && (e.layout == l || reflect.DeepEqual(e.layout, l)) {
+		return
+	}
+	c.entries[k] = &cacheEntry{layout: l}
 }
 
 // Layout returns the cached layout for icao.

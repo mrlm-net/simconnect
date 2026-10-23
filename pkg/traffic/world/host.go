@@ -132,6 +132,62 @@ func (w *World) Snapshot() Snapshot {
 	return out
 }
 
+// Now is the World's traffic time, as Snapshot().At, without building
+// every aircraft's view (Snapshot does, under the lock the traffic's tick
+// needs): for a host that only reads the clock.
+func (w *World) Now() time.Time {
+	w.st.mu.Lock()
+	cc := w.st.control
+	w.st.mu.Unlock()
+	if cc == nil {
+		return traffic.Now()
+	}
+	return cc.clock.Now()
+}
+
+// PlayerPlace is Snapshot().Player, the user aircraft's place in its
+// landing sequence (nil none), without the aircraft's views.
+func (w *World) PlayerPlace() *PlayerPlace {
+	w.st.mu.Lock()
+	cc := w.st.control
+	w.st.mu.Unlock()
+	if cc == nil {
+		return nil
+	}
+	return cc.playerPlace()
+}
+
+// Vehicles are our aircraft's ground vehicles by call sign, as
+// Snapshot().Aircraft[i].Vehicles, without the rest of their views.
+func (w *World) Vehicles() map[string][]VehicleView {
+	out := map[string][]VehicleView{}
+	w.st.mu.Lock()
+	cc := w.st.control
+	w.st.mu.Unlock()
+	if cc == nil {
+		return out
+	}
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	for _, it := range cc.items {
+		var vs []VehicleView
+		if rd, ok := it.dep.(*remoteDep); ok && cc.remoteVehicles != nil {
+			vs = append(vs, cc.remoteVehicles(rd.t)...)
+		} else {
+			if it.tug != nil {
+				vs = append(vs, vehicleView("tug", it.tug.ObjectID(), it.tug.Title(), it.tug.State(), it.tug.Track))
+			}
+			if it.fuel != nil {
+				vs = append(vs, vehicleView("fuel", it.fuel.ObjectID(), it.fuel.Title(), it.fuel.State(), it.fuel.Track))
+			}
+		}
+		if len(vs) > 0 {
+			out[it.Tail] = append(out[it.Tail], vs...)
+		}
+	}
+	return out
+}
+
 // Do runs one call of the World's HTTP API in process — the same API a
 // remote client calls: method, path with its query ("/api/schedule"), and
 // a body sent as JSON (nil none). It returns the reply's body; an error
