@@ -42,7 +42,11 @@ func TestHarnessRunsTraffic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer h.Close()
-	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 10}); err != nil {
+	// The timetable of mid-morning, whatever the hour: at night the real
+	// clock's timetable has nothing to fly.
+	now := time.Now().UTC()
+	off := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, time.UTC).Sub(now).Minutes()
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 10, OffsetMin: &off}); err != nil {
 		t.Fatal(err)
 	}
 	if !h.WaitFor(40*time.Second, func() bool { return len(h.World.Snapshot().Aircraft) > 0 }) {
