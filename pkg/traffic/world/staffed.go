@@ -152,13 +152,17 @@ func registerStaffed(mux *http.ServeMux, w *World) {
 // delivery is no longer staffed.
 func (it *controlled) giveClearance() error {
 	it.mu.Lock()
-	due := it.clearanceDue
-	it.clearanceDue = nil
+	due, arr := it.clearanceDue, it.arrivalDue
+	it.clearanceDue, it.arrivalDue = nil, nil
 	it.mu.Unlock()
-	if due == nil {
+	switch {
+	case due != nil:
+		it.clearance(traffic.ClearedDeparture(it.Tail, *due))
+	case arr != nil:
+		it.firstContact(*arr) // an arrival's STAR (#1096)
+	default:
 		return errors.New("no clearance asked for")
 	}
-	it.clearance(traffic.ClearedDeparture(it.Tail, *due))
 	it.cc.changed("control")
 	return nil
 }

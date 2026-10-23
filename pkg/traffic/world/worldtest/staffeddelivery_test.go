@@ -259,3 +259,83 @@ func TestApproachDescend(t *testing.T) {
 		t.Fatalf("%s: no descent said", arr.Tail)
 	}
 }
+
+// TestStaffedApproachClearsAndHandsOver: on a staffed approach an
+// arrival's first call goes unanswered until the player's "clearance"
+// (its STAR), and leaving the approach the crew stays on the player's
+// frequency until "handoff"; then the tower (the AI) lands it (#1096).
+func TestStaffedApproachClearsAndHandsOver(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	if testing.Verbose() {
+		o.World.Output = os.Stderr
+	}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "approach", Mode: "silent"}})
+	no := false
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 4, VFR: &no}); err != nil {
+		t.Fatal(err)
+	}
+	said := func(tail string, intent traffic.Intent) bool {
+		for _, tx := range h.Heard() {
+			if tx.Callsign == tail && tx.Intent == intent && tx.Position == traffic.PosApproach {
+				return true
+			}
+		}
+		return false
+	}
+	view := func(tail string) (world.ControlView, bool) {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Tail == tail {
+				return v, true
+			}
+		}
+		return world.ControlView{}, false
+	}
+	var arr world.ControlView
+	if !h.Until(20*time.Minute, func() bool {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Kind == "arrival" && slices.Contains(v.Actions, "clearance") {
+				arr = v
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("no arrival waiting for its clearance on the staffed approach")
+	}
+	h.Advance(30 * time.Second)
+	if said(arr.Tail, traffic.IntentArrivalClearance) {
+		t.Fatalf("%s cleared its STAR by the AI on a staffed approach", arr.Tail)
+	}
+	if err := h.World.Clear(arr.ID, "clearance"); err != nil {
+		t.Fatalf("clearance: %v", err)
+	}
+	if !h.Until(time.Minute, func() bool { return said(arr.Tail, traffic.IntentArrivalClearance) }) {
+		t.Fatalf("%s: the player's STAR clearance never said", arr.Tail)
+	}
+	if !h.Until(30*time.Minute, func() bool { v, _ := view(arr.Tail); return slices.Contains(v.Actions, "handoff") }) {
+		v, _ := view(arr.Tail)
+		t.Fatalf("%s never due a handoff (%s, %s, %.0f ft)", arr.Tail, v.State, v.ATC, v.AltFt)
+	}
+	h.Advance(20 * time.Second)
+	if v, _ := view(arr.Tail); v.ATC != "approach" || said(arr.Tail, traffic.IntentContact) {
+		t.Fatalf("%s handed over by the AI (%s)", arr.Tail, v.ATC)
+	}
+	if err := h.World.Clear(arr.ID, "handoff"); err != nil {
+		t.Fatalf("handoff: %v", err)
+	}
+	if !h.Until(time.Minute, func() bool { v, _ := view(arr.Tail); return v.ATC == "tower" }) {
+		t.Fatalf("%s not with the tower after the handoff", arr.Tail)
+	}
+	if !h.Until(10*time.Minute, func() bool { v, _ := view(arr.Tail); return v.OnGround }) {
+		v, _ := view(arr.Tail)
+		t.Fatalf("%s did not land after the handoff (%s, %.0f ft)", arr.Tail, v.State, v.AltFt)
+	}
+}

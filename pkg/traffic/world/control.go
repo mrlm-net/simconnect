@@ -114,6 +114,14 @@ type controlled struct {
 	// once delivery is no longer staffed; amended by the player first,
 	// #1164). it.mu.
 	clearanceDue *traffic.DepartureClearance
+	// arrivalDue: an arrival's clearance (its STAR) after its first call to
+	// a staffed approach, not given yet (action "clearance"). it.mu.
+	arrivalDue *traffic.Transmission
+	// handoffDue: the position it is in now, off a staffed station that
+	// does not hand off by itself; the player's "handoff" (handoffGiven)
+	// transfers it (#1096). it.mu.
+	handoffDue   traffic.Position
+	handoffGiven bool
 	defBase      uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
@@ -1322,7 +1330,17 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			}
 			it.say(it.initial(traffic.CheckIn(traffic.PosApproach, station, r.Tail, level, info)))
 			qnh, _ := cc.qnh()
-			it.firstContact(withParams(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""), map[string]string{traffic.ParamQNH: qnh}))
+			clr := withParams(traffic.ClearedArrival(r.Tail, it.procSaid, expect, r.Runway, ""), map[string]string{traffic.ParamQNH: qnh})
+			// Approach staffed: the clearance waits for the player (action
+			// "clearance"), as delivery's does (#1096); the crew flies its
+			// flight plan meanwhile.
+			if _, staffed := cc.core.staffedAt(g.Layout.ICAO, traffic.PosApproach, station); staffed {
+				it.arrivalDue, it.view.Manual = &clr, true
+				it.gates.Store(true)
+				cc.log.printf("%-6s on a staffed station (%s): its clearance the player's", r.Tail, station)
+			} else {
+				it.firstContact(clr)
+			}
 			it.askWeather(traffic.PosApproach)
 			it.view.Procedure += " → " + expect
 		}
@@ -1549,6 +1567,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
 		}
+		if it.handoffDue != "" {
+			v.Actions = append(v.Actions, "handoff")
+		}
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
 			if e.Deicing {
@@ -1585,6 +1606,12 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Actions = arrivalActions(e.State)
+		if it.arrivalDue != nil {
+			v.Actions = append([]string{"clearance"}, v.Actions...)
+		}
+		if it.handoffDue != "" {
+			v.Actions = append(v.Actions, "handoff")
+		}
 		// Cleared to land only on the final: its STAR and approach flown.
 		if e.State == traffic.ArrivalApproaching && (e.OnGround || it.objectID == 0 || len(it.arr.ProcedureRoute()) > 0) {
 			v.Actions = slices.DeleteFunc(v.Actions, func(a string) bool { return a == "land" })
@@ -1654,8 +1681,17 @@ func flightRules(r SpawnRequest) string {
 // act gives a clearance to a controlled aircraft.
 func (it *controlled) act(action string, node airport.NodeID) error {
 	switch d := it.dep; {
-	case d != nil && action == "clearance":
+	case action == "clearance":
 		return it.giveClearance()
+	case action == "handoff":
+		// The player's "contact (next)": transferred on its next look.
+		it.mu.Lock()
+		defer it.mu.Unlock()
+		if it.handoffDue == "" {
+			return errors.New("nothing to hand over")
+		}
+		it.handoffGiven = true
+		return nil
 	case d != nil && action == "pushback":
 		d.ClearPushback()
 	case d != nil && action == "pushstart":
@@ -2377,9 +2413,13 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		if action == "remove" {
+		switch action {
+		case "remove":
 			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
-		} else {
+		case "clearance", "handoff":
+			// Said by the exchange they start (live in the test: "Airfrans
+			// 1288, clearance" before the clearance itself).
+		default:
 			it.say(it.phrase(action, node))
 		}
 		if action == "remove" {
@@ -3554,10 +3594,21 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	switch action {
 	case "clearance":
 		it.mu.Lock()
-		due := it.clearanceDue
+		due, arr := it.clearanceDue, it.arrivalDue
 		it.mu.Unlock()
 		if due != nil {
 			return traffic.ClearedDeparture(call, *due)
+		}
+		if arr != nil {
+			return *arr
+		}
+	case "handoff":
+		it.mu.Lock()
+		from, to := it.atc, it.handoffDue
+		it.mu.Unlock()
+		if to != "" {
+			station, freq := it.station(to)
+			return traffic.Handoff(call, from, to, station, freq)
 		}
 	case "pushback":
 		if it.dep != nil {
@@ -3807,6 +3858,21 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.view.ATC, it.view.Frequency = string(it.atc), was
 		return
 	}
+	// Out of a staffed station the player hands it over (#1096): the crew
+	// stays on the player's frequency until told to contact the next
+	// (action "handoff"), unless the station hands off by itself.
+	if !it.handoffGiven {
+		at, _ := it.station(it.atc)
+		if s, staffed := it.cc.core.staffedAt(it.ICAO, it.atc, at); staffed && !s.AutoHandoff {
+			if it.handoffDue != pos {
+				it.cc.log.printf("%-6s leaving the staffed %s: the player hands it to %s", it.Tail, it.atc, pos)
+			}
+			it.handoffDue = pos
+			it.view.ATC, it.view.Frequency = string(it.atc), was
+			return
+		}
+	}
+	it.handoffGiven, it.handoffDue = false, ""
 	from := it.atc
 	it.atc = pos
 	// Approach clears the arrival for its approach before handing it to
