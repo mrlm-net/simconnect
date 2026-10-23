@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.113.1] - 2026-10-23
+
+### Fixed
+
+- Data races found by `-race` in a host's offline tests, which make one World per subtest:
+  - The World's console output was a package variable, replaced by each new World while an earlier one's goroutines still wrote to it. The swap is now atomic.
+  - The slow-frame log line read an aircraft's state without its lock.
+  - The schedule's replay hook was set when the HTTP API was first built, without the World's lock, while the connection read it under that lock.
+
+  A test now runs Worlds one after another, each with its own output.
+
 ## [0.113.0] - 2026-10-23
 
 ### Added

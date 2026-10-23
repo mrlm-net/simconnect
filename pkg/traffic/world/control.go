@@ -806,7 +806,10 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 		t0 := traffic.Now()
 		if it.dep != nil && it.dep.Handle(msg) || it.arr != nil && it.arr.Handle(msg) {
 			if d := traffic.Since(t0); d > slowStep {
-				cc.core.log.printf("%-6s slow: its frame took %s (%s)", it.Tail, d.Round(time.Millisecond), it.view.State)
+				it.mu.Lock()
+				state := it.view.State // under its lock: update writes it on another goroutine
+				it.mu.Unlock()
+				cc.core.log.printf("%-6s slow: its frame took %s (%s)", it.Tail, d.Round(time.Millisecond), state)
 			}
 			return true
 		}

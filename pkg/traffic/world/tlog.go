@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,5 +83,20 @@ func (l *trafficLog) recent(n int) []string {
 	return append([]string(nil), l.lines[len(l.lines)-n:]...)
 }
 
-// stdout is where the World's console lines go (Options.Output).
-var stdout io.Writer = os.Stdout
+// stdout is where the World's console lines go (Options.Output). A new
+// World swaps it while an earlier one's goroutines may still write (a
+// test making one World per subtest): the swap is atomic.
+var stdout = newOutput(os.Stdout)
+
+// output is a writer that can be swapped while written to.
+type output struct{ w atomic.Pointer[io.Writer] }
+
+func newOutput(w io.Writer) *output {
+	o := &output{}
+	o.set(w)
+	return o
+}
+
+func (o *output) set(w io.Writer) { o.w.Store(&w) }
+
+func (o *output) Write(p []byte) (int, error) { return (*o.w.Load()).Write(p) }
