@@ -26,10 +26,11 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 
 - **On a staffed station** it is the player's: the AI gives it nothing (no clearances, speeds or vectors), as the per-aircraft manual toggle does. Its crew still calls on its own and flies its last clearance, and it keeps its place in the landing sequence.
 - **Delivery staffed:** a departure calls for its en-route clearance, and the AI does not answer. The view offers the action `clearance`, which gives it (`World.Phrase(id, "clearance")` is its wording); delivery then hands it to ground. The view names delivery as its position until the clearance is given, the position allowed to clear it in network play.
+  - **Amended:** `World.GiveClearance(id, ClearanceAmend{Runway, SID, LevelFt})` (`POST /api/control/{id}/clearance?runway=06&sid=…&level=4000`) gives it off another runway, with the SID named or the one off that runway from the same fix, and with a lower initial climb, which tower then keeps. It is said as applied: "DOBE 7D departure, runway 06, climb via SID to 4000 feet".
 - **Leaving the staffed stations** (handed to a position the AI works) it goes back to the AI from its current state, and a request still waiting is answered, a departure clearance too.
 - **Its own toggle wins:** an aircraft set manual or automatic by hand (below) is left as set.
 
-The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
+The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 
 **Not yet.** `StaffedStation.Mode` (what the AI does on a staffed station: assist, silent, safety net) and `AutoHandoff` are accepted and kept but not acted on yet: today a staffed station behaves as "the AI gives nothing there".
 
