@@ -53,14 +53,14 @@ func (q *sequences) entryOf(icao, callsign string) (*traffic.ApproachSequencer, 
 
 // approachAction does action for callsign at icao, and says it as ATC.
 func (q *sequences) approachAction(icao, callsign, action string) error {
-	return q.approachActionAt(icao, callsign, action, nil, 0)
+	return q.approachActionAt(icao, callsign, action, nil, 0, 0)
 }
 
 // approachActionAt is approachAction with a position picked on the map
 // (#443): "direct" to it (a fix near it, else a vector), "holdat" a hold
 // there.
-func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts float64) error {
-	return q.approachDo(icao, callsign, action, at, kts, spacing{})
+func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.LatLon, kts, ft float64) error {
+	return q.approachDo(icao, callsign, action, at, kts, ft, spacing{})
 }
 
 // spacing is a "slow" for spacing behind another arrival: delay lost
@@ -74,11 +74,11 @@ type spacing struct {
 // approachSpace has callsign lose delay within withinNM, before it meets
 // the arrival ahead.
 func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64) error {
-	return q.approachDo(icao, callsign, "slow", nil, 0, spacing{delay, withinNM})
+	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay, withinNM})
 }
 
 // approachDo is approachActionAt, a "slow" for spacing with sp.
-func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts float64, sp spacing) error {
+func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts, ft float64, sp spacing) error {
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
 		return traffic.ErrNotSequenced
@@ -248,6 +248,27 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		}
 		it.say(traffic.DirectToFinal(callsign, q.numberToSay(q.cc.clock.Now(), callsign, e.Number)))
 		told = "direct to the final"
+	case "descend":
+		// A level on its STAR (#1164): only down, from where it is.
+		if ft <= 0 {
+			return errors.New("descend needs a level in feet")
+		}
+		alt, id := 0.0, it.object()
+		for _, a := range q.cc.world.Aircraft() {
+			if a.ObjectID == id {
+				alt = a.AltFt
+			}
+		}
+		if alt > 0 && ft >= alt-100 {
+			return fmt.Errorf("at %.0f ft: %.0f ft is no descent", alt, ft)
+		}
+		if err := q.cc.do(func() error { return it.arr.DescendTo(ft) }); err != nil {
+			return err
+		}
+		ta := q.cc.taOf(icao)
+		it.say(traffic.Descend(traffic.PosApproach, callsign, ft, ta))
+		told = "descend to " + traffic.LevelSaidAbove(ft, ta)
+		q.cc.log.printf("%-6s approach: %s (on the map)", callsign, told)
 	case "goaround":
 		// On the connection's goroutine, as every SimConnect call.
 		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
@@ -292,11 +313,12 @@ func registerApproach(mux *http.ServeMux, st *state) {
 		var body struct {
 			Lat, Lon *float64
 			Kts      float64 // speed: the speed, 0 normal speed
+			Ft       float64 // descend: the level, feet (#1164)
 		}
 		if json.NewDecoder(r.Body).Decode(&body) == nil && body.Lat != nil && body.Lon != nil {
 			at = &airport.LatLon{Lat: *body.Lat, Lon: *body.Lon}
 		}
-		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts)
+		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts, body.Ft)
 		switch {
 		case errors.Is(err, traffic.ErrNotSequenced):
 			http.Error(w, err.Error(), http.StatusNotFound)

@@ -3,11 +3,13 @@ package world
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -156,7 +158,88 @@ func (it *controlled) giveClearance() error {
 	if due == nil {
 		return errors.New("no clearance asked for")
 	}
-	it.clearance(*due)
+	it.clearance(traffic.ClearedDeparture(it.Tail, *due))
 	it.cc.changed("control")
+	return nil
+}
+
+// amendClearance changes the departure clearance not given yet (#1164):
+// re-planned off a.Runway with the SID a.SID (else the one off it from the
+// same fix, as a runway change picks it), a.LevelFt the initial climb. The
+// clearance then says what was applied.
+func (it *controlled) amendClearance(a ClearanceAmend) error {
+	cc := it.cc
+	it.mu.Lock()
+	due := it.clearanceDue
+	rwy, oldSID := it.view.Runway, it.view.Procedure
+	it.mu.Unlock()
+	if due == nil {
+		return errors.New("no clearance asked for")
+	}
+	dc := *due
+	if a.Runway == "" {
+		a.Runway = rwy
+	}
+	if a.Runway != rwy || (a.SID != "" && !strings.EqualFold(a.SID, oldSID)) {
+		if cc.procedures == nil {
+			return errors.New("procedures not available")
+		}
+		p, ok := cc.procedures(it.graph.Layout.ICAO)
+		if !ok {
+			return fmt.Errorf("procedures of %s not loaded (yet)", it.graph.Layout.ICAO)
+		}
+		name := a.SID
+		if name == "" {
+			if s := sameFix(p.SIDsFor(a.Runway), oldSID); s != nil {
+				name = s.Name
+			}
+		}
+		var pts []airport.NavPoint
+		sid := ""
+		if a.SID != "" || len(p.SIDsFor(a.Runway)) > 0 {
+			got, n, _, err := cc.procedureFor(it.graph, SpawnRequest{Kind: "departure", Runway: a.Runway, ProcName: name})
+			if err != nil {
+				return err
+			}
+			pts, sid = got, n
+		}
+		if err := cc.do(func() error { return it.dep.ChangeRunway(a.Runway, "", pts) }); err != nil {
+			return err
+		}
+		lim := cc.limitsOf(it.graph)
+		it.mu.Lock()
+		it.view.Runway, it.view.Procedure = a.Runway, sid
+		it.keepSpot()
+		it.procSaid, it.fixes = "", nil
+		if sid != "" {
+			it.procSaid = procedureSaid(sid, nil)
+			for _, p := range pts {
+				if p.Ident != "" {
+					it.fixes = append(it.fixes, airFix{Ident: p.Ident, LatLon: p.Position})
+				}
+			}
+		}
+		it.climbSaid = initialClimbSaid(lim, sid)
+		it.setRoute()
+		dc.Runway, dc.SID, dc.Level = a.Runway, it.procSaid, it.climbSaid
+		it.mu.Unlock()
+		cc.log.printf("%-6s clearance amended: runway %s, SID %s", it.Tail, a.Runway, orNone(sid))
+	}
+	if a.LevelFt > 0 {
+		if !it.dep.LimitClimb(a.LevelFt) {
+			return errors.New("handed over already: no initial climb to amend")
+		}
+		said := traffic.LevelSaidAbove(a.LevelFt, cc.taOf(it.ICAO))
+		it.mu.Lock()
+		it.afterDepFt, it.climbSaid = a.LevelFt, said // tower keeps it, not one of its own
+		dc.Level = said
+		it.mu.Unlock()
+		cc.log.printf("%-6s clearance amended: initial climb %s", it.Tail, said)
+	}
+	it.mu.Lock()
+	if it.clearanceDue != nil {
+		it.clearanceDue = &dc
+	}
+	it.mu.Unlock()
 	return nil
 }

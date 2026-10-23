@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -473,6 +474,33 @@ func (w *World) Clear(id int, action string) error {
 	return err
 }
 
+// ClearanceAmend changes a departure clearance before delivery gives it
+// (#1164): another runway (with the SID off it from the same fix, or SID),
+// another SID, or an initial climb lower than the SID's (LevelFt, feet).
+// Zero values keep what was filed.
+type ClearanceAmend struct {
+	Runway  string  `json:"runway,omitempty"`
+	SID     string  `json:"sid,omitempty"`
+	LevelFt float64 `json:"levelFt,omitempty"`
+}
+
+// GiveClearance gives the departure clearance of one of ours waiting on a
+// staffed delivery, amended by a (Clear(id, "clearance") as filed).
+func (w *World) GiveClearance(id int, a ClearanceAmend) error {
+	q := url.Values{}
+	if a.Runway != "" {
+		q.Set("runway", a.Runway)
+	}
+	if a.SID != "" {
+		q.Set("sid", a.SID)
+	}
+	if a.LevelFt > 0 {
+		q.Set("level", strconv.FormatFloat(a.LevelFt, 'f', 0, 64))
+	}
+	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/clearance?%s", id, q.Encode()), nil)
+	return err
+}
+
 // ClearancePhrase is what a clearance would say (Phrase): the
 // controller's transmission, its Text worded as the engine says it, and
 // the crew's readback (nil when it has none).
@@ -493,6 +521,13 @@ func (w *World) Phrase(id int, action string) (ClearancePhrase, error) {
 // Approach acts on an arrival in icao's sequence: slow, direct, goaround.
 func (w *World) Approach(icao, callsign, action string) error {
 	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/approach/%s/%s/%s", icao, callsign, action), nil)
+	return err
+}
+
+// ApproachDescend has an arrival on its STAR descend to ft (feet), said
+// against the airport's transition altitude (#1164); never a climb.
+func (w *World) ApproachDescend(icao, callsign string, ft float64) error {
+	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/approach/%s/%s/descend", icao, callsign), map[string]float64{"ft": ft})
 	return err
 }
 

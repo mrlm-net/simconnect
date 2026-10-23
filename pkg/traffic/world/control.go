@@ -111,8 +111,9 @@ type controlled struct {
 	deliver func()
 	// clearanceDue: its departure clearance, asked for on a staffed
 	// delivery and not given yet (action "clearance"; given by the World
-	// once delivery is no longer staffed). it.mu.
-	clearanceDue *traffic.Transmission
+	// once delivery is no longer staffed; amended by the player first,
+	// #1164). it.mu.
+	clearanceDue *traffic.DepartureClearance
 	defBase      uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
@@ -1245,13 +1246,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			it.climbSaid = initialClimbSaid(lim, procName)
 			deliver := func() {
 				it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
-				clr := traffic.ClearedDeparture(r.Tail, traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
-					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk})
+				dc := traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
+					Runway: r.Runway, Level: it.climbSaid, Squawk: it.view.Squawk}
+				clr := traffic.ClearedDeparture(r.Tail, dc)
 				// Delivery staffed: the clearance waits for the player
 				// (action "clearance"), as every other one does (#1156).
 				if _, staffed := cc.core.staffedAt(g.Layout.ICAO, traffic.PosDelivery, station); staffed {
 					it.mu.Lock()
-					it.clearanceDue, it.view.Manual = &clr, true
+					it.clearanceDue, it.view.Manual = &dc, true
 					it.mu.Unlock()
 					it.gates.Store(true)
 					cc.log.printf("%-6s on a staffed station (%s): its clearance the player's", r.Tail, station)
@@ -2198,6 +2200,24 @@ func registerControl(mux *http.ServeMux, st *state) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		// Clearance amended (?runway=20&sid=RANU2A&level=4000; #1164): the
+		// departure clearance off another runway, with another SID or a
+		// lower initial climb, said as applied.
+		if q := r.URL.Query(); r.PathValue("action") == "clearance" && it.dep != nil && (q.Has("runway") || q.Has("sid") || q.Has("level")) {
+			a := ClearanceAmend{Runway: q.Get("runway"), SID: q.Get("sid")}
+			if s := q.Get("level"); s != "" {
+				ft, err := strconv.ParseFloat(s, 64)
+				if err != nil || ft <= 0 {
+					http.Error(w, "level: feet", http.StatusBadRequest)
+					return
+				}
+				a.LevelFt = ft
+			}
+			if err := it.amendClearance(a); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+		}
 		// Entry (?entry=B, "" full length): the departure takes its runway
 		// from another intersection, re-planned from where it is; taxiing,
 		// ground gives the new route.
@@ -2704,7 +2724,12 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 				return x, nil
 			}
 		}
-		if r.ProcName != "" || len(list) == 0 {
+		if len(list) == 0 {
+			// A fact about the airport, not the caller (#1164: Orly has no
+			// SID off 02).
+			return airport.Procedure{}, fmt.Errorf("runway %s has no published procedure", r.Runway)
+		}
+		if r.ProcName != "" {
 			return airport.Procedure{}, fmt.Errorf("no procedure %q for runway %s", r.ProcName, r.Runway)
 		}
 		return list[rand.IntN(len(list))], nil
@@ -3532,7 +3557,7 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		due := it.clearanceDue
 		it.mu.Unlock()
 		if due != nil {
-			return *due
+			return traffic.ClearedDeparture(call, *due)
 		}
 	case "pushback":
 		if it.dep != nil {

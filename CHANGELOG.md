@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.114.0] - 2026-10-23
+
+### Added
+
+- An amended departure clearance (#1164). `POST /api/control/{id}/clearance?runway=06&sid=…&level=4000`, or `World.GiveClearance(id, ClearanceAmend)`, gives a staffed delivery's clearance:
+  - off another runway, re-planned with the SID named, or else the SID off that runway from the same fix;
+  - with an initial climb lower than the SID's, which tower then keeps.
+
+  The clearance is said as applied, for example "DOBE 7D departure, runway 06, climb via SID to 4000 feet". A SID not off the runway is refused, and the clearance keeps waiting. Without parameters, the clearance is given as filed.
+- A level on the approach API (#1164): `POST /api/approach/{icao}/{callsign}/descend {"ft":5000}`, or `World.ApproachDescend`. It is said against the transition altitude ("descend to flight level 080") and is only a descent: a level at or above the aircraft is refused.
+
+### Changed
+
+- A runway with no published procedure now reads "runway 02 has no published procedure", not `no procedure "" for runway 02`.
+
 ## [0.113.1] - 2026-10-23
 
 ### Fixed
