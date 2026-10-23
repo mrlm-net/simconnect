@@ -23,6 +23,7 @@ import (
 
 // Client is what Hotkeys needs of a connection (an engine or a manager).
 type Client interface {
+	MapClientEventToSimEvent(eventID uint32, eventName string) error
 	MapInputEventToClientEvent(groupID uint32, definition string, downEventID, downValue, upEventID, upValue uint32, maskable bool) error
 	SetInputGroupPriority(groupID uint32, priority uint32) error
 	SetInputGroupState(groupID uint32, state uint32) error
@@ -43,6 +44,7 @@ type binding struct {
 	onDown     func()
 	event      uint32
 	mapped     bool // mapped on the current connection
+	declared   bool // its client event declared on the current connection
 }
 
 // Hotkeys is one input group of bound actions.
@@ -132,7 +134,7 @@ func (h *Hotkeys) Attach(client Client) error {
 	defer h.mu.Unlock()
 	h.client = client
 	for _, b := range h.byName {
-		b.mapped = false
+		b.mapped, b.declared = false, false
 	}
 	if client == nil {
 		return nil
@@ -151,6 +153,16 @@ func (h *Hotkeys) Attach(client Client) error {
 func (h *Hotkeys) mapLocked(b *binding) error {
 	if h.client == nil || b.definition == "" || b.mapped {
 		return nil
+	}
+	// Its client event declared first, a private one (no sim event name),
+	// as the SDK's input sample does: undeclared, every mapping was refused
+	// with exception 1 (SIMCONNECT_EXCEPTION_ERROR), checked live in MSFS
+	// 2024.
+	if !b.declared {
+		if err := h.client.MapClientEventToSimEvent(b.event, ""); err != nil {
+			return fmt.Errorf("hotkeys: %q: %w", b.definition, err)
+		}
+		b.declared = true
 	}
 	if err := h.client.MapInputEventToClientEvent(h.idBase, b.definition, b.event, 0, unused, 0, false); err != nil {
 		return fmt.Errorf("hotkeys: %q: %w", b.definition, err)

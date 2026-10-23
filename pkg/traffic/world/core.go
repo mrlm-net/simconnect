@@ -76,6 +76,18 @@ func newCore(log *trafficLog) *core {
 }
 
 // runwaySelector is icao's runway selector, made on first use.
+// resettleRunways has every airport's runway choice follow the weather
+// for nav.RunwaySettle, remembering none: a new connection, the
+// simulator's weather loading (placeholder first, live LKPR 090°/10 kt
+// held 06 for 40 minutes).
+func (k *core) resettleRunways() {
+	k.runwayMu.Lock()
+	defer k.runwayMu.Unlock()
+	for _, s := range k.selectors {
+		s.Resettle()
+	}
+}
+
 func (k *core) runwaySelector(icao string) *nav.RunwaySelector {
 	k.runwayMu.Lock()
 	defer k.runwayMu.Unlock()
@@ -89,6 +101,7 @@ func (k *core) runwaySelector(icao string) *nav.RunwaySelector {
 			defer k.busyMu.Unlock()
 			return !k.busy[icao]
 		}}
+		s.Resettle() // its first weather may be the simulator's placeholder
 		k.selectors[icao] = s
 	}
 	return s

@@ -14,6 +14,10 @@ type fakeClient struct {
 	calls []string
 }
 
+func (f *fakeClient) MapClientEventToSimEvent(e uint32, name string) error {
+	f.calls = append(f.calls, fmt.Sprintf("declare %x %q", e, name))
+	return nil
+}
 func (f *fakeClient) MapInputEventToClientEvent(g uint32, def string, down, _, up, _ uint32, _ bool) error {
 	f.calls = append(f.calls, fmt.Sprintf("map %x %s %x %x", g, def, down, up))
 	return nil
@@ -60,6 +64,11 @@ func TestHotkeys(t *testing.T) {
 	}
 	if !has(f.calls, "map b100 Ctrl+Shift+C b101 ffffffff") || !has(f.calls, "priority b100 1") || !has(f.calls, "state b100 1") {
 		t.Fatalf("attach: %v", f.calls)
+	}
+	// Its client event declared before the input is mapped to it (live:
+	// undeclared, SimConnect refused the mapping with exception 1).
+	if len(f.calls) < 2 || f.calls[0] != `declare b101 ""` || f.calls[1] != "map b100 Ctrl+Shift+C b101 ffffffff" {
+		t.Errorf("not declared first: %v", f.calls)
 	}
 	if err := h.Bind("checklistItem", "joystick:0:button:5", nil); err != nil {
 		t.Fatal(err)

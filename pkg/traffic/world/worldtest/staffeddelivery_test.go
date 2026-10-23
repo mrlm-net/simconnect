@@ -240,12 +240,13 @@ func TestApproachDescend(t *testing.T) {
 	}) {
 		t.Fatal("no arrival on its STAR above 9000 ft in 20 simulated minutes")
 	}
-	if err := h.World.ApproachDescend("LKPR", arr.Tail, arr.AltFt+2000); err == nil {
-		t.Error("a climb accepted as a descent")
-	}
 	ft := float64(int(arr.AltFt-2000) / 1000 * 1000)
-	if err := h.World.ApproachDescend("LKPR", arr.Tail, ft); err != nil {
+	// Once in the landing sequence (a moment after its first call).
+	if !h.Until(time.Minute, func() bool { err = h.World.ApproachDescend("LKPR", arr.Tail, ft); return err == nil }) {
 		t.Fatalf("%s at %.0f ft, descend to %.0f: %v", arr.Tail, arr.AltFt, ft, err)
+	}
+	if err := h.World.ApproachDescend("LKPR", arr.Tail, 20000); err == nil {
+		t.Error("a climb accepted as a descent")
 	}
 	if !h.Until(time.Minute, func() bool {
 		for _, tx := range h.Heard() {
