@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.117.1] - 2026-10-23
+
+### Fixed
+
+- A placeholder weather reading while the simulator loaded held the wrong runway for 40 minutes. Live at LKPR, the first reading was 090°/10 kt and 15 °C, putting 06 in use; the real 140°/6 kt came a minute later and favoured 24, the preferred runway. The 30-minute wind memory kept the placeholder. Now, after each connection to the simulator (`nav.RunwaySelector.Resettle`), the choice follows the weather for `nav.RunwaySettle` (3 minutes) and remembers none of it. A runway given with `Seed`, or already in use at the reconnect, is kept through the settle while within its limits. A zero-value selector settles only after `Resettle`; hosts with their own selectors call it after each connection.
+- `hotkeys`: SimConnect refused every key mapping with exception 1. Each action's client event is now declared (`MapClientEventToSimEvent(event, "")`) before its input is mapped, as the SDK's input sample does; checked live in MSFS 2024. `hotkeys.Client` gains `MapClientEventToSimEvent`, which the engine and the manager already have.
+- A jetway dock refused (the gates still filling, no helper the simulator gives the gate) was retried every second without a trace. The reason is now logged once per gate: "jetway LKPR B14: no dock for DEMO014 yet: …".
+
 ## [0.117.0] - 2026-10-23
 
 ### Added

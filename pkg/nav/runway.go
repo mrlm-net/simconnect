@@ -235,6 +235,31 @@ type RunwaySelector struct {
 	// winds: the wind speeds (gusts included) of the last RunwayWindMemory,
 	// for a change to be within its limits at the strongest of them.
 	winds []windSeen
+	// settleUntil: until then the choice follows the weather now and keeps
+	// no wind memory (RunwaySettle); settle: one begins at the next choice
+	// (Resettle).
+	settleUntil time.Time
+	settle      bool
+	// seeded: the runway in use was given (Seed), not chosen from a
+	// reading: a settle keeps it while within its limits.
+	seeded bool
+}
+
+// RunwaySettle: after Resettle (a new connection to the simulator, its
+// weather loading), the choice follows the weather now this
+// long, with no wind memory: a simulator loading reports placeholder
+// weather first (live, LKPR: 090°/10 kt and 15 °C, the real 140°/6 kt a
+// minute later), and remembered it held the wrong runway 40 minutes.
+const RunwaySettle = 3 * time.Minute
+
+// Resettle starts a settle (RunwaySettle) at the next Choose: the
+// simulator's weather is being loaded again. A runway already in use is
+// kept through it while within its limits, as a seeded one (Seed).
+func (s *RunwaySelector) Resettle() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.settleUntil, s.settle = time.Time{}, true
+	s.seeded = s.seeded || s.have
 }
 
 type windSeen struct {
@@ -272,7 +297,7 @@ func (s *RunwaySelector) Seed(use RunwayUse) {
 	if use.Departure.Name == "" {
 		return
 	}
-	s.use, s.have, s.since, s.pending = use, true, time.Time{}, ""
+	s.use, s.have, s.since, s.pending, s.seeded = use, true, time.Time{}, "", true
 }
 
 // Pending is the change coming, if any: the better runway in use and since
@@ -327,8 +352,19 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		s.use, s.since, s.have = fresh, time.Time{}, fresh.Departure.Name != ""
 		return fresh
 	}
-	if !s.have || fresh.Departure.Name == "" {
-		s.use, s.have = fresh, fresh.Departure.Name != ""
+	if s.settle && fresh.Departure.Name != "" {
+		s.settle, s.settleUntil = false, now.Add(RunwaySettle)
+	}
+	if !s.have || fresh.Departure.Name == "" || now.Before(s.settleUntil) {
+		// Settling: this wind only, nothing pending. A runway given (Seed)
+		// stays while within its limits in this wind: kept over a restart,
+		// as without a settle.
+		s.winds = s.winds[len(s.winds)-min(1, len(s.winds)):]
+		s.since, s.pending, s.outSince = time.Time{}, "", time.Time{}
+		if s.seeded && s.have && fresh.Departure.Name != "" && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
+			return s.use
+		}
+		s.use, s.have, s.seeded = fresh, fresh.Departure.Name != "", false
 		return fresh
 	}
 	if fresh.key() == s.use.key() {

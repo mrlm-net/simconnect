@@ -597,6 +597,7 @@ func msgLabel(m engine.Message) string {
 }
 
 func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan engine.Message, requests <-chan string, dumpDir string) error {
+	st.core.resettleRunways()
 	if err := client.SubscribeToSystemEvent(evFrame, "Frame"); err != nil {
 		fmt.Fprintln(stdout, "❌ SubscribeToSystemEvent(Frame):", err)
 	}

@@ -349,3 +349,53 @@ func TestRunwayChangeNow(t *testing.T) {
 		t.Errorf("made 24 the runway in use: %s two seconds on, want 24", u.Arrival.Name)
 	}
 }
+
+// After Resettle (a connection, the simulator loading its weather) the
+// choice follows the weather for RunwaySettle and remembers none of it:
+// a placeholder reading first does not hold its runway (live, LKPR: 090°/10
+// kt at load put 06 in use for 40 minutes; the real 140°/6 kt favours 24).
+func TestRunwaySelectorSettlesAfterLoad(t *testing.T) {
+	l := lkprInfo(t).Layout
+	var s RunwaySelector
+	now := time.Now()
+	s.Resettle()
+	placeholder := StaticWeather(90, 10, 9999, 15, 5, 1013)
+	real := StaticWeather(140, 6, 9999, 9, 5, 1013)
+	if u := s.Choose(now, l, placeholder, RunwayLimits{}); u.Arrival.Name != "06" {
+		t.Fatalf("placeholder: %s, want 06", u.Arrival.Name)
+	}
+	want := ActiveRunways(l, real, withMargin(RunwayLimits{}, RunwayChoiceMarginKts)).Arrival.Name
+	if want == "06" {
+		t.Skip("the real wind keeps 06 at this airport")
+	}
+	if u := s.Choose(now.Add(80*time.Second), l, real, RunwayLimits{}); u.Arrival.Name != want {
+		t.Fatalf("a minute on, the real weather: %s, want %s", u.Arrival.Name, want)
+	}
+	if u := s.Choose(now.Add(RunwaySettle+time.Minute), l, real, RunwayLimits{}); u.Arrival.Name != want {
+		t.Fatalf("settled: %s, want %s", u.Arrival.Name, want)
+	}
+	// Without Resettle the first wind is remembered as before.
+	var held RunwaySelector
+	held.Choose(now, l, placeholder, RunwayLimits{})
+	if u := held.Choose(now.Add(80*time.Second), l, real, RunwayLimits{}); u.Arrival.Name != "06" {
+		t.Fatalf("no settle: %s, want 06 held", u.Arrival.Name)
+	}
+}
+
+// A runway given (Seed, a restart keeping the airport's runway) stays
+// through a settle while within its limits, and goes at once when not.
+func TestRunwaySelectorSettleKeepsSeed(t *testing.T) {
+	l := lkprInfo(t).Layout
+	now := time.Now()
+	real := StaticWeather(140, 6, 9999, 9, 5, 1013)
+	var s RunwaySelector
+	s.Resettle()
+	s.Seed(ActiveRunways(l, StaticWeather(90, 10, 9999, 15, 5, 1013), RunwayLimits{})) // 06, saved
+	if u := s.Choose(now, l, real, RunwayLimits{}); u.Arrival.Name != "06" {
+		t.Fatalf("seeded 06 within its limits: %s", u.Arrival.Name)
+	}
+	strong := StaticWeather(240, 20, 9999, 9, 5, 1013) // 06 out of limits
+	if u := s.Choose(now.Add(time.Minute), l, strong, RunwayLimits{}); u.Arrival.Name == "06" {
+		t.Fatal("seeded 06 kept out of its limits")
+	}
+}

@@ -106,6 +106,9 @@ type jetwayState struct {
 	prepared map[string]bool
 	docked   map[string]bool // "ICAO stand" asked to dock
 	askedAt  map[string]time.Time
+	// refused: why a gate's last dock was refused, logged once each reason
+	// (a dock asked every second, refused, left no trace: live, LKPR B14).
+	refused map[string]string
 	tries    map[string]int // gate and model: docks asked
 	// placed: where the simulator parked each gate's placeholders and
 	// helpers, the latest last.
@@ -365,10 +368,21 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 			}
 			if err := svc.DockAs(icao, stand, model, variant); err == nil {
 				cc.logStandFit(g, stand, tail, pos) // once a dock is asked, not each tick a gate has none
+				cc.jw.mu.Lock()
+				delete(cc.jw.refused, k)
+				cc.jw.mu.Unlock()
 			} else {
 				cc.jw.mu.Lock()
 				delete(cc.jw.docked, k)
+				if cc.jw.refused == nil {
+					cc.jw.refused = map[string]string{}
+				}
+				said := cc.jw.refused[k] == err.Error()
+				cc.jw.refused[k] = err.Error()
 				cc.jw.mu.Unlock()
+				if !said {
+					cc.core.log.printf("jetway %s %s: no dock for %s yet: %v", icao, g.Layout.Parking[stand].Label(), tail, err)
+				}
 			}
 		}
 	}
