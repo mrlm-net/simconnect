@@ -32,12 +32,22 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 			continue
 		}
 		it := ours[u.Callsign]
-		if it == nil || it.arr == nil || it.gates.Load() {
+		if it == nil || it.arr == nil {
+			continue
+		}
+		// The user's own (held gates on the map): the user is the tower.
+		// On a staffed station the crew goes around without the player's
+		// landing clearance as without the AI's (#1096): only "cleared to
+		// land" permits a landing (SKYbrary, Landing without ATC Clearance).
+		it.mu.Lock()
+		staffed, landCleared := it.gates.Load() && !it.manualSet, it.landCleared
+		it.mu.Unlock()
+		if it.gates.Load() && !staffed {
 			continue
 		}
 		cs := u.Callsign
 		t.mu.Lock()
-		cleared, sent, checked := t.given[cs+" land"], t.given[cs+" goaround"], t.given[cs+" crew"]
+		cleared, sent, checked := t.given[cs+" land"] || landCleared, t.given[cs+" goaround"], t.given[cs+" crew"]
 		t.given[cs+" crew"] = true // the stability is judged once an approach
 		t.mu.Unlock()
 		if sent {
@@ -63,7 +73,9 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 				t.cc.log.printf("%-6s crew go-around: %v", cs, err)
 			}
 		}()
-		it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
+		if !staffed {
+			it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
+		}
 	}
 }
 

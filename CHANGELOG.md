@@ -7,6 +7,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.116.0] - 2026-10-23
+
+### Added
+
+- Staffed departure (#1096 step 2): a departure handed to a staffed departure climbs to the level of its clearance and levels there, not on to its cruise. About 30 s level, its crew asks "request climb to flight level 360", again every 3 minutes. The view offers `climb`: `POST /api/control/{id}/climb?level=24000` clears it on ("climb to flight level 240").
+- Staffed approach, no further clearance (#1096 step 2): an arrival cleared its STAR but not its approach asks about 3 minutes before the STAR's last fix, its clearance limit: "Airfrans 1288, approaching ERASU, request approach clearance". It then holds there at its level, right turns on the course it came in by ([FAA AIP ENR 1.5](https://www.faa.gov/air_traffic/publications/atpubs/aip_html/part2_enr_section_1.5.html)). The view offers `approach`: the player's "cleared ILS approach runway 24" takes it out of the hold onto the approach. Back to the AI, the hold is left as well.
+- On a staffed station, the crew goes around without a landing clearance from the player, as it does without one from the AI. Only "cleared to land" permits a landing ([SKYbrary, Landing without ATC Clearance](https://skybrary.aero/articles/landing-without-atc-clearance)). The player's `land` is that clearance.
+- `traffic.RequestClimb`, `IntentRequestClimb`, `traffic.RequestApproachClearance`, `IntentRequestApproach`.
+
+### Fixed
+
+- A climb cleared after the hand-over (`TaxiController.ClimbTo`) reaches the new level at 2,000 ft/min, not by the next waypoint tens of miles on, where it climbed at a few hundred feet a minute.
+- A push not yet started waits for a taxiing aircraft stopped a moment whose route comes through its corridor within 120 m. That aircraft goes first rather than stopping again for the push. Live at LKPR: TVS439, just cleared to taxi, gave way to TVS512 pushing across its way, and EZY489 waited 1.5 minutes for TVS439's push.
+- Ground no longer tells an aircraft to give way to an arrival turning into its stand ahead ("give way to the Airbus A220 passing left to right" for CSA1065 turning in to C18).
+- "pushback holding for … behind the stand" was logged several times a second while the object in the way changed between an aircraft and its tug; it is now logged once per aircraft.
+- The head-on look at two routes (v0.115.1) runs once per pair of routes, not every 30 s, and its log line is written once.
+
 ## [0.115.1] - 2026-10-23
 
 ### Fixed

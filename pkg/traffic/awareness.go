@@ -346,9 +346,25 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 				return o.id, true
 			}
 		}
+		// Taxiing and stopped for a moment (its way ahead empty, its intent
+		// not): about to come by within pushYieldMeters, it passes first
+		// rather than stop again for the push (live, LKPR: EZY489, stopped
+		// for traffic, then gave way 1.5 minutes to TVS439 pushing from B14
+		// across its way).
+		if len(o.e.ahead) == 0 && wayFromHere(o.e.pos, o.e.intent) {
+			for _, r := range wayAhead(o.e.intent, pushYieldMeters) {
+				if near(r, half+oh+GiveWayMarginMeters) {
+					return o.id, true
+				}
+			}
+		}
 	}
 	return 0, false
 }
+
+// pushYieldMeters: a push not started yet waits for an aircraft stopped
+// taxiing whose way comes through its corridor this soon (corridorBlocked).
+const pushYieldMeters = 120.0
 
 // Forget drops aircraft id (airborne, parked for good, removed).
 func (p *GroundPicture) Forget(id uint32) {

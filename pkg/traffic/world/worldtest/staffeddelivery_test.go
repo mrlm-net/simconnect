@@ -320,6 +320,13 @@ func TestStaffedApproachClearsAndHandsOver(t *testing.T) {
 	if !h.Until(time.Minute, func() bool { return said(arr.Tail, traffic.IntentArrivalClearance) }) {
 		t.Fatalf("%s: the player's STAR clearance never said", arr.Tail)
 	}
+	// Its approach too, or it holds at the end of its STAR.
+	if !h.Until(time.Minute, func() bool { v, _ := view(arr.Tail); return slices.Contains(v.Actions, "approach") }) {
+		t.Fatalf("%s: no approach clearance offered", arr.Tail)
+	}
+	if err := h.World.Clear(arr.ID, "approach"); err != nil {
+		t.Fatalf("approach: %v", err)
+	}
 	if !h.Until(30*time.Minute, func() bool { v, _ := view(arr.Tail); return slices.Contains(v.Actions, "handoff") }) {
 		v, _ := view(arr.Tail)
 		t.Fatalf("%s never due a handoff (%s, %s, %.0f ft)", arr.Tail, v.State, v.ATC, v.AltFt)
@@ -337,5 +344,146 @@ func TestStaffedApproachClearsAndHandsOver(t *testing.T) {
 	if !h.Until(10*time.Minute, func() bool { v, _ := view(arr.Tail); return v.OnGround }) {
 		v, _ := view(arr.Tail)
 		t.Fatalf("%s did not land after the handoff (%s, %.0f ft)", arr.Tail, v.State, v.AltFt)
+	}
+}
+
+// TestStaffedDepartureLevelsOff: handed to a staffed departure, a
+// departure climbs to the level of its clearance and no further, its crew
+// asks for higher there, and the player's "climb" takes it on (#1096).
+func TestStaffedDepartureLevelsOff(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	if testing.Verbose() {
+		o.World.Output = os.Stderr
+	}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "departure", Mode: "silent"}})
+	no := false
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 4, VFR: &no}); err != nil {
+		t.Fatal(err)
+	}
+	var dep world.ControlView
+	if !h.Until(30*time.Minute, func() bool {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Kind == "departure" && slices.Contains(v.Actions, "climb") {
+				dep = v
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("no departure on the staffed departure")
+	}
+	asked := func() bool {
+		for _, tx := range h.Heard() {
+			if tx.Callsign == dep.Tail && tx.Intent == traffic.IntentRequestClimb {
+				return true
+			}
+		}
+		return false
+	}
+	if !h.Until(10*time.Minute, asked) {
+		t.Fatalf("%s never asked for higher", dep.Tail)
+	}
+	alt := func() float64 {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Tail == dep.Tail {
+				return v.AltFt
+			}
+		}
+		return 0
+	}
+	h.Advance(3 * time.Minute) // level there, not on to its cruise
+	held := alt()
+	if held > 10500 {
+		t.Fatalf("%s at %.0f ft before any climb from the player", dep.Tail, held)
+	}
+	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/climb?level=24000", dep.ID), nil); err != nil {
+		t.Fatalf("climb: %v", err)
+	}
+	if !h.Until(3*time.Minute, func() bool { return alt() > held+4000 }) { // about 2000 ft/min
+		t.Fatalf("%s did not climb on from %.0f ft (%.0f)", dep.Tail, held, alt())
+	}
+	t.Logf("%s held at %.0f ft, climbing on to FL240", dep.Tail, held)
+}
+
+// TestStaffedApproachHoldsAtLimit: cleared its STAR on a staffed approach
+// and nothing more, an arrival asks for its approach near the end of the
+// STAR and holds there; the player's "approach" takes it out onto the
+// approach, and handed to the tower it lands (#1096).
+func TestStaffedApproachHoldsAtLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	if testing.Verbose() {
+		o.World.Output = os.Stderr
+	}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "approach", Mode: "silent"}})
+	no := false
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 4, VFR: &no}); err != nil {
+		t.Fatal(err)
+	}
+	view := func(tail string) world.ControlView {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Tail == tail {
+				return v
+			}
+		}
+		return world.ControlView{}
+	}
+	var arr world.ControlView
+	if !h.Until(20*time.Minute, func() bool {
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Kind == "arrival" && slices.Contains(v.Actions, "clearance") {
+				arr = v
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("no arrival on the staffed approach")
+	}
+	if err := h.World.Clear(arr.ID, "clearance"); err != nil {
+		t.Fatal(err)
+	}
+	said := func(intent traffic.Intent) bool {
+		for _, tx := range h.Heard() {
+			if tx.Callsign == arr.Tail && tx.Intent == intent {
+				return true
+			}
+		}
+		return false
+	}
+	if !h.Until(30*time.Minute, func() bool { return said(traffic.IntentRequestApproach) }) {
+		v := view(arr.Tail)
+		t.Fatalf("%s never asked for its approach (%s, %.0f ft)", arr.Tail, v.State, v.AltFt)
+	}
+	h.Advance(5 * time.Minute)
+	if v := view(arr.Tail); v.OnGround || v.AltFt < 4000 {
+		t.Fatalf("%s flew on without its approach clearance (%.0f ft)", arr.Tail, v.AltFt)
+	}
+	if err := h.World.Clear(arr.ID, "approach"); err != nil {
+		t.Fatalf("approach: %v", err)
+	}
+	if !h.Until(10*time.Minute, func() bool { return slices.Contains(view(arr.Tail).Actions, "handoff") }) {
+		t.Fatalf("%s not on its way in after the approach clearance (%.0f ft)", arr.Tail, view(arr.Tail).AltFt)
+	}
+	if err := h.World.Clear(arr.ID, "handoff"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.Until(10*time.Minute, func() bool { return view(arr.Tail).OnGround }) {
+		t.Fatalf("%s did not land", arr.Tail)
 	}
 }

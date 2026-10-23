@@ -122,6 +122,22 @@ type controlled struct {
 	// transfers it (#1096). it.mu.
 	handoffDue   traffic.Position
 	handoffGiven bool
+	// pushHeldWho: whom its push was last logged held for (logPushHeld).
+	pushHeldWho string
+	// clearedFt: the initial climb of its departure clearance (feet), the
+	// level a staffed departure climbs to and no further until the player
+	// clears it (climbCapped once set); cruiseFt its flight plan's level,
+	// asked for (higherAt: when). landCleared: the player said "cleared to
+	// land" (#1096). it.mu.
+	clearedFt, cruiseFt float64
+	climbCapped         bool
+	levelSet            bool // held at clearedFt once handed over (crewAsksHigher)
+	// approachCleared: the player cleared its approach on a staffed
+	// approach; limitHeld: it holds at its clearance limit, the end of its
+	// STAR, for want of one (crewAtLimit, #1096).
+	approachCleared, limitHeld bool
+	higherAt            time.Time
+	landCleared         bool
 	defBase      uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
@@ -1254,7 +1270,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			if r.Other != "" {
 				dest = cc.clearanceLimit(r.Other)
 			}
-			it.climbSaid = initialClimbSaid(lim, procName)
+			it.climbSaid, it.clearedFt = initialClimbSaid(lim, procName), lim.InitialClimbFor(procName)
+			if r.planned != nil && r.planned.plan != nil {
+				it.cruiseFt = float64(r.planned.plan.CruiseFL) * 100
+			}
 			deliver := func() {
 				it.say(it.initial(traffic.RequestClearance(station, r.Tail, it.view.Stand, info, dest)))
 				dc := traffic.DepartureClearance{Destination: dest, SID: it.procSaid,
@@ -1573,6 +1592,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if it.handoffDue != "" {
 			v.Actions = append(v.Actions, "handoff")
 		}
+		if e.State == traffic.TaxiComplete && it.atc == traffic.PosDeparture && it.gates.Load() {
+			v.Actions = append(v.Actions, "climb") // ?level=feet (#1096)
+		}
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
 			if e.Deicing {
@@ -1585,8 +1607,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.PushbackHeld, it.pushHeldBy = e.PushbackHeld, e.PushbackHeldBy
 			if e.PushbackHeld {
 				// Named outside it.mu (held here): byObject takes each one's lock.
-				go it.cc.logPushHeld(v.Tail, v.Kind, e.PushbackHeldBy)
+				go it.logPushHeld(v.Tail, v.Kind, e.PushbackHeldBy)
 			} else {
+				it.pushHeldWho = ""
 				it.cc.log.printf("%-6s %s: clear behind, pushing back", v.Tail, v.Kind)
 			}
 		}
@@ -1611,6 +1634,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		v.Actions = arrivalActions(e.State)
 		if it.arrivalDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
+		}
+		if e.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && it.gates.Load() && !it.manualSet && !it.approachCleared && it.arrivalDue == nil && it.circuit == nil {
+			v.Actions = append(v.Actions, "approach")
 		}
 		if it.handoffDue != "" {
 			v.Actions = append(v.Actions, "handoff")
@@ -1731,8 +1757,24 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 			it.cc.forgetTower(it.Tail)
 		}
 		return nil
+	case it.arr != nil && action == "approach":
+		// The player's approach clearance (#1096): out of the hold at its
+		// clearance limit, if it holds there, onto the approach.
+		it.mu.Lock()
+		held := it.limitHeld
+		it.approachCleared, it.approachSaid, it.limitHeld = true, true, false
+		it.mu.Unlock()
+		if held {
+			if _, _, holding := it.arr.Holding(); holding {
+				return it.arr.LeaveHold()
+			}
+		}
+		return nil
 	case it.arr != nil && action == "land":
-		return nil // said: it lands unless sent around
+		it.mu.Lock()
+		it.landCleared = true // said: it lands unless sent around
+		it.mu.Unlock()
+		return nil
 	case it.arr != nil && action == "hold":
 		return it.arr.HoldPosition()
 	case it.arr != nil && action == "goaround":
@@ -2236,6 +2278,21 @@ func registerControl(mux *http.ServeMux, st *state) {
 			}
 			cc.log.printf("%-6s arrival: stand %s (on the map, was %s)", tail, label, l.Parking[old].Label())
 			cc.changed("control")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Climb (?level=feet, #1096): a departure handed over, cleared on
+		// from the level it was held at.
+		if r.PathValue("action") == "climb" && it.dep != nil {
+			ft, err := strconv.ParseFloat(r.URL.Query().Get("level"), 64)
+			if err != nil || ft <= 0 {
+				http.Error(w, "level: feet", http.StatusBadRequest)
+				return
+			}
+			if err := it.climbTo(ft); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -2906,15 +2963,24 @@ func (cc *controlCenter) byObject(id uint32) *controlled {
 const stoppedLogAfter = 20 * time.Second
 
 // logPushHeld logs a push held for traffic behind the stand, the aircraft
-// named by its call sign.
-func (cc *controlCenter) logPushHeld(tail, kind string, by uint32) {
+// named by its call sign, once while the name stays the same (live, LKPR:
+// TVS512 logged held for TVS439 several times a second, the object in the
+// way changing between TVS439 and its tug).
+func (it *controlled) logPushHeld(tail, kind string, by uint32) {
+	cc := it.cc
 	who := "traffic"
 	if o := cc.byObject(by); o != nil && by != 0 {
 		who = o.Tail
 	} else if by != 0 {
 		who = fmt.Sprintf("object %d", by)
 	}
-	cc.log.printf("%-6s %s: pushback holding for %s behind the stand", tail, kind, who)
+	it.mu.Lock()
+	same := it.pushHeldWho == who
+	it.pushHeldWho = who
+	it.mu.Unlock()
+	if !same {
+		cc.log.printf("%-6s %s: pushback holding for %s behind the stand", tail, kind, who)
+	}
 }
 
 // logStopped logs why it stands still taxiing, if it still does for the
@@ -2954,8 +3020,14 @@ func (it *controlled) tellGiveWay(other uint32) {
 		return
 	}
 	o.mu.Lock()
-	model, oh := o.view.Model, o.view.Heading
+	model, oh, parking := o.view.Model, o.view.Heading, o.arr != nil && o.view.State == traffic.ArrivalParking.String()
 	o.mu.Unlock()
+	// Turning into its stand ahead, not passing: nothing to say, the crew
+	// waits for it as for any traffic ahead (live, LKPR: EZY489 told to give
+	// way to CSA1065 "passing left to right" as it turned in to C18).
+	if parking || o.arr != nil && o.turningIn() {
+		return
+	}
 	it.mu.Lock()
 	now := it.cc.clock.Now()
 	still, h, told := it.givingWay == other, it.view.Heading, it.toldWay == other || now.Sub(it.toldWayAt) < giveWayCallGap
@@ -3605,6 +3677,11 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		if arr != nil {
 			return *arr
 		}
+	case "approach":
+		if it.arr != nil {
+			qnh, _ := it.cc.qnh()
+			return traffic.ClearedApproachTo(call, traffic.ApproachClearance{Kind: it.approachKind(), Runway: rwy, QNH: qnh, ReportEstablished: true})
+		}
 	case "handoff":
 		it.mu.Lock()
 		from, to := it.atc, it.handoffDue
@@ -3700,6 +3777,22 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if ev.arr != nil && (ev.arr.State == traffic.ArrivalCancelled || ev.arr.State == traffic.ArrivalFailed) ||
 		ev.dep != nil && (ev.dep.State == traffic.TaxiCancelled || ev.dep.State == traffic.TaxiFailed) {
 		return
+	}
+	// Rolling for a staffed departure: it climbs to the level of its
+	// clearance and no further until the player clears it (#1096; its
+	// crew asks for higher there, crewAsksHigher).
+	if ev.dep != nil && ev.dep.State == traffic.TaxiDeparting && !it.climbCapped && it.clearedFt > 0 {
+		it.climbCapped = true
+		at, _ := it.station(traffic.PosDeparture)
+		if _, staffed := it.cc.core.staffedAt(it.ICAO, traffic.PosDeparture, at); staffed {
+			ft := it.clearedFt
+			if it.afterDepFt > 0 && it.afterDepFt < ft {
+				ft = it.afterDepFt
+			}
+			if it.dep.LimitClimb(ft) {
+				it.cc.log.printf("%-6s departure staffed: climbs to %.0f ft until cleared higher", it.Tail, ft)
+			}
+		}
 	}
 	var pos traffic.Position
 	switch {
@@ -3932,6 +4025,10 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	}
 	it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)))
 	switch {
+	case ev.dep != nil && pos == traffic.PosDeparture && (it.gates.Load() || it.staffedNow(pos)):
+		// Staffed: no "identified, climb to"; it levels at the level of its
+		// clearance once handed over (crewAsksHigher), the climb past its
+		// SID the player's (#1096).
 	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates.Load():
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
