@@ -424,7 +424,7 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 	depFt, arrFt := depElev*feetPerMeter, arrElev*feetPerMeter
 	fp.CruiseFL = req.CruiseFL
 	if fp.CruiseFL <= 0 {
-		fp.CruiseFL = CruiseLevel(perf, fp.MagneticTrack, total, depFt, arrFt)
+		fp.CruiseFL = CruiseLevelRule(perf, LevelRuleFor(req.Departure.ICAO), fp.MagneticTrack, total, depFt, arrFt)
 	}
 	cruiseFt := float64(fp.CruiseFL) * 100
 	climbNM, descNM := profileNM(perf, cruiseFt, depFt, arrFt)
@@ -472,35 +472,32 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 	return fp, nil
 }
 
-// CruiseLevel chooses the cruise flight level for a flight of distanceNM
-// on a magnetic track, from and to airports at depFt and arrFt: the
-// highest level of the semicircular rule (RVSM: odd levels — FL350, FL370
-// — on tracks 000–179°, even — FL340, FL360 — on 180–359°) up to the
-// type's MaxFL at which climb and descent leave at least 15% of the
-// distance level; at least 2000 ft above the higher airport, but never above
-// the type's MaxFL (the highest valid level up to it, when the airports are
-// that high).
+// CruiseLevel is CruiseLevelRule under the east/west rule with RVSM.
 func CruiseLevel(p Performance, magTrack, distanceNM, depFt, arrFt float64) int {
-	east := math.Mod(magTrack+360, 360) < 180
-	valid := func(fl int) bool { return fl%10 == 0 && (fl/10)%2 == 1 == east }
+	return CruiseLevelRule(p, LevelRule{}, magTrack, distanceNM, depFt, arrFt)
+}
+
+// CruiseLevelRule chooses the IFR cruise flight level for a flight of
+// distanceNM on a magnetic track, from and to airports at depFt and arrFt:
+// the highest cruising level of rule (LevelRule: FL370 eastbound, FL360
+// westbound in RVSM; FL410, 450 / FL430, 470 above FL410) up to the
+// type's MaxFL at which climb and descent leave at least 15% of the
+// distance level; at least 2000 ft above the higher airport, but never
+// above the type's MaxFL (the highest valid level up to it, when the
+// airports are that high).
+func CruiseLevelRule(p Performance, rule LevelRule, magTrack, distanceNM, depFt, arrFt float64) int {
 	floor := int(math.Ceil((math.Max(depFt, arrFt) + 2000) / 100))
-	top := p.MaxFL
-	for top > 0 && !valid(top) {
-		top--
-	}
-	for fl := top; fl >= floor; fl -= 20 {
+	top := rule.Below(p.MaxFL, magTrack, false)
+	for fl := top; fl >= floor && fl > 0; fl = rule.Below(fl-1, magTrack, false) {
 		c, d := profileNM(p, float64(fl)*100, depFt, arrFt)
 		if c+d <= (1-minCruiseShare)*distanceNM {
 			return fl
 		}
 	}
-	fl := floor
-	for !valid(fl) {
-		fl++
-	}
+	fl := rule.Above(floor, magTrack, false)
 	// The floor (or the next valid level) is above what the type flies: its
 	// ceiling, not a level it cannot reach (E21).
-	if top > 0 && fl > top {
+	if top > 0 && (fl == 0 || fl > top) {
 		fl = top
 	}
 	return fl

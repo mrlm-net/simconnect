@@ -21,7 +21,8 @@ import "github.com/mrlm-net/simconnect/pkg/nav"
 | `FlightPlan` | Runways, SID/STAR/approach, ICAO route, waypoints, cruise level, distance, TOC/TOD, ETE, fuel |
 | `Waypoint` | One point: ident, region, kind, position, airway, phase, constraints, planned altitude, distance |
 | `FlightPlan.PLN()` | The MSFS `.pln` (AceXML) file |
-| `CruiseLevel` | Semicircular-rule cruise level, capped by the type and the distance |
+| `CruiseLevel`, `CruiseLevelRule` | Semicircular-rule cruise level (RVSM, above FL410, north/south countries), capped by the type and the distance |
+| `LevelRule`, `LevelRuleFor` | The cruising levels of an airspace, IFR and VFR |
 | `PerformanceFor` | Planning data of an ICAO type (speeds, rates, fuel flow, taxi fuel) |
 | `FormatLLA` | A position in the `.pln` coordinate format |
 
@@ -76,7 +77,16 @@ fuel kg: taxi 150  trip 1330  contingency 67  alternate 0  reserve 1100  block 2
 1. **Runways.** `DepartureRunway` / `ArrivalRunway` when set, else `ActiveRunways` for the airport's weather (`DepWeather`, `ArrWeather`) and limits (`DepLimits`, `ArrLimits`). Without weather the wind is calm, so the longest runway (or the first preferred one) wins.
 2. **Procedures.** Every SID from the departure runway (with each enroute transition) is resolved from the departure end of the runway, and every STAR to the arrival runway is joined to the best approach (`airport.Procedures.BestApproach`: ILS, then RNAV…) through the approach transition that starts where the STAR ends. Plan takes the pair with the shortest path: SID + great circle from the SID's last fix to the STAR's first + STAR and approach. Without STARs, the approach is entered through the transition that fits best, or at its final.
 3. **Enroute.** Between the SID and the STAR the route follows the airway graph (`RouteOrDirect`); when the airways are more than `EnrouteMaxStretch` (1.5) times the direct distance — common around a TMA — it flies direct. An airport without procedures joins the airways at the nearest fix within 50 NM toward the other airport, direct from its runway threshold (or its position without a layout).
-4. **Cruise level.** `CruiseLevel` applies the semicircular rule (RVSM) to the magnetic track between the airports: odd levels (FL350, FL370) on 000–179°, even (FL340, FL360) on 180–359°. It takes the highest such level up to the type's `MaxFL` at which the climb and descent (from the rates and speeds in `Performance`) leave at least 15% of the distance level, and at least 2000 ft above the higher airport. Set `CruiseFL` to force a level.
+4. **Cruise level.** `CruiseLevelRule` applies the cruising levels of the departure country (`LevelRuleFor`) to the magnetic track between the airports (`CruiseLevel` uses the east/west rule):
+   - **Below FL290:** odd thousands on 000–179°, even on 180–359°.
+   - **RVSM, FL290–FL410:** FL290, 310, 330 eastbound; FL300, 320, 340 westbound.
+   - **Above FL410:** 4,000 ft apart, FL410, 450, 490 eastbound and FL430, 470, 510 westbound.
+   - **Without RVSM** (`LevelRule.NoRVSM`): from FL290, FL290, 330, 370 eastbound and FL310, 350, 390 westbound.
+   - **Italy, France, Portugal and Spain:** split north and south, southbound odd. **New Zealand:** southbound even.
+
+   It takes the highest such level up to the type's `MaxFL` at which the climb and descent (from the rates and speeds in `Performance`) leave at least 15% of the distance level, and at least 2000 ft above the higher airport. Set `CruiseFL` to force a level.
+
+   `MaxFL` is the highest level the type is normally planned at, not its certified ceiling. An A320 goes to FL370, a 737-800 to FL380 and the long-haul twins to FL370–FL390. Business jets go higher (FL410–FL450, on the 4,000 ft levels), and turboprops lower (a King Air 350 FL270, an ATR FL230). `LevelRule.Valid(fl, track, vfr)` also gives the VFR levels, the IFR ones plus 500 ft below FL200 (FL35, 55 eastbound), as in the ICAO table of cruising levels.
 5. **Profile.** Every waypoint gets its distance from the start and a planned altitude: a straight climb to the top of climb, level, a straight descent from the top of descent, kept within the waypoint's constraints. `TOC` and `TOD` are inserted as waypoints of kind `PointProfile`.
 6. **Time and fuel.** ETE is the climb, cruise and descent at the type's speeds, without wind. Trip fuel is the cruise fuel flow over that time plus half as much again during the climb; contingency is 5% of it, the final reserve 30 minutes at the cruise flow, the alternate `AlternateFuelKg`, and the block adds taxi fuel.
 

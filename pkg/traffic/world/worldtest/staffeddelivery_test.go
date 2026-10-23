@@ -78,3 +78,41 @@ func TestStaffedDeliveryGivesTheClearance(t *testing.T) {
 		}
 	}
 }
+
+// TestCheapReadAccessors: Now, PlayerPlace and Vehicles answer as the
+// Snapshot does, without its views (an app polling twice a second).
+func TestCheapReadAccessors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 6}); err != nil {
+		t.Fatal(err)
+	}
+	if !h.Until(10*time.Minute, func() bool { return len(h.World.Snapshot().Aircraft) > 0 }) {
+		t.Fatal("no aircraft")
+	}
+	if d := h.World.Now().Sub(h.World.Snapshot().At); d < -time.Second || d > time.Second {
+		t.Errorf("Now %v off the snapshot's time", d)
+	}
+	if h.World.PlayerPlace() != h.World.Snapshot().Player {
+		t.Error("player place differs")
+	}
+	want := map[string]int{}
+	for _, v := range h.World.Snapshot().Aircraft {
+		if len(v.Vehicles) > 0 {
+			want[v.Tail] = len(v.Vehicles)
+		}
+	}
+	got := h.World.Vehicles()
+	for tail, n := range want {
+		if len(got[tail]) != n {
+			t.Errorf("%s: %d vehicles, the snapshot has %d", tail, len(got[tail]), n)
+		}
+	}
+}

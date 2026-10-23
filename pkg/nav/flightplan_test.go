@@ -118,7 +118,7 @@ func TestCruiseLevel(t *testing.T) {
 		track, dist float64
 		want        int
 	}{
-		{90, 800, 390}, {270, 800, 380}, {179, 800, 390}, {180, 800, 380},
+		{90, 800, 370}, {270, 800, 380}, {179, 800, 370}, {180, 800, 380}, // an A320neo planned to FL380 at most
 	} {
 		if got := CruiseLevel(p, c.track, c.dist, 1000, 1000); got != c.want {
 			t.Errorf("track %.0f %0.f NM: FL%d, want FL%d", c.track, c.dist, got, c.want)
@@ -136,7 +136,7 @@ func TestCruiseLevel(t *testing.T) {
 		}
 		prev = fl
 	}
-	if fl := CruiseLevel(PerformanceFor("AT76"), 300, 800, 0, 0); fl != 240 {
+	if fl := CruiseLevel(PerformanceFor("AT76"), 300, 800, 0, 0); fl != 220 { // planned to FL230 at most
 		t.Errorf("AT76 westbound FL%d", fl)
 	}
 	// The floor: 2000 ft above the higher airport, by the rule.
