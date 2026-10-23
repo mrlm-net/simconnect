@@ -52,6 +52,9 @@ func IsHelperVariant(title string) bool {
 	if !IsHelper(title) {
 		return false
 	}
+	if strings.Contains(title, " D-") {
+		return true // HelperDoorTitle
+	}
 	for _, s := range []string{" R", " A"} {
 		i := strings.LastIndex(title, s)
 		if i > 0 && len(title) > i+2 && (title[i+2] == '+' || title[i+2] == '-') {
@@ -71,6 +74,15 @@ func HelperAheadTitle(icaoType string, aheadM float64) string {
 		return HelperTitle(icaoType, false)
 	}
 	return fmt.Sprintf("%s A%+.1f", HelperTitle(icaoType, false), aheadM)
+}
+
+// HelperDoorTitle is the title of type's helper with doorType's door: as
+// wide as type, so the simulator parks it only at gates that big, with the
+// door of a smaller aircraft standing there, whose jetway meets that
+// door, not type's higher one further back (live, LKPR B14: a B748 helper
+// for a B738, the jetway docked above and beside its door).
+func HelperDoorTitle(icaoType, doorType string) string {
+	return HelperTitle(icaoType, false) + " D-" + strings.ToUpper(doorType)
 }
 
 // IsHelper reports whether a simulator title is one of the helpers.
@@ -108,6 +120,10 @@ type PackageOptions struct {
 	// moved each of these meters ahead (back when negative): the offsets
 	// of the stand rules along the line (traffic.StandRules ForwardM).
 	AheadM []float64
+	// DoorOf adds, for each type a key, its variants with the door of each
+	// type listed (HelperDoorTitle), taken from that type's model (among
+	// the models written).
+	DoorOf map[string][]string
 }
 
 // copied are the base model's files a helper takes over.
@@ -140,6 +156,25 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 			}
 			if err := writeHelper(root, m, nil, o.WingSpanFt, fmt.Sprintf("R%+d", k), HelperVariantTitle(t, k), float64(k)*o.SideStepM, 0); err != nil {
 				return "", fmt.Errorf("jetway helper %s %+d: %w", m.Type, k, err)
+			}
+		}
+		for _, d := range o.DoorOf[t] {
+			var from *HelperModel
+			for i := range models {
+				if strings.EqualFold(models[i].Type, d) {
+					from = &models[i]
+				}
+			}
+			if from == nil {
+				continue // that type's model not among them
+			}
+			v := "D-" + strings.ToUpper(d)
+			if err := writeHelper(root, m, nil, o.WingSpanFt, v, HelperDoorTitle(t, d), 0, 0); err != nil {
+				return "", fmt.Errorf("jetway helper %s door of %s: %w", m.Type, d, err)
+			}
+			fm := filepath.Join(root, "SimObjects", "Airplanes", "MyCrew_JetwayHelper_"+t+"_"+v, "flight_model.cfg")
+			if err := copyDoor(fm, filepath.Join(from.Dir, "flight_model.cfg")); err != nil {
+				return "", fmt.Errorf("jetway helper %s door of %s: %w", m.Type, d, err)
 			}
 		}
 		for _, a := range o.AheadM {
@@ -288,6 +323,38 @@ func shiftDoor(path string, rightFt, aheadFt float64) error {
 	if !done {
 		return fmt.Errorf("no interactive_point.0 in %s", path)
 	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
+// copyDoor sets interactive_point.0 (the door the jetway docks to) of the
+// flight_model.cfg at path to the one of the flight_model.cfg at from.
+func copyDoor(path, from string) error {
+	door := func(p string) (int, []string, error) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return 0, nil, err
+		}
+		lines := strings.Split(string(b), "\n")
+		for i, l := range lines {
+			if k, _, ok := strings.Cut(l, "="); ok && strings.EqualFold(strings.TrimSpace(k), "interactive_point.0") {
+				return i, lines, nil
+			}
+		}
+		return 0, nil, fmt.Errorf("no interactive_point.0 in %s", p)
+	}
+	j, src, err := door(from)
+	if err != nil {
+		return err
+	}
+	i, lines, err := door(path)
+	if err != nil {
+		return err
+	}
+	l := strings.TrimSuffix(src[j], "\r") + " ; MyCrew: the door of " + filepath.Base(filepath.Dir(from))
+	if strings.HasSuffix(lines[i], "\r") {
+		l += "\r"
+	}
+	lines[i] = l
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 

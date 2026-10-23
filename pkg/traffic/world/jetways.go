@@ -361,7 +361,7 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		if !asked {
 			variant, ok := cc.gateVariant(g, stand, model)
 			if !ok {
-				variant = gateHelper(svc, g, stand, model) // the stand's own helper type, if it has one
+				variant = gateHelper(svc, g, stand, model, cc.hasModel) // the stand's own helper type, if it has one
 			}
 			if err := svc.DockAs(icao, stand, model, variant); err == nil {
 				cc.logStandFit(g, stand, tail, pos) // once a dock is asked, not each tick a gate has none
@@ -747,7 +747,10 @@ func (cc *controlCenter) gateVariant(g *airport.Graph, stand int, model string) 
 	if side == 0 {
 		return "", false
 	}
-	base := gateHelper(svc, g, stand, model)
+	base := gateHelper(svc, g, stand, model, cc.hasModel)
+	if jetway.IsHelperVariant(base) {
+		return "", false // a door variant (HelperDoorTitle): no side steps of it
+	}
 	right := 0.0
 	if _, r, ok := jetwayDoorOffset(model, base); ok {
 		right = r
@@ -813,8 +816,12 @@ const gateFitMarginM = 2.0
 // the best-fitting gate it counts free, a docked one among them: an A320
 // helper for C24 (28 m) or B14 (35 m) went to a docked 22 m gate and took
 // its jetway (live, LKPR A1, C30, C23), a 22 m gate's never. Ours stands
-// with its door where the helper's is (gateNoseOffset, gateSide).
-func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string) string {
+// with its door where the helper's is (gateNoseOffset, gateSide). The
+// wider helper with model's own door, else an A320's, when has (the
+// simulator lists it) says it is installed (jetway.HelperDoorTitle): its
+// jetway meets a smaller aircraft's door, not one higher and further back
+// (live, LKPR B14: a B748 helper's jetway above a B738's door).
+func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string, has func(string) bool) string {
 	own := svc.HelperFor(model)
 	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
 		return own
@@ -850,6 +857,11 @@ func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string) 
 	}
 	if best == "" {
 		return own
+	}
+	for _, d := range []string{strings.TrimPrefix(own, jetway.HelperTitlePrefix), "A320"} {
+		if t := jetway.HelperDoorTitle(best, d); has != nil && has(t) {
+			return t
+		}
 	}
 	return svc.HelperFor(best)
 }

@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.117.0] - 2026-10-23
+
+### Added
+
+- Jetway helpers with a smaller aircraft's door (`jetway.HelperDoorTitle`, `PackageOptions.DoorOf`). At a gate bigger than the others (LKPR B14, C22, C24), a narrowbody docks with a wider helper, so the simulator keeps that helper on this gate and not on a smaller gate it would take a jetway from. That wider helper's jetway docked to its own door, higher and further back: at B14, a 747's door above and beside a B738's. The variant is as wide as the 747 but has the narrowbody's door, so the jetway meets it.
+  - Used for the aircraft's own door, else an A320's, when the simulator lists the variant.
+  - `examples/jetway-helpers -door-of A320,B738` (the default) writes those two doors on each widebody helper (wing span over 150 ft). Write the package with MSFS closed; it loads at the next start.
+
 ## [0.116.0] - 2026-10-23
 
 ### Added
