@@ -129,8 +129,9 @@ const (
 	// opposedMinMeters: a shared stretch shorter than this is left to the
 	// hold (a junction crossed the other way, a few metres of a turn).
 	opposedMinMeters = 150.0
-	// opposedRetry: a pair tried is looked at again after this.
-	opposedRetry = 30 * time.Second
+	// opposedForget: a pair looked at on its routes then is forgotten
+	// after this (a new route of either is looked at at once).
+	opposedForget = 10 * time.Minute
 	// opposedEndMeters: the part of a shared stretch this near the end of
 	// a route is not kept off in a re-plan (awayFrom).
 	opposedEndMeters = 250.0
@@ -140,27 +141,28 @@ const (
 func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 	type onGround struct {
 		it      *controlled
+		route   *airport.Route
 		way     []airport.LatLon
 		half    float64
 		movable bool
 	}
 	var ours []onGround
 	for _, it := range items {
-		way, movable, ok := it.groundWay()
+		route, way, movable, ok := it.groundWay()
 		if !ok {
 			continue
 		}
 		it.mu.Lock()
 		half, manual := traffic.MotionProfileFor(it.view.Model).SpanMeters/2, it.view.Manual
 		it.mu.Unlock()
-		ours = append(ours, onGround{it, way, half, movable && !manual})
+		ours = append(ours, onGround{it, route, way, half, movable && !manual})
 	}
 	now := cc.clock.Now()
 	if cc.opposedTried == nil {
 		cc.opposedTried = map[string]time.Time{}
 	}
 	for k, at := range cc.opposedTried {
-		if now.Sub(at) > opposedRetry {
+		if now.Sub(at) > opposedForget {
 			delete(cc.opposedTried, k)
 		}
 	}
@@ -169,17 +171,20 @@ func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 			if a.it.ICAO != b.it.ICAO || (!a.movable && !b.movable) {
 				continue
 			}
-			key := min(a.it.Tail, b.it.Tail) + "|" + max(a.it.Tail, b.it.Tail)
+			// Once per pair of routes: what is ahead of each only shrinks
+			// along the same route (live, the same pair logged every 30 s).
+			ka, kb := fmt.Sprintf("%s %p", a.it.Tail, a.route), fmt.Sprintf("%s %p", b.it.Tail, b.route)
+			key := min(ka, kb) + "|" + max(ka, kb)
 			if _, tried := cc.opposedTried[key]; tried {
 				continue
 			}
+			cc.opposedTried[key] = now
 			reach := a.half + b.half + traffic.HeadOnMarginMeters
 			fromA, fromB, length, alongB, ok := traffic.OpposedStretch(a.way, b.way, reach)
 			if !ok || length < opposedMinMeters {
 				continue
 			}
 			_, _, _, alongA, _ := traffic.OpposedStretch(b.way, a.way, reach)
-			cc.opposedTried[key] = now
 			// The one further from the stretch first: it would hold.
 			first, second := a, b
 			// Each keeps off the other's way except near its own end: the
@@ -233,11 +238,29 @@ func thinned(pts []airport.LatLon) []airport.LatLon {
 	return out
 }
 
-// groundWay is its taxi route ahead from where it is, and whether ground
-// may re-plan it now (an arrival waiting for or on its taxi-in, a
-// departure taxiing); ok false when it is not on the ground with a route.
-func (it *controlled) groundWay() (way []airport.LatLon, movable, ok bool) {
-	var r *airport.Route
+// turningInMeters: an arrival with this little of its taxi-in left is
+// turning in to its stand (turningIn).
+const turningInMeters = 150.0
+
+// turningIn reports whether an arrival taxiing in has turningInMeters or
+// less of its way left: at its stand, not passing by.
+func (it *controlled) turningIn() bool {
+	_, way, _, ok := it.groundWay()
+	if !ok {
+		return false
+	}
+	left := 0.0
+	for i := 1; i < len(way) && left <= turningInMeters; i++ {
+		left += calc.HaversineMeters(way[i-1].Lat, way[i-1].Lon, way[i].Lat, way[i].Lon)
+	}
+	return left <= turningInMeters
+}
+
+// groundWay is its taxi route and the way ahead on it from where it is,
+// and whether ground may re-plan it now (an arrival waiting for or on its
+// taxi-in, a departure taxiing); ok false when it is not on the ground
+// with a route.
+func (it *controlled) groundWay() (r *airport.Route, way []airport.LatLon, movable, ok bool) {
 	switch {
 	case it.dep != nil:
 		switch it.dep.State() {
@@ -245,7 +268,7 @@ func (it *controlled) groundWay() (way []airport.LatLon, movable, ok bool) {
 		case traffic.TaxiTaxiing:
 			movable = true
 		default:
-			return nil, false, false
+			return nil, nil, false, false
 		}
 		r = it.dep.Route()
 	case it.arr != nil:
@@ -254,14 +277,14 @@ func (it *controlled) groundWay() (way []airport.LatLon, movable, ok bool) {
 		case traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing:
 			movable = true
 		default:
-			return nil, false, false
+			return nil, nil, false, false
 		}
 		if p := it.arr.Plan(); p != nil {
 			r = p.Route
 		}
 	}
 	if r == nil || len(r.Points) < 2 {
-		return nil, false, false
+		return nil, nil, false, false
 	}
 	it.mu.Lock()
 	pos := it.view.Position
@@ -273,9 +296,9 @@ func (it *controlled) groundWay() (way []airport.LatLon, movable, ok bool) {
 		}
 	}
 	if near >= len(r.Points)-1 {
-		return nil, false, false
+		return nil, nil, false, false
 	}
-	return r.Points[near:], movable, true
+	return r, r.Points[near:], movable, true
 }
 
 // occupiedFor is the places other departures at its airport take now.
@@ -363,11 +386,21 @@ func (cc *controlCenter) snapshotItems() []*controlled {
 // the climb waypoints still ended there (live, EZY516 level at FL100).
 func (it *controlled) climbOn() {
 	it.mu.Lock()
-	ft, pos, alt, id := it.radarFt, it.view.Position, it.heightFt, it.objectID
+	ft := it.radarFt
 	it.mu.Unlock()
 	if ft <= 0 {
 		ft = departureClimbFt
 	}
+	it.climbOnTo(ft)
+}
+
+// climbOnTo has a departure handed to MSFS AI climb on to ft and level
+// there: climbOn's level, or on a staffed departure the level of its
+// clearance until the player clears it higher (#1096).
+func (it *controlled) climbOnTo(ft float64) {
+	it.mu.Lock()
+	pos, alt, id := it.view.Position, it.heightFt, it.objectID
+	it.mu.Unlock()
 	if it.graph != nil {
 		alt += it.graph.Layout.Altitude / 0.3048
 	}

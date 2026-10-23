@@ -23,6 +23,8 @@ const (
 	IntentRequestPushback    Intent = "request_pushback"    // ready for push
 	IntentRequestTaxi        Intent = "request_taxi"        // ready to taxi
 	IntentRequestDescent     Intent = "request_descent"     // ready to descend, to the centre or approach (#686)
+	IntentRequestClimb       Intent = "request_climb"       // level at its cleared level, asking for its cruising level (#1096)
+	IntentRequestApproach    Intent = "request_approach"    // near its clearance limit, asking for its approach (#1096)
 	IntentReadyDeparture     Intent = "ready_departure"     // holding short of the runway, ready for departure
 	IntentHoldingShort       Intent = "holding_short"       // stopped short of a runway to cross
 	IntentCheckIn            Intent = "check_in"            // first call on a frequency
@@ -147,6 +149,20 @@ func RequestDirect(pos Position, cs, fix string) Transmission {
 // "CSA123, request descent" (#686).
 func RequestDescent(pos Position, cs string) Transmission {
 	return pilotTx(pos, cs, IntentRequestDescent, nil, cs+", request descent")
+}
+
+// RequestClimb is a crew level at the level it was cleared to asking for
+// its cruising level (#1096): "CSA1, request climb to flight level 360".
+func RequestClimb(pos Position, cs, level string) Transmission {
+	return pilotTx(pos, cs, IntentRequestClimb, nil, cs+", request climb to "+level)
+}
+
+// RequestApproachClearance is a crew nearing its clearance limit (the end
+// of its STAR) without an approach clearance, asking for one before it
+// holds there (#1096): "CSA1, approaching LOMKI, request approach
+// clearance" (the project's wording).
+func RequestApproachClearance(pos Position, cs, fix string) Transmission {
+	return pilotTx(pos, cs, IntentRequestApproach, nil, cs+", approaching "+fix+", request approach clearance")
 }
 
 // UnableIntersection is a crew declining the intersection it was cleared

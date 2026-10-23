@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -102,13 +105,26 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 	for _, it := range items {
 		it.mu.Lock()
 		pos, explicit, done := it.atc, it.manualSet, it.view.Done
+		// Handed to the simulator after take-off (done), a departure is
+		// still the staffed departure's to climb on (#1096).
+		climbing := it.dep != nil && pos == traffic.PosDeparture && it.view.State == traffic.TaxiComplete.String()
 		it.mu.Unlock()
-		if done || explicit || pos == "" {
+		if done && !climbing || explicit || pos == "" {
 			continue
 		}
 		station, _ := it.station(pos)
 		_, want := cc.core.staffedAt(it.ICAO, pos, station)
 		any = any || want
+		if climbing {
+			it.mu.Lock()
+			has := slices.Contains(it.view.Actions, "climb")
+			if want && !has {
+				it.view.Actions = append(it.view.Actions, "climb") // ?level=feet
+			} else if !want && has {
+				it.view.Actions = slices.DeleteFunc(it.view.Actions, func(a string) bool { return a == "climb" })
+			}
+			it.mu.Unlock()
+		}
 		if it.gates.Load() == want {
 			continue
 		}
@@ -126,8 +142,11 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 			it.askGround(req) // a request still waiting is answered
 		}
 		it.giveClearance() // a clearance still waiting too (#1156)
+		go it.releaseLimitHold()
 	}
 	cc.staffedAny = any
+	cc.crewAsksHigher(items, now)
+	cc.crewAtLimit(items)
 }
 
 // registerStaffed serves GET /api/stations/staffed (the list) and PUT
@@ -223,7 +242,7 @@ func (it *controlled) amendClearance(a ClearanceAmend) error {
 				}
 			}
 		}
-		it.climbSaid = initialClimbSaid(lim, sid)
+		it.climbSaid, it.clearedFt = initialClimbSaid(lim, sid), lim.InitialClimbFor(sid)
 		it.setRoute()
 		dc.Runway, dc.SID, dc.Level = a.Runway, it.procSaid, it.climbSaid
 		it.mu.Unlock()
@@ -235,7 +254,7 @@ func (it *controlled) amendClearance(a ClearanceAmend) error {
 		}
 		said := traffic.LevelSaidAbove(a.LevelFt, cc.taOf(it.ICAO))
 		it.mu.Lock()
-		it.afterDepFt, it.climbSaid = a.LevelFt, said // tower keeps it, not one of its own
+		it.afterDepFt, it.climbSaid, it.clearedFt = a.LevelFt, said, a.LevelFt // tower keeps it, not one of its own
 		dc.Level = said
 		it.mu.Unlock()
 		cc.log.printf("%-6s clearance amended: initial climb %s", it.Tail, said)
@@ -246,4 +265,208 @@ func (it *controlled) amendClearance(a ClearanceAmend) error {
 	}
 	it.mu.Unlock()
 	return nil
+}
+
+// climbTo clears a departure handed over on to ft (the player's "climb",
+// #1096): said against the transition altitude, flown from where it is.
+func (it *controlled) climbTo(ft float64) error {
+	it.mu.Lock()
+	pos, alt, id, done := it.view.Position, it.heightFt, it.objectID, it.dep != nil && it.view.State == traffic.TaxiComplete.String()
+	it.mu.Unlock()
+	if !done {
+		return errors.New("not airborne and handed over yet")
+	}
+	if it.graph != nil {
+		alt += it.graph.Layout.Altitude / 0.3048
+	}
+	for _, a := range it.cc.world.Aircraft() {
+		if a.ObjectID == id && id != 0 {
+			pos, alt = a.Position, a.AltFt
+		}
+	}
+	if ft <= alt+100 {
+		return fmt.Errorf("at %.0f ft: %.0f ft is no climb", alt, ft)
+	}
+	if err := it.cc.do(func() error { return it.dep.ClimbTo(pos, alt, ft) }); err != nil {
+		return err
+	}
+	it.mu.Lock()
+	it.clearedFt, it.higherAt = ft, time.Time{}
+	it.mu.Unlock()
+	ta := it.cc.taOf(it.ICAO)
+	it.say(traffic.Climb(traffic.PosDeparture, it.Tail, ft, ta))
+	it.cc.log.printf("%-6s departure: climb to %s (the player)", it.Tail, traffic.LevelSaidAbove(ft, ta))
+	return nil
+}
+
+// higherAfter: level at its cleared level this long on a staffed
+// departure, the crew asks for its cruising level; again every
+// higherAgain until cleared.
+const (
+	higherAfter = 30 * time.Second
+	higherAgain = 3 * time.Minute
+)
+
+// crewAsksHigher has the crews of our departures held at their cleared
+// level on a staffed departure ask for higher (#1096).
+func (cc *controlCenter) crewAsksHigher(items []*controlled, now time.Time) {
+	for _, it := range items {
+		if it.dep == nil || !it.gates.Load() {
+			continue
+		}
+		it.mu.Lock()
+		on := it.atc == traffic.PosDeparture && it.view.State == traffic.TaxiComplete.String()
+		cleared, cruise, at, id, asked := it.clearedFt, it.cruiseFt, it.view.AltFt, it.objectID, it.higherAt
+		level := on && cleared > 0 && !it.levelSet
+		if level {
+			it.levelSet = true
+		}
+		it.mu.Unlock()
+		if level {
+			// Handed to the simulator: it levels there, not on to its
+			// cruise as the simulator's own flight would.
+			go it.climbOnTo(cleared)
+		}
+		if !on || cleared <= 0 || cruise <= cleared {
+			continue
+		}
+		for _, a := range cc.world.Aircraft() {
+			if a.ObjectID == id && id != 0 {
+				at = a.AltFt
+			}
+		}
+		it.mu.Lock()
+		switch {
+		case at < cleared-300: // still climbing to it
+			it.higherAt = time.Time{}
+		case asked.IsZero(): // level: asks a while on
+			it.higherAt = now.Add(higherAfter)
+		case !now.Before(asked):
+			it.higherAt = now.Add(higherAgain)
+		}
+		ask := !asked.IsZero() && !now.Before(asked) && at >= cleared-300
+		it.mu.Unlock()
+		if !ask {
+			continue
+		}
+		it.say(traffic.RequestClimb(traffic.PosDeparture, it.Tail, traffic.LevelSaidAbove(cruise, cc.taOf(it.ICAO))))
+	}
+}
+
+// staffedNow reports whether pos's station where it is now is staffed:
+// the look itself, not gates, which checkStaffed sets a moment later.
+func (it *controlled) staffedNow(pos traffic.Position) bool {
+	at, _ := it.station(pos)
+	_, staffed := it.cc.core.staffedAt(it.ICAO, pos, at)
+	return staffed
+}
+
+// limitWithin: an arrival this many minutes from its clearance limit
+// without an approach clearance asks for one and plans to hold there
+// (FAA AIP ENR 1.5: within 3 minutes of a clearance limit with no
+// clearance beyond it, slow to hold there, in a standard pattern on the
+// course it approached it by, and request further clearance).
+const limitWithin = 3.0
+
+// crewAtLimit has the crews of our arrivals on a staffed approach without
+// an approach clearance ask for one near the end of their STAR, their
+// clearance limit, and hold there until the player gives it (#1096).
+func (cc *controlCenter) crewAtLimit(items []*controlled) {
+	for _, it := range items {
+		if it.arr == nil || it.circuit != nil || !it.gates.Load() || it.arr.State() != traffic.ArrivalApproaching {
+			continue
+		}
+		it.mu.Lock()
+		skip := it.manualSet || it.approachCleared || it.limitHeld || it.arrivalDue != nil || it.atc != traffic.PosApproach
+		star, _, _ := strings.Cut(it.view.Procedure, " → ")
+		rwy, fixes, id := it.view.Runway, it.fixes, it.objectID
+		it.mu.Unlock()
+		if skip {
+			continue
+		}
+		fix, ok := cc.starEnd(it.ICAO, rwy, star, fixes)
+		if !ok {
+			continue
+		}
+		var a traffic.TrackedAircraft
+		for _, o := range cc.world.Aircraft() {
+			if o.ObjectID == id && id != 0 {
+				a = o
+			}
+		}
+		if a.ObjectID == 0 || a.GroundKts < 60 {
+			continue
+		}
+		nm := calc.HaversineNM(a.Position.Lat, a.Position.Lon, fix.Lat, fix.Lon)
+		if nm/a.GroundKts*60 > limitWithin {
+			continue
+		}
+		h := traffic.Hold{Ident: fix.Ident, Fix: fix.LatLon, InboundTrue: calc.BearingDegrees(a.Position.Lat, a.Position.Lon, fix.Lat, fix.Lon)}
+		alt := math.Round(a.AltFt/1000) * 1000
+		it.mu.Lock()
+		it.limitHeld = true
+		it.mu.Unlock()
+		it.say(traffic.RequestApproachClearance(traffic.PosApproach, it.Tail, fix.Ident))
+		// On the connection's goroutine (this is its tick): not waited for.
+		go func(it *controlled, ident string) {
+			if err := cc.do(func() error { _, err := it.arr.EnterHold(h, alt); return err }); err != nil {
+				cc.log.printf("%-6s at its clearance limit %s: no hold: %v", it.Tail, ident, err)
+				return
+			}
+			cc.log.printf("%-6s no approach clearance: holds at %s, %.0f ft, its clearance limit", it.Tail, ident, alt)
+		}(it, fix.Ident)
+	}
+}
+
+// starEnd is the last fix of star (with its transition to runway): the
+// clearance limit of an arrival cleared that STAR, where it is among fixes.
+func (cc *controlCenter) starEnd(icao, runway, star string, fixes []airFix) (airFix, bool) {
+	if cc.procedures == nil || star == "" {
+		return airFix{}, false
+	}
+	p, ok := cc.procedures(icao)
+	if !ok {
+		return airFix{}, false
+	}
+	for _, s := range p.STARsFor(runway) {
+		if s.Name != star {
+			continue
+		}
+		legs := slices.Clone(s.Legs)
+		for _, t := range s.RunwayTransitions {
+			if strings.TrimLeft(t.Runway, "0") == strings.TrimLeft(runway, "0") || t.Runway == "ALL" {
+				legs = append(legs, t.Legs...)
+				break
+			}
+		}
+		last := ""
+		for _, l := range legs {
+			if l.HasFix() {
+				last = l.Fix
+			}
+		}
+		for i := len(fixes) - 1; i >= 0; i-- {
+			if fixes[i].Ident == last {
+				return fixes[i], true
+			}
+		}
+	}
+	return airFix{}, false
+}
+
+// releaseLimitHold takes it out of the hold at its clearance limit (back
+// to the AI, which clears its approach itself).
+func (it *controlled) releaseLimitHold() {
+	it.mu.Lock()
+	held := it.limitHeld
+	it.limitHeld = false
+	it.mu.Unlock()
+	if !held || it.arr == nil {
+		return
+	}
+	if _, _, holding := it.arr.Holding(); holding {
+		if err := it.cc.do(it.arr.LeaveHold); err != nil {
+			it.cc.log.printf("%-6s leaving the hold at its clearance limit: %v", it.Tail, err)
+		}
+	}
 }

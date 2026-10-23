@@ -2285,12 +2285,25 @@ func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
 		return errors.New("traffic: climb: not handed over to MSFS AI")
 	}
 	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: plan[0].Kts}}
+	// The level reached at a climb's rate on the way to the next point,
+	// not by that point: a leg of tens of miles made the climb a few
+	// hundred feet a minute (#1096, a staffed departure cleared on).
+	if kts := plan[0].Kts; ft > altFt && kts > 0 {
+		at := (ft - altFt) / climbOnFPM * kts * 1852 / 60
+		if d := calc.HaversineMeters(pos.Lat, pos.Lon, plan[0].Position.Lat, plan[0].Position.Lon); at < d {
+			lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, calc.BearingDegrees(pos.Lat, pos.Lon, plan[0].Position.Lat, plan[0].Position.Lon), at)
+			route = append(route, RoutePoint{Position: airport.LatLon{Lat: lat, Lon: lon}, AltFt: ft, Kts: kts})
+		}
+	}
 	for _, p := range plan {
 		p.AltFt = math.Max(p.AltFt, ft)
 		route = append(route, p)
 	}
 	return c.Reroute(route)
 }
+
+// climbOnFPM: the rate ClimbTo plans the climb at.
+const climbOnFPM = 2000.0
 
 // Reroute sends a departure handed to MSFS AI on route (from where it is
 // now, as ResolvedRoute gives it), flown as waypoints like an en route

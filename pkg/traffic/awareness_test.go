@@ -944,3 +944,30 @@ func TestOpposedStretch(t *testing.T) {
 		t.Error("a route opposed to itself")
 	}
 }
+
+// A push not started yet waits for one taxiing but stopped a moment (no
+// way ahead reported, its intent through the corridor), which passes
+// first; under way it does not (live, LKPR: TVS439, just cleared to taxi,
+// gave way to TVS512 pushing from the next stand across its way).
+func TestPushWaitsForStoppedTaxiing(t *testing.T) {
+	p := NewGroundPicture()
+	now := time.Now()
+	prof := DefaultMotionProfile()
+	base := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	east := func(m float64) airport.LatLon { return offsetHeading(base, 90, m) }
+	// The push corridor: across the taxilane at base.
+	corridor := []airport.LatLon{offsetHeading(base, 180, 5), base, offsetHeading(base, 0, 5)}
+	p.Report(2, east(-80), 90, prof, now)
+	p.ReportPath(2, nil, prof.SpanMeters/2) // stopped: nothing ahead
+	p.ReportIntent(2, []airport.LatLon{east(-80), east(-40), east(0), east(40)})
+	if by, blocked := p.corridorBlocked(1, corridor, 17, true, now); !blocked || by != 2 {
+		t.Errorf("push not started: blocked %v by %d, want by 2", blocked, by)
+	}
+	if _, blocked := p.corridorBlocked(1, corridor, 17, false, now); blocked {
+		t.Error("push under way stopped for a way, not a body")
+	}
+	p.ReportIntent(2, []airport.LatLon{east(-80), offsetHeading(east(-80), 0, 200)}) // turning away
+	if _, blocked := p.corridorBlocked(1, corridor, 17, true, now); blocked {
+		t.Error("held for one going elsewhere")
+	}
+}
