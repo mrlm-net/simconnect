@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.114.1] - 2026-10-23
+
+### Fixed
+
+- `worldtest`: the user aircraft was parked on the airport's reference point, which at LKPR lies on runway 06/24. The tower held every departure ("Player on the runway") and sent every arrival around. It is now parked on the smallest stand.
+
 ## [0.114.0] - 2026-10-23
 
 ### Added
