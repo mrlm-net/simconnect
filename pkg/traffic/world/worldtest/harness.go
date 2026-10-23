@@ -111,6 +111,18 @@ func Start(o Options) (*Harness, error) {
 		traffic.SetTimeSource(h.Clock)
 	}
 	h.Sim = NewLoopback(l.Latitude, l.Longitude, l.Altitude/0.3048, 16384)
+	// The user aircraft parked on the smallest stand, not on the airport's
+	// reference point: at LKPR that lies on runway 06/24, and the tower
+	// held every departure and sent every arrival around for it.
+	if len(l.Parking) > 0 {
+		p := l.Parking[0]
+		for _, s := range l.Parking[1:] {
+			if s.Radius < p.Radius {
+				p = s
+			}
+		}
+		h.Sim.User(func(o *Object) { o.Lat, o.Lon, o.Heading = p.Position.Lat, p.Position.Lon, p.Heading })
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
