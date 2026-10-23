@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.115.1] - 2026-10-23
+
+### Fixed
+
+- Two aircraft taxiing head-on along one taxiway could meet in the middle, neither able to give way. Live at LKPR, TVS681 came in along F to C24 while CSA398 went out along F from C28. Three general rules, any airport:
+  - **Whole routes:** who is coming the other way is now judged on both whole routes, not the next 400 m. The aircraft not yet on the shared stretch holds at its last junction before it; CSA398 waits on H1 short of 894. The check runs once a second on a grid, which costs less than the old check ten times a second.
+  - **Plan up front:** ground re-routes one of the two round the shared stretch, the one further from it first, when there is a reasonable way round. The last 250 m to its own stand or runway is exempt, since there is no way round there.
+  - **Short detours only:** a re-planned taxi route is at most 50% and 500 m longer and crosses no runway the old one did not; otherwise the aircraft keeps its route and holds. This applies to re-plans round a pushback too.
+- Arrivals can now be re-planned on the ground with a runway crossing still ahead; the crossings are planned afresh with the new route.
+
 ## [0.115.0] - 2026-10-23
 
 ### Added

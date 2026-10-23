@@ -697,8 +697,8 @@ func TestOncomingHold(t *testing.T) {
 	p.ReportIntent(1, append(line(14.000, 14.002), line(14.002, 14.006)[1:]...))
 	pathWZZ, _ := NewGroundPath(append(line(14.000, 14.002), line(14.002, 14.006)[1:]...), prof)
 	pathTVS, _ := NewGroundPath(line(14.004, 14.002), prof)
-	atW, oW, holdW := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now)
-	_, _, holdT := p.oncoming(2, pathTVS, 0, OncomingLookMeters, 17, now)
+	atW, oW, holdW := p.oncoming(1, pathWZZ, 0, 17, now)
+	_, _, holdT := p.oncoming(2, pathTVS, 0, 17, now)
 	if math.IsInf(atW, 1) || oW != 2 {
 		t.Fatalf("no oncoming for WZZ: %v %v", atW, oW)
 	}
@@ -708,13 +708,13 @@ func TestOncomingHold(t *testing.T) {
 	// TVS stopped behind WZZ, in its way: WZZ does not hold for it, or
 	// neither would go (live, LKPR: CSA839 and TVS1120 on J).
 	p.ReportBehind(2, 1)
-	if _, _, hold := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now); hold {
+	if _, _, hold := p.oncoming(1, pathWZZ, 0, 17, now); hold {
 		t.Error("WZZ holds for TVS stopped behind it")
 	}
 	p.ReportBehind(2, 0)
 	// Same way: nobody holds.
 	p.ReportIntent(2, line(14.004, 14.008))
-	if at, _, _ := p.oncoming(1, pathWZZ, 0, OncomingLookMeters, 17, now); !math.IsInf(at, 1) {
+	if at, _, _ := p.oncoming(1, pathWZZ, 0, 17, now); !math.IsInf(at, 1) {
 		t.Errorf("same way counted as oncoming at %v", at)
 	}
 }
@@ -740,7 +740,7 @@ func TestOncomingWaitingAfterPush(t *testing.T) {
 	p.Report(2, airport.LatLon{Lat: 50, Lon: 14.006}, 270, prof, now)
 	p.ReportPlanned(2, line(14.006, 14.002), 17)
 	path, _ := NewGroundPath(append(line(14.000, 14.002), line(14.002, 14.008)[1:]...), prof)
-	at, o, hold := p.oncoming(1, path, 0, OncomingLookMeters, 17, now)
+	at, o, hold := p.oncoming(1, path, 0, 17, now)
 	if math.IsInf(at, 1) || o != 2 || !hold {
 		t.Fatalf("waiting TVS1309 not oncoming for TVS770: at %v, other %d, hold %v", at, o, hold)
 	}
@@ -882,5 +882,65 @@ func TestOldWayIgnored(t *testing.T) {
 	p.Report(2, airport.LatLon{Lat: 50.045, Lon: 14.002}, 245, prof, now)
 	if at, who := p.giveWayTo(1, path, 0, GiveWayLookMeters, 9, now); !math.IsInf(at, 1) {
 		t.Errorf("gives way to #%d's old way at %.0f m", who, at)
+	}
+}
+
+// Two routes the reverse of each other along the whole of LKPR's F and H1,
+// far longer than OncomingLookMeters: the one not yet on the shared
+// stretch holds before it, the one on it goes on (live: CSA398 out of C28
+// and TVS681 in to C24 met in the middle of F, neither able to give way).
+func TestOncomingLongStretch(t *testing.T) {
+	g := lkprGraph(t)
+	now := time.Now()
+	prof := DefaultMotionProfile()
+	in, err := g.Route(54, 1987, airport.RouteOptions{Via: []airport.NodeID{176, 894}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := g.Route(884, 54, airport.RouteOptions{Via: []airport.NodeID{894, 176}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("in %s %.0f m, out %s %.0f m", in.Taxiways, in.Length, out.Taxiways, out.Length)
+	pathIn, _ := NewGroundPath(in.Points, prof)
+	pathOut, _ := NewGroundPath(out.Points, prof)
+	p := NewGroundPicture()
+	p.Report(1, in.Points[0], localBearing(in.Points[0], in.Points[1]), prof, now)
+	p.Report(2, out.Points[0], localBearing(out.Points[0], out.Points[1]), prof, now)
+	p.ReportIntent(1, in.Points)
+	p.ReportIntent(2, out.Points)
+	atIn, _, holdIn := p.oncoming(1, pathIn, 0, 17, now)
+	atOut, o, holdOut := p.oncoming(2, pathOut, 0, 17, now)
+	if holdIn || !holdOut || o != 1 {
+		t.Fatalf("in holds %v (at %.0f), out holds %v (at %.0f, for %d): want out only", holdIn, atIn, holdOut, atOut, o)
+	}
+	// Out holds short of where in turns off (894): within its first
+	// stretch of H1, not out on F.
+	to894 := 0.0
+	for i := 1; i < len(out.Nodes) && out.Nodes[i-1] != 894; i++ {
+		to894 += localDist(out.Points[i-1], out.Points[i])
+	}
+	if atOut > to894 {
+		t.Errorf("out's shared stretch begins %.0f m on, past 894 (%.0f m)", atOut, to894)
+	}
+}
+
+// OpposedStretch on the same two LKPR routes: they meet along F and H1
+// from where the arrival starts and from 894 for the departure, over most
+// of the arrival's way; a route is not opposed to itself.
+func TestOpposedStretch(t *testing.T) {
+	g := lkprGraph(t)
+	in, _ := g.Route(54, 1987, airport.RouteOptions{Via: []airport.NodeID{176, 894}})
+	out, _ := g.Route(884, 54, airport.RouteOptions{Via: []airport.NodeID{894, 176}})
+	fromOut, fromIn, length, along, ok := OpposedStretch(out.Points, in.Points, 2*DefaultHalfSpanMeters+HeadOnMarginMeters)
+	if !ok {
+		t.Fatal("no opposed stretch")
+	}
+	t.Logf("out from %.0f m, in from %.0f m, %.0f m long, %d points", fromOut, fromIn, length, len(along))
+	if fromIn > 20 || length < 1000 || fromOut > 450 {
+		t.Errorf("out from %.0f, in from %.0f, length %.0f", fromOut, fromIn, length)
+	}
+	if _, _, _, _, ok := OpposedStretch(in.Points, in.Points, 40); ok {
+		t.Error("a route opposed to itself")
 	}
 }

@@ -65,7 +65,7 @@ func BenchmarkGroundChecksFrame(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		p.blocking(1, path, 0, 200, DefaultHalfSpanMeters, now)
-		p.oncoming(1, path, 0, OncomingLookMeters, DefaultHalfSpanMeters, now)
+		p.oncoming(1, path, 0, DefaultHalfSpanMeters, now)
 	}
 }
 

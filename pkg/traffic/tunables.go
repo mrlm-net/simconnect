@@ -415,6 +415,9 @@ const (
 	trafficBodyStep      = 5.0
 	// TrafficCheckEvery is how often a taxiing aircraft looks ahead.
 	TrafficCheckEvery = 100 * time.Millisecond
+	// OncomingCheckEvery is how often it looks along both whole ways for
+	// one coming the other way (a new path at once).
+	OncomingCheckEvery = time.Second
 	// GiveWayLookMeters is how far ahead a taxiing aircraft reports where
 	// it will drive (up to its next stop) and checks for routes crossing
 	// or merging with its own; GiveWayMarginMeters is added to both
