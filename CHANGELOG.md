@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.115.0] - 2026-10-23
+
+### Added
+
+- Staffed approach (#1096): an arrival's first call to a staffed approach goes unanswered, and its STAR clearance waits for the player's action `clearance`, as delivery's does. The crew flies its flight plan meanwhile.
+- Handovers out of a staffed station (#1096): leaving a staffed station, the crew stays on the player's frequency. The view offers the action `handoff`, and the player's "contact Ruzyne Tower 134.56" transfers it. `World.Phrase(id, "handoff")` gives the wording. A station with `AutoHandoff` still hands off by itself.
+
+### Changed
+
+- Hosts staffing stations without `AutoHandoff` must now hand their aircraft over themselves; until v0.114 the AI did it. Set `AutoHandoff: true` to keep the old behaviour.
+
+### Fixed
+
+- The player's `clearance` was preceded on the radio by a stray "Airfrans 1288, clearance".
+
 ## [0.114.1] - 2026-10-23
 
 ### Fixed
