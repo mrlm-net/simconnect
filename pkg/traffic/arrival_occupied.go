@@ -33,16 +33,19 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 		c.mu.Unlock()
 		return nil
 	}
-	for _, z := range c.crossZones {
-		if z.to > c.mover.Pose().Distance {
-			c.mu.Unlock()
-			return nil // a crossing still ahead
-		}
-	}
 	g, prof, old, plan := c.req.Graph, c.profile(), c.plan.Route, c.plan
 	pose := c.mover.Pose()
 	v := pose.GroundSpeedKts * ktsToMS
 	ahead := math.Max(prof.WheelbaseMeters-prof.RefAheadMeters, v*v/(2*prof.Decel)+avoidTurnMeters)
+	// At or on a crossing: not now. One further on is planned afresh with
+	// the new route (live, LKPR: TVS681's taxi-in crossed 12/30, so it
+	// could not be sent round CSA398 coming the other way along F).
+	for _, z := range c.crossZones {
+		if pose.Distance+ahead >= z.from && pose.Distance < z.to {
+			c.mu.Unlock()
+			return nil
+		}
+	}
 	k := c.track.segmentAt(c.track.pos+ahead) + 1
 	opts, parking := c.req.Options, c.req.Parking
 	c.mu.Unlock()
@@ -54,8 +57,18 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 		return nil
 	}
 	r, err := g.RouteToParkingFrom(old.Nodes[k], old.Nodes[k-1], parking, opts)
-	if err != nil || r.Occupied || r.Tight || g.TurnsBack(r) || len(r.RunwayCrossings) > 0 || slices.Equal(r.Nodes, old.Nodes[k:]) {
+	if err != nil || r.Occupied || r.Tight || g.TurnsBack(r) || slices.Equal(r.Nodes, old.Nodes[k:]) {
 		return nil
+	}
+	// Not much longer, across no runway the old way did not cross.
+	rest, err := g.RouteFromNodes(old.Nodes[k:])
+	if err != nil || !shortDetour(r.Length, rest.Length) {
+		return nil
+	}
+	for _, x := range r.RunwayCrossings {
+		if !slices.Contains(rest.RunwayCrossings, x) {
+			return nil
+		}
 	}
 	full, err := g.RouteFromNodes(append(append([]airport.NodeID(nil), old.Nodes[:k]...), r.Nodes...))
 	if err != nil {
@@ -80,7 +93,7 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 		c.plan = &np
 		c.track = newRouteTracker(full)
 		c.track.pos = oldTrack.pos // the same route up to k
-		path, err := c.taxiPathFrom(nose, from)
+		path, zones, err := c.taxiPathFrom(nose, from)
 		if err != nil {
 			c.plan, c.track = oldPlan, oldTrack
 			return false
@@ -89,7 +102,7 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 		if c.state == ArrivalAwaitingTaxi {
 			c.mover.HoldAt(0) // standing until cleared (startTaxi)
 		}
-		c.crossZones, c.nextCross = nil, 0
+		c.crossZones, c.nextCross = zones, 0
 		c.note("taxi-in re-planned round an occupied taxiway", nil)
 		c.emit(nil, true)
 		return true
@@ -100,10 +113,25 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 // node at least this far beyond where the aircraft can stop.
 const avoidTurnMeters = 10.0
 
+// A re-planned taxi route may be at most avoidDetourShare longer than the
+// way it replaces and avoidDetourMeters more: longer, the aircraft keeps
+// its way and holds (live, LKPR: round CSA398 on F, TVS681 would have
+// gone D, L, G, J, H, 2.7 km for 1.4, across 06/24).
+const (
+	avoidDetourShare  = 0.5
+	avoidDetourMeters = 500.0
+)
+
+// shortDetour reports whether a new way of length meters is short enough
+// to replace one of old.
+func shortDetour(length, old float64) bool {
+	return length <= old*(1+avoidDetourShare) && length <= old+avoidDetourMeters
+}
+
 // taxiPathFrom is the taxi-in ground path from the nose gear along the
 // plan's route from point from on, onto the stand: takeover's path clear of
-// the runway.
-func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*GroundPath, error) {
+// the runway, and the runway crossings along it.
+func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*GroundPath, []crossZone, error) {
 	prof := c.profile()
 	route := c.plan.Route.Points
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
@@ -117,8 +145,13 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 	}
 	pts := []airport.LatLon{nose}
 	apron := apronSpans{g: c.req.Graph}
+	var holds []holdOnPath
 	for i := from; i <= last; i++ {
-		apron.add(c.plan.Route.Nodes[i], pathLen(pts)+localDist(pts[len(pts)-1], route[i]))
+		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
+		apron.add(c.plan.Route.Nodes[i], d)
+		if hs := c.req.Graph.Nodes[c.plan.Route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.plan.Runway.Index {
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
+		}
 		pts = append(pts, route[i])
 	}
 	if faceOut {
@@ -128,10 +161,10 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 	}
 	path, err := newGroundPath(pts, prof, firmZone{})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
 	apron.limit(path, c.req.Airport, prof.Decel)
 	path.LimitEnd(StandSlowMeters, StandTaxiSpeedKts)
-	return path, nil
+	return path, crossingZones(c.req.Graph, route, holds), nil
 }

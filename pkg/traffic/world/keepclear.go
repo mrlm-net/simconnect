@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -48,6 +49,7 @@ func (cc *controlCenter) keepClear() {
 			fmt.Fprintf(&key, "%s/%d;", it.Tail, it.dep.State())
 		}
 	}
+	cc.keepClearOfOncoming(items)
 	if key.String() == cc.keepClearKey {
 		return
 	}
@@ -76,33 +78,204 @@ func (cc *controlCenter) keepClear() {
 		}
 		// The route search off the connection's goroutine; the new route
 		// put in place on it (cc.do).
-		go func(it *controlled, mine []airport.Occupied) {
-			apply := it.planAvoidOccupied(mine)
-			if apply == nil {
-				return
-			}
-			cc.do(func() error {
-				it.mu.Lock()
-				before := it.rerouteSaid().Text
-				it.mu.Unlock()
-				if !apply() {
-					return nil
-				}
-				it.mu.Lock()
-				it.setRoute()
-				tx := it.rerouteSaid()
-				it.view.Instruction, it.view.InstructionAt = "taxi round traffic", nil
-				it.mu.Unlock()
-				tlog.printf("%-6s ground: new route round traffic in the way: %s", it.Tail, tx.Text)
-				// Said only when the taxiways changed: the same "via J, H, A"
-				// again is no new clearance (live, SWR1216 heard it twice in 19 s).
-				if tx.Text != "" && tx.Text != before {
-					it.say(tx)
-				}
-				return nil
-			})
-		}(it, mine)
+		go cc.reroute(it, mine, "traffic in the way", nil)
 	}
+}
+
+// reroute searches it a route round occ off the connection's goroutine and
+// puts it in place on it, said by ground when the taxiways changed; done,
+// when set, is told whether it was.
+func (cc *controlCenter) reroute(it *controlled, occ []airport.Occupied, why string, done func(bool)) {
+	apply := it.planAvoidOccupied(occ)
+	if apply == nil {
+		if done != nil {
+			done(false)
+		}
+		return
+	}
+	cc.do(func() error {
+		it.mu.Lock()
+		before := it.rerouteSaid().Text
+		it.mu.Unlock()
+		ok := apply()
+		if done != nil {
+			done(ok)
+		}
+		if !ok {
+			return nil
+		}
+		it.mu.Lock()
+		it.setRoute()
+		tx := it.rerouteSaid()
+		it.view.Instruction, it.view.InstructionAt = "taxi round traffic", nil
+		it.mu.Unlock()
+		tlog.printf("%-6s ground: new route round %s: %s", it.Tail, why, tx.Text)
+		// Said only when the taxiways changed: the same "via J, H, A"
+		// again is no new clearance (live, SWR1216 heard it twice in 19 s).
+		if tx.Text != "" && tx.Text != before {
+			it.say(tx)
+		}
+		return nil
+	})
+}
+
+// Two of ours on routes along the same taxiway the opposite way: ground
+// gives one another route round the shared stretch when there is one —
+// first the one further from it, then the other (live, LKPR: TVS681 in
+// along F to C24 met CSA398 out along F from C28; TVS681 had D). Without
+// one, both keep their routes and the one not yet on the stretch holds
+// short of it (traffic's head-on check). Generic: any airport, any two.
+const (
+	// opposedMinMeters: a shared stretch shorter than this is left to the
+	// hold (a junction crossed the other way, a few metres of a turn).
+	opposedMinMeters = 150.0
+	// opposedRetry: a pair tried is looked at again after this.
+	opposedRetry = 30 * time.Second
+	// opposedEndMeters: the part of a shared stretch this near the end of
+	// a route is not kept off in a re-plan (awayFrom).
+	opposedEndMeters = 250.0
+)
+
+// keepClearOfOncoming is that look over ours on the ground (keepClear).
+func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
+	type onGround struct {
+		it      *controlled
+		way     []airport.LatLon
+		half    float64
+		movable bool
+	}
+	var ours []onGround
+	for _, it := range items {
+		way, movable, ok := it.groundWay()
+		if !ok {
+			continue
+		}
+		it.mu.Lock()
+		half, manual := traffic.MotionProfileFor(it.view.Model).SpanMeters/2, it.view.Manual
+		it.mu.Unlock()
+		ours = append(ours, onGround{it, way, half, movable && !manual})
+	}
+	now := cc.clock.Now()
+	if cc.opposedTried == nil {
+		cc.opposedTried = map[string]time.Time{}
+	}
+	for k, at := range cc.opposedTried {
+		if now.Sub(at) > opposedRetry {
+			delete(cc.opposedTried, k)
+		}
+	}
+	for i, a := range ours {
+		for _, b := range ours[i+1:] {
+			if a.it.ICAO != b.it.ICAO || (!a.movable && !b.movable) {
+				continue
+			}
+			key := min(a.it.Tail, b.it.Tail) + "|" + max(a.it.Tail, b.it.Tail)
+			if _, tried := cc.opposedTried[key]; tried {
+				continue
+			}
+			reach := a.half + b.half + traffic.HeadOnMarginMeters
+			fromA, fromB, length, alongB, ok := traffic.OpposedStretch(a.way, b.way, reach)
+			if !ok || length < opposedMinMeters {
+				continue
+			}
+			_, _, _, alongA, _ := traffic.OpposedStretch(b.way, a.way, reach)
+			cc.opposedTried[key] = now
+			// The one further from the stretch first: it would hold.
+			first, second := a, b
+			// Each keeps off the other's way except near its own end: the
+			// last stretch to its stand or runway has no way round (LKPR:
+			// C24 only by H1 at 894, where CSA398 came out of C28), held
+			// for there instead.
+			firstOcc := airport.Occupied{Points: thinned(awayFrom(alongB, a.way[len(a.way)-1])), HalfSpan: b.half}
+			secondOcc := airport.Occupied{Points: thinned(awayFrom(alongA, b.way[len(b.way)-1])), HalfSpan: a.half}
+			if fromB > fromA {
+				first, second, firstOcc, secondOcc = b, a, secondOcc, firstOcc
+			}
+			cc.log.printf("%-6s ground: %s comes the other way along %.0f m of its route", first.it.Tail, second.it.Tail, length)
+			why := "traffic coming the other way"
+			try := func(o onGround, occ airport.Occupied, next func(bool)) {
+				if !o.movable {
+					next(false)
+					return
+				}
+				cc.reroute(o.it, []airport.Occupied{occ}, why, next)
+			}
+			go try(first, firstOcc, func(done bool) {
+				if !done {
+					go try(second, secondOcc, func(bool) {})
+				}
+			})
+		}
+	}
+}
+
+// awayFrom is pts without those within opposedEndMeters of end.
+func awayFrom(pts []airport.LatLon, end airport.LatLon) []airport.LatLon {
+	var out []airport.LatLon
+	for _, p := range pts {
+		if calc.HaversineMeters(p.Lat, p.Lon, end.Lat, end.Lon) > opposedEndMeters {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// thinned is every fourth point of pts (and the last): a route search
+// checks each edge against them all.
+func thinned(pts []airport.LatLon) []airport.LatLon {
+	var out []airport.LatLon
+	for i := 0; i < len(pts); i += 4 {
+		out = append(out, pts[i])
+	}
+	if len(pts) > 0 && (len(pts)-1)%4 != 0 {
+		out = append(out, pts[len(pts)-1])
+	}
+	return out
+}
+
+// groundWay is its taxi route ahead from where it is, and whether ground
+// may re-plan it now (an arrival waiting for or on its taxi-in, a
+// departure taxiing); ok false when it is not on the ground with a route.
+func (it *controlled) groundWay() (way []airport.LatLon, movable, ok bool) {
+	var r *airport.Route
+	switch {
+	case it.dep != nil:
+		switch it.dep.State() {
+		case traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
+		case traffic.TaxiTaxiing:
+			movable = true
+		default:
+			return nil, false, false
+		}
+		r = it.dep.Route()
+	case it.arr != nil:
+		switch it.arr.State() {
+		case traffic.ArrivalVacating:
+		case traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing:
+			movable = true
+		default:
+			return nil, false, false
+		}
+		if p := it.arr.Plan(); p != nil {
+			r = p.Route
+		}
+	}
+	if r == nil || len(r.Points) < 2 {
+		return nil, false, false
+	}
+	it.mu.Lock()
+	pos := it.view.Position
+	it.mu.Unlock()
+	near, best := 0, math.Inf(1)
+	for i, p := range r.Points {
+		if d := (p.Lat-pos.Lat)*(p.Lat-pos.Lat) + (p.Lon-pos.Lon)*(p.Lon-pos.Lon); d < best {
+			near, best = i, d
+		}
+	}
+	if near >= len(r.Points)-1 {
+		return nil, false, false
+	}
+	return r.Points[near:], movable, true
 }
 
 // occupiedFor is the places other departures at its airport take now.

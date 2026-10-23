@@ -64,6 +64,16 @@ type groundDrive struct {
 	// facing: blockedBy is oncoming, held clear of at a junction (#775).
 	facing    bool
 	trafficAt time.Time // last look ahead (every TrafficCheckEvery)
+	// The head-on decision (oncoming) for onPath, made at onAt: where it
+	// holds (onS along the path), for whom, and whether; way: wayPath
+	// sampled every oncomingStep, its intent from where it is.
+	onPath  *GroundPath
+	onAt    time.Time
+	onS     float64
+	onOther uint32
+	onHold  bool
+	wayPath *GroundPath
+	way     []airport.LatLon
 
 	// A stop of its own on the path (a de-icing pad, #323), apart from the
 	// clearance limit: no taxi clearance takes it away.
@@ -432,7 +442,13 @@ func (d *groundDrive) followAhead(now time.Time) {
 	// One coming the other way along the same taxiway further on (#775):
 	// the one further from the shared stretch holds at its last junction
 	// before it, clear for the other to pass; the nearer goes on.
-	if at, o, hold := d.picture.oncoming(d.object, path, s0, OncomingLookMeters, half, now); hold && !math.IsInf(at, 1) {
+	// Decided on both whole ways every OncomingCheckEvery (a new path at
+	// once); held at once it is within OncomingLookMeters.
+	if path != d.onPath || now.Sub(d.onAt) >= OncomingCheckEvery {
+		d.onPath, d.onAt = path, now
+		d.onS, d.onOther, d.onHold = d.picture.oncoming(d.object, path, s0, half, now)
+	}
+	if at, o, hold := d.onS, d.onOther, d.onHold; hold && !math.IsInf(at, 1) && at-s0 <= OncomingLookMeters {
 		hs := d.junctionStop(path, s0, at-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters)
 		if hs < stop {
 			stop = hs
@@ -487,12 +503,16 @@ func (d *groundDrive) followAhead(now time.Time) {
 		ahead = append(ahead, path.PointAt(s))
 	}
 	d.picture.ReportPath(d.object, ahead, half)
-	// Where it means to go, past any stop: oncoming traffic holds clear.
-	var intent []airport.LatLon
-	for s := s0; s <= math.Min(path.Length(), s0+OncomingLookMeters); s += trafficBodyStep {
-		intent = append(intent, path.PointAt(s))
+	// Where it means to go, past any stop, to the end of its way: oncoming
+	// traffic holds clear. Sampled once per path, reported from here on.
+	if d.wayPath != path {
+		d.wayPath, d.way = path, d.way[:0:0]
+		for s := 0.0; s < path.Length(); s += oncomingStep {
+			d.way = append(d.way, path.PointAt(s))
+		}
+		d.way = append(d.way, path.PointAt(path.Length()))
 	}
-	d.picture.ReportIntent(d.object, intent)
+	d.picture.ReportIntent(d.object, d.way[min(int(s0/oncomingStep), len(d.way)-1):])
 }
 
 // oncomingDeg is how far from the path's heading an aircraft ahead faces to

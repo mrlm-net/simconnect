@@ -518,15 +518,17 @@ func (p *GroundPicture) ReportBehind(id, by uint32) {
 	}
 }
 
-// oncoming finds, along path from from within look, the first point where
+// oncoming finds, along the whole of path from from, the first point where
 // another aircraft means to taxi the other way along the same pavement
 // (its intent within both half-spans and HeadOnMarginMeters, facing at
 // least oncomingDeg away) — where, on one taxiway, the two would meet
 // nose to nose (#775: LKPR, live, WZZ1023 and TVS1771 on F). hold: this
 // aircraft is the one to hold, being further from that shared stretch
 // than the other is (a tie: the higher ID holds); one already in it
-// (within headOnCommitMeters) never holds. +Inf when none.
-func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half float64, now time.Time) (at float64, other uint32, hold bool) {
+// (within headOnCommitMeters) never holds. +Inf when none. Both whole
+// ways, not the next OncomingLookMeters: a stretch longer than that is
+// decided before either is in it.
+func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64, now time.Time) (at float64, other uint32, hold bool) {
 	p.mu.Lock()
 	type them struct {
 		id     uint32
@@ -554,11 +556,12 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 			// TVS1309 waiting there, though told to give way to it).
 			way = e.ahead
 		}
-		// Its next OncomingLookMeters only, as its intent reports: a
-		// waiting aircraft's planned way is its whole route, and checking
-		// every point of it each frame held every aircraft back (live,
-		// LKPR: frames of 130 ms).
-		way = wayAhead(way, OncomingLookMeters)
+		// Its whole way: a shared stretch longer than OncomingLookMeters
+		// is seen before either is in it (live, LKPR: TVS681 and CSA398
+		// met in the middle of F, neither able to give way). Looked at
+		// every OncomingCheckEvery, on a grid (the cost of every point of
+		// every way each frame once held every aircraft back: frames of
+		// 130 ms).
 		if len(way) > 1 {
 			h := e.half
 			if h <= 0 {
@@ -569,102 +572,98 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, look, half f
 	}
 	p.mu.Unlock()
 	at = math.Inf(1)
-	end := math.Min(path.Length(), from+look)
-	heading := func(s float64) float64 {
-		return localBearing(path.PointAt(math.Max(0, s-1)), path.PointAt(math.Min(path.Length(), s+1)))
-	}
+	// This one's whole way ahead, sampled once for all the others in flat
+	// metres around where it is, hashed into cells of oncomingCell metres.
 	start := path.PointAt(from)
-	// This one's way ahead sampled once for all the others (each PointAt
-	// walks the path).
-	// In flat metres around start: one cosine per frame, not several per
-	// point pair (frames of 130 ms, live at LKPR).
 	f := newFlat(start)
 	sc := groundPool.Get().(*groundScratch)
 	defer groundPool.Put(sc)
 	mineAt := sc.mine[:0]
 	defer func() { sc.mine = mineAt }()
+	end := path.Length()
 	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
-	for s := from; s <= end; s += vehicleGateStep {
-		x, y := f.xy(path.PointAt(s))
-		mineAt = append(mineAt, groundSample{s, x, y, heading(s)})
-		minX, maxX, minY, maxY = math.Min(minX, x), math.Max(maxX, x), math.Min(minY, y), math.Max(maxY, y)
+	for s := from; s <= end; s += oncomingStep {
+		a, b := s, math.Min(s+oncomingStep, end) // its heading: on to the next, the last from the one before
+		if b-a < 1 {
+			a = math.Max(0, s-oncomingStep)
+		}
+		ax, ay := f.xy(path.PointAt(a))
+		bx, by := f.xy(path.PointAt(b))
+		sx, sy := f.xy(path.PointAt(s))
+		mineAt = append(mineAt, groundSample{s, sx, sy, math.Mod(math.Atan2(bx-ax, by-ay)*180/math.Pi+360, 360)})
+		minX, maxX, minY, maxY = math.Min(minX, sx), math.Max(maxX, sx), math.Min(minY, sy), math.Max(maxY, sy)
+	}
+	if len(mineAt) == 0 {
+		return at, other, hold
+	}
+	// A dense grid over its box: cell c holds mineAt[order[first[c]:first[c+1]]].
+	cx0, cy0 := math.Floor(minX/oncomingCell), math.Floor(minY/oncomingCell)
+	nx, ny := int(math.Floor(maxX/oncomingCell)-cx0)+1, int(math.Floor(maxY/oncomingCell)-cy0)+1
+	cellOf := func(x, y float64) (int, int) {
+		return int(math.Floor(x/oncomingCell) - cx0), int(math.Floor(y/oncomingCell) - cy0)
+	}
+	first := grow(sc.first, nx*ny+1)
+	sc.first = first
+	clear(first)
+	for _, m := range mineAt {
+		i, j := cellOf(m.x, m.y)
+		first[i*ny+j+1]++
+	}
+	for c := 1; c < len(first); c++ {
+		first[c] += first[c-1]
+	}
+	order := grow(sc.order, len(mineAt))
+	sc.order = order
+	fill := grow(sc.fill, nx*ny)
+	sc.fill = fill
+	copy(fill, first[:nx*ny])
+	for k, m := range mineAt {
+		i, j := cellOf(m.x, m.y)
+		order[fill[i*ny+j]] = int32(k)
+		fill[i*ny+j]++
 	}
 	for _, o := range others {
 		reach := half + o.half + HeadOnMarginMeters
 		reach2 := reach * reach
-		ox, oy := grow(sc.ox, len(o.intent)), grow(sc.oy, len(o.intent))
-		sc.ox, sc.oy = ox, oy
-		for i, q := range o.intent {
-			ox[i], oy[i] = f.xy(q)
-		}
-		// None of its way within reach of this one's ahead (no point of
-		// which is further than end-from from start): not looked at
-		// closer, the most of the frame's time with many taxiing (#370).
-		near := false
-		for i := range o.intent {
-			if r := end - from + reach; ox[i]*ox[i]+oy[i]*oy[i] <= r*r {
-				near = true
-				break
-			}
-		}
-		if !near {
-			continue
-		}
-		cum := grow(sc.cum, len(o.intent))
-		sc.cum = cum
-		cum[0] = 0
-		for i := 1; i < len(o.intent); i++ {
-			cum[i] = cum[i-1] + math.Hypot(ox[i]-ox[i-1], oy[i]-oy[i-1])
-		}
-		segHdg := grow(sc.hdg, len(o.intent))
-		sc.hdg = segHdg
-		for i := 0; i+1 < len(o.intent); i++ {
-			segHdg[i] = math.Mod(math.Atan2(ox[i+1]-ox[i], oy[i+1]-oy[i])*180/math.Pi+360, 360)
-		}
-		meets := func(m groundSample, i int) bool {
-			dx, dy := m.x-ox[i], m.y-oy[i]
-			return dx*dx+dy*dy <= reach2 &&
-				math.Abs(headingDiff(m.hdg, segHdg[i])) >= oncomingDeg
-		}
-		// Only its points inside this one's way ahead's box (grown by
-		// reach) can meet it: the rest skipped.
-		cand := sc.cand[:0]
-		for i := 0; i+1 < len(o.intent); i++ {
-			if ox[i] >= minX-reach && ox[i] <= maxX+reach && oy[i] >= minY-reach && oy[i] <= maxY+reach {
-				cand = append(cand, i)
-			}
-		}
-		sc.cand = cand
-		if len(cand) == 0 {
-			continue
-		}
+		n := int(math.Ceil(reach / oncomingCell))
 		// Where each first comes onto the shared stretch, along its own way:
 		// the same pair of numbers whichever of the two looks.
 		mine, theirs := math.Inf(1), math.Inf(1)
-		for _, m := range mineAt {
-			for _, i := range cand {
-				if meets(m, i) {
-					mine = m.s - from
-					break
+		cum := 0.0
+		for i := 0; i+1 < len(o.intent); i++ {
+			ax, ay := f.xy(o.intent[i])
+			bx, by := f.xy(o.intent[i+1])
+			l := math.Hypot(bx-ax, by-ay)
+			// A segment off this one's box (grown by reach): not sampled.
+			if l < 1e-6 || math.Max(ax, bx) < minX-reach || math.Min(ax, bx) > maxX+reach ||
+				math.Max(ay, by) < minY-reach || math.Min(ay, by) > maxY+reach {
+				cum += l
+				continue
+			}
+			hdg := math.Mod(math.Atan2(bx-ax, by-ay)*180/math.Pi+360, 360)
+			for t := 0.0; t < l; t += oncomingStep {
+				x, y := ax+(bx-ax)*t/l, ay+(by-ay)*t/l
+				ci, cj := cellOf(x, y)
+				for di := max(ci-n, 0); di <= min(ci+n, nx-1); di++ {
+					for dj := max(cj-n, 0); dj <= min(cj+n, ny-1); dj++ {
+						c := di*ny + dj
+						for _, k := range order[first[c]:first[c+1]] {
+							m := mineAt[k]
+							ex, ey := m.x-x, m.y-y
+							if ex*ex+ey*ey <= reach2 && math.Abs(headingDiff(m.hdg, hdg)) >= oncomingDeg {
+								if math.IsInf(theirs, 1) {
+									theirs = cum + t
+								}
+								mine = math.Min(mine, m.s-from)
+							}
+						}
+					}
 				}
 			}
-			if !math.IsInf(mine, 1) {
-				break
-			}
+			cum += l
 		}
 		if math.IsInf(mine, 1) {
 			continue
-		}
-		for _, i := range cand {
-			if !math.IsInf(theirs, 1) {
-				break
-			}
-			for _, m := range mineAt {
-				if meets(m, i) {
-					theirs = cum[i]
-					break
-				}
-			}
 		}
 		me := mine > theirs || mine == theirs && id > o.id
 		if mine <= headOnCommitMeters && theirs > headOnCommitMeters {
@@ -748,6 +747,11 @@ func newFlat(o airport.LatLon) flat {
 	return flat{o, metersPerDegree * math.Cos(o.Lat*math.Pi/180)}
 }
 
+// at is the point x metres east, y north of the origin (xy's inverse).
+func (f flat) at(x, y float64) airport.LatLon {
+	return airport.LatLon{Lat: f.o.Lat + y/metersPerDegree, Lon: f.o.Lon + x/f.kx}
+}
+
 func (f flat) xy(p airport.LatLon) (x, y float64) {
 	return (p.Lon - f.o.Lon) * f.kx, (p.Lat - f.o.Lat) * metersPerDegree
 }
@@ -761,7 +765,16 @@ type groundScratch struct {
 	mine             []groundSample
 	near, cand       []int
 	ox, oy, cum, hdg []float64
+	// first, order, fill: mine by grid cell (oncoming).
+	first, order, fill []int32
 }
+
+// The head-on check's grid (oncoming): both ways sampled every
+// oncomingStep metres, this one's sorted into cells of oncomingCell metres.
+const (
+	oncomingStep = 5.0
+	oncomingCell = 50.0
+)
 
 type groundSeg struct{ ax, ay, ux, uy, l float64 }
 

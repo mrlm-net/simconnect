@@ -418,6 +418,9 @@ type controlCenter struct {
 	// keepClearAt, keepClearKey: the last keepClear and the places taken then.
 	keepClearAt  time.Time
 	keepClearKey string
+	// opposedTried: pairs on routes the opposite way along one taxiway
+	// looked at (keepClearOfOncoming), by "tail|tail", when.
+	opposedTried map[string]time.Time
 	models       map[string]bool                    // aircraft titles the simulator offers
 	fuelTitles   fuelTitles                         // fuel vehicles the simulator offers (#582)
 	groundTitles []string                           // every ground vehicle title the simulator offers, sorted

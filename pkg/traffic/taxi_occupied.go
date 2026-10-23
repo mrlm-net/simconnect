@@ -79,7 +79,7 @@ func (c *TaxiController) PlanAvoidOccupied(occ []airport.Occupied) func() bool {
 	}
 	opts.Via, opts.Taxiways = nil, nil
 	full, err := routeHere(g, prof, pose, runway, entry, opts)
-	if err != nil || full.Occupied || full.Tight || g.TurnsBack(full) || !slices.Equal(full.RunwayCrossings, rest.RunwayCrossings) ||
+	if err != nil || full.Occupied || full.Tight || g.TurnsBack(full) || !slices.Equal(full.RunwayCrossings, rest.RunwayCrossings) || !shortDetour(full.Length, rest.Length) ||
 		slices.Equal(full.Nodes[1:], rest.Nodes[min(1, len(rest.Nodes)):]) {
 		return nil // none that keeps clear, or the same way
 	}
