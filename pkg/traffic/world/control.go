@@ -3442,7 +3442,11 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 				said.HoldingShortOf = prev.HoldingShortOf // the runway just crossed
 			}
 			// (The crew's requests are said when made: onRequest, #462.)
-			it.say(it.phraseView(said, r, action, -1))
+			// An empty one is a phrase that does not exist for this action now (the
+			// departure clearance after it has been given); saying it would invent one.
+			if t := it.phraseView(said, r, action, -1); t.Intent != "" {
+				it.say(t)
+			}
 		}
 	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
@@ -3690,6 +3694,12 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			station, freq := it.station(to)
 			return traffic.Handoff(call, from, to, station, freq)
 		}
+		// GIVEN ALREADY: there is no clearance to say. Falling through reached the
+		// catch-all at the end of this switch, which builds one from the action's
+		// NAME — so a moment after the real clearance the log carried a second line,
+		// "Pollot 825, clearance", attributed to Ground, which is neither the words
+		// nor the position. An empty transmission; `logChanges` says nothing for it.
+		return traffic.Transmission{}
 	case "pushback":
 		if it.dep != nil {
 			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacingSaid())
