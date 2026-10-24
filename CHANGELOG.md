@@ -7,7 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [0.117.4] - 2026-10-24
+## [0.118.0] - 2026-10-24
+
+### Added
+
+- The schedule flies the airlines an airport's stands name, which the built-in list lacks (#1172): Munich's stands name 105 carriers, Lufthansa Cityline on 86 of them, against 18 in the list. A home carrier is weighted to dominate its base, and a stand's fleet is filtered by the span the stand takes.
+- No stub radio line after a clearance: when no clearance was due, a call sign with no words was logged.
 
 ### Fixed
 
