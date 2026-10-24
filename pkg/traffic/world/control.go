@@ -2192,7 +2192,17 @@ func registerControl(mux *http.ServeMux, st *state) {
 			}
 			node = airport.NodeID(n)
 		}
-		said, rb, ok := cc.radio.Worded(it.ICAO, it.phrase(r.PathValue("action"), node))
+		// NOTHING TO SAY STAYS NOTHING. Wording an empty transmission renders its
+		// empty callsign and empty intent into the phraseology's own punctuation —
+		// `", "` — so the page swapped a sentence nobody would say for a fragment
+		// nobody would say. An action with no phrase right now answers empty, and
+		// the page shows no line at all.
+		t := it.phrase(r.PathValue("action"), node)
+		if t.Intent == "" {
+			writeJSON(w, ClearancePhrase{})
+			return
+		}
+		said, rb, ok := cc.radio.Worded(it.ICAO, t)
 		out := ClearancePhrase{Controller: said}
 		if ok {
 			out.Readback = &rb
@@ -3681,6 +3691,13 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		if arr != nil {
 			return *arr
 		}
+		// GIVEN ALREADY: there is no clearance to say, so say nothing. Falling
+		// through reached the catch-all at the end of this switch, which builds a
+		// transmission out of the action's NAME — "UAE168, clearance", attributed to
+		// Ground, which is neither the words nor the position. `logChanges` skips an
+		// empty intent, and `/phrase` answers with an empty controller transmission
+		// rather than a sentence nobody would say.
+		return traffic.Transmission{}
 	case "approach":
 		if it.arr != nil {
 			qnh, _ := it.cc.qnh()
@@ -3694,11 +3711,8 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			station, freq := it.station(to)
 			return traffic.Handoff(call, from, to, station, freq)
 		}
-		// GIVEN ALREADY: there is no clearance to say. Falling through reached the
-		// catch-all at the end of this switch, which builds one from the action's
-		// NAME — so a moment after the real clearance the log carried a second line,
-		// "Pollot 825, clearance", attributed to Ground, which is neither the words
-		// nor the position. An empty transmission; `logChanges` says nothing for it.
+		// NOBODY TO HAND IT TO: no transmission, for the same reason as the
+		// clearance above — the catch-all would otherwise say "UAE168, handoff".
 		return traffic.Transmission{}
 	case "pushback":
 		if it.dep != nil {
