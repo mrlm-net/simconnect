@@ -149,8 +149,9 @@ type ManagerOptions struct {
 	// arrival not by STA-ArrivalLead+ArrivalLate (default 10 min), is
 	// cancelled: too late.
 	DepartureLate, ArrivalLate time.Duration
-	// MaxAircraft in the simulator at once (default 24), MaxPerAirport at
-	// or around one airport (default 16).
+	// MaxAircraft in the simulator at once (default 24), overflights not
+	// counted (MaxOverflights), MaxPerAirport at or around one airport
+	// (default 16).
 	MaxAircraft, MaxPerAirport int
 	// Spacing between spawns at one airport: arrivals (default 3 min, they
 	// share the STAR entries) and departures (default 1 min).
@@ -178,7 +179,8 @@ type ManagerOptions struct {
 	EnrouteLead time.Duration
 	// Overflights gives the flights crossing the area in a time window
 	// (e.g. traffic.Overflights); they appear when they enter it (Flight.Enter)
-	// and leave with it. MaxOverflights at once (default 10).
+	// and leave with it. MaxOverflights at once (default 20), on top of
+	// MaxAircraft: they do not take the airports' room.
 	Overflights    func(from, to time.Time) []Flight
 	MaxOverflights int
 	// RunwayQueue is how many departures may wait at an airport's runway
@@ -238,7 +240,7 @@ func (o *ManagerOptions) defaults() {
 		o.MaxAttempts = 3
 	}
 	if o.MaxOverflights == 0 {
-		o.MaxOverflights = 10
+		o.MaxOverflights = 20
 	}
 	if o.Checks == nil {
 		o.Checks = DefaultChecks()
@@ -623,7 +625,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 	total, at := 0, map[string]int{}
 	var ready []*ManagedFlight
 	for _, f := range m.flights {
-		if f.Status.active() {
+		if f.Status.active() && !f.Overflight() {
 			total++
 			if f.Status != FlightDeparted {
 				at[f.Airport]++
@@ -658,11 +660,10 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			}
 		}
 		if f.Overflight() {
-			if overflying >= o.MaxOverflights || total >= o.MaxAircraft {
+			if overflying >= o.MaxOverflights {
 				continue
 			}
 			overflying++
-			total++
 			f.Attempts++
 			_, f.Stage = m.start(f, now) // "enroute"; a real one "observed"
 			m.set(f, FlightSpawning, now)
@@ -906,6 +907,15 @@ func (m *TrafficManager) SetLimits(maxAircraft, maxPerAirport int) {
 	}
 	if maxPerAirport > 0 {
 		m.opts.MaxPerAirport = maxPerAirport
+	}
+}
+
+// SetMaxOverflights changes MaxOverflights (0 keeps it).
+func (m *TrafficManager) SetMaxOverflights(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if n > 0 {
+		m.opts.MaxOverflights = n
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -776,6 +777,67 @@ func (g *AirwayGraph) joinFix(p, toward airport.LatLon) (Fix, bool) {
 	return g.Fixes[best], true
 }
 
+// edgeMinGainNM: how much closer to the far airport an edge fix must be
+// than the near end, for the airways to it to be worth flying.
+const edgeMinGainNM = 40.0
+
+// edgeTries: the fixes nearest the far airport edgeFix tries for a route.
+const edgeTries = 12
+
+// edgeFix is where the airways known around near (an airway fix, the SID's
+// last or the STAR's first) end toward far, an airport beyond them: of the
+// airway fixes at least edgeMinGainNM closer to far than near is, the one
+// nearest far that the airways join to near within EnrouteMaxStretch (out:
+// near → fix, else fix → near; a stub at the crawl's edge is passed by). A
+// flight to or from a distant airport flies the airways that far and goes
+// direct only beyond (live, LKPR: every departure to LFPG, LEMD and LIRF
+// flew one line direct after the SID).
+func (g *AirwayGraph) edgeFix(near FixKey, far airport.LatLon, out bool) (Fix, bool) {
+	n, ok := g.Fix(near)
+	if !ok {
+		return Fix{}, false
+	}
+	limit := dist(n.Position, far) - edgeMinGainNM
+	var cands []Fix
+	for _, f := range g.Fixes {
+		if len(g.adj[f.Key()]) > 0 && dist(f.Position, far) < limit {
+			cands = append(cands, f)
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return dist(cands[i].Position, far) < dist(cands[j].Position, far) })
+	for _, f := range cands[:min(len(cands), edgeTries)] {
+		from, to := near, f.Key()
+		if !out {
+			from, to = to, from
+		}
+		steps, err := g.Route(from, to)
+		if err == nil && len(steps) > 1 && RouteDistanceNM(steps) <= EnrouteMaxStretch*dist(n.Position, f.Position) {
+			return f, true
+		}
+	}
+	return Fix{}, false
+}
+
+// crossingEntry is where a flight between two airports beyond the airways
+// (an overflight) joins them: of the airway fixes nearest from that are
+// closer to to than from is, the first with an edgeFix toward to.
+func (g *AirwayGraph) crossingEntry(from, to airport.LatLon) (Fix, bool) {
+	limit := dist(from, to) - edgeMinGainNM
+	var cands []Fix
+	for _, f := range g.Fixes {
+		if len(g.adj[f.Key()]) > 0 && dist(f.Position, to) < limit {
+			cands = append(cands, f)
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return dist(cands[i].Position, from) < dist(cands[j].Position, from) })
+	for _, f := range cands[:min(len(cands), edgeTries)] {
+		if _, ok := g.edgeFix(f.Key(), to, true); ok {
+			return f, true
+		}
+	}
+	return Fix{}, false
+}
+
 // enroute returns the waypoints between from (the SID's last point) and to
 // (the arrival's first), both excluded, and the airway to is reached by.
 func enroute(g *AirwayGraph, from, to Waypoint) ([]Waypoint, string) {
@@ -784,16 +846,27 @@ func enroute(g *AirwayGraph, from, to Waypoint) ([]Waypoint, string) {
 	}
 	var mid []Waypoint
 	fk, fok := g.keyNear(from)
+	tk, tok := g.keyNear(to)
 	if !fok {
-		if f, ok := g.joinFix(from.Position, to.Position); ok {
+		f, ok := g.joinFix(from.Position, to.Position)
+		if !ok && tok {
+			f, ok = g.edgeFix(tk, from.Position, false)
+		}
+		if !ok && !tok {
+			f, ok = g.crossingEntry(from.Position, to.Position)
+		}
+		if ok {
 			fk, fok = f.Key(), true
 			mid = append(mid, fixWaypoint(f, Direct))
 		}
 	}
-	tk, tok := g.keyNear(to)
 	var exit *Waypoint // where the airways are left for an airport without procedures
 	if !tok {
-		if f, ok := g.joinFix(to.Position, from.Position); ok {
+		f, ok := g.joinFix(to.Position, from.Position)
+		if !ok && fok {
+			f, ok = g.edgeFix(fk, to.Position, true)
+		}
+		if ok {
 			w := fixWaypoint(f, "")
 			exit, tk = &w, f.Key()
 		}

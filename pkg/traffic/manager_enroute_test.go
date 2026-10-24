@@ -166,3 +166,39 @@ func TestOverflightAirlinesServeBothEnds(t *testing.T) {
 		}
 	}
 }
+
+// TestManagerOverflightsOwnLimit: overflights stop at MaxOverflights and
+// do not take the airports' room (MaxAircraft): an arrival still comes
+// with the area full of them.
+func TestManagerOverflightsOwnLimit(t *testing.T) {
+	sp := &fakeSpawner{}
+	var over []Flight
+	for _, cs := range []string{"BAW1", "BAW2", "BAW3"} {
+		over = append(over, Flight{Callsign: cs, Airline: "BAW", Type: "A320", Origin: "EGLL", Destination: "LHBP",
+			STD: t0, STA: t0.Add(2 * time.Hour), Enter: t0.Add(50 * time.Minute), Exit: t0.Add(90 * time.Minute)})
+	}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, Checks: []SituationCheck{}, MaxAircraft: 1, MaxOverflights: 2,
+		Overflights: func(from, to time.Time) []Flight {
+			if !over[0].Enter.Before(from) && over[0].Enter.Before(to) {
+				return over
+			}
+			return nil
+		}}, "LKPR")
+	m.Add([]Flight{flight("DLH1", "EDDF", "LKPR", t0, 2*time.Hour)}) // enroute stage from 09:15
+	m.Tick(t0.Add(50 * time.Minute))
+	for _, f := range sp.spawned {
+		m.Update(f.Callsign, FlightEnroute, t0.Add(51*time.Minute)) // flying
+	}
+	m.Tick(t0.Add(75 * time.Minute))
+	var overflights, arrivals int
+	for _, f := range sp.spawned {
+		if f.Overflight() {
+			overflights++
+		} else {
+			arrivals++
+		}
+	}
+	if overflights != 2 || arrivals != 1 {
+		t.Fatalf("spawned %d overflights (want 2) and %d arrivals (want 1)", overflights, arrivals)
+	}
+}

@@ -437,7 +437,11 @@ type ScheduleSettings struct {
 	ICAO        string  `json:"icao"`
 	Density     float64 `json:"density,omitempty"`     // 1: the timetable as it is
 	MaxAircraft int     `json:"maxAircraft,omitempty"` // 0: no limit
-	Seed        uint64  `json:"seed,omitempty"`
+	// OverflightsPerHour in the peak hour at density 1 (0: 10), scaled by
+	// Density; MaxOverflights at once (0: 20), on top of MaxAircraft.
+	OverflightsPerHour float64 `json:"overflightsPerHour,omitempty"`
+	MaxOverflights     int     `json:"maxOverflights,omitempty"`
+	Seed               uint64  `json:"seed,omitempty"`
 	// Airports are several scheduled airports (ICAO, with ICAO).
 	Airports []string `json:"airports,omitempty"`
 	// IFR, VFR: the airline and the light aircraft flights (nil: as
