@@ -310,7 +310,7 @@ type TrafficManager struct {
 	opts      ManagerOptions
 	airports  map[string]bool
 	flights   map[string]*ManagedFlight
-	until     time.Time            // the Source was asked up to here
+	until     map[string]time.Time // the Source was asked up to here, by airport
 	overUntil time.Time            // the Overflights source too
 	last      map[string]time.Time // last spawn by kind and airport
 	enabled   bool
@@ -348,7 +348,15 @@ func (m *TrafficManager) SetAirports(airports ...string) {
 			delete(m.flights, k)
 		}
 	}
-	m.until = time.Time{} // ask the Source again: new airports
+	// Only a new airport is asked for the hours ahead: asked again, a Source
+	// keeping call signs unique gives other flights for the same hours, on
+	// top of those already there (live, LKPR: the schedule posted again and
+	// again, 580 arrivals in two hours, 45 at one STA).
+	for a := range m.until {
+		if !m.airports[a] {
+			delete(m.until, a)
+		}
+	}
 }
 
 // Airports are the managed airports.
@@ -519,18 +527,28 @@ func (m *TrafficManager) extend(now time.Time) {
 	if m.opts.Source == nil || len(m.airports) == 0 {
 		return
 	}
-	from := now.Truncate(time.Hour)
-	if m.until.After(from) {
-		from = m.until
+	if m.until == nil {
+		m.until = map[string]time.Time{}
 	}
 	var airports []string
 	for a := range m.airports {
 		airports = append(airports, a)
 	}
 	sort.Strings(airports)
-	for ; from.Before(now.Add(m.opts.Horizon)); from = from.Add(time.Hour) {
-		m.addAt(m.opts.Source(from, from.Add(time.Hour), airports), now)
-		m.until = from.Add(time.Hour)
+	for from := now.Truncate(time.Hour); from.Before(now.Add(m.opts.Horizon)); from = from.Add(time.Hour) {
+		var ask []string
+		for _, a := range airports {
+			if !m.until[a].After(from) {
+				ask = append(ask, a)
+			}
+		}
+		if len(ask) == 0 {
+			continue
+		}
+		m.addAt(m.opts.Source(from, from.Add(time.Hour), ask), now)
+		for _, a := range ask {
+			m.until[a] = from.Add(time.Hour)
+		}
 	}
 }
 

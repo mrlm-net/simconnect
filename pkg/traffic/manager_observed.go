@@ -112,7 +112,7 @@ func (m *TrafficManager) Drop(kind, callsign string, now time.Time) {
 func (m *TrafficManager) Replan() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.until = time.Time{}
+	m.until = nil
 }
 
 // AddOverflight adds a real aircraft crossing the area (#845): f with its

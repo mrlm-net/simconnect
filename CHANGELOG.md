@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.118.4] - 2026-10-24
+
+### Fixed
+
+- Posting the schedule again with the same airports doubled the timetable. Every `SetAirports` asked the Source again for the hours ahead, and the World's Source keeps call signs unique, so each ask brought other flights for the same hours on top of those already there (live at LKPR, the schedule posted repeatedly: 580 arrivals and 330 departures due in two hours, 45 arrivals at one STA, cancelled by the hundred). The hours asked are now kept per airport, and only a newly managed airport is asked again.
+
 ## [0.118.3] - 2026-10-24
 
 ### Fixed
