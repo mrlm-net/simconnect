@@ -116,6 +116,7 @@ function normalize(d) {
   d.parking = d.parking || [];
   d.taxiPoints = d.taxiPoints || [];
   d.runways = d.runways || [];
+  layoutEnumNumbers(d);
   for (const p of [...d.parking, ...d.taxiPoints]) { p.lat = p.position.lat; p.lon = p.position.lon; }
   for (const r of d.runways) {
     r.lat = r.center.lat; r.lon = r.center.lon;

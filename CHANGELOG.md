@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.121.0] - 2026-10-25
+
+### Changed
+
+- The facility enums are written to JSON by name instead of number, for a readable data model: the constant without its type prefix (`"GATE_HEAVY"`, `"GATE_B"`, `"HOLD_SHORT"`, `"PAINTED_LINE"`, `"LEFT"`, `"ILS"`, `"AT_OR_ABOVE"`; a leg type is its ARINC 424 code, `"TF"`, and `"NONE"` for none). Parking type and name, runway surface and designator, taxi designator, frequency, approach, helipad, taxi point and path types, leg types and altitude descriptors in `pkg/types`, and `nav.WaypointType` and `nav.AirwayType` (`"NAMED"`, `"JET"`). Reading takes the name or the number, so airport caches, layout and procedures dumps written before load as they are; a value without a name is written as its number. **Wire change:** a consumer comparing these fields with numbers must read the names (the airport map's pages turn them back into numbers as they load the airport). `types.MarshalEnumJSON` and `UnmarshalEnumJSON` do it for other enums.
+
 ## [0.120.0] - 2026-10-24
 
 ### Added
