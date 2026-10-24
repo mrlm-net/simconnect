@@ -7,12 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.118.1] - 2026-10-24
+
+### Fixed
+
+- No stub radio line after a clearance (#1164), which 0.118.0 announced and did not do: the guard went on `case "handoff"` instead of `case "clearance"`, where it read correctly and changed nothing. With no clearance due, `phraseView` went on falling through to the catch-all at the end of its switch, which builds a transmission out of the action's NAME — `{"position":"ground","callsign":"UAE168","intent":"clearance","text":"UAE168, clearance"}`, neither the words nor the position. Measured on the 0.118.0 tree: 122 of them in a two-minute run at LKPR.
+- `GET /api/control/{id}/{action}/phrase` answers an empty `ClearancePhrase` when the action has no phrase right now. It worded whatever it was given, and wording an empty transmission rendered the empty call sign and intent into the phraseology's own punctuation — `", "` — so a sentence nobody would say became a fragment nobody would say, and a host logging the phrase still showed a line.
+
 ## [0.118.0] - 2026-10-24
 
 ### Added
 
 - The schedule flies the airlines an airport's stands name, which the built-in list lacks (#1172): Munich's stands name 105 carriers, Lufthansa Cityline on 86 of them, against 18 in the list. A home carrier is weighted to dominate its base, and a stand's fleet is filtered by the span the stand takes.
-- No stub radio line after a clearance: when no clearance was due, a call sign with no words was logged.
 
 ### Fixed
 
