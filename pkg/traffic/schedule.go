@@ -88,6 +88,9 @@ type ScheduleAirport struct {
 	Size int `json:"size"`
 	// RunwayM is the longest runway.
 	RunwayM float64 `json:"runwayM"`
+	// Carriers are the airlines its STANDS name that the config does not know
+	// (standCarriers, #1172): the scenery's own answer to who parks here.
+	Carriers []Airline `json:"carriers,omitempty"`
 }
 
 // TypeLimits are what a type can fly: the range and the runway it needs.
@@ -166,6 +169,12 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 			continue
 		}
 		home := standAirlines(opts.Layouts[icao])
+		// The stands' own carriers that the config does not know (#1172).
+		known := map[string]bool{}
+		for _, a := range g.cfg.Airlines {
+			known[strings.ToUpper(a.ICAO)] = true
+		}
+		focus.Carriers = standCarriers(cfg, opts.Layouts[icao], known, icao)
 		size := []float64{0, 0.2, 0.5, 1}[max(1, min(3, focus.Size))]
 		// Local solar time from the longitude: waves follow the sun.
 		offset := time.Duration(focus.Position.Lon / 15 * float64(time.Hour))
@@ -245,9 +254,115 @@ func standAirlines(l *airport.Layout) map[string]bool {
 	return out
 }
 
+// standCarriers are the airlines an airport's STANDS name that the config does
+// not know (#1172).
+//
+// THE AIRPORT'S OWN ANSWER TO WHO FLIES THERE. `defaultAirlines` is eighteen
+// carriers; Munich's stands name a hundred and five, and the biggest holder of
+// them — CLH, Lufthansa Cityline, on eighty-six stands — could never be
+// scheduled because it was not one of the eighteen. A stand assigned to an
+// airline is the scenery saying that airline parks here, which is exactly the
+// question the schedule is asking.
+//
+// WHAT THE STANDS CAN AND CANNOT SAY. They give the code, how many stands it
+// holds, and how big they are. So: weight from the count, because an airline on
+// eighty-six stands is a bigger presence than one on two; fleet from the widest
+// stand it holds, because that is the largest thing it can park; the airport as
+// its base and its region, because stands there are the only thing known about
+// where it flies. No telephony — the radio then carries the code, which is what
+// a normaliser with a telephony table turns back into a name.
+func standCarriers(cfg ScheduleConfig, l *airport.Layout, known map[string]bool, icao string) []Airline {
+	if l == nil {
+		return nil
+	}
+	widest := map[string]float64{}
+	count := map[string]int{}
+	for _, p := range l.Parking {
+		if p.Size() == airport.StandNone {
+			continue
+		}
+		for _, a := range p.Airlines {
+			code := strings.ToUpper(a)
+			if code == "" || known[code] {
+				continue
+			}
+			count[code]++
+			widest[code] = math.Max(widest[code], p.Radius)
+		}
+	}
+	region := icao[:min(2, len(icao))]
+	most := 0
+	for _, n := range count {
+		most = max(most, n)
+	}
+	out := make([]Airline, 0, len(count))
+	for code, n := range count {
+		out = append(out, Airline{
+			ICAO: code, Fleet: fleetForStand(cfg, widest[code]),
+			// NO BASE, deliberately. A base earns the home carrier's eightfold
+			// weight, and giving it to every airline with a stand hands it to all
+			// of them at once: Munich went from Lufthansa on top of eighteen
+			// airlines to eighty-five sharing it equally and DLH sixth. The stands
+			// say who parks here, not who OWNS the place — the config's bases
+			// still say that.
+			Regions: []string{region},
+			// Its share of the stands, against config weights of about 0.5 to 2
+			// before the home carrier's multiplier: the biggest holder is a real
+			// presence, a single stand is a visitor.
+			Weight: 0.1 + 1.5*float64(n)/float64(max(1, most)),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ICAO < out[j].ICAO })
+	return out
+}
+
+// fleetForStand is what fits the widest stand an airline holds: the largest
+// thing it can park is the largest thing it can fly in.
+//
+// NOT A LIST WRITTEN HERE. The types are the ones the CONFIG schedules — so a
+// host equipped for its airlines is equipped for these — and which of them fit
+// comes from the engine's own aircraft-type table, by wing span against the
+// stand's radius, the same test `Layout.SuitableStands` makes. Nothing about an
+// airline's real fleet is known from a stand, so the honest inference is "what
+// this airport's other airlines fly, that fits".
+//
+// Weighted towards the big end of what fits: an airline given a 45 m stand is
+// not there to park turboprops on it.
+func fleetForStand(cfg ScheduleConfig, radiusM float64) map[string]float64 {
+	if radiusM <= 0 {
+		return nil
+	}
+	type fit struct {
+		t    string
+		span float64
+	}
+	var fits []fit
+	for t := range cfg.Types {
+		half := MotionProfileFor(t).SpanMeters / 2
+		if half <= 0 || half > radiusM {
+			continue
+		}
+		fits = append(fits, fit{t, half * 2})
+	}
+	if len(fits) == 0 {
+		return nil
+	}
+	sort.Slice(fits, func(i, j int) bool { return fits[i].span > fits[j].span })
+	// The four biggest that fit, heaviest weighted first.
+	out := map[string]float64{}
+	for i, f := range fits {
+		if i >= 4 {
+			break
+		}
+		out[f.t] = float64(4 - i)
+	}
+	return out
+}
+
 // flight draws one departure from (or arrival at) focus at time at.
 func (g *scheduler) flight(focus ScheduleAirport, home map[string]bool, at time.Time, arrival bool) (Flight, bool) {
 	prefix := focus.ICAO[:min(2, len(focus.ICAO))]
+	airlines := append(append([]Airline(nil), g.cfg.Airlines...), focus.Carriers...)
 	var weights []float64
 	for _, a := range g.cfg.Airlines {
 		w := a.Weight
@@ -259,12 +374,20 @@ func (g *scheduler) flight(focus ScheduleAirport, home map[string]bool, at time.
 		}
 		weights = append(weights, w)
 	}
+	// THE STANDS' OWN CARRIERS TAKE THEIR WEIGHT AS IT IS. `home` is every airline
+	// the stands name, so the home carrier's eightfold would land on all ninety-odd
+	// of them at once — measured at Munich, the tail outweighed Lufthansa twenty to
+	// one and DLH came sixth in its own hub. Their weight already says how much of
+	// the airport is theirs; it does not want multiplying by the fact that it is.
+	for _, a := range focus.Carriers {
+		weights = append(weights, a.Weight)
+	}
 	for tries := 0; tries < 8; tries++ {
 		ai := pick(g.rng, weights)
 		if ai < 0 {
 			return Flight{}, false
 		}
-		al := g.cfg.Airlines[ai]
+		al := airlines[ai]
 		other, ok := g.otherEnd(al, focus)
 		if !ok {
 			continue
