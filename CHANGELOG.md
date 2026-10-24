@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.120.0] - 2026-10-24
+
+### Added
+
+- Overflights are configurable on `POST /api/schedule` (and `ScheduleSettings`): `overflightsPerHour`, the peak hour at density 1 and scaled by the density (default 10, was 6: 30 an hour at density 3), and `maxOverflights` at once (default 20, was 10; `TrafficManager.SetMaxOverflights`). `GET /api/schedule` shows both. Overflights no longer count against `maxAircraft`: a sky full of them took the airports' room.
+
+### Fixed
+
+- Flights to and from airports beyond the airways known around the airport flew direct from the SID's last fix, or direct to the STAR's first: every LKPR departure to Paris, Madrid and Rome went one line south-west after DOBEN, and every arrival from the west came straight to LOMKI. `nav.Plan` now flies the airways to their edge toward the other airport (the fix nearest it that the airways reach within `EnrouteMaxStretch`, stubs at the crawl's edge passed by) and goes direct only beyond. Overflights between two such airports join the airways where they cross: LKPR → LFPG is now "DOBE4A DOBEN T136 NIRGO … T892 BETEX", LEMD → LKPR "DCT HOC Y112 MOMUK … P733 LOMKI LOMK8T".
+
 ## [0.119.0] - 2026-10-24
 
 ### Added
