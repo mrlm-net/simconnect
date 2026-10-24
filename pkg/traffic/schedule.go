@@ -168,7 +168,7 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 		if !ok {
 			continue
 		}
-		home := standAirlines(opts.Layouts[icao])
+		shares := standShares(opts.Layouts[icao])
 		// The stands' own carriers that the config does not know (#1172).
 		known := map[string]bool{}
 		for _, a := range g.cfg.Airlines {
@@ -187,7 +187,7 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 				if at.Before(from) || !at.Before(to) {
 					continue
 				}
-				if f, ok := g.flight(focus, home, at, rng.Float64() < 0.5); ok {
+				if f, ok := g.flight(focus, shares, at, rng.Float64() < 0.5); ok {
 					out = append(out, f)
 				}
 			}
@@ -240,19 +240,59 @@ func (g *scheduler) focusAirport(icao string, l *airport.Layout) (ScheduleAirpor
 	return a, ok
 }
 
-// standAirlines are the airlines the stands of l name (home carriers).
-func standAirlines(l *airport.Layout) map[string]bool {
-	out := map[string]bool{}
+// standShares is how much of an airport's parking each airline holds, as a
+// fraction of the biggest holder's share (the biggest holder is 1).
+//
+// WHY A FRACTION AND NOT A FLAG. This used to answer `map[string]bool` — "is
+// named on a stand" — and a flag earned the full home-carrier multiplier. At a
+// hub that is most of the config: Munich's stands name 105 airlines, ten of the
+// eighteen built-in carriers among them, so they all took the eightfold at once
+// and it cancelled out. Measured over 480 flights at EDDM: easyJet 11%, KLM 10%,
+// Lufthansa 9% — easyJet outflying Lufthansa at its own base — while Lufthansa
+// Cityline, on 86 of the 180 stands, did not reach the top twelve.
+//
+// One stand is a visitor and eighty-six is a hub, and only a proportion can say
+// so. Counted over STANDS, not parking: a fuel pump names nobody worth flying.
+func standShares(l *airport.Layout) map[string]float64 {
+	out := map[string]float64{}
 	if l == nil {
 		return out
 	}
+	// A SHARED STAND IS A SHARE OF ONE STAND. Munich's stand 0 names twenty-three
+	// airlines and stand 100 names twenty-eight — a common pool, not twenty-eight
+	// airlines each with a gate — while stand 102 names Lufthansa and Cityline
+	// alone. Counting a whole stand per name made a member of the pool look as
+	// established as the airline with the gate to itself, and the pools are large
+	// enough to outnumber the hub carrier many times over. Each name on a stand
+	// holds its fraction of it.
+	held := map[string]float64{}
+	most := 0.0
 	for _, p := range l.Parking {
-		for _, a := range p.Airlines {
-			out[strings.ToUpper(a)] = true
+		if p.Size() == airport.StandNone {
+			continue
 		}
+		codes := make([]string, 0, len(p.Airlines))
+		for _, a := range p.Airlines {
+			if code := strings.ToUpper(a); code != "" {
+				codes = append(codes, code)
+			}
+		}
+		for _, code := range codes {
+			held[code] += 1 / float64(len(codes))
+			most = math.Max(most, held[code])
+		}
+	}
+	for code, n := range held {
+		out[code] = n / math.Max(1e-9, most)
 	}
 	return out
 }
+
+// homeWeight is what an airline's presence on the stands multiplies its weight
+// by: the biggest holder approaches the home carrier's eightfold, a single stand
+// among many barely moves. `Bases` stays the explicit "this is its base" signal
+// and keeps the full multiplier whatever the stands say.
+func homeWeight(share float64) float64 { return 1 + 7*share }
 
 // standCarriers are the airlines an airport's STANDS name that the config does
 // not know (#1172).
@@ -291,25 +331,22 @@ func standCarriers(cfg ScheduleConfig, l *airport.Layout, known map[string]bool,
 		}
 	}
 	region := icao[:min(2, len(icao))]
-	most := 0
-	for _, n := range count {
-		most = max(most, n)
-	}
 	out := make([]Airline, 0, len(count))
-	for code, n := range count {
+	for code := range count {
 		out = append(out, Airline{
 			ICAO: code, Fleet: fleetForStand(cfg, widest[code]),
-			// NO BASE, deliberately. A base earns the home carrier's eightfold
-			// weight, and giving it to every airline with a stand hands it to all
-			// of them at once: Munich went from Lufthansa on top of eighteen
-			// airlines to eighty-five sharing it equally and DLH sixth. The stands
-			// say who parks here, not who OWNS the place — the config's bases
-			// still say that.
+			// NO BASE, deliberately: the stands say who PARKS here, not who owns
+			// the place, and the config's `Bases` still says that. A base is the
+			// one thing that still earns the full eightfold whatever the stands
+			// hold, so handing it out per stand would hand it to all ninety-odd
+			// of Munich's at once.
 			Regions: []string{region},
-			// Its share of the stands, against config weights of about 0.5 to 2
-			// before the home carrier's multiplier: the biggest holder is a real
-			// presence, a single stand is a visitor.
-			Weight: 0.1 + 1.5*float64(n)/float64(max(1, most)),
+			// A BASELINE, not a share. How much of the field is theirs is applied
+			// once, by homeWeight, to these and to the config's airlines alike —
+			// counting it here as well made presence quadratic for one list and
+			// linear for the other, which is the scale mismatch this came from.
+			// One is about the weight of a mid-sized config carrier.
+			Weight: 1,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ICAO < out[j].ICAO })
@@ -360,27 +397,32 @@ func fleetForStand(cfg ScheduleConfig, radiusM float64) map[string]float64 {
 }
 
 // flight draws one departure from (or arrival at) focus at time at.
-func (g *scheduler) flight(focus ScheduleAirport, home map[string]bool, at time.Time, arrival bool) (Flight, bool) {
+func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at time.Time, arrival bool) (Flight, bool) {
 	prefix := focus.ICAO[:min(2, len(focus.ICAO))]
 	airlines := append(append([]Airline(nil), g.cfg.Airlines...), focus.Carriers...)
 	var weights []float64
+	// ONE RULE FOR PRESENCE, both lists. A configured base is the config saying the
+	// airline owns the place and keeps the full eightfold; otherwise how much of the
+	// parking the airline holds decides, so the field's own carrier leads its own
+	// field and a visitor with one stand stays a visitor.
+	//
+	// A STAND ALSO SAYS IT FLIES HERE AT ALL, which is why presence is tested before
+	// the region filter: the scenery assigning a gate to an airline is better evidence
+	// than a region list written once for every airport.
 	for _, a := range g.cfg.Airlines {
 		w := a.Weight
 		switch {
-		case contains(a.Bases, focus.ICAO) || home[a.ICAO]:
-			w *= 8 // home carrier
+		case contains(a.Bases, focus.ICAO):
+			w *= 8 // its base, as the config declares it
+		case shares[a.ICAO] > 0:
+			w *= homeWeight(shares[a.ICAO])
 		case !contains(a.Regions, prefix) && !contains(a.Regions, "*"):
 			w = 0
 		}
 		weights = append(weights, w)
 	}
-	// THE STANDS' OWN CARRIERS TAKE THEIR WEIGHT AS IT IS. `home` is every airline
-	// the stands name, so the home carrier's eightfold would land on all ninety-odd
-	// of them at once — measured at Munich, the tail outweighed Lufthansa twenty to
-	// one and DLH came sixth in its own hub. Their weight already says how much of
-	// the airport is theirs; it does not want multiplying by the fact that it is.
 	for _, a := range focus.Carriers {
-		weights = append(weights, a.Weight)
+		weights = append(weights, a.Weight*homeWeight(shares[a.ICAO]))
 	}
 	for tries := 0; tries < 8; tries++ {
 		ai := pick(g.rng, weights)

@@ -45,9 +45,16 @@ func TestStandCarriers(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("%d carriers, want 2 (CLH, BTI)", len(got))
 	}
-	// MORE STANDS, MORE FLIGHTS: CLH holds two of them and BTI one.
-	if by["CLH"].Weight <= by["BTI"].Weight {
-		t.Errorf("CLH %.2f not above BTI %.2f", by["CLH"].Weight, by["BTI"].Weight)
+	// MORE STANDS, MORE FLIGHTS — but the weight alone no longer says so, and
+	// asserting on it was how a scale mismatch hid: a stand carrier's Weight
+	// carried its share while the config's airlines took a flat eightfold, so the
+	// two lists were never comparable. Presence is applied once now, by
+	// homeWeight, to both. What matters is the product, so that is what is checked.
+	shares := standShares(l)
+	eff := func(code string) float64 { return by[code].Weight * homeWeight(shares[code]) }
+	if eff("CLH") <= eff("BTI") {
+		t.Errorf("CLH %.2f not above BTI %.2f (shares %.2f / %.2f)",
+			eff("CLH"), eff("BTI"), shares["CLH"], shares["BTI"])
 	}
 	// NO BASE. A base earns the home carrier's eightfold, and every airline with a
 	// stand having it hands it to all of them at once — Munich then had eighty-five
