@@ -96,6 +96,9 @@ type ManagedFlight struct {
 	// (EventDelayed), its time and reason and until when.
 	delayedAt    time.Time
 	delayedUntil time.Time
+	// flowDelay: retryAt is the landing flow's (CheckLandingFlow), worked
+	// out afresh each pass: earlier as well as later, gone when not given.
+	flowDelay bool
 	delayedNote  string
 	seenAt       time.Time // last seen in the picture
 	noEnroute    bool      // the enroute spawn failed: straight to the STAR entry
@@ -980,6 +983,7 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 	}
 	hold := map[string]string{}
 	estimated := map[string]bool{}
+	flowed := map[*ManagedFlight]bool{}
 	for icao, fs := range by {
 		sort.Slice(fs, func(i, j int) bool { return lessFlight(fs[i].focusTime(), fs[i].Key(), fs[j].focusTime(), fs[j].Key()) })
 		sit := Situation{Now: now, Airport: icao, Flights: fs, Options: m.opts, Others: othersAt(m.opts.Picture, m.opts.Others, icao)}
@@ -1002,7 +1006,16 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 				switch a.Action {
 				case AdviceDelay:
 					// A real arrival is in the air already: the sequence absorbs it (#841).
-					if f.Status == FlightScheduled && a.Until.After(f.retryAt) && !(f.Observed != nil && f.Arrival()) {
+					// The landing flow's delay is its own each pass, from the STA:
+					// kept only ever later, a delay never came back when the
+					// slot ahead freed, and arrivals due first ended last (live,
+					// LKPR: STA 09:55 estimated 16:17, one arrival in 20 min).
+					flow := strings.HasPrefix(a.Reason, "landing flow")
+					if flow && f.Status == FlightScheduled {
+						flowed[f] = true
+					}
+					if f.Status == FlightScheduled && (a.Until.After(f.retryAt) || flow && f.flowDelay) && !(f.Observed != nil && f.Arrival()) {
+						f.flowDelay = flow
 						// Announced when it moves a minute or more (the prediction
 						// drifts by seconds each tick).
 						// Again only for another reason or delayedAgain more (live:
@@ -1043,6 +1056,12 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 					}
 				}
 			}
+		}
+	}
+	// A landing-flow delay not given again this pass: it may go now.
+	for _, f := range m.flights {
+		if f.flowDelay && !flowed[f] && f.Status == FlightScheduled {
+			f.flowDelay, f.retryAt = false, time.Time{}
 		}
 	}
 	var changed []ManagedFlight

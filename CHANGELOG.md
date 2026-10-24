@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.117.4] - 2026-10-24
+
+### Fixed
+
+- Still almost no arrivals, about one in 20 minutes, against 38 departures in 75 minutes. The landing flow's delay ratcheted:
+  - Each pass, a waiting arrival's ETA started from its own previous delay, not its STA.
+  - The delay could only move later, never earlier.
+
+  So an arrival delayed once fell behind the others each pass. Live at LKPR, STA 09:55 was estimated at 16:17, and such arrivals were cancelled an hour after their STA. The flow's delay is now worked out afresh from the STA each pass: it moves earlier as well as later, and goes when no longer given.
+- No overflights for hours. `traffic.Overflights` seeded its random draws the same way on every call, and the manager asks for one hour at a time, so every hour drew the same flights. The manager dropped them as repeats of the first hour's call signs: three overflights at the start, then none for two hours. Each hour now has its own seed.
+
 ## [0.117.3] - 2026-10-23
 
 ### Fixed

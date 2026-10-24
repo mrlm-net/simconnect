@@ -148,3 +148,27 @@ func TestCrossingGreatCircle(t *testing.T) {
 		}
 	}
 }
+
+// Asked an hour at a time, as the manager does, overflights are other
+// flights each hour, not the first hour's again (dropped as repeats: no
+// overflight for hours, live at LKPR).
+func TestOverflightsDifferEachHour(t *testing.T) {
+	cfg := DefaultScheduleConfig()
+	o := OverflightOptions{Centre: airport.LatLon{Lat: 50.1, Lon: 14.26}, RadiusNM: 80, Density: 3, Seed: 7, Exclude: []string{"LKPR"}}
+	h0 := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
+	seen := map[string]bool{}
+	repeats, total := 0, 0
+	for h := 0; h < 4; h++ {
+		for _, f := range Overflights(cfg, o, h0.Add(time.Duration(h)*time.Hour), h0.Add(time.Duration(h+1)*time.Hour)) {
+			total++
+			if seen[f.Callsign] {
+				repeats++
+			}
+			seen[f.Callsign] = true
+		}
+	}
+	t.Logf("%d overflights in 4 hours, %d repeated call signs", total, repeats)
+	if total == 0 || repeats > total/4 {
+		t.Errorf("%d of %d overflights repeat an earlier hour's call sign", repeats, total)
+	}
+}

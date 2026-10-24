@@ -449,7 +449,11 @@ func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []
 	if o.RadiusNM <= 0 {
 		return nil
 	}
-	rng := rand.New(rand.NewPCG(o.Seed, 0x0f1e))
+	// Seeded by the hour asked too: the manager asks an hour at a time, and
+	// one seed drew the same flights every hour, dropped as repeats of the
+	// first (live, LKPR: three overflights at the start, then none for two
+	// hours).
+	rng := rand.New(rand.NewPCG(o.Seed, 0x0f1e^uint64(from.Truncate(time.Hour).Unix())))
 	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
 	var outside []ScheduleAirport
 	var weights []float64

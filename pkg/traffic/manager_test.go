@@ -403,3 +403,31 @@ func TestManagerFairShare(t *testing.T) {
 		t.Errorf("%d departures and %d arrivals of a cap of 5, want at most 3 departures and the arrivals in", deps, arrs)
 	}
 }
+
+// Three arrivals every 5 minutes, more than the runway takes, through the
+// landing flow: they come in at the flow's rate,
+// in the order of the STAs; the delays are worked out afresh, not
+// ratcheted (live, LKPR: STA 09:55 estimated 16:17, one arrival in 20 min).
+func TestManagerLandingFlowNoRatchet(t *testing.T) {
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 60, MaxPerAirport: 60, Checks: []SituationCheck{CheckLandingFlow(0, 0)}}, "LKPR")
+	sp.onSpawn = func(f ManagedFlight) { m.Update(f.Callsign, FlightApproaching, f.Since) }
+	var fs []Flight
+	for i := 0; i < 30; i++ {
+		fs = append(fs, flight(fmt.Sprintf("DLH%03d", i), "EDDF", "LKPR", t0.Add(time.Duration(i/3)*5*time.Minute-35*time.Minute), time.Hour)) // STA t0+25 on, 3 every 5 min: more than the runway takes
+	}
+	m.Add(fs)
+	for s := 0; s <= 60*60; s += 10 {
+		m.Tick(t0.Add(time.Duration(s) * time.Second))
+	}
+	n := len(sp.spawned)
+	t.Logf("%d of 30 spawned in an hour", n)
+	if n < 15 {
+		t.Errorf("%d arrivals spawned in an hour, want about one per landing gap", n)
+	}
+	for i := 1; i < n; i++ {
+		if sp.spawned[i].STA.Before(sp.spawned[i-1].STA.Add(-10 * time.Minute)) {
+			t.Errorf("%s (STA %s) spawned after %s (STA %s): out of order", sp.spawned[i].Callsign, sp.spawned[i].STA.Format("15:04"), sp.spawned[i-1].Callsign, sp.spawned[i-1].STA.Format("15:04"))
+		}
+	}
+}
