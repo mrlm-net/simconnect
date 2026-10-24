@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -543,6 +544,11 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 			}
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
 				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) ||
+				// Its estimate slid along a landing sequence that never let it in:
+				// cancelled by its STA, not chased for hours (live, LKPR: 145
+				// arrivals queued 2–3 minutes apart, estimated to 03:45, none
+				// spawned).
+				f.Arrival() && now.After(f.STA.Add(ArrivalMaxDelay)) ||
 				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
 				f.Err = "too late"
 				m.set(f, FlightCancelled, now)
@@ -599,6 +605,10 @@ func (m *TrafficManager) unpair(f *ManagedFlight) {
 	f.TurnTo, f.TurnFrom = "", ""
 }
 
+// ArrivalMaxDelay: a scheduled arrival not in the air this long after its
+// STA is cancelled, whatever its estimate.
+const ArrivalMaxDelay = time.Hour
+
 // delayedAgain: a delay announced (EventDelayed) is announced again for
 // the same reason once it grows this much.
 const delayedAgain = 5 * time.Minute
@@ -606,6 +616,10 @@ const delayedAgain = 5 * time.Minute
 // fairShare: the share of MaxAircraft arrivals or departures may take while
 // the other kind has flights due (due).
 const fairShare = 0.6
+
+// fairLook: flights of the other kind due within this count for the fair
+// share (fairShare).
+const fairLook = 30 * time.Minute
 
 // due spawns the flights whose time has come, in time order, within the
 // limits and spacing.
@@ -642,15 +656,21 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 	// Neither kind takes more than fairShare of MaxAircraft while the other
 	// has flights due: a wave of departures, on stands early and counted
 	// climbing away, took all 40 and no arrival came in an hour (live, LKPR).
+	// Due within fairLook, not only now: departures board on their stands
+	// well before the arrivals of the same hour are due, and took the cap
+	// before any arrival was.
 	fair := int(math.Ceil(fairShare * float64(o.MaxAircraft)))
 	depsDue, arrsDue := 0, 0
-	for _, f := range ready {
-		switch {
-		case f.Overflight():
-		case f.Departure():
-			depsDue++
-		default:
-			arrsDue++
+	for _, f := range m.flights {
+		if f.Status != FlightScheduled || f.Overflight() {
+			continue
+		}
+		if start, _ := m.start(f, now); start.Before(now.Add(fairLook)) {
+			if f.Departure() {
+				depsDue++
+			} else {
+				arrsDue++
+			}
 		}
 	}
 	sort.Slice(ready, func(i, j int) bool {
@@ -821,6 +841,13 @@ func (m *TrafficManager) Failed(callsign string, err error, now time.Time) {
 
 func (m *TrafficManager) failed(f *ManagedFlight, err error, now time.Time, remove *[]ManagedFlight) {
 	f.Err = err.Error()
+	// Nothing appeared: the spacing after a spawn (ArrivalSpacing) is not
+	// used up. Kept, every failed attempt held the next arrival 3 minutes
+	// (live, LKPR: an enroute spawn falling back to the STAR entry, a BE58
+	// with no model: five arrivals an hour).
+	if f.Status == FlightSpawning {
+		delete(m.last, f.key()[:1]+f.Airport)
+	}
 	switch {
 	case f.Status == FlightSpawning && f.Arrival() && f.Stage == "enroute":
 		// No enroute part: the arrival appears at its STAR entry instead,
@@ -981,8 +1008,11 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 						// Again only for another reason or delayedAgain more (live:
 						// "arrival delayed — landing flow" 40,000 times in an hour and
 						// a half, every scheduled arrival once a minute).
-						if f.delayedNote != a.Reason || a.Until.Sub(f.delayedUntil) >= delayedAgain {
-							f.delayedAt, f.delayedNote, f.delayedUntil = now, a.Reason, a.Until
+						// The reason by its kind: "landing flow, gap for 9 departures" is
+						// "landing flow, gap for 10 departures" (the count moves).
+						kind, _, _ := strings.Cut(a.Reason, ", gap for")
+						if f.delayedNote != kind || a.Until.Sub(f.delayedUntil) >= delayedAgain {
+							f.delayedAt, f.delayedNote, f.delayedUntil = now, kind, a.Until
 							f, reason := f, a.Reason
 							emits = append(emits, func() { m.emit(EventDelayed, f, now, reason) })
 						}

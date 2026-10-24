@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.117.3] - 2026-10-23
+
+### Fixed
+
+- Still no arrivals after v0.117.2. The fair share of `MaxAircraft` counted only flights due at that moment. Departures board on their stands well before the arrivals of the same hour are due, so they filled the cap before any arrival was due. It now counts the other kind's flights due within 30 minutes.
+- An arrival the landing flow kept delaying was chased for hours: its estimate slid later each time, so it was never "too late". Live at LKPR, 145 arrivals were queued 2–3 minutes apart, estimated as late as 03:45, and none spawned. A scheduled arrival not in the air an hour after its STA (`traffic.ArrivalMaxDelay`) is now cancelled.
+- Arrivals came about five an hour. Every spawn attempt took the 3-minute arrival spacing, even one that failed with nothing appearing: an enroute spawn falling back to the STAR entry (common in MSFS 2024), or a type with no model installed (a BE58) retried three times. A failed attempt no longer uses up the spacing, and "no model of a <type>" now cancels the flight at once (`ErrSpawnImpossible`) instead of retrying.
+- "landing flow" and "landing flow, gap for N departures" (N moving) counted as different reasons, so each change logged again. The count no longer makes a new reason.
+
 ## [0.117.2] - 2026-10-23
 
 ### Fixed

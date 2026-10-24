@@ -339,3 +339,67 @@ func TestManagerRotation(t *testing.T) {
 		}
 	}
 }
+
+// An arrival a landing flow keeps delaying (its estimate sliding later
+// and later) is cancelled an hour after its STA, not chased for hours.
+func TestManagerCancelsArrivalDelayedForever(t *testing.T) {
+	sp := &fakeSpawner{}
+	slide := func(s Situation) []Advice {
+		var out []Advice
+		for _, f := range s.Flights {
+			if f.Arrival() && f.Status == FlightScheduled {
+				out = append(out, Advice{Key: f.Key(), Action: AdviceDelay, Until: s.Now.Add(10 * time.Minute), Reason: "landing flow"})
+			}
+		}
+		return out
+	}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, Checks: []SituationCheck{slide}}, "LKPR")
+	m.Add([]Flight{flight("DLH200", "EDDF", "LKPR", t0.Add(10*time.Minute), time.Hour)})
+	for s := 0; s <= 90*60; s += 30 {
+		m.Tick(t0.Add(time.Duration(s) * time.Second))
+	}
+	if len(sp.spawned) != 0 {
+		t.Fatalf("spawned %v", sp.spawned[0].Callsign)
+	}
+	for _, f := range m.Flights() {
+		if f.Callsign == "DLH200" && f.Status != FlightCancelled {
+			t.Errorf("DLH200 %v an hour and more past its STA, want cancelled", f.Status)
+		}
+	}
+}
+
+// Departures due in a wave do not take the whole of MaxAircraft while
+// arrivals are due too: the arrivals spawn.
+func TestManagerFairShare(t *testing.T) {
+	sp := &fakeSpawner{}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 5}, "LKPR")
+	sp.onSpawn = func(f ManagedFlight) {
+		s := FlightBoarding
+		if f.Arrival() {
+			s = FlightApproaching
+		}
+		m.Update(f.Callsign, s, f.Since)
+	}
+	var fs []Flight
+	for i := 0; i < 6; i++ {
+		fs = append(fs, flight("CSA10"+string(rune('0'+i)), "LKPR", "EDDF", t0.Add(10*time.Minute), time.Hour))
+	}
+	for i := 0; i < 3; i++ {
+		fs = append(fs, flight("DLH20"+string(rune('0'+i)), "EDDF", "LKPR", t0.Add(-20*time.Minute), time.Hour)) // STA t0+40: due 15 min after the departures
+	}
+	m.Add(fs)
+	for s := 0; s <= 30*60; s += 10 {
+		m.Tick(t0.Add(time.Duration(s) * time.Second))
+	}
+	deps, arrs := 0, 0
+	for _, f := range sp.spawned {
+		if f.Arrival() {
+			arrs++
+		} else {
+			deps++
+		}
+	}
+	if deps > 3 || arrs < 2 {
+		t.Errorf("%d departures and %d arrivals of a cap of 5, want at most 3 departures and the arrivals in", deps, arrs)
+	}
+}
