@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.118.2] - 2026-10-24
+
+### Fixed
+
+- The field's own carrier leads its own field (#1193). Presence on the stands was a flag — "named on any stand" — and it earned the full home-carrier eightfold, so at a hub most of the built-in carriers claimed it at once and it cancelled out. Measured over 480 flights at EDDM: easyJet 11%, KLM 10%, Lufthansa 9% — easyJet outflying Lufthansa at its own base — and Lufthansa Cityline, on 86 of the 180 stands, nowhere in the top twelve. How much of the parking an airline holds now decides, as a fraction of the biggest holder, applied once to the built-in carriers and the stands' own alike; `Bases` keeps the full multiplier as the explicit "this is its base" signal. A stand shared by a pool counts as a share of one stand: Munich's stand 0 names 23 airlines and stand 100 names 28, a common pool rather than a gate each, while stand 102 names Lufthansa and Cityline alone. EDDM is now Lufthansa 9% and Cityline 5% with the next carrier at 2%; LKPR (TVS 30%, CSA 23%) and EGLL (BAW 34%) are unchanged, having already been right — few foreign airlines hold stands at a smaller field, which is why this only bit at a hub.
+
 ## [0.118.1] - 2026-10-24
 
 ### Fixed
