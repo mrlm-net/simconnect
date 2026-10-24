@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.119.0] - 2026-10-24
+
+### Added
+
+- The timetable is planned within the runway's capacity, as slot coordination does (`CoordinateSlots`, `SlotCapacity`): in order of their time, each flight takes the first 10-minute bin with room (3 arrivals, 3 departures, 5 movements by default), its STD and STA moved on together, up to an hour; VFR, real and replayed flights keep their times. The World plans each hour of its timetable so (live, LKPR: 8 arrivals due in 15 minutes, the last landing 20 minutes after its STA).
+
+### Fixed
+
+- The landing flow opened gaps for every departure taxiing, even ten minutes from the runway: it counts those in the runway queue now (`ManagedFlight.AtRunway`). In an offline 90-minute LKPR peak, arrivals land a median 3 minutes after their timetable time (was 14).
+
 ## [0.118.5] - 2026-10-24
 
 ### Fixed

@@ -187,7 +187,10 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 		}
 		var ls []landing
 		for _, f := range s.Flights {
-			if f.Departure() && f.Status == FlightTaxiing {
+			// In the runway queue, not all taxiing: one ten minutes from the
+			// runway needs no gap yet (live, LKPR: gaps for every departure
+			// taxiing, arrivals 15 minutes late).
+			if f.Departure() && f.Status == FlightTaxiing && f.AtRunway {
 				waiting++
 			}
 			if f.Arrival() {
@@ -210,13 +213,13 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 			}
 		}
 		sort.Slice(ls, func(i, j int) bool { return lessFlight(ls[i].eta, ls[i].f.Callsign, ls[j].eta, ls[j].f.Callsign) })
-		// Gaps for the departures waiting, one for every three of them (one
-		// goes between each two arrivals, two in a gap), the gaps already ahead counted: the queue sets
+		// Gaps for the departures at the runway, one for every two of them (a
+		// gap lets about two go), the gaps already ahead counted: the queue sets
 		// the balance (live, LKPR: one gap in front of every arrival, arrivals
 		// 6 min apart; one gap at a time, eight departures queued).
 		want := 0
 		if waiting >= queue {
-			want = (waiting + 2) / 3
+			want = (waiting + 1) / 2
 		}
 		gaps := 0
 		// The weather stretches the gaps as it stretches the spacing on

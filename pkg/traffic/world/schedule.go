@@ -181,7 +181,20 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 		for i := range ifr {
 			ifr[i].STD, ifr[i].STA = ifr[i].STD.Add(-off), ifr[i].STA.Add(-off)
 		}
-		flights = ifr
+		// Planned within the runway's capacity, as slot coordination does:
+		// times that can be kept. One moved past the hour is left out, its
+		// slots in the next hour unknown here.
+		ifr = traffic.CoordinateSlots(ifr, focus, traffic.SlotCapacity{})
+		flights = ifr[:0]
+		for _, f := range ifr {
+			at := f.STA
+			if slices.Contains(focus, f.Origin) {
+				at = f.STD
+			}
+			if at.Before(to) {
+				flights = append(flights, f)
+			}
+		}
 	}
 	// Light aircraft through the circuit, by day in visual conditions (#568).
 	// Their lead is the manager's default VFRLead: Source runs under the
