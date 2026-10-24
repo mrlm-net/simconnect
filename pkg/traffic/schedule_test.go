@@ -106,9 +106,15 @@ func TestScheduleHomeCarriers(t *testing.T) {
 		t.Errorf("home carriers %.0f%% of LKPR", s*100)
 	}
 	// A stand naming an airline makes it a home carrier there.
+	//
+	// A REAL STAND: type and radius are what make one. This fixture was a bare
+	// `Parking{}` — type 0, NONE — which `standShares` skips along with fuel pumps
+	// and vehicle bays, because an airline named on one of those does not fly from
+	// it. The old flag counted every parking row, so the fixture passed while
+	// saying something the engine no longer means.
 	layout := &airport.Layout{ICAO: "LKPR", Latitude: 50.1008, Longitude: 14.26,
 		Runways: []airport.Runway{{Length: 3715}},
-		Parking: []airport.Parking{{Airlines: []string{"KLM"}}}}
+		Parking: []airport.Parking{{Type: 9, Radius: 26, Airlines: []string{"KLM"}}}}
 	withStands := daySchedule(ScheduleOptions{Focus: []string{"LKPR"}, Seed: 5, Layouts: map[string]*airport.Layout{"LKPR": layout}})
 	if share(withStands, "KLM") < 2*share(lkpr, "KLM") {
 		t.Errorf("KLM %.0f%% with its stand, %.0f%% without", share(withStands, "KLM")*100, share(lkpr, "KLM")*100)
