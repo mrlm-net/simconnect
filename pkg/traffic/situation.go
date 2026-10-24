@@ -145,7 +145,9 @@ func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 		return planned
 	case FlightScheduled:
 		appear := f.STA.Add(-o.ArrivalLead)
-		if f.retryAt.After(appear) {
+		// Its own landing-flow delay not counted: the flow is worked out
+		// afresh from the STA each pass (a retry after a failed spawn is).
+		if f.retryAt.After(appear) && !f.flowDelay {
 			appear = f.retryAt
 		}
 		if now.After(appear) {
