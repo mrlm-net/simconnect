@@ -2334,6 +2334,10 @@ const (
 	PowerOutOffPavementMeters = 1.0
 )
 
+// powerOutAheadDeg: a route whose first junction lies within this of the
+// stand's heading leaves straight ahead, without the loop (planPowerOut).
+const powerOutAheadDeg = 100.0
+
 // planPowerOut plans the loop out of the stand under the aircraft's own
 // power: forward, round to the side and back past the stand towards the
 // route's first junction behind it, on whichever side stays on the
@@ -2348,6 +2352,13 @@ func (c *TaxiController) planPowerOut() ([]airport.LatLon, bool) {
 	h := stand.Heading
 	nose := NoseGear(StandPointSide(stand, c.req.NoseOffset, c.req.StandSide), h, prof)
 	r := math.Max(PowerOutMinRadiusMeters, TurnAroundMeters*prof.WheelbaseMeters/DefaultMotionProfile().WheelbaseMeters)
+	// The route's first junction ahead of the nose: it taxis straight on to
+	// it, no loop. Turned round first, it came back round to it, a full
+	// circle on the apron (live, LKPR S17: facing 265°, its junction 15 m
+	// ahead at 298°, OKVBB's 360).
+	if j := c.route.Points[min(c.pushJunction, len(c.route.Points)-1)]; math.Abs(headingDiff(localBearing(nose, j), h)) <= powerOutAheadDeg {
+		return []airport.LatLon{offsetHeading(nose, h, 0.3*r)}, true
+	}
 	all := pavementAround(g, nose, 4*r)
 	own := pavement{segs: all.segs, stands: []airport.Parking{stand}}
 	half := c.halfSpan()

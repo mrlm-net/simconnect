@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.118.3] - 2026-10-24
+
+### Fixed
+
+- Arrivals still came about one in ten minutes against ten departures. The landing flow ordered arrivals by their predicted landing. An arrival already late has the prediction "now plus the flight", which slides on with the clock, so every arrival due later went ahead of it. It never came, and was cancelled an hour after its STA (live at LKPR: STA 12:00 estimated 15:06). Arrivals still to come now take, in STA order, the first slot at or after when they could land, first come first served by the timetable. Those in the air keep theirs, and the departures' gap stays reserved.
+- A light aircraft leaving a self-manoeuvring stand made a full circle. The way out always turned it round, as if its route began behind the stand, and it then came back round to a junction just ahead (live at LKPR S17: facing 265°, its junction 15 m ahead at 298°, OKVBB). With the route's first junction within 100° of the nose, it now taxis straight on in one gentle turn.
+
 ## [0.118.2] - 2026-10-24
 
 ### Fixed
