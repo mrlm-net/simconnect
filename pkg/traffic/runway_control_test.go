@@ -679,3 +679,77 @@ func TestNoSecondLineUpBehindIntersection(t *testing.T) {
 		}
 	}
 }
+
+// TestLineUpOnlyIfItCanGoBeforeTheArrival: a departure is not lined up
+// when, once its interval behind the last departure has run, the next
+// arrival would be too close to let it go (live, LKPR: AUA511 lined up 28 s
+// behind a Phenom, KLM1683 came inside 3 NM meanwhile and went around).
+func TestLineUpOnlyIfItCanGoBeforeTheArrival(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	r.Decide(now, []RunwayUser{dep("QTR1", "B77W", RunwayRolling)})
+	csa := dep("CSA2", "A320", RunwayHoldingShort)
+	// Its interval has a little more than the line-up time left.
+	at := now.Add(DepartureIntervalSpeeds(WakeFor("B77W"), csa.Wake, true, 0, 0) - r.opts.LineUpTime - LineUpWaitMax + time.Second)
+	left := r.intervalLeft(at, csa)
+	occ := RunwayOccupancyIn(csa.Wake, false, RunwayDry) + r.opts.Margin
+	// The arrival lands after line-up and roll, but before the interval
+	// has run and the roll is done; not yet cleared to land.
+	sec := ((r.opts.LineUpTime + occ + r.opts.Margin) + (left + occ + r.opts.Margin)).Seconds() / 2
+	if nm := sec * 140 / 3600; nm <= r.opts.ClearToLandNM {
+		t.Fatalf("arrival at %.1f NM, inside the clear-to-land range", nm)
+	}
+	if left <= r.opts.LineUpTime {
+		t.Fatalf("interval left %v, want more than the line-up time", left)
+	}
+	c := r.Decide(at, []RunwayUser{dep("QTR1", "B77W", RunwayAirborne), csa, final("KLM3", sec*140/3600)})
+	if slices.Contains(c.LineUp, "CSA2") {
+		t.Fatalf("lined up with %v of its interval left and the arrival %.0f s out", left, sec)
+	}
+}
+
+// TestTakeoffGrantedStands: a take-off granted to one lined up is not
+// withdrawn as the arrival comes inside MinArrivalLinedUpNM while the call
+// waits for the frequency, its time rule still kept.
+func TestTakeoffGrantedStands(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	c := r.Decide(now, []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", 3.6)})
+	if !slices.Contains(c.Takeoff, "AUA5") {
+		t.Fatalf("not cleared with the arrival at 3.6 NM: %s", c.Waiting["AUA5"])
+	}
+	c = r.Decide(now.Add(10*time.Second), []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", 3.2)})
+	if !slices.Contains(c.Takeoff, "AUA5") {
+		t.Fatalf("granted take-off withdrawn: %s", c.Waiting["AUA5"])
+	}
+	c = r.Decide(now.Add(20*time.Second), []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), slow(final("KLM1", 2.9))})
+	if !slices.Contains(c.Takeoff, "AUA5") {
+		t.Fatalf("granted take-off withdrawn at 2.9 NM: %s", c.Waiting["AUA5"])
+	}
+}
+
+// slow: an arrival on final at 130 kt.
+func slow(u RunwayUser) RunwayUser {
+	u.GroundKts = 130
+	return u
+}
+
+// TestLineUpAndGoGrantedStands: "line up and take off" granted from the
+// holding point is not withdrawn a second later as the arrival's time
+// crosses the limit (live, LKPR: TVS850 withdrawn with the arrival 2m14s
+// out while the call waited for the frequency).
+func TestLineUpAndGoGrantedStands(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	tvs := dep("TVS8", "B738", RunwayHoldingShort)
+	need := r.opts.LineUpTime + RunwayOccupancyIn(tvs.Wake, false, RunwayDry) + r.opts.Margin
+	nm := func(d time.Duration) float64 { return d.Seconds() * 140 / 3600 }
+	c := r.Decide(now, []RunwayUser{tvs, final("TVS1", nm(need+2*time.Second))})
+	if !slices.Contains(c.Takeoff, "TVS8") {
+		t.Fatalf("not cleared to line up and go: %s", c.Waiting["TVS8"])
+	}
+	c = r.Decide(now.Add(3*time.Second), []RunwayUser{tvs, final("TVS1", nm(need-time.Second))})
+	if !slices.Contains(c.Takeoff, "TVS8") {
+		t.Fatalf("granted line-up and take-off withdrawn a second inside its need: %s", c.Waiting["TVS8"])
+	}
+}

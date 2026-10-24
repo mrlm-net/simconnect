@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // vectorArrival is an arrival on LKPR's star to runway 06, at its first
@@ -244,5 +245,24 @@ func TestWithWake(t *testing.T) {
 	}
 	if tx := WithWake(CheckIn(PosDeparture, "Ruzyne Radar", "CSA1", "", ""), WakeMedium); strings.Contains(tx.Text, "heavy") {
 		t.Errorf("%q", tx.Text)
+	}
+}
+
+// TestVectorsNoCircuitPointAsFix: back from a dog-leg onto a go-around's
+// circuit, radar gives the heading for base; the circuit's own turning
+// points are no fixes (live, LKPR: KLM1683 "resume own navigation direct
+// BASE").
+func TestVectorsNoCircuitPointAsFix(t *testing.T) {
+	var plain []types.SIMCONNECT_DATA_WAYPOINT
+	for i := 0; i < 6; i++ {
+		plain = append(plain, types.SIMCONNECT_DATA_WAYPOINT{Latitude: 50 + 0.05*float64(i), Longitude: 14 + 0.03*float64(i%2)})
+	}
+	names := []string{"", "", "DOWNWIND", "BASE", "", "FINAL"}
+	vs := vectorsFor(airport.LatLon{Lat: 49.95, Lon: 14}, plain, names, -1, 1)
+	if len(vs) != 2 {
+		t.Fatalf("vectors %+v, want out and back", vs)
+	}
+	if back := vs[1]; back.Fix != "" || back.For != "base" {
+		t.Fatalf("back %+v: want a heading for base, no circuit point as its fix", back)
 	}
 }

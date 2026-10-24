@@ -380,23 +380,3 @@ func TestCheckStuckWaitingOnATC(t *testing.T) {
 	}
 }
 
-// An arrival already late is sequenced by its STA, ahead of those due
-// later, not behind them by its sliding prediction: it is not delayed
-// (live, LKPR: STA 12:00 estimated 15:06, behind every later one).
-func TestLandingFlowLateArrivalFirst(t *testing.T) {
-	o := ManagerOptions{}
-	o.defaults()
-	now := t0.Add(2 * time.Hour)
-	// Late: STA long past, still scheduled.
-	fs := []ManagedFlight{{Flight: flight("LATE1", "EDDF", "LKPR", now.Add(-90*time.Minute), time.Hour), Kind: "arrival", Airport: "LKPR"}}
-	// Then one every 3 minutes, from when it could land.
-	for i := 0; i < 20; i++ {
-		sta := now.Add(o.ArrivalLead).Add(time.Duration(3*i) * time.Minute)
-		fs = append(fs, ManagedFlight{Flight: flight(fmt.Sprintf("DLH%02d", i), "EDDF", "LKPR", sta.Add(-time.Hour), time.Hour), Kind: "arrival", Airport: "LKPR"})
-	}
-	for _, a := range CheckLandingFlow(0, 0)(Situation{Now: now, Airport: "LKPR", Flights: fs, Options: o}) {
-		if a.Action == AdviceDelay && a.Key == fs[0].Key() {
-			t.Errorf("the late arrival delayed to %s behind those due later", a.Until.Format("15:04"))
-		}
-	}
-}

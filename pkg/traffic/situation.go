@@ -139,15 +139,20 @@ func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 	}
 	switch f.Status {
 	case FlightApproaching, FlightSpawning, FlightEnroute:
-		if t := f.Since.Add(fly); t.After(planned) {
+		// From when it appeared, not Since: Progress moves Since on with
+		// every mile closer, and the landing slid along with the clock (live,
+		// LKPR: every arrival behind pushed on, one landing in 15 minutes).
+		appeared := f.statusAt
+		if appeared.IsZero() {
+			appeared = f.Since
+		}
+		if t := appeared.Add(fly); t.After(planned) {
 			return t
 		}
 		return planned
 	case FlightScheduled:
 		appear := f.STA.Add(-o.ArrivalLead)
-		// Its own landing-flow delay not counted: the flow is worked out
-		// afresh from the STA each pass (a retry after a failed spawn is).
-		if f.retryAt.After(appear) && !f.flowDelay {
+		if f.retryAt.After(appear) {
 			appear = f.retryAt
 		}
 		if now.After(appear) {
@@ -204,27 +209,16 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 				ls = append(ls, landing{ManagedFlight{Flight: Flight{Callsign: name}, Kind: "other", Status: FlightApproaching}, eta})
 			}
 		}
-		// Those in the air (and other traffic) land when they land; the ones
-		// still to come take, in the order of their STAs, the first slot at
-		// or after when they could land: first come first served by the
-		// timetable. By the predicted time alone, one already late (its
-		// prediction now plus the flight, sliding on with the clock) fell
-		// behind every later one, never came, and was cancelled (live, LKPR:
-		// STA 12:00 estimated 15:06, one arrival in ten minutes).
-		var fixed, toCome []landing
-		for _, l := range ls {
-			if l.f.Status == FlightScheduled {
-				toCome = append(toCome, l)
-			} else {
-				fixed = append(fixed, l)
-			}
+		sort.Slice(ls, func(i, j int) bool { return lessFlight(ls[i].eta, ls[i].f.Callsign, ls[j].eta, ls[j].f.Callsign) })
+		// Gaps for the departures waiting, one for every three of them (one
+		// goes between each two arrivals, two in a gap), the gaps already ahead counted: the queue sets
+		// the balance (live, LKPR: one gap in front of every arrival, arrivals
+		// 6 min apart; one gap at a time, eight departures queued).
+		want := 0
+		if waiting >= queue {
+			want = (waiting + 2) / 3
 		}
-		sort.Slice(toCome, func(i, j int) bool {
-			return lessFlight(toCome[i].f.STA, toCome[i].f.Callsign, toCome[j].f.STA, toCome[j].f.Callsign)
-		})
-		// One gap is opened for the departures waiting — the first one the
-		// scheduled arrivals can give — not one between every two arrivals.
-		gapFor := waiting >= queue
+		gaps := 0
 		// The weather stretches the gaps as it stretches the spacing on
 		// final: twice in low visibility, a third more on a contaminated
 		// runway.
@@ -233,38 +227,20 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 		if nm, _ := ArrivalSpacing(medium, medium, SchemeICAO, s.Conditions, false); nm > MinRadarSeparationNM {
 			base = time.Duration(float64(gap) * nm / MinRadarSeparationNM)
 		}
-		taken := make([]time.Time, 0, len(ls))
-		for _, l := range fixed {
-			taken = append(taken, l.eta)
-		}
-		sort.Slice(taken, func(i, j int) bool { return taken[i].Before(taken[j]) })
 		var out []Advice
-		estimate := func(l landing, eta time.Time) {
-			if l.f.Kind != "other" && (l.f.Status == FlightScheduled || l.f.Status == FlightApproaching) {
-				if sta := eta.Add(LandingBeforeSTA); sta.Sub(l.f.STA) >= time.Minute {
-					out = append(out, Advice{Key: l.f.Key(), Action: AdviceEstimate, Until: sta, Reason: "landing sequence"})
-				}
-			}
-		}
-		for _, l := range fixed {
-			estimate(l, l.eta)
-		}
-		for _, l := range toCome {
+		var prev time.Time
+		for _, l := range ls {
 			eta := l.eta
+			if !prev.IsZero() && eta.Sub(prev) >= 2*base && prev.After(s.Now) {
+				gaps++ // one ahead already
+			}
 			need := base
-			if gapFor && len(taken) > 0 {
+			if gaps < want && l.f.Status == FlightScheduled && !prev.IsZero() {
 				need = 2 * base
 			}
-			// The first time from eta on clear of every slot taken by need.
-			for moved := true; moved; {
-				moved = false
-				for _, x := range taken {
-					if d := eta.Sub(x); d > -need && d < need {
-						eta, moved = x.Add(need), true
-					}
-				}
-			}
-			if eta.After(l.eta) {
+			if !prev.IsZero() && eta.Sub(prev) < need && l.f.Status == FlightScheduled {
+				shift := need - eta.Sub(prev)
+				eta = eta.Add(shift)
 				why := "landing flow"
 				switch {
 				case need > base:
@@ -277,19 +253,15 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 				spawn := eta.Add(-(s.Options.ArrivalLead - LandingBeforeSTA))
 				out = append(out, Advice{Key: l.f.Key(), Action: AdviceDelay, Until: spawn, Reason: why})
 			}
-			if need > base {
-				gapFor = false // opened, and kept: the departures' slot, not one for the next arrival
-				gapAt := eta.Add(-base)
-				i := sort.Search(len(taken), func(i int) bool { return taken[i].After(gapAt) })
-				taken = append(taken, time.Time{})
-				copy(taken[i+1:], taken[i:])
-				taken[i] = gapAt
+			if need > base && eta.Sub(l.eta) > 0 && eta.Sub(prev) < 2*base+time.Second {
+				gaps++ // opened
 			}
-			estimate(l, eta)
-			i := sort.Search(len(taken), func(i int) bool { return taken[i].After(eta) })
-			taken = append(taken, time.Time{})
-			copy(taken[i+1:], taken[i:])
-			taken[i] = eta
+			if l.f.Kind != "other" && (l.f.Status == FlightScheduled || l.f.Status == FlightApproaching) {
+				if sta := eta.Add(LandingBeforeSTA); sta.Sub(l.f.STA) >= time.Minute {
+					out = append(out, Advice{Key: l.f.Key(), Action: AdviceEstimate, Until: sta, Reason: "landing sequence"})
+				}
+			}
+			prev = eta
 		}
 		return out
 	}

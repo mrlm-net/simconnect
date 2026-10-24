@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.118.5] - 2026-10-24
+
+### Fixed
+
+- Arrivals came one at a time: one landing in 15 minutes at the 18:00 peak. The landing flow predicted an airborne arrival's landing from `Since`, and the World calls `Progress` for every mile it comes closer, which moves `Since` on, so the predicted landing slid along with the clock and every arrival behind it was pushed on and not spawned. The prediction now counts from when its status began. In an offline 90-minute LKPR peak, with `Progress` reported as the World reports it: 22 of 24 arrivals instead of 7.
+- The departures' gap in the landing flow was opened again in front of every arrival, so arrivals came 6 minutes apart. The gaps now follow the queue: one ahead for every three departures waiting, the gaps already ahead counted (one goes between each two arrivals, two in a gap).
+- A departure lined up and waited out its interval behind the last departure without counting that wait against the next arrival: once free to go, the arrival was too close and it stayed on the runway (live, LKPR: AUA511 lined up 28 s behind a Phenom; KLM1683 went around). It lines up only if it can still go before the arrival once the interval has run.
+- A take-off clearance granted to a departure lined up was withdrawn while the call waited for a busy frequency, as the arrival came inside 3 NM; the departure sat on the runway and the arrival went around. Granted, it stands: down to 2 NM for one lined up, and 15 s inside its time rule for either, so a decision a second later does not withdraw it (live, LKPR: TVS850 "line up and take off" withdrawn with the arrival 2m14s out).
+- Radar told an IFR arrival back from a go-around to "resume own navigation direct BASE": a go-around circuit's own turning points (UPWIND, DOWNWIND, BASE, FINAL) are no fixes. It is given the heading for base instead (live, LKPR: KLM1683).
+- Overflights stopped after four: `MaxOverflights` defaults to 10 (was 4), enough for the 15 to 18 an hour the timetable has.
+
+### Reverted
+
+- The scheduling changes of 0.117.2 to 0.118.3 (runway capacity cap, fair share of the aircraft cap and its look-ahead, arrival maximum delay, landing flow worked out afresh, landing slots by STA). They chased the symptoms of the two bugs above and the doubled timetable fixed in 0.118.4, and broke the traffic mix live. Kept: overflights seeded per hour, the power-out without a loop, and the timetable asked again only for a new airport.
+
 ## [0.118.4] - 2026-10-24
 
 ### Fixed
