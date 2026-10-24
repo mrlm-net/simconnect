@@ -250,7 +250,7 @@ func TestLandingFlowOneDepartureGap(t *testing.T) {
 		fs = append(fs, ManagedFlight{Flight: flight("DLH"+string(rune('1'+i)), "EDDF", "LKPR", t0.Add(time.Duration(i)*time.Minute), time.Hour), Kind: "arrival", Airport: "LKPR"})
 	}
 	for i := 0; i < 2; i++ {
-		fs = append(fs, ManagedFlight{Flight: flight("CSA"+string(rune('1'+i)), "LKPR", "EDDF", t0, time.Hour), Kind: "departure", Airport: "LKPR", Status: FlightTaxiing})
+		fs = append(fs, ManagedFlight{Flight: flight("CSA"+string(rune('1'+i)), "LKPR", "EDDF", t0, time.Hour), Kind: "departure", Airport: "LKPR", Status: FlightTaxiing, AtRunway: true})
 	}
 	o := ManagerOptions{}
 	o.defaults()
