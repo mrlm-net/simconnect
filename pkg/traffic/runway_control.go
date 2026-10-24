@@ -151,7 +151,21 @@ type RunwayController struct {
 	lastDep *RunwayUser // the last departure that started its roll
 	lastAt  time.Time
 	queue   map[string]time.Time // when each departure started waiting
+	// granted: departures lined up and cleared for take-off at the last
+	// decision; kept down to grantedArrivalNM.
+	granted map[string]bool
 }
+
+// grantedArrivalNM: a take-off already granted to one lined up stands with
+// the next arrival this close, the time rule (its roll and the margin)
+// kept. Withdrawn at MinArrivalLinedUpNM while the frequency was busy, it
+// left the departure on the runway (live, LKPR: AUA511 granted, the call
+// not yet said, KLM1683 came inside 3 NM and went around).
+const grantedArrivalNM = 2.0
+
+// grantedSlack: a take-off granted already keeps its time rule this much
+// short, so a decision a second later does not withdraw it.
+const grantedSlack = 15 * time.Second
 
 // behindRoom reports whether a departure u lining up behind the next
 // arrival (landing in next seconds) can take off before the one after it
@@ -226,6 +240,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, LineUpBehindDeparting: map[string]string{}, NoDelay: map[string]float64{}}
+	prevGranted := r.granted
+	r.granted = map[string]bool{}
 
 	// What the runway is doing: who is on it, who of ours is lined up, when
 	// the next arrival lands, who waits at the holding points.
@@ -391,10 +407,21 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			return why
 		}
 		minNM := r.opts.MinArrivalNM
+		need := lineUp + RunwayOccupancyIn(u.Wake, false, r.opts.Surface)
 		if lineUp == 0 {
 			minNM = r.opts.MinArrivalLinedUpNM // lined up: the time rule does the rest
+			if prevGranted[u.Callsign] {
+				minNM = min(minNM, grantedArrivalNM)
+			}
 		}
-		return arrivalClear(lineUp+RunwayOccupancyIn(u.Wake, false, r.opts.Surface), minNM)
+		// Granted already: it stands a second later, not withdrawn as the
+		// arrival's time crosses the limit while the call waits for the
+		// frequency (live, LKPR: TVS850 "line up and take off" withdrawn
+		// with the arrival 2m14s out, a second inside its need).
+		if prevGranted[u.Callsign] {
+			need -= grantedSlack
+		}
+		return arrivalClear(need, minNM)
 	}
 
 	out.NextArrival = nextArrName
@@ -425,6 +452,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	for _, u := range ourLinedUp {
 		if why := takeoffWhy(u, 0); why == "" {
 			out.Takeoff = append(out.Takeoff, u.Callsign)
+			r.granted[u.Callsign] = true
 		} else {
 			out.Waiting[u.Callsign] = why
 		}
@@ -535,9 +563,13 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// Line up and go.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Takeoff = append(out.Takeoff, u.Callsign)
+			r.granted[u.Callsign] = true
 			occupied = u.Callsign
+		// Lined up only if it can still go before the next arrival once the
+		// interval has run (live, LKPR: AUA511 lined up 28 s behind a
+		// Phenom, KLM1683 came inside 3 NM meanwhile and went around).
 		case departureBlocked(u) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
-			arrivalClear(r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why

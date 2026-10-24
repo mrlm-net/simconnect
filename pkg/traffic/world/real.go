@@ -493,7 +493,7 @@ func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLo
 	a := s.airlines[f.Airline]
 	models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)
 	if len(models) == 0 {
-		return fmt.Errorf("%w: no model of a %s", traffic.ErrSpawnImpossible, f.Type)
+		return fmt.Errorf("no model of a %s", f.Type)
 	}
 	model := models[(f.Attempts-1)%len(models)]
 	e := &enrouteAC{f: f, model: model, cruiseKts: kts, arrive: &planned{route: pts, name: name, expect: expect, runway: rwy}}

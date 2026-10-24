@@ -122,12 +122,7 @@ type ScheduleOptions struct {
 	PeakPerHour float64
 	// Density scales everything; 0 means 1.
 	Density float64
-	// CapacityPerHour caps a focus airport's movements in an hour, whatever
-	// the density: what its runway in use handles; more only queued for it
-	// (live, LKPR at density 3: 72 an hour, 12 waiting to take off and no
-	// arrival). 0: DefaultCapacityPerHour.
-	CapacityPerHour float64
-	Seed            uint64
+	Seed    uint64
 	// Layouts are the focus airports' layouts when loaded: runway lengths
 	// and the airlines their stands name (home carriers) come from there.
 	Layouts map[string]*airport.Layout
@@ -136,10 +131,6 @@ type ScheduleOptions struct {
 	// call, and a repeat was dropped or two flights shared a call sign).
 	Used map[string]bool
 }
-
-// DefaultCapacityPerHour: the movements, arrivals and departures, one
-// runway in use takes in an hour, mixed, at about 90 s apart.
-const DefaultCapacityPerHour = 40.0
 
 // Schedule generates the flights with a departure (at a focus airport) or
 // an arrival (at one) between from and to, sorted by the time at the focus
@@ -150,9 +141,6 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 	}
 	if opts.Density <= 0 {
 		opts.Density = 1
-	}
-	if opts.CapacityPerHour <= 0 {
-		opts.CapacityPerHour = DefaultCapacityPerHour
 	}
 	rng := rand.New(rand.NewPCG(opts.Seed, 0x5ced))
 	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
@@ -180,7 +168,7 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 		offset := time.Duration(focus.Position.Lon / 15 * float64(time.Hour))
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
 			local := h.Add(offset).UTC().Hour()
-			n := g.count(math.Min(opts.PeakPerHour*size*opts.Density*cfg.Waves[local], opts.CapacityPerHour))
+			n := g.count(opts.PeakPerHour * size * opts.Density * cfg.Waves[local])
 			for i := 0; i < n; i++ {
 				// Timetables use whole five minutes.
 				at := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(5 * time.Minute)

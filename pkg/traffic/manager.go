@@ -2,9 +2,7 @@ package traffic
 
 import (
 	"errors"
-	"math"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -90,19 +88,16 @@ type ManagedFlight struct {
 	ObjectID uint32 `json:"objectId,omitempty"`
 
 	retryAt time.Time
+	// statusAt: when its status began; Since moves on with Progress.
+	statusAt time.Time
 	// releasedAt: when its stand hold was last released (holdReleaseKeep).
 	releasedAt time.Time
-	// delayedAt, delayedNote, delayedUntil: the last delay announced
-	// (EventDelayed), its time and reason and until when.
-	delayedAt    time.Time
-	delayedUntil time.Time
-	// flowDelay: retryAt is the landing flow's (CheckLandingFlow), worked
-	// out afresh each pass: earlier as well as later, gone when not given.
-	flowDelay bool
-	delayedNote  string
-	seenAt       time.Time // last seen in the picture
-	noEnroute    bool      // the enroute spawn failed: straight to the STAR entry
-	dropped      bool      // a real flight the feed dropped: removed once parked (#841)
+	// delayedAt, delayedNote: the last delay announced (EventDelayed).
+	delayedAt   time.Time
+	delayedNote string
+	seenAt      time.Time // last seen in the picture
+	noEnroute   bool      // the enroute spawn failed: straight to the STAR entry
+	dropped     bool      // a real flight the feed dropped: removed once parked (#841)
 }
 
 // Departure reports whether the flight departs from its managed airport.
@@ -183,7 +178,7 @@ type ManagerOptions struct {
 	EnrouteLead time.Duration
 	// Overflights gives the flights crossing the area in a time window
 	// (e.g. traffic.Overflights); they appear when they enter it (Flight.Enter)
-	// and leave with it. MaxOverflights at once (default 4).
+	// and leave with it. MaxOverflights at once (default 10).
 	Overflights    func(from, to time.Time) []Flight
 	MaxOverflights int
 	// RunwayQueue is how many departures may wait at an airport's runway
@@ -243,7 +238,7 @@ func (o *ManagerOptions) defaults() {
 		o.MaxAttempts = 3
 	}
 	if o.MaxOverflights == 0 {
-		o.MaxOverflights = 4
+		o.MaxOverflights = 10
 	}
 	if o.Checks == nil {
 		o.Checks = DefaultChecks()
@@ -565,11 +560,6 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 			}
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
 				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) ||
-				// Its estimate slid along a landing sequence that never let it in:
-				// cancelled by its STA, not chased for hours (live, LKPR: 145
-				// arrivals queued 2–3 minutes apart, estimated to 03:45, none
-				// spawned).
-				f.Arrival() && now.After(f.STA.Add(ArrivalMaxDelay)) ||
 				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
 				f.Err = "too late"
 				m.set(f, FlightCancelled, now)
@@ -626,22 +616,6 @@ func (m *TrafficManager) unpair(f *ManagedFlight) {
 	f.TurnTo, f.TurnFrom = "", ""
 }
 
-// ArrivalMaxDelay: a scheduled arrival not in the air this long after its
-// STA is cancelled, whatever its estimate.
-const ArrivalMaxDelay = time.Hour
-
-// delayedAgain: a delay announced (EventDelayed) is announced again for
-// the same reason once it grows this much.
-const delayedAgain = 5 * time.Minute
-
-// fairShare: the share of MaxAircraft arrivals or departures may take while
-// the other kind has flights due (due).
-const fairShare = 0.6
-
-// fairLook: flights of the other kind due within this count for the fair
-// share (fairShare).
-const fairLook = 30 * time.Minute
-
 // due spawns the flights whose time has come, in time order, within the
 // limits and spacing.
 func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
@@ -662,36 +636,10 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			ready = append(ready, f)
 		}
 	}
-	overflying, deps, arrs := 0, 0, 0
+	overflying := 0
 	for _, f := range m.flights {
-		switch {
-		case !f.Status.active():
-		case f.Overflight():
+		if f.Overflight() && f.Status.active() {
 			overflying++
-		case f.Departure():
-			deps++
-		default:
-			arrs++
-		}
-	}
-	// Neither kind takes more than fairShare of MaxAircraft while the other
-	// has flights due: a wave of departures, on stands early and counted
-	// climbing away, took all 40 and no arrival came in an hour (live, LKPR).
-	// Due within fairLook, not only now: departures board on their stands
-	// well before the arrivals of the same hour are due, and took the cap
-	// before any arrival was.
-	fair := int(math.Ceil(fairShare * float64(o.MaxAircraft)))
-	depsDue, arrsDue := 0, 0
-	for _, f := range m.flights {
-		if f.Status != FlightScheduled || f.Overflight() {
-			continue
-		}
-		if start, _ := m.start(f, now); start.Before(now.Add(fairLook)) {
-			if f.Departure() {
-				depsDue++
-			} else {
-				arrsDue++
-			}
 		}
 	}
 	sort.Slice(ready, func(i, j int) bool {
@@ -726,9 +674,6 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			if total >= o.MaxAircraft || at[f.Airport] >= o.MaxPerAirport {
 				continue
 			}
-			if f.Departure() && deps >= fair && arrsDue > 0 || f.Arrival() && arrs >= fair && depsDue > 0 {
-				continue
-			}
 			spacing := o.ArrivalSpacing
 			if f.Departure() {
 				spacing = o.DepartureSpacing
@@ -740,13 +685,6 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			m.last[f.key()[:1]+f.Airport] = now
 			total++
 			at[f.Airport]++
-			if f.Departure() {
-				deps++
-				depsDue--
-			} else {
-				arrs++
-				arrsDue--
-			}
 		}
 		f.Attempts++
 		_, f.Stage = m.start(f, now)
@@ -768,7 +706,7 @@ func (f *ManagedFlight) focusTime() time.Time {
 func (m *TrafficManager) set(f *ManagedFlight, s FlightStatus, now time.Time) {
 	if f.Status != s {
 		prev := f.Status
-		f.Status, f.Since = s, now
+		f.Status, f.Since, f.statusAt = s, now, now
 		m.emitPrev(EventStatus, f, prev, now, "")
 	}
 }
@@ -862,13 +800,6 @@ func (m *TrafficManager) Failed(callsign string, err error, now time.Time) {
 
 func (m *TrafficManager) failed(f *ManagedFlight, err error, now time.Time, remove *[]ManagedFlight) {
 	f.Err = err.Error()
-	// Nothing appeared: the spacing after a spawn (ArrivalSpacing) is not
-	// used up. Kept, every failed attempt held the next arrival 3 minutes
-	// (live, LKPR: an enroute spawn falling back to the STAR entry, a BE58
-	// with no model: five arrivals an hour).
-	if f.Status == FlightSpawning {
-		delete(m.last, f.key()[:1]+f.Airport)
-	}
 	switch {
 	case f.Status == FlightSpawning && f.Arrival() && f.Stage == "enroute":
 		// No enroute part: the arrival appears at its STAR entry instead,
@@ -1001,7 +932,6 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 	}
 	hold := map[string]string{}
 	estimated := map[string]bool{}
-	flowed := map[*ManagedFlight]bool{}
 	for icao, fs := range by {
 		sort.Slice(fs, func(i, j int) bool { return lessFlight(fs[i].focusTime(), fs[i].Key(), fs[j].focusTime(), fs[j].Key()) })
 		sit := Situation{Now: now, Airport: icao, Flights: fs, Options: m.opts, Others: othersAt(m.opts.Picture, m.opts.Others, icao)}
@@ -1024,26 +954,13 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 				switch a.Action {
 				case AdviceDelay:
 					// A real arrival is in the air already: the sequence absorbs it (#841).
-					// The landing flow's delay is its own each pass, from the STA:
-					// kept only ever later, a delay never came back when the
-					// slot ahead freed, and arrivals due first ended last (live,
-					// LKPR: STA 09:55 estimated 16:17, one arrival in 20 min).
-					flow := strings.HasPrefix(a.Reason, "landing flow")
-					if flow && f.Status == FlightScheduled {
-						flowed[f] = true
-					}
-					if f.Status == FlightScheduled && (a.Until.After(f.retryAt) || flow && f.flowDelay) && !(f.Observed != nil && f.Arrival()) {
-						f.flowDelay = flow
+					if f.Status == FlightScheduled && a.Until.After(f.retryAt) && !(f.Observed != nil && f.Arrival()) {
 						// Announced when it moves a minute or more (the prediction
 						// drifts by seconds each tick).
-						// Again only for another reason or delayedAgain more (live:
-						// "arrival delayed — landing flow" 40,000 times in an hour and
-						// a half, every scheduled arrival once a minute).
-						// The reason by its kind: "landing flow, gap for 9 departures" is
-						// "landing flow, gap for 10 departures" (the count moves).
-						kind, _, _ := strings.Cut(a.Reason, ", gap for")
-						if f.delayedNote != kind || a.Until.Sub(f.delayedUntil) >= delayedAgain {
-							f.delayedAt, f.delayedNote, f.delayedUntil = now, kind, a.Until
+						// Not again within a minute for the same reason (live: "arrival
+						// delayed — landing flow" every second for the same flights).
+						if (a.Until.Sub(f.retryAt) >= time.Minute || f.Note != a.Reason) && (now.Sub(f.delayedAt) >= time.Minute || f.delayedNote != a.Reason) {
+							f.delayedAt, f.delayedNote = now, a.Reason
 							f, reason := f, a.Reason
 							emits = append(emits, func() { m.emit(EventDelayed, f, now, reason) })
 						}
@@ -1074,12 +991,6 @@ func (m *TrafficManager) check(now time.Time, remove *[]ManagedFlight) []Managed
 					}
 				}
 			}
-		}
-	}
-	// A landing-flow delay not given again this pass: it may go now.
-	for _, f := range m.flights {
-		if f.flowDelay && !flowed[f] && f.Status == FlightScheduled {
-			f.flowDelay, f.retryAt = false, time.Time{}
 		}
 	}
 	var changed []ManagedFlight

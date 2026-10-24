@@ -67,13 +67,31 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 		turn.For = "base"
 	default: // back onto the STAR, direct to its next named fix (not the final's points)
 		for j := at + 1; j < len(names) && j < len(plain)-2; j++ {
-			if names[j] != "" {
-				turn.Fix = names[j]
-				break
+			if names[j] == "" {
+				continue
 			}
+			// A go-around circuit's own turning points are no fixes: radar
+			// gives the heading for base (live, LKPR: KLM1683 "resume own
+			// navigation direct BASE").
+			if circuitPoint(names[j]) {
+				turn.For = "base"
+			} else {
+				turn.Fix = names[j]
+			}
+			break
 		}
 	}
 	return append(out, turn)
+}
+
+// circuitPoint reports whether a route point's name is a circuit's own
+// turning point (CircuitFixes), not a published fix.
+func circuitPoint(name string) bool {
+	switch name {
+	case "UPWIND", "CROSSWIND", "DOWNWIND", "BASE", "FINAL":
+		return true
+	}
+	return false
 }
 
 // VectorDue is the next radar vector to say, once the arrival is about to

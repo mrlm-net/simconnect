@@ -368,41 +368,6 @@ func TestManagerCancelsArrivalDelayedForever(t *testing.T) {
 	}
 }
 
-// Departures due in a wave do not take the whole of MaxAircraft while
-// arrivals are due too: the arrivals spawn.
-func TestManagerFairShare(t *testing.T) {
-	sp := &fakeSpawner{}
-	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 5}, "LKPR")
-	sp.onSpawn = func(f ManagedFlight) {
-		s := FlightBoarding
-		if f.Arrival() {
-			s = FlightApproaching
-		}
-		m.Update(f.Callsign, s, f.Since)
-	}
-	var fs []Flight
-	for i := 0; i < 6; i++ {
-		fs = append(fs, flight("CSA10"+string(rune('0'+i)), "LKPR", "EDDF", t0.Add(10*time.Minute), time.Hour))
-	}
-	for i := 0; i < 3; i++ {
-		fs = append(fs, flight("DLH20"+string(rune('0'+i)), "EDDF", "LKPR", t0.Add(-20*time.Minute), time.Hour)) // STA t0+40: due 15 min after the departures
-	}
-	m.Add(fs)
-	for s := 0; s <= 30*60; s += 10 {
-		m.Tick(t0.Add(time.Duration(s) * time.Second))
-	}
-	deps, arrs := 0, 0
-	for _, f := range sp.spawned {
-		if f.Arrival() {
-			arrs++
-		} else {
-			deps++
-		}
-	}
-	if deps > 3 || arrs < 2 {
-		t.Errorf("%d departures and %d arrivals of a cap of 5, want at most 3 departures and the arrivals in", deps, arrs)
-	}
-}
 
 // Three arrivals every 5 minutes, more than the runway takes, through the
 // landing flow: they come in at the flow's rate,

@@ -355,7 +355,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		a := s.airlines[f.Airline]
 		models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)
 		if len(models) == 0 {
-			return fmt.Errorf("%w: no model of a %s", traffic.ErrSpawnImpossible, f.Type)
+			return fmt.Errorf("no model of a %s", f.Type)
 		}
 		req.Model = models[(f.Attempts-1)%len(models)] // another one on each attempt
 	}
