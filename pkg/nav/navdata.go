@@ -5,9 +5,11 @@ package nav
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // FixKind is the kind of an enroute fix, as the facility API spells it:
@@ -126,6 +128,45 @@ const (
 	AirwayJet
 	AirwayBoth
 )
+
+// Written to JSON by name ("NAMED", "JET"), read by name or number
+// (types.MarshalEnumJSON).
+var (
+	waypointTypeNames = []string{"NONE", "NAMED", "UNNAMED", "VOR", "NDB", "OFF_ROUTE", "IAF", "FAF", "RNAV", "VFR"}
+	airwayTypeNames   = []string{"NONE", "VICTOR", "JET", "BOTH"}
+)
+
+func (t WaypointType) MarshalJSON() ([]byte, error) {
+	if t < 0 {
+		return []byte(strconv.Itoa(int(t))), nil
+	}
+	return types.MarshalEnumJSON(uint32(t), waypointTypeNames)
+}
+
+func (t *WaypointType) UnmarshalJSON(b []byte) error {
+	v := uint32(*t)
+	if err := types.UnmarshalEnumJSON(b, &v, waypointTypeNames, "waypoint type"); err != nil {
+		return err
+	}
+	*t = WaypointType(v)
+	return nil
+}
+
+func (t AirwayType) MarshalJSON() ([]byte, error) {
+	if t < 0 {
+		return []byte(strconv.Itoa(int(t))), nil
+	}
+	return types.MarshalEnumJSON(uint32(t), airwayTypeNames)
+}
+
+func (t *AirwayType) UnmarshalJSON(b []byte) error {
+	v := uint32(*t)
+	if err := types.UnmarshalEnumJSON(b, &v, airwayTypeNames, "airway type"); err != nil {
+		return err
+	}
+	*t = AirwayType(v)
+	return nil
+}
 
 func (t AirwayType) String() string {
 	switch t {

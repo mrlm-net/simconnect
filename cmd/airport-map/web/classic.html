@@ -1031,7 +1031,31 @@ async function computeRoute() {
 
 // normalize flattens a pkg/airport Layout into the shape the drawing code
 // uses: lat/lon on every item and the runway end fields.
+// The layout's enums come by name ("GATE_HEAVY", "HOLD_SHORT"; pkg/types
+// facility_enums_json.go); the page works with their numbers. A number
+// (an older server) is kept.
+const enumNumbers = (names) => Object.fromEntries(names.map((n, i) => [n, i]).filter(([n]) => n));
+const LAYOUT_ENUMS = {
+  parkingType: enumNumbers(['NONE', 'RAMP_GA', 'RAMP_GA_SMALL', 'RAMP_GA_MEDIUM', 'RAMP_GA_LARGE', 'RAMP_CARGO', 'RAMP_MIL_CARGO',
+    'RAMP_MIL_COMBAT', 'GATE_SMALL', 'GATE_MEDIUM', 'GATE_HEAVY', 'DOCK_GA', 'FUEL', 'VEHICLE', 'RAMP_GA_EXTRA', 'GATE_EXTRA']),
+  parkingName: enumNumbers(['NONE', 'PARKING', 'N_PARKING', 'NE_PARKING', 'E_PARKING', 'SE_PARKING', 'S_PARKING', 'SW_PARKING',
+    'W_PARKING', 'NW_PARKING', 'GATE', 'DOCK', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => 'GATE_' + c)]),
+  designator: enumNumbers(['NONE', 'LEFT', 'RIGHT', 'CENTER', 'WATER', 'A', 'B', 'LAST']),
+  pointType: enumNumbers(['NONE', 'NORMAL', 'HOLD_SHORT', '', 'ILS_HOLD_SHORT', 'HOLD_SHORT_NO_DRAW', 'ILS_HOLD_SHORT_NO_DRAW']),
+  pathType: enumNumbers(['NONE', 'TAXI', 'RUNWAY', 'PARKING', 'PATH', 'CLOSED', 'VEHICLE', 'ROAD', 'PAINTED_LINE']),
+};
+function enumNumber(v, nums) {
+  if (typeof v !== 'string') return v;
+  return v in nums ? nums[v] : Number(v);
+}
 function normalize(d) {
+  const E = LAYOUT_ENUMS;
+  for (const p of d.parking || []) {
+    p.type = enumNumber(p.type, E.parkingType); p.name = enumNumber(p.name, E.parkingName); p.suffix = enumNumber(p.suffix, E.parkingName);
+  }
+  for (const p of d.taxiPoints || []) p.type = enumNumber(p.type, E.pointType);
+  for (const p of d.taxiPaths || []) { p.type = enumNumber(p.type, E.pathType); p.runwayDesignator = enumNumber(p.runwayDesignator, E.designator); }
+  for (const r of d.runways || []) for (const e of [r.primary, r.secondary]) if (e) e.designator = enumNumber(e.designator, E.designator);
   for (const p of [...d.parking, ...d.taxiPoints]) { p.lat = p.position.lat; p.lon = p.position.lon; }
   for (const r of d.runways) {
     r.lat = r.center.lat; r.lon = r.center.lon;

@@ -180,6 +180,34 @@ const RWY_DESIG = ['', 'L', 'R', 'C', 'W', 'A', 'B'];
 const RWY_COMPASS = { 37: 'N', 38: 'NE', 39: 'E', 40: 'SE', 41: 'S', 42: 'SW', 43: 'W', 44: 'NW' };
 // TAXI_PARKING NAME enum as in the BGL spec — a best guess, raw value alongside.
 const PARKING_NAMES = ['', 'P', 'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'GATE', 'DOCK'];
+// The layout's enums come by name ("GATE_HEAVY", "HOLD_SHORT"; pkg/types
+// facility_enums_json.go); the map works with their numbers. A number
+// (an older server) is kept.
+const enumNumbers = (names) => Object.fromEntries(names.map((n, i) => [n, i]).filter(([n]) => n));
+const LAYOUT_ENUMS = {
+  parkingType: enumNumbers(['NONE', 'RAMP_GA', 'RAMP_GA_SMALL', 'RAMP_GA_MEDIUM', 'RAMP_GA_LARGE', 'RAMP_CARGO', 'RAMP_MIL_CARGO',
+    'RAMP_MIL_COMBAT', 'GATE_SMALL', 'GATE_MEDIUM', 'GATE_HEAVY', 'DOCK_GA', 'FUEL', 'VEHICLE', 'RAMP_GA_EXTRA', 'GATE_EXTRA']),
+  parkingName: enumNumbers(['NONE', 'PARKING', 'N_PARKING', 'NE_PARKING', 'E_PARKING', 'SE_PARKING', 'S_PARKING', 'SW_PARKING',
+    'W_PARKING', 'NW_PARKING', 'GATE', 'DOCK', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((c) => 'GATE_' + c)]),
+  designator: enumNumbers(['NONE', 'LEFT', 'RIGHT', 'CENTER', 'WATER', 'A', 'B', 'LAST']),
+  pointType: enumNumbers(['NONE', 'NORMAL', 'HOLD_SHORT', '', 'ILS_HOLD_SHORT', 'HOLD_SHORT_NO_DRAW', 'ILS_HOLD_SHORT_NO_DRAW']),
+  pathType: enumNumbers(['NONE', 'TAXI', 'RUNWAY', 'PARKING', 'PATH', 'CLOSED', 'VEHICLE', 'ROAD', 'PAINTED_LINE']),
+};
+function enumNumber(v, nums) {
+  if (typeof v !== 'string') return v;
+  return v in nums ? nums[v] : Number(v);
+}
+// layoutEnumNumbers turns a layout's enum names into their numbers, in place.
+function layoutEnumNumbers(d) {
+  const E = LAYOUT_ENUMS;
+  for (const p of d.parking || []) {
+    p.type = enumNumber(p.type, E.parkingType); p.name = enumNumber(p.name, E.parkingName); p.suffix = enumNumber(p.suffix, E.parkingName);
+  }
+  for (const p of d.taxiPoints || []) p.type = enumNumber(p.type, E.pointType);
+  for (const p of d.taxiPaths || []) { p.type = enumNumber(p.type, E.pathType); p.runwayDesignator = enumNumber(p.runwayDesignator, E.designator); }
+  for (const r of d.runways || []) for (const e of [r.primary, r.secondary]) if (e) e.designator = enumNumber(e.designator, E.designator);
+  return d;
+}
 function rwyEnd(num, des) {
   const n = RWY_COMPASS[num] || (num > 0 ? String(num).padStart(2, '0') : '?');
   return n + (RWY_DESIG[des] || '');
