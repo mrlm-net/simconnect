@@ -72,6 +72,13 @@ func (cc *controlCenter) takeoffMeetsCapped(g *airport.Graph, it *controlled, ca
 		if o == nil || o.arr == nil || o.ICAO != it.ICAO || o.object() != a.ObjectID || o.arr.State() != traffic.ArrivalApproaching {
 			continue
 		}
+		if o.circuit != nil {
+			// VFR in the circuit: the tower gives traffic information, it
+			// does not hold an IFR departure for it; its landing is the
+			// runway rules' (live, DLH555 lined up for 5 minutes for
+			// OKGKF joining downwind).
+			continue
+		}
 		o.mu.Lock()
 		same := o.view.Runway == rwy
 		o.mu.Unlock()

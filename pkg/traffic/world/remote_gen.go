@@ -361,6 +361,12 @@ func (r *remoteArr) ProcedureRoute() []airport.LatLon {
 	return o0
 }
 
+func (r *remoteArr) CircuitFinal() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "CircuitFinal", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) ProcedureCorners() []airport.LatLon {
 	var o0 []airport.LatLon
 	r.c.dropped(r.c.call(r.t, "ProcedureCorners", []any{}, &o0))
@@ -440,3 +446,4 @@ func (r *remoteSim) ListGroundVehicles() error {
 	err := r.c.call(r.t, "ListGroundVehicles", []any{})
 	return err
 }
+

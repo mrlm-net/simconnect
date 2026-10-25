@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.124.1] - 2026-10-25
+
+### Fixed
+
+- A departure lined up waited for VFR circuit traffic still joining downwind (live, DLH555 lined up for 6 minutes for OKGKF, two aircraft on the runway, OKGKF sent around). The take-off conflict check no longer counts circuit traffic: the tower gives traffic information, and the circuit aircraft's landing is the runway rules'.
+- A circuit aircraft sent around from the injected final (or climbing out of a touch-and-go) was taken over by the approach again within seconds and landed onto the aircraft on the runway (live, OKGKF 11 s after "go around", OKDCK). It now flies its circuit round to the final first.
+- Circuit traffic counts as established on its final once it is turned final within 3 NM, not only at the 0.5 NM takeover, so the landing order and landing clearance no longer wait for the last half mile.
+- Two departures lined up at once from two holding points (live, TVS1608 at A and RYR257 at Z): one told to line up but still holding short (`RunwayUser.LineUpCleared`) goes next, and no other departure is lined up past it. For the arrivals it is still holding short.
+- Answers to crews' calls (check-ins with the tower and departure, the weather, runway changes) go on the frequency's agenda in their priority class instead of on a timer ahead of more urgent calls (live, a "report ready for departure" said before a circuit call that had waited 53 s).
+- `CircuitMaxExtendNM` is 3 NM (was 5): further out the base crosses under the ILS final.
+
 ## [0.124.0] - 2026-10-25
 
 ### Added

@@ -81,6 +81,7 @@ type arrivalCtl interface {
 	Plan() *traffic.ArrivalPlan
 	ProcedurePlan() []traffic.RoutePoint
 	ProcedureRoute() []airport.LatLon
+	CircuitFinal() bool
 	ProcedureCorners() []airport.LatLon
 	ReduceToFinalSpeed() (time.Duration, error)
 	Shortcut(maxSaveNM float64, keep []string) (string, float64, error)

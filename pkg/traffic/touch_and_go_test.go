@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 )
 
 // TestTouchAndGo: a C172 in the LKPR 24 circuit with one touch-and-go
@@ -56,10 +58,21 @@ func testTouchAndGo(t *testing.T, stopGo bool) {
 	end := ctl.Plan().End
 	// MSFS AI's part: it reports itself on the final, where the injected
 	// approach takes over (each time it flies the circuit).
-	joined := 0
+	joined, corner := 0, 0
 	for i := 0; i < 60*60*20 && ctl.State() != ArrivalParked && !ctl.State().Terminal(); i++ {
 		now = now.Add(time.Second / 60)
 		if ctl.flyingProc {
+			// Round the circuit after a touch-and-go: its corners first.
+			if ctl.circuit && corner < len(ctl.proc.Waypoints)-1 {
+				w := ctl.proc.Waypoints[corner]
+				corner++
+				ctl.Handle(arrivalPositionMsg(mon, 79, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, w.Altitude, end.Heading, fin.Kts, false))
+				if !ctl.flyingProc {
+					joined++
+				}
+				continue
+			}
+			corner = 0
 			at := offsetHeading(fin.Position, end.Heading, 50)
 			ctl.Handle(arrivalPositionMsg(mon, 79, at, fin.AltFt-g.Layout.Altitude/0.3048, end.Heading, fin.Kts, false))
 			if !ctl.flyingProc {
@@ -131,6 +144,52 @@ func TestCircuitGoAround(t *testing.T) {
 	for _, w := range ctl.corners {
 		if w.Altitude > ci.HeightFt+1 {
 			t.Errorf("a circuit point at %.0f ft, circuit height %.0f", w.Altitude, ci.HeightFt)
+		}
+	}
+}
+
+// TestCircuitGoAroundNotRetaken: sent around from its injected final, a
+// circuit arrival is not taken over by the approach again on that final:
+// frames 0.4 NM out, aligned, keep it flying its circuit (live, OKDCK went
+// landing → approaching → landing within a second and landed).
+func TestCircuitGoAroundNotRetaken(t *testing.T) {
+	g := lkprGraph(t)
+	ci, _ := NewCircuit(g.Layout, "24", CircuitConfig{}, ProfileFor("C172"))
+	ec := &eventClient{}
+	inj := NewInjector(ec)
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKDCK",
+		InjectApproach: true, Circuit: &ci, RollThroughChance: -1}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	now := time.Now()
+	ctl.now = func() time.Time { return now }
+	mon := DefaultArrivalRequestBase + arrReqMonitor
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 85))
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 85, 1200, 12))
+	fin, _ := ci.Point(LegFinal)
+	end := ctl.Plan().End
+	for i := 0; i < 60*30 && ctl.flyingProc; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 85, offsetHeading(fin.Position, end.Heading, 50), fin.AltFt-g.Layout.Altitude/0.3048, end.Heading, fin.Kts, false))
+	}
+	if ctl.flyingProc {
+		t.Fatal("never taken over by the approach")
+	}
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	short := offsetHeading(end.Threshold, end.Heading+180, 0.4*1852)
+	for i := 0; i < 60*3; i++ {
+		now = now.Add(time.Second / 60)
+		ctl.Handle(arrivalPositionMsg(mon, 85, short, 150, end.Heading, 70, false))
+		if !ctl.flyingProc || ctl.approach != nil {
+			t.Fatalf("taken over again on the final %d frames after its go-around", i)
 		}
 	}
 }
