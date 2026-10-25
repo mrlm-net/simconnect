@@ -74,9 +74,12 @@ type scheduler struct {
 	pacedAt time.Time // paceEnroute's last look
 	// usedCS: the schedule's call signs by the hour they were made (#98).
 	usedCS map[string]time.Time
-	// noStand: the airports and types said to have no stand ("ICAO type").
+	// noStand: the airports and types said to have no stand ("ICAO type"),
+	// and the types said to have no model ("model type").
 	noStand map[string]bool
-	real    map[string]*realID
+	// models: the aircraft titles as of the last tick (withModels).
+	models []string
+	real   map[string]*realID
 }
 
 // ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
@@ -229,7 +232,40 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 			}
 		}
 	}
-	return flights
+	return s.withModels(flights)
+}
+
+// withModels leaves out the flights of a type the simulator has no model
+// of: planned in the landing flow, one held a slot until its spawn failed
+// (offline LKPR: three light aircraft, 16 minutes without a landing).
+// Before the models are known, all are kept. Under the manager's lock: the
+// models as of the last tick, no cc.mu.
+func (s *scheduler) withModels(flights []traffic.Flight) []traffic.Flight {
+	s.mu.Lock()
+	list := s.models
+	s.mu.Unlock()
+	if len(list) == 0 {
+		return flights
+	}
+	kept := flights[:0]
+	for _, f := range flights {
+		if len(traffic.ModelsForFlight(list, f.Airline, s.airlines[f.Airline].Name, f.Type, f.Callsign, 1)) > 0 {
+			kept = append(kept, f)
+			continue
+		}
+		k := "model " + f.Type
+		s.mu.Lock()
+		said := s.noStand[k]
+		if s.noStand == nil {
+			s.noStand = map[string]bool{}
+		}
+		s.noStand[k] = true
+		s.mu.Unlock()
+		if !said {
+			s.cc.log.printf("schedule: no model of a %s: its flights left out", f.Type)
+		}
+	}
+	return kept
 }
 
 // visual reports whether the weather at an airport allows VFR flights: a
@@ -616,6 +652,12 @@ func (s *scheduler) tick(now time.Time) {
 		s.corridorTick(now)
 		return
 	}
+	// The models for the schedule (withModels): taken here, not under the
+	// manager's lock in source (a deadlock with an update holding cc.mu).
+	models := s.cc.modelList()
+	s.mu.Lock()
+	s.models = models
+	s.mu.Unlock()
 	s.mgr.Tick(now)
 	s.expirePending()
 	s.paceEnroute(now) // no catching up the one ahead en route

@@ -130,3 +130,20 @@ func TestReducedSeparationRecat(t *testing.T) {
 		t.Errorf("D behind D: %.1f NM, want %.1f", nm, ReducedRadarSeparationNM)
 	}
 }
+
+// An arrival whose spawn failed holds no landing slot: the one behind it
+// keeps its time (offline LKPR: a DA42 with no model pushed every arrival
+// behind, 18 minutes without a landing).
+func TestLandingFlowSkipsFailedSpawn(t *testing.T) {
+	fs := []ManagedFlight{
+		{Flight: flight("OKDSI", "LKKV", "LKPR", t0, time.Hour), Kind: "arrival", Airport: "LKPR", Status: FlightScheduled, Err: "no model of a DA42"},
+		{Flight: flight("RYR669", "EGSS", "LKPR", t0.Add(time.Minute), time.Hour), Kind: "arrival", Airport: "LKPR", Status: FlightScheduled},
+	}
+	o := ManagerOptions{}
+	o.defaults()
+	for _, a := range CheckLandingFlow(0, 0)(Situation{Now: t0.Add(-time.Hour), Airport: "LKPR", Flights: fs, Options: o}) {
+		if a.Key == fs[1].Key() {
+			t.Errorf("RYR669 %v to %s (%s): the failed OKDSI holds its slot", a.Action, a.Until.Format("15:04"), a.Reason)
+		}
+	}
+}

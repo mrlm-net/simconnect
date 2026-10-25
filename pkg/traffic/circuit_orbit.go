@@ -17,6 +17,29 @@ import (
 // emergencies.
 const CircuitMaxExtendNM = 3.0
 
+// CircuitWideExtendNM: how far a downwind may be extended when the
+// sequence has room for it, no IFR due on the final where its base would
+// cross (SetCircuitExtendMax; the world decides).
+const CircuitWideExtendNM = 5.0
+
+// SetCircuitExtendMax sets how far a VFR circuit arrival's downwind may be
+// extended in all (AbsorbDelay), between CircuitMaxExtendNM and
+// CircuitWideExtendNM; 0 back to CircuitMaxExtendNM.
+func (c *ArrivalController) SetCircuitExtendMax(nm float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.circuitExtendNM = math.Max(CircuitMaxExtendNM, math.Min(nm, CircuitWideExtendNM))
+}
+
+// circuitExtendMax is how far the downwind may be extended in all. c.mu
+// held.
+func (c *ArrivalController) circuitExtendMax() float64 {
+	if c.circuitExtendNM > 0 {
+		return c.circuitExtendNM
+	}
+	return CircuitMaxExtendNM
+}
+
 // Orbit has a VFR circuit arrival fly an orbit where it is (Doc 4444
 // 12.3.4.17: "orbit left/right"): a full turn at circuit height and speed,
 // to the side its circuit turns, standard rate for its speed, then on with
@@ -91,7 +114,7 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	}
 	kts := CircuitKts(*c.aircraft())
 	a := Absorption{Left: delay}
-	x := math.Min(delay.Hours()*kts/2, CircuitMaxExtendNM-c.tromboneNM)
+	x := math.Min(delay.Hours()*kts/2, c.circuitExtendMax()-c.tromboneNM)
 	if x < 0.1 {
 		return a, nil // extended as far as it goes: the rest for an orbit
 	}

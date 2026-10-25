@@ -60,6 +60,12 @@ type SequenceEntry struct {
 	// without the compression buffer (worked off with speed; live, RYR270
 	// sent around 6.2 NM behind a PC-12 for the 7 NM with its buffer).
 	MinimumNM float64 `json:"minimumNM,omitempty"`
+	// SeparationNM is the separation minimum behind its leader (the wake
+	// or radar minimum in the conditions), without a unit's MinSpacingNM:
+	// closer than MinimumNM but not than this, it lands — a go-around only
+	// below it (offline LKPR: THY1537 sent around 4.4 NM behind DLH1775 at
+	// 7.2 NM to go, for the unit's 5 NM; the minimum was 3).
+	SeparationNM float64 `json:"separationNM,omitempty"`
 	// ETA is when it would land flying on as it is; Landing when it lands
 	// in the sequence; Delay the difference it must absorb.
 	ETA     time.Time     `json:"eta"`
@@ -110,6 +116,12 @@ type SequencerOptions struct {
 	// new prediction must not swap it straight back (live, LKPR: RYR730,
 	// CSA1119 and CSA1009 traded places every few seconds).
 	TacticalSwapHold time.Duration
+	// GoneGrace: an arrival missing from the arrivals keeps its place this
+	// long (default 2 min), and back within it, it is where it was — not a
+	// newcomer at the back (offline LKPR: TVS993 and TVS1137 out of the
+	// sequence for a look at a handover, back as newcomers, the order
+	// behind them turned over every pass). Rejoin still starts it afresh.
+	GoneGrace time.Duration
 	// CompressionMaxNM caps the compression buffer behind a slower leader
 	// (0: DefaultCompressionMaxNM, 2 NM; negative: none).
 	CompressionMaxNM float64
@@ -165,6 +177,8 @@ type ApproachSequencer struct {
 	// once given (a gap does not move to another arrival and back).
 	smooth map[string]smoothETA
 	gapOf  map[string]int
+	// goneAt: when an arrival went missing from the arrivals (GoneGrace).
+	goneAt map[string]time.Time
 	cond   ApproachConditions
 	// depSlots: departures waiting for the runway, each to get a gap.
 	depSlots int
@@ -286,11 +300,14 @@ func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequenc
 	if opts.TacticalSwapHold == 0 {
 		opts.TacticalSwapHold = 3 * time.Minute
 	}
+	if opts.GoneGrace == 0 {
+		opts.GoneGrace = 2 * time.Minute
+	}
 	if opts.TacticalSwapMaxCost == 0 {
 		opts.TacticalSwapMaxCost = 3 * time.Minute
 	}
 	return &ApproachSequencer{runway: runway, opts: opts, last: map[string]SequenceEntry{}, first: map[string]time.Time{},
-		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}, swappedAt: map[string]time.Time{}, smooth: map[string]smoothETA{}, gapOf: map[string]int{}}
+		keys: map[string]time.Time{}, manual: map[string]time.Time{}, behind: map[string]string{}, swappedAt: map[string]time.Time{}, smooth: map[string]smoothETA{}, gapOf: map[string]int{}, goneAt: map[string]time.Time{}}
 }
 
 // Rejoin puts an arrival back into the sequence afresh, by its prediction
@@ -303,6 +320,7 @@ func (s *ApproachSequencer) Rejoin(callsign string) {
 	delete(s.last, callsign)
 	delete(s.manual, callsign)
 	delete(s.behind, callsign)
+	delete(s.goneAt, callsign)
 }
 
 // Behind keeps callsign landing after lead, a spacing behind it, close in
@@ -471,8 +489,20 @@ func (s *ApproachSequencer) minimumNM(lead, follow ApproachAircraft, c ApproachC
 		}
 		return 2
 	}
+	return math.Max(s.separationNM(lead, follow, c), s.opts.MinSpacingNM)
+}
+
+// separationNM is the separation minimum on final between lead and follow
+// in the conditions: the wake or radar minimum, without MinSpacingNM.
+func (s *ApproachSequencer) separationNM(lead, follow ApproachAircraft, c ApproachConditions) float64 {
+	if lead.Runway != follow.Runway {
+		if s.opts.DiagonalNM > 0 {
+			return s.opts.DiagonalNM
+		}
+		return 2
+	}
 	nm, _ := ArrivalSpacing(lead.Wake, follow.Wake, s.opts.Scheme, c, s.opts.AllowReduced && s.opts.MinSpacingNM == 0)
-	return math.Max(nm, s.opts.MinSpacingNM)
+	return nm
 }
 
 // SetConditions sets the weather on final the spacing follows
@@ -588,7 +618,9 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	sort.SliceStable(free, func(i, j int) bool {
 		pi, oki := prev[free[i].a.Callsign]
 		pj, okj := prev[free[j].a.Callsign]
-		if oki && okj && absDuration(free[i].key.Sub(free[j].key)) <= s.opts.SwapMargin {
+		// The same place last time (one missing for a look, its number
+		// taken by the one behind): by their keys.
+		if oki && okj && pi != pj && absDuration(free[i].key.Sub(free[j].key)) <= s.opts.SwapMargin {
 			return pi < pj
 		}
 		return free[i].key.Before(free[j].key)
@@ -610,7 +642,12 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			s.mu.Lock()
 			_, placed := s.manual[n.a.Callsign] // a controller put it there
 			s.mu.Unlock()
-			if !ew || nw && pn < pe || placed || n.a.Runway != e.a.Runway {
+			// The same number: one of them missing the last look, the other
+			// moved into its number; ahead by its key, it was the one ahead
+			// (offline LKPR: TVS993 back after a reroute, put behind
+			// TVS1137 here, its key reset; TVS1137 went around twice).
+			ahead := nw && (pn < pe || pn == pe && !e.key.Before(n.key))
+			if !ew || ahead || placed || n.a.Runway != e.a.Runway {
 				continue
 			}
 			// Behind it at their merge fix, or ahead only by costing it more
@@ -705,16 +742,37 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 				// The gap it was given: kept (live, LKPR: OKBWJ's gap 10.5 and 6
 				// NM by turns, its delay 62s, 4s, 2m54s, 4s within three minutes).
 				s.mu.Lock()
-				if had, ok := s.gapOf[f.a.Callsign]; ok {
+				had, given := s.gapOf[f.a.Callsign]
+				if given {
 					n = min(had, n) // fewer waiting (held, heldSlots): a smaller gap
 				}
-				s.gapOf[f.a.Callsign] = n
 				s.mu.Unlock()
-				if dg, nm := s.departureGap(ahead.a, f.a, c, n); dg > g {
-					g = dg
-					gapped[f.a.Callsign] = nm
+				dg, nm := s.departureGap(ahead.a, f.a, c, n)
+				// Not a new gap in front of one near its final that cannot lose
+				// it with speed and its path: the next arrival takes it (offline
+				// LKPR: THY1537 given 6.8 NM turning base, a minute it could not
+				// lose; short on the final, sent around).
+				if !given && dg > g && f.a.DistanceToGoNM-s.opts.FinalNM < gapAbsorbNM {
+					with := at
+					if t := ahead.at.Add(dg); t.After(with) {
+						with = t
+					}
+					// A dog-leg this close adds at most the way still to fly.
+					way := f.a.DistanceToGoNM - s.opts.FinalNM
+					if a := PlanAbsorption(with.Sub(f.eta), way, ProcedureSpeedKts, MinProcedureSpeedKts); a.Left > 0 || a.ExtraNM > way {
+						dg = 0
+					}
 				}
-				slots -= n
+				if dg > 0 || given {
+					s.mu.Lock()
+					s.gapOf[f.a.Callsign] = n
+					s.mu.Unlock()
+					if dg > g {
+						g = dg
+						gapped[f.a.Callsign] = nm
+					}
+					slots -= n
+				}
 			}
 			if at.Before(ahead.at.Add(g)) {
 				at = ahead.at.Add(g)
@@ -792,6 +850,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			var g time.Duration
 			g, e.SpacingNM, e.SpacingWhy = s.gap(planned[i-1].a, p.a, c)
 			e.MinimumNM = s.minimumNM(planned[i-1].a, p.a, c)
+			e.SeparationNM = s.separationNM(planned[i-1].a, p.a, c)
 			if short := g - p.at.Sub(planned[i-1].at); short > 0 {
 				e.ShortBy = short
 			}
@@ -801,17 +860,18 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		}
 		out[i] = e
 	}
-	s.report(out)
+	s.report(now, out)
 	return out
 }
 
-// report remembers the sequence and reports what changed.
-func (s *ApproachSequencer) report(seq []SequenceEntry) {
+// report remembers the sequence at at and reports what changed.
+func (s *ApproachSequencer) report(at time.Time, seq []SequenceEntry) {
 	s.mu.Lock()
 	var changes []SequenceChange
 	now := map[string]bool{}
 	for _, e := range seq {
 		now[e.Callsign] = true
+		delete(s.goneAt, e.Callsign)
 		prev, had := s.last[e.Callsign]
 		switch {
 		case !had:
@@ -825,6 +885,16 @@ func (s *ApproachSequencer) report(seq []SequenceEntry) {
 	}
 	for cs, e := range s.last {
 		if !now[cs] {
+			// Missing for a look: its place kept for GoneGrace.
+			gone, ok := s.goneAt[cs]
+			if !ok {
+				s.goneAt[cs] = at
+				continue
+			}
+			if at.Sub(gone) < s.opts.GoneGrace {
+				continue
+			}
+			delete(s.goneAt, cs)
 			delete(s.last, cs)
 			delete(s.swappedAt, cs)
 			delete(s.first, cs)
@@ -1044,3 +1114,8 @@ func (s *ApproachSequencer) smoothed(now time.Time, callsign string, raw time.Ti
 	s.smooth[callsign] = smoothETA{eta, now}
 	return eta
 }
+
+// gapAbsorbNM: an arrival this close to its final (FinalNM) is given a new
+// departure gap only when it can lose the delay with speed and its path
+// (PlanAbsorption); farther out, approach has the time and room.
+const gapAbsorbNM = 25.0

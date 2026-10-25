@@ -34,6 +34,14 @@ const (
 	prioDelivery                   // departure clearance
 )
 
+// prioCheckInReply: the tower's answer to a check-in ("report ready",
+// "number 3", "continue approach"): after the runway's calls, not in their
+// class —
+// older, it went first and a take-off clearance waited (offline LKPR:
+// TVS1430 cleared 29 s late on an empty runway, two check-ins answered
+// first).
+const prioCheckInReply = prioApproach
+
 // safety: a go-around or a separation instruction, said at once: no
 // answer time, the first gap on the frequency.
 func (p callPrio) safety() bool { return p <= prioSeparation }

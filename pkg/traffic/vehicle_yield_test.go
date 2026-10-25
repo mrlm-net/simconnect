@@ -66,6 +66,11 @@ func TestVehicleGivesWay(t *testing.T) {
 	if stopped > 150-reach+1 {
 		t.Errorf("stopped at %.0f m, inside the aircraft's reach (crossing at 150 m, reach %.0f m)", stopped, reach)
 	}
+	// And stays there: no creeping on into its path (offline LKPR, the tug
+	// of WZZ1639 crept on 3 m a look and waited 9 m from CSA1955).
+	if d := tug.pose.Distance; d > 150-reach+1 {
+		t.Errorf("crept on to %.0f m while waiting, inside the aircraft's reach (crossing at 150 m)", d)
+	}
 	if !tug.waiting {
 		t.Error("not waiting")
 	}
@@ -87,6 +92,21 @@ func TestVehicleGivesWay(t *testing.T) {
 	pic.ReportPath(3, ahead, DefaultHalfSpanMeters)
 	if _, _, ok := pic.VehicleConflict(77, 0, []airport.LatLon{cross, path.PointAt(152)}, vehicleHalfMeters, false, now); ok {
 		t.Error("stops in the middle of the aircraft's path")
+	}
+
+	// Taxiing but stopped across the road (behind traffic): no path ahead,
+	// its body still in the way (live, a fuel truck drove through CSA429
+	// stopped on H1).
+	pic.Forget(3)
+	pic.Report(4, path.PointAt(150), hdg, prof, now)
+	pic.ReportPath(4, nil, DefaultHalfSpanMeters)
+	pic.ReportIntent(4, ahead)
+	var way []airport.LatLon
+	for d := 100.0; d <= 140; d += vehicleLookStep {
+		way = append(way, path.PointAt(d))
+	}
+	if _, _, ok := pic.VehicleConflict(77, 0, way, vehicleHalfMeters, false, now); !ok {
+		t.Error("drives through an aircraft stopped on its taxi way")
 	}
 }
 

@@ -814,3 +814,56 @@ func TestOneLinedUpFromTwoHoldingPoints(t *testing.T) {
 		}
 	}
 }
+
+// A line-up behind the one departing is given only with the room the map
+// checks it against once that one has passed (LineUpRoom, some 20 s on):
+// never "line up and wait" and at once "hold position" (offline LKPR:
+// WZZ1040 behind CSA117, OKRIX on a 3.5 NM final, the interval nearly run).
+func TestLineUpBehindDepartingKeepsItsRoom(t *testing.T) {
+	roll := dep("CSA1", "A320", RunwayRolling)
+	other := dep("EZY2", "A320", RunwayHoldingShort)
+	other.Route = "DOBE4A"
+	t0 := time.Now()
+	for _, into := range []time.Duration{0, 20 * time.Second, 40 * time.Second, 55 * time.Second} {
+		for nm := 3.0; nm <= 10; nm += 0.1 {
+			r := NewRunwayController(RunwayControllerOptions{})
+			r.Decide(t0, []RunwayUser{roll, other}) // its roll began at t0
+			a := final("AUA4", nm)
+			c := r.Decide(t0.Add(into), []RunwayUser{roll, other, a})
+			if c.LineUpBehindDeparting["EZY2"] == "" {
+				continue
+			}
+			passed := 20 * time.Second
+			then := time.Duration(nm/a.GroundKts*float64(time.Hour)) - passed
+			if !r.LineUpRoom(then, other) {
+				t.Fatalf("%s into the roll, arrival on a %.1f NM final: lined up behind the departing, %s on no room", into, nm, passed)
+			}
+		}
+	}
+}
+
+// One cleared for take-off at an intersection and still lining up is not
+// "the departing" yet: the one at the threshold behind it waits, never two
+// lining up at once (offline LKPR: OKYQT a DA-62 lining up at B for 80 s,
+// TVS1984 told to line up behind it at Z).
+func TestNoLineUpBehindOneLiningUp(t *testing.T) {
+	now := time.Now()
+	r := NewRunwayController(RunwayControllerOptions{})
+	b := dep("OKYQT", "DA62", RunwayHoldingShort)
+	b.AlongM = 800
+	if c := r.Decide(now, []RunwayUser{b}); !slices.Contains(c.Takeoff, "OKYQT") {
+		t.Fatalf("OKYQT alone: %+v, want cleared for take-off", c)
+	}
+	b.Phase, b.LiningUp = RunwayLinedUp, true
+	z := dep("TVS1984", "B738", RunwayHoldingShort)
+	z2 := dep("CSA2", "A320", RunwayHoldingShort) // a rush
+	c := r.Decide(now.Add(5*time.Second), []RunwayUser{b, z, z2})
+	if c.LineUpBehindDeparting["TVS1984"] != "" {
+		t.Fatalf("TVS1984 lined up behind OKYQT still lining up: %+v", c)
+	}
+	b.LiningUp = false // lined up, about to roll: now it may
+	c = r.Decide(now.Add(10*time.Second), []RunwayUser{b, z, z2})
+	if c.LineUpBehindDeparting["TVS1984"] != "OKYQT" {
+		t.Errorf("OKYQT lined up: %+v, want TVS1984 behind it", c.LineUpBehindDeparting)
+	}
+}

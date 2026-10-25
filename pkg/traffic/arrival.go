@@ -337,6 +337,9 @@ type ArrivalController struct {
 	// tromboneNM: how far the downwind was extended on this approach
 	// (AbsorbDelay).
 	tromboneNM float64
+	// circuitExtendNM: how far a circuit's downwind may be extended in all
+	// (SetCircuitExtendMax); 0 CircuitMaxExtendNM.
+	circuitExtendNM float64
 	// baseCall: the downwind was extended with the base turn left to the
 	// controller, said once the aircraft is there (BaseDue).
 	baseCall bool

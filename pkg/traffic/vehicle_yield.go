@@ -12,8 +12,8 @@ import (
 // VehicleStopShortMeters short of where a moving aircraft's body, or the
 // next VehicleAircraftLookMeters of its path, comes within both half
 // widths plus VehicleClearMeters. It waits there until the aircraft has
-// passed. A vehicle already in an aircraft's path (within
-// VehicleCommitMeters) drives on to clear it. Parked aircraft do not count
+// passed. A vehicle already inside an aircraft's path (its wings' sweep)
+// drives on to clear it, keeping off its body. Parked aircraft do not count
 // (the roads pass them), nor the vehicle's own aircraft. Aircraft do not
 // see the vehicles: they keep their way.
 const (
@@ -21,9 +21,11 @@ const (
 	VehicleStopShortMeters    = 3.0
 	VehicleAircraftLookMeters = 120.0
 	VehicleClearMeters        = 8.0
-	VehicleCommitMeters       = 4.0
-	vehicleHalfMeters         = 1.5
-	vehicleLookStep           = 2.0
+	// Deprecated: VehicleCommitMeters is no longer used; a vehicle drives
+	// on only from inside an aircraft's path.
+	VehicleCommitMeters = 4.0
+	vehicleHalfMeters   = 1.5
+	vehicleLookStep     = 2.0
 )
 
 // Service vehicles among themselves: on the roads they keep
@@ -88,13 +90,17 @@ type trafficAware interface {
 }
 
 // VehicleConflict implements VehicleTraffic: the first point of ahead near
-// a moving aircraft's body (always) or near its path ahead (beyond
-// VehicleCommitMeters).
+// a moving aircraft's body (always) or near its path ahead (unless it is
+// inside that path already: it drives out).
 func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon, half float64, noVehicles bool, now time.Time) (float64, bool, bool) {
 	p.mu.Lock()
 	var others []groundEntry
 	for id, e := range p.aircraft {
-		moving := e.pushing || len(e.ahead) > 0 && !e.waiting
+		// Off its stand: pushing, taxiing (stopped on its way too: behind
+		// traffic, at a hold-short — its intent), or pushed and waiting to
+		// taxi. Not one parked on its stand (live, the fuel truck drove
+		// through CSA429 stopped on H1 behind TVS1169).
+		moving := e.pushing || len(e.ahead) > 0 || len(e.intent) > 0
 		if id != own && moving && now.Sub(e.at) <= TrafficStaleAfter {
 			others = append(others, e)
 		}
@@ -113,6 +119,47 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 	mine := 0.0 // the vehicle's heading: along its way
 	if len(ahead) > 1 {
 		mine = localBearing(ahead[0], ahead[1])
+	}
+	// bodyDist is how near q is to e's body.
+	bodyDist := func(q airport.LatLon, e groundEntry) float64 {
+		best := math.Inf(1)
+		for b := -e.tail; b <= e.nose+0.01; b += trafficBodyStep {
+			best = math.Min(best, localDist(q, offsetHeading(e.pos, e.hdg, b)))
+		}
+		return best
+	}
+	reachOf := func(e groundEntry) float64 {
+		oh := e.half
+		if oh <= 0 {
+			oh = DefaultHalfSpanMeters
+		}
+		return half + oh + VehicleClearMeters
+	}
+	// In an aircraft's way already (inside its wings' sweep along its path
+	// ahead, not only within the reach a vehicle keeps off): the vehicle
+	// drives on out of it, stopping only to keep off its body as it nears
+	// it. Aircraft do not see vehicles: one stopped there was taxied into
+	// (offline LKPR, the tug of WZZ1639 9 m from CSA1955).
+	inWay := map[int]bool{}
+	if len(ahead) > 0 {
+		for k, e := range others {
+			oh := e.half
+			if oh <= 0 {
+				oh = DefaultHalfSpanMeters
+			}
+			run, prev := 0.0, e.pos
+			for _, r := range e.ahead {
+				run += localDist(prev, r)
+				prev = r
+				if run > VehicleAircraftLookMeters {
+					break
+				}
+				if localDist(ahead[0], r) <= oh {
+					inWay[k] = true
+					break
+				}
+			}
+		}
 	}
 	for i, q := range ahead {
 		d := float64(i) * vehicleLookStep
@@ -145,19 +192,16 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 			}
 			return d, true, true
 		}
-		for _, e := range others {
-			oh := e.half
-			if oh <= 0 {
-				oh = DefaultHalfSpanMeters
+		for k, e := range others {
+			reach := reachOf(e)
+			if bd := bodyDist(q, e); bd <= reach && (!inWay[k] || bd < bodyDist(ahead[0], e)-1) {
+				return d, false, true
 			}
-			reach := half + oh + VehicleClearMeters
-			for b := -e.tail; b <= e.nose+0.01; b += trafficBodyStep {
-				if localDist(q, offsetHeading(e.pos, e.hdg, b)) <= reach {
-					return d, false, true
-				}
-			}
-			if d <= VehicleCommitMeters {
-				continue // in its path already: clear it
+			// Not the points just ahead of it as such (VehicleCommitMeters): a
+			// vehicle stopped short crept on 3 m a look into the aircraft's
+			// path and waited there (offline LKPR, the tug of WZZ1639).
+			if e.waiting || inWay[k] {
+				continue // in its path already: clear it; or a way not yet cleared (its body only)
 			}
 			run, prev := 0.0, e.pos
 			for _, r := range e.ahead {

@@ -318,9 +318,10 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		}
 		t.away, t.reversing = NewPushbackMover(path, tugProfile(), t.pose.Heading), true
 	}
-	if !t.reversing {
-		t.check(t.away)
-	}
+	// Backing off too: it backs into the space in front of the nose, where
+	// taxiing traffic passes (offline LKPR: the tug of CSA311 backed off
+	// 5 m from TVS698 taxiing past).
+	t.check(t.away)
 	t.pose = t.away.Step(dt)
 	if !t.pose.Arrived {
 		return t.place()

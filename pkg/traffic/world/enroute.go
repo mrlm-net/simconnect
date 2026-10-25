@@ -202,11 +202,19 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			}
 			break
 		}
-		level := flightLevelFt(w.AltFt)
+		// The leg to the point is flown at its level: one of the leg's
+		// direction.
+		prev := route[len(route)-1].Position
+		level := cruiseLevelFt(w.AltFt, calc.BearingDegrees(prev.Lat, prev.Lon, w.Position.Lat, w.Position.Lon))
 		route = append(route, traffic.RoutePoint{Position: w.Position, AltFt: level, Kts: traffic.EnrouteSpeedKts(level, kts)})
 		if w.Ident != "" && w.Kind != "" {
 			e.fixes = append(e.fixes, airFix{Ident: w.Ident, LatLon: w.Position})
 		}
+	}
+	if len(route) > 1 {
+		r0, r1 := route[0].Position, route[1].Position
+		route[0].AltFt = cruiseLevelFt(altFt, calc.BearingDegrees(r0.Lat, r0.Lon, r1.Lat, r1.Lon))
+		route[0].Kts = traffic.EnrouteSpeedKts(route[0].AltFt, kts)
 	}
 	along := fp.Route
 	if along == "" {
@@ -232,6 +240,35 @@ func flightLevelFt(ft float64) float64 {
 		return ft
 	}
 	return math.Round(ft/1000) * 1000
+}
+
+// cruiseLevelFt is ft as the nearest flight level of the semicircular rule
+// for a track (true; the variation is a few degrees here): odd thousands
+// for 000–179°, even for 180–359°, up to FL410; above it 4000 ft apart,
+// FL450 and FL490 eastbound, FL430, FL470 and FL510 westbound. Below FL100,
+// ft as planned. A plan's levels came rounded only (live: KLM1433
+// westbound stepped up to FL390 into DLH1506 eastbound at FL390; DLH320 and
+// ENT384, opposite ways, both at FL356).
+func cruiseLevelFt(ft, trackDeg float64) float64 {
+	if ft < 10000 {
+		return ft
+	}
+	east := math.Mod(math.Mod(trackDeg, 360)+360, 360) < 180
+	best, bestD := 0.0, math.Inf(1)
+	for fl := 100.0; fl <= 510; fl += 10 {
+		n := int(fl / 10)
+		var ok bool
+		switch {
+		case fl <= 410:
+			ok = (n%2 == 1) == east
+		default:
+			ok = east && (n == 45 || n == 49) || !east && (n == 43 || n == 47 || n == 51)
+		}
+		if d := math.Abs(fl*100 - ft); ok && d < bestD {
+			best, bestD = fl*100, d
+		}
+	}
+	return best
 }
 
 // spawnEnrouteOn creates e flying route (its first point where it appears).
@@ -492,7 +529,7 @@ func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []t
 		in := calc.HaversineNM(c.Lat, c.Lon, p.Lat, p.Lon) <= overflightRadiusNM
 		if in || inside {
 			if !inside || n%4 == 0 { // its entry, then every 20 NM
-				alt = flightLevelFt(alt)
+				alt = cruiseLevelFt(alt, calc.BearingDegrees(p.Lat, p.Lon, to.Lat, to.Lon))
 				out = append(out, traffic.RoutePoint{Position: p, AltFt: alt, Kts: traffic.EnrouteSpeedKts(alt, kts)})
 			}
 			inside = true
