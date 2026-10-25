@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.123.0] - 2026-10-25
+
+### Added
+
+- `addons.Install` gains `Version` and `Dir`, read with the simulator closed: Steam's build id and game folder from `appmanifest_<appid>.acf` in the library `libraryfolders.vdf` names, or the Store package's version and `PackageRootFolder` from the per-user package repository in the registry. `addons.SDK()` returns the MSFS SDK's folder (`MSFS2024_SDK`, else `MSFS_SDK`) and version (`version.txt`). Files and the registry only, with no dependency (the registry through `advapi32`).
+
 ## [0.122.1] - 2026-10-25
 
 ### Fixed
