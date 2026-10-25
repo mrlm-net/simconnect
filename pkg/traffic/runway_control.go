@@ -64,6 +64,9 @@ type RunwayUser struct {
 	// ATC, #739): holding short, it takes its place in the queue, first
 	// come, and those behind it wait for it; it is never cleared here.
 	Host bool
+	// LineUpCleared: holding short, told to line up already and not
+	// moving yet. It goes first: no other departure is lined up past it.
+	LineUpCleared bool
 }
 
 // OppositeArrivalNM: an arrival to the other end of the runway this close
@@ -473,7 +476,19 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	// A rush: departures queueing, or an arrival soon (LineUpBehindDeparting).
 	rush := len(holding) >= RushQueue || nextArrName != "" && nextArr*float64(time.Second) <= float64(RushArrivalWithin)
 	number := 1
+	// One told to line up and still at its holding point: the next on the
+	// runway, from wherever the others wait (live, TVS1608 at A and RYR257
+	// at Z both told to line up behind the departing 737, 16 s apart).
+	cleared := ""
+	if i := slices.IndexFunc(holding, func(u RunwayUser) bool { return u.LineUpCleared && !u.Crossing && !u.Host }); i >= 0 {
+		cleared = holding[i].Callsign
+	}
 	for _, u := range holding {
+		if cleared != "" && u.Callsign != cleared && !u.Crossing && !u.Host {
+			number++
+			out.Waiting[u.Callsign] = cleared + " lining up"
+			continue
+		}
 		if u.Host {
 			// Its turn: ours behind it are the next numbers; behind ours, it
 			// is a number too.

@@ -3603,7 +3603,7 @@ func (it *controlled) askWeather(pos traffic.Position) {
 	p.later(it.clearAt(pos).Add(crewActDelay+p.jitter(crewActJitter)), func() {
 		it.say(traffic.RequestWeather(pos, it.Tail))
 		qnh, alt := it.cc.qnh()
-		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.callAfter(pos, prioTaxi, it.clearAt(pos), func() {
 			it.say(traffic.WeatherReport(pos, it.Tail, it.cc.windSaid(it.ICAO), qnh, alt))
 		})
 	})
@@ -4060,7 +4060,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	case ev.dep != nil && pos == traffic.PosDeparture && !it.gates.Load():
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
-		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.callAfter(pos, prioApproach, it.clearAt(pos), func() {
 			// Stopped for traffic since the check-in: identified only, the
 			// climb is cleared on once clear of it (live, TVS524 "stop climb
 			// at 4000 feet" then "identified, climb to flight level 240").
@@ -4119,8 +4119,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// The tower answers the check-in: line-up or take-off when it gives
 		// it then, else report ready, or hold short behind those to depart
 		// first (CAP 413 4.19, 4.20; live, TVS1359 heard nothing for 2m50s).
-		p := it.cc.pending
-		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.callAfter(pos, prioRunway, it.clearAt(pos), func() {
 			if cleared := it.cc.departureCleared; cleared != nil && cleared(it.Tail) {
 				return
 			}
@@ -4142,8 +4141,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// The tower answers the check-in at once: cleared to land when it
 		// can be, else "continue approach" (12.3.4.15; live, AUA762 heard
 		// nothing for 1m45s with a departure on the runway).
-		p := it.cc.pending
-		p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+		it.callAfter(pos, prioLanding, it.clearAt(pos), func() {
 			if cleared := it.cc.landCleared; cleared != nil && cleared(it.Tail) {
 				return
 			}

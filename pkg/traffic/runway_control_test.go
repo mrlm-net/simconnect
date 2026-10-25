@@ -795,3 +795,22 @@ func TestLineUpAndWaitTime(t *testing.T) {
 		t.Errorf("lined up with %v of room, lining up to a stop takes %v (arrival %.1f NM)", in, r.opts.LineUpWaitTime+occ, a.DistanceNM)
 	}
 }
+
+// TestOneLinedUpFromTwoHoldingPoints: told to line up behind the one
+// departing and not moving yet at A, it goes next; the one at Z waits, not
+// told to line up too (live, TVS1608 at A and RYR257 at Z 16 s apart: two
+// on the runway).
+func TestOneLinedUpFromTwoHoldingPoints(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	roll := dep("CSA1", "B738", RunwayRolling)
+	z := dep("RYR257", "B738", RunwayHoldingShort)
+	a := dep("TVS1608", "B738", RunwayHoldingShort)
+	a.AlongM, a.LineUpCleared = 400, true
+	for i := range 3 {
+		c := r.Decide(now.Add(time.Duration(i)*time.Second), []RunwayUser{roll, z, a})
+		if c.LineUpBehindDeparting["RYR257"] != "" || slices.Contains(c.LineUp, "RYR257") {
+			t.Fatalf("RYR257 told to line up (behind %q, line-up %v) with TVS1608 cleared to line up", c.LineUpBehindDeparting["RYR257"], c.LineUp)
+		}
+	}
+}

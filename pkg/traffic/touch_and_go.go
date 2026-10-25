@@ -124,6 +124,10 @@ func (c *ArrivalController) circuitAgain(upwind bool) error {
 	c.tng = nil
 	c.proc, c.procNext, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: plan.Join, JoinMeters: plan.JoinMeters, MinJoinMeters: plan.MinJoinMeters}, 0, 0
 	c.flyingProc, c.blend = true, joinBlend{}
+	// Round its circuit before the approach takes it over again: not on
+	// the final it is climbing away from (live, OKDCK sent around, taken
+	// over again within a second, landed). A light aircraft's gear stays.
+	c.circuit, c.gaGearUp = true, true
 	c.approachLightsSet, c.landingFlaps, c.landingFlapsSet = false, false, false
 	c.last.TouchAndGo = false
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)

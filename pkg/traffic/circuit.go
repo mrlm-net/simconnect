@@ -572,3 +572,31 @@ func (c *ArrivalController) anotherCircuit(goAround bool) (time.Duration, error)
 	nm := pathNMOf(pos, rounded[:len(rounded)-1], rounded[len(rounded)-1])
 	return time.Duration(nm / CircuitKts(*c.aircraft()) * float64(time.Hour)), nil
 }
+
+// circuitFinalNM, circuitFinalDeg: a circuit arrival this close to the
+// threshold, on the extended centreline (circuitFinalCrossM) and heading
+// within this of the runway's, is on its final (CircuitFinal).
+const (
+	circuitFinalNM     = 3.0
+	circuitFinalDeg    = 30.0
+	circuitFinalCrossM = 500.0
+)
+
+// CircuitFinal reports whether a VFR circuit arrival flying its circuit has
+// turned final towards the runway, not going round again: established for
+// its landing clearance, before the injected approach takes it over 0.5 NM
+// out (live, OKQAQ cleared only then, the call late on a busy frequency:
+// "going around, no landing clearance" twice).
+func (c *ArrivalController) CircuitFinal() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if ci == nil || !c.flyingProc || c.circuit || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	thr, _ := ci.Point(LegRunway)
+	along := -alongHeading(thr.Position, ci.heading, c.last.Position) // before the threshold: +
+	cross := math.Abs(alongHeading(thr.Position, ci.heading+90, c.last.Position))
+	return along > 0 && along < circuitFinalNM*1852 && cross < circuitFinalCrossM &&
+		math.Abs(headingDiff(c.last.Heading, ci.heading)) < circuitFinalDeg
+}

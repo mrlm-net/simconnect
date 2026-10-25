@@ -164,6 +164,22 @@ func (it *controlled) callIf(pos traffic.Position, prio callPrio, still func() b
 		ready: ready, since: now, still: still, dropped: dropped, f: f})
 }
 
+// callAfter is call for an answer to what the crew says: ready an answer
+// time after at (when the frequency is clear of the crew's call), then on
+// the agenda in its class like any other call — not said on a timer ahead
+// of more urgent ones (live, CSA655's "report ready for departure" went
+// out before OKQAQ's circuit call, waiting 53 s).
+func (it *controlled) callAfter(pos traffic.Position, prio callPrio, at time.Time, f func()) {
+	_, freq := it.station(pos)
+	now := it.cc.clock.Now()
+	if at.Before(now) {
+		at = now
+	}
+	ready := at.Add(atcAnswerDelay + it.cc.pending.jitter(atcAnswerJitter))
+	it.cc.agenda.add(call{icao: it.ICAO, freq: freq, prio: prio, tail: it.Tail,
+		ready: ready, since: now, f: f})
+}
+
 // callAt is call for an aircraft without its controller here (one of ours
 // en route, a departure handed on): on icao's frequency for pos.
 func (cc *controlCenter) callAt(icao string, pos traffic.Position, tail string, prio callPrio, f func()) {

@@ -223,8 +223,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	r := it.dep.Route()
 	it.mu.Unlock()
 	cc.log.printf("%-6s runway change: runway %s, SID %s", it.Tail, runway, orNone(sid))
-	p := cc.pending
-	p.later(it.clearAt(pos).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
+	it.callAfter(pos, prioRunway, it.clearAt(pos), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, said, "", ""))
 		// Taxiing: the new route at once, it goes on along it.
 		if state == "taxiing" && r != nil {
@@ -297,8 +296,7 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 		cc.rejoin(it.ICAO, it.Tail)
 	}
 	cc.log.printf("%-6s runway change: runway %s, STAR %s", it.Tail, runway, star)
-	pq := cc.pending
-	pq.later(it.clearAt(pos).Add(atcAnswerDelay+pq.jitter(atcAnswerJitter)), func() {
+	it.callAfter(pos, prioApproach, it.clearAt(pos), func() {
 		it.say(traffic.RunwayChange(pos, it.Tail, runway, "", said, expect))
 		it.mu.Lock()
 		it.approachSaid = false

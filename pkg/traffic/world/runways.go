@@ -200,6 +200,14 @@ func (t *towers) tick(now time.Time) {
 		case it.dep != nil && v.State == "holding short":
 			u.Phase = traffic.RunwayHoldingShort
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
+			// Cleared to line up (or behind the one departing) and not moving
+			// yet: it goes first, nobody else is lined up past it (live,
+			// TVS1608 at A and RYR257 at Z). Still holding short for the
+			// arrivals: not traffic on the runway.
+			t.mu.Lock()
+			b, behind := t.behind[v.Tail]
+			u.LineUpCleared = t.given[v.Tail+" lineup"] && (!behind || b.departing)
+			t.mu.Unlock()
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
 			u.Phase = traffic.RunwayLinedUp
 			if _, end, ok := l.RunwayEnd(v.Runway); ok {
@@ -246,8 +254,9 @@ func (t *towers) tick(now time.Time) {
 				continue
 			}
 			u.Phase, u.Arrival, u.DistanceNM, u.GroundKts = traffic.RunwayFinal, true, d, v.GroundSpeed
-			// Established: its STAR and approach flown, on the final (#486).
-			u.Established = id != 0 && len(it.arr.ProcedureRoute()) == 0
+			// Established: its STAR and approach flown, on the final (#486);
+			// a circuit arrival once it has turned final.
+			u.Established = id != 0 && (len(it.arr.ProcedureRoute()) == 0 || it.arr.CircuitFinal())
 		case it.arr != nil && (v.State == "landing" || v.State == "rollout"):
 			u.Phase, u.Arrival = traffic.RunwayRolling, true
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // past an intersection: lined up behind (lineUpBehind)
