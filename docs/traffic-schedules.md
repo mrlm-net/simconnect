@@ -29,7 +29,7 @@ Each `Flight` either departs from a focus airport or arrives at one between `fro
 
 ## How flights are drawn
 
-- **How many:** in each hour, `PeakPerHour` (default 24 movements) × the airport size (hub 1, major ½, regional ⅕) × `Density` × the hour's **wave**. The waves are by local solar time, from the airport's longitude. The built-in day is quiet at night and has a morning and an evening peak. Departures and arrivals are about even.
+- **How many:** in each hour, `PeakPerHour` (default 24 movements) × the airport size (hub 1, major ½, regional ⅕) × `Density` × the hour's **wave**. The waves are by the airport's clock, its civil time with summer time (`traffic.LocalHour`, `AirportZone`: the zone by ICAO prefix, the US by longitude), as airline timetables are; solar time from the longitude where the region is not known. Overflights follow the first focus airport's clock. The built-in day is quiet at night and has a morning and an evening peak. Departures and arrivals are about even.
 - **Which airline:** airlines are weighted by `Weight`. **Home carriers** get 8× the weight: an airline is a home carrier when the airport is one of its `Bases` or when one of the airport's stands names it (`Parking.Airlines` in the layout). Other airlines fly only where their `Regions` (ICAO prefixes, `*` for anywhere) cover the airport.
 - **Where to:** a visiting airline flies to one of its bases. A home carrier flies anywhere in its regions, and bigger airports are picked more often.
 - **Which type:** a type from the airline's fleet whose range (`Types[t].MinNM`–`MaxNM`) covers the distance and whose runway need fits both airports. For example, an ATR flies short hops and a 777 flies to Dubai.

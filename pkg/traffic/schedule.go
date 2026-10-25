@@ -164,10 +164,9 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 		}
 		focus.Carriers = standCarriers(cfg, opts.Layouts[icao], known, icao)
 		size := []float64{0, 0.2, 0.5, 1}[max(1, min(3, focus.Size))]
-		// Local solar time from the longitude: waves follow the sun.
-		offset := time.Duration(focus.Position.Lon / 15 * float64(time.Hour))
+		// The waves on the airport's clock (LocalHour).
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
-			local := h.Add(offset).UTC().Hour()
+			local := LocalHour(focus.ICAO, focus.Position, h)
 			n := g.count(opts.PeakPerHour * size * opts.Density * cfg.Waves[local])
 			for i := 0; i < n; i++ {
 				// Timetables use whole five minutes.
@@ -580,7 +579,8 @@ type OverflightOptions struct {
 	Centre   airport.LatLon
 	RadiusNM float64
 	// PerHour is the overflights in the peak hour (default 6), scaled by
-	// the waves at the centre's local time and by Density (0: 1).
+	// the waves on the first Exclude airport's clock (LocalHour; none: the
+	// centre's solar time) and by Density (0: 1).
 	PerHour, Density float64
 	Seed             uint64
 	// Exclude are airports whose own traffic is scheduled (the focus
@@ -621,10 +621,14 @@ func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []
 	if len(outside) < 2 {
 		return nil
 	}
-	offset := time.Duration(o.Centre.Lon / 15 * float64(time.Hour))
+	// The waves on the first focus airport's clock, else the centre's sun.
+	clock := ""
+	if len(o.Exclude) > 0 {
+		clock = o.Exclude[0]
+	}
 	var out []Flight
 	for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
-		n := g.count(o.PerHour * o.Density * cfg.Waves[h.Add(offset).UTC().Hour()])
+		n := g.count(o.PerHour * o.Density * cfg.Waves[LocalHour(clock, o.Centre, h)])
 		for i := 0; i < n; i++ {
 			enter := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(time.Minute)
 			if enter.Before(from) || !enter.Before(to) {

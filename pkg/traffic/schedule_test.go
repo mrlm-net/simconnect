@@ -31,8 +31,8 @@ func TestScheduleWavesAndDensity(t *testing.T) {
 	flights := daySchedule(ScheduleOptions{Focus: []string{"LKPR"}, Seed: 1})
 	byHour := map[int]int{}
 	for _, f := range flights {
-		// LKPR is at 14°E: local solar time is about UTC+1.
-		byHour[focusTime(f, []string{"LKPR"}).Add(time.Hour).Hour()]++
+		// 29 September: LKPR is on CEST, UTC+2.
+		byHour[focusTime(f, []string{"LKPR"}).Add(2*time.Hour).Hour()]++
 	}
 	night := byHour[1] + byHour[2] + byHour[3]
 	peak := byHour[7] + byHour[18]

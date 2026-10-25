@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.121.1] - 2026-10-25
+
+### Fixed
+
+- Schedule waves follow the airport's clock, not the sun: airline timetables run on civil time, summer time included. On solar time from the longitude Prague's morning and evening peaks ran an hour late all summer, Madrid's two hours, London's one. `traffic.LocalHour` and `AirportZone` give an airport's hour and zone (by ICAO prefix, the contiguous US by longitude, Arizona without summer time); a region they do not know keeps solar time. Scheduled, business and overflight waves use it. The zone data is embedded (`time/tzdata`).
+
 ## [0.121.0] - 2026-10-25
 
 ### Changed
