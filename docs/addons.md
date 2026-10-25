@@ -32,6 +32,17 @@ procs, _ := addons.Processes()  // "Couatl64.exe", "FlightSimulator2024.exe", ..
 
 Only the 2024 Steam path has been checked on a real install; the others are the usual locations. `ReadPackagesPath` reads one file directly.
 
+## Version and game folder, with the simulator closed
+
+Each `Install` also has `Version` and `Dir`, "" when they cannot be read:
+
+- **Steam.** Steam's folder is `HKCU\Software\Valve\Steam` `SteamPath`, else `C:\Program Files (x86)\Steam`. `steamapps\libraryfolders.vdf` gives the library that lists the app (2024: 2537590; 2020: 1250410). Its `steamapps\appmanifest_<appid>.acf` gives the version, `buildid` (e.g. "26058316"), and the folder, `installdir` under `steamapps\common`. Checked on a 2024 install.
+- **Microsoft Store.** The per-user package repository, `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages`, has one key per package, named `Name_Version_Arch__Publisher`. The version is the newest `Microsoft.Limitless` main package (`Microsoft.FlightSimulator` for 2020), and the folder is its `PackageRootFolder`. The lookup is checked on another Store app; a Store install of the simulator is not checked.
+
+`SDK()` returns the MSFS SDK's folder and version. The folder is the `MSFS2024_SDK` environment variable (`MSFS_SDK` for 2020), and the version is the first line of `version.txt` in it (e.g. "1.7.3"). Both are "" when no SDK is installed.
+
+The version of a running simulator comes from SimConnect (`Manager.OnOpen`'s open data).
+
 ## Packages
 
 `Scan` returns one `Package` per folder in `Community`, `Community2024`, `Official2024\<store>`, `Official2020\<store>` and `StreamedPackages`, sorted by source and folder.

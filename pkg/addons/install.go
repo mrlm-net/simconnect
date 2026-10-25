@@ -23,6 +23,11 @@ type Install struct {
 	Store    string // "steam" or "store"
 	UserCfg  string // path of UserCfg.opt
 	Packages string // InstalledPackagesPath from UserCfg.opt
+	// Version is the installed version with the simulator closed: Steam's
+	// build id ("26058316"), the Store package's version ("1.2.3.0"); ""
+	// when it cannot be read. Dir is the game's folder ("" likewise).
+	Version string
+	Dir     string
 }
 
 // ErrNotFound: no UserCfg.opt with an InstalledPackagesPath was found.
@@ -52,6 +57,7 @@ func Installs() []Install {
 			continue
 		}
 		in.Packages = p
+		fillVersion(&in)
 		out = append(out, in)
 	}
 	return out
