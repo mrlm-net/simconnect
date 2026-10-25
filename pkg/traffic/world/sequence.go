@@ -75,7 +75,7 @@ type sequences struct {
 	depHeld map[string]heldCount
 	// slowed: the arrivals told a speed for spacing (absorb), given their
 	// normal speed back once the sequence no longer needs it (resumeSpeed).
-	slowed     map[string]bool
+	slowed     map[string]float64 // the speed told (kt)
 	inConflict func(a, b string) bool
 	// engaged: an aircraft in or just out of a conflict resolution gets no
 	// shortcut (#785).
@@ -308,9 +308,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		q.absorbed[e.Callsign] = now
 		if err == nil && a.SpeedKts > 0 {
 			if q.slowed == nil {
-				q.slowed = map[string]bool{}
+				q.slowed = map[string]float64{}
 			}
-			q.slowed[e.Callsign] = true
+			q.slowed[e.Callsign] = a.SpeedKts
 		}
 		q.mu.Unlock()
 		if err != nil {
@@ -1394,13 +1394,28 @@ func (q *sequences) heldSlots(now time.Time, k string, n int) int {
 // leader asks (or, number one, with no delay to lose).
 const resumeAfter = 45 * time.Second
 
+// speedSpare reports whether e, told kts for spacing behind lead, would
+// still land resumeAfter later than its spacing asks at its normal speed.
+// The speed's own cost over the way to go counts: at its normal speed it
+// lands that much sooner, else it is slowed again a moment later (peak
+// bed, RYR1616: 190 kt, normal, 180 kt, normal, then 4 NM behind OKDME on
+// the final and sent around).
+func speedSpare(e, lead traffic.SequenceEntry, kts float64) bool {
+	gap := time.Duration(e.SpacingNM / traffic.ProcedureApproachSpeedKts * float64(time.Hour))
+	cost := time.Duration(0)
+	if kts > 0 && kts < traffic.ProcedureSpeedKts {
+		cost = time.Duration(e.DistanceToGoNM * (1/kts - 1/traffic.ProcedureSpeedKts) * float64(time.Hour))
+	}
+	return e.Landing.Sub(lead.Landing) >= gap+resumeAfter+cost
+}
+
 // resumeSpeed gives an arrival told a speed for spacing its normal speed
 // back once the sequence no longer needs it: "resume normal speed" (the
 // user: the least speed only with a reason; live, ENT379 at 180 kt behind
 // a departure gap that no longer needed it). True when it did.
 func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry) bool {
 	q.mu.Lock()
-	slowed := q.slowed[e.Callsign]
+	kts, slowed := q.slowed[e.Callsign]
 	recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
 	q.mu.Unlock()
 	if !slowed || recent || e.Delay > 0 {
@@ -1416,8 +1431,7 @@ func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.Sequenc
 		if lead == nil {
 			return false
 		}
-		gap := time.Duration(e.SpacingNM / traffic.ProcedureApproachSpeedKts * float64(time.Hour))
-		if e.Landing.Sub(lead.Landing) < gap+resumeAfter {
+		if !speedSpare(e, *lead, kts) {
 			return false // the spacing still needs it
 		}
 	}

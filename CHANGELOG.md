@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.124.3] - 2026-10-25
+
+### Fixed
+
+- A spacing speed was given back ("resume normal speed") as soon as the arrival, at that speed, landed 45 s later than its spacing asks, so at its normal speed it was short again and slowed again: 190 kt, normal, 180 kt, normal, the delay never lost, and it reached the final 4 NM behind a slower one and was sent around (offline peak, RYR1616). The speed's own cost over the way to go now counts, and it is kept until the spare covers that too. Offline peak: no go-arounds (was 1), "resume normal speed" 8 times (was 23).
+
 ## [0.124.2] - 2026-10-25
 
 ### Fixed
