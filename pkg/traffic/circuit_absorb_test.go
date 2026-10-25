@@ -57,7 +57,7 @@ func TestCircuitExtendDownwind(t *testing.T) {
 	_ = airport.LatLon{}
 }
 
-// TestCircuitOrbit: asked to lose 4 minutes, a C172 in the circuit has its
+// TestCircuitOrbit: asked to lose 9 minutes, a C172 in the circuit has its
 // downwind extended at most CircuitMaxExtendNM each way and the rest left
 // over (no dog-leg); an orbit then takes about two minutes, flown from
 // where it is before the rest of its circuit.
@@ -79,7 +79,7 @@ func TestCircuitOrbit(t *testing.T) {
 	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 80))
 	entry, _ := c.JoinDownwind()
 	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 80, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
-	a, err := ctl.AbsorbDelay(4 * time.Minute)
+	a, err := ctl.AbsorbDelay(9 * time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}

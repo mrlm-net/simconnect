@@ -77,6 +77,8 @@ type controlled struct {
 	// tugStand: its stand for that. Atomic: read inside the controller's
 	// frame, which must not take it.mu (tugWaitsForJetway).
 	tugAfter atomic.Bool
+	// other is its other airport (SpawnRequest.Other), for a new stand.
+	other string
 	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
@@ -753,7 +755,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Prefer: cc.jetwayGates(it.graph.Layout.ICAO)})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -905,7 +907,9 @@ type SpawnRequest struct {
 	// none when the airport has none (ExitBearing set: none).
 	VFRPoint string `json:"vfrPoint"`
 	// Other is the destination of a departure or the origin of an arrival
-	// (ICAO): the flight follows a generated flight plan (#331).
+	// (ICAO): the flight follows a generated flight plan (#331), and takes
+	// the stand areas of its side of the Schengen border first
+	// (traffic.StandAreaFor).
 	Other string `json:"other"`
 	// Via and Taxiways shape the taxi route (#340): route nodes to pass
 	// and taxiways to follow, in order.
@@ -993,7 +997,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Prefer: cc.jetwayGates(g.Layout.ICAO)}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
@@ -1122,7 +1126,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
 		}
 	}
-	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
@@ -1154,7 +1158,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
 		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
-			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways, HoldShortQueue: cc.holdShortQueue(g, r.Runway)},
+			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways, HoldShortQueue: cc.holdShortQueue(g, r.Runway), LowVisibility: cc.lowVisibility(g, r.Runway)},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
 			// The push may swing through a neighbouring stand nobody holds.

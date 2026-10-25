@@ -266,6 +266,21 @@ func (cc *controlCenter) runwayQueue(icao, runway string) int {
 	return n
 }
 
+// lowVisibility reports low visibility procedures on runway end rwy of g in
+// the weather now: departures hold at its ILS hold-shorts
+// (airport.RouteOptions.LowVisibility).
+func (cc *controlCenter) lowVisibility(g *airport.Graph, rwy string) bool {
+	if cc.weather == nil {
+		return false
+	}
+	wx := cc.weather()
+	_, end, ok := g.Layout.RunwayEnd(rwy)
+	if wx == nil || !ok {
+		return false
+	}
+	return traffic.ConditionsFrom(*wx, end.Heading).LowVisibility()
+}
+
 // holdShortQueueM: each departure already heading for a hold-short counts
 // as this much more taxi to it, so one of two entrances side by side at the
 // runway's end with the shorter line gets the next (airport.RouteOptions.

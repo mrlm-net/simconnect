@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.124.0] - 2026-10-25
+
+### Added
+
+- Low visibility procedures hold departures at the ILS hold-shorts: `RunwayEntry.ILSHoldShort` and `RunwayExit.ILSHoldShort` (the CAT II/III line beyond the runway hold-short on the same taxiway, -1 none), `RouteOptions.LowVisibility` (the route to an entry ends there; `RouteToRunway` takes ILS holds first), `RunwayEntry.HeldAt`. The airport map sets it at a departure's spawn from the weather (visibility below 550 m or ceiling below 200 ft); the line-up, backtrack and entry checks know the ILS line.
+- Stand areas (`traffic.standAreas`, a `pkg/dict` table with a local override per area, `StandAreaFor`, `StandAreas`, `Schengen`, `StandRequirements.Other`): which flights take which stands where the scenery has no airline codes, by airline and/or the Schengen side of the flight's other airport. Shipped: LKPR A and B non-Schengen, C Schengen (prg.aero). The map passes each flight's other airport.
+
+### Fixed
+
+- A circuit aircraft sent around on its base or final flew on down that final, was taken over by the injected approach and landed onto the aircraft lined up (live, OKQAK, OKDCK). It now goes straight over the runway at circuit height, and the approach takes it over only once it is round on its base again.
+- The sequence no longer sends circuit traffic round another circuit (live, OKQAK told "extend downwind", then "make another circuit" 20 s later): the downwind is extended up to `CircuitMaxExtendNM` (now 5 NM, was 2) with "I'll call your base", also when closing on the one ahead; another circuit and orbits are for the player's commands and emergencies.
+- "Line up and wait" from a holding point needs the arrival to leave `LineUpWaitTime` (85 s, lining up to a stop) instead of the 60 s of line-up and go (live, OKWMV at B lined up 100 s after its clearance, AFR765 went around).
+- "Behind the departing …, line up and wait" only behind one cleared for take-off, never behind one lined up waiting for an arrival (live, RYR1416 lined up behind OKWMV: two on the runway).
+- A go-around from the tower is flown on "go around", not after the readback (live, 12–16 s more down the final).
+
 ## [0.123.0] - 2026-10-25
 
 ### Added

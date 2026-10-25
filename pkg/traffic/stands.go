@@ -63,6 +63,10 @@ type StandRequirements struct {
 	// before any other: the gates whose jetway can dock to our traffic
 	// (#572; live, airlines' own gates without one won).
 	Prefer []int
+	// Other is the flight's other airport (an arrival's origin, a
+	// departure's destination; "" unknown): the stand areas of its side of
+	// the Schengen border first, another area's last (StandAreaFor).
+	Other string
 }
 
 // StandAllocator assigns stands at one airport and keeps track of who is on
@@ -321,14 +325,23 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 		}
 		groups = [][]int{split(true, own), split(true, open), split(false, own), split(false, open)}
 	}
-	for _, group := range groups {
-		if len(group) == 0 {
-			continue
-		}
-		for _, i := range a.rank(group, req.Runway, req.OffBlock) {
-			if err := a.Occupy(i, req.Owner, half); err == nil {
-				a.SetOffBlock(req.Owner, req.OffBlock)
-				return i, nil
+	// The stand areas (StandAreaFor): in each group the flight's own area
+	// before stands in none; another flight's area only once nothing else
+	// is free (a non-Schengen flight at a Schengen pier).
+	fit := func(i int) int { return standAreaFit(l.ICAO, l.Parking[i].Label(), req.Airline, req.Other) }
+	for _, other := range []bool{false, true} {
+		for _, group := range groups {
+			group = slices.DeleteFunc(slices.Clone(group), func(i int) bool { return (fit(i) == areaOther) != other })
+			if len(group) == 0 {
+				continue
+			}
+			ranked := a.rank(group, req.Runway, req.OffBlock)
+			slices.SortStableFunc(ranked, func(i, j int) int { return fit(i) - fit(j) })
+			for _, i := range ranked {
+				if err := a.Occupy(i, req.Owner, half); err == nil {
+					a.SetOffBlock(req.Owner, req.OffBlock)
+					return i, nil
+				}
 			}
 		}
 	}

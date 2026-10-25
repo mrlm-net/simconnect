@@ -753,3 +753,45 @@ func TestLineUpAndGoGrantedStands(t *testing.T) {
 		t.Fatalf("granted line-up and take-off withdrawn a second inside its need: %s", c.Waiting["TVS8"])
 	}
 }
+
+// TestNoLineUpBehindOneWaiting: one lined up at an intersection waiting
+// for an arrival is not about to go: the one at the threshold behind it
+// waits at its holding point, never lined up behind it (live, RYR1416
+// lined up behind the DA-42 at B waiting for AFR765; AFR765 went around).
+func TestNoLineUpBehindOneWaiting(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	b := dep("OKWMV", "DA42", RunwayLinedUp)
+	b.AlongM = 1300
+	thr := dep("RYR1416", "B738", RunwayHoldingShort)
+	ga := RunwayUser{Callsign: "AFR765", Wake: WakeFor("A320"), Phase: RunwayAirborne, Arrival: true, GoingAround: true, End: "24"}
+	c := r.Decide(time.Now(), []RunwayUser{b, thr, ga})
+	if slices.Contains(c.Takeoff, "OKWMV") {
+		t.Skip("cleared for take-off: not the case under test")
+	}
+	if c.LineUpBehindDeparting["RYR1416"] != "" || slices.Contains(c.LineUp, "RYR1416") {
+		t.Errorf("RYR1416 lined up behind %q (line-up %v) with OKWMV waiting for AFR765", c.LineUpBehindDeparting["RYR1416"], c.LineUp)
+	}
+}
+
+// TestLineUpAndWaitTime: lined up to wait out the interval, a departure
+// takes LineUpWaitTime to stand on the runway, not LineUpTime: with the
+// next arrival landing in between, it waits at its holding point (live,
+// OKWMV at B lined up 100 s after its clearance, AFR765 went around).
+func TestLineUpAndWaitTime(t *testing.T) {
+	r := NewRunwayController(RunwayControllerOptions{})
+	now := time.Now()
+	u := dep("OKWMV", "DA42", RunwayHoldingShort)
+	r.lastDep = &RunwayUser{Callsign: "CSA1", Wake: WakeFor("A320"), Route: "OTHER1"}
+	iv := DepartureIntervalSpeeds(r.lastDep.Wake, u.Wake, false, 0, 0)
+	r.lastAt = now.Add(-iv + 30*time.Second) // 30 s of the interval left
+	occ := RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.opts.Margin
+	in := r.opts.LineUpTime + occ + r.opts.Margin + 12*time.Second // room for 60 s, not 85 s (arrivalClear adds the margin again)
+	a := final("AFR765", in.Hours()*140)
+	if a.DistanceNM < r.opts.MinArrivalNM+1 {
+		t.Skipf("arrival %.1f NM: inside the minimum", a.DistanceNM)
+	}
+	c := r.Decide(now, []RunwayUser{u, a})
+	if slices.Contains(c.LineUp, "OKWMV") {
+		t.Errorf("lined up with %v of room, lining up to a stop takes %v (arrival %.1f NM)", in, r.opts.LineUpWaitTime+occ, a.DistanceNM)
+	}
+}

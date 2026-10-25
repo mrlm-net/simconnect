@@ -172,7 +172,7 @@ Hold-short nodes are associated with the runway whose centreline is nearest (wit
 
 **Fewer stands.** Between routes of about the same length, the one past fewer stands wins: a second search prices apron taxilanes at `FewerStandsApronPenalty` (4), and its route is taken when it passes fewer stands (`StandsPassed`) and is at most 15 % (`FewerStandsTolerance`, at least 150 m) longer. Not for custom routes.
 
-`RouteToRunway` prefers runway holding points over ILS holds, and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
+`RouteToRunway` prefers runway holding points over ILS holds (ILS holds first with `RouteOptions.LowVisibility`; each `RunwayEntry` and `RunwayExit` names its `ILSHoldShort` beyond its `HoldShort`, -1 none), and among the hold-shorts within `RouteOptions.IntersectionTolerance` (default 300 m) of the one nearest the threshold, picks the shortest route, so aircraft depart from (or near) the full runway length.
 
 A route never passes *through* a parking stand, and crossing a runway on a taxiway is allowed but reported in `RunwayCrossings`. Errors: `ErrNoTaxiNetwork`, `ErrUnknownParking`, `ErrAmbiguousParking`, `ErrUnknownRunway`, `ErrNoHoldShort`, `ErrNoRoute` (e.g. vehicle-only stands).
 
