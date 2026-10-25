@@ -191,5 +191,24 @@ func TestCircuitGoAroundNotRetaken(t *testing.T) {
 		if !ctl.flyingProc || ctl.approach != nil {
 			t.Fatalf("taken over again on the final %d frames after its go-around", i)
 		}
+		if ctl.CircuitFinal() {
+			t.Fatal("on its final while climbing out of its go-around")
+		}
+	}
+	// Round its circuit, then on the final again: established there, before
+	// the takeover (its landing clearance not late on the second circuit).
+	wps := ctl.proc.Waypoints
+	for _, w := range wps[:len(wps)-2] {
+		now = now.Add(time.Second)
+		ctl.Handle(arrivalPositionMsg(mon, 85, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, w.Altitude, end.Heading+90, 70, false))
+	}
+	if !ctl.flyingProc {
+		t.Skip("taken over at its base: no final to check")
+	}
+	on := offsetHeading(end.Threshold, end.Heading+180, 2*1852)
+	now = now.Add(time.Second)
+	ctl.Handle(arrivalPositionMsg(mon, 85, on, 600, end.Heading, 70, false))
+	if ctl.flyingProc && !ctl.CircuitFinal() {
+		t.Error("not on its final 2 NM out after going round again")
 	}
 }

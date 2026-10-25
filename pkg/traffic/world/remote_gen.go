@@ -446,4 +446,3 @@ func (r *remoteSim) ListGroundVehicles() error {
 	err := r.c.call(r.t, "ListGroundVehicles", []any{})
 	return err
 }
-
