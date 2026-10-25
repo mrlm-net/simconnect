@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.122.1] - 2026-10-25
+
+### Fixed
+
+- A departure gap on final includes the speed difference, as the normal spacing does. A follower faster than its leader closes the gap all the way down, so the gap is now set up wider by the same compression (`CompressionNMPer30Kts`). Behind a slow leader it is still there at the threshold (live, LKPR: CSA814 set up 6.3 NM behind a Citation at 110 kt had closed to 4.6 NM at 7 NM to go). Behind a Citation an A320's gap is now 7.2 NM, was 6.2.
+- A go-around for spacing is the last resort, only when the follower would land closer than the minimum behind its leader. That is measured from where the two are: their distances to go and speeds, at the leader's touchdown. It is no longer called for a departure gap or a buffer lost (CSA814 would have landed 3.8 NM behind, the minimum 3, and was sent around for the 6 NM of the gap).
+- "Reduce to final approach speed" is no longer said to an arrival already going around (CSA814 was told it 15 s into its go-around, the frequency busy).
+
 ## [0.122.0] - 2026-10-25
 
 ### Added
