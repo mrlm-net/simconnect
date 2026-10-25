@@ -108,9 +108,8 @@ func BusinessFlights(cfg ScheduleConfig, opts BusinessOptions, from, to time.Tim
 		if !ok {
 			continue
 		}
-		offset := time.Duration(focus.Position.Lon / 15 * float64(time.Hour))
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
-			local := h.Add(offset).UTC().Hour()
+			local := LocalHour(focus.ICAO, focus.Position, h)
 			n := g.count(opts.PerHour * opts.Density * cfg.Waves[local])
 			for i := 0; i < 2*n; i++ {
 				at := h.Add(time.Duration(rng.Float64() * float64(time.Hour))).Truncate(5 * time.Minute)

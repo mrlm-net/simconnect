@@ -28,7 +28,15 @@ func TestManagerPeakArrivalsWithProgress(t *testing.T) {
 	m := NewTrafficManager(sp, ManagerOptions{MaxAircraft: 40, MaxPerAirport: 40,
 		Source: func(from, to time.Time, airports []string) []Flight {
 			fs := Schedule(DefaultScheduleConfig(), ScheduleOptions{Focus: airports, Density: 3, Layouts: layouts, Seed: 7 ^ uint64(from.Unix()/3600)}, from, to)
-			return CoordinateSlots(fs, airports, SlotCapacity{})
+			// As the World does: one moved past the hour is left out, the
+			// next hour's slots unknown here (else it overfills them).
+			var out []Flight
+			for _, f := range CoordinateSlots(fs, airports, SlotCapacity{}) {
+				if focusTime(f, airports).Before(to) {
+					out = append(out, f)
+				}
+			}
+			return out
 		}}, "LKPR")
 	sp.onSpawn = func(f ManagedFlight) { lives[f.Key()] = &life{f: f, at: now} }
 	start := time.Date(2026, 10, 24, 16, 38, 0, 0, time.UTC)

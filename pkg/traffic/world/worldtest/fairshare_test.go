@@ -17,7 +17,7 @@ func TestMorningPeakHasArrivals(t *testing.T) {
 		t.Skip("runs the World")
 	}
 	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10,
-		Start: time.Date(2026, 10, 20, 5, 30, 0, 0, time.UTC)} // 06:30 local: the morning wave
+		Start: time.Date(2026, 10, 20, 4, 30, 0, 0, time.UTC)} // 06:30 CEST: the morning wave
 	if testing.Verbose() {
 		o.World.Output = os.Stderr
 	}
@@ -49,7 +49,9 @@ func TestMorningPeakHasArrivals(t *testing.T) {
 	if len(arrivals) < 3 {
 		t.Errorf("%d arrivals in 40 minutes of the morning peak", len(arrivals))
 	}
-	if maxDeps > 9 {
+	// Two thirds of the cap: no share rule holds it (reverted with 0.118.3),
+	// the timetable's mix does; the live fault was all of the cap.
+	if maxDeps > 10 {
 		t.Errorf("%d departures at once of a cap of 15", maxDeps)
 	}
 }
