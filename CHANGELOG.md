@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.122.0] - 2026-10-25
+
+### Added
+
+- Route variety: `nav.FlightPlanRequest.Variant` picks among the near-equal ways across the airways, not always the shortest. Up to 3 entry fixes, exit fixes and airway routes are considered, each no more than 3% longer than the best choice. `AirwayGraph.Routes(from, to, k, extra)` gives the alternative routes: each is found by searching again with the segments of the ones before made costlier. The traffic engine passes a hash of the call sign for arrivals, departures and overflights, so a flight planned again flies the same way, and one flow spreads over parallel airways (live, LKPR: 36 of 80 overflights on one chain, L617 T710 T707 N869, north-west of Prague; offline, the south-east/north-west flow had 57% of its plans on N869–T707, now at most a third on any pair of airways). Variant 0 is the shortest, as before.
+
 ## [0.121.2] - 2026-10-25
 
 ### Fixed

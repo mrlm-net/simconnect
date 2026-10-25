@@ -272,6 +272,57 @@ func (q *routeQueue) Pop() any          { old := *q; it := old[len(old)-1]; *q =
 // RouteWithPenalty is Route with a chosen airway-change penalty (A* over
 // fix-and-airway states, great-circle distance to the goal as heuristic).
 func (g *AirwayGraph) RouteWithPenalty(from, to FixKey, penaltyNM float64) ([]RouteStep, error) {
+	return g.search(from, to, penaltyNM, nil)
+}
+
+// segment is one airway segment, either way.
+type segment struct{ a, b FixKey }
+
+func segmentOf(a, b FixKey) segment {
+	if b.String() < a.String() {
+		a, b = b, a
+	}
+	return segment{a, b}
+}
+
+// Routes returns up to k airway routes from one fix to another, the
+// shortest (Route) first, then others no more than extra (0.03: 3%) longer
+// that leave its airways somewhere: each found by searching again with the
+// segments of the ones before made costlier, so a parallel airway wins
+// where there is one.
+func (g *AirwayGraph) Routes(from, to FixKey, k int, extra float64) ([][]RouteStep, error) {
+	best, err := g.Route(from, to)
+	if err != nil || k <= 1 {
+		return [][]RouteStep{best}, err
+	}
+	out := [][]RouteStep{best}
+	limit := (1 + extra) * RouteDistanceNM(best)
+	avoid := map[segment]float64{}
+	seen := map[string]bool{FormatRoute(best): true}
+	for try := 0; try < 2*k && len(out) < k; try++ {
+		for _, r := range out {
+			for i := 1; i < len(r); i++ {
+				avoid[segmentOf(r[i-1].Fix, r[i].Fix)] = alternativeCost
+			}
+		}
+		r, err := g.search(from, to, DefaultAirwayChangePenaltyNM, avoid)
+		if err != nil || RouteDistanceNM(r) > limit {
+			break
+		}
+		if s := FormatRoute(r); !seen[s] {
+			seen[s] = true
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// alternativeCost: how much costlier the segments of the routes already
+// found are when Routes looks for another.
+const alternativeCost = 1.5
+
+// search is the A*; avoid multiplies the cost of its segments.
+func (g *AirwayGraph) search(from, to FixKey, penaltyNM float64, avoid map[segment]float64) ([]RouteStep, error) {
 	a, ok := g.Fix(from)
 	if !ok {
 		return nil, fmt.Errorf("nav: unknown fix %s", from)
@@ -301,6 +352,9 @@ func (g *AirwayGraph) RouteWithPenalty(from, to FixKey, penaltyNM float64) ([]Ro
 		}
 		for _, e := range g.adj[it.st.fix] {
 			c := it.cost + e.DistanceNM
+			if m, ok := avoid[segmentOf(it.st.fix, e.To)]; ok {
+				c += (m - 1) * e.DistanceNM
+			}
 			if it.st.airway != "" && it.st.airway != e.Airway {
 				c += penaltyNM
 			}

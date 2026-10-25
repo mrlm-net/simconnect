@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -37,11 +38,21 @@ func planFor(ctx context.Context, st *state, g *airport.Graph, r SpawnRequest) (
 	if r.Kind != "departure" {
 		dep, arr, depRwy, arrRwy = other, g.Layout.ICAO, "", r.Runway
 	}
-	fp, err := planBetween(ctx, st, dep, arr, depRwy, arrRwy, typeOf(r.Model), g.Layout.ICAO)
+	fp, err := planBetween(ctx, st, dep, arr, depRwy, arrRwy, typeOf(r.Model), g.Layout.ICAO, variantOf(r.Tail))
 	if err != nil {
 		return nil, err
 	}
 	return plannedFrom(fp, r.Kind)
+}
+
+// variantOf picks a flight's way across the airways by its call sign
+// (nav.FlightPlanRequest.Variant): one flow spreads over the parallel
+// airways, and a flight planned again flies the same way.
+func variantOf(callsign string) func(*nav.FlightPlanRequest) {
+	h := fnv.New64a()
+	h.Write([]byte(strings.ToUpper(strings.TrimSpace(callsign))))
+	v := h.Sum64()
+	return func(r *nav.FlightPlanRequest) { r.Variant = v }
 }
 
 // planBetween plans a flight from dep to arr (runways "" chosen by the
@@ -224,19 +235,21 @@ func (st *state) routeAirways(ctx context.Context, dep, arr string) {
 // airports are (the worldwide list), without loading them: it flies none
 // of their runways, procedures or taxiways. One not in the list (not asked
 // yet): planned as any flight (planBetween).
-func planOverflight(ctx context.Context, st *state, dep, arr, typ string) (*nav.FlightPlan, error) {
+func planOverflight(ctx context.Context, st *state, dep, arr, typ, callsign string) (*nav.FlightPlan, error) {
 	st.mu.Lock()
 	d, okD := st.airportRefs[strings.ToUpper(dep)]
 	a, okA := st.airportRefs[strings.ToUpper(arr)]
 	graph := st.airways
 	st.mu.Unlock()
 	if !okD || !okA {
-		return planBetween(ctx, st, dep, arr, "", "", typ, "")
+		return planBetween(ctx, st, dep, arr, "", "", typ, "", variantOf(callsign))
 	}
 	info := func(r traffic.AirportRef) nav.AirportInfo {
 		return nav.AirportInfo{ICAO: strings.ToUpper(r.ICAO), Position: r.Position, ElevationM: r.AltM}
 	}
-	return nav.Plan(nav.FlightPlanRequest{Type: typ, Departure: info(d), Arrival: info(a)}, graph)
+	req := nav.FlightPlanRequest{Type: typ, Departure: info(d), Arrival: info(a)}
+	variantOf(callsign)(&req)
+	return nav.Plan(req, graph)
 }
 
 // plannedFrom is what a spawn flies of a plan: a departure the whole
