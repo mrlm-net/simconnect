@@ -63,5 +63,5 @@ for (const [file, iface, recv] of [['controllers.go', 'departureCtl', 'remoteDep
     out += stub(recv, m) + '\n';
   }
 }
-fs.writeFileSync(dir + '/remote_gen.go', out);
+fs.writeFileSync(dir + '/remote_gen.go', out.replace(/\n+$/, '\n'));
 console.log('ok');

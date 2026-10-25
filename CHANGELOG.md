@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.124.2] - 2026-10-25
+
+### Fixed
+
+- A circuit aircraft on its second circuit (after a go-around or a touch-and-go) was not established on its final until the 0.5 NM takeover, so its landing clearance came late again. `CircuitFinal` now holds off only until it is round to its base.
+- A refused tower line-up, take-off or line-up-behind is no longer kept as given: the departure is not left `LineUpCleared` at its holding point with every other departure waiting behind it.
+- `go generate` writes `remote_gen.go` without a trailing blank line (gofmt).
+
 ## [0.124.1] - 2026-10-25
 
 ### Fixed

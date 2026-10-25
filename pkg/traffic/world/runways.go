@@ -701,7 +701,23 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 				})
 				return
 			}
-			it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error { return f(it) })
+			it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error {
+				err := f(it)
+				if err != nil {
+					// Refused: not granted any more, to be given again, nor
+					// one cleared to line up that every other holding point
+					// waits behind (LineUpCleared).
+					t.cc.pending.later(t.cc.clock.Now(), func() {
+						t.mu.Lock()
+						delete(t.given, key)
+						if action == "takeoff" || action == "lineupbehind" {
+							delete(t.given, tail+" lineup")
+						}
+						t.mu.Unlock()
+					})
+				}
+				return err
+			})
 		})
 	}
 	takeoff := map[string]bool{}

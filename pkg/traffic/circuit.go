@@ -591,7 +591,13 @@ func (c *ArrivalController) CircuitFinal() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ci := c.req.Circuit
-	if ci == nil || !c.flyingProc || c.circuit || c.last.Position == (airport.LatLon{}) {
+	if ci == nil || !c.flyingProc || c.proc == nil || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	// Going round again (a go-around, a touch-and-go): not until it is
+	// round to its base, as for the takeover (onProcedureFrame); its climb
+	// out over the runway is aligned too.
+	if c.circuit && c.procWaypoint(c.proc.Waypoints) < len(c.proc.Waypoints)-2 {
 		return false
 	}
 	thr, _ := ci.Point(LegRunway)
