@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.121.2] - 2026-10-25
+
+### Fixed
+
+- The landing sequence predicts a VFR arrival with its own lead: it appears `VFRLead` (8 min) before its STA to join the circuit, not `ArrivalLead` (25 min). Waiting to appear, a light aircraft was predicted to land `ArrivalLead` from now on every tick, and every arrival behind it in the sequence slid on with it (live, LKPR morning peak: the queue headed by light aircraft, airliners estimated 20-30 minutes late). The spawn delay it advises uses the same lead.
+
 ## [0.121.1] - 2026-10-25
 
 ### Fixed

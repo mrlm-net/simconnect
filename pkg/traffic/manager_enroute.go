@@ -108,9 +108,11 @@ func (p *TrafficPicture) has(objectID uint32) bool {
 
 // arrivalLead is how long before its STA arrival f appears: VFRLead for a
 // VFR flight, ArrivalLead for the rest.
-func (m *TrafficManager) arrivalLead(f *Flight) time.Duration {
+func (m *TrafficManager) arrivalLead(f *Flight) time.Duration { return arrivalLeadOf(f, m.opts) }
+
+func arrivalLeadOf(f *Flight, o ManagerOptions) time.Duration {
 	if f.Rules == "VFR" {
-		return m.opts.VFRLead
+		return o.VFRLead
 	}
-	return m.opts.ArrivalLead
+	return o.ArrivalLead
 }

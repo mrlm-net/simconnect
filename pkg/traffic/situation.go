@@ -128,11 +128,15 @@ const (
 )
 
 // landingETA predicts when an arrival lands: an approaching one at its
-// scheduled landing or, if later, ArrivalLead after it appeared; a
-// scheduled one ArrivalLead after it can appear.
+// scheduled landing or, if later, its lead after it appeared; a scheduled
+// one its lead after it can appear. The lead is the flight's own: a VFR
+// flight appears VFRLead before its STA, not ArrivalLead (else one
+// waiting to appear is predicted ArrivalLead out every tick, and every
+// arrival behind it slides on).
 func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 	planned := f.STA.Add(-LandingBeforeSTA)
-	fly := o.ArrivalLead - LandingBeforeSTA
+	lead := arrivalLeadOf(&f.Flight, o)
+	fly := lead - LandingBeforeSTA
 	if f.Stage == "enroute" && (f.Status == FlightEnroute || f.Status == FlightSpawning) {
 		// On its way to the STAR entry, reached EnrouteLead after it appeared.
 		fly += o.EnrouteLead
@@ -151,7 +155,7 @@ func landingETA(f ManagedFlight, o ManagerOptions, now time.Time) time.Time {
 		}
 		return planned
 	case FlightScheduled:
-		appear := f.STA.Add(-o.ArrivalLead)
+		appear := f.STA.Add(-lead)
 		if f.retryAt.After(appear) {
 			appear = f.retryAt
 		}
@@ -253,7 +257,7 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 				case base > gap:
 					why = "landing flow, " + s.Conditions.Surface.String() + " runway"
 				}
-				spawn := eta.Add(-(s.Options.ArrivalLead - LandingBeforeSTA))
+				spawn := eta.Add(-(arrivalLeadOf(&l.f.Flight, s.Options) - LandingBeforeSTA))
 				out = append(out, Advice{Key: l.f.Key(), Action: AdviceDelay, Until: spawn, Reason: why})
 			}
 			if need > base && eta.Sub(l.eta) > 0 && eta.Sub(prev) < 2*base+time.Second {
