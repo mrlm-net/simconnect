@@ -10,9 +10,10 @@ import (
 )
 
 // CircuitMaxExtendNM: a circuit's downwind is extended at most this far
-// (AbsorbDelay); more delay is lost in another circuit (#569). Orbit is
-// for emergencies only, never for spacing.
-const CircuitMaxExtendNM = 2.0
+// (AbsorbDelay), the tower calling the base: about four minutes more at
+// circuit speed. The sequence never sends one round another circuit nor
+// orbits it for spacing (the user); orbits are for emergencies.
+const CircuitMaxExtendNM = 5.0
 
 // Orbit has a VFR circuit arrival fly an orbit where it is (Doc 4444
 // 12.3.4.17: "orbit left/right"): a full turn at circuit height and speed,

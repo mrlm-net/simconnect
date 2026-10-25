@@ -857,7 +857,7 @@ func entryLongEnough(req TaxiRequest, route *airport.Route) error {
 	}
 	last := route.Nodes[len(route.Nodes)-1]
 	for _, e := range entries {
-		if e.HoldShort != last && e.Node != last {
+		if !e.HeldAt(last) && e.Node != last {
 			continue
 		}
 		p := req.Takeoff

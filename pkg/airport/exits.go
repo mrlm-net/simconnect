@@ -74,6 +74,9 @@ type RunwayExit struct {
 	// HoldShort is the hold-short node behind the exit for this runway, -1 if
 	// none within exitHoldShortSearch.
 	HoldShort NodeID `json:"holdShort"`
+	// ILSHoldShort is the ILS hold-short (the CAT II/III line protecting the
+	// ILS sensitive area) on the same way out, beyond HoldShort; -1 if none.
+	ILSHoldShort NodeID `json:"ilsHoldShort"`
 }
 
 // RunwayExits returns the exits usable by aircraft landing on runwayEnd,
@@ -135,10 +138,11 @@ func (g *Graph) turnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, erro
 			if rel < 0 {
 				side = ExitLeft
 			}
+			hold := g.holdShortBehind(exitNode, rwy.Index)
 			exits = append(exits, RunwayExit{
 				RunwayNode: rn, Node: exitNode, Path: path, Along: math.Max(0, along),
 				Angle: angle, HighSpeed: angle <= HighSpeedExitAngle, Side: side,
-				Taxiway: g.exitName(path), HoldShort: g.holdShortBehind(exitNode, rwy.Index),
+				Taxiway: g.exitName(path), HoldShort: hold, ILSHoldShort: g.ilsHoldShortBehind(exitNode, rwy.Index, hold),
 			})
 		}
 	}
@@ -288,6 +292,40 @@ func (g *Graph) holdShortBehind(from NodeID, rwy int) NodeID {
 				continue
 			}
 			dist[e.To] = d
+			queue = append(queue, e.To)
+		}
+	}
+	return best
+}
+
+// ilsHoldShortBehind finds the nearest ILS hold-short of runway rwy within
+// exitHoldShortSearch of from whose way back to from passes hold (the
+// runway hold-short behind the same exit; any way when hold is -1), over
+// taxiway edges: the line further out on the same taxiway, not another
+// taxiway's. -1 if none.
+func (g *Graph) ilsHoldShortBehind(from NodeID, rwy int, hold NodeID) NodeID {
+	if hold >= 0 && g.Nodes[hold].HoldShort.ILS {
+		return hold
+	}
+	dist := map[NodeID]float64{from: 0}
+	via := map[NodeID]bool{from: from == hold || hold < 0}
+	queue := []NodeID{from}
+	best, bestD := NodeID(-1), math.Inf(1)
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if h := g.Nodes[cur].HoldShort; h != nil && h.Runway == rwy && h.ILS && via[cur] && dist[cur] < bestD {
+			best, bestD = cur, dist[cur]
+		}
+		for _, e := range g.Adj[cur] {
+			if e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY || e.Type == types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING || g.RunwayAt(g.Nodes[e.To].Position, exitSurfaceMargin) == rwy {
+				continue
+			}
+			d := dist[cur] + e.Length
+			if old, ok := dist[e.To]; (ok && old <= d) || d > exitHoldShortSearch {
+				continue
+			}
+			dist[e.To], via[e.To] = d, via[cur] || e.To == hold
 			queue = append(queue, e.To)
 		}
 	}

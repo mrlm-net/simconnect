@@ -201,7 +201,7 @@ func (c *ArrivalController) GoAround() error {
 		// approach takes over: over the runway and round again (live,
 		// OKIMV sent around twice, landed: the order was dropped).
 		if c.req.Circuit != nil {
-			if _, err := c.anotherCircuit(); err != nil {
+			if _, err := c.anotherCircuit(true); err != nil {
 				return err
 			}
 			c.goArounds++

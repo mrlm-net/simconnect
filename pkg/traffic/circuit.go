@@ -521,11 +521,19 @@ const OverheadAboveFt = 1000.0
 func (c *ArrivalController) AnotherCircuit() (time.Duration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.anotherCircuit()
+	return c.anotherCircuit(false)
 }
 
-// anotherCircuit is AnotherCircuit under c.mu.
-func (c *ArrivalController) anotherCircuit() (time.Duration, error) {
+// goAroundSkipM: a circuit go-around leaves out the points ahead nearer the
+// threshold than this past where it is (its base turn's rounded arc).
+const goAroundSkipM = 1000.0
+
+// anotherCircuit is AnotherCircuit under c.mu. goAround: told to go
+// around on its base or final, so the rest of that final is not flown —
+// straight on over the runway, climbing to circuit height (live, OKQAK and
+// OKDCK went on down their final, were taken over by the approach and
+// landed onto the aircraft lined up).
+func (c *ArrivalController) anotherCircuit(goAround bool) (time.Duration, error) {
 	if c.req.Circuit == nil || !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 2 {
 		return 0, ErrNotOnProcedure
 	}
@@ -538,7 +546,13 @@ func (c *ArrivalController) anotherCircuit() (time.Duration, error) {
 	up, _ := ci.Point(LegUpwind)
 	var wps []types.SIMCONNECT_DATA_WAYPOINT
 	next := c.procWaypoint(c.proc.Waypoints)
-	wps = append(wps, c.proc.Waypoints[next:len(c.proc.Waypoints)-1]...) // round to the final, not into the join
+	for _, w := range c.proc.Waypoints[next : len(c.proc.Waypoints)-1] { // round to the final, not into the join
+		p := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+		if goAround && localDist(p, thr.Position) < localDist(pos, thr.Position)+goAroundSkipM {
+			continue // ahead on its base or final (the base turn's arc too): not flown
+		}
+		wps = append(wps, w)
+	}
 	wps = append(wps, procedureWaypoint(thr.Position, ci.HeightFt, up.Kts), procedureWaypoint(up.Position, ci.HeightFt, up.Kts))
 	for _, leg := range []CircuitLeg{LegCrosswind, LegDownwind, LegBase, LegFinal} {
 		p, _ := ci.Point(leg)
@@ -551,6 +565,9 @@ func (c *ArrivalController) anotherCircuit() (time.Duration, error) {
 	c.proc.Waypoints, c.procNext = rounded, 0
 	c.corners, c.cornerNames, c.cornerNext = nil, nil, -1
 	c.baseCall = false // round again: its own base turn
+	// Not taken over by the approach until round on its base again (the
+	// final it was on lies ahead of it on the chain otherwise).
+	c.circuit, c.gaGearUp = true, true
 	c.note("another circuit", nil)
 	nm := pathNMOf(pos, rounded[:len(rounded)-1], rounded[len(rounded)-1])
 	return time.Duration(nm / CircuitKts(*c.aircraft()) * float64(time.Hour)), nil

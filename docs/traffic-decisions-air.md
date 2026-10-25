@@ -43,7 +43,8 @@ Only an arrival established on the final is sent around (`GoAround`); one on its
 
 At the holding points, departures and crossings go first come, first served, by when each was first seen holding:
 
-- A **departure** that may take off gets line-up and take-off together. If only the interval still runs and the arrival leaves the line-up time, the occupancy, 30 s and another 30 s, it gets "line up and wait".
+- A **departure** that may take off gets line-up and take-off together. If only the interval still runs and the arrival leaves the time lining up to a stop takes (`LineUpWaitTime`, 85 s, measured live; not the 60 s of line-up and go), the occupancy, 30 s and another 30 s, it gets "line up and wait". Live, a DA-42 at B lined up 100 s after its clearance and the A320 behind it on final went around.
+- "Behind the departing …, line up and wait" is given behind one of ours only once that one is cleared for take-off. One lined up and waiting for an arrival is not about to go, so nobody lines up behind it.
 - If the runway is taken by one of ours lined up, the departure is "number N for departure"; otherwise it waits for "X on the runway".
 - The first departure in turn that waits **only** for the next arrival (the interval has run) gets `LineUpBehind`: line up behind that arrival once it has passed.
 - A **crossing** needs the runway free and the next arrival at least 40 s plus 30 s away. One aircraft crosses at a time.

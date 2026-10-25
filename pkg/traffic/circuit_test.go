@@ -339,3 +339,44 @@ func TestCircuitGoAroundBeforeFinal(t *testing.T) {
 	}
 	t.Logf("upwind passed within %.0f m", closest)
 }
+
+// TestCircuitGoAroundNotLanded: a circuit arrival sent around on its base
+// goes on over the runway, not down the final it was turning onto: frames
+// along that final do not hand it to the approach (live, OKQAK and OKDCK
+// sent around for traffic on the runway were taken over and landed onto
+// the aircraft lined up).
+func TestCircuitGoAroundNotLanded(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("PC12")
+	c, _ := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft PC12", Tail: "OKQAK",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 84))
+	base, _ := c.Point(LegBase)
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 84, base.Position, base.AltFt, 0, CircuitKts(p), false))
+	if err := ctl.GoAround(); err != nil {
+		t.Fatal(err)
+	}
+	thr, _ := c.Point(LegRunway)
+	for _, nm := range []float64{1.5, 1.2, 0.9, 0.7} {
+		pos := offsetHeading(thr.Position, c.heading+180, nm*1852)
+		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 84, pos, nm*300, c.heading, CircuitKts(p), false))
+		if !ctl.flyingProc || ctl.approach != nil {
+			t.Fatalf("taken over by the approach on a %.1f NM final after its go-around", nm)
+		}
+	}
+	for _, w := range ctl.proc.Waypoints[:1] {
+		if d := localDist(airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, thr.Position); d > 1852 {
+			t.Errorf("first point %.0f m from the threshold: not straight on over the runway", d)
+		}
+	}
+}

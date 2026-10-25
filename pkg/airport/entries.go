@@ -30,6 +30,23 @@ type RunwayEntry struct {
 	Taxiway string `json:"taxiway"`
 	// HoldShort is the hold-short node on the entry, -1 if none was found.
 	HoldShort NodeID `json:"holdShort"`
+	// ILSHoldShort is the ILS hold-short further out on the entry, where
+	// departures hold in low visibility procedures; -1 if none.
+	ILSHoldShort NodeID `json:"ilsHoldShort"`
+}
+
+// HeldAt reports whether node is one of the entry's holding points.
+func (e RunwayEntry) HeldAt(node NodeID) bool {
+	return node >= 0 && (e.HoldShort == node || e.ILSHoldShort == node)
+}
+
+// holdFor is the entry's holding point: the ILS hold-short in low
+// visibility when it has one, else the hold-short; -1 if none.
+func (e RunwayEntry) holdFor(lowVis bool) NodeID {
+	if lowVis && e.ILSHoldShort >= 0 {
+		return e.ILSHoldShort
+	}
+	return e.HoldShort
 }
 
 // FullLengthMeters: entries within this distance of the threshold count as
@@ -65,7 +82,7 @@ func (g *Graph) RunwayEntries(runwayEnd string) ([]RunwayEntry, error) {
 		out = append(out, RunwayEntry{
 			RunwayNode: x.RunwayNode, Node: x.Node, Path: path,
 			FromThreshold: math.Max(0, rwy.Length-x.Along), Remaining: x.Along,
-			Angle: x.Angle, Taxiway: x.Taxiway, HoldShort: x.HoldShort,
+			Angle: x.Angle, Taxiway: x.Taxiway, HoldShort: x.HoldShort, ILSHoldShort: x.ILSHoldShort,
 		})
 	}
 	// Entries as far from the threshold (LKPR 24: A and Z both 201 m) by
@@ -119,7 +136,10 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		if !strings.EqualFold(e.Taxiway, entry) {
 			continue
 		}
-		t := e.HoldShort
+		t := e.holdFor(opts.LowVisibility)
+		if t >= 0 && math.IsInf(s.dist[t], 1) {
+			t = e.HoldShort // the ILS line not reachable: the runway's
+		}
 		if t < 0 {
 			t = e.Node
 		}

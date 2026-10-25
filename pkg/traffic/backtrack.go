@@ -53,7 +53,7 @@ func (c *TaxiController) backtrackEntry() []airport.LatLon {
 	hold := c.route.Nodes[len(c.route.Nodes)-1]
 	best := -1
 	for i, e := range entries {
-		if e.HoldShort == hold && (best < 0 || e.FromThreshold > entries[best].FromThreshold) {
+		if e.HeldAt(hold) && (best < 0 || e.FromThreshold > entries[best].FromThreshold) {
 			best = i
 		}
 	}

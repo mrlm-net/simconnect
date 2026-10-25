@@ -30,6 +30,10 @@ type RouteOptions struct {
 	// queue): with entrances side by side at the runway's end (LKPR 24: A
 	// and Z) the next departure takes the shorter line, still full length.
 	HoldShortQueue map[NodeID]float64
+	// LowVisibility: low visibility procedures are in force, so departures
+	// hold at the runway's ILS hold-shorts (the CAT II/III lines, outside
+	// the ILS sensitive area) where it has them, else at the runway's.
+	LowVisibility bool
 	// TurnPenalty is the extra cost, in meters of route length, of a 90°
 	// turn at a taxiway junction (proportional above TurnFreeAngle), and
 	// TaxiwayChangePenalty that of turning onto another taxiway: routes with
@@ -262,15 +266,16 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		}
 		return nil, fmt.Errorf("%w: no reachable hold-short for runway %s", ErrNoRoute, end.Name)
 	}
-	// Prefer runway holding points; fall back to ILS holds only if none is reachable.
-	var runwayHolds []cand
+	// Prefer runway holding points, ILS holds in low visibility; the other
+	// kind only if none is reachable.
+	var kind []cand
 	for _, c := range cands {
-		if !c.ils {
-			runwayHolds = append(runwayHolds, c)
+		if c.ils == opts.LowVisibility {
+			kind = append(kind, c)
 		}
 	}
-	if len(runwayHolds) > 0 {
-		cands = runwayHolds
+	if len(kind) > 0 {
+		cands = kind
 	}
 	tol := opts.IntersectionTolerance
 	if tol <= 0 {

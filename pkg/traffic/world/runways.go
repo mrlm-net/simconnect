@@ -679,8 +679,19 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 				it.spoken[k] = true
 			}
 			it.mu.Unlock()
-			// Said first; the crew acts once it has read it back (#462).
+			// Said first; the crew acts once it has read it back (#462). A
+			// go-around at once, on "go around" (live, AFR765 and OKQAK
+			// flew 12–16 s on down their final until the readback ended).
 			it.say(said)
+			if action == "goaround" {
+				p := it.cc.pending
+				p.later(it.cc.clock.Now().Add(crewActDelay+p.jitter(crewActJitter)), func() {
+					if err := it.cc.do(func() error { return f(it) }); err != nil {
+						it.cc.log.printf("%-6s tower: goaround refused: %v", it.Tail, err)
+					}
+				})
+				return
+			}
 			it.actAfterReadback(traffic.PosTower, "tower: "+action, func() error { return f(it) })
 		})
 	}

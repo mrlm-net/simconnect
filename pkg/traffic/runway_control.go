@@ -529,7 +529,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// behind it (live, LKPR: OKFZG told to line up behind OKFXC at B
 			// while CSA958 was lining up from the same holding point; then
 			// cleared for take-off with CSA958 on the runway).
-			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
+			// About to go: cleared for take-off, not one waiting lined up for
+			// an arrival (live, RYR1416 told to line up behind the DA-42
+			// lined up at B waiting for AFR765: two on the runway, AFR765
+			// sent around).
+			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && r.granted[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
 				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied &&
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
@@ -568,8 +572,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		// Lined up only if it can still go before the next arrival once the
 		// interval has run (live, LKPR: AUA511 lined up 28 s behind a
 		// Phenom, KLM1683 came inside 3 NM meanwhile and went around).
+		// Lining up to a stop takes LineUpWaitTime, not the line-up-and-go
+		// LineUpTime (live, OKWMV at B lined up 100 s after its clearance,
+		// AFR765 on final went around).
 		case departureBlocked(u) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
-			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpWaitTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why

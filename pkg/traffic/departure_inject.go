@@ -2104,7 +2104,7 @@ func (c *TaxiController) entryPath() []airport.LatLon {
 		return nil
 	}
 	for _, e := range entries {
-		if e.HoldShort != hold {
+		if !e.HeldAt(hold) {
 			continue
 		}
 		var pts []airport.LatLon
