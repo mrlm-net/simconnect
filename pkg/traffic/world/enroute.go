@@ -128,9 +128,9 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	var fp *nav.FlightPlan
 	var err error
 	if f.Arrival() {
-		fp, err = planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type, f.Destination)
+		fp, err = planBetween(context.Background(), st, f.Origin, f.Destination, "", arrRwy, f.Type, f.Destination, variantOf(f.Callsign))
 	} else { // an overflight: its ends where they are, not loaded
-		fp, err = planOverflight(context.Background(), st, f.Origin, f.Destination, f.Type)
+		fp, err = planOverflight(context.Background(), st, f.Origin, f.Destination, f.Type, f.Callsign)
 	}
 	if err != nil {
 		return fmt.Errorf("flight plan %s → %s: %w", f.Origin, f.Destination, err)

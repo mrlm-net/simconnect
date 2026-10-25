@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -128,6 +129,12 @@ type FlightPlanRequest struct {
 	Approach           string `json:"approach,omitempty"`
 	ApproachTransition string `json:"approachTransition,omitempty"`
 	Route              string `json:"route,omitempty"`
+	// Variant picks among the near-equal ways across the airways (entry,
+	// exit and the airways between, each within a few percent of the
+	// shortest): 0 the shortest, another value one of the others, the same
+	// one each time (traffic passes a hash of its call sign, so one flow
+	// spreads over parallel airways as real traffic does).
+	Variant uint64 `json:"variant,omitempty"`
 }
 
 // Waypoint is one point of a flight plan, in the order flown. Altitudes
@@ -401,7 +408,7 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 		end.Airway = arr.approach.Name
 		tail = append(tail, end)
 	}
-	mid, via := enroute(g, wps[len(wps)-1], tail[0])
+	mid, via := enroute(g, wps[len(wps)-1], tail[0], req.Variant)
 	if len(route) > 0 {
 		mid, via = route, Direct // the player's route, then direct onto the STAR
 	}
@@ -792,9 +799,9 @@ const edgeTries = 12
 // flight to or from a distant airport flies the airways that far and goes
 // direct only beyond (live, LKPR: every departure to LFPG, LEMD and LIRF
 // flew one line direct after the SID).
-func (g *AirwayGraph) edgeFix(near FixKey, far airport.LatLon, out bool) (Fix, bool) {
-	n, ok := g.Fix(near)
-	if !ok {
+func (g *AirwayGraph) edgeFix(near FixKey, far airport.LatLon, out bool, vr *variety) (Fix, bool) {
+	n, found := g.Fix(near)
+	if !found {
 		return Fix{}, false
 	}
 	limit := dist(n.Position, far) - edgeMinGainNM
@@ -805,6 +812,8 @@ func (g *AirwayGraph) edgeFix(near FixKey, far airport.LatLon, out bool) (Fix, b
 		}
 	}
 	sort.Slice(cands, func(i, j int) bool { return dist(cands[i].Position, far) < dist(cands[j].Position, far) })
+	var ok []Fix
+	var cost []float64
 	for _, f := range cands[:min(len(cands), edgeTries)] {
 		from, to := near, f.Key()
 		if !out {
@@ -812,16 +821,23 @@ func (g *AirwayGraph) edgeFix(near FixKey, far airport.LatLon, out bool) (Fix, b
 		}
 		steps, err := g.Route(from, to)
 		if err == nil && len(steps) > 1 && RouteDistanceNM(steps) <= EnrouteMaxStretch*dist(n.Position, f.Position) {
-			return f, true
+			ok = append(ok, f)
+			cost = append(cost, RouteDistanceNM(steps)+dist(f.Position, far))
+			if vr == nil || len(ok) == variantChoices {
+				break
+			}
 		}
 	}
-	return Fix{}, false
+	if len(ok) == 0 {
+		return Fix{}, false
+	}
+	return ok[vr.pick(cost)], true
 }
 
 // crossingEntry is where a flight between two airports beyond the airways
 // (an overflight) joins them: of the airway fixes nearest from that are
 // closer to to than from is, the first with an edgeFix toward to.
-func (g *AirwayGraph) crossingEntry(from, to airport.LatLon) (Fix, bool) {
+func (g *AirwayGraph) crossingEntry(from, to airport.LatLon, vr *variety) (Fix, bool) {
 	limit := dist(from, to) - edgeMinGainNM
 	var cands []Fix
 	for _, f := range g.Fixes {
@@ -830,30 +846,100 @@ func (g *AirwayGraph) crossingEntry(from, to airport.LatLon) (Fix, bool) {
 		}
 	}
 	sort.Slice(cands, func(i, j int) bool { return dist(cands[i].Position, from) < dist(cands[j].Position, from) })
+	var ok []Fix
+	var cost []float64
 	for _, f := range cands[:min(len(cands), edgeTries)] {
-		if _, ok := g.edgeFix(f.Key(), to, true); ok {
-			return f, true
+		if _, found := g.edgeFix(f.Key(), to, true, nil); found {
+			ok = append(ok, f)
+			cost = append(cost, dist(from, f.Position)+dist(f.Position, to))
+			if vr == nil || len(ok) == variantChoices {
+				break
+			}
 		}
 	}
-	return Fix{}, false
+	if len(ok) == 0 {
+		return Fix{}, false
+	}
+	return ok[vr.pick(cost)], true
+}
+
+// A plan's Variant, its choices one after another: variantChoices at
+// most at each, among those no more than variantExtra longer than the
+// shortest.
+const (
+	variantChoices = 3
+	variantExtra   = 0.03
+)
+
+type variety struct{ state uint64 }
+
+// newVariety is nil for variant 0: always the shortest.
+func newVariety(variant uint64) *variety {
+	if variant == 0 {
+		return nil
+	}
+	return &variety{variant}
+}
+
+// pick returns the index of one of the choices of cost within variantExtra
+// of the lowest (0 on a nil variety).
+func (v *variety) pick(cost []float64) int {
+	if v == nil || len(cost) < 2 {
+		return 0
+	}
+	low := slices.Min(cost)
+	var near []int
+	for i, c := range cost {
+		if c <= (1+variantExtra)*low {
+			near = append(near, i)
+		}
+	}
+	v.state = v.state*6364136223846793005 + 1442695040888963407
+	return near[(v.state>>33)%uint64(len(near))]
+}
+
+// routeVariant is the airway route from one fix to another a variety
+// picks (RouteOrDirect for none): one of Routes, direct when it is more
+// than EnrouteMaxStretch the direct distance.
+func (g *AirwayGraph) routeVariant(from, to FixKey, vr *variety) ([]RouteStep, error) {
+	if vr == nil {
+		return g.RouteOrDirect(from, to, EnrouteMaxStretch)
+	}
+	rs, err := g.Routes(from, to, variantChoices, variantExtra)
+	if errors.Is(err, ErrNoRoute) {
+		return g.DirectTo(from, to)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cost := make([]float64, len(rs))
+	for i, r := range rs {
+		cost[i] = RouteDistanceNM(r)
+	}
+	steps := rs[vr.pick(cost)]
+	if len(steps) > 1 && RouteDistanceNM(steps) > EnrouteMaxStretch*dist(steps[0].Position, steps[len(steps)-1].Position) {
+		return g.DirectTo(from, to)
+	}
+	return steps, nil
 }
 
 // enroute returns the waypoints between from (the SID's last point) and to
 // (the arrival's first), both excluded, and the airway to is reached by.
-func enroute(g *AirwayGraph, from, to Waypoint) ([]Waypoint, string) {
+func enroute(g *AirwayGraph, from, to Waypoint, variant uint64) ([]Waypoint, string) {
 	if g == nil {
 		return nil, Direct
 	}
+	vr := newVariety(variant)
 	var mid []Waypoint
 	fk, fok := g.keyNear(from)
 	tk, tok := g.keyNear(to)
 	if !fok {
 		f, ok := g.joinFix(from.Position, to.Position)
 		if !ok && tok {
-			f, ok = g.edgeFix(tk, from.Position, false)
+			f, ok = g.edgeFix(tk, from.Position, false, vr)
 		}
 		if !ok && !tok {
-			f, ok = g.crossingEntry(from.Position, to.Position)
+			f, ok = g.crossingEntry(from.Position, to.Position, vr)
 		}
 		if ok {
 			fk, fok = f.Key(), true
@@ -864,7 +950,7 @@ func enroute(g *AirwayGraph, from, to Waypoint) ([]Waypoint, string) {
 	if !tok {
 		f, ok := g.joinFix(to.Position, from.Position)
 		if !ok && fok {
-			f, ok = g.edgeFix(fk, to.Position, true)
+			f, ok = g.edgeFix(fk, to.Position, true, vr)
 		}
 		if ok {
 			w := fixWaypoint(f, "")
@@ -878,7 +964,7 @@ func enroute(g *AirwayGraph, from, to Waypoint) ([]Waypoint, string) {
 		}
 		return mid, Direct
 	}
-	steps, err := g.RouteOrDirect(fk, tk, EnrouteMaxStretch)
+	steps, err := g.routeVariant(fk, tk, vr)
 	if err != nil || len(steps) < 2 {
 		return mid, Direct
 	}
