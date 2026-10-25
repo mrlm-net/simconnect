@@ -380,3 +380,21 @@ func TestCheckStuckWaitingOnATC(t *testing.T) {
 	}
 }
 
+
+// A light aircraft appears VFRLead before its STA: waiting to appear it
+// lands then, not ArrivalLead from now (live, LKPR: a VFR arrival waiting
+// was predicted 20 minutes out every tick and every arrival behind it slid
+// on, 20-30 minutes late).
+func TestLandingFlowVFRLead(t *testing.T) {
+	vfr := flight("OKABC", "", "LKPR", t0.Add(-50*time.Minute), time.Hour) // STA t0+10
+	vfr.Rules = "VFR"
+	ifr := flight("DLH1", "EDDF", "LKPR", t0.Add(-33*time.Minute), time.Hour) // STA t0+27, lands t0+22
+	fs := []ManagedFlight{{Flight: vfr, Kind: "arrival", Airport: "LKPR"}, {Flight: ifr, Kind: "arrival", Airport: "LKPR"}}
+	o := ManagerOptions{}
+	o.defaults()
+	for _, a := range CheckLandingFlow(0, 0)(Situation{Now: t0, Airport: "LKPR", Flights: fs, Options: o}) {
+		if a.Action == AdviceDelay || a.Action == AdviceEstimate {
+			t.Errorf("%s %v until %s (%s): the VFR arrival lands at t0+5, well ahead", a.Key, a.Action, a.Until.Sub(t0), a.Reason)
+		}
+	}
+}
