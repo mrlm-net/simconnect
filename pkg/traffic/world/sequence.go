@@ -298,7 +298,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			if !ok {
 				lead = -1
 			}
-			q.closingUp(now, it, e, e.DistanceToGoNM-lead) // on the final: slower, else around early
+			q.closingUp(now, it, e, e.DistanceToGoNM-lead, lead) // on the final: slower, else around early
 			continue
 		}
 		if errors.Is(err, traffic.ErrNotOnProcedure) || errors.Is(err, traffic.ErrHolding) {
@@ -437,7 +437,7 @@ const (
 // still short of its spacing once that has had time to work and inside it
 // already (gapNM, the track distance to its leader now: the prediction
 // alone can overstate the closing), around early.
-func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceEntry, gapNM float64) {
+func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceEntry, gapNM, leadToGoNM float64) {
 	q.mu.Lock()
 	slowedAt, slowed := q.slowedFinal[e.Callsign]
 	broke := q.brokeOff[e.Callsign]
@@ -479,7 +479,14 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		q.cc.log.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
 		if gain > 0 {
 			tx := traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number))
-			it.call(pos, prioLanding, func() { it.say(tx) })
+			// Not said once it is going around (live, CSA814 told "number 2,
+			// reduce to final approach speed" 15 s into its go-around).
+			still := func() bool {
+				q.mu.Lock()
+				defer q.mu.Unlock()
+				return !q.brokeOff[e.Callsign]
+			}
+			it.callIf(pos, prioLanding, still, nil, func() { it.say(tx) })
 		}
 		return
 	}
@@ -490,13 +497,28 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	// minimum, the buffer is speed's to work off — around only for the
 	// minimum itself (live, RYR270 sent around 6.2 NM behind OKZWR, a
 	// PC-12, for the 7 NM of 5 and a 2 NM buffer).
-	if e.MinimumNM > 0 && e.SpacingNM > e.MinimumNM {
-		it.mu.Lock()
-		kts := it.view.GroundSpeed
-		it.mu.Unlock()
-		if kts < 60 {
-			kts = 140
+	it.mu.Lock()
+	kts := it.view.GroundSpeed
+	it.mu.Unlock()
+	if kts < 60 {
+		kts = 140
+	}
+	// Where the two are now: the follower's distance to go when its leader
+	// touches down, at their speeds. Around only below the minimum there,
+	// not for a departure gap or buffer lost (live, CSA814 sent around 4.6 NM
+	// behind a Citation 2.6 NM from touchdown, for the 6 NM of a departure
+	// gap: it would have landed 3.8 NM behind, the minimum 3).
+	if minNM := e.MinimumNM; minNM > 0 && leadToGoNM >= 0 {
+		leadKts := 0.0
+		if l := q.cc.byTail(e.Leader); l != nil {
+			l.mu.Lock()
+			leadKts = l.view.GroundSpeed
+			l.mu.Unlock()
 		}
+		if leadKts >= 60 && spacingAtTouchdown(e.DistanceToGoNM, kts, leadToGoNM, leadKts) >= minNM {
+			return
+		}
+	} else if e.MinimumNM > 0 && e.SpacingNM > e.MinimumNM {
 		landsAt := e.SpacingNM - e.ShortBy.Hours()*kts
 		if landsAt >= e.MinimumNM {
 			return
@@ -512,6 +534,12 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	q.cc.log.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
 	it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAround("spacing")) })
 	q.cc.rejoin(it.ICAO, it.Tail)
+}
+
+// spacingAtTouchdown is how far from the threshold a follower toGo NM out
+// at kts is when its leader, leadToGo NM out at leadKts, touches down.
+func spacingAtTouchdown(toGo, kts, leadToGo, leadKts float64) float64 {
+	return toGo - leadToGo/leadKts*kts
 }
 
 // Holding (#392), the exception: an arrival with holdFrom or more left

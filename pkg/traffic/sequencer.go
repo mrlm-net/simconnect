@@ -229,9 +229,14 @@ func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c Approa
 		nm = DefaultDepartureGapNM
 	}
 	nm += float64(max(departures, 1)-1) * DoubleGapExtraNM // each departure more in the gap
+	// The gap at the threshold, not where it is set up: a follower faster
+	// than its leader closes it as the normal spacing (live, CSA814 6.3 NM
+	// behind a Citation down to 4.6 NM at 7 NM to go, sent around).
+	cmp := s.compressionNM(lead, follow)
+	nm += cmp
 	kts := c.FinalGroundKts(follow.FinalKts)
 	g := SeparationTime(nm, kts)
-	if need := RunwayOccupancyIn(lead.Wake, true, c.Surface) + SeparationTime(DepartureGapArrivalNM, kts); need > g {
+	if need := RunwayOccupancyIn(lead.Wake, true, c.Surface) + SeparationTime(DepartureGapArrivalNM+cmp, kts); need > g {
 		g = need
 		nm = g.Hours() * kts
 	}
@@ -418,16 +423,10 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditi
 	// spacing; it is given CompressionNMPer30Kts per 30 kt of difference,
 	// at most CompressionMaxNM (live, LKPR: a B738 behind a PC-24 at 108 kt
 	// was 31 s short on the final and went around).
-	if diff := finalKtsOf(follow) - finalKtsOf(lead); diff > 0 && s.opts.CompressionMaxNM >= 0 {
-		limit := s.opts.CompressionMaxNM
-		if limit == 0 {
-			limit = DefaultCompressionMaxNM
-		}
-		if extra := math.Min(limit, diff/30*CompressionNMPer30Kts); extra >= 0.1 {
-			nm += extra
-			if why == "" {
-				why = "compression"
-			}
+	if extra := s.compressionNM(lead, follow); extra > 0 {
+		nm += extra
+		if why == "" {
+			why = "compression"
 		}
 	}
 	kts := c.FinalGroundKts(follow.FinalKts)
@@ -442,6 +441,24 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditi
 		}
 	}
 	return g, nm, why
+}
+
+// compressionNM is the spacing a follower faster on final than its leader
+// closes up by the threshold: CompressionNMPer30Kts per 30 kt of
+// difference, at most CompressionMaxNM; 0 under 0.1 NM.
+func (s *ApproachSequencer) compressionNM(lead, follow ApproachAircraft) float64 {
+	diff := finalKtsOf(follow) - finalKtsOf(lead)
+	if diff <= 0 || s.opts.CompressionMaxNM < 0 {
+		return 0
+	}
+	limit := s.opts.CompressionMaxNM
+	if limit == 0 {
+		limit = DefaultCompressionMaxNM
+	}
+	if extra := math.Min(limit, diff/30*CompressionNMPer30Kts); extra >= 0.1 {
+		return extra
+	}
+	return 0
 }
 
 // minimumNM is follow's spacing behind lead without the compression
