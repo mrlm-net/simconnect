@@ -47,6 +47,11 @@ type sequences struct {
 	// its final approach speed; brokeOff: sent around early for spacing.
 	slowedFinal map[string]time.Time
 	brokeOff    map[string]bool
+	// circuitWide: VFR circuit arrivals allowed CircuitWideExtendNM;
+	// circuitFull: extended as far as they may and still early, planned
+	// at their own time (Fixed) so the ones behind take the rest
+	// (circuitShort).
+	circuitWide, circuitFull map[string]bool
 	// seqSaid: the last number and speed each arrival was told, and when:
 	// nothing is said again unless one changed, and the number only once
 	// an approach (live, AUA529 heard "number 2" with every call).
@@ -115,7 +120,7 @@ func (q *sequences) keepHolding(now time.Time, cs string) bool {
 
 func newSequences(cc *controlCenter, s *scheduler) *sequences {
 	return &sequences{cc: cc, s: s, seq: map[string]*traffic.ApproachSequencer{}, cond: map[string]traffic.ApproachConditions{}, absorbed: map[string]time.Time{}, refused: map[string]time.Time{}, stacks: map[string]*traffic.HoldStack{},
-		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, noShortcut: map[string]string{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
+		slowedFinal: map[string]time.Time{}, brokeOff: map[string]bool{}, circuitWide: map[string]bool{}, circuitFull: map[string]bool{}, seqSaid: map[string]seqSaid{}, shortcutAt: map[string]time.Time{}, noShortcut: map[string]string{}, seenAt: map[string]time.Time{}, conflictHeld: map[string]conflictHold{}}
 }
 
 // at is icao's landing sequences by runway.
@@ -138,6 +143,9 @@ func (q *sequences) rejoin(icao, tail string) {
 	// A new approach: slowed and broken off afresh if need be.
 	delete(q.slowedFinal, tail)
 	delete(q.brokeOff, tail)
+	delete(q.slowed, tail)
+	delete(q.circuitWide, tail)
+	delete(q.circuitFull, tail)
 	delete(q.seqSaid, tail) // a new approach: its number is told again
 	delete(q.absorbed, tail)
 	for k, s := range q.seq {
@@ -298,7 +306,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			if !ok {
 				lead = -1
 			}
-			q.closingUp(now, it, e, e.DistanceToGoNM-lead, lead) // on the final: slower, else around early
+			q.closingUp(now, it, e, seq, e.DistanceToGoNM-lead, lead) // on the final: slower, else around early
 			continue
 		}
 		if errors.Is(err, traffic.ErrNotOnProcedure) || errors.Is(err, traffic.ErrHolding) {
@@ -346,7 +354,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendCallBase))
 			}
 			if a.Left > 0 {
-				q.cc.log.printf("%-6s sequence: %s more than its extended downwind takes", e.Callsign, a.Left.Round(time.Second))
+				q.circuitShort(it, e, seq, a.Left)
 			}
 			continue
 		}
@@ -430,7 +438,7 @@ const (
 // still short of its spacing once that has had time to work and inside it
 // already (gapNM, the track distance to its leader now: the prediction
 // alone can overstate the closing), around early.
-func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceEntry, gapNM, leadToGoNM float64) {
+func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry, gapNM, leadToGoNM float64) {
 	q.mu.Lock()
 	slowedAt, slowed := q.slowedFinal[e.Callsign]
 	broke := q.brokeOff[e.Callsign]
@@ -448,8 +456,14 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		}
 		if it.arr.ProcedureRoute() != nil { // still flying its circuit: its downwind further out, no other circuit
 			var a traffic.Absorption
-			if err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.ShortBy); return err }); err != nil || a.ExtraNM == 0 {
-				return // on base already, or as far out as it goes: the final decides
+			if err := q.cc.do(func() (err error) { a, err = it.arr.AbsorbDelay(e.ShortBy); return err }); err != nil {
+				return // on base already: the final decides
+			}
+			if a.Left > 0 {
+				q.circuitShort(it, e, seq, a.Left) // as far out as it goes: wider, or the ones behind
+			}
+			if a.ExtraNM == 0 {
+				return
 			}
 			q.cc.log.printf("%-6s sequence: %s short behind %s: downwind extended %.1f NM", e.Callsign, e.ShortBy.Round(time.Second), e.Leader, a.ExtraNM/2)
 			if !it.extendSaid.Swap(true) {
@@ -508,7 +522,14 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	// not for a departure gap or buffer lost (live, CSA814 sent around 4.6 NM
 	// behind a Citation 2.6 NM from touchdown, for the 6 NM of a departure
 	// gap: it would have landed 3.8 NM behind, the minimum 3).
-	if minNM := e.MinimumNM; minNM > 0 && leadToGoNM >= 0 {
+	// The minimum is the separation minimum, not the unit's spacing (offline
+	// LKPR: THY1537 sent around 4.4 NM behind DLH1775 at 7.2 NM to go for
+	// the 5 NM kept; the minimum was 3).
+	sepNM := e.SeparationNM
+	if sepNM <= 0 {
+		sepNM = e.MinimumNM
+	}
+	if minNM := sepNM; minNM > 0 && leadToGoNM >= 0 {
 		leadKts := 0.0
 		if l := q.cc.byTail(e.Leader); l != nil {
 			l.mu.Lock()
@@ -518,9 +539,9 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		if leadKts >= 60 && spacingAtTouchdown(e.DistanceToGoNM, kts, leadToGoNM, leadKts) >= minNM {
 			return
 		}
-	} else if e.MinimumNM > 0 && e.SpacingNM > e.MinimumNM {
+	} else if sepNM > 0 && e.SpacingNM > sepNM {
 		landsAt := e.SpacingNM - e.ShortBy.Hours()*kts
-		if landsAt >= e.MinimumNM {
+		if landsAt >= sepNM {
 			return
 		}
 	}
@@ -534,6 +555,119 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	q.cc.log.printf("%-6s sequence: sent around for spacing, %.1f NM behind %s (%.0f NM needed) at %.1f NM to go", e.Callsign, gapNM, e.Leader, e.SpacingNM, e.DistanceToGoNM)
 	it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAround("spacing")) })
 	q.cc.rejoin(it.ICAO, it.Tail)
+}
+
+// circuitWideClearNM: no arrival landing after a VFR circuit arrival may
+// be this close to the threshold for its downwind to be extended to
+// CircuitWideExtendNM: its base would cross the final where that one
+// comes in.
+const circuitWideClearNM = traffic.CircuitWideExtendNM + 4
+
+// leaderTakesMinNM: the way before the final an arrival needs to lose time
+// for a VFR put ahead of it (leaderTakes): room for a speed and a dog-leg.
+const leaderTakesMinNM = 15.0
+
+// circuitShort is a VFR circuit arrival with left still to lose behind its
+// leader, its downwind extended as far as it may. By cost, as a tower
+// does, never another circuit nor an orbit (the user): its downwind further
+// out, to CircuitWideExtendNM, while the final behind it is clear; else
+// ahead of its leader when that one can lose the time with speed (an IFR
+// arrival not yet established); else at its own time, fixed in the
+// sequence, the ones behind taking the rest.
+func (q *sequences) circuitShort(it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry, left time.Duration) {
+	q.mu.Lock()
+	wide, full := q.circuitWide[e.Callsign], q.circuitFull[e.Callsign]
+	q.mu.Unlock()
+	if full {
+		return
+	}
+	if !wide && finalClearBehind(e, seq) {
+		q.mu.Lock()
+		q.circuitWide[e.Callsign] = true
+		q.mu.Unlock()
+		var a traffic.Absorption
+		err := q.cc.do(func() (err error) {
+			it.arr.SetCircuitExtendMax(traffic.CircuitWideExtendNM)
+			a, err = it.arr.AbsorbDelay(left)
+			return err
+		})
+		if err == nil && a.ExtraNM > 0 {
+			q.cc.log.printf("%-6s sequence: the final behind clear: downwind extended %.1f NM further", e.Callsign, a.ExtraNM/2)
+			if r := it.arr.ProcedureRoute(); len(r) > 0 {
+				it.mu.Lock()
+				it.approach = r
+				it.mu.Unlock()
+			}
+		}
+		if err != nil || a.Left <= 0 {
+			return
+		}
+		left = a.Left
+	}
+	q.mu.Lock()
+	q.circuitFull[e.Callsign] = true
+	q.mu.Unlock()
+	if lead, need, ok := leaderTakes(e, seq, left); ok {
+		if err := q.moveUp(it, e.Callsign); err == nil {
+			q.cc.log.printf("%-6s sequence: %s more than its downwind takes: ahead of %s, which loses %s with speed", e.Callsign, left.Round(time.Second), lead, need.Round(time.Second))
+			return
+		}
+	}
+	q.cc.log.printf("%-6s sequence: %s more than its downwind takes: at its own time, the ones behind take the rest", e.Callsign, left.Round(time.Second))
+}
+
+// finalClearBehind reports whether no arrival landing after e is within
+// circuitWideClearNM of the threshold.
+func finalClearBehind(e traffic.SequenceEntry, seq []traffic.SequenceEntry) bool {
+	for _, o := range seq {
+		if o.Runway == "" && o.Number > e.Number && o.DistanceToGoNM < circuitWideClearNM {
+			return false
+		}
+	}
+	return true
+}
+
+// leaderTakes reports whether e's leader can land behind e instead, losing
+// the time with speed and its path (an arrival not yet established, not a
+// circuit's): e at the earliest its downwind allows (left before its
+// planned landing), its leader the same gap behind it. It returns the
+// leader and the time it loses.
+func leaderTakes(e traffic.SequenceEntry, seq []traffic.SequenceEntry, left time.Duration) (string, time.Duration, bool) {
+	for _, l := range seq {
+		if l.Callsign != e.Leader || l.Fixed || l.Runway != "" {
+			continue
+		}
+		g := e.Landing.Sub(l.Landing)
+		need := 2*g - left
+		if need <= 0 {
+			need = time.Second
+		}
+		starNM := l.DistanceToGoNM - speedSpareFinalNM
+		if starNM < leaderTakesMinNM {
+			return "", 0, false
+		}
+		if traffic.PlanAbsorption(need, starNM, traffic.ProcedureSpeedKts, traffic.MinProcedureSpeedKts).Left > 0 {
+			return "", 0, false
+		}
+		return l.Callsign, need, true
+	}
+	return "", 0, false
+}
+
+// moveUp puts tail one place earlier in its runway's sequence.
+func (q *sequences) moveUp(it *controlled, tail string) error {
+	it.mu.Lock()
+	icao, rwy := it.ICAO, it.view.Runway
+	it.mu.Unlock()
+	return q.sequencer(icao, rwy).Move(tail, -1)
+}
+
+// fullCircuit reports whether a VFR circuit arrival lands at its own time
+// (circuitShort): fixed in the sequence.
+func (q *sequences) fullCircuit(tail string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.circuitFull[tail]
 }
 
 // spacingAtTouchdown is how far from the threshold a follower toGo NM out
@@ -730,7 +864,7 @@ func (q *sequences) tick(now time.Time) {
 		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
 			fixesOf[v.Tail] = namedAhead(p, r, fixesAhead(fixes, r))
-			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, false)
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, it.circuit != nil && q.fullCircuit(v.Tail))
 			continue
 		}
 		if v.State == "spawning" {
@@ -1213,6 +1347,9 @@ func (q *sequences) forget(tail string) {
 	delete(q.absorbed, tail)
 	delete(q.refused, tail)
 	delete(q.slowedFinal, tail)
+	delete(q.slowed, tail)
+	delete(q.circuitWide, tail)
+	delete(q.circuitFull, tail)
 	delete(q.brokeOff, tail)
 	delete(q.seqSaid, tail)
 	delete(q.shortcutAt, tail)
@@ -1394,17 +1531,23 @@ func (q *sequences) heldSlots(now time.Time, k string, n int) int {
 // leader asks (or, number one, with no delay to lose).
 const resumeAfter = 45 * time.Second
 
+// speedSpareFinalNM: a speed for spacing is flown to the final, this far
+// out (the sequencer's FinalNM); on it every arrival slows to its
+// approach speed.
+const speedSpareFinalNM = 10.0
+
 // speedSpare reports whether e, told kts for spacing behind lead, would
 // still land resumeAfter later than its spacing asks at its normal speed.
 // The speed's own cost over the way to go counts: at its normal speed it
 // lands that much sooner, else it is slowed again a moment later (peak
 // bed, RYR1616: 190 kt, normal, 180 kt, normal, then 4 NM behind OKDME on
-// the final and sent around).
+// the final and sent around). Up to the final only (speedSpareFinalNM):
+// on it both speeds come down to the approach speed alike.
 func speedSpare(e, lead traffic.SequenceEntry, kts float64) bool {
 	gap := time.Duration(e.SpacingNM / traffic.ProcedureApproachSpeedKts * float64(time.Hour))
 	cost := time.Duration(0)
-	if kts > 0 && kts < traffic.ProcedureSpeedKts {
-		cost = time.Duration(e.DistanceToGoNM * (1/kts - 1/traffic.ProcedureSpeedKts) * float64(time.Hour))
+	if nm := e.DistanceToGoNM - speedSpareFinalNM; kts > 0 && kts < traffic.ProcedureSpeedKts && nm > 0 {
+		cost = time.Duration(nm * (1/kts - 1/traffic.ProcedureSpeedKts) * float64(time.Hour))
 	}
 	return e.Landing.Sub(lead.Landing) >= gap+resumeAfter+cost
 }

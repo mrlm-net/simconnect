@@ -100,8 +100,13 @@ func TestSequencerChanges(t *testing.T) {
 	}
 	got = nil
 	s.Update(now.Add(3*time.Second), []ApproachAircraft{arr("A1", "A320", 49)})
-	if len(got) != 2 {
-		t.Fatalf("B2 gone and A1 now #1: %+v", got)
+	if len(got) != 1 || got[0].Gone {
+		t.Fatalf("A1 now #1, B2 not yet gone (GoneGrace): %+v", got)
+	}
+	got = nil
+	s.Update(now.Add(3*time.Second+2*time.Minute), []ApproachAircraft{arr("A1", "A320", 40)})
+	if len(got) != 1 {
+		t.Fatalf("B2 gone after GoneGrace: %+v", got)
 	}
 	gone := false
 	for _, c := range got {
@@ -277,7 +282,8 @@ func TestSequencerAdjacentFinal(t *testing.T) {
 func TestDepartureSlots(t *testing.T) {
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	s := NewApproachSequencer("24", SequencerOptions{})
-	list := []ApproachAircraft{arr("CSA1", "A320", 12), arr("DLH2", "A320", 13)}
+	// Far enough out to lose a gap (gapAbsorbNM).
+	list := []ApproachAircraft{arr("CSA1", "A320", 40), arr("DLH2", "A320", 41)}
 	base := s.Update(now, list)
 	s.SetDepartureSlots(1)
 	seq := s.Update(now, list)
@@ -574,7 +580,8 @@ func TestSequencerNewcomerBehindAtMerge(t *testing.T) {
 func TestDoubleDepartureGap(t *testing.T) {
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 	s := NewApproachSequencer("24", SequencerOptions{})
-	list := []ApproachAircraft{arr("CSA1", "A320", 12), arr("DLH2", "A320", 13), arr("AFR3", "A320", 14)}
+	// Far enough out to lose the gaps (gapAbsorbNM).
+	list := []ApproachAircraft{arr("CSA1", "A320", 40), arr("DLH2", "A320", 41), arr("AFR3", "A320", 42)}
 	s.SetDepartureSlots(4)
 	seq := s.Update(now, list)
 	if seq[1].SpacingWhy != "departure gap" || math.Abs(seq[1].SpacingNM-(DefaultDepartureGapNM+DoubleGapExtraNM)) > 0.2 {

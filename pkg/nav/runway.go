@@ -364,6 +364,16 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 		if s.seeded && s.have && fresh.Departure.Name != "" && !slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, w, lim) }) {
 			return s.use
 		}
+		// One chosen in the settle stays while it is still the choice
+		// without the margin: the margin is for choosing, not keeping (live
+		// LKPR, 170°/24 kt: 24's crosswind at the margined limit, 24 and 12
+		// swapped four times in a minute after the start).
+		if s.have && fresh.Departure.Name != "" && fresh.key() != s.use.key() && ActiveRunways(l, w, lim).key() == s.use.key() {
+			kept := s.use
+			kept.HeadwindKts, kept.CrosswindKts = w.Components(kept.Arrival.Heading)
+			kept.Approach = ApproachFor(w)
+			return kept
+		}
 		s.use, s.have, s.seeded = fresh, fresh.Departure.Name != "", false
 		return fresh
 	}

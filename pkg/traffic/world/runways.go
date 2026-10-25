@@ -200,16 +200,16 @@ func (t *towers) tick(now time.Time) {
 		case it.dep != nil && v.State == "holding short":
 			u.Phase = traffic.RunwayHoldingShort
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
-			// Cleared to line up (or behind the one departing) and not moving
-			// yet: it goes first, nobody else is lined up past it (live,
-			// TVS1608 at A and RYR257 at Z). Still holding short for the
-			// arrivals: not traffic on the runway.
+			// Cleared to line up (behind the one departing or landing too) and
+			// not moving yet: it goes first, nobody else is lined up past it
+			// (live, TVS1608 at A and RYR257 at Z; offline LKPR, CSA693 and
+			// THY675 both told to line up behind the landing A320neo). Still
+			// holding short for the arrivals: not traffic on the runway.
 			t.mu.Lock()
-			b, behind := t.behind[v.Tail]
-			u.LineUpCleared = t.given[v.Tail+" lineup"] && (!behind || b.departing)
+			u.LineUpCleared = t.given[v.Tail+" lineup"]
 			t.mu.Unlock()
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
-			u.Phase = traffic.RunwayLinedUp
+			u.Phase, u.LiningUp = traffic.RunwayLinedUp, v.State == "lining up"
 			if _, end, ok := l.RunwayEnd(v.Runway); ok {
 				d := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
 				b := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)

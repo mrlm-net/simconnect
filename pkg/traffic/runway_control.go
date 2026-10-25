@@ -67,6 +67,10 @@ type RunwayUser struct {
 	// LineUpCleared: holding short, told to line up already and not
 	// moving yet. It goes first: no other departure is lined up past it.
 	LineUpCleared bool
+	// LiningUp: RunwayLinedUp but still turning onto the runway. Not "the
+	// departing" yet for a conditional line-up behind it (offline LKPR:
+	// two lining up at once, a DA-62 at B taking 80 s).
+	LiningUp bool
 }
 
 // OppositeArrivalNM: an arrival to the other end of the runway this close
@@ -549,7 +553,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// lined up at B waiting for AFR765: two on the runway, AFR765
 			// sent around).
 			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && r.granted[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
-				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied &&
+				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied && !ourLinedUp[0].LiningUp &&
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied
@@ -561,7 +565,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// (live, OKDIS lined up at an intersection ahead of CSA443 lined up
 			// at the threshold, both behind the one rolling).
 			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && len(ourLinedUp) == 0 && departureBlocked(u) == "" &&
-				arrivalClear(r.intervalLeft(now, u)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				// Its line-up too, while the interval runs: the room the map
+				// checks again once the one rolling has passed (LineUpRoom;
+				// offline LKPR, WZZ1040 told to line up, then to hold position).
+				arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
 				occupied = u.Callsign

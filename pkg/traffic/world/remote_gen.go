@@ -367,6 +367,10 @@ func (r *remoteArr) CircuitFinal() bool {
 	return o0
 }
 
+func (r *remoteArr) SetCircuitExtendMax(nm float64) {
+	r.c.dropped(r.c.call(r.t, "SetCircuitExtendMax", []any{nm}))
+}
+
 func (r *remoteArr) ProcedureCorners() []airport.LatLon {
 	var o0 []airport.LatLon
 	r.c.dropped(r.c.call(r.t, "ProcedureCorners", []any{}, &o0))

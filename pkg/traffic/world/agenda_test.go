@@ -130,3 +130,22 @@ func TestAgendaTempoQueue(t *testing.T) {
 		t.Errorf("2 min queued: %.2f, want %.2f", got, tempoMax)
 	}
 }
+
+// A take-off clearance goes before the answers to check-ins waiting longer
+// on the tower (offline LKPR: TVS1430 cleared 29 s late on an empty
+// runway, two "report ready for departure" said first).
+func TestAgendaTakeoffBeforeCheckInReplies(t *testing.T) {
+	now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
+	a := &agenda{radio: func(icao, freq string) time.Time { return time.Time{} }}
+	var said []string
+	add := func(prio callPrio, tail string, since time.Duration) {
+		a.add(call{icao: "LKPR", freq: "tower", prio: prio, tail: tail, since: now.Add(since), ready: now.Add(since), f: func() { said = append(said, tail) }})
+	}
+	add(prioCheckInReply, "CSA117", -20*time.Second)
+	add(prioCheckInReply, "WZZ1040", -15*time.Second)
+	add(prioRunway, "TVS1430", -5*time.Second)
+	a.run(now)
+	if len(said) != 1 || said[0] != "TVS1430" {
+		t.Fatalf("said %v first, want the take-off clearance [TVS1430]", said)
+	}
+}

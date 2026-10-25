@@ -197,7 +197,10 @@ func CheckLandingFlow(gap time.Duration, queue int) SituationCheck {
 			if f.Departure() && f.Status == FlightTaxiing && f.AtRunway {
 				waiting++
 			}
-			if f.Arrival() {
+			// One whose spawn failed holds no slot until it appears: it slid
+			// on with the clock and pushed every arrival behind (offline LKPR:
+			// a DA42 with no model, 18 minutes without a landing).
+			if f.Arrival() && !(f.Status == FlightScheduled && f.Err != "") {
 				if eta := landingETA(f, s.Options, s.Now); !eta.IsZero() {
 					ls = append(ls, landing{f, eta})
 				}

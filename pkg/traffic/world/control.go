@@ -3079,6 +3079,12 @@ func (it *controlled) tellGiveWay(other uint32) {
 		desc += " pushing back"
 	case gp != nil && gp.Waiting(other):
 		desc += " about to taxi"
+	case gp != nil && gp.SameWay(it.object(), other):
+		// Onto its way ahead, the same direction: followed (live, CSA429
+		// told "passing left to right" for TVS1169 pushed onto H1 ahead).
+		gp.Follow(it.object(), other)
+		it.say(traffic.FollowTaxi(it.Tail, desc))
+		return
 	case d >= 30 && d <= 150:
 		desc += " passing left to right"
 	case d <= -30 && d >= -150:
@@ -4119,7 +4125,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// The tower answers the check-in: line-up or take-off when it gives
 		// it then, else report ready, or hold short behind those to depart
 		// first (CAP 413 4.19, 4.20; live, TVS1359 heard nothing for 2m50s).
-		it.callAfter(pos, prioRunway, it.clearAt(pos), func() {
+		it.callAfter(pos, prioCheckInReply, it.clearAt(pos), func() {
 			if cleared := it.cc.departureCleared; cleared != nil && cleared(it.Tail) {
 				return
 			}
@@ -4140,8 +4146,10 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	case ev.arr != nil && pos == traffic.PosTower:
 		// The tower answers the check-in at once: cleared to land when it
 		// can be, else "continue approach" (12.3.4.15; live, AUA762 heard
-		// nothing for 1m45s with a departure on the runway).
-		it.callAfter(pos, prioLanding, it.clearAt(pos), func() {
+		// nothing for 1m45s with a departure on the runway). After the
+		// runway's calls (prioCheckInReply; offline LKPR, KLM1688 cleared for
+		// take-off late behind "continue approach").
+		it.callAfter(pos, prioCheckInReply, it.clearAt(pos), func() {
 			if cleared := it.cc.landCleared; cleared != nil && cleared(it.Tail) {
 				return
 			}

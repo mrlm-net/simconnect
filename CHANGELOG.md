@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.125.0] - 2026-10-25
+
+### Added
+
+- VFR circuit traffic absorbs its delay by cost: the downwind extends up to 5 NM (`CircuitWideExtendNM`, per aircraft with `SetCircuitExtendMax`) when no arrival follows within 9 NM; else the VFR goes ahead of an IFR leader not yet established 15 NM or more out, which loses the time by speed and path; else it keeps its time and those behind take the delay. Never an orbit, another circuit or a go-around.
+
+### Fixed
+
+- Arrivals stopped for up to 19 minutes after a spawn failed: an arrival that could not appear (no model of its type) kept its landing slot, its estimate sliding on with the clock, and every arrival behind it was delayed (offline LKPR, a DA42 with no model). A failed arrival holds no slot until it appears, and the schedule leaves out the types the simulator has no model of (said once per type).
+- A take-off clearance on an empty runway waited behind the tower's answers to check-ins ("report ready for departure", "continue approach"), which shared or outranked its class and were older (offline LKPR, TVS1430 cleared 29 s late). Those answers now go after the runway's calls (`prioCheckInReply`).
+- "Line up and wait behind the departing …" was followed at once by "hold position": the line-up behind one rolling was given without its own line-up time, which the recheck counts (offline LKPR, WZZ1040). The line-up time now counts, overlapping the interval.
+- Two departures lined up at once: one told to line up behind the landing traffic did not count as next on the runway, and another holding point got the same clearance 0.4 s later (offline LKPR, CSA693 and THY675); and one cleared for take-off still turning onto the runway at an intersection counted as "the departing" for a line-up behind it (OKYQT, a DA-62 lining up at B for 80 s). Both now go one at a time (`RunwayUser.LiningUp`).
+- A tug backing off after a push drove into taxiing traffic: its 15 m back-off had no traffic check (offline LKPR, the tug of CSA311 5 m from TVS698). It now gives way like the other vehicles.
+- A tug waiting for an aircraft crossing its road crept on 3 m each look until it stood 9 m from it (offline LKPR, the tug of WZZ1639 and CSA1955): a vehicle within `VehicleCommitMeters` of the aircraft's path was let on. A vehicle now waits short of the path, and one already in it drives out the way it is going. `VehicleCommitMeters` is deprecated and unused.
+- The runway in use flipped 24↔12 four times in a minute after a start with the crosswind at the margined limit: during the first minutes the runway in use is kept while it is still the choice without the margin.
+- Overflight levels: route levels were the plan's altitudes rounded, with no direction rule (KLM1433 westbound climbed into DLH1506 eastbound at FL390). Every en-route point now sits on the semicircular level for its track; and two aircraft holding their levels within ±300 ft, 1000 ft or more apart with flat profiles ahead, are no longer predicted to lose separation.
+- The landing order flipped: an arrival missing from one look (a handover, a frame with no position) left the sequence and came back last. A missing arrival keeps its place for `SequencerOptions.GoneGrace` (2 min); within the swap margin, arrivals numbered alike keep their order by key.
+- An arrival back after a look missing was put behind the one that took its number for that look, at their merge fix, and its first-come key was reset; the two then swapped by turns (offline LKPR, TVS993 behind TVS1137 after a reroute, TVS1137 went around twice). Numbered alike, the one with the earlier key is the one that was ahead.
+- Spacing go-arounds after compression on the final: the go-around compared with the unit's 5 NM spacing, not the separation minimum (offline LKPR, THY1537 sent around 4.4 NM behind with 3 NM the minimum); it now uses `SequenceEntry.SeparationNM`. A departure gap no longer goes to an arrival within 25 NM of its final that cannot lose the time (`PlanAbsorption`); the next one takes it.
+- The spacing speed's cost counted the whole way in; it now counts up to the final (10 NM), where every arrival flies its approach speed. Spacing state is dropped when an arrival leaves or rejoins the sequence.
+
+- Service vehicles drove through aircraft standing still on a taxiway: they gave way only to aircraft with a path ahead, so one stopped behind traffic or at a hold-short counted as parked (live, a fuel truck through CSA429 stopped on H1). An aircraft taxiing (its intent reported), pushing or pushed and waiting to taxi now counts by its body; one parked on its stand still does not. The way a pushed aircraft will taxi once cleared is not given way to, only its body.
+- Ground told an aircraft to "give way to the Boeing 737 passing left to right" for one pushed onto the same taxiway ahead of it (live, CSA429 behind TVS1169, both via H1 and H). When the other's way runs along its own the same direction for 100 m or more (`GroundPicture.SameWay`), it is told to follow it ("follow the …") and gives way to it as a leader.
+
 ## [0.124.3] - 2026-10-25
 
 ### Fixed

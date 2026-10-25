@@ -395,6 +395,46 @@ func (p *GroundPicture) Follow(id, leader uint32) {
 	p.follows[id] = leader
 }
 
+// SameWay reports whether other's way ahead (its intent: where it taxis
+// from where it is) runs along id's, the same direction, for
+// sameWayMeters or more: one turning out ahead onto the route it taxis too
+// is followed, not "passing left to right" (live, CSA429 told to give way
+// to TVS1169 pushed onto H1 ahead of it, both via H1 and H).
+func (p *GroundPicture) SameWay(id, other uint32) bool {
+	p.mu.Lock()
+	mine, theirs := p.aircraft[id].intent, p.aircraft[other].intent
+	p.mu.Unlock()
+	if len(mine) < 2 || len(theirs) < 2 {
+		return false
+	}
+	run := 0.0
+	for k := 0; k+1 < len(theirs); k++ {
+		q := theirs[k]
+		hdg := localBearing(q, theirs[k+1])
+		along := false
+		for i := 0; i+1 < len(mine); i++ {
+			if localDist(q, mine[i]) <= sameWayNearMeters && math.Abs(headingDiff(hdg, localBearing(mine[i], mine[i+1]))) <= sameWayDeg {
+				along = true
+				break
+			}
+		}
+		if !along {
+			run = 0
+			continue
+		}
+		if run += localDist(q, theirs[k+1]); run >= sameWayMeters {
+			return true
+		}
+	}
+	return false
+}
+
+// SameWay: within sameWayNearMeters of the other's way, sameWayMeters on.
+const (
+	sameWayNearMeters = 15.0
+	sameWayMeters     = 100.0
+)
+
 // Following is the aircraft id was told to follow, 0 for none.
 func (p *GroundPicture) Following(id uint32) uint32 {
 	p.mu.Lock()

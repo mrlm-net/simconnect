@@ -172,6 +172,31 @@ func (t track) levelOn(lookAhead time.Duration) bool {
 	return true
 }
 
+// holding is the level t holds: level now, within LevelHoldFt of its
+// route's altitude, and that one altitude all along its profile within the
+// look-ahead; ok false without a profile or off it.
+func (t track) holding(lookAhead time.Duration) (float64, bool) {
+	if t.fpm != 0 || len(t.alts) == 0 || t.alts[0] <= 0 || math.Abs(t.alts[0]-t.altFt) > LevelHoldFt {
+		return 0, false
+	}
+	reach := t.kts * lookAhead.Hours()
+	lat, lon, nm := t.lat, t.lon, 0.0
+	for i, p := range t.path {
+		if nm += calc.HaversineNM(lat, lon, p.Lat, p.Lon); nm > reach || i >= len(t.alts) {
+			break
+		}
+		if t.alts[i] != t.alts[0] {
+			return 0, false
+		}
+		lat, lon = p.Lat, p.Lon
+	}
+	return t.alts[0], true
+}
+
+// LevelHoldFt: an aircraft within this of its cleared level holds it (the
+// tolerance of an altitude hold, ICAO's ±300 ft).
+const LevelHoldFt = 300.0
+
 func trackOf(a TrackedAircraft) track {
 	fpm := a.VSFpm
 	if math.Abs(fpm) < 300 {
@@ -219,6 +244,15 @@ func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, 
 	minFt := o.MinFt
 	if a.levelOn(o.LookAhead) && b.levelOn(o.LookAhead) {
 		minFt -= LevelToleranceFt
+	}
+	// Both holding the levels of their routes, the minimum apart: separated
+	// by those levels, whatever the autopilot's wander about them reads
+	// (live: KLM396 at FL380 read 38004 ft, THY1687 at FL370 read 37132 ft,
+	// "lose separation in 0s at 872 ft").
+	if la, ok := a.holding(o.LookAhead); ok {
+		if lb, ok := b.holding(o.LookAhead); ok && math.Abs(la-lb) >= o.MinFt {
+			minFt = 0
+		}
 	}
 	for d := time.Duration(0); d <= o.LookAhead; d += o.Step {
 		alat, alon, aft := a.at(d)
