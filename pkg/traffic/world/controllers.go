@@ -30,6 +30,7 @@ type departureCtl interface {
 	ClearForTakeoff() error
 	ClearPushbackFacing(dir string) error
 	ClearStartUp()
+	Cleared(action string) bool
 	ClearToCross()
 	ClearToLineUp()
 	ClimbPlan(pos airport.LatLon) []traffic.RoutePoint
