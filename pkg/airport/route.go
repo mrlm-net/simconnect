@@ -841,6 +841,24 @@ func (g *Graph) RunwayAt(p LatLon, margin float64) int {
 // crossings counts the runways the edge a → b enters, other than one a is
 // already on (vacating or lining up is not a crossing).
 func (g *Graph) crossings(a, b NodeID) int {
+	k := [2]NodeID{a, b}
+	g.crossMu.Lock()
+	n, ok := g.crossedAt[k]
+	g.crossMu.Unlock()
+	if ok {
+		return n
+	}
+	n = g.edgeCrossings(a, b)
+	g.crossMu.Lock()
+	if g.crossedAt == nil {
+		g.crossedAt = map[[2]NodeID]int{}
+	}
+	g.crossedAt[k] = n
+	g.crossMu.Unlock()
+	return n
+}
+
+func (g *Graph) edgeCrossings(a, b NodeID) int {
 	on := g.onRunway(g.Nodes[a].Position)
 	n := 0
 	for _, name := range g.runwayCrossings([]LatLon{g.Nodes[a].Position, g.Nodes[b].Position}) {

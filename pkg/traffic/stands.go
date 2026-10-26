@@ -6,6 +6,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"math"
 	"math/rand/v2"
+	"runtime"
 	"slices"
 	"sort"
 	"sync"
@@ -691,6 +692,9 @@ func (a *StandAllocator) WarmTaxiIn(runwayEnds []string) {
 	for _, end := range runwayEnds {
 		for i := range a.g.Layout.Parking {
 			a.TaxiIn(end, i)
+			// A host on one thread with no preemption (WASM) runs its tick
+			// only when this lets it (#1233: LFPG held for 2 min).
+			runtime.Gosched()
 		}
 		a.taxiInMu.Lock()
 		delete(a.warming, end)
