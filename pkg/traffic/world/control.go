@@ -1667,40 +1667,42 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	it.keepSpot()
 }
 
-// started reports a departure whose start-up has already been cleared, so the
-// clearance is not offered a second time. A nil controller is "not known", which
-// keeps the old answer rather than hiding a clearance that may still be due.
-func started(ctl departureCtl) bool {
-	return ctl != nil && ctl.StartUpCleared()
+// notAgain drops the clearances this aircraft has already been given.
+//
+// A CONTROLLER DOES NOT SAY A THING TWICE. The taxi state cannot tell them
+// apart — "awaiting pushback" looks identical whether the push has been
+// cleared or not — so a list built from the state alone went on offering
+// "pushback" to an aircraft already cleared for push-and-start, and "start up"
+// to one already cleared to start (#1231). The controller itself knows, and
+// `Cleared` answers true only for the clearances that are once-only: taxi, a
+// progressive limit, hold position and a crossing all mean something said
+// again and are never withheld.
+//
+// A nil controller is "not known", which keeps the full list rather than
+// hiding a clearance that may still be due.
+func notAgain(ctl departureCtl, actions []string) []string {
+	if ctl == nil {
+		return actions
+	}
+	return slices.DeleteFunc(actions, func(a string) bool { return ctl.Cleared(a) })
 }
 
 func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureCtl) []string {
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		if ctl != nil && ctl.FacesOut() {
-			if started(ctl) {
-				return []string{"taxi", "upto"}
-			}
-			return []string{"startup", "taxi", "upto"} // taxis straight out
+			return notAgain(ctl, []string{"startup", "taxi", "upto"}) // taxis straight out
 		}
-		return []string{"pushback", "pushstart", "taxi", "upto"}
+		return notAgain(ctl, []string{"pushback", "pushstart", "taxi", "upto"})
 	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
-		// NOT "startup" ONCE IT HAS BEEN GIVEN. The taxi state is the same whether the
-		// engines were cleared to start or not, so answering from the state alone
-		// offered start-up again to an aircraft that had just been cleared for
-		// push-and-start — the controller says "push and start approved" and is
-		// invited to say "start up approved" to the same aeroplane (#1231).
-		if started(ctl) {
-			return []string{"taxi", "upto", "takeoff"}
-		}
-		return []string{"startup", "taxi", "upto", "takeoff"}
+		return notAgain(ctl, []string{"startup", "taxi", "upto", "takeoff"})
 	case traffic.TaxiTaxiing:
-		return []string{"hold", "taxi", "upto", "takeoff"}
+		return notAgain(ctl, []string{"hold", "taxi", "upto", "takeoff"})
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
-			return []string{"cross", "upto", "taxi"}
+			return notAgain(ctl, []string{"cross", "upto", "taxi"})
 		}
-		return []string{"lineup", "lineupbehind", "takeoff"}
+		return notAgain(ctl, []string{"lineup", "lineupbehind", "takeoff"})
 	case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
 		return []string{"takeoff", "abort"}
 	case traffic.TaxiDeparting:

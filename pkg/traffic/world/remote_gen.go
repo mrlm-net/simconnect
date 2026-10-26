@@ -112,9 +112,9 @@ func (r *remoteDep) ClearStartUp() {
 	r.c.dropped(r.c.call(r.t, "ClearStartUp", []any{}))
 }
 
-func (r *remoteDep) StartUpCleared() bool {
+func (r *remoteDep) Cleared(action string) bool {
 	var o0 bool
-	r.c.dropped(r.c.call(r.t, "StartUpCleared", []any{}, &o0))
+	r.c.dropped(r.c.call(r.t, "Cleared", []any{action}, &o0))
 	return o0
 }
 

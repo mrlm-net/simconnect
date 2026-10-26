@@ -12,11 +12,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Push-and-start is suggested at a stand, not only accepted. `ControlView.Actions` now offers `pushstart` beside `pushback`, which is what a controller says at a stand more often than the two separately. It was implemented and accepted but suggested in no phase, so a host had to promote it by hand to put it on a strip.
-- `TaxiController.StartUpCleared` reports whether start-up has been given, by `ClearStartUp` or as the start-up half of a push-and-start.
+- `TaxiController.Cleared(action)` reports whether a clearance has already been given, named as the control API names it.
 
 ### Fixed
 
-- After "push and start approved" the view went on offering `startup` — the clearance it had just given — so a controller was invited to say "start up approved" to an aircraft already cleared to start (the user, playing Orly; measured at LKPR, SWR237 offered `startup` from the push through `awaiting taxi`, while TVS316 given the two clearances separately behaved). `departureActions` answered from the taxi state alone, and the state is identical whether the engines were cleared to start or not; it now asks the controller (`StartUpCleared`). The push itself was always correct.
+- A clearance already given went on being offered. After "push and start approved" the view still offered `startup`, and still offered `pushback` as the aircraft's next clearance while it stood at its stand waiting for the push it had been cleared for (the user, at Orly and at Esenboga; measured at LKPR, SWR237 offered `startup` from the push through `awaiting taxi`, while TVS316 given the two clearances separately behaved). `departureActions` answered from the taxi state alone, and the state cannot tell the two apart — "awaiting pushback" looks identical whether the push has been cleared or not. It now asks the controller, and withholds only the once-only clearances: pushback, push-and-start, start-up, line-up and take-off. Taxi, a progressive limit, hold position and a runway crossing all mean something when said again and are never withheld, and aborting a take-off puts the line-up and take-off back on offer by itself. The clearances themselves were always correct.
 
 ## [0.125.2] - 2026-10-26
 

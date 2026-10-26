@@ -1937,15 +1937,32 @@ func (c *TaxiController) ClearStartUp() {
 	}
 }
 
-// StartUpCleared reports whether start-up has been given, by ClearStartUp or
-// as the start-up half of a push-and-start. A controller that has said it does
-// not say it again, so a host builds its offered clearances from this rather
-// than from the taxi state alone: the state is the same whether the engines
-// were cleared to start or not.
-func (c *TaxiController) StartUpCleared() bool {
+// Cleared reports whether a clearance has already been given, named as the
+// control API names it. A controller does not say a thing twice, so a host
+// builds its offered clearances from this rather than from the taxi state
+// alone — the state is the same whether the clearance was given or not, and
+// answering from the state offered "pushback" to an aircraft already cleared
+// for push-and-start, and "start up" to one already cleared to start.
+//
+// ONLY THE ONCE-ONLY CLEARANCES ANSWER TRUE. Taxi, a progressive limit, hold
+// position and a runway crossing all mean something said again — a new limit,
+// a new hold — so they are not "already given" and are never withheld. Aborting
+// a take-off clears the line-up and take-off flags, so those come back on offer
+// by themselves.
+func (c *TaxiController) Cleared(action string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.startUpCleared
+	switch action {
+	case "pushback", "pushstart":
+		return c.pushCleared
+	case "startup":
+		return c.startUpCleared
+	case "lineup", "lineupbehind":
+		return c.lineUpCleared
+	case "takeoff":
+		return c.takeoffCleared
+	}
+	return false
 }
 
 // FacesOut reports a stand the aircraft taxis straight out of, without a
