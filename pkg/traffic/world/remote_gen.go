@@ -138,6 +138,12 @@ func (r *remoteDep) DepartureRoute() []airport.NavPoint {
 	return o0
 }
 
+func (r *remoteDep) LineUpLeft() time.Duration {
+	var o0 time.Duration
+	r.c.dropped(r.c.call(r.t, "LineUpLeft", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteDep) LimitClimb(ft float64) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "LimitClimb", []any{ft}, &o0))

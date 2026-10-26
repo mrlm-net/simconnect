@@ -38,10 +38,10 @@ func TestRunwayControllerArrivals(t *testing.T) {
 	if c := r.Decide(now, []RunwayUser{x, final("DLH2", 1.5)}); len(c.Cross) != 0 {
 		t.Fatal("crossing ahead of an arrival at 1.5 NM")
 	}
-	// At 8 NM: the gap is big enough: line up and go.
-	c = r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), final("DLH2", 8)})
+	// At 9 NM: the gap is big enough: line up and go.
+	c = r.Decide(now, []RunwayUser{dep("CSA1", "A320", RunwayHoldingShort), final("DLH2", 9)})
 	if !slices.Contains(c.Takeoff, "CSA1") {
-		t.Fatalf("departure in an 8 NM gap: %+v", c)
+		t.Fatalf("departure in a 9 NM gap: %+v", c)
 	}
 	// Landing roll: the runway is occupied.
 	roll := final("DLH2", 0)
@@ -234,7 +234,7 @@ func TestRunwayControllerLandingClearance(t *testing.T) {
 	if len(c.Land) != 1 || c.Land[0] != "DLH2" {
 		t.Errorf("free runway: land %v, want DLH2 only", c.Land)
 	}
-	if c := r.Decide(now, []RunwayUser{final("DLH2", 8)}); len(c.Land) != 0 {
+	if c := r.Decide(now, []RunwayUser{final("DLH2", 9)}); len(c.Land) != 0 {
 		t.Errorf("8 NM out: land %v", c.Land)
 	}
 	downwind := final("RYR1590", 4)
@@ -288,10 +288,12 @@ func TestRunwayControllerLineUpTime(t *testing.T) {
 	if c.LineUpBehind["WZZ222"] != "DLH1402" {
 		t.Fatalf("not behind DLH1402: %+v", c)
 	}
-	// Lined up already: no line-up time, it goes.
+	// Lined up already: no line-up time, it goes with the arrival 6 NM
+	// out (its roll and the 3 NM still to fly once it is airborne).
+	arr.DistanceNM = 6
 	c = r.Decide(time.Now(), []RunwayUser{dep("WZZ222", "A20N", RunwayLinedUp), arr})
 	if !slices.Contains(c.Takeoff, "WZZ222") {
-		t.Fatalf("lined up with the arrival 2 minutes out: %+v", c)
+		t.Fatalf("lined up with the arrival 6 NM out: %+v", c)
 	}
 }
 
@@ -422,14 +424,14 @@ func TestRunwayControllerLineUpBehindDeparting(t *testing.T) {
 	if len(c.LineUpBehindDeparting) != 0 {
 		t.Fatalf("no rush: %+v", c.LineUpBehindDeparting)
 	}
-	// One waiting on another SID (a shorter interval), an arrival 3 min out:
+	// One waiting on another SID (a shorter interval), an arrival 4.5 min out (its line-up, roll and 3 NM):
 	// a rush; on a 2 NM final: too close.
 	other := dep("EZY2", "A320", RunwayHoldingShort)
 	other.Route = "DOBE4A"
 	r = NewRunwayController(RunwayControllerOptions{})
-	c = r.Decide(now, []RunwayUser{roll, other, final("AUA4", 7)})
+	c = r.Decide(now, []RunwayUser{roll, other, final("AUA4", 10.5)})
 	if c.LineUpBehindDeparting["EZY2"] != "CSA1" {
-		t.Fatalf("arrival 3 min out: %+v", c)
+		t.Fatalf("arrival 4.5 min out: %+v", c)
 	}
 	r = NewRunwayController(RunwayControllerOptions{})
 	c = r.Decide(now, []RunwayUser{roll, other, final("AUA4", 2)})
@@ -439,7 +441,7 @@ func TestRunwayControllerLineUpBehindDeparting(t *testing.T) {
 }
 
 // TestRunwayControllerDoubleGap: two departures go in one double gap (the
-// next arrival 10.5 NM out, DoubleGapExtraNM): the first at once, the
+// next arrival a gap and DoubleGapExtraNM out): the first at once, the
 // second when the interval behind it allows, both before the arrival is
 // too close — on different routes (1 min) and on one route (2 min).
 func TestRunwayControllerDoubleGap(t *testing.T) {
@@ -450,7 +452,7 @@ func TestRunwayControllerDoubleGap(t *testing.T) {
 		if !same {
 			b2.Route = "LOMK1A"
 		}
-		arrNM := DefaultDepartureGapNM + DoubleGapExtraNM
+		arrNM := DepartureGapArrivalNM + DoubleGapExtraNM + 0.5 // A1 still to line up
 		var a1Off, b2Off time.Duration
 		a1Gone := false
 		for s := 0; s <= 300 && b2Off == 0; s += 5 {
@@ -610,8 +612,8 @@ func TestLineUpBehindAtIntersection(t *testing.T) {
 func TestLineUpRoom(t *testing.T) {
 	rc := NewRunwayController(RunwayControllerOptions{})
 	us := RunwayUser{Wake: WakeFor("B738")}
-	if !rc.LineUpRoom(160*time.Second, us) {
-		t.Error("2m40s to the next arrival: no room to line up and go")
+	if !rc.LineUpRoom(220*time.Second, us) {
+		t.Error("3m40s to the next arrival: no room to line up and go")
 	}
 	if rc.LineUpRoom(90*time.Second, us) {
 		t.Error("1m30s to the next arrival: room to line up and go")
@@ -713,25 +715,22 @@ func TestLineUpOnlyIfItCanGoBeforeTheArrival(t *testing.T) {
 // waits for the frequency, its time rule still kept.
 func TestTakeoffGrantedStands(t *testing.T) {
 	r := NewRunwayController(RunwayControllerOptions{})
+	need := takeoffSaidIn + RunwayOccupancyIn(WakeFor("E190"), false, RunwayDry) + r.landMargin(nil)
+	nm := func(d time.Duration) float64 { return d.Hours() * 140 }
 	now := time.Now()
-	c := r.Decide(now, []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", 3.6)})
+	c := r.Decide(now, []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", nm(need+2*time.Second))})
 	if !slices.Contains(c.Takeoff, "AUA5") {
-		t.Fatalf("not cleared with the arrival at 3.6 NM: %s", c.Waiting["AUA5"])
+		t.Fatalf("not cleared with the arrival at %.1f NM: %s", nm(need+2*time.Second), c.Waiting["AUA5"])
 	}
-	c = r.Decide(now.Add(10*time.Second), []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", 3.2)})
+	c = r.Decide(now.Add(10*time.Second), []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", nm(need-8*time.Second))})
 	if !slices.Contains(c.Takeoff, "AUA5") {
 		t.Fatalf("granted take-off withdrawn: %s", c.Waiting["AUA5"])
 	}
-	c = r.Decide(now.Add(20*time.Second), []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), slow(final("KLM1", 2.9))})
-	if !slices.Contains(c.Takeoff, "AUA5") {
-		t.Fatalf("granted take-off withdrawn at 2.9 NM: %s", c.Waiting["AUA5"])
+	r = NewRunwayController(RunwayControllerOptions{})
+	c = r.Decide(now, []RunwayUser{dep("AUA5", "E190", RunwayLinedUp), final("KLM1", nm(need-grantedSlack-5*time.Second))})
+	if slices.Contains(c.Takeoff, "AUA5") {
+		t.Fatalf("cleared with the arrival at %.1f NM", nm(need-grantedSlack-5*time.Second))
 	}
-}
-
-// slow: an arrival on final at 130 kt.
-func slow(u RunwayUser) RunwayUser {
-	u.GroundKts = 130
-	return u
 }
 
 // TestLineUpAndGoGrantedStands: "line up and take off" granted from the
@@ -742,7 +741,7 @@ func TestLineUpAndGoGrantedStands(t *testing.T) {
 	r := NewRunwayController(RunwayControllerOptions{})
 	now := time.Now()
 	tvs := dep("TVS8", "B738", RunwayHoldingShort)
-	need := r.opts.LineUpTime + RunwayOccupancyIn(tvs.Wake, false, RunwayDry) + r.opts.Margin
+	need := takeoffSaidIn + r.opts.LineUpTime + RunwayOccupancyIn(tvs.Wake, false, RunwayDry) + lineUpGoSlack + r.landMargin(nil)
 	nm := func(d time.Duration) float64 { return d.Seconds() * 140 / 3600 }
 	c := r.Decide(now, []RunwayUser{tvs, final("TVS1", nm(need+2*time.Second))})
 	if !slices.Contains(c.Takeoff, "TVS8") {

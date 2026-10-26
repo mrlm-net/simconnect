@@ -71,6 +71,10 @@ type RunwayUser struct {
 	// departing" yet for a conditional line-up behind it (offline LKPR:
 	// two lining up at once, a DA-62 at B taking 80 s).
 	LiningUp bool
+	// LineUpIn: a departure holding short or lining up, how long it still
+	// takes to line up (TaxiController.LineUpLeft); 0 not known: LineUpTime
+	// from the holding point, half of it lining up.
+	LineUpIn time.Duration
 }
 
 // OppositeArrivalNM: an arrival to the other end of the runway this close
@@ -148,6 +152,58 @@ type RunwayControllerOptions struct {
 	// of the threshold is told so (RunwayClearances.NoDelay; default 8 NM,
 	// about 3.5 minutes at 140 kt).
 	NoDelayNM float64
+	// LandingClearanceNM: a departure or crossing ahead of an arrival
+	// leaves the runway with the arrival still this far out (default 3 NM;
+	// the user, live: OKJTX, a DA42 cleared "no delay" with CSA1312 on a 5
+	// mile final, airborne with it on short final, a conflict alert).
+	LandingClearanceNM float64
+}
+
+// landMargin is how long before arrival a lands the runway must be free
+// again: Margin, at least the time it flies LandingClearanceNM (at
+// landingNominalKts when its speed is not known).
+func (r *RunwayController) landMargin(a *RunwayUser) time.Duration {
+	kts := landingNominalKts
+	if a != nil && a.GroundKts > 0 {
+		kts = max(a.GroundKts, 100)
+	}
+	return max(r.opts.Margin, SeparationTime(r.opts.LandingClearanceNM, kts))
+}
+
+// landingNominalKts: an arrival's speed on final when its own is unknown.
+const landingNominalKts = 140.0
+
+// lineUpGoSlack: a take-off with its line-up still to come is given this
+// much more: the spread of the line-up and the roll from it (offline LKPR:
+// TVS837 with the arrival 7 NM out lined up in 64 s and was airborne 56 s
+// later, against 60 and 45). One lined up already needs none, nor one
+// whose own line-up time is known (RunwayUser.LineUpIn).
+const lineUpGoSlack = 20 * time.Second
+
+// takeoffSaidIn: a take-off clearance ahead of an arrival is said some 15 s
+// after it is decided (the tower's answer and the frequency; offline LKPR:
+// CSA493 decided with TVS1843 8.6 NM out, said at 8.0). 25 s, with the
+// landing clearance's few seconds, held the runway idle and cost a
+// fifth of the departures.
+const takeoffSaidIn = 15 * time.Second
+
+// liningUpLeft: one still lining up is given half the line-up time still
+// to go before its roll (live, OKJTX at B cleared for take-off 36 s into
+// an 80 s line-up, counted as lined up).
+func (r *RunwayController) liningUpLeft(u RunwayUser) time.Duration {
+	if u.LiningUp {
+		if u.LineUpIn > 0 {
+			return u.LineUpIn
+		}
+		return r.opts.LineUpTime / 2
+	}
+	return 0
+}
+
+// lineUpFrom: one at its holding point takes its own line-up time
+// (LineUpIn) if known and longer, else LineUpTime.
+func (r *RunwayController) lineUpFrom(u RunwayUser) time.Duration {
+	return max(u.LineUpIn, r.opts.LineUpTime)
 }
 
 // RunwayController clears the users of one runway.
@@ -182,7 +238,7 @@ func (r *RunwayController) behindRoom(next float64, first RunwayUser, then float
 	// Lined up once the first is off the runway and its own line-up is done
 	// (live, TVS158 took 84 s and QTR1788 behind had to go around).
 	free := max(RunwayOccupancyIn(first.Wake, true, r.opts.Surface), r.opts.LineUpWaitTime)
-	need := next + (free + RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.opts.Margin).Seconds()
+	need := next + (free + takeoffSaidIn + RunwayOccupancyIn(u.Wake, false, r.opts.Surface) + r.landMargin(nil)).Seconds()
 	return then >= need
 }
 
@@ -200,7 +256,7 @@ func (r *RunwayController) BehindRoom(first RunwayUser, then time.Duration, u Ru
 // is not landing, so no landing roll of it to wait out (live, KLM1616
 // cleared behind the departing 737, then told to hold position).
 func (r *RunwayController) LineUpRoom(then time.Duration, u RunwayUser) bool {
-	return then >= r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin
+	return then >= takeoffSaidIn+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.landMargin(nil)
 }
 
 // NewRunwayController creates the controller of one runway.
@@ -231,6 +287,9 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 	}
 	if opts.NoDelayNM == 0 {
 		opts.NoDelayNM = 8
+	}
+	if opts.LandingClearanceNM == 0 {
+		opts.LandingClearanceNM = 3
 	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }
@@ -324,7 +383,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				return fmt.Sprintf("%s on a %.1f NM final", u.Callsign, u.DistanceNM)
 			}
 		}
-		if nextArr*float64(time.Second) < float64(occ+r.opts.Margin) {
+		if nextArr*float64(time.Second) < float64(occ+r.landMargin(&nextArrUser)) {
 			return fmt.Sprintf("%s lands in %s", nextArrName, time.Duration(nextArr*float64(time.Second)).Round(time.Second))
 		}
 		return ""
@@ -414,7 +473,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			return why
 		}
 		minNM := r.opts.MinArrivalNM
-		need := lineUp + RunwayOccupancyIn(u.Wake, false, r.opts.Surface)
+		need := takeoffSaidIn + lineUp + RunwayOccupancyIn(u.Wake, false, r.opts.Surface)
+		if lineUp > 0 && u.LineUpIn == 0 {
+			need += lineUpGoSlack
+		}
 		if lineUp == 0 {
 			minNM = r.opts.MinArrivalLinedUpNM // lined up: the time rule does the rest
 			if prevGranted[u.Callsign] {
@@ -457,7 +519,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 
 	// Ours lined up: take-off when it may.
 	for _, u := range ourLinedUp {
-		if why := takeoffWhy(u, 0); why == "" {
+		if why := takeoffWhy(u, r.liningUpLeft(u)); why == "" {
 			out.Takeoff = append(out.Takeoff, u.Callsign)
 			r.granted[u.Callsign] = true
 		} else {
@@ -555,7 +617,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && r.granted[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
 				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied && !ourLinedUp[0].LiningUp &&
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
-				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied
 				out.Waiting[u.Callsign] = occupied + " departing ahead"
 				continue
@@ -568,7 +630,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				// Its line-up too, while the interval runs: the room the map
 				// checks again once the one rolling has passed (LineUpRoom;
 				// offline LKPR, WZZ1040 told to line up, then to hold position).
-				arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
 				occupied = u.Callsign
@@ -583,7 +645,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			continue
 		}
 		// From the holding point: lining up takes its time too.
-		why := takeoffWhy(u, r.opts.LineUpTime)
+		why := takeoffWhy(u, r.lineUpFrom(u))
 		switch {
 		case why == "":
 			// Line up and go.
@@ -598,7 +660,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		// LineUpTime (live, OKWMV at B lined up 100 s after its clearance,
 		// AFR765 on final went around).
 		case departureBlocked(u) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
-			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpWaitTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+r.opts.Margin, r.opts.MinArrivalNM) == "":
+			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpWaitTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)
 			out.Waiting[u.Callsign] = why
@@ -632,7 +694,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 // departure lines up behind the one rolling (LineUpBehindDeparting).
 var (
 	RushQueue         = 2
-	RushArrivalWithin = 4 * time.Minute
+	RushArrivalWithin = 5 * time.Minute
 )
 
 // LineUpWaitMax: a departure waiting out its interval is told to line up

@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.125.1] - 2026-10-26
+
+### Fixed
+
+- A take-off ahead of an arrival could leave the runway with the arrival well inside 3 NM, its landing clearance late (live LKPR, OKJTX cleared for take-off while still lining up, CSA1312 close behind). A departure or line-up now goes only when the runway is free with the arrival still `LandingClearanceNM` (3) out, counting the take-off clearance's own ~15 s on the frequency (`takeoffSaidIn`). The line-up is timed from where the departure is: `TaxiController.LineUpLeft` (its path from the holding point, or what is left of it while lining up; OKJTX from B took 66–83 s, counted at 30), the fixed allowance (`lineUpGoSlack` 20 s) only when that is unknown. An arrival lined up on the extended centreline up to 15 NM out is measured straight in, not along its route. The sequencer's departure gaps are sized to match (`DepartureGapArrivalNM` 6.3, `LineUpBehindReady` 95 s, `DoubleGapExtraNM` 5.5, the extra counted for the second departure; `RushArrivalWithin` 5 min). Offline LKPR: no landing clearance under 3 NM after a departure, departures within the old range.
+- A widebody's runway exit was planned as an A320's: the user saw a 777 head for LKPR D, braking at its limit. One that touches down faster than an airliner and brakes at 2.0 m/s² or less (`exitHeavyDecel`) is planned at its own touchdown speed: a B77W takes E on 24 and A on 06. Narrowbodies (A320 at 130 kt, B738 at 140) keep the airliner's plan.
+- An arrival given spacing on a dog-leg (`AbsorbWithin`) was turned off its downwind when extending it was the real answer (the user: UAE364 should fly heading 060, then turn base and intercept). The downwind is now extended for spacing too when its turn comes before the meeting point (`downwindMeetSlackNM` 1): "fly heading 060, for spacing", then "turn … for base".
+- Approach started vectoring an arrival off its STAR without saying what for (the user). The first vector now carries the approach: "vectoring for ILS approach runway 24, fly heading 060, for spacing" (`traffic.Vectoring`; SKYbrary, Radar Vectoring for Approach, from Doc 4444).
+- A landing aircraft slowed to taxi speed with its nose just off the runway and held it until its tail was clear (offline LKPR, an A320 at 12 kt on D, the arrival behind cleared at 1.0 NM). It keeps its exit speed until it is clear as the tower counts it, 60 m on, then slows: clear 53 s after touchdown instead of 57.
+- "Behind the departing Boeing 737, line up and wait" was said with the 737 about to lift off (the user, live). With the one ahead at 80 kt or more on its roll, or off the runway, the line-up is a plain "line up and wait".
+
+
 ## [0.125.0] - 2026-10-25
 
 ### Added

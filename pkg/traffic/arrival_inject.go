@@ -154,12 +154,21 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		}
 		v0, ve := m.GroundKts*ktsToMS, exitKts*ktsToMS
 		even := (v0*v0 - ve*ve) / (2 * math.Max(onRwy-rolloutExitLeadM, 1))
-		path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), clear, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
-		// Off the exit to taxi speed, planned firmly so it does not reach
-		// back over the rollout.
-		path.LimitRange(clear, path.Length(), prof.CruiseKts, ro.BrakeDecel)
+		// The exit speed kept until its tail is clear of the runway as the
+		// tower counts it, not only its nose off the surface (offline LKPR:
+		// an A320 down to 12 kt at the edge took 61 s from the threshold to
+		// clear, the arrival behind cleared to land at 1.0 NM); never past
+		// where it stops to wait for its taxi clearance.
+		fast := clear + exitClearAheadM
+		if hold > clear {
+			fast = math.Min(fast, hold)
+		}
+		path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+		// Then to taxi speed, planned firmly so it does not reach back over
+		// the rollout.
+		path.LimitRange(fast, path.Length(), prof.CruiseKts, ro.BrakeDecel)
 		moverProf.Decel, moverProf.Jerk = ro.BrakeDecel, RolloutJerk
-		c.clearDist = clear
+		c.clearDist, c.exitFastTo = clear, fast
 	} else {
 		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
 	}
@@ -287,7 +296,9 @@ func (c *ArrivalController) onInjectedFrame() {
 	case ArrivalRollout:
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
 		if pose.Distance >= c.clearDist {
-			c.mover.SetProfile(c.profile())
+			if c.exitFastTo <= c.clearDist {
+				c.mover.SetProfile(c.profile())
+			}
 			// Clear of the runway: strobes and landing lights off, flaps and
 			// spoilers up, as the after-landing flow does.
 			c.setInjectedLights(lightsStopped, "lights vacated (strobes and landing lights off)")
@@ -301,6 +312,11 @@ func (c *ArrivalController) onInjectedFrame() {
 			return
 		}
 	case ArrivalVacating:
+		// Its tail clear too: taxi behaviour.
+		if c.exitFastTo > c.clearDist && pose.Distance >= c.exitFastTo {
+			c.mover.SetProfile(c.profile())
+			c.exitFastTo = 0
+		}
 		// Stopped clear of the runway (or, rolling through, at the slowest
 		// point): wait for the taxi clearance, or roll on.
 		if pose.Stopped || (c.rollThrough && pose.Distance >= c.vacateDist-0.5) {
@@ -638,4 +654,8 @@ func (c *ArrivalController) reverseIdle(kts float64) {
 const (
 	rolloutExitLeadM = 60.0
 	rolloutMinDecel  = 1.0
+	// exitClearAheadM: past the exit's first node off the runway, the way
+	// on until the tail is clear as the tower counts it (40 m beyond the
+	// edge for the reference point, and the tail behind it).
+	exitClearAheadM = 60.0
 )

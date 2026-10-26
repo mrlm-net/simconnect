@@ -371,7 +371,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			// clearance (KLM868 heard the speed and the vector before it).
 			it.call(traffic.PosApproach, prioSpacing, func() {
 				if vectored && it.vectorsSaid.Load() == said {
-					tx = traffic.WithVector(tx, v, magVar)
+					tx = traffic.Joined(tx, it.vectored(v, magVar))
 				}
 				it.say(tx)
 			})

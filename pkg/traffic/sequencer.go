@@ -242,7 +242,8 @@ func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c Approa
 	if nm == 0 {
 		nm = DefaultDepartureGapNM
 	}
-	nm += float64(max(departures, 1)-1) * DoubleGapExtraNM // each departure more in the gap
+	extra := float64(max(departures, 1)-1) * DoubleGapExtraNM // each departure more in the gap
+	nm += extra
 	// The gap at the threshold, not where it is set up: a follower faster
 	// than its leader closes it as the normal spacing (live, CSA814 6.3 NM
 	// behind a Citation down to 4.6 NM at 7 NM to go, sent around).
@@ -250,7 +251,10 @@ func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c Approa
 	nm += cmp
 	kts := c.FinalGroundKts(follow.FinalKts)
 	g := SeparationTime(nm, kts)
-	if need := RunwayOccupancyIn(lead.Wake, true, c.Surface) + SeparationTime(DepartureGapArrivalNM+cmp, kts); need > g {
+	// The first rolls once lined up behind the leader (or the leader off
+	// the runway, if later), the next ones each DoubleGapExtraNM on.
+	ready := max(RunwayOccupancyIn(lead.Wake, true, c.Surface), LineUpBehindReady)
+	if need := ready + SeparationTime(DepartureGapArrivalNM+extra+cmp, kts); need > g {
 		g = need
 		nm = g.Hours() * kts
 	}
@@ -262,17 +266,26 @@ const (
 	// in mixed mode.
 	DefaultDepartureGapNM = 6.0
 	// DepartureGapArrivalNM is how far out the next arrival still is as
-	// the departure in the gap starts its roll: the tower's MinArrivalNM
-	// (4 NM by default) and half a mile to spare.
-	DepartureGapArrivalNM = 4.5
+	// the departure in the gap starts its roll: its roll (about 45 s, 1.8
+	// NM of final) and the tower's LandingClearanceNM (3 NM) once it is
+	// airborne, its take-off clearance said (15 s, 0.6 NM: takeoffSaidIn)
+	// and 0.9 NM to spare (the landing clearance's own call; offline LKPR
+	// kept the departures with this).
+	DepartureGapArrivalNM = 6.3
 	// DoubleGapQueue: with this many departures waiting for a runway, its
 	// gaps fit two departures each (a double gap): DoubleGapExtraNM more
-	// for the second, about two minutes of final, the departure interval
-	// on one route. Two departures then cost 10.5 NM of arrival spacing,
-	// not 12, and a long queue drains while the arrivals keep coming.
+	// for the second, its conditional line-up behind the first as that one
+	// rolls (the interval on one route, its roll and LandingClearanceNM).
+	// A long queue drains while the arrivals keep coming.
 	DoubleGapQueue   = 3
-	DoubleGapExtraNM = 4.5
+	DoubleGapExtraNM = 5.5
 )
+
+// LineUpBehindReady: a departure told to line up behind a landing aircraft
+// is lined up and ready this long after that one crosses the threshold (it
+// passes the holding point in about 10 s; lining up to a stop takes 85 s,
+// RunwayControllerOptions.LineUpWaitTime).
+const LineUpBehindReady = 95 * time.Second
 
 // NewApproachSequencer creates the sequencer of a runway end ("24").
 func NewApproachSequencer(runway string, opts SequencerOptions) *ApproachSequencer {

@@ -198,7 +198,7 @@ func (t *towers) tick(now time.Time) {
 			u.Phase, u.Crossing = traffic.RunwayHoldingShort, true
 			rk = key{it.ICAO, x.Name()}
 		case it.dep != nil && v.State == "holding short":
-			u.Phase = traffic.RunwayHoldingShort
+			u.Phase, u.LineUpIn = traffic.RunwayHoldingShort, it.dep.LineUpLeft()
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
 			// Cleared to line up (behind the one departing or landing too) and
 			// not moving yet: it goes first, nobody else is lined up past it
@@ -210,6 +210,9 @@ func (t *towers) tick(now time.Time) {
 			t.mu.Unlock()
 		case it.dep != nil && (v.State == "lining up" || v.State == "lined up"):
 			u.Phase, u.LiningUp = traffic.RunwayLinedUp, v.State == "lining up"
+			if u.LiningUp {
+				u.LineUpIn = it.dep.LineUpLeft()
+			}
 			if _, end, ok := l.RunwayEnd(v.Runway); ok {
 				d := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
 				b := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
@@ -244,7 +247,7 @@ func (t *towers) tick(now time.Time) {
 				// out along its route (live, TVS837 cleared for take-off 2 s
 				// before OKZLK touched down, then cancelled).
 				d = 0
-			case len(route) > 0 && !onFinalNear(v.Position, v.Heading, d, end):
+			case len(route) > 0 && !onFinalLined(v.Position, v.Heading, d, end):
 				d = math.Max(d, traffic.DistanceToGo(v.Position, route, end.Threshold))
 			}
 			if d > 3 {
@@ -411,7 +414,13 @@ func (t *towers) tick(now time.Time) {
 		t.lineUpBehind(rc, k.icao, k.rwy, list, ours)
 		t.crewDecides(k.icao, list, ours)
 		t.crewRejects(ours)
-		t.apply(k.icao, k.rwy, c, ours)
+		rolling := map[string]float64{} // ours on the take-off roll: their speed
+		for _, u := range list {
+			if u.Phase == traffic.RunwayRolling && !u.Arrival {
+				rolling[u.Callsign] = u.GroundKts
+			}
+		}
+		t.apply(k.icao, k.rwy, c, ours, rolling)
 		t.cc.vehicles().crossCleared(k.icao, c.Cross)
 		t.mu.Lock()
 		t.next[k.icao+" "+k.rwy] = c.NextArrival
@@ -610,8 +619,26 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 	}
 }
 
-// apply gives the clearances (once each) and logs who waits for what.
-func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[string]*controlled) {
+// conditionalLineUpMaxKts: a departure on its roll this fast or faster is
+// off before the one behind lines up; that one is told to line up, with
+// no "behind the departing …".
+const conditionalLineUpMaxKts = 80.0
+
+// lineUpBehindDepartingSaid is the line-up behind one of ours on its roll
+// (dep, said as traffic; kts its speed, rolling false when it is no longer
+// on its roll): conditional early in the roll, plain late in it (the user,
+// live: "behind the departing Boeing 737, line up and wait" with the 737
+// about to lift off).
+func lineUpBehindDepartingSaid(cs, dep, runway string, kts float64, rolling bool) traffic.Transmission {
+	if !rolling || kts >= conditionalLineUpMaxKts {
+		return traffic.ClearedLineUp(cs, runway)
+	}
+	return traffic.ClearedLineUpBehindDeparting(cs, dep, runway)
+}
+
+// apply gives the clearances (once each) and logs who waits for what;
+// rolling is the speed of each of ours on its take-off roll.
+func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[string]*controlled, rolling map[string]float64) {
 	give := func(tail, action string, said traffic.Transmission, f func(it *controlled) error) {
 		it := ours[tail]
 		if it == nil || it.gates.Load() {
@@ -791,7 +818,8 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			continue
 		}
 		dep := dep
-		give(cs, "lineupbehind", traffic.ClearedLineUpBehindDeparting(cs, t.arrivalSaid(dep), end(cs)), func(it *controlled) error {
+		kts, ok := rolling[dep]
+		give(cs, "lineupbehind", lineUpBehindDepartingSaid(cs, t.arrivalSaid(dep), end(cs), kts, ok), func(it *controlled) error {
 			t.mu.Lock()
 			t.behind[it.Tail] = behindClearance{arrival: dep, icao: icao, rwy: rwy, departing: true}
 			t.given[it.Tail+" lineup"] = true
@@ -1069,10 +1097,37 @@ func climbKts(model string) float64 {
 // threshold, on the approach side within onFinalSectorDeg of the extended
 // centreline and heading within onFinalSectorDeg of the runway, is on its
 // final.
+//
+// Further out, to onFinalFarNM, one on the extended centreline (within
+// onFinalFarCrossNM of it, heading within onFinalFarDeg of the runway) is
+// too: measured along its route, TVS499 established on the localizer at
+// 7.2 NM counted 8 and a take-off went with it too close (offline LKPR).
 const (
 	onFinalNearNM    = 4.0
 	onFinalSectorDeg = 30.0
+
+	onFinalFarNM      = 15.0
+	onFinalFarCrossNM = 0.5
+	onFinalFarDeg     = 20.0
 )
+
+// onFinalLined: at p, heading hdg, dNM from end's threshold, the arrival is
+// on end's final: close in (onFinalNear), or further out on the extended
+// centreline.
+func onFinalLined(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool {
+	if dNM <= onFinalNearNM {
+		return onFinalNear(p, hdg, dNM, end)
+	}
+	if dNM > onFinalFarNM || math.Abs(headingDiff(end.Heading, hdg)) > onFinalFarDeg {
+		return false
+	}
+	out := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	if math.Abs(headingDiff(end.Heading+180, out)) > 90 {
+		return false // past the threshold
+	}
+	bLat, bLon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading+180, 1852)
+	return math.Abs(calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, bLat, bLon, p.Lat, p.Lon)) <= onFinalFarCrossNM*1852
+}
 
 // onFinalNear: at p, heading hdg, dNM from end's threshold, the arrival is
 // lined up on end's final close in.

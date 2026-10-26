@@ -238,6 +238,9 @@ type controlled struct {
 	// comes): a sequence call waiting for the frequency leaves out the
 	// vector it was decided with once a later one went out first.
 	vectorsSaid atomic.Int32
+	// vectoringSaid: the approach it is vectored for was said, with its
+	// first vector off the STAR (vectored).
+	vectoringSaid atomic.Bool
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
@@ -3934,7 +3937,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// and "turn left heading 060 to intercept" in the same second).
 		if v, ok := it.arr.VectorDue(); ok {
 			it.vectorsSaid.Add(1)
-			it.say(traffic.Vectored(it.Tail, v, it.cc.magVar(it.ICAO)))
+			it.say(it.vectored(v, it.cc.magVar(it.ICAO)))
 		}
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
@@ -4210,6 +4213,17 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 
 // approachKind is the approach an arrival flies ("ILS"), from its
 // procedure as shown ("GOLOP 2B → ILS"); "" unknown. it.mu held.
+// vectored is radar vector v to the arrival, the first off the STAR with
+// the approach it leads to: "vectoring for ILS approach runway 24, fly
+// heading 060, for spacing" (traffic.Vectoring).
+func (it *controlled) vectored(v traffic.Vector, magVar float64) traffic.Transmission {
+	tx := traffic.Vectored(it.Tail, v, magVar)
+	if v.Fix == "" && !it.vectoringSaid.Swap(true) {
+		tx = traffic.Vectoring(tx, it.approachKind(), it.view.Runway)
+	}
+	return tx
+}
+
 func (it *controlled) approachKind() string {
 	_, kind, _ := strings.Cut(it.view.Procedure, " → ")
 	return kind
