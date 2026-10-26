@@ -133,6 +133,29 @@ func (s *scheduler) enrouteRoutes() map[uint32][]airport.LatLon {
 	return out
 }
 
+// pointsAhead is route from the point pos is flying to on: not the points
+// already flown (the route kept from its spawn point drew a line back to
+// it and out again, two lines along one airway).
+func pointsAhead(pos airport.LatLon, route []airport.LatLon) []airport.LatLon {
+	if len(route) < 2 {
+		return route
+	}
+	nearest, best := 0, math.Inf(1)
+	for i, p := range route {
+		if d := calc.HaversineNM(pos.Lat, pos.Lon, p.Lat, p.Lon); d < best {
+			nearest, best = i, d
+		}
+	}
+	if nearest+1 < len(route) {
+		n, m := route[nearest], route[nearest+1]
+		// Passed it: nearer to the next than it is, or on top of it.
+		if best < 1.5 || calc.HaversineNM(pos.Lat, pos.Lon, m.Lat, m.Lon) < calc.HaversineNM(n.Lat, n.Lon, m.Lat, m.Lon) {
+			nearest++
+		}
+	}
+	return route[nearest:]
+}
+
 // arriveRoute is an arrival's STAR and approach after its entry, nil for
 // an overflight.
 func arriveRoute(e *enrouteAC) []airport.LatLon {
