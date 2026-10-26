@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.126.2] - 2026-10-26
+
+### Fixed
+
+- After the simulator connection dropped and came back, no overflights came for two hours (the user, live: almost all aircraft gone; MSFS removes a client's AI when its pipe breaks). The schedule was set again 42 ms before the area was known, and the overflight hours asked meanwhile were marked as asked with none in them. `ManagerOptions.OverflightsReady` now holds them until the area is known; the World sets it to the picture having its centre.
+- Airport map: the schedule's status badge held the whole note ("approaching — landing sequence", a cancellation's reason) and grew to a paragraph (the user). The badge holds the status alone, on one line; the note is muted text beside it.
+- A push could leave the aircraft facing up a dead-end stub, its taxi-out driving to the stub's end, turning round there and coming back past where the push ended (#1227, Vector at LFPO: stand 35 facing up a 37 m stub, stand 11 up a 17 m one, 178° off the way out). The planner refused a taxi-out only when it turned back at once. Now a push whose taxi-out drives back over the push's own edge loses to any other (`pushTurnBackPenalty`), and where every push does, the push at the junction takes over, which refuses such a taxi-out too. Of 3,736 stand and runway pushes at 12 airports, the 18 that did this (LFPO 11, 17, 35; KJFK B1, F3, F7, 244, 260; EGLL 1026) no longer do, and 15 of them now end within 7° of the way out. All other pushes are unchanged. LFPO 11 still ends facing its stand, then turns 144° onto the lane. Its real push swings the tail into the stub, which needs a tighter pivot than `PushbackMinArcMeters`.
+
 ## [0.126.1] - 2026-10-26
 
 ### Fixed

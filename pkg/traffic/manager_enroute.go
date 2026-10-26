@@ -66,7 +66,7 @@ func (m *TrafficManager) leaving(f *ManagedFlight, now time.Time, remove *[]Mana
 // now+Horizon not asked yet, while spawning is on (the area may not be
 // known before).
 func (m *TrafficManager) extendOverflights(now time.Time) {
-	if m.opts.Overflights == nil || !m.enabled {
+	if m.opts.Overflights == nil || !m.enabled || m.opts.OverflightsReady != nil && !m.opts.OverflightsReady() {
 		return
 	}
 	from := now.Truncate(time.Hour)

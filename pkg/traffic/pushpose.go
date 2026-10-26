@@ -461,6 +461,28 @@ func (c *TaxiController) poseRoute(p pushPose, routes map[[2]airport.NodeID]*air
 	return r
 }
 
+// turnsBack reports a taxi-out driving back over the pose's own edge: round
+// a stub ahead and back past where the push ended (LFPO 11, #1227: facing up
+// a 17 m dead end, then a 180 there). poseRoute keeps it only from turning
+// back at once.
+func (p pushPose) turnsBack() bool {
+	return p.out != nil && turnsBack(p.out.Nodes, p.to, p.from)
+}
+
+// pushTurnBackPenalty: a push whose taxi-out turns back past it (turnsBack)
+// loses to any other.
+const pushTurnBackPenalty = 10000.0
+
+// turnsBack reports whether route nodes drive the edge from a back to b.
+func turnsBack(nodes []airport.NodeID, a, b airport.NodeID) bool {
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i-1] == a && nodes[i] == b {
+			return true
+		}
+	}
+	return false
+}
+
 // laneEndMeters: the apron goes on at least this far past the end of a
 // taxilane (LKPR A1: the lane stops at the last stand's lead-in, the apron
 // beyond it takes the tail of an aircraft pushed to face up the lane).
@@ -1237,6 +1259,9 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 					if p.stem {
 						p.fixed += pushLeadInPenalty
 					}
+					if p.turnsBack() {
+						p.fixed += pushTurnBackPenalty
+					}
 					p.fixed += pushEarlyTurnCost * p.offNose(pushEarlyTurnMeters)
 				}
 				if cd.cost = p.fixed + cd.push; best == nil || cd.cost < best.cost {
@@ -1324,7 +1349,9 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 			}
 		}
 	}
-	if best == nil {
+	// Only pushes whose taxi-out turns back past them: the push at the
+	// junction instead (choosePushback).
+	if best == nil || poses[best.at].turnsBack() {
 		return false
 	}
 	p := poses[best.at]

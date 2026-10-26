@@ -183,6 +183,11 @@ type ManagerOptions struct {
 	// MaxAircraft: they do not take the airports' room.
 	Overflights    func(from, to time.Time) []Flight
 	MaxOverflights int
+	// OverflightsReady reports whether Overflights knows the area yet (nil:
+	// always): before, the hours are not asked, so they are asked once it
+	// does (live: the schedule set again on a reconnect before the area was
+	// known, no overflights for two hours).
+	OverflightsReady func() bool
 	// RunwayQueue is how many departures may wait at an airport's runway
 	// (CheckDepartureQueue; 0 or nil: DefaultMaxRunwayQueue): more for one
 	// with entrances side by side at its end.

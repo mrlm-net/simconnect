@@ -108,7 +108,7 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 	s.mgr = traffic.NewTrafficManager(s, traffic.ManagerOptions{Source: s.source, MaxAircraft: 12, MaxPerAirport: 12, OnEvent: s.event,
 		Horizon: t.Horizon, DepartureLead: t.DepartureLead, ArrivalLead: t.ArrivalLead, VFRLead: t.VFRLead,
 		DepartureLate: t.DepartureLate, ArrivalLate: t.ArrivalLate,
-		Picture: cc.world, Overflights: s.overflights, Conditions: s.conditions, RunwayQueue: cc.runwayQueue}) // other traffic respected by default
+		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
 	return s
 }
@@ -293,6 +293,13 @@ const (
 	overflightRadiusNM        = 100
 	defaultOverflightsPerHour = 10
 )
+
+// areaKnown reports whether the area the overflights cross is known: the
+// picture has its centre.
+func (s *scheduler) areaKnown() bool {
+	_, ok := s.cc.world.Centre()
+	return ok
+}
 
 // overflights are the flights crossing the area in an hour (#369).
 func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {

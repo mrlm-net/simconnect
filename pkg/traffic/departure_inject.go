@@ -1054,8 +1054,8 @@ func (c *TaxiController) choosePushback(excl map[pushChoice]bool) {
 				// A custom route (Via, Taxiways) goes on from what the push passed.
 				opts := g.RemainingOptions(c.req.Options, r.Nodes[:i+1])
 				out, err := g.RouteToRunwayFrom(k, e.To, c.req.Runway, c.req.Entry, opts)
-				if err != nil || len(out.Nodes) < 2 || out.Nodes[1] == e.To {
-					continue // no way on, or only back over the branch it was pushed onto
+				if err != nil || len(out.Nodes) < 2 || turnsBack(out.Nodes, k, e.To) {
+					continue // no way on, or only back over the branch it was pushed onto (round a stub: LFPO 11)
 				}
 				// Pushing is slow: each meter costs pushCostFactor taxi meters; a
 				// wide swing and every other taxiway left blocked cost more.

@@ -401,9 +401,12 @@ async function pollSchedule() {
 }
 function statusChip(f) {
   const gone = f.status === 'done' || f.status === 'cancelled';
-  const st = f.status + (f.held ? ' (held)' : '') + (f.note ? ' — ' + f.note : '') + (f.error && f.status === 'cancelled' ? ' — ' + f.error : '');
-  const k = f.held ? 'held' : /wait|flow/.test(st) ? 'wait' : gone || f.status === 'scheduled' ? '' : /airborne|enroute|en route|departed|cruise/.test(f.status) ? 'air' : 'move';
-  return `<span class="stat${k ? ' stat--' + k : ''}" title="${esc(f.model || '')}">${esc(st)}</span>`;
+  // The badge holds the status alone; why (the note, a cancellation's
+  // error) is a line of text beside it, not a pill grown to a paragraph.
+  const st = f.status + (f.held ? ' (held)' : '');
+  const why = [f.note, f.error && f.status === 'cancelled' ? f.error : ''].filter(Boolean).join(' — ');
+  const k = f.held ? 'held' : /wait|flow/.test(st + ' ' + why) ? 'wait' : gone || f.status === 'scheduled' ? '' : /airborne|enroute|en route|departed|cruise/.test(f.status) ? 'air' : 'move';
+  return `<span class="stat${k ? ' stat--' + k : ''}" title="${esc(f.model || '')}">${esc(st)}</span>${why ? ` <span class="small muted">${esc(why)}</span>` : ''}`;
 }
 function renderBoard() {
   const el = $('boardTbl');
