@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.126.4] - 2026-10-26
+
+### Fixed
+
+- At LFPG the first departure took 2 min 8 s to start, and the whole World waited for it (#1233, Vector: WASM, simless). As an airport loads, the World works out every stand's taxi-in from the runways in use in the background (`StandAllocator.WarmTaxiIn`). LFPG has 372 stands and two runways. A WASM host runs Go on one thread with no preemption, so the warm-up held that thread to its end, and the first spawn and every tick waited behind it. The warm-up and the stand push planner now yield after each stand. Under WASM (Node), with LFPG warming, a 10 ms tick waited at most 112 ms (27 s before).
+- Route searches worked out the runway crossings of each taxiway edge again in every search, sampling it against every runway. The graph now keeps them per edge (`Graph.crossings`). LFPG's warm-up takes 33 s of CPU instead of 55 s.
+
 ## [0.126.3] - 2026-10-26
 
 ### Fixed

@@ -379,6 +379,7 @@ func (q *pushPlanQueue) want(g *airport.Graph, stand int) {
 		go func() {
 			for job := range q.ch {
 				planStandardPush(job)
+				runtime.Gosched() // the tick first on a host with one thread (#1233)
 			}
 		}()
 	})

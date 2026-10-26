@@ -149,6 +149,11 @@ type Graph struct {
 	// entryAt: ThresholdEntry by runway end, worked out once.
 	entryMu sync.Mutex
 	entryAt map[string]bool
+	// crossedAt: runway crossings by edge, worked out once for every route
+	// search (#1233: LFPG's taxi-ins warmed at load sampled the same edges
+	// against every runway in each search, 25 s of CPU).
+	crossMu   sync.Mutex
+	crossedAt map[[2]NodeID]int
 }
 
 // Taxiway, runway and parking path types taken into the graph. CLOSED,
