@@ -1937,6 +1937,17 @@ func (c *TaxiController) ClearStartUp() {
 	}
 }
 
+// StartUpCleared reports whether start-up has been given, by ClearStartUp or
+// as the start-up half of a push-and-start. A controller that has said it does
+// not say it again, so a host builds its offered clearances from this rather
+// than from the taxi state alone: the state is the same whether the engines
+// were cleared to start or not.
+func (c *TaxiController) StartUpCleared() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.startUpCleared
+}
+
 // FacesOut reports a stand the aircraft taxis straight out of, without a
 // pushback: its crew asks for start-up, then taxi.
 func (c *TaxiController) FacesOut() bool {

@@ -112,6 +112,12 @@ func (r *remoteDep) ClearStartUp() {
 	r.c.dropped(r.c.call(r.t, "ClearStartUp", []any{}))
 }
 
+func (r *remoteDep) StartUpCleared() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "StartUpCleared", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteDep) ClearToCross() {
 	r.c.dropped(r.c.call(r.t, "ClearToCross", []any{}))
 }
