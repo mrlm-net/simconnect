@@ -159,6 +159,19 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 			return fmt.Errorf("only %.0f NM before its STAR entry: it appears there", entry-dist)
 		}
 	} else {
+		// Across the area on its great circle, as it was picked and timed
+		// (traffic.Overflights): upper airspace is free route (Prague FIR
+		// since February 2021), flown direct, not along the airways, whose
+		// shortest path sent Doha–Amsterdam round by Poland and left the
+		// south-east side with none (the user, live: nothing from the
+		// Vienna side).
+		if gc := greatCircleCrossing(fp, cc, kts); len(gc) >= 2 {
+			// On from its entry by the time since it was due there.
+			if !f.Enter.IsZero() {
+				gc = flownOn(gc, cc.clock.Now().Sub(f.Enter).Hours()*kts)
+			}
+			return s.spawnEnrouteOn(f, e, model, gc, "great circle")
+		}
 		// Where its plan enters the area, and on from there by the time since
 		// it was due to (#469: placed by its STD along the plan, whose route
 		// and speed differ from the schedule's, RYR1850 appeared 230 NM out).
@@ -543,6 +556,20 @@ func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []t
 		p = airport.LatLon{Lat: lat, Lon: lon}
 	}
 	return out
+}
+
+// flownOn is route without the points flown nm (NM) along it from its
+// start; two points at least are kept.
+func flownOn(route []traffic.RoutePoint, nm float64) []traffic.RoutePoint {
+	for len(route) > 2 {
+		leg := calc.HaversineNM(route[0].Position.Lat, route[0].Position.Lon, route[1].Position.Lat, route[1].Position.Lon)
+		if nm < leg {
+			break
+		}
+		nm -= leg
+		route = route[1:]
+	}
+	return route
 }
 
 // enroutePendingFor: a creation not answered by then is dropped (#63: a

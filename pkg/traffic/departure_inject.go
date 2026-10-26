@@ -189,7 +189,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 		types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		return err
 	}
-	c.last.LimitNode = -1
+	c.last.LimitNode, c.last.OnGround = -1, true // on its stand (#1230)
 	c.fast = true
 	c.openGate(PushbackDelay)
 	if at := c.req.PushbackAt; at.After(c.gateAt) {
@@ -256,6 +256,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if c.last.Position == (airport.LatLon{}) {
 			c.last.Position, c.last.Heading = pos, hdg // known from the first frame, before it moves
 		}
+		// On the ground in every state before the take-off roll, driven or
+		// not yet (#1230: false on its stand until it first moved).
+		c.last.OnGround, c.last.HeightFt = true, 0
 		c.frameDetail(now, pos)
 		// Placed once as it appears on the stand: on extended struts from
 		// there (MovingPitchDeg), not switched at the first push frame (live,
@@ -1818,6 +1821,9 @@ func (c *TaxiController) onTakeoffFrame() {
 			c.seq.add(now, "rotate", pose.HeightFt, pose.GroundSpeedKts)
 		case TakeoffAirborne:
 			c.seq.add(now, "lift-off", pose.HeightFt, pose.GroundSpeedKts)
+			// Told at once, not with the next progress event a second on: till
+			// then the view had it on the runway, climbing (#1243).
+			c.emit(nil, true)
 		}
 	}
 	// Past the acceleration altitude the flaps follow the speed schedule:
