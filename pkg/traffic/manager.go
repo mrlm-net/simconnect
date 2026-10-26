@@ -339,8 +339,11 @@ func (m *TrafficManager) SetAirports(airports ...string) {
 	for _, a := range airports {
 		m.airports[a] = true
 	}
+	// Not the overflights: of no airport, and their hours are not asked
+	// again (live: the schedule posted again on a restart, none for two
+	// hours).
 	for k, f := range m.flights {
-		if !m.airports[f.Airport] && f.Status == FlightScheduled {
+		if !m.airports[f.Airport] && f.Status == FlightScheduled && !f.Overflight() {
 			m.unpair(f) // its arrival no longer waits for it (#88)
 			delete(m.flights, k)
 		}
