@@ -420,6 +420,11 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 	}
 	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	c.last.LimitNode = -1
+	// A DEPARTURE BEGINS ON THE GROUND, and says so from its first event (#1230).
+	// Setting it only in the frames left the events emitted BEFORE the first frame —
+	// the spawn and its first state changes — carrying the zero value, so a view built
+	// from them reported a parked aeroplane as not on the ground.
+	c.last.OnGround = true
 	for _, o := range opts {
 		o(c)
 	}

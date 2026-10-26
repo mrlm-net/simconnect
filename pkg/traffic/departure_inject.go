@@ -244,6 +244,20 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.planned = c.plannedTaxi(c.mover.Pose().Position)
 	}
 	if c.state < TaxiDeparting {
+		// ON THE GROUND BY DEFINITION, AND SAID SO (#1230). Every state below
+		// TaxiDeparting is an aeroplane on the surface — at its stand, pushing,
+		// taxiing, holding short, lined up. OnGround was written only in the frame
+		// that DRIVES one along a path, so an aircraft that had not moved yet kept
+		// the zero value and reported false: a departure awaiting pushback said it
+		// was not on the ground, while the traffic picture said it was, for the same
+		// aeroplane on the same tick. Measured at LKPR: 38 of 48 control entries
+		// whose own state was a ground state reported OnGround false.
+		//
+		// The field has to mean what it says, because consumers use it as a
+		// predicate — a host's "is this airborne", and the game's runway-occupancy
+		// check — and a field that means "has been driven at least once" silently
+		// gives them the wrong answer.
+		c.last.OnGround = true
 		pos, hdg := airport.LatLon{Lat: m.Latitude, Lon: m.Longitude}, m.Heading
 		if c.mover != nil { // injected: where it is placed
 			p := c.mover.Pose()
