@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.127.0] - 2026-10-26
+
+### Changed
+
+- Arrivals were nearly all late (the user, live, LKPR: the board's estimates 3 min apart, arrival after arrival). Flown alone, an arrival lands 15–20.5 min after appearing at its STAR entry, as the schedule assumes. In traffic it took about 30. The approach sequence put a departure gap of about 10 NM in front of nearly every arrival, which held the runway to about 14 arrivals an hour. At 10 an hour, every pair the timetable brought together then queued 5–9 deep on the approach.
+  - The tower now lets a departure go with the next arrival 2 NM out once the departure is airborne (`RunwayControllerOptions.LandingClearanceNM`, default 2 instead of 3).
+  - The sequencer's departure gap follows (`DepartureGapArrivalNM` 4.7 instead of 6.3). Between two A320s the gap is now 8.4 NM. The rest of it is the line-up behind the landing aircraft (`LineUpBehindReady`, 95 s).
+  - Offline, LKPR, 2.5 h at density 3: arrivals 8.75–14.5 min late on average instead of 16.5–19.5 in the evening, 12.5 instead of 23.8 in the morning peak. Departures were 20 instead of 26 min late in the morning, unchanged in the evening. No go-around and no runway alert in any run.
+- An arrival slowed for spacing was given its normal speed back and slowed again a minute later (the user, live: RYR1647 at 210 kt, "resume normal speed", 90 s later "reduce speed to 180 knots"; 37 of that evening's 62 resumes were taken back within 4 minutes). Within 35 NM of the threshold it now keeps the speed, and farther out it resumes only with 90 s to spare (45 before). Offline, 5–8 flip-flops a run instead of 24–33. The arrivals were also less late: 7.4 min on average in the evening.
+
 ## [0.126.4] - 2026-10-26
 
 ### Fixed

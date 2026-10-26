@@ -153,9 +153,11 @@ type RunwayControllerOptions struct {
 	// about 3.5 minutes at 140 kt).
 	NoDelayNM float64
 	// LandingClearanceNM: a departure or crossing ahead of an arrival
-	// leaves the runway with the arrival still this far out (default 3 NM;
+	// leaves the runway with the arrival still this far out (default 2 NM;
 	// the user, live: OKJTX, a DA42 cleared "no delay" with CSA1312 on a 5
-	// mile final, airborne with it on short final, a conflict alert).
+	// mile final, airborne with it on short final, a conflict alert). It was
+	// 3 NM: the gaps on final that asked for, 10 NM before nearly every
+	// arrival, kept the arrivals 15-25 min late (offline LKPR, the user).
 	LandingClearanceNM float64
 }
 
@@ -289,7 +291,7 @@ func NewRunwayController(opts RunwayControllerOptions) *RunwayController {
 		opts.NoDelayNM = 8
 	}
 	if opts.LandingClearanceNM == 0 {
-		opts.LandingClearanceNM = 3
+		opts.LandingClearanceNM = 2
 	}
 	return &RunwayController{opts: opts, queue: map[string]time.Time{}}
 }

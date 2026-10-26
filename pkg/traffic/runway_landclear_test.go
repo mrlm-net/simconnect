@@ -18,9 +18,9 @@ func TestTakeoffLeavesTheArrivalItsLandingClearance(t *testing.T) {
 	tight := nm(rot + 35*time.Second)
 	c := r.Decide(time.Now(), []RunwayUser{dep("CSA1", "A320", RunwayLinedUp), final("KLM1", tight)})
 	if slices.Contains(c.Takeoff, "CSA1") {
-		t.Fatalf("take-off with the arrival %.1f NM out leaves it under 3 NM at the clear", tight)
+		t.Fatalf("take-off with the arrival %.1f NM out leaves it under 2 NM at the clear", tight)
 	}
-	room := nm(takeoffSaidIn + rot + SeparationTime(3, 140) + 5*time.Second)
+	room := nm(takeoffSaidIn + rot + SeparationTime(2, 140) + 5*time.Second)
 	c = r.Decide(time.Now(), []RunwayUser{dep("CSA1", "A320", RunwayLinedUp), final("KLM1", room)})
 	if !slices.Contains(c.Takeoff, "CSA1") {
 		t.Fatalf("not cleared with the arrival %.1f NM out: %s", room, c.Waiting["CSA1"])
