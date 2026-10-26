@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.126.1] - 2026-10-26
+
+### Fixed
+
+- The schedule posted again (as the airport map does on a restart) dropped every overflight still to come, and their hours were never asked again (the user, live: almost no overflights, at most 7 aircraft zoomed out; 2 spawned in 1 h 40 min at 30/h). `TrafficManager.SetAirports` now keeps the overflights; it drops only scheduled flights of airports no longer managed.
+
 ## [0.126.0] - 2026-10-26
 
 ### Added

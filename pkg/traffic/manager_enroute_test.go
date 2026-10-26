@@ -202,3 +202,24 @@ func TestManagerOverflightsOwnLimit(t *testing.T) {
 		t.Fatalf("spawned %d overflights (want 2) and %d arrivals (want 1)", overflights, arrivals)
 	}
 }
+
+// TestSetAirportsKeepsOverflights: the schedule posted again (the same
+// airports) keeps the overflights still to come; their hours are not asked
+// again.
+func TestSetAirportsKeepsOverflights(t *testing.T) {
+	sp := &fakeSpawner{}
+	over := Flight{Callsign: "BAW9", Airline: "BAW", Type: "A320", Origin: "EGLL", Destination: "LHBP",
+		STD: t0, STA: t0.Add(2 * time.Hour), Enter: t0.Add(90 * time.Minute), Exit: t0.Add(110 * time.Minute)}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, Overflights: func(from, to time.Time) []Flight {
+		if !over.Enter.Before(from) && over.Enter.Before(to) {
+			return []Flight{over}
+		}
+		return nil
+	}}, "LKPR")
+	m.Tick(t0)
+	m.SetAirports("LKPR")
+	m.Tick(t0.Add(time.Minute))
+	if f := find(m, "overflight BAW9"); f.Callsign != "BAW9" || f.Status != FlightScheduled {
+		t.Fatalf("overflight after the schedule posted again: %+v", f)
+	}
+}
