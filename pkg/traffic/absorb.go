@@ -145,9 +145,11 @@ func (c *ArrivalController) AbsorbDelay(delay time.Duration) (Absorption, error)
 
 // AbsorbWithin is AbsorbDelay for spacing behind another arrival: the time
 // is lost within the next withinNM of its route, before it would meet the
-// other — slower and on a vector off its STAR from there, never a longer
-// downwind after it (live, OKCMB told to extend its downwind four times
-// behind CSA1305 on a merging STAR, then 800 ft from it before PR518).
+// other — slower, its downwind extended where the downwind and the base
+// turn come before they meet, else on a vector off its STAR from there,
+// never a longer downwind after it (live, OKCMB told to extend its downwind
+// four times behind CSA1305 on a merging STAR, then 800 ft from it before
+// PR518).
 func (c *ArrivalController) AbsorbWithin(delay time.Duration, withinNM float64) (Absorption, error) {
 	return c.absorb(delay, math.Max(withinNM, 0.1))
 }
@@ -243,10 +245,18 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	// downwind past its last point, the base turn and the final that much
 	// further out (each mile on adds two), again as more is asked, up to
 	// MaxStretchNM an approach; beyond that the hold.
-	if a.ExtraNM > 0 && len(out) > 0 && withinNM == 0 {
+	// For spacing, only where the downwind and its base turn come before
+	// the two meet, so the time is lost before it (live, UAE364 vectored off
+	// to the side on VLM for 24, its downwind ahead and the meeting at PR532;
+	// OKCMB's met at the downwind's start).
+	if a.ExtraNM > 0 && len(out) > 0 {
 		x := math.Min(a.ExtraNM/2, MaxStretchNM/2-c.tromboneNM)
 		if x > 0.2 {
-			if ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x); ok {
+			ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x)
+			if ok && withinNM > 0 && cum[min(f+1, len(cum)-1)] > withinNM+downwindMeetSlackNM {
+				ok = false
+			}
+			if ok {
 				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
 				a.Downwind = true
 				// The old base turn is on the downwind now; the new one after it.
@@ -262,7 +272,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 				}
 			}
 		}
-		if !stretched && c.tromboneNM > 0 { // extended already, as far as it goes
+		if !stretched && c.tromboneNM > 0 && withinNM == 0 { // extended already, as far as it goes
 			a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 			a.ExtraNM = 0
 		}
@@ -433,6 +443,11 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	c.note(fmt.Sprintf("absorbing %s: %s", delay.Round(time.Second), a), nil)
 	return a, nil
 }
+
+// downwindMeetSlackNM: a downwind extended for spacing joins the final at
+// most this far past where the two meet (a meeting at the base turn's own
+// fix, measured to a rounded turn).
+const downwindMeetSlackNM = 1.0
 
 // extendDownwind is out (the STAR ahead, up to the align point) with its
 // downwind extended by x NM: on along it past its last point, the base turn

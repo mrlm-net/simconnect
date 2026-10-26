@@ -58,7 +58,24 @@ const exitTouchdownMeters = 490.0 + TouchdownSpreadMeters
 // keep the airliner's plan.
 const exitSlowTouchdownKts = 115.0
 
+// exitHeavyDecel: an aircraft faster than an airliner's plan
+// (TouchdownSpeedKts) braking at this or less is a widebody (exitReach).
+// Narrowbodies brake at 2.5 and keep the airliner's plan, though most touch
+// down faster than it (an A320 at 130 kt, a B738 at 140): planned at their
+// own speed every airliner took a later exit and held the runway longer.
+const exitHeavyDecel = 2.0
+
+func (x exitReach) heavy() bool {
+	return x.touchdownKts > TouchdownSpeedKts && x.decel > 0 && x.decel <= exitHeavyDecel
+}
+
 func (x exitReach) speeds() (td, decel float64) {
+	if x.heavy() {
+		// At its own speed, braking as planned for an airliner, so a later
+		// exit (the user, live: a 777 planned onto LKPR D as an A320,
+		// braking at its limit).
+		return x.touchdownKts, RolloutDecel
+	}
 	if x.light() || x.touchdownKts > 0 && x.touchdownKts < exitSlowTouchdownKts {
 		decel = RolloutDecel
 		if x.decel > 0 {
@@ -88,7 +105,7 @@ func (x exitReach) rollout(exitKts float64) float64 {
 // the first exit it can make even for a longer taxi-in.
 func (x exitReach) runwayCostPerM() float64 {
 	td, _ := x.speeds()
-	k := TouchdownSpeedKts / td
+	k := math.Max(TouchdownSpeedKts/td, 1) // a faster one: an airliner's
 	return exitRunwayCostPerM * k * k
 }
 

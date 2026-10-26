@@ -2066,6 +2066,35 @@ func (c *TaxiController) ClearToTaxi() {
 	}
 }
 
+// LineUpLeft is how long an injected departure still takes to line up: at
+// the holding point of its departure runway its whole way on (the entry
+// and the alignment), lining up what is left of it, at LineUpSpeedKts and
+// lineUpStartIn to move off; 0 when neither or not known (the tower then
+// takes RunwayControllerOptions.LineUpTime). The entries differ a lot
+// (offline LKPR: 66–83 s from the clearance to the roll at the
+// threshold, the tower counting 30 s).
+func (c *TaxiController) LineUpLeft() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var m float64
+	switch {
+	case c.state == TaxiLiningUp && c.mover != nil && c.alignDist > 0:
+		m = math.Max(0, c.alignDist-c.mover.Pose().Distance)
+	case c.state == TaxiHoldingShort && c.last.HoldingShortOf == c.runway.Name() && c.mover != nil && c.route != nil && len(c.route.Nodes) > 0 && !c.Backtracks():
+		pose := c.mover.Pose()
+		pts := append([]airport.LatLon{NoseGear(pose.Position, pose.Heading, c.profile())}, c.entryPath()...)
+		along := math.Max(0, alongHeading(c.end.Threshold, c.end.Heading, pts[len(pts)-1]))
+		pts = append(pts, offsetHeading(c.end.Threshold, c.end.Heading, along+LineUpAlignMeters))
+		m = pathLen(pts) + lineUpStartIn.Seconds()*LineUpSpeedKts*knot
+	default:
+		return 0
+	}
+	return time.Duration(m / (LineUpSpeedKts * knot) * float64(time.Second))
+}
+
+// lineUpStartIn: a departure told to line up moves off this long after.
+const lineUpStartIn = 8 * time.Second
+
 // ClearToLineUp clears an injected departure holding short of the
 // departure runway to line up and wait.
 func (c *TaxiController) ClearToLineUp() {

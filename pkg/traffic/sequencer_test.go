@@ -576,23 +576,28 @@ func TestSequencerNewcomerBehindAtMerge(t *testing.T) {
 }
 
 // TestDoubleDepartureGap: with a queue of four departures, the first gap
-// fits two (10.5 NM), the next — two left — one (6 NM).
+// fits two (a single gap and DoubleGapExtraNM), the next — two left — one:
+// the single gap the tower needs, the departure lined up behind the leader
+// (LineUpBehindReady) and rolling with the follower DepartureGapArrivalNM
+// out.
 func TestDoubleDepartureGap(t *testing.T) {
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 	s := NewApproachSequencer("24", SequencerOptions{})
 	// Far enough out to lose the gaps (gapAbsorbNM).
 	list := []ApproachAircraft{arr("CSA1", "A320", 40), arr("DLH2", "A320", 41), arr("AFR3", "A320", 42)}
+	kts := ApproachConditions{}.FinalGroundKts(140)
+	single := (LineUpBehindReady.Hours()*kts + DepartureGapArrivalNM)
 	s.SetDepartureSlots(4)
 	seq := s.Update(now, list)
-	if seq[1].SpacingWhy != "departure gap" || math.Abs(seq[1].SpacingNM-(DefaultDepartureGapNM+DoubleGapExtraNM)) > 0.2 {
-		t.Errorf("first gap %+v, want a double %.1f NM", seq[1], DefaultDepartureGapNM+DoubleGapExtraNM)
+	if seq[1].SpacingWhy != "departure gap" || math.Abs(seq[1].SpacingNM-(single+DoubleGapExtraNM)) > 0.2 {
+		t.Errorf("first gap %+v, want a double %.1f NM", seq[1], single+DoubleGapExtraNM)
 	}
-	if seq[2].SpacingWhy != "departure gap" || seq[2].SpacingNM < DefaultDepartureGapNM || seq[2].SpacingNM > 7 { // at least the tower's need
-		t.Errorf("second gap %+v, want a single %.1f NM", seq[2], DefaultDepartureGapNM)
+	if seq[2].SpacingWhy != "departure gap" || math.Abs(seq[2].SpacingNM-single) > 0.2 {
+		t.Errorf("second gap %+v, want a single %.1f NM", seq[2], single)
 	}
 	s.SetDepartureSlots(1)
-	if seq := s.Update(now, list); seq[1].SpacingNM < DefaultDepartureGapNM || seq[1].SpacingNM > 7 {
-		t.Errorf("one waiting: %+v, want a single gap", seq[1])
+	if seq := s.Update(now, list); math.Abs(seq[1].SpacingNM-single) > 0.2 {
+		t.Errorf("one waiting: %+v, want a single gap %.1f NM", seq[1], single)
 	}
 }
 

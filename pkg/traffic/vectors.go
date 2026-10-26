@@ -194,6 +194,33 @@ func Vectored(cs string, v Vector, magVar float64) Transmission {
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentVector, Params: p})
 }
 
+// ParamVectoring is the approach a vector leads to, said with the first
+// vector off the STAR (Vectoring): "ILS approach runway 24".
+const ParamVectoring = "vectoring"
+
+// Vectoring is vector t, the first off the STAR, with the approach it
+// leads to (kind "ILS", "" none named): "CSA1, vectoring for ILS approach
+// runway 24, fly heading 060, for spacing". Approach tells the type of
+// approach and the runway when it starts vectoring (SKYbrary, Radar
+// Vectoring for Approach, from Doc 4444; the user). Read back as the
+// vector alone.
+func Vectoring(t Transmission, kind, runway string) Transmission {
+	if t.Intent != IntentVector || t.Params[ParamHeading] == "" || runway == "" {
+		return t
+	}
+	what := "approach runway " + runway
+	if kind != "" {
+		what = kind + " " + what
+	}
+	p := map[string]string{ParamVectoring: what}
+	for k, x := range t.Params {
+		p[k] = x
+	}
+	t.Params = p
+	t.Text = t.Callsign + ", vectoring for " + what + ", " + strings.TrimPrefix(t.Text, t.Callsign+", ")
+	return t
+}
+
 // WithVector adds radar vector v to transmission t, one call instead of
 // two in a row: "KLM868, number 3, for spacing reduce speed to 210 knots,
 // fly heading 142"; its readback reads back both (live, KLM868 heard the

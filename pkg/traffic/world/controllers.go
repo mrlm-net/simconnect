@@ -35,6 +35,7 @@ type departureCtl interface {
 	ClimbPlan(pos airport.LatLon) []traffic.RoutePoint
 	ClimbRoute(pos airport.LatLon) []airport.LatLon
 	DepartureRoute() []airport.NavPoint
+	LineUpLeft() time.Duration
 	LimitClimb(ft float64) bool
 	DirectTo(pos airport.LatLon, altFt, kts float64, fix airport.LatLon) error
 	Expedite(on bool)

@@ -283,6 +283,7 @@ type ArrivalController struct {
 	fast          bool // monitor every sim frame: throttle progress events
 	touchdownAt   time.Time
 	clearDist     float64 // injected path distance where the aircraft is clear of the runway
+	exitFastTo    float64 // injected path distance the exit speed is kept to (its tail clear too)
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
 	vacateDist    float64 // injected path distance of the vacate stop
 	standJoin     float64 // the stand's lead-in junction, meters before the path's end

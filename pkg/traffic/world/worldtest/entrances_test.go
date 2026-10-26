@@ -77,7 +77,10 @@ func TestDeparturesShareEndEntrances(t *testing.T) {
 			t.Errorf("a full-length departure held short at %s", n)
 		}
 	}
-	if len(departed) < 4 {
+	// 3: a take-off leaves the arrival behind 3 NM out once airborne
+	// (traffic.LandingClearanceNM); the 4–5 before went with it on a 5–6
+	// mile final, airborne with it at under 3.
+	if len(departed) < 3 {
 		t.Errorf("%d departures in 40 minutes", len(departed))
 	}
 }
