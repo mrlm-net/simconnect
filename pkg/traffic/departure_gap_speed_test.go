@@ -18,3 +18,18 @@ func TestDepartureGapCompression(t *testing.T) {
 		t.Errorf("departure gap behind the Citation %.1f NM (closing %.1f), behind an A320 %.1f: want %.1f and more than behind the A320", slow, cmp, even, want)
 	}
 }
+
+// TestDepartureGapUnderTenMiles: a gap for one departure between two
+// A320s is under 8.5 NM on final, not 10: the tower lets the departure go
+// with the arrival still LandingClearanceNM (2 NM) out once airborne; the
+// rest is its line-up behind the leader (LineUpBehindReady)
+// (offline LKPR: 10 NM gaps before nearly every arrival held the runway to
+// 14 arrivals an hour, every arrival 15–25 min late at 10 an hour).
+func TestDepartureGapUnderTenMiles(t *testing.T) {
+	s := NewApproachSequencer("24", SequencerOptions{})
+	a := ApproachAircraft{Callsign: "CSA1", Wake: Wake{WakeMedium, RecatD}, FinalKts: 140}
+	b := ApproachAircraft{Callsign: "CSA2", Wake: Wake{WakeMedium, RecatD}, FinalKts: 140}
+	if _, nm := s.departureGap(a, b, ApproachConditions{}, 1); nm > 8.5 {
+		t.Errorf("departure gap between two A320s %.1f NM", nm)
+	}
+}

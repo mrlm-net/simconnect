@@ -267,11 +267,10 @@ const (
 	DefaultDepartureGapNM = 6.0
 	// DepartureGapArrivalNM is how far out the next arrival still is as
 	// the departure in the gap starts its roll: its roll (about 45 s, 1.8
-	// NM of final) and the tower's LandingClearanceNM (3 NM) once it is
+	// NM of final) and the tower's LandingClearanceNM (2 NM) once it is
 	// airborne, its take-off clearance said (15 s, 0.6 NM: takeoffSaidIn)
-	// and 0.9 NM to spare (the landing clearance's own call; offline LKPR
-	// kept the departures with this).
-	DepartureGapArrivalNM = 6.3
+	// and 0.3 NM to spare.
+	DepartureGapArrivalNM = 4.7
 	// DoubleGapQueue: with this many departures waiting for a runway, its
 	// gaps fit two departures each (a double gap): DoubleGapExtraNM more
 	// for the second, its conditional line-up behind the first as that one

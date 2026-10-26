@@ -48,3 +48,20 @@ func TestSpeedSpareToTheFinal(t *testing.T) {
 		t.Error("on the final the speed costs nothing more")
 	}
 }
+
+// TestSpeedKeptNearTheAirport: an arrival slowed for spacing keeps the
+// speed within resumeMinNM of the threshold, and the spare it needs to
+// resume is 90 s (the user, live: RYR1647 at 210 kt, "resume normal
+// speed", 90 s later "reduce speed to 180 knots"; 37 of 62 resumes taken
+// back within 4 minutes).
+func TestSpeedKeptNearTheAirport(t *testing.T) {
+	if !keepsSpeed(traffic.SequenceEntry{DistanceToGoNM: 30}) {
+		t.Error("speed resumed 30 NM out")
+	}
+	if keepsSpeed(traffic.SequenceEntry{DistanceToGoNM: 60}) {
+		t.Error("speed kept 60 NM out")
+	}
+	if resumeAfter < 90*time.Second {
+		t.Errorf("resumed with %v spare", resumeAfter)
+	}
+}

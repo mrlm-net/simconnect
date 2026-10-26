@@ -1529,7 +1529,14 @@ func (q *sequences) heldSlots(now time.Time, k string, n int) int {
 // resumeAfter: an arrival slowed for spacing is given its normal speed
 // back once it would land this much later than its spacing behind its
 // leader asks (or, number one, with no delay to lose).
-const resumeAfter = 45 * time.Second
+const resumeAfter = 90 * time.Second
+
+// resumeMinNM: closer in than this an arrival keeps a speed for spacing
+// (resumeSpeed).
+const resumeMinNM = 35.0
+
+// keepsSpeed: e, slowed for spacing, keeps its speed this near the airport.
+func keepsSpeed(e traffic.SequenceEntry) bool { return e.DistanceToGoNM < resumeMinNM }
 
 // speedSpareFinalNM: a speed for spacing is flown to the final, this far
 // out (the sequencer's FinalNM); on it every arrival slows to its
@@ -1561,7 +1568,11 @@ func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.Sequenc
 	kts, slowed := q.slowed[e.Callsign]
 	recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
 	q.mu.Unlock()
-	if !slowed || recent || e.Delay > 0 {
+	// Not near the airport: there it slows for the approach soon anyway,
+	// and the spacing ahead still settles (the user, live: RYR1647 at 210
+	// kt, "resume normal speed", 90 s later "reduce speed to 180 knots"; 37
+	// of 62 resumes that evening were taken back within 4 minutes).
+	if !slowed || recent || e.Delay > 0 || keepsSpeed(e) {
 		return false
 	}
 	if e.Leader != "" {
