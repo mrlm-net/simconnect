@@ -78,7 +78,7 @@ type controlled struct {
 	// frame, which must not take it.mu (tugWaitsForJetway).
 	tugAfter atomic.Bool
 	// other is its other airport (SpawnRequest.Other), for a new stand.
-	other string
+	other    string
 	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
@@ -138,9 +138,9 @@ type controlled struct {
 	// approach; limitHeld: it holds at its clearance limit, the end of its
 	// STAR, for want of one (crewAtLimit, #1096).
 	approachCleared, limitHeld bool
-	higherAt            time.Time
-	landCleared         bool
-	defBase      uint32 // its ID block (cc.ids)
+	higherAt                   time.Time
+	landCleared                bool
+	defBase                    uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
@@ -2614,7 +2614,21 @@ func (cc *controlCenter) balancedDeparture(g *airport.Graph, ends []airport.Runw
 		it.mu.Lock()
 		v := it.view
 		it.mu.Unlock()
-		if v.Kind == "departure" && v.OnGround && strings.EqualFold(v.ICAO, g.Layout.ICAO) {
+		// THE QUEUE IS WHAT HAS LEFT ITS STAND, not every departure of the day.
+		//
+		// This counted `OnGround`, which until #1230 was false for anything that had
+		// not moved yet — so in practice it counted aircraft from the pushback on, and
+		// `departureQueueM` was tuned against that. Making `OnGround` correct silently
+		// added every parked departure to the count: the cost of each runway rose by
+		// the whole day's traffic, the chooser sent departures to an end they could not
+		// use, and LKPR managed 2 departures in 40 minutes where the suite expects a
+		// busy hour's worth (TestDeparturesShareEndEntrances).
+		//
+		// So the condition now says what it always meant. Whether a parked departure
+		// SHOULD weigh on its runway's queue is a separate question and a re-tuning of
+		// `departureQueueM`, not something to change by fixing an unrelated field.
+		if v.Kind == "departure" && v.OnGround && v.State != traffic.TaxiAwaitingPushback.String() &&
+			strings.EqualFold(v.ICAO, g.Layout.ICAO) {
 			queue[v.Runway]++
 		}
 	}

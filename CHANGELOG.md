@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - `ControlView.OnGround` was false for an aeroplane standing on its stand. It was written only in the frame that DRIVES an aircraft along a path, so one that had not moved yet kept the zero value, and the first events — the spawn and its early state changes — carried it too. Measured at LKPR: 38 of 48 control views whose own state was a ground state (awaiting pushback, pushing back, taxiing, holding short) reported `OnGround` false, while the traffic picture reported true for the same aeroplane on the same tick. It is now set at the controller's creation and in every frame below `TaxiDeparting`, which is the whole of the surface. The field is used as a predicate — a host's "is this airborne", the game's runway-occupancy check — so one that meant "has been driven at least once" gave every consumer the wrong answer.
+- Balanced departure runway choice counted the field above, so correcting it would have added every parked departure to each runway's queue — the cost of a runway rose by the whole day's traffic and LKPR managed 2 departures in 40 minutes. The count now says what it always meant: departures that have left their stand. Whether a parked one should weigh on its runway's queue is a re-tuning of `departureQueueM`, not a consequence of fixing an unrelated field.
 
 
 ## [0.126.2] - 2026-10-26
