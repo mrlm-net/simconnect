@@ -223,3 +223,26 @@ func TestSetAirportsKeepsOverflights(t *testing.T) {
 		t.Fatalf("overflight after the schedule posted again: %+v", f)
 	}
 }
+
+// TestOverflightsWaitForTheArea: the hours are not asked before the area
+// is known (OverflightsReady), so the overflights come once it is (live: the
+// schedule set again on a reconnect before the area was known, none for
+// two hours).
+func TestOverflightsWaitForTheArea(t *testing.T) {
+	sp := &fakeSpawner{}
+	known := false
+	over := Flight{Callsign: "BAW9", Airline: "BAW", Type: "A320", Origin: "EGLL", Destination: "LHBP",
+		STD: t0, STA: t0.Add(2 * time.Hour), Enter: t0.Add(90 * time.Minute), Exit: t0.Add(110 * time.Minute)}
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, Overflights: func(from, to time.Time) []Flight {
+		if known && !over.Enter.Before(from) && over.Enter.Before(to) {
+			return []Flight{over}
+		}
+		return nil
+	}, OverflightsReady: func() bool { return known }}, "LKPR")
+	m.Tick(t0)
+	known = true
+	m.Tick(t0.Add(time.Minute))
+	if f := find(m, "overflight BAW9"); f.Callsign != "BAW9" {
+		t.Fatal("no overflight once the area is known")
+	}
+}

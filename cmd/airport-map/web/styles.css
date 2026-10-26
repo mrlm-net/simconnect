@@ -1079,7 +1079,7 @@ body.full .panel, body.full .ctx { display: none; }
   .freq-btn::before, .tag button::before { content: ""; position: absolute; inset: -11px -4px; }
 }
 .board td, .board th { padding: 6px 5px; }
-.board .stat { white-space: normal; }
+.board .stat { white-space: nowrap; }
 
 /* Network play: the position this device works (#511). */
 .chip--as { gap: 4px; }
