@@ -1427,7 +1427,7 @@ func (w *World) Register(mux *http.ServeMux) {
 			t = append(make([]Traffic, 0, len(t)), t...)
 			for i := range t {
 				t[i].Ours = ours[t[i].ObjectID]
-				t[i].Route = routes[t[i].ObjectID] // ours flown by MSFS AI: the way it goes
+				t[i].Route = pointsAhead(airport.LatLon{Lat: t[i].Latitude, Lon: t[i].Longitude}, routes[t[i].ObjectID]) // ours flown by MSFS AI: the way it still goes
 				if tail := tails[t[i].ObjectID]; tail != "" {
 					t[i].Tail = tail // our call sign, not the object's first ATC ID
 				}

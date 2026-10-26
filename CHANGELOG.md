@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.126.3] - 2026-10-26
+
+### Fixed
+
+- `ControlView.OnGround` did not mean "on the ground" for an injected departure (#1230, #1243, Vector).
+  - On its stand it read false until the aircraft first moved. It is now true from the spawn, in every state before the take-off roll.
+  - At lift-off the view kept the last on-the-ground frame until the next progress event, up to a second later, so a line-up behind a departure already airborne could score a runway incursion. Lift-off is now emitted at once.
+- Overflights flew the shortest path along MSFS's airways and came out lopsided (the user, live: overflights north and west of LKPR only, none from the Vienna side). Doha–Amsterdam, for example, went round by Poland. The generator picks and times each overflight on its great circle, and today's 221 entered the area from all sides, the south-east most. An overflight now crosses the area on that great circle, appearing as far along it as it should be by now. Upper airspace is free route: Prague FIR since February 2021 (EUROCONTROL), flown direct rather than along airways. The airway route is kept only where the great circle gives no crossing.
+- Airport map: an aircraft flown by MSFS AI had its whole route drawn from where it appeared, so the line ran back to that point and out again, two lines along one airway (the user: WZZ1467). `/api/traffic` now gives only the route still ahead of the aircraft.
+
 ## [0.126.2] - 2026-10-26
 
 ### Fixed
