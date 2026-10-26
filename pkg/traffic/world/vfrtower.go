@@ -50,6 +50,28 @@ func (it *controlled) circuitPlace() (int, string, string) {
 	return 0, "", ""
 }
 
+// leaderToGo is the arrival this one lands behind ("" none, or landed
+// already), how far it still is from the threshold and the spacing kept
+// behind it (NM).
+func (it *controlled) leaderToGo() (string, float64, float64) {
+	if it.cc.sequencesAt == nil {
+		return "", 0, 0
+	}
+	for _, seq := range it.cc.sequencesAt(it.ICAO) {
+		for _, e := range seq {
+			if e.Callsign != it.Tail || e.Leader == "" {
+				continue
+			}
+			for _, l := range seq {
+				if l.Callsign == e.Leader && l.Runway == "" {
+					return l.Callsign, l.DistanceToGoNM, max(e.MinimumNM, e.SeparationNM)
+				}
+			}
+		}
+	}
+	return "", 0, 0
+}
+
 // fnv32 is a small stable hash of s (a call sign: the same choice each time).
 func fnv32(s string) uint32 {
 	h := uint32(2166136261)

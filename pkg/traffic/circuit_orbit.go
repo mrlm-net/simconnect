@@ -173,3 +173,46 @@ func (c *ArrivalController) BaseDue() bool {
 	c.baseCall = false
 	return true
 }
+
+// CircuitFinalNM is how far out a VFR circuit arrival's base turn, its
+// downwind extended, joins its final; 0 not in a circuit.
+func (c *ArrivalController) CircuitFinalNM() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if ci == nil {
+		return 0
+	}
+	thr, _ := ci.Point(LegRunway)
+	base, _ := ci.Point(LegBase)
+	return -alongHeading(thr.Position, ci.heading, base.Position)/1852 + c.tromboneNM
+}
+
+// HoldDownwind keeps a VFR arrival waiting for its base call on its
+// downwind (InstrExtendCallBase), the traffic it follows not past yet: its
+// base turn HoldDownwindStepNM further out, beyond its extend limit up to
+// HoldDownwindMaxNM, and its base still to be called (BaseDue). False at
+// that limit or off the downwind: its base is called then. As a crew told
+// "I'll call your base" does: it flies on until called (the user, live:
+// OKCJV, its base called by position, turned in ahead of the Citation it
+// followed, which went around).
+func (c *ArrivalController) HoldDownwind() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.req.Circuit == nil || c.tromboneNM+HoldDownwindStepNM > HoldDownwindMaxNM {
+		return false
+	}
+	limit := c.circuitExtendNM
+	c.circuitExtendNM = c.tromboneNM + HoldDownwindStepNM
+	kts := CircuitKts(*c.aircraft())
+	a, err := c.absorbInCircuit(time.Duration(2 * HoldDownwindStepNM / kts * float64(time.Hour)))
+	c.circuitExtendNM = limit
+	return err == nil && a.ExtraNM > 0
+}
+
+// HoldDownwindStepNM and HoldDownwindMaxNM: a downwind held for traffic
+// (HoldDownwind) goes on a mile at a time, to 8 NM from its base turn.
+const (
+	HoldDownwindStepNM = 1.0
+	HoldDownwindMaxNM  = 8.0
+)
