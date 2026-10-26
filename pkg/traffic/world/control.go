@@ -3926,9 +3926,14 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// Off the STAR on a dog-leg or an extended downwind: approach vectors
 	// it, each turn as it comes (#661).
 	// A VFR downwind extended with "I'll call your base": the tower calls
-	// it at the extended base turn.
+	// it at the extended base turn, once the traffic it follows is on the
+	// final inside it by its spacing; till then it flies on downwind.
 	if ev.arr != nil && it.circuit != nil && ev.arr.State == traffic.ArrivalApproaching && !it.gates.Load() && it.arr.BaseDue() {
-		it.call(traffic.PosTower, prioLanding, func() { it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrTurnBase)) })
+		if lead, toGo, gap := it.leaderToGo(); lead != "" && toGo > it.arr.CircuitFinalNM()-gap && it.arr.HoldDownwind() {
+			it.cc.log.printf("%-6s tower: base held, %s still %.1f NM out", it.Tail, lead, toGo)
+		} else {
+			it.call(traffic.PosTower, prioLanding, func() { it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrTurnBase)) })
+		}
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
 		!it.approachSaid && !it.gates.Load() && !it.arr.TurningFinal() {

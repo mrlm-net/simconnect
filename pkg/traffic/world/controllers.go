@@ -67,6 +67,8 @@ type arrivalCtl interface {
 	JoinFinal(p airport.LatLon) (float64, traffic.Vector, error)
 	AssignSpeed(kts float64) (float64, error)
 	BaseDue() bool
+	CircuitFinalNM() float64
+	HoldDownwind() bool
 	EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error)
 	Expedite(on bool)
 	GoAround() error

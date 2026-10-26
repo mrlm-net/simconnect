@@ -45,6 +45,9 @@ type groundEntry struct {
 	// behind: the aircraft it stands stopped behind, in its way (not one
 	// coming the other way it holds for); 0 none (ReportBehind).
 	behind uint32
+	// parked: on its stand, not yet pushing (ReportParked): taxiing
+	// traffic passes behind it, as the stand is laid out.
+	parked bool
 }
 
 // NewGroundPicture creates an empty picture.
@@ -66,7 +69,7 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
-		intent: p.aircraft[id].intent,
+		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked,
 		nose:   prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail:   tail + prof.RefAheadMeters,
 	}
@@ -94,6 +97,24 @@ func (p *GroundPicture) ReportPlanned(id uint32, ahead []airport.LatLon, half fl
 	defer p.mu.Unlock()
 	if e, ok := p.aircraft[id]; ok {
 		e.ahead, e.half, e.pushing, e.waiting = ahead, half, false, len(ahead) > 0
+		p.aircraft[id] = e
+	}
+}
+
+// ReportParked records whether aircraft id stands parked on its stand, not
+// yet pushing. Taxiing traffic does not stop behind a parked one: at a
+// tight stand its tail reaches within a wing of the taxilane behind it
+// (LKPR C26, C27: an A321's 13 m from H1), and the taxiing traffic stopped
+// for it while its pushback waited for them, until it was removed (the
+// user, live: WZZ1469 on C27 and AFR1002 for 18 min).
+func (p *GroundPicture) ReportParked(id uint32, parked bool) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.parked = parked
 		p.aircraft[id] = e
 	}
 }
@@ -450,7 +471,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	p.mu.Lock()
 	others := make([]groundEntry, 0, len(p.aircraft))
 	for oid, e := range p.aircraft {
-		if oid != id && now.Sub(e.at) <= TrafficStaleAfter {
+		if oid != id && now.Sub(e.at) <= TrafficStaleAfter && !e.parked {
 			e.id = oid
 			others = append(others, e)
 		}

@@ -283,6 +283,18 @@ func (r *remoteArr) BaseDue() bool {
 	return o0
 }
 
+func (r *remoteArr) CircuitFinalNM() float64 {
+	var o0 float64
+	r.c.dropped(r.c.call(r.t, "CircuitFinalNM", []any{}, &o0))
+	return o0
+}
+
+func (r *remoteArr) HoldDownwind() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "HoldDownwind", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error) {
 	var o0 traffic.HoldEntry
 	err := r.c.call(r.t, "EnterHold", []any{h, altFt}, &o0)

@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.125.2] - 2026-10-26
+
+### Fixed
+
+- A departure parked on a tight stand held up the taxilane behind it for good (the user, live: WZZ1469 on LKPR C27, its A321 tail 13 m from H1, stopped AFR1002 for 18 min while its own pushback waited for AFR1002; it moved once WZZ1469 was removed). An aircraft parked on its stand, not yet pushing, no longer stops taxiing traffic (`GroundPicture.ReportParked`); its pushback still waits for traffic behind the stand.
+- A VFR arrival told "extend downwind, I'll call your base" had its base called by position alone, the traffic it followed not past yet (the user, live: OKCJV turned in ahead of the Citation OKDIT it followed; OKDIT, never cleared to land, went around). The tower now calls the base once the traffic ahead is on the final inside its base turn by its spacing; till then it flies on downwind a mile at a time (`ArrivalController.HoldDownwind`, to `HoldDownwindMaxNM` 8).
+
 ## [0.125.1] - 2026-10-26
 
 ### Fixed
