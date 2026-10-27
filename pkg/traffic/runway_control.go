@@ -107,6 +107,12 @@ type RunwayClearances struct {
 	// and that departure: "behind the departing A320, line up and wait",
 	// lined up as it rolls, not once it is airborne.
 	LineUpBehindDeparting map[string]string `json:"lineUpBehindDeparting,omitempty"`
+	// LineUpAhead: those in LineUpBehindDeparting whose departure is down
+	// the runway past their way in already (an intersection departure ahead
+	// of them). It never passes in front of them, so no condition: "line up
+	// and wait" (Doc 4444 12.2.7; live, TVS737 at the threshold told
+	// "behind the departing Cirrus SR22" rolling from B).
+	LineUpAhead map[string]bool `json:"lineUpAhead,omitempty"`
 	// NoDelay: departures in Takeoff with the next arrival established
 	// within NoDelayNM, by call sign, that arrival's distance (NM): "cleared
 	// for take-off, no delay, traffic on 5 mile final".
@@ -219,7 +225,29 @@ type RunwayController struct {
 	// granted: departures lined up and cleared for take-off at the last
 	// decision; kept down to grantedArrivalNM.
 	granted map[string]bool
+	// wayIn: each departure's way in, how far down the runway (m), from its
+	// holding point; kept through its roll (LineUpAhead).
+	wayIn map[string]float64
 }
+
+// RollPastIn is how long a departure on its take-off roll at kts takes to
+// cover m more meters, accelerating at RollAccelMS2 from its speed now; 0
+// for none left.
+func RollPastIn(m, kts float64) time.Duration {
+	if m <= 0 {
+		return 0
+	}
+	v := kts * 1852 / 3600
+	t := (math.Sqrt(v*v+2*RollAccelMS2*m) - v) / RollAccelMS2
+	return time.Duration(t * float64(time.Second))
+}
+
+// RollAccelMS2: a take-off roll's mean acceleration (m/s²), about 0.2 g.
+const RollAccelMS2 = 2.0
+
+// wayInApartM: two ways in this far apart down the runway or more are
+// different ones (an intersection ahead of the threshold).
+const wayInApartM = 150.0
 
 // grantedArrivalNM: a take-off already granted to one lined up stands with
 // the next arrival this close, the time rule (its roll and the margin)
@@ -307,7 +335,7 @@ func (r *RunwayController) SetSurface(s RunwaySurface) {
 func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClearances {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, LineUpBehindDeparting: map[string]string{}, NoDelay: map[string]float64{}}
+	out := RunwayClearances{Waiting: map[string]string{}, LineUpBehind: map[string]string{}, CrossBehind: map[string]string{}, LineUpBehindDeparting: map[string]string{}, LineUpAhead: map[string]bool{}, NoDelay: map[string]float64{}}
 	prevGranted := r.granted
 	r.granted = map[string]bool{}
 
@@ -319,6 +347,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	var ourLinedUp []RunwayUser // ours lined up (one, unless an intersection's)
 	along := map[string]float64{}
 	rollingDep := "" // ours on its take-off roll
+	rollingKts := 0.0
 	var onRunway []string
 	nextArr, nextArrName := math.Inf(1), ""
 	var nextArrUser RunwayUser
@@ -334,7 +363,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			occupied = u.Callsign
 			onRunway = append(onRunway, u.Callsign)
 			if !u.Arrival && !u.Crossing && !u.Other && !u.Host {
-				rollingDep = u.Callsign
+				rollingDep, rollingKts = u.Callsign, u.GroundKts
 				along[u.Callsign] = u.AlongM // how far down the runway it rolls now
 			}
 			if !u.Arrival && !u.Crossing && (r.lastDep == nil || r.lastDep.Callsign != u.Callsign) {
@@ -364,6 +393,10 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			if !u.Other {
 				if !u.Crossing && !u.Host {
 					along[u.Callsign], ourDep[u.Callsign] = u.AlongM, true // its way in
+					if r.wayIn == nil {
+						r.wayIn = map[string]float64{}
+					}
+					r.wayIn[u.Callsign] = u.AlongM
 				}
 				holding = append(holding, u)
 				if _, ok := r.queue[u.Callsign]; !ok {
@@ -375,6 +408,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	for cs := range r.queue {
 		if !seen[cs] {
 			delete(r.queue, cs)
+		}
+	}
+	for cs := range r.wayIn {
+		if !seen[cs] {
+			delete(r.wayIn, cs)
 		}
 	}
 	// The next arrival lands after occ and the margin, and is not inside
@@ -621,6 +659,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
 				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied
+				out.LineUpAhead[u.Callsign] = true // down the runway past its way in
 				out.Waiting[u.Callsign] = occupied + " departing ahead"
 				continue
 			}
@@ -632,8 +671,17 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				// Its line-up too, while the interval runs: the room the map
 				// checks again once the one rolling has passed (LineUpRoom;
 				// offline LKPR, WZZ1040 told to line up, then to hold position).
-				arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				// Its line-up starts once the one rolling has passed its way in
+				// (live, OKSZG at B waited 31 s for CSA813, lined up 75 s, and
+				// CSA236 was sent around).
+				arrivalClear(max(r.intervalLeft(now, u), RollPastIn(u.AlongM+IntersectionPassed(u.Callsign)-along[rollingDep], rollingKts)+r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
+				// In down the runway from an intersection ahead of this one's
+				// way in, or past it already (at the threshold too): it never
+				// passes in front of this one.
+				if in, ok := r.wayIn[rollingDep]; ok && in >= u.AlongM+wayInApartM || along[rollingDep] > u.AlongM+IntersectionPassed(u.Callsign) {
+					out.LineUpAhead[u.Callsign] = true
+				}
 				out.Waiting[u.Callsign] = rollingDep + " on the runway"
 				occupied = u.Callsign
 				continue

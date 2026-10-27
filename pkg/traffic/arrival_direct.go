@@ -66,7 +66,7 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 	c.reachFirst = true // the point: flown to, not passed by geometry
 	resume := ""
 	for j := 1; j < len(names) && j < len(plain)-2; j++ {
-		if names[j] != "" && !circuitPoint(names[j]) {
+		if names[j] != "" && !CircuitPointName(names[j]) {
 			resume = names[j]
 			break
 		}

@@ -628,9 +628,11 @@ const conditionalLineUpMaxKts = 80.0
 // (dep, said as traffic; kts its speed, rolling false when it is no longer
 // on its roll): conditional early in the roll, plain late in it (the user,
 // live: "behind the departing Boeing 737, line up and wait" with the 737
-// about to lift off).
-func lineUpBehindDepartingSaid(cs, dep, runway string, kts float64, rolling bool) traffic.Transmission {
-	if !rolling || kts >= conditionalLineUpMaxKts {
+// about to lift off). Plain too where dep is down the runway past cs's way
+// in (ahead, RunwayClearances.LineUpAhead): it never passes in front of cs
+// (Doc 4444 12.2.7).
+func lineUpBehindDepartingSaid(cs, dep, runway string, kts float64, rolling, ahead bool) traffic.Transmission {
+	if !rolling || kts >= conditionalLineUpMaxKts || ahead {
 		return traffic.ClearedLineUp(cs, runway)
 	}
 	return traffic.ClearedLineUpBehindDeparting(cs, dep, runway)
@@ -819,7 +821,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		}
 		dep := dep
 		kts, ok := rolling[dep]
-		give(cs, "lineupbehind", lineUpBehindDepartingSaid(cs, t.arrivalSaid(dep), end(cs), kts, ok), func(it *controlled) error {
+		give(cs, "lineupbehind", lineUpBehindDepartingSaid(cs, t.arrivalSaid(dep), end(cs), kts, ok, c.LineUpAhead[cs]), func(it *controlled) error {
 			t.mu.Lock()
 			t.behind[it.Tail] = behindClearance{arrival: dep, icao: icao, rwy: rwy, departing: true}
 			t.given[it.Tail+" lineup"] = true

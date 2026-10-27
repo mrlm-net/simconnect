@@ -1856,9 +1856,7 @@ func (cc *controlCenter) views() []ControlView {
 			}
 			v.AirFixes = fixesAhead(fixes, v.AirRoute)
 			// Going around: the circuit's track points back to the final.
-			for _, n := range it.arr.CircuitFixes() {
-				v.AirFixes = append(v.AirFixes, airFix{Ident: n.Ident, LatLon: n.Position})
-			}
+			v.AirFixes = append(v.AirFixes, goAroundFixes(it.arr.CircuitFixes(), it.circuit != nil)...)
 			// On the final, the procedure flown: the line to the
 			// threshold and down the runway to where its taxi starts.
 			if len(v.AirRoute) == 0 && it.graph != nil {
@@ -3971,8 +3969,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// (live, AUA133 "cleared ILS approach runway 06" 5 s after 06 closed).
 		it.cc.core.arrivalRunwayInUse(it.ICAO, it.view.Runway) {
 		qnh, _ := it.cc.qnh()
-		// In good visibility some crews ask for a visual approach (#766).
-		if it.wantsVisual() {
+		// In good visibility some crews ask for a visual approach (#766);
+		// not on vectors: there the clearance carries the heading to
+		// intercept (live, OKZSU "cleared visual approach" 31 s into its
+		// downwind, its turn in never said).
+		if _, vectored := it.arr.InterceptHeading(); !vectored && it.wantsVisual() {
 			it.say(traffic.RequestVisual(traffic.PosApproach, it.Tail))
 			it.say(traffic.ClearedVisual(traffic.PosApproach, it.Tail, it.view.Runway))
 			it.visual = true
@@ -4307,6 +4308,21 @@ const sayTwiceWithin = 2 * time.Second
 type airFix struct {
 	Ident string `json:"ident"`
 	airport.LatLon
+}
+
+// goAroundFixes are the points of a go-around shown on its way back
+// (traffic.ArrivalController.CircuitFixes): a VFR circuit arrival's
+// circuit points, an IFR arrival's fixes only — it is on vectors, not
+// flying a circuit (live, DLH792 shown "BASE" after its go-around).
+func goAroundFixes(fx []airport.NavPoint, vfrCircuit bool) []airFix {
+	var out []airFix
+	for _, n := range fx {
+		if !vfrCircuit && traffic.CircuitPointName(n.Ident) {
+			continue
+		}
+		out = append(out, airFix{Ident: n.Ident, LatLon: n.Position})
+	}
+	return out
 }
 
 // fixesAhead are the fixes near route (within the mile a rounded turn
