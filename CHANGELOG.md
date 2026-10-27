@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.127.1] - 2026-10-27
+
+### Fixed
+
+- Departures pushed with "the fuel truck did not leave: removed" and "the tug did not arrive: pushing without it" (the user, live, LKPR evening: OKUBK, KLM999, CSA1317, QTR1005 and others).
+  - A fuel truck told to leave while still driving in drove on to the wing. The push waited 2 minutes for it and then removed it. It now turns round (a U-turn away from the aircraft) and goes home. Off the aircraft it is clear at once, and near it once it is round.
+  - A fuel truck was sent with `FuelMinService` (3 min) left before it had to be off the wing, whatever its drive. Live, OKKQT's truck on the far S apron was sent 5.5 minutes before then, for an 8-minute drive, and turned straight back. It now comes only if `FuelMinService` is left once it is there: its way in at `FuelTruckKts` and a quarter again (`SimObjectFuelTruck.DriveIn`). Fewer futile trips leave more of the 6 trucks free.
+  - A tug held on its way in by aircraft crossing it (KLM999 at C18 waited 20 minutes for the departures queuing behind the stand) was given up as lost. `SimObjectTug.ArriveWithin` now adds the time it has been held.
+
 ## [0.127.0] - 2026-10-26
 
 ### Changed

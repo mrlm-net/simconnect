@@ -26,6 +26,12 @@ func (c *TaxiController) fuelLeaveBy() time.Time {
 	return c.gateAt.Add(-TugLeadTime - FuelClearMargin)
 }
 
+// fuelDriveTimer is a fuel vehicle that knows its way in
+// (SimObjectFuelTruck.DriveIn).
+type fuelDriveTimer interface {
+	DriveIn(pose GroundPose) time.Duration
+}
+
 // updateFuel sends the fuel vehicle while the aircraft waits on its stand
 // and drives it until it has left.
 func (c *TaxiController) updateFuel(dt float64) {
@@ -49,8 +55,13 @@ func (c *TaxiController) updateFuel(dt float64) {
 		}
 		if c.fuelWaitFrom.IsZero() {
 			c.fuelWaitFrom = now
+			if d, ok := f.(fuelDriveTimer); ok {
+				c.fuelDriveIn = d.DriveIn(pose)
+			}
 		}
-		if now.Before(c.fuelWaitFrom.Add(FuelStartDelay)) || c.fuelLeaveBy().Sub(now) < FuelMinService {
+		// Only with FuelMinService left once it is there (live, OKKQT on the
+		// far S apron: sent 5.5 minutes before, 8 minutes' drive).
+		if now.Before(c.fuelWaitFrom.Add(FuelStartDelay)) || c.fuelLeaveBy().Sub(now) < FuelMinService+c.fuelDriveIn {
 			return
 		}
 		if !c.take(VehicleFuel) {

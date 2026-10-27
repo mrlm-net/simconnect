@@ -329,9 +329,10 @@ type TaxiController struct {
 	tugAttached     bool
 	tugAttachedAt   time.Time // when the tug was sent for
 	fuelAttached    bool
-	fuelWaitFrom    time.Time // first frame waiting on the stand
-	fuelUntil       time.Time // refuelling done (set once at the wing)
-	fuelClearFrom   time.Time // the push first waited for it to leave
+	fuelWaitFrom    time.Time     // first frame waiting on the stand
+	fuelDriveIn     time.Duration // the fuel vehicle's way in (DriveIn), from that frame
+	fuelUntil       time.Time     // refuelling done (set once at the wing)
+	fuelClearFrom   time.Time     // the push first waited for it to leave
 	// stairsSvc, gpuSvc, busSvc, deboardSvc: the stand services (#831,
 	// #832, #887).
 	stairsSvc, gpuSvc  standService

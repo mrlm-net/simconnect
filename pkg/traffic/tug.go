@@ -64,6 +64,7 @@ type SimObjectTug struct {
 	depot     airport.LatLon // where it came from and goes back to
 	haveDepot bool
 	inPath    *GroundPath    // the way in planned (RetryCreate starts further on it)
+	heldIn    float64        // seconds held on the way in, for aircraft or at gates
 	retried   bool           // created again once (RetryCreate)
 	stand     airport.LatLon // the nose gear on the stand, before the push
 	homing    bool           // driving back to the depot
@@ -243,7 +244,10 @@ func (t *SimObjectTug) ArriveWithin() time.Duration {
 		// Each gate on its way: its call to ground and the answer.
 		drive += time.Duration(len(vehicleGates(t.layout, t.inPath))) * VehicleGateAllowance
 	}
-	return max(TugArriveTimeout, drive)
+	// Not counting the time it has been held on its way: a tug waiting for
+	// departures queuing behind the stand is late, not lost (live, KLM999
+	// at C18 waited 20 minutes for them and then pushed without its tug).
+	return max(TugArriveTimeout, drive) + time.Duration(t.heldIn*float64(time.Second))
 }
 
 // Connected reports that the tug is at the nose: the push may start. A
@@ -292,7 +296,9 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	}
 	// Driving in from the depot; once there, on the nose.
 	if t.arrive != nil {
-		t.check(t.arrive)
+		if t.check(t.arrive) {
+			t.heldIn += dt
+		}
 		t.pose = t.arrive.Step(dt)
 		if t.pose.Arrived {
 			t.arrive, t.pose = nil, t.at(pose)
