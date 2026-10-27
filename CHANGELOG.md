@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.128.2] - 2026-10-27
+
+### Fixed
+
+- A take-off clearance was offered to a departure on its stand. `ControlView.Actions` listed `takeoff` from `TaxiPushback` onwards, so a host's strip offered "cleared for take-off" to an aircraft with a tug against its nose, to one sitting after the push, and to one taxiing a mile out with the runway's state still unknown (the user, at LFPO: "Cleared take-off" beside an aircraft doing 15 kt on a taxiway, 0.6 NM from the runway). None of those is a thing a controller says, and a list that offers them teaches an order of the job that does not exist. `takeoff` is now offered where it is issued: holding short of its own runway, lining up and lined up. What a taxiing departure can still be told is unchanged — hold position, a re-clearance, or a new limit.
+
 ## [0.129.0] - 2026-10-27
 
 ### Added

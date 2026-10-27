@@ -1695,9 +1695,17 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 		}
 		return notAgain(ctl, []string{"pushback", "pushstart", "taxi", "upto"})
 	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
-		return notAgain(ctl, []string{"startup", "taxi", "upto", "takeoff"})
+		// NO "takeoff" HERE. A take-off clearance to an aircraft still on its stand
+		// being pushed is not a thing anyone says, and offering it taught the player an
+		// order of the job that does not exist (the user, at LFPO: "the possibility to
+		// give them when it is not real and doesn't make sense"). It belongs where a
+		// controller issues it — at the holding point or lined up, below.
+		return notAgain(ctl, []string{"startup", "taxi", "upto"})
 	case traffic.TaxiTaxiing:
-		return notAgain(ctl, []string{"hold", "taxi", "upto", "takeoff"})
+		// Nor here: a departure taxiing is minutes and a mile from the runway, and the
+		// runway is not even known to be free yet. `upto` is the clearance that means
+		// something while it taxis, and `hold` is the one that stops it.
+		return notAgain(ctl, []string{"hold", "taxi", "upto"})
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
 			return notAgain(ctl, []string{"cross", "upto", "taxi"})

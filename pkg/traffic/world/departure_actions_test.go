@@ -52,8 +52,10 @@ func TestDepartureActionsStartUpNotOfferedTwice(t *testing.T) {
 			if slices.Contains(given, "startup") {
 				t.Errorf("start-up already cleared: must not be offered again, got %v", given)
 			}
-			// The rest of the strip is untouched.
-			for _, want := range []string{"taxi", "upto", "takeoff"} {
+			// The rest of the strip is untouched. NOT "takeoff": it used to be offered
+			// here and no longer is — a take-off clearance to an aircraft on its stand
+			// or just pushed is not a thing anyone says (TestTakeoffOnlyOfferedAtTheRunway).
+			for _, want := range []string{"taxi", "upto"} {
 				if !slices.Contains(given, want) {
 					t.Errorf("want %q still offered, got %v", want, given)
 				}
@@ -127,6 +129,44 @@ func TestDepartureActionsRepeatableClearancesSurvive(t *testing.T) {
 			if !slices.Contains(got, w) {
 				t.Errorf("%v: want %q offered, got %v", tc.state, w, got)
 			}
+		}
+	}
+}
+
+// A TAKE-OFF CLEARANCE BELONGS AT THE RUNWAY (#1231 follow-up).
+//
+// It was offered from the pushback onwards: to an aircraft on its stand with a tug
+// against the nose, to one sitting after the push, and to one taxiing a mile out with
+// the runway's state unknown. None of those is a thing a controller says, and a list
+// that offers them teaches an order of the job that does not exist — the player who
+// reported it was looking at "Cleared take-off" beside an aircraft doing 15 kt on a
+// taxiway, 0.6 NM from the runway.
+func TestTakeoffOnlyOfferedAtTheRunway(t *testing.T) {
+	for _, s := range []traffic.TaxiState{
+		traffic.TaxiAwaitingPushback, traffic.TaxiPushback,
+		traffic.TaxiAwaitingTaxi, traffic.TaxiTaxiing,
+	} {
+		if got := departureActions(s, "", &standDep{}); slices.Contains(got, "takeoff") {
+			t.Errorf("%v: take-off must not be offered away from the runway, got %v", s, got)
+		}
+	}
+	// Where it IS real: holding short of its own runway, and lined up.
+	for _, s := range []traffic.TaxiState{
+		traffic.TaxiHoldingShort, traffic.TaxiLiningUp, traffic.TaxiLinedUp,
+	} {
+		if got := departureActions(s, "", &standDep{}); !slices.Contains(got, "takeoff") {
+			t.Errorf("%v: take-off must be offered at the runway, got %v", s, got)
+		}
+	}
+}
+
+// What a departure CAN be told while it taxis: stopped, re-cleared, or given a new
+// limit. Those three mean something said again; the take-off does not.
+func TestTaxiingStillOffersWhatMeansSomething(t *testing.T) {
+	got := departureActions(traffic.TaxiTaxiing, "", &standDep{})
+	for _, want := range []string{"hold", "taxi", "upto"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("taxiing: want %q offered, got %v", want, got)
 		}
 	}
 }
