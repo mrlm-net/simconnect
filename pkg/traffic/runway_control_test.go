@@ -362,8 +362,13 @@ func TestDepartureSpeeds(t *testing.T) {
 	if d := DepartureIntervalSpeeds(l, m, true, 300, 380); d != SameRouteDepartureInterval+2*time.Minute {
 		t.Errorf("80 kt faster on the same route: %s", d)
 	}
-	if d := DepartureIntervalSpeeds(l, m, false, 300, 380); d != DepartureInterval(l, m, false) {
-		t.Errorf("another route: %s", d)
+	// Another route: the catch-up from DepartureFirstKts faster, the
+	// climb-out shared (live, TVS737 behind the SR22 OKDWM).
+	if d := DepartureIntervalSpeeds(l, m, false, 300, 380); d != DepartureInterval(l, m, false)+2*time.Minute {
+		t.Errorf("another route, 80 kt faster: %s", d)
+	}
+	if d := DepartureIntervalSpeeds(l, m, false, 300, 330); d != DepartureInterval(l, m, false) {
+		t.Errorf("another route, 30 kt faster: %s", d)
 	}
 	if d := DepartureIntervalSpeeds(m, l, true, 380, 300); d != SameRouteDepartureInterval {
 		t.Errorf("slower behind: %s", d)

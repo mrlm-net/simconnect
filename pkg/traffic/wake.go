@@ -258,13 +258,16 @@ const (
 )
 
 // DepartureIntervalSpeeds is DepartureInterval with the climb speeds of the
-// two (TAS, 0 unknown): on the same route a faster follower waits longer.
+// two (TAS, 0 unknown): on the same route a faster follower waits longer;
+// on another route too when DepartureFirstKts or more faster, the climb-out
+// the same until their ways part (live, LKPR: TVS737 on its SID caught
+// the SR22 OKDWM leaving VFR, 2.3 NM and 60 ft apart).
 func DepartureIntervalSpeeds(leader, follower Wake, sameRoute bool, leaderKts, followerKts float64) time.Duration {
 	d := DepartureInterval(leader, follower, sameRoute)
-	if !sameRoute || leaderKts <= 0 || followerKts <= 0 {
+	if leaderKts <= 0 || followerKts <= 0 {
 		return d
 	}
-	if diff := followerKts - leaderKts; diff >= CatchUpFromKts {
+	if diff := followerKts - leaderKts; sameRoute && diff >= CatchUpFromKts || diff >= DepartureFirstKts {
 		d += min(CatchUpMax, time.Duration(diff/40*float64(CatchUpPer40Kts)))
 	}
 	return d

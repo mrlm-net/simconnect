@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -17,6 +18,11 @@ import (
 // follows traffic.SeparationRequired; where VFR traffic is not separated
 // it is told of the other (traffic information) instead, and a loss of
 // "separation" between them is no loss. The class is core.zone.
+//
+// With Options.Airspaces (#1257) the class comes from the real airspaces
+// instead: B–E from the records holding the aircraft, the strictest where
+// several do, and G where none does (no class A or G records; right for
+// most of Europe, not above FL180 in the US).
 
 const (
 	zoneNM    = 10.0
@@ -53,9 +59,20 @@ func (cc *controlCenter) rulesOf(a traffic.TrackedAircraft) string {
 	return "IFR"
 }
 
-// classAt is the class of the airspace an aircraft is in: a managed
-// airport's zone (zoneClass) or class E around.
+// classAt is the class of the airspace an aircraft is in: from
+// Options.Airspaces when given, else a managed airport's zone (zoneClass)
+// or class E around.
 func (cc *controlCenter) classAt(a traffic.TrackedAircraft, airports []string) traffic.AirspaceClass {
+	if s := cc.core.hooks.Airspaces; s != nil {
+		r, err := s.ClassAt(a.Position.Lat, a.Position.Lon, a.AltFt*0.3048, cc.groundFt(a, airports)*0.3048)
+		switch {
+		case err != nil: // a tile not readable: as without the store
+		case r == nil:
+			return traffic.ClassG
+		default:
+			return traffic.AirspaceClass(r.Type.String())
+		}
+	}
 	for _, icao := range airports {
 		g, err := cc.graph(icao)
 		if err != nil {
@@ -69,6 +86,27 @@ func (cc *controlCenter) classAt(a traffic.TrackedAircraft, airports []string) t
 	return traffic.ClassE
 }
 
+// groundFt is the ground under a, feet MSL, for AGL airspace limits: its
+// altitude less its height; with no height in the air (0), the nearest
+// managed airport's field elevation, else sea level (AGL limits as MSL).
+func (cc *controlCenter) groundFt(a traffic.TrackedAircraft, airports []string) float64 {
+	if a.OnGround || a.AGLFt > 0 {
+		return a.AltFt - a.AGLFt
+	}
+	best, ground := math.Inf(1), 0.0
+	for _, icao := range airports {
+		g, err := cc.graph(icao)
+		if err != nil {
+			continue
+		}
+		l := g.Layout
+		if d := calc.HaversineNM(l.Latitude, l.Longitude, a.Position.Lat, a.Position.Lon); d < best {
+			best, ground = d, l.Altitude/0.3048
+		}
+	}
+	return ground
+}
+
 // separationNeeded is a check of two call signs among aircraft: whether
 // ATC separates them where they are (the stricter of their two classes'
 // rules).
@@ -77,6 +115,20 @@ func (cc *controlCenter) separationNeeded(aircraft []traffic.TrackedAircraft, ai
 	for _, x := range aircraft {
 		by[x.Tail] = x
 	}
+	// Each aircraft's class once per picture: with Options.Airspaces it is
+	// a point-in-outline test over the records there.
+	var mu sync.Mutex
+	classes := map[string]traffic.AirspaceClass{}
+	classOf := func(x traffic.TrackedAircraft) traffic.AirspaceClass {
+		mu.Lock()
+		defer mu.Unlock()
+		cl, ok := classes[x.Tail]
+		if !ok {
+			cl = cc.classAt(x, airports)
+			classes[x.Tail] = cl
+		}
+		return cl
+	}
 	return func(a, b string) bool {
 		x, okA := by[a]
 		y, okB := by[b]
@@ -84,7 +136,7 @@ func (cc *controlCenter) separationNeeded(aircraft []traffic.TrackedAircraft, ai
 			return true // not known: as before
 		}
 		ra, rb := cc.rulesOf(x), cc.rulesOf(y)
-		return traffic.SeparationRequired(cc.classAt(x, airports), ra, rb) || traffic.SeparationRequired(cc.classAt(y, airports), ra, rb)
+		return traffic.SeparationRequired(classOf(x), ra, rb) || traffic.SeparationRequired(classOf(y), ra, rb)
 	}
 }
 

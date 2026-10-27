@@ -29,6 +29,11 @@ type ApproachAircraft struct {
 	// Fixed: it cannot be delayed — other traffic, or already established.
 	// The sequencer also fixes aircraft inside FreezeNM.
 	Fixed bool
+	// Extendable: a VFR circuit arrival on its downwind, which can still
+	// extend it: not fixed inside FreezeNM (live, OKJRU back on a short
+	// downwind after a TCAS RA, fixed ahead of DLH792, which was sent
+	// around).
+	Extendable bool
 	// Runway is the runway end it lands on: "" the sequencer's own. On
 	// dependent parallel approaches the arrivals of the adjacent final are
 	// given too (Fixed, with their runway): only DiagonalNM is kept to them.
@@ -82,6 +87,18 @@ type SequenceEntry struct {
 	// Runway: as given (ApproachAircraft.Runway); not "" for an arrival on
 	// the adjacent final of dependent parallel approaches.
 	Runway string `json:"runway,omitempty"`
+}
+
+// MoveUpRoomNM: an arrival this far or more outside FreezeNM can lose
+// TacticalSwapMaxCost for one moved up past it; nearer in, in proportion,
+// none at FreezeNM.
+const MoveUpRoomNM = 30.0
+
+// moveUpRoom is how much later an arrival dtg NM to go may land for one
+// moved up past it (MoveUpRoomNM).
+func (s *ApproachSequencer) moveUpRoom(dtg float64) time.Duration {
+	f := math.Min(1, math.Max(0, (dtg-s.opts.FreezeNM)/MoveUpRoomNM))
+	return time.Duration(f * float64(s.opts.TacticalSwapMaxCost))
 }
 
 // SequenceChange reports an arrival's new place or delay.
@@ -550,7 +567,7 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	s.mu.Unlock()
 	for _, a := range arrivals {
 		sl := slot{a: a, eta: s.smoothed(now, a.Callsign, s.eta(now, a, c))}
-		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM || prio[a.Callsign] {
+		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM && !a.Extendable || prio[a.Callsign] {
 			sl.a.Fixed, sl.at = true, sl.eta
 			fixed = append(fixed, sl)
 		} else {
@@ -668,7 +685,10 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 			tn, te, merges := firstMerge(n.a, e.a, s.opts.FinalNM)
 			atMerge := merges && tn+SeparationTime(s.opts.MergeSpacingNM, mergeSpeed(n.a)) > te
 			g, _, _ := s.gap(n.a, e.a, c)
-			costly := n.eta.Add(g).Sub(e.eta) > s.opts.TacticalSwapMaxCost
+			// No more than e can still lose before its final (live, OKJRU back
+			// on a short downwind after a TCAS RA, moved up past DLH792 near
+			// its final: 4m20s more for DLH792, sent around).
+			costly := n.eta.Add(g).Sub(e.eta) > min(s.opts.TacticalSwapMaxCost, s.moveUpRoom(e.a.DistanceToGoNM))
 			if !atMerge && !costly {
 				continue
 			}
@@ -712,7 +732,9 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 		// The pair alone: as ordered, A then B; swapped, B then A.
 		delayAB := max(0, a.eta.Add(gAB).Sub(b.eta))
 		delayBA := max(0, b.eta.Add(gBA).Sub(a.eta))
-		if delayAB-delayBA < s.opts.TacticalSwapGain || delayBA > s.opts.TacticalSwapMaxCost {
+		// The one moved back loses no more than it can before its final
+		// (moveUpRoom).
+		if delayAB-delayBA < s.opts.TacticalSwapGain || delayBA > min(s.opts.TacticalSwapMaxCost, s.moveUpRoom(a.a.DistanceToGoNM)) {
 			continue
 		}
 		a.key, b.key = b.key, a.key

@@ -273,11 +273,16 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			// point already they move apart, nothing to look out for (live,
 			// TVS1324 told of an SR22 at 3 o'clock moving away, #704),
 			// unless that closest point is very close.
-			if c.ClosestIn <= 0 && c.ClosestNM >= trafficInfoNearNM {
+			if c.ClosestIn > 0 || c.ClosestNM < trafficInfoNearNM {
+				w.tellTraffic(now, c, aircraft)
+			}
+			// Our AI pilots see nothing: one nearly met is kept clear as a
+			// pilot told of it would keep clear (live, OKFVQ leaving via N and
+			// OKJRU joining downwind, told of each other, met at 0.8 NM, 436
+			// ft: TCAS RA).
+			if !vfrNearMiss(c) {
 				continue
 			}
-			w.tellTraffic(now, c, aircraft)
-			continue
 		}
 		// A departure of ours climbing into it: a level until a fix on its
 		// SID first — "cross (fix) at or below (level)" (Doc 4444 12.3.2.4
@@ -898,3 +903,17 @@ func (w *conflictWatch) crossInstead(now time.Time, c traffic.Conflict, aircraft
 // conflictEdge: a conflict lost and closest within this of the
 // look-ahead's end is left for the next look.
 const conflictEdge = 20 * time.Second
+
+// A conflict between aircraft not separated where they are (VFR in D, E,
+// G) closer than vfrAvoidNM and vfrAvoidFt at its closest point is
+// resolved as one that needs separation (vfrNearMiss).
+const (
+	vfrAvoidNM = 1.0
+	vfrAvoidFt = 500.0
+)
+
+// vfrNearMiss reports whether c would bring two aircraft within
+// vfrAvoidNM and vfrAvoidFt.
+func vfrNearMiss(c traffic.Conflict) bool {
+	return c.ClosestNM < vfrAvoidNM && c.VerticalFt < vfrAvoidFt
+}

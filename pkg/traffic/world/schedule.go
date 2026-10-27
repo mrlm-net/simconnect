@@ -268,23 +268,17 @@ func (s *scheduler) withModels(flights []traffic.Flight) []traffic.Flight {
 	return kept
 }
 
-// visual reports whether the weather at an airport allows VFR flights: a
-// visibility of VFRVisibilityM and a ceiling of VFRCeilingFt or better
-// (unknown counts as good). The weather is the user's (conditions).
+// visual reports whether the weather at an airport allows VFR flights in
+// its control zone: 5 km and a 1,500 ft ceiling (SERA.5005(b),
+// traffic.CheckControlZone; unknown counts as good). The weather is the
+// user's (conditions).
 func (s *scheduler) visual(icao string) bool {
 	c, ok := s.conditions(icao)
 	if !ok {
 		return true
 	}
-	return (c.VisibilityM == 0 || c.VisibilityM >= vfrVisibilityM) && (c.CeilingFt == 0 || c.CeilingFt >= vfrCeilingFt)
+	return traffic.CheckControlZone(c.VisibilityM, c.CeilingFt, false).VFR
 }
-
-// VFR flights need at least this visibility and ceiling (the usual VFR
-// limits in a control zone).
-const (
-	vfrVisibilityM = 5000
-	vfrCeilingFt   = 1500
-)
 
 // Overflights cross the scan range around the picture's centre (SimConnect
 // sees 108 NM): defaultOverflightsPerHour in the peak hour at density 1

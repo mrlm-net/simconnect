@@ -7,6 +7,41 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.129.0] - 2026-10-27
+
+### Added
+
+- Airspace class from the real airspaces (#1257).
+  - `world.Options.Airspaces` takes an `*airspace.Store`. Classes B–E come from the records holding the aircraft, the strictest where several overlap. Where none covers the aircraft it is in class G.
+  - AGL limits are measured over the aircraft's ground, else over the nearest managed airport's elevation.
+  - Without a store, the managed airports' zone and class E apply as before.
+  - `airspace.Store` gains `ClassAt`, `Containing` and a cached `Shape`. It finds records through a 1° grid of the index and skips records without limits (`NoLimits`).
+  - `StorePreferNewerSet` also matches same-named records within 0.1°: Prague CTA 2 is now from 1,000 ft AGL, not MSL, and 34,964 records are kept worldwide.
+- VFR weather minima (#1258):
+  - `traffic.VFRMinima` (SERA.5001 Table S5-1, with FL100 and reduced-visibility options).
+  - `VMCMinima.Check`: visibility only; the cloud part is reported unknown.
+  - `SpecialVFRMinima` and `CheckControlZone` (SERA.5005(b) / SERA.5010(c)). No ceiling is ever assumed.
+  - The schedule's VFR flights now use `CheckControlZone`.
+- Airspace route check (#1259).
+  - `airspace.Store.Route` lists the airspaces a path enters, in order. Each entry has its entry point, distance along, limits, designation and frequency.
+  - Each entry also says what it needs of a VFR flight: B, C or D a clearance, E none, restricted or prohibited avoid, MOA, warning or alert inform. `RouteNeeds` overrides this per type.
+  - `airspace.Ahead` gives a straight look-ahead path.
+
+### Fixed
+
+- A VFR circuit arrival moved up ahead of a jet near its final made the jet go around (live, OKJRU past DLH792 after a TCAS RA: DLH792 given 4m20s at 10 NM, sent around).
+  - A move up now costs the arrival behind it no more than it can still lose: `TacticalSwapMaxCost` far out, none at `FreezeNM`, in between by distance (`MoveUpRoomNM`).
+  - A circuit arrival on its downwind is not frozen inside `FreezeNM`, because it can still extend its downwind (`ApproachAircraft.Extendable`, `ArrivalController.OnDownwind`).
+- VFR traffic in class D was given traffic information only, even on a near collision course (live, OKFVQ and OKJRU: predicted 0.6 NM and 223 ft apart, then a TCAS RA). VFR traffic predicted within 1 NM and 500 ft is now kept apart like IFR traffic.
+- A fast departure on another route went 2 minutes behind a slow one and closed on it after take-off (live, TVS737 behind OKDWM). `DepartureIntervalSpeeds` now adds the catch-up on any route when the follower climbs `DepartureFirstKts` or more faster.
+- Departures jammed on the ground: gaps of 3–4 minutes between landings carried none (live, LKPR: 7 such gaps, 0 departures; CSA1911 lined up behind the landing A320, then told to hold position).
+  - The next arrival's landing time counted its speed now all the way in. CSA1080 was 8 NM out at 180 kt, counted 3 minutes, and landed in 4.
+  - It now slows to its approach speed for the last `FinalSlowNM` (4 NM) (`RunwayUser.LandsIn`, `RunwayUser.FinalKts`).
+- "For spacing" was said with every sequence call (live, CSA1080 four times on one approach). The reason now goes once per approach, with the first number. Later speeds and numbers go without it (`SpacingTold`, `ParamSpacingTold`).
+- An IFR go-around turned 3 NM past the threshold, 1 NM past the far end of LKPR 24, near the VFR circuit's crosswind. It now climbs straight ahead past the circuit's crosswind turn with `GoAroundCircuitClearNM` (1 NM) to spare, before it turns. On a long runway that is farther than `GoAroundClimbNm`.
+
+Offline LKPR beds, morning: go-arounds 3 → 0, arrival delay p90 30m30s → 23m30s. Evening: 29 arrivals landed instead of 27, departures about the same, no go-arounds.
+
 ## [0.128.2] - 2026-10-27
 
 ### Fixed

@@ -185,6 +185,27 @@ var (
 	GoAroundHeightFt = 3000.0
 )
 
+// GoAroundCircuitClearNM: an IFR go-around climbs straight ahead this far
+// past the VFR circuit's crosswind turn (CircuitUpwindNM past the far end
+// of the runway) before it turns: never across the circuit at its
+// crosswind or downwind (the user: the go-around's procedure clear of the
+// VFR pattern; live, LKPR 24, the turn at 3 NM came 1 NM past the far end).
+const GoAroundCircuitClearNM = 1.0
+
+// goAroundClimbNM is how far past the threshold an IFR go-around climbs
+// straight ahead: GoAroundClimbNm, or past the circuit's crosswind turn
+// with GoAroundCircuitClearNM to spare on a long runway.
+func (c *ArrivalController) goAroundClimbNM() float64 {
+	nm := GoAroundClimbNm
+	if c.req.Graph == nil || c.req.Graph.Layout == nil {
+		return nm
+	}
+	if r, _, ok := c.req.Graph.Layout.RunwayEnd(c.plan.End.Name); ok {
+		nm = math.Max(nm, r.Length/1852+CircuitUpwindNM+GoAroundCircuitClearNM)
+	}
+	return nm
+}
+
 // GoAround sends an injected arrival on final around: before touchdown it
 // climbs out and MSFS AI flies the published missed approach
 // (ArrivalRequest.MissedApproach), else a left-hand circuit, back to the
@@ -268,8 +289,9 @@ func (c *ArrivalController) GoAround() error {
 	at := func(alongNm, sideNm float64) airport.LatLon {
 		return offsetHeading(offsetHeading(t, hdg, alongNm*1852), left, sideNm*1852)
 	}
-	climb := at(GoAroundClimbNm, 0)
-	crosswind := at(GoAroundClimbNm, GoAroundOffsetNm)
+	climbNM := c.goAroundClimbNM()
+	climb := at(climbNM, 0)
+	crosswind := at(climbNM, GoAroundOffsetNm)
 	abeam := at(0, GoAroundOffsetNm)
 	downwindEnd := at(-join/1852-1, GoAroundOffsetNm)
 	align := at(-join/1852-ProcedureAlignNm, 0)
@@ -381,12 +403,13 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	ahead := offsetHeading(t, hdg, 10*1852)
 	cross := func(p airport.LatLon) float64 { return calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon) }
 	route := c.req.Procedure
+	climbNM := c.goAroundClimbNM()
 	k := -1
 	for i, n := range route {
 		if n.Kind == "R" || n.Position == (airport.LatLon{}) {
 			continue
 		}
-		if math.Abs(cross(n.Position)) >= GoAroundRejoinMinNM*1852 && alongHeading(t, hdg, n.Position) <= GoAroundClimbNm*1852 {
+		if math.Abs(cross(n.Position)) >= GoAroundRejoinMinNM*1852 && alongHeading(t, hdg, n.Position) <= climbNM*1852 {
 			k = i
 			break
 		}
@@ -404,7 +427,7 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	if probe := offsetHeading(t, turn, off); (cross(probe) > 0) != (side > 0) {
 		turn = hdg - 90
 	}
-	climb := offsetHeading(t, hdg, GoAroundClimbNm*1852)
+	climb := offsetHeading(t, hdg, climbNM*1852)
 	wps := []types.SIMCONNECT_DATA_WAYPOINT{
 		procedureWaypoint(climb, circuitFt, ProcedureApproachSpeedKts),
 		procedureWaypoint(offsetHeading(climb, turn, off), circuitFt, ProcedureApproachSpeedKts),
