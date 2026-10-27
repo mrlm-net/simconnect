@@ -122,6 +122,23 @@ func (f *SimObjectFuelTruck) Attach(pose GroundPose) error {
 	}, f.reqID)
 }
 
+// DriveIn is how long it takes to come to an aircraft parked at pose: its
+// way in at FuelTruckKts and a quarter again for giving way; 0 when it
+// appears at the wing (no depot or road).
+func (f *SimObjectFuelTruck) DriveIn(pose GroundPose) time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	spot := FuelSpot(pose, f.prof, f.SideMeters)
+	if f.Spot != nil {
+		spot = f.Spot(pose, f.prof)
+	}
+	path, _, ok := f.inbound(&spot)
+	if !ok {
+		return 0
+	}
+	return time.Duration(path.Length() / (FuelTruckKts * 1852 / 3600) * 1.25 * float64(time.Second))
+}
+
 // inbound is the way in: from the nearest depot along the vehicle roads to
 // a point FuelApproachMeters before the spot, then straight along the
 // fuselage onto it. It comes from the nose or the tail, whichever way the
@@ -204,6 +221,12 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 		f.err = nil
 		return err
 	}
+	if f.arrive != nil && leave {
+		// Told to leave before it got there: it turns round and goes home,
+		// not on to an aircraft about to push (live, OKKQT's truck drove
+		// 8 minutes in and straight back; others held the push).
+		return f.turnBack(pose)
+	}
 	if f.arrive != nil {
 		f.check(f.arrive)
 		f.pose = f.arrive.Step(dt)
@@ -244,6 +267,46 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 	}
 	return f.place()
 }
+
+// turnBack turns a truck still driving in round, away from the aircraft at
+// pose: FuelTurnMeters on, across FuelTurnWidthMeters, back as far, and
+// home along the roads. Off the aircraft (fuelNearMeters) it is clear at
+// once; near it, once round.
+func (f *SimObjectFuelTruck) turnBack(pose GroundPose) error {
+	// From where it is shown, in its lane: the new way starts on it.
+	shown := lane(f.pose, f.arrive)
+	h := shown.Heading
+	p := offsetHeading(shown.Position, h, fuelProfile().WheelbaseMeters)
+	a := offsetHeading(p, h, FuelTurnMeters)
+	b := offsetHeading(a, h+90, FuelTurnWidthMeters)
+	if other := offsetHeading(a, h-90, FuelTurnWidthMeters); localDist(other, pose.Position) > localDist(b, pose.Position) {
+		b = other
+	}
+	c := offsetHeading(b, h+180, FuelTurnMeters)
+	pts := []airport.LatLon{p, a, b, c}
+	if route, err := f.Layout.VehicleRoute(c, f.depot); err == nil {
+		pts, f.homing = append(pts, route...), true
+	} else {
+		pts = append(pts, offsetHeading(c, h+180, FuelDriveOffMeters))
+	}
+	path, err := NewArcPath(pts, fuelRoadProfile(), 8)
+	if err != nil {
+		f.arrive = nil
+		return f.finish()
+	}
+	f.arrive, f.away = nil, NewGroundMoverFrom(path, fuelRoadProfile(), h, f.pose.GroundSpeedKts)
+	f.clearDist = -1
+	if localDist(f.pose.Position, pose.Position) < fuelNearMeters+f.prof.SpanMeters/2 {
+		f.clearDist = 2*FuelTurnMeters + FuelTurnWidthMeters
+	}
+	f.check(f.away)
+	f.pose = f.away.Step(0)
+	return f.place()
+}
+
+// fuelNearMeters: a truck turning back within this far of the aircraft
+// (beyond its half span) is in the way until it is round.
+const fuelNearMeters = 60.0
 
 // clearOf is how far a truck at p, facing its heading along the aircraft
 // at pose, drives on to be FuelLeaveAheadMeters past the aircraft's nose or
@@ -290,15 +353,15 @@ func (f *SimObjectFuelTruck) Fuelling() bool {
 	return f.objectID != 0 && !f.done && f.arrive == nil && f.away == nil
 }
 
-// Clear reports that it is not at the wing: still driving in (it turns
-// back), on its way off, or gone.
+// Clear reports that it is not at the wing: turned back on its way in (off
+// the aircraft, or round), on its way off, or gone.
 func (f *SimObjectFuelTruck) Clear() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.done || f.objectID == 0 {
 		return true
 	}
-	// Past the aircraft's nose or tail (clearOf).
+	// Past the aircraft's nose or tail (clearOf), or round (turnBack).
 	return f.away != nil && f.away.Pose().Distance > f.clearDist
 }
 
@@ -375,6 +438,10 @@ const (
 	FuelDriveOffTurnDeg    = 60.0
 	FuelDriveOffMeters     = 40.0
 	FuelTruckKts           = 12.0
+	// Turning back on its way in (turnBack): FuelTurnMeters on,
+	// FuelTurnWidthMeters across, FuelTurnMeters back.
+	FuelTurnMeters      = 16.0
+	FuelTurnWidthMeters = 20.0
 	// Aircraft of FuelOffWingMaxSpanM span or less have a low wing: the
 	// truck parks FuelWingtipClearMeters beyond its tip.
 	FuelOffWingMaxSpanM    = 25.0
