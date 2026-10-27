@@ -509,6 +509,16 @@ func withIntercept(plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) ([]ty
 	if calc.HaversineNM(b.Lat, b.Lon, meet.Lat, meet.Lon) < InterceptLegNM+interceptRoomNM {
 		return plain, names // no room for it: the base as it is
 	}
+	// The leg starts on the base: a base turn short of its start moves out
+	// along the final's line to abeam it, never out past the turn and back
+	// (the user, live: CSA188's base flew out past its turn and hooked back
+	// onto the final; extended again, its downwind ran on from that hook 1.5
+	// NM beside the final).
+	if out := alongHeading(b, course+180, start); out > 0 {
+		plain = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), plain...)
+		p := offsetHeading(b, course+180, out)
+		plain[f-1].Latitude, plain[f-1].Longitude = p.Lat, p.Lon
+	}
 	al := plain[f]
 	legs := []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(start, al.Altitude, al.KtsSpeed), procedureWaypoint(meet, al.Altitude, al.KtsSpeed)}
 	out := append(append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), plain[:f]...), legs...), plain[f:]...)
