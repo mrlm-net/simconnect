@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.129.1] - 2026-10-27
+
+### Fixed
+
+- An extended downwind ended in a hook: the base flew out past its turn and back onto the final (the user, live, LKPR 24: CSA188, AFR1447).
+  - The intercept leg onto the final began 3 NM out from where it meets the final, beyond the base turn.
+  - Extended again, the downwind ran on from that hook point, 1.5 NM beside the final, not 5.
+  - The base turn now moves out along the downwind to abeam the intercept leg's start: downwind, a square base, the 30° intercept, the final.
+  - It joins the final where it did, so the spacing holds. Extending the downwind more adds a little more track than before (2–3 NM a time), which the sequencer measures.
+  - Offline LKPR beds: no go-arounds for spacing, delays as before.
+
 ## [0.129.0] - 2026-10-27
 
 ### Added

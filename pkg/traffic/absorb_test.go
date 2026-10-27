@@ -252,8 +252,9 @@ func TestAbsorbDelayExtendsDownwind(t *testing.T) {
 		}
 		total += a.ExtraNM
 	}
-	// The stretch, and the intercept leg onto the final (withIntercept).
-	if farthest() < base+10 || ctl.tromboneNM > MaxStretchNM/2+0.01 || total > MaxStretchNM+InterceptLegNM+1 {
+	// The stretch, and the intercept leg onto the final (withIntercept): its
+	// base turn moved out to abeam the leg's start and back, the turns rounded.
+	if farthest() < base+10 || ctl.tromboneNM > MaxStretchNM/2+0.01 || total > MaxStretchNM+2*(InterceptLegNM+InterceptBeyondNM)+3 {
 		t.Errorf("base turn %.1f → %.1f NM out, extended %.1f NM, track added %.1f NM", base, farthest(), ctl.tromboneNM, total)
 	}
 	if a, _ := ctl.AbsorbDelay(3 * time.Minute); a.ExtraNM != 0 || a.Left < 2*time.Minute {
