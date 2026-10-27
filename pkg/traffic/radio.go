@@ -517,18 +517,26 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		// (Doc 4444 12.4.1.6), or the delay it is to expect.
 		// The number is said once an approach (and when it changes): repeated
 		// with every speed it only annoys; without it the call is the speed.
+		// "For spacing" goes with the number, the reason told once: every
+		// speed after it is the speed alone, a new number too once it was
+		// said (the user, live: CSA1080 heard "for spacing" four times on
+		// one approach).
 		s := cs
+		why := ""
+		if p[ParamNumber] != "" && p[ParamSpacingTold] == "" {
+			why = "for spacing "
+		}
 		if p[ParamNumber] != "" {
 			s += ", number " + p[ParamNumber]
 		}
 		if p[ParamSpeed] != "" {
-			s += fmt.Sprintf(", for spacing reduce speed to %s knots", p[ParamSpeed])
+			s += fmt.Sprintf(", %sreduce speed to %s knots", why, p[ParamSpeed])
 		}
 		if p[ParamOrbit] != "" {
 			s += fmt.Sprintf(", orbit %s for spacing", p[ParamOrbit])
 		}
 		if p[ParamFinalSpeed] != "" {
-			s += ", for spacing reduce to final approach speed"
+			s += ", " + why + "reduce to final approach speed"
 		}
 		if p[ParamDelay] != "" {
 			s += fmt.Sprintf(", expect %s minutes delay", p[ParamDelay])
@@ -1208,6 +1216,24 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 		p[ParamDelay] = fmt.Sprint(min)
 	}
 	return Say(Transmission{Position: PosApproach, Callsign: cs, Intent: IntentSequence, Params: p})
+}
+
+// ParamSpacingTold: "1", the arrival was told "for spacing" on this
+// approach already: a new number goes without it (SpacingTold).
+const ParamSpacingTold = "spacing_told"
+
+// SpacingTold is sequence call t without its "for spacing": the arrival
+// was told it on this approach already.
+func SpacingTold(t Transmission) Transmission {
+	if t.Intent != IntentSequence {
+		return t
+	}
+	p := map[string]string{ParamSpacingTold: "1"}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params = p
+	return Say(t)
 }
 
 // SequencedFinalSpeed has an arrival on the final slow to its final

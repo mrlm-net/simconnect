@@ -54,6 +54,9 @@ func (t BoundaryType) String() string {
 	return "unknown"
 }
 
+// IsClass reports an airspace class, B to E (the data has no A, F or G).
+func (t BoundaryType) IsClass() bool { return t >= ClassB && t <= ClassE }
+
 // AltType is what a limit is measured from.
 type AltType int
 
@@ -144,6 +147,11 @@ func (a *Airspace) Broken() bool {
 	}
 	return true
 }
+
+// NoLimits reports a record with both limits 0: 2,020 records, 1,890 of
+// them Broken. Skipped, not taken as surface to unlimited: they give no
+// vertical extent (Store.Containing, ClassAt, Route).
+func (a *Airspace) NoLimits() bool { return a.MinAlt == 0 && a.MaxAlt == 0 }
 
 // Floor is the lower limit in metres MSL over ground at groundM metres
 // MSL; an unknown type counts as MSL.

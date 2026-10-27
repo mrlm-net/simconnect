@@ -582,6 +582,27 @@ const (
 	circuitFinalCrossM = 500.0
 )
 
+// OnDownwind reports whether a VFR circuit arrival flies its downwind,
+// before its base turn: its downwind can still be extended, so it is not
+// fixed in the sequence however near it is (ApproachAircraft.Extendable).
+func (c *ArrivalController) OnDownwind() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if ci == nil || !c.flyingProc || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	thr, _ := ci.Point(LegRunway)
+	base, _ := ci.Point(LegBase)
+	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
+	return alongHeading(thr.Position, ci.heading, c.last.Position) > baseAlong &&
+		math.Abs(headingDiff(c.last.Heading, ci.heading+180)) < onDownwindDeg
+}
+
+// onDownwindDeg: within this of the reciprocal of the runway, a circuit
+// arrival flies its downwind.
+const onDownwindDeg = 45.0
+
 // CircuitFinal reports whether a VFR circuit arrival flying its circuit has
 // turned final towards the runway, not going round again: established for
 // its landing clearance, before the injected approach takes it over 0.5 NM

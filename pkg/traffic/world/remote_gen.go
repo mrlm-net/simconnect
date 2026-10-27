@@ -391,6 +391,12 @@ func (r *remoteArr) CircuitFinal() bool {
 	return o0
 }
 
+func (r *remoteArr) OnDownwind() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "OnDownwind", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) SetCircuitExtendMax(nm float64) {
 	r.c.dropped(r.c.call(r.t, "SetCircuitExtendMax", []any{nm}))
 }

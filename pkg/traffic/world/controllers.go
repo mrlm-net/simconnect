@@ -86,6 +86,7 @@ type arrivalCtl interface {
 	ProcedurePlan() []traffic.RoutePoint
 	ProcedureRoute() []airport.LatLon
 	CircuitFinal() bool
+	OnDownwind() bool
 	SetCircuitExtendMax(nm float64)
 	ProcedureCorners() []airport.LatLon
 	ReduceToFinalSpeed() (time.Duration, error)

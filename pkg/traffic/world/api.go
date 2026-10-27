@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/airspace"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -45,6 +46,11 @@ type Options struct {
 	// Airspace is the managed airports' control zone class for VFR rules
 	// (#570); zero: class D.
 	Airspace traffic.AirspaceClass
+	// Airspaces, when set, gives the class an aircraft is in from the real
+	// airspaces instead (#1257): B–E from the records, G outside them;
+	// Airspace is then unused. Open it with StorePreferNewerSet and
+	// StoreSkipBroken.
+	Airspaces *airspace.Store
 	// DataDir keeps the de-icing pads picked on the map (deicing.json), the
 	// local model rules (model-rules.json) and the review overlays
 	// (review/*.geojson); "": the working directory.

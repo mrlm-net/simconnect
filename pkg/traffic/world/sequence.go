@@ -385,6 +385,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		}
 		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != ""); say {
 			tx := traffic.Sequenced(e.Callsign, n, delay, a)
+			if n > 0 && q.spacingTold(e.Callsign) {
+				tx = traffic.SpacingTold(tx)
+			}
 			// A vector due now (a dog-leg from where it is) in the same call,
 			// not a second one right after (live, KLM868, #707). Left out
 			// when another vector went out while this call waited: that one
@@ -517,7 +520,11 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 		q.mu.Unlock()
 		q.cc.log.printf("%-6s sequence: closing on %s on the final, %s short of its spacing: final approach speed gains %s", e.Callsign, e.Leader, e.ShortBy.Round(time.Second), gain.Round(time.Second))
 		if gain > 0 {
-			tx := traffic.SequencedFinalSpeed(pos, e.Callsign, q.numberToSay(now, e.Callsign, e.Number))
+			n := q.numberToSay(now, e.Callsign, e.Number)
+			tx := traffic.SequencedFinalSpeed(pos, e.Callsign, n)
+			if n > 0 && q.spacingTold(e.Callsign) {
+				tx = traffic.SpacingTold(tx)
+			}
 			// Not said once it is going around (live, CSA814 told "number 2,
 			// reduce to final approach speed" 15 s into its go-around).
 			still := func() bool {
@@ -839,7 +846,7 @@ func (q *sequences) tick(now time.Time) {
 	// is the planned route, found from where the aircraft is (DistanceToGo).
 	fixesOf := map[string][]traffic.FixAhead{} // named fixes ahead: merge points (#788)
 	fed := map[string]bool{}
-	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed bool) {
+	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed, extendable bool) {
 		t, ok := threshold(icao, rwy)
 		if !ok {
 			return
@@ -854,7 +861,7 @@ func (q *sequences) tick(now time.Time) {
 		fed[cs] = true
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
-			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Fixes: fixesOf[cs]})
+			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Extendable: extendable, Fixes: fixesOf[cs]})
 	}
 	// Controlled arrivals, airborne.
 	q.cc.mu.Lock()
@@ -889,14 +896,15 @@ func (q *sequences) tick(now time.Time) {
 		// its nearest point put TST2 2 NM further out than it was.
 		if r := it.arr.ProcedureRoute(); len(r) > 0 {
 			fixesOf[v.Tail] = namedAhead(p, r, fixesAhead(fixes, r))
-			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, it.circuit != nil && q.fullCircuit(v.Tail))
+			full := it.circuit != nil && q.fullCircuit(v.Tail)
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, r, true, full, it.circuit != nil && !full && it.arr.OnDownwind())
 			continue
 		}
 		if v.State == "spawning" {
-			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false)
+			add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, remaining(p, route), false, false, false)
 			continue
 		}
-		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, nil, true, false)
+		add(it.ICAO, v.Runway, v.Tail, v.Model, p, kts, nil, true, false, false)
 	}
 	// Enroute arrivals, on their way to the STAR entry.
 	q.s.mu.Lock()
@@ -916,7 +924,7 @@ func (q *sequences) tick(now time.Time) {
 		}
 		for _, a := range pos {
 			if a.User && !a.OnGround {
-				add(p.ICAO, p.Runway, cs, p.Model, a.Position, a.GroundKts, nil, true, false)
+				add(p.ICAO, p.Runway, cs, p.Model, a.Position, a.GroundKts, nil, true, false, false)
 			}
 		}
 	} else if q.cc.core.prio.all()[playerTail] {
@@ -935,7 +943,7 @@ func (q *sequences) tick(now time.Time) {
 				}
 			}
 			if g, err := q.cc.graph(best); err == nil && best != "" {
-				add(best, q.cc.activeRunway(g, true), playerTail, a.Title, a.Position, a.GroundKts, nil, true, false)
+				add(best, q.cc.activeRunway(g, true), playerTail, a.Title, a.Position, a.GroundKts, nil, true, false, false)
 			}
 		}
 	}
@@ -967,7 +975,7 @@ func (q *sequences) tick(now time.Time) {
 			}
 		}
 		fixesOf[e.f.Callsign] = namedAhead(a.Position, remaining(a.Position, route), named)
-		add(e.f.Airport, rwy, e.f.Callsign, e.model, a.Position, a.GroundKts, route, false, false)
+		add(e.f.Airport, rwy, e.f.Callsign, e.model, a.Position, a.GroundKts, route, false, false, false)
 	}
 	// Other traffic arriving, respected: it keeps its slot.
 	if q.s.mgr.Options().Others == traffic.OtherRespect {
@@ -979,7 +987,7 @@ func (q *sequences) tick(now time.Time) {
 			rwy := q.cc.activeRunway(g, true)
 			for _, a := range q.s.mgr.Others(icao) {
 				if a.Phase == traffic.PhaseArriving {
-					add(icao, rwy, nameOf(a), a.Title, a.Position, a.GroundKts, nil, false, true)
+					add(icao, rwy, nameOf(a), a.Title, a.Position, a.GroundKts, nil, false, true, false)
 				}
 			}
 		}
@@ -1222,6 +1230,8 @@ type seqSaid struct {
 	number int
 	kts    float64
 	at     time.Time
+	// spacing: told "for spacing" on this approach (spacingTold).
+	spacing bool
 }
 
 // sequenceCall is what cs is told now of its number and speed kts (and
@@ -1240,11 +1250,24 @@ func (q *sequences) sequenceCall(now time.Time, cs string, number int, kts float
 	if kts == 0 {
 		kts = last.kts
 	}
-	q.seqSaid[cs] = seqSaid{number: number, kts: kts, at: now}
+	q.seqSaid[cs] = seqSaid{number: number, kts: kts, at: now, spacing: last.spacing}
 	if told {
 		return true, 0
 	}
 	return true, number
+}
+
+// spacingTold reports whether cs was told "for spacing" on this approach
+// already, and notes that it is now: the reason is said with its first
+// number only.
+func (q *sequences) spacingTold(cs string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	last := q.seqSaid[cs]
+	was := last.spacing
+	last.spacing = true
+	q.seqSaid[cs] = last
+	return was
 }
 
 // numberToSay is number when cs has not been told it yet (noting it), else 0.

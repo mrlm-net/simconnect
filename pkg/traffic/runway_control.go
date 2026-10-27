@@ -43,6 +43,9 @@ type RunwayUser struct {
 	// only then is it cleared to land, #486).
 	DistanceNM, GroundKts float64
 	Established           bool
+	// FinalKts: an arrival's approach speed (its profile), the speed it
+	// slows to for the last FinalSlowNM; 0 unknown.
+	FinalKts float64
 	// ClimbKts: a departure's climb speed (TAS), for the interval and the
 	// order behind a slower one on the same route; 0 unknown.
 	ClimbKts float64
@@ -180,6 +183,30 @@ func (r *RunwayController) landMargin(a *RunwayUser) time.Duration {
 
 // landingNominalKts: an arrival's speed on final when its own is unknown.
 const landingNominalKts = 140.0
+
+// FinalSlowNM: an arrival farther out than this still slows to its
+// approach speed (FinalKts) before it lands; inside, it flies its speed now.
+const FinalSlowNM = 4.0
+
+// LandsIn is how long an arrival on final (DistanceNM, GroundKts) takes to
+// land: its speed now down to FinalSlowNM, then its approach speed, at
+// least 100 kt each. At its speed now all the way it landed a minute
+// before it did, and departures waited for nothing (live, LKPR: CSA1080
+// 8 NM out at 180 kt, counted 3 minutes, landed in 4; CSA1911 lined up
+// behind the landing A320 told to hold position).
+func (u RunwayUser) LandsIn() time.Duration {
+	kts := math.Max(u.GroundKts, 100)
+	fin := u.FinalKts
+	if fin <= 0 {
+		fin = landingNominalKts
+	}
+	slow := kts
+	if u.DistanceNM > FinalSlowNM {
+		slow = math.Max(math.Min(kts, fin), 100)
+	}
+	h := math.Max(0, u.DistanceNM-FinalSlowNM)/kts + math.Min(u.DistanceNM, FinalSlowNM)/slow
+	return time.Duration(h * float64(time.Hour))
+}
 
 // lineUpGoSlack: a take-off with its line-up still to come is given this
 // much more: the spread of the line-up and the roll from it (offline LKPR:
@@ -382,7 +409,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				ourLinedUp = append(ourLinedUp, u)
 			}
 		case RunwayFinal:
-			t := u.DistanceNM / math.Max(u.GroundKts, 100) * 3600
+			t := u.LandsIn().Seconds()
 			if t < nextArr {
 				thenArr = nextArr
 				nextArr, nextArrName, nextArrUser = t, u.Callsign, u

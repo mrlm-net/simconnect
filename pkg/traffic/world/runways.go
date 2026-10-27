@@ -257,6 +257,7 @@ func (t *towers) tick(now time.Time) {
 				continue
 			}
 			u.Phase, u.Arrival, u.DistanceNM, u.GroundKts = traffic.RunwayFinal, true, d, v.GroundSpeed
+			u.FinalKts = traffic.ProfileFor(model).Approach.ApproachKts
 			// Established: its STAR and approach flown, on the final (#486);
 			// a circuit arrival once it has turned final.
 			u.Established = id != 0 && (len(it.arr.ProcedureRoute()) == 0 || it.arr.CircuitFinal())
@@ -560,7 +561,7 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 				case u.Callsign == b.arrival:
 					first = u
 				case u.Phase == traffic.RunwayFinal:
-					then = math.Min(then, u.DistanceNM/math.Max(u.GroundKts, 100)*3600)
+					then = math.Min(then, u.LandsIn().Seconds())
 				}
 			}
 			if first.Callsign == "" {
