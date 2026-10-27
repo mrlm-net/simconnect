@@ -80,7 +80,9 @@ type sequences struct {
 	depHeld map[string]heldCount
 	// slowed: the arrivals told a speed for spacing (absorb), given their
 	// normal speed back once the sequence no longer needs it (resumeSpeed).
-	slowed     map[string]float64 // the speed told (kt)
+	slowed map[string]float64 // the speed told (kt)
+	// slowedAt: when each was last told a slower speed (speedWait).
+	slowedAt   map[string]time.Time
 	inConflict func(a, b string) bool
 	// engaged: an aircraft in or just out of a conflict resolution gets no
 	// shortcut (#785).
@@ -144,6 +146,7 @@ func (q *sequences) rejoin(icao, tail string) {
 	delete(q.slowedFinal, tail)
 	delete(q.brokeOff, tail)
 	delete(q.slowed, tail)
+	delete(q.slowedAt, tail)
 	delete(q.circuitWide, tail)
 	delete(q.circuitFull, tail)
 	delete(q.seqSaid, tail) // a new approach: its number is told again
@@ -198,6 +201,24 @@ const (
 	absorbFrom  = 30 * time.Second
 	absorbEvery = 90 * time.Second
 )
+
+// speedCallEvery: an arrival told a slower speed is not told another for
+// this long; what its delay grows by meanwhile is taken in one cut after
+// (live, WZZ1042: 230, 210 and 180 kt within 3 minutes as the sequence
+// ahead of it changed; offline, 10 s short let most re-cuts through). Nor
+// is it given its normal speed back sooner, nor slowed again sooner after
+// that. One speedWaitShortBy or more short of its leader is slowed at once.
+const (
+	speedCallEvery   = 3 * time.Minute
+	speedWaitShortBy = time.Minute
+)
+
+// speedWait reports that an arrival slowed at last waits before the next
+// absorption: told a speed less than speedCallEvery ago, and not
+// speedWaitShortBy short of its leader.
+func speedWait(now, last time.Time, e traffic.SequenceEntry) bool {
+	return !last.IsZero() && now.Sub(last) < speedCallEvery && e.ShortBy < speedWaitShortBy
+}
 
 // absorb has the arrivals of a sequence on their STAR lose their delay:
 // speed, then a dog-leg; what is left waits for the hold (#392).
@@ -287,7 +308,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			every = circuitAbsorbEvery
 		}
 		q.mu.Lock()
-		recent := now.Sub(q.absorbed[e.Callsign]) < every
+		recent := now.Sub(q.absorbed[e.Callsign]) < every || speedWait(now, q.slowedAt[e.Callsign], e)
 		q.mu.Unlock()
 		if recent {
 			continue
@@ -317,6 +338,10 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if err == nil && a.SpeedKts > 0 {
 			if q.slowed == nil {
 				q.slowed = map[string]float64{}
+				q.slowedAt = map[string]time.Time{}
+			}
+			if was, ok := q.slowed[e.Callsign]; !ok || a.SpeedKts < was {
+				q.slowedAt[e.Callsign] = now
 			}
 			q.slowed[e.Callsign] = a.SpeedKts
 		}
@@ -1348,6 +1373,7 @@ func (q *sequences) forget(tail string) {
 	delete(q.refused, tail)
 	delete(q.slowedFinal, tail)
 	delete(q.slowed, tail)
+	delete(q.slowedAt, tail)
 	delete(q.circuitWide, tail)
 	delete(q.circuitFull, tail)
 	delete(q.brokeOff, tail)
@@ -1566,7 +1592,7 @@ func speedSpare(e, lead traffic.SequenceEntry, kts float64) bool {
 func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.SequenceEntry, seq []traffic.SequenceEntry) bool {
 	q.mu.Lock()
 	kts, slowed := q.slowed[e.Callsign]
-	recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery
+	recent := now.Sub(q.absorbed[e.Callsign]) < absorbEvery || speedWait(now, q.slowedAt[e.Callsign], e)
 	q.mu.Unlock()
 	// Not near the airport: there it slows for the approach soon anyway,
 	// and the spacing ahead still settles (the user, live: RYR1647 at 210
@@ -1595,6 +1621,7 @@ func (q *sequences) resumeSpeed(now time.Time, it *controlled, e traffic.Sequenc
 	q.mu.Lock()
 	delete(q.slowed, e.Callsign)
 	q.absorbed[e.Callsign] = now
+	q.slowedAt[e.Callsign] = now // a speed call: none again for speedCallEvery
 	q.mu.Unlock()
 	q.cc.log.printf("%-6s sequence: speed no longer needed, normal speed", e.Callsign)
 	it.call(traffic.PosApproach, prioApproach, func() { it.say(traffic.SpeedAssigned(e.Callsign, 0, 0)) })

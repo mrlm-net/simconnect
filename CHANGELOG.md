@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.128.1] - 2026-10-27
+
+### Fixed
+
+- Vectored arrivals had no heading to intercept with their approach clearance (the user, live, LKPR: "turn left heading 330, for base", then "cleared ILS approach" with no heading).
+  - The base no longer meets the final square. The last leg onto the final is an intercept 30° off the final course, 3 NM long, meeting the final 1 NM outside the old turn. That is within Doc 4444 8.9.3.6 (45° or less) and FAA 7110.65 5-9-2.
+  - The clearance comes as the arrival turns onto that leg, in one call with its position (Doc 4444 8.9.3.3, 12.4.2.2; FAA 7110.65 5-9-4 example order; CAP 413, the note before 6.26 and 6.26): "CSA1, 11 miles from touchdown, turn left heading 270 to intercept, cleared ILS approach runway 24, QNH 1013, report established". The crew reads back the heading and the clearance, not the position (`ParamFromTouchdown`, `ApproachClearance.FromTouchdownNM`).
+  - New exported constants: `InterceptMaxDeg`, `InterceptAngleDeg`, `InterceptLegNM`, `InterceptBeyondNM`.
+- "Fly heading 060, for spacing", then "turn left heading 330, for base" 17 s later (live, WZZ1042). A downwind extended by less than `MinDownwindVector` (30 s) of flight is not extended any more; speed takes the time.
+- Repeated speed reductions within minutes (live, WZZ1042: 230, 210 and 180 kt). An arrival told a slower speed is not told another for 3 minutes, nor given its normal speed back sooner, nor slowed again sooner after that. Only one a minute or more short of its leader is slowed at once. In the offline evening bed, "resume normal speed" then a new cut within 4 minutes went from 12 to 0.
+
 ## [0.128.0] - 2026-10-27
 
 ### Added

@@ -3987,6 +3987,11 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 				h = math.Round((h+mv)/traffic.HeadingStepDeg)*traffic.HeadingStepDeg - mv // as said, in 5° steps
 				if it.arr.InterceptOnHeading(h) {
 					ac.Intercept, ac.Turn = traffic.HeadingSaid(h, mv), traffic.TurnTo(ev.arr.Heading, h)
+					if g, err := it.cc.graph(it.ICAO); err == nil {
+						if _, end, ok := g.Layout.RunwayEnd(it.view.Runway); ok {
+							ac.FromTouchdownNM = int(math.Round(calc.HaversineNM(ev.arr.Position.Lat, ev.arr.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)))
+						}
+					}
 				}
 			}
 			it.say(traffic.ClearedApproachTo(it.Tail, ac))

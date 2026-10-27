@@ -33,6 +33,10 @@ const (
 	// MinDogLegOut: a vector off the STAR flown for less than this before
 	// the turn back is not given (live, OKBZM told to resume 12 s after it).
 	MinDogLegOut = 30 * time.Second
+	// MinDownwindVector: a downwind extended for less than this flown
+	// before the turn for base is not extended (the heading off the STAR
+	// and the base turn would come seconds apart); speed takes it.
+	MinDownwindVector = 30 * time.Second
 	// SecondDogLegFrom: a second dog-leg on one approach only for this much
 	// time or more still to lose; less is left to speed.
 	SecondDogLegFrom = 2 * time.Minute
@@ -251,10 +255,18 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	// OKCMB's met at the downwind's start).
 	if a.ExtraNM > 0 && len(out) > 0 {
 		x := math.Min(a.ExtraNM/2, MaxStretchNM/2-c.tromboneNM)
+		// A first extension flown for less than MinDownwindVector is no
+		// vector: speed takes it (live, WZZ1042 "fly heading 060, for
+		// spacing", 17 s later "turn left heading 330, for base").
+		short := c.tromboneNM == 0 && x < math.Max(a.SpeedKts, speed)*MinDownwindVector.Hours()
 		if x > 0.2 {
 			ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x)
 			if ok && withinNM > 0 && cum[min(f+1, len(cum)-1)] > withinNM+downwindMeetSlackNM {
 				ok = false
+			}
+			if ok && short {
+				a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+				a.ExtraNM, ok = 0, false
 			}
 			if ok {
 				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
@@ -384,8 +396,11 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		}
 	}
 	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), out...), wps[final:]...)
-	noClimb(plain, c.climbCap())
 	plainNames := append(outNames, names[final:]...)
+	if baseAt >= 0 {
+		plain, plainNames = withIntercept(plain, plainNames)
+	}
+	noClimb(plain, c.climbCap())
 	out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 	extra := a.ExtraNM
 	if apexAt >= 0 && a.ExtraNM > 0 {
@@ -442,6 +457,63 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	}
 	c.note(fmt.Sprintf("absorbing %s: %s", delay.Round(time.Second), a), nil)
 	return a, nil
+}
+
+// A base leg on vectors that would meet the final at more than
+// InterceptMaxDeg (square to it: live, LKPR, every vectored arrival turned
+// 90° onto the localizer, its clearance said with no heading) ends in an
+// intercept leg instead: InterceptLegNM at InterceptAngleDeg to the final
+// course, meeting it InterceptBeyondNM outside the align point. The final
+// vector should give an intercept of 45° or less (Doc 4444 8.9.3.6); it is
+// said with the approach clearance (FAA 7110.65 5-9-4: position, heading,
+// clearance in one call; CAP 413, the note before 6.26: the phrases may be combined).
+const (
+	InterceptMaxDeg   = 45.0
+	InterceptAngleDeg = 30.0
+	InterceptLegNM    = 3.0
+	InterceptBeyondNM = 1.0
+	interceptRoomNM   = 1.0 // the base corner at least this farther out than the leg's start
+)
+
+// withIntercept gives plain (…, base corner, the final's points, align,
+// join) an intercept leg before the corner where its final begins when the
+// leg into that corner meets the final course at more than
+// InterceptMaxDeg; plain unchanged otherwise.
+func withIntercept(plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) ([]types.SIMCONNECT_DATA_WAYPOINT, []string) {
+	m := len(plain)
+	if m < 3 || len(names) != m {
+		return plain, names
+	}
+	ll := func(w types.SIMCONNECT_DATA_WAYPOINT) airport.LatLon {
+		return airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+	}
+	leg := func(i int) float64 { // corner i to i+1
+		a, b := ll(plain[i]), ll(plain[i+1])
+		return calc.BearingDegrees(a.Lat, a.Lon, b.Lat, b.Lon)
+	}
+	course, f := leg(m-2), m-2 // the final: the align point to the join
+	for f > 0 && math.Abs(headingDiff(leg(f-1), course)) < finalAlignedDeg {
+		f--
+	}
+	if f < 1 {
+		return plain, names
+	}
+	b, a := ll(plain[f-1]), ll(plain[f])
+	d := headingDiff(course, calc.BearingDegrees(b.Lat, b.Lon, a.Lat, a.Lon))
+	if math.Abs(d) <= InterceptMaxDeg {
+		return plain, names
+	}
+	hdg := course + math.Copysign(InterceptAngleDeg, d) // from the side it comes from
+	meet := offsetHeading(a, course+180, InterceptBeyondNM*1852)
+	start := offsetHeading(meet, hdg+180, InterceptLegNM*1852)
+	if calc.HaversineNM(b.Lat, b.Lon, meet.Lat, meet.Lon) < InterceptLegNM+interceptRoomNM {
+		return plain, names // no room for it: the base as it is
+	}
+	al := plain[f]
+	legs := []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(start, al.Altitude, al.KtsSpeed), procedureWaypoint(meet, al.Altitude, al.KtsSpeed)}
+	out := append(append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), plain[:f]...), legs...), plain[f:]...)
+	outNames := append(append(append([]string(nil), names[:f]...), "", ""), names[f:]...)
+	return out, outNames
 }
 
 // downwindMeetSlackNM: a downwind extended for spacing joins the final at
@@ -711,6 +783,11 @@ func (c *ArrivalController) finalTurn() int {
 	}
 	course, at := leg(n-3), n-3
 	for at > 0 && math.Abs(headingDiff(leg(at-1), course)) < finalAlignedDeg {
+		at--
+	}
+	// On vectors an intercept leg (withIntercept) is the turn onto the
+	// final: the clearance comes with the heading onto it.
+	if c.vectored && at > 0 && math.Abs(headingDiff(leg(at-1), course)) <= InterceptMaxDeg {
 		at--
 	}
 	return at
