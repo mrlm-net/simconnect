@@ -144,7 +144,10 @@ func (c *ArrivalController) InterceptHeading() (float64, bool) {
 	if !c.vectored || n < 3 {
 		return 0, false
 	}
-	a, b := c.corners[n-3], c.corners[n-2]
+	// The leg onto the final: the intercept leg (withIntercept) where
+	// there is one, the leg into the align point otherwise.
+	at := c.finalTurn()
+	a, b := c.corners[at], c.corners[at+1]
 	return calc.BearingDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude), true
 }
 

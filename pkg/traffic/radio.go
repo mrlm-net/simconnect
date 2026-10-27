@@ -194,14 +194,15 @@ const (
 	ParamFor        = "for"         // a vector's reason: "spacing", "base"
 	// A vector said with another call (WithVector): its words and their
 	// readback, after the call's own.
-	ParamAlsoSaid     = "alsoSaid"
-	ParamAlsoReadback = "alsoReadback"
-	ParamIntercept    = "intercept" // the heading to intercept the final, three digits
-	ParamRush         = "rush"      // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
-	ParamNoDelay      = "no_delay"  // a take-off with traffic on final: its distance in whole NM, "5"
-	ParamCircuit      = "circuit"   // a position in the circuit as said: "left downwind", "base", "final"
-	ParamInstr        = "instr"     // an approach instruction or delay as said: "extend downwind", "orbit right"
-	ParamType         = "type"      // an aircraft type as said: "Cessna 172"
+	ParamAlsoSaid      = "alsoSaid"
+	ParamAlsoReadback  = "alsoReadback"
+	ParamIntercept     = "intercept"      // the heading to intercept the final, three digits
+	ParamFromTouchdown = "from_touchdown" // on vectors: its distance from touchdown, NM (approach clearance)
+	ParamRush          = "rush"           // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
+	ParamNoDelay       = "no_delay"       // a take-off with traffic on final: its distance in whole NM, "5"
+	ParamCircuit       = "circuit"        // a position in the circuit as said: "left downwind", "base", "final"
+	ParamInstr         = "instr"          // an approach instruction or delay as said: "extend downwind", "orbit right"
+	ParamType          = "type"           // an aircraft type as said: "Cessna 172"
 )
 
 // Transmission is one message on the radio.
@@ -365,6 +366,12 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		// the approach to expect (CAP 413 6.9).
 		return cs + ", " + arrivalClearance(p)
 	case IntentApproachClearance:
+		// On vectors its position first (Doc 4444 8.9.3.3: at least once
+		// before the final; CAP 413 6.26 "12 miles from touchdown turn right
+		// heading 240"); not read back.
+		if n := p[ParamFromTouchdown]; n != "" {
+			return cs + ", " + n + " miles from touchdown, " + approachClearance(p)
+		}
 		return cs + ", " + approachClearance(p)
 	case IntentStartUp:
 		return cs + ", start up approved" // Doc 4444 12.3.4.3 c
@@ -915,6 +922,9 @@ type ApproachClearance struct {
 	// Intercept and Turn: on vectors, the heading to intercept the final
 	// (HeadingSaid) and the way to turn to it, said first (#661).
 	Intercept, Turn string
+	// FromTouchdownNM: on vectors, its distance from touchdown said
+	// before them (0 none).
+	FromTouchdownNM int
 }
 
 // ClearedApproachTo clears an approach with its QNH, asking for the
@@ -924,6 +934,9 @@ func ClearedApproachTo(cs string, a ApproachClearance) Transmission {
 	p := map[string]string{ParamApproach: a.Kind, ParamRunway: a.Runway, ParamQNH: a.QNH}
 	if a.Intercept != "" {
 		p[ParamIntercept], p[ParamTurn] = a.Intercept, a.Turn
+		if a.FromTouchdownNM > 1 {
+			p[ParamFromTouchdown] = strconv.Itoa(a.FromTouchdownNM)
+		}
 	}
 	if a.ReportEstablished {
 		p[ParamReport] = "established"
