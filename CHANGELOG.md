@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.128.0] - 2026-10-27
+
+### Added
+
+- `pkg/airspace` reads the simulator's airspace outlines from the simconnect-data dump (`airspaces/`, 56,419 records worldwide). No simulator is needed, and it builds for WASM. See [Airspaces](docs/airspace.md).
+  - `Airspace` is the raw record, field for field: `BoundaryType`, `AltType`, `VectorType`, `DataSet()`, `Floor`/`Ceiling` with AGL limits over a given ground elevation, and `Broken()`.
+  - `Store` (`Open`, `Area`, `At`) picks the 10° tiles by the index's boxes and decodes each tile once. Boxes wider than 90° of longitude (the airspaces reaching the antimeridian) match every longitude.
+  - Two cleanup options, off by default: `StoreSkipBroken` and `StorePreferNewerSet`. The second drops a record that a newer data set repeats with the same type and box.
+  - `Shape` flattens the outlines: arcs every 2°, circles into 72 sides, longitudes running on past ±180. `Inside` and `Contains` (floor to ceiling) test a point.
+  - Offline tests run on the real tiles: LKPR is inside Ruzyne CTR (class D, GND–1,066.8 m MSL), once per data set, or once with the newer set preferred. Also tested: a 926 m restricted circle, the antimeridian boxes, and every Czech outline against its box.
+  - All 56,419 records build an outline except the 1,890 broken ones.
+
 ## [0.127.1] - 2026-10-27
 
 ### Fixed
