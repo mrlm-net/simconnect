@@ -40,6 +40,7 @@ Use `devstack:mrlm` agents, skills, and commands for all development tasks. Prim
 - `pkg/camera` — add-on camera (MSFS 2024): poses, shots, drone moves, Director
 - `pkg/airport` — ground layout, taxi graph, routing, stands, SIDs/STARs/approaches, limits, Locate/Tracker; `testdata/` LKPR capture
 - `pkg/nav` — fixes, airway crawl and routing, weather, runway in use, ATIS, flight plans and .pln, performance
+- `pkg/airspace` — airspace outlines from simconnect-data airspaces/ (no SimConnect): raw records, Store by 10° tile and box, Shape (arcs/circles flattened, Contains floor–ceiling)
 - `pkg/traffic` — AI aircraft: Fleet, taxi/arrival controllers, injected motion, pushback and tugs, service vehicles, schedules, TrafficManager, separation, sequencing, holds, TCAS, radio and phraseology, profiles
 - `pkg/traffic/world` — the airport map's traffic engine as a package (#710): New/Run/RunOn/Feed, Snapshot, Do/Get, real traffic, director/actuator link; `world/gen` — `remote.js`, the `go generate` script that writes `remote_gen.go`; `world/scenes` — built-in scripted camera scenes (cast, cues, shots) as embedded JSON: departure, arrival, mixed
 - `examples/` — one standalone `main` per folder; `spike-*` are throwaway experiments

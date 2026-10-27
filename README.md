@@ -155,6 +155,7 @@ See [`cmd/simvar-cli`](cmd/simvar-cli) for a quick start and [`docs/simvar-cli.m
 - **[`pkg/airport`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/airport)** — Airport ground layout, taxi graph, routing, GeoJSON
 - **[`pkg/traffic`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/traffic)** — AI aircraft: departures, arrivals, injected motion, traffic picture, schedules, traffic manager; `pkg/traffic/world` is the airport map's traffic engine as a package
 - **[`pkg/nav`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/nav)** — Airways, routing, weather, runway in use, ATIS, flight plans
+- **[`pkg/airspace`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/airspace)** — The simulator's airspace outlines from a simconnect-data dump: raw records, tiles by box, point-in-airspace shapes
 - **[`pkg/camera`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/camera)** — MSFS 2024 add-on camera: poses, shots, a Director
 - **[`pkg/avionics`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/avionics)** — User aircraft radios: COM frequencies, swap, transponder code
 - **[`pkg/systems`](https://pkg.go.dev/github.com/mrlm-net/simconnect/pkg/systems)** — User aircraft systems through a default profile and per-model overrides
