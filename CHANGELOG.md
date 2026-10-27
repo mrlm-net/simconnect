@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.128.2] - 2026-10-27
+
+### Fixed
+
+- Approach clearance given on the downwind (the user, live, LKPR: OKZSU "fly heading 060, for spacing", then 31 s later "cleared visual approach runway 24", its turn in never said). Since 0.128.1, a base turn already within 45° of the final counted as the turn onto the final, and the clearance came `interceptLeadNM` (3 NM) before it, still on the downwind. Turning in off a downwind (more than a right angle), the clearance now comes 1.5 NM before the turn. On vectors there is no visual approach: the ILS clearance carries the heading to intercept.
+- A departure at an intersection was told to line up behind one starting its roll from the threshold, then sat lined up while the next arrival came in (live, OKSZG at B behind CSA813: it waited 31 s for CSA813 to pass B and took 75 s to line up; CSA236 was sent around, "traffic on the runway"). The room before the arrival now counts the time the one rolling takes to pass this one's way in (`RollPastIn`, at `RollAccelMS2`).
+- "Behind the departing Cirrus SR22, line up and wait runway 24, behind" to TVS737 at the threshold, with the Cirrus rolling from B (the user, live). Doc 4444 12.2.7: the aircraft in a condition must be the first to pass in front. One that entered down the runway from this one's way in, or has rolled past it, never does, so the line-up is plain: "line up and wait" (`RunwayClearances.LineUpAhead`).
+- After a go-around, an IFR arrival on the map showed the go-around's turning points (UPWIND, CROSSWIND, DOWNWIND, BASE) as fixes (live, DLH792). It is on vectors: only its fixes are shown. A VFR circuit arrival still shows its circuit. `circuitPoint` is exported as `CircuitPointName`.
+
 ## [0.128.1] - 2026-10-27
 
 ### Fixed

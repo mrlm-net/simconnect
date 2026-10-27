@@ -748,8 +748,25 @@ func (c *ArrivalController) TurningFinal() bool {
 	if k > at {
 		return true
 	}
-	w := c.corners[at]
-	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= interceptLeadNM && c.headingFor(k)
+	// Turning in off a downwind (more than a right angle), the clearance
+	// and its heading come at the turn, not interceptLeadNM before it on
+	// the downwind (live, OKZSU cleared 31 s after "fly heading 060, for
+	// spacing").
+	w, lead := c.corners[at], interceptLeadNM
+	if at > 0 && math.Abs(headingDiff(c.legBearing(at-1), c.legBearing(at))) > 90 {
+		lead = interceptAtTurnNM
+	}
+	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= lead && c.headingFor(k)
+}
+
+// interceptAtTurnNM: turning in off a downwind, the approach clearance
+// comes this far before the turn (headingFor's "at it").
+const interceptAtTurnNM = 1.5
+
+// legBearing is the bearing of the leg from corner i to i+1. c.mu held.
+func (c *ArrivalController) legBearing(i int) float64 {
+	a, b := c.corners[i], c.corners[i+1]
+	return calc.BearingDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude)
 }
 
 // headingFor reports whether the aircraft flies toward corner k (within

@@ -73,7 +73,7 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 			// A go-around circuit's own turning points are no fixes: radar
 			// gives the heading for base (live, LKPR: KLM1683 "resume own
 			// navigation direct BASE").
-			if circuitPoint(names[j]) {
+			if CircuitPointName(names[j]) {
 				turn.For = "base"
 			} else {
 				turn.Fix = names[j]
@@ -84,9 +84,9 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 	return append(out, turn)
 }
 
-// circuitPoint reports whether a route point's name is a circuit's own
+// CircuitPointName reports whether a route point's name is a circuit's own
 // turning point (CircuitFixes), not a published fix.
-func circuitPoint(name string) bool {
+func CircuitPointName(name string) bool {
 	switch name {
 	case "UPWIND", "CROSSWIND", "DOWNWIND", "BASE", "FINAL":
 		return true
