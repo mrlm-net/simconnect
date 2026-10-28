@@ -68,6 +68,12 @@ func (r *remoteDep) ClearUpTo(node airport.NodeID) error {
 	return err
 }
 
+func (r *remoteDep) TaxiInForce(node airport.NodeID) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "TaxiInForce", []any{node}, &o0))
+	return o0
+}
+
 func (r *remoteDep) Cancel() error {
 	err := r.c.call(r.t, "Cancel", []any{})
 	return err
@@ -251,6 +257,12 @@ func (r *remoteArr) ClearToTaxi() {
 func (r *remoteArr) ClearUpTo(node airport.NodeID) error {
 	err := r.c.call(r.t, "ClearUpTo", []any{node})
 	return err
+}
+
+func (r *remoteArr) TaxiInForce(node airport.NodeID) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "TaxiInForce", []any{node}, &o0))
+	return o0
 }
 
 func (r *remoteArr) DirectToJoin() error {

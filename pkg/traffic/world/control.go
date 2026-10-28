@@ -180,6 +180,7 @@ type controlled struct {
 	sayMu     sync.Mutex
 	lastATC   string
 	lastATCAt time.Time
+	taxiSaid  string // the last taxi clearance said to it (#1269)
 	visual    bool // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
@@ -2472,6 +2473,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 			it.mu.Unlock()
 			tlog.printf("%-6s under your control", it.Tail)
 		}
+		// The taxi clearance it is following already: not said again.
+		if (action == "taxi" || action == "upto") && it.taxiInForce(action, node) {
+			tlog.printf("%-6s %s: clearance %s in force already, not said again", it.Tail, it.Kind, clr)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		// Pushback with the start-up in one (?startup=1).
 		if action == "pushback" && r.URL.Query().Get("startup") == "1" {
 			action = "pushstart"
@@ -4299,7 +4306,37 @@ func (it *controlled) say(t traffic.Transmission) {
 			return
 		}
 	}
+	if t.Intent == traffic.IntentTaxi || t.Intent == traffic.IntentTaxiLimit {
+		it.sayMu.Lock()
+		it.taxiSaid = t.Text
+		it.sayMu.Unlock()
+	}
 	it.cc.radio.Transmit(it.ICAO, t)
+}
+
+// taxiInForce reports a taxi clearance (action "taxi", or "upto" node) that
+// is the one in force word for word, its limit the same: said again it is
+// only noise on the frequency, and a readback (#1269). A changed route,
+// runway or limit goes out, and so does a taxi after a hold position.
+func (it *controlled) taxiInForce(action string, node airport.NodeID) bool {
+	n := node
+	if action == "taxi" {
+		n = -1
+	}
+	var same bool
+	switch {
+	case it.dep != nil:
+		same = it.dep.TaxiInForce(n)
+	case it.arr != nil:
+		same = it.arr.TaxiInForce(n)
+	}
+	if !same {
+		return false
+	}
+	it.sayMu.Lock()
+	said := it.taxiSaid
+	it.sayMu.Unlock()
+	return said != "" && it.phrase(action, node).Text == said
 }
 
 // sayTwiceWithin: the same ATC call to one aircraft this soon again is a

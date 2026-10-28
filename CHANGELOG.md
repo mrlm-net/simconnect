@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.130.1] - 2026-10-28
+
+### Fixed
+
+- A taxi clearance the same as the one in force (same route, runway and limit) is no longer said again, nor read back (#1269); it is logged and answered 204. A changed one, a hold position and a taxi after it still go out.
+
+### Added
+
+- `TaxiController.TaxiInForce` and `ArrivalController.TaxiInForce`: the taxi clearance in force having a given limit (none: -1).
+
 ## [0.130.0] - 2026-10-28
 
 ### Added
