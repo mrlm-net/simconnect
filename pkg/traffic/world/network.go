@@ -30,9 +30,14 @@ func positionOf(r *http.Request) string {
 
 // mayClear reports whether a client working position as may clear it: the
 // aircraft is on that position's frequency (approach also works departures).
+// On a station a player staffs (#1096), only that player: theirs in a
+// band-box, not the position's when another player works it.
 func mayClear(as string, it *controlled) bool {
 	if as == "" || as == "all" {
 		return true
+	}
+	if by := it.staffer(); by != "" {
+		return by == as
 	}
 	it.mu.Lock()
 	atc := it.atc

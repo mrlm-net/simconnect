@@ -44,6 +44,12 @@ The player gives clearances through the same calls as any host: `World.Clear(id,
 
 An aircraft taken over by hand (its manual toggle, or a clearance from the user off the staffed stations) has no station mode: silent.
 
+**Network play.** Each player staffs their own stations. `PUT /api/stations/staffed?as=tower` (or the `X-ATC-Position` header), or `World.SetStaffedBy("tower", list)` in Go, sets the stations of the player playing as `tower` and leaves the other players' as they are; an empty list gives that player's stations back to the AI. Each entry is kept with `By`, the player. Without `as` (the host), the list replaces everything, as before.
+
+- A player clears the aircraft on every station they staff, whatever position they play as: a tower player band-boxing ground gives the ground clearances too.
+- On a station a player staffs, only that player clears. The position's own client is refused there as well.
+- A single station staffed by one player (Ground North) wins over its whole position staffed by another (ground).
+
 ## One aircraft by hand
 
 `POST /api/control/{id}/manual?on=1` puts a single aircraft under the user's control; `?on=0` gives it back to the automatic controllers, and a request it is waiting on is answered. On the airport map this is the aircraft card's manual switch. In network play only the position working the aircraft may change it.
