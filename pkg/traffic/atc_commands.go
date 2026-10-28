@@ -40,6 +40,37 @@ func (d *groundDrive) holdPosition() {
 	d.updateHold()
 }
 
+// limitInForce reports the taxi clearance in force having limit node (< 0:
+// none): given again it would change nothing (#1269). A hold position is a
+// limit of its own, so a taxi after it is not the same.
+func (d *groundDrive) limitInForce(cleared, hasPending bool, pending, node airport.NodeID) bool {
+	switch {
+	case !cleared:
+		return false
+	case hasPending:
+		return node >= 0 && pending == node
+	case d.hasLimit:
+		return node >= 0 && d.limitNode == node
+	}
+	return node < 0
+}
+
+// TaxiInForce reports the departure cleared to taxi already, up to node
+// (< 0: to the runway, no limit): the same clearance again changes nothing.
+func (c *TaxiController) TaxiInForce(node airport.NodeID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.limitInForce(c.taxiCleared, c.hasPendingLimit, c.pendingLimit, node)
+}
+
+// TaxiInForce reports the arrival cleared to taxi in already, up to node
+// (< 0: to its stand), as TaxiController's.
+func (c *ArrivalController) TaxiInForce(node airport.NodeID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.limitInForce(c.cleared, c.hasPendingLimit, c.pendingLimit, node)
+}
+
 // HoldPosition stops a taxiing injected departure where it is ("hold
 // position"); ClearToTaxi or ClearUpTo lets it go on.
 func (c *TaxiController) HoldPosition() error {
