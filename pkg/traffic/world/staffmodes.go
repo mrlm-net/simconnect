@@ -2,6 +2,7 @@ package world
 
 import (
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -186,6 +187,55 @@ func (w *conflictWatch) staffedConflict(now time.Time, c traffic.Conflict, sugge
 		w.s.cc.log.printf("alert: %s and %s not resolved by the player in time: the safety net acts", c.A, c.B)
 	}
 	return others || due
+}
+
+// arrivalSuggestion is what resolveArrivals would say first to cs, the
+// trailer of conflict c on its STAR ("" when it is not): its descent
+// stopped above the other well out, else its speed for spacing, as much
+// as the speed takes of the time to lose (the rest by vectors).
+func (w *conflictWatch) arrivalSuggestion(c traffic.Conflict, aircraft []traffic.TrackedAircraft, cs string) string {
+	_, trailer := w.trailerOf(c)
+	if trailer == nil || trailer.it.Tail != cs {
+		return ""
+	}
+	var me, them *traffic.TrackedAircraft
+	for i := range aircraft {
+		switch aircraft[i].Tail {
+		case cs:
+			me = &aircraft[i]
+		case other(c, cs):
+			them = &aircraft[i]
+		}
+	}
+	ta := w.s.cc.taOf(trailer.it.ICAO)
+	if me != nil && them != nil && trailer.e.DistanceToGoNM > arrivalLevelFromNM {
+		if level := math.Ceil((them.AltFt+arrivalLevelAboveFt)/500) * 500; me.AltFt >= level-200 {
+			return w.worded(trailer.it.ICAO, traffic.StopDescent(traffic.PosApproach, cs, level, them.Tail, ta))
+		}
+		if hold := math.Floor(me.AltFt/500) * 500; me.AltFt >= them.AltFt-arrivalLevelWithFt && hold >= arrivalDescendMinFt {
+			return w.worded(trailer.it.ICAO, traffic.StopDescent(traffic.PosApproach, cs, hold, them.Tail, ta))
+		}
+	}
+	kts := min(spacingKts(me), traffic.ProcedureSpeedKts)
+	floor := traffic.ProcedureApproachSpeedKts
+	if traffic.ProfileFor(trailer.it.view.Model).Category == traffic.CategoryTurboprop {
+		floor = min(floor, traffic.MinProcedureSpeedTurbopropKts)
+	}
+	a := traffic.PlanAbsorption(spacingDelay(c, me), spacingWithinNM(c, me), kts, floor)
+	if a.SpeedKts <= 0 || a.SpeedKts >= kts {
+		return ""
+	}
+	return w.worded(trailer.it.ICAO, traffic.Sequenced(cs, trailer.e.Number, 0, traffic.Absorption{SpeedKts: a.SpeedKts}))
+}
+
+// worded is tx's text as the radio would say it at icao (its callsign
+// spoken, the airport's phraseology), as World.Phrase gives it.
+func (w *conflictWatch) worded(icao string, tx traffic.Transmission) string {
+	if w.s.cc.radio == nil {
+		return tx.Text
+	}
+	said, _, _ := w.s.cc.radio.Worded(icao, tx)
+	return said.Text
 }
 
 // mayAct reports whether the AI may give it a conflict instruction: not

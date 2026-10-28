@@ -86,22 +86,31 @@ func aiTold(h *Harness, cs string) []traffic.Transmission {
 
 // TestStaffedAssist: two arrivals of a staffed approach (assist) in a
 // conflict get nothing from the AI; the player has an alert while the
-// conflict is predicted (#1096). Before, the conflict watch slowed the
-// second one itself on the player's frequency ("number 2, for spacing
-// reduce speed to 220 knots").
+// conflict is predicted, with what the AI would say to the one behind (a
+// stop of its descent or a speed for spacing) as its suggestion (#1096).
+// Before, the conflict watch slowed the second one itself on the player's
+// frequency ("number 2, for spacing reduce speed to 220 knots").
 func TestStaffedAssist(t *testing.T) {
 	h, pair := staffedPair(t, "assist")
-	alerted := false
+	alerted, suggested := false, ""
 	for range 10 * 6 {
 		h.Advance(10 * time.Second)
 		for _, a := range h.World.Alerts() {
 			if a.Staffed[pair[0]] == world.ModeAssist && a.Staffed[pair[1]] == world.ModeAssist && a.Deadline.IsZero() && !a.SafetyNet {
 				alerted = true
+				if a.Suggested != "" {
+					suggested = a.Suggested
+				}
 			}
 		}
 	}
-	if !alerted {
+	switch {
+	case !alerted:
 		t.Error("no alert for the pair in 10 minutes")
+	case suggested == "":
+		t.Error("an alert for the pair without a suggestion")
+	default:
+		t.Logf("suggested: %q", suggested)
 	}
 	for _, cs := range pair {
 		for _, tx := range aiTold(h, cs) {

@@ -84,7 +84,28 @@ type AirportRef struct {
 	Position   airport.LatLon `json:"position"`
 	AltM       float64        `json:"altM,omitempty"` // elevation in metres
 	DistanceNM float64        `json:"distanceNM"`
+	// Kind is what an offline airport list (airports.json in
+	// simconnect-data) says the airport is: AirportKindTowered, …; "" from
+	// the simulator, which does not tell.
+	Kind string `json:"kind,omitempty"`
+	// SelfAnnounce: the list gives the airport a CTAF, UNICOM or MULTICOM,
+	// where pilots announce themselves.
+	SelfAnnounce bool `json:"selfAnnounce,omitempty"`
+	// GroundLayout: whether the list's airport has taxi paths and
+	// parking; nil not told.
+	GroundLayout *bool `json:"groundLayout,omitempty"`
 }
+
+// The kinds of airport in an offline airport list (AirportRef.Kind).
+const (
+	AirportKindTowered  = "towered"  // a tower frequency
+	AirportKindIFR      = "ifr"      // IFR procedures or an approach/departure frequency, no tower
+	AirportKindAirfield = "airfield" // a general aviation field
+	AirportKindShort    = "short"    // only short runways
+	AirportKindWater    = "water"    // only water runways
+	AirportKindNoRunway = "norunway" // no runway: heliports and the like
+	AirportKindUnknown  = "unknown"
+)
 
 // Phase is what an aircraft in the picture is doing.
 type Phase string

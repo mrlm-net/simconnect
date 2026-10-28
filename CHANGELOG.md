@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.137.0] - 2026-10-29
+
+### Fixed
+
+- The ATC game's flights go on under automatic control when the game is over. Before, they stayed the player's: live, the game was on for 7 s and its RYR232 asked for its push at B15 for an hour and a half, nobody to answer (#1292).
+
+- Departures take the main entrance at the runway's end first (LKPR 24: A); the others side by side with it (Z) are only the overflow once its line is full, three heading for it (#1291). Since v0.111.0 the shorter line won, each departure heading for an entrance counting as 250 m more taxi: from the C stands Z is the shorter taxi, so with one departure heading for A the next ones all went to Z (live: TVS1517 and TVS322 via H1, H, Z with only BAW1334 for A). Before v0.111.0 every departure used A.
+
+- A push no longer waits for a neighbour parked on its stand unless its wing would sweep the neighbour's fuselage (#1289). At tight stands the 3 m margin held it until the neighbour's own push, while the neighbour's tug and fuel truck gave way to the held push: neither ever moved (live, LKPR C26 and C27: DLH1560 and TVS1517 for over 40 minutes, the fuel truck removed for not leaving). Pushed, the wing passed 14.6 m clear of the neighbour's fuselage.
+
+- MSFS 2024's water runway surfaces (water, pond, lake, river, waste water) read as `water`, not unknown (#1290), so seaplane runways are no longer taken for land runways.
+
+### Added
+
+- `World.LoadAirportsFile(path, kinds...)` holds only the airports of those kinds (#1290), and `world.AirportDataDir(root, ref)` gives an airport's data folder in simconnect-data (`<ICAO>/`, or `fields/<kind>/<ident>/`). `traffic.AirportRef.Kind` carries the list's `kind` (`towered`, `ifr`, `airfield`, `short`, `water`, `norunway`, `unknown`), with `traffic.AirportKind*` constants, and `SelfAnnounce` and `GroundLayout` its flags. Without kinds, everything is held, as before.
+
+- `engine.WithDispatchEvent()` (#855 E6): the connection is opened with a Win32 event SimConnect sets when a message waits, and the dispatcher waits on it instead of polling. A message is taken as it comes, not after a backed-off sleep of up to 50 ms, and an idle connection costs a poll every 50 ms. Off by default until checked live. With the manager: `manager.WithEngineOptions(engine.WithDispatchEvent())`.
+
+- Assist suggestions for arrivals (#1096): an alert for two arrivals on their STARs now suggests what the AI would say first to the one landing later: a stop of its descent above the other well out, else a speed for spacing ("number 2, for spacing reduce speed to 180 knots"). Before, an alert for arrivals came without a suggestion. Suggestions are worded in the airport's phraseology, as `World.Phrase` words a clearance.
+
 ## [0.136.0] - 2026-10-28
 
 ### Added

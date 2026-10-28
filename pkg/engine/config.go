@@ -61,6 +61,17 @@ func WithCallTrace() Option {
 	}
 }
 
+// WithDispatchEvent opens the connection with a Win32 event SimConnect
+// sets when a message waits, and the dispatcher waits on it instead of
+// polling (#855 E6): a message is taken as it comes, and an idle
+// connection costs no polls. Off by default: polled every millisecond
+// while messages flow, backed off to 50 ms when idle.
+func WithDispatchEvent() Option {
+	return func(c *Config) {
+		c.DispatchEvent = true
+	}
+}
+
 func WithContext(ctx context.Context) Option {
 	return func(c *Config) {
 		c.Context = ctx

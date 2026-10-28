@@ -94,6 +94,50 @@ func TestAirportListRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAirportListKinds: LoadAirportsFile with kinds holds only those
+// kinds of airport (an entry without one counts as every kind), and
+// AirportDataDir finds each kind's data folder as simconnect-data lays it
+// out.
+func TestAirportListKinds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), dumpAirportList)
+	list := `[{"icao":"LKPR","kind":"towered","selfAnnounce":true,"groundLayout":true},{"icao":"00R","kind":"towered"},{"icao":"LKTB"},{"icao":"KVUO","kind":"ifr"},{"icao":"00NK","kind":"water"},{"icao":"00AK","kind":"airfield"}]`
+	if err := os.WriteFile(path, []byte(list), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := New(Options{DataDir: t.TempDir()})
+	if n, err := w.LoadAirportsFile(path, traffic.AirportKindTowered, traffic.AirportKindIFR); err != nil || n != 4 {
+		t.Fatalf("towered and ifr: %d %v, want 4 (LKPR, 00R, LKTB, KVUO)", n, err)
+	}
+	w.st.mu.Lock()
+	_, water := w.st.airportRefs["00NK"]
+	lkpr := w.st.airportRefs["LKPR"]
+	w.st.mu.Unlock()
+	if water {
+		t.Error("a water airport held loading towered and ifr only")
+	}
+	if !lkpr.SelfAnnounce || lkpr.GroundLayout == nil || !*lkpr.GroundLayout {
+		t.Errorf("LKPR's flags not read: %+v", lkpr)
+	}
+	if n, err := w.LoadAirportsFile(path); err != nil || n != 6 {
+		t.Fatalf("all: %d %v, want 6", n, err)
+	}
+	for _, c := range []struct {
+		a    traffic.AirportRef
+		want string
+	}{
+		{traffic.AirportRef{ICAO: "lkpr", Kind: "towered"}, filepath.Join("d", "LKPR")},
+		{traffic.AirportRef{ICAO: "LKTB"}, filepath.Join("d", "LKTB")},
+		{traffic.AirportRef{ICAO: "00R", Kind: "towered"}, filepath.Join("d", "fields", "towered", "00R")},
+		{traffic.AirportRef{ICAO: "KVUO", Kind: "ifr"}, filepath.Join("d", "fields", "ifr", "KVUO")},
+		{traffic.AirportRef{ICAO: "CEN5", Kind: "towered"}, filepath.Join("d", "fields", "towered", "CEN5")},
+		{traffic.AirportRef{ICAO: "00NK", Kind: "water"}, filepath.Join("d", "fields", "water", "00NK")},
+	} {
+		if got := AirportDataDir("d", c.a); got != c.want {
+			t.Errorf("%+v: %s, want %s", c.a, got, c.want)
+		}
+	}
+}
+
 // TestOfflineWeather: an airport's weather.json is the World's weather
 // with no simulator (Vector), kept over the simulator's; SetWeather(nil)
 // gives it back.

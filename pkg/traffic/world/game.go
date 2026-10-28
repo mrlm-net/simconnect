@@ -61,6 +61,7 @@ type game struct {
 	waitFrom  map[int]time.Time    // waiting for a clearance since
 	waitPaid  map[int]time.Time    // last wait penalty
 	conflicts map[string]time.Time // pair → last counted
+	spawned   []*controlled        // the game's flights, back to automatic control at game over
 }
 
 func (g *game) event(points int, format string, args ...any) {
@@ -129,6 +130,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)
 		} else {
 			g.Spawned++
+			g.spawned = append(g.spawned, it)
 			it.mu.Lock()
 			what := "ready for pushback at " + it.view.Stand
 			if kind == "arrival" {
@@ -340,6 +342,14 @@ func registerGame(mux *http.ServeMux, st *state) {
 		} else if !req.On && g.On {
 			g.On = false
 			g.event(0, "game over: %d points, %d flights handled in %s", g.Score, g.Handled, cc.clock.Now().Sub(g.Started).Round(time.Second))
+			// Its flights go on under automatic control: none left waiting
+			// for a clearance nobody gives (live: RYR232 at B15 for 1 h 26 min).
+			for _, it := range g.spawned {
+				if !it.finished.Load() {
+					it.setManual(false)
+				}
+			}
+			g.spawned = nil
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

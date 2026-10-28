@@ -2261,16 +2261,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// Manual (?on=1) or automatic (?on=0): who gives its clearances. Back to
 		// automatic, a request still waiting is answered.
 		if r.PathValue("action") == "manual" {
-			on := r.URL.Query().Get("on") != "0"
-			it.gates.Store(on)
-			it.mu.Lock()
-			it.view.Manual, it.manualSet = on, on
-			req := it.request
-			it.mu.Unlock()
-			tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])
-			if !on && req != "" {
-				it.askGround(req)
-			}
+			it.setManual(r.URL.Query().Get("on") != "0")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
