@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.135.0] - 2026-10-28
+
+### Added
+
+- Staffed station modes (#1096 step 3): `StaffedStation.Mode` is acted on. On a staffed station, a predicted conflict is the player's:
+  - `assist` (the default): an alert with the AI's suggestion where it has one. `World.Alerts()` and `alerts` in `GET /api/separation` list them.
+  - `silent`: nothing.
+  - `safetynet`: an alert with a deadline. Still predicted when it passes, the AI resolves the conflict itself and marks it: log, `safetyNet` on the resolution, `Params["by"] = "safetynet"` on its calls.
+  - The deadline is at least 30 s after the alert, 1 minute after the player's last instruction, and 2 minutes before the earliest loss of separation predicted.
+  - New: `world.ModeAssist`, `ModeSilent`, `ModeSafetyNet` and `StaffedAlert`. `SetStaffed` keeps the mode normalised (`"safety-net"` → `"safetynet"`, unknown → `"assist"`).
+
+### Fixed
+
+- On a staffed station the conflict watch no longer instructs the player's aircraft (#1096): it stopped the descent of an arrival on a staffed approach and slowed it for spacing ("number 2, for spacing reduce speed to 220 knots"), gave staffed departures crossing restrictions, and gave traffic information on the player's frequency.
+
 ## [0.134.0] - 2026-10-28
 
 ### Added

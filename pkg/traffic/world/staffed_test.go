@@ -28,3 +28,18 @@ func TestStaffedAt(t *testing.T) {
 		}
 	}
 }
+
+// TestStationMode: a station's mode as set, "safety-net" spelt any way as
+// the safety net, "" and anything unknown as assist (#1096).
+func TestStationMode(t *testing.T) {
+	for in, want := range map[string]string{"": ModeAssist, "Assist": ModeAssist, "silent": ModeSilent, "safety-net": ModeSafetyNet, "Safety_Net": ModeSafetyNet, "safetynet": ModeSafetyNet, "loud": ModeAssist} {
+		if got := stationMode(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+	w := &World{st: &state{core: newCore(&trafficLog{})}}
+	w.SetStaffed([]StaffedStation{{ICAO: "LKPR", Position: "approach", Mode: "Safety-Net"}})
+	if m := w.Staffed()[0].Mode; m != ModeSafetyNet {
+		t.Errorf("kept as %q, want %q", m, ModeSafetyNet)
+	}
+}

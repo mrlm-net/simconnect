@@ -158,6 +158,9 @@ func (w *conflictWatch) tellTraffic(now time.Time, c traffic.Conflict, aircraft 
 	for _, cs := range []string{c.A, c.B} {
 		me, other := by[cs], by[otherOf(c, cs)]
 		it := w.s.cc.byTail(cs)
+		if it != nil && it.aiMode() != "" {
+			continue // the player's (#1096): told by them, the alert theirs
+		}
 		if it == nil || me.OnGround || other.Tail == "" || me.AGLFt < trafficInfoMinAGLFt {
 			continue // nothing to an aircraft taking off or landing (CAP 413 4.26)
 		}

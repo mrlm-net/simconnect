@@ -25,8 +25,8 @@ import (
 
 // StaffedStation is a station a player works: a whole position ("tower",
 // "ground", "approach", …) or one station of it by name ("Ruzyne Ground
-// North"); several make a band-box. Mode is what the AI does there
-// (assist, silent, safetynet: #1096's later steps; "" assist).
+// North"); several make a band-box. Mode is what the AI does there in a
+// conflict: ModeAssist ("" too), ModeSilent or ModeSafetyNet.
 type StaffedStation struct {
 	ICAO        string `json:"icao"`
 	Position    string `json:"position,omitempty"`
@@ -54,6 +54,7 @@ func (w *World) SetStaffed(list []StaffedStation) {
 	for i := range list {
 		list[i].ICAO = strings.ToUpper(strings.TrimSpace(list[i].ICAO))
 		list[i].Position = strings.ToLower(strings.TrimSpace(list[i].Position))
+		list[i].Mode = stationMode(list[i].Mode)
 	}
 	w.st.core.staff.mu.Lock()
 	w.st.core.staff.set = append([]StaffedStation(nil), list...)
