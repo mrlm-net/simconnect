@@ -2,6 +2,7 @@ package traffic
 
 import (
 	_ "embed"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -16,10 +17,14 @@ import (
 // SaidTelephony writes a telephony designator as said: each word
 // capitalised ("SPEEDBIRD" → "Speedbird", "CZECH AIR FORCE" → "Czech Air
 // Force"), except initialisms said letter by letter ("KLM", "CSA Lines"):
-// short words without a vowel, and the few with one (initialisms).
+// short words without a vowel, and the few with one (initialisms). A word
+// written in mixed case is kept as written ("MyCrew").
 func SaidTelephony(tel string) string {
 	words := strings.Fields(strings.ReplaceAll(tel, "-", " "))
 	for i, w := range words {
+		if w != strings.ToUpper(w) && w != strings.ToLower(w) {
+			continue
+		}
 		if initialism(w) {
 			words[i] = strings.ToUpper(w)
 			continue
@@ -59,7 +64,7 @@ func (c ScheduleConfig) SaidCallsign(cs string) string {
 	if len(cs) < 4 || cs[3] < '0' || cs[3] > '9' || strings.ContainsAny(cs[:3], "0123456789") {
 		return SaidRegistration(cs)
 	}
-	for _, a := range c.Airlines {
+	for _, a := range append(slices.Clone(ReservedAirlines), c.Airlines...) { // ours over a config's
 		if strings.EqualFold(a.ICAO, cs[:3]) && a.Telephony != "" {
 			return SaidTelephony(a.Telephony) + " " + cs[3:]
 		}

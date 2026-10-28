@@ -30,7 +30,7 @@ var shippedNoJetway = []string{
 	// Business jets and turboprops (the user: "same as Citation")
 	"C25A", "C25B", "C25C", "C510", "C525", "C550", "C560", "C56X", "C650", "C680", "C68A", "C700", "C750",
 	"CL30", "CL35", "CL60", "GLEX", "GL5T", "GL7T", "GLF4", "GLF5", "GLF6", "G280",
-	"E50P", "E55P", "E545", "E550", "LJ35", "LJ45", "LJ60", "LJ75", "H25B", "HDJT", "SF50",
+	"E50P", "E55P", "E545", "E550", "LJ25", "LJ35", "LJ45", "LJ60", "LJ75", "H25B", "HDJT", "SF50",
 	"F2TH", "FA7X", "FA8X", "F900", "PC12", "PC24", "BE20", "BE9L",
 }
 

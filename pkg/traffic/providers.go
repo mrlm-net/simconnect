@@ -14,10 +14,15 @@ import (
 // (SetModelSources, from the installed packages on disk: addons.TitleSources),
 // else the patterns of traffic.modelProviders (a host without the packages:
 // a director), else "Other". A title the simulator lists that no package
-// on disk holds is MSFS's own (stock packages are packed). Providers whose
-// titles are flyable aircraft (the user's add-ons: FlyByWire, Fenix) start
-// off; the rest on. A provider off is passed over for the next choice, but
-// never so far that nothing is left: then any is taken (PreferProviders).
+// on disk holds is MSFS's own (stock packages are packed). By default our
+// aircraft are the game's own (the user): MSFS on, the providers of other
+// aircraft (FSLTL, AIG, an add-on's maker) off, the ground vehicles' (GSX)
+// on; the table's On, then the host, switch them. A flyable title (the
+// user's add-ons: FlyByWire, Fenix) is used only when its provider has
+// nothing else and is switched on: a maker's traffic package is not passed
+// over for its flyable liveries. A provider off is passed over for the next
+// choice, but never so far that nothing is left: then any is taken
+// (PreferProviders).
 
 // ProviderStock is MSFS's own models' provider.
 const ProviderStock = "MSFS"
@@ -29,14 +34,17 @@ type ModelProviderItem struct {
 	Provider string   `json:"provider"`
 	Packages []string `json:"packages,omitempty"`
 	Titles   []string `json:"titles,omitempty"`
+	// On is whether it is used by default (unset: MSFS and the ground
+	// vehicles' providers on, other aircraft off); the host's switch wins.
+	On *bool `json:"on,omitempty"`
 }
 
 var shippedModelProviders = []ModelProviderItem{
-	{Provider: "FSLTL", Packages: []string{"fsltl-*"}, Titles: []string{"FSLTL*"}},
-	{Provider: "AIG", Packages: []string{"aig-*", "aigaitraffic*"}, Titles: []string{"AIG *", "AIG_*"}},
-	{Provider: "GSX", Packages: []string{"fsdreamteam-*"}, Titles: []string{"FSDT_*"}},
-	{Provider: "MyCrew", Packages: []string{"mycrew-*"}, Titles: []string{"MyCrew *"}},
-	{Provider: ProviderStock, Packages: []string{"microsoft-*", "asobo-*", "fs-base*"}},
+	{Provider: "FSLTL", Packages: []string{"fsltl-*"}, Titles: []string{"FSLTL*"}, On: new(false)},
+	{Provider: "AIG", Packages: []string{"aig-*", "aigaitraffic*"}, Titles: []string{"AIG *", "AIG_*"}, On: new(false)},
+	{Provider: "GSX", Packages: []string{"fsdreamteam-*"}, Titles: []string{"FSDT_*"}, On: new(true)},
+	{Provider: "MyCrew", Packages: []string{"mycrew-*"}, Titles: []string{"MyCrew *"}, On: new(false)},
+	{Provider: ProviderStock, Packages: []string{"microsoft-*", "asobo-*", "fs-base*"}, On: new(true)},
 }
 
 var modelProvidersNow dict.Value[[]ModelProviderItem]
@@ -58,26 +66,36 @@ type ModelSource struct {
 }
 
 var providers = struct {
-	mu      sync.Mutex
-	sources map[string]ModelSource // lower title → package (nil: not read)
-	flyable map[string]bool        // providers with a flyable title
-	on      map[string]bool        // switched by the host
+	mu       sync.Mutex
+	sources  map[string]ModelSource // lower title → package (nil: not read)
+	flyable  map[string]bool        // providers with flyable titles only
+	aircraft map[string]bool        // providers with an aircraft title
+	on       map[string]bool        // switched by the host
 }{on: map[string]bool{}}
 
 // SetModelSources gives the installed titles' packages (lower-case title →
 // source), read from disk; nil forgets them.
 func SetModelSources(sources map[string]ModelSource) {
-	fly := map[string]bool{}
+	fly, other, air := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	providers.mu.Lock()
 	providers.sources = sources
 	providers.mu.Unlock()
 	for t, s := range sources {
+		p := ModelProvider(t)
 		if s.Flyable {
-			fly[ModelProvider(t)] = true
+			fly[p] = true
+		} else {
+			other[p] = true
+		}
+		if s.Flyable || ProfileFor(t).Type != "" {
+			air[p] = true
 		}
 	}
+	for p := range other {
+		delete(fly, p) // a traffic package too: not an add-on's only
+	}
 	providers.mu.Lock()
-	providers.flyable = fly
+	providers.flyable, providers.aircraft = fly, air
 	providers.mu.Unlock()
 }
 
@@ -126,18 +144,45 @@ func matchAny(patterns []string, s string) bool {
 	return false
 }
 
-// ProviderOn reports whether a provider's models are used: as switched, by
-// default on unless its titles are flyable add-ons.
+// ProviderOn reports whether a provider's models are used: as switched;
+// else as the table says; else on for MSFS and the ground vehicles'
+// providers, off for other aircraft and flyable add-ons.
 func ProviderOn(provider string) bool {
 	providers.mu.Lock()
-	defer providers.mu.Unlock()
-	if on, ok := providers.on[provider]; ok {
+	on, ok := providers.on[provider]
+	fly, air := providers.flyable[provider], providers.aircraft[provider]
+	providers.mu.Unlock()
+	if ok {
 		return on
 	}
-	return !providers.flyable[provider]
+	for _, it := range modelProvidersNow.Load() {
+		if it.Provider == provider && it.On != nil {
+			return *it.On
+		}
+	}
+	return provider == ProviderStock || !fly && !air
 }
 
-// ProviderFlyable reports whether a provider's titles are flyable add-ons.
+// TitleOn reports whether a title is used: its provider on, and not a
+// flyable title of a provider with others (a maker's traffic package and
+// its flyable liveries: the liveries passed over).
+func TitleOn(title string) bool {
+	p := ModelProvider(title)
+	if !ProviderOn(p) {
+		return false
+	}
+	return !titleFlyable(title) || ProviderFlyable(p)
+}
+
+// titleFlyable reports whether a title is a flyable add-on's.
+func titleFlyable(title string) bool {
+	providers.mu.Lock()
+	defer providers.mu.Unlock()
+	return providers.sources[strings.ToLower(title)].Flyable
+}
+
+// ProviderFlyable reports whether a provider's titles are flyable add-ons
+// only.
 func ProviderFlyable(provider string) bool {
 	providers.mu.Lock()
 	defer providers.mu.Unlock()
@@ -163,17 +208,33 @@ func reportFallback(titles []string) {
 	}
 }
 
-// PreferProviders keeps the titles whose provider is on, in order; when
-// none is, all of them (fellBack true: a host logs it).
+// PreferProviders keeps the titles used (TitleOn), in order; when none is,
+// all of them, flyable add-ons' only when there is nothing else (fellBack
+// true: a host logs it).
 func PreferProviders(titles []string) (out []string, fellBack bool) {
 	for _, t := range titles {
-		if ProviderOn(ModelProvider(t)) {
+		if TitleOn(t) {
 			out = append(out, t)
 		}
 	}
 	if len(out) == 0 && len(titles) > 0 {
 		reportFallback(titles)
-		return titles, true
+		return notFlyable(titles), true
 	}
 	return out, false
+}
+
+// notFlyable is titles without the flyable add-ons', all of them when
+// that leaves none.
+func notFlyable(titles []string) []string {
+	var out []string
+	for _, t := range titles {
+		if !titleFlyable(t) {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return titles
+	}
+	return out
 }

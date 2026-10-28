@@ -268,6 +268,7 @@ type state struct {
 	stations *stationStore
 	// modelRules: the local model rules (model_rules.go, #1024).
 	modelRules  *modelRuleStore
+	providers   *providerStore
 	standRules  *standRuleStore
 	doorOffsets *doorOffsetStore // jetway door offsets, local (jetways.go)
 }

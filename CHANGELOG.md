@@ -7,6 +7,27 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.130.0] - 2026-10-28
+
+### Added
+
+- Reserved airlines WTD ("WANTED") and MCR ("MyCrew"), `traffic.ReservedAirlines`, occasionally scheduled from LKPR (about 1 in 75 flights there).
+  - Their codes are in neither Wikipedia's list of airline codes nor the shipped telephony table.
+  - They are kept over every table: the shipped telephony and airlines, the MyCrew API's set, a local override and a schedule config's airlines.
+  - They fly their own traffic models only (`FSLTL_WANTED_*`, `FSLTL_MYCREW_*`), switched on or not, never a flyable livery; without them installed, their flights are left out.
+- The Learjet 25 (LJ25): type, wake (L / RECAT F), performance and schedule limits; span, length, stall speed, cruise and ceiling published, the rest estimates.
+- A319 schedule limits.
+- `world.Options.ModelProviders`: a host's default provider switches; the switches set by `SetModelProviders` are kept in `DataDir/model-providers.json` over them.
+- `traffic.TitleOn` and `ModelProviderItem.On` (a provider's default in the `traffic.modelProviders` table).
+
+### Changed
+
+- Our aircraft default to the game's own models: MSFS on; FSLTL, AIG, MyCrew and other makers' aircraft off; the ground vehicles' providers (GSX) still on.
+  - The airport map and `worldtest` switch FSLTL on, so the tests fly the same models as before.
+- A flyable title is used only when its provider has nothing else and is switched on: a maker's FSLTL-format traffic package is no longer counted as a flyable add-on's because the same maker ships flyable liveries.
+  - Where nothing switched on fits, flyable titles are taken last.
+- A telephony designator written in mixed case is said as written ("MyCrew", not "Mycrew").
+
 ## [0.129.2] - 2026-10-28
 
 ### Fixed

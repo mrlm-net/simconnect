@@ -2,7 +2,9 @@ package world
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -88,13 +90,55 @@ func logProviderFallback(titles []string) {
 }
 
 // SetModelProviders switches providers on or off (the others as they
-// are): the next model chosen passes over those off. Models in use keep
-// going.
+// are) and keeps the switches (DataDir/model-providers.json): the next
+// model chosen passes over those off. Models in use keep going.
 func (w *World) SetModelProviders(on map[string]bool) {
 	traffic.SetProviders(on)
+	if err := w.st.providers.save(on); err != nil {
+		w.st.core.log.printf("model providers: %v", err)
+	}
 	for p, v := range on {
 		w.st.core.log.printf("model provider %s %s", p, map[bool]string{true: "on", false: "off"}[v])
 	}
+}
+
+// providerStore keeps the local provider switches (the GSX way: what is
+// there wins, per provider).
+type providerStore struct {
+	mu   sync.Mutex
+	file string
+	on   map[string]bool
+}
+
+// loadProviders switches the host's defaults, then the local ones of file
+// (missing: none) over them.
+func loadProviders(file string, host map[string]bool) *providerStore {
+	s := &providerStore{file: file, on: map[string]bool{}}
+	traffic.SetProviders(host)
+	if b, err := os.ReadFile(file); err == nil {
+		if err := json.Unmarshal(b, &s.on); err != nil {
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", file, err)
+		}
+	}
+	traffic.SetProviders(s.on)
+	return s
+}
+
+// save adds the switches to the local ones and writes them.
+func (s *providerStore) save(on map[string]bool) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for p, v := range on {
+		s.on[p] = v
+	}
+	b, err := json.MarshalIndent(s.on, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.file, b, 0o644)
 }
 
 // registerModelProviders serves GET /api/models/providers and POST

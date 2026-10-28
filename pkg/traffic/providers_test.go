@@ -3,20 +3,18 @@ package traffic
 import "testing"
 
 // Providers: a title's package names its provider, the patterns a title
-// without one, a title the sim lists on no package is MSFS's; flyable
-// add-ons start off and are passed over unless nothing else is there.
+// without one, a title the sim lists on no package is MSFS's; by default
+// the game's own (MSFS) and the vehicles' (GSX) on, other aircraft (FSLTL)
+// and flyable add-ons off; an add-on is passed over unless nothing else is
+// there.
 func TestModelProviders(t *testing.T) {
+	gameDefaults(t)
 	SetModelSources(map[string]ModelSource{
 		"fsltl a20n dlh lufthansa": {Package: "fsltl-traffic-base", Creator: "FSLTL"},
 		"airbus a320neo flybywire": {Package: "flybywire-aircraft-a320-neo", Creator: "FlyByWire Simulations", Flyable: true},
 		"fsdt_pushback_03":         {Package: "fsdreamteam-gsx-pro", Creator: "Fsdreamteam"},
 	})
-	defer func() {
-		SetModelSources(nil)
-		providers.mu.Lock()
-		providers.on = map[string]bool{}
-		providers.mu.Unlock()
-	}()
+	defer SetModelSources(nil)
 	for title, want := range map[string]string{
 		"FSLTL A20N DLH Lufthansa": "FSLTL", "Airbus A320neo FlyByWire": "FlyByWire Simulations",
 		"FSDT_Pushback_03": "GSX", "Airbus A320 Neo Asobo": ProviderStock,
@@ -25,8 +23,8 @@ func TestModelProviders(t *testing.T) {
 			t.Errorf("%s: %s, want %s", title, got, want)
 		}
 	}
-	if ProviderOn("FlyByWire Simulations") || !ProviderOn("FSLTL") || !ProviderFlyable("FlyByWire Simulations") {
-		t.Error("defaults: flyable add-ons off, the rest on")
+	if ProviderOn("FlyByWire Simulations") || ProviderOn("FSLTL") || !ProviderOn(ProviderStock) || !ProviderOn("GSX") || !ProviderFlyable("FlyByWire Simulations") {
+		t.Error("defaults: MSFS and GSX on, FSLTL and flyable add-ons off")
 	}
 	models := []string{"Airbus A320neo FlyByWire", "FSLTL A20N DLH Lufthansa"}
 	if got := ModelsFor(models, "DLH", "", "A20N", 0); len(got) != 1 || got[0] != models[1] {

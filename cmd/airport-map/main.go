@@ -41,6 +41,10 @@ import (
 //go:embed web
 var webFiles embed.FS
 
+// testProviders: the map tests with the FSLTL traffic on, over the game's
+// defaults (the user); a switch on the map is kept over it.
+var testProviders = map[string]bool{"FSLTL": true}
+
 // serve serves the page, the traffic engine's API and the voice on addr
 // until ctx ends.
 func serve(ctx context.Context, addr string, w *world.World) error {
@@ -168,7 +172,7 @@ func main() {
 	}
 	var w *world.World
 	cameraCut = func(t traffic.Transmission) { w.HeardOnCamera(t) }
-	w = world.New(world.Options{LogDir: *logDir, Airways: graph, Airspace: zone, DataDir: *dumpDir, DumpDir: dumpTo, Scenes: *scenes,
+	w = world.New(world.Options{ModelProviders: testProviders, LogDir: *logDir, Airways: graph, Airspace: zone, DataDir: *dumpDir, DumpDir: dumpTo, Scenes: *scenes,
 		// The voice says what the radio carries; it cuts the camera as heard,
 		// and without it the camera cuts as it is said.
 		OnTransmission: func(t traffic.Transmission) {
@@ -195,7 +199,7 @@ func main() {
 		fmt.Printf("📂 Loaded %s from %s — offline mode\n", l, *file)
 	} else if *split {
 		// The actuator: the simulator side only, no front end, no log file.
-		act := world.New(world.Options{Airways: graph, Airspace: zone, DataDir: *dumpDir})
+		act := world.New(world.Options{ModelProviders: testProviders, Airways: graph, Airspace: zone, DataDir: *dumpDir})
 		world.Loopback(ctx, act, w)
 		fmt.Println("🔀 split: an actuator on the simulator, this map on its director")
 	} else {

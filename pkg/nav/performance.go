@@ -73,6 +73,9 @@ var performances = map[string]Performance{
 	"E55P": {CruiseTASKts: 440, ClimbTASKts: 270, DescentTASKts: 280, MaxFL: 410, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.74, DescentIASKts: 250, BurnKgH: 550, TaxiKg: 30},
 	"E545": {CruiseTASKts: 460, ClimbTASKts: 280, DescentTASKts: 290, MaxFL: 430, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.78, DescentIASKts: 260, BurnKgH: 650, TaxiKg: 40},
 	"E550": {CruiseTASKts: 460, ClimbTASKts: 280, DescentTASKts: 290, MaxFL: 430, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.78, DescentIASKts: 260, BurnKgH: 750, TaxiKg: 40},
+	// Learjet 25D: cruise up to 464 kt, ceiling FL450 (Wikipedia, "Learjet
+	// 25"); climb, descent and burn estimates.
+	"LJ25": {CruiseTASKts: 440, ClimbTASKts: 280, DescentTASKts: 290, MaxFL: 450, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.75, DescentIASKts: 260, BurnKgH: 900, TaxiKg: 40},
 	"C25B": {CruiseTASKts: 410, ClimbTASKts: 260, DescentTASKts: 270, MaxFL: 410, ClimbFPM: 2800, DescentFPM: 2000, DescentMach: 0.70, DescentIASKts: 250, BurnKgH: 450, TaxiKg: 30},
 	"C25C": {CruiseTASKts: 430, ClimbTASKts: 270, DescentTASKts: 280, MaxFL: 410, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.72, DescentIASKts: 250, BurnKgH: 500, TaxiKg: 30},
 	"C56X": {CruiseTASKts: 430, ClimbTASKts: 270, DescentTASKts: 280, MaxFL: 410, ClimbFPM: 3000, DescentFPM: 2000, DescentMach: 0.72, DescentIASKts: 250, BurnKgH: 650, TaxiKg: 40},

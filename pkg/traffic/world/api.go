@@ -37,6 +37,10 @@ type Options struct {
 	// GroundVehicles turns kinds of ground vehicles off from the start
 	// (false; a kind not given is on): see SetGroundVehicles.
 	GroundVehicles map[traffic.VehicleKind]bool
+	// ModelProviders switches model providers from the start, over the
+	// game's defaults (traffic.ProviderOn) and under the local switches
+	// (DataDir/model-providers.json): {"FSLTL": true}.
+	ModelProviders map[string]bool
 	// Airways is an airway graph for flight plans; the airways around
 	// every airport loaded are read from the sim and added (#799).
 	Airways *nav.AirwayGraph
@@ -162,6 +166,7 @@ func New(o Options) *World {
 	st.pushes = loadPushStore(filepath.Join(o.DataDir, "custom-pushes.json"))
 	st.stations = loadStationStore(filepath.Join(o.DataDir, "stations.json"))
 	st.modelRules = loadModelRules(filepath.Join(o.DataDir, "model-rules.json"))
+	st.providers = loadProviders(filepath.Join(o.DataDir, "model-providers.json"), o.ModelProviders)
 	st.standRules = loadStandRules(filepath.Join(o.DataDir, "stand-rules.json"))
 	st.doorOffsets = loadDoorOffsets(filepath.Join(o.DataDir, "jetway-door-offsets.json"))
 	gateLessons.load(filepath.Join(o.DataDir, "jetway-gates.json"))

@@ -73,6 +73,9 @@ func Start(o Options) (*Harness, error) {
 	cache := airport.NewCache()
 	wo := o.World
 	wo.SimlessAI, wo.Cache = true, cache
+	if wo.ModelProviders == nil {
+		wo.ModelProviders = map[string]bool{"FSLTL": true} // the live tests' models (DefaultAircraftTitles)
+	}
 	if wo.Output == nil {
 		wo.Output = io.Discard
 	}
