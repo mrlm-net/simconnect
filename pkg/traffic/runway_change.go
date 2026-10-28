@@ -94,6 +94,13 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 		return ErrTooLate
 	}
 	req := c.req
+	// Another runway, its full length shorter than the take-off needs: the
+	// crew refuses it (#1232); an entry is checked by entryLongEnough.
+	if entry == "" && !strings.EqualFold(runway, req.Runway) {
+		if need := req.takeoffRun(); rwy.Length < need {
+			return fmt.Errorf("%w: runway %s is %.0f m, the aircraft needs %.0f m", ErrRunwayTooShort, runway, rwy.Length, need)
+		}
+	}
 	req.Runway, req.Entry = runway, entry
 	if departure != nil {
 		req.Departure = departure

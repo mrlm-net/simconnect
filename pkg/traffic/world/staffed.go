@@ -227,6 +227,9 @@ func (it *controlled) amendClearance(a ClearanceAmend) error {
 			pts, sid = got, n
 		}
 		if err := cc.do(func() error { return it.dep.ChangeRunway(a.Runway, "", pts) }); err != nil {
+			if errors.Is(err, traffic.ErrRunwayTooShort) {
+				it.unableRunway(a.Runway, err) // heard, and the host told
+			}
 			return err
 		}
 		lim := cc.limitsOf(it.graph)

@@ -22,6 +22,7 @@ const (
 	IntentRequestStartUp     Intent = "request_start_up"    // ready for start-up, first call to ground
 	IntentRequestPushback    Intent = "request_pushback"    // ready for push
 	IntentRequestTaxi        Intent = "request_taxi"        // ready to taxi
+	IntentUnableRunway       Intent = "unable_runway"       // a runway too short for its take-off refused (#1232)
 	IntentRequestDescent     Intent = "request_descent"     // ready to descend, to the centre or approach (#686)
 	IntentRequestClimb       Intent = "request_climb"       // level at its cleared level, asking for its cruising level (#1096)
 	IntentRequestApproach    Intent = "request_approach"    // near its clearance limit, asking for its approach (#1096)
@@ -187,6 +188,14 @@ func RequestTaxiIntersectionFor(cs, runway, entry string) Transmission {
 		return RequestTaxiIntersection(cs, entry)
 	}
 	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamEntry: entry, ParamRunway: runway}, cs+", request taxi, runway "+runway+", intersection "+entry)
+}
+
+// RunwayTooShort is a crew on pos refusing runway, too short for its
+// take-off, and asking for its own (#1232): "CSA1, unable runway 06,
+// request runway 24 for departure". The request is RequestTaxiRunway's
+// wording; "unable" is not quoted in docs/traffic-phraseology.md.
+func RunwayTooShort(pos Position, cs, runway, own string) Transmission {
+	return pilotTx(pos, cs, IntentUnableRunway, map[string]string{ParamRunway: own}, cs+", unable runway "+runway+", request runway "+own+" for departure")
 }
 
 // RequestTaxiRunway is a crew asking to depart from another runway than

@@ -1161,7 +1161,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
-		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
+		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ISADeviationC: cc.isaDeviation(g), ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways, HoldShortQueue: cc.holdShortQueue(g, r.Runway), LowVisibility: cc.lowVisibility(g, r.Runway)},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
@@ -2545,6 +2545,32 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
+}
+
+// isaDeviation is the temperature above ISA at g's airport now, °C (0
+// without weather): a warm day lengthens the take-off (#1232).
+func (cc *controlCenter) isaDeviation(g *airport.Graph) float64 {
+	if cc.weather == nil {
+		return 0
+	}
+	w := cc.weather()
+	if w == nil || math.IsNaN(w.TempC) {
+		return 0
+	}
+	return w.TempC - (15 - 1.98*g.Layout.Altitude/0.3048/1000)
+}
+
+// unableRunway: the crew of it refuses runway, too short for its take-off,
+// on the frequency of the position working it, and keeps its own (#1232).
+func (it *controlled) unableRunway(runway string, err error) {
+	it.mu.Lock()
+	own, pos := it.view.Runway, it.atc
+	it.mu.Unlock()
+	if pos == "" {
+		pos = traffic.PosDelivery
+	}
+	it.cc.log.printf("%-6s runway %s refused by the crew: %v", it.Tail, runway, err)
+	it.say(traffic.RunwayTooShort(pos, it.Tail, runway, own))
 }
 
 // crosswind is the crosswind on runway end rwy now, knots, positive from
