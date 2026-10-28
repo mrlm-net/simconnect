@@ -144,6 +144,9 @@ type controlled struct {
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
+	// playerAt: when the player last gave it an instruction (unix ns), the
+	// safety net's deadline counted from it (#1096).
+	playerAt atomic.Int64
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
 	// atc is the position working it now (#416); atisSaid: its pilot has
@@ -2449,6 +2452,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 		if as := positionOf(r); !mayClear(as, it) {
 			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
 			return
+		}
+		if a := r.PathValue("action"); a != "remove" && a != "locate" {
+			it.playerAt.Store(cc.clock.Now().UnixNano())
 		}
 		node := airport.NodeID(-1)
 		if s := r.URL.Query().Get("node"); s != "" {

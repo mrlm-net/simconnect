@@ -96,11 +96,14 @@ func registerSeparation(mux *http.ServeMux, st *state) {
 			// Predicted conflicts and the resolutions given (#395).
 			Conflicts   []traffic.Conflict `json:"conflicts"`
 			Resolutions []resolutionView   `json:"resolutions"`
+			// Alerts: conflicts of the player's, on staffed stations (#1096).
+			Alerts []StaffedAlert `json:"alerts"`
 		}
 		v := view{MinNM: sepMinNM, Closest: []traffic.SeparationPair{}, Open: []sepLoss{}, Losses: []sepLoss{}}
-		v.Conflicts, v.Resolutions = []traffic.Conflict{}, []resolutionView{}
+		v.Conflicts, v.Resolutions, v.Alerts = []traffic.Conflict{}, []resolutionView{}, []StaffedAlert{}
 		if cw != nil {
 			v.Conflicts, v.Resolutions = cw.view()
+			v.Alerts = cw.alertList()
 		}
 		if m != nil {
 			m.mu.Lock()

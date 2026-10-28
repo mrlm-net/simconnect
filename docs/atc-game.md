@@ -36,7 +36,13 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 
-**Not yet.** `StaffedStation.Mode` (what the AI does on a staffed station: assist, silent, safety net) and `AutoHandoff` are accepted and kept but not acted on yet: today a staffed station behaves as "the AI gives nothing there".
+**Modes.** `StaffedStation.Mode` is what the AI does on the station when an aircraft on it is predicted to lose separation. In every mode the routine clearances, speeds, levels and vectors stay the player's, and the AI gives no traffic information there either.
+
+- `assist` (also `""`, the default): an alert. `World.Alerts()` (`alerts` in `GET /api/separation`) lists each conflict of the player's aircraft with its pair, the time to the loss of separation, the staffed callsigns and their modes. Where the AI has one instruction of its own for it (en-route aircraft, departures), `Suggested` is what it would say. The AI does nothing about it.
+- `silent`: no alert, nothing from the AI.
+- `safetynet` (`safety-net` too): an alert with a `Deadline`, at least 30 s after the alert, 1 minute after the player's last instruction to either aircraft, and 2 minutes before the earliest loss predicted. Is the conflict still predicted then, the AI resolves it as for its own aircraft: a level, a crossing restriction, a speed, a vector. The alert shows `SafetyNet`, the log says so, the resolution in `GET /api/separation` is marked `safetyNet`, and the safety net's calls carry `Params["by"] = "safetynet"` so a game can show who said them.
+
+An aircraft taken over by hand (its manual toggle, or a clearance from the user off the staffed stations) has no station mode: silent.
 
 ## One aircraft by hand
 

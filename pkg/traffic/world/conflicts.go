@@ -58,6 +58,10 @@ type conflictWatch struct {
 	lastSaid map[string]string
 	now      []traffic.Conflict
 	done     []resolutionView // the latest last (at most 50)
+	// alerts: conflicts of aircraft on staffed stations, by pair; net: the
+	// staffed ones the safety net resolves at this look (#1096).
+	alerts map[string]*StaffedAlert
+	net    map[string]bool
 }
 
 // stoppedLevel is a climb or descent stopped for traffic: who says the
@@ -103,7 +107,8 @@ func levelOn(planned []traffic.RoutePoint, stopFt float64, climb bool) (float64,
 type resolutionView struct {
 	At time.Time `json:"at"`
 	traffic.Resolution
-	Said string `json:"said"`
+	Said      string `json:"said"`
+	SafetyNet bool   `json:"safetyNet,omitempty"` // on a staffed station, the player too late (#1096)
 }
 
 func newConflictWatch(s *scheduler) *conflictWatch {
@@ -117,6 +122,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		return
 	}
 	w.at = now
+	w.net = map[string]bool{}
 	w.mu.Unlock()
 	// Ours en route can be steered, any way, unless already flying a change.
 	enroute := func(a traffic.TrackedAircraft) *enrouteAC {
@@ -151,8 +157,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return false
 		}
 		// The player's (manual, or on a staffed station: #1096): not steered
-		// by the AI.
-		if it := w.s.cc.byTail(a.Tail); it != nil && it.gates.Load() {
+		// by the AI, unless the safety net's due.
+		if it := w.s.cc.byTail(a.Tail); it != nil && !w.mayAct(it) {
 			return false
 		}
 		// Flying a TCAS RA: nothing contrary to it (FAA JO 7110.65 2-1-28).
@@ -238,9 +244,34 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		return nil
 	}
 	cs := traffic.PredictConflicts(aircraft, opts)
+	// suggest is what the AI would say to cs, one of the player's, for the
+	// conflict c (assist, #1096): its change as for one of its own.
+	var c traffic.Conflict
+	suggest := func(cs string) string {
+		it := w.s.cc.byTail(cs)
+		if it == nil {
+			return ""
+		}
+		only := func(a traffic.TrackedAircraft, kind traffic.ResolutionKind) bool {
+			return a.Tail == cs && a.Ours && (enroute(a) != nil || departed(a) != nil && kind != traffic.ResolveSpeed)
+		}
+		r, ok := traffic.ResolveConflict(c, aircraft, only, opts)
+		if !ok {
+			return ""
+		}
+		for _, a := range aircraft {
+			if a.ObjectID == r.ObjectID {
+				it.mu.Lock()
+				pos := it.atc
+				it.mu.Unlock()
+				return traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(it.ICAO), MagVar: w.s.cc.magVar(it.ICAO)}).Text
+			}
+		}
+		return ""
+	}
 	pairs := map[string]bool{}
 	needed := w.s.cc.separationNeeded(aircraft, w.s.airports())
-	for _, c := range cs {
+	for _, c = range cs {
 		// At the look-ahead's edge (lost only in its last sample, the closest
 		// point there too): still converging, seen again next look when it
 		// is real (live, FTMKL/DLH620 and OKUTI/BAW1182 "in 5m0s" twice,
@@ -262,6 +293,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if first {
 			w.s.cc.log.printf("conflict: %s (%.0f ft) and %s (%.0f ft) lose separation in %s at %.1f NM, %.0f ft; closest %.1f NM, %.0f ft in %s",
 				c.A, c.AAltFt, c.B, c.BAltFt, c.In.Round(time.Second), c.LossNM, c.LossFt, c.ClosestNM, c.VerticalFt, c.ClosestIn.Round(time.Second))
+		}
+		// One of the player's in it (a staffed station, #1096): an alert;
+		// the AI goes on only for its own in it, or as the safety net.
+		if !w.staffedConflict(now, c, suggest) {
+			continue
 		}
 		if busy {
 			continue // a change is flown already: see it work
@@ -338,8 +374,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			w.s.cc.log.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
 		}
-		tx := traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)})
-		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why)
+		tx := w.marked(r.Callsign, traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)}))
+		net := tx.Params["by"] == ModeSafetyNet
+		w.s.cc.log.printf("%-6s conflict: %s at %.0f ft, keeps %.0f ft from the traffic within the lateral minimum (%s)%s", r.Callsign, r.Kind, a.AltFt, r.KeepsFt, r.Why, map[bool]string{true: " (safety net)"}[net])
 		// Before routine calls on the frequency: a separation instruction —
 		// not the one it was given last and flies (live, TVS1260 "reduce speed
 		// to Mach 0.71, due traffic" twice, five minutes apart).
@@ -380,7 +417,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned}
 			}
 		}
-		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said})
+		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said, SafetyNet: net})
 		if len(w.done) > 50 {
 			w.done = w.done[len(w.done)-50:]
 		}
@@ -406,6 +443,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	for p := range w.seen {
 		if !pairs[p] {
 			delete(w.seen, p) // over: a new one is logged again
+		}
+	}
+	for p := range w.alerts {
+		a, b, _ := strings.Cut(p, "/")
+		if !pairs[a+"/"+b] && !pairs[b+"/"+a] {
+			delete(w.alerts, p)
 		}
 	}
 	for cs, until := range w.busy {
@@ -579,8 +622,8 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 			trailer = &cand{it, e}
 		}
 	}
-	if trailer == nil {
-		return
+	if trailer == nil || !w.mayAct(trailer.it) {
+		return // the player's (#1096): theirs to space, unless the safety net's due
 	}
 	cs, oth := trailer.it.Tail, other(c, trailer.it.Tail)
 	w.mu.Lock()
@@ -625,7 +668,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(level, arrivalLevelForNM) })
 				if err == nil {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft (arrival on its STAR)", cs, oth, level)
-					tx := traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO))
+					tx := w.marked(cs, traffic.StopDescent(traffic.PosApproach, cs, level, oth, w.s.cc.taOf(trailer.it.ICAO)))
 					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
 					stopped = true
 				} else {
@@ -643,7 +686,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				err := w.s.cc.do(func() error { return trailer.it.arr.StopDescent(hold, arrivalLevelForNM) })
 				if err == nil {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent at %.0f ft, the one ahead descends away (arrival on its STAR)", cs, oth, hold)
-					tx := traffic.StopDescent(traffic.PosApproach, cs, hold, oth, w.s.cc.taOf(trailer.it.ICAO))
+					tx := w.marked(cs, traffic.StopDescent(traffic.PosApproach, cs, hold, oth, w.s.cc.taOf(trailer.it.ICAO)))
 					trailer.it.call(traffic.PosApproach, prioSeparation, func() { trailer.it.say(tx) })
 					stopped = true
 				} else {
@@ -671,7 +714,8 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	// Slowed and vectored as far as it goes already, it is not held: holds
 	// are for emergencies, weather and closures (the user). The level split
 	// above and the next look keep them apart.
-	err := q.approachSpace(trailer.it.ICAO, cs, spacingDelay(c, me), spacingWithinNM(c, me))
+	mark := func(tx traffic.Transmission) traffic.Transmission { return w.marked(cs, tx) }
+	err := q.approachSpace(trailer.it.ICAO, cs, spacingDelay(c, me), spacingWithinNM(c, me), mark)
 	if err != nil {
 		w.s.cc.log.printf("%-6s conflict with %s: slow refused: %v", cs, oth, err)
 		q.mu.Lock()
@@ -866,7 +910,7 @@ func (w *conflictWatch) crossInstead(now time.Time, c traffic.Conflict, aircraft
 			continue
 		}
 		it := departed(a)
-		if it == nil {
+		if it == nil || !w.mayAct(it) { // the player's (#1096), unless the safety net's due
 			continue
 		}
 		w.mu.Lock()
@@ -888,7 +932,7 @@ func (w *conflictWatch) crossInstead(now time.Time, c traffic.Conflict, aircraft
 		if err := w.s.cc.do(func() error { return it.dep.Reroute(route) }); err != nil {
 			continue
 		}
-		tx := traffic.CrossAt(traffic.PosDeparture, it.Tail, fix, below, w.s.cc.taOf(it.ICAO), false)
+		tx := w.marked(it.Tail, traffic.CrossAt(traffic.PosDeparture, it.Tail, fix, below, w.s.cc.taOf(it.ICAO), false))
 		w.s.cc.log.printf("%-6s conflict: cross %s at or below %.0f ft, clear of %s", it.Tail, fix, below, otherOf(c, it.Tail))
 		w.mu.Lock()
 		w.busy[it.Tail] = now.Add(conflictLookAhead)
