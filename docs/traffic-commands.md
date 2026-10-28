@@ -27,7 +27,7 @@ The [airport map](airport-layout.md#seeing-it-on-a-map) gives all of them from t
 | `ClearForTakeoff()` | holding short or lined up | Take-off (rolling if not lined up yet), hand-over to MSFS AI at `ClimbHandoverFt`, then the SID (`TaxiRequest.Departure`) | `TaxiDeparting`, `TaxiComplete` |
 | `AbortTakeoff()` | lined up / lining up: cancels the take-off clearance. On the roll before V1 (`RotateKts − V1MarginKts`): rejects | Brakes at `RejectDecel` to a stop, vacates at the next exit ahead and taxis back to the holding point for new clearances. Past V1: `ErrTooLate`, the take-off continues | `TaxiTaxiing`, `TaxiHoldingShort` |
 | `Expedite(on)` | waiting at a gate | The waits before taxi, line-up and take-off shrink to `RushDelayFactor` (0.35) | none |
-| `ChangeRunway(runway, entry, sid)` / `ChangeEntry(entry)` | before lining up | Re-plans runway, SID, entry and taxi route from where the aircraft is; lining up or later `ErrTooLate`; an entry too short for the type `ErrEntryTooShort` | none |
+| `ChangeRunway(runway, entry, sid)` / `ChangeEntry(entry)` | before lining up | Re-plans runway, SID, entry and taxi route from where the aircraft is; lining up or later `ErrTooLate`; an entry too short for the type `ErrEntryTooShort`; another runway too short for its take-off `ErrRunwayTooShort` | none |
 | `TaxiVia(nodes)` | on the stand, pushed back, taxiing | Re-plans the taxi-out through graph nodes in order | none |
 | `AvoidOccupied(occ)` | taxiing, no limit, no custom route | Re-plans round places others take (`airport.Occupied`, e.g. another departure's `Occupies()`); reports whether the route changed | none |
 | `DirectTo(pos, altFt, kts, fix)` / `ClimbTo(pos, altFt, ft)` / `Reroute(route)` | handed to MSFS AI | Direct to a fix of the climb route; climb on to `ft` past the SID's top; a new route (`ClimbPlan` / `ResolvedRoute`) | none |
@@ -73,4 +73,5 @@ Aircraft keep their distance by themselves: a taxiing aircraft stops behind traf
 | `ErrHolding` | `AbsorbDelay`, `DirectTo`, `JoinFinal`, `Shortcut` and the like while the arrival holds |
 | `ErrStandFixed` | `ChangeStand` after touchdown |
 | `ErrEntryTooShort` | `ChangeEntry` to an entry leaving too little runway for the type |
+| `ErrRunwayTooShort` | `ChangeRunway` to another runway shorter than the take-off needs, the temperature counted (#1232) |
 | `ErrNotHolding` | `HoldAltitude` or `LeaveHold` for an arrival not in a hold |

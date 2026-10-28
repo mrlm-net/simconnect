@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.132.0] - 2026-10-28
+
+### Added
+
+- A crew refuses a runway too short for its take-off (#1232): `ChangeRunway` to another runway whose full length is less than `RequiredTakeoffRun` returns `ErrRunwayTooShort`, and in the World the crew says so on the frequency ("CSA1, unable runway 12, request runway 24 for departure", `traffic.RunwayTooShort`, intent `unable_runway`) and keeps its runway; a host amending the clearance is told the error too. Departures the schedule creates are not checked at spawn, so traffic never stops on it.
+- `TaxiRequest.ISADeviationC`: the temperature above ISA lengthens the take-off run in the entry and runway checks; the World fills it from the weather (it was always 0 before).
+
 ## [0.131.0] - 2026-10-28
 
 ### Added
