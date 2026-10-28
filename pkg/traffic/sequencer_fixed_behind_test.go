@@ -23,7 +23,7 @@ func TestSequencerFixedKeepsBehind(t *testing.T) {
 		vfr.GroundKts, vfr.FinalKts = 120, 90
 		s.Update(now, []ApproachAircraft{arr("CSA1293", "A320", c.jetNM), vfr})
 		// On its downwind, fixed at its own time: predicted before the jet.
-		vfr.DistanceToGoNM, vfr.Fixed = 4, true
+		vfr.DistanceToGoNM, vfr.Fixed = 5.5, true
 		seq := s.Update(now.Add(time.Second), []ApproachAircraft{arr("CSA1293", "A320", c.jetNM-0.1), vfr})
 		if seq[0].Callsign != c.ahead {
 			t.Errorf("jet %.0f NM to go: %s first (delay %v / %v), want %s", c.jetNM, seq[0].Callsign, seq[0].Delay, seq[1].Delay, c.ahead)

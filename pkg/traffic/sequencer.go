@@ -436,14 +436,41 @@ func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachCon
 	// (live, TVS440 at FL410 took number 2 from ENT1816, told it a
 	// minute before, on such a prediction).
 	term := math.Max(math.Min(gs, TerminalKts), final)
-	far := math.Max(0, a.DistanceToGoNM-s.opts.FinalNM-TerminalNM)
-	outer := math.Max(0, math.Min(a.DistanceToGoNM-s.opts.FinalNM, TerminalNM))
-	inner := math.Min(a.DistanceToGoNM, s.opts.FinalNM)
-	h := far/gs + outer/term + inner/((term+final)/2)
-	if a.DistanceToGoNM <= s.opts.FinalNM {
-		h = a.DistanceToGoNM / final
-	}
+	d := a.DistanceToGoNM
+	join := math.Min(ProcedureJoinNm, s.opts.FinalNM)
+	far := math.Max(0, d-s.opts.FinalNM-TerminalNM)
+	outer := math.Max(0, math.Min(d-s.opts.FinalNM, TerminalNM))
+	// Its own speed to the join, then the final's schedule: a slow type is
+	// slow only from there, and slower than halfway between (offline LKPR:
+	// a TBM9 predicted 1m40s early, 18 NM out, the B738 behind it planned
+	// that much too close).
+	// To the join at most at the align and join points' speed.
+	mid := math.Max(0, math.Min(d, s.opts.FinalNM)-join)
+	midKts := math.Max(math.Min(term, ProcedureApproachSpeedKts), final)
+	h := far/gs + outer/term + mid/midKts + finalScheduleHours(math.Min(d, join), join, a.FinalKts, c)
 	return now.Add(time.Duration(h * float64(time.Hour)))
+}
+
+// finalStartAboveKts: the injected final starts at the join this much
+// above the approach speed (ApproachProfile.StartKts), falling linearly to
+// it at finalApproachSpeedNM (ApproachProfile.ApproachSpeedNm).
+const (
+	finalStartAboveKts   = 15.0
+	finalApproachSpeedNM = 1.0
+)
+
+// finalScheduleHours is the time over the last d NM of a final joined
+// joinNM out, at the injected approach's speeds (ApproachMover.speedAt)
+// over the ground in the conditions.
+func finalScheduleHours(d, joinNM, finalKts float64, c ApproachConditions) float64 {
+	a := c.FinalGroundKts(finalKts)
+	in := math.Min(d, finalApproachSpeedNM)
+	h := in / a
+	if d <= finalApproachSpeedNM || joinNM <= finalApproachSpeedNM {
+		return h + math.Max(0, d-in)/a
+	}
+	k := finalStartAboveKts / (joinNM - finalApproachSpeedNM) // kt per NM
+	return h + math.Log((a+k*(d-finalApproachSpeedNM))/a)/k
 }
 
 // gap is the time between two landings in the conditions: the follower's

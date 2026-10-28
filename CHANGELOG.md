@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.133.2] - 2026-10-28
+
+### Fixed
+
+- A fast arrival behind a slow one is spaced by the speeds both really fly (#1281): the landing prediction flies an arrival at its own speed (at most 180 kt) to the join point 8 NM out, then at the injected final's speeds, 15 kt above its approach speed slowing to it 1 NM out. Before, the last 10 NM were an average of the two, so a TBM9 18 NM out was predicted 1m20s early and the B738 behind it planned that much too close (live, OKBJZ and LOT229).
+- Direct to the final keeps a point halfway along the direct leg, so a delay is still lost by speed or a dog-leg before the final; a downwind extended before no longer leaves the whole delay over. An arrival on its final not yet inside `FreezeNM` with a delay is now slowed to its final approach speed, as an established one is; it was told nothing. One far more short than that speed gains is sent around at once when the separation minimum would be lost, not 20 s later and that much closer (offline: a B738 sent direct 20 NM behind a TBM9 joined ahead of it, 2.7 NM apart, and landed first).
+
 ## [0.133.1] - 2026-10-28
 
 ### Fixed

@@ -130,7 +130,9 @@ func pathNM(pts []airport.LatLon) float64 {
 }
 
 // Direct to the join point: the rest of the STAR is left out; the final is
-// kept.
+// kept, with a point halfway there on the direct leg, so a delay is still
+// lost on it by speed or a dog-leg (offline LKPR: a B738 sent direct 20 NM
+// behind a TBM9 had nothing left to absorb its 5 min on).
 func TestDirectToJoin(t *testing.T) {
 	g := lkprGraph(t)
 	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
@@ -156,11 +158,20 @@ func TestDirectToJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := ctl.proc.Waypoints
-	if len(after) != 2 || after[0] != before[len(before)-2] || after[1] != before[len(before)-1] || len(ec.waypoints) == sets {
+	if len(after) != 3 || after[1] != before[len(before)-2] || after[2] != before[len(before)-1] || len(ec.waypoints) == sets {
 		t.Fatalf("direct: %d points (sent %v)", len(after), len(ec.waypoints) > sets)
 	}
-	if r := ctl.ProcedureRoute(); len(r) != 2 {
+	from, align := route[0].Position, airport.LatLon{Lat: after[1].Latitude, Lon: after[1].Longitude}
+	mid := airport.LatLon{Lat: after[0].Latitude, Lon: after[0].Longitude}
+	if a, b := calc.HaversineNM(from.Lat, from.Lon, mid.Lat, mid.Lon), calc.HaversineNM(mid.Lat, mid.Lon, align.Lat, align.Lon); math.Abs(a-b) > 0.5 {
+		t.Errorf("the point on the way %.1f NM from it, %.1f NM from the align point: want halfway", a, b)
+	}
+	if r := ctl.ProcedureRoute(); len(r) != 3 {
 		t.Errorf("still to fly: %d points", len(r))
+	}
+	a, err := ctl.AbsorbDelay(3 * time.Minute)
+	if err != nil || a.SpeedKts == 0 && a.ExtraNM == 0 {
+		t.Errorf("3 min to lose after direct to the join: %+v, %v", a, err)
 	}
 }
 
