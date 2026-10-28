@@ -31,9 +31,6 @@ type scheduler struct {
 	// engaged: in a conflict resolution, or just out of one (the conflict
 	// watch's): predicted as it flies, not along its route.
 	engaged func(cs string, now time.Time) bool
-	// held: the traffic held for a replay (hold.go); heldEnabled the
-	// schedule as it was, given back.
-	held, heldEnabled bool
 
 	st  *state
 	cc  *controlCenter
@@ -648,13 +645,19 @@ func (s *scheduler) tick(now time.Time) {
 	// No spawn before the weather is known: the runway in use comes from it,
 	// and a flight spawned on the fallback (the preferred runway) keeps that
 	// runway (#458; LKPR, live: the first flights took 24, then 06).
-	if s.cc.weather != nil && s.cc.weather() == nil && traffic.Since(s.created) < weatherWait {
+	if s.cc.weather != nil && s.cc.weather() == nil && traffic.Since(s.created) < weatherWait && !s.actuating() {
 		s.handovers(now)
 		s.corridorTick(now)
 		return
 	}
 	// The models for the schedule (withModels): taken here, not under the
 	// manager's lock in source (a deadlock with an update holding cc.mu).
+	// An actuator (#710): its traffic is the director's, none spawned here
+	// (#1284: the schedule set before, or replayed on a connection, ran
+	// beside it). Its settings stay for when the link ends.
+	if s.actuating() {
+		return
+	}
 	models := s.cc.modelList()
 	s.mu.Lock()
 	s.models = models
@@ -817,7 +820,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			s.mgr.SetOthers(traffic.OtherIgnore)
 		}
 		if req.Enabled != nil {
-			s.mgr.SetEnabled(*req.Enabled)
+			s.enable(*req.Enabled)
 		}
 		o := s.mgr.Options()
 		s.mu.Lock()

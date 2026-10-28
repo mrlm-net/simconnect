@@ -465,6 +465,15 @@ func (w *World) castSpawn(cc *controlCenter, g *airport.Graph, c ScenarioCast) (
 	if c.Kind != "departure" && c.Kind != "arrival" {
 		return nil, fmt.Errorf("kind %q, want departure or arrival", c.Kind)
 	}
+	w.st.mu.Lock()
+	held, actuator := w.st.held, w.st.actLink != nil
+	w.st.mu.Unlock()
+	if held {
+		return nil, ErrHeld // beside a replay's traffic: none (#1283)
+	}
+	if actuator {
+		return nil, ErrActuator // the director's traffic only (#1284)
+	}
 	model := ""
 	if c.Models != "" {
 		model = cc.modelFor(c.Models)

@@ -193,6 +193,10 @@ type state struct {
 	world *World
 	// keepOnStop: Options.KeepOnStop.
 	keepOnStop bool
+	// held: the traffic held for a replay (hold.go), the World's, so a new
+	// connection's scheduler keeps it (#1283); heldEnabled the schedule as
+	// it was, or as set meanwhile, given back.
+	held, heldEnabled bool
 	// airportDump: Options.AirportDumpDir (offline.go).
 	airportDump string
 	// dropped counts the host's messages Feed dropped (queue full): a

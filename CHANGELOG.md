@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.134.0] - 2026-10-28
+
+### Added
+
+- `flight.GhostFleet.Owns(objectID)` and `Objects()`: the objects a fleet flies, for a recorder to leave replayed traffic out (#1285).
+
+### Fixed
+
+- `GhostFleet.Handle` takes only the objects of requests the fleet made (#1285): any object in its ID range it was not waiting for was removed, another fleet's on the same connection included, and the range check took one ID past its range.
+- A World linked as an actuator spawns no traffic of its own (#1284): its schedule (set, or replayed on a new connection), corridors and real-world traffic stay off while linked, and a scenario's cast is refused with `world.ErrActuator`; schedule settings made meanwhile apply once the link ends.
+- `World.Hold(true)` keeps the traffic out whatever asks for it meanwhile (#1283): a schedule set while held (`SetSchedule`, or the settings replayed on a new connection) and real-world traffic switched on are remembered for when the hold ends instead of starting the schedule; corridors spawn nothing; a scenario's cast is refused with `world.ErrHeld`. The hold is the World's now, so a new connection (`RunOn` again) keeps it. Holding again removes whatever came in meanwhile; it returned at once before.
+
 ## [0.133.2] - 2026-10-28
 
 ### Fixed

@@ -93,3 +93,37 @@ func TestGhostFleet(t *testing.T) {
 		t.Errorf("stop: removed %v, %d live", c.removed, f.Live())
 	}
 }
+
+// TestGhostFleetsShareConnection: two fleets on one connection, their ID
+// ranges overlapping, each takes only the objects of its own requests and
+// leaves the other's alone, and one past its range too (#1285: any object
+// in its range not waited for was removed, the other fleet's included).
+// Owns and Objects tell its aircraft.
+func TestGhostFleetsShareConnection(t *testing.T) {
+	player := &Track{Samples: []Sample{{T: 100, Lat: 50, Lon: 14}, {T: 200, Lat: 50, Lon: 14}}}
+	sc := func(key string) *Scene {
+		return &Scene{Aircraft: []*SceneAircraft{{Key: key, Title: "A320", Track: sceneTrack(100, 50, 50.01)}}}
+	}
+	ca, cb := &fleetClient{}, &fleetClient{}
+	pa, pb := NewPlayer(player), NewPlayer(player)
+	a := NewGhostFleet(ca, &fleetInj{}, sc("A"), pa, FleetOptions{IDBase: 0x7E00})
+	b := NewGhostFleet(cb, &fleetInj{}, sc("B"), pb, FleetOptions{IDBase: 0x7E10})
+	now := time.Now()
+	pa.Seek(5, now)
+	pb.Seek(5, now)
+	a.Tick(now)
+	b.Tick(now)
+	msgB := assigned(cb.reqs[0], 902)
+	if a.Handle(msgB) {
+		t.Error("fleet A took fleet B's object")
+	}
+	if !b.Handle(msgB) || !b.Owns(902) || !slices.Equal(b.Objects(), []uint32{902}) {
+		t.Errorf("fleet B: owns 902 %v, objects %v", b.Owns(902), b.Objects())
+	}
+	if a.Handle(assigned(0x7E00+FleetIDs, 903)) {
+		t.Error("an object one past fleet A's range taken")
+	}
+	if len(ca.removed) > 0 || a.Owns(902) {
+		t.Errorf("fleet A removed %v, owns 902 %v", ca.removed, a.Owns(902))
+	}
+}
