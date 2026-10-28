@@ -565,9 +565,45 @@ func (s *ApproachSequencer) Update(now time.Time, arrivals []ApproachAircraft) [
 	s.mu.Lock()
 	prio := maps.Clone(s.priority)
 	s.mu.Unlock()
-	for _, a := range arrivals {
-		sl := slot{a: a, eta: s.smoothed(now, a.Callsign, s.eta(now, a, c))}
-		if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM && !a.Extendable || prio[a.Callsign] {
+	etas := make([]time.Time, len(arrivals))
+	for i, a := range arrivals {
+		etas[i] = s.smoothed(now, a.Callsign, s.eta(now, a, c))
+	}
+	// Fixed lands before the ones not fixed: not past one ahead of it the
+	// last time that cannot lose the time it would cost (moveUpRoom); it
+	// keeps its place behind it, the ones behind taking the rest (live,
+	// LKPR: OKYQK fixed on its downwind took number 2 from CSA1293 12 NM
+	// out, given 6 minutes; short on the final, sent around).
+	s.mu.Lock()
+	was := map[string]int{}
+	for cs, e := range s.last {
+		was[cs] = e.Number
+	}
+	s.mu.Unlock()
+	behindFree := func(i int) bool {
+		a := arrivals[i]
+		n, ok := was[a.Callsign]
+		if !ok || a.Runway != "" || prio[a.Callsign] {
+			return false
+		}
+		for j, o := range arrivals {
+			m, ok := was[o.Callsign]
+			if !ok || m >= n || o.Fixed || o.Runway != "" || o.DistanceToGoNM < s.opts.FreezeNM && !o.Extendable {
+				continue
+			}
+			g, _, _ := s.gap(a, o, c)
+			if etas[i].Add(g).Sub(etas[j]) > min(s.opts.TacticalSwapMaxCost, s.moveUpRoom(o.DistanceToGoNM)) {
+				return true
+			}
+		}
+		return false
+	}
+	for i, a := range arrivals {
+		sl := slot{a: a, eta: etas[i]}
+		if a.Fixed && behindFree(i) {
+			sl.a.Fixed = false
+			free = append(free, sl)
+		} else if a.Fixed || a.DistanceToGoNM < s.opts.FreezeNM && !a.Extendable || prio[a.Callsign] {
 			sl.a.Fixed, sl.at = true, sl.eta
 			fixed = append(fixed, sl)
 		} else {
