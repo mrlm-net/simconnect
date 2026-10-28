@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.129.2] - 2026-10-28
+
+### Fixed
+
+- A VFR circuit arrival fixed at its own time passed the arrival ahead of it, which could not lose the time (live, LKPR 24: OKYQK took number 2 from CSA1293 12 NM out, which was given 6 minutes and sent around for spacing).
+  - Fixed arrivals are planned before the ones not fixed, so fixing it put it ahead whatever the order.
+  - An arrival fixed by its controller now stays in the order behind one that was ahead of it, while that one cannot lose the time it would cost (as for a move up: up to 3 minutes, less near its final); the ones behind take the rest.
+  - Offline LKPR beds (no circuits): unchanged, no go-arounds for spacing.
+
 ## [0.129.1] - 2026-10-27
 
 ### Fixed
